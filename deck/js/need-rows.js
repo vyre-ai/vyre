@@ -149,7 +149,10 @@ export const fromMac = n => !!n && n.source === "mac" && (n.kind === "ask" || n.
  * @param {Item} n @returns {string|null}
  */
 export function elsewhere(n) {
-  if (!fromMac(n) || forwards) return null;
+  if (!fromMac(n)) return null;
+  // waiting says this box cannot answer it (answer.tool null, answer.on the Mac): no buttons.
+  if (/** @type {any} */ (n).answerOn) return String(/** @type {any} */ (n).answerOn);
+  if (forwards) return null;
   return n.machine ? String(n.machine) : "your Mac";
 }
 

@@ -1,8 +1,8 @@
 /* A Mac asking to pair (js/pair.js): Beacon, because it waits on the person. */
 .pair-list:empty { display: none; }
 .pair-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
-.pair-card { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: var(--radius-card, 12px); background: var(--beacon-wash);
-  border: 1px solid var(--beacon-rule); }
+.pair-card { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: var(--radius-card, 12px);
+  border: 1px solid var(--rule); }
 .pair-card.paired { background: var(--signal-wash); border-color: var(--rule-strong); }
 .pair-card.denied { background: var(--panel); border-color: var(--rule); }
 .pair-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -24,7 +24,7 @@
 
 /* No passkey on the box yet (js/first-passkey.js). Loaded with the pairing styles, since Now uses both. */
 .first-passkey { display: flex; flex-direction: column; gap: 8px; padding: 16px; margin-bottom: 24px; border-radius: var(--radius-card, 12px);
-  background: var(--beacon-wash); border: 1px solid var(--beacon-rule); }
+  border: 1px solid var(--rule); }
 .first-passkey .lbl { display: inline-flex; align-items: center; gap: 6px; }
 .fp-cmds { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
 .fp-cmds > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-field, 8px); background: var(--code-bg); }

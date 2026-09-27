@@ -74,12 +74,11 @@ let snapshotSuite = Suite("snapshots") { t in
 
             let m3 = snapModel([])
             m3.text = "which car do I own"
-            m3.memory = Memo.fold(text: "which car do I own", facts: [], hits: [
-                ["session": "a1", "role": "user", "name": "Insurance renewal", "text": "I own a blue Volvo XC40, bought in 2022. Renew the insurance before March.",
-                 "ts": Date().timeIntervalSince1970 * 1000 - 14 * 86_400_000],
-                ["session": "b2", "role": "assistant", "name": "Errands", "text": "Your Volvo is due for a service in April.",
-                 "ts": Date().timeIntervalSince1970 * 1000 - 3 * 86_400_000],
-            ], scratch: nil)
+            m3.memory = Memo.fromAnswer(text: "which car do I own", [
+                "answer": "You own a blue Volvo XC40.", "confidence": 0.7, "kind": "said", "from": 1, "via": "keyword",
+                "sources": [["session": "a1", "seq": 4, "name": "Insurance renewal", "quote": "I own a blue Volvo XC40, bought in 2022. Renew the insurance before March.",
+                             "ts": Date().timeIntervalSince1970 * 1000 - 14 * 86_400_000]],
+            ])
             m3.search()
             out.append(snapshot(m3, "3-memory", dir: dir))
 

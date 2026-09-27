@@ -72,10 +72,10 @@ tgz=$work/$name
 tar -tzf "$tgz" | sed 's|^package/||' >"$work/files"
 ok "$name, $(wc -l <"$work/files" | tr -d ' ') files, $(du -k "$tgz" | cut -f1) KB"
 for want in bin/vyre core/daemon/main.js core/cli/index.js harness/.claude-plugin/plugin.json \
-  harness/.mcp.json harness/hooks/hooks.json harness/mcp/server.js deck/index.html scripts/install-box.sh LICENSE package.json; do
+  harness/.mcp.json harness/hooks/hooks.json harness/mcp/server.js deck/index.html scripts/install-box.sh lib/theme/tokens.json LICENSE package.json; do
   grep -qx "$want" "$work/files" || fail "the tarball has no $want"
 done
-ok "has the bin, core, the Harness plugin, the Deck and the box installer"
+ok "has the bin, core, the Harness plugin, the Deck, the design tokens and the box installer"
 # The web app vyred serves at /app/ (ADR 0027): build-site.sh exports it (scripts/build-app.sh).
 if [ -f "$repo/apps/app/package.json" ]; then
   for want in apps/app/dist/index.html apps/app/dist/precache.json; do
@@ -108,12 +108,13 @@ pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
 kb=$(du -sk "$work/prefix" | cut -f1)
 [ ! -d "$pkg/node_modules" ] || fail "npm i -g installed dependencies: $(ls "$pkg/node_modules" | tr '\n' ' ')"
-# 16 MB: 12.7 MB without the web app on 2026-09-27 (already over the old 12 MB), plus apps/app/dist
-# (2.6 MB, 26 files) that vyred serves at /app/. Before that, 12 MB: real code growth (memory/personal, the Mac apps module, relay, resilience) plus the docs
+# 20 MB for 0.1.0: batch 4 installs 16.6 MB with the web app (apps/app/dist, 2.6 MB, served at
+# /app/); before it 12.7 MB. The generated docs index and reference (about 1.8 MB) are the 0.1.1
+# candidate to move out. box-image.yml prints the size every run. Before that, 12 MB: real code growth (memory/personal, the Mac apps module, relay, resilience) plus the docs
 # and docs/index.json, which scripts and agents read offline. du counts a block per file, so 670
 # small files cost more here than in the 2.5 MB tarball. A dependency or build output coming back
 # would add tens of MB; design docs and screenshots are kept out above.
-[ "$kb" -lt 16384 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
+[ "$kb" -lt 20480 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"

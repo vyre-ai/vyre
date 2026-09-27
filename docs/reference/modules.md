@@ -19,11 +19,14 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
+| [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 3 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
+| [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
+| [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -35,7 +38,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 20 | 6 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 23 | 6 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
@@ -47,15 +50,15 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 16 | 5 | cli |
-| [`settings`](#settings) | `core/settings` | `box`, `local` | 6 | 1 | cli, deck |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 22 | 8 | cli |
+| [`settings`](#settings) | `core/settings` | `box`, `local` | 7 | 1 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
-| [`sight`](#sight) | `core/sight` | `box`, `local` | 4 | 1 | none |
+| [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 40 | 26 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 109 | 42 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
@@ -83,6 +86,17 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Shows on: cli
 - Needs vault: `per-agent`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## appearance
+
+The theme preset, the scheme and the design tokens as hub settings (ADR 0035), checked before they are saved and resolved per device for every surface.
+
+- Folder: `core/appearance`, version 0.3.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#appearance)
+- Emits: [1 events](events.md#appearance)
+- Shows on: cli
 
 ## apps
 
@@ -118,6 +132,17 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
+## commands
+
+Every CLI verb the running modules declare, in one list any surface can draw.
+
+- Folder: `core/commands`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#commands)
+- Emits: no events
+- Shows on: no surface
+
 ## computers
 
 - Folder: `core/computers`, version 0.1.0
@@ -139,6 +164,17 @@ Where the user is now: the project, folder, thread, app, window and page each su
 - Tools: [2](tools.md#context)
 - Emits: [1 events](events.md#context)
 - Shows on: cli
+
+## events
+
+Every event type the running modules may emit, and the old names still accepted for one release.
+
+- Folder: `core/event-catalog`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#events)
+- Emits: no events
+- Shows on: no surface
 
 ## files
 
@@ -268,7 +304,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [20](tools.md#memory), 1 of them only for other modules
+- Tools: [23](tools.md#memory), 1 of them only for other modules
 - Emits: [6 events](events.md#memory)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -400,19 +436,19 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#sessions), 3 of them only for other modules
-- Emits: [5 events](events.md#sessions)
+- Tools: [22](tools.md#sessions), 5 of them only for other modules
+- Emits: [8 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## settings
 
-One way to read and change every setting, at account or project level, wherever it is kept.
+One way to read and change every setting, at account, project, device or session level, wherever it is kept.
 
 - Folder: `core/settings`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [6](tools.md#settings), 2 of them only for other modules
+- Tools: [7](tools.md#settings), 2 of them only for other modules
 - Emits: [1 events](events.md#settings)
 - Shows on: cli, deck
 
@@ -435,7 +471,7 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Folder: `core/sight`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [4](tools.md#sight)
+- Tools: [5](tools.md#sight)
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
 
@@ -487,8 +523,8 @@ Predictive text for every surface: names after @, commands after /, entities, ac
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [40](tools.md#threads), 13 of them only for other modules
-- Emits: [26 events](events.md#threads)
+- Tools: [42](tools.md#threads), 14 of them only for other modules
+- Emits: [27 events](events.md#threads)
 - Shows on: cli
 - Needs vault: `claude-setup-token`, `anthropic-api-key`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

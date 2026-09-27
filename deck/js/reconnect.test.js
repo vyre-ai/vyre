@@ -1,6 +1,6 @@
 // @ts-check
 // The Reconnecting pill's timing (js/reconnect.js, ADR 0029 R3), on node:test's fake timers:
-// nothing on a blip, "Reconnecting" after the first failed retry, "since" once at 60 s, gone
+// nothing on a blip, "Reconnecting" from attempt 4 (after the quick retries), "since" once at 60 s, gone
 // when the stream is open again, and the offline words while the device has no network.
 
 import test from "node:test";
@@ -27,12 +27,12 @@ test("pill: a blip that heals on the first try shows nothing", t => {
   assert.deepEqual(seen, []);
 });
 
-test("pill: shown after the first failed retry, says since when at 60 s, once, and goes when open", t => {
+test("pill: shown from attempt 4 (after the quick retries), says since when at 60 s, once, and goes when open", t => {
   const { pill, seen, at } = setup(t);
   const down = Date.now();
   pill.state({ state: "reconnecting", attempt: 1, since: down });
   at(2_000);
-  pill.state({ state: "reconnecting", attempt: 2, since: down });
+  pill.state({ state: "reconnecting", attempt: 4, since: down });
   assert.deepEqual(seen, ["Reconnecting"]);
   assert.equal(pill.shown, true);
   at(SINCE_AFTER - 2_001);
@@ -48,13 +48,13 @@ test("pill: shown after the first failed retry, says since when at 60 s, once, a
 
 test("pill: hidden before 60 s, its timer goes with it; a new outage starts over", t => {
   const { pill, seen, at } = setup(t);
-  pill.state({ state: "reconnecting", attempt: 2, since: Date.now() });
+  pill.state({ state: "reconnecting", attempt: 4, since: Date.now() });
   at(10_000);
   pill.state({ state: "open", attempt: 0, since: null });
   at(120_000);
   assert.deepEqual(seen, ["Reconnecting", null]);
   const again = Date.now();
-  pill.state({ state: "reconnecting", attempt: 2, since: again });
+  pill.state({ state: "reconnecting", attempt: 4, since: again });
   at(SINCE_AFTER);
   assert.deepEqual(seen.slice(2), ["Reconnecting", `Reconnecting since h${again}`]);
 });
@@ -64,7 +64,7 @@ test("pill: offline keeps the offline words, and says Reconnecting again when th
   pill.net();
   assert.deepEqual(seen, [], "not shown: nothing to say yet");
   offline(true);
-  pill.state({ state: "reconnecting", attempt: 2, since: Date.now() });
+  pill.state({ state: "reconnecting", attempt: 4, since: Date.now() });
   assert.deepEqual(seen, ["This phone is offline."]);
   offline(false);
   pill.net();
