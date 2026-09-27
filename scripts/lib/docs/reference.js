@@ -217,6 +217,7 @@ const ENV_MEANING = {
   AGENT: "The agent a thread runs as.",
   AGENT_KEY: "The key that proves a thread's calls come from its agent.",
   AGENT_KIND: "`assistant` or `agent`. Only the assistant is offered the tools that drive other threads.",
+  CLAUDE_HOME: "Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`.",
   ALLOW_DIALOGS: "`1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins.",
   BOX_INSTALLER: "The installer `vyre box add` runs on the server, in place of the published one.",
   BOX_POLL_MS: "How often `vyre box` checks on an install in progress. Default 5000.",
