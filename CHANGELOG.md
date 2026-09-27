@@ -266,6 +266,44 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a running Chrome (CDP); each asserts its chip or note, no sideways scroll and no page errors.
 - `pair()` in test/link-harness.js takes `boxName`, `macHost`, `heartbeat`, `boxConfig`, and
   `macTranscripts` as a list of sessions, and needs only `name` and `after` from its context.
+#### vyred knows the box's Taildrive mount mode
+
+- The vyre service gets `VYRE_DRIVE_ACCESS` (default `ro`), the same value the tailscale service
+  mounts /work with, so `files.drive.access` says whether the .env step is needed instead of
+  "unknown" (box/compose.yml).
+
+#### Taildrive shares carry their own access, and a share refuses folders with secrets inside
+
+- `files.drive.shares` entries are a path or `{ path, access }`, access `"ro"` (default) or
+  `"rw"`; `{ access }` alone keeps a default share's path. A path alone, the old form, still
+  works, and takes the old global `files.drive.access` when that is set (`shareSpecs` in
+  `core/files/drive.js`). `files.drive.status` rows carry `access`, and the top-level `access`
+  is `"rw"` when any share is. `files.drive.share` answers the share's own access. The Mac mounts
+  a share read-only unless that share's access is `"rw"`, falling back to the top-level field
+  for an older box.
+- New tool `files.drive.access { name, mode }`, owner only and on the floor's human-only list
+  (`core/presence/index.js`), saves the share's access to config and answers `{ name, access,
+  mount }`. `mount` says whether the tailscale container's `/work` mount must change, with the
+  step (`Set VYRE_DRIVE_ACCESS=rw in /srv/vyre/.env, then run docker compose up -d`, or back to
+  `ro`). It reads the current mode from `VYRE_DRIVE_ACCESS` when vyred sees it, else says
+  `unknown`. The Mac forwards it to the box for the owner's callers only.
+- `files.drive.share` scans the folder's tree first and refuses with `unsafe_share` (and
+  `detail.found`, up to 10 relative paths) when anything inside is a secret by the files guard's
+  own rules: a `.env`, a key by name or first line, a password store, a `secrets` folder, a
+  denied place such as the vault or an `.ssh` folder, or a link to one. More than 20,000 entries
+  is refused as too big to check. Dot folders such as `.git` are hidden from Vyre's tools but are
+  not secrets, so they are scanned, not refused. `files.drive.audit` scans every shared folder
+  again and reports `unsafe: [{ share, found }]` (`ok` false when any), also in the
+  `drive.exposed` payload. `core/files/safety.js` exports `secretName` and `HOME_DENIED`, and the
+  guard `isDenied`, so the scan and the guard share one list.
+- `box/compose.yml`: the comment on the `/work` mount says it is rw only while some share is.
+  docs/get-started/tailscale.md shows the new tool; the reference is regenerated, with a meaning
+  for `VYRE_DRIVE_ACCESS`. Deck fixture `deck/fixtures/files.json` has the new fields.
+- Tests (`core/files/drive.test.js`, 21): per-share access in status and in the Mac's mount,
+  legacy string config, `files.drive.access` owner-only with its step both ways and unknown,
+  `.env` and key files refused with their paths, a `.git` checkout shared, the 10-finding cap and
+  the too-big refusal, the audit on a shared folder a secret landed in.
+
 #### Streams over the tailnet are the owner's alone
 
 - The tailnet listener hands a WebSocket (`/v1/streams/...`: the terminal, Glass's screen) to
@@ -275,6 +313,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   still opens no stream (`core/onboard/loopback.js`). Tests: owner allowed, guest and agent node
   refused (`core/names/service.test.js`), wrong Host and no session on loopback
   (`test/onboard.test.js`).
+
+#### `vyre capsule install` builds the Capsule on the Mac
 
 #### Taking over an agent's computer asks for no passkey
 

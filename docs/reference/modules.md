@@ -22,7 +22,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 21 | 14 | cli, deck |
-| [`files`](#files) | `core/files` | `box`, `local` | 16 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
@@ -108,7 +108,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#files)
+- Tools: [17](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 

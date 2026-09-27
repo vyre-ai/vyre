@@ -68,10 +68,29 @@ profile and a trace of Memory's pass showed to be the tail of startup curation (
 turns) running past perf-check's 250 ms settle, not idle work. perf-check now waits for
 `memory.curate`, which answers once that pass is done, before it starts the idle window.
 
+Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
+- Per-share access: `files.drive.shares` entries are a path or `{ path, access }` (a path is
+  read-only, or the old global `files.drive.access`); status rows carry `access`; the Mac mounts
+  each share by its own access. Tool `files.drive.access { name, mode }`, owner only, on
+  HUMAN_ONLY, saves the access and answers the mount step.
+- The compose mount stays read-only unless some share is rw; `files.drive.access` answers
+  `Set VYRE_DRIVE_ACCESS=rw in /srv/vyre/.env, then run docker compose up -d` (or back to ro).
+  The compose comment says so.
+- A share refuses a folder with a secret anywhere inside (`unsafe_share`, `detail.found` up to
+  10 paths; over 20,000 entries is too big to check); `files.drive.audit` rescans shared
+  folders into `unsafe`, also in `drive.exposed`.
+- Test box, `nice -n 15`, after merging main at 6e205a9: core/files/drive.test.js 21 of 21,
+  core/files/files.test.js 18 of 18, core/presence/presence.test.js 22 of 22,
+  test/hygiene.test.js 1 of 1, test/docs-build.test.js 31 of 31, test/fixtures.test.js 1 of 1;
+  `gen-docs-reference --check` fresh.
+
 ## Doing
 
-27 Sep 2026 (resumed): the WebSocket upgrade handler is done (f309059, below). Now on the
-Mac-send loose ends on work/federation (../vyre-federation), in "Next".
+27 Sep 2026 (resumed): the WebSocket upgrade handler is done (f309059, below). The Mac-send
+loose ends are done on work/federation 5c247ce (docs/work/federation.md "Doing"). Rich Mac
+transcripts are done on work/federation-transcript 6731af9 (../vyre-federation-transcript, off
+work/chat, since recall.transcript is only there). Taildrive per-share access and the secrets scan are done (ea158df, under "Done"). Next: the
+projectsDir move to /work/projects (Next, item 2).
 
 Owner-only streams (f309059): the upgrade path already existed on main (ctx.upgrader in
 core/daemon/index.js, onUpgrade in core/names/service.js, from glass-live), but it let a guest
@@ -112,14 +131,7 @@ The lead's earlier decisions of 27 Sep 2026, still to build in this order:
    guests, agent nodes, agents at the box, MCP, anonymous callers and any tailnet login that is not
    `network.owner`; test in test/link.test.js. Tests on the test box: link, link-federation,
    guests, health, glass, hygiene 33/33.
-2. **Taildrive:**
-   - Read-only by default, with a per-share read-write switch that needs presence: a tool
-     `files.drive.access { name, mode: "ro"|"rw" }`, added to HUMAN_ONLY.
-     `files.drive.shares` entries become `{ path, access }`.
-   - The compose mount stays read-only unless some share is rw. Write the exact `.env` step for
-     the user: `VYRE_DRIVE_ACCESS=rw` plus `docker compose up -d`.
-   - A share refuses any folder the files guard flags anywhere inside it (`.env`, keys, the
-     vault): scan it with the guard at share time, and again in `files.drive.audit`.
+2. **Taildrive:** (the first three bullets are done, under "Done")
    - Move the box's `projectsDir` to `/work/projects`, with a migration that moves existing
      projects out of `vyre-home` and rewrites the paths the projects module stores. Coordinate
      with the projects workstream (docs/work/projects.md).
@@ -185,11 +197,18 @@ only read-only checks on the test box.
 
 ## Needs from others
 
-- chat: builds the Mac-session composer on work/chat against work/federation 2379a0c. It is
-  waiting on the WebSocket upgrade handler for the terminal and Glass.
-- integrator: merge work/tailnet bd833dc and work/federation 2379a0c.
+- chat (via the lead): merge work/tailnet (owner-only streams) and work/federation-transcript
+  6731af9 (rich Mac transcripts; then boot a Mac session from `recall.transcript { source: "mac" }`
+  in deck/chat/session.js).
+- integrator: merge work/tailnet (this branch's tip) and work/federation 5c247ce.
 - e2e: re-run the egress checks on headscale (the list under "Verify on first real run").
-- capsule-now: review of the queue flow for sends from the box.
+- lead, decision: the share scan walks node_modules and .git and stops at 20,000 entries, so
+  sharing `projects` (/work) with a few repos in it is refused as too big to check. Options: skip
+  node_modules (and .git objects, keeping .git/config) in the scan, or raise the cap. Recommend
+  skipping node_modules and .git/objects.
+- lead, decision: guests may be given glass.open (GUEST_SAFE), but tailnet streams are now the
+  owner's alone, so that ticket cannot be used. Drop glass.open from GUEST_SAFE, or let guests
+  through for Glass only.
 
 - vault: see the tailnet entry in docs/work/vault.md "Needs from others".
 - computers: review the Pacer (`glass.js`), the pool's egress remake and agent-node join, the
@@ -258,8 +277,8 @@ snippet's keys into the one tailnet policy file in the admin console (Access con
 
 Then on the box: `vyre call --tty files.drive.share '{"name":"projects"}'`, and
 `vyre call files.drive.audit`. For writes from Finder: `"access": "rw"` in the grant,
-`VYRE_DRIVE_ACCESS=rw` in `/srv/vyre/.env`, `files.drive.access: "rw"` in the box's config,
-`docker compose up -d`.
+`vyre call --tty files.drive.access '{"name":"projects","mode":"rw"}'`, then the step it answers:
+`VYRE_DRIVE_ACCESS=rw` in `/srv/vyre/.env` and `docker compose up -d`. Remount on the Mac.
 
 ### Taildrop (files to the box)
 
@@ -387,7 +406,7 @@ Listed by the area they touch, so the merge can go in order. Everything below is
   socket cannot claim.
 - **network** (new module, box): `network.guests.list|add|remove|enable|check`; events
   `guest.added`, `guest.removed`; config `network.guests { enabled: false, people: {} }`.
-- **presence**: HUMAN_ONLY gains `files.drive.share|unshare`, `network.guests.add|remove|enable`,
+- **presence**: HUMAN_ONLY gains `files.drive.share|unshare|access`, `network.guests.add|remove|enable`,
   `hooks.enable|open|close`, `computers.tailnet.set`, `computers.egress.set`; presence refuses
   `tailnet-guest:*` whatever the proof.
 - **gate**: `person()` refuses guests and agent nodes.
@@ -398,6 +417,14 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **files**: tools `files.send`, `files.drive.status|share|unshare|audit|url|mount|unmount|open|local`;
   events `files.sent`, `files.received`, `drive.exposed`; config `files.inbox`,
   `files.drive.shares`, `files.drive.access`; CLI `vyre send`.
+  Taildrive per-share access (ea158df): tool `files.drive.access { name, mode }` answering
+  `{ name, access, mount: { want, now, change, step? } }`; `files.drive.shares` entries may be
+  `{ path, access }` (or `{ access }` for a default share); `files.drive.status` rows gain
+  `access` (top-level `access` is rw when any share is); `files.drive.share` answers the share's
+  own access and may refuse `unsafe_share` with `detail.found` (and `detail.tooBig`);
+  `files.drive.audit` answers `unsafe: [{ share, found, why? }]`, and `drive.exposed` carries
+  `unsafe`; `core/files/safety.js` exports `secretName`, `HOME_DENIED`, and the guard
+  `isDenied`; `shareSpecs`, `mountStep`, `SCAN_LIMIT` exported from `core/files/drive.js`.
 - **glass**: `glass.open` answers `link`; `glass.close` from a guest closes only its own sessions;
   config `glass.egress`.
 - **computers**: tools `computers.egress.status|set`, `computers.tailnet.status|set`, internal

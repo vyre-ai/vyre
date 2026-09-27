@@ -356,8 +356,10 @@ open box files in place. Taildrive is in alpha at Tailscale.
    vyre call files.drive.audit
    ```
 
-   Sharing needs your presence (`--tty` asks for a code). The audit lists any device besides a
-   paired Mac that the policy lets in.
+   Sharing needs your presence (`--tty` asks for a code). A folder with a `.env`, a key or a
+   `secrets` folder anywhere inside it is refused (`unsafe_share`, with what was found). The
+   audit lists any device besides a paired Mac that the policy lets in, and any shared folder a
+   secret has landed in since.
 
 3. Mount it on the Mac:
 
@@ -365,9 +367,16 @@ open box files in place. Taildrive is in alpha at Tailscale.
    vyre call files.drive.mount '{"share":"projects"}'
    ```
 
-To edit box files from Finder: `"access": "rw"` in the grant, `VYRE_DRIVE_ACCESS=rw` in
-`/srv/vyre/.env`, `files.drive.access` set to `"rw"` in the box's config, then
-`docker compose up -d` in `/srv/vyre`.
+To edit box files from Finder: `"access": "rw"` in the grant, then make that one share
+read-write on the box (it needs your presence too):
+
+```sh
+vyre call --tty files.drive.access '{"name":"projects","mode":"rw"}'
+```
+
+Its answer says when the container's mount must change as well: `VYRE_DRIVE_ACCESS=rw` in
+`/srv/vyre/.env`, then `docker compose up -d` in `/srv/vyre`. Unmount and mount the share on the
+Mac to pick up the change. Every other share stays read-only.
 
 > [!WHY] Why read-only, and why named folders?
 > Tailscale serves the files itself, from its own container, which runs as root. Read-only keeps

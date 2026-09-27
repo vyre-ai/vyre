@@ -51,7 +51,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `drive.exposed` | `findings` |
+| `drive.exposed` | `findings`, `unsafe` |
 | `files.received` | `bytes`, `name`, `path` |
 | `files.sent` | `bytes`, `name`, `to` |
 
