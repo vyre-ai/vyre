@@ -37,7 +37,7 @@ async function box(t) {
   const root = tempHome(t);
   const svc = await fakeService(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" },
-    modules: { enable: [], disable: ["recall", "memory", "learn"] }, push: { hosts: ["127.0.0.1"], allow_http: true }, network: { tailscale: false, address: BOX } }));
+    modules: { enable: [], disable: ["recall", "memory", "learn", "relay"] }, push: { hosts: ["127.0.0.1"], allow_http: true }, network: { tailscale: false, address: BOX } }));
   const screen = [];
   const d = await start({ root, log: () => {}, person: async () => null, presence: deps => new Presence({ ...deps,
     touchid: { available: async () => false, authenticate: async () => ({ ok: false, reason: "unavailable" }) },

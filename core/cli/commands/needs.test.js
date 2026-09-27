@@ -16,6 +16,7 @@ import { start } from "../../daemon/index.js";
 import { Presence } from "../../presence/index.js";
 import { call } from "../../daemon/client.js";
 import { tempHome } from "../../../test/helpers.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 import { merge, nextFor } from "./needs.js";
 import { gate, bodyKey } from "./gate.js";
 import { answerFor, answersFrom, pickAnswers } from "./threads.js";
@@ -129,7 +130,9 @@ async function world(t) {
     writeTty: (file, text) => screen.push({ file, text }) }) });
   t.after(() => d.stop());
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
-  const work = fs.mkdtempSync(path.join(root, "work-"));
+  // The work folder is outside the home: the floor treats everything in VYRE_HOME as Vyre's own.
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
 
   const held = await tool("gate.request", { kind: "send", via: "mail", to: "kit@northwind.example",
     content: { subject: "Opening hours", body: "The shop opens at 7 from Monday." } }, "mcp");
