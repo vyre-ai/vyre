@@ -200,3 +200,17 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   useful. Sent the full rundown by message (msg_id e5bf84f6) rather than drawing boards up front —
   offered streaming IQ / computer-use step pills / multi-device handoff on request, to keep this
   light while still on launch RC support. No board drawn yet; waiting to hear if one would help.
+
+## Now (28 Sep, memory-iq's import + graph view)
+
+- Drew the two boards the lead asked for (Import.dc.html, MemoryGraph.dc.html, +paper each,
+  e7aab867): discovered sources (counts, dates, projects, dev folders unticked, choosing is
+  confirming — no separate dialog) and live progress (Searchable/Understood/Graph stages,
+  per-source checklist) as step 5 of the existing Onboarding.dc.html flow; the graph view drawn
+  literally off memory.graph's own contract ("one room per project, a shared room, nodes and
+  edges") as bordered room rectangles with node tiles and connecting lines, a cross-project person
+  drawing a line into every room it touches, and a clicked node opening its facts in the Answer
+  card's confirmed shape (source chips, "Wrong?"/"Undo"). All four pass the audit clean; took a few
+  render/audit rounds to fix real overflow (not audit noise — the two-window Import frame genuinely
+  didn't fit at my first two height guesses). Handed to memory-iq (msg_id 8582da7f) and flagged to
+  launch as non-blocking (msg_id c3fd6735).
