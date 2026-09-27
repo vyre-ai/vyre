@@ -64,20 +64,45 @@ Callers: the user's surfaces (deck, cli, local, capsule), the user's tailnet dev
 the assistant or an agent granted every project. A project-scoped agent is refused: personal
 facts are not a project's.
 
+### memory.profile and memory.remember (for cc-plugin's about.md and /vyre remember)
+
+- `memory.profile {limit?: 1..50 = 12}` -> `{ facts: [{ text, kind: person|place|vehicle|work|client|preference|other, weight, id, rel, from }] }`.
+  Second-person lines, current and at weight 0.5 or more. No birthdays or dates, and nothing that
+  looks like an account number, phone, street address, email or health.
+- `memory.remember {text, room?}` -> `{ id, text, facts: [{ id, subject, rel, object, confidence }] }`.
+  No prompt (the no-nag rule). The text is stored in `memory_me_told` and read as session `told:<id>`
+  by the same rules at 0.95 (indirect claims at 0.8). In a single-valued slot it outweighs every
+  older value (x0.1). A full re-read keeps it. A line with no facts is still found by its words.
+- Same gate for answer, profile and remember (personalOnly in core/memory/index.js).
+
 ## Done
-- (none yet)
+- T1 eval world + harness (8c188bc). Held-out world + `--world heldout` (23d25ac).
+- T2 extraction + store (fb98555). T3 model pass with daily cap (adc1a94, wired 23d25ac).
+- T4 memory.answer (f1b4512), CLI `vyre memory ask`.
+- memory.profile and memory.remember (892b339). Contracts sent to cc-plugin on 27 Sep.
+- Eval 27 Sep on testbox: gold world overall 1.0, p95 10.8 ms. Held-out world overall 0.277,
+  precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
+  pasted email). The held-out world is the real number.
 
 ## Doing
-- T1 eval world + harness (before score), T2 extraction + store
+- Held-out extraction gaps: pasted and quoted email text taken as the user's words (Claire),
+  and lowercase names, nicknames (hubby, "robin and i"), "the mazda", and moves ("moved to
+  leeds") missed.
 
 ## Next
-- T3 model pass with a daily cost cap shown in vyre status
-- T4 memory.answer, CLI `vyre memory ask`, CI step
-- T5 ADR 0023, CHANGELOG, contract to capsule-pro, pwa, mobile
+- Get held-out to 0.9 without regressing gold. Then write a third, unseen world so the score
+  still means something.
+- CI step for `npm run eval:answer` (both worlds), ADR 0023, contract notes for capsule-pro, pwa
+  and mobile.
 
 ## Needs from others
 - polish-cli: the contract of the low-priority index worker. Until then extraction runs in the
   memory curator's background pass, in bounded batches that yield.
+- cc-plugin: what caller an MCP call from the person's own Claude Code session carries. Plain
+  "mcp" with no agent counts as project-scoped and is refused for answer, profile and remember.
+  about.md is built by a module (allowed), and `/vyre remember` via the CLI is allowed.
+- main/integrator: core/memory/rooms.test.js:227 fails on main's code. agents.create now needs
+  presence ("Making or changing an agent needs a person"), and the test does not provide it.
 
 ## Changed contracts
-- New tool `memory.answer` (see above). New table family `memory_me_*` (memory's own).
+- New tools `memory.answer`, `memory.profile`, `memory.remember` (see above); event `memory.remembered`; table `memory_me_told`. New table family `memory_me_*` (memory's own).
