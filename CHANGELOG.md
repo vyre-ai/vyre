@@ -32,7 +32,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   src/auth/person.ts gains a plain-JS SHA-256, derToP1363 and jwkFromXY. Fixed: person.web.ts
   imported itself on the web instead of person.ts. Tests in src/auth/signer.test.js.
 - New app dependencies: expo-web-browser (the sign-in browser) and expo-secure-store (the token).
-- Merged work/capsule-pro-tokens: scripts/gen-tokens also writes the Capsule's Tokens.generated.swift.
+- The token generator is app-design's (scripts/gen-tokens, scripts/lib/tokens.js, from main); mobile's own
+  generator and capsule-pro's Swift branch are gone, and apps/app/src/theme/tokens.test.js checks tokens.ts against it.
 
 #### One app: the resilience client, the person session, and ADR 0027 on auth and alarms
 
