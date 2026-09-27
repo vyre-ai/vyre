@@ -33,6 +33,10 @@ export const MIGRATIONS = [
   // The module whose offered sender an item was held under, so after a restart, before that module
   // offers again, Approve can say which module to start rather than "no such sender".
   `ALTER TABLE gate_items ADD COLUMN sender_module TEXT;`,
+  // Where the item sits in its session, so a surface can open the transcript at it: the tool call
+  // that asked (when the caller knows it) and the id of the gate.held event.
+  `ALTER TABLE gate_items ADD COLUMN tool_use_id TEXT;
+   ALTER TABLE gate_items ADD COLUMN event INTEGER;`,
 ];
 
 export const KINDS = ["send", "spend", "delete"];
@@ -156,10 +160,10 @@ export class Gate {
 
   /**
    * An agent asks for something to go out. It is held, never sent from here.
-   * @param {{ kind: string, via: string, to: string|string[], content: any, why?: string, thread?: string, project?: string }} input
+   * @param {{ kind: string, via: string, to: string|string[], content: any, why?: string, thread?: string, project?: string, tool_use_id?: string }} input
    * @param {{ agent?: string|null }} [who]
    */
-  request({ kind, via, to, content, why, thread, project }, { agent = null } = {}) {
+  request({ kind, via, to, content, why, thread, project, tool_use_id }, { agent = null } = {}) {
     if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
     const { s, t } = this.sender(via);
     const kinds = s.kinds || t.kinds;
@@ -169,11 +173,12 @@ export class Gate {
     if (!content || typeof content !== "object" || Array.isArray(content)) throw new Error("content must be an object");
     t.check(dest, content, s);
     const id = crypto.randomBytes(9).toString("hex");
-    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state, sender_module)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held', ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
-      why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null);
+    this.db.prepare(`INSERT INTO gate_items (id, at, kind, via, dest, draft_dest, draft, why, agent, thread, project, state, sender_module, tool_use_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?, 'held', ?, ?)`).run(id, this.now(), kind, via, JSON.stringify(dest), JSON.stringify(dest), JSON.stringify(content),
+      why ? cut(String(why), 1000) : null, agent, thread || null, project || null, s.module || null, tool_use_id ? cut(String(tool_use_id), 100) : null);
     const summary = t.summary(dest, content);
-    this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, where(thread, project));
+    const ev = this.deps.emit("gate.held", { id, kind, via, to: dest, summary, agent, thread: thread || null, project: project || null }, where(thread, project));
+    if (ev && typeof ev.id === "number") this.db.prepare("UPDATE gate_items SET event = ? WHERE id = ?").run(ev.id, id);
     return { id, state: "held", message: `Held at the Gate as ${id}. The user sees it, with where it is going, and nothing goes out until they approve it. Do not send it another way.` };
   }
 
@@ -190,7 +195,10 @@ export class Gate {
     const draft = json(r.final, null) || json(r.draft, {});
     const t = this.senderConfig[r.via] || this.offered[r.via] ? this.sender(r.via).t : null;
     return { id: r.id, kind: r.kind, via: r.via, to: json(r.dest, []), summary: t ? t.summary(json(r.dest, []), draft) : "",
-      why: r.why, agent: r.agent, thread: r.thread, project: r.project, at: r.at, ...(r.error ? { error: r.error } : {}) };
+      why: r.why, agent: r.agent, thread: r.thread, project: r.project, at: r.at, ...(r.error ? { error: r.error } : {}),
+      // Where it sits in its session. Without a tool_use_id (a model's MCP call rarely knows its
+      // own), a surface finds it by thread and at, or by the gate.held event.
+      anchor: { tool_use_id: r.tool_use_id || null, event: r.event == null ? null : Number(r.event), thread: r.thread || null, at: r.at } };
   }
 
   row(id) {
