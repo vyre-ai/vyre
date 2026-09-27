@@ -19,6 +19,7 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   targets, what is shared, the hosted app's signed pinned versions, the smoothness bar as
   acceptance criteria, the perf harness, the one-week spike.
 - apps/app/perf/meter.js + meter.test.js (19 tests) + README.md: the frame meter and `BAR`.
+- docs: ADR 0018 front matter (status paused) and nav; reference regenerated (tailnet callers). 170/170 targeted tests on testbox (meter, docs-*, presence, gate, push, floor, mobile-tailnet, apps world).
 - Merged main at ef51363 (a51bdcc): kept `tailnet` in the new callers (gate, switchboard, push),
   `device` in METHODS and in the presence session description; deck/test/world.js keeps its
   exports with main's alex-beside-home, CHAT_DEMO and WebSocket pass-through.

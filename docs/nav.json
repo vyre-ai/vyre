@@ -68,6 +68,7 @@
       "adr/0012-cdp-proxy.md",
       "adr/0014-tailnet.md",
       "adr/0016-connectors.md",
+      "adr/0018-mobile.md",
       "adr/0019-docs-site.md",
       "adr/0020-claude-code-plugin.md",
       "adr/0021-box-reads-the-mac.md",

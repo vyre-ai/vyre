@@ -1,6 +1,14 @@
+---
+title: "ADR 0018: The phone apps, native iOS and Android on the box's API"
+summary: The native SwiftUI and Compose apps and the device presence method; paused in favour of one Expo app (ADR 0027).
+audience: builders
+owner: docs
+status: draft
+---
+
 # ADR 0018 · The phone apps: native iOS and Android on the box's API
 
-Status: proposed, 27 Sep 2026 · Workstream: mobile (`apps/ios`, `apps/android`) · Spec: sections
+Status: paused, 27 Sep 2026 (superseded for the apps by ADR 0027; the device presence method stands) · Workstream: mobile (`apps/ios`, `apps/android`) · Spec: sections
 2, 7.1, 9, 10, 11 · Builds on ADR 0002 (network and identity), ADR 0004 (presence), ADR 0011
 (web push)
 

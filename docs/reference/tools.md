@@ -555,7 +555,7 @@ The user approves a held item, optionally with edits (the whole content as it sh
   - `id` string, required
   - `by` string
   - `edited` object
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
 - Needs a person present.
 
 ### `gate.get`
@@ -564,7 +564,7 @@ One item in full: the draft, what was finally sent, and what the user changed.
 
 - Input:
   - `id` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
 
 ### `gate.held`
 
@@ -594,7 +594,7 @@ The user discards a held item. Nothing is sent.
   - `id` string, required
   - `by` string
   - `reason` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
 
 ### `gate.request`
 
@@ -620,7 +620,7 @@ The user changes a held item without sending it: the content as it should go out
   - `edited` object, required
   - `id` string, required
   - `by` string
-- Callers: `cli`, `local`, `module`
+- Callers: `cli`, `local`, `module`, `tailnet`
 
 ### `gate.route`
 
@@ -2203,10 +2203,10 @@ Whether the device a call came from (its tailnet peer; none for this machine) ha
 
 ### `presence.enroll`
 
-Enroll a Capsule key (Ed25519) or a passkey, by its public key as base64url SPKI DER. Needs presence.
+Enroll a Capsule key (Ed25519), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.
 
 - Input:
-  - `kind` "capsule" or "passkey", required
+  - `kind` one of "capsule", "passkey", "device", required
   - `public_key` string, required
   - `alg` integer
   - `credential_id` string
@@ -2217,14 +2217,14 @@ Enroll a Capsule key (Ed25519) or a passkey, by its public key as base64url SPKI
 
 ### `presence.keys`
 
-The Capsule keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.
+The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.
 
 - Input: none
 - Callers: any caller
 
 ### `presence.remove`
 
-Remove an enrolled Capsule key or passkey by id. Needs presence.
+Remove an enrolled Capsule key, device key or passkey by id. Needs presence.
 
 - Input:
   - `id` string, required
@@ -2241,7 +2241,7 @@ End a presence session now.
 
 ### `presence.session.open`
 
-After one strong proof (Touch ID, the Capsule or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.
+After one strong proof (Touch ID, the Capsule, a device key or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.
 
 - Input: none
 - Callers: any caller
@@ -2337,14 +2337,14 @@ The threads in a project, newest first, each saying whether it was picked or ran
 The devices that get notifications: id, label, push service, when added, last delivered. Never the endpoint or keys.
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 
 ### `push.key`
 
 The public key a browser subscribes with (applicationServerKey, base64url).
 
 - Input: none
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 
 ### `push.settings`
 
@@ -2354,7 +2354,7 @@ Quiet hours ({start: "22:00", end: "07:00", timezone?}, or null for none), which
   - `kinds` object
   - `planner_label` boolean
   - `quiet` object or null
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 
 ### `push.subscribe`
 
@@ -2363,7 +2363,7 @@ Keep this browser's PushSubscription, so the moments you are needed reach this d
 - Input:
   - `subscription` object, required
   - `label` string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 
 ### `push.test`
 
@@ -2371,7 +2371,7 @@ Send a test notification to every device, or one. Ignores quiet hours.
 
 - Input:
   - `device` string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 
 ### `push.unsubscribe`
 
@@ -2380,7 +2380,7 @@ Forget a device: by its id, or by the subscription's endpoint.
 - Input:
   - `device` string
   - `endpoint` string
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 
 ## recall
 
@@ -2563,7 +2563,7 @@ Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code 
   - `message` string
   - `scope` "project": With always: allow this tool from now on in the thread's project only (the ask's always_project).
   - `surface` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
 
 ### `threads.asks`
 
@@ -2897,7 +2897,7 @@ Copy one field of an item to this Mac's clipboard, cleared after 90 seconds. Nev
   - `name` string
   - `session` string
   - `version` integer
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 - Needs a person present.
 
 ### `vault.delete`
@@ -3377,7 +3377,7 @@ Show one field of an item to the person, on their own device. Hide it again afte
   - `field` string
   - `session` string
   - `version` integer
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 - Needs a person present.
 
 ### `vault.revert`
@@ -3425,7 +3425,7 @@ Unlock the vault in the Deck, the Capsule or the extension for a while. Returns 
   - `surface` one of "deck", "capsule", "extension", required
   - `confirm` boolean
   - `ttl_s` integer
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 - Needs a person present.
 
 ### `vault.session.status`
@@ -3434,7 +3434,7 @@ Whether a session is unlocked, until when, and for which surface.
 
 - Input:
   - `session` string, required
-- Callers: `capsule`, `cli`, `deck`, `local`
+- Callers: `capsule`, `cli`, `deck`, `local`, `tailnet`
 
 ### `vault.ssh.add`
 
@@ -3497,7 +3497,7 @@ The current one-time code for a login with a TOTP seed.
   - `id` string
   - `name` string
   - `session` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`, `tailnet`
 - Needs a person present.
 
 ### `vault.unlock`
