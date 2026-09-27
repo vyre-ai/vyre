@@ -67,7 +67,7 @@ test("plan card: header, title, numbered steps, will not touch, the files, Asks 
   assert.match(text($(c, ".cv-ask-head")), /Plan to approve.*kit · \d\d:\d\d/);
   assert.equal(text($(c, ".cv-plan-title")), "Update the Northwind Bakery price list");
   assert.equal($$(c, ".cv-plan-steps li").length, 6);
-  assert.match(text($(c, ".cv-plan-not")), /^Will not touch the order form or src\/checkout\/\.?$/);
+  assert.match(text($(c, ".cv-plan-not")), /^Will not touch the order form or\s*src\/checkout\/\s*\.?$/);
   assert.equal($$(c, ".cv-plan-file").length, 2);
   assert.match(text($(c, ".cv-plan-fileset")), /2 files/);
   assert.match(text($$(c, ".cv-plan-file")[1]), /new · \+24/);

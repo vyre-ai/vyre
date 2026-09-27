@@ -101,6 +101,8 @@ export function mountTip(slot, o) {
   const onInput = () => { draw(); rearm(); };
   o.input?.addEventListener("input", onInput);
 
+  // Nothing shows until a tip arrives: no empty slot, no reserved height.
+  draw();
   attempt("tips.used", { module: MODULE });
   ask(false);
   rearm();

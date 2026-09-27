@@ -68,7 +68,7 @@ test("tip: the × dismisses it, a right click hides tips about the module; nothi
   const s2 = /** @type {any} */ (document.createElement("div"));
   const t2 = mountTip(s2, { busy: () => false, empty: () => true, visible: () => true });
   await settle();
-  $(s2, ".cv-tip-x").oncontextmenu?.({ preventDefault() {} });
+  $(s2, ".cv-tip-x").dispatchEvent(new /** @type {any} */ (globalThis).Event("contextmenu"));
   assert.deepEqual(g.of("tips.dismiss").map(c => c.input), [{ module: "chat" }]);
   t2.stop();
   vyred({ "tips.next": { tip: null } });
