@@ -7,8 +7,9 @@
 // polls; while the page is hidden the stream is closed, and the comparison on its return catches
 // what changed meanwhile.
 //
-// Feature-detected: a box without settings.snapshot (no hub yet) keeps today's /theme.css and the
-// scheme chosen on this device (localStorage "vyre.theme"). The device is the hub's to resolve:
+// Feature-detected: a box without settings.snapshot (no hub yet), or a hub with no
+// appearance.scheme, keeps today's /theme.css and the scheme chosen on this device (localStorage
+// "vyre.theme"). Where the hub has a scheme, "vyre.theme" follows it. The device is the hub's to resolve:
 // the Deck names one only when the snapshot said which (`device`), never inventing an id.
 
 /** The device the hub resolved for this Deck (settings.snapshot's `device`), or null before it said. */
@@ -43,9 +44,10 @@ export const repaints = e => typeof e?.payload?.key === "string" && e.payload.ke
  *   on: (type: string, fn: (e: any) => void) => () => void,
  *   onResume: (fn: (why: string) => void) => () => void,
  *   doc?: Document, media?: (q: string) => { matches: boolean, addEventListener?: Function, removeEventListener?: Function },
+ *   store?: Pick<Storage, "setItem" | "removeItem"> | null,
  * }} deps
  */
-export function followTheme({ attempt, on, onResume, doc = document, media = q => matchMedia(q) }) {
+export function followTheme({ attempt, on, onResume, doc = document, media = q => matchMedia(q), store = (() => { try { return localStorage; } catch { return null; } })() }) {
   /** @type {{ rev: number | null, device: string | null, scheme: unknown }} */
   const at = { rev: null, device: null, scheme: undefined };
   let hub = true, stopped = false;
@@ -55,6 +57,9 @@ export function followTheme({ attempt, on, onResume, doc = document, media = q =
     const v = schemeFor(at.scheme, !!light.matches);
     if (!v) return; // no hub value: this device's own choice stands
     if (v === "paper") doc.documentElement.dataset.theme = "paper"; else delete doc.documentElement.dataset.theme;
+    // The hub wins: this device's saved choice follows it, so the next launch paints the hub's
+    // scheme before the snapshot answers (app.js reads "vyre.theme" first thing), never the old one.
+    try { if (v === "paper") store?.setItem("vyre.theme", "paper"); else store?.removeItem("vyre.theme"); } catch {}
   };
 
   /** Swap the theme link to this rev; the old one leaves once the new one has loaded (or failed). */

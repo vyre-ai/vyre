@@ -70,8 +70,10 @@ test("repaints: only appearance.* keys", () => {
 test("start: the snapshot's rev and device go on the link; the old sheet leaves only once the new one loaded", async () => {
   const { doc, links } = fakeDoc();
   const hub = fakeHub([{ data: { rev: 42, device: "tailnet:alex-phone", values: { "appearance.scheme": "paper" } } }]);
-  followTheme({ ...hub.deps, doc, media: media(false) });
+  const kept = new Map([["vyre.theme", "dark-old"]]);
+  followTheme({ ...hub.deps, doc, media: media(false), store: { setItem: (k, v) => kept.set(k, v), removeItem: k => kept.delete(k) } });
   await tick();
+  assert.equal(kept.get("vyre.theme"), "paper", "the saved choice follows the hub, so the next launch paints it first");
   assert.deepEqual(hub.asked, [["settings.snapshot", {}]]);
   assert.deepEqual(links.map(l => l.href), ["/theme.css", "/theme.css?device=tailnet%3Aalex-phone&rev=42"], "both while the new one loads: no flash");
   links[1].fire("load");
