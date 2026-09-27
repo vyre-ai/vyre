@@ -96,13 +96,20 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   asked about), the bare "whatsapp juno ..." first word, y/n answers, a fuzzy app answer.
   Note for AppsExtension: an id in args.to makes the adapter's preview show the id; real adapters
   must preview with the title.
-- planner.parse (work/planner 1437a6b) is now what apps.route reads time with (index.js parsed(),
-  route.js timeKind/withParsed); our route.js time rules stay only as the fallback while the
-  planner is not on main. Once it is, delete them (parseDuration, parseClock, reminderParts) and
-  keep only the app and kind detection.
+- Main merged at 1992ab2 (the planner is on main). route.js reads no time now: parseDuration,
+  parseClock and reminderParts are gone. The rules say which app and kind (a Clock timer or alarm
+  and a Reminders reminder carry `time` until read); askFor/fromPlanner (route.js) and index.js
+  parsed() ask planner.parse for the time, and for words no rule placed ("5 min", "10 min timer
+  please"), which become a Planner add, or the Mac app for that kind when apps.planner is "apple".
+  A Mac app's timed route with no planner.parse is code setup, never a guess; a Planner add stands
+  (planner.add reads it). The planner adapter's fallback line comes from planner.parse too.
+  route.test.js runs the same table through the real core/planner/parse.js: 105 pass, 0 fail.
 - Slice 2 Kit (work/capsule-apps-native): capsule-pro 07af5e5 merged at 8cba106 (resolutions as
   recorded before; plus AgentDestinations lost a stale askItem call). Extension suites 18/18 on the
-  Mac; capsule-mac CI run 36282275995 on 8cba106. Hand 8cba106 to capsule-pro once CI is green.
+  Mac; capsule-mac CI run 36282275995 on 8cba106 was cancelled at 45 min: the "Vyre Local signing"
+  step hangs on capsule-pro's line (their 834b28e too; main skips it). 7423c8c (includes 8cba106)
+  pushed, run 36312964068; every step before signing passed. Handed 7423c8c to capsule-pro
+  (2026-09-27) with the hang report.
 - AppsExtension (same branch, 8ce0cad + 4d40355): @App from apps.list with .file(path) icons,
   known apps first, others once named; nesting apps list apps.targets (read on pick, refreshed per
   words); Enter: apps.route with the contact's raw id; non-sends run at once via apps.act; sends
@@ -110,18 +117,18 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   then gate.approve presence:true. Review fixes: Kit boxChanged() (called on text/chip change)
   forgets a preview, held Return ignored (Panel), hide/box generation guard, busy guard, gated
   without held stops, no send by display name. Extension suites 28/28 on the Mac.
-  Not built yet: an ImmediateResults provider for words without @ ("timer 10 min" as a row);
-  the presence summary is still defaultSummary until capsule-pro's host.prove(summary:) lands.
+  7423c8c: the row for words without @ (AppsWords.swift, a full-speed provider): app-like first
+  words only reach apps.route; sends use the host's ResultAction.confirm. Extension suites 29/29.
+  The presence summary is still defaultSummary until capsule-pro's host.prove(summary:) lands.
+- Lead (2026-09-27): the real-Mac check runs after the integrator merges work/planner.
 
 ## Next
-1. When CI on 8cba106 is green: send capsule-pro the hash to merge. Then run capsule-mac CI on
+1. DONE: handed 7423c8c to capsule-pro. Was: send capsule-pro the hash to merge. Then run capsule-mac CI on
    4d40355 (the AppsExtension) and hand that over too (it changes Kit, CapsuleModel,
    ExtensionHost and Panel by one line each: see Changed contracts).
-2. Provider for words without @ through apps.route; switch the presence summary to host.prove
-   when capsule-pro ships it.
+2. Switch the presence summary to host.prove when capsule-pro ships it.
 3. Slack adapter (slice 3, design below), then WhatsApp over hands (slice 4: hands.find,
    settleMs up to 5000, press Send rather than key Return; needs_front for keys), then any-app.
-4. When work/planner is on main: drop route.js's own time reading (fallback only now).
 
 ### Real-Mac check (planner default; the lead with the user, on the Mac, in the user's own terminal)
 Before: the planner module (work/planner, ADR 0025) must be on the branch under test, or steps 4
@@ -170,7 +177,6 @@ outbound sends. So apps.act never asks; apps.send and gate.approve do, riding th
 ## Needs from others
 - capsule-pro: merge the Kit branch once handed over; add host.prove(tool:input:summary:) and
   the host-minted presence session (secret in memory only, dropped on lock/sleep/restart).
-- planner: planner.parse with our time rules, answering locally on the Mac; the hash when ready.
 - capsule-pro: the native host must be on main before the Swift half runs in the app (slice 2).
 - capsule-sight: hands.observe/act/commit on main for the AX adapter (slice 4).
 - connectors: the MCP hub on main, and which server name the user's Slack uses (slice 3).

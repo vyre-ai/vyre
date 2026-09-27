@@ -213,7 +213,7 @@ test("module: a presence session proves apps.send; a session never proves a tool
 
 test("module: apps.route routes words by rules with the module's clock and zone, and runs nothing", async t => {
   const now = Date.UTC(2026, 8, 24, 10, 0);
-  const { reg, calls, events } = await start(t, { apps: { now: () => now, timeZone: "Asia/Karachi", planner: "apple" } });
+  const { reg, calls, events } = await start(t, { modules: [parsingPlanner(path.join(tempHome(t), "mods"))], apps: { now: () => now, timeZone: "Asia/Karachi", planner: "apple" } });
   const r = await reg.call("apps.route", { text: "remind me to call juno at 6" }, "capsule");
   assert.deepEqual(r.data.args, { text: "call juno", due: "2026-09-24T18:00" });
   assert.equal((await reg.call("apps.route", { text: "buy milk", app: "Notes" }, "capsule")).data.action, "create");
@@ -291,11 +291,14 @@ test("module: Planner add hands the words and kind to planner.add, and says what
   assert.deepEqual(/** @type {any} */ (globalThis).__plannerCalls, [{ i: { text: "remind me to call juno at 6", kind: "reminder" }, caller: "module:apps" }]);
 });
 
-test("module: a planner answer with no words falls back to our own reading", async t => {
-  const dir = fakePlanner(path.join(tempHome(t), "mods"), "{ id: 'itm_2', kind: 'timer', title: '' }");
+test("module: a planner answer with no words says planner.parse's reading, or the words", async t => {
   const now = Date.UTC(2026, 8, 24, 10, 0);
-  const { reg } = await start(t, { modules: [dir], apps: { now: () => now, timeZone: "Asia/Karachi" } });
-  assert.equal((await reg.call("apps.act", { app: "Planner", action: "add", args: { text: "timer 10 min", kind: "timer" } }, "cli")).data.said, "Timer for 10 minutes");
+  const bare = fakePlanner(path.join(tempHome(t), "mods"), "{ id: 'itm_2', kind: 'timer', title: '' }");
+  const { reg } = await start(t, { modules: [bare], apps: { now: () => now, timeZone: "Asia/Karachi" } });
+  assert.equal((await reg.call("apps.act", { app: "Planner", action: "add", args: { text: "timer 10 min", kind: "timer" } }, "cli")).data.said, "Added to the planner: timer 10 min");
+  const reading = parsingPlanner(path.join(tempHome(t), "mods2"));
+  const two = await start(t, { modules: [reading], apps: { now: () => now, timeZone: "Asia/Karachi" } });
+  assert.equal((await two.reg.call("apps.act", { app: "Planner", action: "add", args: { text: "timer 10 min", kind: "timer" } }, "cli")).data.said, "Timer for 10 minutes");
 });
 
 test("module: without a planner module, Planner add is code setup in words", async t => {
@@ -468,7 +471,7 @@ test("module: planner.parse reads the time; our rules pick the app; its refusal 
   assert.equal(weekday.said, "Alarm every weekday at 18:00");
   const past = await ask("remind me today at 9am to stretch");
   assert.deepEqual(past, { ambiguous: true, reason: "that time has already passed today" }, "the planner's no is the answer");
-  assert.deepEqual(/** @type {any} */ (globalThis).__parseCalls.map((/** @type {any} */ c) => c.kind), ["timer", "reminder", undefined, undefined], "words our rules refused go without a hint");
+  assert.deepEqual(/** @type {any} */ (globalThis).__parseCalls.map((/** @type {any} */ c) => c.kind), ["timer", "reminder", "alarm", "reminder"], "each with the kind our rules saw");
 
   // The Mac's own apps: the planner's reading becomes their args, without the Apple words.
   const clock = await ask("timer 10 min in apple clock");
@@ -480,7 +483,7 @@ test("module: planner.parse reads the time; our rules pick the app; its refusal 
   assert.equal(rep.ambiguous, true, "Apple Clock cannot keep a repeating alarm, so it is refused with a reason");
   assert.ok(rep.reason);
 
-  // Words the planner does not know keep our reading; a message never asks it.
+  // Words the planner cannot read keep the route; a message never asks it.
   const note = await ask("note: buy milk");
   assert.equal(note.said, "Note: buy milk");
   const before = /** @type {any} */ (globalThis).__parseCalls.length;
@@ -488,9 +491,12 @@ test("module: planner.parse reads the time; our rules pick the app; its refusal 
   assert.equal(/** @type {any} */ (globalThis).__parseCalls.length, before);
 });
 
-test("module: with no planner.parse on this Vyre, our own reading of the time stands", async t => {
+test("module: with no planner.parse on this Vyre, a Mac app's time is code setup, never a guess", async t => {
   const now = Date.UTC(2026, 8, 24, 10, 0);
   const { reg } = await start(t, { apps: { now: () => now, timeZone: "Asia/Karachi" } });
-  const r = (await reg.call("apps.route", { text: "timer 10 min in apple clock" }, "capsule")).data;
-  assert.deepEqual({ app: r.app, args: r.args, said: r.said }, { app: "Clock", args: { seconds: 600 }, said: "Timer for 10 minutes" });
+  const r = await reg.call("apps.route", { text: "timer 10 min in apple clock" }, "capsule");
+  assert.deepEqual(r.error, { code: "setup", message: "The planner is not on this Vyre yet" });
+  const p = (await reg.call("apps.route", { text: "timer 10 min" }, "capsule")).data;
+  assert.deepEqual({ app: p.app, args: p.args, said: p.said }, { app: "Planner", args: { text: "timer 10 min", kind: "timer" }, said: "Timer: timer 10 min" },
+    "a Planner add stands: planner.add reads it, and says setup itself");
 });

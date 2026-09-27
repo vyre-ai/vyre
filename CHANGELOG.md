@@ -5,6 +5,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 ## Unreleased
 
 #### Planner: alarms ring on a device with the box out of reach (ADR 0029, R6)
+#### Apps: the planner is the one reader of time (ADR 0022, ADR 0025)
+
+- apps.route reads no time itself any more: its duration, clock and reminder readers are gone
+  from local/apps/route.js. The rules pick the app and the kind; `planner.parse` reads when, for
+  the Planner and for Apple Clock and Reminders alike. Words no rule places ("5 min", "10 min
+  timer please") are asked of the planner too, so one grammar decides what a time is.
+- A timer, alarm or reminder for Apple's apps with no planner on this Vyre is code `setup`, "The
+  planner is not on this Vyre yet", rather than a second reading. A Planner add still goes
+  through, since `planner.add` reads its own words.
+- The Planner adapter's line, when the planner's answer has no words, is planner.parse's reading
+  ("Timer for 10 minutes"), or "Added to the planner: <words>".
+
+#### Apps: the planner by default, and a question instead of nothing (ADR 0022)
 
 - One ring key, `planner-<item>-<due>` (due in epoch seconds), on planner.fired, planner.acked,
   planner.ringing and the push. The push uses it as its tag and carries item and due, so a device
@@ -178,6 +191,66 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   fake Messages API. The three match: the MCP server, 220 tools, /vyre, about.md in the first
   request, each hook once, the floor's deny before `canUseTool`.
 
+- A new vyred module `apps` (`local/apps/`, roles local) drives the Mac's apps. `apps.list` reads
+  the Applications folders (no mdfind; bundle ids from Info.plist, `plutil` only for a binary one
+  and only for the rows returned) and says how Vyre reaches each app: connector, intents, script,
+  or ax. `apps.targets` lists what is inside an app (notes, reminder lists). `apps.act` runs an
+  action that sends nothing as the person and emits `apps.acted {app, action}`, never the text.
+  `apps.send` runs one that does, declares presence with the action's preview as its summary
+  ("WhatsApp → juno: running late"), and so needs a person's proof per call from every caller
+  but a module. `apps.act` refuses a sending action with code `sends`.
+- Four adapters. Clock timers and alarms through two shortcuts the person imports once ("Vyre
+  Timer", "Vyre Alarm"; a missing one is code `setup` naming `vyre apps setup clock`). Notes
+  (new note, add to a note) and Reminders (new reminder with an alerting due time, set from
+  numbers so no locale reads it) through constant AppleScripts that take user text only as argv.
+  Weather from Open-Meteo, which needs no key, with the place from config or the time zone.
+- Every contact with the Mac goes through `local/apps/env.js`. Under tests or a throwaway home the
+  real osascript, shortcuts and `open` refuse with `no_dialog` before spawning anything; off a Mac
+  they refuse with `not_mac`. Starting the module runs nothing, and its caches expire on read.
+  Tests use a fake exec, a fake fetch and fake bundles only.
+- Adding to a note refuses a locked note or one with attachments (`not_supported`), since a body
+  rewrite would lose them. Note targets skip Recently Deleted (by name, configurable as
+  apps.notes.trash). A reminder's due time in the past is refused, and "today" is judged in the
+  Mac's time zone. An AppleScript that does not answer is `setup`, pointing at the Automation
+  consent. Weather requests time out after 10 s. `local/apps/mac.test.js` compiles the real
+  scripts with osacompile, only when VYRE_MAC_REAL=1 on a Mac.
+- `apps.send` rides the short presence session (ADR 0004): one Touch ID, Capsule or passkey proof
+  opens it, and a burst of messages from the Capsule then goes without asking each time, each
+  still previewed there. It is added to the floor's SESSIONABLE list (`core/presence/index.js`)
+  and declares `presence.session`. A tool off that list still refuses a session proof.
+- `apps.route {text, app?, model?}` turns words into one app action without running it: timers
+  ("10 minute timer", "timer for 2 hours and 5 minutes"), alarms ("wake me at 7"), notes,
+  reminders ("remind me to call juno at 6" is the next 6:00 or 18:00; "remind me on friday to
+  pay rent" is Friday 09:00; "in 20 min"), the weather ("is it cold in Lahore today") and
+  messages ("whatsapp juno: running late", sending). Rules only, in the Mac's time zone
+  (`local/apps/route.js`); `app` is the Capsule's @App scope. What the rules cannot place is
+  ambiguous, and config `apps.model` (a function) may try it when the caller passes `model:
+  true`; whether its answer sends comes from the adapter, never from the model.
+- `apps.setup {app}`: Clock's one-time setup. It writes the Vyre Timer and Vyre Alarm shortcuts
+  under the Vyre home, signs them with `shortcuts sign --mode anyone`, and opens each so
+  Shortcuts shows its Add button, with steps in words and a by-hand recipe
+  (`local/apps/setup.js`). Two action identifiers are unverified and marked so. The dialog gate
+  refuses it under tests before any file is written. Only the CLI, the Capsule and the Deck may
+  call it; a model or another module is denied.
+- `vyre apps`: the apps on this Mac; `vyre apps find <words>`, `vyre apps targets <app> [words]`,
+  `vyre apps setup clock`, and `vyre apps <words...>`, which routes the words and runs them
+  ("vyre apps timer 10 min" prints "Timer set for 10 minutes"). A send prints its preview, then
+  asks this terminal for a person's proof through apps.send. `--app`, `--model`, `--json`,
+  `--help`, and `vyre apps -- <words>` for words that start like a subcommand
+  (`core/cli/commands/apps.js`).
+- The router's review round. A message goes exactly as typed (punctuation and line breaks
+  kept), and its recipient must look like one name, #channel or @handle, else the words are
+  ambiguous ("tell mom I'm on slack now" sends nothing). A model-routed send's preview is built
+  from its args, never the model's own line. Reminder time words are taken after at, on or in,
+  or at the start or end, so "take my 3pm pill" keeps its words; "next friday" is next week's,
+  "tonight at 12" is midnight, the current minute counts as now, and "today" after 09:00 is a
+  plain reminder. More timer and alarm phrasings ("a 10-minute timer", "timer ten minutes",
+  "alarm 7.30"), stricter notes and weather questions, "weather this weekend", and weekday
+  names in the weather adapter. Text over 2000 characters is refused. Clock's setup removes a
+  stale file, signs both before opening either, and reports one that failed; `vyre apps setup`
+  waits 180 s; with `--json` a send's preview goes to stderr before the proof; an unknown flag
+  or `--app` without a name exits 2. apps.setup also admits the owner's devices over the tailnet
+  (the Registry's callerAllowed), never a guest.
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
