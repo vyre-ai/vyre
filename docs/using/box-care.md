@@ -62,8 +62,7 @@ vyre logs      # follow vyred's output (docker compose logs -f vyre)
 ```
 
 vyred also writes a log file per day, `~/.vyre/logs/YYYY-MM-DD.log`. On a Docker box that is
-`/home/vyre/.vyre/logs/` inside the `vyre_vyre-home` volume. On a Mac, the Capsule logs to
-`~/.vyre/logs/capsule.out`.
+`/home/vyre/.vyre/logs/` inside the `vyre_vyre-home` volume.
 
 ## Upgrade
 
@@ -81,18 +80,8 @@ vyred also writes a log file per day, `~/.vyre/logs/YYYY-MM-DD.log`. On a Docker
    Mac:
 
    ```output
-     the box runs 0.0.2, newer than this Mac's 0.0.1: npm i -g vyre@latest && vyre up
+     the box runs 0.0.2, newer than this Mac's 0.0.1: npm install -g https://vyre.run/box/vyre.tgz && vyre up
    ```
-
-   Vyre is not on npm yet, so that command fails. Upgrade the Mac with the published package
-   instead:
-
-   ```
-   npm install -g https://vyre.run/box/vyre.tgz && vyre up
-   ```
-
-> [!GAP]
-> The command `vyre box update` prints for the Mac fails until Vyre is on npm: run the one above. See [known gaps](../known-gaps.md#the-mac-update-that-vyre-box-update-prints-fails).
 ::: tab On a server
 ```
 vyre update

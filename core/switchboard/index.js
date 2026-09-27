@@ -628,7 +628,7 @@ export class Switchboard {
     const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at) VALUES (?,?,?,?)").run(id, String(text), surface, Date.now());
     this.emit("thread.queued", { queued: Number(r.lastInsertRowid), text: cut(text, 2000), surface }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
-    return { sent: false, queued: true, open_elsewhere: true, thread: id, name, busy: holder || "terminal",
+    return { sent: false, queued: true, queued_id: Number(r.lastInsertRowid), open_elsewhere: true, thread: id, name, busy: holder || "terminal",
       note: holder ? `${name} is in use in ${holder}. I'll hand it your message when this turn ends.`
         : `${name} is busy in your terminal. I'll hand it your message when this turn ends.` };
   }
@@ -649,6 +649,27 @@ export class Switchboard {
       this.emit("thread.sent", { text: cut(m.text, 2000), surface: m.surface, queued: m.id, via }, id, rec ? rec.project : null);
     }
     return { messages: rows.map(m => ({ id: m.id, text: m.text, surface: m.surface, at: m.at })) };
+  }
+
+  /**
+   * Take back queued words the Harness has not handed over yet: one (queued, its id) or all of the
+   * thread's. Words already handed over are Claude's now and stay. Emits thread.unqueued per message.
+   * @param {string} id @param {number} [queued] @param {string} [surface]
+   */
+  unqueue(id, queued, surface) {
+    const rec = this.must(id);
+    const rows = /** @type {any[]} */ (queued == null
+      ? this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id)
+      : this.db.prepare("SELECT id FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").all(id, Number(queued)));
+    const del = this.db.prepare("DELETE FROM threads_inbox WHERE id = ? AND delivered_at IS NULL");
+    const out = [];
+    for (const m of rows) {
+      if (!del.run(m.id).changes) continue;
+      out.push(Number(m.id));
+      this.emit("thread.unqueued", { queued: Number(m.id), surface: surface || null }, id, rec.project);
+    }
+    const note = out.length ? null : queued == null ? "Nothing is waiting to be handed over." : "That message was already handed over, or was never queued here.";
+    return { unqueued: out, ...(note ? { note } : {}) };
   }
 
   /**
@@ -776,7 +797,8 @@ export class Switchboard {
       ? this.db.prepare("SELECT id FROM threads_runs WHERE agent = ? ORDER BY last_at DESC LIMIT 200").all(agent)
       : this.db.prepare(`SELECT id FROM threads_runs ${all ? "" : `WHERE status IN (${LIVE.map(() => "?").join(",")}) OR last_at > ?`} ORDER BY last_at DESC LIMIT 200`)
         .all(...(all ? [] : [...LIVE, Date.now() - 86_400_000]));
-    return rows.map(r => this.record(String(r.id)));
+    const live = this.sessions.live(this.ours());
+    return rows.map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }));
   }
 
   /** A thread with its recent events, its open asks and who holds it. What a surface opening it needs. */
@@ -881,7 +903,9 @@ export class Switchboard {
     return null;
   }
 
+  /** vyred is stopping: every live thread ends with reason "restart" (ADR 0029 R7), so a surface says why. */
   async stopAll() {
+    for (const st of this.live.values()) if (!st.haltReason) st.haltReason = "restart";
     await Promise.all([...this.live.keys()].map(id => this.stop(id)));
     for (const job of [...this.prunes]) job.run();                     // no surface is left to catch up
   }
@@ -985,7 +1009,15 @@ export default {
         return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller) });
       });
 
-    tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",
+    tool("threads.unqueue", "Take back words queued for a session busy in a terminal, before they are handed over: one (queued: queued_id from threads.send, or thread.queued's queued) or all of the thread's. Only a person's surface can.",
+      { type: "object", required: ["thread"], properties: { thread: str, queued: { type: "integer" }, surface: str } },
+      async (i, { caller }) => {
+        guard(caller, "take back queued words");
+        if (!queuesFor(caller)) throw new Error("only a person's surface can take back queued words");
+        return sb.unqueue(i.thread, i.queued, surfaceOf(i, caller));
+      });
+
+    tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
       { type: "object", properties: { agent: str, all: { type: "boolean" }, machines: { type: "string", enum: ["all", "local"] } } },
       async (i, { caller }) => {
         guard(caller, "list sessions");
@@ -996,14 +1028,15 @@ export default {
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
       });
 
-    // Every ask says what answering it takes: `presence: {required, covered}`. Answering is the
+    // Every ask says what answering it takes: `presence: {required, covered, since}`. Answering is the
     // person's own business (the no-nag rule), so required is false; covered says whether this
     // device has a live presence session. Surfaces render from this, never from tool names.
     const withPresence = async (asks, peer) => {
       if (!asks.length) return asks;
       const r = await ctx.call("presence.covered", peer ? { peer } : {});
-      const covered = Boolean(r.data && r.data.covered);
-      return asks.map(a => ({ ...a, presence: { required: false, covered } }));
+      const d = r.data || {};
+      const c = { covered: Boolean(d.covered), since: d.since ?? null };
+      return asks.map(a => ({ ...a, presence: { required: false, ...c } }));
     };
 
     tool("threads.get", "One thread: its record, its open permission questions, and its recent events (since: an event id).",
@@ -1082,6 +1115,12 @@ export default {
       description: "Stop a thread with a reason, saying why in the thread first.", internal: true,
       input: { type: "object", required: ["thread", "reason"], properties: { thread: str, reason: str, text: str } },
       run: async i => sb.halt(i.thread, i.reason, i.text),
+    });
+    // For projects.catalog: which sessions a terminal has open now, for its live flag.
+    ctx.tool("threads.live", {
+      description: "Sessions open in a running claude process other than vyred's own threads.", internal: true,
+      input: { type: "object", properties: {} },
+      run: async () => ({ sessions: [...sb.sessions.live(sb.ours())] }),
     });
     // For the Harness: words queued for a session open in a terminal, handed over at its Stop or
     // next prompt, and the reply that turn gave.

@@ -94,6 +94,20 @@ export class Sessions {
     return /** @type {any[]} */ (this.db.prepare("SELECT pid FROM threads_binds").all()).map(r => Number(r.pid)).filter(p => this.alive(p));
   }
 
+  /**
+   * Sessions open in a claude process that is still running and is not one of ours: a terminal
+   * has them open now. One query and a signal-0 per bound pid, no ps, so a list can ask per call.
+   * @param {number[]} ours @returns {Set<string>}
+   */
+  live(ours) {
+    const out = new Set();
+    for (const r of /** @type {any[]} */ (this.db.prepare("SELECT session, pid FROM threads_binds").all())) {
+      const pid = Number(r.pid);
+      if (!ours.includes(pid) && this.alive(pid)) out.add(String(r.session));
+    }
+    return out;
+  }
+
   /** The session, if this key is its key and its process still runs; else null. @param {string} session @param {string} key */
   vouch(session, key) {
     const r = /** @type {any} */ (this.db.prepare("SELECT key_hash, pid FROM threads_binds WHERE session = ?").get(String(session)));

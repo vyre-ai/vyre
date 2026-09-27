@@ -439,10 +439,8 @@ test("learn: accept, retire and relax refuse local, MCP, agents, hooks and unkno
   db.prepare("INSERT INTO learn_lessons (scope, when_text, rule, level, status, source, created, updated) VALUES ('\"all\"','always','Never use em dashes.','block','active','{}',1,1)").run();
   for (const n of ["learn.accept", "learn.retire", "learn.relax", "learn.skill-install", "learn.skill-retire", "learn.skill-dismiss"]) assert.deepEqual(defs[n].callers, ["cli", "deck", "capsule"], n);
   assert.deepEqual(defs["learn.signals"].callers, ["cli", "local", "deck", "capsule"], "reading stays open to local");
-  for (const n of ["learn.accept", "learn.retire", "learn.relax"]) {
-    assert.match(await defs[n].presence.summary({ id: 1, level: "remind" }), /lesson 1: "Never use em dashes\."/, n);
-  }
-  assert.match(defs["learn.relax"].presence.summary({ id: 1, level: "remind" }), /lowers the level from block to remind/);
+  // Accepting, relaxing and retiring are the user's own: no presence, and the callers list above keeps agents out.
+  for (const n of ["learn.accept", "learn.retire", "learn.relax"]) assert.equal(defs[n].presence, undefined, n);
   assert.equal(defs["learn.edit"].callers, undefined, "tightening is free for any caller");
 
   // Human-only refusals carry presence_required and name the tool a surface's presence flow calls.

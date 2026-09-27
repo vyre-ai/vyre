@@ -95,6 +95,8 @@ test("onboard: the link works once, becomes a session, and the session reaches o
   assert.equal((await fetch(`${base}/v1/events`, { headers: h })).status, 404);
   assert.equal((await fetch(`${base}/v1/health`, { headers: h })).status, 404);
   const listed = await (await fetch(`${base}/v1/tools`, { headers: h })).json();
+  // The page's own look is served before any session: the theme, the fonts, the stylesheets.
+  for (const p of ["/theme.css", "/fonts/instrument-sans-latin.woff2", "/css/deck.css"]) assert.equal((await fetch(base + p)).status, 200, p);
   assert.ok(listed.error || listed.data.every(x => x.name.startsWith("onboard.") || ["projects.catalog", "projects.create", "projects.list", "recall.status"].includes(x.name)));
 });
 

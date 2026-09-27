@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vyre one app, three directions</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+.mf { border: 1px solid var(--rule-strong); border-radius: 26px; background: var(--bg); width: 190px; height: 380px; overflow: hidden; display: flex; flex-direction: column; flex: none; position: relative; }
+.mf-h { display: flex; gap: 6px; align-items: center; padding: 28px 12px 6px; font-size: 12px; line-height: 16px; }
+.mr { display: flex; gap: 8px; align-items: center; padding: 6px 10px; border-top: 1px solid var(--rule); font-size: 12px; line-height: 16px; }
+.mr:first-child { border-top: 0; }
+.mc { margin: 0 8px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); overflow: hidden; }
+.dk { border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--bg); width: 380px; height: 240px; overflow: hidden; display: flex; flex: none; }
+.dk-r { width: 28px; border-right: 1px solid var(--rule); display: flex; flex-direction: column; align-items: center; gap: 7px; padding-top: 10px; flex: none; }
+.dk-r i { width: 12px; height: 12px; border-radius: 3px; background: var(--hover); display: block; }
+.bar { height: 8px; border-radius: 4px; background: var(--hover); display: block; }
+.pro { display: grid; grid-template-columns: 16px minmax(0, 1fr); gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-2); }
+</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2200px; height: 1040px;">
+
+  <div class="bhead"><div class="col" style="max-width: 1500px;">
+    <span class="lbl">Direction · for the user to decide</span>
+    <h1 class="t28 w6">Three ways to make five kinds of work feel like one app. We recommend A: an inbox of everything that needs you.</h1>
+    <p class="t15 t2">Paseo is a remote for coding sessions. Vyre also sends and pays, drives computers, rings alarms and holds your secrets, on the phone, the desktop, the Capsule and the CLI. The home screen decides whether that feels like one product or five.</p>
+  </div></div>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;">
+  <section class="card col" style="padding: 24px; gap: 16px; border: 1px solid var(--focus); box-shadow: 0 0 0 1px var(--focus);" aria-label="Direction A">
+<div class="row" style="gap: 10px;"><span class="anno-n">A</span><h2 class="t20 w6">Inbox first</h2><span class="tag" style="background: var(--signal-wash); color: var(--text);">Recommended</span></div>
+<p class="t2">Home is Needs you: everything waiting, of every kind, oldest first, answered in place. Chat, Agents, Planner, Vault are places you go.</p>
+<div class="row" style="gap: 16px; align-items: flex-end;"><div class="mf"><div class="mf-h"><span class="w6">Now</span><span class="t3">Chats</span><span class="t3">Agents</span></div>
+<span class="t12 w6" style="padding: 4px 12px; color: var(--beacon-ink);">Needs you · 4</span>
+<div class="mc"><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Send email to Sam</span><span class="t3 trunc">Draft · kit</span></div></div><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Push q3-report</span><span class="t3 trunc">Ask · kit</span></div></div><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">kit has a question</span><span class="t3 trunc">Question</span></div></div><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Let juno sign in</span><span class="t3 trunc">Grant · juno</span></div></div></div>
+<span class="t12 w6 t3" style="padding: 10px 12px 4px;">Working</span>
+<div class="mc"><div class="mr"><span class="ring"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Harlow intake</span><span class="t3 trunc">kit · 24m</span></div></div></div>
+<div style="position: absolute; left: 8px; right: 8px; bottom: 12px; height: 28px; border-radius: 14px; border: 1px solid var(--rule-strong); background: var(--panel); font-size: 12px; line-height: 16px; color: var(--label); display: flex; align-items: center; padding: 0 12px;">Ask juno, find, or run</div></div><div class="dk"><div class="dk-r"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+<div style="width: 150px; border-right: 1px solid var(--rule); display: flex; flex-direction: column;"><span class="t12 w6" style="padding: 8px 10px 4px; color: var(--beacon-ink);">Needs you</span><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Send email to Sam</span><span class="t3 trunc">Draft</span></div></div><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Push q3-report</span><span class="t3 trunc">Ask</span></div></div><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Question</span><span class="t3 trunc">kit</span></div></div></div>
+<div class="col grow" style="padding: 10px; gap: 6px;"><span class="t12 w6">Send email to Sam</span><span class="bar" style="width: 80%;"></span><span class="bar"></span><span class="bar" style="width: 60%;"></span><div class="row" style="gap: 6px; margin-top: auto;"><span class="btn btn-p btn-sm">Send</span><span class="btn btn-g btn-sm">Discard</span></div></div></div></div>
+<div class="col" style="gap: 6px;"><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>Matches the promise: agents work, you decide</span></div><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>One row and one habit for asks, drafts, grants, questions, alarms</span></div><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>Useful on the phone in ten seconds</span></div><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>The Capsule and the CLI show the same list</span></div><div class="pro"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8h10"></path></svg><span>A coder in one session has one more hop (⌘1 to 9; the app reopens where you were)</span></div></div></section>
+  <section class="card col" style="padding: 24px; gap: 16px; " aria-label="Direction B">
+<div class="row" style="gap: 10px;"><span class="anno-n">B</span><h2 class="t20 w6">Workspace first</h2></div>
+<p class="t2">Paseo's shape: a sidebar of sessions and agents grouped by status, the session beside it. Needs you is a filter.</p>
+<div class="row" style="gap: 16px; align-items: flex-end;"><div class="mf"><div class="mf-h"><span class="w6">Workspaces</span></div>
+<span class="t12 w6 t3" style="padding: 4px 12px;">Ready to review</span>
+<div class="mc"><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Q3 report</span><span class="t3 trunc">kit · 1 waiting</span></div></div><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Northwind inbox</span><span class="t3 trunc">juno · 1 waiting</span></div></div></div>
+<span class="t12 w6 t3" style="padding: 10px 12px 4px;">Working</span>
+<div class="mc"><div class="mr"><span class="ring"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Harlow intake</span><span class="t3 trunc">kit · 24m</span></div></div><div class="mr"><span class="ring"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Menu update</span><span class="t3 trunc">juno</span></div></div></div>
+<span class="t12 t3" style="padding: 10px 12px;">Alarms, codes and grants: in Settings</span></div><div class="dk"><div style="width: 130px; border-right: 1px solid var(--rule); display: flex; flex-direction: column;"><span class="t12 w6 t3" style="padding: 8px 10px 4px;">Ready to review</span><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Q3 report</span><span class="t3 trunc">kit</span></div></div><div class="mr"><span class="dot dot-need"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Northwind</span><span class="t3 trunc">juno</span></div></div><span class="t12 w6 t3" style="padding: 8px 10px 4px;">Working</span><div class="mr"><span class="ring"></span><div class="col grow" style="min-width: 0;"><span class="w6 trunc">Intake</span><span class="t3 trunc">kit</span></div></div></div>
+<div class="col grow" style="padding: 10px; gap: 6px;"><div class="row" style="gap: 6px;"><span class="tag">kit</span><span class="tag">terminal</span><span class="tag">diff</span></div><span class="bar" style="width: 70%;"></span><span class="bar"></span><span class="bar" style="width: 50%;"></span><span class="bar" style="width: 80%;"></span><div style="margin-top: auto; height: 28px; border-radius: 6px; border: 1px solid var(--rule-strong);"></div></div></div></div>
+<div class="col" style="gap: 6px;"><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>Best for long coding days</span></div><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>Proven by Paseo</span></div><div class="pro"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8h10"></path></svg><span>Drafts, grants and alarms have no session to live in</span></div><div class="pro"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8h10"></path></svg><span>Planner and vault feel bolted on</span></div><div class="pro"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8h10"></path></svg><span>Operating work hides behind rows you must open</span></div></div></section>
+  <section class="card col" style="padding: 24px; gap: 16px; " aria-label="Direction C">
+<div class="row" style="gap: 10px;"><span class="anno-n">C</span><h2 class="t20 w6">Assistant first</h2></div>
+<p class="t2">Home is one conversation with juno. Everything arrives as cards in the thread, and you ask for the rest.</p>
+<div class="row" style="gap: 16px; align-items: flex-end;"><div class="mf"><div class="mf-h"><span class="w6">juno</span></div>
+<div class="col" style="padding: 4px 10px; gap: 8px; font-size: 12px; line-height: 16px;">
+<span class="turn-you" style="font-size: 12px; line-height: 16px;">What needs me?</span>
+<span class="t2">Two things. kit wants to push q3-report:</span>
+<div class="mc" style="margin: 0;"><div class="mr"><span class="dot dot-need"></span><span class="grow trunc">Push q3-report</span><span class="t3">Allow</span></div></div>
+<span class="t2">And your 15:00 reminder: call Northwind.</span>
+<span class="turn-you" style="font-size: 12px; line-height: 16px;">code northwind</span>
+<span class="otp w6" style="font-size: 13px;">482 913</span></div></div><div class="dk"><div class="col grow" style="padding: 12px 40px; gap: 8px; align-items: stretch;"><span class="t12 w6">juno</span><span class="turn-you" style="font-size: 12px; line-height: 16px;">Summarise the Northwind inbox</span><span class="bar" style="width: 90%;"></span><span class="bar" style="width: 70%;"></span><div class="mc" style="margin: 0;"><div class="mr"><span class="dot dot-need"></span><span class="grow trunc">Send email to Sam</span><span class="t3">Send</span></div></div><span class="bar" style="width: 60%;"></span><div style="margin-top: auto; height: 28px; border-radius: 6px; border: 1px solid var(--rule-strong);"></div></div></div></div>
+<div class="col" style="gap: 6px;"><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>Calm, voice-friendly, great in the Capsule</span></div><div class="pro"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8h10"></path></svg><span>Diffs, vault lists and ten agents are poor as chat</span></div><div class="pro"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8h10"></path></svg><span>Hides what is running</span></div><div class="pro"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8h10"></path></svg><span>History grows without shape</span></div></div></section>
+  </div>
+  <section class="card row" style="padding: 20px 24px; gap: 32px; align-items: flex-start;" aria-label="The recommendation">
+    <div class="col" style="gap: 6px; width: 520px; flex: none;"><span class="lbl">The recommendation</span><h2 class="t20 w6">A, borrowing from B and C</h2></div>
+    <div class="col grow" style="gap: 6px;"><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>From B: the workspace shell becomes the Chat place on the desktop: session list, transcript, side panel with plan, changed files and the agent's computer, a real terminal.</span></div><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>From C: one entry on every surface, the Capsule on the phone and the Mac and ⌘K on the desktop: "Ask juno, find, or run".</span></div><div class="pro"><svg class="ic ic-12" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M3 8.5l3 3 7-7"></path></svg><span>Kept from A: Needs you is home, and the app always opens there when something waits.</span></div></div>
+  </section>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2200,"height":1040}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

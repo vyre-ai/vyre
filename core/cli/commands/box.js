@@ -21,6 +21,7 @@ import { call } from "../../daemon/client.js";
 import { VERSION } from "../../daemon/index.js";
 import { printEnding } from "../ending.js";
 import { out, dim, signal, beacon } from "../style.js";
+import { INSTALL } from "../brand.js";
 import { json, emit, usage as usageError } from "../kit.js";
 
 const INSTALLER = fileURLToPath(new URL("../../../scripts/install-box.sh", import.meta.url));
@@ -520,7 +521,7 @@ async function update() {
     if (u.code !== 0) { out(beacon(`  vyre update on the box stopped (exit ${u.code})`)); return 1; }
     const v = (await r.run(vyre(["version"]))).stdout.trim();
     const cmp = newer(v, VERSION);
-    if (cmp > 0) out(`  the box runs ${signal(v)}, newer than this Mac's ${VERSION}: ${signal("npm i -g vyre@latest && vyre up")}`);
+    if (cmp > 0) out(`  the box runs ${signal(v)}, newer than this Mac's ${VERSION}: ${signal(`${INSTALL} && vyre up`)}`);
     else if (cmp < 0) out(`  the box runs ${v}, older than this Mac's ${VERSION}; its next image catches up`);
     else out(`  the box and this Mac both run ${signal(v)}`);
     return 0;

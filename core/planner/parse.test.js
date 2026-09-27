@@ -302,3 +302,11 @@ test("parse: under 10 ms a call", () => {
   const each = (performance.now() - t0) / (texts.length * 5);
   assert.ok(each < 10, `${each.toFixed(3)} ms a call`);
 });
+
+test("parse: a time said first is a reminder; a count is not", () => {
+  assert.deepEqual(k("6pm call Harlow Legal"), { kind: "reminder", title: "call Harlow Legal", tz: KHI, at: ms(2026, 9, 24, 13), wall: "18:00", date: "2026-09-24" });
+  assert.deepEqual(k("at 6:30 pick up juno"), { kind: "reminder", title: "pick up juno", tz: KHI, at: ms(2026, 9, 24, 13, 30), wall: "18:30", date: "2026-09-24" });
+  assert.equal(k("noon lunch with kit").at, ms(2026, 9, 24, 7));
+  assert.equal(k("3 apples"), null, "a bare number is a count");
+  assert.equal(k("6pm"), null, "a time alone says nothing to remind");
+});
