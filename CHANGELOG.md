@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### /pair: finishing `vyre phone add --tailscale-only` on the phone
+
+- A new Deck route, /pair, on one screen: the code the laptop shows (XXXX-XXXX, dash optional)
+  and Add passkey, Turn on notifications, and on iPhone "Share, then Add to Home Screen". Each
+  row says to do, done, or failed with the reason. Below, the laptop's five checks, read-only,
+  moved by events (push.delivered for this device, presence.enrolled), never a timer.
+- `push.seen` takes an optional `device` (at most 40 characters) and carries it in the push.seen
+  event; the Deck sends the push device it keeps in localStorage "vyre.push.device".
+
 #### Sign in on this device: the Deck's side of person sessions
 
 - A box that answers `person_session_required` (a tailnet browser with no `__Host-vyre_person`

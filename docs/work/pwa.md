@@ -50,6 +50,9 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
    line says the phone is offline. Turn it off and tap Retry: the line goes and the screen fills.
 
 ## Done
+- /pair for `vyre phone add --tailscale-only` (views/pair.js, js/pair-steps.js pure parts,
+  css/views/pair-phone.css via app.js CSS_NAME): code + enrollPasskey, subscribePush, Home Screen
+  words, the five checks from events. push.seen gains `device`. Tests: deck/test/pair.test.js (5).
 - Person sessions, Deck side (e2e's contract, box side not on this branch; feature-detected):
   js/person.js (signIn, needSignIn sheet, installPersonHandler, signInAfterEnroll, signOutHere),
   api.js setPersonHandler + endPerson, Settings Security "Signed-in devices", sign-in after a
@@ -218,6 +221,9 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- push.seen: optional `device` (string, at most 40), echoed in the push.seen event payload only
+  when sent. The Deck (js/pwa.js) sends localStorage "vyre.push.device" (polish-cli asked).
+- Deck route /pair (a normal route; the SW serves index.html for it like any other).
 - deck/js/api.js: `setPersonHandler(fn)`. call() hands `person_session_required` (never for
   presence.person.*) to fn; fn resolving retries the call exactly once, rejecting fails it. No
   handler: the error as before. js/person.js installs it (app.js). ON MERGE with e2e's stopgap

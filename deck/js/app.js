@@ -53,6 +53,8 @@ const ROUTES = [
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],
+  // `vyre phone add --tailscale-only` points the phone here (views/pair.js).
+  ["/pair", "pair"],
 ];
 const PLACES = [
   { href: "/now", label: "Now", icon: "now", view: "now" },
@@ -648,10 +650,12 @@ async function warm() {
 
 /** Each view has its own stylesheet, css/views/<name>.css, added once, before it first renders. */
 const styled = new Map();
+/** A view whose stylesheet has another name (css/pair.css is the Mac pairing card's). */
+const CSS_NAME = { pair: "pair-phone" };
 function style(name) {
   if (name === "missing") return Promise.resolve();
   if (!styled.has(name)) styled.set(name, new Promise(resolve => {
-    const l = h("link", { rel: "stylesheet", href: `/css/views/${name}.css` });
+    const l = h("link", { rel: "stylesheet", href: `/css/views/${CSS_NAME[name] || name}.css` });
     l.addEventListener("load", resolve);
     l.addEventListener("error", resolve);
     document.head.append(l);

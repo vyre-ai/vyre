@@ -2543,9 +2543,10 @@ A device showed a test notification: post back its receipt. Known once, for 10 m
 
 ### `push.seen`
 
-A person is using this screen: call it when the screen is shown, when it is hidden, and on the first input after a minute of none. Asks, drafts and watches wait until 3 minutes after the last call; planner rings do not. standalone: the app runs installed (emits push.seen at most once per surface in 10 minutes).
+A person is using this screen: call it when the screen is shown, when it is hidden, and on the first input after a minute of none. Asks, drafts and watches wait until 3 minutes after the last call; planner rings do not. standalone: the app runs installed (emits push.seen at most once per surface in 10 minutes). device: this screen's push device id (push.subscribe's answer), carried in the event.
 
 - Input:
+  - `device` string
   - `standalone` boolean
   - `surface` string
   - `visible` boolean

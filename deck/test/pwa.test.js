@@ -232,7 +232,8 @@ test("pwa: a push still shows when a browser has no app badge", async () => {
 
 test("pwa: push.seen is reported at launch, on visibility changes and on input after a quiet minute, with no timer", () => {
   const src = read("js/pwa.js");
-  assert.match(src, /call\("push\.seen", \{ surface: surfaceId\(\), visible, standalone: standalone\(\) \}, \{ keepalive: !visible \}\)\.catch\(\(\) => \{\}\)/);
+  assert.match(src, /call\("push\.seen", \{ surface: surfaceId\(\), visible, standalone: standalone\(\), \.\.\.\(device \? \{ device \} : \{\}\) \}, \{ keepalive: !visible \}\)\.catch\(\(\) => \{\}\)/);
+  assert.match(src, /device = store\?\.getItem\("vyre\.push\.device"\)/, "the push device rides along when this app has one");
   assert.match(src, /export const standalone = \(\) => \/\*\* @type \{any\} \*\/ \(navigator\)\.standalone === true \|\| matchMedia\("\(display-mode: standalone\)"\)\.matches;/);
   assert.match(src, /SEEN_EVERY = 60_000/);
   assert.match(src, /addEventListener\("pointerdown", touched, \{ passive: true, capture: true \}\)/);
