@@ -123,7 +123,8 @@ async function say(text) {
     out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: piece } }, session_id: session, parent_tool_use_id: null });
     await sleep(2);
   }
-  out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }] }, session_id: session, parent_tool_use_id: null,
+  out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }],
+    usage: { input_tokens: 12, cache_read_input_tokens: 2400, cache_creation_input_tokens: 40, output_tokens: Math.ceil(text.length / 4) } }, session_id: session, parent_tool_use_id: null,
     ...(stamp ? { user_message_uuid: stamp } : {}) });
 }
 
@@ -220,6 +221,7 @@ let spent = 0;
 const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "success" : "error_during_execution", is_error: !ok, result: text,
   total_cost_usd: (spent = Math.round((spent + cost) * 1e6) / 1e6), duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
   usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 },
+  modelUsage: { [MODEL]: { inputTokens: 10, outputTokens: String(text).length, cacheReadInputTokens: 100, cacheCreationInputTokens: 50, contextWindow: 200000 } },
   ...(took.length ? { user_message_uuids: took } : {}),
   // An error result lists its errors, as Claude Code's does (the Agent SDK reads them).
   ...(ok ? {} : { errors: [String(text)] }) });

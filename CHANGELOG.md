@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: context in use, and teammates' results
+
+- `thread.usage` carries `context: {used, max, share}`: what the last request held (its input,
+  cache and output tokens) and the model's window (the result's `modelUsage.contextWindow`), so
+  teammates can rotate at 60 percent (ADR 0031).
+- Internal `threads.post {thread, text, kind, from}` (teammates' `teammate-result`): a turn of its
+  own when the thread is idle, else queued for the running turn's end; never steers and never
+  needs the keyboard. Queued rows carry `kind` (new column), and `thread.queued` and
+  `thread.sent` say it.
+
 #### Sessions: concurrency slots for teammates and subagents (the user's usage control)
 
 - core/sessions/slots.js: a ledger of two kinds of slot, `teammate` and `subagent`, each with a

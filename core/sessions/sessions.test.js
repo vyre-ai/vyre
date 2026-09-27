@@ -63,9 +63,10 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role, transcripts: [transcripts],
     sessions: { install: false, ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
   // Internal tools answer only modules: a module that asks threads.pids for the test.
-  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.pids"] } }, `
+  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.pids", "probe.post"] } }, `
     export default { async start(ctx) {
       ctx.tool("probe.pids", { input: { type: "object" }, run: async () => (await ctx.call("threads.pids", {})).data });
+      ctx.tool("probe.post", { input: { type: "object" }, run: async i => ctx.call("threads.post", i) });
       return { async stop() {} };
     } };`);
   for (const m of modules) writeModule(path.join(root, "modules"), m.name, m.manifest, m.source);
@@ -638,6 +639,27 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(st.held, 0, "every slot came back");
     assert.deepEqual((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 2 })).data, { project: "harlow-legal", subagent: 2 });
     assert.equal((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 9 }, "mcp")).error.code, "denied", "a model never raises its own limits");
+  });
+
+  test(`${driver}: thread.usage says the context used and the window; a teammate's result waits for the turn, never steers`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const usage = (await w.events(th.id)).find(e => e.type === "thread.usage").payload;
+    assert.equal(usage.context.max, 200000);
+    assert.ok(usage.context.used > 2400 && usage.context.share > 0 && usage.context.share < 1, JSON.stringify(usage.context));
+    await w.tool("threads.send", { thread: th.id, text: "bash npm test", surface: "deck" });
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const r = await w.tool("probe.post", { thread: th.id, text: "kit found the menu file", kind: "teammate-result", from: "teammate:kit" });
+    const posted = r.data && r.data.data ? r.data.data : r.data;
+    assert.ok(posted, JSON.stringify(r));
+    assert.equal(posted.queued, true, "queued behind the running turn, not steered");
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 3);
+    const sent = (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.kind === "teammate-result");
+    assert.deepEqual([sent.payload.via, sent.payload.surface], ["turn", "teammate:kit"]);
+    assert.equal((await w.said(th.id)).at(-1), "echo: kit found the menu file");
+    assert.doesNotMatch((await w.said(th.id)).join(" "), /took in: kit/, "it never steered");
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {

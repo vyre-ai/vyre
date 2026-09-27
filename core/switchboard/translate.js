@@ -120,7 +120,7 @@ export function describe(tool, input = {}) {
  */
 export function translate(m) {
   /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
-   *   folded?: string[], blocks?: number,
+   *   folded?: string[], blocks?: number, used?: number, window?: number,
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
   const out = { events: [] };
   if (!m || typeof m !== "object") return out;
@@ -154,6 +154,9 @@ export function translate(m) {
       if (b.type === "tool_use") out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input) } });
     });
     out.blocks = (m.message.content || []).length;
+    // The request's own usage: what the context held when Claude answered (for thread.usage context).
+    const u = m.message.usage;
+    if (u && typeof u === "object") out.used = ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens", "output_tokens"].reduce((a, k) => a + (Number(u[k]) || 0), 0);
     if (typeof m.user_message_uuid === "string") out.folded = [m.user_message_uuid];
     return out;
   }
@@ -199,6 +202,9 @@ export function translate(m) {
     if (m.is_error && /usage limit|rate limit|limit reached|out of (extra )?usage/i.test(text)) out.limited = true;
     out.turn = { ok: !m.is_error, text, cost_usd: typeof m.total_cost_usd === "number" ? m.total_cost_usd : 0 };
     if (Array.isArray(m.user_message_uuids)) out.folded = m.user_message_uuids.map(String);
+    // The model's context window, from the result's per-model usage.
+    const windows = m.modelUsage && typeof m.modelUsage === "object" ? Object.values(m.modelUsage).map(x => Number(x && x.contextWindow) || 0).filter(Boolean) : [];
+    if (windows.length) out.window = Math.max(...windows);
     const u = m.usage || {};
     const n = v => (typeof v === "number" && v >= 0 ? v : 0);
     const tokens = { input: n(u.input_tokens), output: n(u.output_tokens), cache_read: n(u.cache_read_input_tokens), cache_write: n(u.cache_creation_input_tokens) };

@@ -92,6 +92,9 @@ export const MIGRATIONS = [
   // And the permission mode a person put the thread in.
   `CREATE TABLE threads_sent (uuid TEXT PRIMARY KEY, thread TEXT NOT NULL, at INTEGER NOT NULL);
    ALTER TABLE threads_runs ADD COLUMN mode TEXT;`,
+  // What a queued item is: a person's message, or a teammate's result (ADR 0031), which waits for
+  // the turn to end and never steers.
+  `ALTER TABLE threads_inbox ADD COLUMN kind TEXT;`,
 ];
 
 /**
@@ -568,6 +571,8 @@ export class Switchboard {
     if (t.model) this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
+    if (typeof t.used === "number" && t.used > 0) st.used = t.used;
+    if (t.window) st.window = t.window;
     if (t.blocks && m.message && m.message.id) {
       const mid = String(m.message.id), base = st.ord.get(mid) || 0;
       for (const e of t.events) if (typeof e.payload.block === "number") e.payload.block += base;
@@ -603,7 +608,9 @@ export class Switchboard {
           VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, rec ? rec.agent : null, rec ? rec.auth || "ambient" : "ambient", Date.now(), e.payload.ok ? 1 : 0, cost,
           Number(e.payload.duration_ms) || 0, Number(tk.input) || 0, Number(tk.output) || 0, Number(tk.cache_read) || 0, Number(tk.cache_write) || 0);
         if (st.interrupting) { st.interrupting = false; e.payload.canceled = true; e.payload.reason = "interrupt"; }
-        this.emit("thread.usage", { cost_usd: e.payload.cost_usd, total_cost_usd: total, tokens: tk }, id, project);
+        // context: what the last request held, and the model's window (teammates rotate at 60 percent).
+        this.emit("thread.usage", { cost_usd: e.payload.cost_usd, total_cost_usd: total, tokens: tk,
+          ...(st.used ? { context: { used: st.used, max: st.window || null, ...(st.window ? { share: Math.round((st.used / st.window) * 1000) / 1000 } : {}) } } : {}) }, id, project);
         // A failed turn is said as a state of its own, with its turn, before the thread goes idle.
         if (!e.payload.ok && !e.payload.canceled && !st.stopping) {
           this.emitRaw("thread.state", { state: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
@@ -838,13 +845,13 @@ export class Switchboard {
       this.emit("thread.turn", { turn: st.turn, uuid, text: cut([text, ...rest.map(r => r[1])].join("\n\n"), 2000), steered: true }, id, project);
       return;
     }
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return;
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
-    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn" }, id, project);
+    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}) }, id, project);
     this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID() });
   }
 
@@ -907,7 +914,7 @@ export class Switchboard {
    * `wait` (the person at the box, through the link) never takes the keyboard: while another
    * surface holds it, the words are queued as for a terminal.
    */
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined } = {}) {
+  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined } = {}) {
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -917,7 +924,7 @@ export class Switchboard {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
-      if (why && queue) return this.queue(id, text, surface, undefined, uuid ? { uuid } : {});
+      if (why && queue) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind });
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
@@ -937,15 +944,38 @@ export class Switchboard {
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
-    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid });
+    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind });
     if (busy) {
       const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}) });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
     const w = this.write(id, text, uuid ? { uuid } : {});
-    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid }, id, rec.project);
+    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}) }, id, rec.project);
     return { sent: true, thread: id };
+  }
+
+  /**
+   * A module's words (a teammate's result): never steer and never need the keyboard. A new turn
+   * when the thread is idle here, queued for the turn's end when one runs, and for a session open
+   * in a terminal, queued as a person's words are.
+   */
+  async post(id, text, from, kind) {
+    if (!this.live.has(id)) {
+      if (!this.record(id)) await this.adopt(id);
+      if (this.elsewhere(id)) return this.queue(id, text, from, undefined, { kind });
+      const rec = this.must(id);
+      if (rec.agent) {
+        const r = await this.deps.call("agents.resume", { agent: rec.agent, thread: id });
+        if (r.error) return { sent: false, note: `could not resume ${rec.agent}'s thread: ${r.error.message}` };
+      } else await this.launch({ resume: id });
+    }
+    const st = this.live.get(id);
+    const rec = this.must(id);
+    if (st.turn && ["working", "waiting"].includes(String(rec.status))) return this.queue(id, text, from, null, { owned: true, kind });
+    const w = this.write(id, text);
+    this.emit("thread.sent", { text: cut(text, 2000), surface: from, uuid: w.uuid, via: "post", kind }, id, rec.project);
+    return { sent: true, thread: id, uuid: w.uuid, turn: w.turn };
   }
 
   /**
@@ -955,11 +985,11 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID() } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined } = {}) {
     const rec = this.must(id);
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid) VALUES (?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid);
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind) VALUES (?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null);
     const queued = Number(r.lastInsertRowid);
-    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface }, id, rec.project);
+    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}) }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
     // A session Vyre runs is never called a terminal (it is working, and the words go in after).
     if (owned) return { sent: false, queued: true, queued_id: queued, uuid, thread: id, name, busy: "working",
@@ -1602,6 +1632,13 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); });
 
+    // For other modules (teammates, ADR 0031): put words in a thread that never steer: a new turn
+    // when the thread is idle, else handed over when its running turn ends.
+    ctx.tool("threads.post", {
+      description: "Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers.", internal: true,
+      input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, kind: str, from: str } },
+      run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post"),
+    });
     // For other modules only (agents): start or resume with an agent's credentials, scope and
     // instructions. Internal, so no surface or model can hand a thread an environment.
     ctx.tool("threads.launch", {
