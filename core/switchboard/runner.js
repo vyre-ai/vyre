@@ -1,5 +1,5 @@
 // @ts-check
-// runner — one headless Claude Code process, and nothing else.
+// runner: one headless Claude Code process, and nothing else.
 //
 // This is the only file that knows how a headless session is run. Everything above it deals in
 // lines of stream-json going in and out, so the process model can change (a container per
@@ -48,11 +48,18 @@ export function argsFor(o) {
 /** A user turn, as stream-json input. */
 export const userLine = (text, session) => ({ type: "user", message: { role: "user", content: String(text) }, parent_tool_use_id: null, session_id: session });
 
-/** The answer to a can_use_tool request. Allowing passes the input back unchanged. */
-export function answerLine(requestId, decision, input, message) {
-  const response = decision === "allow"
-    ? { behavior: "allow", updatedInput: input || {} }
-    : { behavior: "deny", message: message || "The user declined this." };
+/**
+ * The answer to a can_use_tool request, as the Agent SDK sends it. Allowing passes the input back
+ * unchanged; a question's answers go back inside it (`updatedInput.answers`, keyed by question
+ * text); "always" also hands back Claude Code's own permission suggestions, so it stops asking.
+ * @param {string} requestId @param {"allow"|"deny"|"always"} decision @param {any} input @param {string} [message]
+ * @param {{ answers?: Record<string, string>, permissions?: any[]|null }} [extra]
+ */
+export function answerLine(requestId, decision, input, message, extra = {}) {
+  const updatedInput = extra.answers ? { ...(input || {}), answers: extra.answers } : input || {};
+  const response = decision === "deny"
+    ? { behavior: "deny", message: message || "The user declined this." }
+    : { behavior: "allow", updatedInput, ...(decision === "always" && extra.permissions ? { updatedPermissions: extra.permissions } : {}) };
   return { type: "control_response", response: { subtype: "success", request_id: requestId, response } };
 }
 

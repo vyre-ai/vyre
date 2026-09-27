@@ -19,7 +19,7 @@ import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
 import { opensSession } from "./adopt.js";
 import { open } from "../store/index.js";
-import { MIGRATIONS, answerSummary } from "./index.js";
+import { MIGRATIONS, answerSummary, projectRules } from "./index.js";
 import { Sessions, claudeCommand } from "./sessions.js";
 import { migrate } from "../store/index.js";
 
@@ -779,6 +779,202 @@ test("agents.delete: a person removes a stopped agent and its spend; never the a
   assert.ok((await tool("agents.create", { name: "probe", projects: [] })).data, "the name is free again");
 });
 
+// ------------------------------------------------------------ questions and richer permission asks (ADR 0024)
+
+test("translate: an AskUserQuestion is a question, redacted and capped; any other tool is a permission with its detail", () => {
+  const token = "ghp_" + "A1b2".repeat(9);
+  const q = translate({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "AskUserQuestion", tool_use_id: "t1",
+    input: { questions: [
+      { question: `Use the key ${token} for the Harlow Legal deploy?`, header: "Deploy", multiSelect: false,
+        options: [{ label: "Yes", description: "d".repeat(3000), preview: "p".repeat(9000) }, ...Array.from({ length: 12 }, (_, i) => ({ label: `o${i}`, description: "" }))] },
+      ...Array.from({ length: 5 }, (_, i) => ({ question: `q${i}`, header: "h", multiSelect: true, options: [] })),
+    ] } } }).ask;
+  assert.equal(q.kind, "question");
+  assert.equal(q.questions.length, 4, "at most 4 questions");
+  assert.equal(q.questions[0].options.length, 8, "at most 8 options");
+  assert.ok(!q.questions[0].question.includes(token) && /GitHub token redacted/.test(q.questions[0].question), q.questions[0].question);
+  assert.ok(!q.summary.includes(token), "nor in the summary");
+  assert.equal(q.questions[0].options[0].description.length, 1000);
+  assert.equal(q.questions[0].options[0].preview.length, 8000);
+  assert.equal("preview" in q.questions[0].options[1], false, "no preview, no key");
+  assert.equal(q.input.questions[0].question.includes(token), true, "the input Claude Code gets back is untouched (memory only)");
+
+  const edit = translate({ type: "control_request", request_id: "r2", request: { subtype: "can_use_tool", tool_name: "Edit", tool_use_id: "t2",
+    input: { file_path: "/w/menu.md", old_string: "a", new_string: `token=${token}` }, permission_suggestions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }] } }).ask;
+  assert.equal(edit.kind, "permission");
+  assert.equal(edit.detail.file, "/w/menu.md");
+  assert.equal(edit.detail.old, "a");
+  assert.ok(!edit.detail.new.includes(token));
+  assert.deepEqual(edit.suggestions, [{ type: "setMode", mode: "acceptEdits", destination: "session" }]);
+  const bash = translate({ type: "control_request", request_id: "r3", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "x".repeat(9000), description: "Run it" } } }).ask;
+  assert.equal(bash.detail.command.length, 8000);
+  assert.equal(bash.detail.description, "Run it");
+  assert.equal(bash.suggestions, null);
+  const other = translate({ type: "control_request", request_id: "r4", request: { subtype: "can_use_tool", tool_name: "mcp__mail__send", input: { to: "kit@northwind.example", body: "hi" } } }).ask;
+  assert.deepEqual(other.detail, { input: { to: "kit@northwind.example", body: "hi" } });
+});
+
+test("switchboard: the presence summary of a question names the answers; always and decline say so", () => {
+  const asks = {
+    q1: { thread: "0f3c9a2e-1111", kind: "question", tool: "AskUserQuestion", summary: "Which palette?", destination: null,
+      questions: [{ question: "Which palette?", header: "Palette" }, { question: "Which sections?", header: "Sections" }] },
+    p1: { thread: "0f3c9a2e-1111", kind: "permission", tool: "Bash", summary: "npm test", destination: null },
+  };
+  const sb = /** @type {any} */ ({ asks: { get: id => asks[id] || null }, record: () => ({ name: "Menu" }) });
+  assert.equal(answerSummary(sb, { ask: "q1", decision: "allow", answers: { "Which palette?": "Warm crust", "Which sections?": "Breads, Specials" } }),
+    "Answer Palette: Warm crust; Answer Sections: Breads, Specials (thread Menu)");
+  assert.equal(answerSummary(sb, { ask: "q1", decision: "deny" }), "Decline the question: Which palette? (thread Menu)");
+  assert.equal(answerSummary(sb, { ask: "p1", decision: "always" }), "Always allow Bash: npm test (thread Menu)");
+});
+
+/** Each answer to a can_use_tool request the fake received, in order. */
+function responses(t, root) {
+  const file = path.join(root, "responses.log");
+  const was = process.env.FAKE_CLAUDE_RESPONSES;
+  process.env.FAKE_CLAUDE_RESPONSES = file;
+  t.after(() => { if (was === undefined) delete process.env.FAKE_CLAUDE_RESPONSES; else process.env.FAKE_CLAUDE_RESPONSES = was; });
+  return () => { try { return fs.readFileSync(file, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
+}
+
+test("switchboard: a question is raised small, read whole, answered (single and multi-select) and said back", async t => {
+  const { root, work, tool } = await boot(t);
+  const got = responses(t, root);
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "ask", surface: "deck" })).data.id;
+  const raised = await until(() => of(s.got, id, "ask.raised")[0], "ask.raised");
+  assert.equal(raised.payload.kind, "question");
+  assert.equal(raised.payload.tool, "AskUserQuestion");
+  assert.equal(raised.payload.questions.length, 2);
+  assert.equal(raised.payload.questions[0].options[0].label, "Warm crust");
+  assert.ok(raised.payload.questions.every(q => q.options.every(o => !("preview" in o))), "previews stay out of the event");
+  assert.equal(raised.payload.detail, undefined);
+
+  const [ask] = (await tool("threads.asks", { thread: id })).data;
+  assert.equal(ask.kind, "question");
+  assert.equal(ask.always, false);
+  assert.equal(ask.always_project, null);
+  const call = of(s.got, id, "thread.tool").find(e => e.payload.tool === "AskUserQuestion");
+  assert.deepEqual(ask.anchor, { tool_use_id: call.payload.id, event: raised.id }, "the ask points at its tool call and its ask.raised event");
+  assert.equal(ask.agent, null);
+  assert.equal(ask.thread_name, null);
+  assert.deepEqual((await tool("threads.asks", { kind: "question" })).data.map(a => a.id), [ask.id]);
+  assert.deepEqual((await tool("threads.asks", { kind: "permission" })).data, []);
+  assert.equal((await tool("threads.get", { thread: id })).data.asks[0].request_id, undefined, "request_id stays inside vyred");
+  assert.match(ask.questions[0].options[0].preview, /Northwind Bakery/, "the card reads previews from threads.asks");
+  assert.equal(ask.questions[1].multiSelect, true);
+  assert.deepEqual((await tool("threads.get", { thread: id })).data.asks[0].questions, ask.questions);
+
+  const always = await tool("threads.answer", { ask: ask.id, decision: "always", surface: "deck" });
+  assert.match(always.error.message, /always is for permissions/);
+  assert.match((await tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" })).error.message, /answers/);
+  const bogus = await tool("threads.answer", { ask: ask.id, decision: "allow", answers: { "What time is it?": "noon" }, surface: "deck" });
+  assert.match(bogus.error.message, /no question/);
+
+  const answers = { [ask.questions[0].question]: "Warm crust", [ask.questions[1].question]: "Breads, Specials" };
+  assert.deepEqual((await tool("threads.answer", { ask: ask.id, decision: "allow", answers, surface: "deck" })).data, { ask: ask.id, answered: true, decision: "allow" });
+  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the fake to say the answers");
+  assert.equal(said.payload.text, `answers: ${JSON.stringify(answers)}`);
+  const [r] = got();
+  assert.equal(r.behavior, "allow");
+  assert.deepEqual(r.updatedInput.answers, answers);
+  assert.equal(r.updatedInput.questions.length, 2, "the questions go back with the answers");
+  assert.equal(r.updatedPermissions, undefined);
+  const answered = of(s.got, id, "ask.answered")[0];
+  assert.deepEqual(answered.payload.answers, answers);
+  assert.equal(answered.payload.decision, "allow");
+});
+
+test("switchboard: a question can be declined", async t => {
+  const { root, work, tool } = await boot(t);
+  const got = responses(t, root);
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "ask" })).data.id;
+  const raised = await until(() => of(s.got, id, "ask.raised")[0], "ask.raised");
+  assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny", message: "Not now." })).data.answered, true);
+  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  assert.equal(said.payload.text, "You declined the question: Not now.");
+  assert.equal(got()[0].behavior, "deny");
+  assert.equal(of(s.got, id, "ask.answered")[0].payload.answers, undefined);
+});
+
+test("demo: Edit and Bash asks carry their detail, always hands back the suggestions, and the transcript is Claude Code's shape", async t => {
+  const { root, work, tool } = await boot(t);
+  const got = responses(t, root);
+  const tx = path.join(root, "fake-projects");
+  const was = process.env.FAKE_CLAUDE_TRANSCRIPTS;
+  process.env.FAKE_CLAUDE_TRANSCRIPTS = tx;
+  t.after(() => { if (was === undefined) delete process.env.FAKE_CLAUDE_TRANSCRIPTS; else process.env.FAKE_CLAUDE_TRANSCRIPTS = was; });
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "demo", surface: "deck" })).data.id;
+
+  const edit = await until(async () => (await tool("threads.asks", { thread: id })).data[0], "the Edit ask");
+  assert.equal(edit.kind, "permission");
+  assert.equal(edit.tool, "Edit");
+  assert.equal(edit.always, true, "Claude Code offered a suggestion");
+  assert.equal(edit.detail.file, path.join(work, "menu.md"));
+  assert.match(edit.detail.old, /Summer berry tart/);
+  assert.match(edit.detail.new, /Pumpkin loaf/);
+  const raisedEdit = of(s.got, id, "ask.raised")[0];
+  assert.equal(raisedEdit.payload.kind, "permission");
+  assert.equal(raisedEdit.payload.detail, undefined, "the detail stays out of the event");
+  assert.equal((await tool("threads.answer", { ask: edit.id, decision: "always", surface: "deck" })).data.decision, "always");
+
+  const bash = await until(async () => (await tool("threads.asks", { thread: id })).data.find(a => a.tool === "Bash"), "the Bash ask");
+  assert.deepEqual(bash.detail, { command: "npm test", description: "Run the menu tests" });
+  assert.equal(bash.always, true);
+  await tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
+  const reply = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  assert.match(reply.payload.text, /^## Autumn specials/);
+  assert.match(reply.payload.text, /```sh\nnpm test/);
+
+  const [re, rb] = got();
+  assert.deepEqual(re.updatedPermissions, [{ type: "setMode", mode: "acceptEdits", destination: "session" }], "always sends Claude Code's suggestions");
+  assert.equal(re.updatedInput.old_string.includes("Summer berry tart"), true);
+  assert.equal(rb.behavior, "allow");
+  assert.equal(rb.updatedPermissions, undefined, "a plain allow does not");
+  const tools = of(s.got, id, "thread.tool").filter(e => e.payload.phase === "started").map(e => e.payload.tool);
+  assert.deepEqual(tools, ["Read", "Edit", "Bash", "TodoWrite"]);
+
+  const file = path.join(tx, work.replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`);
+  const lines = fs.readFileSync(file, "utf8").trim().split("\n").map(l => JSON.parse(l));
+  assert.deepEqual(lines[0].message, { role: "user", content: "demo" });
+  assert.equal(lines[0].parentUuid, null);
+  for (let i = 1; i < lines.length; i++) assert.equal(lines[i].parentUuid, lines[i - 1].uuid, "each line follows the one before");
+  for (const l of lines) { assert.equal(l.sessionId, id); assert.equal(l.cwd, work); assert.ok(!Number.isNaN(Date.parse(l.timestamp))); }
+  const blocks = lines.flatMap(l => l.message.content instanceof Array ? l.message.content.map(b => ({ type: l.type, b, l })) : []);
+  assert.deepEqual(blocks.map(x => x.b.type), ["thinking", "tool_use", "tool_result", "tool_use", "tool_result", "tool_use", "tool_result", "tool_use", "tool_result", "text"]);
+  for (const x of blocks.filter(x => x.type === "assistant")) { assert.equal(x.l.message.model, "fake-model"); assert.ok(x.l.message.usage.output_tokens > 0); }
+  const todo = blocks.find(x => x.b.name === "TodoWrite").b.input.todos;
+  assert.deepEqual(todo.map(t => t.status), ["completed", "in_progress", "pending"]);
+  const bashResult = blocks.filter(x => x.b.type === "tool_result")[2];
+  assert.match(bashResult.b.content, /# pass 2/);
+  assert.equal(bashResult.l.toolUseResult.stdout, bashResult.b.content);
+});
+
+test("fake claude: the echo and ask turns are written to the transcript too", async t => {
+  const { root, work, tool } = await boot(t);
+  const tx = path.join(root, "fake-projects");
+  const was = process.env.FAKE_CLAUDE_TRANSCRIPTS;
+  process.env.FAKE_CLAUDE_TRANSCRIPTS = tx;
+  t.after(() => { if (was === undefined) delete process.env.FAKE_CLAUDE_TRANSCRIPTS; else process.env.FAKE_CLAUDE_TRANSCRIPTS = was; });
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "hello kit" })).data.id;
+  await until(() => of(s.got, id, "thread.finished")[0], "the echo");
+  await tool("threads.send", { thread: id, text: "ask" });
+  const raised = await until(() => of(s.got, id, "ask.raised")[0], "ask.raised");
+  await tool("threads.answer", { ask: raised.payload.ask, decision: "allow", answers: { "Which palette should the Northwind Bakery menu use?": "Plain" } });
+  await until(() => of(s.got, id, "thread.finished").length >= 2, "the ask turn");
+  const lines = fs.readFileSync(path.join(tx, work.replace(/[^A-Za-z0-9]/g, "-"), `${id}.jsonl`), "utf8").trim().split("\n").map(l => JSON.parse(l));
+  assert.deepEqual(lines.map(l => l.type), ["user", "assistant", "user", "assistant", "user", "assistant"]);
+  assert.equal(lines[1].message.content[0].text, "echo: hello kit");
+  assert.equal(lines[3].message.content[0].name, "AskUserQuestion");
+  assert.match(lines[4].message.content[0].content, /User has answered your questions: "Which palette should the Northwind Bakery menu use\?"="Plain"/);
+});
+
 test("agents.update: names its agent by name or agent, as the Deck's Give a computer does", async t => {
   const { tool } = await boot(t);
   await tool("agents.create", { name: "kit", projects: [] });
@@ -801,4 +997,83 @@ test("queue: a person's words are queued for a terminal-busy session, the owner'
   const { queuesFor } = await import("./index.js");
   for (const c of ["deck", "capsule", "cli", "local", "tailnet:alex@example.com"]) assert.equal(queuesFor(c), true, c);
   for (const c of ["mcp", "mcp:agent:kit", "harness", "hook", "tailnet:agent:kit", "cli agent:kit", "tailnet:"]) assert.equal(queuesFor(c), false, c);
+});
+
+test("projectRules: Claude Code's addRules suggestions keep their rules; a mode becomes a rule for the whole tool", () => {
+  assert.deepEqual(projectRules("Bash", [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "session" }]),
+    [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }]);
+  assert.deepEqual(projectRules("Edit", [{ type: "setMode", mode: "acceptEdits", destination: "session" }]),
+    [{ type: "addRules", rules: [{ toolName: "Edit" }], behavior: "allow", destination: "localSettings" }]);
+  const sb = /** @type {any} */ ({ asks: { get: () => ({ thread: "t1", kind: "permission", tool: "Bash", summary: "npm test", destination: null }) },
+    record: () => ({ name: "Menu", project: "harlow" }), scopes: new Map([["t1", { slug: "harlow", name: "Harlow Legal", cwd: "/w" }]]) });
+  assert.equal(answerSummary(sb, { ask: "p1", decision: "always", scope: "project" }), "Always allow Bash in Harlow Legal: npm test (thread Menu)");
+});
+
+test("always in <project>: offered for a thread in its project's folder, sent as a localSettings rule; refused elsewhere", async t => {
+  const { root, work, tool } = await boot(t);
+  const got = responses(t, root);
+  assert.ok(!(await tool("projects.create", { name: "Harlow Legal", home: work })).error);
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { project: "harlow-legal", name: "Menu", prompt: "demo", surface: "deck" })).data.id;
+  const edit = await until(async () => (await tool("threads.asks", { thread: id })).data.find(a => a.always_project), "always_project on the Edit ask");
+  assert.equal(edit.always_project, "Harlow Legal");
+  assert.equal(edit.thread_name, "Menu");
+  assert.equal(of(s.got, id, "ask.raised")[0].payload.thread_name, "Menu");
+  assert.equal((await tool("threads.answer", { ask: edit.id, decision: "always", scope: "project", surface: "deck" })).data.answered, true);
+  const bash = await until(async () => (await tool("threads.asks", { thread: id })).data.find(a => a.tool === "Bash" && a.always_project), "the Bash ask");
+  await tool("threads.answer", { ask: bash.id, decision: "always", scope: "project", surface: "deck" });
+  await until(() => of(s.got, id, "thread.finished")[0], "the turn");
+  const [re, rb] = got();
+  assert.deepEqual(re.updatedPermissions, [{ type: "addRules", rules: [{ toolName: "Edit" }], behavior: "allow", destination: "localSettings" }]);
+  assert.deepEqual(rb.updatedPermissions, [{ type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }]);
+  assert.equal(of(s.got, id, "ask.answered")[0].payload.scope, "project");
+
+  // A thread outside every project: no project control, and asking for one is refused.
+  const loose = fs.mkdtempSync(path.join(root, "loose-"));
+  const other = (await tool("threads.start", { cwd: loose, prompt: "demo", surface: "deck" })).data.id;
+  const ask = await until(async () => (await tool("threads.asks", { thread: other })).data[0], "the loose Edit ask");
+  assert.equal(ask.always, true);
+  assert.equal(ask.always_project, null);
+  assert.match((await tool("threads.answer", { ask: ask.id, decision: "always", scope: "project", surface: "deck" })).error.message, /project/);
+  assert.equal((await tool("threads.asks", { thread: other })).data.length, 1, "still open after the refusal");
+});
+
+test("switchboard: a push ask and a Write ask carry the Changes row in threads.asks, never in ask.raised", async t => {
+  const { root, work, tool } = await boot(t);
+  const { execFileSync } = await import("node:child_process");
+  const env = { ...process.env, GIT_AUTHOR_NAME: "alex", GIT_AUTHOR_EMAIL: "alex@example.com", GIT_COMMITTER_NAME: "alex", GIT_COMMITTER_EMAIL: "alex@example.com",
+    GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: path.join(root, "gitconfig") };
+  const remote = path.join(root, "remote.git"), site = path.join(work, "site");
+  const git = (...a) => execFileSync("git", a, { cwd: site, env, stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote], { env });
+  fs.mkdirSync(site);
+  git("init", "-q", "-b", "main");
+  git("remote", "add", "origin", remote);
+  fs.writeFileSync(path.join(site, "menu.md"), "- Summer tart, 4.00\n");
+  git("add", "."); git("commit", "-q", "-m", "menu"); git("push", "-q", "-u", "origin", "main");
+  fs.writeFileSync(path.join(site, "menu.md"), "- Pumpkin loaf, 5.50\n- Apple cider donut, 3.25\n");
+  fs.writeFileSync(path.join(site, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 1, 0]));
+  git("add", "."); git("commit", "-q", "-m", "autumn");
+
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "bash git -C site push origin main" })).data.id;
+  const raised = await until(() => of(s.got, id, "ask.raised")[0], "ask.raised");
+  assert.equal("detail" in raised.payload, false, "the event stays small");
+  const [ask] = (await tool("threads.asks", { thread: id })).data;
+  assert.equal(ask.detail.command, "git -C site push origin main");
+  assert.deepEqual(ask.detail.changes, [{ file: "logo.png", added: null, removed: null, binary: true }, { file: "menu.md", added: 2, removed: 1 }]);
+  assert.deepEqual(ask.detail.totals, { files: 2, added: 2, removed: 1 });
+  await tool("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" });
+  await until(async () => (await tool("threads.get", { thread: id })).data.thread.status === "idle", "the turn to end");
+
+  const file = path.join(work, "notes.md");
+  fs.writeFileSync(file, "one\ntwo\n");
+  assert.equal((await tool("threads.send", { thread: id, text: `write ${file}`, surface: "cli" })).data.sent, true);
+  await until(() => of(s.got, id, "ask.raised")[1], "the second ask.raised");
+  const [w] = (await tool("threads.asks", { thread: id })).data;
+  assert.deepEqual(w.detail.changes, [{ file, added: 1, removed: 2 }], "the fake writes \"hi\" over two lines");
+  assert.deepEqual(w.detail.totals, { files: 1, added: 1, removed: 2 });
+  await tool("threads.stop", { thread: id });
 });
