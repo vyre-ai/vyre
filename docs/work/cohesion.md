@@ -103,6 +103,29 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 
 - lead: route event renames (platform recorded as PLANNED in core/event-catalog): glass + harness file.* -> files.*, computers computer.* -> computers.*, projects projects.moved -> project.moved. Aliases go live one release after each rename.
 
+## Hand-over: paused teams (sessions, chat, pwa, mobile)
+
+Interaction pass (docs/design/interaction.md, sha 5debc1bc), 2026-09-28. These four are paused;
+the lead delivers this when each restarts after rc.2, so it's collected here rather than sent now.
+
+- **sessions.** Ship `thread.status` (chat is already listening for it - the missing wire is on
+  your side). Be ready for `memory.ask {stream:true}` to become the default everywhere in 0.1.1
+  once memory-iq sets the cutover date - don't build an interim streaming path.
+- **chat.** Item 18 (inline images: `sight.frame` stills at a step, and agent-made images, owner
+  split already decided) is your highest-visibility 0.1.1 item. Nav should refresh live on
+  `thread.status` once sessions emits it. The Answer card (app-design's confirmed shape, section 6
+  of interaction.md: no header, plain never-colour-coded confidence line, source chips, quiet
+  inline "Wrong?", untimed Undo after a correction) is what memory-iq's card should render as, once
+  you cut over to `memory.ask`.
+- **pwa.** Everything under cohesion items 1, 2, 8 and 11 that already lists pwa as an owner
+  (sight/context/waiting/tips) should read app-design's shared card-and-row state vocabulary
+  (interaction.md section 0: hover/pressed/focus/selected/swiping/committed, the seven list states
+  in states.md) rather than a PWA-specific version of any of them.
+- **mobile.** Same vocabulary as pwa, plus: the swipe rule's exact numbers now have a citation
+  (interaction.md section 3: 100pt full reveal or 0.5px/ms fling past 24pt commits, presence-gated
+  primaries show the biometric glyph in the reveal itself). Sight.frame stills (item 18) apply to
+  mobile's chat surface the same as chat's.
+
 ## Changed contracts
 - New tools: sight.targets/now/watch/steps, context.report/now, suggest.query/offer/picked,
   waiting.list/count. New events: sight.stepped, context.changed, waiting.changed.
