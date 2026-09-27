@@ -1,8 +1,8 @@
 // @ts-check
 // A reply's text as one row that streams smoothly. Deltas arrive in lumps (the Switchboard
-// coalesces partial text every 50 ms); painting each lump reads as jagged, so the row reveals at a
-// steady display rate (core/pace.js) on requestAnimationFrame, and only while the page is on
-// screen: hidden, it shows everything that arrived, a few times a second, with no frames at all.
+// coalesces partial text every 50 ms); painting each lump reads as jagged, so the row reveals
+// a share of its backlog each 60 Hz frame (core/pace.js) on requestAnimationFrame, and only while
+// the page is on screen: hidden, it shows everything that arrived, a few times a second, with no frames at all.
 //
 // Only the growing part re-parses. Finished blocks are frozen: the text is scanned once, line by
 // line as it arrives, for where a block ends (a blank line outside a code fence, or a fence's
@@ -85,6 +85,8 @@ export function textItemRow(ts, env) {
   /** How much of the text is frozen into `top`, and the line scan that finds block ends. */
   let frozen = 0, st = newScan();
   /** @type {any} */ let raf = null, slow = null;
+  /** The length the last frame drew. */
+  let shownN = -1;
 
   const whole = () => {
     el.replaceChildren(); add(el, renderMarkdown(text)); drawn = text; top = tail = null; frozen = 0; st = newScan();
@@ -112,6 +114,7 @@ export function textItemRow(ts, env) {
       last.append(h("span", { class: "msg-cursor" }));
     }
     drawn = null;
+    shownN = n;
   };
   const tick = () => {
     raf = null;
@@ -119,8 +122,8 @@ export function textItemRow(ts, env) {
     if (!env.visible()) { hiddenDraw(); return; }
     const t = now();
     const n = Math.min(text.length, Math.max(pacer.visible(t), floor));
-    partial(n);
-    env.onGrow?.();
+    // The pacer moves at most once per 60 Hz frame: a faster display's extra frames draw nothing.
+    if (n !== shownN || !top) { partial(n); shownN = n; env.onGrow?.(); }
     if (n < text.length) raf = frame(tick);
   };
   const hiddenDraw = () => {

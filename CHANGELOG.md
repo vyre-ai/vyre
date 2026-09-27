@@ -23,6 +23,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   written re-parses each frame. Block ends are found by a line scan that resumes where it
   stopped, so a long open code fence is no longer scanned quadratically (settledEnd is linear). A
   code block shows plain text while its fence is open and is highlighted once, when it closes.
+- Pace (core/pace.js, after Paseo's text-reveal): each frame reveals ceil(backlog * dt / 150 ms)
+  characters, at least one, at most once per 60 Hz frame; a stall counts as 250 ms at most. The
+  pacer's API is unchanged (maxLagMs still reads as the horizon); live-text draws nothing on a
+  faster display's extra frames.
 
 #### Chat: matched to the sessions team's real Switchboard (work/sessions)
 

@@ -13,8 +13,8 @@ doc.createDocumentFragment = () => new /** @type {any} */ (globalThis).Element("
 
 const { textItemRow, settledEnd, scan, newScan } = await import("./live-text.js");
 const wait = (ms = 10) => new Promise(r => setTimeout(r, ms));
-/** Past the pacer's lag bound (250 ms), everything that arrived is shown. */
-const SHOWN_MS = 400;
+/** Long enough for the pacer to drain a few hundred characters (it steps once a 60 Hz frame). */
+const SHOWN_MS = 900;
 
 test("settledEnd: after a blank line or a closing fence, never inside an open fence", () => {
   assert.equal(settledEnd(""), 0);
