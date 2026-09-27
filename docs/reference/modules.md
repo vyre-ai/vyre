@@ -45,7 +45,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 9 | 4 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 11 | 2 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 15 | 5 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
@@ -347,8 +347,8 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [11](tools.md#sessions), 2 of them only for other modules
-- Emits: [2 events](events.md#sessions)
+- Tools: [15](tools.md#sessions), 3 of them only for other modules
+- Emits: [5 events](events.md#sessions)
 - Shows on: cli
 
 ## sideview

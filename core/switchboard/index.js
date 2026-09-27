@@ -466,6 +466,36 @@ export class Switchboard {
     await st.proc.stop();
   }
 
+  /**
+   * A subagent is about to start in this thread: take a subagent slot for the thread's project,
+   * waiting its turn when the project or the box is full (the user's concurrency limits). The
+   * slot goes back when the Agent call ends, the turn ends or the thread stops. No sessions
+   * module, no limits.
+   * @returns {Promise<any>} a PreToolUse hook's answer: {} to go on, or a deny with the reason
+   */
+  async subagentSlot(id, input, toolUseID) {
+    const st = this.live.get(id);
+    const rec = this.record(id);
+    const key = String(toolUseID || (input && input.tool_use_id) || crypto.randomUUID());
+    const r = await this.deps.call("sessions.slots", { action: "take", kind: "subagent", project: (rec && rec.project) || "_none", owner: id, key, timeout_ms: 10 * 60_000 });
+    if (r && r.error) {
+      if (r.error.code === "no_such_tool") return {};
+      return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny",
+        permissionDecisionReason: `No subagent slot came free (${r.error.message}). Carry on without it, or try again later.` } };
+    }
+    if (st && this.live.get(id) === st) { st.subSlots = st.subSlots || new Set(); st.subSlots.add(key); }
+    else this.deps.call("sessions.slots", { action: "release", owner: id, key }).catch(() => {});
+    return {};
+  }
+
+  /** Give back this thread's subagent slots: one (its Agent call ended) or all. */
+  releaseSlots(id, st, key = null) {
+    if (!st.subSlots || !st.subSlots.size) return;
+    if (key != null) { if (!st.subSlots.delete(key)) return; this.deps.call("sessions.slots", { action: "release", owner: id, key }).catch(() => {}); return; }
+    st.subSlots.clear();
+    this.deps.call("sessions.slots", { action: "release-owner", owner: id, kind: "subagent" }).catch(() => {});
+  }
+
   /** Tool calls a turn left open, said as canceled (thread.tool status "canceled"). */
   cancelTools(id, st, project) {
     if (!st.openTools || !st.openTools.size) return;
@@ -507,7 +537,9 @@ export class Switchboard {
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
-    const lo = { id, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    // In-process hooks (the Agent SDK only): a subagent waits for a concurrency slot (sessions.slots).
+    const hooks = { PreToolUse: [{ matcher: "Agent|Task", hooks: [async (/** @type {any} */ input, /** @type {any} */ toolUseID) => this.subagentSlot(id, input, toolUseID)] }] };
+    const lo = { id, hooks, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
@@ -582,7 +614,7 @@ export class Switchboard {
         if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
       }
       if (e.type === "thread.tool" && e.payload.phase === "started") { this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
-      if (e.type === "thread.tool" && e.payload.phase === "done") { if (st.openTools) st.openTools.delete(e.payload.call); st.steps = (st.steps || 0) + 1; }
+      if (e.type === "thread.tool" && e.payload.phase === "done") { if (st.openTools) st.openTools.delete(e.payload.call); st.steps = (st.steps || 0) + 1; this.releaseSlots(id, st, e.payload.call); }
       // A turn that ends with tool calls still open (an interrupt) cancels them, so no row spins.
       if (e.type === "thread.finished") this.cancelTools(id, st, project);
       const ev = this.emit(e.type, e.payload, id, project);
@@ -737,7 +769,7 @@ export class Switchboard {
 
   onExit(id, st, code, signal, stderr) {
     this.flush(id, st);
-    if (this.live.get(id) === st) this.cancelTools(id, st, null);
+    if (this.live.get(id) === st) { this.cancelTools(id, st, null); this.releaseSlots(id, st); }
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
@@ -795,6 +827,7 @@ export class Switchboard {
    */
   turnEnded(id, st, project) {
     st.turn = null;
+    this.releaseSlots(id, st);
     if (this.live.get(id) !== st || st.stopping) return;
     if (st.steers.size) {
       const [[uuid, text], ...rest] = [...st.steers.entries()];
@@ -1391,7 +1424,7 @@ export default {
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
-        purpose: { type: "string", enum: ["chat", "agent", "project", "capsule", "job", "memory", "planner", "learn"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
+        purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
       async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
