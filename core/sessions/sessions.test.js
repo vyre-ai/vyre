@@ -62,7 +62,9 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role, transcripts: [transcripts],
-    sessions: { install: false, ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
+    // claude "installed": these suites run the fake claude (VYRE_CLAUDE_BIN), so the SDK needs
+    // only its JS, never the bundled binary a box's default asks for (CI installs --omit=optional).
+    sessions: { install: false, ...(driver === "sdk" ? { claude: "installed" } : {}), ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
   // Internal tools answer only modules: a module that asks threads.pids for the test.
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.pids", "probe.post"] } }, `
     export default { async start(ctx) {
