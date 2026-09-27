@@ -163,6 +163,28 @@ test("federation reads: recall.thread opens a Mac session from the box and store
   assert.ok(!events.includes("above the fold") && !events.includes(MAC_ID), "no event carries the Mac's words or its session");
 });
 
+test("federation reads: recall.transcript reads a Mac session as blocks from the box, and a miss stays quiet", async t => {
+  const s = await world(t);
+  const db = s.box.registry.deps.db;
+  const before = db.prepare("SELECT COUNT(*) AS n FROM recall_turns").get();
+  const mac = (await s.macCall("recall.transcript", { session: MAC_ID })).data;
+  const tr = await asBox(s, "recall.transcript", { session: MAC_ID });
+  assert.deepEqual([tr.source, tr.machine, tr.session.id], ["mac", "test-mac", MAC_ID]);
+  assert.ok(tr.blocks.length > 0);
+  assert.deepEqual(tr.blocks, mac.blocks, "the Mac's own blocks, as the Mac reads them");
+  // The same from the owner's phone over the tailnet.
+  assert.equal((await asBox(s, "recall.transcript", { session: MAC_ID }, `tailnet:${OWNER}`)).source, "mac");
+  // The box's own session is the box's, labelled.
+  const own = await asBox(s, "recall.transcript", { session: BOX_ID });
+  assert.deepEqual([own.source, own.session.id], ["box", BOX_ID]);
+  // An id no machine has is still not_found, which the Deck takes quietly.
+  const miss = await s.boxCall("recall.transcript", { session: "33333333-cccc-4000-8000-000000000009" }, "deck");
+  assert.equal(miss.error.code, "not_found", JSON.stringify(miss.error));
+  // An agent or MCP never reads a Mac session, and nothing of it is stored on the box.
+  assert.ok((await s.boxCall("recall.transcript", { session: MAC_ID }, "mcp")).error);
+  assert.deepEqual(db.prepare("SELECT COUNT(*) AS n FROM recall_turns").get(), before);
+});
+
 test("federation reads: the Mac itself does not federate and never asks the box", async t => {
   const s = await world(t);
   /** Every tool the Mac asks the box for (over the tailnet) while it answers its own reads. The

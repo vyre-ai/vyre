@@ -59,12 +59,22 @@ test("gate: a request is held, listed and never sent on its own", async () => {
   assert.match(r.id, /^[0-9a-f]{18}$/);
   const held = gate.held();
   assert.equal(held.length, 1);
-  assert.deepEqual({ ...held[0], at: 0 }, { id: r.id, kind: "send", via: "mail", to: ["dana@harlowlegal.com"], summary: "Re: Intake form rebuild",
-    why: "Dana asked for an update", agent: "juno", thread: "t-1", project: "harlow-legal", at: 0 });
+  assert.deepEqual({ ...held[0], at: 0, anchor: { ...held[0].anchor, at: 0 } }, { id: r.id, kind: "send", via: "mail", to: ["dana@harlowlegal.com"], summary: "Re: Intake form rebuild",
+    why: "Dana asked for an update", agent: "juno", thread: "t-1", project: "harlow-legal", at: 0,
+    anchor: { tool_use_id: null, event: null, thread: "t-1", at: 0 } });
+  assert.equal(held[0].anchor.at, held[0].at, "without a tool_use_id, the thread and the time find it");
   assert.equal(gate.held({ thread: "other" }).length, 0);
   assert.equal(sent.length, 0);
   assert.equal(events[0].type, "gate.held");
   assert.deepEqual(events[0].where, { thread: "t-1", project: "harlow-legal" });
+});
+
+test("gate: a held item is anchored to the tool call that asked and its gate.held event", () => {
+  const { gate } = setup();
+  // The module's emit returns the stored event; its id is where the item sits in the log.
+  gate.deps.emit = () => ({ id: 4242 });
+  ask(gate, { tool_use_id: "toolu_01Harlow" });
+  assert.deepEqual({ ...gate.held()[0].anchor, at: 0 }, { tool_use_id: "toolu_01Harlow", event: 4242, thread: "t-1", at: 0 });
 });
 
 test("gate: unknown senders, wrong kinds and bad content are refused at request time", () => {

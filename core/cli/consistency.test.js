@@ -89,6 +89,7 @@ test("usage mistakes exit 2 and say what to do next", async t => {
     ["threads", "watch"], ["open"], ["resume"], ["resume", "--wat", "x"], ["learn", "level", "x"], ["learn", "frob"], ["agents", "frob"],
     ["agents", "create"], ["watchers", "pause"], ["watchers", "frob"], ["name", "check"], ["presence", "frob"], ["link", "frob"],
     ["memory", "correct"], ["why"], ["call"], ["capsule", "biuld"], ["box", "frob"], ["pick", "harlow-legal"], ["projects", "--bogus", "x"],
+    ["timer"], ["remind"], ["todo", "frob"], ["notes", "show"], ["alarm", "off"], ["agenda", "someday"], ["snooze"],
   ];
   for (const args of cases) {
     const r = await vyre(args, env);
@@ -112,6 +113,7 @@ test("every read takes --json and prints JSON", async t => {
     ["status"], ["modules"], ["tools"], ["projects"], ["threads"], ["threads", "--all"], ["threads", "list"], ["threads", "asks"],
     ["agents"], ["agents", "list"], ["agents", "usage"], ["memory"], ["memory", "corrections"], ["learn"], ["watchers"], ["watchers", "items"],
     ["link"], ["recall"], ["recall", "anything"], ["presence", "keys"], ["box"], ["vault", "list"], ["index"],
+    ["agenda"], ["agenda", "tomorrow"], ["alarm"], ["todo"], ["notes"],
   ];
   for (const args of reads) {
     const r = await vyre([...args, "--json"], env, home);

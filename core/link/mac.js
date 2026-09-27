@@ -10,6 +10,10 @@
 // holds one request to the box's link.serve open, runs the question it gets (only the read tools
 // in allow.js), answers with link.reply and asks again. When the box is away the loop stops, and
 // the next call that reaches the box (the minute's heartbeat, at the latest) starts it again.
+//
+// The one write (allow.js WRITE, threads.send) runs only when the box says it is the person's,
+// as the caller "link:box", and the Mac then follows that thread's events and sends them to the
+// box with link.events, batched, until the answer is finished (see follow below).
 
 import fs from "node:fs";
 import os from "node:os";
@@ -17,11 +21,17 @@ import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
 import { createHealth, unknown } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
-import { ALLOW } from "./allow.js";
+import { ALLOW, WRITE, FOLLOWED } from "./allow.js";
 
 const MAX_BACKOFF = 30_000;
 /** How long the box holds link.serve open (box.js); the Mac waits this plus a margin. */
 const HOLD = 60_000;
+/** A thread the box sent to is followed at most this long after the last send. */
+const FOLLOW = 30 * 60_000;
+/** Followed events go to the box at most this often, while they flow. */
+const FLUSH = 250;
+/** At most this many events in one link.events call. */
+const BATCH = 500;
 
 /**
  * @param {any} ctx the module's context
@@ -113,7 +123,7 @@ export function macSide(ctx, seam = {}) {
     const r = await boxCall("link.hello", { key: saved.key });
     // An unpair or a new pairing while this was out wins: its answer is about a pairing that is gone.
     if (saved !== asked) return;
-    if (r.data && r.data.paired === false) { save({ ...saved, revoked: true }); beating(false); state.error = "the box no longer knows this Mac; pair again"; }
+    if (r.data && r.data.paired === false) { save({ ...saved, revoked: true }); beating(false); unfollowAll(); state.error = "the box no longer knows this Mac; pair again"; }
     else if (r.data && r.data.box && r.data.box.name !== saved.box.name) save({ ...saved, box: { ...saved.box, name: r.data.box.name } });
   }
   // The heartbeat runs only while paired, once a minute (the 60-second floor for recurring timers).
@@ -125,6 +135,101 @@ export function macSide(ctx, seam = {}) {
     if (!on && beat) { clearInterval(beat); beat = null; }
   };
   if (saved && !saved.revoked) { beating(true); setImmediate(() => { if (!stopped) hello(); }); }
+
+  // Following a thread the box sent to. Its events on this Mac (FOLLOWED) go to the box in
+  // batches (link.events), at most every FLUSH ms while they flow; nothing is sent when idle, and
+  // no listener or timer exists while nothing is followed. A follow starts (or is extended) with
+  // each send, and ends at the thread's thread.finished or thread.stopped, 30 minutes after the
+  // last send, on unpair, on revoke, and when vyred stops. The rule for queued words: a
+  // thread.queued adds its id to the follow's `waiting`, and the thread.sent {queued} that hands
+  // it over removes it; a thread.finished while any is still waiting is some other turn ending,
+  // not the answer, so the follow goes on. Events that arrive while the send itself runs are held,
+  // and sent only if the send succeeds. A batch the box does not take is dropped, never retried:
+  // the Deck can read the thread again with recall.thread.
+  /** @type {Map<string, { until: number, held: any[] | null, waiting: Set<number>, ended: boolean, sends: number }>} */
+  const follows = new Map();
+  /** @type {any[]} */
+  let outbox = [];
+  /** @type {any} */
+  let flushTimer = null;
+  let lastFlush = 0;
+  /** @type {null | (() => void)} */
+  let listening = null;
+
+  const listen = () => {
+    if (listening || stopped) return;
+    const offs = ["thread.*"].map(p => ctx.events.on(p, heard));
+    listening = () => { for (const off of offs) off(); };
+  };
+  const quiet = () => { if (!follows.size && listening) { listening(); listening = null; } };
+  const end = thread => { follows.delete(thread); quiet(); };
+  function unfollowAll() {
+    follows.clear(); outbox = [];
+    if (flushTimer) { clearTimeout(flushTimer); flushTimer = null; }
+    quiet();
+  }
+  const expire = () => { const t = Date.now(); for (const [thread, f] of follows) if (f.until < t && f.held === null) follows.delete(thread); };
+
+  /** An event on this Mac: pass it on if it is a followed thread's. */
+  function heard(e) {
+    if (!FOLLOWED.includes(e.type) || !e.thread) return;
+    expire();
+    const f = follows.get(e.thread);
+    if (!f) { quiet(); return; }
+    const p = e.payload || {};
+    if (e.type === "thread.queued" && Number.isFinite(Number(p.queued))) f.waiting.add(Number(p.queued));
+    if (e.type === "thread.sent" && p.queued !== undefined) f.waiting.delete(Number(p.queued));
+    const out = { type: e.type, thread: e.thread, project: e.project || null, at: e.at, payload: p };
+    if (f.held) f.held.push(out); else queueOut(out);
+    if (e.type === "thread.stopped" || (e.type === "thread.finished" && !f.waiting.size)) {
+      if (f.held) f.ended = true; else end(e.thread);
+    }
+  }
+  function queueOut(ev) {
+    outbox.push(ev);
+    if (!flushTimer && !stopped) {
+      flushTimer = setTimeout(flush, Math.max(0, lastFlush + FLUSH - Date.now()));
+      flushTimer.unref?.();
+    }
+  }
+  function flush() {
+    flushTimer = null;
+    lastFlush = Date.now();
+    const batch = outbox.splice(0, BATCH);
+    if (outbox.length) { flushTimer = setTimeout(flush, FLUSH); flushTimer.unref?.(); }
+    if (!batch.length || stopped || !saved || saved.revoked || !conn) return;
+    boxCall("link.events", { key: saved.key, events: batch }).catch(() => {});
+  }
+
+  /**
+   * threads.send for the person at the box: as "link:box", its surface marked as the box's, with
+   * the thread followed while it runs and after, if it succeeded.
+   * @param {string} tool @param {any} input
+   */
+  async function write(tool, input) {
+    const thread = typeof input.thread === "string" ? input.thread : "";
+    const { machine: _m, machines: _ms, ...rest } = input;
+    const i = { ...rest, surface: "box:" + String(input.surface || "deck") };
+    const had = follows.get(thread);
+    const f = had || { until: 0, held: /** @type {any[] | null} */ ([]), waiting: new Set(), ended: false, sends: 0 };
+    f.sends++;
+    if (thread && !had) { follows.set(thread, f); listen(); }
+    let r;
+    try { r = await ctx.call(tool, i, { as: "link:box" }); }
+    catch (e) { r = { error: { code: "failed", message: /** @type {Error} */ (e).message } }; }
+    f.sends--;
+    if (!thread || follows.get(thread) !== f) return r;
+    // Refused, or not sent and not queued (another surface holds the keyboard): nothing will follow.
+    if (!had && (r.error || (r.data && r.data.sent === false && !r.data.queued))) { end(thread); return r; }
+    f.until = Date.now() + FOLLOW;
+    if (f.held && f.sends === 0) {
+      const held = f.held;
+      f.held = null;
+      for (const ev of held) queueOut(ev);
+      if (f.ended) end(thread);
+    }
+    return r;
+  }
 
   // The serve loop: the box's questions for this Mac. Request-driven, never on a timer: each turn
   // waits on the box (up to its hold), and a failure ends the loop until up() starts it again.
@@ -145,8 +250,10 @@ export function macSide(ctx, seam = {}) {
         if (q === null) continue;
         // { paired: false } or anything else unexpected: stop; the heartbeat finds out why.
         if (!q || typeof q.id !== "string" || typeof q.tool !== "string") return;
-        const result = ALLOW.includes(q.tool)
-          ? await ctx.call(q.tool, q.input && typeof q.input === "object" ? q.input : {})
+        const input = q.input && typeof q.input === "object" ? q.input : {};
+        const result = WRITE.includes(q.tool)
+          ? (q.as === "person" ? await write(q.tool, input) : { error: { code: "denied", message: `${q.tool} is answered through the link only for the person` } })
+          : ALLOW.includes(q.tool) ? await ctx.call(q.tool, input)
           : { error: { code: "denied", message: `${q.tool} is not answered through the link` } };
         if (!live()) return;
         const sent = await boxCall("link.reply", { key, id: q.id, result: result.error ? { error: result.error } : { data: result.data } }, c, { signal: ac.signal });
@@ -235,7 +342,7 @@ export function macSide(ctx, seam = {}) {
     run: async () => ({
       role: "local", linked: Boolean(saved && !saved.revoked),
       box: saved ? { address: saved.box.address, name: saved.box.name || null, node: saved.box.node || null, stableId: saved.box.stableId || null } : null,
-      reachable: state.reachable, lastSeen: state.lastSeen, serving,
+      reachable: state.reachable, lastSeen: state.lastSeen, serving, following: follows.size,
       pending: pairing ? { id: pairing.id, code: pairing.code, expires: pairing.expires } : null,
       ...(state.error ? { error: state.error } : {}),
     }),
@@ -259,7 +366,7 @@ export function macSide(ctx, seam = {}) {
       if (!saved) return { unpaired: false };
       const told = saved.revoked ? { data: true } : await boxCall("link.unpair", { key: saved.key });
       const was = saved.box.address;
-      save(null); beating(false); stopServing(); conn = null; state.reachable = false; state.announced = null;
+      save(null); beating(false); stopServing(); unfollowAll(); conn = null; state.reachable = false; state.announced = null;
       ctx.events.emit("link.unpaired", { box: was });
       return { unpaired: true, boxForgot: !told.error };
     },
@@ -333,7 +440,7 @@ export function macSide(ctx, seam = {}) {
 
   return {
     async stop() {
-      stopped = true; beating(false); stopServing();
+      stopped = true; beating(false); stopServing(); unfollowAll();
       if (pairing && pairing.timer) clearTimeout(pairing.timer);
       for (const end of streams) end();
     },
