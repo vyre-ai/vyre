@@ -4031,7 +4031,7 @@ A module registers one of its connections, or refreshes it: {ref, provider, acco
 
 ### `vault.connections.revoke`
 
-Take a surface's use of a connection away. Needs no one: taking access away is always allowed.
+Take a surface's use of a connection away. Needs no one: taking access away is always allowed, but only of the caller's own surface.
 
 - Input:
   - `id` string, required

@@ -23,13 +23,17 @@ const ID = /^cn_[A-Za-z0-9_-]+$/;
 
 test("connections: each caller is one surface", () => {
   const cases = [
-    ["cli", "person"], ["local", "person"], ["deck", "person"], ["tailnet:alex@harlowlegal.test", "person"],
+    ["cli", "person"], ["local", "person"], ["deck", "person"],
     ["capsule", "capsule"], ["mobile", "phone"], ["mcp", "chat"], ["mcp:thread:t-1", "chat"],
     ["mcp:agent:kit", "agents"], ["tailnet:agent:juno", "agents"], ["harness:agent:kit", "agents"],
     ["module:mail", "module"], ["tailnet-guest:dana@northwind.test", null], ["anonymous", null], ["", null],
   ];
   for (const [c, want] of cases) assert.equal(surfaceOf(c).surface, want, c);
   assert.equal(surfaceOf("mcp:thread:t-9").thread, "t-9");
+  // The owner's tailnet device is the person only with a person session (ADR 0032), the same bar
+  // settings.isPerson holds it to; without one it is a device on the tailnet, no surface at all.
+  assert.equal(surfaceOf("tailnet:alex@harlowlegal.test").surface, null, "no session, no surface");
+  assert.equal(surfaceOf("tailnet:alex@harlowlegal.test", true).surface, "person");
 });
 
 test("connections: a thread's origin picks its surface, looked up once", async () => {
@@ -272,9 +276,10 @@ test("connections: several email accounts, one list, granted per surface", async
   assert.equal((await ask({ id: g.id, caller: "capsule" })).allowed, true);
   assert.equal((await cli("vault.connections.allowed", { id: g.id, caller: "capsule" })).error.code, "denied", "allowed is for modules");
 
-  // Revoke without a person.
+  // Revoke without a person, but only a surface's own: agents may drop agents, not another's.
   pres.deny = true;
-  assert.deepEqual(ok(await mcp("vault.connections.revoke", { id: m2.id, surface: "agents" })).connection.surfaces, ["capsule", "chat"]);
+  assert.equal((await mcp("vault.connections.revoke", { id: m2.id, surface: "agents" })).error.code, "denied", "chat cannot revoke agents");
+  assert.deepEqual(ok(await kit("vault.connections.revoke", { id: m2.id, surface: "agents" })).connection.surfaces, ["capsule", "chat"]);
   pres.deny = false;
   assert.equal((await ask({ id: m2.id, caller: "mcp:agent:kit" })).allowed, false);
 
@@ -362,6 +367,49 @@ test("connections: several email accounts, one list, granted per surface", async
   for (const x of values) assert.ok(!text.includes(x), "a value leaked");
   const listing = JSON.stringify(ok(await cli("vault.connections.list")));
   for (const f of ["imap_host", "smtp_port", "username", "\"value\""]) assert.ok(!listing.includes(f), `a field name (${f}) in a listing`);
+});
+
+test("connections: naming an unowned item never deletes the real row, and a fake capability is never offered", async t => {
+  const { d, as, inproc } = await boot(t);
+  const cli = as("cli"), capsule = as("capsule"), mcp = as("mcp");
+  const postbox = inproc("module:postbox"), planner = inproc("module:planner");
+  const ok = r => { assert.ok(!r.error, JSON.stringify(r.error)); return r.data; };
+
+  const pw = hex(12);
+  const con = ok(await cli("vault.connect", { module: "postbox", need: "account", label: "northwind", fields: imapFields(pw) }));
+  assert.equal(con.item, "postbox-northwind");
+  const before = ok(await cli("vault.connections.list")).connections.find(r => r.ref === "postbox-northwind");
+  assert.equal(before.source, "vault");
+  assert.deepEqual(before.uses.send_mail, { tool: "mail.send", input: { account: before.id } });
+
+  // A third module, with no grant on postbox-northwind, claims it and tries to route send_mail
+  // through its own tool. Its row must land needs_credential, over an item it does not hold, and
+  // the real row (the person's, granted to postbox) must survive untouched.
+  const bad = ok(await planner("vault.connections.register", { ref: "postbox-imitation", provider: "imap-smtp",
+    account: "kit@northwind.test", auth: "password", capabilities: ["send_mail"], items: ["postbox-northwind"],
+    use: { send_mail: { tool: "planner.add" } } }));
+  const rows = ok(await cli("vault.connections.list")).connections;
+  const real = rows.find(r => r.ref === "postbox-northwind" && r.source === "vault");
+  assert.ok(real, "the real, person-granted vault row is not deleted");
+  assert.deepEqual(real.surfaces, before.surfaces);
+  const fake = rows.find(r => r.id === bad.id);
+  assert.equal(fake.state, "needs_credential", "planner's row is not ready: it holds no grant on the item it claims");
+
+  // Never offered for a pick, in the Capsule or in chat, however it labels itself.
+  const send = ok(await capsule("vault.connections.list", { capability: "send_mail" })).connections;
+  assert.ok(!send.some(r => r.id === bad.id), "a needs_credential row is not offered in a capability pick");
+  const chatSend = ok(await mcp("vault.connections.list", { capability: "send_mail" })).connections;
+  assert.ok(!chatSend.some(r => r.id === bad.id));
+
+  // A module cannot route a capability through another module's tool (or mail.send with a
+  // borrowed account) even when it does hold every item it claims.
+  await cli("vault.grant", { name: "postbox-northwind", module: "planner" });
+  const borrowed = await planner("vault.connections.register", { ref: "postbox-honest", provider: "imap-smtp",
+    account: "kit@northwind.test", auth: "password", items: ["postbox-northwind"],
+    use: { send_mail: { tool: "mail.send", input: { account: "someone-elses-row" } } } });
+  assert.match(borrowed.error && borrowed.error.message, /own tools/);
+  await cli("vault.revoke", { name: "postbox-northwind", module: "planner" });
+  void postbox; void d;
 });
 
 const FAKE_MCP = path.join(import.meta.dirname, "..", "mcp", "testing", "fake-mcp.js");

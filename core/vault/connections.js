@@ -69,10 +69,12 @@ const AUTH_OF_KIND = { "api-key": "api-key", pat: "bearer", oauth: "oauth", clou
  * Which surface a caller is, before any thread lookup. "person" sees everything; "module" is a
  * module acting as itself; null is no surface. `mcp:thread:<id>` is chat until its thread says
  * it came from the Capsule.
- * @param {string} caller
+ * @param {string} caller @param {boolean} [person] whether this call carries a person session
+ *   (ADR 0032): required for the owner's tailnet device to count as "person", the same bar
+ *   settings.isPerson holds it to. Without it, a device merely on the tailnet is no surface.
  * @returns {{ surface: "person"|"module"|"capsule"|"chat"|"agents"|"phone"|null, thread?: string }}
  */
-export function surfaceOf(caller) {
+export function surfaceOf(caller, person) {
   const c = String(caller ?? "");
   if (c === "cli" || c === "local" || c === "deck") return { surface: "person" };
   if (c.startsWith("module:")) return { surface: "module" };
@@ -82,8 +84,10 @@ export function surfaceOf(caller) {
   const th = /^mcp:thread:(.+)$/s.exec(c);
   if (th) return { surface: "chat", thread: th[1] };
   if (/^(mcp|tailnet|harness):agent:./.test(c)) return { surface: "agents" };
-  // The owner on their own device at the box's tailnet address (core/names): the owner's Deck.
-  if (/^tailnet:[^:]+$/.test(c)) return { surface: "person" };
+  // The owner on their own device at the box's tailnet address (core/names): the owner's Deck,
+  // once they have signed in there with a person session. A device merely on the tailnet, with
+  // no session, is no surface: it may not read or change what another surface may use.
+  if (/^tailnet:[^:]+$/.test(c)) return person ? { surface: "person" } : { surface: null };
   return { surface: null };
 }
 
@@ -296,9 +300,14 @@ export class Connections {
   }
 
   async syncVault() {
-    // An item a module's registered row signs in with is that row, not a second connection.
-    const claimed = new Set(/** @type {any[]} */ (this.db.prepare("SELECT items FROM vault_connections WHERE source != 'vault'").all()).flatMap(r => json(r.items, [])));
-    const found = this.v.list().items
+    const byName = this.items();
+    // An item a module's registered row signs in with is that row, not a second connection - but
+    // only once the item is actually granted to that module. Naming an item in `items` is not
+    // proof of holding it: a row without the grant stays needs_credential (stateOf) and is never
+    // offered in a pick (list), so it cannot itself take the real row's place here.
+    const claimed = new Set(/** @type {any[]} */ (this.db.prepare("SELECT source, items FROM vault_connections WHERE source != 'vault'").all())
+      .flatMap(r => json(r.items, []).filter(i => { const it = byName.get(i); return it && (it.grants || []).some(g => g.module === r.source && !g.watcher); })));
+    const found = [...byName.values()]
       .filter(i => i.details && typeof i.details.provider === "string" && catalog(i.details.provider) && !i.name.includes("/") && !claimed.has(i.name))
       .map(i => {
         const p = /** @type {import("./providers.js").Provider} */ (catalog(i.details.provider));
@@ -392,6 +401,10 @@ export class Connections {
     if (tools !== undefined && (!Array.isArray(tools) || tools.length > 500 || tools.some(t => typeof t !== "string" || t.length > 200))) throw fail("tools must be a list of tool names");
     if (items !== undefined && (!Array.isArray(items) || items.length > 20 || items.some(i => !ITEM.test(String(i))))) throw fail("items must be a list of vault item names");
     const uses = checkUse(use);
+    // A module may only route a capability to its own tools: naming another module's tool (mail
+    // included) would let it act, or be handed a draft meant for a real account, under a borrowed
+    // name. The mail module's own default (account: this row's id) still applies with no `use`.
+    if (uses) for (const [c, u] of Object.entries(uses)) if (!u.tool.startsWith(`${source}.`)) throw fail(`use.${c}.tool must be one of ${source}'s own tools (${source}.*)`);
     const caps = capabilities !== undefined ? CAPABILITIES.filter(c => capabilities.includes(c))
       : tools !== undefined ? CAPABILITIES.filter(c => c in toolCapabilities(tools, `${ref} ${account}`)) : [];
     await this.v.key();
@@ -454,10 +467,10 @@ export class Connections {
    * memory: its `origin` "capsule" is the capsule, one ending ":phone" ("deck:phone") the phone,
    * and anything else, null included, chat. An older switchboard without origin says capsule by
    * `purpose`. No switchboard, or an error, is chat.
-   * @param {string} caller
+   * @param {string} caller @param {boolean} [person] whether this call carries a person session
    */
-  async surface(caller) {
-    const s = surfaceOf(caller);
+  async surface(caller, person) {
+    const s = surfaceOf(caller, person);
     if (!s.thread) return s.surface;
     const known = this.threads.get(s.thread);
     if (known) return known;
@@ -482,10 +495,10 @@ export class Connections {
   /**
    * Whose eyes a read uses: a person may look through any surface's (or all, with none), a
    * module must name one, anyone else sees only their own.
-   * @param {string|undefined} surface @param {string} caller
+   * @param {string|undefined} surface @param {string} caller @param {string} [as] @param {boolean} [person]
    */
-  async eyes(surface, caller, as) {
-    if (as !== undefined && surfaceOf(caller).surface === "module") {
+  async eyes(surface, caller, as, person) {
+    if (as !== undefined && surfaceOf(caller, person).surface === "module") {
       if (surface !== undefined) throw fail("pass surface or caller, not both");
       const s = await this.surface(String(as));
       if (s === "person") return { person: true, eyes: null };
@@ -493,7 +506,7 @@ export class Connections {
       return { person: false, eyes: s };
     }
     if (surface !== undefined && !SURFACE_NAMES.includes(/** @type {any} */ (surface))) throw fail(`surface must be one of ${SURFACE_NAMES.join(", ")}`);
-    const own = await this.surface(caller);
+    const own = await this.surface(caller, person);
     if (own === "person") return { person: true, eyes: surface || null };
     if (own === "module") {
       if (!surface) throw fail("a module lists for a surface: pass surface (capsule, chat, agents or phone) or caller, the one it acts for");
@@ -508,10 +521,11 @@ export class Connections {
    * The rows a surface may use, each with `uses` (capability -> {tool, input}), and `use`, the
    * entry for the capability asked, when one is.
    * @param {{ capability?: string, surface?: string, caller?: string }} input @param {string} caller
+   * @param {boolean} [personSession] whether this call carries a person session (ADR 0032)
    */
-  async list({ capability, surface, caller: as } = {}, caller) {
+  async list({ capability, surface, caller: as } = {}, caller, personSession) {
     if (capability !== undefined && !CAPABILITIES.includes(/** @type {any} */ (capability))) throw fail(`capability must be one of ${CAPABILITIES.join(", ")}`);
-    const { person, eyes } = await this.eyes(surface, caller, as);
+    const { person, eyes } = await this.eyes(surface, caller, as, personSession);
     await this.ready();
     const byName = this.items();
     const out = [];
@@ -519,6 +533,8 @@ export class Connections {
       const ok = this.v.rowOk("vault_connections", r);
       if (eyes && !(ok && json(r.surfaces, []).includes(eyes))) continue;
       const row = this.out(r, ok, person, byName);
+      // A pick offers only what is actually usable; a person's own full list still shows what needs fixing.
+      if (capability && row.state !== "ready") continue;
       if (capability && !row.capabilities.includes(capability)) continue;
       out.push(capability ? { ...row, use: row.uses[capability] || null, is_default: row.default.includes(capability) } : row);
     }
@@ -588,9 +604,15 @@ export class Connections {
     return this.setSurfaces(id, s => [...s, surface], caller, "connection-grant");
   }
 
-  /** @param {{ id: string, surface: string }} input @param {string} caller */
-  revoke({ id, surface }, caller) {
+  /**
+   * Taking access away never needs a person, but a surface may only drop its own: the Capsule
+   * cannot revoke chat's use of a row, and Claude in chat cannot revoke the Capsule's.
+   * @param {{ id: string, surface: string }} input @param {string} caller @param {boolean} [personSession]
+   */
+  async revoke({ id, surface }, caller, personSession) {
     this.checkSurface(surface);
+    const own = await this.surface(caller, personSession);
+    if (own !== "person" && surface !== own) throw fail(`this caller is the ${own || "no"} surface; it cannot revoke ${surface}`, "denied");
     return this.setSurfaces(id, s => s.filter(x => x !== surface), caller, "connection-revoke");
   }
 
