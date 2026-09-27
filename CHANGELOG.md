@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A queued reply streams live, and only its own turn counts
+
+- A reply queued for a busy session no longer takes the words, tools or end of the turn the
+  session was busy with. It waits for the `thread.sent` carrying its own `queued` id (another
+  surface's hand-over is not its own), then streams that turn's `thread.text` pieces as they come,
+  and finishes at that turn's `thread.finished`. When events carry `turn` (ADR 0030 owned
+  sessions), events from any other turn are dropped. The native Capsule (`State.swift`, with
+  StateTests.swift); the Electron Capsule is gone.
+
 #### Docs: new screenshots, no passkey in Glass, the /vyre planner verbs
 
 - deck/test/world.js: alex's sample folders sit in a folder plainly named alex, so shown paths read
