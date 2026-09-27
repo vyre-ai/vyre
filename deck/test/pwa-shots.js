@@ -68,13 +68,27 @@ const SCREENS = [
       const ta = document.querySelector('.composer textarea'); ta.value = 'write notes.txt'; ta.dispatchEvent(new Event('input'));
       document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); await waitFor('.ask-card', 10000).catch(() => null);
       if (!document.querySelector('.ask-card')) throw new Error('no ask card for the permission question');` },
-  { name: "needs-draft", path: "/now", script: `await click('a[href^="/needs/"]'); await wait(1500);`, shell: "pushed" },
+  // Now's detail sheets (js/need-sheet.js), opened by a tap on each kind of row. The world needs
+  // CHAT_DEMO=1 for the ask and the question; the held drafts are always there.
+  { name: "now-sheet-ask", path: "/now", wait: 4000, script: `await waitFor('.np-row[data-kind=ask] .np-main', 15000); await click('.np-row[data-kind=ask] .np-main'); await wait(900);` },
+  { name: "now-sheet-draft", path: "/now", script: `await waitFor('.np-row[data-kind=draft] .np-main', 8000); await click('.np-row[data-kind=draft] .np-main'); await wait(900);` },
+  { name: "now-sheet-question", path: "/now", wait: 4000, script: `await waitFor('.np-row[data-kind=question] .np-main', 15000); await click('.np-row[data-kind=question] .np-main'); await wait(600);
+      const c = document.querySelector('.ns-choice'); c && c.click(); await wait(300);` },
+  { name: "now-sheet-draft-paper", path: "/now", theme: "paper", script: `await waitFor('.np-row[data-kind=draft] .np-main', 8000); await click('.np-row[data-kind=draft] .np-main'); await wait(900);` },
+  // A row dragged 70 px right and let go short of 100: Approve stays showing (nothing is sent).
+  { name: "now-swipe", path: "/now", wait: 4000, script: `await waitFor('.np-row .np-face', 15000);
+      const f = document.querySelector('.np-row[data-kind=ask] .np-face') || document.querySelector('.np-row .np-face');
+      const r = f.getBoundingClientRect(), y = r.top + r.height / 2, x = r.left + 60;
+      const ev = (t, dx) => f.dispatchEvent(new PointerEvent(t, { pointerId: 7, clientX: x + dx, clientY: y, button: 0, bubbles: true, pointerType: "touch" }));
+      ev("pointerdown", 0); await wait(40); ev("pointermove", 12); await wait(60); ev("pointermove", 40); await wait(60); ev("pointermove", 70); await wait(300); ev("pointermove", 70); ev("pointerup", 70); await wait(500);
+      if (!document.querySelector('.np-show-r')) throw new Error('the approve side is not showing');` },
   { name: "agent-pushed", path: "/agents/kit", shell: "pushed" },
   { name: "settings", path: "/settings", shell: "pushed" },
   { name: "offline", path: "/chat", offline: true },
   // A Mac asking to pair. link.pair.request only answers over the tailnet, so the world cannot
   // make one: link.pending's answer is stubbed in the page, and nothing else is.
-  { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `const i = document.querySelector('.pair-code'); if (!i) throw new Error("no pairing card"); i.value = "482"; i.dispatchEvent(new Event("input")); i.value = "482913"; i.dispatchEvent(new Event("input")); await wait(200);` },
+  { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `if (matchMedia("(max-width: 760px)").matches) { await waitFor('.np-row[data-kind=pair] .np-main', 8000); await click('.np-row[data-kind=pair] .np-main'); await wait(700); }
+      const i = document.querySelector('.pair-code'); if (!i) throw new Error("no pairing card"); i.value = "482"; i.dispatchEvent(new Event("input")); i.value = "482913"; i.dispatchEvent(new Event("input")); await wait(200);` },
   // Onboarding's history and devices steps (the phone shell is not part of onboarding).
   { name: "onboard-history", path: "/onboard#history", wait: 3000, noShell: true },
   { name: "onboard-devices", path: "/onboard#devices", wait: 3000, noShell: true },

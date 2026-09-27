@@ -8,10 +8,18 @@ import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
 import { since } from "../js/fmt.js";
+import { wantSheet } from "../js/now-phone.js";
 
 /** @param {any} ctx */
 export default async function view(ctx) {
   const id = ctx.params.id;
+  // A phone (a push notification's tap lands here): Now, with this item's detail sheet open.
+  if (matchMedia("(max-width: 760px)").matches) {
+    wantSheet(id);
+    history.replaceState(history.state, "", "/now");
+    window.dispatchEvent(new Event("deck:navigate"));
+    return;
+  }
   const draw = () => {
     const n = needs.current().find(x => x.id === id);
     if (!n) return put(ctx.root, h("div", { class: "nd" }, top(null),

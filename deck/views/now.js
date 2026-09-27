@@ -22,9 +22,15 @@ import { firstPasskeyCard } from "../js/first-passkey.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
+import { phoneNow } from "../js/now-phone.js";
+import { sessionHref } from "../js/need-rows.js";
+
+/** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
+const phone = () => matchMedia("(max-width: 760px)").matches;
 
 /** @param {any} ctx */
 export default async function now(ctx) {
+  if (phone()) { phoneNow(ctx); return; }
   const date = h("div", { class: "lbl" }, today());
   const title = h("h1", { class: "h1 now-title" }, " ");
   const sub = h("p", { class: "muted" }, " ");
@@ -208,7 +214,12 @@ function needCard(n) {
       for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
-  put(buttons,
+  // A question has choices, drawn where it was asked: the session's card answers it.
+  const qHref = n.kind === "question" ? sessionHref(n) : null;
+  if (n.kind === "question") put(buttons,
+    qHref ? link(qHref, { class: "btn btn-primary" }, "Answer in the session") : null,
+    h("button", { type: "button", class: "btn btn-ghost", onclick: () => act({ label: "Decline", decision: "deny" }) }, "Decline"));
+  else put(buttons,
     n.options.map((o, i) => h("button", { type: "button",
       class: "btn" + (o.primary ? " btn-primary" : "") + (i === n.options.length - 1 && !o.primary ? " btn-ghost" : ""),
       onclick: () => act(o) }, o.label)),
@@ -217,6 +228,7 @@ function needCard(n) {
 
   const heading = n.kind === "ask"
     ? h("h3", null, `May ${n.agent || "this session"} run `, h("code", { class: "need-cmd" }, n.command || ""), "?")
+    : n.kind === "question" ? h("h3", null, n.questions?.[0]?.question || n.title)
     : h("h3", null, n.title);
   return h("div", { class: "need-row" },
     h("div", { class: "need-time mono" }, clock(n.at)),
