@@ -344,6 +344,34 @@ test("presence: a session covers vault reveal, approve and grant for the Deck an
   }
 });
 
+test("presence: one Touch ID covers the same login terminal's reveals and grants for 30 minutes; nothing else rides it", async t => {
+  const touchid = { available: async () => true, authenticate: async () => ({ ok: true }) };
+  const { p, tick, written } = setup(t, { platform: "darwin", touchid });
+  const def = { presence: { session: i => !i.reprompt } };
+  const at = { tool: "vault.reveal", input: { name: "bank" }, caller: "cli", def, terminal: "ttys003" };
+  assert.equal((await p.verify({ ...at, proof: null })).ok, false, "nothing proved yet");
+  // A terminal code proves its one call and opens no window.
+  const c = await p.challenge({ tool: "vault.reveal", input: { name: "bank" }, method: "tty", tty: "/dev/ttys003" });
+  assert.ok((await p.verify({ ...at, proof: { method: "tty", id: c.challenge, code: codeFrom(written.at(-1).text) } })).ok);
+  assert.equal((await p.verify({ ...at, proof: null })).ok, false);
+  assert.equal((await p.verify({ ...at, proof: { method: "touchid" } })).method, "touchid");
+  for (const tool of ["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant"]) {
+    assert.deepEqual(await p.verify({ ...at, tool, input: { name: "mail-token" }, proof: null }), { ok: true, method: "session", keyId: null }, tool);
+  }
+  // Another terminal, no terminal, a model or agent label, an item that asks every time, a tool
+  // off the list, or a tool that did not say yes: each still asks.
+  assert.equal((await p.verify({ ...at, terminal: "ttys004", proof: null })).ok, false, "another terminal");
+  assert.equal((await p.verify({ ...at, terminal: null, proof: null })).ok, false, "no terminal");
+  for (const caller of ["mcp", "cli agent:kit", "harness", "deck"]) assert.equal((await p.verify({ ...at, caller, proof: null })).ok, false, caller);
+  assert.equal((await p.verify({ ...at, input: { name: "card", reprompt: true }, proof: null })).ok, false, "reprompt");
+  assert.equal((await p.verify({ ...at, tool: "vault.delete", proof: null })).ok, false, "vault.delete");
+  assert.equal((await p.verify({ ...at, def: { presence: true }, proof: null })).ok, false, "a tool that did not say yes");
+  tick(29 * 60_000);
+  assert.ok((await p.verify({ ...at, proof: null })).ok, "within 30 minutes");
+  tick(61_000);
+  assert.equal((await p.verify({ ...at, proof: null })).ok, false, "30 minutes from the proof");
+});
+
 test("presence: under tests the real Touch ID is never offered or tried; the refusal says no_dialog", async t => {
   // touchid left undefined is the real helper, which shows a system dialog.
   const { p } = setup(t, { platform: "darwin", touchid: undefined });

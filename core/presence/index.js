@@ -78,16 +78,22 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 export const NARROWABLE = new Set(["gate.approve"]);
 
 /**
- * Who a session may prove a vault tool for: the surfaces the person is in front of, the Deck
- * (locally, or as the owner over the tailnet) and the Capsule. The CLI never rides one for the
- * vault: Claude's Bash is the CLI too, so every `vyre vault` reveal or grant asks afresh.
+ * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet)
+ * and the Capsule. The CLI rides its own window instead, bound to the login terminal vyred saw
+ * (`terminal`, see Presence.verify): the CLI is a first-class surface, and a secret on disk is
+ * something a model could read.
+ * TODO(e2e): the tailnet owner counts by node identity today, which a script on the paired Mac can
+ * borrow. When e2e's Deck web-session rule lands (docs/work/e2e.md, the HTTP listener audit), a
+ * tailnet caller must also carry that web session.
  */
-const VAULT_SESSION_CALLERS = new Set(["deck", "capsule"]);
 const vaultSessionCaller = caller => {
   const c = String(caller || "");
   if (/(?:^|[\s:])agent:/.test(c)) return false;
-  return c.startsWith("tailnet:") || VAULT_SESSION_CALLERS.has(c);
+  return c.startsWith("tailnet:") || c === "deck" || c === "capsule";
 };
+
+/** How long one proof covers a terminal's SESSIONABLE calls: as long as a session. */
+const TERMINAL_WINDOW = 30 * 60_000;
 
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (
@@ -241,6 +247,9 @@ export class Presence {
     this.nonces = new Map();
     this.dialogOpen = false;
     this.coolUntil = 0;
+    /** Login terminal -> when its window ends. In memory only: a restart asks again. */
+    /** @type {Map<string, number>} */
+    this.terminals = new Map();
   }
 
   async touchid() {
@@ -308,6 +317,7 @@ export class Presence {
     const now = this.now();
     for (const [id, c] of this.challenges) if (c.expires <= now) this.challenges.delete(id);
     for (const [n, until] of this.nonces) if (until <= now) this.nonces.delete(n);
+    for (const [t, until] of this.terminals) if (until <= now) this.terminals.delete(t);
   }
 
   /**
@@ -366,19 +376,32 @@ export class Presence {
   /**
    * Check a proof for one call. Returns { ok: true, method } or a refusal that lists the methods
    * the client could use instead.
-   * @param {{ tool: string, input: any, caller: string, proof: any, def?: any }} a
+   * @param {{ tool: string, input: any, caller: string, proof: any, def?: any, peer?: any, terminal?: string|null }} a terminal: the login terminal vyred saw the caller in
    */
-  async verify({ tool, input, caller, proof, def, peer = null }) {
+  async verify({ tool, input, caller, proof, def, peer = null, terminal = null }) {
     const method = proof && typeof proof.method === "string" ? proof.method : null;
     // A call with no proof is how a client learns what to offer, so only a failed proof is an event.
     const refuse = async message => {
       if (method) this.emit("presence.refused", { tool, method, caller });
       return { ok: /** @type {false} */ (false), code: "presence_required", message, methods: await this.methods() };
     };
-    if (!method) return refuse(`${tool} needs a person to prove they are here`);
     this.prune();
+    // The CLI's window: after one strong proof from a login terminal, the same terminal's reveals,
+    // grants and sends ask nothing for 30 minutes. vyred names the terminal from the kernel's word
+    // on who connected (core/daemon/index.js atTerminal), never from anything the caller sends.
+    const windowed = typeof terminal === "string" && terminal && SESSIONABLE.has(tool) && /^(cli|local)$/.test(String(caller))
+      && (def && def.presence && typeof def.presence.session === "function" ? (await Promise.resolve(def.presence.session(input)).catch(() => false)) === true : false);
+    if (windowed && (this.terminals.get(terminal) || 0) > this.now()) {
+      this.emit("presence.proved", { tool, method: "session", caller });
+      return { ok: /** @type {true} */ (true), method: "session", keyId: null };
+    }
+    if (!method) return refuse(`${tool} needs a person to prove they are here`);
     const hash = inputHash(input);
-    const proved = (keyId = null) => { this.emit("presence.proved", { tool, method, caller }); return { ok: /** @type {true} */ (true), method, keyId }; };
+    const proved = (keyId = null) => {
+      if (windowed && SESSION_FROM.has(method)) this.terminals.set(/** @type {string} */ (terminal), this.now() + TERMINAL_WINDOW);
+      this.emit("presence.proved", { tool, method, caller });
+      return { ok: /** @type {true} */ (true), method, keyId };
+    };
 
     if (method === "touchid") {
       if (this.platform !== "darwin") return refuse("Touch ID is only on a Mac");
@@ -460,7 +483,7 @@ export class Presence {
 
     if (method === "session") {
       if (!SESSIONABLE.has(tool)) return refuse(`${tool} needs its own proof, not a session`);
-      if (tool.startsWith("vault.") && !vaultSessionCaller(caller)) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule`);
+      if (tool.startsWith("vault.") && !vaultSessionCaller(caller)) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
       const ok = def && def.presence && typeof def.presence.session === "function" ? await Promise.resolve(def.presence.session(input)).catch(() => false) : false;
       if (ok !== true) return refuse("this item needs its own proof every time");
       const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_sessions WHERE id = ?").get(String(proof.id || "")));

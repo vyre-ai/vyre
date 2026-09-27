@@ -18,8 +18,8 @@ import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
 import { build } from "./build.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude } from "./peer.js";
+import { Presence, PERSON_ONLY, SESSIONABLE, parse as parsePresence } from "../presence/index.js";
+import { peerPid, insideClaude, controllingTty } from "./peer.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 
@@ -34,7 +34,8 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any }} [opts]
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
+ *   person?: (socket: import("node:net").Socket) => Promise<string|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -110,7 +111,8 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, socket: true }).catch(e => {
+  const person = opts.person || (sock => atTerminal(sock, registry, presence));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, socket: true, person }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
   server.on("upgrade", (req, socket, head) => upgrade(req, socket, head, socketCaller(req)));
@@ -191,7 +193,25 @@ async function fromClaude(socket, registry) {
   return inside ? "this comes from inside a Claude session; only the person answers and approves, on their own screen" : null;
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, socket = false }, /** @type {Policy} */ policy = {}) {
+/**
+ * The login terminal the person on the socket is typing in ("ttys003"), or null. Null from under a
+ * `claude` or a thread (fromClaude), and null without a login terminal `who` lists: a double-forked
+ * or setsid'd process has none, and `script`, tmux or expect ptys are not logins. The kernel says
+ * which process connected and which terminal it runs in, so no label or file can fake it. This is
+ * what lets one proof serve the CLI for 30 minutes, as a session serves the Deck (the no-nag rule;
+ * the CLI is a first-class surface).
+ * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
+ * @returns {Promise<string|null>}
+ */
+async function atTerminal(socket, registry, presence) {
+  if (await fromClaude(socket, registry)) return null;
+  const pid = await peerPid(socket);
+  const tty = pid ? controllingTty(pid) : null;
+  if (!tty || !presence || typeof presence.who !== "function") return null;
+  return (await presence.who()).includes(tty) ? tty : null;
+}
+
+async function route(req, res, { registry, events, cfg, started, streams, root, socket = false, person = null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -273,7 +293,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       const why = await fromClaude(req.socket, registry);
       if (why) return send(res, 403, { error: { code: "denied", message: why } });
     }
-    const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]),
+    const proof = parsePresence(req.headers["x-vyre-presence"]);
+    // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
+    const terminal = socket && person && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await person(req.socket) : null;
+    const result = await registry.call(name, await body(req), caller, { ...via, proof, ...(terminal ? { terminal } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1" });
     // A session the proof opened goes back in a header, in the form x-vyre-presence takes.
     if (result.session) {

@@ -14,17 +14,19 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { Presence } from "../core/presence/index.js";
 import { callAsPerson } from "../core/cli/presence.js";
+import { call } from "../core/daemon/client.js";
 import { tempHome } from "./helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
 
 /** A real vyred with the real verifier: Touch ID off, and codes written to `screen`. */
-async function realVyred(t) {
+async function realVyred(t, { touchid = false, terminal = null } = {}) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [], vault: { keystore: "file" } }));
   const screen = [];
-  const d = await start({ root, log: () => {}, presence: deps => new Presence({ ...deps,
-    touchid: { available: async () => false, authenticate: async () => ({ ok: false, reason: "unavailable" }) },
+  // person: which login terminal vyred sees the caller in; the real check reads the kernel (test/peer.test.js).
+  const d = await start({ root, log: () => {}, person: async () => terminal, presence: deps => new Presence({ ...deps, ...(touchid ? { platform: "darwin" } : {}),
+    touchid: { available: async () => touchid, authenticate: async () => (touchid ? { ok: true } : { ok: false, reason: "unavailable" }) },
     who: async () => ["ttys007"], statTty: () => ({ uid: process.getuid?.() ?? 0, isCharacterDevice: () => true }),
     writeTty: (file, text) => screen.push({ file, text }) }) });
   t.after(() => d.stop());
@@ -77,4 +79,27 @@ test("presence cli: with the person's proof from their terminal, vault.put and v
   assert.equal(screen.at(-1).file, "/dev/ttys007", "the code went to the person's login terminal");
   const grant = await callAsPerson("vault.grant", { name: "mail-token", module: "gate" }, { root, io, tty: true });
   assert.ok(grant.data, JSON.stringify(grant));
+});
+
+test("presence cli: one Touch ID at a login terminal, then that terminal's vault reads ask nothing; MCP and agents are refused", async t => {
+  const { root, screen } = await realVyred(t, { touchid: true, terminal: "ttys007" });
+  const io = terminal(screen);
+  assert.ok((await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io, tty: true })).data);
+  const first = await callAsPerson("vault.reveal", { name: "mail-token" }, { root, io });
+  assert.ok(first.data, JSON.stringify(first));
+  const again = await vyre(["vault", "get", "mail-token", "--reveal"], { VYRE_HOME: root });
+  assert.equal(again.code, 0, again.out);
+  assert.match(again.out, /fixture-value/);
+  assert.doesNotMatch(again.out, /person at a terminal|Type the code/);
+  for (const caller of ["mcp", "cli agent:kit"]) assert.ok((await call("vault.reveal", { name: "mail-token" }, { root, caller })).error, caller);
+});
+
+test("presence cli: a caller vyred sees in no login terminal (a model's shell) asks every time", async t => {
+  const { root, screen } = await realVyred(t, { touchid: true, terminal: null });
+  const io = terminal(screen);
+  assert.ok((await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io, tty: true })).data);
+  assert.ok((await callAsPerson("vault.reveal", { name: "mail-token" }, { root, io })).data);
+  const again = await vyre(["vault", "get", "mail-token", "--reveal"], { VYRE_HOME: root });
+  assert.equal(again.code, 3, again.out);
+  assert.doesNotMatch(again.out, /fixture-value/);
 });
