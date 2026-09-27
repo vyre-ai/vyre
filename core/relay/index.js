@@ -382,8 +382,10 @@ export default {
           linking.set(id, { hash: sha(code), exp: now() + LINK_TTL });
           return { path: "relay", link: code };
         }
+        if (!c.startsWith("tailnet:")) throw fail("denied", "only a paired device, over the relay or its own tailnet node, reports a path");
+        // Keyed on the node's stable id only: a node's name can change. A fake tailnet may give none.
         const node = meta.peer && meta.peer.stableId;
-        if (!node || !c.startsWith("tailnet:")) throw fail("denied", "only a paired device, over the relay or its own tailnet node, reports a path");
+        if (!node) throw fail("no_node", "this device's tailnet node has no stable id");
         if (input.id && input.code) {
           const l = linking.get(String(input.id));
           if (!l || l.exp < now() || !crypto.timingSafeEqual(sha(input.code), l.hash)) throw fail("denied", "that link code has expired or was already used");
