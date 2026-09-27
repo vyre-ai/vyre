@@ -239,7 +239,13 @@ then Taildrive on work/tailnet.
 
 ## Next
 
-- Rich Mac transcripts: a Mac reply keeps its rich form after the re-read (chat's ask).
+- Rich Mac transcripts: done on work/federation-transcript (off work/chat, which has
+  recall.transcript; main does not yet). Box side: `recall.transcript` federates like
+  recall.thread. Chat's side still to do in deck/chat/session.js: a Mac session boots from
+  `recall.transcript { session, source: "mac" }` instead of legacyBoot. Tests: federation-reads
+  8/8, recall transcript 3/3, recall module 5/5, link 10/10, link-federation 7/7,
+  federation-send 8/8, hygiene 1/1. Limit: a page travels in one link.reply, and vyred takes
+  bodies up to 5 MB, so a page of 400 blocks with large tool output could fail as `timeout`.
 - projects.list does not count a picked Mac session in a project's thread count.
 - Chat: a composer for Mac sessions (the read-only rule in deck/js/machine.js lifts for
   threads.send only; lease, answer and release stay off).

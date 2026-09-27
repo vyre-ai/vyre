@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The box reads a Mac session as blocks
+
+- `recall.transcript` on the box, for the person, reads a session the box does not have from the
+  paired Mac (or any session with `source: "mac"`), labelled `source: "mac"` and `machine`, so a
+  Mac reply keeps its rich view after the re-read. Nothing is stored on the box. An id no machine
+  has is still `not_found`; an away Mac says so. `recall.transcript` joins the link's read
+  allowlist (core/link/allow.js), and agents and MCP still never get it. Test:
+  test/federation-reads.test.js.
+
 #### Chat starts sessions, browses the box's folders, opens a terminal, and asks real questions (ADR 0024)
 
 - Chat has New session (header, rail, empty state, key `n`): pick a project, a folder on the box or
@@ -31,6 +40,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   runs `git diff --numstat` over what is ahead of `@{push}` (else the upstream, else origin's
   default branch) with no shell, no network and a 3 s budget. Binary files are counted as files
   with `binary: true`, and a push keeps 200 rows (`truncated: true`). ask.raised stays small.
+  offer Always for this (decision `always`, when Claude Code suggests it).
+
 #### Find shows which sessions are the Mac's
 
 - The phone's Find page puts the machine chip beside a Mac session's title, in search results,
@@ -89,6 +100,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   still opens no stream (`core/onboard/loopback.js`). Tests: owner allowed, guest and agent node
   refused (`core/names/service.test.js`), wrong Host and no session on loopback
   (`test/onboard.test.js`).
+
 
 #### The site has no Capsule zip, and a clean checkout stamps clean
 
