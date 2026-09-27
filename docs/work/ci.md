@@ -75,21 +75,23 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing (RESUME 5, 2026-09-27, later)
-- DEPLOY GATE 1 PASS on main 53cd1326 (testbox, scratchpad gate1.sh = box-image.yml's steps from
-  npm pack; own tag vyre-box:gate, own container, default bridge; the compose boot is NOT run on
-  testbox because compose.yml binds 127.0.0.1:7300 and the live box's named networks). It first
-  FAILED on 65cbc02a: loop.sh never restarted a SIGKILLed vyred (dash answers 137 forever on the
-  re-wait; loop spun at 100% CPU). Fixed on work/ci-loop 53cd1326, now main. GitHub box-image on
-  main runs as a second check.
-- Under plain docker run the spawner runs as uid vyre, not root (told box-deploy to check under compose).
-- box-image detect fix: work/ci 6b16be62 (pack-list based). For batch 4.
-- Idle RSS: NOT a b4 merge. GitHub Node 24: baseline c8fb9aae 181 MB; b4 merges bimodal ~185 /
-  ~255 MB with notes-only merges swinging; flat from startup. "85 MB" was never a GitHub number.
-  Diag: work/ci-perfdiag dd8231f4 logs vyred's heap breakdown + host; rss-bisect branch runs it
-  Node 22/24 x3. Next: recommend gating after GC or on heapUsed, or fix a real live-heap cost.
-- App proof: work/mobile tracks a node_modules symlink (mobile told). Guard 3c26ea2d.
-- ci-boundaries: nothing left (fixed at merge).
+## Doing (RESUME 5, after the deploy; box runs 53cd1326)
+- Gate 1 passed on 53cd1326 (testbox + GitHub); box deployed on it. The loop.sh SIGKILL fix is on main.
+- Recalibrated idle gate on work/ci faae7da7: heap after a forced GC (scripts/lib/gc-hook.mjs,
+  SIGUSR2, --expose-gc) < 50 MB on every Node; settled RSS < 150 and startup peak < 200 gate only
+  on the Node major in box/Dockerfile (22), informational on 24. Proof run 36326469056 GREEN:
+  Node 22 heap 20.3 / settled 97.4 / peak 159.1; Node 24 heap 21.2 (RSS 256 informational).
+- main node red on Node 24: tmp-guard, test/onboard-page.test.js leaves its temp home (tempHome
+  cleanup runs before vyred stop and Chrome exit). Fix on work/ci df6c8e82 (last after-hook
+  removes the home). Waiting on its GitHub run (testbox has no Chrome).
+- sessions-sdk driver job red on anything built on main: sessions dfeda64b's loadSdk demands the
+  bundled binary on role box; the CI job installs JS only. Sent to sessions with fix options
+  (a: tests pass sessions.claude "installed"; b: loadSdk checks JS only). Waiting on sessions.
+- batch 4b (work/integrator-b4b 22ae279d) red: not on 53cd1326 (loop.sh), the tmp-guard leak above,
+  and capsule-mac CapsuleModelTests.swift:176 "@ name then words" (sent to capsule-pro).
+- work/mobile still tracks a node_modules symlink (mobile told); guard in hygiene test.
+- Throwaway branches deleted (ci-sdkver, ci-loop, ci-perfdiag, ci-rss-bisect). testbox keeps image
+  vyre-box:gate and ~/vyre-ci/{ci,ci-gate,sdk-js,gate1.sh} (gate1.sh source in my scratchpad).
 
 ## Next
 - Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,
