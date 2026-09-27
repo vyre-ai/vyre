@@ -221,3 +221,18 @@ test("need-rows: Later hides a question on this device for an hour", () => {
   assert.equal(broken.has("q1"), false);
   assert.equal(snoozes(null).has("x"), false);
 });
+
+test("need-rows: a Mac session's ask has no swipe and no approve, only Open", async () => {
+  const { elsewhere } = await import("./need-rows.js");
+  const mac = { kind: "ask", at: NOW, agent: "kit", tool: "Bash", command: "npm test", source: "mac", machine: "alex-mac" };
+  assert.equal(elsewhere(mac), "alex-mac");
+  assert.equal(elsewhere({ ...mac, machine: null }), "your Mac");
+  assert.equal(elsewhere({ ...mac, kind: "question" }), "alex-mac");
+  assert.equal(elsewhere({ ...mac, source: null }), null);
+  assert.equal(elsewhere({ ...mac, kind: "draft" }), null, "a held draft is the box's");
+  assert.deepEqual(swipeActions(mac), []);
+  assert.equal(swipeCommit(mac, "right"), "sheet");
+  assert.equal(swipeCommit(mac, "left"), "sheet");
+  assert.match(ariaLabel(mac, NOW), /Answer it on alex-mac\. Actions: Open\.$/);
+  assert.doesNotMatch(ariaLabel(mac, NOW), /Approve/);
+});

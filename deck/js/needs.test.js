@@ -80,3 +80,25 @@ test("needs: threads.answer input, without a project on offer and for a declined
   assert.deepEqual(needs.answerInput({ id: "a", kind: "ask" }, { decision: "deny" }), { ask: "a", decision: "deny", surface: "deck" });
   assert.deepEqual(needs.answerInput({ id: "q", kind: "question" }, { decision: "deny" }), { ask: "q", decision: "deny", surface: "deck" });
 });
+
+test("needs: a Mac session's ask carries no options and is never answered from here", async () => {
+  const saved = { asks: answers["threads.asks"], list: answers["threads.list"] };
+  answers["threads.asks"] = [
+    { id: "m1", kind: "permission", thread: "tm", tool: "Bash", summary: "npm test", at: T + 5, agent: "kit" },
+    { id: "m2", kind: "question", thread: "tb", tool: "AskUserQuestion", summary: "Which?", at: T + 6, agent: "juno", source: "mac", machine: "alex-mac",
+      questions: [{ question: "Which?", options: [{ label: "Harlow Legal" }] }] },
+  ];
+  answers["threads.list"] = [{ id: "tm", name: "tests", agent: "kit", source: "mac", machine: "alex-mac" }, { id: "tb", name: "box", agent: "juno" }];
+  try {
+    const { items } = await needs.load();
+    const m1 = items.find(n => n.id === "m1"), m2 = items.find(n => n.id === "m2");
+    assert.equal(m1?.source, "mac", "the thread's source reaches the ask");
+    assert.equal(m1?.machine, "alex-mac");
+    assert.deepEqual(m1?.options, []);
+    assert.equal(m2?.source, "mac", "the ask's own source counts too");
+    assert.deepEqual(m2?.options, []);
+    calls.length = 0;
+    await assert.rejects(needs.answer(/** @type {any} */ (m1), { label: "Approve", decision: "allow" }), /Answer it on alex-mac/);
+    assert.equal(calls.length, 0, "nothing sent");
+  } finally { answers["threads.asks"] = saved.asks; answers["threads.list"] = saved.list; }
+});

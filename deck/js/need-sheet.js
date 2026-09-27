@@ -20,7 +20,7 @@ import { form, gateFields } from "./editable.js";
 import { pairCard } from "./pair.js";
 import { initial, clock } from "./fmt.js";
 import { coveredUntil } from "./api.js";
-import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questionAnswers, pushTarget } from "./need-rows.js";
+import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questionAnswers, pushTarget, elsewhere } from "./need-rows.js";
 
 const NS = "http://www.w3.org/2000/svg";
 /**
@@ -86,6 +86,12 @@ export function openNeedSheet(n, o) {
       else if (n.kind === "question") questionBody(n, o, ctl);
       else if (n.kind === "pair") pairBody(n, o, ctl);
       else askBody(n, o, ctl, offs);
+      // A Mac session's ask or question: shown, never answered from here.
+      const mac = elsewhere(n);
+      if (mac) {
+        for (const b of body.querySelectorAll("button, input")) /** @type {HTMLButtonElement} */ (b).disabled = true;
+        put(actions, h("p", { class: "nsh-note", role: "status" }, `Answer it on ${mac}`));
+      }
       // Answered from another screen while this is open: say so, and nothing here can act twice.
       if (n.kind !== "pair") offs.push(needs.watch(list => {
         if (list.some(x => x.id === n.id) || busy.has(n.id)) return;

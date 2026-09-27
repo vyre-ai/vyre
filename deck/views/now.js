@@ -23,7 +23,7 @@ import { things, count, clock, today, since, when, startOfToday, base, initial, 
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 import { phoneNow } from "../js/now-phone.js";
-import { sessionHref } from "../js/need-rows.js";
+import { sessionHref, elsewhere } from "../js/need-rows.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
 const phone = () => matchMedia("(max-width: 760px)").matches;
@@ -216,7 +216,11 @@ function needCard(n) {
   };
   // A question has choices, drawn where it was asked: the session's card answers it.
   const qHref = n.kind === "question" ? sessionHref(n) : null;
-  if (n.kind === "question") put(buttons,
+  // A Mac session's ask or question is answered on that Mac: no buttons here.
+  const mac = elsewhere(n);
+  if (mac) put(buttons, h("span", { class: "small muted" }, `Answer it on ${mac}`), h("div", { style: { flexGrow: "1" } }),
+    threadHref ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);
+  else if (n.kind === "question") put(buttons,
     qHref ? link(qHref, { class: "btn btn-primary" }, "Answer in the session") : null,
     h("button", { type: "button", class: "btn btn-ghost", onclick: () => act({ label: "Decline", decision: "deny" }) }, "Decline"));
   else put(buttons,

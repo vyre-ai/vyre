@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings shows each VyreDrive share's own access and secrets; a Mac session's ask has no Approve
+
+- Settings > Network > VyreDrive shows each share's access (a share that does not say takes the
+  box's old global `access`) and, on a box with `files.drive.access`, a per-share switch between
+  read only and read and write. The switch is the owner's own act, sent without proof; when the
+  answer's `mount.change` is true the row shows `mount.step` as a command and "Remount on your
+  Mac". A box without the tool never shows the switch. Words live in deck/js/drive-rows.js.
+- `unsafe` from files.drive.audit and the drive.exposed event becomes one violet line per share:
+  "projects has secrets inside: .env, .git/config", or why it could not be checked.
+- Every printed `vyre call` hint for a human-only tool carries `--tty`, including
+  `files.drive.share`. The guest example grants `threads.list`, not Glass.
+- An ask or question whose thread (or the ask itself) says `source: "mac"` carries no options in
+  deck/js/needs.js, and `needs.answer` refuses it. Now, the Needs page, the phone rows (no swipe,
+  only Open), the detail sheet and the project thread say "Answer it on <mac>" in place of the
+  buttons.
+
 #### An installed phone runs a new release from its next launch, not the one after
 
 - deck/sw.js carries `const BUILD`, which vyred fills with the build it runs as it serves the

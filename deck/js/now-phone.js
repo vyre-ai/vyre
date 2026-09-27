@@ -254,7 +254,9 @@ export function phoneNow(ctx) {
 
   function row(/** @type {any} */ n) {
     const [rightL, leftL] = swipeActions(n);
-    const el = h("div", { class: "np-row", "data-swipe": "", "data-kind": n.kind });
+    // A Mac session's ask (no swipe actions): a plain row that opens its sheet, no approve anywhere.
+    const still = !rightL;
+    const el = h("div", { class: "np-row", ...(still ? {} : { "data-swipe": "" }), "data-kind": n.kind });
     const revR = h("button", { type: "button", class: "np-rev np-rev-r", tabindex: "-1", "aria-hidden": "true" },
       h("span", { class: "np-rev-in" }, glyph(n.kind === "ask" ? "check" : n.kind === "question" ? "chat" : n.kind === "draft" ? "send" : "check", 24), h("span", null, rightL)));
     const revL = h("button", { type: "button", class: "np-rev np-rev-l", tabindex: "-1", "aria-hidden": "true" },
@@ -268,7 +270,7 @@ export function phoneNow(ctx) {
     const face = h("div", { class: "np-face" }, main);
     const kb = (/** @type {string} */ label, /** @type {() => void} */ fn) => h("button", { type: "button", class: "np-kb-b", onclick: fn }, label);
     const kbd = h("div", { class: "np-kb" });
-    el.append(revR, revL, face, kbd);
+    el.append(...(still ? [] : [revR, revL]), face, kbd);
 
     let cur = n;
     const update = (/** @type {any} */ x) => {
@@ -284,7 +286,7 @@ export function phoneNow(ctx) {
       put(err, why ? [h("span", { class: "np-failed" }, "failed"), " ", why] : null);
       main.setAttribute("aria-label", ariaLabel(x) + (why ? ` Failed: ${why}` : ""));
       const title = titleOf(x);
-      put(kbd, kb(rightL, () => commit(cur, "right")), kb(leftL, () => commit(cur, "left")), kb("Open", () => sheetFor(cur)));
+      put(kbd, still ? null : [kb(rightL, () => commit(cur, "right")), kb(leftL, () => commit(cur, "left"))], kb("Open", () => sheetFor(cur)));
       for (const b of kbd.children) b.setAttribute("aria-label", `${b.textContent}: ${title}`);
     };
     update(n);
@@ -305,7 +307,7 @@ export function phoneNow(ctx) {
       el.classList.toggle("np-show-l", x < 0);
     };
     face.addEventListener("pointerdown", e => {
-      if (e.button !== 0 || pid !== -1) return;
+      if (still || e.button !== 0 || pid !== -1) return;
       pid = e.pointerId; x0 = lastX = e.clientX; y0 = e.clientY; lastT = e.timeStamp; axis = null; v = 0; dx = rest; moved = false;
     });
     face.addEventListener("pointermove", e => {

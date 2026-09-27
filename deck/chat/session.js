@@ -675,7 +675,8 @@ export function mountSession(container, opts) {
   /** A question or a permission ask, drawn once and filled in as more of it is read. */
   function upsertAsk(a) {
     const key = "ask:" + a.id;
-    const full = { ...a, agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : {}) };
+    // A Mac session's ask (its thread, or the ask itself, says source "mac"): no answer controls here.
+    const full = { ...a, agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : isMac(a) ? { elsewhere: a.machine || macName() } : {}) };
     let el = rows.get(key);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return el; }
     el = a.kind === "question" ? questionCard(full) : askCard(full);

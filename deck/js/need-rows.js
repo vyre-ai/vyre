@@ -6,6 +6,7 @@
 
 /** @typedef {{ kind: string, at: number, id?: string, project?: string|null, rule?: string, destination?: string|null, agent?: string|null, projectName?: string|null, threadName?: string|null, title?: string,
  *   command?: string, tool?: string, detail?: any, questions?: any[], why?: string, thread?: string|null, anchor?: any,
+ *   source?: string|null, machine?: string|null,
  *   gate?: { kind?: string, via?: string, to?: string[], toName?: string, summary?: string, draft?: Record<string, any>|null } | null,
  *   pair?: { name: string, node?: string|null, login?: string, expires: number } }} Item */
 
@@ -123,8 +124,20 @@ export function agoLong(/** @type {number} */ t, now = Date.now()) {
   return say(Math.floor(h / 24), "day");
 }
 
-/** The two swipe actions of a row, by kind: [right, left]. */
+/**
+ * The Mac an ask or question waits on, when its session runs on the paired Mac (source "mac"):
+ * answers are not forwarded there, so no surface here approves, denies or answers it. Null for
+ * every other item.
+ * @param {Item} n @returns {string|null}
+ */
+export function elsewhere(n) {
+  if (!n || n.source !== "mac" || (n.kind !== "ask" && n.kind !== "question")) return null;
+  return n.machine ? String(n.machine) : "your Mac";
+}
+
+/** The two swipe actions of a row, by kind: [right, left]. A Mac's ask has none: [] (it only opens). */
 export function swipeActions(/** @type {Item} */ n) {
+  if (elsewhere(n)) return [];
   if (n.kind === "draft") return isSend(n) ? ["Send", "Discard"] : ["Approve", "Discard"];
   if (n.kind === "question") return ["Answer", "Later"];
   if (n.kind === "pair") return ["Pair", "Deny"];
@@ -143,6 +156,7 @@ const isSend = (/** @type {Item} */ n) => !n.gate?.kind || n.gate.kind === "send
  * @returns {"approve"|"deny"|"discard"|"later"|"sheet"}
  */
 export function swipeCommit(n, side) {
+  if (elsewhere(n)) return "sheet";
   if (side === "right") return n.kind === "ask" ? "approve" : "sheet";
   if (n.kind === "draft") return "discard";
   if (n.kind === "question") return "later";
@@ -281,7 +295,8 @@ export function ariaLabel(n, now = Date.now()) {
     : `wants to ${t.charAt(0).toLowerCase()}${t.slice(1)}`;
   const line = secondLine(n).text;
   const time = n.kind === "pair" ? null : agoLong(n.at, now);
-  return `${[who, where, want, n.kind === "pair" ? null : line, time].filter(Boolean).join(", ")}. Actions: ${a}, ${b}, Open.`;
+  const acts = a && b ? `Actions: ${a}, ${b}, Open.` : `Answer it on ${elsewhere(n)}. Actions: Open.`;
+  return `${[who, where, want, n.kind === "pair" ? null : line, time].filter(Boolean).join(", ")}. ${acts}`;
 }
 
 /**

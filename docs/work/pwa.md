@@ -139,7 +139,9 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   card copy (lead); deck/sw.js ignores /app/ (for the one app's own worker).
 - QUEUE (from teammates, 2026-09-27; testbox: targeted runs only, uptime < 8, no worlds or
   Chrome without asking the lead):
-  1. tailnet's UI findings (work/tailnet 23c7cda, deck/views/settings.js): per-share access +
+  1. DONE (see the commit "fix(deck): VyreDrive per-share access..."). Skipped the "Hosted app"
+     row: no tool reads config network.origins (system.info does not carry it); it needs a
+     field on a read tool from tailnet or names. Was: tailnet's UI findings (work/tailnet 23c7cda, deck/views/settings.js): per-share access +
      ro/rw switch (files.drive.access {name, mode} -> mount.step cmd), `unsafe` secrets warning
      per share, `--tty` on every HUMAN_ONLY command hint, no Glass for guests (GUEST_SAFE =
      threads.list), optional Network row "Hosted app" (network.origins), no Approve on an ask
@@ -177,6 +179,8 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`).
 
 ## Needs from others
+- tailnet or names: a read of config `network.origins` (a field on system.info or names.status)
+  for the Settings > Network "Hosted app" row.
 - polish-cli answered: no --step; Settings says `vyre up` (and `vyre index` for history).
 - box: review the additive `onboard.status` detail.devices.peers and parsePeers (core/onboard).
   Also onboard.finish sends auth {vault: "anthropic-api-key"} for an API key, which agents reads as
@@ -190,6 +194,8 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- deck/js/needs.js items may carry `source: "mac"`, `machine` (from threads.asks or threads.list);
+  such an ask or question has `options: []` and needs.answer refuses it.
 - memory.relevant: tailnet:<login> callers may read without a room (was refused).
 - system.info: adds owner { name } (onboard.person).
 - GET /theme.css served by vyred from config theme.colors.

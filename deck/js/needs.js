@@ -22,7 +22,7 @@ import { attempt, call } from "./api.js";
  *   thread: string|null, threadName: string|null, title: string, why: string, command?: string,
  *   gate?: Held, rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[],
  *   tool?: string, detail?: any, questions?: any[], destination?: string|null, anchor?: any, always_project?: string|null,
- *   presence?: { required?: boolean, covered?: boolean } | null }} Need
+ *   presence?: { required?: boolean, covered?: boolean } | null, source?: string|null, machine?: string|null }} Need
  */
 
 /** @type {Need[]} */
@@ -67,18 +67,23 @@ export async function load() {
   for (const id of got.keys()) if (!(held.data || []).some(d => d.id === id)) got.delete(id);
   for (const a of asks.data || []) {
     const n = names({ ...a, threadName: a.threadName || a.thread_name });
+    // A session on the paired Mac (the ask, or its thread in threads.list, says source "mac"):
+    // answers are not forwarded there, so the item carries no options and says where to answer.
+    const t = a.thread ? thread.get(a.thread) : null;
+    const mac = a.source === "mac" || t?.source === "mac";
     const base = { id: a.id, at: a.at, ...n, thread: a.thread || null, anchor: a.anchor || null, tool: a.tool || "", presence: a.presence || null,
-      why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "" };
+      why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "",
+      ...(mac ? { source: "mac", machine: a.machine || t?.machine || null } : {}) };
     if (a.kind === "question") {
       out.push({ ...base, kind: "question", title: `${n.agent || "A session"} has a question`, questions: Array.isArray(a.questions) ? a.questions : [],
-        command: a.summary || "", options: [{ label: "Answer", decision: "allow", primary: true }, { label: "Decline", decision: "deny" }] });
+        command: a.summary || "", options: mac ? [] : [{ label: "Answer", decision: "allow", primary: true }, { label: "Decline", decision: "deny" }] });
       continue;
     }
     out.push({ ...base, kind: "ask",
       title: a.title || `May ${n.agent || "this session"} run ${a.tool}?`, command: a.command || a.summary || a.tool,
       detail: a.detail || null, destination: a.destination ?? null, always_project: a.always_project || null,
       details: a.details || (a.destination ? [{ label: "Where", value: a.destination }] : []),
-      options: [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }] });
+      options: mac ? [] : [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }] });
   }
   out.sort((x, y) => x.at - y.at);
   cache = out;
@@ -99,6 +104,8 @@ export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn)
  * @param {Need} n @param {Answer} opt @param {Record<string, any> | null} [edited]
  */
 export async function answer(n, opt, edited) {
+  // A Mac session's ask is answered on that Mac; nothing here sends one.
+  if (n.source === "mac" && n.kind !== "draft") throw new Error(`Answer it on ${n.machine || "your Mac"}.`);
   if (n.kind === "draft") {
     // Sending goes outside as the person, so it proves presence; discarding is the owner's own act.
     if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: "asked" });

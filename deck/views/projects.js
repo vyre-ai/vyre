@@ -22,6 +22,7 @@ import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { when, clock, since, base, initial, initials, plural } from "../js/fmt.js";
 import { isMac, machineChip, readOnlyNote } from "../js/machine.js";
+import { elsewhere } from "../js/need-rows.js";
 import { createProject, createProjectInline, startThread, startThreadInline, indexHistoryInline } from "../js/empty-actions.js";
 
 const enc = encodeURIComponent;
@@ -540,7 +541,7 @@ async function threadPane(ctx, id, o) {
     if (!events.length) stream.append(h("div", { class: "empty th-wait" }, thread?.state === "running" ? "Starting. What the thread says shows here as it runs." : "Nothing in this thread yet."));
     for (const ev of events) addEvent(ev, false);
     // An open question the list knows about but the events did not carry.
-    for (const n of needs.current()) if (n.kind === "ask" && n.thread === id && !asks.has(n.id)) addEvent({ type: "ask.raised", at: n.at, ask: { id: n.id, tool: n.command ? "Bash" : "", command: n.command, rule: n.rule, why: n.why, options: n.options } }, false);
+    for (const n of needs.current()) if (n.kind === "ask" && n.thread === id && !asks.has(n.id)) addEvent({ type: "ask.raised", at: n.at, ask: { id: n.id, tool: n.command ? "Bash" : "", command: n.command, rule: n.rule, why: n.why, options: n.options, elsewhere: elsewhere(n) } }, false);
   }
   requestAnimationFrame(scrollDown);
 
@@ -622,7 +623,9 @@ function recalledBlock(ev, project) {
 function normAsk(a, at) {
   return {
     id: a.id || a.ask, at: a.at || at, tool: a.tool || "", command: a.command || a.summary || "", rule: a.rule || "", why: a.why || "",
-    options: a.options?.length ? a.options : [{ label: "Allow once", decision: "allow" }, { label: "Deny", decision: "deny" }],
+    // A Mac session's ask is answered on that Mac: no options, and the card says where.
+    elsewhere: a.elsewhere || null,
+    options: a.elsewhere ? [] : a.options?.length ? a.options : [{ label: "Allow once", decision: "allow" }, { label: "Deny", decision: "deny" }],
   };
 }
 
@@ -643,7 +646,7 @@ function heldBlock(a, threadId) {
       for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
-  put(buttons, a.options.map((opt, i) => h("button", { type: "button",
+  put(buttons, a.elsewhere ? h("span", { class: "small muted" }, `Answer it on ${a.elsewhere}`) : a.options.map((opt, i) => h("button", { type: "button",
     class: "btn" + (i === 0 ? " btn-primary" : i === a.options.length - 1 ? " btn-ghost" : ""), onclick: () => act(opt) }, opt.label)));
   const el = h("div", { class: "held th-held", role: "group", "aria-label": "Held tool call", "data-ask": a.id, "data-thread": threadId },
     h("div", { class: "th-held-top" }, h("span", { class: "lbl beacon th-rl" }, h("span", { class: "dot beacon", "aria-hidden": "true" }), "Held before it ran"),
