@@ -226,3 +226,33 @@ test("relay: the web app's loader asks the box which build to load, and the owne
   const pinned = (await web.call("relay.web.release")).data;
   assert.deepEqual([pinned.release, pinned.pinned], ["0.4.2", true]);
 });
+
+test("relay: a device reports its path; the box measures the relay round trip and learns its tailnet node", async t => {
+  const { d } = await world(t);
+  const moves = [];
+  d.events.on("device.moved", e => moves.push(e.payload));
+  const p = await phone(await firstPairing(d));
+  const id = p.reply.device;
+
+  const r = await p.call("relay.devices.path", { path: "relay", rtt: 42 });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.match(r.data.link, /^[A-Za-z0-9_-]{22}$/);
+  let me = (await p.call("relay.devices.list")).data.devices[0];
+  assert.equal(me.path, "relay");
+  assert.equal(typeof me.rtt, "number", "the box pinged the device over the channel");
+
+  // The same phone over the tailnet: its node, from whois, is linked by the code, once.
+  const node = { stableId: "nABC123", node: "alex-iphone", login: "alex@example.com", tags: [], caps: {} };
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", rtt: 18 }, "tailnet:alex@example.com", { peer: node })).error.code, "bad_input", "an unlinked node is nobody");
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: "wrong" }, "tailnet:alex@example.com", { peer: node })).error.code, "denied");
+  const linked = await d.registry.call("relay.devices.path", { path: "direct", rtt: 18, id, code: r.data.link }, "tailnet:alex@example.com", { peer: node });
+  assert.deepEqual(linked.data, { path: "direct", device: id });
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: r.data.link }, "tailnet:alex@example.com", { peer: node })).error.code, "denied", "the code works once");
+
+  p.ws.close();
+  await new Promise(res => setTimeout(res, 50));
+  me = (await d.registry.call("relay.devices.list", {}, "cli")).data.devices[0];
+  assert.deepEqual([me.path, me.rtt, me.node, me.online], ["direct", 18, "alex-iphone", true]);
+  assert.deepEqual(moves.map(m => m.path), ["relay", "direct"]);
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct" }, "tailnet:alex@example.com", { peer: { ...node, stableId: "nOTHER" } })).error.code, "bad_input", "another node is not this device");
+});
