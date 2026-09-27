@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A Mac session's ask is answered from Needs
+
+- Now, the phone's Needs you rows and sheet, /needs/<ask> and a thread's held card answer an ask
+  or question from a session on the paired Mac like a box one: threads.answer carries `machine`
+  (straight to the box, not the outbox, with the same "asked" presence). The row's third line
+  says "on <mac>". mac_offline and timeout show the box's words and the item stays;
+  no_such_tool, unsupported, bad_input naming machine, or not_found on an item without node
+  mean the box cannot forward, and every Mac item says "Answer it on <mac>" for the rest of the
+  page (needs.js macAnswers, event deck:mac-answers). A push to an ask that has gone says "This
+  ask was answered or has gone."; one raised this session opens from its ask.raised event.
+
 #### The sign-in sheet says what carries on after it
 
 - When the box asks for a person session in the middle of an action, the sheet's second line

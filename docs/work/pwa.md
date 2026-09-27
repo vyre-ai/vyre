@@ -267,8 +267,14 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   is 404 `no_app`; /app/_expo/static/* is immutable, the rest no-cache; a missing /app/_expo/ file
   is a 404, not the shell. The build must write dist/precache.json =
   {"build": "<id>", "files": ["/app/index.html", ...every hashed asset]}.
-- deck/js/needs.js items may carry `source: "mac"`, `machine` (from threads.asks or threads.list);
-  such an ask or question has `options: []` and needs.answer refuses it.
+- deck/js/needs.js: a Mac session's ask or question (`source: "mac"`, `machine`, `node`, from
+  threads.asks or threads.list) has the usual options and is answered with threads.answer
+  `{ ..., machine }` (federation v2). Pre-v2 fallback: a refusal no_such_tool, unsupported,
+  bad_input naming machine, or not_found on an item without node sets `macAnswers()` false for
+  the page (need-rows.js holds it; window event "deck:mac-answers") and answer rejects with
+  "Answer it on <mac>." (`elsewhere` set); need-rows.js elsewhere(n) is then the machine, else
+  null. mac_offline and timeout reject with the box's error and the item stays. `needs.hear(e)`
+  (app.js passes ask.raised/answered/cancelled) and `needs.find(id)` open a pushed ask by id.
 - memory.relevant: tailnet:<login> callers may read without a room (was refused).
 - system.info: adds owner { name } (onboard.person).
 - GET /theme.css served by vyred from config theme.colors.

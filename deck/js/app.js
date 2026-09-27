@@ -693,7 +693,9 @@ window.addEventListener("deck:navigate", route);
   if (phone()) drawAssistantName();
   // After the first view has its data: fetch the other pages' code while the phone is idle.
   ("requestIdleCallback" in window ? /** @type {any} */ (window).requestIdleCallback : (/** @type {any} */ f) => setTimeout(f, 1500))(warm);
-  for (const t of ["ask.raised", "ask.answered", "gate.held", "gate.released", "gate.failed", "gate.rejected"]) on(t, () => needs.load());
+  // needs.hear keeps each raised ask until answered, so a push's /needs/<ask> opens even before the list has it.
+  for (const t of ["ask.raised", "ask.answered", "ask.cancelled"]) on(t, e => { needs.hear(e); if (t !== "ask.cancelled") needs.load(); });
+  for (const t of ["gate.held", "gate.released", "gate.failed", "gate.rejected"]) on(t, () => needs.load());
   on("project.*", drawRail);
 })();
 

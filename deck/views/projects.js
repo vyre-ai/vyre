@@ -623,7 +623,7 @@ function recalledBlock(ev, project) {
 function normAsk(a, at) {
   return {
     id: a.id || a.ask, at: a.at || at, tool: a.tool || "", command: a.command || a.summary || "", rule: a.rule || "", why: a.why || "",
-    // A Mac session's ask is answered on that Mac: no options, and the card says where.
+    // A Mac session's ask on a box that cannot forward the answer: no options, and the card says where.
     elsewhere: a.elsewhere || null,
     options: a.elsewhere ? [] : a.options?.length ? a.options : [{ label: "Allow once", decision: "allow" }, { label: "Deny", decision: "deny" }],
   };
@@ -643,7 +643,9 @@ function heldBlock(a, threadId) {
     } catch (e) {
       const err = /** @type {any} */ (e);
       put(status, err.missing ? "The switchboard module is not running, so this cannot be answered here yet." : String(err.message));
-      for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
+      // The box cannot forward answers to this Mac (needs.js): the line says where, no buttons.
+      if (err.elsewhere) put(buttons);
+      else for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
   put(buttons, a.elsewhere ? h("span", { class: "small muted" }, `Answer it on ${a.elsewhere}`) : a.options.map((opt, i) => h("button", { type: "button",

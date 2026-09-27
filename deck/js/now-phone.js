@@ -108,7 +108,7 @@ export function phoneNow(ctx) {
     pairs = Array.isArray(r.data) ? r.data.map((/** @type {any} */ p) => ({ kind: "pair", id: "pair:" + p.id, at: Number(p.expires || Date.now()) - 600_000, pair: p })) : [];
     drawNeeds();
   };
-  loadPairs();
+  const firstPairs = loadPairs();
   ctx.cleanup(on("link.pair-requested", loadPairs));
   ctx.cleanup(on("link.paired", loadPairs));
 
@@ -118,7 +118,7 @@ export function phoneNow(ctx) {
   const failed = new Map();
   /** Deferred calls behind an Undo toast. */
   const waiting = new Set();
-  /** @type {Map<string, { el: HTMLElement, update: (n: any) => void }>} */
+  /** @type {Map<string, { el: HTMLElement, update: (n: any) => void, still: boolean }>} */
   const rows = new Map();
   let dragging = false, redraw = false;
 
@@ -156,12 +156,33 @@ export function phoneNow(ctx) {
     /** @type {Element | null} */ let prev = null;
     for (const n of list) {
       let r = rows.get(n.id);
+      // A Mac's ask whose answers the box turned out not to forward (need-rows.js elsewhere): its
+      // row loses the swipe and the buttons, so it is drawn again.
+      if (r && r.still !== !swipeActions(n)[0]) { r.el.remove(); r = undefined; }
       if (!r) { r = row(n); rows.set(n.id, r); } else r.update(n);
       const at = prev ? prev.nextElementSibling : card.firstElementChild;
       if (r.el !== at) card.insertBefore(r.el, at);
       prev = r.el;
     }
-    if (wanted) { const n = list.find(x => x.id === wanted || x.id === "pair:" + wanted); if (n) { wanted = null; sheetFor(n); } }
+    serveWanted();
+  }
+
+  /** Has the box answered the first needs.load and link.pending? Then a wanted id not in the list is gone. */
+  let boxed = false;
+  /**
+   * The item a push asked for (wantSheet): its sheet once the list has it. After the first load,
+   * an ask raised on this page and not answered opens from what the event said (needs.find);
+   * anything else was answered or has gone, and the toast says so rather than nothing.
+   */
+  function serveWanted() {
+    if (!wanted) return;
+    const id = wanted;
+    const n = visible().find(x => x.id === id || x.id === "pair:" + id);
+    if (n) { wanted = null; sheetFor(n); return; }
+    if (!boxed) return;
+    wanted = null;
+    const heard = needs.find(id);
+    if (heard) sheetFor(heard); else say("This ask was answered or has gone.", null);
   }
 
   /** Height to 0 over 180 ms, rows below move up; then gone. */
@@ -254,7 +275,7 @@ export function phoneNow(ctx) {
 
   function row(/** @type {any} */ n) {
     const [rightL, leftL] = swipeActions(n);
-    // A Mac session's ask (no swipe actions): a plain row that opens its sheet, no approve anywhere.
+    // A Mac session's ask the box cannot forward (no swipe actions): a plain row that opens its sheet.
     const still = !rightL;
     const el = h("div", { class: "np-row", ...(still ? {} : { "data-swipe": "" }), "data-kind": n.kind });
     const revR = h("button", { type: "button", class: "np-rev np-rev-r", tabindex: "-1", "aria-hidden": "true" },
@@ -350,15 +371,20 @@ export function phoneNow(ctx) {
     });
     revR.addEventListener("click", () => { rest = 0; place(0, true); commit(cur, "right"); });
     revL.addEventListener("click", () => { rest = 0; place(0, true); commit(cur, "left"); });
-    return { el, update };
+    return { el, update, still };
   }
 
   ctx.cleanup(needs.watch(() => { loaded = true; drawNeeds(); }));
   drawNeeds();
-  needs.load().finally(() => { loaded = true; if (ctx.alive()) drawNeeds(); });
-  const onWant = () => drawNeeds();
+  const first = needs.load().finally(() => { loaded = true; if (ctx.alive()) drawNeeds(); });
+  Promise.allSettled([first, firstPairs]).then(() => { boxed = true; if (ctx.alive()) serveWanted(); });
+  const onWant = () => { drawNeeds(); serveWanted(); };
   window.addEventListener("vyre:want-need", onWant);
   ctx.cleanup(() => window.removeEventListener("vyre:want-need", onWant));
+  // The box turned out not to forward answers to the Mac: its rows lose their swipe (needs.js).
+  const onMacAnswers = () => drawNeeds();
+  window.addEventListener("deck:mac-answers", onMacAnswers);
+  ctx.cleanup(() => window.removeEventListener("deck:mac-answers", onMacAnswers));
   // The fallback: a minute, and never while hidden. The times on the rows move with it.
   const tick = window.setInterval(() => { if (!document.hidden && ctx.shown?.() !== false) { needs.load(); drawWorking(); } }, 60_000);
   ctx.cleanup(() => clearInterval(tick));
