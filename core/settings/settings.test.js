@@ -412,6 +412,8 @@ test("settings.write: a module sets its own plain keys, and nothing else", async
   r = await c("settings.get", { key: "bakery.opens" });
   assert.deepEqual([r.data.value, r.data.source], [9, "account"]);
   assert.deepEqual(seen.map(e => [e.key, e.by]), [["bakery.opens", "module:bakery"]], "the change says which module made it");
+  assert.equal(seen[0].value, 9, "a plain key's event carries its new value");
+  assert.ok(Number.isInteger(seen[0].rev) && seen[0].rev > 0, "and the hub's new rev");
   r = await c("bakery.put", { key: "bakery.opens", value: 99 });
   assert.match(r.error.message, /at most 23/);
 
@@ -441,4 +443,17 @@ test("settings.write: a module's own secret key comes back masked, like settings
   const r = await call("bakery.put", { key: "bakery.token", value: "northwind-till-1" }, { root });
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   assert.equal(r.data.value, MASK);
+  const e = d.events.since(0, { type: "settings.changed" }).at(-1).payload;
+  assert.equal(e.key, "bakery.token");
+  assert.ok(!("value" in e), "a secret key's event never carries its value");
+  assert.ok(Number.isInteger(e.rev));
+  // hub.json is plain text and goes into the backup: the secret never reaches it.
+  let hub = "";
+  try { hub = fs.readFileSync(path.join(root, "hub.json"), "utf8"); } catch {}
+  assert.ok(!hub.includes("northwind-till-1"), "the secret's value is not in hub.json");
+  assert.ok(!hub.includes("bakery.token"), "nor is its key");
+  // The person still gets it back in the clear.
+  const own = await call("settings.get", { key: "bakery.token" }, { root });
+  assert.equal(own.error, undefined, JSON.stringify(own.error));
+  assert.equal(own.data.value, "northwind-till-1");
 });
