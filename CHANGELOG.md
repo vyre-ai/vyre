@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The terminal matches the Deck composer: model, thinking, !, #, images, rewind, tasks
+
+- `vyre threads model | thinking | commands | shell | remember [--scope project|user|local] |
+  tasks | kill-task`, each with `--json`. On a vyred without the tool, one line says it is coming.
+- `vyre threads send` takes `--image <file>` (png, jpg, gif, webp; up to 5, 5 MB each). A leading
+  `!` runs the line in the thread's folder (threads.shell) and `#` adds it to CLAUDE.md
+  (threads.remember); `--raw` sends either as typed. Images are refused with `--queue` until the
+  queue carries them, and a send that ends up queued says its images were not kept.
+- `vyre threads rewind <thread>` lists the messages to go back to and, in a terminal, asks which;
+  `--restore code|both` puts files back too, and the message's words come back to send again.
+- Watch and get show model switches, thinking, background tasks, shell lines, remembered lines
+  and rewinds.
+
 #### Sessions from the terminal: interrupt, steer or queue, take back, send now, open (ADR 0030)
 
 - `vyre threads` catches up with the Deck for sessions Vyre runs: `interrupt` (stop the turn, keep

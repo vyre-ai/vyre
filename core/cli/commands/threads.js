@@ -676,6 +676,9 @@ const run = {
     if (route.tool === "threads.shell") return shellLine(f.id, route.body);
     if (route.tool === "threads.remember") return rememberLine(f.id, route.body);
     if (images && !(await accepts("threads.send", "images"))) return toolError({ code: "no_such_tool" }, "threads.send with images");
+    // A queued message does not carry its images yet (the switchboard's queue keeps the text only),
+    // so pictures are never dropped without a word: --queue with images is refused here.
+    if (images && how === "queue") return usage("images cannot be queued yet: send them into the running turn (no --queue), or after it ends");
     // No flag: vyred decides (a running turn of a session it owns is steered, ADR 0030).
     // One key for this send (write): a retry after a dropped answer or a vyred restart returns
     // {already:true} and never starts a second turn (ADR 0029 R2).
@@ -687,6 +690,7 @@ const run = {
     if (r.queued) {
       // Held until the turn ends (a terminal session always queues): it can still be changed.
       out(dim(`  queued${qid != null ? " " + qid : ""}${r.note ? " · " + r.note : ""}`));
+      if (images) out(beacon(`  the ${images.length === 1 ? "image was" : "images were"} not queued with it: send ${images.length === 1 ? "it" : "them"} again when the turn ends`));
       if (qid != null) out(dim(`  vyre threads take-back ${id8(f.id)} ${qid} · edit ${id8(f.id)} ${qid} · send-now ${id8(f.id)} ${qid}`));
       return 0;
     }
