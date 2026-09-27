@@ -32,7 +32,7 @@ async function world(t) {
   });
   const post = async (route, body = {}, headers = {}) => {
     const r = await fetch(url.base + route, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body) });
-    return { status: r.status, body: await r.json() };
+    return { status: r.status, body: await r.json(), cookie: String(r.headers.get("set-cookie") || "").split(";")[0] };
   };
   const tool = (name, input = {}, headers = {}) => post(`/v1/tools/${name}`, input, headers);
   return { ...url, post, tool, proc: p, exited };
@@ -80,10 +80,17 @@ test("mobile world: a phone enrolls with a code and gets a Gate approval past pr
   const keyId = enroll.body.data.id;
 
   const item = held.body.data.find(x => x.via === "mail");
+  // The person's own action wants the person's session first (ADR 0032); the device key signs it in.
   const bare = await w.tool("gate.approve", { id: item.id });
-  assert.equal(bare.body.error.code, "presence_required");
-  assert.ok(bare.body.error.methods.includes("device"));
-  const approved = await w.tool("gate.approve", { id: item.id }, k.header(keyId, "gate.approve", { id: item.id }));
+  assert.equal(bare.body.error.code, "person_session_required", JSON.stringify(bare.body));
+  const signin = await w.tool("presence.person.start", {}, k.header(keyId, "presence.person.start", {}));
+  assert.equal(signin.status, 200, JSON.stringify(signin.body));
+  assert.ok(signin.cookie, "a session cookie");
+  const person = { cookie: signin.cookie };
+  const asked = await w.tool("gate.approve", { id: item.id }, person);
+  assert.equal(asked.body.error.code, "presence_required", JSON.stringify(asked.body));
+  assert.ok(asked.body.error.methods.includes("device"));
+  const approved = await w.tool("gate.approve", { id: item.id }, { ...person, ...k.header(keyId, "gate.approve", { id: item.id }) });
   assert.notEqual(approved.body.error?.code, "presence_required", JSON.stringify(approved.body));
   assert.notEqual(approved.body.error?.code, "denied", JSON.stringify(approved.body));
   // The world's senders are fake servers on 127.0.0.1, so the approval really sends, to them.

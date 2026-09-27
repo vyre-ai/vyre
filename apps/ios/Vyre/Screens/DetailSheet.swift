@@ -272,7 +272,7 @@ struct AskDetail: View {
             VStack(alignment: .leading, spacing: 0) {
                 Hairline()
                 ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
-                    FactRow(label: r.0, value: r.1)
+                    DetailFactRow(label: r.0, value: r.1)
                     Hairline()
                 }
                 if let changes { ChangesRows(changes: changes, open: $changesOpen, file: $fileOpen) }
@@ -301,7 +301,7 @@ struct AskDetail: View {
 }
 
 /// A fact row: the label on the left in `--label`, the value on the right in `--text`.
-struct FactRow: View {
+struct DetailFactRow: View {
     let label: String
     let value: String
     var body: some View {
