@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The site has no Capsule zip, and a clean checkout stamps clean
+
+- The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
+  `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still
+  redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
+  stamp in build.json ignores the files build-site writes, so running it twice on a clean checkout
+  says `dirty: false`. `release-check.sh` asserts both redirects, that nothing names the zip, that
+  `/start` is served as committed, and that the install has no node_modules (the size cap is now
+  16 MB: the docs and their screenshots are most of the 11 MB). `vyre capsule install` still
+  fetches the zip until capsule-pro retires it.
+
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
 - npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
