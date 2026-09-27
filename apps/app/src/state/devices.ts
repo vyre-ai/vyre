@@ -13,7 +13,7 @@ import { readDevices, reopened, trustOf, type Device, type Trust } from "./devic
 //   - after this device changes a trust, and after the box refuses this browser a secret
 
 /** The proposed tool behind "Ask to trust" (TrustBrowser board note 3). Not built on the box yet. */
-export const ASK_TRUST = "relay.devices.ask_trust";
+export const ASK_TRUST = "relay.devices.ask-trust";
 
 type DevicesState = {
   devices: Device[] | null;

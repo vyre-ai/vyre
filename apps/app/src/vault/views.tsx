@@ -9,6 +9,7 @@ import { tokens } from "../theme/tokens";
 import { Button } from "../ui/Button";
 import { List } from "../ui/List";
 import { Row, ROW_HEIGHT } from "../ui/Row";
+import { CLEAR_AFTER_S } from "./clip-model";
 
 // The Vault place (the Vault and TrustBrowser boards): the list of names, kinds and sites, and an
 // item with its values hidden. Where Reveal and Copy would be, an untrusted browser gets the card
@@ -77,8 +78,10 @@ function FieldRow({ name, field, limited }: { name: string; field: string; limit
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
   }, []);
   // Trust taken away while a value shows: hide it at once.
   useEffect(() => {
@@ -101,11 +104,14 @@ function FieldRow({ name, field, limited }: { name: string; field: string; limit
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => setShown(null), (r.hideAfter ?? 10) * 1000);
   };
+  // Copy lands on this device's clipboard, never on the Mac, and the value is not shown.
   const onCopy = async () => {
     setBusy(true);
     const r = await copy(name, field);
     setBusy(false);
     setNote(r.ok ? r.said ?? null : r.denied ? null : r.message);
+    if (noteTimer.current) clearTimeout(noteTimer.current);
+    if (r.ok) noteTimer.current = setTimeout(() => setNote(null), CLEAR_AFTER_S * 1000);
   };
   return (
     <View style={[styles.field, { borderTopColor: color.rule }]}>

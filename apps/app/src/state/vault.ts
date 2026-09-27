@@ -2,14 +2,18 @@ import { create } from "zustand";
 import { call as boxCall } from "../api/box";
 import type { Result } from "../api/client";
 import { about } from "../api/relay";
+import { makeClip } from "../vault/clip-model";
+import { board } from "../vault/clipboard";
 import { markDenied } from "./devices";
 import { isDenied, readVault, type VaultItem } from "./devices-model";
 
 // The vault's names (vault.list: names, kinds, sites, field names, never a value), and the two
-// ways a value leaves it here: vault.reveal (shown on this device, hidden again after the box's
-// concealAfter) and vault.copy (the box's clipboard, cleared after 90 s). Both go through the
-// one client, so the person session and presence are handled there: the phone proves with its
-// biometric key once, and one proof covers 30 minutes. Never queued: a secret is asked for now.
+// ways a value leaves it here, both through vault.reveal: Reveal shows it on this device, hidden
+// again after the box's concealAfter; Copy writes it to this device's clipboard without showing
+// it, cleared after 30 s where that can be done (clip-model.ts). Copy never goes to the Mac: the
+// app does not call vault.copy. Both go through the one client, so the person session and
+// presence are handled there: the phone proves with its biometric key once, and one proof
+// covers 30 minutes. Never queued: a secret is asked for now. A value is never logged or stored.
 
 type VaultState = { items: VaultItem[] | null; locked: boolean; error: string | null; loading: boolean };
 
@@ -59,9 +63,23 @@ export async function reveal(name: string, field: string): Promise<Outcome> {
   return { ok: true, value: String(r.data.value ?? ""), hideAfter: Number(r.data.concealAfter) || 10 };
 }
 
-/** Copy one field to the box's clipboard; the box says when it clears. */
-export async function copy(name: string, field: string): Promise<Outcome> {
-  const r = await call<{ copied: boolean; said?: string }>("vault.copy", { name, field });
-  if (r.error) return refused(r.error);
-  return { ok: true, said: r.data.said || "Copied · clears in 90 s" };
+const clip = makeClip(board, { set: (f, ms) => setTimeout(f, ms), clear: (id) => clearTimeout(id as ReturnType<typeof setTimeout>) });
+
+/**
+ * Copy one field to this device's clipboard. The write starts before the box answers, so a
+ * browser keeps the tap's permission; the value is not shown.
+ */
+export function copy(name: string, field: string): Promise<Outcome> {
+  const out: { refusal?: Outcome } = {};
+  const pending = call<{ value: string }>("vault.reveal", { name, field }).then((r) => {
+    if (r.error) {
+      out.refusal = refused(r.error);
+      return null;
+    }
+    return String(r.data.value ?? "");
+  });
+  return clip.copy(pending).then((done): Outcome => {
+    if (out.refusal) return out.refusal;
+    return done ? { ok: true, said: done.said } : { ok: false, denied: false, message: "Couldn't copy on this device" };
+  });
 }

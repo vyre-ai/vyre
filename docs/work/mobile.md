@@ -73,6 +73,12 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
 - Relay: keep direct first on native until relay's `prefer` mode exists (paths.js only probes
   paths ahead of the current one).
 
+- PARKED trust gaps (lead, 27 Sep): relay queued denied-not-404, device.trusted event + close
+  reason, webExpiryDays/trustedBy/trustedAt, name in the summary; trusted-by line hidden until the
+  data exists; avatar = person's initial once onboard exposes onboard.person (box initial now);
+  web passkey presence prompt. No new screens (lead): focus is the chat session screen on the
+  native bar (native-core docs/design/native-bar.md) and the real-iPhone run.
+
 ## One app: Doing
 - The real-iPhone run of the spike: needs the box to serve /app/ (pwa) and the user's phone.
 
