@@ -262,6 +262,8 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - deck/js/api.js: the event stream is follow() over fetch; the onboarding session rides as the
   x-vyre-onboard header on the stream (was ?s=; loopback.js reads both). New window event
   `deck:stream` (detail: follow's state), exports `streamState`, `kick()`, `stopEvents()`.
+- deck/js/api.js call(): opts `key` (Idempotency-Key header) and `write: true` (a fresh key);
+  export `newKey()`. Reads send no key.
 
 ## Perf
 - No timers or polls added. The offline line rechecks only on `online`, on becoming visible while

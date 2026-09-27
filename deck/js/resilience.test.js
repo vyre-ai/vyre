@@ -87,4 +87,41 @@ test("events: the first stream starts at the newest event, and a reconnect resum
   off();
 });
 
+test("idempotency: a write carries one key, the same on the retry after a sign-in; a read carries none", async () => {
+  sent.length = 0;
+  let signIns = 0;
+  api.setPersonHandler(async () => { signIns++; });
+  let first = true;
+  box = () => (first ? (first = false, { status: 401, body: { error: { code: "person_session_required", message: "sign in" } } }) : { status: 200, body: { data: { ok: true } } });
+  assert.deepEqual(await api.call("planner.add", { text: "call kit at 6" }, { write: true }), { ok: true });
+  assert.equal(signIns, 1);
+  assert.equal(sent.length, 2);
+  const k = sent[0].headers["idempotency-key"];
+  assert.match(k, /^[A-Za-z0-9_.:-]{8,128}$/, "a key the box accepts");
+  assert.equal(sent[1].headers["idempotency-key"], k, "the retry is the same write");
+  api.setPersonHandler(null);
+
+  sent.length = 0;
+  box = () => ({ status: 200, body: { data: [] } });
+  await api.call("planner.add", { text: "and again" }, { write: true });
+  assert.notEqual(sent[0].headers["idempotency-key"], k, "a new write, a new key");
+  await api.call("planner.list", {});
+  assert.equal(sent[1].headers["idempotency-key"], undefined, "reads are not kept by the box");
+});
+
+test("idempotency: an owner's answer the box wants a passkey for goes again with the same key", async () => {
+  sent.length = 0;
+  box = url => (url === "/v1/presence/challenge" ? { status: 200, body: { data: { challenge: "c1", webauthn: { challenge: "AAAA", rpId: "localhost" } } } }
+    : sent.filter(x => x.url.startsWith("/v1/tools/")).length === 1 ? { status: 403, body: { error: { code: "presence_required", message: "prove it" } } } : { status: 200, body: { data: { state: "answered" } } });
+  const bytes = (/** @type {string} */ s) => new TextEncoder().encode(s).buffer;
+  define("PublicKeyCredential", class {});
+  define("navigator", { userAgent: "iPhone", onLine: true, credentials: { get: async () => ({ rawId: bytes("cred"),
+    response: { authenticatorData: bytes("ad"), clientDataJSON: bytes("cd"), signature: bytes("sig") } }) } });
+  await api.call("threads.answer", { ask: "a1", decision: "allow", surface: "deck" }, { presence: "asked", key: "k-answer-0001" });
+  const tools = sent.filter(x => x.url === "/v1/tools/threads.answer");
+  assert.equal(tools.length, 2);
+  assert.deepEqual(tools.map(x => x.headers["idempotency-key"]), ["k-answer-0001", "k-answer-0001"]);
+  assert.match(tools[1].headers["x-vyre-presence"], /^passkey /);
+});
+
 after(() => api.stopEvents());

@@ -60,16 +60,20 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  * Call a tool. Resolves to its data; rejects with an ApiError.
  * @param {string} name e.g. "projects.list"
  * @param {Record<string, any>} [input]
- * @param {{ presence?: boolean | "asked", keepalive?: boolean }} [opts] presence: true proves a
+ * @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string, write?: boolean }} [opts] presence: true proves a
  *   person is here with a passkey first (ADR 0004), for what goes outside as the person (sending a
  *   held draft) and the vault. The proof is bound to this exact tool and input. "asked" is the
  *   owner's own action (answers, approvals, agents): it goes without a proof, and asks for the
  *   passkey only if this box still says presence_required (the no-nag rule; a box from before it
  *   needs one). For a SESSIONABLE tool a live presence session on this device goes instead of the
  *   passkey, and a passkey proof opens one (below). keepalive: the request outlives the page (a
- *   report sent as the app goes to the background).
+ *   report sent as the app goes to the background). key: the Idempotency-Key this write carries
+ *   (ADR 0029, R2); write: true makes a fresh one. One key per call, so the retry after a sign-in
+ *   and the passkey retry of "asked" reuse it, and the box runs the write once. Reads carry none:
+ *   the box keeps every keyed answer for a day, and a read has nothing to repeat.
  */
 export async function call(name, input = {}, opts = {}) {
+  if (opts.write && !opts.key) opts = { ...opts, key: newKey() };
   // The person session (tailnet): a box that wants one answers person_session_required. With a
   // handler set (js/person.js, from app.js), it asks the person to sign in on this device, and
   // the call is retried exactly once after that; a refused sign-in rejects as before. No handler:
@@ -88,20 +92,29 @@ let personHandler = null;
  * @param {((e: ApiError) => Promise<unknown>) | null} fn */
 export function setPersonHandler(fn) { personHandler = fn || null; }
 
+/** A fresh Idempotency-Key. crypto.randomUUID needs a secure context; getRandomValues does not.
+ * @returns {string} */
+export function newKey() {
+  const c = globalThis.crypto;
+  if (typeof c?.randomUUID === "function") return c.randomUUID();
+  return [...c.getRandomValues(new Uint8Array(16))].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** One call, as call() makes it, without the person-session retry.
- * @param {string} name @param {Record<string, any>} input @param {{ presence?: boolean | "asked", keepalive?: boolean }} opts */
+ * @param {string} name @param {Record<string, any>} input @param {{ presence?: boolean | "asked", keepalive?: boolean, key?: string }} opts */
 async function once(name, input, opts) {
+  const key = opts.key ? { "idempotency-key": opts.key } : {};
   if (opts.presence === "asked") {
-    try { return await once(name, input, {}); } catch (e) {
+    try { return await once(name, input, { key: opts.key }); } catch (e) {
       if (/** @type {any} */ (e)?.code !== "presence_required") throw e;
-      return once(name, input, { presence: true });
+      return once(name, input, { presence: true, key: opts.key });
     }
   }
-  if (!opts.presence) return post(name, input, {}, opts.keepalive);
+  if (!opts.presence) return post(name, input, key, opts.keepalive);
   const sessionable = SESSIONABLE.has(name);
   const s = sessionable ? liveSession() : null;
   if (s) {
-    try { return await post(name, input, { "x-vyre-presence": `session id=${s.id} secret=${s.secret}` }); } catch (e) {
+    try { return await post(name, input, { ...key, "x-vyre-presence": `session id=${s.id} secret=${s.secret}` }); } catch (e) {
       // The session ended on the box, or this item asks for its own proof every time: forget it
       // and ask for the passkey, as if there had been none.
       if (/** @type {any} */ (e)?.code !== "presence_required") throw e;
@@ -109,7 +122,7 @@ async function once(name, input, opts) {
     }
   }
   const proof = await presenceProof(name, input); // throws ApiError on refusal or a cancelled passkey
-  return post(name, input, { "x-vyre-presence": proof, ...(sessionable ? { "x-vyre-presence-keep": "1" } : {}) });
+  return post(name, input, { ...key, "x-vyre-presence": proof, ...(sessionable ? { "x-vyre-presence-keep": "1" } : {}) });
 }
 
 /** One POST to a tool, with any presence headers; resolves to the data or rejects with an ApiError.

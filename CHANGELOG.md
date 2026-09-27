@@ -16,6 +16,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - vyred serves /core/resilience/{stream,sse,backoff,outbox,web}.js with the Deck's headers, which
   js/api.js imports as ../../core/resilience/*.js (the same file in the browser and in Node tests,
   no copy). The service worker keeps them at install; the onboarding page may load them.
+- Writes carry an Idempotency-Key (R2): call(name, input, { write: true }) makes one per call,
+  or { key } passes one; the retry after a person sign-in and the passkey retry of an owner's
+  answer reuse it, so the box runs the write once. Reads carry none (the box keeps keyed answers).
 
 #### /pair: finishing `vyre phone add --tailscale-only` on the phone
 
