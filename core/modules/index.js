@@ -50,6 +50,8 @@ export const firstParty = dir => {
 const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"] };
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
+/** Use counts reach vyre.db at most this often; nothing is written while nothing was used. */
+const USE_FLUSH = 60_000;
 
 /**
  * Check a manifest. Returns a list of problems; empty means valid. `firstParty` is true for a
@@ -73,8 +75,37 @@ export function validate(m, { firstParty = false } = {}) {
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
+  out.push(...checkCredentials(m.needs && m.needs.credentials));
   return out;
 }
+
+const NEED = /^[a-z][a-z0-9_-]{0,40}$/;
+/**
+ * needs.credentials (ADR 0028, decision 9a): what a module needs from the Vault, which the vault
+ * lists and fills. The kind and provider words are the vault's to check; this checks the shape.
+ * @param {any} list
+ */
+function checkCredentials(list) {
+  if (list === undefined) return [];
+  if (!Array.isArray(list)) return ["needs.credentials must be a list"];
+  const out = [], ids = new Set();
+  for (const [i, c] of list.entries()) {
+    const at = `needs.credentials[${i}]`;
+    if (!c || typeof c !== "object" || Array.isArray(c)) { out.push(`${at} must be an object`); continue; }
+    if (!NEED.test(String(c.id ?? ""))) out.push(`${at}.id must be a lowercase name`);
+    else if (ids.has(c.id)) out.push(`${at}.id ${c.id} is declared twice`);
+    ids.add(c.id);
+    for (const k of ["kind", "provider", "purpose"]) if (typeof c[k] !== "string" || !c[k]) out.push(`${at}.${k} must be a string`);
+    if (c.item !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(String(c.item))) out.push(`${at}.item must be a vault item name`);
+    if (c.group !== undefined && !NEED.test(String(c.group))) out.push(`${at}.group must be a lowercase name`);
+    for (const k of ["optional", "multiple"]) if (c[k] !== undefined && typeof c[k] !== "boolean") out.push(`${at}.${k} must be true or false`);
+  }
+  return out;
+}
+
+/** The vault items a module's needs.credentials names: `item`, or `<module>-<id>`. @param {any} m */
+export const credentialItems = m => (Array.isArray(m && m.needs && m.needs.credentials) ? m.needs.credentials : [])
+  .map(c => (c && c.item) || `${m.name}-${c && c.id}`);
 
 /** Every folder under the given roots that holds a module.json. */
 export function discover(roots) {
@@ -205,6 +236,52 @@ export class Registry {
     this.providers = new Map();
     /** A retried write runs once (ADR 0029, R2). */
     this.idempotency = deps && deps.db ? new Idempotency(deps.db) : null;
+    // How often each module's tools were used by a person, a surface or a model (never by another
+    // module or a webhook), and when last: what the hub and `vyre modules` show beside each one.
+    // Kept in memory, loaded from and written to one kernel table. The loader owns it, so it is
+    // not one module's migration.
+    /** @type {Map<string, { calls: number, lastUsed: number }>} */
+    this.use = new Map();
+    /** @type {Set<string>} modules whose count changed since the last write */
+    this.dirty = new Set();
+    /** @type {NodeJS.Timeout | null} */
+    this.flushTimer = null;
+    if (deps && deps.db) {
+      try {
+        deps.db.exec("CREATE TABLE IF NOT EXISTS modules_use (module TEXT PRIMARY KEY, calls INTEGER NOT NULL, last_used INTEGER)");
+        for (const r of /** @type {any[]} */ (deps.db.prepare("SELECT module, calls, last_used FROM modules_use").all())) {
+          this.use.set(String(r.module), { calls: Number(r.calls) || 0, lastUsed: Number(r.last_used) || 0 });
+        }
+      } catch (e) { deps.log && deps.log(`module use counts unavailable: ${/** @type {Error} */ (e).message}`); }
+    }
+  }
+
+  /**
+   * Count one use of a module's tool. The write waits: one timer, armed by the first change and
+   * cleared by the write, so an idle vyred has nothing scheduled at all.
+   * @param {string} module
+   */
+  countUse(module) {
+    const u = this.use.get(module) || { calls: 0, lastUsed: 0 };
+    this.use.set(module, { calls: u.calls + 1, lastUsed: Date.now() });
+    this.dirty.add(module);
+    if (!this.flushTimer && this.deps && this.deps.db) {
+      this.flushTimer = setTimeout(() => this.flushUse(), USE_FLUSH);
+      this.flushTimer.unref();
+    }
+  }
+
+  /** Write the changed use counts. A closed or read-only database only costs the counts since. */
+  flushUse() {
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+    const db = this.deps && this.deps.db;
+    if (!db || !this.dirty.size) return;
+    const names = [...this.dirty];
+    this.dirty.clear();
+    try {
+      const put = db.prepare("INSERT INTO modules_use (module, calls, last_used) VALUES (?, ?, ?) ON CONFLICT(module) DO UPDATE SET calls = excluded.calls, last_used = excluded.last_used");
+      for (const n of names) { const u = this.use.get(n); if (u) put.run(n, u.calls, u.lastUsed || null); }
+    } catch { /* the counts stay in memory for status(); the next change tries again */ }
   }
 
   /** Start every discovered module that is enabled for this machine's role. */
@@ -301,8 +378,8 @@ export class Registry {
       // watcher runtime, whose grants are per watcher.
       vault: {
         fetch: async (name, { field, watcher } = {}) => {
-          const declared = (m.needs && m.needs.vault) || [];
-          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-"))) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
+          const declared = [...((m.needs && m.needs.vault) || []), ...credentialItems(m)];
+          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-"))) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
           const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`);
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
@@ -345,6 +422,15 @@ export class Registry {
       },
       // vyred's router, for a module that opens a listener of its own (names, onboard). The module
       // establishes the caller; the policy limits what that listener can reach. See ADR 0002.
+      // What every module is, read only: the rows GET /v1/modules gives, including what each
+      // declares (commands, connections, suggest, notices, emits) and how much it is used. A copy,
+      // so nothing a module does to it changes the registry.
+      modules: {
+        status: () => structuredClone(this.status()),
+        // The tools a caller may use, as GET /v1/tools gives them to it. For a module that lists
+        // what a surface can run (commands.list), never for deciding a call: the registry does that.
+        tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
+      },
       handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
       // The same for WebSocket upgrades (/v1/streams/...): (req, socket, head, caller). Without it
       // a module's listener cannot carry a stream, and Glass over the tailnet never connected.
@@ -399,11 +485,14 @@ export class Registry {
    */
   /**
    * @param {string} tool @param {any} [input] @param {string} [caller]
-   * @param {{ thread?: string, agent?: string, peer?: any, proof?: any }} [meta] what vyred verified about the
+   * @param {{ thread?: string, agent?: string, peer?: any, proof?: any, call?: string }} [meta] what vyred verified about the
    *   caller: the live thread (session id) it is calling from, the agent it is, and the tailnet
    *   node a network listener established. A tool gets these beside the caller; a claim in the
    *   input is not verified and must not be treated as if it were. `proof` is the presence proof
-   *   the request carried, checked here and not passed on.
+   *   the request carried, checked here and not passed on. `call` is the chat's id for this
+   *   tool call (X-Vyre-Call-Id, only on a session's own paths): an unverified claim a tool may
+   *   keep to link what it shows (a Glass step) to the chat's tool row, and never use for any
+   *   decision. Any other key a caller of this method adds reaches the tool the same way.
    */
   async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, ...meta } = {}) {
     const def = this.tools.get(tool);
@@ -444,7 +533,14 @@ export class Registry {
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses
     // it as the Agent SDK message uuid, ADR 0030), and a retry after a restart is still one turn.
-    const run = () => this.run(def, input, { ...meta, caller, ...(idempotencyKey ? { idempotencyKey } : {}) });
+    // A tool that ran counts as a use of its module, whether it succeeded or threw; a refusal
+    // above never ran, and neither does a replayed answer. One module calling another is plumbing,
+    // not use, and nor is a webhook.
+    const counted = !["module", "hook"].includes(callerKind(caller));
+    const run = async () => {
+      try { return await this.run(def, input, { ...meta, caller, ...(idempotencyKey ? { idempotencyKey } : {}) }); }
+      finally { if (counted) this.countUse(def.module); }
+    };
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
     // keep: the person asked that this proof also open a presence session on their device, so
     // the next sessionable call (another send) needs no second Touch ID or passkey. Only a strong
@@ -486,9 +582,21 @@ export class Registry {
 
   status() {
     // `shows` says which surfaces a module offers itself to (SPEC 5.1): the Capsule reads
-    // shows.capsule here for the results and actions it lists.
-    return [...this.modules.entries()].map(([name, r]) => ({ name, version: r.manifest && r.manifest.version, state: r.state, error: r.error,
-      ...(r.manifest && r.manifest.shows ? { shows: r.manifest.shows } : {}) }));
+    // shows.capsule here for the results and actions it lists. What else a manifest declares for
+    // the surfaces rides beside it as given (ADR 0033): its CLI verbs, the tools that answer for
+    // its connections and for suggest, the notice kinds it raises and the events it emits.
+    return [...this.modules.entries()].map(([name, r]) => {
+      const m = r.manifest || {}, u = this.use.get(name);
+      return { name, version: r.manifest && r.manifest.version, state: r.state, error: r.error,
+        ...(m.shows ? { shows: m.shows } : {}),
+        ...(m.does && m.does.commands ? { commands: m.does.commands } : {}),
+        ...(m.does && m.does.connections ? { connections: m.does.connections } : {}),
+        ...(m.does && m.does.suggest ? { suggest: m.does.suggest } : {}),
+        ...(m.shows && m.shows.notices ? { notices: m.shows.notices } : {}),
+        ...(m.watches && m.watches.emits ? { emits: m.watches.emits } : {}),
+        ...(m.needs && Array.isArray(m.needs.credentials) ? { credentials: m.needs.credentials } : {}),
+        use: { calls: u ? u.calls : 0, lastUsed: u && u.lastUsed ? u.lastUsed : null } };
+    });
   }
 
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
@@ -513,5 +621,7 @@ export class Registry {
         try { await r.handle.stop(); } catch {}
       }
     }
+    // Last, so a call a module made while stopping is counted too. vyred closes the database after.
+    this.flushUse();
   }
 }

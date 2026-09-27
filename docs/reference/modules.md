@@ -22,8 +22,10 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
+| [`commands`](#commands) | `core/commands` | `box`, `local` | 1 | 0 | none |
 | [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
 | [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
+| [`events`](#events) | `core/event-catalog` | `box`, `local` | 1 | 0 | none |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -118,6 +120,17 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Shows on: cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
+## commands
+
+Every CLI verb the running modules declare, in one list any surface can draw.
+
+- Folder: `core/commands`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#commands)
+- Emits: no events
+- Shows on: no surface
+
 ## computers
 
 - Folder: `core/computers`, version 0.1.0
@@ -139,6 +152,17 @@ Where the user is now: the project, folder, thread, app, window and page each su
 - Tools: [2](tools.md#context)
 - Emits: [1 events](events.md#context)
 - Shows on: cli
+
+## events
+
+Every event type the running modules may emit, and the old names still accepted for one release.
+
+- Folder: `core/event-catalog`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#events)
+- Emits: no events
+- Shows on: no surface
 
 ## files
 

@@ -15,6 +15,44 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - test/theme-defaults.test.js: tokens.css paints roles only since pwa's token pass, so a swatch
   (graphite, bone, signal) is checked through its role (core/config/theme.js ROLES_OF, now
   exported), and the agents view's --swatch-* literals are not palette entries.
+#### needs.credentials in the loader and the schema; the Render type; statusline tips
+
+- The loader checks `needs.credentials` (ADR 0028, 9a: {id, kind, provider, purpose, item?, group?,
+  optional?, multiple?}), ctx.vault.fetch accepts the items it names (`item`, or `<module>-<id>`)
+  beside needs.vault, and status rows carry `credentials`, which the vault reads through
+  ctx.modules.status(). Taken from the vault team's diff so the loader is edited once.
+- packages/module-sdk: `needs.credentials` in the schema and types; `Render`, the one view type a
+  tool answers with render: true and `vyre <cmd> --view` frames carry (table, card, text, qr, checks,
+  prompt, error), in polish-cli's field shapes: table columns with labels and an empty line, card
+  fields, text lines, check states with ids (ok, wait, failed, unknown), error next steps, and a
+  prompt answered either on the command line or by a tool; any kind may carry actions; "statusline" is a tip surface.
+- ADR 0033 section 3 points to ADR 0035 for the theme keys: `appearance.theme` is only the preset,
+  and `appearance.scheme` is system, dark or paper.
+
+#### Module API phase 1, the part that needs no settings (ADR 0033, cohesion's ADR 0036)
+
+- vyred passes a chat's tool call id to the tool as `meta.call`, from the X-Vyre-Call-Id header,
+  only on a session's own paths (its thread socket, or a call bound to a thread by its agent or
+  session key), and only when it looks like an id. It's a claim for linking a Glass step to its
+  chat row; no tool decides anything on it. Nothing sends the header yet: sessions will.
+- registry.status() rows gain `use: { calls, lastUsed }`, counting tools a person or an agent ran
+  (not module-to-module calls, not hooks). The counts are kept in memory and written to the
+  `modules_use` table at most once a minute and at stop, so they survive a restart. Rows also
+  carry the manifest's `commands`, `connections`, `suggest`, `notices` and `emits` when declared.
+- `ctx.modules.status()` and `ctx.modules.tools(caller?)`: read-only views of the same rows and
+  tool lists GET /v1/modules and /v1/tools give.
+- New first-party modules, each one switchable off: `commands` (commands.list {surface?}: every
+  does.commands verb the caller can run) and `events` in core/event-catalog (events.catalog: every
+  type the running modules emit, plus aliases kept for one release, none today).
+
+#### The manifest schema follows ADR 0035 (the settings hub)
+
+- A setting may declare the `device` and `session` levels, `check: { tool }` (asked before a value
+  is stored; off or slower than 500 ms refuses the change) and `choicesFrom: { tool }` (lists the
+  choices when the schema is read). Both tools must be the module's own. A setting with `confirm`
+  or `security` may not be set per device, and the session level needs a store in the module's
+  own tools. `choices` stays the fixed number list for an int. `secret: true` masks a value for
+  everyone but the person.
 
 #### box/vyre: a checkout build's update downloads nothing
 
@@ -108,6 +146,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   healthy update nothing restores data by itself. `--check` exits 1 when an update is waiting;
   `--rollback` keeps the current data, `--restore-data` asks first; `--to` steps through a
   release when `min_from` needs it. A checkout is told to update with git.
+  A release that fails its health check is removed from <home>/releases/, so it can never push
+  out a good release or come back through `--rollback` (found by the end-to-end run on testbox).
 - core/cli/commands/up.js exports health, waitFor and bring, and bring compares vyred against the
   build it is asked for (the release just installed), not the running CLI's own version number.
 - box/vyre `update`: the same steps on the box. The release comes from GitHub Releases, with
@@ -1066,6 +1106,7 @@ neither.
 - The old helper builds (hotkey, local, vyre-launcher) could sit untracked in local/capsule/bin/;
   it is in .gitignore now. The CI signing step's fallback, used only when Vyre.app did not build,
   signs a copy of /bin/echo instead of the vyre-launcher nothing builds any more.
+
 #### A vyred killed by a signal is started again in the box
 
 - core/daemon/loop.sh waited again on a vyred that died by a signal (SIGKILL, the OOM killer)

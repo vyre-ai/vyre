@@ -110,7 +110,23 @@
         "vault": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9][a-z0-9._-]*$", "x-message": "must be a vault item name, or per-<thing>" }, "uniqueItems": true },
         "tools": { "type": "array", "items": { "$ref": "#/$defs/toolPattern" }, "uniqueItems": true, "x-status": "planned", "description": "Tools it calls through ctx.call, or module.* for all of one module's." },
         "network": { "type": "array", "items": { "type": "string", "pattern": "^(\\*\\.)?[a-z0-9.-]+(:\\d+)?$", "x-message": "must be a host name, optionally *.domain or with a port" }, "uniqueItems": true, "x-status": "planned" },
-        "slots": { "type": "array", "items": { "$ref": "#/$defs/slot" }, "uniqueItems": true, "x-status": "planned" }
+        "slots": { "type": "array", "items": { "$ref": "#/$defs/slot" }, "uniqueItems": true, "x-status": "planned" },
+        "credentials": {
+          "type": "array", "description": "What it needs from the Vault, which the vault lists and fills (ADR 0028, 9a). The item is `item`, or <module>-<id>.",
+          "items": {
+            "type": "object", "required": ["id", "kind", "provider", "purpose"], "additionalProperties": false, "patternProperties": { "^x-": {} },
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,40}$", "x-message": "must be a lowercase name" },
+              "kind": { "type": "string", "minLength": 1 },
+              "provider": { "type": "string", "minLength": 1 },
+              "purpose": { "type": "string", "minLength": 1 },
+              "item": { "type": "string", "pattern": "^[A-Za-z0-9_.-]{1,128}$", "x-message": "must be a vault item name" },
+              "group": { "type": "string", "pattern": "^[a-z][a-z0-9_-]{0,40}$", "x-message": "must be a lowercase name" },
+              "optional": { "type": "boolean" },
+              "multiple": { "type": "boolean" }
+            }
+          }
+        }
       }
     },
     "teaches": {
@@ -148,7 +164,8 @@
     }
   },
   "$defs": {
-    "surface": { "enum": ["capsule", "deck", "chat", "phone", "cli", "glass"] },
+    "toolRef": { "type": "object", "required": ["tool"], "additionalProperties": false, "properties": { "tool": { "$ref": "#/$defs/tool" } } },
+    "surface": { "enum": ["capsule", "deck", "chat", "phone", "cli", "glass", "statusline"] },
     "moduleName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,40}$", "x-message": "must be lowercase letters, digits and dashes" },
     "word": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "x-message": "must be lowercase letters, digits and dashes" },
     "tool": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9.-]*$", "x-message": "must look like module.verb" },
@@ -168,10 +185,12 @@
         "type": { "enum": ["enum", "bool", "int", "number", "string", "list", "object", "model"] },
         "enum": { "type": "array", "items": { "type": "string" } },
         "choices": { "type": "array", "items": { "type": "number" } },
+        "choicesFrom": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools that lists the choices when the schema is read, within 500 ms; otherwise the enum or no choices (ADR 0035)." },
+        "check": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools, asked { ok } or { ok: false, message } before a value is stored, within 500 ms; off or late refuses the change (ADR 0035)." },
         "min": { "type": "number" },
         "max": { "type": "number" },
         "default": {},
-        "levels": { "type": "array", "items": { "enum": ["account", "project"] }, "minItems": 1, "uniqueItems": true },
+        "levels": { "type": "array", "items": { "enum": ["account", "project", "device", "session"] }, "minItems": 1, "uniqueItems": true },
         "apply": { "enum": ["live", "session", "restart"] },
         "advanced": { "type": "boolean" },
         "secret": { "type": "boolean", "description": "Its value is masked for anyone but the person (settings maskFor)." },

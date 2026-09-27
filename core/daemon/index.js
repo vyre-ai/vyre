@@ -194,6 +194,14 @@ async function body(req) {
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
 
+/**
+ * The chat's id for one tool call (X-Vyre-Call-Id), or null. Read only on a session's own paths
+ * (its thread socket, or a call vyred bound to a thread by its agent or session key), so a tool can
+ * link what it shows (a Glass step) to that call's row in the chat. It is the session's claim,
+ * never checked, and no tool decides anything on it. A malformed id is dropped without a word.
+ */
+export const callId = v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,128}$/.test(v) ? v : null);
+
 const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|onboard$|hook$)/;
 
 /**
@@ -431,7 +439,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
     const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
-    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}),
+    // Only a caller vyred bound to a thread above says which chat tool call this is.
+    const call = via.thread ? callId(req.headers["x-vyre-call-id"]) : null;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}), ...(call ? { call } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
