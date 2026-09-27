@@ -166,6 +166,12 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .session-head, .lease-bar, .composer { padding-left: 16px; padding-right: 16px; }
   .thread-view { padding-left: 16px; padding-right: 16px; }
   .composer-menu { left: 16px; right: 16px; }
+  /* The header keeps the title: the phone's 44 buttons stay 44 tall but read at base size, and the
+     model chip (the composer names the model too) and the state word give way. */
+  .session-head { gap: 4px; }
+  .session-head .btn { font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); padding: 0 8px; }
+  .session-head .cv-chip, .session-head .cv-context { display: none; }
+  .session-head .cv-head-text { min-width: 72px; }
 }
 
 /* The session list pages: /chat and /chat/:project. */
@@ -557,6 +563,11 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   border-radius: 8px; font-size: 13px; }
 .cv-queued-text { flex-grow: 1; min-width: 0; color: var(--text-2); }
 .cv-queued-row .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+/* On the phone its buttons take the 44 touch size, so the words get their own line and the buttons wrap under them. */
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .cv-queued-row { flex-wrap: wrap; row-gap: 0; padding: 6px 6px 0 12px; }
+  .cv-queued-text { flex-basis: 100%; }
+}
 .composer-stop { flex-shrink: 0; }
 .composer-stop[hidden] { display: none; }
 .cv-from { margin-top: 4px; font-size: 12px; color: var(--label); }

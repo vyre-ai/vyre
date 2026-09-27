@@ -119,15 +119,18 @@ async function outbox() {
 
     box.down = false;
     await tab.run(`window.dispatchEvent(new Event("online")); document.querySelector('.reach button')?.click();`);
-    const echoed = await tab.run(`for (let i = 0; i < 150 && !document.body.innerText.includes('echo: ' + ${JSON.stringify(words)}); i++) await wait(100);
+    const echoed = await tab.run(`for (let i = 0; i < 150 && !document.body.innerText.includes('echo: ' + ${JSON.stringify(words)}) && ![...document.querySelectorAll('.cv-queued-row')].some(r => r.innerText.includes(${JSON.stringify(words)})); i++) await wait(100);
       const t = document.body.innerText; return { mine: t.split(${JSON.stringify(words)}).length - 1, echo: t.includes('echo: ' + ${JSON.stringify(words)}),
-      note: document.querySelector('.composer-note')?.innerText || '' }`);
+      note: document.querySelector('.composer-note')?.innerText || '',
+      queued: [...document.querySelectorAll('.cv-queued-row')].some(r => r.innerText.includes(${JSON.stringify(words)})) }`);
     fs.writeFileSync(path.join(out, "390-outbox-sent.png"), await tab.shot());
     const sends = box.reached.filter(r => r.startsWith("threads.send ") && r.includes(words));
     const errs = tab.errors.filter(e => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|fonts\.g/.test(e));
     report("390-outbox-sent", /** @type {string[]} */ ([sends.length !== 1 && `${sends.length} threads.send reached the box, not 1`,
-      !echoed.echo && "the session never answered the message",
-      echoed.mine !== 2 && `the words show ${echoed.mine} times (want 2: the message and its echo)`,
+      // A session not running in this world queues the message for after its turn: the words then show once, in the queued row.
+      echoed.echo ? echoed.mine !== 2 && `the words show ${echoed.mine} times (want 2: the message and its echo)`
+        : !echoed.queued && "the message is neither answered nor queued",
+      !echoed.echo && echoed.mine !== 1 && `the words show ${echoed.mine} times (want 1: the queued row)`,
       /Sending when/.test(echoed.note) && "the waiting note stayed",
       errs.length && `errors: ${errs.join(" | ").slice(0, 300)}`].filter(Boolean)));
   } finally { await tab.close(); }
