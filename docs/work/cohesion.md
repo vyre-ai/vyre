@@ -36,7 +36,7 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 
 | # | Item | Owners | Status |
 |---|---|---|---|
-| 1 | Screen service, both sides (sight) | capsule-pro, pwa, mobile, sessions, chat, platform | capsule-pro yes (sees-chip + context.report this session); mobile yes after 0.1.0 (wants a phone spec; sight.frame offered); sessions yes (passes tool_use id once meta.call exists); platform yes (meta.call from X-Vyre-Call-Id, P1); acted fields done c362505b; sight.frame 791bd180 for the phone; pwa yes (mini-view after Design A) |
+| 1 | Screen service, both sides (sight) | capsule-pro, pwa, mobile, sessions, chat, platform | capsule-pro yes (sees-chip + context.report this session); mobile yes after 0.1.0 (wants a phone spec; sight.frame offered); sessions yes (passes tool_use id once meta.call exists); platform yes (meta.call from X-Vyre-Call-Id, P1); acted fields done c362505b; sight.frame 791bd180 for the phone; pwa BUILT on work/pwa (waiting b623ddcc, context 41f9b14d, sight pills 084036c1; tests held for batch 4); stills refresh on sight.stepped, not a 2 s timer (app-design to fix glass-mini.md) |
 | 2 | Context now | capsule-pro, chat, sessions, mobile, docs | all yes; context gains `view` and context.now {surface} for tips |
 | 3 | Connections | vault (owns), connectors | agreed: vault.connections.list {surface}, vault.connection-added/removed/changed, use {tool, input:{account}} |
 | 4 | Suggest | memory-iq (memory.suggest, recall prefix), native-core (composer), capsule-pro | memory-iq yes; capsule-pro yes (local rows first); chat routed composer to native-core |
