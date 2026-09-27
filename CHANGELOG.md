@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Memory learns only from the person's own words, and a trial home never reads ~/.claude
+
+- Recall reads the person's Claude Code folder (~/.claude or CLAUDE_CONFIG_DIR) only for their own
+  ~/.vyre. A dev, demo, trial or temp home reads its own folders (claudeHome, <home>/claude), or
+  the real one only with VYRE_ALLOW_REAL_TRANSCRIPTS=1. A trial Capsule once answered "what is my
+  wife's name" from the person's Vyre dev sessions this way.
+- Source trust (core/memory/personal/trust.js, ADR 0034): personal facts come only from the user's
+  own words. Never from Claude's turns, a subagent's brief, a headless run, the Capsule's ask
+  threads, a session in a Vyre folder, a session about building memory (two turns about fixtures,
+  evals or test cases), folders in config.memory.personal.skipCwds, or harness blocks inside a user
+  turn (system reminders, teammate messages, command echoes). Said lines follow the same rules.
+  Every session is read again once under them.
+- A question about a relative that is a yes or no ("does my wife like hiking") is no longer
+  answered with who they are. Who someone is to the user needs confidence 0.6 to be told as fact.
+- scripts/eval-answer.js asks every question three times (inconsistent must be 0) and counts
+  answers told as fact with no fact or turn behind them (ungrounded must be 0). New world
+  `--world trust`: the "Jordan" trap. New sessions worlds for Vyre IQ: test/fixtures/iq-open.js
+  (tuning) and test/fixtures/iq-sealed.js (written blind, never opened).
+
 #### Memory reads your turns with the fast model, once each
 
 - The reader (core/memory/personal/reader.js) sends every user turn of a few words to the fast
