@@ -9,7 +9,8 @@ import { open } from "../../store/index.js";
 import { seedRecall } from "../../../test/fixtures/corpus.js";
 import { tempHome } from "../../../test/helpers.js";
 import { search } from "../../recall/search.js";
-import { parse, normalize } from "./answer.js";
+import { parse, normalize, answerer } from "./answer.js";
+import { Personal } from "./store.js";
 import memory from "../index.js";
 
 const T0 = Date.parse("2026-05-01T09:00:00Z");
@@ -310,4 +311,162 @@ test("answer: a life typed in lower case, in passing", async t => {
   const wife = await ask("what's my wife's name");
   assert.ok(!wife.answer || wife.confidence < 0.5, JSON.stringify(wife));
   assert.ok(!/Claire/.test(String(wife.answer)), JSON.stringify(wife));
+});
+
+test("answer: a relative's attributes, diet, vehicle fates, friends and moves parse, typed any way", () => {
+  const of = (who, rel) => ({ kind: "of", who, rel });
+  const table = [
+    ["what does my wife do", of({ kin: "wife" }, "role")],
+    ["What does my wife do for a living?", of({ kin: "wife" }, "role")],
+    ["wat does my wife do for work", of({ kin: "wife" }, "role")],
+    ["whats my husbands job", of({ kin: "husband" }, "role")],
+    ["what's my husband's occupation", of({ kin: "husband" }, "role")],
+    ["what does jordan do", of({ name: "jordan" }, "role")],
+    ["dani's job", of({ name: "dani" }, "role")],
+    ["where does my mom live", of({ kin: "mom" }, "lives_in")],
+    ["where does mum live now", of({ kin: "mum" }, "lives_in")],
+    ["where is my brother based", of({ kin: "brother" }, "lives_in")],
+    ["where does dani work", of({ name: "dani" }, "works_at")],
+    ["who does my wife work for", of({ kin: "wife" }, "works_at")],
+    ["where is my dad from", of({ kin: "dad" }, "from")],
+    ["what breed is my dog", of({ kin: "dog" }, "breed")],
+    ["what kind of dog is biscuit", of({ name: "biscuit" }, "breed")],
+    ["what type of dog do we have", of({ kin: "dog" }, "breed")],
+    ["is my wife vegetarian", of({ kin: "wife" }, "diet")],
+    ["what does my wife drive", of({ kin: "wife" }, "car")],
+    ["what does my wife do for fun", of({ kin: "wife" }, "other")],
+    ["what colour is my truck", { kind: "car", before: null, color: true }],
+    ["what truck did i buy", { kind: "car", before: null, color: false }],
+    ["which suv do i have", { kind: "car", before: null, color: false }],
+    ["what did i drive before", { kind: "car", before: "then", color: false }],
+    ["what happened to the outback", { kind: "carFate", car: "outback" }],
+    ["do i still have the subaru", { kind: "carFate", car: "subaru" }],
+    ["did we sell the volvo", { kind: "carFate", car: "volvo" }],
+    ["what do i do for a living", { kind: "job" }],
+    ["What do I do?", { kind: "job" }],
+    ["whats my line of work", { kind: "job" }],
+    ["what is my occupation", { kind: "job" }],
+    ["where did we move to", { kind: "lives", before: null }],
+    ["where did i move", { kind: "lives", before: null }],
+    ["where did we move from", { kind: "lives", before: "then" }],
+    ["am i vegetarian", { kind: "diet", asked: "vegetarian" }],
+    ["Am I a vegan?", { kind: "diet", asked: "vegan" }],
+    ["whats my diet", { kind: "diet", asked: null }],
+    ["do i eat meat", { kind: "diet", asked: null }],
+    ["who are my friends", { kind: "kin", word: "friends", role: "friend" }],
+    ["who is theo", { kind: "who", name: "theo" }],
+    ["what db gui do i use", { kind: "uses", cat: "db gui" }],
+    ["which database client do i use", { kind: "uses", cat: "database client" }],
+    ["what terminal multiplexer do i use", { kind: "uses", cat: "terminal multiplexer" }],
+    ["what password manager do i use", { kind: "uses", cat: "password manager" }],
+    ["whats my company called", { kind: "work" }],
+    ["what's my llc", { kind: "work" }],
+    ["my business name", { kind: "work" }],
+  ];
+  for (const [q, want] of table) {
+    const got = /** @type {any} */ (parse(String(q)));
+    // "who are my friends" parses the same whether or not extract.js's KIN has friend words.
+    if (got?.kind === "kin" && got.role === "friend") got.word = got.word.replace(/^friend$/, "friends");
+    assert.deepEqual(got, want, String(q));
+  }
+});
+
+/** A world of personal facts seeded as claims, each [subj, rel, obj], one turn apiece, in order. */
+async function factWorld(t, claims) {
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  const personal = new Personal(db);
+  claims.forEach(([subj, rel, obj], i) => personal.addClaims(`s${i}`, 0, T0 + i * DAY, [{ subj, rel, obj, conf: 0.9, method: "rule" }]));
+  personal.derive();
+  const answer = answerer({ personal, db });
+  return { personal, ask: async q => (await answer({ q })) };
+}
+
+const FAMILY = [
+  ["me", "spouse", "kin:spouse"], ["kin:spouse", "called", "lit:wife"], ["kin:spouse", "name", "lit:Jordan"],
+  ["kin:spouse", "role", "lit:nurse"], ["kin:spouse", "works_at", "org:Mercy Clinic"],
+  ["me", "mother", "kin:mother"], ["kin:mother", "called", "lit:mom"], ["kin:mother", "lives_in", "place:Tucson"],
+  ["me", "pet", "kin:dog"], ["kin:dog", "called", "lit:dog"], ["kin:dog", "name", "lit:Biscuit"], ["kin:dog", "breed", "lit:beagle"],
+  ["me", "friend", "name:Theo"], ["me", "friend", "name:Dani"], ["name:Dani", "role", "lit:teacher"], ["name:Dani", "works_at", "org:Harbor School"],
+  ["me", "sister", "name:Maya"], ["me", "sister", "name:Ana"], ["name:Maya", "lives_in", "place:Austin"],
+  ["me", "diet", "lit:vegetarian"],
+  ["me", "lives_in", "place:Portland"], ["me", "owns", "vehicle:Subaru Outback"], ["me", "role", "lit:designer"], ["me", "works_at", "org:Northwind Bakery"],
+  ["me", "uses", "tool:TablePlus"], ["me", "uses", "tool:tmux"], ["me", "uses", "tool:Bitwarden"], ["me", "uses", "tool:Neovim"],
+  ["me", "owns", "vehicle:Ford F-150"], ["vehicle:Ford F-150", "color", "lit:red"], ["me", "ended:owns", "vehicle:Subaru Outback"],
+  ["me", "drives", "vehicle:Ford F-150"], ["me", "lives_in", "place:Seattle"], ["me", "lives_in", "place:Seattle"],
+];
+
+test("answer: a relative's or a named person's attribute, read on them and nobody else", async t => {
+  const { ask } = await factWorld(t, FAMILY);
+  const want = [
+    ["what does my wife do", "Your wife is a nurse at Mercy Clinic."],
+    ["what does my wfie do for a living", "Your wife is a nurse at Mercy Clinic."],
+    ["whats my wife's job", "Your wife is a nurse at Mercy Clinic."],
+    ["where does my wife work", "Your wife works at Mercy Clinic."],
+    ["what does jordan do", "Jordan is a nurse at Mercy Clinic."],
+    ["where does my mom live", "Your mom lives in Tucson."],
+    ["where does mum live", "Your mum lives in Tucson."],
+    ["what breed is my dog", "Biscuit is a beagle."],
+    ["what kind of dog is biscuit", "Biscuit is a beagle."],
+    ["where does dani work", "Dani works at Harbor School."],
+    ["what does dani do", "Dani is a teacher at Harbor School."],
+    ["where does maya live", "Maya lives in Austin."],
+  ];
+  for (const [q, a] of want) assert.equal((await ask(q)).answer, a, q);
+  // Never the user's own fact, the relative's name, the wrong gender, or one of two sisters.
+  for (const q of ["what does my husband do", "where does my dad live", "where does my wife live", "where does my sister live", "what breed is my cat",
+    "what does theo do", "what does my wife do for fun", "is my wife vegetarian", "what does my wife drive", "where does my son work"]) {
+    const r = await ask(q);
+    assert.equal(r.answer, null, `${q} -> ${r.answer}`);
+  }
+});
+
+test("answer: diet, vehicle fates, moves, jobs, friends and generic software", async t => {
+  const { ask } = await factWorld(t, FAMILY);
+  const want = [
+    ["am i vegetarian", "Yes, you are vegetarian."],
+    ["am i vegan", "You are vegetarian."],
+    ["do i eat meat", "You are vegetarian."],
+    ["whats my diet", "You are vegetarian."],
+    ["what happened to the outback", "You sold the Subaru Outback."],
+    ["do i still have the subaru", "You sold the Subaru Outback."],
+    ["do i still have the ford", "You still have the Ford F-150."],
+    ["what truck did i buy", "You drive a red Ford F-150."],
+    ["what colour is my truck", "Your Ford F-150 is red."],
+    ["what did i drive before", "Before the Ford F-150 you had a Subaru Outback."],
+    ["where did we move to", "You live in Seattle."],
+    ["where did i move", "You live in Seattle."],
+    ["where did we move from", "Before Seattle you lived in Portland."],
+    ["what do i do for a living", "You are a designer at Northwind Bakery."],
+    ["whats my company called", "You work at Northwind Bakery."],
+    ["whats my llc", "You work at Northwind Bakery."],
+    ["who is theo", "Theo is your friend."],
+    ["what db gui do i use", "You use TablePlus."],
+    ["which terminal multiplexer do i use", "You use tmux."],
+    ["what password manager do i use", "You use Bitwarden."],
+    ["who is my partner", "Your partner is Jordan."],
+  ];
+  for (const [q, a] of want) assert.equal((await ask(q)).answer, a, q);
+  assert.match(String((await ask("who are my friends")).answer), /^Your friends are (Theo and Dani|Dani and Theo)\.$/);
+  // A vehicle memory never heard of has no fate.
+  assert.equal((await ask("what happened to the tesla")).answer, null);
+});
+
+test("answer: no answer when only a name, or only the user's own fact, is known", async t => {
+  const { ask, personal } = await factWorld(t, [
+    ["me", "spouse", "kin:spouse"], ["kin:spouse", "called", "lit:wife"], ["kin:spouse", "name", "lit:Jordan"],
+    ["me", "mother", "kin:mother"], ["kin:mother", "called", "lit:mom"], ["kin:mother", "name", "lit:Ruth"],
+    ["me", "lives_in", "place:Tucson"], ["me", "role", "lit:designer"], ["me", "works_at", "org:Northwind Bakery"],
+    ["me", "partner", "kin:partner"], ["kin:partner", "called", "lit:boyfriend"], ["kin:partner", "name", "lit:Sam"],
+  ]);
+  for (const q of ["what does my wife do", "whats my wife's job", "where does my wife work", "where does my mom live", "where does ruth live",
+    "what does jordan do", "what breed is my dog", "who are my friends", "am i vegetarian", "what happened to the outback"]) {
+    const r = await ask(q);
+    assert.equal(r.answer, null, `${q} -> ${r.answer}`);
+  }
+  // A line told outright that only names the wife never answers what she does.
+  personal.remember("My wife Jordan loves hiking on weekends.");
+  assert.equal((await ask("what does my wife do")).answer, null);
+  // A boyfriend is a partner, not a husband.
+  assert.equal((await ask("who is my husband")).answer, null);
 });

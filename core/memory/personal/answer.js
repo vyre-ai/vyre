@@ -80,6 +80,64 @@ export function normalize(q) {
 
 const KINW = Object.keys(KIN).sort((a, b) => b.length - a.length).join("|");
 const KIN_RE = new RegExp(`\\b(${KINW})\\b`);
+/** Friend words, read here whether or not extract.js's KIN has them yet. "mate" only as "my mate". */
+const FRIEND = /** @type {Record<string, string>} */ ({ "best friend": "friend", "best friends": "friend", friend: "friend", friends: "friend", buddy: "friend",
+  buddies: "friend", pal: "friend", pals: "friend", bestie: "friend", besties: "friend", mate: "friend", mates: "friend" });
+const FRIEND_RE = /\b(best friends?|besties?|friends?|buddy|buddies|pals?)\b|\bmy (mates?)\b/;
+/** The role a kin or friend word names ("wife": spouse, "buddy": friend), or null. */
+const roleOf = w => KIN[w]?.[0] || FRIEND[w] || null;
+/** Plural words for one of them: "your friends are Theo and Ana", "your friend is Theo". */
+const ONE = /** @type {Record<string, string>} */ ({ friends: "friend", "best friends": "best friend", buddies: "buddy", pals: "pal", besties: "bestie", mates: "mate" });
+/** Words for a vehicle: "what truck did I buy" asks about the user's car. */
+const CAR_RE = /\b(?:car|cars|vehicle|drive|driving|ride|truck|trucks|pickup|van|suv|motorbike|motorcycle|bike)\b/;
+/** Diets a yes/no question can name. */
+const DIETS = "vegetarian|vegan|pescatarian|pescetarian|halal|kosher|keto|paleo|gluten free|gluten-free|dairy free|dairy-free|plant based|plant-based|flexitarian|carnivore";
+/** Someone asked about by word or name: "my wife", "mom", "dani", "biscuit". */
+const SUBJ = "((?:my|our) [a-z]+(?: [a-z]+)?|[a-z][a-z'-]*(?: [a-z][a-z'-]*)?)";
+/** Question shapes about someone else's attribute. S is the someone. Anchored: a longer question is not this one. */
+const OF = /** @type {[RegExp, string][]} */ ([
+  ["what does S do(?: (?:for (?:work|a living|money|a job)|now|these days|nowadays|professionally))?", "role"],
+  ["what (?:is|was) S (?:job|occupation|profession|line of work|job title|work)", "role"],
+  ["S (?:job|occupation|profession)", "role"],
+  ["what does S work as", "role"],
+  ["(?:where|who) does S work(?: for| at| now)?", "works_at"],
+  ["(?:what|which) (?:company|firm|place) does S work (?:for|at)", "works_at"],
+  ["where is S working(?: now)?", "works_at"],
+  ["where does S live(?: now| these days)?", "lives_in"],
+  ["where (?:is|are) S (?:living|based)(?: now)?", "lives_in"],
+  ["(?:what|which) (?:city|town|country|state) does S live in", "lives_in"],
+  ["where did S move(?: to)?", "lives_in"],
+  ["where (?:is|was) S (?:from|born)", "from"],
+  ["where does S come from", "from"],
+  ["what (?:breed|kind|type|sort)(?: of (?:dog|cat|pet))? is S", "breed"],
+  ["what (?:is )?S breed", "breed"],
+  ["what colou?r is S", "color"],
+  [`is S (?:an? )?(?:${DIETS})`, "diet"],
+  ["what (?:is )?S diet", "diet"],
+].map(([s, rel]) => [new RegExp(`^${s.replace("S", SUBJ)}$`), rel]));
+const PRONOUN = new Set("he she they him her them his hers theirs someone anyone everyone somebody nobody".split(" "));
+
+/** Who an OF question is about: a relative's word, or a name. null: nobody the user could mean. */
+function subjOf(x) {
+  const m = /^(?:my|our) (.+)$/.exec(x);
+  if (m) return roleOf(m[1]) ? { kin: m[1] } : null;
+  if (roleOf(x) && x !== "mate" && x !== "mates") return { kin: x };
+  const ws = x.split(" ");
+  if (ws.some(w => STOP.has(w) || PRONOUN.has(w) || roleOf(w))) return null;
+  return { name: x };
+}
+
+/** A question about someone else's attribute ("what does my wife do", "where does dani work"), or null. */
+function ofQuestion(t) {
+  for (const [re, rel] of OF) {
+    const m = re.exec(t);
+    const who = m && subjOf(m[1]);
+    if (who) return { kind: /** @type {const} */ ("of"), who, rel };
+  }
+  // "what kind of dog do we have" is the breed of the user's dog.
+  const m = /^what (?:breed|kind|type|sort) of (dog|cat|puppy|kitten) do (?:i|we) have$/.exec(t);
+  return m ? { kind: /** @type {const} */ ("of"), who: { kin: m[1] }, rel: "breed" } : null;
+}
 
 /** Nouns whose members people name without the noun: "what editor do I use" is answered by "Neovim". */
 const CATEGORY = /** @type {Record<string, string[]>} */ ({
@@ -100,6 +158,18 @@ CATEGORY.design = CATEGORY["design tool"];
 CATEGORY.note = CATEGORY.notes;
 CATEGORY["note app"] = CATEGORY.notes;
 CATEGORY["notes app"] = CATEGORY.notes;
+Object.assign(CATEGORY, {
+  "db gui": ["tableplus", "dbeaver", "datagrip", "pgadmin", "sequel ace", "sequel pro", "postico", "beekeeper", "beekeeper studio", "heidisql", "navicat", "mysql workbench"],
+  "terminal multiplexer": ["tmux", "zellij", "screen", "byobu"],
+  "password manager": ["1password", "bitwarden", "lastpass", "dashlane", "keepass", "keepassxc", "proton pass", "nordpass", "enpass", "apple passwords", "keychain"],
+  calendar: ["google calendar", "fantastical", "outlook", "apple calendar", "busycal", "notion calendar", "calendar"],
+  "email client": ["superhuman", "spark", "thunderbird", "outlook", "apple mail", "mimestream", "airmail", "gmail", "mailmate", "proton mail"],
+});
+for (const a of ["database gui", "database client", "db client", "sql client", "database tool", "db tool"]) CATEGORY[a] = CATEGORY["db gui"];
+for (const a of ["multiplexer", "tmux alternative"]) CATEGORY[a] = CATEGORY["terminal multiplexer"];
+for (const a of ["passwords", "password app", "password tool"]) CATEGORY[a] = CATEGORY["password manager"];
+for (const a of ["calendar app", "calendar tool"]) CATEGORY[a] = CATEGORY.calendar;
+for (const a of ["email", "mail", "email app", "mail app", "mail client"]) CATEGORY[a] = CATEGORY["email client"];
 
 /**
  * @typedef {{ kind: "kin", word: string, role: string }
@@ -116,7 +186,10 @@ CATEGORY["notes app"] = CATEGORY.notes;
  *   | { kind: "owns", cat: string }
  *   | { kind: "myname" }
  *   | { kind: "who", name: string }
- *   | { kind: "attr", noun: string }} Parsed
+ *   | { kind: "attr", noun: string }
+ *   | { kind: "of", who: { kin?: string, name?: string }, rel: string, cat?: string|null }
+ *   | { kind: "carFate", car: string }
+ *   | { kind: "diet", asked: string|null }} Parsed
  * @typedef {{ kin?: string, name?: string, me?: boolean }} Who
  */
 
@@ -131,21 +204,45 @@ const content = s => String(s || "").split(/\s+/).filter(w => w && !STOP.has(w))
 export function parse(q) {
   const t = normalize(q);
   if (!t) return null;
-  const kin = KIN_RE.exec(t)?.[1] || null;
-  const role = kin ? KIN[kin][0] : null;
+  const kin = KIN_RE.exec(t)?.[1] || (m0 => m0 && (m0[1] || m0[2]))(FRIEND_RE.exec(t)) || null;
+  const role = kin ? roleOf(kin) : null;
   let m;
 
   // Someone at an organisation: "who is my contact at Harlow Legal".
   if ((m = /\b(?:contact|person|people|who works?|who do i (?:deal|work|talk) with)\s+(?:at|from|in)\s+(.+)$/.exec(t))) return { kind: "contact", org: m[1].trim() };
-  if (/\bclients?\b/.test(t) && !kin) return { kind: "clients" };
+  // A "db client" or "email client" is software, not a customer.
+  if (/\bclients?\b/.test(t) && !kin && !/\b(?:db|database|sql|email|mail|git|ftp|api|http|rest) clients?\b/.test(t)) return { kind: "clients" };
   if (/\b(?:birthday|bday)\b/.test(t) || /\bwhen (?:is|was) .*\bborn\b/.test(t)) return { kind: "birthday", who: whoOf(t, kin) };
+  // Someone else's attribute before any of the user's own: "where does my mom live" is not where the user lives.
+  const of = ofQuestion(t);
+  if (of) return of;
   if (/\bwhere (?:was|were|am|are) (?:i|you) (?:born|from)\b|\bwhere do i come from\b|\bhome ?town\b|\bborn\b/.test(t)) return { kind: "born" };
-  const before = (m = /\bbefore (?:the |my |i |we )*(.+)$/.exec(t)) ? content(m[1]) || "then" : /\b(?:previous|previously|used to|old|first|last)\b/.test(t) ? "then" : null;
-  if (/\b(?:car|cars|vehicle|drive|driving|ride)\b/.test(t)) return { kind: "car", before, color: /\bcolou?r\b/.test(t) };
+  if (!kin) {
+    if ((m = new RegExp(`\\b(?:am i|are we)(?: an?)? (${DIETS})\\b|\\bdo (?:i|we) (?:eat|keep|follow|go) (${DIETS})\\b`).exec(t))) return { kind: "diet", asked: m[1] || m[2] };
+    if (/\bdiet\b/.test(t) && /\b(?:i|my|me|we|our)\b/.test(t) || /\bdo (?:i|we) eat (?:meat|fish|pork|beef|chicken|dairy|eggs|seafood|animal products)\b/.test(t)) return { kind: "diet", asked: null };
+  }
+  const before = (m = /\bbefore (?:the |my |i |we )*(.+)$/.exec(t)) ? content(m[1]) || "then" : /\b(?:previous|previously|used to|old|first|last)\b|\bbefore$/.test(t) ? "then" : null;
+  // A relative's car is theirs: "what does my wife drive". Its colour or history is not read here.
+  if (kin && role !== "dog" && role !== "cat" && CAR_RE.test(t)) return { kind: "of", who: { kin }, rel: before || /\bcolou?r\b/.test(t) ? "car:detail" : "car" };
+  // Something a relative does that no rule reads ("what does my wife do for fun"): not their name.
+  if (kin && /^(?:what|where|when|how|why) (?:does|did) (?:my|our) /.test(t)) return { kind: "of", who: { kin }, rel: "other" };
+  if (kin && (m = /\b(?:favou?rite|prefers?)\b(.*)$/.exec(t))) return { kind: "of", who: { kin }, rel: "prefers", cat: content(m[1].replace(new RegExp(`\\b${esc(kin)}\\b`), " ")) || null };
+  // The fate of one vehicle: "what happened to the outback", "do i still have the subaru".
+  if (!kin && ((m = /^what happened (?:to|with) (?:the |my |our |that |old )*(.+)$/.exec(t))
+    || (m = /^(?:do|did|have) (?:i|we) still (?:have|own|drive|got) (?:the |my |our |that |a |an )*(.+?)(?: now| anymore| any more)?$/.exec(t))
+    || (m = /^(?:do|did) (?:i|we) (?:sell|get rid of|trade in|scrap) (?:the |my |our |that |old )*(.+)$/.exec(t))
+    || (m = /^is (?:the |my |our )(.+?) (?:gone|sold|still mine|still ours)$/.exec(t)))) {
+    const car = content(m[1]);
+    if (car) return { kind: "carFate", car };
+  }
+  // A move is a place lived: "where did we move to" is now, "where did we move from" before.
+  if ((m = /^(?:where|which (?:city|town|country|place)) did (?:i|we) (?:move|relocate)(?: to)?( from)?(?: again)?$/.exec(t))) return { kind: "lives", before: m[1] ? "then" : null };
+  if (CAR_RE.test(t)) return { kind: "car", before, color: /\bcolou?r\b/.test(t) };
+  // A job question before a place: "what do i do for a living" is not where the user lives.
+  if (/\bwhat do i do\b(?! for (?:fun|lunch|dinner))|\bfor a living\b|\bwhat (?:is|was) my (?:job|role|occupation|profession|line of work|job title)\b|\bmy (?:job|occupation|profession|line of work)$|\bwhat do i work as\b|\bwork do i do\b/.test(t)) return { kind: "job" };
   if (/\b(?:live|lived|living|based|reside)\b/.test(t) && /\b(?:i|we|my)\b/.test(t)) return { kind: "lives", before };
   if (/\b(?:which|what) (?:city|town|place|country)\b.*\b(?:am i|are we|do i|do we)\b|\bwhere am i\b/.test(t)) return { kind: "lives", before };
-  if (/\bwhat do i do\b(?! for (?:fun|lunch|dinner))|\bwhat (?:is|was) my (?:job|role|occupation|profession)\b|\bmy (?:job|occupation|profession|line of work)$|\bwhat do i work as\b/.test(t)) return { kind: "job" };
-  if (/\bwhere (?:do|did) i work\b|\bwho do i work for\b|\bmy (?:company|employer|studio|business|firm|agency|job|workplace)\b|\bcompany\b.*\b(?:i|my)\b/.test(t)) return { kind: "work" };
+  if (/\bwhere (?:do|did) i work\b|\bwho do i work for\b|\bmy (?:company|employer|studio|business|firm|agency|job|workplace|llc|ltd|inc)\b|\bcompany\b.*\b(?:i|my)\b|\bname of my (?:company|business|firm|studio|llc)\b/.test(t)) return { kind: "work" };
   if ((m = /\b(?:what|which) (?:app|tool|program|software|thing|service)s? do i (?:keep|take|write|store|put|track|do) (?:all |most )?(?:of )?my ([a-z]+)/.exec(t))) return { kind: "uses", cat: m[1] };
   if ((m = /\b(?:what|which) (.+?) do i use\b/.exec(t)) || (m = /\bwhat do i use for (.+)$/.exec(t))) return { kind: "uses", cat: content(m[1]) || null };
   if (/\bwhat do i use\b/.test(t)) return { kind: "uses", cat: null };
@@ -261,34 +358,82 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
     return { text: article ? (/^[aeiou]/i.test(name) ? "an " : "a ") + name : name, col };
   };
 
+  /**
+   * The relatives the user calls by a word: their current links from me, once each, of the gender
+   * and species asked. No partner said: the spouse is one, and back, unless that partner is only
+   * ever a girlfriend, boyfriend or fiance (not a spouse).
+   * @param {string} word @param {string} role
+   */
+  const relatives = (word, role) => {
+    const asked = KIN[word]?.[1] || null;
+    const pick = rel => current(rel === "child" ? ["child", "son", "daughter"].flatMap(r => personal.lookup({ subj: "me", rel: r })) : personal.lookup({ subj: "me", rel }))
+      .filter((f, i, a) => a.findIndex(x => x.obj === f.obj) === i)
+      // "my wife" is never the one only ever called "husband".
+      .filter(r => { if (!asked) return true; const gs = gendersOf(r.obj); return !gs.size || gs.has(asked); })
+      // A pet is the one of the species asked about: a dog is never the answer about a cat.
+      .filter(r => rel !== "pet" || r.obj === `kin:${role}` || KIN[personal.called(r.obj) || ""]?.[0] === role);
+    const rel = relOfRole(role);
+    const rs = pick(rel);
+    if (rs.length || (rel !== "spouse" && rel !== "partner")) return rs;
+    const other = pick(rel === "spouse" ? "partner" : "spouse");
+    if (rel === "partner") return other;
+    return other.filter(r => !(personal.about(r.obj)?.aliases || []).some(a => /^(?:my )?(?:girlfriend|boyfriend|fiancee?|fiancée?)$/.test(a)));
+  };
+
+  /**
+   * The one person or pet an `of` question is about, and how to name them in the answer.
+   * null: nobody, several (two sisters: which one?), or the user themselves.
+   * @param {{ kin?: string, name?: string }} who
+   */
+  const subjectOf = who => {
+    if (who.kin) {
+      const word = who.kin, role = roleOf(word);
+      if (!role) return null;
+      const rs = relatives(word, role);
+      if (rs.length > 1) return null;
+      let id = rs[0]?.obj || null;
+      if (!id) {
+        const e = personal.entity(`my ${word}`) || personal.entity(`kin:${role}`);
+        if (!e || e.id === "me" || (e.kind !== "person" && e.kind !== "pet")) return null;
+        const asked = KIN[word]?.[1], gs = gendersOf(e.id);
+        if (asked && gs.size && !gs.has(asked)) return null;
+        if ((role === "dog" || role === "cat") && e.id !== `kin:${role}` && KIN[personal.called(e.id) || ""]?.[0] !== role) return null;
+        id = e.id;
+      }
+      // A pet goes by its name ("Biscuit is a beagle"); a person by the word asked ("Your wife").
+      const nm = current(personal.lookup({ subj: id, rel: "name" }))[0];
+      const pet = role === "dog" || role === "cat";
+      return { id, label: pet && nm ? cap(nm.object) : `Your ${FORMAL[word] || ONE[word] || word}`, nm };
+    }
+    let e = personal.entity(String(who.name));
+    if (!e && /\s/.test(String(who.name))) { const f0 = personal.entity(String(who.name).split(/\s+/)[0]); if (f0 && f0.kind === "person" && !/\s/.test(f0.label)) e = f0; }
+    if (!e || e.id === "me" || (e.kind !== "person" && e.kind !== "pet")) return null;
+    const nm = current(personal.lookup({ subj: e.id, rel: "name" }))[0];
+    const label = nm ? nm.object : e.label;
+    return { id: e.id, label: unnamed(label) ? `Your ${label}` : cap(label), nm };
+  };
+  const art = x => (/^(?:a|an|the|my|his|her|their)\s/i.test(x) ? x : (/^[aeiou]/i.test(x) ? "an " : "a ") + x);
+
   /** Personal facts for a parsed question. null: no fact answers it. */
   const byFact = (/** @type {Parsed} */ p) => {
     switch (p.kind) {
       case "kin": {
-        const rel = relOfRole(p.role);
-        // "my kids" are every child, son and daughter.
-        const rels = current(rel === "child" ? ["child", "son", "daughter"].flatMap(r => personal.lookup({ subj: "me", rel: r })) : personal.lookup({ subj: "me", rel }))
-          .filter((f, i, a) => a.findIndex(x => x.obj === f.obj) === i);
         const named = [];
-        const asked = KIN[p.word]?.[1] || null;
-        for (const r of rels) {
+        for (const r of relatives(p.word, p.role)) {
           if (unnamed(r.object)) continue;
-          // "my wife" is never the one only ever called "husband".
-          if (asked) { const gs = gendersOf(r.obj); if (gs.size && !gs.has(asked)) continue; }
-          // A pet is the one of the species asked about: a dog is never the answer about a cat.
-          if (rel === "pet" && r.obj !== `kin:${p.role}` && KIN[personal.called(r.obj) || ""]?.[0] !== p.role) continue;
           const nm = current(personal.lookup({ subj: r.obj, rel: "name" }))[0];
           named.push({ r, nm, label: nm ? nm.object : r.object });
         }
         if (!named.length) return null;
         const facts = named.flatMap(x => (x.nm ? [x.r, x.nm] : [x.r]));
         const conf = Math.min(...named.map(x => Math.min(x.r.confidence, x.nm ? x.nm.confidence : x.r.confidence)));
-        const word = p.word === "kids" || p.word === "children" ? p.word : named.length > 1 ? pluralOf(p.word) : p.word;
+        const one = ONE[p.word] || p.word;
+        const word = p.word === "kids" || p.word === "children" ? p.word : named.length > 1 ? pluralOf(one) : one;
         const line = `Your ${word} ${named.length > 1 ? "are" : "is"} ${list(named.map(x => x.label))}.`;
         return { line, facts, conf, sessions: Math.max(...named.map(x => (x.nm || x.r).sessions)) };
       }
       case "birthday": {
-        const e = p.who.me ? personal.entity("me") : p.who.kin ? personal.entity(`my ${p.who.kin}`) || personal.entity(`kin:${KIN[p.who.kin][0]}`) : personal.entity(String(p.who.name));
+        const e = p.who.me ? personal.entity("me") : p.who.kin ? personal.entity(`my ${p.who.kin}`) || personal.entity(`kin:${roleOf(p.who.kin)}`) : personal.entity(String(p.who.name));
         if (!e) return null;
         const f = current(personal.lookup({ subj: e.id, rel: "birthday" }))[0];
         if (!f) return null;
@@ -409,6 +554,54 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
           : f.rel === "owns" ? `${label} is yours.` : f.rel === "uses" ? `You use ${label}.` : `${label}: ${f.rel.replace(/_/g, " ")}.`;
         return fromFacts(line.replace(/^([a-z])/, c => c.toUpperCase()), nm ? [f, nm] : [f]);
       }
+      case "of": {
+        // Read on that person only: never the user's own fact, never just their name.
+        const s = subjectOf(p.who);
+        if (!s) return null;
+        const one = rel => current(personal.lookup({ subj: s.id, rel }))[0];
+        const S = s.label;
+        switch (p.rel) {
+          case "role": {
+            const r = one("role"), w = one("works_at");
+            if (r) return fromFacts(`${S} is ${art(r.object)}${w ? ` at ${w.object}` : ""}.`, w ? [r, w] : [r]);
+            return w ? fromFacts(`${S} works at ${w.object}.`, [w]) : null;
+          }
+          case "works_at": { const w = one("works_at"); return w ? fromFacts(`${S} works at ${w.object}.`, [w]) : null; }
+          case "lives_in": { const f = one("lives_in"); return f ? fromFacts(`${S} lives in ${f.object}.`, [f]) : null; }
+          case "from": { const f = one("from"); return f ? fromFacts(`${S} is from ${f.object}.`, [f]) : null; }
+          case "breed": { const f = one("breed"); return f ? fromFacts(`${S} is ${art(f.object)}.`, [f]) : null; }
+          case "color": { const f = one("color"); return f ? fromFacts(`${S} is ${f.object}.`, [f]) : null; }
+          case "diet": { const f = one("diet"); return f ? fromFacts(`${S} is ${f.object}.`, [f]) : null; }
+          case "car": {
+            const d = one("drives");
+            const f = d || current(personal.lookup({ subj: s.id, rel: "owns" })).find(x => x.obj.startsWith("vehicle:"));
+            return f ? fromFacts(`${S} ${d ? "drives" : "has"} ${carText(f).text}.`, [f]) : null;
+          }
+          case "prefers": {
+            const fs = current(personal.lookup({ subj: s.id, rel: "prefers" })).filter(f => inCategory(f.object, p.cat || null));
+            return fs.length ? fromFacts(`${S} prefers ${fs[0].object}.`, [fs[0]]) : null;
+          }
+          default: return null;
+        }
+      }
+      case "carFate": {
+        const e = personal.entity(p.car);
+        if (!e || e.kind !== "vehicle") return null;
+        const owns = personal.lookup({ subj: "me", rel: "owns" }).filter(f => f.obj === e.id);
+        const now = owns.find(f => f.current) || current(personal.lookup({ subj: "me", rel: "drives" })).find(f => f.obj === e.id);
+        if (now) return fromFacts(`You still have the ${e.label}.`, [now]);
+        // Owning is never single-valued, so an owns fact that is no longer current was ended:
+        // sold, traded in or scrapped (the store's ended:owns).
+        return owns.length ? fromFacts(`You sold the ${e.label}.`, [owns[0]]) : null;
+      }
+      case "diet": {
+        const f = current(personal.lookup({ subj: "me", rel: "diet" }))[0];
+        if (!f) return null;
+        const k = x => String(x).toLowerCase().replace(/[^a-z]/g, "");
+        // Yes when the fact is the diet asked; otherwise what the fact says, never a bare "No".
+        const yes = p.asked && (k(f.object) === k(p.asked) || hasWord(f.object.replace(/-/g, " "), p.asked.replace(/-/g, " ")));
+        return fromFacts(`${yes ? "Yes, you" : "You"} are ${f.object}.`, [f]);
+      }
       default: return null;
     }
   };
@@ -437,6 +630,11 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
       const people = [...new Set(fs.map(f => String(f.subject.label)))];
       return { line: `Your contact${people.length > 1 ? "s" : ""} at ${org.label} ${people.length > 1 ? "are" : "is"} ${list(people)}.`, graphFacts: fs,
         conf: Math.min(GRAPH_MAX, ...fs.map(f => f.confidence)) };
+    }
+    // "where does dana reyes work": a person outside the user's life, by the graph.
+    if (p.kind === "of" && p.who.name && (p.rel === "works_at" || p.rel === "role")) {
+      const g = byGraph({ kind: "who", name: String(p.who.name) });
+      return g && g.graphFacts[0]?.rel === "works_at" ? g : null;
     }
     if (p.kind === "who") {
       const n = graph.resolve(p.name);
@@ -510,7 +708,7 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
    * newest first, the same filters as a said line.
    * @param {string} q @param {string|null} noun
    */
-  const byTold = (q, noun) => {
+  const byTold = (q, noun, strict = false) => {
     const asked = normalize(q).split(" ").filter(w => !STOP.has(w) && w.length > 2);
     if (!asked.length && !noun) return null;
     for (const told of personal.toldAll({ limit: 500 })) {
@@ -520,13 +718,15 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
         // Told on purpose, so every word asked (any ending) is enough, as is a stated relation.
         const has = w => new RegExp(`(^|[^a-z0-9])${esc(w.replace(/(?:es|s|ed|ing)$/, "") || w)}[a-z]{0,3}($|[^a-z0-9])`).test(ns);
         const stated = noun && new RegExp(`\\bmy ${esc(noun)} (?:is|was|called|named)\\b`).test(ns);
-        if (!stated && !(noun ? asked.length && asked.every(has) : asked.some(has))) continue;
+        if (!stated && (strict || !(noun ? asked.length && asked.every(has) : asked.some(has)))) continue;
         return { line: toYou(s), conf: SAID_MAX, source: { session: `told:${told.id}`, seq: 0, name: "told to memory", quote: s.length > 200 ? s.slice(0, 197) + "..." : s, ts: told.ts } };
       }
     }
     return null;
   };
 
+  const OF_NOUN = /** @type {Record<string, string>} */ ({ role: "job", works_at: "employer", lives_in: "home", from: "hometown", breed: "breed", color: "colour",
+    diet: "diet", car: "car", "car:detail": "car", prefers: "favourite" });
   /** The key noun of a relation question, for the said filter: "son", "dentist", "phone". */
   const nounOf = (/** @type {Parsed} */ p) => {
     switch (p.kind) {
@@ -543,6 +743,10 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
       case "myname": return "name";
       case "who": return p.name;
       case "contact": return "contact";
+      // Someone else's attribute takes only a line that states it: "my wife's job is ...".
+      case "of": return `${p.who.kin || p.who.name} ${OF_NOUN[p.rel] || p.rel}`;
+      case "carFate": return p.car;
+      case "diet": return "diet";
       default: return null;
     }
   };
@@ -562,7 +766,7 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
       const f = byFact(p);
       if (f && f.conf >= MAYBE) {
         const conf = round(f.conf);
-        const line = conf >= SURE ? f.line : "Maybe " + f.line.replace(/^(Your|You)\b/, w => w.toLowerCase());
+        const line = conf >= SURE ? f.line : "Maybe " + f.line.replace(/^Yes, /, "").replace(/^(Your|You|you)\b/, w => w.toLowerCase());
         const from = f.sessions ?? (f.facts.length ? Math.max(...f.facts.map(x => x.sessions)) : 0);
         return done({ answer: line, confidence: conf, kind: "fact", from, facts: f.facts.map(factOut), sources: sourcesOf(f.facts, n), via: "fact" });
       }
@@ -578,11 +782,14 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
           sources: src, via: "fact" });
       }
     }
-    // No fact. A line told to memory outright comes before anything said in passing.
-    const t = byTold(text, p ? nounOf(p) : null);
+    // No fact. A vehicle memory never heard of is no relation: its words are searched as before.
+    const pq = p && p.kind === "carFate" && personal.entity(p.car)?.kind !== "vehicle" ? null : p;
+    // A line told to memory outright comes before anything said in passing. Someone else's
+    // attribute takes only a line that states it, never one that merely names them.
+    const t = byTold(text, pq ? nounOf(pq) : null, pq?.kind === "of");
     if (t) return done({ answer: t.line, confidence: round(t.conf), kind: "said", from: 1, facts: [], sources: [t.source], via: "keyword" });
     // A relation question takes only a sentence that states that relation.
-    const s = await bySaid(text, p ? nounOf(p) : null, { project_cwds });
+    const s = await bySaid(text, pq ? nounOf(pq) : null, { project_cwds });
     if (s) return done({ answer: s.line, confidence: round(s.conf), kind: "said", from: 1, facts: [], sources: [s.source], via: s.via });
     return done({});
   };
