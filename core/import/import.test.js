@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { start } from "../daemon/index.js";
-import { call } from "../daemon/client.js";
+import { call, request } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { cwdOf, notSuggested } from "./scan.js";
 
@@ -73,6 +73,13 @@ test("import scan: sessions by source and folder, dev and temporary folders unti
   const whole = (await call("import.plan", { include: [extra] }, { root })).data;
   assert.equal(whole.sessions, 1, "a whole source by its path");
 
+  // Indexing moves the counts, and the import says so within a few seconds, counts only.
+  await call("recall.index", {}, { root });
+  let ev = [];
+  for (let i = 0; i < 40 && !ev.length; i++) { await new Promise(r => setTimeout(r, 150)); ev = (await request("GET", "/v1/events?type=import.progress", undefined, { root })).data; }
+  assert.ok(ev.length, "no import.progress after indexing");
+  assert.ok(ev.at(-1).payload.search.done >= 1, JSON.stringify(ev.at(-1).payload));
+  assert.doesNotMatch(JSON.stringify(ev), /harlow|SECRET/i, "names or text in a progress event");
   const s = (await call("import.status", {}, { root })).data;
   assert.deepEqual(Object.keys(s).sort(), ["graph", "meaning", "personal", "search", "searchable_sessions"]);
   assert.ok(s.search.total >= s.search.done);
