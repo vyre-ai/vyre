@@ -164,14 +164,15 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   assert.equal(w.said.length, 5);
 });
 
-test("fromAsks: an ask from a session on the paired Mac names its machine, and the answer carries it", async () => {
+test("fromAsks: an ask from a session on the paired Mac names its machine and is answered there", async () => {
   const { fromAsks } = await import("./index.js");
   const [mac, box] = fromAsks([
     { id: "a1", kind: "permission", tool: "Bash", summary: "npm test", source: "mac", machine: "alex-mbp", at: 2 },
     { id: "a2", kind: "permission", tool: "Bash", summary: "ls", at: 1 },
   ]);
   assert.equal(mac.machine, "alex-mbp");
-  assert.deepEqual(mac.answer.input, { ask: "a1", machine: "alex-mbp" });
+  assert.deepEqual(mac.answer, { tool: null, input: null, fill: [], on: "alex-mbp" }, "answered on the Mac until federation lands");
+  assert.equal(fromAsks([{ id: "a3", kind: "question", source: "mac", at: 3 }])[0].answer.on, "your Mac");
   assert.equal(box.machine, undefined);
   assert.deepEqual(box.answer.input, { ask: "a2" });
 });

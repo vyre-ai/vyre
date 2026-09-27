@@ -91,7 +91,9 @@ Held in memory only. A restart forgets it, which is right: the next report rebui
   `link.pending` into rows `{id, kind: "ask"|"draft"|"reminder"|"pairing", title, detail?,
   project?, thread?, at, source, answer: {tool, input, fill}}`, newest first, with `count`,
   `by_kind` and `partial` (sources that could not be read). `fill` names what the person still
-  gives (a decision, a pairing code).
+  gives (a decision, a pairing code). An ask from a session on the paired Mac names its `machine`
+  and has `answer: {tool: null, on: <machine>}`: it is answered on that Mac until federation lets
+  the box forward the answer.
 - `waiting.count {}` returns `{count, by_kind}` only.
 - Event `waiting.changed {count, by_kind}`, when the count moves, after the owners' own events.
 
