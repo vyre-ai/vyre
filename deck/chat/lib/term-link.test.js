@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { linkVerdict, streamless, holdKeys, utf8Length, withFrom, withMods, arrow, step, reopened, onClose, onAttachError, remember, bytes, QUEUE_MAX,
-  unsized, sizeReopened, drawAt, watching, onFit, onSizeFrame, takeSize, watchLabel, letterbox } from "./term-link.js";
+  unsized, sizeReopened, drawAt, watching, onFit, onSizeFrame, takeSize, watchLabel, letterbox, KEYS, KEY_ROWS, keySend, lineHeightFor, deviceName } from "./term-link.js";
 
 const failedBeforeOpen = { opened: false, data: false, code: 1006 };
 const emptyDrop = { opened: true, data: false, code: 1006 };
@@ -188,7 +188,7 @@ test("term-link: owner:false watches at the owner's size, and a fit still says w
   let r = onSizeFrame(unsized, { t: "size", cols: 120, rows: 40, owner: false }, phone);
   assert.equal(r.send, null, "a watcher never answers a size frame");
   assert.equal(watching(r.state), true);
-  assert.equal(watchLabel(r.state), "Watching at 120x40");
+  assert.equal(watchLabel(r.state), "This screen is watching. Size is owned by another screen");
   assert.deepEqual(drawAt(r.state, phone), { cols: 120, rows: 40 }, "drawn at the owner's size, not reflowed");
   const f = onFit(r.state, phone);
   assert.deepEqual(f.send, { t: "size", cols: 50, rows: 20 }, "kept by the box as this screen's wanted size");
@@ -234,4 +234,75 @@ test("term-link: letterbox scales a larger terminal down, centred, and never up"
   assert.deepEqual(letterbox({ w: 1000, h: 500 }, { w: 500, h: 500 }), { scale: 0.5, x: 0, y: 125 });
   assert.deepEqual(letterbox({ w: 400, h: 200 }, { w: 500, h: 300 }), { scale: 1, x: 50, y: 50 });
   assert.deepEqual(letterbox({ w: 0, h: 0 }, { w: 500, h: 300 }), { scale: 1, x: 0, y: 0 });
+});
+
+test("term-link: the watch line names the owner device when the box gives one, else another screen", () => {
+  const phone = { cols: 50, rows: 20 };
+  const named = onSizeFrame(unsized, { t: "size", cols: 120, rows: 40, owner: false, device: "alex's MacBook Pro" }, phone).state;
+  assert.equal(watchLabel(named, "phone"), "This phone is watching. Size is owned by alex's MacBook Pro");
+  assert.equal(watchLabel(named), "This screen is watching. Size is owned by alex's MacBook Pro");
+  const plain = onSizeFrame(unsized, { t: "size", cols: 120, rows: 40, owner: false }, phone).state;
+  assert.equal(watchLabel(plain, "phone"), "This phone is watching. Size is owned by another screen");
+  // Owning clears the name; watching again without one falls back.
+  const own = onSizeFrame(named, { t: "size", cols: 50, rows: 20, owner: true }, phone).state;
+  assert.equal(own.device, "");
+  assert.equal(watchLabel(onSizeFrame(own, { t: "size", cols: 120, rows: 40, owner: false }, phone).state, "phone"), "This phone is watching. Size is owned by another screen");
+});
+
+test("term-link: deviceName folds whitespace, caps at 64, and ignores anything not a string", () => {
+  assert.equal(deviceName("  kit's   iPhone \n"), "kit's iPhone");
+  assert.equal(deviceName(42), "");
+  assert.equal(deviceName(null), "");
+  const long = deviceName("x".repeat(100));
+  assert.equal(long.length, 64);
+  assert.ok(long.endsWith("\u2026"));
+});
+
+test("term-link: the key bar is two rows of seven, as the spec lists", () => {
+  assert.equal(KEY_ROWS.length, 2);
+  assert.deepEqual(KEY_ROWS.map(r => r.length), [7, 7]);
+  assert.deepEqual(KEY_ROWS[0].map(id => KEYS[id].label), ["Esc", "Tab", "Ctrl", "Alt", "\u2191", "\u2193", "Paste"]);
+  assert.deepEqual(KEY_ROWS[1].map(id => KEYS[id].label), ["/", "|", "~", "-", "\u2190", "\u2192", "Enter"]);
+  for (const id of KEY_ROWS.flat()) assert.ok(KEYS[id], id);
+  assert.deepEqual(["left", "up", "down", "right"].map(id => KEYS[id].aria), ["Left", "Up", "Down", "Right"]);
+  assert.equal(new Set(KEY_ROWS.flat()).size, 14, "no key twice");
+});
+
+test("term-link: key bar keys send their bytes; modifiers and Paste send nothing themselves", () => {
+  assert.equal(keySend("esc"), "\x1b");
+  assert.equal(keySend("tab"), "\t");
+  assert.equal(keySend("enter"), "\r");
+  assert.equal(keySend("slash"), "/");
+  assert.equal(keySend("pipe"), "|");
+  assert.equal(keySend("tilde"), "~");
+  assert.equal(keySend("dash"), "-");
+  assert.equal(keySend("up"), "\x1b[A");
+  assert.equal(keySend("left", true), "\x1bOD");
+  assert.equal(keySend("right"), "\x1b[C");
+  assert.equal(keySend("down", true), "\x1bOB");
+  assert.equal(keySend("ctrl"), null);
+  assert.equal(keySend("alt"), null);
+  assert.equal(keySend("paste"), null);
+  assert.equal(keySend("nope"), null);
+  assert.equal(keySend("toString"), null, "only the bar's own keys");
+});
+
+test("term-link: latched Ctrl and Alt on the new keys", () => {
+  assert.equal(withMods(keySend("slash"), { ctrl: true }), "\x1f");
+  assert.equal(withMods(keySend("dash"), { ctrl: true }), "\x1f");
+  assert.equal(withMods(keySend("enter"), { alt: true }), "\x1b\r");
+  assert.equal(withMods(keySend("enter"), { ctrl: true }), "\r");
+  assert.equal(withMods(keySend("pipe"), { alt: true }), "\x1b|");
+  assert.equal(withMods(keySend("up"), { ctrl: true }), "\x1b[A", "an arrow is not a control key");
+});
+
+test("term-link: lineHeightFor draws 18 px rows from the font's own line, never under 1", () => {
+  assert.equal(lineHeightFor(18, 15), 1.2);
+  assert.equal(lineHeightFor(18, 12), 1.5);
+  assert.equal(lineHeightFor(18, 16), 1.125);
+  assert.equal(lineHeightFor(18, 20), 1, "a taller font line is drawn as it is");
+  assert.equal(lineHeightFor(18, 0), 1);
+  assert.equal(lineHeightFor(18, NaN), 1);
+  // xterm rounds the cell to whole pixels: the result lands on 18 at these heights.
+  for (const ch of [14, 15, 15.5, 16]) assert.equal(Math.round(ch * lineHeightFor(18, ch)), 18, String(ch));
 });

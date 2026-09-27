@@ -6,7 +6,7 @@
 // view's New project form sends, startThread what its New thread box sends, indexHistory what
 // Settings' Re-index now sends. Those views call these functions too, so there is one of each.
 //
-// Styles: .ea in css/deck.css (44px targets under 760px).
+// Styles: .ea in css/deck.css (44px targets under 720px).
 
 import { h, put, go } from "./dom.js";
 import { attempt } from "./api.js";

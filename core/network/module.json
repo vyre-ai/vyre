@@ -8,5 +8,14 @@
   "watches": { "emits": ["guest.added", "guest.removed"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": {},
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "check", "text": "Run `vyre call network.guests.check` to see who besides you the box would serve.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre call network.guests.check", "docs": "get-started/tailscale.md#guests-from-another-tailnet"},
+      {"id": "enable", "text": "Guests stay off until you run `vyre call --tty network.guests.enable '{\"on\":true}'` on the box.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre call --tty network.guests.enable '{\"on\":true}'", "docs": "get-started/tailscale.md#guests-from-another-tailnet"},
+      {"id": "add", "text": "Let desk@harlowlegal.com list threads: run `vyre call --tty network.guests.add` with that login and threads.list.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call --tty network.guests.add", "docs": "get-started/tailscale.md#guests-from-another-tailnet"},
+      {"id": "remove", "text": "Run `vyre call --tty network.guests.remove` with a guest's login to stop serving them.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call --tty network.guests.remove"},
+      {"id": "settings-guests", "text": "Open Settings, Network in the Deck to see each guest and the tools they may call.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "get-started/tailscale.md#guests-from-another-tailnet"},
+      {"id": "guest-limits", "text": "Share the box without worry: a guest can never approve, open Glass or act as you.", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "get-started/tailscale.md#guests-from-another-tailnet"}
+    ]
+  }
 }

@@ -17,7 +17,7 @@
 // recall.thread with no reply, keyboard or Take. Picking a Mac session into a box project is fine.
 
 import { h, put, link, go, head, empty } from "../js/dom.js";
-import { attempt, call } from "../js/api.js";
+import { attempt, queue, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { when, clock, since, base, initial, initials, plural } from "../js/fmt.js";
@@ -623,7 +623,7 @@ function recalledBlock(ev, project) {
 function normAsk(a, at) {
   return {
     id: a.id || a.ask, at: a.at || at, tool: a.tool || "", command: a.command || a.summary || "", rule: a.rule || "", why: a.why || "",
-    // A Mac session's ask is answered on that Mac: no options, and the card says where.
+    // A Mac session's ask on a box that cannot forward the answer: no options, and the card says where.
     elsewhere: a.elsewhere || null,
     options: a.elsewhere ? [] : a.options?.length ? a.options : [{ label: "Allow once", decision: "allow" }, { label: "Deny", decision: "deny" }],
   };
@@ -638,12 +638,14 @@ function heldBlock(a, threadId) {
     try {
       const n = needs.current().find(x => x.id === a.id);
       if (n) await needs.answer(n, opt);
-      else await call("threads.answer", { ask: a.id, decision: opt.decision, ...(opt.input ? { input: opt.input } : {}) });
+      else await queue("threads.answer", { ask: a.id, decision: opt.decision, ...(opt.input ? { input: opt.input } : {}) });
       settle(el, opt.label);
     } catch (e) {
       const err = /** @type {any} */ (e);
       put(status, err.missing ? "The switchboard module is not running, so this cannot be answered here yet." : String(err.message));
-      for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
+      // The box cannot forward answers to this Mac (needs.js): the line says where, no buttons.
+      if (err.elsewhere) put(buttons);
+      else for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
   put(buttons, a.elsewhere ? h("span", { class: "small muted" }, `Answer it on ${a.elsewhere}`) : a.options.map((opt, i) => h("button", { type: "button",
@@ -738,7 +740,7 @@ function drawComposer(ctx, box, o) {
       holder = l.data?.holder || l.data?.surface || "deck";
       if (holder !== "deck") { draw(); return; }
     }
-    const r = await attempt("threads.send", { thread: o.id, text });
+    const r = await queued("threads.send", { thread: o.id, text });
     send.disabled = false;
     if (r.error) { put(note, r.error.missing ? "The switchboard module is not running." : String(r.error.message)); return; }
     // threads.send answers {sent:false,...} rather than an error when the lease was taken back

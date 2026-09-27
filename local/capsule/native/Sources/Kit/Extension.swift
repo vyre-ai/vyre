@@ -78,6 +78,8 @@ public protocol CapsuleExtension: AnyObject {
     func sidePanel(for item: ResultItem?) -> AnyView?
     /// A chord from keyChords was pressed.
     func handle(chord: KeyShortcut, query: Query) -> Bool
+    /// A key came up while the Capsule is key (Return, for hold-to-talk). True if it was yours.
+    func handleUp(key: String) -> Bool
 
     /// The words in the box or the chip changed (a key, a pick, a chip dropped). Forget anything
     /// that was waiting for a second Enter on the old ones. The default does nothing.
@@ -108,6 +110,7 @@ public extension CapsuleExtension {
         await send(text, to: target, query: query)
     }
     func handle(chord: KeyShortcut, query: Query) -> Bool { false }
+    func handleUp(key: String) -> Bool { false }
     func boxChanged() {}
     func capsuleWillShow(front: FrontApp?) {}
     func capsuleDidHide() {}
@@ -293,6 +296,9 @@ public protocol CapsuleHost: AnyObject {
     func hidePanel()
     /// Put the text in the box, as if the user typed it.
     func setQuery(_ text: String)
+    /// Words being spoken into the box. While `final` is false nothing is asked on its own; the
+    /// final words are then submitted as ⏎ would (a question answers, a follow-up continues).
+    func dictate(_ text: String, final: Bool)
     /// A line under the box, for a moment ("Copied", "No window in front").
     func say(_ line: String)
     /// Hide the Capsule and wait until `front` is frontmost again (up to 800 ms). True if it is.
@@ -316,6 +322,7 @@ public protocol CapsuleHost: AnyObject {
 public extension CapsuleHost {
     /// A host with no windows (a test's fake host) hands out one that shows nothing.
     func sessionWindow(owner: String) -> SessionWindow { NoSessionWindow() }
+    func dictate(_ text: String, final: Bool) { setQuery(text) }
     func prove(tool: String, input: [String: Any], summary: String) async -> VyredResult {
         await vyred.call(tool, input, presence: true, summary: summary)
     }

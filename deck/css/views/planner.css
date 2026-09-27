@@ -19,7 +19,7 @@
 
 .pl-focus:empty { display: none; }
 .pl-focus { margin-top: 12px; }
-.pl-card { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--r-3); }
+.pl-card { display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); }
 .pl-card-title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
 .pl-card .pl-acts { margin-top: 6px; }
 
@@ -39,7 +39,7 @@
 .pl-pin { flex-shrink: 0; }
 .pl-body { margin: 4px 0 0; white-space: pre-wrap; }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .pl-col { padding: 20px 16px 96px; }
   .pl-banner .pl-acts { width: 100%; }
   .pl-banner .pl-acts .btn { flex: 1; height: 44px; }

@@ -40,7 +40,7 @@
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
 import { h, put } from "../js/dom.js";
-import { attempt, on } from "../js/api.js";
+import { attempt, queued as viaOutbox, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import {
   draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
@@ -68,6 +68,11 @@ const SCOPES = Object.freeze([
   { id: "user", label: "About you", hint: "Every project and chat" },
   { id: "local", label: "Just this folder", hint: "Not shared" },
 ]);
+/** The browser sizes a textarea to its text by itself (Chrome 123, Safari 26). */
+const FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
+const frame = typeof requestAnimationFrame === "function" ? (/** @type {() => void} */ f) => requestAnimationFrame(f) : (/** @type {() => void} */ f) => setTimeout(f, 16);
+/** A message with images is not queued: the box keeps only a queued message's words (sessions to fix). */
+const IMAGES_NO_QUEUE = "Images can't wait in the queue yet. Send them as a steer now (Enter), or after this turn.";
 /** How long the send button is held to queue. */
 const HOLD_MS = 450;
 /** A fallback "/" list is asked again after this long (the session was not running: it had none). */
@@ -138,7 +143,22 @@ export function mountComposer(opts) {
   const hint = h("div", { class: "composer-hint" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"]));
   const root = h("div", { class: "composer" }, note, thumbs, wrap, chips, hint);
 
-  function grow() { ta.style.height = "auto"; ta.style.height = Math.min(200, ta.scrollHeight || 0) + "px"; }
+  // The box fits its text. Where CSS can size it (field-sizing, chat.css) nothing runs per key.
+  // Elsewhere it is measured once a frame, and the height is reset only when the text got
+  // shorter, so a key on a line that fits costs one read, never a layout of the timeline.
+  let growing = false, grownLen = 0;
+  function grow() {
+    if (FIELD_SIZING || growing) return;
+    growing = true;
+    frame(() => {
+      growing = false;
+      const shrank = ta.value.length < grownLen;
+      grownLen = ta.value.length;
+      if (!shrank && (ta.scrollHeight || 0) <= (ta.clientHeight || 0)) return;
+      if (shrank) ta.style.height = "auto";
+      ta.style.height = Math.min(200, ta.scrollHeight || 0) + "px";
+    });
+  }
   const caret = () => (typeof ta.selectionStart === "number" ? ta.selectionStart : ta.value.length);
   const setValue = (/** @type {string} */ v, at = v.length) => { ta.value = v; try { ta.setSelectionRange?.(at, at); } catch {} grow(); drawChips(); };
   const say = (/** @type {any} */ what, soft = true) => { note.classList.toggle("soft", soft); put(note, what); };
@@ -385,6 +405,7 @@ export function mountComposer(opts) {
   /** Enter, the send button, or a hold on it. @param {{ button?: boolean, hold?: boolean, alt?: boolean, shift?: boolean }} how */
   function submit(how = {}) {
     const a = enterAction({ text: ta.value, running: busy && !machine, queueToggle, images: images.length, touch: touch(), ...how });
+    if (a.do === "refuse") { say(IMAGES_NO_QUEUE); return; }
     if (a.do !== "send" || sending) return;
     if (editing) { saveEdit(); return; }
     if (a.kind === "shell") { runShell(draftBody(ta.value)); return; }
@@ -413,9 +434,17 @@ export function mountComposer(opts) {
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
       : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
-    const r = await attempt("threads.send", input);
+    // Through the outbox (ADR 0029): a box out of reach keeps the words on this device and sends
+    // them, once, when it is back. Meanwhile the note says so and the composer takes the next one.
+    let waited = false;
+    const r = await viaOutbox("threads.send", input, { onWait: () => {
+      waited = true; sending = false; send.disabled = false;
+      note.classList.add("soft");
+      put(note, icon("clock", 12), " Sending when your box answers: ", h("span", { class: "faint" }, text.length > 60 ? text.slice(0, 59) + "…" : text));
+    } });
     sending = false;
     send.disabled = false;
+    if (waited && !r.error) { put(note); note.classList.remove("soft"); }
     drawChips();
     const back = () => {
       if (drawn) patch(dropLocal(/** @type {any} */ (S), uuid));
@@ -445,6 +474,9 @@ export function mountComposer(opts) {
       // message. The answer names the row (queued_id, and the box's uuid; an older box only says
       // queued: true and thread.queued names it). A steer drawn on send was not one: it becomes the row.
       const id = d.queued_id ?? (d.queued === true ? null : d.queued);
+      // A session busy in a terminal queued it anyway: the box kept the words, not the images.
+      // They go back in the box, so they can be sent once the turn ends.
+      if (imgs.length && !images.length) { images = imgs; drawImages(); say("Queued without the images: a queued message keeps only its words. They are back in the box to send after this turn."); }
       if (drawn && mode === "steer") patch(dropLocal(/** @type {any} */ (S), uuid));
       if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
       if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));

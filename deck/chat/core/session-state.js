@@ -1194,6 +1194,47 @@ function withShells(list) {
 const holds = (item, f) => Object.keys(f).every(k => JSON.stringify(item[k]) === JSON.stringify(f[k]));
 
 /**
+ * What threads.get's events say is still in flight, for a view opened on a transcript: the
+ * transcript holds neither the queue nor words steered into a turn Claude has not reached yet
+ * (an Edit waiting on Allow blocks the turn, so a steer sent then stays pending until the answer).
+ * Returns, in their order and without their ids (so applyEvent takes them after the cursor moved
+ * past), the thread.queued events of rows still waiting (not unqueued, not handed over) and the
+ * thread.sent steers (via "steer" or "now") with no thread.steered after them and no turn end
+ * since (thread.finished: taken in, or run as the next turn, which the transcript then holds).
+ * @param {SessionEvent[]} events oldest first
+ * @returns {SessionEvent[]}
+ */
+export function pendingEvents(events) {
+  /** @type {Map<string, SessionEvent[]>} row id (or uuid) -> its thread.queued events */
+  const rows = new Map();
+  /** @type {Map<string, SessionEvent>} steer uuid -> its thread.sent */
+  const steers = new Map();
+  const rowKey = (/** @type {any} */ p) => (p.queued != null ? `q:${p.queued}` : p.uuid ? `u:${p.uuid}` : null);
+  const drop = (/** @type {any} */ p) => {
+    for (const [k, list] of rows) {
+      const q = /** @type {any} */ (list[0].payload || {});
+      if ((p.queued != null && q.queued === p.queued) || (p.uuid && q.uuid === p.uuid)) rows.delete(k);
+    }
+  };
+  for (const e of Array.isArray(events) ? events : []) {
+    if (!e || typeof e.type !== "string") continue;
+    const p = /** @type {any} */ (e.payload || {});
+    if (e.type === "thread.queued") {
+      const k = rowKey(p);
+      if (k) rows.set(k, [...(rows.get(k) || []), e]);
+    } else if (e.type === "thread.unqueued") drop(p);
+    else if (e.type === "thread.sent") {
+      if (p.queued != null || p.uuid) drop(p);
+      if ((p.via === "steer" || p.via === "now") && p.uuid) steers.set(String(p.uuid), e);
+    } else if (e.type === "thread.steered") { if (p.uuid) steers.delete(String(p.uuid)); }
+    else if (e.type === "thread.finished" || e.type === "thread.stopped" || (e.type === "thread.turn" && p.steered)) steers.clear();
+  }
+  const keep = [...[...rows.values()].flat(), ...steers.values()];
+  const order = (/** @type {SessionEvent} */ e) => (Array.isArray(events) ? events.indexOf(e) : 0);
+  return keep.sort((a, b) => order(a) - order(b)).map(({ id, ...rest }) => /** @type {SessionEvent} */ (rest));
+}
+
+/**
  * Blocks from recall.transcript, in seq order. A block matching a live item swaps that item's
  * fields for the transcript's in place (same key, same position); a block read before is skipped
  * unless it grew (a tool's output arrived, a turn closed); any other block is inserted where it

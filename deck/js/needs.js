@@ -10,8 +10,20 @@
 // always_project): threads.answer takes no edited input. A question (threads.asks kind
 // "question") is its own kind here, answered allow with `answers`, or deny to decline.
 // Only Send proves presence; every answer is the owner's own act (the no-nag rule).
+//
+// A session on the paired Mac (federation v2): threads.asks on the box lists each Mac's open asks
+// with source "mac", machine and node, and they are answered here like any other, with
+// threads.answer's `machine`; the box forwards the answer. Its refusals (answer, below):
+//   person_session_required, presence_required   api.js signs in or asks for the passkey, then again
+//   mac_offline, timeout                          the box's words; the item stays in the list
+//   no_such_tool, unsupported, bad_input naming machine, or not_found on an item without node
+//                                                 a box that does not forward: "Answer it on <mac>."
+//                                                 and every Mac item says so for the rest of the page
 
-import { attempt, call } from "./api.js";
+import { attempt, call, queue, snapshot } from "./api.js";
+import { holdMacAnswers, macAnswers } from "./need-rows.js";
+
+export { macAnswers };
 
 /**
  * @typedef {{ label: string, decision: string, primary?: boolean }} Option
@@ -22,7 +34,7 @@ import { attempt, call } from "./api.js";
  *   thread: string|null, threadName: string|null, title: string, why: string, command?: string,
  *   gate?: Held, rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[],
  *   tool?: string, detail?: any, questions?: any[], destination?: string|null, anchor?: any, always_project?: string|null,
- *   presence?: { required?: boolean, covered?: boolean } | null, source?: string|null, machine?: string|null }} Need
+ *   presence?: { required?: boolean, covered?: boolean } | null, source?: string|null, machine?: string|null, node?: string|null }} Need
  */
 
 /** @type {Need[]} */
@@ -31,9 +43,29 @@ const listeners = new Set();
 /** gate.get answers, by id: the content of a held item does not change while it is held. */
 const got = new Map();
 
+/** Has a load from the box finished? Then a snapshot never replaces what it said. */
+let fresh = false;
+
+/**
+ * The list as this device last saw it (api.js snapshot), at once, before the box answers, so the
+ * phone's Now opens offline (ADR 0029 R3). Asks and questions only: what is held at the Gate is
+ * never kept on the device (the service worker's rule for gate.* reads), so drafts appear when
+ * the box answers. Resolves true when it drew something.
+ */
+export async function restore() {
+  const s = await snapshot.get("needs");
+  if (fresh || cache.length || !s || !Array.isArray(s.value) || !s.value.length) return false;
+  cache = s.value;
+  tell();
+  return true;
+}
+const keep = () => { void snapshot.set("needs", cache.filter(n => n.kind !== "draft")); };
+
 /** Load both lists. Missing tools count as nothing held; errors are kept for the views. */
 export async function load() {
   const [held, asks, threads, projects] = await Promise.all([attempt("gate.held"), attempt("threads.asks"), attempt("threads.list"), attempt("projects.list")]);
+  // The box is out of reach: the list keeps what it last showed, never goes empty (R3).
+  if (held.error?.code === "offline" && asks.error?.code === "offline") return { items: cache, errors: { gate: held.error, threads: asks.error } };
   const thread = new Map((threads.data || []).map(t => [t.id, t]));
   const project = new Map((projects.data?.projects || []).map(p => [p.slug, p]));
   const names = (/** @type {any} */ x) => {
@@ -65,33 +97,60 @@ export async function load() {
       options: [{ label: d.kind === "send" ? "Send" : "Approve", decision: "approve", primary: true }, { label: "Discard", decision: "reject" }] });
   }
   for (const id of got.keys()) if (!(held.data || []).some(d => d.id === id)) got.delete(id);
-  for (const a of asks.data || []) {
-    const n = names({ ...a, threadName: a.threadName || a.thread_name });
-    // A session on the paired Mac (the ask, or its thread in threads.list, says source "mac"):
-    // answers are not forwarded there, so the item carries no options and says where to answer.
-    const t = a.thread ? thread.get(a.thread) : null;
-    const mac = a.source === "mac" || t?.source === "mac";
-    const base = { id: a.id, at: a.at, ...n, thread: a.thread || null, anchor: a.anchor || null, tool: a.tool || "", presence: a.presence || null,
-      why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "",
-      ...(mac ? { source: "mac", machine: a.machine || t?.machine || null } : {}) };
-    if (a.kind === "question") {
-      out.push({ ...base, kind: "question", title: `${n.agent || "A session"} has a question`, questions: Array.isArray(a.questions) ? a.questions : [],
-        command: a.summary || "", options: mac ? [] : [{ label: "Answer", decision: "allow", primary: true }, { label: "Decline", decision: "deny" }] });
-      continue;
-    }
-    out.push({ ...base, kind: "ask",
-      title: a.title || `May ${n.agent || "this session"} run ${a.tool}?`, command: a.command || a.summary || a.tool,
-      detail: a.detail || null, destination: a.destination ?? null, always_project: a.always_project || null,
-      details: a.details || (a.destination ? [{ label: "Where", value: a.destination }] : []),
-      options: mac ? [] : [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }] });
-  }
+  for (const a of asks.data || []) out.push(askNeed(a, names({ ...a, threadName: a.threadName || a.thread_name }), a.thread ? thread.get(a.thread) : null));
   out.sort((x, y) => x.at - y.at);
   cache = out;
+  fresh = true;
+  if (!held.error && !asks.error) keep();
   tell();
   return { items: out, errors: { gate: held.error || null, threads: asks.error || null } };
 }
 
 export const current = () => cache;
+
+/**
+ * One ask or question as a Need. A session on the paired Mac (the ask, or its thread in
+ * threads.list, says source "mac") keeps source, machine and node: its answer carries the machine.
+ * @param {any} a a threads.asks row, or an ask.raised payload @param {{ project: string|null, projectName: string|null, threadName: string|null, agent: string|null }} n
+ * @param {any} [t] its thread in threads.list @returns {Need}
+ */
+function askNeed(a, n, t) {
+  const mac = a.source === "mac" || t?.source === "mac";
+  const base = { id: a.id, at: a.at, ...n, thread: a.thread || null, anchor: a.anchor || null, tool: a.tool || "", presence: a.presence || null,
+    why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "",
+    ...(mac ? { source: "mac", machine: a.machine || t?.machine || null, node: a.node ?? null } : {}) };
+  if (a.kind === "question") {
+    return { ...base, kind: "question", title: `${n.agent || "A session"} has a question`, questions: Array.isArray(a.questions) ? a.questions : [],
+      command: a.summary || "", options: [{ label: "Answer", decision: "allow", primary: true }, { label: "Decline", decision: "deny" }] };
+  }
+  return { ...base, kind: "ask",
+    title: a.title || `May ${n.agent || "this session"} run ${a.tool}?`, command: a.command || a.summary || a.tool,
+    detail: a.detail || null, destination: a.destination ?? null, always_project: a.always_project || null,
+    details: a.details || (a.destination ? [{ label: "Where", value: a.destination }] : []),
+    options: [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }] };
+}
+
+/** Asks raised while this page was open, by id, until answered: a push can land before the list has them. */
+const raised = new Map();
+
+/**
+ * Hear an ask.* event (app.js passes each one on): an ask.raised is kept, so find() can open it by
+ * id when the list does not have it (yet); ask.answered and ask.cancelled drop it.
+ * @param {{ type: string, at?: number, thread?: string|null, project?: string|null, payload?: any }} e
+ */
+export function hear(e) {
+  const p = e?.payload || {};
+  const id = typeof p.ask === "string" ? p.ask : p.ask?.id || p.id;
+  if (!id) return;
+  if (e.type !== "ask.raised") { raised.delete(id); return; }
+  raised.set(id, askNeed({ ...p, id, thread: p.thread || e.thread || null, at: p.at || e.at || Date.now() },
+    { project: p.project || e.project || null, projectName: null, threadName: p.threadName || p.thread_name || null, agent: p.agent || null }));
+}
+
+/** One item by id: the list's, else an ask raised this session and not answered. @param {string} id @returns {Need|null} */
+export function find(id) {
+  return cache.find(x => x.id === id) || raised.get(id) || null;
+}
 
 /** Hear every reload of the list. Returns an unsubscribe. */
 export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn); }
@@ -104,22 +163,35 @@ export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn)
  * @param {Need} n @param {Answer} opt @param {Record<string, any> | null} [edited]
  */
 export async function answer(n, opt, edited) {
-  // A Mac session's ask is answered on that Mac; nothing here sends one.
-  if (n.source === "mac" && n.kind !== "draft") throw new Error(`Answer it on ${n.machine || "your Mac"}.`);
-  if (n.kind === "draft") {
+  if (n.source === "mac" && n.kind !== "draft") {
+    const machine = n.machine || "your Mac";
+    // A box that has shown it cannot forward: nothing is sent.
+    if (!macAnswers()) throw Object.assign(new Error(`Answer it on ${machine}.`), { elsewhere: machine });
+    // Straight to the box, not the outbox: the outbox would resend a timeout later, and an answer
+    // that reaches the Mac long after is not one the person gave. "asked" as for a local ask.
+    try { await call("threads.answer", { ...answerInput(n, opt), ...(n.machine ? { machine: n.machine } : {}) }, { presence: "asked", write: true }); }
+    catch (e) {
+      if (!macRefused(e, n)) throw e; // mac_offline, timeout and the rest: the box's words, the item stays
+      holdMacAnswers();
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:mac-answers", { detail: false }));
+      tell();
+      throw Object.assign(new Error(`Answer it on ${machine}.`), { elsewhere: machine, cause: e });
+    }
+  } else if (n.kind === "draft") {
     // Sending goes outside as the person, so it proves presence; discarding is the owner's own act.
-    if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: "asked" });
+    if (opt.decision === "reject") await queue("gate.reject", { id: n.id }, { presence: "asked" });
     else {
-      const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id }, { presence: true });
+      const r = await queue("gate.approve", edited ? { id: n.id, edited } : { id: n.id }, { presence: true });
       // Approved, but the sender failed: the item stays held and can be sent again. gate.js keeps
       // the edit as `final` even on failure, so the next gate.get must be re-read, not reused.
       if (r && r.state === "failed") { got.delete(n.id); throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true }); }
     }
   } else {
-    await call("threads.answer", answerInput(n, opt), { presence: "asked" });
+    await queue("threads.answer", answerInput(n, opt), { presence: "asked" });
   }
   cache = cache.filter(x => x.id !== n.id);
   got.delete(n.id);
+  keep();
   tell();
 }
 
@@ -144,6 +216,20 @@ export function badge(n) {
   if (!installed) return;
   badged = n;
   try { const p = n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge?.(); p?.catch?.(() => {}); } catch {}
+}
+
+/**
+ * Does this refusal say the box cannot forward answers to the Mac? An unknown tool or an
+ * unsupported input, bad_input naming `machine` (an older threads.answer), or not_found for an ask
+ * the box never listed from a Mac (no node: it looked for the id among its own asks).
+ * @param {any} err @param {{ node?: string|null }} n
+ */
+export function macRefused(err, n) {
+  const code = err?.code;
+  if (code === "no_such_tool" || code === "unsupported") return true;
+  if (code === "bad_input") return /machine/i.test(String(err?.message || ""));
+  if (code === "not_found") return !n?.node;
+  return false;
 }
 
 /**

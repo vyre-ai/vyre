@@ -115,6 +115,15 @@ anything is sent, and Enter uses exactly that destination:
 Answers render in place as markdown, with a copy button and the cost. Anything that came from
 memory is drawn in gold, with its source.
 
+## Ask about your screen
+
+Type `ask about my screen` and the Capsule reads the window in front once, shows what it read in
+the side panel, and starts your question with "About <window>:". Words that point at the screen,
+like `summarize this` or `what's this error`, or text you selected in the app in front, go with a
+chip that says what will be sent ("with your screen: Safari · ..."). Press the chip's x, or `⌘⌫`,
+to leave it off. Nothing about the screen is sent without the chip on show, and a blind place
+(a password manager, a sign-in dialog) gets no chip at all.
+
 ## Talk to an agent or a session
 
 Type `@` to name one. It completes agents, projects and threads:
@@ -200,7 +209,8 @@ and starts it hidden in the menu bar.
 - It does not send anywhere other than the destination the "Sends to" row showed.
 - It does not paste for you: a clipboard item waits for your Command-V.
 - It runs on macOS only. On Linux or Windows, use `vyre` in a terminal or the [Deck](deck.md).
-- Asking about your screen, and reading text on it, are not built yet.
+- It never reads a password field, a password manager, a sign-in dialog, security settings or
+  Vyre's own windows: those show only the app and the window title.
 
 ## Build from source
 
