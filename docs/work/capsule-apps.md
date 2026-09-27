@@ -92,6 +92,13 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   with the real hub and Gate and a fake Slack MCP stdio server: nothing arrives before approval,
   exactly one call after. docs:ref regenerated, test/docs-* 61 pass.
 
+- Slice 3 hardening (lead, 2026-09-27): Slack reply/recent/sent actions; no double hold (the
+  same held item is returned, again/tried); unreachable coding; the Capsule's approveHeld (native
+  7b08a18) checks `sent` after a failed approval and before re-approving a tried item. Testbox:
+  apps 209 pass; slack.test.js includes a real vyred where the fake Slack server is SIGKILLed
+  after the post arrived: the item goes back to held, sent finds it, a resend is the same item, one
+  post only. Swift 285/285.
+
 ## Doing (2026-09-27, resumed)
 - T4 done (main merged at abd1e79): planner by default, needs prompts on the route and tool side,
   apps.route {text, app, to} for answers (sendTo in route.js), the `vyre apps` prompt loop (TTY:
@@ -183,6 +190,10 @@ covers about 30 minutes per device (the presence session). The preview plus Ente
 outbound sends. So apps.act never asks; apps.send and gate.approve do, riding the session.
 
 ## Needs from others
+- gate (security): a way to settle a held item as "sent" after a lost answer was confirmed in the
+  app (today the Capsule says "It went out" but the item stays held with its error, so the Deck
+  still shows it). And connectors: a hub error that says whether a call may have reached the
+  server (closed mid-call) or never did (could not start), so surfaces check only when needed.
 - capsule-pro: merge the Kit branch once handed over; add host.prove(tool:input:summary:) and
   the host-minted presence session (secret in memory only, dropped on lock/sleep/restart).
 - capsule-pro: the native host must be on main before the Swift half runs in the app (slice 2).
