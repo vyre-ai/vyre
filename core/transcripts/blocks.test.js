@@ -228,12 +228,30 @@ test("blocks: an interrupt ends the turn; neither it nor what follows is a steer
 // ------------------------------------------------------------ live keys equal transcript keys
 
 /** The (message, block) keys the live stream gives, done and partial, from stream-json lines. */
+/**
+ * translate as the Switchboard runs it: a whole line's text blocks keyed across the lines of one
+ * message. Either translate(m, seen) counts them itself (work/chat), or it names the line's own
+ * blocks (`blocks`) and the Switchboard adds the lines before (work/sessions, onMessage's ord).
+ */
+const keyed = () => {
+  const seen = new Map(), ord = new Map();
+  return (/** @type {any} */ m) => {
+    const t = /** @type {any} */ (translate)(m, seen);
+    if (typeof t.blocks === "number" && m && m.message && m.message.id) {
+      const id = String(m.message.id), base = ord.get(id) || 0;
+      for (const e of t.events) if (typeof e.payload.block === "number") e.payload.block += base;
+      ord.set(id, base + t.blocks);
+    }
+    return t;
+  };
+};
+
 function liveKeys(/** @type {string} */ file) {
-  const seen = new Map();
+  const tr = keyed();
   let message = "";
   const done = [], deltas = new Map();
   for (const line of fs.readFileSync(file, "utf8").split("\n").filter(Boolean)) {
-    const t = translate(JSON.parse(line), seen);
+    const t = tr(JSON.parse(line));
     if (t.message !== undefined) message = t.message;
     if (t.delta) deltas.set(`${message}#${t.block}`, (deltas.get(`${message}#${t.block}`) || "") + t.delta);
     for (const e of t.events) if (e.type === "thread.text") done.push(e.payload);

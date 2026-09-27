@@ -47,13 +47,31 @@ test("translate: real stream-json lines become small thread events", () => {
   assert.equal(translate({ type: "rate_limit_event", rate_limit_info: { status: "rejected" } }).limited, true);
 });
 
+/**
+ * translate as the Switchboard runs it: a whole line's text blocks keyed across the lines of one
+ * message. Either translate(m, seen) counts them itself (work/chat), or it names the line's own
+ * blocks (`blocks`) and the Switchboard adds the lines before (work/sessions, onMessage's ord).
+ */
+const keyed = () => {
+  const seen = new Map(), ord = new Map();
+  return (/** @type {any} */ m) => {
+    const t = /** @type {any} */ (translate)(m, seen);
+    if (typeof t.blocks === "number" && m && m.message && m.message.id) {
+      const id = String(m.message.id), base = ord.get(id) || 0;
+      for (const e of t.events) if (typeof e.payload.block === "number") e.payload.block += base;
+      ord.set(id, base + t.blocks);
+    }
+    return t;
+  };
+};
+
 test("translate: text keys (message, block) count content blocks across the lines of one message, as the transcript does", () => {
   const fix = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "transcripts", "fixtures");
-  const seen = new Map();
+  const tr = keyed();
   let message = "";
   const done = [], partial = [];
   for (const line of fs.readFileSync(path.join(fix, "split.stream.jsonl"), "utf8").split("\n").filter(Boolean)) {
-    const t = translate(JSON.parse(line), seen);
+    const t = tr(JSON.parse(line));
     if (t.message !== undefined) message = t.message;
     if (t.delta) partial.push(`${message}#${t.block}`);
     for (const e of t.events) if (e.type === "thread.text") done.push(`${e.payload.message}#${e.payload.block}`);
