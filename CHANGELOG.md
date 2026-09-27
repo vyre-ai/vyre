@@ -1089,6 +1089,81 @@ neither.
   Code, module-building, box and update surfaces; 48 more wait in docs/work/tips-pending.json for
   their code to land.
 - `vyre tips [module | new | reset]`. Docs: using/tips.md, build/tips.md.
+#### Sessions: `vyre call` inside a session, and a shorter tool list
+
+- A thread records the surface that started it: `origin` on its record (threads.get/list), so
+  the vault can tell a Capsule thread from a chat one.
+- Fixed: `vyre call` from a session's Bash said vyred was not running: callAsPerson pinned the
+  home's root, so the client never used the session's own socket (VYRE_SOCKET).
+- The plugin's MCP server no longer offers a session the person's own tools (PERSON_ONLY and
+  HUMAN_ONLY), which vyred refuses from any session: less of the model's context spent on them.
+- Tests: the SDK suites set claude "installed" (they run the fake claude), so CI's SDK install
+  without the bundled binary runs them on the SDK again.
+
+#### Sessions: the server's time on text
+
+- `thread.text` and `thread.thinking` carry `t` (ms since the epoch, vyred's clock), for mobile's
+  words-per-second meter.
+
+#### Sessions: a warm session for Vyre IQ, and the usage pause
+
+- `threads.quick {purpose, prompt, system?, model?}` (internal, for modules: memory's Vyre IQ,
+  planner, helper): one question to a lean session already started and waiting, so it skips
+  Claude Code's start. A fresh session per question (never one that heard another); a spare
+  starts behind each answer, none before the first question, and an unused spare closes when idle.
+  Warm sessions are not in a person's threads.list (all: true shows them).
+- The usage pause (ADR 0031 section 14): the Switchboard reports each credential's thread.limit
+  to `sessions.usage.report`; at a warning, 80 percent used or refused, new subagents (and
+  teammates, when they pass `auth` to sessions.slots) on that credential are refused with
+  `usage_paused` until the window resets. `sessions.usage.get`; `sessions.usage.resume {auth}`
+  ("Resume anyway", PERSON_ONLY); events `usage.paused`, `usage.resumed`;
+  `sessions.pause_at_warning: false` turns it off. Running sessions go on.
+
+#### Sessions: effort, deeper sends, queued images, steers that survive a stop
+
+- Effort, as /effort: `threads.start`/`threads.launch {effort}` (low, medium, high, xhigh, max;
+  core/agents passes each agent's saved Effort), `--effort` on the CLI and `effort` on the Agent
+  SDK; `threads.effort {thread, effort}` changes a running thread at once (flag settings) and is
+  kept over a resume. Event `effort.switched`; the record and `thread.started` say `effort`.
+- `threads.send {model, effort}` switches first, for the Capsule's Cmd-Return on the same thread
+  (a person's surface only).
+- Fixed: a message queued for after the turn (`mode: "queue"`) dropped its pasted images; they
+  are kept with it and go with the words (send-now too). Images cannot wait for a session open in
+  a terminal (its hooks carry text only): refused with `bad_input`.
+- Fixed: steered words lived only in memory (st.steers), so a stop or a restart lost them. They
+  are kept (threads_steers) until Claude Code takes them in, and a resume runs any left first,
+  as one turn with their images (`thread.sent` via `restored`).
+
+#### Sessions: "Doesn't ask" (bypassPermissions), the person's own
+
+- `threads.mode` takes `bypassPermissions` ("Doesn't ask"), from a person's surface only, with no
+  Touch ID; `mode.changed` carries a `label`. `sessions.mode.set/get {project, mode}`: a project's
+  default for new sessions (PERSON_ONLY; event `mode.defaulted`). It carries over a resume.
+- No answer ever grants it (safePermissions still drops a setMode to it), and no model or agent
+  sets it. Only sessions with Vyre's plugin are launched able to take it
+  (`--allow-dangerously-skip-permissions` / `allowDangerouslySkipPermissions`); a lean one refuses
+  with code `refused`, and a project default falls back to asking there.
+- The floor still runs: the plugin's PreToolUse hook, and on the Agent SDK also in process
+  (Switchboard.bypassFloor). The fake Claude now runs the plugin's PreToolUse command hooks in
+  bypass mode, so the test covers the real hook end to end.
+- Fixed: a Bash ask's summary is redacted (it is shown on every device); threads.asks rows keep
+  `project`.
+
+#### Sessions: each session talks to vyred on its own socket (ADR 0030 phase 3, option A)
+
+- The Switchboard opens a socket per live thread (core/daemon/threadsock.js, from e2e) and hands
+  it to the session as `VYRE_SOCKET`; it goes when the thread stops, stays across a fallback
+  respawn. Calls on it are that thread's (`mcp:thread:<id>`, `mcp:agent:<name>`), whatever they
+  claim, only from the session's own processes, and never a person-only or human-only tool.
+- `sessions.thread_socket`: `auto` (default: when the session runs through the spawner), `on`,
+  `off`; `VYRE_SESSIONS_THREAD_SOCKET` wins. Off the spawner the sockets live in the user's
+  private /tmp/vyre-<uid> folder; through it in /run/vyre-threads.
+- `sessions.spawner` is now on by default on a box (it is only used where a spawner runs: Linux,
+  its socket there); still off on a Mac.
+- core/daemon/client.js uses `VYRE_SOCKET` when no root or socket is given (`opts.socket` is new),
+  so the plugin's MCP server and hooks, and a `vyre` run from the session's Bash, go through the
+  session's socket. Neither the MCP server nor `ensureUp` starts a vyred from inside a session.
+  vyred's own `VYRE_SOCKET` is never handed down to a session without one.
 
 #### Sessions: the Capsule's quick answer is Vyre IQ
 

@@ -18,6 +18,7 @@ import { ensureUp } from "../../core/cli/daemonctl.js";
 import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
+import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
 
 const PROTOCOL = "2025-06-18";
 /**
@@ -37,7 +38,10 @@ const mcpName = t => t.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
 const AGENT = process.env.VYRE_AGENT || "";
 const CALLER = AGENT ? `mcp:agent:${AGENT}` : "mcp";
 const DRIVES = /^(threads|agents)\./;
-const offered = t => !t.name.startsWith("harness.") && !(AGENT && process.env.VYRE_AGENT_KIND !== "assistant" && DRIVES.test(t.name));
+// Nor the person's own tools (answering, approving, presence, a session's mode): vyred refuses
+// them from any session, so listing them only spends the model's context.
+const offered = t => !t.name.startsWith("harness.") && !PERSON_ONLY.has(t.name) && !HUMAN_ONLY.has(t.name)
+  && !(AGENT && process.env.VYRE_AGENT_KIND !== "assistant" && DRIVES.test(t.name));
 /** @param {string} tool @param {any} input */
 function scoped(tool, input) {
   const projects = process.env.VYRE_PROJECTS;
@@ -56,7 +60,8 @@ const sessionKey = () => (AGENT ? null : readKey(paths(home()).sessions, process
 
 async function tools() {
   let r = await request("GET", "/v1/tools", undefined, { caller: CALLER });
-  if (r.error && r.error.code === "unreachable") { await ensureUp(); r = await request("GET", "/v1/tools", undefined, { caller: CALLER }); }
+  // A session's own socket (VYRE_SOCKET) is vyred's to open: never start a vyred from inside one.
+  if (r.error && r.error.code === "unreachable" && !process.env.VYRE_SOCKET) { await ensureUp(); r = await request("GET", "/v1/tools", undefined, { caller: CALLER }); }
   if (r.error) return [];
   const list = r.data.filter(offered);
   const own = list.map(t => ({ name: mcpName(t.name), description: t.description || t.name, inputSchema: { type: "object", ...(t.input || {}) } }));

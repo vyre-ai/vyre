@@ -1259,3 +1259,10 @@ test("steer and queue while an ask is open: both are kept, threads.get shows the
   assert.ok(took, "the steered words reached Claude in the running turn");
   assert.deepEqual((await tool("threads.queue", { thread: id }, "deck")).data.queued, []);
 });
+
+test("describe: a Bash ask's summary is redacted, as it is shown on every device", () => {
+  const d = describe("Bash", { command: "curl -H \"Authorization: Bearer sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789ABCD\" https://example.com" });
+  assert.doesNotMatch(d.summary, /sk-ant-api03-abcdefghijklmnop/);
+  assert.match(d.summary, /^curl -H "Authorization: Bearer \[/);
+  assert.equal(describe("Bash", { command: "npm   test" }).summary, "npm test");
+});

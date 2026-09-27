@@ -19,7 +19,7 @@ import { installed } from "./sdk.js";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
 import { resume } from "../cli/commands/projects.js";
-import { safePermissions, MODES, MIGRATIONS, purposeOf } from "../switchboard/index.js";
+import { safePermissions, MODES, PERSON_MODES, MIGRATIONS, purposeOf } from "../switchboard/index.js";
 import { conform } from "./conformance.js";
 import { claudeProvider } from "./providers.js";
 import { load as loadSdk } from "./sdk.js";
@@ -27,6 +27,7 @@ import crypto from "node:crypto";
 import { Sessions, shellCommand } from "../switchboard/sessions.js";
 import { callerKind, callerAllowed } from "../modules/index.js";
 import { open as openStore } from "../store/index.js";
+import { paths } from "../config/index.js";
 
 const TINI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-tini.js");
 fs.chmodSync(TINI, 0o755);
@@ -124,6 +125,17 @@ test("config: the approved defaults per machine, and overrides", () => {
     assert.equal(sessionsConfig({ role: "box", sessions: { auth: "nonsense", idle_minutes: -1 } }).auth, "setup-token");
     assert.equal(sessionsConfig({ role: "box" }).driver, "sdk", "the Agent SDK is the default");
     assert.equal(sessionsConfig({ role: "local", sessions: { driver: "cli" } }).driver, "cli");
+    // The spawner is on by default on a box (used only where one runs), off on a Mac; each
+    // session's own socket follows it unless set.
+    const sp = process.env.VYRE_SESSIONS_SPAWNER, ts = process.env.VYRE_SESSIONS_THREAD_SOCKET;
+    delete process.env.VYRE_SESSIONS_SPAWNER; delete process.env.VYRE_SESSIONS_THREAD_SOCKET;
+    try {
+      assert.deepEqual([sessionsConfig({ role: "box" }).spawner, sessionsConfig({ role: "local" }).spawner, sessionsConfig({ role: "box", sessions: { spawner: "off" } }).spawner], ["on", "off", "off"]);
+      assert.deepEqual([sessionsConfig({ role: "box" }).thread_socket, sessionsConfig({ role: "local", sessions: { thread_socket: "on" } }).thread_socket, sessionsConfig({ sessions: { thread_socket: "x" } }).thread_socket], ["auto", "on", "auto"]);
+    } finally {
+      if (sp !== undefined) process.env.VYRE_SESSIONS_SPAWNER = sp;
+      if (ts !== undefined) process.env.VYRE_SESSIONS_THREAD_SOCKET = ts;
+    }
   } finally { if (was !== undefined) process.env.VYRE_SESSIONS_DRIVER = was; }
 });
 
@@ -142,8 +154,9 @@ test("sdk options: the same launch the CLI runner turns into flags", () => {
   assert.deepEqual([r.tools, r.strictMcpConfig, r.settingSources, r.extraArgs], [[], true, [], undefined]);
 });
 
-test("modes: an answer never hands back bypassPermissions, and a person picks only default, acceptEdits or plan", () => {
+test("modes: an answer never hands back bypassPermissions; only a person picks it (Doesn't ask)", () => {
   assert.deepEqual(MODES, ["default", "acceptEdits", "plan"]);
+  assert.deepEqual(PERSON_MODES, ["default", "acceptEdits", "plan", "bypassPermissions"]);
   const offered = [{ type: "setMode", mode: "bypassPermissions", destination: "session" }, { type: "setMode", mode: "acceptEdits", destination: "session" },
     { type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }, { type: "setMode", mode: "dontAsk" }, null];
   assert.deepEqual(safePermissions(offered).map(x => x.mode || x.type), ["acceptEdits", "addRules"]);
@@ -379,7 +392,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(said.includes("I was not allowed to."));
   });
 
-  test(`${driver}: only a person changes a session's mode, and never to bypassPermissions`, { skip }, async t => {
+  test(`${driver}: only a person changes a session's mode; no answer and no model ever reaches bypassPermissions`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
     await w.finished(th.id);
@@ -387,11 +400,59 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(r, { thread: th.id, mode: "acceptEdits" });
     await until(() => w.launches().some(l => l.mode === "acceptEdits"), "the mode to reach Claude Code");
     assert.ok((await w.events(th.id)).some(e => e.type === "mode.changed" && e.payload.mode === "acceptEdits"));
-    assert.ok((await w.tool("threads.mode", { thread: th.id, mode: "bypassPermissions" })).error, "bypass is not offered");
-    for (const caller of ["mcp", "mcp:agent:juno", "mcp:thread:abc", "harness"]) assert.equal((await w.tool("threads.mode", { thread: th.id, mode: "plan" }, caller)).error.code, "denied", caller);
+    for (const caller of ["mcp", "mcp:agent:juno", "mcp:thread:abc", "harness"]) {
+      for (const mode of ["plan", "bypassPermissions"]) assert.equal((await w.tool("threads.mode", { thread: th.id, mode }, caller)).error.code, "denied", `${caller} ${mode}`);
+    }
     await w.tool("threads.send", { thread: th.id, text: "forge cli threads.mode", surface: "deck" });
     await w.finished(th.id, 2);
     assert.match((await w.said(th.id)).at(-1), /^403 .*denied/, "from inside the session, even as the CLI");
+  });
+
+  test(`${driver}: "Doesn't ask": a person turns it on with no prompt, nothing is asked, and the floor still refuses`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.ok(w.launches().at(-1).argv.includes("--allow-dangerously-skip-permissions"), "a session with the plugin may be switched to it");
+    assert.deepEqual((await w.tool("threads.mode", { thread: th.id, mode: "bypassPermissions" }, "deck")).data, { thread: th.id, mode: "bypassPermissions" });
+    await until(() => w.launches().some(l => l.mode === "bypassPermissions"), "the mode to reach Claude Code");
+    const changed = (await w.events(th.id)).find(e => e.type === "mode.changed" && e.payload.mode === "bypassPermissions");
+    assert.equal(changed.payload.label, "Doesn't ask");
+    // A write to its own permission settings: nobody is asked, and the floor refuses it at PreToolUse.
+    await w.tool("threads.send", { thread: th.id, text: "settings", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal((await w.events(th.id)).filter(e => e.type === "ask.raised").length, 0, "nothing was asked");
+    assert.ok(!fs.existsSync(path.join(w.work, ".claude", "settings.local.json")), "nothing was written");
+    assert.ok((await w.said(th.id)).includes("I was not allowed to."));
+    // It carries over an idle close: the next start is launched in it.
+    await w.tool("threads.stop", { thread: th.id });
+    await w.tool("threads.send", { thread: th.id, text: "hello", surface: "deck" });
+    await w.finished(th.id, 3);
+    const l = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(l[l.indexOf("--permission-mode") + 1], "bypassPermissions");
+
+    // Without Vyre's plugin (a lean thread) it is refused, and the launch never allows it.
+    const lean = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", lean: true })).data;
+    await w.finished(lean.id);
+    assert.ok(!w.launches().filter(x => x.argv).at(-1).argv.includes("--allow-dangerously-skip-permissions"));
+    assert.equal((await w.tool("threads.mode", { thread: lean.id, mode: "bypassPermissions" }, "deck")).error.code, "refused");
+  });
+
+  test(`${driver}: a project's default mode: set by the person, taken by new sessions there`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    assert.ok(!(await w.tool("projects.create", { name: "Harlow Legal", home: w.work })).error);
+    assert.equal((await w.tool("sessions.mode.set", { project: "harlow-legal", mode: "bypassPermissions" }, "mcp")).error.code, "denied", "a model never sets it");
+    assert.deepEqual((await w.tool("sessions.mode.set", { project: "harlow-legal", mode: "bypassPermissions" }, "deck")).data, { project: "harlow-legal", mode: "bypassPermissions" });
+    assert.equal((await w.tool("sessions.mode.get", { project: "harlow-legal" })).data.mode, "bypassPermissions");
+    const th = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal((await w.events(th.id)).find(e => e.type === "thread.started").payload.mode, "bypassPermissions");
+    const argv = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(argv[argv.indexOf("--permission-mode") + 1], "bypassPermissions");
+    // Cleared: new sessions ask again.
+    assert.equal((await w.tool("sessions.mode.set", { project: "harlow-legal" }, "deck")).data.mode, null);
+    const b = (await w.tool("threads.start", { project: "harlow-legal", prompt: "hello", surface: "deck" })).data;
+    await w.finished(b.id);
+    assert.equal((await w.events(b.id)).find(e => e.type === "thread.started").payload.mode, "default");
   });
 
   test(`${driver}: sessions run under the subreaper, and their group is reported until the last process in it is gone`, { skip }, async t => {
@@ -409,6 +470,38 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!after.pids.includes(launch.ppid), "the session itself is gone");
     assert.ok(after.pgids.includes(launch.ppid), "its group is still reported while the orphan runs");
     await until(async () => !(await w.tool("probe.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
+  });
+
+  test(`${driver}: a session has its own socket (option A): its calls are that thread's, never a person's, and it goes when the thread stops`, { skip }, async t => {
+    const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
+      export default { async start(ctx) {
+        ctx.tool("whoami.me", { input: { type: "object" }, run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
+        return { async stop() {} };
+      } };` };
+    const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "vyre-sock whoami.me {}", surface: "deck" })).data;
+    await w.finished(th.id);
+    const sock = w.launches().at(-1).socket;
+    assert.ok(sock && sock.endsWith(".sock"), "VYRE_SOCKET is the thread's own");
+    assert.notEqual(sock, paths(w.root).socket, "not vyred's own socket");
+    assert.equal(fs.statSync(sock).mode & 0o777, 0o660);
+    // It said "cli"; vyred bound it to the thread.
+    assert.deepEqual(JSON.parse((await w.said(th.id)).at(-1)).data, { caller: `mcp:thread:${th.id}`, thread: th.id, agent: null });
+    // A person's tool is refused on it, whatever the session says it is.
+    await w.tool("threads.send", { thread: th.id, text: "vyre-sock threads.answer {}", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal(JSON.parse((await w.said(th.id)).at(-1)).error.code, "denied");
+    // Stopped: the socket is gone; the next start gets a new one.
+    await w.tool("threads.stop", { thread: th.id });
+    await until(() => !fs.existsSync(sock), "the socket to go");
+    // Off: no socket, and vyred's own VYRE_SOCKET is never handed down.
+    const saved = process.env.VYRE_SOCKET;
+    process.env.VYRE_SOCKET = "/nowhere/vyred.sock";
+    t.after(() => { if (saved === undefined) delete process.env.VYRE_SOCKET; else process.env.VYRE_SOCKET = saved; });
+    const w2 = await boot(t, { driver, sessions: { thread_socket: "off" } });
+    const b = (await w2.tool("threads.start", { cwd: w2.work, prompt: "hello", surface: "deck" })).data;
+    await w2.finished(b.id);
+    assert.equal(w2.launches().at(-1).socket, null);
   });
 
   test(`${driver}: the Capsule's quick answer is Vyre IQ: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {
@@ -429,6 +522,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(l.max_thinking, "0", "thinking off");
     const started = (await w.events(q.id)).find(e => e.type === "thread.started").payload;
     assert.equal(started.prompt, "capsule@1");
+    assert.equal((await w.tool("threads.get", { thread: q.id })).data.thread.origin, "capsule", "the thread says the Capsule started it");
 
     // A person's own version at scope capsule, versioned; an agent never edits it.
     assert.equal((await w.tool("sessions.prompt.set", { scope: "capsule", text: "Call alex by name." }, "mcp")).error.code, "denied");
@@ -550,6 +644,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(ev.some(e => e.type === "thread.usage" && typeof e.payload.cost_usd === "number"));
     const text = ev.filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice);
     assert.ok(text.every(e => typeof e.payload.block === "number"), "done text carries its block");
+    assert.ok(ev.filter(e => e.type === "thread.text").every(e => typeof e.payload.t === "number" && Math.abs(e.payload.t - e.at) < 5000), "text carries the server's time");
   });
 
   test(`${driver}: queued for after the turn: edited, taken back, sent now, or handed over as one turn`, { skip }, async t => {
@@ -586,6 +681,81 @@ for (const driver of ["cli", "sdk"]) {
     await w.finished(th.id, 3);
     assert.match((await w.said(th.id)).at(-1), /took in: skip the lint/);
     assert.ok((await w.events(th.id)).some(e => e.type === "thread.sent" && e.payload.via === "now" && e.payload.queued === d.queued_id));
+  });
+
+  test(`${driver}: a queued message keeps its images, and a steer a stop cut off comes back first on resume`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const png = { media_type: "image/png", data: Buffer.from("fake png of the Northwind menu").toString("base64") };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const q = (await w.tool("threads.send", { thread: th.id, text: "then look at this", surface: "deck", mode: "queue", images: [png] })).data;
+    assert.equal(q.queued, true);
+    assert.ok((await w.events(th.id)).some(e => e.type === "thread.queued" && e.payload.images === 1));
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal((await w.said(th.id)).at(-1), "echo: then look at this (+1 images)", "the images went with the words");
+
+    // A steer sent while a question waits, then a stop before Claude took it in.
+    await w.tool("threads.send", { thread: th.id, text: "bash npm run build", surface: "deck" });
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the second ask");
+    const st = (await w.tool("threads.send", { thread: th.id, text: "and check this one", surface: "deck", images: [png] })).data;
+    assert.equal(st.steered, true);
+    await w.tool("threads.stop", { thread: th.id });
+    await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.status === "stopped", "the stop");
+    // The next message resumes it: the cut-off steer runs first, with its image.
+    await w.tool("threads.send", { thread: th.id, text: "hello", surface: "deck" });
+    await until(async () => (await w.said(th.id)).includes("echo: and check this one (+1 images)"), "the restored steer to run");
+    const ev = await w.events(th.id);
+    assert.ok(ev.some(e => e.type === "thread.sent" && e.payload.via === "restored" && e.payload.uuid === st.uuid));
+  });
+
+  test(`${driver}: effort, as /effort: at start, live, kept over a resume, and with a send; a person's only`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", effort: "high" })).data;
+    await w.finished(th.id);
+    let argv = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(argv[argv.indexOf("--effort") + 1], "high");
+    assert.equal((await w.events(th.id)).find(e => e.type === "thread.started").payload.effort, "high");
+    assert.equal((await w.tool("threads.start", { cwd: w.work, prompt: "hello", effort: "huge" })).error.code, "bad_input");
+    assert.equal((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "mcp")).error.code, "denied");
+    assert.deepEqual((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "deck")).data, { thread: th.id, effort: "low" });
+    await until(() => w.launches().some(l => l.effort === "low"), "the effort to reach Claude Code");
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.effort, "low");
+    assert.ok((await w.events(th.id)).some(e => e.type === "effort.switched" && e.payload.effort === "low"));
+    await w.tool("threads.stop", { thread: th.id });
+    await w.tool("threads.send", { thread: th.id, text: "hello", surface: "deck" });
+    await w.finished(th.id, 2);
+    argv = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(argv[argv.indexOf("--effort") + 1], "low", "a resume keeps it");
+    // The Capsule's Cmd-Return: deeper, on the same thread, in one send.
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", model: "opus", effort: "max" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", surface: "deck", model: "sonnet", effort: "max" }, "deck")).data.sent, true);
+    await w.finished(th.id, 3);
+    const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
+    assert.deepEqual([rec.model, rec.effort], ["sonnet", "max"]);
+    assert.ok(w.launches().some(l => l.model === "sonnet") && w.launches().some(l => l.effort === "max"));
+  });
+
+  test(`${driver}: a warm session for memory: the second question finds one waiting, each question a fresh one, none in the list`, { skip }, async t => {
+    const asker = { name: "asker", manifest: { does: { tools: ["asker.ask"] } }, source: `
+      export default { async start(ctx) {
+        ctx.tool("asker.ask", { input: { type: "object" }, run: async i => { const r = await ctx.call("threads.quick", i); if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code }); return r.data; } });
+        return { async stop() {} };
+      } };` };
+    const w = await boot(t, { driver, modules: [asker] });
+    assert.equal((await w.tool("threads.quick", { purpose: "memory", prompt: "x" })).error.code, "no_such_tool", "internal: modules only");
+    const a = (await w.tool("asker.ask", { purpose: "memory", system: "Answer from the facts given.", prompt: "who is kit" })).data;
+    assert.deepEqual([a.text, a.ok, a.warm], ["echo: who is kit", true, false]);
+    // The spare for the next question is started behind it; wait for it to be up.
+    const quickLive = async () => (await w.tool("threads.list", { all: true })).data.filter(r => r.name === "Vyre memory" && ["idle", "starting"].includes(r.status) && r.id !== a.thread);
+    await until(async () => (await quickLive()).length === 1, "the spare");
+    const b = (await w.tool("asker.ask", { purpose: "memory", system: "Answer from the facts given.", prompt: "who is juno" })).data;
+    assert.deepEqual([b.text, b.warm], ["echo: who is juno", true], "a fresh session that never heard the first question");
+    assert.notEqual(a.thread, b.thread);
+    await until(async () => (await w.tool("threads.get", { thread: a.thread })).data.thread.status === "stopped", "the used one closes");
+    assert.ok(!(await w.tool("threads.list", {})).data.some(r => r.name === "Vyre memory"), "not in a person's list");
+    const launch = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.ok(launch.includes("--setting-sources") && !launch.includes("--plugin-dir"), "lean: no settings, no plugin");
   });
 
   test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {
@@ -688,6 +858,26 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(st.held, 0, "every slot came back");
     assert.deepEqual((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 2 })).data, { project: "harlow-legal", subagent: 2 });
     assert.equal((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 9 }, "mcp")).error.code, "denied", "a model never raises its own limits");
+  });
+
+  test(`${driver}: near the plan's limit, new subagents pause until the reset or "Resume anyway"`, { skip: driver === "cli" ? "subagent slots need the Agent SDK's in-process hooks" : skip }, async t => {
+    const saved = process.env.FAKE_CLAUDE_RESETS_AT;
+    process.env.FAKE_CLAUDE_RESETS_AT = String(Math.floor(Date.now() / 1000) + 3600);
+    t.after(() => { if (saved === undefined) delete process.env.FAKE_CLAUDE_RESETS_AT; else process.env.FAKE_CLAUDE_RESETS_AT = saved; });
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "nearlimit", surface: "deck" })).data;
+    await w.finished(th.id);
+    const u = await until(async () => (await w.tool("sessions.usage.get", {})).data.auths.find(a => a.paused), "the pause");
+    assert.deepEqual([u.auth, u.status, u.utilization], ["ambient", "allowed_warning", 0.85]);
+    await w.tool("threads.send", { thread: th.id, text: "subagent check the prices", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.match((await w.said(th.id)).at(-1), /The subagent did not run: Subagents are paused: the plan is 85% used/);
+    // Resume anyway is the person's: a model is refused.
+    assert.equal((await w.tool("sessions.usage.resume", { auth: "ambient" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("sessions.usage.resume", { auth: "ambient" }, "deck")).data.paused, false);
+    await w.tool("threads.send", { thread: th.id, text: "subagent check the prices", surface: "deck" });
+    await w.finished(th.id, 3);
+    assert.equal((await w.said(th.id)).at(-1), "subagent done: check the prices");
   });
 
   test(`${driver}: thread.usage says the context used and the window; a teammate's result waits for the turn, never steers`, { skip }, async t => {

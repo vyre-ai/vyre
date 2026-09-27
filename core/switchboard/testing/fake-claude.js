@@ -40,6 +40,9 @@ import readline from "node:readline";
 const argv = process.argv.slice(2).flatMap(a => (/^--[a-z-]+=/.test(a) ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]));
 const flag = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const session = flag("--session-id") || flag("--resume") || "no-session";
+// The permission mode, as Claude Code keeps it: bypassPermissions only when the launch allowed it.
+let permMode = flag("--permission-mode") || "default";
+const skippable = argv.includes("--allow-dangerously-skip-permissions") || argv.includes("--dangerously-skip-permissions");
 // An API key comes on fd 3 (CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR), never in the environment.
 const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription"
   : process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR ? "api-key" : "ambient";
@@ -57,7 +60,7 @@ function logLaunch(init = {}) {
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
   fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
-    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 
@@ -184,6 +187,35 @@ async function preToolUse(name, input, tu) {
   return null;
 }
 
+/**
+ * The plugin's own PreToolUse command hooks (--plugin-dir <dir>/hooks/hooks.json), as Claude Code
+ * runs them. Only in bypassPermissions, where they are the one check left: elsewhere every test
+ * would pay a node start per tool call for hooks it does not look at.
+ */
+async function pluginPreToolUse(name, input, tu) {
+  if (permMode !== "bypassPermissions") return null;
+  const { spawnSync } = await import("node:child_process");
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] !== "--plugin-dir") continue;
+    const dir = argv[i + 1];
+    let spec;
+    try { spec = JSON.parse(fs.readFileSync(path.join(dir, "hooks", "hooks.json"), "utf8")); } catch { continue; }
+    for (const h of (spec.hooks && spec.hooks.PreToolUse) || []) {
+      if (h.matcher && !new RegExp(`^(?:${h.matcher})$`).test(name)) continue;
+      for (const c of h.hooks || []) {
+        const r = spawnSync("sh", ["-c", String(c.command).replaceAll("${CLAUDE_PLUGIN_ROOT}", dir)], { encoding: "utf8", timeout: 10_000,
+          input: JSON.stringify({ hook_event_name: "PreToolUse", session_id: session, cwd: process.cwd(), tool_name: name, tool_input: input, tool_use_id: tu }),
+          env: { ...process.env, CLAUDE_PLUGIN_ROOT: dir } });
+        let got = {};
+        try { got = JSON.parse(String(r.stdout || "{}")); } catch {}
+        const spec2 = got.hookSpecificOutput || {};
+        if (spec2.permissionDecision === "deny") return spec2.permissionDecisionReason || "a plugin hook refused it";
+      }
+    }
+  }
+  return null;
+}
+
 async function useTool(name, input, o) {
   const id = `msg_${++n}`, tu = `toolu_${++n}`;
   const block = { type: "tool_use", id: tu, name, input };
@@ -191,8 +223,9 @@ async function useTool(name, input, o) {
   out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [block] }, session_id: session, parent_tool_use_id: null });
   // The host's PreToolUse hooks first (the Agent SDK registers them at initialize), as Claude Code
   // runs them before any permission question: a deny ends the call.
-  const hooked = await preToolUse(name, input, tu);
-  const r = hooked ? { behavior: "deny", message: hooked } : o.ask ? await permission(name, input, tu, o.suggestions) : { behavior: "allow", updatedInput: input };
+  const hooked = await preToolUse(name, input, tu) || await pluginPreToolUse(name, input, tu);
+  // bypassPermissions asks nothing: what the hooks let through runs.
+  const r = hooked ? { behavior: "deny", message: hooked } : o.ask && permMode !== "bypassPermissions" ? await permission(name, input, tu, o.suggestions) : { behavior: "allow", updatedInput: input };
   const allowed = r.behavior === "allow";
   const done = allowed ? await o.run(r.updatedInput || input) : { content: REJECTED, error: true, result: `Error: ${REJECTED}` };
   const res = { tool_use_id: tu, type: "tool_result", content: done.content, is_error: Boolean(done.error) };
@@ -340,6 +373,14 @@ async function turn(prompt, uuid = null) {
     await say(String(r));
     return result(true, String(r));
   }
+  // The plugin's own way in (the MCP server, the hooks): no root, so a session's VYRE_SOCKET is used.
+  const own = /^vyre-sock (\S+)\s*(.*)$/s.exec(p);
+  if (own) {
+    const { call } = await import("../../daemon/client.js");
+    const r = JSON.stringify(await call(own[1], own[2] ? JSON.parse(own[2]) : {}, { caller: "cli" }));
+    await say(r);
+    return result(true, r);
+  }
   const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
   if (tool) {
     const { call } = await import("../../daemon/client.js");
@@ -374,7 +415,7 @@ async function turn(prompt, uuid = null) {
     await say("plenty left"); return result(true, "plenty left", 0);
   }
   if (/^nearlimit$/i.test(p)) {
-    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt: 1790000000, utilization: 0.85 } });
+    out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "five_hour", resetsAt: Number(process.env.FAKE_CLAUDE_RESETS_AT) || 1790000000, utilization: 0.85 } });
     await say("still here"); return result(true, "still here", 0);
   }
   if (/^whoami$/i.test(p)) { await say(`auth=${auth}`); return result(true, `auth=${auth}`, auth === "api-key" ? 0.25 : 0); }
@@ -404,6 +445,11 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
+  if (m.type === "control_request" && m.request?.subtype === "apply_flag_settings") {
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ effort: m.request.settings ? m.request.settings.effortLevel ?? null : null }) + "\n");
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
   if (m.type === "control_request" && m.request?.subtype === "set_model") {
     MODEL = String(m.request.model || MODEL);
     if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ model: MODEL }) + "\n");
@@ -420,6 +466,12 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     return;
   }
   if (m.type === "control_request" && m.request?.subtype === "set_permission_mode") {
+    // As Claude Code: bypassPermissions only in a session launched to allow it.
+    if (m.request.mode === "bypassPermissions" && !skippable) {
+      out({ type: "control_response", response: { subtype: "error", request_id: m.request_id, error: "Cannot set permission mode to bypassPermissions because the session was not launched with --dangerously-skip-permissions" } });
+      return;
+    }
+    permMode = String(m.request.mode);
     if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ mode: m.request.mode }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
