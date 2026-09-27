@@ -23,13 +23,17 @@ const BOX = "https://vyre.tail0000.ts.net";
 /** A box that serves no Android app: nothing leaves 127.0.0.1. */
 const noApp = /** @type {any} */ (async () => ({ ok: false, status: 404, json: async () => ({}) }));
 
-/** A push service that answers 201 and records what it was sent. */
+/** A push service that answers 201 and records what it was sent (paths in `got`, bodies in `bodies`). */
 async function fakeService(t) {
-  const got = [];
-  const server = http.createServer((req, res) => { req.resume(); req.on("end", () => { got.push(req.url); res.writeHead(201); res.end(); }); });
+  const got = [], bodies = new Map();
+  const server = http.createServer((req, res) => {
+    const parts = [];
+    req.on("data", c => parts.push(c));
+    req.on("end", () => { got.push(req.url); bodies.set(req.url, Buffer.concat(parts)); res.writeHead(201); res.end(); });
+  });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => new Promise(r => { server.close(() => r(undefined)); server.closeAllConnections(); }));
-  return { got, base: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}` };
+  return { got, bodies, base: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}` };
 }
 
 /** A box vyred with the real verifier: no Touch ID, codes written to `screen`. */
@@ -76,12 +80,36 @@ const keep = async (emit, fn, what) => {
   for (;;) { emit(); const v = await fn(); if (v) return v; if (Date.now() > end) throw new Error("timed out: " + what); await new Promise(r => setTimeout(r, 200)); }
 };
 
-/** A browser's push subscription: a real P-256 key, so push.test can encrypt to it. */
+/** A browser's push subscription: a real P-256 key, so push.test can encrypt to it and the phone can read it. */
+const phones = new Map();
 const subscription = endpoint => {
   const e = crypto.createECDH("prime256v1");
   e.generateKeys();
-  return { endpoint, keys: { p256dh: e.getPublicKey().toString("base64url"), auth: crypto.randomBytes(16).toString("base64url") } };
+  const auth = crypto.randomBytes(16);
+  phones.set(new URL(endpoint).pathname, { e, auth });
+  return { endpoint, keys: { p256dh: e.getPublicKey().toString("base64url"), auth: auth.toString("base64url") } };
 };
+
+/** What a phone reads from an aes128gcm push body (RFC 8291, RFC 8188): the notification's JSON. */
+function read(pathname, body) {
+  const { e, auth } = /** @type {any} */ (phones.get(pathname));
+  const salt = body.subarray(0, 16), idlen = body[20];
+  const as = body.subarray(21, 21 + idlen), ct = body.subarray(21 + idlen);
+  const hkdf = (salt, ikm, info, n) => Buffer.from(crypto.hkdfSync("sha256", ikm, salt, info, n));
+  const ikm = hkdf(auth, e.computeSecret(as), Buffer.concat([Buffer.from("WebPush: info\0"), e.getPublicKey(), as]), 32);
+  const d = crypto.createDecipheriv("aes-128-gcm", hkdf(salt, ikm, Buffer.from("Content-Encoding: aes128gcm\0"), 16), hkdf(salt, ikm, Buffer.from("Content-Encoding: nonce\0"), 12));
+  d.setAuthTag(ct.subarray(-16));
+  const plain = Buffer.concat([d.update(ct.subarray(0, -16)), d.final()]);
+  return JSON.parse(plain.subarray(0, -1).toString());
+}
+
+/** The phone shows the test notification and posts its receipt back, as the Deck's service worker does. */
+async function shows(svc, root, pathname) {
+  const msg = read(pathname, svc.bodies.get(pathname));
+  assert.equal(typeof msg.receipt, "string", "push.test asked for a receipt");
+  const r = await call("push.receipt", { receipt: msg.receipt }, { root, caller: "deck" });
+  assert.ok(r.data, JSON.stringify(r));
+}
 
 test("phone add: steps, a code from the verifier, then the checks pass as the phone subscribes and enrolls; list, test and remove", async t => {
   const { root, svc, io } = await box(t);
@@ -110,7 +138,9 @@ test("phone add: steps, a code from the verifier, then the checks pass as the ph
   input.write("\n");
   await until(() => svc.got.includes("/push/phone"), "the test notification");
   assert.ok(!svc.got.includes("/push/laptop"), "only the new phone is tested");
-  await until(() => lines.some(l => /✓ Test notification sent/.test(l)), "the push check");
+  await until(() => lines.some(l => /· Test notification arrived · sent, waiting for the phone/.test(l)), "sent, not yet shown");
+  await shows(svc, root, "/push/phone");
+  await until(() => lines.some(l => /✓ Test notification arrived/.test(l)), "the push check");
   assert.ok(lines.some(l => /✓ Phone reached the box/.test(l)));
   assert.ok(lines.some(l => /✓ Secure address works \(HTTPS\)/.test(l)));
   assert.ok(lines.some(l => /\? Opened as an app, not a browser tab/.test(l)), "the box cannot tell app from tab on this service");
@@ -267,12 +297,12 @@ test("phone add: push.subscribed re-reads at once and push.seen from an installe
   const run = add({ android: true }, { io, input: null, tty: false, life: 20_000, fetch: noApp });
   const code = await until(() => lines.map(l => /type ([A-Z0-9]{4}-[A-Z0-9]{4})/.exec(l)).find(Boolean)?.[1], "the code");
   const device = (await deck("push.subscribe", { subscription: subscription(`${svc.base}/push/pixel`), label: "alex's Pixel" })).data.device;
-  // The push module on this branch emits nothing yet; play the event as a newer one sends it.
-  await keep(() => d.events.emit("push", "push.subscribed", { device, label: "alex's Pixel", service: "127.0.0.1" }),
-    () => svc.got.includes("/push/pixel"), "the test notification, without Enter");
-  await until(() => lines.some(l => /✓ Test notification sent · the push service took it/.test(l)), "the push check on a vyred without receipts");
+  // push.subscribed from the push module moves the check, with no Enter.
+  await until(() => svc.got.includes("/push/pixel"), "the test notification, without Enter");
+  await shows(svc, root, "/push/pixel");
+  await until(() => lines.some(l => /✓ Test notification arrived/.test(l)), "the push check");
   assert.ok(lines.some(l => /\? Opened as an app/.test(l)));
-  await keep(() => d.events.emit("push", "push.seen", { surface: "now", standalone: true }), () => lines.some(l => /✓ Opened as an app, not a browser tab · Vyre said it runs installed/.test(l)), "the app check");
+  await keep(() => deck("push.seen", { surface: "now", standalone: true, device }), () => lines.some(l => /✓ Opened as an app, not a browser tab · Vyre said it runs installed/.test(l)), "the app check");
   const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   await deck("presence.enroll", { kind: "passkey", name: "alex's Pixel", public_key: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
     alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${code}` });
