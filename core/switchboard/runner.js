@@ -54,9 +54,13 @@ export function argsFor(o) {
  * A user turn, as stream-json input. `uuid` is the message's own id (the transcript line's, and
  * the key Claude Code echoes back); `priority: "next"` steers it into a running turn at the next
  * step, as a message typed while Claude Code works does.
- * @param {string} text @param {string} session @param {{ uuid?: string, priority?: "next"|"now"|"later" }} [o]
+ * @param {string} text @param {string} session @param {{ uuid?: string, priority?: "next"|"now"|"later", images?: { media_type: string, data: string }[] }} [o]
  */
-export const userLine = (text, session, o = {}) => ({ type: "user", message: { role: "user", content: String(text) }, parent_tool_use_id: null, session_id: session,
+export const userLine = (text, session, o = {}) => ({ type: "user", parent_tool_use_id: null, session_id: session,
+  // Pasted images go first, as image blocks, then the words.
+  message: { role: "user", content: o.images && o.images.length
+    ? [...o.images.map(i => ({ type: "image", source: { type: "base64", media_type: i.media_type, data: i.data } })), { type: "text", text: String(text) }]
+    : String(text) },
   ...(o.uuid ? { uuid: o.uuid } : {}), ...(o.priority ? { priority: o.priority } : {}) });
 
 /**

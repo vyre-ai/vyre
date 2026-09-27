@@ -152,6 +152,7 @@ export function run(sdk, o) {
       if (subtype === "rewind_files") return q.rewindFiles(f.user_message_id, f.dry_run ? { dryRun: true } : undefined);
       if (subtype === "supported_commands") return { commands: await q.supportedCommands() };
       if (subtype === "stop_task") { await q.stopTask(f.task_id); return {}; }
+      if (subtype === "set_max_thinking_tokens") { await q.setMaxThinkingTokens(f.max_thinking_tokens ?? null); return {}; }
       throw new Error(`no ${subtype} on the Agent SDK driver`);
     },
     /** A permission mode a person chose (the Switchboard checks which). */

@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: images, ! shell, # memory, thinking and background tasks (parity with Claude Code)
+
+- `threads.send {images: [{media_type, data}]}`: pasted images (png, jpeg, gif, webp; at most 5,
+  5 MB each) go to Claude Code as image blocks before the words. `thread.sent` says how many.
+- `threads.shell {thread, command}` (person-only, PERSON_ONLY): Claude Code's `!` mode. The line
+  runs in the thread's folder as the person, under the security floor (a denied command is refused
+  before it runs), its output shows (`thread.shell {command, code, output}`) and goes to Claude with
+  the next message as Claude Code's `<bash-input>`/`<bash-stdout>` blocks.
+- `threads.remember {thread, text, scope}` (person-only): Claude Code's `#` mode, a line in the
+  project's CLAUDE.md, the user's own or the folder's CLAUDE.local.md. `thread.remembered`.
+- Thinking: `thread.text {kind: "reasoning"}` as it grows (thinking deltas) and whole; `threads.thinking
+  {thread, on}` turns it on (the model decides how much) or off; `thinking.switched`.
+- Background tasks: `thread.task {id, kind: shell|agent, title, status, background, summary}` from
+  Claude Code's task_started, task_updated and task_notification; `threads.tasks {thread}` lists them;
+  `threads.kill-task {thread, task}` stops one.
+
 #### Sessions: /model, the / menu, and rewinding code (parity with Claude Code)
 
 - `threads.model {thread, model}` (a person's surface): switches a running thread's model, as

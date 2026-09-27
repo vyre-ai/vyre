@@ -9,7 +9,8 @@
 // what a real `claude` printed.
 //
 // Events stay small (spec 6, the brief): no whole tool inputs or outputs, no hook output (the
-// user's own hooks print whatever they like, personal things included), no thinking.
+// user's own hooks print whatever they like, personal things included). Thinking is shown as
+// Claude Code shows it (thread.text kind "reasoning"), capped like text.
 //
 // An ask is richer, because a person has to judge it: a question's options, or the command, file
 // and change a permission is for. That goes into the ask's row (threads.asks), redacted and
@@ -120,7 +121,7 @@ export function describe(tool, input = {}) {
  */
 export function translate(m) {
   /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
-   *   folded?: string[], blocks?: number, used?: number, window?: number, commands?: string[],
+   *   folded?: string[], blocks?: number, used?: number, window?: number, commands?: string[], reasoning?: string, task?: any,
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
   const out = { events: [] };
   if (!m || typeof m !== "object") return out;
@@ -141,6 +142,8 @@ export function translate(m) {
     if (m.parent_tool_use_id) return out;
     if (e.type === "message_start" && e.message && e.message.id) out.message = String(e.message.id);
     if (e.type === "content_block_delta" && e.delta && e.delta.type === "text_delta" && e.delta.text) { out.delta = String(e.delta.text); if (typeof e.index === "number") out.block = e.index; }
+    // Thinking as it grows (the thinking display): its own delta, kind "reasoning".
+    if (e.type === "content_block_delta" && e.delta && e.delta.type === "thinking_delta" && e.delta.thinking) { out.reasoning = String(e.delta.thinking); if (typeof e.index === "number") out.block = e.index; }
     // A steered message Claude Code folded into the running turn is stamped on the first frame after it.
     if (typeof m.user_message_uuid === "string") out.folded = [m.user_message_uuid];
     return out;
@@ -153,6 +156,7 @@ export function translate(m) {
     // rows share one key, message:block.
     (m.message.content || []).forEach((b, block) => {
       if (b.type === "text" && b.text) out.events.push({ type: "thread.text", payload: { message: id, block, text: String(b.text).slice(0, 20000), done: true } });
+      if (b.type === "thinking" && b.thinking) out.events.push({ type: "thread.text", payload: { message: id, block, kind: "reasoning", text: String(b.thinking).slice(0, 20000), done: true } });
       if (b.type === "tool_use") out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input) } });
     });
     out.blocks = (m.message.content || []).length;
@@ -167,6 +171,18 @@ export function translate(m) {
     for (const b of m.message.content) {
       if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error) } });
     }
+    return out;
+  }
+
+  // Background tasks (Bash run in the background, subagents): started, updated, finished.
+  if (m.type === "system" && (m.subtype === "task_started" || m.subtype === "task_updated" || m.subtype === "task_notification")) {
+    const p = m.patch || {};
+    const status = m.subtype === "task_started" ? "running" : m.subtype === "task_updated" ? (p.status || null) : m.status === "stopped" ? "killed" : m.status;
+    out.task = { id: String(m.task_id), ...(status ? { status } : {}),
+      ...(m.subtype === "task_started" ? { kind: /shell|bash/i.test(String(m.task_type || "")) ? "shell" : "agent", title: cut(m.description || m.prompt || "", 200), call: m.tool_use_id || null,
+        background: Boolean(m.is_backgrounded) } : {}),
+      ...(p.description ? { title: cut(p.description, 200) } : {}), ...(p.error ? { error: cut(p.error, 300) } : {}),
+      ...(m.subtype === "task_notification" ? { summary: cut(m.summary || "", 500) } : {}) };
     return out;
   }
 

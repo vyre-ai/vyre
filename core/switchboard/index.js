@@ -14,6 +14,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
@@ -33,6 +34,7 @@ import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const require_home = () => os.homedir();
 
 /** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
 const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
@@ -251,6 +253,8 @@ export class Switchboard {
     this.groups = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
     this.states = new Map();
+    /** @type {Map<string, string[]>} `!` shell output waiting to go with a thread's next message */
+    this.shellContext = new Map();
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
     /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
@@ -583,6 +587,17 @@ export class Switchboard {
     // Steered messages Claude Code took in at a step.
     // step: how many tool calls the turn had finished when Claude took the words in.
     for (const u of t.folded || []) if (st.steers.delete(u)) this.emit("thread.steered", { uuid: u, step: st.steps || 0 }, id, project);
+    if (t.reasoning) {
+      if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
+      st.rpending = (st.rpending || "") + t.reasoning;
+      if (!st.timer) st.timer = setTimeout(() => this.flush(id, st), TEXT_EVERY_MS);
+    }
+    if (t.task) {
+      st.tasks = st.tasks || new Map();
+      const task = { ...(st.tasks.get(t.task.id) || {}), ...t.task };
+      st.tasks.set(task.id, task);
+      this.emit("thread.task", task, id, project);
+    }
     if (t.delta) {
       if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
       st.pending += t.delta;
@@ -753,10 +768,10 @@ export class Switchboard {
   /** Send what partial text has built up, as one event. */
   flush(id, st) {
     if (st.timer) { clearTimeout(st.timer); st.timer = null; }
-    if (!st.pending) return;
-    const delta = st.pending; st.pending = "";
+    if (!st.pending && !st.rpending) return;
     const rec = this.record(id);
-    this.emit("thread.text", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null);
+    if (st.rpending) { const delta = st.rpending; st.rpending = ""; this.emit("thread.text", { message: st.message, block: st.pendingBlock, kind: "reasoning", delta }, id, rec ? rec.project : null); }
+    if (st.pending) { const delta = st.pending; st.pending = ""; this.emit("thread.text", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
   }
 
   /**
@@ -808,20 +823,23 @@ export class Switchboard {
    * @param {string} id @param {string} text @param {{ uuid?: string, steer?: boolean }} [o]
    * @returns {{ uuid: string, turn: string|null }}
    */
-  write(id, text, { uuid = crypto.randomUUID(), steer = false } = {}) {
+  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null } = {}) {
     const st = this.live.get(id);
     this.touch(id, st);
     this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
     st.lastPrompt = text;
     if (steer) {
       st.steers.set(uuid, String(text));
-      st.proc.write(userLine(text, id, { uuid, priority: "next" }));
+      st.proc.write(userLine(text, id, { uuid, priority: "next", ...(images ? { images } : {}) }));
       return { uuid, turn: st.turn };
     }
     st.turn = `${id}:${++st.turnNo}`;
     st.ord.clear();
     st.steps = 0;
-    st.proc.write(userLine(text, id, { uuid }));
+    // `!` shell lines the person ran since the last message go with this one, as Claude Code does.
+    const shells = this.shellContext.get(id);
+    if (shells) this.shellContext.delete(id);
+    st.proc.write(userLine(shells ? `${shells.join("\n")}\n\n${text}` : text, id, { uuid, ...(images ? { images } : {}) }));
     this.set(id, { status: "working" });
     const rec = this.record(id);
     this.emit("thread.turn", { turn: st.turn, uuid, text: cut(text, 2000) }, id, rec ? rec.project : null);
@@ -916,7 +934,7 @@ export class Switchboard {
    * `wait` (the person at the box, through the link) never takes the keyboard: while another
    * surface holds it, the words are queued as for a terminal.
    */
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined } = {}) {
+  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null } = {}) {
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -948,12 +966,12 @@ export class Switchboard {
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
     if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind });
     if (busy) {
-      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}) });
+      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
-    const w = this.write(id, text, uuid ? { uuid } : {});
-    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}) }, id, rec.project);
+    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images });
+    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}) }, id, rec.project);
     return { sent: true, thread: id };
   }
 
@@ -1259,6 +1277,70 @@ export class Switchboard {
     return { thread: id, model: String(model), ...(st ? {} : { note: "applies when the thread next runs" }) };
   }
 
+  /** A running thread's background tasks (shell commands and subagents), newest last. */
+  tasks(id) {
+    this.must(id);
+    const st = this.live.get(id);
+    return { thread: id, tasks: st && st.tasks ? [...st.tasks.values()] : [] };
+  }
+
+  /** Stop one background task. */
+  async killTask(id, task) {
+    const st = this.live.get(id);
+    if (!st || !st.proc.control) return { thread: id, killed: false, note: "not running" };
+    await st.proc.control("stop_task", { task_id: String(task) });
+    return { thread: id, task: String(task), killed: true };
+  }
+
+  /** Thinking on (the model decides how much) or off. */
+  async thinking(id, on) {
+    const st = this.live.get(id);
+    if (!st || !st.proc.control) return { thread: id, thinking: null, note: "not running" };
+    await st.proc.control("set_max_thinking_tokens", { max_thinking_tokens: on ? null : 0 });
+    st.thinking = Boolean(on);
+    const rec = this.record(id);
+    this.emit("thinking.switched", { on: Boolean(on) }, id, rec ? rec.project : null);
+    return { thread: id, thinking: Boolean(on) };
+  }
+
+  /**
+   * Claude Code's `!` mode: run a shell line in the thread's folder, as the person, under the
+   * floor, and give Claude its output with the next message (not a turn of its own).
+   * @param {string} id @param {string} command
+   */
+  async shell(id, command) {
+    const rec = this.must(id);
+    let v = null;
+    try { v = floorRules({ tool: "Bash", input: { command }, cwd: rec.cwd, home: this.deps.root || undefined }); } catch {}
+    if (v && v.decision === "deny") throw Object.assign(new Error(`Vyre's security floor refused this: ${v.reason || "not allowed"}`), { code: "denied" });
+    const { execFile } = await import("node:child_process");
+    const r = await new Promise(resolve => execFile("/bin/sh", ["-c", String(command)], { cwd: rec.cwd, timeout: 120_000, maxBuffer: 4 << 20, env: { ...process.env, VYRE_THREAD: id } },
+      (e, stdout, stderr) => resolve({ code: e ? (typeof /** @type {any} */ (e).code === "number" ? /** @type {any} */ (e).code : 1) : 0, stdout: String(stdout || ""), stderr: String(stderr || "") })));
+    const out = clip((r.stdout + (r.stderr ? (r.stdout ? "\n" : "") + r.stderr : "")), 30000);
+    const st = this.live.get(id);
+    const block = `<bash-input>${command}</bash-input>\n<bash-stdout>${clip(r.stdout, 30000)}</bash-stdout><bash-stderr>${clip(r.stderr, 10000)}</bash-stderr>`;
+    this.shellContext.set(id, [...(this.shellContext.get(id) || []), block].slice(-5));
+    this.emit("thread.shell", { command: cut(command, 2000), code: r.code, output: cut(out, 4000) }, id, rec.project);
+    return { thread: id, code: r.code, output: out, ...(st ? {} : { note: "Claude sees it with your next message" }) };
+  }
+
+  /**
+   * Claude Code's `#` mode: a line added to CLAUDE.md, the project's (project), the user's own
+   * (user) or this folder's private one (local, CLAUDE.local.md). Vyre's memory is separate.
+   */
+  remember(id, text, scope = "project") {
+    const rec = this.must(id);
+    const file = scope === "user" ? path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require_home(), ".claude"), "CLAUDE.md")
+      : path.join(rec.cwd, scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md");
+    const line = String(text).replace(/\s+/g, " ").trim();
+    if (!line) throw Object.assign(new Error("nothing to remember"), { code: "bad_input" });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const had = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+    fs.appendFileSync(file, `${had && !had.endsWith("\n") ? "\n" : ""}- ${line}\n`);
+    this.emit("thread.remembered", { scope, file }, id, rec.project);
+    return { thread: id, scope, file };
+  }
+
   /** The slash commands a running thread offers (names, and descriptions where the driver has them). */
   async commands(id) {
     this.must(id);
@@ -1412,6 +1494,21 @@ export class Switchboard {
 
 const str = { type: "string" };
 
+/** Pasted images a message may carry (Claude Code's own limits are close to these). */
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+const IMAGES = { count: 5, mb: 5 };
+/** Checked images, or null. @param {any} list */
+function imagesOf(list) {
+  if (!Array.isArray(list) || !list.length) return null;
+  if (list.length > IMAGES.count) throw Object.assign(new Error(`at most ${IMAGES.count} images in a message`), { code: "bad_input" });
+  return list.map(i => {
+    const data = String(i && i.data || "");
+    if (!IMAGE_TYPES.includes(String(i && i.media_type))) throw Object.assign(new Error(`an image is ${IMAGE_TYPES.join(", ")}`), { code: "bad_input" });
+    if (!/^[A-Za-z0-9+/=\s]+$/.test(data) || data.length * 0.75 > IMAGES.mb * 1024 * 1024) throw Object.assign(new Error(`an image is base64, at most ${IMAGES.mb} MB`), { code: "bad_input" });
+    return { media_type: String(i.media_type), data: data.replace(/\s+/g, "") };
+  });
+}
+
 /**
  * The person at the box, through the link: the Mac runs a WRITE only with `as: "person"`, as
  * "link:box" (core/link/mac.js). A caller kind of its own, named here rather than left to fall
@@ -1534,7 +1631,9 @@ export default {
 
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
-        mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." } } },
+        mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
+        images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
+          description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       async (i, { caller, idempotencyKey }) => {
         guard(caller, "type into sessions");
@@ -1543,7 +1642,7 @@ export default {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
-        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer",
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images),
           ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
 
@@ -1671,6 +1770,40 @@ export default {
     tool("threads.commands", "The slash commands a running thread offers (Claude Code's own, the user's and the project's, and plugins'), for a composer's / menu. Send one as a message, e.g. \"/compact\".",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
+
+    tool("threads.tasks", "A running thread's background tasks (shell commands run in the background, subagents): id, kind, title, status (running, completed, failed, killed), summary.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, { caller }) => { guard(caller, "read sessions"); return sb.tasks(i.thread); });
+
+    tool("threads.kill-task", "Stop one of a thread's background tasks.",
+      { type: "object", required: ["thread", "task"], properties: { thread: str, task: str } },
+      async (i, { caller }) => {
+        guard(caller, "stop tasks");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface stops a session's tasks"), { code: "denied" });
+        return sb.killTask(i.thread, i.task);
+      });
+
+    tool("threads.thinking", "Thinking on (the model decides how much) or off, for a running thread.",
+      { type: "object", required: ["thread", "on"], properties: { thread: str, on: { type: "boolean" } } },
+      async (i, { caller }) => {
+        guard(caller, "switch thinking");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches thinking"), { code: "denied" });
+        return sb.thinking(i.thread, i.on);
+      });
+
+    tool("threads.shell", "Claude Code's ! mode: run a shell line in the thread's folder, as you, under the security floor. Its output shows here and goes to Claude with your next message. Only a person can.",
+      { type: "object", required: ["thread", "command"], properties: { thread: str, command: str } },
+      async (i, { caller, thread }) => {
+        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not run the person's shell lines"), { code: "denied" });
+        return sb.shell(i.thread, i.command);
+      }, ["cli", "local", "deck", "capsule"]);
+
+    tool("threads.remember", "Claude Code's # mode: add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
+      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, scope: { type: "string", enum: ["project", "user", "local"] } } },
+      async (i, { caller, thread }) => {
+        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions"), { code: "denied" });
+        return sb.remember(i.thread, i.text, i.scope || "project");
+      }, ["cli", "local", "deck", "capsule"]);
 
     tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript.",
       { type: "object", required: ["thread"], properties: { thread: str, prompt: str, name: str, surface: str } },

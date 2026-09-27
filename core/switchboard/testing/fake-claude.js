@@ -8,6 +8,7 @@
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
 //   "bash <command>" asks permission for Bash with that command, and runs nothing
 //   "subagent[-slow] <task>"  runs Claude Code's Agent tool (after the host's PreToolUse hooks)
+//   "background <cmd>"  starts a background task (task_started) that runs until stop_task
 //   "fail"          a turn that ends in an error result
 //   "orphan"        leaves a `sleep 4` in its process group, then exits on its own
 //   "settings"      asks to Write its own .claude/settings.local.json with allow Bash(*)
@@ -76,6 +77,8 @@ const COMMANDS = [{ name: "compact", description: "Clear the conversation but ke
  */
 const changed = [];
 let turnUuid = null;
+/** Background tasks still running. @type {Map<string, boolean>} */
+const tasks = new Map();
 
 // ------------------------------------------------------------ transcript lines, as Claude Code writes them
 
@@ -237,6 +240,9 @@ const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "
   ...(ok ? {} : { errors: [String(text)] }) });
 
 async function turn(prompt, uuid = null) {
+  // A message with pasted images is blocks: the words, and how many images came with them.
+  const blocks = Array.isArray(prompt) ? prompt : null;
+  if (blocks) prompt = blocks.filter(b => b && b.type === "text").map(b => b.text).join("\n") + (blocks.some(b => b && b.type === "image") ? ` (+${blocks.filter(b => b && b.type === "image").length} images)` : "");
   const p = String(prompt).trim();
   // A user line's uuid is the message's own when the host gave one, as Claude Code keeps it.
   tx("user", { role: "user", content: String(prompt) }, uuid ? { uuid } : {});
@@ -353,6 +359,15 @@ async function turn(prompt, uuid = null) {
     await say(text);
     return result(true, text);
   }
+  // A background task (Bash with run_in_background): it runs until it is stopped.
+  const bg = /^background (.+)$/i.exec(p);
+  if (bg) {
+    const task = `task_${++n}`;
+    tasks.set(task, true);
+    out({ type: "system", subtype: "task_started", task_id: task, description: bg[1], task_type: "local_bash", is_backgrounded: true, uuid: crypto.randomUUID(), session_id: session });
+    await say(`started ${task} in the background`);
+    return result(true, `started ${task} in the background`);
+  }
   if (/^fail$/i.test(p)) { await say("Trying."); return result(false, "API Error: 500 the fake broke on purpose", 0); }
   if (/^lowlimit$/i.test(p)) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "seven_day", resetsAt: 1790000000, utilization: 0.27 } });
@@ -374,6 +389,18 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
   // declined), and the turn ends.
   if (m.type === "control_request" && m.request?.subtype === "interrupt") {
     for (const [rid, w] of waiting) { waiting.delete(rid); out({ type: "control_cancel_request", request_id: rid }); w({ behavior: "deny", message: "Interrupted." }); }
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
+  if (m.type === "control_request" && m.request?.subtype === "stop_task") {
+    const id = String(m.request.task_id);
+    const had = tasks.delete(id);
+    if (had) out({ type: "system", subtype: "task_notification", task_id: id, status: "stopped", output_file: "", summary: "stopped by the user", uuid: crypto.randomUUID(), session_id: session });
+    out({ type: "control_response", response: had ? { subtype: "success", request_id: m.request_id, response: {} } : { subtype: "error", request_id: m.request_id, error: `no task ${id}` } });
+    return;
+  }
+  if (m.type === "control_request" && m.request?.subtype === "set_max_thinking_tokens") {
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ thinking: m.request.max_thinking_tokens }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }

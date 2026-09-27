@@ -689,6 +689,40 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!w.launches().some(l => l.argv && l.argv.includes("--resume-session-at")), "the conversation was not rewound");
   });
 
+  test(`${driver}: images, ! shell, # memory, thinking and background tasks, as in Claude Code`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    // Image paste
+    const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+    await w.tool("threads.send", { thread: th.id, text: "look at this", surface: "deck", images: [{ media_type: "image/png", data: png }] });
+    await w.finished(th.id, 2);
+    assert.equal((await w.said(th.id)).at(-1), "echo: look at this (+1 images)");
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "x", images: [{ media_type: "application/pdf", data: png }] })).error.code, "bad_input");
+    // ! shell: runs here, as the person, under the floor; Claude sees it with the next message
+    const sh = (await w.tool("threads.shell", { thread: th.id, command: "echo northwind" }, "deck")).data;
+    assert.deepEqual([sh.code, sh.output.trim()], [0, "northwind"]);
+    assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo x > .claude/settings.local.json" }, "deck")).error.code, "denied", "the floor holds");
+    assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo hi" }, "mcp")).error.code, "denied", "a model never runs the person's shell");
+    await w.tool("threads.send", { thread: th.id, text: "what did it print?", surface: "deck" });
+    await w.finished(th.id, 3);
+    assert.match((await w.said(th.id)).at(-1), /<bash-input>echo northwind<\/bash-input>[\s\S]*<bash-stdout>northwind/);
+    // # memory
+    const rem = (await w.tool("threads.remember", { thread: th.id, text: "Prices have two decimals." }, "deck")).data;
+    assert.equal(rem.file, path.join(w.work, "CLAUDE.md"));
+    assert.match(fs.readFileSync(rem.file, "utf8"), /^- Prices have two decimals\.$/m);
+    // Thinking off
+    assert.deepEqual((await w.tool("threads.thinking", { thread: th.id, on: false }, "deck")).data, { thread: th.id, thinking: false });
+    await until(() => w.launches().some(l => l.thinking === 0), "thinking off to reach Claude Code");
+    // Background tasks
+    await w.tool("threads.send", { thread: th.id, text: "background npm run dev", surface: "deck" });
+    await w.finished(th.id, 4);
+    const task = (await w.tool("threads.tasks", { thread: th.id })).data.tasks[0];
+    assert.deepEqual([task.kind, task.status, task.title, task.background], ["shell", "running", "npm run dev", true]);
+    assert.equal((await w.tool("threads.kill-task", { thread: th.id, task: task.id }, "deck")).data.killed, true);
+    await until(async () => (await w.events(th.id)).some(e => e.type === "thread.task" && e.payload.status === "killed"), "the task to stop");
+  });
+
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {
     const w = await boot(t, { driver, role: "local" });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;
