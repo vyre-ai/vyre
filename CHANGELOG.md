@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: the Capsule's quick answer is Vyre IQ
+
+- A Capsule question (`threads.start` purpose `capsule`) gets its own prompt, replacing Claude
+  Code's: Vyre IQ answers only from the IQ facts (the Capsule's memory lines, numbered), cites
+  them, says "I don't know yet." in one line when none answers, never discusses its access, 1 to 3
+  sentences, no em dashes, typos fixed silently. The user saw "Jordan" and "I don't have access to
+  a memory system" before this.
+- Versioned: built-in `capsule@1`, a person's own at scope `capsule` (`capsule@own-<n>`); the
+  version is `prompt` on `thread.started`. Thinking off (MAX_THINKING_TOKENS=0); neither Claude
+  Code nor the Agent SDK takes a temperature, so the prompt is written for 0 and determinism
+  comes from no thinking, no tools and a fixed model.
+- A quick answer keeps its facts across an idle close, so a follow-up is answered from them too.
+- `scripts/eval-iq-prompt.js --live` (`npm run eval:iq`): eleven cases, twice each, graded for
+  the rules and for the same answer every run. The grader has its own tests.
+
 #### Sessions: the model list
 
 - `sessions.models`: the models a thread can switch to (opus, sonnet, haiku, plus

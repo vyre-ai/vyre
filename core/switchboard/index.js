@@ -399,6 +399,8 @@ export class Switchboard {
       // A fork's running total starts at its source's, as Claude Code continues it.
       if (o.forkFrom) this.db.prepare("UPDATE threads_runs SET cost_total = (SELECT cost_total FROM threads_runs WHERE id = ?) WHERE id = ?").run(o.forkFrom, id);
       const kept = Object.fromEntries(KEPT.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
+      // A quick answer keeps its facts, so a follow-up after an idle close is answered from them too.
+      if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -411,11 +413,13 @@ export class Switchboard {
       if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
     }
     o = { ...o, system: await this.systemPrompt(rec, o) };
+    // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
+    if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
     const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
-      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose };
+      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
     this.emit("thread.started", payload, id, rec.project);
     // The surface that started it gets the keyboard. A prompt given at launch by a module (an
     // agent asked something) is typed without taking the lease, so no surface is locked out.
@@ -433,6 +437,12 @@ export class Switchboard {
    * text alone, as before.
    */
   async systemPrompt(rec, o) {
+    // The Capsule's quick answer is Vyre IQ (core/sessions/iq-prompt.js): the whole prompt, with
+    // the launch's append read as its facts, versioned. Without the sessions module, as before.
+    if (o.purpose === "capsule" && !o.agent) {
+      const r = await this.deps.call("sessions.prompt.compose", { purpose: "capsule", ...(o.append ? { append: String(o.append) } : {}) }).catch(() => null);
+      if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text, version: r.data.version || null };
+    }
     // A job (no settings, no plugin: Learning's distillation) is told only what its launch says.
     if (o.settings === false) return o.append ? { mode: "append", text: String(o.append) } : null;
     const kind = o.agent_kind || (rec.agent ? this.kindOf(rec.agent) : null);

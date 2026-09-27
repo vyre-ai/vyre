@@ -14,6 +14,7 @@
 // agent is told, its own prompt least of all (core/presence PERSON_ONLY).
 
 import { Prompts, PROMPTS_MIGRATION, REPLACE_WARNING, MAX_CHARS, scopeOf } from "./prompts.js";
+import { composeIq, factsFrom } from "./iq-prompt.js";
 import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./config.js";
 
 /** Per-purpose and per-project model overrides a person set from a surface. */
@@ -27,7 +28,7 @@ const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TE
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
-const scope = { type: "string", description: "assistant, agent:<name> or project:<slug>" };
+const scope = { type: "string", description: "assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)" };
 
 export default {
   async start(ctx) {
@@ -95,9 +96,10 @@ export default {
         return row;
       }, PEOPLE);
 
-    tool("sessions.prompt.preview", "The system prompt a session would start with, for an agent and a project: the levels used and how they combine. Without Vyre's own launch text, which the Switchboard adds.",
-      { type: "object", properties: { agent: str, agent_kind: str, project: str } },
-      async i => prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
+    tool("sessions.prompt.preview", "The system prompt a session would start with, for an agent and a project: the levels used and how they combine. Without Vyre's own launch text, which the Switchboard adds. purpose \"capsule\": the Capsule's quick answer (Vyre IQ) with no facts.",
+      { type: "object", properties: { agent: str, agent_kind: str, project: str, purpose: { type: "string", enum: ["capsule"] } } },
+      async i => i.purpose === "capsule" ? composeIq({ own: prompts.current("capsule") })
+        : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
 
     // The models a person can pick for a thread (chat's model picker): the aliases Claude Code
     // takes, and any others listed in config (sessions.models_offered: [{id, label}]).
@@ -183,9 +185,11 @@ export default {
       }, PEOPLE);
 
     ctx.tool("sessions.prompt.compose", {
-      description: "The system prompt for a session starting now: the levels around Vyre's own launch text.", internal: true,
-      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, append: str } },
-      run: async i => prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null, append: i.append || null }),
+      description: "The system prompt for a session starting now: the levels around Vyre's own launch text. purpose \"capsule\" is the Capsule's quick answer (Vyre IQ): the whole prompt, with append read as its facts.", internal: true,
+      input: { type: "object", properties: { agent: str, agent_kind: str, project: str, append: str, purpose: str, facts: { type: "array", items: str } } },
+      run: async i => i.purpose === "capsule"
+        ? composeIq({ facts: Array.isArray(i.facts) ? i.facts.map(String) : factsFrom(i.append), own: prompts.current("capsule") })
+        : prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null, append: i.append || null }),
     });
 
     return { async stop() {} };

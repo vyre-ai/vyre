@@ -2950,13 +2950,15 @@ Set the model for a purpose (purpose:<chat|agent|project|teammate|capsule|job|me
 
 ### `sessions.prompt.compose`
 
-The system prompt for a session starting now: the levels around Vyre's own launch text.
+The system prompt for a session starting now: the levels around Vyre's own launch text. purpose "capsule" is the Capsule's quick answer (Vyre IQ): the whole prompt, with append read as its facts.
 
 - Input:
   - `agent` string
   - `agent_kind` string
   - `append` string
+  - `facts` list of string
   - `project` string
+  - `purpose` string
 - Callers: other modules only (internal, never listed)
 
 ### `sessions.prompt.get`
@@ -2964,7 +2966,7 @@ The system prompt for a session starting now: the levels around Vyre's own launc
 The system prompt set at one level (assistant, agent:<name> or project:<slug>): its text, mode (append or replace) and version, or null when nothing is set.
 
 - Input:
-  - `scope` string, required: assistant, agent:<name> or project:<slug>
+  - `scope` string, required: assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)
 - Callers: any caller
 
 ### `sessions.prompt.history`
@@ -2972,18 +2974,19 @@ The system prompt set at one level (assistant, agent:<name> or project:<slug>): 
 Every version of the system prompt at one level, newest first.
 
 - Input:
-  - `scope` string, required: assistant, agent:<name> or project:<slug>
+  - `scope` string, required: assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)
   - `limit` integer
 - Callers: any caller
 
 ### `sessions.prompt.preview`
 
-The system prompt a session would start with, for an agent and a project: the levels used and how they combine. Without Vyre's own launch text, which the Switchboard adds.
+The system prompt a session would start with, for an agent and a project: the levels used and how they combine. Without Vyre's own launch text, which the Switchboard adds. purpose "capsule": the Capsule's quick answer (Vyre IQ) with no facts.
 
 - Input:
   - `agent` string
   - `agent_kind` string
   - `project` string
+  - `purpose` "capsule"
 - Callers: any caller
 
 ### `sessions.prompt.revert`
@@ -2991,7 +2994,7 @@ The system prompt a session would start with, for an agent and a project: the le
 Undo edits: make an older version of a level's system prompt the current one again (as a new version, so the revert can be undone too).
 
 - Input:
-  - `scope` string, required: assistant, agent:<name> or project:<slug>
+  - `scope` string, required: assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)
   - `version` integer, required
 - Callers: `capsule`, `cli`, `deck`, `local`
 
@@ -3000,7 +3003,7 @@ Undo edits: make an older version of a level's system prompt the current one aga
 Set the system prompt at one level. mode "append" (the default) adds it after Claude Code's own; "replace" makes it the whole system prompt: Replacing the system prompt drops Claude Code's own instructions (tool use, safety and coding behaviour), so it is for experts only. Every edit is a new version; sessions.prompt.revert undoes one. Applies from the next session. Empty text in append mode clears the level. At most 20000 characters.
 
 - Input:
-  - `scope` string, required: assistant, agent:<name> or project:<slug>
+  - `scope` string, required: assistant, agent:<name>, project:<slug> or capsule (the Capsule's quick answer, Vyre IQ)
   - `text` string, required
   - `mode` "append" or "replace"
   - `note` string
