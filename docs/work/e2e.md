@@ -236,6 +236,10 @@ Plan (to the lead before building):
   settings secrets clear to a session's Bash, rules floor, vault generate checks, link/files lists).
   260/0/1 targeted + 69/69 hygiene/docs on testbox; sent to the integrator. Tests that call as
   "cli" must not run under a claude now.
+- teammates round 2 (cbde18cc): HIGH 2/3, MEDIUMs, LOWs fixed. HIGH 1 fix rejected: team.ask/list/
+  status/cancel/notes in PERSON_ONLY breaks thread-socket calls (threadsock 403), the Harness floor
+  (MODEL_NEVER) and owner-device reads. Asked: keep only team.add + team.notes.edit, merge 1941f2cf,
+  keep bareforge tests, add a spawner-on test. Sign off on that sha.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
