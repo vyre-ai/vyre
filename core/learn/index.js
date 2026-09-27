@@ -672,7 +672,7 @@ export default {
     const offText = ctx.events.on("thread.text", e => {
       const p = e.payload || {};
       const thread = e.thread || p.thread;
-      if (p.done !== true || p.notice || p.message === "vyre" || typeof p.text !== "string" || !thread || !jobs.owns(thread)) return;
+      if (p.done !== true || p.notice || p.kind === "reasoning" || p.message === "vyre" || typeof p.text !== "string" || !thread || !jobs.owns(thread)) return;
       jobs.answered(thread, String(p.text || "")).then(r => { if (r && r.skill == null && !r.ok) return skillFallback(); }).catch(err => ctx.log("job answer not read: " + err.message));
     });
     const offStopped = ctx.events.on("thread.stopped", e => {

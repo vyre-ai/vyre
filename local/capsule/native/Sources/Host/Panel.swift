@@ -28,6 +28,18 @@ final class CapsulePanel: NSPanel {
     }
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+
+    /// The standard shortcuts (MainMenu.swift). The Capsule's app is never active, so AppKit may
+    /// not consult the main menu for this window: look the item up and send its action to the
+    /// field (or the item's own target) here.
+    override func performKeyEquivalent(with e: NSEvent) -> Bool {
+        if super.performKeyEquivalent(with: e) { return true }
+        guard let item = MainMenu.item(for: e, in: NSApplication.shared.mainMenu), let action = item.action else { return false }
+        if let target = item.target { return NSApplication.shared.sendAction(action, to: target, from: item) }
+        // Up the responder chain from the field: the field editor selects and pastes, the window
+        // above it undoes.
+        return firstResponder?.tryToPerform(action, with: item) ?? false
+    }
 }
 
 @MainActor
@@ -207,12 +219,13 @@ final class PanelController: NSObject, NSWindowDelegate {
             model.dropChip(); return true
         case 48 where model.current?.kind == "mention": // tab picks the @ row
             model.run(); return true
-        case 124 where cmd && (model.showsMemory || model.askedMemory != nil): // ⌘→ shows or folds memory's sources
+        case 124 where cmd && !shift && (model.showsMemory || model.askedMemory != nil) && caretAtEnd: // ⌘→ at the end of the box shows or folds memory's sources
             model.memoryExpanded.toggle(); return true
         case 2 where cmd && !shift && model.canGoDeeper: // ⌘D: the same question to the deeper model
             model.deeper(); return true
-        case 125: model.move(1); return true   // down
-        case 126: model.move(-1); return true  // up
+        // ↑↓ move in the results; with ⌘, ⇧ or ⌥ they are the box's (start, end, select).
+        case 125 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(1); return true
+        case 126 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(-1); return true
         case 36, 76: // return; a held key is one press, so a held Enter never confirms what it showed
             if e.isARepeat { return true }
             if cmd || shift { return model.run(shortcut: KeyShortcut("return", command: cmd, shift: shift)) }
@@ -221,11 +234,23 @@ final class PanelController: NSObject, NSWindowDelegate {
             if let editor = panel.firstResponder as? NSTextView, editor.selectedRange().length > 0 { return false }
             return model.copyCurrent()
         default:
-            if cmd, let ch = e.charactersIgnoringModifiers?.lowercased(), ch != "a", ch != "v", ch != "x", ch != "z" {
+            // A row's own ⌘ shortcut, unless the key is a standard one (MainMenu.swift) or moves the caret.
+            if cmd, !e.modifierFlags.contains(.control), let ch = e.charactersIgnoringModifiers?.lowercased(), !Self.standard.contains(ch),
+               !(123...126).contains(Int(e.keyCode)) {
                 return model.run(shortcut: KeyShortcut(ch, command: true, shift: shift))
             }
             return false
         }
+    }
+
+    /// Keys the Edit, app and Window menus own, never a row's: ⌘A C V X Z F W , Q and ⌘⌫.
+    static let standard: Set<String> = ["a", "v", "x", "z", "f", "w", ",", "q", "\u{7f}"]
+
+    /// The caret is at the end of the box with nothing selected: ⌘→ has nothing to move.
+    var caretAtEnd: Bool {
+        guard let editor = panel.firstResponder as? NSTextView else { return true }
+        let r = editor.selectedRange()
+        return r.length == 0 && r.location >= (editor.string as NSString).length
     }
 
     func windowDidResignKey(_ notification: Notification) {

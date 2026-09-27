@@ -245,15 +245,12 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
 });
 
 // /vyre remember, then a question, from the user's own Claude Code session (bare "mcp"), through
-// the copied plugin's MCP server. An agent's session is refused both. Needs memory-iq's gate
-// (6f2c57c); until it is in the tree the test says so and skips.
+// the copied plugin's MCP server. An agent's session is refused both.
 test("memory: the user's own session remembers a fact and is answered from it; an agent's session is refused", async t => {
   const { cache, env } = install(t, { withVyre: true });
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
-  const gate = await d.registry.call("memory.answer", { q: "who is my wife" }, "mcp");
-  if ((gate.error && gate.error.code === "denied") || !d.registry.listTools("mcp").some(x => x.name === "memory.remember")) return t.skip("memory-iq's bare-mcp gate (6f2c57c) is not in this tree");
   const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
   const out = (replies, id) => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
   const own = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },

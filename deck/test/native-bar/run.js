@@ -19,7 +19,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { openTab } from "../cdp.js";
 import { PAGE_SCRIPT } from "./page.js";
-import { p95, percentile, streamGate, frameStats } from "./stats.js";
+import { p95, percentile, streamGate, frameStats, thresholdP95 } from "./stats.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
@@ -127,20 +127,40 @@ const wheelUp = async (/** @type {number} */ px) => {
 // ---- 1: keystroke to paint ---------------------------------------------------------------------------------
 
 async function keystrokes(/** @type {string} */ id, /** @type {string} */ label) {
+  const BP = "p95 processing < 16 ms", BD = "p95 duration to next paint < 33 ms";
   const has = await B(`return !!document.querySelector(${JSON.stringify(composerSel)});`);
-  if (!has) return na(id, `keystroke to paint, ${label}`, "p95 < 16 ms, no long task > 50 ms", `no composer textarea (${composerSel}) in this tree's session view`);
-  await B(`const ta = document.querySelector(${JSON.stringify(composerSel)}); ta.focus(); B.keys = []; B.keyOn = true; B.ltFrom = performance.now(); return true;`);
+  if (!has) { na(id + ".proc", `keystroke processing, ${label}`, BP, `no composer textarea (${composerSel}) in this tree's session view`);
+    return na(id + ".paint", `keystroke to next paint, ${label}`, BD, `no composer textarea (${composerSel}) in this tree's session view`); }
+  if (!(await B(`return B.evtOk;`))) { na(id + ".proc", `keystroke processing, ${label}`, BP, "this Chrome has no Event Timing API (PerformanceObserver type event)");
+    return na(id + ".paint", `keystroke to next paint, ${label}`, BD, "this Chrome has no Event Timing API"); }
+  await B(`const ta = document.querySelector(${JSON.stringify(composerSel)}); ta.focus(); B.keys = []; B.keyOn = true; B.ltFrom = performance.now(); B.evtFrom = B.evt.length; return true;`);
   const text = "Northwind Bakery adds a pumpkin loaf at 5.50 and kit reviews the copy before alex sends it. ".repeat(3).slice(0, 200);
   for (const c of text) { await key(c, { text: c }); await sleep(30); }
-  await sleep(400);
+  await sleep(600);
   const r = await B(`B.keyOn = false; const lt = B.longtasks.filter(t => t.start >= B.ltFrom); const ta = document.querySelector(${JSON.stringify(composerSel)});
-    const typed = ta.value.length; ta.value = ""; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.blur();
-    return { keys: B.keys, long: lt.map(t => t.duration), typed };`);
-  const v = p95(r.keys);
+    const typed = ta.value.length;
+    const evt = B.evt.slice(B.evtFrom).filter(e => e.start >= B.ltFrom);
+    ta.value = ""; ta.dispatchEvent(new Event("input", { bubbles: true })); ta.blur();
+    return { keys: B.keys, long: lt.map(t => t.duration), typed, evt };`);
   const worst = r.long.length ? Math.max(...r.long) : 0;
-  const pass = v != null && v < 16 && worst <= 50;
-  report(id, `keystroke to paint p95 (ms), ${label}`, v ?? "n/a", "p95 < 16 ms, no long task > 50 ms", v == null ? null : pass,
-    `median ${Math.round((percentile(r.keys, 50) || 0) * 10) / 10} ms (the next frame alone is 0 to 16.7 ms); ${r.keys.length} keys measured, ${r.typed} chars landed; long tasks while typing: ${r.long.length}${r.long.length ? ` (worst ${Math.round(worst)} ms)` : ""}`);
+  const longOk = worst <= 50;
+  const longNote = `long tasks while typing: ${r.long.length}${r.long.length ? ` (worst ${Math.round(worst)} ms)` : ""}`;
+  // The keydown and input entries of every key: 2 per key typed. Chrome leaves out any under 16 ms,
+  // so the p95 is exact when over 5 % were reported and "under 16" otherwise (stats.js thresholdP95).
+  const kd = r.evt.filter((/** @type {any} */ e) => e.name === "keydown" || e.name === "input");
+  const total = 2 * text.length;
+  const byName = (/** @type {string} */ n) => kd.filter((/** @type {any} */ e) => e.name === n).length;
+  const counts = `${byName("keydown")} keydown and ${byName("input")} input entries of ${total} were 16 ms or more (the API reports no shorter ones, and rounds durations to 8 ms)`;
+  const proc = thresholdP95(kd.map((/** @type {any} */ e) => e.proc), total, 16);
+  const dur = thresholdP95(kd.map((/** @type {any} */ e) => e.duration), total, 16);
+  const show = (/** @type {{ value: number|null, under: boolean }} */ x) => (x.under ? "< 16" : x.value ?? "n/a");
+  const procPass = proc.under || (proc.value != null && proc.value < 16);
+  const durPass = dur.under || (dur.value != null && dur.value < 33);
+  const worstProc = kd.length ? Math.max(...kd.map((/** @type {any} */ e) => e.proc)) : 0;
+  report(id + ".proc", `keystroke processing p95 (ms), ${label}`, show(proc), `${BP}, no long task > 50 ms`, procPass && longOk,
+    `${counts}; worst processing ${Math.round(worstProc)} ms; ${longNote}`);
+  report(id + ".paint", `keystroke to next paint p95 (ms), ${label}`, show(dur), `${BD}, no long task > 50 ms`, durPass && longOk,
+    `Event Timing duration, keydown and input; rAF method for comparison: p95 ${Math.round((p95(r.keys) || 0) * 10) / 10} ms, median ${Math.round((percentile(r.keys, 50) || 0) * 10) / 10} ms; ${r.typed} chars landed; ${longNote}`);
 }
 
 // ---- 6: fling through the long transcript ----------------------------------------------------------------
@@ -441,11 +461,11 @@ async function guard(/** @type {string} */ id, /** @type {string} */ metric, /**
 
 try {
   await guard("7", "open a session", "< 300 ms cached, < 1 s cold", openBudget);
-  await guard("1", "keystroke to paint, 40 rows", "p95 < 16 ms", async () => { await openSession(world.s40); await keystrokes("1.40", "40-row transcript"); });
+  await guard("1", "keystroke, 40 rows", "p95 processing < 16 ms, to next paint < 33 ms", async () => { await openSession(world.s40); await keystrokes("1.40", "40-row transcript"); });
   if (want("6") || want("1")) {
     await openSession(world.s2000);
     await guard("6", "fling p95 frame time", "p95 < 16.7 ms", fling);
-    await guard("1", "keystroke to paint, 2,000 rows", "p95 < 16 ms", async () => { if (!want("6")) await loadAll(); await keystrokes("1.2000", "2,000-row transcript"); });
+    await guard("1", "keystroke, 2,000 rows", "p95 processing < 16 ms, to next paint < 33 ms", async () => { if (!want("6")) await loadAll(); await keystrokes("1.2000", "2,000-row transcript"); });
   }
   if (["2", "3", "4", "5", "8", "9", "10"].some(want)) {
     const thread = await startThread();
@@ -466,7 +486,7 @@ try {
   try { await tab.close(); } catch {}
   await stopAll();
   const cell = (/** @type {any} */ v) => String(v ?? "").replace(/\|/g, "\\|");
-  const order = (/** @type {string} */ id) => { const [a, b] = id.split("."); return Number(a) * 10 + (b ? 1 : 0); };
+  const order = (/** @type {string} */ id) => Number(id.split(".")[0]);
   const rows = [...results].sort((a, b) => order(a.id) - order(b.id));
   const md = [`### ${LABEL}`, "", "| # | Metric | Value | Budget | Pass | Notes |", "|---|---|---|---|---|---|",
     ...rows.map(r => `| ${r.id} | ${cell(r.metric)} | ${cell(r.value)} | ${cell(r.budget)} | ${r.pass == null ? "n/a" : r.pass ? "yes" : "no"} | ${cell(r.detail)} |`)];

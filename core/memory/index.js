@@ -64,7 +64,7 @@ export default {
     const modelOffs = [
       ctx.events.on("thread.text", e => {
         const p = e.payload || {}, thread = threadOf(e);
-        if (p.done !== true || p.notice || p.message === "vyre" || typeof p.text !== "string" || !thread || !model.owns(thread)) return;
+        if (p.done !== true || p.notice || p.kind === "reasoning" || p.message === "vyre" || typeof p.text !== "string" || !thread || !model.owns(thread)) return;
         model.answered(thread, p.text).catch(err => ctx.log("memory model answer not read: " + err.message));
       }),
       ctx.events.on("thread.stopped", e => {

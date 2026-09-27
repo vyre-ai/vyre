@@ -64,19 +64,75 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - testbox: `core/relay`, `relay/**`, `test/relay.test.js` 93/93; docs tests 50/50.
 
 ## Doing
-- Nothing in flight. Reported to the lead.
+- Redial bug FIXED (lead asked during the pause): link.js and client.js treat a pre-open
+  `error` as a failed dial; 30 s dial timer in link.js. resilience's two chaos todos pass with
+  the fix (their branch + this fix, 54/54); they flip the todos on their branch.
+- PAUSED (lead, 27 Sep 2026): the user is refocusing on the native core. 4d58d4b is in batch 3b.
+  Nothing in flight; everything is pushed. The Cloudflare deploy stays deferred until the lead
+  says the phone spike or the hosted app needs a live relay (check the vyre.run zone is on
+  Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
-1. Surfaces show the `device.paired` notice with one-tap removal (pwa, capsule, mobile own the
-   UI; the event now carries kind, release, build known/unknown).
-2. relay/app/: the app.vyre.run host (CSP, SRI, signed release manifest, pinning service
-   worker) and vyre.run/pair forwarding the fragment. Build comes from mobile.
-3. `vyre relay` CLI (status, pair with a terminal QR, devices).
-4. Onboarding card and Settings, Devices (with deck-design / docs owners).
+- From mobile (trust UI on work/mobile 4ea9fcf), after native-core: (1) an untrusted browser's
+  denied tools answer `denied` "trust this browser first" instead of 404 (a WEB_DENY check in
+  the tools or a policy that answers denied, not hides); (2) emit `device.trusted {id, trusted}`
+  and pass the "trust changed" close reason through relay/client; (3) relay.devices.list gains
+  webExpiryDays and trustedBy/trustedAt (relay.devices.trust records trusted_by = the trusting
+  device's id and name, and trusted_at; both cleared when trust is lowered or the browser pairs
+  again; returned in the view for web devices, per app-design); (4) same as app-design (2): name, not id, in the trust
+  summary. The app hides "Ask to trust" until relay.devices.ask-trust is listed.
+- From app-design (board "Devices: trusting a browser for the vault", work/app-design 46f1b3d),
+  after native-core: (1) relay.devices.trust with trusted:false needs no proof (presence.when on
+  input.trusted); (2) the presence summary names the device ("Trust browser Chrome on alex's
+  Pixel 8 fully"), not the id; (3) relay.devices.ask-trust {id}, callable by the untrusted web
+  device itself (not in WEB_DENY), puts one Device row in Needs on trusted devices (Trust / Not
+  now), deduped per device.
+- e2e decision: the pairing presence key is the phone's biometric-bound key (vyre.human). Optional
+  hardening: if the hello's presenceKey carries `biometric: true`, admit() refuses one without it.
+  Untrusted web devices stay blocked from vault reveal/copy by WEB_DENY even though e2e e5aaf88
+  lets presence sessions serve them for device:<id>.
+- From mobile (apps/app on work/mobile 24e2091a wires relay/client), for when relay resumes:
+  (1) README: say createPaths takes `fetch` (RN needs expo/fetch to stream); (2) a `randomBytes`
+  option for paths.js newKey() (Hermes has no getRandomValues); (3) a start-on-the-relay mode:
+  `prefer` path plus a background probe that moves up to direct, so a phone's first request does
+  not wait 1.5 s; (4) make relay/client strict-tsc clean (85 errors, 9 files) so the app drops its
+  hand-written declarations.
+0. (e2e c8e00e7 has the contract; relay.device.presence added in this commit for the native path.
+   Web: e2e a33ad94 has it. WAITS until after the native-core milestone (lead). Then, in admit()
+   for a web pairing whose hello carries a passkey: ctx.call("presence.enroll", { kind: "passkey",
+   name, public_key: <base64url SPKI DER>, alg: -7|-8|-257, rp_id: "app.vyre.run", credential_id,
+   device: <device id> }) as module:relay, and store credential_id as presence_key so
+   relay.devices.remove's presence.remove drops the binding. Loader sign-in: POST
+   /v1/presence/challenge { tool: "presence.person.start", input: { key: <JWK> }, method: "passkey" },
+   navigator.credentials.get on app.vyre.run, then POST presence.person.start { key } with
+   x-vyre-presence `passkey id=<challenge> cred= ad= cd= sig=`; keep { token } and sign with
+   x-vyre-proof. Tests: e2e's test/person.test.js.)
+   PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
+   (a) at web pairing, the loader makes a passkey with rpId app.vyre.run and sends it in the
+   hello; admit() passes it to presence for enrollment bound to the device id; (b) the loader
+   and the native app call presence.person.start over the channel and keep the returned token,
+   signing calls with x-vyre-proof (the bridge already passes both headers).
+   NEEDED FROM e2e before starting: (1) the registry's person gate uses `ownerDevice(caller)`,
+   not `ownerOverTailnet(caller)`, so `device:*` is gated (MERGE HAZARD until done); the router
+   treats the relay's peer (kind "device", stableId = device id) as a device with nodeId =
+   stableId; (2) presence.person.start accepts, for a `device:<id>` caller, method "device" (the
+   phone's enrolled P-256 key) and method "webpasskey" (a WebAuthn assertion, rpId app.vyre.run,
+   origin https://app.vyre.run, only for the key enrolled for that device id), and returns the
+   same `Vyre <id>.<secret>` token pinned to the device id, taking the app's ES256 proof key;
+   (3) presence.enroll accepts kind "webpasskey" from caller module:relay with { device,
+   credential_id, public_key, alg }, bound to that device id; (4) the Mac Secure Enclave key
+   (lead approved) as a `device` presence key, so a linked Mac can mint relay.pair.start.
+1. After tests: CHANGELOG entries for relay/app, relay.web.*, person-session headers.
+2. Hand polish-cli the CLI verbs for `vyre phone add`.
+3. Surfaces show the `device.paired` notice with one-tap removal (pwa, capsule, mobile own the UI).
+4. Onboarding card and Settings, Devices (with deck-design / docs owners); docs site publishes
+   relay/app/pair/ at vyre.run/pair.
 5. perf-check numbers for the idle box with the relay on.
-6. First real Cloudflare deploy: approved spend ($5/mo), but ASK THE LEAD before deploying.
+6. First real Cloudflare deploy once the lead confirms the command.
 
 ## Needs from others
+- polish-cli: one QR encoder. Whoever reaches main second swaps `vyre relay pair` to
+  core/cli/qr.js `terminal(qr(url))` (polish-cli 6eaa6a0) and deletes terminalQr + its test.
 - tailnet: CORS on vyred for https://app.vyre.run (the /v1/health probe and API calls), or
   Direction A's direct path is blocked in the browser.
 - presence owner: enroll a passkey presence key (rp app.vyre.run) sent at pairing by a web

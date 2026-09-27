@@ -246,17 +246,26 @@ const keyed = () => {
   };
 };
 
+/**
+ * The live keys of a stream, text apart from reasoning (thread.thinking, or thread.text kind
+ * "reasoning" on sessions 034c71e5, which a box that streams thinking adds): text keys are
+ * compared with text keys, reasoning with reasoning.
+ */
 function liveKeys(/** @type {string} */ file) {
   const tr = keyed();
   let message = "";
-  const done = [], deltas = new Map();
+  const done = [], deltas = new Map(), rdone = [], rdeltas = new Map();
   for (const line of fs.readFileSync(file, "utf8").split("\n").filter(Boolean)) {
     const t = tr(JSON.parse(line));
     if (t.message !== undefined) message = t.message;
     if (t.delta) deltas.set(`${message}#${t.block}`, (deltas.get(`${message}#${t.block}`) || "") + t.delta);
-    for (const e of t.events) if (e.type === "thread.text") done.push(e.payload);
+    if (t.reasoning) rdeltas.set(`${message}#${t.block}`, (rdeltas.get(`${message}#${t.block}`) || "") + t.reasoning);
+    for (const e of t.events) {
+      if (e.type === "thread.thinking" || (e.type === "thread.text" && e.payload.kind === "reasoning")) rdone.push(e.payload);
+      else if (e.type === "thread.text") done.push(e.payload);
+    }
   }
-  return { done, deltas };
+  return { done, deltas, rdone, rdeltas };
 }
 
 test("blocks: a message written as text, tool_use, text keeps each text's content block index", () => {
@@ -282,6 +291,23 @@ test("blocks: the live stream's keys (message, block) equal the transcript's for
   }
   // Without the count, two texts of one message would share a key and the second overwrite the first.
   assert.equal(new Set(keys(done)).size, done.length);
+});
+
+test("blocks: the live stream's reasoning keys (message, block) equal the transcript's thinking, and never a text's", () => {
+  const all = /** @type {any[]} */ (blocks(path.join(FIX, "split.jsonl"), { from: 0 }).blocks);
+  const think = all.filter(b => b.kind === "thinking");
+  const texts = new Set(all.filter(b => b.kind === "text").map(b => `${b.message}#${b.block}`));
+  const { rdone, rdeltas } = liveKeys(path.join(FIX, "split.stream.jsonl"));
+  // A box without thinking deltas (before sessions 034c71e5) sends none: nothing to compare.
+  if (!rdone.length && !rdeltas.size) return;
+  // The transcript's thinking block has no message id; its block index is the live one, on msg_03A.
+  assert.deepEqual(rdone.map(d => d.block), think.map(b => b.block));
+  assert.deepEqual(rdone.map(d => d.message), ["msg_03A"]);
+  for (const d of rdone) {
+    assert.ok(!texts.has(`${d.message}#${d.block}`), "a reasoning key is never a text key");
+    assert.equal(rdeltas.get(`${d.message}#${d.block}`), d.text, "the reasoning deltas add up to the thinking, and only it");
+  }
+  assert.equal(rdone[0].text, think[0].text);
 });
 
 test("blocks: a rewind's abandoned branch (two person's lines under one parent) is skipped, before and after paging", t => {

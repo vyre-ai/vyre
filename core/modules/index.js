@@ -18,9 +18,15 @@ import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
 
+/** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
+const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
+
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
 const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** Vyre's own modules are the ones shipped in the repo (core, local, modules); a home's never are. */
+const REPO_DIR = path.resolve(CORE_DIR, "..");
+const firstParty = (/** @type {string} */ dir) => path.resolve(dir).startsWith(REPO_DIR + path.sep);
 /**
  * The only caller labels a module may call under, and who may. A person's labels ("cli", "deck")
  * are never here: a module that could call as one would act as the person. The link on a Mac types
@@ -33,10 +39,11 @@ const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 
 /**
- * Check a manifest. Returns a list of problems; empty means valid.
- * @param {any} m
+ * Check a manifest. Returns a list of problems; empty means valid. `firstParty` is true for a
+ * module shipped with Vyre; a module from anywhere else is held to more (its settings' stores).
+ * @param {any} m @param {{ firstParty?: boolean }} [opts]
  */
-export function validate(m) {
+export function validate(m, { firstParty = false } = {}) {
   const out = [];
   if (!m || typeof m !== "object") return ["module.json is not an object"];
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
@@ -49,7 +56,7 @@ export function validate(m) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
   for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
-  out.push(...validateDecls(String(m.name), m.settings));
+  out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: (m.does && m.does.tools) || [] }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
@@ -68,7 +75,7 @@ export function discover(roots) {
       const file = path.join(dir, "module.json");
       if (!fs.existsSync(file)) continue;
       let manifest = null, problems = [];
-      try { manifest = JSON.parse(fs.readFileSync(file, "utf8")); problems = validate(manifest); }
+      try { manifest = JSON.parse(fs.readFileSync(file, "utf8")); problems = validate(manifest, { firstParty: firstParty(dir) }); }
       catch (err) { problems = ["module.json unreadable: " + /** @type {Error} */ (err).message]; }
       found.push({ dir, manifest, problems });
     }
@@ -232,7 +239,8 @@ export class Registry {
       // Every running module's declared settings (module.json "settings"), for the settings
       // module to serve. Manifests are public; a module switched off takes its settings with it.
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
-        .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name }))),
+        // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
+        .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: firstParty(r.dir) }))),
       // The module's namespace in vyre.db: migrations are bound to its name, so its tables must
       // carry that name. Reads may join any table; writes to another module's tables go through
       // that module's tools.
@@ -293,6 +301,9 @@ export class Registry {
         const rec = this.modules.get(m.name);
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
         if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
+        // settings relays a person only to the tools first-party modules declared as their own
+        // settings' getters and setters, never to any other tool (e2e review, HIGH 2).
+        if (m.name === "settings" && !this.settingTools().has(tool)) throw new Error(`settings may not call ${tool} as ${as}: no first-party setting names it`);
         return this.call(tool, input, String(as));
       },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
@@ -379,6 +390,15 @@ export class Registry {
     if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
       return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
     }
+    // Over the tailnet a node signed in as the owner, and over the relay a paired device
+    // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
+    // own actions there need the person's session too (core/presence/person.js),
+    // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
+    // way to get it, and the first passkey is enrolled with onboarding's code.
+    if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool)
+      && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
+      return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
+    }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };
     if (this.deps.rules) {
@@ -421,6 +441,20 @@ export class Registry {
       const code = typeof err?.code === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(err.code) ? err.code : "failed";
       return { error: { code, message: err?.message || String(e), ...(err?.detail && typeof err.detail === "object" ? { detail: err.detail } : {}) } };
     }
+  }
+
+  /** The getter and setter tools first-party modules name in their settings' tool stores. */
+  settingTools() {
+    const out = new Set();
+    for (const r of this.modules.values()) {
+      if (r.state !== "running" || !r.manifest || !Array.isArray(r.manifest.settings) || !firstParty(r.dir)) continue;
+      for (const d of r.manifest.settings) {
+        const t = d && d.store && d.store.tool;
+        if (t && t.get && t.get.tool) out.add(String(t.get.tool));
+        if (t && t.set && t.set.tool) out.add(String(t.set.tool));
+      }
+    }
+    return out;
   }
 
   status() {

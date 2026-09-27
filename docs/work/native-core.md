@@ -18,12 +18,46 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
 - 2026-09-27: audits of sessions, chat, settings and Paseo (findings in the gap list sent to the
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
-## Doing
-- f9389d56 harness landed with first numbers (native-bar.md Results). Waiting on: chat (which of the
-  5 fixes they take), resilience (reconnect), sessions (names, rewind, settings.resolve), app-design
-  (Settings frame), harness subagent a52324e (budget 1 via Event Timing).
+## Doing (after LOGOUT 4 resume, 2026-09-27)
+DONE on resume: main 7880dfa6 merged (e9b22592); e2e HIGH 1 + HIGH 2 fixed (6fb87f4e: PERSON_ONLY
+settings.set/reset, agent labels refused, CALL_AS for settings limited to registry.settingTools());
+store limits merged (b172c2d0 + 67abc47f); sent e2e 62abf2cf for re-review. Waiting on e2e sign-off.
+Also done on resume: typing lag (e91f970c, composer grow via field-sizing; budget 1 passes 24 ms at
+2,000 rows), scroll jump re-measured (fixed on work/chat 553017a1, 0 px), reconnect 1.5 s still
+(pwa/resilience), agent Effort saved (87fb03d7), ADR 0035 the settings hub drafted (docs/adr/0035).
+Deck confirm/proof checked in real Chrome (57a59f86, deck/test/settings-browser.js 7/7; enum labels,
+where only for files). Open defects seen: the no-passkey error reads as dev text ("enroll one with
+presence.enroll"); fling (budget 6) 67 ms p95; open cold (7) 2.4 s; send to row (9) 102 ms.
+Next: coordinate ADR 0035 with app-design, platform, pwa, mobile, capsule-pro, sessions; build
+step 1 (hub.json store) once the lead OKs the ADR; Deck confirm/proof check in a real browser.
+Older list (kept for reference):
+4. Typing lag: my tree's 2,000-row paint p95 48 ms (> 33) from composer.js:70 grow() over an
+   unwindowed timeline. Rebase composer work on chat c26f868 (chat handed composer.js,
+   pickers.js, caps.js, core/composer-state.js back to me). Fix grow (field-sizing: content or
+   rAF-batched, contain: layout) + take chat's windowing. Then drafts, @ scoped to cwd, hide
+   absent chips. Image drop is done by chat.
+5. Scroll jump re-measure (chat's fix) and reconnect on work/pwa (0af372a overlay pill, follow()).
+6. Agent "Effort" saves nothing: fix in core/agents (unowned; mine now) with a test.
+7. THE CENTRAL HUB (user directive): settings + session configs + ALL design tokens in one hub,
+   read live by every surface (/theme.css, /v1/theme, settings.changed), levels account >
+   project > device > session, one hand-editable file under the home that emits
+   settings.changed. Write ADR 0035 (claim it). Platform's asks: hub file name + live read,
+   per-key `check: {tool}`, `choices: {tool}`, sessions.prompt_layers_off; a first-party
+   `theme` module (platform P4). Coordinate app-design, platform, pwa, mobile, capsule-pro,
+   sessions.
+8. Deck confirm/proof flow is built (70023ba2); check it in a real browser when Chrome frees.
+Also: platform settings.write (e4515fb6) is approved by e2e; lands after the HIGHs.
+Answer mobile: meter location (proposed lib/perf/meter.js) and server `t` on thread.text is
+NOT stamped yet (ask sessions for field `t`, ms epoch).
+Answer app-design: check docs/design/system specs (work/app-design c4f9bb23) paths.
 
 ## Known follow-ups
+- Before 0.1.0 (e2e MEDIUMs, 27 Sep): (1) firstParty(dir) = under the repo's core/, local/ or
+  modules/, never under config.home() (a dev home inside a checkout); (2) confirm for sessions.env
+  and sessions.plugins, and for sessions.deny/ask when an entry is dropped (reset included);
+  (3) asPerson(): map tailnet:<login> to "deck" explicitly, throw on anything else.
+- Merge e2e's claudeHome switch (work/e2e-noclaude 32dc0956) once it is on main: settings'
+  claudeDir becomes conf().claude_dir || claudeHome(ctx.paths.root).
 - Screenshots of Settings in one world (needs a Chrome run on testbox).
 - Canvas Settings.dc.html has list+detail with value summaries, J/K / Space keys, "Saved" check:
   not matched yet.
@@ -35,6 +69,8 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   per-agent settings level; talk to whoever owns core/agents.
 
 ## Changed contracts
+- core/agents: agents.create/update take effort; agents.list returns it (native-core owns core/agents now).
+- core/switchboard threads.launch: + effort input (sessions applies it to the SDK session).
 - core/modules/index.js CALL_AS: settings may call as cli/local/deck/capsule.
 - scripts/lib/docs/check.js OWNERS: + native-core.
 

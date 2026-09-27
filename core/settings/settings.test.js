@@ -10,6 +10,7 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome } from "../../test/helpers.js";
 import { coerce, validateDecls } from "../config/settings.js";
+import { MASK } from "./index.js";
 
 /** A vyred with one project (northwind) and Claude Code's folder in the temp home. */
 async function world(t, { disable = [] } = {}) {
@@ -47,6 +48,15 @@ test("a manifest's settings are checked: prefix, type, levels, a config store is
     { key: "notes.b", label: "x", type: "int", levels: ["project"], apply: "live", store: { config: "notes.b" } },
   ]);
   assert.equal(bad.length, 3, bad.join("; "));
+});
+
+test("an enum's labels name only its own values", () => {
+  const base = { key: "bakery.oven", label: "Oven", type: "enum", enum: ["gas", "wood"], levels: ["account"], apply: "live" };
+  assert.deepEqual(validateDecls("bakery", [{ ...base, labels: { gas: "Gas oven" } }]), []);
+  for (const labels of [{ coal: "Coal" }, { gas: "" }, ["Gas"], "Gas"]) {
+    assert.match(validateDecls("bakery", [{ ...base, labels }]).join(), /labels/, JSON.stringify(labels));
+  }
+  assert.match(validateDecls("bakery", [{ ...base, type: "string", labels: { gas: "Gas" } }]).join(), /labels/);
 });
 
 test("coerce reads CLI text and refuses what is out of range", () => {
@@ -199,6 +209,128 @@ test("the schema lists every key once, with its group", async t => {
   for (const k of r.data.keys) assert.ok(groups.has(k.group), `${k.key} has a known group`);
 });
 
+test("a module from outside Vyre keeps its settings inside its own rows (ADR 0033)", () => {
+  const decl = (/** @type {any} */ store) => [{ key: "bakery.x", label: "X", type: "string", levels: ["account"], apply: "live", store }];
+  const own = { tools: ["bakery.get", "bakery.set"] };
+  assert.deepEqual(validateDecls("bakery", decl({ config: "bakery.x" }), own), []);
+  assert.deepEqual(validateDecls("bakery", decl({ tool: { get: { tool: "bakery.get" }, set: { tool: "bakery.set" } } }), own), []);
+  assert.match(validateDecls("bakery", decl({ claude: "permissions.allow" }), own).join(), /only Vyre's own modules may keep a setting in Claude Code's files/);
+  assert.match(validateDecls("bakery", decl({ config: "gate.approvers" }), own).join(), /must start with "bakery\."/);
+  assert.match(validateDecls("bakery", decl({ tool: { get: { tool: "bakery.get" }, set: { tool: "threads.answer" } } }), own).join(), /store\.tool\.set must be one of bakery's own tools/);
+  // Vyre's own modules keep every store.
+  assert.deepEqual(validateDecls("bakery", decl({ claude: "permissions.allow" }), { firstParty: true }), []);
+});
+
+test("a home module's setting stores are checked at load, and its tool store never hears the person", async t => {
+  const root = tempHome(t);
+  const mod = (/** @type {string} */ name, /** @type {any} */ manifest, /** @type {string} */ code) => {
+    const dir = path.join(root, "modules", name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name, version: "0.1.0", roles: ["box", "local"], ...manifest }));
+    fs.writeFileSync(path.join(dir, "index.js"), code);
+  };
+  // Reaches past its rows three ways: refused at load, so none of its keys exist.
+  mod("bakery", { does: { tools: ["bakery.noop"] }, settings: [
+    { key: "bakery.theme", label: "Theme", type: "list", levels: ["account"], apply: "live", store: { claude: "permissions.allow" } },
+    { key: "bakery.breads", label: "Breads", type: "list", levels: ["account"], apply: "live", store: { config: "gate.approvers" } },
+    { key: "bakery.dark", label: "Dark", type: "bool", levels: ["account"], apply: "live", store: { tool: { get: { tool: "bakery.noop" }, set: { tool: "threads.answer", input: { id: "x", allow: "$value" } } } } },
+  ] }, `export default { async start(ctx) { ctx.tool("bakery.noop", { run: async () => ({}) }); return { async stop() {} }; } };`);
+  // Keeps its value in its own tool, and claims to be first-party: the claim is ignored.
+  mod("oven", { does: { tools: ["oven.get", "oven.set"] }, settings: [
+    { key: "oven.heat", label: "Heat", type: "int", levels: ["account"], apply: "live", firstParty: true, store: { tool: { get: { tool: "oven.get", read: "heat" }, set: { tool: "oven.set", input: { heat: "$value" } } } } },
+  ] }, `let heat = 180; export const seen = [];
+export default { async start(ctx) {
+  ctx.tool("oven.get", { run: async (_i, { caller }) => { seen.push(caller); return { heat, seen }; } });
+  ctx.tool("oven.set", { input: { type: "object" }, run: async (i, { caller }) => { seen.push(caller); heat = i.heat; return { heat }; } });
+  return { async stop() {} };
+} };`);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
+
+  const bakery = d.registry.status().find(m => m.name === "bakery");
+  assert.equal(bakery.state, "invalid");
+  assert.match(bakery.error, /Claude Code's files/);
+  assert.match(bakery.error, /must start with "bakery\."/);
+  assert.match(bakery.error, /store\.tool\.set must be one of bakery's own tools/);
+  const keys = (await c("settings.schema")).data.keys.map(k => k.key);
+  assert.ok(!keys.some(k => k.startsWith("bakery.")), "an invalid module's settings never appear");
+  assert.ok(keys.includes("oven.heat"));
+
+  let r = await c("settings.set", { key: "oven.heat", value: 200 });
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  assert.equal(r.data.value, 200);
+  r = await c("oven.get");
+  assert.ok(r.data.seen.length >= 2, JSON.stringify(r.data.seen));
+  assert.deepEqual([...new Set(r.data.seen.slice(0, -1))], ["module:settings"], "the settings module, never the person, reached the home module's tools");
+});
+
+test("only a person changes a setting: agent labels, mcp, anonymous and an unsigned owner device are refused, and confirm is no proof", async t => {
+  const { d } = await world(t);
+  const as = (/** @type {string} */ caller, /** @type {string} */ tool, /** @type {any} */ input) => d.registry.call(tool, input, caller);
+  for (const tool of ["settings.set", "settings.reset"]) {
+    const input = tool === "settings.set" ? { key: "sessions.mode", value: "bypassPermissions", confirm: true } : { key: "sessions.mode" };
+    for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "deck agent:kit", "unknown", "module:bakery", "tailnet:agent:kit"]) {
+      const r = await as(caller, tool, input);
+      assert.equal(r.error && r.error.code, "denied", `${tool} from ${caller}: ${JSON.stringify(r)}`);
+    }
+    // The owner's own device over the tailnet still needs the person's session.
+    assert.equal((await as("tailnet:alex", tool, input)).error.code, "person_session_required", tool);
+    assert.equal((await as("device:abcdefghijklmnop", tool, input)).error.code, "person_session_required", tool);
+  }
+  const mode = (await d.registry.call("settings.get", { key: "sessions.mode" }, "cli")).data;
+  assert.notEqual(mode.value, "bypassPermissions", "no refused call changed the mode");
+  // A person with confirm goes through.
+  assert.ok(!(await as("cli", "settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true })).error);
+});
+
+test("settings passes the person on only to the getters and setters first-party settings declare", async t => {
+  const { d } = await world(t);
+  const rec = d.registry.modules.get("settings");
+  const ctx = d.registry.context(rec.manifest);
+  // A tool no setting names is refused as the person, even one the person may call.
+  for (const tool of ["threads.answer", "agents.create", "vault.reveal", "settings.set"]) {
+    assert.throws(() => ctx.call(tool, {}, { as: "cli" }), /settings may not call .* as cli/, tool);
+  }
+  // A declared setter and getter still hear the person.
+  const r = await ctx.call("push.settings", {}, { as: "deck" });
+  assert.equal(r.error, undefined, JSON.stringify(r));
+  assert.ok(d.registry.settingTools().has("sessions.models.set"));
+  assert.ok(!d.registry.settingTools().has("threads.answer"));
+});
+
+test("a secret setting's values reach only the person: agents and a device without a session see names, never values", async t => {
+  const { d, claudeDir } = await world(t);
+  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.writeFileSync(path.join(claudeDir, "settings.json"), JSON.stringify({ env: { NORTHWIND_TOKEN: "nw-secret-123", LOG_LEVEL: "debug" } }));
+  const get = (/** @type {string} */ caller, /** @type {any} */ opts = {}) => d.registry.call("settings.get", { key: "sessions.env" }, caller, opts);
+  for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "tailnet:agent:kit", "tailnet:alex", "device:abcdefghijklmnop", "module:bakery"]) {
+    const r = await get(caller);
+    assert.equal(r.error, undefined, `${caller}: ${JSON.stringify(r)}`);
+    assert.deepEqual(r.data.value, { NORTHWIND_TOKEN: "•••• set", LOG_LEVEL: "•••• set" }, caller);
+    assert.ok(!JSON.stringify(r).includes("nw-secret-123"), `${caller} saw the value`);
+    assert.equal(r.data.secret, true);
+  }
+  // A whole group read masks it too.
+  const all = await d.registry.call("settings.get", {}, "mcp:agent:kit");
+  assert.ok(!JSON.stringify(all).includes("nw-secret-123"), "the list leaks nothing");
+  // The person, on the box's own surfaces or on their device with a person session, sees values.
+  assert.equal((await get("cli")).data.value.NORTHWIND_TOKEN, "nw-secret-123");
+  assert.equal((await get("tailnet:alex", { person: { id: "p1" } })).data.value.NORTHWIND_TOKEN, "nw-secret-123");
+  // A plain key is not masked for anyone.
+  assert.equal((await d.registry.call("settings.get", { key: "sessions.mode" }, "mcp:agent:kit")).data.value, "default");
+});
+
+test("maskFor masks only secret keys, keeps an object's names, and leaves unset alone", async () => {
+  const { maskFor, MASK } = await import("./index.js");
+  assert.deepEqual(maskFor({ secret: true }, { A: "1" }), { A: MASK });
+  assert.equal(maskFor({ secret: true }, "tok"), MASK);
+  assert.equal(maskFor({ secret: true }, undefined), undefined);
+  assert.equal(maskFor({}, "plain"), "plain");
+  assert.deepEqual(validateDecls("bakery", [{ key: "bakery.k", label: "K", type: "string", levels: ["account"], apply: "live", secret: "yes" }]), ["setting bakery.k: secret is true or false"]);
+});
+
 /** A home module that writes settings through settings.write, via a tool the test can call. */
 function homeModule(root, name, settings) {
   const dir = path.join(root, "modules", name);
@@ -256,4 +388,15 @@ test("settings.write: a module sets its own plain keys, and nothing else", async
   // Not a surface's tool: the CLI, a person, can't even see it.
   r = await c("settings.write", { key: "bakery.opens", value: 8 });
   assert.equal(r.error.code, "no_such_tool");
+});
+
+test("settings.write: a module's own secret key comes back masked, like settings.get for anyone but the person", async t => {
+  const root = tempHome(t);
+  homeModule(root, "bakery", [{ key: "bakery.token", label: "Till token", type: "string", levels: ["account"], apply: "live", secret: true }]);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" }, modules: { enable: [], disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const r = await call("bakery.put", { key: "bakery.token", value: "northwind-till-1" }, { root });
+  assert.equal(r.error, undefined, JSON.stringify(r.error));
+  assert.equal(r.data.value, MASK);
 });

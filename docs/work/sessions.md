@@ -10,27 +10,26 @@ fallback; bundled Claude Code on the box, installed on the Mac; idle 10 min; cap
 Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 
 ## Done
-- ADR 0030 + proof (3496b48); steps 1 to 3 (759dec8, dfeda64, 0bae485).
-- e2e blockers (e20f459): spawn.js (group/session, tini -s, uid/gid, pids+pgids+sids), floor denies
-  settings-file writes and runs before asks, threads.mode person-only and safePermissions; dash bind;
-  callerKind mcp:thread; restart reason; box image with SDK + tini.
-- Models per purpose + providers as modules + conformance (33ae9e7).
-- Adoption, threads.fork, idempotent answers, ADR contract/security/models/adoption/parity (a6021c88).
-- Cost from Claude Code's running total (9eb5d18).
-- Steering by default, queue + unqueue/edit/send-now, thread.turn/state/usage/steered/unqueued,
-  block and call keys (b8b1a0a7).
+- ADR 0030, proof, steps 1 to 3, security blockers, models, providers, adoption, fork, rewind,
+  steering and the queue, cost fix (see CHANGELOG, commits up to b8b1a0a7).
+- API key on fd 3 (measured leak via Bash env; OAuth token already scrubbed by Claude Code) 72b6a78d.
+- Full suite on the SDK driver: 2551 tests, 2499 pass; failures were stale docs, a test writing in
+  VYRE_HOME, journey DB-lock flakes (pass on rerun). Default flipped to sdk: d12171cc (batch 3a).
+- After 3a: idempotent sends (keyUuid), threads.queue, mode on record (359764d7); concurrency
+  slots (a4118f6c, 527cc480); context in thread.usage + threads.post (468af69f); threads.model,
+  threads.commands, rewind restore code (7543952e); images, threads.shell, threads.remember,
+  thinking, background tasks (034c71e5).
 
 ## Doing
-- Waiting for the full-suite slot (after the integrator's batch; load under 4), run with
-  VYRE_SESSIONS_DRIVER=sdk; then flip `driver` default to "sdk" in core/sessions/config.js.
+- Waiting on the lead's phase 3 decision: A per-thread socket for the plugin (recommended; e2e
+  builds the daemon side) vs B fully in-process hooks + MCP.
 
 ## Next
-1. The flip, then retire runner.js except as the not-installed-yet fallback.
-2. Rewind (threads.rewind {thread, uuid} via resumeSessionAt/forkSession, thread.rewound), usage context max.
-3. Phase 3: in-process hooks (SessionStart about-you + memory.context, UserPromptSubmit, PreToolUse floor, Stop)
-   and in-process MCP (planner, memory tool sets agreed) with the driver-set caller; with e2e, the box's session uid.
-4. Credentials-in-Bash measurement (cc-plugin's fake Messages API).
-5. Parity items that are ours: slash-command list, @file, !, #, image paste, background tasks, compact.
+1. Phase 3 per the decision (gates e2e's uid split and teammates' team.* tools).
+2. Usage pause per auth for teammate starts and subagents (teammates' section 14).
+3. `device` on ask.answered; `mode` on thread.started; threads.asks on the box merging Mac asks
+   (tailnet sends the hunk).
+4. Codex/ACP only as modules later (conformance.js).
 
 ## Needs from others
 - integrator: one full-suite run with `VYRE_SESSIONS_DRIVER=sdk VYRE_SESSIONS_SDK_DIR=<dir with SDK 0.3.283>`.

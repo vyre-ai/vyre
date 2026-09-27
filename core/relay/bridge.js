@@ -19,9 +19,10 @@ import { FRAME } from "./channel.js";
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
 /** Headers a device may send. Everything else is dropped: the caller comes from the channel, and a
- * device is never an agent, so it carries no agent or session key. Idempotency-Key rides along so a
- * retried write runs once (ADR 0029, R2). */
-const PASS = /^(accept|accept-language|content-type|last-event-id|if-none-match|idempotency-key|x-vyre-presence)$/;
+ * device is never an agent, so it carries no agent key. Idempotency-Key rides along so a retried
+ * write runs once (ADR 0029, R2); authorization and x-vyre-proof carry a person session (e2e's web
+ * session) untouched, for the router to check against the device's peer. */
+const PASS = /^(accept|accept-language|content-type|last-event-id|if-none-match|idempotency-key|authorization|x-vyre-proof|x-vyre-presence)$/;
 /** Headers that describe the hop, not the response. */
 const HOP = /^(connection|keep-alive|transfer-encoding|upgrade|strict-transport-security)$/;
 const MAX_HEAD = 16 * 1024;

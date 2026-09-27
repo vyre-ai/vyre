@@ -12,8 +12,9 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
+import { isRealHome } from "../config/dialogs.js";
 
 export const PACKAGE = "@anthropic-ai/claude-agent-sdk";
 /** Pinned: the SDK is pre-1.0 and changes weekly. A bump runs the switchboard suite on the SDK first. */
@@ -59,6 +60,36 @@ function npmBin() {
 
 /** @type {Map<string, Promise<{ why?: string }>>} */
 const installing = new Map();
+/** The npm installs running now, by dir, so a stopping vyred can end them. @type {Map<string, { kill: () => void }>} */
+const children = new Map();
+
+/**
+ * May vyred install the SDK on its own (first use), for the home at `root`? Only in the person's
+ * own home (~/.vyre), never under a test (node --test, NODE_ENV=test) or in a temp or dev home:
+ * a test rig once stopped vyred and found npm still writing into its fake Mac's cache.
+ * VYRE_SESSIONS_SDK_INSTALL=1 allows it anywhere; `vyre sessions setup` asks explicitly.
+ * @param {string} root @param {NodeJS.ProcessEnv} [env]
+ */
+export function autoInstallAllowed(root, env = process.env) {
+  if (env.VYRE_SESSIONS_SDK_INSTALL === "1") return true;
+  if (env.NODE_TEST_CONTEXT || env.NODE_ENV === "test") return false;
+  return isRealHome(root);
+}
+
+/**
+ * End every install in flight and remove what it left half done. vyred's stop calls this, so no
+ * npm outlives it and writes after it is gone.
+ * @returns {Promise<void>}
+ */
+export async function abortInstalls() {
+  const waits = [];
+  for (const [dir, child] of children) {
+    try { child.kill(); } catch {}
+    const p = installing.get(dir);
+    if (p) waits.push(p.catch(() => {}));
+  }
+  await Promise.all(waits);
+}
 
 /**
  * Install the pinned SDK into `dir`. Resolves to {} or { why }, never throws. One install at a
@@ -78,8 +109,19 @@ export function install(dir, { bundled = false, npm = npmBin(), timeout = 15 * 6
     const args = ["install", "--no-audit", "--no-fund", "--omit=dev", "--no-package-lock", "--loglevel=error",
       ...(bundled ? [] : ["--omit=optional"]), `${PACKAGE}@${VERSION}`];
     const err = await new Promise(resolve => {
-      execFile(npm, args, { cwd: dir, timeout, maxBuffer: 4 << 20, env: { ...process.env, npm_config_update_notifier: "false" } },
-        e => resolve(e ? e.message : null));
+      // Its own process group (spawn, since execFile does not honour detached), so a stop or the
+      // timeout ends npm's children too: its lifecycle scripts, git, a cache writer.
+      const posix = process.platform !== "win32";
+      const child = spawn(npm, args, { cwd: dir, detached: posix, stdio: ["ignore", "ignore", "pipe"],
+        env: { ...process.env, npm_config_update_notifier: "false" } });
+      let tail = "";
+      child.stderr?.on("data", d => { tail = (tail + d).slice(-2000); });
+      const stop = () => { try { if (posix && child.pid) process.kill(-child.pid, "SIGTERM"); else child.kill("SIGTERM"); } catch { try { child.kill("SIGTERM"); } catch {} } };
+      const timer = setTimeout(stop, timeout);
+      children.set(key, { kill: stop });
+      child.on("error", e => { clearTimeout(timer); children.delete(key); resolve(e.message); });
+      child.on("exit", (code, signal) => { clearTimeout(timer); children.delete(key);
+        resolve(code === 0 ? null : `npm ${signal ? "was stopped (" + signal + ")" : "exited " + code}${tail ? ": " + tail.trim() : ""}`); });
     });
     if (err || !installed(dir, { bundled })) {
       if (!installed(dir)) fs.rmSync(path.join(dir, "node_modules"), { recursive: true, force: true });

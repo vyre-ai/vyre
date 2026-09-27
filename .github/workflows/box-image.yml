@@ -1,0 +1,161 @@
+# The box image: build box/Dockerfile (never pushed anywhere) and boot it once. The smoke checks
+# what ADR 0029 promises of the container: tini is PID 1 (run plain and through box/compose.yml), vyred answers /v1/health on its socket,
+# killing vyred once brings it back through core/daemon/loop.sh with the container still up, and
+# `docker stop` reaches vyred as a SIGTERM so it drains and the container exits 0 well inside the
+# stop timeout. Every push to main runs it; other branches run it when a push touches the image's
+# inputs. Deploys that touch box/ wait for it. Layers are cached in the Actions cache.
+name: box-image
+on:
+  push:
+  pull_request:
+    paths: ["box/**", "core/daemon/**", "package.json", "package-lock.json", ".dockerignore", ".github/workflows/box-image.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: box-image-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "${{ github.event_name }}" != "push" ] || [ "${{ github.ref }}" = "refs/heads/main" ]; then echo run=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          case "$BEFORE" in ""|0000000000000000000000000000000000000000) echo run=true >> "$GITHUB_OUTPUT"; exit 0;; esac
+          files=$(gh api "repos/${{ github.repository }}/compare/$BEFORE...${{ github.sha }}" --paginate --jq '.files[].filename') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
+          if echo "$files" | grep -qE '^(box/|core/daemon/|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)'; then
+            echo run=true >> "$GITHUB_OUTPUT"
+          else
+            echo "no image input changed: skipping"; echo run=false >> "$GITHUB_OUTPUT"
+          fi
+
+  build-smoke:
+    needs: detect
+    if: needs.detect.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      IMAGE: vyre-box:ci
+      C: vyre-box-smoke
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # The context a deploy builds from: install-box.sh unpacks the npm pack tarball into src/
+      # and compose.build.yml builds that, so a file missing from package.json "files" fails here.
+      - name: Pack like a deploy
+        run: |
+          mkdir -p "$RUNNER_TEMP/src"
+          tgz=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
+          tar -xzf "$RUNNER_TEMP/$tgz" -C "$RUNNER_TEMP/src" --strip-components=1
+          echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
+      - name: Build box/Dockerfile
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ env.SRC }}
+          file: ${{ env.SRC }}/box/Dockerfile
+          tags: vyre-box:ci
+          load: true
+          push: false
+          cache-from: type=gha,scope=box-image
+          cache-to: type=gha,scope=box-image,mode=max
+      - name: Image size
+        run: docker image ls "$IMAGE" --format '{{.Repository}}:{{.Tag}} {{.Size}}' | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Boot
+        run: |
+          docker run -d --name "$C" "$IMAGE"
+          cat > "$RUNNER_TEMP/health.sh" <<'EOF'
+          # Wait up to $1 seconds for /v1/health over vyred's socket.
+          i=0
+          while [ $i -lt "$1" ]; do
+            if docker exec "$C" node -e 'import("/opt/vyre/core/daemon/client.js").then(async m => { const r = await m.request("GET", "/v1/health", undefined, { timeout: 3000 }); console.log(JSON.stringify(r)); process.exit(r.error ? 1 : 0); }).catch(() => process.exit(1))' 2>/dev/null; then exit 0; fi
+            [ "$(docker inspect -f '{{.State.Running}}' "$C")" = true ] || { echo "the container stopped"; exit 1; }
+            i=$((i + 1)); sleep 1
+          done
+          echo "no health in $1 s"; exit 1
+          EOF
+          sh "$RUNNER_TEMP/health.sh" 60
+
+      # The two checks below need ADR 0029's tini and loop.sh (resilience); an older image skips them.
+      - name: tini is PID 1
+        if: hashFiles('core/daemon/loop.sh') != ''
+        run: |
+          comm=$(docker exec "$C" cat /proc/1/comm)
+          echo "PID 1: $comm"
+          [ "$comm" = tini ]
+          ! docker logs "$C" 2>&1 | grep -q "not running as PID 1"
+
+      - name: A killed vyred comes back, the container stays up
+        if: hashFiles('core/daemon/loop.sh') != ''
+        run: |
+          vpid() { docker exec "$C" pgrep -f 'node /opt/vyre/core/daemon/main.js' | head -1; }
+          before=$(vpid); echo "vyred pid $before"
+          [ -n "$before" ]
+          docker exec "$C" kill -KILL "$before"
+          i=0; after=""
+          while [ $i -lt 30 ]; do after=$(vpid || true); [ -n "$after" ] && [ "$after" != "$before" ] && break; i=$((i + 1)); sleep 1; done
+          echo "vyred pid after the kill: $after"
+          [ -n "$after" ] && [ "$after" != "$before" ]
+          [ "$(docker inspect -f '{{.State.Running}}' "$C")" = true ]
+          [ "$(docker inspect -f '{{.RestartCount}}' "$C")" = 0 ]
+          sh "$RUNNER_TEMP/health.sh" 30
+
+      - name: docker stop drains vyred
+        run: |
+          start=$(date +%s)
+          docker stop -t 30 "$C"
+          took=$(( $(date +%s) - start ))
+          code=$(docker inspect -f '{{.State.ExitCode}}' "$C")
+          echo "stopped in ${took} s, exit $code" | tee -a "$GITHUB_STEP_SUMMARY"
+          # 137 or a stop at the timeout means the SIGTERM never reached vyred and Docker killed it.
+          [ "$code" = 0 ] && [ "$took" -lt 30 ]
+
+      - name: Logs
+        if: always()
+        run: docker logs "$C" 2>&1 | tail -80 || true
+
+      # The compose files must not add Docker's own init (init: true) to a service on this image:
+      # then docker-init is PID 1 and tini runs as a child, warning "not running as PID 1". vyre
+      # boots for real (with its tailscale, which waits at NeedsLogin); docker-api and egress, under
+      # the computers profile, are created and inspected (no Init, the image's tini entrypoint).
+      - name: Compose runs the image's tini as PID 1
+        if: hashFiles('core/daemon/loop.sh') != ''
+        env:
+          VYRE_IMAGE: vyre-box:ci
+          VYRE_EGRESS_AUTHKEY: tskey-ci-unused
+          VYRE_EGRESS_EXIT_NODE: 100.64.0.1
+          COMPOSE_PROJECT_NAME: vyreci
+        run: |
+          export DOCKER_GID=$(stat -c %g /var/run/docker.sock)
+          F="-f box/compose.yml -f box/compose.egress.yml"
+          docker compose $F up -d tailscale vyre
+          i=0; until [ "$(docker compose $F ps -q vyre)" ] && docker exec "$(docker compose $F ps -q vyre)" cat /proc/1/comm >/dev/null 2>&1; do i=$((i + 1)); [ $i -lt 30 ] || { docker compose $F logs; exit 1; }; sleep 1; done
+          sleep 3
+          id=$(docker compose $F ps -q vyre)
+          comm=$(docker exec "$id" cat /proc/1/comm)
+          echo "compose vyre PID 1: $comm" | tee -a "$GITHUB_STEP_SUMMARY"
+          docker logs "$id" 2>&1 | tail -20
+          [ "$comm" = tini ]
+          ! docker logs "$id" 2>&1 | grep -q "not running as PID 1"
+          docker compose $F --profile computers create docker-api egress
+          for svc in vyre docker-api egress; do
+            id=$(docker compose $F --profile computers ps -aq "$svc")
+            init=$(docker inspect -f '{{.HostConfig.Init}}' "$id")
+            ep=$(docker inspect -f '{{join .Config.Entrypoint " "}}' "$id")
+            echo "$svc: Init=$init entrypoint=$ep" | tee -a "$GITHUB_STEP_SUMMARY"
+            [ "$init" != true ] && [ "$ep" = "/usr/bin/tini --" ]
+          done
+      - name: Compose down
+        if: always() && hashFiles('core/daemon/loop.sh') != ''
+        env:
+          VYRE_IMAGE: vyre-box:ci
+          VYRE_EGRESS_AUTHKEY: tskey-ci-unused
+          VYRE_EGRESS_EXIT_NODE: 100.64.0.1
+          COMPOSE_PROJECT_NAME: vyreci
+        run: docker compose -f box/compose.yml -f box/compose.egress.yml --profile computers down -v || true
