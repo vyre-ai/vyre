@@ -33,9 +33,9 @@ The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A modul
 - Presence itself: `presence.enroll`, `presence.remove`, `presence.code`, `presence.session.open`.
 - Who else reaches this box: `files.drive.share`, `files.drive.unshare`, `network.guests.add`, `network.guests.remove`, `network.guests.enable`, `hooks.enable`, `hooks.open`, `hooks.close`, `computers.tailnet.set`, `computers.egress.set`.
 
-Your own actions on your own screens ask for no proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), and taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`). Only a person's surface can call them: agents and guests are refused, and Claude's sessions cannot name them in a shell command.
+Your own actions on your own screens ask for no proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making and changing agents (`agents.create`, `agents.update`), and taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`). Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
 
-Making or changing an agent (`agents.create`, `agents.update`) is not on the list: it asks for no proof. Only you make an agent, and your assistant may change some of its fields. See [Agents](../using/agents.md).
+Your assistant may still change an agent's plain fields (name, instructions, model, effort, description) through Vyre's tools. See [Agents](../using/agents.md).
 
 `GET /v1/tools` and `vyre tools` mark these with `presence: true`. [Tools](../reference/tools.md) marks them "needs a person present".
 
