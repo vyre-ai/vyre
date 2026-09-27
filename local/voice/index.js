@@ -4,8 +4,8 @@
 // The Mac's mic is captured by the Capsule shell (swift/Mic.swift, or bin/vyre-mic until the
 // shell exists) and streamed to vyred at /v1/streams/voice/listen; see listen.js for the frames.
 // This module holds no audio and no key between calls. The key lives in the Vault
-// (voice-deepgram-key, voice-openai-key, voice-elevenlabs-key), put there by a person from the
-// Capsule's Settings with vault.put and vault.grant. This module only fetches it, for one
+// (voice-deepgram-key, voice-openai-key, voice-elevenlabs-key), declared under needs.credentials
+// and put there by a person through vault.connect. This module only fetches it, for one
 // stream or one reply, and sends it to the provider it belongs to and nowhere else.
 //
 // At idle it does nothing: no timer, no socket, no poll. `online` in voice.status is one TCP
@@ -65,6 +65,8 @@ export default {
         return {
           provider: s.provider, providers: [...PROVIDERS], item: DEFAULTS[s.provider].item,
           key: key === "ready", key_state: key,
+          // Where a surface sends the person to fill the key: vault.connect with this need.
+          ...(key === "ready" ? {} : { need: { module: "voice", need: s.provider } }),
           speak: s.speak, voice: s.voice,
           streaming: DEFAULTS[s.provider].streaming, mode: DEFAULTS[s.provider].streaming ? "streaming" : "on-release",
           online: base ? await reachable(base) : false, endpoint,
