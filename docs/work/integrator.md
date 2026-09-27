@@ -66,7 +66,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 ## Next
 
 - Trial pre/next: main + chat 65ce976 + tailnet 7e09cb1 (owner-only streams), CHANGELOG only;
-  names/service, onboard, federation-send, term, glass: 64/64. Merge both after the deploy push, then glass-live dcb03ce (no-passkey take-over).
+  names/service, onboard, federation-send, term, glass: 64/64. Merge both after the deploy push, then glass-live 71503ab (dcb03ce + main 61692fd resolved; no-passkey take-over).
 - cc-plugin tip 6a8d0c1 (749317f, 1505f42): merge planner first, and its planner test uses the real module.
 - Coming later: relay team (ADR 0026), one Expo app (ADR 0027, mobile).
 - cc-plugin owns the stand-in planner test (rewriting against the real planner.add); planner makes
