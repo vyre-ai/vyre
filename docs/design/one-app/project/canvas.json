@@ -10,169 +10,185 @@
  },
  "pages": [],
  "boards": {
-  "Main.dc.html": {
+  "Directions.dc.html": {
    "x": 0,
    "y": 0,
+   "w": 2200,
+   "h": 1040,
+   "title": "Direction: three options and the recommendation"
+  },
+  "Smooth.dc.html": {
+   "x": 2280,
+   "y": 0,
+   "w": 2200,
+   "h": 800,
+   "title": "Direction: the smoothness bar"
+  },
+  "Main.dc.html": {
+   "x": 0,
+   "y": 1460,
    "w": 2200,
    "h": 1120,
    "title": "Principles"
   },
   "System.dc.html": {
    "x": 2280,
-   "y": 0,
+   "y": 1460,
    "w": 2200,
    "h": 1200,
    "title": "System: tokens, type, colour, buttons"
   },
   "Layout.dc.html": {
    "x": 4560,
-   "y": 0,
+   "y": 1460,
    "w": 2200,
    "h": 1200,
    "title": "Layout: breakpoints and navigation"
   },
   "Needs.dc.html": {
    "x": 0,
-   "y": 1620,
+   "y": 3080,
    "w": 2200,
    "h": 1120,
    "title": "Needs you (home) \u00b7 dark"
   },
   "Session.dc.html": {
    "x": 2280,
-   "y": 1620,
+   "y": 3080,
    "w": 2656,
    "h": 1120,
    "title": "Session, terminal and ask cards \u00b7 dark"
   },
   "Agents.dc.html": {
    "x": 5016,
-   "y": 1620,
+   "y": 3080,
    "w": 2656,
    "h": 1120,
    "title": "Agents and Glass computers \u00b7 dark"
   },
   "Planner.dc.html": {
    "x": 7752,
-   "y": 1620,
+   "y": 3080,
    "w": 2660,
    "h": 1120,
    "title": "Planner \u00b7 dark"
   },
   "Vault.dc.html": {
    "x": 10492,
-   "y": 1620,
+   "y": 3080,
    "w": 2660,
    "h": 1120,
    "title": "Vault, autofill and authenticator \u00b7 dark"
   },
   "Devices.dc.html": {
    "x": 13232,
-   "y": 1620,
+   "y": 3080,
    "w": 2240,
    "h": 1120,
    "title": "Devices, network and VyreDrive \u00b7 dark"
   },
   "Needs-paper.dc.html": {
    "x": 0,
-   "y": 3160,
+   "y": 4620,
    "w": 2200,
    "h": 1120,
    "title": "Needs you (home) \u00b7 paper"
   },
   "Session-paper.dc.html": {
    "x": 2280,
-   "y": 3160,
+   "y": 4620,
    "w": 2656,
    "h": 1120,
    "title": "Session, terminal and ask cards \u00b7 paper"
   },
   "Agents-paper.dc.html": {
    "x": 5016,
-   "y": 3160,
+   "y": 4620,
    "w": 2656,
    "h": 1120,
    "title": "Agents and Glass computers \u00b7 paper"
   },
   "Planner-paper.dc.html": {
    "x": 7752,
-   "y": 3160,
+   "y": 4620,
    "w": 2660,
    "h": 1120,
    "title": "Planner \u00b7 paper"
   },
   "Vault-paper.dc.html": {
    "x": 10492,
-   "y": 3160,
+   "y": 4620,
    "w": 2660,
    "h": 1120,
    "title": "Vault, autofill and authenticator \u00b7 paper"
   },
   "Devices-paper.dc.html": {
    "x": 13232,
-   "y": 3160,
+   "y": 4620,
    "w": 2240,
    "h": 1120,
    "title": "Devices, network and VyreDrive \u00b7 paper"
   },
   "States.dc.html": {
    "x": 0,
-   "y": 4700,
+   "y": 6160,
    "w": 2700,
    "h": 2030,
    "title": "States \u00b7 dark"
   },
   "InstallLaptop.dc.html": {
    "x": 2780,
-   "y": 4700,
+   "y": 6160,
    "w": 2360,
    "h": 1090,
    "title": "Install 1: Add your phone, from the laptop \u00b7 dark"
   },
   "InstallPhones.dc.html": {
    "x": 5220,
-   "y": 4700,
+   "y": 6160,
    "w": 2360,
    "h": 1600,
    "title": "Install 2: on the phone \u00b7 dark"
   },
   "Capsule.dc.html": {
    "x": 7660,
-   "y": 4700,
+   "y": 6160,
    "w": 2400,
    "h": 1200,
    "title": "The Mac Capsule and the CLI \u00b7 dark"
   },
   "States-paper.dc.html": {
    "x": 0,
-   "y": 7150,
+   "y": 8610,
    "w": 2700,
    "h": 2030,
    "title": "States \u00b7 paper"
   },
   "InstallLaptop-paper.dc.html": {
    "x": 2780,
-   "y": 7150,
+   "y": 8610,
    "w": 2360,
    "h": 1090,
    "title": "Install 1: Add your phone, from the laptop \u00b7 paper"
   },
   "InstallPhones-paper.dc.html": {
    "x": 5220,
-   "y": 7150,
+   "y": 8610,
    "w": 2360,
    "h": 1600,
    "title": "Install 2: on the phone \u00b7 paper"
   },
   "Capsule-paper.dc.html": {
    "x": 7660,
-   "y": 7150,
+   "y": 8610,
    "w": 2400,
    "h": 1200,
    "title": "The Mac Capsule and the CLI \u00b7 paper"
   }
  },
  "order": [
+  "Directions.dc.html",
+  "Smooth.dc.html",
   "Main.dc.html",
   "System.dc.html",
   "Layout.dc.html",
@@ -198,37 +214,44 @@
   "Capsule-paper.dc.html"
  ],
  "notes": {
-  "start": {
+  "direction": {
    "x": 0,
    "y": -300,
-   "text": "Start here",
+   "text": "Direction, for the user to decide (read first)",
+   "kind": "title1",
+   "maxW": 4480
+  },
+  "start": {
+   "x": 0,
+   "y": 1160,
+   "text": "Sketches of direction A: principles, system, layout",
    "kind": "title1",
    "maxW": 6760
   },
   "dark": {
    "x": 0,
-   "y": 1320,
+   "y": 2780,
    "text": "Key screens, phone and desktop \u00b7 dark",
    "kind": "title1",
    "maxW": 15472
   },
   "paper": {
    "x": 0,
-   "y": 2860,
+   "y": 4320,
    "text": "Key screens \u00b7 paper",
    "kind": "title1",
    "maxW": 15472
   },
   "more": {
    "x": 0,
-   "y": 4400,
+   "y": 5860,
    "text": "States, install without an Apple account, the Capsule and the CLI",
    "kind": "title1",
    "maxW": 10060
   },
   "more2": {
    "x": 0,
-   "y": 6850,
+   "y": 8310,
    "text": "States, install, Capsule \u00b7 paper",
    "kind": "title1",
    "maxW": 10060
