@@ -1,10 +1,11 @@
-import { memo } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { memo, type ReactNode } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
 import { type } from "../theme/type";
 import { Avatar } from "./Avatar";
 import { focusData } from "./Button";
+import { Icon } from "./Icon";
 import type { Status } from "./StatusMark";
 
 const phone = tokens.type.phone;
@@ -60,30 +61,90 @@ export const Row = memo(function Row(p: RowProps) {
   );
 });
 
+/** The list row's heights (list-row spec, phone): 44 single line, about 56 with a meta line. */
+export const LIST_ROW_SINGLE = tokens.control.touch;
+export const LIST_ROW_DOUBLE = tokens.control.touch + tokens.space[4];
+
+export type ListRowProps = {
+  title: string;
+  /** The meta line under the title: the two-line row. Leave it out for the 44 single-line row. */
+  meta?: string;
+  /** Right-aligned meta: an age, a count, a value ("3m", "12 threads", "On"). */
+  trailing?: string;
+  /** A 16 icon, an avatar or a status mark before the title. */
+  leading?: ReactNode;
+  /** Opens another screen: a 12 chevron at the end. */
+  push?: boolean;
+  /** The row the detail answers: the signal wash, meta and trailing step up to text2. */
+  selected?: boolean;
+  /** Keyboard focus drawn by the caller (a key-driven list); the web draws :focus-visible itself. */
+  focused?: boolean;
+  onPress?: () => void;
+  accessibilityLabel?: string;
+  testID?: string;
+};
+
 /**
- * The two-line list row (list-row spec, group row): a title and a meta line, 56 with meta, the
- * whole row the target. Places and Settings share it.
+ * The list row (list-row spec): the 44 single-line row (title, trailing meta) or the two-line row
+ * (title and a meta line), on the page with a bottom rule, never in a card. The whole row is the
+ * target; pressed and hovered fill `hover`, selected fills the signal wash, focus is a 2 px focus
+ * outline inset by 2 with square corners. Places and Settings share it.
  */
-export function ListRow({ title, meta, onPress, testID }: { title: string; meta?: string; onPress?: () => void; testID?: string }) {
+export function ListRow(p: ListRowProps) {
   const { color, scheme } = useTheme();
+  const quiet = p.selected ? color.text2 : color.label;
   const body = (
     <>
-      <Text numberOfLines={1} style={[type.readStrong, { color: color.text }]}>{title}</Text>
-      {meta ? <Text numberOfLines={1} style={[type.meta, { color: color.label }]}>{meta}</Text> : null}
+      {p.leading}
+      <View style={styles.col}>
+        <Text numberOfLines={1} style={[type.readStrong, { color: color.text }]}>{p.title}</Text>
+        {p.meta ? <Text numberOfLines={1} style={[type.meta, { color: quiet }]}>{p.meta}</Text> : null}
+      </View>
+      {p.trailing ? <Text numberOfLines={1} style={[type.meta, styles.trailing, { color: quiet }]}>{p.trailing}</Text> : null}
+      {p.push ? <Icon name="chev-r" size={tokens.icon.sizes[0]} color={color.label} /> : null}
     </>
   );
-  if (!onPress) return <View style={[styles.listRow, { borderBottomColor: color.rule }]}>{body}</View>;
+  const shape = [styles.listRow, { minHeight: p.meta ? LIST_ROW_DOUBLE : LIST_ROW_SINGLE, borderBottomColor: color.rule }];
+  const ring = p.focused ? { borderColor: color.focus } : null;
+  const rest = p.selected ? color.signalWash : color.bg;
+  if (!p.onPress) {
+    return (
+      <View testID={p.testID} style={[shape, { backgroundColor: rest }]}>
+        {body}
+        {ring ? <View pointerEvents="none" style={[styles.ring, ring]} /> : null}
+      </View>
+    );
+  }
   return (
     <Pressable
       accessibilityRole="button"
-      testID={testID}
-      onPress={onPress}
-      {...focusData(scheme)}
-      style={(st) => [styles.listRow, { backgroundColor: st.pressed || (st as { hovered?: boolean }).hovered ? color.hover : undefined, borderBottomColor: color.rule }]}
+      accessibilityLabel={p.accessibilityLabel}
+      accessibilityState={p.selected !== undefined ? { selected: p.selected } : undefined}
+      testID={p.testID}
+      onPress={p.onPress}
+      {...rowFocus(scheme)}
+      style={(st) => [shape, { backgroundColor: p.selected ? color.signalWash : st.pressed || (st as { hovered?: boolean }).hovered ? color.hover : color.bg }]}
     >
       {body}
+      {ring ? <View pointerEvents="none" style={[styles.ring, ring]} /> : null}
     </Pressable>
   );
+}
+
+const web = Platform.OS === "web";
+
+/** The row's own focus ring on the web: inside the row (offset -2) and square, from the keyboard only. */
+function rowFocus(scheme: "dark" | "paper"): Record<string, unknown> {
+  return web ? { dataSet: { vyrow: scheme } } : focusData(scheme);
+}
+
+if (web && typeof document !== "undefined" && !document.getElementById("vy-row-css")) {
+  const css = document.createElement("style");
+  css.id = "vy-row-css";
+  css.textContent = (["dark", "paper"] as const)
+    .map((s) => `[data-vyrow="${s}"]:focus-visible{outline:2px solid ${tokens.color[s].focus} !important;outline-offset:-2px;border-radius:0}`)
+    .join("\n");
+  document.head.appendChild(css);
 }
 
 const styles = StyleSheet.create({
@@ -100,12 +161,15 @@ const styles = StyleSheet.create({
   col: { flex: 1, minWidth: 0, gap: tokens.space[1] },
   line: { flexDirection: "row", alignItems: "center", gap: tokens.space[3] },
   title: { flex: 1 },
+  // Padding 8 16: a 24 title makes the 44 single line, and title, gap and a 16 meta about 56.
   listRow: {
-    minHeight: tokens.control.touchLg,
-    justifyContent: "center",
-    gap: tokens.space[1],
+    flexDirection: "row",
+    alignItems: "center",
+    gap: tokens.space[4],
     paddingHorizontal: tokens.layout.gutterPhone,
-    paddingVertical: tokens.space[4],
+    paddingVertical: tokens.space[3],
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  trailing: { flexShrink: 0, maxWidth: "40%" },
+  ring: { ...StyleSheet.absoluteFillObject, borderWidth: tokens.space[1] },
 });

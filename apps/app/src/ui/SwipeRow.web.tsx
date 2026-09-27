@@ -1,8 +1,9 @@
 // The approve swipe on the web (DIRECTION.md, "Gestures on the compositor"): a horizontal
-// scroll-snap strip of three full-width panels, Approve | the row | Deny, resting on the row.
-// Scrolling and snapping run on the browser's scrolling thread, so a busy main thread cannot drop
-// a frame of the gesture. Past half way it snaps to a side; the snap coming to rest there is the
-// commit. JavaScript only hears where it came to rest (scrollend, or the scroll going quiet after
+// scroll-snap strip of three panels, Approve | the row | Deny, resting on the row. Scrolling and
+// snapping run on the browser's scrolling thread, so a busy main thread cannot drop a frame of the
+// gesture. Each side is 80% of the row wide, so the half way between two snap points falls at 40%
+// of the row's width (the needs-row commit): past it the strip snaps to a side, and the snap coming
+// to rest there is the commit. JavaScript only hears where it came to rest (scrollend, or the scroll going quiet after
 // the finger lifts where scrollend is missing).
 //
 // On commit the row's height goes to 0 in the same handler, before React hears of it, so the
@@ -25,20 +26,24 @@ if (typeof document !== "undefined" && !document.getElementById("vy-swipe-css"))
 }
 
 const QUIET_MS = 90;
+// A side panel's share of the row: its snap point sits this far out, so the strip commits at half of it.
+const SIDE = 0.8;
 
 // minWidth 0: a flex item's automatic minimum is its content, and one long unbroken line (a path)
 // would widen the panel past the row.
 const panel = { flex: "0 0 100%", width: "100%", minWidth: 0, height: "100%", scrollSnapAlign: "start", display: "flex", alignItems: "center", boxSizing: "border-box" } as const;
+const side = { flex: `0 0 ${SIDE * 100}%`, width: `${SIDE * 100}%` } as const;
 
 export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel, testID }: SwipeRowProps) {
   const { color } = useTheme();
   const outer = useRef<HTMLDivElement>(null);
   const strip = useRef<HTMLDivElement>(null);
+  const middle = useRef<HTMLDivElement>(null);
   const state = useRef({ touching: false, done: false, quiet: 0 as ReturnType<typeof setTimeout> | 0 });
 
   const center = useCallback((smooth = false) => {
     const el = strip.current;
-    if (el) el.scrollTo({ left: el.clientWidth, behavior: smooth ? "smooth" : "auto" });
+    if (el) el.scrollTo({ left: middle.current?.offsetLeft ?? el.clientWidth * SIDE, behavior: smooth ? "smooth" : "auto" });
   }, []);
 
   // Rest on the row, and again when the width changes (a rotation) while resting there.
@@ -61,9 +66,9 @@ export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel,
     const el = strip.current;
     const s = state.current;
     if (!el || s.done || s.touching) return;
-    const w = el.clientWidth;
     const x = el.scrollLeft;
-    const d: Decision | null = x <= 1 ? "approve" : x >= 2 * w - 1 ? "reject" : null;
+    const end = el.scrollWidth - el.clientWidth;
+    const d: Decision | null = x <= 1 ? "approve" : x >= end - 1 ? "reject" : null;
     if (!d) return;
     perf.mark("approve.commit");
     if (onSwipe(d)) {
@@ -115,15 +120,16 @@ export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel,
         ref={strip}
         data-testid={testID}
         className="vy-swipe"
-        style={{ display: "flex", height: "100%", overflowX: "auto", overflowY: "hidden", scrollSnapType: "x mandatory", overscrollBehaviorX: "contain" }}
+        style={{ position: "relative", display: "flex", height: "100%", overflowX: "auto", overflowY: "hidden", scrollSnapType: "x mandatory", overscrollBehaviorX: "contain" }}
       >
-        <div aria-hidden style={{ ...panel, background: color.primaryBg, color: color.primaryInk, paddingLeft: tokens.space[6], ...label }}>
+        <div aria-hidden style={{ ...panel, ...side, background: color.primaryBg, color: color.primaryInk, paddingLeft: tokens.space[6], ...label }}>
           {approveLabel}
         </div>
-        <div style={{ ...panel, scrollSnapStop: "always", background: color.bg }}>
+        {/* position: relative on the strip makes it the middle panel's offsetParent: its offsetLeft is the resting scroll. */}
+        <div ref={middle} style={{ ...panel, scrollSnapStop: "always", background: color.bg }}>
           <div style={{ width: "100%", minWidth: 0, display: "flex", flexDirection: "column" }}>{children}</div>
         </div>
-        <div aria-hidden style={{ ...panel, justifyContent: "flex-end", background: color.hover, color: color.text, paddingRight: tokens.space[6], ...label }}>
+        <div aria-hidden style={{ ...panel, ...side, scrollSnapAlign: "end", justifyContent: "flex-end", background: color.hover, color: color.text, paddingRight: tokens.space[6], ...label }}>
           {rejectLabel}
         </div>
       </div>

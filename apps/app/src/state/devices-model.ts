@@ -86,18 +86,31 @@ export type RowChoice = {
 
 export const UNKNOWN_BUILD = "This browser runs a build Vyre doesn't recognise. Don't trust it unless you just updated.";
 
+/** Where the app runs, for the proof it names: Platform.OS. */
+export type Os = "ios" | "android" | "web" | (string & {});
+
+/**
+ * The note beside Trust names the proof this device asks for (the device-row spec's copy): Face ID
+ * on an iPhone, fingerprint on Android, Touch ID on the web build (a Mac's browser, the Deck's words).
+ */
+export function proofNote(os: Os): string {
+  if (os === "ios") return "Face ID follows";
+  if (os === "android") return "Fingerprint follows";
+  return "Touch ID follows";
+}
+
 /**
  * What a device row shows. Only browsers have trust. An untrusted browser gets no controls at all
  * (the box refuses relay.devices.trust from it), so `viewer` is this device's own trust.
  */
-export function rowChoice(d: Device, viewer: Trust): RowChoice {
+export function rowChoice(d: Device, viewer: Trust, os: Os = "web"): RowChoice {
   if (d.kind !== "web") return { badge: null, warning: null, control: null };
   const unknown = d.build === "unknown";
   const badge = unknown ? "Unknown build" : d.trusted ? "Trusted" : "Untrusted";
   const warning = unknown ? UNKNOWN_BUILD : null;
   if (viewer === "untrusted") return { badge, warning, control: null };
   if (d.trusted) return { badge, warning, control: { trusted: false, label: "Stop trusting", style: "ghost", note: "One tap" } };
-  return { badge, warning, control: { trusted: true, label: "Trust this browser", style: unknown ? "outline" : "secondary", note: "Presence follows" } };
+  return { badge, warning, control: { trusted: true, label: "Trust this browser", style: unknown ? "outline" : "secondary", note: proofNote(os) } };
 }
 
 /** The powers line under a browser's name. */

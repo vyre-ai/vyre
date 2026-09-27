@@ -27,6 +27,7 @@ export default function Places() {
             testID={p.testID}
             title={p.title}
             meta={p.title === "Vault" && trust === "untrusted" ? "Names only on this browser" : p.detail}
+            push
             onPress={() => router.push(p.href)}
           />
         ))}

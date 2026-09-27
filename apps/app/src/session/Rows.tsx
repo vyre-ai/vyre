@@ -75,7 +75,7 @@ function ItemBody({ it, color, store }: { it: Item; color: Palette; store: Sessi
     case "user":
       return (
         <View style={styles.userWrap}>
-          <View style={[styles.user, { backgroundColor: color.panel, borderColor: color.rule }]}>
+          <View style={[styles.user, { backgroundColor: color.hover }]}>
             <Text selectable style={[type.read, { color: color.text }]}>{it.text}</Text>
           </View>
         </View>
@@ -189,7 +189,8 @@ function AskCard({ it, color, store }: { it: Extract<Item, { kind: "ask" }>; col
 const styles = StyleSheet.create({
   block: { paddingHorizontal: G, paddingVertical: tokens.space[3] },
   userWrap: { paddingHorizontal: G, paddingVertical: tokens.space[3], alignItems: "flex-end" },
-  user: { maxWidth: "88%", borderRadius: tokens.radius.bubble, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: tokens.space[4], paddingVertical: tokens.space[3] },
+  // Your bubble (turn spec): 78% of the column at most, the hover fill, no border, padding 8 by 12.
+  user: { maxWidth: "78%", borderRadius: tokens.radius.bubble, paddingHorizontal: tokens.space[4], paddingVertical: tokens.space[3] },
   tool: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], paddingHorizontal: G, minHeight: 28, paddingVertical: tokens.space[2] },
   toolText: { flex: 1 },
   card: { marginHorizontal: G, marginVertical: tokens.space[3] },
