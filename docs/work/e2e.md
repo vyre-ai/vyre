@@ -286,7 +286,7 @@ Plan (to the lead before building):
   records process start time; ensureUp waits under VYRE_SUPERVISOR=docker), sent to the
   integrator. rc-smoke b3b1ab99: ready = same pid 3 s apart; new check that the loop never had to
   restart vyred (23/0/2). A/B could not force the collision (pid timing); the unit test covers it.
-  box-deploy asked for 2 alone reruns. The flaky step 3 in their runs is not fully explained yet.
+  box-deploy's 2 alone reruns on its a3a844e4 tgz with b3b1ab99: 23/0/2 both. CLOSED. The flaky step 3 in their runs is not fully explained yet.
   Slip: a merge left conflict markers in CHANGELOG (fixed in 850473f5: main's copy).
 - Flake diagnosis DONE: reproduced with box-deploy's tree+tgz and the new rc-smoke (1 of 2: stale
   lock pid 22). "vault item gone" = never written (step 3 hit the gap), no data loss. Build diff
