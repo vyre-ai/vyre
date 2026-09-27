@@ -75,21 +75,21 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing (RESUME 5, 2026-09-27)
-- box-image RED on main 7880dfa6 (run 36324075479): Dockerfile imported a lone copy of sdk.js,
-  which now imports ../config/dialogs.js. Lead's FINAL PICK is e2e 65cbc02a (pin in
-  core/sessions/sdk-pin.js, imports nothing; its sdk-install test imports the pin alone). My
-  work/ci-sdkver is dropped. NEXT: a real box-image on the new main once the integrator lands it,
-  and report the result to box-deploy and the lead.
-- box-image detect skipped the 3b build (the fixed path list lacked core/sessions/). Fixed on work/ci
-  6b16be62: the list of changed files is checked against `npm pack --dry-run` plus box/ and the build files.
-- Idle-RSS bisect, throwaway work/ci-rss-bisect: run 36324514448 = 23 b4 first-parent merges
-  (c8fb9aae..c8eee9c3); second run (8642f7d8) = main's 3a/3b merges 86f8db5e..7880dfa6 (9 shas). b4
-  is on c8fb9aae WITHOUT 3a/3b, so the chains are separate. Integrator: 7880dfa6 on testbox gave
-  120 mean / 159 max. Each job's last step prints "RESULT <sha> RSS ...". Budget stays 150.
-- App perf proof failure READ: work/mobile tracks a node_modules symlink (ce5f6374), so every npx
-  exits 216. Mobile has been told. Guard: test/hygiene.test.js (3c26ea2d). Re-run the proof after the fix.
-- ci-boundaries de5651bf node RED READ: already fixed on the b4 merge (5c55ab51) and by 8aed4887.
+## Doing (RESUME 5, 2026-09-27, later)
+- DEPLOY GATE 1 PASS on main 53cd1326 (testbox, scratchpad gate1.sh = box-image.yml's steps from
+  npm pack; own tag vyre-box:gate, own container, default bridge; the compose boot is NOT run on
+  testbox because compose.yml binds 127.0.0.1:7300 and the live box's named networks). It first
+  FAILED on 65cbc02a: loop.sh never restarted a SIGKILLed vyred (dash answers 137 forever on the
+  re-wait; loop spun at 100% CPU). Fixed on work/ci-loop 53cd1326, now main. GitHub box-image on
+  main runs as a second check.
+- Under plain docker run the spawner runs as uid vyre, not root (told box-deploy to check under compose).
+- box-image detect fix: work/ci 6b16be62 (pack-list based). For batch 4.
+- Idle RSS: NOT a b4 merge. GitHub Node 24: baseline c8fb9aae 181 MB; b4 merges bimodal ~185 /
+  ~255 MB with notes-only merges swinging; flat from startup. "85 MB" was never a GitHub number.
+  Diag: work/ci-perfdiag dd8231f4 logs vyred's heap breakdown + host; rss-bisect branch runs it
+  Node 22/24 x3. Next: recommend gating after GC or on heapUsed, or fix a real live-heap cost.
+- App proof: work/mobile tracks a node_modules symlink (mobile told). Guard 3c26ea2d.
+- ci-boundaries: nothing left (fixed at merge).
 
 ## Next
 - Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,
