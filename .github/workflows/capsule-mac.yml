@@ -41,12 +41,17 @@ jobs:
           node --test --test-reporter=spec "local/*/*.test.js" "local/*/lib/*.test.js"
       - name: Vyre Local signing on a throwaway keychain
         # Proves the signing path `vyre capsule` offers (capsule-native.js createIdentity). Only the
-        # throwaway keychain is written; the runner's login keychain is untouched.
+        # throwaway keychain is written; the runner's login keychain is untouched. Nothing here may
+        # wait for input: in the user domain add-trusted-cert asks for a password and hangs the
+        # runner, so the runner passed in trusts in the admin domain with `sudo -n -d`, every
+        # command reads /dev/null and gets its own timeout, and the step stops at 5 minutes.
         if: (success() || failure()) && hashFiles('core/cli/commands/capsule-native.js') != '' && hashFiles('local/capsule/native/build.sh') != ''
+        timeout-minutes: 5
         env:
           KC: ${{ runner.temp }}/vyre-test.keychain-db
         run: |
           set -eu
+          exec </dev/null
           unset VYRE_HOME NODE_TEST_CONTEXT
           PW=ci-throwaway
           security create-keychain -p "$PW" "$KC"
@@ -54,13 +59,23 @@ jobs:
           security unlock-keychain -p "$PW" "$KC"
           security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
           node -e '
-            import("./core/cli/commands/capsule-native.js").then(async m => {
-              const r = m.createIdentity({ keychain: process.env.KC, tmp: process.env.RUNNER_TEMP });
+            import("node:child_process").then(async ({ spawnSync }) => {
+              const m = await import("./core/cli/commands/capsule-native.js");
+              const runner = (cmd, args, opts = {}) => {
+                const o = { encoding: "utf8", ...opts, stdio: ["ignore", "pipe", "pipe"], timeout: 60_000 };
+                if (cmd.endsWith("security") && args[0] === "add-trusted-cert") return spawnSync("sudo", ["-n", cmd, "add-trusted-cert", "-d", ...args.slice(1)], o);
+                return spawnSync(cmd, args, o);
+              };
+              const r = m.createIdentity({ runner, keychain: process.env.KC, tmp: process.env.RUNNER_TEMP });
               console.log(JSON.stringify(r)); if (!r.ok) process.exit(1);
             })'
           security set-key-partition-list -S apple-tool:,apple: -s -k "$PW" "$KC" >/dev/null
           security find-identity -v -p codesigning "$KC"
           APP=local/capsule/native/.build/Vyre.app
+          if [ ! -d "$APP" ]; then
+            echo "Vyre.app did not build: signing a copy of vyre-launcher instead"
+            APP="$RUNNER_TEMP/vyre-launcher"; cp local/capsule/bin/vyre-launcher "$APP"
+          fi
           codesign --force --sign "Vyre Local" --keychain "$KC" --identifier sh.vyre.capsule "$APP"
           codesign --verify --strict "$APP"
           codesign -dv "$APP" 2>&1 | grep -E "Authority=Vyre Local|Identifier=sh.vyre.capsule"

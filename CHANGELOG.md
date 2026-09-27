@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: the Capsule signing step can no longer hang
+
+- capsule-mac.yml's signing step hung to the 45-minute job timeout on capsule-pro branches:
+  createIdentity's `security add-trusted-cert` asks for a password in the user domain. The step
+  now passes createIdentity a runner that trusts with `sudo -n ... -d` (admin domain, the path
+  proven in run 36282086841), gives every command /dev/null and a 60 s timeout, stops at
+  5 minutes, and signs a copy of vyre-launcher when Vyre.app did not build.
+
 #### CI: the one Expo app
 
 - .github/workflows/app.yml for apps/app (its own lockfile): typecheck and tests on every push;
