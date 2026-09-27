@@ -43,20 +43,32 @@ function run(args, input, env) {
 }
 const hook = (cache, piece, payload, env) => run([path.join(cache, "hooks", "run.js"), piece], JSON.stringify(payload), env);
 
-/** Speak MCP to a server over stdio until `want` replies arrive. */
+/**
+ * Speak MCP to a server over stdio until `want` replies arrive. Each request waits for the one
+ * before it: the server answers calls concurrently, so a list sent with an add can beat it.
+ */
 async function mcp(file, env, msgs, want) {
   const base = { ...process.env };
   delete base.VYRE_PACKAGE;
   const p = spawn(process.execPath, [file], { env: { ...base, ...env } });
   const replies = new Map();
+  /** @type {Map<any, (m: any) => void>} */
+  const waiting = new Map();
   let buf = "";
-  const done = new Promise(resolve => p.stdout.on("data", c => {
+  p.stdout.on("data", c => {
     buf += c;
-    for (let i; (i = buf.indexOf("\n")) >= 0;) { const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1); replies.set(m.id, m); }
-    if (replies.size >= want) resolve(null);
-  }));
-  for (const m of msgs) p.stdin.write(JSON.stringify(m) + "\n");
-  await done;
+    for (let i; (i = buf.indexOf("\n")) >= 0;) {
+      const m = JSON.parse(buf.slice(0, i)); buf = buf.slice(i + 1);
+      replies.set(m.id, m);
+      waiting.get(m.id)?.(m);
+    }
+  });
+  for (const m of msgs) {
+    const answered = "id" in m && new Promise(resolve => waiting.set(m.id, resolve));
+    p.stdin.write(JSON.stringify(m) + "\n");
+    if (answered) await answered;
+    if (replies.size >= want) break;
+  }
   p.kill();
   return replies;
 }

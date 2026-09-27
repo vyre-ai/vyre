@@ -128,6 +128,13 @@ Perf:
   cc-plugin, core/memory/personal/answer, core/about: 26/26. This branch alone: 13 pass, that
   test skips with the reason. Drop the skip once 6f2c57c is on main.
 
+## Done: the Mac-only planner test failure (27 Sep)
+
+- test/cc-plugin.test.js planner case failed on the Mac (list [] for "buy flour"). Not a
+  refusal: both adds succeeded, but the MCP server answers calls concurrently and the list
+  (sent in the same batch) answered first. `mcp()` now sends each request after the previous
+  reply. Mac 5 runs 13 pass / 1 skip each; testbox 13 / 1.
+
 ## Doing
 
 - Nothing running.
