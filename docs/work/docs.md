@@ -126,6 +126,19 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
   reads them at runtime, so they can go in 0.1.1. Latest sha handed to the integrator: ecdb22eb.
 - Rule reminder from the lead: one Chrome on testbox at a time, and no shots while the integrator's
   suite runs.
+- 09cbc3a8 merged main (68463d04, batch 4 confirmed at bc751624) into work/docs; resolved
+  docs/index.json and docs/reference/index.md by regenerating with `npm run docs:ref` (clean,
+  matches origin's version).
+- Reviewed launch's copy (site/index.html, README.md, install-box.sh, onboard/) against
+  releases/0.1.0.md and known-gaps.md: one finding sent to launch (hero's condensed "Linux box"
+  panel drops the SSH tunnel step that start/index.html states correctly — could strand a
+  headless-server first-timer), everything else checks out (not-on-npm framing fixes an old
+  README bug, Node/Docker versions match install.md, Glass/Memory/Vault/Capsule all shipped not
+  pending). Docs header: launch's new wire-to-heart hover mark in site/styles.css keeps the same
+  resting-state paths/colors as docs' static MARK/WORDMARK in build.js, so no action needed;
+  flagged launch to ping if the resting shape/color ever changes. Waiting on launch's reply and
+  their voice lines before finishing job 2 (drop "(pending)" marks, first-hour colour-through-hub
+  update, 48 pending tips) once the RC lands.
 
 ## Next (queued before tips)
 
