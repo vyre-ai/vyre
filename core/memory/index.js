@@ -446,7 +446,15 @@ export default {
     // (config.memory.model.askDailyUsd, $0.10) in memory's budget table.
     const askDay = () => `ask:${new Date().toISOString().slice(0, 10)}`;
     const askSpent = () => Number(/** @type {any} */ (ctx.store.db.prepare("SELECT usd FROM memory_me_budget WHERE day = ?").get(askDay()))?.usd || 0);
-    const ask = asker({ db: ctx.store.db, answer, retrieve, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : runner, model: () => modelFor(ctx.config),
+    // The answer step runs on sessions' always-warm lean session (threads.quick, purpose memory):
+    // no Claude Code start per question. Where there is none yet, `claude -p` as the reader does.
+    const quick = runner && (async ({ system, prompt, model: m, maxUsd }) => {
+      const r = await ctx.call("threads.quick", { purpose: "memory", system, prompt, model: m, timeout_ms: 20_000 });
+      if (r?.error?.code === "no_such_tool") return runner({ system, prompt, model: m, maxUsd });
+      if (r?.error || !r?.data?.ok) throw new Error(r?.error?.message || "threads.quick did not answer");
+      return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0 };
+    });
+    const ask = asker({ db: ctx.store.db, answer, retrieve, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
         allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : 0.1) + 1e-9,
         charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
