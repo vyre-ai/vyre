@@ -434,3 +434,63 @@ test("module: apps.list says what Vyre can do in an app it has words for, and no
   assert.equal(pos.actions, undefined);
   assert.equal(pos.nests, undefined);
 });
+
+/** A stand-in planner with planner.parse answering these words (ADR 0025's one time reader). */
+function parsingPlanner(/** @type {string} */ root) {
+  return writeModule(root, "planner", { roles: ["local"], does: { tools: ["planner.add", "planner.parse"] } }, `
+const at = Date.UTC(2026, 8, 24, 13, 0);
+const ANSWERS = {
+  "timer 10 min": { kind: "timer", title: "Timer", at, tz: "Asia/Karachi", duration: 600000, duration_ms: 600000 },
+  "remind me to call juno at 6": { kind: "reminder", title: "call juno", at, tz: "Asia/Karachi" },
+  "alarm 6pm every weekday": { kind: "alarm", title: "Alarm", at, tz: "Asia/Karachi", wall: "18:00", repeat: { every: "weekday" } },
+  "remind me at 6 to": { ambiguous: true, reason: "remind you of what?" },
+  "remind me today at 9am to stretch": { ambiguous: true, reason: "that time has already passed today" },
+};
+export default { async start(ctx) {
+  globalThis.__parseCalls = [];
+  ctx.tool("planner.add", { input: { type: "object" }, async run(i) { return { id: "itm_1", kind: i.kind }; } });
+  ctx.tool("planner.parse", { input: { type: "object" }, async run(i) { globalThis.__parseCalls.push(i); return ANSWERS[i.text] ?? null; } });
+  return { async stop() {} };
+} };`);
+}
+
+test("module: planner.parse reads the time; our rules pick the app; its refusal is the answer", async t => {
+  const dir = parsingPlanner(path.join(tempHome(t), "mods"));
+  const now = Date.UTC(2026, 8, 24, 10, 0);
+  const { reg } = await start(t, { modules: [dir], apps: { now: () => now, timeZone: "Asia/Karachi" } });
+  const ask = async (/** @type {string} */ text) => (await reg.call("apps.route", { text }, "capsule")).data;
+
+  const timer = await ask("timer 10 min");
+  assert.deepEqual({ app: timer.app, args: timer.args, said: timer.said }, { app: "Planner", args: { text: "timer 10 min", kind: "timer" }, said: "Timer for 10 minutes" });
+  const rem = await ask("remind me to call juno at 6");
+  assert.equal(rem.said, "Reminder: call juno, today at 18:00");
+  const weekday = await ask("alarm 6pm every weekday");
+  assert.equal(weekday.said, "Alarm every weekday at 18:00");
+  const past = await ask("remind me today at 9am to stretch");
+  assert.deepEqual(past, { ambiguous: true, reason: "that time has already passed today" }, "the planner's no is the answer");
+  assert.deepEqual(/** @type {any} */ (globalThis).__parseCalls.map((/** @type {any} */ c) => c.kind), ["timer", "reminder", undefined, undefined], "words our rules refused go without a hint");
+
+  // The Mac's own apps: the planner's reading becomes their args, without the Apple words.
+  const clock = await ask("timer 10 min in apple clock");
+  assert.deepEqual({ app: clock.app, args: clock.args }, { app: "Clock", args: { seconds: 600 } });
+  assert.equal(/** @type {any} */ (globalThis).__parseCalls.at(-1).text, "timer 10 min");
+  const remMac = await ask("remind me to call juno at 6 in apple reminders");
+  assert.deepEqual({ app: remMac.app, args: remMac.args }, { app: "Reminders", args: { text: "call juno", due: "2026-09-24T18:00" } });
+  const rep = await ask("alarm 6pm every weekday in apple clock");
+  assert.equal(rep.ambiguous, true, "Apple Clock cannot keep a repeating alarm, so it is refused with a reason");
+  assert.ok(rep.reason);
+
+  // Words the planner does not know keep our reading; a message never asks it.
+  const note = await ask("note: buy milk");
+  assert.equal(note.said, "Note: buy milk");
+  const before = /** @type {any} */ (globalThis).__parseCalls.length;
+  await ask("whatsapp juno: running late");
+  assert.equal(/** @type {any} */ (globalThis).__parseCalls.length, before);
+});
+
+test("module: with no planner.parse on this Vyre, our own reading of the time stands", async t => {
+  const now = Date.UTC(2026, 8, 24, 10, 0);
+  const { reg } = await start(t, { apps: { now: () => now, timeZone: "Asia/Karachi" } });
+  const r = (await reg.call("apps.route", { text: "timer 10 min in apple clock" }, "capsule")).data;
+  assert.deepEqual({ app: r.app, args: r.args, said: r.said }, { app: "Clock", args: { seconds: 600 }, said: "Timer for 10 minutes" });
+});

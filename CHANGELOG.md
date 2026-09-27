@@ -12,6 +12,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   an `@Notes`, `@Clock` or `@Reminders` scope, or config `apps.planner = "apple"`. With no
   planner module on this Vyre the answer is code `setup`, "The planner is not on this Vyre yet".
   "todo buy milk" and "add call kit to my todos" are new words for a todo.
+- The time in a route is read by the planner's `planner.parse` (ADR 0025, the one reader of time
+  words, answering on the Mac): our rules say which app and kind, the planner says when. Its line
+  becomes the route's ("Reminder: call juno, today at 18:00"), and for Apple Clock and Reminders
+  its reading becomes their args. Its "cannot place that" is the answer, so the person is asked.
+  Words our rules refuse but the planner reads ("alarm 6pm every weekday") go to the planner. With
+  no planner on this Vyre our own reading stands, until the planner is on main.
 - When a message's app or recipient is unclear, `apps.route` asks rather than refusing or
   guessing: `{needs: {app} | {recipient}, ask, text, app?, action, to?, didYouMean?}`, the words
   kept as typed. The candidates are the messaging apps on this Mac, or the app's people ranked by

@@ -507,6 +507,51 @@ function toPlanner(/** @type {Route} */ r, /** @type {string} */ kind, /** @type
   return { app: "Planner", action: "add", args: { text: raw, kind }, sends: false, said: r.said };
 }
 
+// ---- The planner's reading ----------------------------------------------------------------
+
+/**
+ * The kind of time words a route carries, for planner.parse's hint: a Planner add says it, a
+ * Clock timer or alarm and a timed reminder are theirs. Null for a route with no time in it.
+ * @param {Route} r @returns {string | null}
+ */
+export function timeKind(r) {
+  if (r.app === "Planner") return typeof r.args.kind === "string" ? r.args.kind : null;
+  if (r.app === "Clock") return r.action === "timer" || r.action === "alarm" ? r.action : null;
+  if (r.app === "Reminders" && r.action === "create" && r.args.due) return "reminder";
+  return null;
+}
+
+/**
+ * The same route, with the time read by planner.parse (ADR 0025, the one reader of time words):
+ * the Planner's line, or the Mac app's args and line. `p` is planner.parse's item.
+ * @param {Route} r @param {any} p @param {RouteOptions} o @returns {Route | Ambiguous}
+ */
+export function withParsed(r, p, o) {
+  const at = typeof p.at === "number" ? nowIso(wall(p.at, o.timeZone)) : null;
+  const title = typeof p.title === "string" ? p.title.trim() : "";
+  const ms = typeof p.duration_ms === "number" ? p.duration_ms : typeof p.duration === "number" ? p.duration : null;
+  /** @type {string} */
+  let said;
+  if (p.kind === "timer" && ms) said = `Timer for ${DURATION_WORDS(Math.max(1, Math.round(ms / 1000)))}`;
+  else if (p.kind === "alarm" && at) said = `Alarm ${p.repeat ? `every ${p.repeat.every} at ${Number(at.slice(11, 13))}:${at.slice(14, 16)}` : whenWords(at, o)}${title && title !== "Alarm" ? `: ${title}` : ""}`;
+  else if (p.kind === "reminder") said = `Reminder: ${title}${at ? `, ${whenWords(at, o)}` : ""}`;
+  else if (p.kind === "todo") said = `Todo: ${title}`;
+  else if (p.kind === "note") said = `Note: ${title}`;
+  else return r;
+  if (r.app === "Planner") return { ...r, said };
+  if (r.app === "Clock" && r.action === "timer" && p.kind === "timer" && ms) return { ...r, args: { seconds: Math.max(1, Math.round(ms / 1000)) }, said };
+  if (r.app === "Clock" && r.action === "alarm" && p.kind === "alarm" && at) {
+    // Clock's alarm is the next time on the clock: it cannot repeat, or wait for another day.
+    if (p.repeat) return unsure("an Apple Clock alarm from Vyre cannot repeat; leave out Apple Clock and the planner keeps it");
+    if (at.slice(0, 10) !== dayAfter(wall(o.now, o.timeZone), 0) && at.slice(0, 10) !== dayAfter(wall(o.now, o.timeZone), 1)) {
+      return unsure("an Apple Clock alarm from Vyre rings at the next time on the clock; leave out Apple Clock and the planner keeps the day");
+    }
+    return { ...r, args: { time: at.slice(11, 16) }, said: `Alarm at ${Number(at.slice(11, 13))}:${at.slice(14, 16)}` };
+  }
+  if (r.app === "Reminders" && p.kind === "reminder" && at && title) return { ...r, args: { text: title, due: at }, said };
+  return r;
+}
+
 // ---- The router --------------------------------------------------------------------------
 
 const SCOPES = /** @type {Record<string, string>} */ ({ clock: "Clock", notes: "Notes", reminders: "Reminders", weather: "Weather",

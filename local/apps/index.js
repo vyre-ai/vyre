@@ -21,7 +21,7 @@ import { checkInput } from "../../core/modules/index.js";
 import { makeEnv, AppsError } from "./env.js";
 import { adapters } from "./adapters/index.js";
 import { installed, DEFAULT_DIRS } from "./installed.js";
-import { route, sendTo } from "./route.js";
+import { route, sendTo, timeKind, withParsed, appleAsked } from "./route.js";
 import { rank as rankTargets, STRONG } from "./fuzzy.js";
 import { setupFor } from "./setup.js";
 import path from "node:path";
@@ -210,6 +210,36 @@ export default {
     };
 
     /**
+     * The time in a route, read by the planner's parser (planner.parse, ADR 0025): our rules say
+     * which app and kind, the planner says when. Its "cannot place that" is the answer, so the
+     * person is asked rather than given a guess. With no planner on this Vyre (the tool is missing
+     * or fails), our own reading stands.
+     */
+    const parsed = async (/** @type {string} */ text, /** @type {any} */ o, /** @type {any} */ r) => {
+      if (r.needs || r.sends) return r;
+      if (r.ambiguous) {
+        // Words our rules could not place may still be the planner's ("alarm 6pm every weekday"):
+        // when it reads them as an item, the item is the route. Not inside an app's scope, and not
+        // for the Mac's own apps, which cannot keep what our rules could not.
+        if (o.app || o.planner === "apple" || appleAsked(text)) return r;
+        let p;
+        try { p = await ctx.call("planner.parse", { text }); } catch { return r; }
+        const d = p && !p.error ? p.data : null;
+        if (!d || typeof d !== "object" || d.ambiguous || typeof d.kind !== "string") return r;
+        return withParsed({ app: "Planner", action: "add", args: { text: String(text).trim(), kind: d.kind }, sends: false, said: "" }, d, o);
+      }
+      const kind = timeKind(r);
+      if (!kind) return r;
+      // The words without "in Apple Clock": the planner reads time, not which app.
+      const words = r.app === "Planner" ? String(r.args.text) : (appleAsked(text) || { text }).text;
+      let p;
+      try { p = await ctx.call("planner.parse", { text: words, kind }); } catch { return r; }
+      if (!p || p.error || !p.data || typeof p.data !== "object") return r;
+      if (p.data.ambiguous) return { ambiguous: true, reason: String(p.data.reason || "the planner could not place that time") };
+      return withParsed(r, p.data, o);
+    };
+
+    /**
      * An answer to a question: the app and who as picked (an id from the candidates, or a name
      * typed), and the words kept from it. An app Vyre cannot send through, or a name that is not
      * one, is asked about again; who is checked against the app's people like any send.
@@ -236,7 +266,8 @@ export default {
       async run({ text, app, to, model = false }) {
         // An answer to a question: the app and who, as picked, and the words kept from it.
         if (to) return answer(text, app, to);
-        const r = /** @type {any} */ (route(text, { now: env.now(), timeZone: env.timeZone, planner: opts.planner === "apple" ? "apple" : "planner", ...(app ? { app } : {}) }));
+        const o = { now: env.now(), timeZone: env.timeZone, planner: opts.planner === "apple" ? "apple" : "planner", ...(app ? { app } : {}) };
+        const r = /** @type {any} */ (await parsed(text, o, route(text, o)));
         if (r.needs) return fillNeeds(r);
         if (!r.ambiguous && r.sends) return checkRecipient(r);
         if (!("ambiguous" in r) || !model || typeof opts.model !== "function") return r;

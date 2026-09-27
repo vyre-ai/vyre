@@ -96,8 +96,10 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   asked about), the bare "whatsapp juno ..." first word, y/n answers, a fuzzy app answer.
   Note for AppsExtension: an id in args.to makes the adapter's preview show the id; real adapters
   must preview with the title.
-- planner.parse as the single time parser stays with the planner team (ADR 0025, ../vyre-planner):
-  switch apps.route to it when they send the hash; local answer on the Mac, no box round trip.
+- planner.parse (work/planner 1437a6b) is now what apps.route reads time with (index.js parsed(),
+  route.js timeKind/withParsed); our route.js time rules stay only as the fallback while the
+  planner is not on main. Once it is, delete them (parseDuration, parseClock, reminderParts) and
+  keep only the app and kind detection.
 - Slice 2 Kit (work/capsule-apps-native): capsule-pro 07af5e5 merged at 8cba106 (resolutions as
   recorded before; plus AgentDestinations lost a stale askItem call). Extension suites 18/18 on the
   Mac; capsule-mac CI run 36282275995 on 8cba106. Hand 8cba106 to capsule-pro once CI is green.
@@ -119,7 +121,7 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
    when capsule-pro ships it.
 3. Slack adapter (slice 3, design below), then WhatsApp over hands (slice 4: hands.find,
    settleMs up to 5000, press Send rather than key Return; needs_front for keys), then any-app.
-4. Switch apps.route to planner.parse when the planner team sends the hash.
+4. When work/planner is on main: drop route.js's own time reading (fallback only now).
 
 ### Real-Mac check (planner default; the lead with the user, on the Mac, in the user's own terminal)
 Before: the planner module (work/planner, ADR 0025) must be on the branch under test, or steps 4
