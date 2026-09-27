@@ -67,6 +67,18 @@ test("ask: a sure personal fact answers with no model; else the model, kept by i
   assert.ok(d.prepare("SELECT reply FROM memory_iq_asks WHERE hash = ?").get(askHash(askPrompt("which file had the refund rounding bug", P))));
 });
 
+test("ask: each step is told as it starts; a kept reply is not read again", async t => {
+  const d = db(t);
+  const runner = async () => ({ text: JSON.stringify({ answer: "The rounding bug was in src/billing/refund.ts.", cite: [1], confidence: 0.85, abstain: false, known: [] }), usd: 0.002 });
+  const ask = asker({ db: d, answer: async () => ({ answer: null }), retrieve: async () => ({ passages: P }), runner });
+  const seen = [];
+  await ask({ question: "which file had the refund rounding bug", personal: true, stage: s => seen.push(s) });
+  assert.deepEqual(seen, ["understanding", "searching", "reading", "checking"]);
+  seen.length = 0;
+  await ask({ question: "which file had the refund rounding bug", personal: true, stage: s => seen.push(s) });
+  assert.deepEqual(seen, ["understanding", "searching", "checking"]);
+});
+
 test("ask: no passages, no model, a spent budget or a made-up answer all abstain", async t => {
   const d = db(t);
   const none = asker({ db: d, answer: async () => ({}), retrieve: async () => ({ passages: [] }), runner: async () => { throw new Error("not called"); } });

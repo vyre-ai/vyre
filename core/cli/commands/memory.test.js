@@ -54,3 +54,30 @@ test("memory mute: a node is muted and unmuted, the about view says so, and a mi
   assert.equal(nothing.code, 1);
   assert.match(JSON.parse(nothing.out).error.message, /nothing in memory/);
 });
+
+test("memory ask: Vyre IQ answers from what the user said, with where; else not sure, exit 1", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ transcripts: [path.join(root, "no-transcripts")], vault: { keystore: "file" }, modules: { disable: ["learn"] } }));
+  const db = open(path.join(root, "vyre.db"));
+  seedRecall(db);
+  db.close();
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  await call("memory.curate", {}, { root });
+  assert.ok((await call("memory.remember", { text: "my wife is Juno" }, { root })).data.facts.length > 0);
+  const vyre = (/** @type {string[]} */ ...args) => run(root, args);
+
+  const wife = await vyre("memory", "ask", "what is my wife's name");
+  assert.equal(wife.code, 0, wife.out);
+  assert.match(wife.out, /Juno/);
+  assert.match(wife.out, /confidence 0\.\d+ · from what you have said/);
+  const j = JSON.parse((await vyre("memory", "ask", "what is my wife's name", "--json")).out);
+  assert.equal(j.via, "fact");
+  assert.equal(j.abstained, false);
+
+  // No model under node --test: a question only a session could answer is not sure.
+  const unsure = await vyre("memory", "ask", "which port did the Northwind staging deploy use");
+  assert.equal(unsure.code, 1, unsure.out);
+  assert.match(unsure.out, /not sure yet/);
+  assert.equal((await vyre("memory", "ask")).code, 2);
+});

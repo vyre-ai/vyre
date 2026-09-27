@@ -100,13 +100,16 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
 
   /**
-   * @param {{ question: string, project_cwds?: string[], personal?: boolean, thread?: string|null }} input
+   * @param {{ question: string, project_cwds?: string[], personal?: boolean, thread?: string|null,
+   *   stage?: (s: "understanding"|"searching"|"reading"|"checking") => void }} input
+   *   stage: told as each step starts, so a surface shows what IQ is doing (ADR 0034, stream).
    */
-  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null }) {
+  return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {} }) {
     const t0 = performance.now();
     const done = r => ({ answer: null, confidence: 0, abstained: true, known: [], sources: [], via: null, cost_usd: 0, ...r, latency_ms: Math.round(performance.now() - t0) });
     const q = String(question || "").trim();
     if (!q) return done({});
+    stage("understanding");
     // 1. The fast path: a personal fact memory is sure of.
     if (sees) {
       const f = await answer({ q, project_cwds });
@@ -115,6 +118,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
       }
     }
     // 2. The passages.
+    stage("searching");
     const { passages } = await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread });
     if (!passages.length) return done({ via: "retrieval" });
     // 3. The answer, kept by the prompt's hash.
@@ -124,6 +128,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     // The day's cap is reached: say so, with where to change it, and never answer quietly with nothing.
     if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "daily limit", limited: true, message: LIMIT_MESSAGE });
     if (text == null && runner) {
+      stage("reading");
       try {
         const r = await runner({ system: SYSTEM, prompt, model: model(), maxUsd: MAX_USD });
         text = r.text; usd = r.usd || 0;
@@ -133,6 +138,7 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     }
     if (text == null) return done({ via: "retrieval", known: [], why: runner ? "the model did not answer" : "no model" });
     // 4. Code checks what it said.
+    stage("checking");
     const c = checkAsk(parseAsk(text), passages);
     if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why });
     const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).map(p => ({ session: p.session, seq: p.seq, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }));
