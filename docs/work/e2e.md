@@ -230,9 +230,9 @@ Done this session:
   callers plus a test. MEDIUMs sent: firstParty = "under the repo" (dev home in a checkout),
   env/plugins/deny-removal without confirm, asPerson's "deck" fallback. Waiting on their sha.
 
-Batch 4 Next (lead, 27 Sep): unknown ids at gate.get and agents.delete answer 500 "failed", make
-them 404 not_found; `vyre link signin` says nothing when it succeeds, make it say "signed in until
-<date>".
+Batch 4 lows (lead, 27 Sep): DONE in 8b9b092c. Unknown ids at gate.* and agents.* answer 404
+not_found; `vyre link signin` at a terminal waits on the event stream and says "signed in on the
+box until <date>" (test/daemon.test.js, test/link-person.test.js; 115/115 + 88/88 on testbox).
 
 Next, in order:
 1. DONE (see above). To rerun the headscale gate on a new sha: Setup kept in
