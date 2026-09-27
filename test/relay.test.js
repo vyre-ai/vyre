@@ -14,6 +14,7 @@ import { createRelay } from "../relay/node/server.js";
 import { keyPair } from "../core/relay/noise.js";
 import { deviceSide } from "../core/relay/channel.js";
 import { parsePairUrl } from "../core/relay/pairing.js";
+import { useReleasesFile } from "../core/relay/releases.js";
 import { tempHome } from "./helpers.js";
 
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about who is calling. */
@@ -85,7 +86,7 @@ test("relay: the first device pairs during onboarding and reaches the box's rout
 
   const list = await p.call("relay.devices.list");
   assert.equal(list.status, 200, JSON.stringify(list));
-  assert.deepEqual(list.data.devices.map(x => [x.id, x.name, x.online]), [[p.reply.device, "alex's phone", true]]);
+  assert.deepEqual(list.data.devices.map(x => [x.id, x.name, x.online, x.path]), [[p.reply.device, "alex's phone", true, "relay"]]);
 
   const events = (await d.registry.call("relay.status", {}, "cli")).data;
   assert.equal(events.devices, 1);
@@ -200,4 +201,58 @@ test("relay: a web device unused past relay.web_expiry_days is removed at its ne
   await assert.rejects(phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } }), /unused too long|closed/);
   const ids = (await p.call("relay.devices.list")).data.devices.map(x => x.id);
   assert.deepEqual(ids, [p.reply.device], "the phone, an app device, never expires");
+});
+
+test("relay: the web app's loader asks the box which build to load, and the owner can pin one", async t => {
+  const { d, root } = await world(t);
+  const list = path.join(root, "releases.json");
+  const rel = (release, c) => ({ release, sha: c.repeat(40), manifest: c.repeat(64) });
+  fs.writeFileSync(list, JSON.stringify({ releases: [rel("0.4.2", "a"), rel("0.10.0", "b"), rel("0.9.9", "c")] }));
+  useReleasesFile(list);
+  t.after(() => useReleasesFile());
+  const p = await phone(await firstPairing(d));
+  const P = { "x-vyre-presence": "passkey id=abc" };
+  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const web = await phone(url, { name: "Northwind Bakery laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
+
+  const newest = await web.call("relay.web.release");
+  assert.equal(newest.status, 200, JSON.stringify(newest));
+  assert.deepEqual([newest.data.release, newest.data.path, newest.data.pinned], ["0.10.0", `/v/${"b".repeat(40)}/`, false], "semver order, not string order");
+  assert.equal((await p.call("relay.devices.list")).data.devices.find(x => x.id === web.reply.device).build, "known");
+
+  assert.equal((await web.call("relay.web.pin", { release: "0.4.2" }, P)).status, 404, "an untrusted browser cannot pick its own code");
+  assert.equal((await p.call("relay.web.pin", { release: "1.0.0" }, P)).status, 400);
+  assert.equal((await p.call("relay.web.pin", { release: "0.4.2" }, P)).status, 200);
+  const pinned = (await web.call("relay.web.release")).data;
+  assert.deepEqual([pinned.release, pinned.pinned], ["0.4.2", true]);
+});
+
+test("relay: a device reports its path; the box measures the relay round trip and learns its tailnet node", async t => {
+  const { d } = await world(t);
+  const moves = [];
+  d.events.on("device.moved", e => moves.push(e.payload));
+  const p = await phone(await firstPairing(d));
+  const id = p.reply.device;
+
+  const r = await p.call("relay.devices.path", { path: "relay", rtt: 42 });
+  assert.equal(r.status, 200, JSON.stringify(r));
+  assert.match(r.data.link, /^[A-Za-z0-9_-]{22}$/);
+  let me = (await p.call("relay.devices.list")).data.devices[0];
+  assert.equal(me.path, "relay");
+  assert.equal(typeof me.rtt, "number", "the box pinged the device over the channel");
+
+  // The same phone over the tailnet: its node, from whois, is linked by the code, once.
+  const node = { stableId: "nABC123", node: "alex-iphone", login: "alex@example.com", tags: [], caps: {} };
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", rtt: 18 }, "tailnet:alex@example.com", { peer: node })).error.code, "bad_input", "an unlinked node is nobody");
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: "wrong" }, "tailnet:alex@example.com", { peer: node })).error.code, "denied");
+  const linked = await d.registry.call("relay.devices.path", { path: "direct", rtt: 18, id, code: r.data.link }, "tailnet:alex@example.com", { peer: node });
+  assert.deepEqual(linked.data, { path: "direct", device: id });
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct", id, code: r.data.link }, "tailnet:alex@example.com", { peer: node })).error.code, "denied", "the code works once");
+
+  p.ws.close();
+  await new Promise(res => setTimeout(res, 50));
+  me = (await d.registry.call("relay.devices.list", {}, "cli")).data.devices[0];
+  assert.deepEqual([me.path, me.rtt, me.node, me.online], ["direct", 18, "alex-iphone", true]);
+  assert.deepEqual(moves.map(m => m.path), ["relay", "direct"]);
+  assert.equal((await d.registry.call("relay.devices.path", { path: "direct" }, "tailnet:alex@example.com", { peer: { ...node, stableId: "nOTHER" } })).error.code, "bad_input", "another node is not this device");
 });

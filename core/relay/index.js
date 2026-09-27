@@ -24,7 +24,7 @@ import { newRouteKey, routeId, base32 } from "./wire.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
 import { pairUrl } from "./pairing.js";
-import { knownBuild } from "./releases.js";
+import { knownBuild, findRelease, newestRelease } from "./releases.js";
 
 export const DEFAULT_RELAY = "wss://relay.vyre.run";
 const PAIR_TTL = 10 * 60_000;
@@ -32,7 +32,7 @@ const NAME = /^[^\u0000-\u001f\u007f]{1,64}$/;
 const AGENT_CLAIM = /(?:^|[\s:])agent:/;
 const DAY = 24 * 60 * 60_000;
 /** What an untrusted web device may not call: minting devices, trust, presence keys, secrets out. */
-export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
+export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|relay\.web\.pin$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
 const BUILD = /^[\w.+-]{1,64}$/;
 
 export const MIGRATIONS = [
@@ -44,7 +44,15 @@ export const MIGRATIONS = [
    ALTER TABLE relay_devices ADD COLUMN release TEXT;
    ALTER TABLE relay_devices ADD COLUMN manifest TEXT;
    ALTER TABLE relay_devices ADD COLUMN trusted INTEGER NOT NULL DEFAULT 0;`,
+  `ALTER TABLE relay_devices ADD COLUMN node_id TEXT;
+   ALTER TABLE relay_devices ADD COLUMN node_name TEXT;
+   ALTER TABLE relay_devices ADD COLUMN last_path TEXT;
+   ALTER TABLE relay_devices ADD COLUMN path_at INTEGER;
+   ALTER TABLE relay_devices ADD COLUMN rtt INTEGER;`,
 ];
+/** A direct report counts as the device's path for this long; the app reports on every switch. */
+const DIRECT_FRESH = 10 * 60_000;
+const LINK_TTL = 5 * 60_000;
 
 /** The id a device is known by: the first 16 base32 characters of sha256 of its static key. */
 export const deviceId = pub => base32(crypto.createHash("sha256").update(pub).digest()).slice(0, 16);
@@ -100,7 +108,7 @@ export default {
     /** @type {Map<string, Set<any>>} */
     const live = new Map();
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted FROM relay_devices WHERE removed_at IS NULL ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted, node_id, node_name, last_path, path_at, rtt FROM relay_devices WHERE removed_at IS NULL ORDER BY paired_at").all());
     const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
@@ -187,7 +195,11 @@ export default {
 
     // ---- tools ----
 
-    const view = d => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key), online: (live.get(d.id)?.size || 0) > 0,
+    /** Where a device is now: connected through the relay, or reporting from its tailnet node lately. */
+    const pathOf = d => ((live.get(d.id)?.size || 0) > 0 ? "relay" : d.last_path === "direct" && now() - (d.path_at || 0) < DIRECT_FRESH ? "direct" : null);
+    const view = (d, rtt = null) => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key),
+      online: pathOf(d) !== null, path: pathOf(d), rtt: pathOf(d) === "relay" ? rtt : pathOf(d) === "direct" ? d.rtt : null,
+      ...(d.node_id ? { node: d.node_name || d.node_id } : {}),
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
         expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY } : {}) });
 
@@ -279,7 +291,13 @@ export default {
       run: async (_, meta = {}) => {
         owner(meta.caller, meta, "the device list");
         for (const d of active()) if (expired(d)) forget(d.id, "expired");
-        return { devices: active().map(view) };
+        const rows = active();
+        // The relay round trip, measured now over each open channel (1 s at most, never on a timer).
+        const rtts = await Promise.all(rows.map(async d => {
+          const chans = [...(live.get(d.id) || [])];
+          return chans.length ? chans[chans.length - 1].ping(1000) : null;
+        }));
+        return { devices: rows.map((d, i) => view(d, rtts[i])) };
       },
     });
 
@@ -305,6 +323,79 @@ export default {
         const id = String(input.id);
         if (!forget(id, "removed")) throw fail("not_found", `no paired device ${id}`);
         return { removed: id };
+      },
+    });
+
+    // The hosted app's loader asks which build to load (ADR 0026 section 10, ADR 0027 section 4):
+    // the owner's pin, or the newest release this box ships knowing. Open to any paired device,
+    // web ones included, since the loader must ask before it can load anything else.
+    ctx.tool("relay.web.release", {
+      description: "Which build of the hosted web app this box trusts: its release, the content-addressed folder sha and the manifest hash the loader must check. The owner's pin, or the newest release this box knows.",
+      input: obj(),
+      run: async (_, meta = {}) => {
+        owner(meta.caller, meta, "the web app's release");
+        const pin = settings().web_pin;
+        const r = (pin && findRelease(pin)) || newestRelease();
+        if (!r) throw fail("not_found", "this box knows no release of the web app yet");
+        return { release: r.release, sha: r.sha, manifest: r.manifest, path: `/v/${r.sha}/`, pinned: Boolean(pin && findRelease(pin)) };
+      },
+    });
+
+    ctx.tool("relay.web.pin", {
+      description: "Pin the hosted web app to one release this box knows, or clear the pin (empty release) to follow the newest one.",
+      input: obj({ release: str }, ["release"]),
+      presence: { summary: async input => (input && input.release ? `Pin the web app to release ${input.release}` : "Let the web app follow the newest release") },
+      run: async (input, meta = {}) => {
+        owner(meta.caller, meta, "pinning the web app");
+        const release = String(input.release || "");
+        if (release && !findRelease(release)) throw fail("bad_input", `this box does not know web app release ${release}`);
+        save({ web_pin: release || null });
+        return { pinned: release || null };
+      },
+    });
+
+    /** Record where a device is, and tell the surfaces when that changed. */
+    function moved(id, path, rtt) {
+      const row = /** @type {any} */ (db.prepare("SELECT last_path FROM relay_devices WHERE id = ?").get(id));
+      db.prepare("UPDATE relay_devices SET last_path = ?, path_at = ?, rtt = ? WHERE id = ?").run(path, now(), rtt, id);
+      if (!row || row.last_path !== path) ctx.events.emit("device.moved", { id, path, ...(rtt !== null ? { rtt } : {}) });
+    }
+    /** One-time codes that let a device name its tailnet node: device id -> { hash, exp }. */
+    const linking = new Map();
+
+    // A device's app reports its path when it switches (ADR 0029, R5). Over the relay it is
+    // device:<id>, and gets a one-time code. Over the tailnet it is its node (whois); the first time,
+    // it hands the code back so the box learns which node that device is. After that, a report
+    // from that node is that device on the direct path.
+    ctx.tool("relay.devices.path", {
+      description: "A paired device says which way it reaches the box now (relay or direct over the tailnet) and its measured round trip. Over the tailnet the first report carries the device id and the one-time code the relay path gave it, which links the device to its tailnet node.",
+      input: obj({ path: { type: "string", enum: ["relay", "direct"] }, rtt: { type: "number" }, id: str, code: str }, ["path"]),
+      run: async (input, meta = {}) => {
+        owner(meta.caller, meta, "a device's path");
+        const c = String(meta.caller || "");
+        const rtt = Number.isFinite(input.rtt) && input.rtt >= 0 && input.rtt < 60_000 ? Math.round(input.rtt) : null;
+        if (c.startsWith("device:")) {
+          const id = c.slice("device:".length);
+          if (input.path !== "relay") throw fail("bad_input", "through the relay, a device reports the relay path");
+          moved(id, "relay", rtt);
+          const code = crypto.randomBytes(16).toString("base64url");
+          linking.set(id, { hash: sha(code), exp: now() + LINK_TTL });
+          return { path: "relay", link: code };
+        }
+        if (!c.startsWith("tailnet:")) throw fail("denied", "only a paired device, over the relay or its own tailnet node, reports a path");
+        // Keyed on the node's stable id only: a node's name can change. A fake tailnet may give none.
+        const node = meta.peer && meta.peer.stableId;
+        if (!node) throw fail("no_node", "this device's tailnet node has no stable id");
+        if (input.id && input.code) {
+          const l = linking.get(String(input.id));
+          if (!l || l.exp < now() || !crypto.timingSafeEqual(sha(input.code), l.hash)) throw fail("denied", "that link code has expired or was already used");
+          linking.delete(String(input.id));
+          db.prepare("UPDATE relay_devices SET node_id = ?, node_name = ? WHERE id = ? AND removed_at IS NULL").run(String(node), String(meta.peer.node || ""), String(input.id));
+        }
+        const row = /** @type {any} */ (db.prepare("SELECT id FROM relay_devices WHERE node_id = ? AND removed_at IS NULL").get(String(node)));
+        if (!row) throw fail("bad_input", "this tailnet node is not linked to a paired device yet: report over the relay first and pass its code");
+        moved(row.id, input.path === "direct" ? "direct" : "relay", rtt);
+        return { path: input.path, device: row.id };
       },
     });
 
