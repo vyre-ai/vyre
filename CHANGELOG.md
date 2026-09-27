@@ -4,6 +4,42 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Computers: the agent can no longer reach Chrome's DevTools or computerd's token (uid split)
+
+- core/computers/image: the computer starts as root only to switch users (setpriv, no capability
+  kept). vyre (1001) runs Xvnc, its session bus, fluxbox, computerd and Chrome; the agent (1000)
+  runs xterm with an environment built from nothing. Before, everything ran as one uid: any process
+  the agent started could drive Chrome on 127.0.0.1:9222 with no token, or read COMPUTERD_TOKEN
+  from /proc.
+- computerd starts Chrome with --remote-debugging-pipe (no port) and multiplexes CDP clients, each
+  on its own browser session, so a client's browser-level state ends with it. Refused: Browser.close
+  and crash, Target.sendMessageToTarget, exposeDevToolsProtocol, setRemoteLocations,
+  attachToBrowserTarget; from the agent also Runtime.addBinding and
+  Page.addScriptToEvaluateOnNewDocument.
+- Chrome's profile and the VNC password move to a second volume per computer
+  (<prefix>-browser-<agent> at /var/lib/vyre, 0700). A one-time migration carries only Cookies and
+  Local Storage. Chrome policy blocks extensions and DevTools.
+- While any shield is up (a private sign-in or a Vault fill) every process of the agent's is
+  stopped (a root freezer, fd 9) and continued after, or when computerd exits.
+- The agent is an untrusted X client (SECURITY extension, cookie-only Xvnc): no screen grab, no
+  events to Chrome, no XTEST.
+- Driver and policy: CapAdd SETUID and SETGID (REQUIRED_CAPS), exactly two volume mounts. The
+  Docker proxy requires exec User 1000:1000.
+- New core/computers/image/isolation.test.js, run against a live computer.
+
+#### Computers: computers.fill.begin and computers.fill.end for the Vault (ADR 0028, decision 3)
+
+- core/computers/fill.js: the vault's only (module:vault). begin shields the computer (reason
+  "fill"), cuts the agent's CDP sockets and returns a CDP address and a token for this fill only,
+  good for 60 s; end drops them. Refused while a person holds the keyboard or signs in. Events
+  computer.fill-began and computer.fill-ended. A take-over waits for a fill.
+
+#### Glass: take-over endings carry structured fields; owner copy says "your"
+
+- computer.handed-back adds by ("owner"), device and reason. The agent's thread is told when the
+  lease moved to chat or was released. The Deck says "Your phone has the keyboard", "taken over by
+  you".
+
 #### The design docs stay out of the package
 
 - package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at

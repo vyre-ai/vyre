@@ -96,7 +96,7 @@ test("computers.shield: refuses reads and input, tells computerd, and ends with 
     assert.deepEqual((await s.mod("computers.may-act", { agent: "kit", tool, read })).data, { ok: false, why: SHIELDED }, tool);
   }
   assert.equal(cd.told.length, 1);
-  assert.deepEqual(cd.told[0].body, { on: true });
+  assert.deepEqual(cd.told[0].body, { on: true, reason: "person" });
   assert.equal(cd.told[0].auth, `Bearer ${s.h.pool.row("kit").helper_token}`);
 
   // The take-over ends: the shield comes down with it, and computerd hears so.
