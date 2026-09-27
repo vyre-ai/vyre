@@ -35,7 +35,7 @@ export const HUMAN_ONLY = new Set([
   // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
   // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
   // and the sites that leave through the owner's Mac.
-  "files.drive.share", "files.drive.unshare",
+  "files.drive.share", "files.drive.unshare", "files.drive.access",
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",

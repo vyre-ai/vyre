@@ -5,7 +5,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["files.search", "files.stat", "files.preview", "files.fetch", "files.send",
-    "files.drive.status", "files.drive.share", "files.drive.unshare", "files.drive.audit",
+    "files.drive.status", "files.drive.share", "files.drive.unshare", "files.drive.access", "files.drive.audit",
     "files.drive.url", "files.drive.mount", "files.drive.unmount", "files.drive.open", "files.drive.local"] },
   "watches": { "emits": ["files.sent", "files.received", "drive.exposed"] },
   "shows": { "deck": [], "capsule": [], "cli": ["files", "send"] },

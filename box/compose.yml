@@ -74,8 +74,9 @@ services:
       #
       # Read-only unless VYRE_DRIVE_ACCESS=rw in /srv/vyre/.env: this container runs as root with
       # NET_ADMIN, and read-only keeps it from ever changing a project (ADR 0009's rule, read-only
-      # where possible). Set rw only to edit box files from the Mac's Finder, and set vyred's
-      # files.drive.access to the same value so the Mac mounts to match. Recreate after a change.
+      # where possible). Each share is read-only on its own too; the mount needs rw only while some
+      # share is rw (the files.drive.access tool). That tool answers the step when the two differ:
+      # set VYRE_DRIVE_ACCESS=rw (or back to ro) in /srv/vyre/.env, then run docker compose up -d.
       - vyre-work:/work:${VYRE_DRIVE_ACCESS:-ro}
     ports:
       # The onboarding page, on host loopback only. Reach it with
