@@ -10,7 +10,7 @@
 // and no Watch (a Mac thread is read here, never driven: js/machine.js). A paired Mac that is away
 // shows as one quiet chip in Working's head, from link.macs, read each time Working redraws.
 
-import { h, put, link, head, empty } from "../js/dom.js";
+import { h, put, link, head, empty, isPhone } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
@@ -26,7 +26,7 @@ import { phoneNow } from "../js/now-phone.js";
 import { sessionHref, elsewhere } from "../js/need-rows.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
-const phone = () => matchMedia("(max-width: 760px)").matches;
+const phone = () => isPhone();
 
 /** @param {any} ctx */
 export default async function now(ctx) {

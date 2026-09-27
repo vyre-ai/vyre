@@ -14,7 +14,7 @@
 // watchers (watchers.list per agent, read on load and on each return, never polled). The layout
 // is picked at render and redrawn when the width crosses 760 px; the desktop list is unchanged.
 
-import { h, put, link, head, empty } from "../js/dom.js";
+import { h, put, link, head, empty, PHONE_QUERY } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
@@ -40,7 +40,6 @@ const threadHref = (thread, project) => project ? `/projects/${encodeURIComponen
 const agentHref = name => `/agents/${encodeURIComponent(name)}`;
 const glassHref = name => `/agents/${encodeURIComponent(name)}/glass`;
 const why = err => err?.missing ? `The ${err.module} module is not running on this machine.` : String(err?.message || err || "");
-const PHONE = "(max-width: 760px)";
 const clip = (s, n) => { const t = String(s ?? ""); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
 /** @param {any} ctx */
@@ -84,7 +83,7 @@ async function list(ctx) {
   const rows = h("section", { class: "ag-list", "aria-labelledby": "ag-list-h" });
   // No assistant yet: the card to make one comes before everything else on the page.
   const setup = h("div", { class: "ag-setup" });
-  const mq = matchMedia(PHONE);
+  const mq = matchMedia(PHONE_QUERY);
   const root = h("div", { class: "ag" + (mq.matches ? " ag-phone" : "") }, h("div", { class: "ag-col" },
     h("div", { class: "ag-top" }, h("div", { class: "ag-top-text" }, title, sub), newBtn),
     setup, form, rows));
@@ -276,7 +275,7 @@ function phonePage(ctx, getWorld, getAll, openNew, form) {
 
   /** Listen while the page is on screen and a console is drawn; otherwise not at all. */
   function live() {
-    const want = matchMedia(PHONE).matches && shown() && consoles.size > 0;
+    const want = matchMedia(PHONE_QUERY).matches && shown() && consoles.size > 0;
     if (want && !offs.length) offs = [on("thread.tool", onTool), on("thread.text", onText)];
     else if (!want && offs.length) for (const f of offs.splice(0)) f();
   }

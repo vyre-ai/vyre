@@ -9,6 +9,8 @@
 //   watchKeyboard()   once, from pwa.start()
 //   kbInset(h, vv)    the pure math, for tests
 
+import { isPhone } from "./dom.js";
+
 /**
  * The keyboard's inset: what the visual viewport lost at the bottom of the layout viewport.
  * 0 when there is no visualViewport or the page is pinch zoomed (the height then says the zoom).
@@ -33,7 +35,7 @@ export function watchKeyboard(win = window) {
   const vv = win.visualViewport;
   if (!vv) return () => {};
   const doc = win.document, root = doc.documentElement;
-  const phone = () => win.matchMedia?.("(max-width: 760px)").matches;
+  const phone = () => isPhone(win);
   let kb = 0, frame = 0, on = false;
 
   const apply = () => {

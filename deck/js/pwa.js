@@ -12,7 +12,7 @@
 // visibility change, and on the first tap or key after a minute without a report. No timer.
 // It also starts the keyboard inset (js/keyboard.js), so a field on a phone is never under the keys.
 
-import { h, put, go } from "./dom.js";
+import { h, put, go, isPhone } from "./dom.js";
 import { attempt, call, reachable } from "./api.js";
 import { surfaceId } from "../glass/util.js";
 import { icon } from "./icons.js";
@@ -27,7 +27,7 @@ const session = (() => { try { return window.sessionStorage; } catch { return nu
 export const standalone = () => /** @type {any} */ (navigator).standalone === true || matchMedia("(display-mode: standalone)").matches;
 /** iPhone or iPad Safari, where install is Share, then Add to Home Screen, and push needs it installed. */
 export const ios = () => /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes("Macintosh") && navigator.maxTouchPoints > 1);
-const phone = () => matchMedia("(max-width: 760px)").matches;
+const phone = () => isPhone();
 
 /** Paths worth reopening. Onboarding and a one-off search are not. */
 const keep = (/** @type {string} */ p) => !/^\/(onboard|find|ask)\b/.test(p);
@@ -62,7 +62,10 @@ function seen(visible) {
   seenAt = Date.now();
   // Hidden: the page may be going away, so the request is sent to outlive it.
   // standalone: the app runs installed, which `vyre phone add` ticks off (the box says so once per 10 minutes per surface).
-  call("push.seen", { surface: surfaceId(), visible, standalone: standalone() }, { keepalive: !visible }).catch(() => {});
+  // device: this app's push device (phone-setup.js keeps it), so `vyre phone add` knows which phone opened installed.
+  let device = null;
+  try { device = store?.getItem("vyre.push.device") || null; } catch {}
+  call("push.seen", { surface: surfaceId(), visible, standalone: standalone(), ...(device ? { device } : {}) }, { keepalive: !visible }).catch(() => {});
 }
 
 /** Launch, visibility changes, and input after a quiet minute. Listeners only, all passive. */

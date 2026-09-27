@@ -84,6 +84,63 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - apps.targets for Slack lists live channels (#name) and real people (no bots, no deactivated
   accounts). "Which app?" offers Slack as an app Vyre sends through only when a Slack server is
   in the hub.
+#### /pair: finishing `vyre phone add --tailscale-only` on the phone
+
+- A new Deck route, /pair, on one screen: the code the laptop shows (XXXX-XXXX, dash optional)
+  and Add passkey, Turn on notifications, and on iPhone "Share, then Add to Home Screen". Each
+  row says to do, done, or failed with the reason. Below, the laptop's five checks, read-only,
+  moved by events (push.delivered for this device, presence.enrolled), never a timer.
+- `push.seen` takes an optional `device` (at most 40 characters) and carries it in the push.seen
+  event; the Deck sends the push device it keeps in localStorage "vyre.push.device".
+
+#### Sign in on this device: the Deck's side of person sessions
+
+- A box that answers `person_session_required` (a tailnet browser with no `__Host-vyre_person`
+  cookie) now gets a sheet, "Sign in on this device": one passkey tap runs
+  `presence.person.start` and the call that asked goes again exactly once. "Not now" fails it as
+  before. Two calls at once share one sheet. deck/js/person.js; the hook in deck/js/api.js is
+  `setPersonHandler`, installed by app.js. A box without person sessions never asks.
+- Settings, Security: "Signed-in devices" from `presence.person.sessions` (browser or app, when
+  signed in and last used, "This device"), a Revoke for each and "Sign out here"
+  (POST /v1/person/end). Shows nothing on a box without the tool.
+- After a passkey is made on this device (Settings, the phone card, the first-passkey page), the
+  Deck signs in once too, quietly, when the box has `presence.person.status`.
+- The line under Send adds "confirmed 6 min ago" when the item's presence carries `since`.
+
+#### The Deck's palette comes from the generated tokens
+
+- The Deck, onboarding and the passkey page link /css/tokens.css (made by scripts/gen-tokens from
+  docs/design/one-app/tokens.json) before deck.css, and the service worker keeps it at install.
+  deck.css no longer keeps its own copy of the roles tokens.css defines (--bg, --panel, --hover,
+  --rule, --rule-strong, --text, --text-2, --label, --primary-*, --focus, --signal-wash,
+  --beacon-ink, --beacon-dot, --beacon-badge-ink, --code-bg, --mark-dot, --sans, --mono), and
+  --light-top is the tokens' --float.
+- The Deck now matches the app where the two differed: the paper hover is #EEEAE2, code blocks are
+  #121110 (dark) and #F0EDE5 (paper), and the paper panel shadow is the app's. THEME_COLORS in
+  core/config/theme.js follows.
+- deck.css keeps what has no token yet: the swatches some drawings use in both themes (--graphite,
+  --carbon, --raised, --ash, --stone, --bone, --signal, --signal-hover, --signal-ink, --beacon),
+  recall (--recall, --recall-wash, --recall-ink), --beacon-wash, --beacon-rule, --popover and the
+  radii.
+- Config's theme.colors still wins: /theme.css loads last under the same selectors, and a dark
+  swatch override (graphite, bone, signal and the rest) is also written to the roles it used to
+  drive, unless config names the role itself.
+- deck/test/tokens.test.js checks the link order, the SW list, that every colour var() in deck.css
+  is defined, that deck.css does not redeclare a token, and that tokens.css is current. The
+  palette test in core/config no longer needs its todo.
+
+#### A phone turned sideways keeps the phone layout
+
+- Every phone media query in the Deck's CSS is now `(max-width: 760px), (max-height: 500px) and
+  (pointer: coarse)`: narrow windows and short, wide touch screens get the phone shell, a short
+  desktop window keeps the desk. The few desk-only blocks (min-width: 761px) use the matching
+  complement, so the two never overlap or leave a gap.
+- The JS asks the same question in one place: `PHONE_QUERY` and `isPhone()` in deck/js/dom.js,
+  used by the shell's rotation listener, the keyboard watcher, pwa.js, phone setup and the Now,
+  Needs, Memory, Find and Agents views. Sideways, the shell, the Capsule and sheets keep clear of
+  the notch with the left and right safe-area insets.
+- deck/test/pwa.test.js checks that no CSS file under deck/ keeps a bare 760px phone query and
+  that the JS takes the helper from dom.js.
 
 #### vyred serves the one app at /app/, with its own service worker and manifest
 

@@ -14,7 +14,7 @@
 //   ctx.alive()  false once the user has left, for guarding late async work
 // Views never touch the shell; they reach vyred only through js/api.js.
 
-import { h, put, link, go, back, empty } from "./dom.js";
+import { h, put, link, go, back, empty, isPhone, PHONE_QUERY } from "./dom.js";
 import { attempt, on, fromFixtures, fixturesOn } from "./api.js";
 import { icon, mark, wordmark } from "./icons.js";
 import * as needs from "./needs.js";
@@ -25,6 +25,7 @@ import "./phone-setup.js";
 import { isMac, machineChip } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
+import { installPersonHandler } from "./person.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -52,6 +53,8 @@ const ROUTES = [
   ["/planner", "planner"],
   // A planner push notification opens /planner/<firing> (ADR 0025).
   ["/planner/:firing", "planner"],
+  // `vyre phone add --tailscale-only` points the phone here (views/pair.js).
+  ["/pair", "pair"],
 ];
 const PLACES = [
   { href: "/now", label: "Now", icon: "now", view: "now" },
@@ -269,7 +272,7 @@ function drop(/** @type {string} */ key) {
   p.page.remove();
 }
 
-const phone = () => matchMedia("(max-width: 760px)").matches;
+const phone = () => isPhone();
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---- the phone's modes ----------------------------------------------------------------------
@@ -278,7 +281,7 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 // "pushed": any other address, slid in from the right over the pager with a back chevron (or the
 //   view's own back, see OWN_BACK), no labels and no Capsule.
 // "find": the Capsule opened, a full-height sheet risen from the bottom, no header and no Capsule.
-// "desk": wider than 760 px; none of the above applies.
+// "desk": not the phone layout (wider than 760 px, and not a sideways phone); none of the above applies.
 
 /** Pushed screens that draw their own back control, so the shell's back row stays out of the way. */
 function ownBack(/** @type {string} */ name, /** @type {Record<string, string>} */ params) {
@@ -582,8 +585,8 @@ const edgeEnd = (/** @type {TouchEvent} */ e) => {
 view.addEventListener("touchend", edgeEnd, { passive: true });
 view.addEventListener("touchcancel", edgeEnd, { passive: true });
 
-// Crossing 760 px (a rotation, a window resize): the three pages move into or out of the pager.
-matchMedia("(max-width: 760px)").addEventListener("change", () => {
+// Crossing into or out of the phone layout (a rotation, a window resize): the three pages move into or out of the pager.
+matchMedia(PHONE_QUERY).addEventListener("change", () => {
   for (const [k, p] of pages) place(k, p.page);
   route();
 });
@@ -647,10 +650,12 @@ async function warm() {
 
 /** Each view has its own stylesheet, css/views/<name>.css, added once, before it first renders. */
 const styled = new Map();
+/** A view whose stylesheet has another name (css/pair.css is the Mac pairing card's). */
+const CSS_NAME = { pair: "pair-phone" };
 function style(name) {
   if (name === "missing") return Promise.resolve();
   if (!styled.has(name)) styled.set(name, new Promise(resolve => {
-    const l = h("link", { rel: "stylesheet", href: `/css/views/${name}.css` });
+    const l = h("link", { rel: "stylesheet", href: `/css/views/${CSS_NAME[name] || name}.css` });
     l.addEventListener("load", resolve);
     l.addEventListener("error", resolve);
     document.head.append(l);
@@ -665,6 +670,8 @@ window.addEventListener("deck:navigate", route);
 // for it at most a moment and never leaves the phone on a blank screen: a late answer that says
 // there is no owner yet still sends the page to the onboarding.
 (async () => {
+  // A box that asks for a person session gets a sign-in sheet, and the call goes again once.
+  installPersonHandler();
   const status = attempt("onboard.status");
   const first = await Promise.race([status, new Promise(r => setTimeout(r, 800, null))]);
   const toOnboard = (/** @type {any} */ st) => st?.data && st.data.owner === false && !fixturesOn;

@@ -289,10 +289,11 @@ export default {
         return { ...settings(), quiet_now: isQuiet(settings().quiet) };
       });
 
-    tool("push.seen", "A person is using this screen: call it when the screen is shown, when it is hidden, and on the first input after a minute of none. Asks, drafts and watches wait until 3 minutes after the last call; planner rings do not. standalone: the app runs installed (emits push.seen at most once per surface in 10 minutes).",
-      { type: "object", properties: { surface: { type: "string", maxLength: 80 }, visible: { type: "boolean" }, standalone: { type: "boolean" } } },
+    tool("push.seen", "A person is using this screen: call it when the screen is shown, when it is hidden, and on the first input after a minute of none. Asks, drafts and watches wait until 3 minutes after the last call; planner rings do not. standalone: the app runs installed (emits push.seen at most once per surface in 10 minutes). device: this screen's push device id (push.subscribe's answer), carried in the event.",
+      { type: "object", properties: { surface: { type: "string", maxLength: 80 }, visible: { type: "boolean" }, standalone: { type: "boolean" }, device: { type: "string", maxLength: 40 } } },
       async i => {
         if (i.surface !== undefined && String(i.surface).length > 80) throw new Error("surface is at most 80 characters");
+        if (i.device !== undefined && (typeof i.device !== "string" || i.device.length > 40)) throw new Error("device is a string of at most 40 characters");
         lastUse = testHooks.now();
         if (i.standalone === true) {
           const surface = i.surface === undefined ? "" : String(i.surface);
@@ -301,7 +302,7 @@ export default {
             seenEvents.delete(surface);
             seenEvents.set(surface, lastUse);
             while (seenEvents.size > RECEIPTS_MAX) seenEvents.delete(seenEvents.keys().next().value);
-            ctx.events.emit("push.seen", { surface: surface || null, standalone: true });
+            ctx.events.emit("push.seen", { surface: surface || null, standalone: true, ...(i.device ? { device: i.device } : {}) });
           }
         }
         return { ok: true };

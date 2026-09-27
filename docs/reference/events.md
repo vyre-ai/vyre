@@ -249,7 +249,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 | Event | Fields |
 | --- | --- |
 | `push.delivered` | `device`, `receipt` |
-| `push.seen` | `standalone`, `surface` |
+| `push.seen` | `standalone`, `surface`; sometimes `device` |
 | `push.subscribed` | `device`, `label`, `service` |
 
 ## recall

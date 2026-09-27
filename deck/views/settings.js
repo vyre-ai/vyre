@@ -15,6 +15,7 @@ import { attempt, modules, canProve } from "../js/api.js";
 import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
+import { personStatus, signOutHere } from "../js/person.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
@@ -805,7 +806,9 @@ async function drawNotifications(el, ctx) {
  * shared with the phone's setup card.
  */
 function drawSecurity(el, ctx) {
-  if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet.")); return; }
+  const signedIn = h("div");
+  drawSignedIn(signedIn, ctx);
+  if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet."), signedIn); return; }
   const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "one-time-code", spellcheck: "false",
     autocapitalize: "off", placeholder: "from vyre presence code, on the box" }));
   const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: deviceName() }));
@@ -836,8 +839,48 @@ function drawSecurity(el, ctx) {
     h("div", { class: "rows" },
       row("Code", codeIn),
       row("Name this device", nameIn)),
-    foot(btn), st);
+    foot(btn), st, signedIn);
   drawKeys();
+}
+
+/**
+ * Signed-in devices (person sessions): every browser and app signed in as you, when, and a
+ * Revoke for each; "Sign out here" ends this one. A box without person sessions shows nothing.
+ * Revoking asks no passkey unless this box still wants one (presence "asked").
+ */
+function drawSignedIn(el, ctx) {
+  const draw = async () => {
+    const me = await personStatus();
+    if (!ctx.alive()) return;
+    await optional(el, "Signed-in devices", "presence.person.sessions", d => {
+      const list = Array.isArray(d.sessions) ? d.sessions : [];
+      const st = status();
+      const rows = list.map(x => {
+        const here = !!me?.id && x.id === me.id;
+        const btn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm", "data-act": "revoke", onclick: async () => {
+          btn.disabled = true;
+          const r = await attempt("presence.person.revoke", { id: x.id }, { presence: "asked" });
+          if (!ctx.alive()) return;
+          if (r.error) { btn.disabled = false; put(st, errText(r.error)); return; }
+          if (here) { location.reload(); return; }
+          draw();
+        } }, "Revoke"));
+        return h("div", { class: "set-list-row", "data-session": x.id },
+          h("span", null, x.label || x.node || "A device",
+            h("span", { class: "small faint" }, `  ${x.kind === "bearer" ? "app" : "browser"}`),
+            here ? h("span", { class: "small" }, "  This device") : null),
+          h("div", { class: "small faint" }, `Signed in ${when(x.created)}`, x.last_used ? `, last used ${since(x.last_used)} ago` : ", not used yet"),
+          btn);
+      });
+      return [h("div", { class: "rows" }, row("Signed-in devices",
+        rows.length ? h("div", { class: "set-list" }, rows) : h("span", { class: "muted" }, "None yet."))),
+        me?.signed ? foot(h("button", { type: "button", class: "btn btn-sm", "data-act": "sign-out", onclick: () => signOutHere() }, "Sign out here")) : null,
+        st];
+    });
+  };
+  ctx.on("presence.signed-in", draw);
+  ctx.on("presence.signed-out", draw);
+  return draw();
 }
 
 // ---- 8. Modules ----------------------------------------------------------------------------

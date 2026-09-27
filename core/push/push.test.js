@@ -408,10 +408,10 @@ test("push: live checks for `vyre phone add`: push.subscribed, a test receipt po
   await deck("push.seen", { surface: "deck:a1", visible: true, standalone: false });
   await deck("push.seen", { surface: "deck:a1", visible: true, standalone: true });
   await deck("push.seen", { surface: "deck:a1", visible: false, standalone: true });
-  await deck("push.seen", { surface: "deck:b2", visible: true, standalone: true });
+  await deck("push.seen", { surface: "deck:b2", visible: true, standalone: true, device });
   await until(() => events("push.seen").length === 2, "two push.seen");
   await sleep(100);
-  assert.deepEqual(events("push.seen").map(e => e.payload), [{ surface: "deck:a1", standalone: true }, { surface: "deck:b2", standalone: true }]);
+  assert.deepEqual(events("push.seen").map(e => e.payload), [{ surface: "deck:a1", standalone: true }, { surface: "deck:b2", standalone: true, device }], "the device rides along when sent");
   testHooks.now = () => Date.now() + 10 * 60_000;
   await deck("push.seen", { surface: "deck:a1", visible: true, standalone: true });
   await until(() => events("push.seen").length === 3, "again after 10 minutes");

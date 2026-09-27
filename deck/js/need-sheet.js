@@ -18,7 +18,7 @@ import { openSheet, closeGlyph } from "./sheet.js";
 import * as needs from "./needs.js";
 import { form, gateFields } from "./editable.js";
 import { pairCard } from "./pair.js";
-import { initial, clock } from "./fmt.js";
+import { initial, clock, since } from "./fmt.js";
 import { coveredUntil } from "./api.js";
 import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questionAnswers, pushTarget, elsewhere } from "./need-rows.js";
 
@@ -169,13 +169,15 @@ const projectName = (/** @type {any} */ n, /** @type {string} */ slug) => (n.pro
 /**
  * The quiet line under Send while a presence session covers this device: "Face ID covers sends
  * until 14:32", or nothing. The box's word on the item wins (js/api.js coveredUntil).
- * @param {any} presence the item's {required, covered} @param {string} word presenceWord() @param {number} [now]
+ * @param {any} presence the item's {required, covered, since} @param {string} word presenceWord() @param {number} [now]
  */
 export function coverLine(presence, word, now = Date.now()) {
   const until = coveredUntil(presence);
   if (!until || until <= now) return "";
   const who = /^(passkey|fingerprint)$/.test(word) ? `Your ${word}` : word;
-  return `${who} covers sends until ${clock(until)}`;
+  // presence.since: when the person last proved it on this box, where the box says.
+  const ago = typeof presence?.since === "number" && presence.since <= now ? `, confirmed ${since(presence.since, now)} ago` : "";
+  return `${who} covers sends until ${clock(until)}${ago}`;
 }
 
 /** @param {any} n @param {Opts} o @param {{ close: () => void, actions: HTMLElement, body: HTMLElement }} c @param {(() => void)[]} offs */
