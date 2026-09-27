@@ -48,12 +48,12 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   - `team.done`/`team.fail`'s `request` is optional and defaults to the caller's one running
     request (a teammate only ever has one). The ADR's wrapped `<vyre-request id="...">` still
     carries the id for a teammate that wants to be explicit; this just means it never has to be.
-- Not yet built: notes-changed enforcement on `team.done`, compaction re-injection (step 2; see
-  "Steps 2/3" below for rotation, now built); the in-process MCP server and `@role` routing (step
-  3; summon through `vyre mcp` and result injection are built, see below); worktrees and the
-  integrator (step 4); sharing (`team.share`, per-project notes parts/grants, step 5); the Agents
-  place tabs and Needs rows (step 6); `team.propose`, role templates, project setup (step 7);
-  offering today's single-project agents conversion (step 8); `using/teammates.md` and the
+- **Step 2 is complete** (notes-changed enforcement, compaction re-injection, rotation — see
+  "Steps 2/3" and "Next" below). **Step 3's summon and result injection are verified** (below);
+  the in-process MCP server and `@role` routing wait on ADR 0030 phase 3. Not yet built: worktrees
+  and the integrator (step 4); sharing (`team.share`, per-project notes parts/grants, step 5); the
+  Agents place tabs and Needs rows (step 6); `team.propose`, role templates, project setup (step
+  7); offering today's single-project agents conversion (step 8); `using/teammates.md` and the
   reference pages (step 9, the CLI/tools reference already regenerates itself).
   `team.cancel` only cancels a queued request for step 1 (a running one needs a person, and
   refuses naming what to do instead: stop the teammate's session, or `team.fail` from inside it).
@@ -142,10 +142,32 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
      caught by one of the two listeners), not one a timing-based test would strengthen.
    17/17 team tests green (stable over repeat runs, Mac and testbox both), 22/22 with boundaries
    on testbox, 61/61 docs.
-4. Left from step 2: notes-changed enforcement on `team.done` (refuse to close an item when the
-   notes hash has not changed, unless `notes: "unchanged"` with a reason), compaction re-injection
-   (the SessionStart hook, source `compact`, re-injecting notes and the current item). Doing this
-   next per the lead (2026-09-28).
+4. **Step 2 is complete** (2026-09-28, sha pending commit): notes-changed enforcement on
+   `team.done`, and compaction re-injection.
+   - `team.done` now refuses to close a request when the teammate's notes hash has not changed
+     since the request started (recorded on dispatch: `team_requests.notes_hash_at_start`), unless
+     `notes: "unchanged"` is given with a `reason`. `team.fail` is unaffected (a failure needs no
+     notes update). New tests: the refusal, then writing notes and closing successfully in the
+     same turn (using the fake driver's new multi-call-per-turn support, below); and the
+     `notes: "unchanged"` override closing a request that genuinely needed nothing written down.
+   - Compaction re-injection listens for harness's own `thread.started` event (the SessionStart
+     hook, `harness.brief`) with `source: "compact"`: no change to core/harness itself, since the
+     event bus is exactly how a module learns about another without a `requires` or an import.
+     When the session is a teammate's own thread with a request still running, its notes (via
+     `rotationContext`, the same nonce'd/neutralized/capped block rotation uses, minus the recent
+     results, since it is mid-item already) and the current request go back into that thread with
+     `threads.post {kind: "compact-reinject"}` — the same channel a result reaches a caller by.
+     New test: bind a real thread the way its own SessionStart hook would, call `harness.brief`
+     with `source: "compact"` directly, and check the notes and request text actually posted.
+   - `core/switchboard/testing/fake-claude.js` (test-only): a `"vyre <tool> <json>"` line found
+     after the first (not only at the very start) is now its own call, and every such line in one
+     prompt runs in order — a teammate trying something, reacting to a refusal, and trying again,
+     all in one turn, the way a real model would. Unchanged for the one-line and "at the start"
+     cases. Every existing `team.done` call in the test's fake-driver scripts now carries
+     `notes: "unchanged"` unless it is the point of the test, since none of them wrote notes first.
+   20/20 team tests green (stable over repeat runs, Mac and testbox both), 70/70 with boundaries
+   and switchboard on testbox, 61/61 docs. Verified the notes-changed test catches a real
+   regression (removed the check, ran red, restored).
 5. Left from step 3: the in-process MCP server (`@role` routing) once ADR 0030 phase 3 lands.
 
 ## e2e review round 1 (2026-09-28, f8cbc882)

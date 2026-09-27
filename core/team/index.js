@@ -46,6 +46,9 @@ export const MIGRATIONS = [
      text TEXT NOT NULL, hash TEXT NOT NULL, size INTEGER NOT NULL, by TEXT NOT NULL, at INTEGER NOT NULL
    );
    CREATE INDEX team_notes_teammate ON team_notes (teammate, part, at);`,
+  // The teammate's notes hash when a request started running, so team.done can refuse to close
+  // it when nothing has been written down since (ADR 0031 section 3).
+  `ALTER TABLE team_requests ADD COLUMN notes_hash_at_start TEXT`,
 ];
 
 const NAME = /^[a-z][a-z0-9-]{0,30}$/;
@@ -132,6 +135,7 @@ export default {
 
     const byAgent = agent => shapeT(db.prepare("SELECT * FROM team_teammates WHERE agent = ?").get(agent));
     const byRole = (project, role) => shapeT(db.prepare("SELECT * FROM team_teammates WHERE project = ? AND role = ?").get(project, role));
+    const byThread = thread => shapeT(db.prepare("SELECT * FROM team_teammates WHERE thread = ?").get(thread));
     /** Every teammate a project may summon: its own, plus any shared with it or with everyone ("*"). */
     const serving = project => db.prepare("SELECT * FROM team_teammates").all().map(shapeT)
       .filter(tm => tm.project === project || tm.shared === "*" || (Array.isArray(tm.shared) && tm.shared.includes(project)));
@@ -302,7 +306,10 @@ export default {
           if (!tm || tm.current_request) return;
           const req = next(agent);
           if (!req) { setTeammate(agent, { state: tm.thread ? "idle" : "asleep" }); return; }
-          db.prepare("UPDATE team_requests SET state = 'running', started_at = ? WHERE id = ?").run(Date.now(), req.id);
+          // Recorded now, not read again until team.done: what the notes looked like when this
+          // item started, so team.done can tell whether anything was written down since.
+          db.prepare("UPDATE team_requests SET state = 'running', started_at = ?, notes_hash_at_start = ? WHERE id = ?")
+            .run(Date.now(), hash(noteCurrent(agent, "general")), req.id);
           setTeammate(agent, { current_request: req.id, state: "working" });
           ctx.events.emit("summon.started", { request: req.id, teammate: agent, project: req.project });
           let slot;
@@ -496,12 +503,22 @@ export default {
     };
 
     ctx.tool("team.done", {
-      description: "The teammate itself closes its running request with a result. request may be left out; it defaults to the teammate's one running request. Never callable for another teammate's request.",
-      input: { type: "object", required: ["result"], properties: { request: { type: "string" }, result: { type: "string" }, result_refs: { type: "array", items: { type: "string" } } } },
+      description: "The teammate itself closes its running request with a result. request may be left out; it defaults to the teammate's one running request. Refused if the notes have not changed since the request started, unless notes: \"unchanged\" is given with a reason (a request that genuinely needed none). Never callable for another teammate's request.",
+      input: { type: "object", required: ["result"], properties: { request: { type: "string" }, result: { type: "string" }, result_refs: { type: "array", items: { type: "string" } },
+        notes: { type: "string", enum: ["unchanged"] }, reason: { type: "string" } } },
       // Closes the request only. The next one is dispatched once this turn actually ends (the
       // thread.finished listener pump() set up), not from here: this tool runs mid-turn.
       run: async (i, meta) => {
         const r = ownRunning(meta, i.request);
+        if (i.notes === "unchanged") {
+          if (!i.reason) throw Object.assign(new Error("notes: \"unchanged\" needs a reason (why this request needed nothing written down)"), { code: "bad_input" });
+        } else {
+          const row = /** @type {any} */ (db.prepare("SELECT notes_hash_at_start FROM team_requests WHERE id = ?").get(r.id));
+          const started = row && row.notes_hash_at_start;
+          if (started != null && hash(noteCurrent(r.teammate, "general")) === started) {
+            throw Object.assign(new Error("your notes have not changed since this request started; update them before closing it (team.notes), or pass notes: \"unchanged\" with a reason"), { code: "denied" });
+          }
+        }
         return finish(r, "done", { result: i.result, result_refs: i.result_refs || [] });
       },
     });
@@ -550,6 +567,28 @@ export default {
       },
     });
 
-    return { async stop() {} };
+    // Compaction re-injection (ADR 0031 section 3): Claude Code's own compaction clears a
+    // session's context of everything before it, notes included. harness.brief is vyred's
+    // SessionStart hook; it emits thread.started with the hook's own `source` (never a tool
+    // team owns, so this is a listener, not a requires: the event bus is exactly how modules
+    // learn about each other without importing one another). When `source` is "compact" and the
+    // session is a teammate's own thread with a request still running, its notes and that
+    // request are put back, the same way a result reaches a caller (threads.post), so what
+    // survives compaction is what the teammate wrote down, not what it remembers saying.
+    const offCompact = ctx.events.on("thread.started", async e => {
+      const source = e.payload && e.payload.source, session = e.payload && e.payload.session;
+      if (source !== "compact" || !session) return;
+      const tm = byThread(session);
+      if (!tm || !tm.current_request) return;
+      const req = reqById(tm.current_request);
+      if (!req || req.state !== "running") return;
+      const notes = noteCurrent(tm.agent, "general");
+      const carry = rotationContext(notes, []);
+      const reminder = `${carry ? carry + "\n\n" : ""}Compaction just cleared your context of everything before this. Your current request:\n<vyre-request id="${attr(req.id)}" from="${attr(req.from)}" priority="${req.priority}">\n${neutralize(req.text)}${req.refs.length ? `\nFiles: ${req.refs.map(attr).join(", ")}` : ""}\n</vyre-request>`;
+      try { await ctx.call("threads.post", { thread: session, text: reminder, kind: "compact-reinject", from: tm.agent }); }
+      catch (e2) { ctx.log?.(`team: could not re-inject notes into ${session} after compaction: ${/** @type {Error} */ (e2).message}`); }
+    });
+
+    return { async stop() { offCompact(); } };
   },
 };

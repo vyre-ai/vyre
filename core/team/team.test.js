@@ -93,7 +93,7 @@ test("a request runs, the teammate closes it with team.done, and the result come
   const { tool, project } = await boot(t);
   await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
   const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true,
-    text: 'vyre team.done {"result":"Split the form into 4 steps of 3 to 5 fields."}' });
+    text: 'vyre team.done {"result":"Split the form into 4 steps of 3 to 5 fields.","notes":"unchanged","reason":"test"}' });
   assert.equal(ask.state, "done");
   assert.match(ask.result, /4 steps/);
   const status = await tool("team.status", { request: ask.request });
@@ -128,7 +128,7 @@ test("team.done is refused for another teammate's request, and for one that is n
   const { root, tool, project } = await boot(t);
   await tool("team.add", { project: project.slug, role: "design" });
   await tool("team.add", { project: project.slug, role: "backend" });
-  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"ok"}' });
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
   assert.equal(ask.state, "done");
   // Called plainly (no agent key), team.done has no teammate to default to.
   const r = await call("team.done", { request: ask.request, result: "again" }, { root, caller: "mcp", timeout: 20_000 });
@@ -146,8 +146,8 @@ test("priority: urgent runs before normal and low queued ahead of it", async t =
   // that is not what this test is about.
   const first = await tool("team.ask", { to: "design", project: project.slug, priority: "normal", text: "subagent-slow hold this turn open" });
   await until(async () => (await tool("team.status", { request: first.request })).state === "running", "the first request to be picked");
-  const low = await tool("team.ask", { to: "design", project: project.slug, priority: "low", text: 'vyre team.done {"result":"low"}' });
-  const urgent = await tool("team.ask", { to: "design", project: project.slug, priority: "urgent", text: 'vyre team.done {"result":"urgent"}' });
+  const low = await tool("team.ask", { to: "design", project: project.slug, priority: "low", text: 'vyre team.done {"result":"low","notes":"unchanged","reason":"test"}' });
+  const urgent = await tool("team.ask", { to: "design", project: project.slug, priority: "urgent", text: 'vyre team.done {"result":"urgent","notes":"unchanged","reason":"test"}' });
   assert.equal(low.state, "queued");
   assert.equal(urgent.state, "queued");
   await until(async () => (await tool("team.status", { request: first.request })).state !== "running", "the first request to finish", 8_000);
@@ -247,7 +247,7 @@ test("rotation: a 7-day-old thread is retired; the fresh one carries the teammat
   const { tool, root, project, launches } = await boot(t);
   const tm = await tool("team.add", { project: project.slug, role: "design" });
   await tool("team.notes", { action: "set", agent: tm.agent, text: "Scope: the intake form." });
-  const first = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"first pass done"}' });
+  const first = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"first pass done","notes":"unchanged","reason":"test"}' });
   assert.equal(first.state, "done");
 
   const db = openStore(paths(root).db);
@@ -258,7 +258,7 @@ test("rotation: a 7-day-old thread is retired; the fresh one carries the teammat
   db.prepare("UPDATE threads_runs SET started_at = ? WHERE id = ?").run(Date.now() - 8 * 24 * 60 * 60 * 1000, before);
   db.close();
 
-  const second = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"after rotation"}' });
+  const second = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"after rotation","notes":"unchanged","reason":"test"}' });
   assert.equal(second.state, "done");
 
   const db2 = openStore(paths(root).db);
@@ -295,12 +295,12 @@ test("rotation's context: notes and results are wrapped, nonce'd, capped, and an
 test("rotation: a thread well under the age and turn thresholds is resumed, not retired", async t => {
   const { tool, root, project } = await boot(t);
   const tm = await tool("team.add", { project: project.slug, role: "design" });
-  const first = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"first"}' });
+  const first = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"first","notes":"unchanged","reason":"test"}' });
   assert.equal(first.state, "done");
   const db = openStore(paths(root).db);
   const before = /** @type {any} */ (db.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
   db.close();
-  const second = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"second"}' });
+  const second = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"second","notes":"unchanged","reason":"test"}' });
   assert.equal(second.state, "done");
   const db2 = openStore(paths(root).db);
   const after = /** @type {any} */ (db2.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
@@ -332,9 +332,60 @@ test("summon: that same session can team.ask, and the result posts back into its
   const { tool, root, project, launches } = await boot(t);
   await tool("team.add", { project: project.slug, role: "design" });
   const { session } = await realSession(root, tool, launches, project.slug);
-  const ask = await tool("team.ask", { to: "design", wait: true, text: 'vyre team.done {"result":"from a real session"}' }, "cli", { session });
+  const ask = await tool("team.ask", { to: "design", wait: true, text: 'vyre team.done {"result":"from a real session","notes":"unchanged","reason":"test"}' }, "cli", { session });
   assert.equal(ask.state, "done");
   assert.equal(ask.result, "from a real session");
   const status = await tool("team.status", { request: ask.request }, "cli", { session });
   assert.equal(status.reply_to, session.id); // the request is bound to this session's own thread
+});
+
+// --- step 2: notes-changed enforcement and compaction re-injection ------------------------------
+
+test("team.done refuses to close a request when the notes have not changed since it started; writing them lets it through", async t => {
+  const { tool, project } = await boot(t);
+  const tm = await tool("team.add", { project: project.slug, role: "design" });
+  // Every "vyre <tool> <json>" line found after the first, not only at the very start, is its own
+  // call, run in order (fake-claude): a teammate trying team.done, seeing the refusal, writing
+  // its notes, and trying again, all in the one turn a real model would.
+  const script = [
+    'vyre team.done {"result":"trying without notes"}',
+    `vyre team.notes {"action":"set","agent":"${tm.agent}","text":"wrote something down"}`,
+    'vyre team.done {"result":"now it should work"}',
+  ].join("\n");
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: script });
+  assert.equal(ask.state, "done"); // the first, refused call never closed it; the third one did
+  assert.equal(ask.result, "now it should work");
+  const notes = await tool("team.notes", { agent: tm.agent });
+  assert.equal(notes.versions.length, 1);
+});
+
+test("team.done: notes: \"unchanged\" with a reason lets a request close with nothing written down", async t => {
+  const { tool, project } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design" });
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true,
+    text: 'vyre team.done {"result":"nothing to note here","notes":"unchanged","reason":"a status check, nothing learned"}' });
+  assert.equal(ask.state, "done");
+});
+
+test("compaction: a teammate's own SessionStart (source compact) gets its notes and current request back", async t => {
+  const { tool, root, project, launches } = await boot(t);
+  const tm = await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  await tool("team.notes", { action: "set", agent: tm.agent, text: "Scope: keep the form to one page." });
+  // "subagent-slow" holds the turn open long enough to fire the compaction event mid-request, the
+  // way a real compaction would land while a teammate is still working an item; not awaited here,
+  // so the request stays running while this test drives the SessionStart hook by hand.
+  tool("team.ask", { to: "design", project: project.slug, text: "subagent-slow hold this turn open" }).catch(() => {});
+  await until(async () => (await tool("team.list", { project: project.slug }))[0].current_request, "the request to start running");
+  const launch = await until(() => launches()[0], "the teammate's own launch to log");
+  const db = openStore(paths(root).db);
+  const thread = /** @type {any} */ (db.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
+  db.close();
+  await tool("threads.bind", { session: thread, pid: launch.pid }, "harness");
+  await tool("harness.brief", { session: thread, source: "compact" }, "harness"); // the SessionStart hook itself
+  const posted = await until(async () => {
+    const got = await tool("threads.get", { thread });
+    return got.events.find(e => (e.type === "thread.queued" || e.type === "thread.sent") && e.payload.kind === "compact-reinject");
+  }, "the re-injected notes and request");
+  assert.match(posted.payload.text, /Scope: keep the form to one page/);
+  assert.match(posted.payload.text, /Compaction just cleared your context/);
 });

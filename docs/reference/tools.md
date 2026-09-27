@@ -3342,10 +3342,12 @@ Cancel a queued request. A running request is interrupted only by a person (stop
 
 ### `team.done`
 
-The teammate itself closes its running request with a result. request may be left out; it defaults to the teammate's one running request. Never callable for another teammate's request.
+The teammate itself closes its running request with a result. request may be left out; it defaults to the teammate's one running request. Refused if the notes have not changed since the request started, unless notes: "unchanged" is given with a reason (a request that genuinely needed none). Never callable for another teammate's request.
 
 - Input:
   - `result` string, required
+  - `notes` "unchanged"
+  - `reason` string
   - `request` string
   - `result_refs` list of string
 - Callers: any caller

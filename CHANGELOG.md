@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Project teammates, step 2 complete: notes-changed enforcement, compaction re-injection
+
+- `team.done` now refuses to close a request when a teammate's notes have not changed since it
+  started, unless `notes: "unchanged"` is given with a `reason`. Compaction re-injection: on
+  `harness.brief`'s own `thread.started` event with `source: "compact"`, a teammate's notes and
+  its current request go back into that thread, the same way a result reaches a caller
+  (`threads.post`), so what survives Claude Code's own compaction is what was written down, not
+  what the teammate remembers saying. No change to `core/harness` itself: listening for its event
+  needed neither a new contract nor an import.
+- `core/switchboard/testing/fake-claude.js` (test-only): a `"vyre <tool> <json>"` line found after
+  the first is now its own call, and every such line in one prompt runs in order, so a test can
+  script a teammate trying something, reacting to the answer, and trying again, all in one turn.
+
 #### Project teammates: rotation's carried context moves out of the system prompt
 
 - Rotation (steps 2/3, below) carried a teammate's notes and last results in `append`, the system
