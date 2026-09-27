@@ -57,9 +57,11 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Done (5), after logout 3 (the CLI is first-class)
 
-- The CLI's 30-minute window (998c2a1): one Touch ID, Capsule or passkey proof from a login
-  terminal covers that terminal's SESSIONABLE calls (vault reveal/copy/totp/approve/grant,
-  gate.approve) for 30 minutes. No secret on disk: vyred keys the window on the terminal the kernel
+- The CLI's 30-minute window (998c2a1, narrowed by the lead's decision): one Touch ID, Capsule or
+  passkey proof from a login covers that login's vault.approve and vault.grant only
+  (TERMINAL_WINDOWED); reveal/copy/totp/run and gate.approve ask every time (keystroke injection:
+  tmux send-keys, AppleScript; ADR 0004 addendum). Each use: a line on that terminal and a
+  vault_audit row. No secret on disk: vyred keys the window on the terminal the kernel
   names (socket peer pid -> controlling tty -> listed by `who`), after e2e's ancestry check, so
   anything under claude, detached, or in a script pty never rides it. Bound to the login (tty +
   leader pid + start), so a reused tty starts fresh; a tmux pane rides it when every attached

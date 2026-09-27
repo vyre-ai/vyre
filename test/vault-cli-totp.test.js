@@ -61,13 +61,14 @@ function fakeTerminal(start) {
   let t = start;
   /** @type {null | (() => void)} */ let tick = null;
   /** @type {null | (() => void)} */ let quit = null;
+  /** @type {null | undefined | (() => void)} */ let enter = null;
   const writes = [];
   let keyAttaches = 0;
   const io = {
     now: () => t,
     write: s => { writes.push(s); },
     every: (_ms, fn) => { tick = fn; return () => { tick = null; }; },
-    keys: q => { quit = q; keyAttaches++; return () => { quit = null; }; },
+    keys: (q, e) => { quit = q; enter = e; keyAttaches++; return () => { quit = null; enter = null; }; },
   };
   const settle = () => new Promise(r => setImmediate(r));
   return {
@@ -80,6 +81,7 @@ function fakeTerminal(start) {
       for (let i = 0; i < ms / 1000; i++) { t += 1000; if (tick) { tick(); await settle(); await settle(); } }
     },
     press() { if (quit) quit(); },
+    enter() { if (enter) enter(); },
     frame() { const all = plain(writes.join("")); return all.slice(all.lastIndexOf("\r") + 1); },
   };
 }
@@ -93,7 +95,7 @@ test("vault totp live: redraws from the local clock and calls vault.totp once pe
     const now = term.io.now();
     return { data: { code: String(100000 + calls), period: 30, remaining: 30 - (Math.floor(now / 1000) % 30) } };
   };
-  const done = liveTotp({ code: "100000", period: 30, remaining: 10 }, { fetch, io: term.io, paint: false });
+  const done = liveTotp({ code: "100000", period: 30, remaining: 10 }, { fetch, io: term.io, paint: false, auto: true });
   assert.match(term.frame(), /^ {2}100 000 {2}█+░+ 10s$/);
   assert.match(term.writes[0], /\x1b\[\?25l/, "the cursor is hidden while it draws");
 
@@ -120,7 +122,7 @@ test("vault totp live: a 60 s period is honoured, and it stops by itself after f
   const term = fakeTerminal(start);
   let calls = 0;
   const fetch = async () => { calls++; return { data: { code: "654321", period: 60, remaining: 60 - (Math.floor(term.io.now() / 1000) % 60) } }; };
-  const done = liveTotp({ code: "123456", period: 60, remaining: 60 }, { fetch, io: term.io, paint: false, name: "harlow-mail" });
+  const done = liveTotp({ code: "123456", period: 60, remaining: 60 }, { fetch, io: term.io, paint: false, name: "harlow-mail", auto: true });
   await term.advance(30_000);
   assert.match(term.frame(), / 30s$/);
   assert.equal(calls, 0, "30 s into a 60 s period is not a rollover");
@@ -139,7 +141,7 @@ test("vault totp live: a failed fetch ends it with the vault's exit code, and a 
     { error: { code: "locked", message: "the vault is locked" } },
   ];
   let calls = 0;
-  const done = liveTotp({ code: "000000", period: 30, remaining: 1 }, { fetch: async () => answers[calls++], io: term.io, paint: false });
+  const done = liveTotp({ code: "000000", period: 30, remaining: 1 }, { fetch: async () => answers[calls++], io: term.io, paint: false, auto: true });
   await term.advance(1000);
   assert.equal(calls, 1);
   await term.advance(10_000);
@@ -148,6 +150,25 @@ test("vault totp live: a failed fetch ends it with the vault's exit code, and a 
   assert.equal(calls, 2);
   assert.equal(await done, 4);
   assert.match(plain(term.writes.join("")), /locked: the vault is locked/);
+});
+
+test("vault totp live: from a terminal the next code waits for Enter, since each code asks for its own proof", async () => {
+  const term = fakeTerminal(1_800_000_000_000 + 25_000);
+  let calls = 0;
+  const fetch = async () => { calls++; return { data: { code: "222222", period: 30, remaining: 30 - (Math.floor(term.io.now() / 1000) % 30) } }; };
+  const done = liveTotp({ code: "111111", period: 30, remaining: 5 }, { fetch, io: term.io, paint: false });
+  term.enter();
+  assert.equal(calls, 0, "Enter inside a period does nothing");
+  await term.advance(10_000);
+  assert.equal(calls, 0, "no call when the period ends");
+  assert.match(term.frame(), /expired · Enter for a new code \(asks again\) · q quits/);
+  assert.doesNotMatch(term.frame(), /111 111/, "the old code is gone");
+  term.enter();
+  await new Promise(r => setImmediate(r)); await new Promise(r => setImmediate(r));
+  assert.equal(calls, 1);
+  assert.match(term.frame(), /222 222/);
+  term.press();
+  assert.equal(await done, 0);
 });
 
 // ------------------------------------------------------------ the verbs, against vyred

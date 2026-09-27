@@ -9,12 +9,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `vyre needs`: everything waiting on you in one list, held drafts and open asks, newest first,
   each with the command that answers it. `vyre gate` (also `vyre drafts`) lists, shows, approves,
   rejects and revises held drafts; revise opens `$EDITOR` or takes `--text`/`--file`. Approving asks
-  for proof once, then the terminal's 30-minute window covers later approvals.
+  for proof each time (a send is never windowed in a terminal).
 - `vyre threads answer` takes always, `--scope project`, and question answers by `--pick N`,
   `--answer "Q=choice"` or a picker in your terminal, and shows the ask before answering.
 - `vyre vault totp` and `vyre vault get --otp` count down live: the code grouped as "123 456", a
-  seconds-left bar redrawn from the local clock with the item's own period, one vault.totp call
-  per period; q, Esc or Ctrl-C quits, it stops after 5 minutes. `--once`, `--json` or a pipe print
+  seconds-left bar redrawn from the local clock with the item's own period; when it expires the
+  next code waits for Enter, which asks for proof again; q, Esc or Ctrl-C quits, it stops after 5
+  minutes. `--once`, `--json` or a pipe print
   one result. New `vyre vault health`, `breach`, `history <item>`, `revert <item> <version>` and
   `clear-clipboard`.
 - `vyre phone add` walks a phone onto the box as the app-design sheet shows: the address with a
@@ -31,20 +32,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `--json` on `vyre learn` (stats, signals, skills, show, level, scope), `vyre connect`,
   `vyre hooks` and `vyre send`.
 
-#### The CLI gets the same 30-minute window for the vault as the Deck
+#### The CLI gets a 30-minute window for vault approvals and grants
 
-- `vyre vault get --reveal`, copy, one-time codes, approve and grant asked for a proof on every
-  call from a terminal. Now one Touch ID (or a Capsule or passkey proof) from a login terminal
-  covers that terminal's vault.reveal, vault.copy, vault.totp, vault.approve and vault.grant for
-  30 minutes, for items that do not ask every time. Nothing is written to disk: vyred keeps the
-  terminal in memory, named from the kernel (the socket peer's pid, its controlling terminal, and
-  `who`'s login list) and bound to that login's leader and start time, so a new login that
-  reuses the tty number starts with nothing. It is gated on the peer ancestry check, so a process
-  under `claude`, a detached process or a script pty never rides it; a tmux pane rides it only
-  when every client attached to its session runs in such a login with no claude above it. A terminal code proves one call and opens no
-  window. `core/presence/index.js` (`terminal` in verify), `core/daemon/index.js` (atTerminal),
-  `core/daemon/peer.js` (`controllingTty`), `core/modules/index.js`, `docs/concepts/presence.md`,
-  tests in `core/presence/presence.test.js`, `test/presence-cli.test.js`, `test/peer.test.js`.
+- `vyre vault approve` and `vyre vault grant` asked for a proof on every call from a terminal.
+  Now one Touch ID (or a Capsule or passkey proof) from a login covers that login's vault.approve
+  and vault.grant for 30 minutes. Reveals, copies, one-time codes and `vyre run` still ask every
+  time in a terminal: other processes can type into a terminal (tmux send-keys, AppleScript), so
+  a window must not turn that into a silent reveal (ADR 0004 addendum). Each windowed use writes
+  "vyre: used your Touch ID window for ..." to that terminal and a row to `vyre vault audit`.
+  Nothing is written to disk: vyred keys the window on the login the kernel names (the socket
+  peer's pid, its controlling terminal, the login's leader and start time, `who`'s list), after
+  the peer ancestry check, so a new login on a reused tty, anything under `claude`, a detached
+  process or a script pty never rides it; a tmux pane rides it only when every attached client
+  runs in such a login. `core/presence/index.js` (`TERMINAL_WINDOWED`, `windowNotice`),
+  `core/daemon/index.js` (atTerminal), `core/daemon/peer.js` (`loginOf`, `tmuxClients`),
+  `core/vault/index.js` (the audit row), `docs/concepts/presence.md`, `docs/adr/0004-presence.md`.
 
 #### Memory and lesson changes ask nothing; vault sessions cover grants on the Deck; the Mac update line works
 

@@ -19,7 +19,7 @@ import { Registry, discover } from "../modules/index.js";
 import { build } from "./build.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, SESSIONABLE, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, loginOf, tmuxClients } from "./peer.js";
+import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty } from "./peer.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 
@@ -35,7 +35,7 @@ export function moduleRoots(root) {
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
  * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
- *   person?: (socket: import("node:net").Socket) => Promise<string|null> }} [opts] person: a test's stand-in for atTerminal
+ *   person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -204,7 +204,7 @@ async function fromClaude(socket, registry) {
  * it. This is what lets one proof serve the CLI for 30 minutes, as a session serves the Deck (the
  * no-nag rule; the CLI is a first-class surface).
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
- * @returns {Promise<string|null>}
+ * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
 async function atTerminal(socket, registry, presence) {
   if (await fromClaude(socket, registry)) return null;
@@ -212,7 +212,7 @@ async function atTerminal(socket, registry, presence) {
   if (!pid || !presence || typeof presence.who !== "function") return null;
   const logins = await presence.who();
   const login = loginOf(pid);
-  if (login && logins.includes(login.tty)) return login.key;
+  if (login && logins.includes(login.tty)) return { key: login.key, tty: login.tty };
   const clients = tmuxClients(pid);
   if (!clients || !clients.length) return null;
   const r = await registry.call("threads.pids", {}, "module:vyred");
@@ -223,7 +223,7 @@ async function atTerminal(socket, registry, presence) {
     if (!l || !logins.includes(l.tty)) return null;
     keys.push(l.key);
   }
-  return "tmux:" + [...new Set(keys)].sort().join("+");
+  return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid) };
 }
 
 async function route(req, res, { registry, events, cfg, started, streams, root, socket = false, person = null }, /** @type {Policy} */ policy = {}) {

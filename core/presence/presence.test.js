@@ -344,27 +344,35 @@ test("presence: a session covers vault reveal, approve and grant for the Deck an
   }
 });
 
-test("presence: one Touch ID covers the same login terminal's reveals and grants for 30 minutes; nothing else rides it", async t => {
+test("presence: one Touch ID covers the same login's vault approvals and grants for 30 minutes, with a notice; secrets and codes ask each time", async t => {
   const touchid = { available: async () => true, authenticate: async () => ({ ok: true }) };
   const { p, tick, written } = setup(t, { platform: "darwin", touchid });
   const def = { presence: { session: i => !i.reprompt } };
-  const at = { tool: "vault.reveal", input: { name: "bank" }, caller: "cli", def, terminal: "ttys003" };
+  const login = { key: "ttys003#812@Sun Sep 27 09:00:00 2026", tty: "ttys003" };
+  const at = { tool: "vault.grant", input: { name: "mail-token", module: "gate" }, caller: "cli", def, terminal: login };
   assert.equal((await p.verify({ ...at, proof: null })).ok, false, "nothing proved yet");
   // A terminal code proves its one call and opens no window.
-  const c = await p.challenge({ tool: "vault.reveal", input: { name: "bank" }, method: "tty", tty: "/dev/ttys003" });
+  const c = await p.challenge({ tool: "vault.grant", input: at.input, method: "tty", tty: "/dev/ttys003" });
   assert.ok((await p.verify({ ...at, proof: { method: "tty", id: c.challenge, code: codeFrom(written.at(-1).text) } })).ok);
   assert.equal((await p.verify({ ...at, proof: null })).ok, false);
-  assert.equal((await p.verify({ ...at, proof: { method: "touchid" } })).method, "touchid");
-  for (const tool of ["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant"]) {
-    assert.deepEqual(await p.verify({ ...at, tool, input: { name: "mail-token" }, proof: null }), { ok: true, method: "session", keyId: null }, tool);
+  // Touch ID on a reveal opens it; the reveal itself was proved by the touch.
+  assert.equal((await p.verify({ ...at, tool: "vault.reveal", input: { name: "bank" }, proof: { method: "touchid" } })).method, "touchid");
+  const before = written.length;
+  for (const [tool, input] of [["vault.grant", { name: "mail-token", module: "gate" }], ["vault.approve", { id: "g_1" }]]) {
+    assert.deepEqual(await p.verify({ ...at, tool, input, proof: null }), { ok: true, method: "window", keyId: null, where: "ttys003" }, tool);
   }
-  // Another terminal, no terminal, a model or agent label, an item that asks every time, a tool
-  // off the list, or a tool that did not say yes: each still asks.
-  assert.equal((await p.verify({ ...at, terminal: "ttys004", proof: null })).ok, false, "another terminal");
-  assert.equal((await p.verify({ ...at, terminal: null, proof: null })).ok, false, "no terminal");
+  assert.equal(written.length, before + 2, "a line on the terminal for each use");
+  assert.equal(written.at(-2).file, "/dev/ttys003");
+  assert.match(written.at(-2).text, /vyre: used your Touch ID window for letting gate use mail-token/);
+  assert.match(written.at(-1).text, /approving g_1/);
+  // What puts a secret or a code on screen asks every time, window or not.
+  for (const tool of ["vault.reveal", "vault.copy", "vault.totp", "gate.approve"]) assert.equal((await p.verify({ ...at, tool, input: { name: "bank" }, proof: null })).ok, false, tool);
+  // Another login on the same tty number, no login, a model or agent label, an item that asks
+  // every time, or a tool that did not say yes: each still asks.
+  assert.equal((await p.verify({ ...at, terminal: { key: "ttys003#990@Sun Sep 27 09:20:00 2026", tty: "ttys003" }, proof: null })).ok, false, "a new login on a reused tty");
+  assert.equal((await p.verify({ ...at, terminal: null, proof: null })).ok, false, "no login");
   for (const caller of ["mcp", "cli agent:kit", "harness", "deck"]) assert.equal((await p.verify({ ...at, caller, proof: null })).ok, false, caller);
-  assert.equal((await p.verify({ ...at, input: { name: "card", reprompt: true }, proof: null })).ok, false, "reprompt");
-  assert.equal((await p.verify({ ...at, tool: "vault.delete", proof: null })).ok, false, "vault.delete");
+  assert.equal((await p.verify({ ...at, input: { name: "card", module: "gate", reprompt: true }, proof: null })).ok, false, "reprompt");
   assert.equal((await p.verify({ ...at, def: { presence: true }, proof: null })).ok, false, "a tool that did not say yes");
   tick(29 * 60_000);
   assert.ok((await p.verify({ ...at, proof: null })).ok, "within 30 minutes");

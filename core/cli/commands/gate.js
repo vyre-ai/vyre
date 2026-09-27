@@ -5,8 +5,8 @@
 //
 // Who may do what is vyred's to say (core/gate/index.js, core/presence): approving a send, a spend
 // or a deletion is human-only, so it goes through callAsPerson, which asks this terminal for the
-// person's proof. One proof at a login terminal opens a 30-minute window there (gate.approve is
-// SESSIONABLE), so the sends after it ask nothing. Revising and discarding send nothing and ask no
+// person's proof, every time: a send is never covered by the terminal's window (ADR 0004, a
+// terminal can be typed into by other processes). Revising and discarding send nothing and ask no
 // proof (PERSON_ONLY), but vyred still refuses them from a process under a `claude`, so a model's
 // shell cannot run them.
 

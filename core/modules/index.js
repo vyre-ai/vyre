@@ -348,10 +348,10 @@ export class Registry {
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
     if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
-      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" ? terminal : null });
+      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" || (terminal && typeof terminal === "object") ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
-      meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
+      meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null, ...(v.where ? { where: v.where } : {}) } };
     }
     // The caller is passed on, so a tool like vault.release can check which module is asking.
     try {

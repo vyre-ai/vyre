@@ -295,3 +295,27 @@ They and `glass.take` and `glass.release` sit on a new list, `PERSON_ONLY`: no p
 a person's. The tools refuse an agent's caller themselves, the registry refuses a guest from
 another tailnet, and the harness refuses them to Claude's sessions as it does the floor's list.
 The same holds for a private sign-in (`glass.take` with `private`).
+
+## Addendum, 27 Sep 2026: the CLI's window, and keystroke injection
+
+The CLI is a first-class surface, so it gets a window like the Deck's session, keyed on the login
+vyred sees rather than on a secret: the socket peer's pid (the kernel's word), its controlling
+terminal, the topmost process on that terminal and its start time, and `who`'s login list, after
+the ancestry check that refuses anything under `claude`. A tmux pane counts when every client
+attached to its session runs in such a login with no `claude` above it.
+
+Threat: keystroke injection. Any process running as the user can type into a terminal the user
+has open: `tmux send-keys` into an attached pane, AppleScript `do script ... in window 1` into a
+Terminal tab (no permission prompt when Claude itself runs inside Terminal). The command then runs
+in the person's login shell and passes every check above. sudo's tty tickets have the same
+weakness. So the terminal window is narrower than the Deck's:
+
+- It covers vault.approve and vault.grant only (`TERMINAL_WINDOWED`): actions that also show in
+  Needs and in notices.
+- Anything that puts a secret or a two-factor code on screen (reveal, copy, TOTP, `vyre run`
+  resolving secrets) and gate.approve (which sends) ask every time from a terminal.
+- Every windowed use writes one line to the terminal it came from ("vyre: used your Touch ID
+  window for ...") and one row to the vault's audit, with the terminal.
+- The Deck, the Capsule and the phone keep the full session: their buttons are not typed into
+  this way. On a box the CLI never gets a window (vyred there sees no host logins); the Deck's
+  passkey proves each call.

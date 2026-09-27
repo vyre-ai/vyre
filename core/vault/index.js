@@ -91,6 +91,12 @@ export default {
     /** `needs` is the tool's presence declaration; left out, the tool needs no person. */
     const tool = (name, callers, description, input, run, needs) => ctx.tool(name, { description, input, callers, run, ...(needs ? { presence: needs } : {}) });
 
+    // A terminal's Touch ID window (core/presence TERMINAL_WINDOWED) proved this call, not a touch:
+    // the audit says so, with the terminal, beside the line vyred wrote there.
+    const windowUse = (how, action, name, caller) => {
+      if (how && how.method === "window") vault.audit(action, name ?? null, caller, true, `Touch ID window on ${how.where || "a terminal"}`);
+    };
+
     // item, resolve, render, edit, the git helper and the ssh agent (tools/cli.js).
     const cli = await registerCli({ ctx, vault });
 
@@ -164,7 +170,7 @@ export default {
       presence("Delete an item from the vault", ({ name }) => `Delete ${quoted(name)} and its grants`));
 
     tool("vault.grant", [...SURFACES, "mcp"], "Let a module (or one watcher) use an item through ctx.vault.fetch. From Claude it waits for a person to approve it.",
-      obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.grant(input, caller),
+      obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller, presence: how }) => { windowUse(how, "grant", input.name, caller); return vault.grant(input, caller); },
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
       presence("Let a module use a vault item", ({ name, module, watcher }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
         { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
@@ -176,7 +182,7 @@ export default {
       obj({}), () => vault.pending());
 
     tool("vault.approve", SURFACES, "Approve a pending grant or pass.",
-      obj({ id: str }, ["id"]), (input, { caller }) => vault.approve(input, caller),
+      obj({ id: str }, ["id"]), (input, { caller, presence: how }) => { windowUse(how, "approve", input.id, caller); return vault.approve(input, caller); },
       presence("Approve a pending grant or pass", ({ id }) => {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);

@@ -578,20 +578,20 @@ export function totpFrame({ now, endsAt, period, code, next, paint = true }) {
 
 /**
  * @typedef {{ now(): number, write(s: string): void, every(ms: number, fn: () => void): () => void,
- *   keys(onQuit: () => void): () => void }} LiveIO
+ *   keys(onQuit: () => void, onEnter?: () => void): () => void }} LiveIO
  */
 
-/** The terminal for the live code: a one-second timer, and q, Esc or Ctrl-C to quit. */
+/** The terminal for the live code: a one-second timer, q, Esc or Ctrl-C to quit, Enter for another. */
 const liveIO = /** @type {LiveIO} */ ({
   now: () => Date.now(),
   write: s => { process.stdout.write(s); },
   every: (ms, fn) => { const t = setInterval(fn, ms); return () => clearInterval(t); },
-  keys: onQuit => {
+  keys: (onQuit, onEnter) => {
     const stdin = process.stdin;
     const onSig = () => onQuit();
     process.on("SIGINT", onSig);
     if (!stdin.isTTY) return () => { process.removeListener("SIGINT", onSig); };
-    const onData = (/** @type {Buffer} */ b) => { const k = b.toString("utf8"); if (k === "q" || k === "Q" || k === "\x1b" || k === "\x03") onQuit(); };
+    const onData = (/** @type {Buffer} */ b) => { const k = b.toString("utf8"); if (k === "q" || k === "Q" || k === "\x1b" || k === "\x03") onQuit(); else if ((k === "\r" || k === "\n") && onEnter) onEnter(); };
     stdin.setRawMode(true);
     stdin.on("data", onData);
     stdin.resume();
@@ -605,17 +605,19 @@ const liveIO = /** @type {LiveIO} */ ({
 });
 
 /**
- * The live code: redrawn in place each second from the local clock, and one vault.totp call when
- * a period rolls over (never one a second). Resolves with the exit code when the person quits,
- * the time runs out, or a fetch fails.
+ * The live code: redrawn in place each second from the local clock. When the period ends the code
+ * is gone and the next one waits for Enter, since from a terminal every code asks for its own
+ * proof (ADR 0004, the CLI's window covers no codes). With `auto`, one vault.totp call when a
+ * period rolls over instead (never one a second). Resolves with the exit code when the person
+ * quits, the time runs out, or a fetch fails.
  * @param {{ code: string, period: number, remaining: number, next?: string }} first
- * @param {{ fetch: () => Promise<any>, io?: LiveIO, maxMs?: number, paint?: boolean, name?: string }} o
+ * @param {{ fetch: () => Promise<any>, io?: LiveIO, maxMs?: number, paint?: boolean, name?: string, auto?: boolean }} o
  */
-export function liveTotp(first, { fetch, io = liveIO, maxMs = TOTP_LIVE_MS, paint = true, name = "<name>" }) {
+export function liveTotp(first, { fetch, io = liveIO, maxMs = TOTP_LIVE_MS, paint = true, name = "<name>", auto = false }) {
   const started = io.now();
   let cur = first;
   let endsAt = periodEnd(started, cur.remaining, cur.period);
-  let fetching = false, done = false;
+  let fetching = false, done = false, want = auto;
   /** @type {() => void} */ let stopTick = () => {};
   /** @type {() => void} */ let stopKeys = () => {};
   const clear = "\r\x1b[2K";
@@ -632,15 +634,20 @@ export function liveTotp(first, { fetch, io = liveIO, maxMs = TOTP_LIVE_MS, pain
       if (done || fetching) return;
       const now = io.now();
       if (now - started >= maxMs) return finish(0, dim(`  stopped after ${Math.round(maxMs / 60_000)} minutes · vyre vault totp ${name} for more`));
+      if (now >= endsAt && !want) {
+        io.write(clear + (paint ? dim : String)(`  expired · Enter for a new code (asks again) · q quits`));
+        return;
+      }
       if (now >= endsAt) {
         fetching = true;
+        want = auto;
         io.write(clear);
         // The terminal back in its normal mode meanwhile: if this call asks for the terminal code,
         // the person types it at a line prompt, not into our key reader.
         stopKeys();
         const r = await fetch();
         fetching = false;
-        if (!done) stopKeys = io.keys(() => finish(0));
+        if (!done) stopKeys = io.keys(() => finish(0), onEnter);
         if (done) return;
         if (r.error) { last = r; return finish(exitFor(r), beacon(`  ${r.error.code}: `) + String(r.error.message || "")); }
         const prev = endsAt;
@@ -651,10 +658,11 @@ export function liveTotp(first, { fetch, io = liveIO, maxMs = TOTP_LIVE_MS, pain
       }
       draw();
     };
+    const onEnter = () => { if (!done && !fetching && io.now() >= endsAt) { want = true; tick(); } };
     io.write("\x1b[?25l");
     draw();
     stopTick = io.every(1000, () => { tick(); });
-    stopKeys = io.keys(() => finish(0));
+    stopKeys = io.keys(() => finish(0), onEnter);
   });
 }
 
