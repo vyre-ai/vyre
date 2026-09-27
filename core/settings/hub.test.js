@@ -278,3 +278,42 @@ test("a thread's chip changing in sessions is also a session-level settings.chan
   assert.deepEqual(ev.map(p => p.rev), [r0 + 1, r0 + 2]);
   assert.ok(hub());
 });
+
+// With the shipped appearance module (app-design, core/appearance): real tokens per device. Skipped
+// on a tree that doesn't have it yet.
+test("/theme.css and /v1/theme serve the real appearance module's answer per device, with rev as the ETag and a 304",
+  { skip: !fs.existsSync(new URL("../appearance/module.json", import.meta.url)) && "core/appearance is not in this tree" }, async t => {
+  const http = await import("node:http");
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], vault: { keystore: "file" },
+    modules: { enable: [], disable: ["recall", "memory", "learn"] }, settings: { claude_dir: path.join(root, "claude") } }));
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const c = (/** @type {string} */ tool, input = {}) => call(tool, input, { root });
+  const phone = { level: "device", device: "tailnet:alex-phone" };
+  assert.ok(!(await c("settings.set", { key: "appearance.scheme", value: "dark" })).error);
+  let r = await c("settings.set", { key: "appearance.scheme", value: "paper", ...phone });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  r = await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 16 } }, ...phone });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  const get = (/** @type {string} */ p, /** @type {Record<string, string>} */ headers = {}) => new Promise(ok => {
+    http.request({ socketPath: d.paths.socket, path: p, headers: { "x-vyre-caller": "deck", ...headers } }, res => {
+      let b = ""; res.on("data", x => (b += x)); res.on("end", () => ok({ status: res.statusCode, etag: res.headers.etag, type: res.headers["content-type"], body: b }));
+    }).end();
+  });
+  const rev = (await c("settings.schema")).data.hub.rev;
+  const css = /** @type {any} */ (await get("/theme.css?device=tailnet:alex-phone"));
+  assert.equal(css.status, 200);
+  assert.match(css.type, /text\/css/);
+  assert.match(css.body, /--radius-card: 16px;/);
+  assert.equal(css.body, (await c("appearance.resolve", { device: "tailnet:alex-phone" })).data.css);
+  assert.equal(css.etag, `"${rev}-tailnet:alex-phone"`);
+  assert.equal((/** @type {any} */ (await get("/theme.css?device=tailnet:alex-phone", { "if-none-match": css.etag }))).status, 304);
+  const json = /** @type {any} */ (await get("/v1/theme?device=mac:alex-mbp"));
+  assert.equal(json.status, 200);
+  const data = JSON.parse(json.body).data;
+  assert.deepEqual([data.theme, data.scheme, data.rev, data.device], ["vyre", "dark", rev, "mac:alex-mbp"]);
+  assert.doesNotMatch(data.css, /--radius-card: 16px;/);
+  const phoneJson = JSON.parse(/** @type {any} */ (await get("/v1/theme?device=tailnet:alex-phone")).body).data;
+  assert.deepEqual([phoneJson.scheme, phoneJson.tokens.radius.card], ["paper", 16]);
+});
