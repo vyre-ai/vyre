@@ -325,7 +325,7 @@ export class Registry {
    *   input is not verified and must not be treated as if it were. `proof` is the presence proof
    *   the request carried, checked here and not passed on.
    */
-  async call(tool, input = {}, caller = "unknown", { proof = null, ...meta } = {}) {
+  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -352,7 +352,17 @@ export class Registry {
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
     }
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await def.run(input, { ...meta, caller }) }; }
+    try {
+      const data = await def.run(input, { ...meta, caller });
+      // keep: the person asked that this proof also open a presence session on their device, so
+      // the next sessionable call (another send) needs no second Touch ID or passkey. Only a strong
+      // proof opens one (presence.openSession refuses the rest); the secret goes back once.
+      if (keep && presence && meta.presence && meta.presence.method !== "session") {
+        try { return { data, session: presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer || null }) }; }
+        catch { /* a code or tty proof: the call still succeeded, with no session */ }
+      }
+      return { data };
+    }
     catch (e) {
       // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
       // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".

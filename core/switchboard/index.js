@@ -996,9 +996,23 @@ export default {
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
       });
 
+    // Every ask says what answering it takes: `presence: {required, covered}`. Answering is the
+    // person's own business (the no-nag rule), so required is false; covered says whether this
+    // device has a live presence session. Surfaces render from this, never from tool names.
+    const withPresence = async (asks, peer) => {
+      if (!asks.length) return asks;
+      const r = await ctx.call("presence.covered", peer ? { peer } : {});
+      const covered = Boolean(r.data && r.data.covered);
+      return asks.map(a => ({ ...a, presence: { required: false, covered } }));
+    };
+
     tool("threads.get", "One thread: its record, its open permission questions, and its recent events (since: an event id).",
       { type: "object", required: ["thread"], properties: { thread: str, since: { type: "integer" }, limit: { type: "integer" } } },
-      async (i, { caller }) => { guard(caller, "read sessions"); return sb.get(i.thread, i); });
+      async (i, { caller, peer }) => {
+        guard(caller, "read sessions");
+        const t = sb.get(i.thread, i);
+        return t && Array.isArray(t.asks) ? { ...t, asks: await withPresence(t.asks, peer) } : t;
+      });
 
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
@@ -1010,7 +1024,7 @@ export default {
 
     tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), and what always allow is on offer (always, always_project). A surface that reconnects reads these; events alone cannot say what is open now.",
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] } } },
-      async (i, { caller }) => { guard(caller, "read questions"); return sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a); });
+      async (i, { caller, peer }) => { guard(caller, "read questions"); return withPresence(sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a), peer); });
 
     tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
       { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str,

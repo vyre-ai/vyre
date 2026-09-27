@@ -131,6 +131,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
   Found by box-deploy.
 
+#### Every ask and held item says what answering it takes
+
+- `threads.asks`, `threads.get`'s asks, `gate.held` and `gate.get` carry
+  `presence: {required, covered}`, computed on the box: `required` is true only where a proof is
+  needed (approving a send, a spend or a deletion at the Gate; asks never), `covered` when the caller's
+  device has a live presence session. Surfaces render from it and never guess from tool names.
+- The no-nag rule at the Gate and for asks: `gate.revise`, `gate.reject` and `threads.answer` are
+  off the floor's list and ask for no proof (a person caller still; models are refused).
+  `gate.approve` asks only for kinds `send`, `spend` and `delete`, through the floor's
+  new `NARROWABLE` list, and is sessionable: a request with `x-vyre-presence-keep: 1` and a
+  strong proof gets back `x-vyre-presence-session: session id=.. secret=.. expires=..`, which
+  proves the next sends on that device as `x-vyre-presence`. A presence session now lasts 30
+  minutes from the proof with no idle cutoff (it was 5 minutes idle).
+  `core/presence/index.js`, `core/presence/module.js` (internal `presence.covered`),
+  `core/modules/index.js`, `core/daemon/index.js`, `core/gate/index.js`,
+  `core/switchboard/index.js`; test/presence-bypass.test.js.
+
 #### Making or changing an agent is the person's, with no passkey
 
 - The no-nag rule: `agents.create` and `agents.update` ask for no presence proof. `agents.create`
