@@ -244,6 +244,11 @@ v=$("$RC_DOCKER" exec "$C" vyre version 2>/dev/null | tr -d ' \r\n')
 if grep -qv '^docker \(image\|compose\) ' "$W/docker.log" 2>/dev/null; then
   fail "8 update: the wrapper asked docker for something the shim does not map: $(grep -v '^docker \(image\|compose\) ' "$W/docker.log" | head -3 | short)"
 fi
+# A started container's vyred comes up at the first try: the loop never had to start it again
+# (a stale lock from the replaced container once made it refuse "already running").
+n=$("$RC_DOCKER" logs "$C" 2>&1 | grep -c 'starting it again')
+[ "$n" = 0 ] && pass "8 update: vyred started once in the rolled-back container" \
+  || fail "8 update: the loop had to start vyred $n more time(s): $("$RC_DOCKER" logs "$C" 2>&1 | grep -v 'starting it again' | tail -2 | short)"
 
 echo "rc-smoke: $PASS pass, $FAILS fail, $SKIPS skip"
 [ "$FAILS" = 0 ]
