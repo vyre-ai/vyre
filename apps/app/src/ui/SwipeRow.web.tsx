@@ -29,7 +29,7 @@ const QUIET_MS = 90;
 // would widen the panel past the row.
 const panel = { flex: "0 0 100%", width: "100%", minWidth: 0, height: "100%", scrollSnapAlign: "start", display: "flex", alignItems: "center", boxSizing: "border-box" } as const;
 
-export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel }: SwipeRowProps) {
+export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel, testID }: SwipeRowProps) {
   const { color } = useTheme();
   const outer = useRef<HTMLDivElement>(null);
   const strip = useRef<HTMLDivElement>(null);
@@ -111,6 +111,7 @@ export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel 
     <div ref={outer} style={{ height, overflow: "hidden", transition: `height ${tokens.motion.tap}ms ease-out`, WebkitTouchCallout: "none", userSelect: "none" }}>
       <div
         ref={strip}
+        data-testid={testID}
         className="vy-swipe"
         style={{ display: "flex", height: "100%", overflowX: "auto", overflowY: "hidden", scrollSnapType: "x mandatory", overscrollBehaviorX: "contain" }}
       >

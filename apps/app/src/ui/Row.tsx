@@ -25,6 +25,8 @@ export type RowProps = {
   /** A refusal: shown in the meta line's place, with the failed mark. */
   reason?: string | null;
   onPress?: () => void;
+  /** The pressable's testID (data-testid on the web), for the perf job. */
+  testID?: string;
 };
 
 /**
@@ -37,6 +39,7 @@ export const Row = memo(function Row(p: RowProps) {
   return (
     <Pressable
       accessibilityRole="button"
+      testID={p.testID}
       onPress={p.onPress}
       style={[styles.row, { backgroundColor: color.bg, borderBottomColor: color.rule }]}
     >

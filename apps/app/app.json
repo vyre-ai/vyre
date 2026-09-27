@@ -13,7 +13,11 @@
     },
     "android": {
       "package": "sh.vyre.app",
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0E0D0C"
+      }
     },
     "web": {
       "output": "single",
@@ -21,7 +25,8 @@
       "name": "Vyre",
       "shortName": "Vyre",
       "backgroundColor": "#0E0D0C",
-      "themeColor": "#0E0D0C"
+      "themeColor": "#0E0D0C",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -31,6 +36,7 @@
     "experiments": {
       "baseUrl": "/app",
       "typedRoutes": false
-    }
+    },
+    "icon": "./assets/icon.png"
   }
 }

@@ -39,8 +39,17 @@ export type Caller = (base: string, o?: { headers?: Record<string, string>; time
 
 /** What a person session adds to a request, and what to do when the box asks for one. */
 export type Auth = {
-  /** `path` is the path and query relative to the box, e.g. "/v1/tools/x". */
-  headers(method: string, path: string, body: string): Promise<Record<string, string>>;
+  /**
+   * `path` is the path and query relative to the box, e.g. "/v1/tools/x". `proved`: the call
+   * already carries the caller's own x-vyre-presence, so the session adds none (and never prompts).
+   */
+  headers(method: string, path: string, body: string, proved?: boolean): Promise<Record<string, string>>;
+  /**
+   * A tool call's answer. True: it was refused for presence and the session has a proof it has not
+   * tried (a prompt the box turned out to need, or its own proof where a session did not cover the
+   * item): the call goes once more, now, with the same Idempotency-Key.
+   */
+  answered?(method: string, path: string, body: string, result: Result<unknown>): boolean | Promise<boolean>;
   required(): void;
 };
 
@@ -125,12 +134,24 @@ export async function createClient(d: ClientDeps): Promise<Client> {
     d.onSignIn?.();
   }
 
-  /** One tool call, with this request's person headers. */
+  /**
+   * One tool call, with this request's person headers. A presence refusal the session can answer
+   * (auth.answered) goes once more at once; a second refusal is the box's last word.
+   */
   async function once(tool: string, input: unknown, key: string, extra: Record<string, string>) {
     const path = "/v1/tools/" + encodeURIComponent(tool);
     const body = JSON.stringify(input ?? {});
-    const headers = { ...extra, ...(auth ? await auth.headers("POST", path, body) : {}) };
-    return (await d.caller(base, { headers, timeoutMs })(tool, input, key)) as Result<unknown>;
+    const proved = Boolean(extra["x-vyre-presence"]);
+    const attempt = async () => {
+      const headers = { ...(auth ? await auth.headers("POST", path, body, proved) : {}), ...extra };
+      return (await d.caller(base, { headers, timeoutMs })(tool, input, key)) as Result<unknown>;
+    };
+    let r = await attempt();
+    if (auth?.answered && (await auth.answered("POST", path, body, r)) && !proved) {
+      r = await attempt();
+      await auth.answered("POST", path, body, r);
+    }
+    return r;
   }
 
   // The outbox's call. A 401 for the person keeps the entry (a retry code) while the person signs

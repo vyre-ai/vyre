@@ -177,6 +177,7 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head }: Transc
   return (
     <div
       ref={scroller}
+      data-testid="transcript"
       style={{
         flex: "1 1 auto",
         minHeight: 0,

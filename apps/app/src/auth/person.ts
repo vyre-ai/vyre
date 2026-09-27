@@ -15,6 +15,16 @@
 // where sig is ES256 in P1363 form (raw r||s, what WebCrypto emits) over
 //   METHOD \n path?query \n sha256b64url(body) \n t \n n
 // A 401 `person_session_required` forgets the token and signs in again.
+//
+// The native app (person.native.ts) returns to `vyre://person/signin`. The box binds that code to
+// the app, not to an Origin: the trade sends no Origin and carries its own x-vyre-proof, signed by
+// the `key` it registers, over `POST\n/v1/person/token\nsha256b64url(body)\nt\nn`. Its body also
+// carries `human`, the public JWK of a second, biometric key; the box enrolls it as a presence key
+// of kind device and answers `data.human = { key: <id> }`. HUMAN_ONLY calls then carry
+//   x-vyre-presence: device key=<id> ts=<ms> nonce=<b64url> sig=<b64url DER>
+// over `vyre-presence-v1\n<tool>\n<inputHash>\n<ts>\n<nonce>` (devicePresence below), with
+// `x-vyre-presence-keep: 1`, and the 30-minute session the box answers with covers the
+// SESSIONABLE calls after it with no prompt.
 
 const enc = new TextEncoder();
 
@@ -277,6 +287,37 @@ export function jwkFromXY(x: string, y: string): PublicJwk {
 }
 
 /**
+ * A P-256 key's presence key id on the box: the first 22 characters of the base64url SHA-256 of
+ * its SPKI DER (core/presence/index.js fingerprint). The box enrolls a key once; a second sign-in
+ * with the same biometric key is answered "already enrolled", and this is the id it already has.
+ */
+export function keyIdFromXY(x: string, y: string): string {
+  return b64url(sha256(fromB64url(spkiFromXY(x, y)))).slice(0, 22);
+}
+
+/**
+ * JSON with object keys sorted at every depth and no spaces: what a presence proof's input hash
+ * is taken over. The box's canonical() in core/presence/index.js, line for line, so the two agree
+ * on every input (undefined and functions dropped from objects, null in arrays).
+ */
+export function canonical(v: unknown): string {
+  if (Array.isArray(v)) return "[" + v.map((x) => (x === undefined || typeof x === "function" ? "null" : canonical(x))).join(",") + "]";
+  if (v && typeof v === "object" && typeof (v as { toJSON?: unknown }).toJSON !== "function") {
+    const o = v as Record<string, unknown>;
+    const keys = Object.keys(o).filter((k) => o[k] !== undefined && typeof o[k] !== "function").sort();
+    return "{" + keys.map((k) => JSON.stringify(k) + ":" + canonical(o[k])).join(",") + "}";
+  }
+  return JSON.stringify(v) ?? "null";
+}
+
+/** base64url SHA-256 of the canonical input: what binds a presence proof to one call's input. */
+export const inputHash = (input: unknown): Promise<string> => sha256b64url(canonical(input));
+
+/** The bytes (as UTF-8 text) a device or Capsule presence proof signs. */
+export const presenceMessage = (tool: string, hash: string, ts: number | string, nonce: string): string =>
+  `vyre-presence-v1\n${tool}\n${hash}\n${ts}\n${nonce}`;
+
+/**
  * The box's floor list (core/presence/index.js HUMAN_ONLY), mirrored so the phone knows which
  * calls to sign with the biometric key. person.test.js checks it against the box's list.
  */
@@ -294,6 +335,20 @@ export const HUMAN_ONLY = new Set([
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
 ]);
+
+/**
+ * Tools a presence session may prove (core/presence/index.js SESSIONABLE, mirrored and checked
+ * against it). The box also asks the tool per input, so an item that asks every time refuses a
+ * session and the call goes again with its own proof.
+ */
+export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant", "gate.approve", "apps.send"]);
+
+/**
+ * HUMAN_ONLY tools that ask only for some inputs (core/presence/index.js NARROWABLE): gate.approve
+ * asks only for what goes out as the person. These go without a prompt first, and prompt only
+ * when the box answers presence_required (the no-nag rule).
+ */
+export const NARROWABLE = new Set(["gate.approve"]);
 
 /** The tool a `/v1/tools/<name>` URL calls, or null for any other path. */
 export function toolOf(url: string): string | null {
@@ -320,9 +375,12 @@ export function memorySlot<T>(initial: T | null = null): Slot<T> {
 export type PersonSession = {
   /**
    * The headers for one request: none until signed in. `url` is the path and query relative to
-   * the box ("/v1/tools/x"), or a full URL at the box's origin.
+   * the box ("/v1/tools/x"), or a full URL at the box's origin. `proved`: the caller brings its
+   * own x-vyre-presence, so no presence proof is made here (no prompt).
    */
-  headers(method: string, url: string, body: string): Promise<Record<string, string>>;
+  headers(method: string, url: string, body: string, proved?: boolean): Promise<Record<string, string>>;
+  /** A tool call's answer (the phone's presence); true: send the same call once more, now. */
+  answered?(method: string, url: string, body: string, result: { error?: { code: string; message?: string } }): boolean | Promise<boolean>;
   /** The box answered person_session_required: forget the token and sign in again. */
   required(): void;
   /** Trade the sign-in page's code and our verifier for a token. */
@@ -340,8 +398,11 @@ const TOKEN = /^[A-Za-z0-9_-]{8,64}\.[A-Za-z0-9_-]{16,128}$/;
  * @param o.signIn starts the sign-in hop (person.web.ts redirects); called on a 401
  * @param o.signer the key, where it is not a WebCrypto pair in stores.key (the phone)
  * @param o.nonce a fresh proof nonce, where globalThis.crypto.getRandomValues is missing (Hermes)
- * @param o.more headers added to a signed request, e.g. the phone's biometric proof on HUMAN_ONLY calls
+ * @param o.more headers added to a signed request, e.g. the phone's presence proof on HUMAN_ONLY calls
+ * @param o.answered hears each tool call's answer; true asks the client to send it once more now
  * @param o.trade fields added to the /v1/person/token body, e.g. the phone's biometric public key
+ * @param o.signTrade sign the trade itself with the key it registers (the native app's code)
+ * @param o.traded hears the trade's `data` once a token is stored (the phone keeps `human.key`)
  */
 export function personSession(o: {
   box: string;
@@ -350,7 +411,10 @@ export function personSession(o: {
   signer?: Signer;
   nonce?: () => string;
   more?: (method: string, url: string, body: string) => Promise<Record<string, string>>;
+  answered?: (method: string, url: string, body: string, result: { error?: { code: string; message?: string } }) => boolean | Promise<boolean>;
   trade?: () => Promise<Record<string, unknown>>;
+  signTrade?: boolean;
+  traded?: (data: Record<string, unknown>) => Promise<void> | void;
   fetch?: typeof fetch;
   now?: () => number;
 }): PersonSession {
@@ -380,7 +444,7 @@ export function personSession(o: {
     await o.stores.token.save(t);
   };
 
-  async function headers(method: string, url: string, body: string): Promise<Record<string, string>> {
+  async function headers(method: string, url: string, body: string, proved = false): Promise<Record<string, string>> {
     const t = await currentToken();
     if (!t) return {};
     let signed: Record<string, string>;
@@ -395,32 +459,37 @@ export function personSession(o: {
       o.signIn();
       return {};
     }
-    return o.more ? { ...(await o.more(method, url, body)), ...signed } : signed;
+    return o.more && !proved ? { ...(await o.more(method, url, body)), ...signed } : signed;
   }
 
   return {
     headers,
+    ...(o.answered ? { answered: o.answered } : {}),
     required() {
       void setToken(null).catch(() => {});
       o.signIn();
     },
     async exchange(code, verifier) {
       const k = await key();
+      const pub = await k.publicJwk();
+      const extra = o.trade ? await o.trade() : {};
+      // The biometric key must be a second key: the box refuses a `human` equal to `key`, or with `d`.
+      const h = extra.human as Partial<PublicJwk> & { d?: unknown } | undefined;
+      if (h && (typeof h !== "object" || h.d !== undefined || (h.x === pub.x && h.y === pub.y))) delete extra.human;
+      const body = JSON.stringify({ ...extra, code, verifier, key: pub });
+      const headers: Record<string, string> = { "content-type": "application/json" };
       let res: Response;
       try {
-        res = await doFetch(`${box}/v1/person/token`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ...(o.trade ? await o.trade() : {}), code, verifier, key: await k.publicJwk() }),
-          cache: "no-store",
-        });
+        if (o.signTrade) headers["x-vyre-proof"] = await proofWith(k.sign, { method: "POST", url: "/v1/person/token", body, now: now(), nonce: o.nonce?.() });
+        res = await doFetch(`${box}/v1/person/token`, { method: "POST", headers, body, cache: "no-store" });
       } catch (e) {
         return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "the box is out of reach" };
       }
-      const b = (await res.json().catch(() => null)) as { data?: { token?: string }; error?: { code: string; message: string } } | null;
+      const b = (await res.json().catch(() => null)) as { data?: { token?: string } & Record<string, unknown>; error?: { code: string; message: string } } | null;
       const t = b?.data?.token;
       if (!t || !TOKEN.test(t)) return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `the box answered ${res.status}` };
       await setToken(t);
+      if (o.traded && b?.data) await Promise.resolve(o.traded(b.data)).catch(() => {});
       return { ok: true };
     },
     async end() {
@@ -431,5 +500,171 @@ export function personSession(o: {
       await doFetch(url, { method: "POST", headers: h, cache: "no-store" }).catch(() => {});
     },
     signedIn: async () => Boolean(await currentToken()),
+  };
+}
+
+/** A presence session the box opened for this device: `x-vyre-presence-session`'s fields. */
+export type PresenceSession = { id: string; secret: string; expires: number };
+
+/** `session id=.. secret=.. expires=..` (the answer header), or null for anything else. */
+export function parsePresenceSession(h: string | null | undefined): PresenceSession | null {
+  const m = /^session id=([A-Za-z0-9_-]{8,128}) secret=([A-Za-z0-9_-]{16,128}) expires=(\d{1,16})$/.exec(String(h ?? "").trim());
+  return m ? { id: m[1], secret: m[2], expires: Number(m[3]) } : null;
+}
+
+export type DevicePresence = {
+  /** The presence headers for one tool call with this exact body: none, a session, or a signed proof. */
+  headers(tool: string, body: string): Promise<Record<string, string>>;
+  /** The call's answer. True: it was refused for presence and a proof not yet tried can go now. */
+  answered(tool: string, body: string, result: { error?: { code: string; message?: string } }): boolean;
+  /** The box's `x-vyre-presence-session` answer header: kept until it expires. */
+  keep(header: string | null | undefined): Promise<void>;
+  /** Drop the session (signing out). */
+  forget(): Promise<void>;
+  /** The live session, or null. */
+  session(): Promise<PresenceSession | null>;
+};
+
+/** A session this close to its end is treated as ended: the box's clock and ours differ a little. */
+const SESSION_MARGIN = 10_000;
+/** How long the answers "this call asks for presence" and "this item needs its own proof" are kept. */
+const REMEMBER_MS = 10 * 60_000;
+/** After the person closes the prompt, the same call does not ask again for this long. */
+export const DECLINED_MS = 60_000;
+
+/**
+ * Presence on a device with an enrolled key (the phone's vyre.human). What goes with a call:
+ *   - a live presence session, when the tool is SESSIONABLE and the box has not said the item
+ *     needs its own proof: `session id=.. secret=..`, no prompt
+ *   - else, for a HUMAN_ONLY tool (a NARROWABLE one only once the box asked), or any call the box
+ *     answered presence_required: a proof signed by the key (the platform prompts), with
+ *     `x-vyre-presence-keep: 1` so the box opens a session on it
+ *   - else nothing
+ * `sign` gets the exact message and returns the DER signature as base64url, which the box's device
+ * method verifies as is (dsaEncoding "der").
+ */
+export function devicePresence(o: {
+  keyId: () => Promise<string | null>;
+  sign: (message: string, tool: string) => Promise<string>;
+  nonce: () => string;
+  store?: Slot<string>;
+  now?: () => number;
+  /** The key refused to sign (closed, gone, invalidated): the platform's error. */
+  failed?: (e: unknown) => void;
+  /** The box says the key is not enrolled (removed in Settings). */
+  lost?: () => void;
+}): DevicePresence {
+  const now = o.now ?? Date.now;
+  let current: Promise<PresenceSession | null> | null = null;
+  /** What the last attempt of each call carried. */
+  const sent = new Map<string, "none" | "session" | "device" | "declined">();
+  /** Calls the box said ask for presence, and items it said need their own proof, with until when. */
+  const asks = new Map<string, number>();
+  const own = new Map<string, number>();
+  const declined = new Map<string, number>();
+
+  const idOf = (tool: string, body: string) => `${tool}\n${body}`;
+  const live = (m: Map<string, number>, id: string, ttl: number) => {
+    const at = m.get(id);
+    if (at === undefined) return false;
+    if (now() - at < ttl) return true;
+    m.delete(id);
+    return false;
+  };
+  const load = () =>
+    (current ??= (o.store ? o.store.load() : Promise.resolve(null)).then((v) => {
+      if (!v) return null;
+      try {
+        const p = JSON.parse(v) as PresenceSession;
+        return typeof p.id === "string" && typeof p.secret === "string" && typeof p.expires === "number" ? p : null;
+      } catch {
+        return null;
+      }
+    }, () => null));
+  const save = async (p: PresenceSession | null) => {
+    current = Promise.resolve(p);
+    await o.store?.save(p ? JSON.stringify(p) : null).catch(() => {});
+  };
+  const session = async () => {
+    const p = await load();
+    return p && p.expires - SESSION_MARGIN > now() ? p : null;
+  };
+
+  return {
+    session,
+    async headers(tool, body): Promise<Record<string, string>> {
+      const id = idOf(tool, body);
+      const s = SESSIONABLE.has(tool) && !live(own, id, REMEMBER_MS) ? await session() : null;
+      if (s) {
+        sent.set(id, "session");
+        return { "x-vyre-presence": `session id=${s.id} secret=${s.secret}` };
+      }
+      const needs = (HUMAN_ONLY.has(tool) && !NARROWABLE.has(tool)) || live(asks, id, REMEMBER_MS);
+      if (!needs) {
+        sent.set(id, "none");
+        return {};
+      }
+      if (live(declined, id, DECLINED_MS)) {
+        sent.set(id, "declined");
+        return {};
+      }
+      const key = await o.keyId().catch(() => null);
+      if (!key) {
+        // No enrolled key here (no biometrics at sign-in): the box asks for its passkey instead.
+        sent.set(id, "declined");
+        return {};
+      }
+      let input: unknown;
+      try {
+        input = JSON.parse(body || "{}");
+      } catch {
+        sent.set(id, "declined");
+        return {};
+      }
+      const ts = now();
+      const nonce = o.nonce();
+      try {
+        const sig = await o.sign(presenceMessage(tool, await inputHash(input), ts, nonce), tool);
+        sent.set(id, "device");
+        return { "x-vyre-presence": `device key=${key} ts=${ts} nonce=${nonce} sig=${sig}`, "x-vyre-presence-keep": "1" };
+      } catch (e) {
+        // Closed, no biometrics, or a retired key: the call goes without it and the box says
+        // what it needs. Never thrown: a throw here would stall the outbox.
+        declined.set(id, now());
+        sent.set(id, "declined");
+        o.failed?.(e);
+        return {};
+      }
+    },
+    answered(tool, body, r) {
+      const id = idOf(tool, body);
+      const was = sent.get(id);
+      sent.delete(id);
+      if (r.error?.code !== "presence_required") {
+        if (!r.error) {
+          asks.delete(id);
+          own.delete(id);
+        }
+        return false;
+      }
+      const why = r.error.message ?? "";
+      if (was === "session") {
+        // The session ended on the box, or this item asks every time: its own proof, now.
+        if (/no such session|ended|secret is wrong|another device/.test(why)) void save(null);
+        else own.set(id, now());
+        return true;
+      }
+      if (was === "none") {
+        asks.set(id, now());
+        return true;
+      }
+      if (was === "device" && /not enrolled/.test(why)) o.lost?.();
+      return false;
+    },
+    async keep(header) {
+      const p = parsePresenceSession(header);
+      if (p && p.expires > now()) await save(p);
+    },
+    forget: () => save(null),
   };
 }

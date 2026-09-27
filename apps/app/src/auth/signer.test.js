@@ -150,7 +150,7 @@ test("personSession over a DER signer: trade sends key and extras, requests carr
     signer: person.signer,
     nonce: () => `n${++nonces}_nonce`,
     trade: async () => ({ human: await human.signer.publicJwk() }),
-    more: async (method, url) => (url.endsWith("/gate.approve") ? { "x-vyre-human": "t=1 n=h sig=x" } : {}),
+    more: async (method, url) => (url.endsWith("/gate.approve") ? { "x-vyre-presence": "device key=k ts=1 nonce=abcdefgh sig=x" } : {}),
     signIn: () => {},
     now: () => 1700000000999,
     fetch: /** @type {any} */ (async (/** @type {string} */ url, /** @type {any} */ init) => {
@@ -169,7 +169,7 @@ test("personSession over a DER signer: trade sends key and extras, requests carr
   const body = '{"thread":"juno","text":"hi"}';
   const h = await s.headers("POST", url, body);
   assert.equal(h.authorization, "Vyre abcdefgh1234.secretsecretsecret1234");
-  assert.equal(h["x-vyre-human"], undefined);
+  assert.equal(h["x-vyre-presence"], undefined);
   const m = /^t=(\d+) n=(\S+) sig=([A-Za-z0-9_-]+)$/.exec(h["x-vyre-proof"]);
   assert.ok(m);
   assert.equal(m[1], "1700000000999");
@@ -180,7 +180,7 @@ test("personSession over a DER signer: trade sends key and extras, requests carr
   // As the box does: the JWK from the trade, node:crypto, P1363.
   const pub = createPublicKey({ key: posts[0].body.key, format: "jwk" });
   assert.equal(nodeVerify("sha256", Buffer.from(msg), { key: pub, dsaEncoding: "ieee-p1363" }, Buffer.from(sig)), true);
-  assert.equal((await s.headers("POST", `${BOX}/v1/tools/gate.approve`, "{}"))["x-vyre-human"], "t=1 n=h sig=x");
+  assert.equal((await s.headers("POST", `${BOX}/v1/tools/gate.approve`, "{}"))["x-vyre-presence"], "device key=k ts=1 nonce=abcdefgh sig=x");
 });
 
 test("personSession: a signer that fails forgets the token and signs in again, never throws", { skip: !strip }, async () => {
