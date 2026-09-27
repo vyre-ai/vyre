@@ -25,6 +25,8 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - ctx.events.latestId() for modules (planner.upcoming's last_event).
 - CLI write() with idempotency keys (threads send/answer, screen send); sse.js split-CRLF fix;
   strict-tsc JSDoc. c8f5654 is on main (15e82dd, with the integrator's term save() fix).
+- R5 relay chaos (test/chaos/relay.test.js): 4 pass + 2 todo (relay redial bugs, filed with
+  relay), twice on testbox; web.js over() fixed for relay bodies.
 - R6 chaos test and web.js over() (relay paths); 39/39 on testbox after main 9efbddc merge.
 - Tests on testbox (27 Sep, after main 15e82dd): 145 targeted pass, 0 fail. Earlier: 189 pass, 0 fail. Earlier: 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
   (real dtach), daemon and modules tests.
@@ -33,15 +35,6 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - Waiting on relay (R5 relay chaos) and chat (term extras: held keys, Take size, key bar).
 
 ## Next
-0. R5 relay chaos tests, once work/relay is on main (not at 9efbddc): test/chaos/relay.test.js
-   importing relay/. Real relay relay/node/server.js (createRelay().listen()), box = vyred with
-   the relay module per test/relay.test.js (world() + firstPairing()), device = relay/client
-   pair()/connect() in Node (webCrypto(), memoryKeyStore(), globalThis.WebSocket). Kill with
-   relay.close() or by destroying the device socket, mid-SSE and mid-POST with the answer lost
-   (see relay/client/e2e.test.js); then web.js over(createPaths().fetch) for failover between a
-   direct path and the relay (paths.test.js has the fake direct server). paths.js reports
-   relay.devices.path on the first request, each switch and foreground: pass report: false or
-   allow for it in counts.
 1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
 2. R6 chaos test, once work/planner 3c75e47 is on main (not yet at b1dbb49). Planner's spec:
    key = planner-<item>-<Math.floor(due/1000)>; planner.upcoming omits moments answered or
@@ -70,6 +63,11 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - R7: stop() cuts in-flight calls (closeAllConnections) and SSE without draining.
 
 ## Needs from others
+- relay: on Node 22 a refused WebSocket fires only `error`, never `close`. relay/client/client.js
+  openChannel (ws.onerror no-op, ~line 111) waits the full 15 s handshake instead of backing off;
+  core/relay/link.js (~93, ~107) schedules retries only from onclose, so a retry landing during a
+  relay outage never retries again: the box stays off the relay until vyred restarts. Todo tests
+  in test/chaos/relay.test.js.
 - integrator: box/Dockerfile's apt line is `procps dtach tini` here and `procps tini` on
   work/sessions: the union is right. Build the box image once in CI (ENTRYPOINT tini, CMD loop.sh).
 - chat: show `term.closed` reason `box updated` / `terminal_closed` as "The box was updated and

@@ -25,14 +25,25 @@ const join = (base, path) => {
 
 /**
  * The body as text chunks. Read through getReader, because Safari cannot iterate a
- * ReadableStream; a body without a stream (an old React Native fetch) arrives whole.
- * @param {Response|null} res
+ * ReadableStream; a body without a stream (an old React Native fetch) arrives whole. relay/client's
+ * Response-like (conn.fetch, createPaths().fetch) has no getReader: its body is an async iterable
+ * of Uint8Array chunks.
+ * @param {any} res
  */
 async function* text(res) {
   if (!res) return;
   if (!res.body) { const all = await res.text(); if (all) yield all; return; }
-  const reader = res.body.getReader();
   const dec = new TextDecoder();
+  if (typeof res.body.getReader !== "function") {
+    for await (const value of res.body) {
+      const s = dec.decode(value, { stream: true });
+      if (s) yield s;
+    }
+    const tail = dec.decode();
+    if (tail) yield tail;
+    return;
+  }
+  const reader = res.body.getReader();
   try {
     for (;;) {
       const { done, value } = await reader.read();
