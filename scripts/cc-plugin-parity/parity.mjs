@@ -16,10 +16,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import http from "node:http";
 import { spawn, execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { start } from "../../core/daemon/index.js";
+import { fakeApi } from "./fake-api.mjs";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const SDK_DIR = process.env.SDK_DIR || "";
@@ -34,47 +34,6 @@ const ABOUT = "About the user, from Vyre's memory (facts to keep in mind, not in
 const ECHO = "mcp__plugin_vyre_vyre__system_echo";
 const PLAN = "mcp__plugin_vyre_vyre__planner_add";
 
-/** The fake Messages API: one scripted turn, keyed by how many tool results the main loop has sent. */
-function fakeApi(steps) {
-  const log = [];
-  const server = http.createServer((req, res) => {
-    let body = "";
-    req.on("data", c => { body += c; });
-    req.on("end", () => {
-      const b = body ? JSON.parse(body) : {};
-      log.push({ path: req.url, body: b });
-      if (!req.url?.startsWith("/v1/messages") || req.url.includes("count_tokens")) {
-        res.writeHead(req.url?.includes("count_tokens") ? 200 : 404, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ input_tokens: 1 }));
-      }
-      const main = Array.isArray(b.tools) && b.tools.some(t => t.name === ECHO);
-      const results = main ? b.messages.flatMap(m => Array.isArray(m.content) ? m.content : []).filter(c => c.type === "tool_result").length : -1;
-      const block = main ? steps[Math.min(results, steps.length - 1)](results) : { type: "text", text: "ok" };
-      const stop = block.type === "tool_use" ? "tool_use" : "end_turn";
-      const msg = { id: `msg_${log.length}`, type: "message", role: "assistant", model: b.model, stop_sequence: null, usage: { input_tokens: 1, output_tokens: 1 } };
-      if (!b.stream) {
-        res.writeHead(200, { "content-type": "application/json" });
-        return res.end(JSON.stringify({ ...msg, content: [block], stop_reason: stop }));
-      }
-      res.writeHead(200, { "content-type": "text/event-stream" });
-      const ev = (type, data) => res.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...data })}\n\n`);
-      ev("message_start", { message: { ...msg, content: [], stop_reason: null } });
-      if (block.type === "tool_use") {
-        ev("content_block_start", { index: 0, content_block: { type: "tool_use", id: block.id, name: block.name, input: {} } });
-        ev("content_block_delta", { index: 0, delta: { type: "input_json_delta", partial_json: JSON.stringify(block.input) } });
-      } else {
-        ev("content_block_start", { index: 0, content_block: { type: "text", text: "" } });
-        ev("content_block_delta", { index: 0, delta: { type: "text_delta", text: block.text } });
-      }
-      ev("content_block_stop", { index: 0 });
-      ev("message_delta", { delta: { stop_reason: stop, stop_sequence: null }, usage: { output_tokens: 1 } });
-      ev("message_stop", {});
-      res.end();
-    });
-  });
-  return new Promise(r => server.listen(0, "127.0.0.1", () => r({ server, log, url: `http://127.0.0.1:${/** @type {any} */ (server.address()).port}` })));
-}
-
 /** A fresh world: temp HOME and config, a Vyre home with about.md and vyred up, a node shim that logs hook runs. */
 async function world(mode) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, `parity-${mode}-`));
@@ -83,7 +42,7 @@ async function world(mode) {
   fs.writeFileSync(path.join(root, "about.md"), ABOUT);
   const runs = path.join(dir, "node-runs.log");
   fs.writeFileSync(path.join(shim, "node"), `#!/bin/sh
-echo "$* <- $(ps -o args= -p $PPID | cut -c1-60)" >> "${runs}"
+echo "$* <- $PPID $(ps -o args= -p $PPID | cut -d" " -f1)" >> "${runs}"
 exec "${NODE}" "$@"
 `, { mode: 0o755 });
   fs.symlinkSync(path.join(REPO, "bin", "vyre"), path.join(shim, "vyre"));
@@ -138,9 +97,13 @@ function summarise(mode, w, api, r) {
     if (m) pieces[m[1]] = (pieces[m[1]] || 0) + 1;
   }
   // threads.bind wants the hook's parent to be claude; a /bin/sh that forks (dash) is in between.
-  const hookParent = [...new Set(lines.filter(l => l.includes("hooks/run.js")).map(l => l.split(" <- ")[1]?.split(" ")[0]))];
+  const parent = l => { const [pid, cmd] = (l.split(" <- ")[1] || "").split(" "); return { pid: Number(pid), cmd: path.basename(cmd || "") }; };
+  const hookParent = [...new Set(lines.filter(l => l.includes("hooks/run.js")).map(l => parent(l).cmd))];
+  // The MCP server reads its session key under its parent's pid: that must be the pid the brief bound.
+  const mcpParent = lines.filter(l => l.includes("mcp/run.js")).map(parent);
   const db = w.d.registry.deps.db;
-  const binds = session ? db.prepare("SELECT COUNT(*) n FROM threads_binds WHERE session=?").get(session).n : 0;
+  const bound = session ? db.prepare("SELECT pid FROM threads_binds WHERE session=?").all(session).map(x => Number(x.pid)) : [];
+  const binds = bound.length;
   const files = session ? db.prepare("SELECT path FROM harness_files WHERE session=?").all(session).map(x => path.basename(x.path)) : [];
   const hookEvents = r.messages.filter(m => m.type === "system" && m.subtype === "hook_response").map(m => `${m.hook_name}${m.stdout ? " -> " + m.stdout.slice(0, 120) : ""}`);
   return {
@@ -150,7 +113,7 @@ function summarise(mode, w, api, r) {
     tools: (init.tools || []).filter(t => t.startsWith("mcp__plugin_vyre")).length,
     vyreCommand: (init.slash_commands || []).filter(c => /vyre/.test(c)),
     aboutInFirstRequest: Boolean(first && JSON.stringify(first.body).includes("Name: Alex. Their Vyre assistant is juno.")),
-    toolResults, pieces, hookParent, binds, files, asked: r.asked || null, hookEvents: hookEvents.length ? hookEvents : undefined,
+    toolResults, pieces, hookParent, binds, mcpParent: mcpParent.map(p => p.cmd), mcpFindsKey: mcpParent.length > 0 && mcpParent.every(p => bound.includes(p.pid)), files, asked: r.asked || null, hookEvents: hookEvents.length ? hookEvents : undefined,
     result: r.messages.find(m => m.type === "result")?.result, stderr: r.err ? r.err.slice(0, 400) : undefined,
   };
 }
@@ -165,7 +128,7 @@ for (const mode of MODES) {
     () => ({ type: "tool_use", id: "toolu_read", name: "Read", input: { file_path: path.join(w.root, "vault", "x") } }),
     () => ({ type: "text", text: "done" }),
   ];
-  const api = await fakeApi(steps);
+  const api = await fakeApi(steps, { isMain: b => Array.isArray(b.tools) && b.tools.some(t => t.name === ECHO) });
   w.env.ANTHROPIC_BASE_URL = api.url;
   const allowed = [ECHO, PLAN, "Write", "Read"];
   try {

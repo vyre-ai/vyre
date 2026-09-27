@@ -5,12 +5,12 @@
   "requires": [],
   "does": {
     "tools": ["threads.start", "threads.send", "threads.list", "threads.get", "threads.lease", "threads.release",
-      "threads.asks", "threads.answer", "threads.stop", "threads.launch", "threads.watch", "threads.unwatch",
-      "threads.claimed", "threads.contend", "threads.vouch", "threads.pids", "threads.bind", "threads.history", "threads.usage", "threads.notice", "threads.halt", "threads.inbox", "threads.replied", "threads.unqueue", "threads.live"]
+      "threads.asks", "threads.answer", "threads.interrupt", "threads.mode", "threads.fork", "threads.rewind", "threads.model", "threads.commands", "threads.tasks", "threads.kill-task", "threads.thinking", "threads.shell", "threads.remember", "threads.unqueue", "threads.queue", "threads.edit", "threads.send-now", "threads.stop", "threads.launch", "threads.watch", "threads.unwatch",
+      "threads.claimed", "threads.contend", "threads.vouch", "threads.pids", "threads.bind", "threads.history", "threads.usage", "threads.notice", "threads.halt", "threads.inbox", "threads.replied", "threads.post", "threads.live"]
   },
   "watches": { "emits": ["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
-    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued", "thread.unqueued"] },
+    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued", "mode.changed", "thread.turn", "thread.state", "thread.usage", "thread.steered", "thread.unqueued", "thread.rewound", "model.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"] },
   "shows": { "cli": ["threads"] },
-  "needs": {},
+  "needs": { "vault": ["claude-setup-token", "anthropic-api-key"] },
   "teaches": {}
 }

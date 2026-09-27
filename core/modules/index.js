@@ -17,6 +17,9 @@ import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY } from "../presence/index.js";
 
+/** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
+const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
+
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
 const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,6 +50,9 @@ export function validate(m) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
   for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+  // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
+  const providers = m.does && m.does.providers;
+  if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
   return out;
 }
 
@@ -119,7 +125,8 @@ export function checkInput(schema, value, where = "input") {
  */
 export const callerKind = caller => {
   const c = String(caller);
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
+  // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
+  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**
@@ -166,6 +173,8 @@ export class Registry {
     this.upgrades = new Map();
     /** @type {Map<string, (req: any, res: any, at: { caller: string, url: URL }) => any>} */
     this.routes = new Map();
+    /** @type {Map<string, { module: string, driver: any }>} session providers (ADR 0030), by name */
+    this.providers = new Map();
     /** A retried write runs once (ADR 0029, R2). */
     this.idempotency = deps && deps.db ? new Idempotency(deps.db) : null;
   }
@@ -313,6 +322,19 @@ export class Registry {
         if (this.routes.has(at)) throw new Error(`route ${at} is already registered`);
         this.routes.set(at, fn);
       },
+      // A session provider: a driver the Switchboard runs sessions on (core/sessions/provider.js).
+      // Declared under does.providers; it must pass core/sessions/conformance.js.
+      provider: (name, driver) => {
+        const mine = (m.does && m.does.providers) || [];
+        if (!mine.includes(name)) throw new Error(`${m.name} registered provider ${name}, which its manifest does not declare under does.providers`);
+        if (this.providers.has(name)) throw new Error(`provider ${name} is already registered`);
+        if (!driver || typeof driver.run !== "function") throw new Error(`provider ${name} needs a run function`);
+        this.providers.set(name, { module: m.name, driver });
+      },
+      providers: {
+        get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
+        list: () => [...this.providers.keys()],
+      },
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);
         if (this.tools.has(name)) throw new Error(`tool ${name} is already registered`);
@@ -352,6 +374,15 @@ export class Registry {
     // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
     if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
       return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
+    }
+    // Over the tailnet a node signed in as the owner, and over the relay a paired device
+    // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
+    // own actions there need the person's session too (core/presence/person.js),
+    // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
+    // way to get it, and the first passkey is enrolled with onboarding's code.
+    if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool)
+      && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
+      return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
     }
     const problems = checkInput(def.input, input);
     if (problems.length) return { error: { code: "bad_input", message: problems.join("; ") } };

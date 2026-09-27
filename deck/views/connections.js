@@ -199,7 +199,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   // ---- MCP servers ----
 
   function drawServers() {
-    const add = h("button", { type: "button", class: "btn btn-sm", "data-act": "add-mcp", disabled: !!st.serverErr, onclick: () => openForm("mcp") }, "Add MCP server");
+    const add = h("button", { type: "button", class: "btn btn-sm" + (st.servers.length ? "" : " btn-primary"), "data-act": "add-mcp", disabled: !!st.serverErr, onclick: () => openForm("mcp") }, "Add MCP server");
     if (st.serverErr) { put(mcpBox, h("h3", { class: "set-h3" }, "MCP servers"), empty("MCP servers are kept by the mcp module.", st.serverErr)); return; }
     put(mcpBox, h("h3", { class: "set-h3" }, "MCP servers"),
       st.servers.length ? h("div", { class: "rows" }, st.servers.map(serverRow))
@@ -295,7 +295,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   // ---- Google accounts ----
 
   function drawAccounts() {
-    const add = h("button", { type: "button", class: "btn btn-sm", "data-act": "add-google", disabled: !!st.accountErr, onclick: () => openForm("google") }, "Add Google account");
+    const add = h("button", { type: "button", class: "btn btn-sm" + (st.accounts.length ? "" : " btn-primary"), "data-act": "add-google", disabled: !!st.accountErr, onclick: () => openForm("google") }, "Add Google account");
     if (st.accountErr) { put(googleBox, h("h3", { class: "set-h3" }, "Google accounts"), empty("Google accounts are kept by the google module.", st.accountErr)); return; }
     put(googleBox, h("h3", { class: "set-h3" }, "Google accounts"),
       st.accounts.length ? h("div", { class: "rows" }, st.accounts.map(accountRow))
