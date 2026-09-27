@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: the swipe releases by the needs-row rule
+
+- `SwipeRow` releases by `src/ui/swipe.js` (the pwa's `release(x, v)`): a 100 px reveal or a
+  0.5 px/ms fling past 24 commits, 40 to 100 rests open with the action a button that commits, under
+  40 springs back. The web drops the scroll-snap strip for pointer events on the row's face.
+
 #### One app: real icons, the full status mark, 44 list rows
 
 - New dependency: react-native-svg 15.12.1 (the SDK 54 pin from `expo install`). The icon set has
