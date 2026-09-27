@@ -22,9 +22,12 @@ import crypto from "node:crypto";
 import { spawn } from "node:child_process";
 import { relOfRole, canonVehicle, ownText, CAR_NAMES } from "./extract.js";
 import { OBJ, KIN_RELS, DIETS, ANYONE, NAME } from "./model.js";
+import { KIN } from "./extract.js";
+
+const KIN_WORDS = new Set(Object.keys(KIN));
 
 /** Bump when the prompt changes what a read means: old reads are then read again. */
-export const VERSION = 4;
+export const VERSION = 5;
 export const READER = { batch: 20, gapMs: 60_000, dailyUsd: 0.25, backfillUsd: 2, maxConf: 0.8, model: "haiku", maxChars: 1500, weakChars: 400, perTurn: 12, timeoutMs: 120_000,
   // Haiku's list price per million tokens: for the estimate a run is checked against before it starts.
   usdPerMIn: 1, usdPerMOut: 5 };
@@ -113,12 +116,15 @@ export const SYSTEM = [
 ].join("\n");
 
 /**
- * The user message: numbered turns, each with the assistant's line before it for context.
- * @param {{ text: string, before?: string|null }[]} turns
+ * The user message: numbered turns, each with the assistant's line before it for context, after
+ * the people memory already knows (name -> role).
+ * @param {{ text: string, before?: string|null }[]} turns @param {Map<string, string>|null} [people]
  */
-export function readerPrompt(turns) {
+export function readerPrompt(turns, people = null) {
   const fence = s => String(s).replace(/<\/?turn[^>]*>/gi, " ");
-  return turns.map((x, i) => [
+  // Who memory already knows, so "dani's bday" is read as the wife's: names and roles only.
+  const known = people && people.size ? `<known>people the user has mentioned before: ${[...people].slice(0, 40).map(([n, r]) => `${cap1(n)} (${r})`).join(", ")}</known>\n\n` : "";
+  return known + turns.map((x, i) => [
     `<turn t="${i}">`,
     x.before ? `(the assistant had just said: ${fence(x.before).replace(/\s+/g, " ").slice(-300)})` : null,
     fence(readable(x.text)?.text ?? ""),
@@ -151,6 +157,10 @@ const split = ref => { const i = String(ref).indexOf(":"); return i < 0 ? [Strin
 const clean = v => typeof v === "string" && v.length > 0 && v.length <= 120 && !/[\n\r<>{}]/.test(v);
 const cap1 = w => w.charAt(0).toUpperCase() + w.slice(1);
 const title = s => s.split(/\s+/).map(w => (/^[a-z]/.test(w) ? cap1(w) : w)).join(" ");
+/** A request to invent people: what follows it is not the user's life. */
+const MADE_UP = /\b(?:persona|personas|seed data|seed script|seed file|demo data|demo user|dummy data|fake data|test data|sample data|mock data|fixture|fixtures|placeholder|lorem|bedtime story|a story|short story|character named|characters|roleplay|role play|pretend|keep it fake|fictional)\b/;
+/** Not so, only wished, planned or supposed. */
+const UNREAL = /\b(?:if|would|wouldn't|could|might|someday|one day|ever|wish|hope|hoping|imagine|suppose|hypothetically|what if|thinking about|thinking of|considering)\b/;
 /** The words that name each role, as people type them. */
 const ROLE_SAID = /** @type {Record<string, RegExp>} */ ({
   spouse: /\b(?:wife|husband|spouse|hubby|hubs|wifey|missus|mrs|married)\b/, partner: /\b(?:partner|girlfriend|boyfriend|fianc\w*|other half|better half|significant other|gf|bf)\b/,
@@ -164,7 +174,8 @@ const FAMILY = /\b(?:wife|husband|hubby|hubs|missus|partner|other half|mom|mum|m
 /** The role said in the turn: full confidence; family said some other way: FAMILY_CONF; else null. */
 const roleConf = (role, own, conf) => {
   if (!ROLE_SAID[role]) return null;
-  if (ROLE_SAID[role].test(own.text)) return conf;
+  if (ROLE_SAID[role].test(own.text) || own.roles?.has(role) || (["child", "son", "daughter"].includes(role) && ["child", "son", "daughter"].some(r => own.roles?.has(r)))
+    || ((role === "spouse" || role === "partner") && (own.roles?.has("spouse") || own.roles?.has("partner")))) return conf;
   // The model saw the whole batch, so it may know who "mia" is from another turn: its role
   // stands, a little lower, as long as the turn is about family at all.
   if (role === "friend") return null;
@@ -173,7 +184,7 @@ const roleConf = (role, own, conf) => {
 
 /**
  * One fact the model gave for one turn: the claims it becomes, or why not.
- * @param {any} f @param {{ text: string, words: Set<string> }} own  the user's own words in the turn
+ * @param {any} f @param {{ text: string, words: Set<string>, roles?: Set<string>, sentences: string[] }} own  the user's own words in the turn
  * @returns {{ claims?: { subj: string, rel: string, obj: string, conf: number }[], error?: string }}
  */
 export function checkRead(f, own) {
@@ -184,6 +195,16 @@ export function checkRead(f, own) {
   // The quote is the user's own words: pasted, quoted and dictated text is not in own.
   const q = norm(f.q);
   if (q.length < 3 || !(own.text.includes(q) || said(f.q, own))) return { error: "not the user's words" };
+  // Made up on purpose (a persona, seed or demo data, a story) or not real (if, would, someday):
+  // the words are the user's, the life is not.
+  const at = own.text.indexOf(q);
+  if (at >= 0) {
+    const made = MADE_UP.exec(own.text);
+    if (made && made.index <= at) return { error: "made-up text" };
+    // The sentence the quote is in, up to the quote: "if we ever have a kid" is not a kid.
+    const sentence = own.sentences.find(x => x.includes(q)) ?? "";
+    if (UNREAL.test(sentence.slice(0, sentence.indexOf(q)).split(/\bbut\b/).pop() || "") || UNREAL.test(q)) return { error: "not real" };
+  }
   let conf = Number(f.conf);
   if (!Number.isFinite(conf)) conf = 0.7;
   if (conf < 0.5) return { error: "too unsure" };
@@ -237,6 +258,14 @@ export function checkRead(f, own) {
   // A birthday names its month ("the 14th" alone would compete with "14 March" as a rival value).
   if (rel === "birthday" && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\d{1,2}[/.-]\d{1,2}/i.test(ov)) return { error: "no month" };
   if (rel === "name" && !NAME.test(title(ov))) return { error: "not a name" };
+  // The user's own vehicle is said as theirs: "my", "we", "bought", "drove". A quote about
+  // someone else's ("theo's van", "he drives", "in the story the van") is not.
+  if (subj === "me" && ok === "vehicle" && (rel === "owns" || rel === "drives")) {
+    const FIRST = /\b(?:my|our|i|im|i'm|i've|ive|we|we're|we've|us|me)\b/;
+    const ACTS = /\b(?:bought|got|picked up|traded|leased|drove|parked|washed|sold)\b/;
+    const other = /\b(?:he|she|his|her|they|their|them)\b|\b[a-z]+'s\b/.test(q);
+    if (!FIRST.test(q) && (other || !(FIRST.test(own.text) || ACTS.test(own.text)))) return { error: "not the user's vehicle" };
+  }
   // A vehicle may be named by its model alone ("the outback"): one of its words is enough.
   const objSaid = ok === "vehicle" ? words(ov).some(w => own.words.has(w)) : rel === "diet" && /\b(?:meat)\b/.test(own.text) ? true : said(ov, own);
   if (!objSaid) return { error: "object not in the turn" };
@@ -249,10 +278,16 @@ export function checkRead(f, own) {
 }
 
 /** The user's own words in a turn, ready for checkRead. */
-export function ownOf(text) {
-  const t = norm(ownText(text));
+export function ownOf(text, people = null) {
+  const raw = ownText(text);
+  const t = norm(raw);
+  const sentences = raw.split(/(?<=[.!?;])\s+|\n+/).map(norm).filter(Boolean);
   // "dani's" says "dani" too.
-  return { text: t, words: new Set(t.split(" ").filter(Boolean).flatMap(w => (w.endsWith("'s") ? [w, w.slice(0, -2)] : [w]))) };
+  const words = new Set(t.split(" ").filter(Boolean).flatMap(w => (w.endsWith("'s") ? [w, w.slice(0, -2)] : [w])));
+  // The roles of people memory knows who are named in the turn: "dani's bday" says the wife.
+  const roles = new Set();
+  if (people) for (const [n, r] of people) if (words.has(n)) roles.add(r);
+  return { text: t, words, roles, sentences };
 }
 
 // ------------------------------------------------------------------ running it
@@ -324,16 +359,33 @@ export function createReader(deps) {
   const turnQ = db.prepare("SELECT text, role FROM recall_turns WHERE session = ? AND seq = ?");
   let timer = null, running = false, stopped = false, waiting = null;
 
+  /** The people memory knows: first name, lower case -> role (spouse, daughter, dog, friend). */
+  const people = () => {
+    const out = new Map();
+    for (const rel of ["spouse", "partner", "mother", "father", "sister", "brother", "son", "daughter", "child", "pet", "friend"]) {
+      for (const f of personal.lookup({ subj: "me", rel }).filter(x => x.current && x.confidence >= 0.5)) {
+        const e = personal.about(f.obj);
+        const label = String(e?.entity?.label ?? f.object ?? "");
+        const first = label.split(" ")[0].toLowerCase();
+        if (!/^[a-z][a-z-]+$/.test(first) || KIN_WORDS.has(first)) continue;
+        const role = rel === "pet" ? (f.obj === "kin:cat" || personal.called(f.obj) === "cat" ? "cat" : "dog") : rel;
+        if (!out.has(first)) out.set(first, role);
+      }
+    }
+    return out;
+  };
+
   /** Apply every kept read to the turns waiting for it. Returns the claims added. */
   const applyKept = () => {
     const rows = /** @type {any[]} */ (db.prepare(`SELECT q.session, q.seq, q.ts, q.hash, r.facts FROM memory_me_queue q JOIN memory_me_reads r ON r.hash = q.hash`).all());
     if (!rows.length) return 0;
     let n = 0;
+    const known = people();
     const del = db.prepare("DELETE FROM memory_me_queue WHERE session = ? AND seq = ?");
     for (const r of rows) {
       const t = /** @type {any} */ (turnQ.get(r.session, r.seq));
       if (t && t.role === "user") {
-        const own = ownOf(String(t.text));
+        const own = ownOf(String(t.text), known);
         const claims = [];
         for (const f of (safe(r.facts) || []).slice(0, READER.perTurn)) { const c = checkRead(f, own); if (c.claims) claims.push(...c.claims); }
         if (claims.length) n += personal.addClaims(String(r.session), Number(r.seq), Number(r.ts) || 0, claims.map(c => ({ ...c, method: "model" })));
@@ -381,7 +433,7 @@ export function createReader(deps) {
       turns.push({ hash: r.hash, text: String(x.text), before: before && before.role === "assistant" ? String(before.text) : null });
     }
     if (!turns.length) return why("nothing waiting");
-    const prompt = readerPrompt(turns);
+    const prompt = readerPrompt(turns, people());
     // The estimate a run must fit before it starts; what it cost is what the runner says.
     const est = ((SYSTEM.length + prompt.length) / 4 / 1e6) * READER.usdPerMIn + (turns.length * 80 / 1e6) * READER.usdPerMOut;
     const today = day(t);

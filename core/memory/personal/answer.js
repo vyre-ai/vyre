@@ -115,6 +115,8 @@ const OF = /** @type {[RegExp, string][]} */ ([
   ["what colou?r is S", "color"],
   [`is S (?:an? )?(?:${DIETS})`, "diet"],
   ["what (?:is )?S diet", "diet"],
+  ["what (?:car |truck |van |vehicle )?does S (?:drive|have|own)(?: now)?", "car"],
+  ["what (?:car|truck|van|vehicle) (?:is|was) S driving", "car"],
   ["how old (?:is|are) S(?: now)?", "age"],
   ["what age is S(?: now)?", "age"],
   ["(?:what (?:is|are) )?S (?:hobby|hobbies)", "hobby"],
@@ -143,6 +145,18 @@ function ofQuestion(t) {
   const m = /^what (?:breed|kind|type|sort) of (dog|cat|puppy|kitten) do (?:i|we) have$/.exec(t);
   return m ? { kind: /** @type {const} */ ("of"), who: { kin: m[1] }, rel: "breed" } : null;
 }
+
+/** Makes asked about by name: "do i drive a tesla". */
+const MAKE_Q = /\b(tesla|toyota|honda|ford|chevy|chevrolet|volvo|bmw|audi|subaru|mazda|nissan|hyundai|kia|volkswagen|vw|jeep|lexus|porsche|rivian|polestar|mercedes|mini|fiat|dodge|gmc|ram)\b/;
+/** Body types of common models, so "what truck did i buy" is the Maverick and "do i own a van" is not. */
+const BODY = /** @type {Record<string, string[]>} */ ({
+  truck: ["maverick", "f-150", "f150", "ranger", "tacoma", "tundra", "silverado", "sierra", "ram", "frontier", "titan", "gladiator", "r1t", "cybertruck", "ridgeline", "colorado", "canyon"],
+  van: ["transit", "sprinter", "sienna", "odyssey", "carnival", "pacifica", "promaster", "id buzz", "vito", "caddy"],
+  suv: ["outback", "forester", "crosstrek", "rav4", "cr-v", "cx-5", "xc40", "xc60", "xc90", "model y", "model x", "r1s", "4runner", "highlander", "explorer", "tahoe", "equinox", "tiguan", "sportage", "sorento", "telluride", "kona", "tucson", "outlander", "wrangler", "cherokee", "defender", "bronco", "pilot", "rogue", "ioniq 5", "ev6", "niro", "macan", "cayenne", "expedition", "mach-e"],
+});
+BODY.pickup = BODY.truck; BODY.minivan = BODY.van;
+/** Is this vehicle of the type asked ("Ford Maverick" is a truck)? Unknown models are not. */
+const isType = (label, q) => (BODY[q] || []).some(m => hasWord(String(label).toLowerCase(), m)) || (["bike", "motorbike", "motorcycle"].includes(q) && /\b(?:harley|ducati|yamaha|kawasaki|triumph|ktm|vespa)\b/i.test(label));
 
 /** Nouns whose members people name without the noun: "what editor do I use" is answered by "Neovim". */
 const CATEGORY = /** @type {Record<string, string[]>} */ ({
@@ -245,7 +259,8 @@ export function parse(q) {
   if ((m = /^(?:where|which (?:city|town|country|place)) did (?:i|we) (?:move|relocate)(?: to)?( from)?(?: again)?$/.exec(t))) return { kind: "lives", before: m[1] ? "then" : null };
   // "what electric car do i drive": a kind of car memory cannot check is asked of the car's own words.
   if (CAR_RE.test(t)) {
-    const qual = /\b(electric|ev|hybrid|diesel|petrol|gas|sports?|convertible|classic|vintage|work)\b/.exec(t)?.[1];
+    const qual = before ? null : /\b(electric|ev|hybrid|diesel|petrol|gas|sports?|convertible|classic|vintage|work)\b/.exec(t)?.[1]
+      || /\b(van|suv|motorbike|motorcycle|bike|truck|pickup|minivan)\b/.exec(t)?.[1] || MAKE_Q.exec(t)?.[1];
     return { kind: "car", before, color: /\bcolou?r\b/.test(t), ...(qual ? { qual } : {}) };
   }
   // A job question before a place: "what do i do for a living" is not where the user lives.
@@ -469,7 +484,7 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
         const cur = current(owns);
         const f = d && cur.some(o => o.obj === d.obj) ? cur.find(o => o.obj === d.obj) : cur[0] || d;
         if (!f) return null;
-        if (p.qual && !hasWord(f.object, p.qual)) return null;
+        if (p.qual && !hasWord(f.object, p.qual) && !isType(f.object, p.qual)) return null;
         const c = carText(f);
         if (p.color) {
           if (!c.col) return null;

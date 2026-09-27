@@ -238,7 +238,12 @@ function answerers(mem, scratch = SCRATCH) {
       let r;
       try { r = await mem.call("memory.answer", { q }); } catch (e) { return { answer: null, confidence: null, ms: now() - t0, via: null, error: /** @type {Error} */ (e).message }; }
       const d = r && typeof r === "object" && "data" in r ? r.data : r;
-      return { answer: d?.answer ?? null, confidence: typeof d?.confidence === "number" ? d.confidence : null, ms: now() - t0, via: d?.via ?? null };
+      // What an answer stood on, without its words: each fact's relation and the methods of the
+      // claims behind it (rule, indirect, lower, model, assistant), for the sealed world's report.
+      const db = mem.ctx.store.db;
+      const basis = (d?.facts || []).map(f => ({ rel: f.rel, methods: [...new Set(/** @type {any[]} */ (db.prepare(`SELECT c.method FROM memory_me_evidence v
+        JOIN memory_me_claims c ON c.session = v.session AND c.seq = v.seq AND c.rel = ? WHERE v.fact = ?`).all(f.rel, String(f.id))).map(x => String(x.method)))] }));
+      return { answer: d?.answer ?? null, confidence: typeof d?.confidence === "number" ? d.confidence : null, ms: now() - t0, via: d?.via ?? null, basis };
     };
   }
   return out;
@@ -322,7 +327,7 @@ export async function runEval(opts = {}) {
       if (!fn) { results[name] = { supported: false, reason: `the memory module has no ${name === "answer" ? "memory.answer" : name} tool yet` }; continue; }
       const got = [];
       for (const g of questions) got.push(await fn(g.q));
-      results[name] = { supported: true, ...score(questions, got), answers: questions.map((g, i) => ({ q: g.q, answer: got[i].answer, confidence: round(got[i].confidence), via: got[i].via ?? null })) };
+      results[name] = { supported: true, ...score(questions, got), answers: questions.map((g, i) => ({ q: g.q, answer: got[i].answer, confidence: round(got[i].confidence), via: got[i].via ?? null, basis: got[i].basis ?? [] })) };
     }
     return { world, answerers: results };
   } finally {

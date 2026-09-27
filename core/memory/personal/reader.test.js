@@ -27,7 +27,7 @@ async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers
   const clock = { t: T0 + 100 * DAY };
   const fake = async r => {
     sent.push(r);
-    const blocks = r.prompt.split(/\n\n(?=<turn )/);
+    const blocks = r.prompt.replace(/^<known>[^\n]*<\/known>\n\n/, "").split(/\n\n(?=<turn )/);
     const reads = blocks.map((b, i) => ({ t: i, facts: Object.entries(answers).filter(([k]) => b.includes(k)).flatMap(([, f]) => f) })).filter(x => x.facts.length);
     return { text: JSON.stringify({ reads }), usd, tokens_in: 1000, tokens_out: 50 };
   };
@@ -87,6 +87,20 @@ test("reader: a fact must quote the user's own words, and name what it says", ()
   const move = ownOf("boxes everywhere, the move from portland is friday. i grew up in denver");
   assert.equal(checkRead({ subj: "me", rel: "from", obj: "place:Portland", q: "the move from portland", conf: 0.9 }, move).error, "not where they are from");
   assert.deepEqual(checkRead({ subj: "me", rel: "from", obj: "place:denver", q: "i grew up in denver", conf: 0.9 }, move).claims?.map(x => x.obj), ["place:Denver"]);
+  const demo = ownOf("make a seed persona sofia who is married to diego and has one dog named rocket");
+  assert.equal(checkRead({ subj: "me", rel: "spouse", obj: "name:Diego", q: "married to diego", conf: 0.9 }, demo).error, "made-up text");
+  const hypo = ownOf("if we ever have a second kid we'd need a bigger place. my daughter luna is 4");
+  assert.equal(checkRead({ subj: "me", rel: "child", obj: "kin:child", q: "have a second kid", conf: 0.9 }, hypo).error, "not real");
+  assert.deepEqual(checkRead({ subj: "me", rel: "daughter", obj: "name:Luna", q: "my daughter luna", conf: 0.9 }, hypo).claims?.length, 2, "the next sentence is real");
+  // A person memory knows, named in the turn, says their role: "dani's bday" is the wife's.
+  const people = new Map([["dani", "spouse"], ["luna", "daughter"]]);
+  const bday = ownOf("dani's bday is march 14, remind me", people);
+  assert.deepEqual(checkRead({ subj: "kin:spouse", rel: "birthday", obj: "lit:14 March", q: "dani's bday is march 14", conf: 0.9 }, bday).claims?.map(x => `${x.subj}|${x.obj}@${x.conf}`), ["kin:spouse|lit:14 March@0.8", "me|kin:spouse@0.8"]);
+  assert.equal(checkRead({ subj: "kin:son", rel: "age", obj: "lit:4", q: "luna just turned 4", conf: 0.9 }, ownOf("luna just turned 4", people)).claims?.[0].conf, 0.8, "a daughter's name says a child");
+  assert.match(readerPrompt([{ text: "my wife is on nights again" }], people), /^<known>people the user has mentioned before: Dani \(spouse\), Luna \(daughter\)<\/known>/);
+  const van = ownOf("theo's van is a white ford transit, he drives it everywhere. my truck is blue");
+  assert.equal(checkRead({ subj: "me", rel: "owns", obj: "vehicle:Ford Transit", q: "theo's van is a white ford transit", conf: 0.9 }, van).error, "not the user's vehicle");
+  assert.equal(checkRead({ subj: "me", rel: "drives", obj: "vehicle:Ford Transit", q: "he drives it everywhere", conf: 0.9 }, van).error, "not the user's vehicle");
   const pet = ownOf("walked biscuit (our beagle) in the rain");
   assert.deepEqual(checkRead({ subj: "name:biscuit", rel: "breed", obj: "lit:Beagle", q: "biscuit (our beagle)", conf: 0.9 }, pet).claims?.map(x => x.obj), ["lit:beagle"]);
   assert.equal(checkRead({ subj: "me", rel: "breed", obj: "lit:beagle", q: "our beagle", conf: 0.9 }, pet).error, "a breed is a pet's");
@@ -105,8 +119,8 @@ test("reader: reads land as model claims, once per text, and survive a full re-r
   assert.ok(w.sent[0].prompt.indexOf("shes a nurse") < w.sent[0].prompt.indexOf("flaky snapshot"), "the personal turn goes first");
   assert.deepEqual(w.fact("kin:spouse", "role"), ["nurse"]);
   assert.deepEqual(w.fact("kin:spouse", "name"), ["Dani"]);
-  const m = /** @type {any} */ (w.db.prepare("SELECT method, COUNT(*) n FROM memory_me_claims WHERE rel = 'role' GROUP BY method").all());
-  assert.deepEqual(m.map(x => [x.method, x.n]), [["model", 2]], "both sessions carry the claim");
+  const m = /** @type {any} */ (w.db.prepare("SELECT COUNT(*) n FROM memory_me_claims WHERE rel = 'role' AND method = 'model'").get());
+  assert.equal(m.n, 2, "both sessions carry the model's claim");
   // A full re-read keeps the model's claims and never asks again.
   await w.personal.pass({ full: true });
   w.reader.applyKept(); w.personal.derive();
