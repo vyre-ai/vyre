@@ -29,10 +29,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Next
 
-2. Hand tokens.json to mobile (tokens.ts), deck (tokens.css) and capsule-pro (Theme.swift), with
+1. Hand tokens.json to mobile (tokens.ts), deck (tokens.css) and capsule-pro (Theme.swift), with
    a generator and a test that fails off-system values.
-3. Propose `vyre phone add` (with `--android --usb|--wireless`) to polish-cli and tailnet.
-4. Verify the iPhone web app over a `*.ts.net` address on a real device (Tailscale issue 19147).
+2. Propose `vyre phone add` (with `--android --usb|--wireless`) to polish-cli and tailnet.
+3. Verify the iPhone web app over a `*.ts.net` address on a real device (Tailscale issue 19147).
 
 ## Needs from others
 
@@ -46,4 +46,7 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Changed contracts
 
-- None. Proposed only: the CLI verb `vyre phone add`.
+- docs/nav.json (docs team): design/one-app/README.md and DIRECTION.md added under Contributing;
+  docs/index.json and docs/reference/index.md regenerated with npm run docs:ref.
+- Proposed only: the CLI verbs `vyre phone add` and `vyre allow` / `vyre deny` (lines marked
+  terms: ignore until polish-cli builds them).

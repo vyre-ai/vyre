@@ -40,14 +40,19 @@ const NOTES = {
     title: e.payload.reason === "asked" ? "A thread you are watching is asking" : e.payload.reason === "stopped" ? "A thread you are watching stopped" : "A thread you are watching finished",
     path: `/threads/${enc(e.thread)}`, tag: `watch-${e.payload.watch}` }),
   "lesson.proposed": e => ({ kind: "lesson", title: "Vyre has a lesson for you to review", path: "/settings?section=lessons", tag: `lesson-${e.payload.lesson}` }),
-  // A fixed word per item kind, and the firing id as the tag, so a second ring replaces the first
-  // on the device. The label the user typed only when they turned planner_label on.
+  // A fixed word per item kind, and the ring's key as the tag (planner-<item>-<due>), so a second
+  // ring replaces the first, and a device that rang it from its own schedule shows it once (ADR
+  // 0029, R6). item and due (seconds) ride along. The label the user typed only when they turned
+  // planner_label on.
   "planner.fired": (e, s) => ({ kind: "planner", title: PLANNER_TITLES[e.payload.kind] || "Reminder", path: `/planner/${enc(e.payload.firing)}`,
-    tag: `planner-${e.payload.firing}`, actions: ["done", "snooze"], loud: e.payload.kind === "alarm" || e.payload.kind === "timer",
+    tag: plannerTag(e.payload), item: String(e.payload.item ?? ""), due: Math.floor(Number(e.payload.due) / 1000),
+    actions: ["done", "snooze"], loud: e.payload.kind === "alarm" || e.payload.kind === "timer",
     ...(s.planner_label && e.payload.title ? { body: String(e.payload.title).slice(0, 120) } : {}) }),
 };
 const PLANNER_TITLES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer finished", reminder: "Reminder", event: "Starting soon", todo: "Todo due" });
 const enc = v => encodeURIComponent(String(v ?? ""));
+/** The planner's ring key, or the firing id from a planner that predates keys. */
+const plannerTag = p => String(p.key || `planner-${p.firing}`);
 
 /**
  * Is it quiet now? Quiet hours are "HH:MM" to "HH:MM" in a time zone (the box's own by default),
@@ -145,9 +150,11 @@ export default {
     // the others: a push with only a kind and the tag, and nothing to show.
     offs.push(ctx.events.on("planner.acked", async e => {
       try {
+        // A ring the box never rang (answered on a device that rang it on its own) is on the
+        // other devices' schedules too, so it is cleared the same way.
         const f = String(e.payload.firing || "");
-        if (!rung.delete(f) || !settings().kinds.planner) return;
-        await deliver({ kind: "planner-ack", tag: `planner-${f}`, at: Date.now() });
+        if (!(rung.delete(f) || e.payload.unrung) || !settings().kinds.planner) return;
+        await deliver({ kind: "planner-ack", tag: plannerTag(e.payload), at: Date.now() });
       } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); }
     }));
 

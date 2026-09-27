@@ -142,16 +142,6 @@ The volumes, and with them the vault, Claude's sign-in and your projects, stay. 
 
 After an upgrade of a systemd install, `vyre up` asks you to rewrite the units. Run the line it prints: `sudo vyre up --system --user alex`.
 
-### `vyre box update` says to run `npm i -g vyre@latest`
-
-When the box is newer than the Mac, `vyre box update` prints that line. It fails: Vyre is not on npm yet. Run this on the Mac instead:
-
-```
-npm install -g https://vyre.run/box/vyre.tgz && vyre up
-```
-
-See [known gaps](../known-gaps.md#the-mac-update-that-vyre-box-update-prints-fails).
-
 ## The Mac
 
 ### "vyred did not start"

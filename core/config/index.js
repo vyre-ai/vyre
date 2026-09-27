@@ -81,7 +81,7 @@ export function privateSocketDir() {
 }
 
 /** @typedef {{ tailscale: boolean, address?: string, owner?: string, domain?: string, via?: "vyre.run"|"ts.net",
- *   port?: number, acme?: "production"|"staging", box?: string, onboardPort?: number, ownerSeen?: string,
+ *   port?: number, acme?: "production"|"staging", box?: string, onboardPort?: number, ownerSeen?: string, origins?: string[],
  *   guests?: { enabled: boolean, people: Record<string, { tools: string[] }> } }} Network
  * address is the https URL the Deck is served at; owner the one Tailscale login served there (ADR 0002);
  * guests the people from other tailnets it also serves, each limited to its tools (ADR 0014 part 8). */
@@ -94,6 +94,28 @@ export function privateSocketDir() {
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
  *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } },
  *   term: { keep_hours: number, max?: number, shell?: string } }} Config */
+
+/**
+ * The box's work folder: the vyre-work volume, which Taildrive shares. Tests point
+ * VYRE_WORK_DIR at a temp folder.
+ */
+export function workDir() {
+  return path.resolve(untilde(process.env.VYRE_WORK_DIR || "/work"));
+}
+
+/**
+ * Where projects lived before the box kept them in the work folder: ~/Vyre/projects, which on the
+ * box is inside the vyre-home volume with the vault and Claude's sign-in, and is never shared.
+ * Tests point VYRE_OLD_PROJECTS_DIR at a temp folder.
+ */
+export function oldProjectsDir() {
+  return path.resolve(untilde(process.env.VYRE_OLD_PROJECTS_DIR || path.join(os.homedir(), "Vyre", "projects")));
+}
+
+/** The projects folder a box uses when config.json names none: inside the work folder, when there is one. */
+export function boxProjectsDir() {
+  return path.join(workDir(), "projects");
+}
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {
@@ -141,12 +163,18 @@ export function load(root = home()) {
     hooks: { ...d.hooks, ...(user.hooks || {}) },
     term: { ...d.term, ...(user.term || {}) },
   };
+  if (!["box", "local"].includes(c.role)) { problems.push(`role "${c.role}" is not box or local; using ${d.role}`); c.role = d.role; }
+  // On a box with a work folder, projects live there so Taildrive can share them. The role may
+  // come from config.json, so this is decided here rather than in defaults(). A projectsDir the
+  // user set always wins.
+  if (user.projectsDir === undefined && c.role === "box" && isDir(workDir())) c.projectsDir = boxProjectsDir();
   c.projectsDir = untilde(c.projectsDir);
   c.roots = (c.roots || []).map(untilde);
   c.transcripts = (c.transcripts || []).map(untilde);
-  if (!["box", "local"].includes(c.role)) { problems.push(`role "${c.role}" is not box or local; using ${d.role}`); c.role = d.role; }
   return { ...c, problems };
 }
+
+const isDir = (/** @type {string} */ p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
 
 /**
  * Merge a change into config.json and write it atomically at 0600. Only what the user or the

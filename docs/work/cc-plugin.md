@@ -119,14 +119,29 @@ Perf:
 - SessionStart hook after merging main ef51363, Mac, 30 runs: 40.8 ms median, 43.7 ms p95
   (bare node 19.6 / 21.5). The fix touches only the rules piece.
 
+## Done: remember, then answer (27 Sep)
+
+- Test "memory: the user's own session remembers a fact and is answered from it; an agent's
+  session is refused": /vyre remember's `memory_remember` "My wife is Jordan.", then a fresh
+  server's `memory_answer` "who is my wife" -> "Your wife is Jordan." (also with project_cwds);
+  VYRE_AGENT=kit is refused both. On a scratch tree of this branch + work/memory-iq 6f2c57c:
+  cc-plugin, core/memory/personal/answer, core/about: 26/26. This branch alone: 13 pass, that
+  test skips with the reason. Drop the skip once 6f2c57c is on main.
+
+## Done: the Mac-only planner test failure (27 Sep)
+
+- test/cc-plugin.test.js planner case failed on the Mac (list [] for "buy flour"). Not a
+  refusal: both adds succeeded, but the MCP server answers calls concurrently and the list
+  (sent in the same batch) answered first. `mcp()` now sends each request after the previous
+  reply. Mac 5 runs 13 pass / 1 skip each; testbox 13 / 1.
+
 ## Doing
 
-- Nothing running. Waiting on memory-iq's bare-mcp gate (not on work/memory-iq 5a75b27 yet).
+- Nothing running.
 
 ## Next
 
-- When memory-iq allows bare "mcp": a combined test (memory_remember then memory_answer through
-  the copied plugin's MCP server).
+- After memory-iq 6f2c57c merges: remove the skip in the memory test.
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
 - If the hook's p95 creeps past 50 ms: import core/daemon/client.js lazily in hook.js (harness
   owner's file; ask first).
@@ -140,9 +155,8 @@ Perf:
   the hook): Sessions.bind accepts a pid that is `sh -c` whose parent is claude and binds that
   parent. The Mac's /bin/sh execs, so it binds there.
 
-- memory-iq (shapes confirmed; memory.profile and memory.remember on 892b339): their gate refuses a
-  bare "mcp" caller, which is the user's own Claude Code session. Told them; they will add it.
-  Then add a combined test through the plugin for memory_answer and memory_remember.
+- integrator: merge memory-iq 6f2c57c (the bare-mcp gate) with or before this branch; the memory
+  test skips until then.
 - planner (settled 28 Sep): shapes adopted as merged; no {day, days} sugar needed. Told them a bare
   "mcp" caller is the user's own session (no label, may edit what it added); mcp:agent:<name> is
   an agent. Delivery of a due reminder: push + Capsule + Deck, not a Claude session. The agent

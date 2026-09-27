@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Deck B, Chat</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}
+/* Chat board only: the session list is a nav list (no row hairlines), and a disabled icon button. */
+.vy .sl .li { border-top: 0; border-radius: 8px; padding: 6px 10px; gap: 10px; }
+.vy .ibtn[disabled] { color: var(--label); background: var(--hover); cursor: default; }
+.vy .step { display: flex; align-items: center; gap: 10px; height: 28px; padding: 0 12px 0 32px; }
+</style>
+</helmet>
+<div class="vy dB {{theme}}" style="width: 1440px; height: 900px;">
+
+<nav class="rail" aria-label="Deck">
+  <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg></a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">4</span></a>
+  <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+  <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+  <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 8px;">
+    <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+    <span class="av av-32 av-me">a</span>
+  </div>
+</nav>
+
+<main class="main">
+  <header class="top">
+    <div class="top-l">
+      <a class="t2 trunc" href="#" style="flex: none;">Harlow Legal</a>
+      <span class="t3" aria-hidden="true">/</span>
+      <h1 class="t15 w6 trunc">Intake form drops the phone field</h1>
+    </div>
+    <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or type a command</span><span class="kbd">⌘K</span></div>
+    <div class="top-r">
+      <a class="needs" href="#"><span class="dot dot-need"></span>4 need you</a>
+      <button class="btn btn-p btn-sm"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>New chat<span class="k">N</span></button>
+    </div>
+  </header>
+
+  <div style="flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: 260px minmax(0, 1fr) 300px;">
+
+    <!-- Sessions -->
+    <aside class="col" style="min-height: 0; border-right: 1px solid var(--rule);" aria-label="Sessions">
+      <div style="padding: 16px 12px 8px;">
+        <div class="inp"><svg class="ic t3" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="inp-ph grow">Filter sessions</span><span class="kbd">/</span></div>
+      </div>
+      <div class="sl col" style="padding: 0 6px; gap: 1px; min-height: 0; overflow: hidden;" data-scrolls>
+        <div class="row" style="height: 32px; padding: 8px 10px 0;"><span class="lbl">Today</span><span class="t12 t3" style="margin-left: auto;">5</span></div>
+        <div class="li li-sel" aria-current="true">
+          <div class="col grow" style="gap: 2px;"><span class="trunc w6">Intake form drops the phone field</span><span class="t12 t3 trunc">kit · Harlow Legal</span></div>
+          <div class="col" style="align-items: flex-end; gap: 6px; flex: none;"><span class="t12 t3">14:21</span><span class="dot dot-need" title="Needs you"></span></div>
+        </div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Holiday menu copy</span><span class="t12 t3 trunc">juno · Northwind Bakery</span></div>
+          <div class="col" style="align-items: flex-end; gap: 6px; flex: none;"><span class="t12 t3">14:02</span><span class="dot dot-run" title="Running"></span></div>
+        </div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Pick the hero photo for the holiday menu</span><span class="t12 t3 trunc">juno · Northwind Bakery</span></div>
+          <div class="col" style="align-items: flex-end; gap: 6px; flex: none;"><span class="t12 t3">13:40</span><span class="dot dot-need" title="Needs you"></span></div>
+        </div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Weekly Northwind update</span><span class="t12 t3 trunc">juno · Northwind Bakery</span></div>
+          <span class="t12 t3" style="align-self: flex-start; flex: none;">12:10</span>
+        </div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Fix the broken contact link</span><span class="t12 t3 trunc">kit · Harlow Legal</span></div>
+          <span class="t12 t3" style="align-self: flex-start; flex: none;">11:48</span>
+        </div>
+
+        <div class="row" style="height: 32px; padding: 8px 10px 0;"><span class="lbl">Yesterday</span></div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Wholesale price sheet for holiday catering orders and delivery windows</span><span class="t12 t3 trunc">kit · Northwind Bakery wholesale and holiday catering</span></div>
+          <span class="t12 t3" style="align-self: flex-start; flex: none;">17:32</span>
+        </div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Q3 report for Harlow Legal</span><span class="t12 t3 trunc">juno · Harlow Legal</span></div>
+          <span class="t12 t3" style="align-self: flex-start; flex: none;">16:05</span>
+        </div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Staging deploy keeps timing out</span><span class="t12 t3 trunc">kit · Northwind Bakery</span></div>
+          <span class="t12 t3" style="align-self: flex-start; flex: none;">10:14</span>
+        </div>
+
+        <div class="row" style="height: 32px; padding: 8px 10px 0;"><span class="lbl">Earlier</span></div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Clean up the matter type list</span><span class="t12 t3 trunc">kit · Harlow Legal</span></div>
+          <span class="t12 t3" style="align-self: flex-start; flex: none;">22 Sep</span>
+        </div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Newsletter signup for the bakery site</span><span class="t12 t3 trunc">juno · Northwind Bakery</span></div>
+          <span class="t12 t3" style="align-self: flex-start; flex: none;">19 Sep</span>
+        </div>
+        <div class="li">
+          <div class="col grow" style="gap: 2px;"><span class="trunc">Retainer letter template</span><span class="t12 t3 trunc">juno · Harlow Legal</span></div>
+          <span class="t12 t3" style="align-self: flex-start; flex: none;">16 Sep</span>
+        </div>
+      </div>
+      <div class="t12 t3" style="margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--rule);"><span class="kbd">J</span> <span class="kbd">K</span> move · <span class="kbd">⏎</span> open</div>
+    </aside>
+
+    <!-- Transcript -->
+    <section class="col" style="min-width: 0; min-height: 0;" aria-label="Transcript">
+      <div data-scrolls style="flex: 1 1 auto; min-height: 0; overflow: hidden; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 24px;">
+        <div class="col" style="width: 100%; max-width: 680px; margin: 0 auto; gap: 12px; padding: 16px 0;">
+
+          <div class="row" style="justify-content: flex-end; gap: 10px;">
+            <span class="t12 t3" style="flex: none;">you · 14:12</span>
+            <div class="you" style="max-width: 580px;">The intake form drops the phone number for Estate matters. Fix it and add a test.</div>
+          </div>
+
+          <div class="msg">
+            <span class="av">k</span>
+            <div class="col grow" style="gap: 8px; min-width: 0;">
+              <div class="row" style="gap: 8px; height: 20px; margin-top: 2px;"><span class="w6">kit</span><span class="t12 t3">Sonnet 5 · 14:12</span></div>
+
+              <div class="tool">
+                <button class="tool-h" onClick="{{tSteps}}" aria-expanded="{{oSteps}}">
+                  <svg class="ic ic-12 chev {{chSteps}}" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg>
+                  <span class="w6">Looked through the intake code</span>
+                  <span class="t12 t3" style="margin-left: auto;">2 steps · 6s</span>
+                </button>
+                <sc-if value="{{oSteps}}" hint-placeholder-val="{{ false }}">
+                  <div style="border-top: 1px solid var(--rule); padding: 4px 0;">
+                    <div class="step"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg><span class="t2" style="width: 36px;">Read</span><span class="mono t12 trunc grow">src/intake/schema.ts</span><span class="t12 t3">142 lines</span></div>
+                    <div class="step"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="t2" style="width: 36px;">Grep</span><span class="mono t12 trunc grow">"phone" src/intake</span><span class="t12 t3">6 matches</span></div>
+                  </div>
+                </sc-if>
+              </div>
+
+              <p class="prose">Found it. The Estate branch skips <code class="ic-code">contactFields</code>, so phone never renders.</p>
+
+              <div class="tool">
+                <div class="tool-h" style="cursor: default;">
+                  <svg class="ic t3" viewBox="0 0 16 16"><path d="M10.5 2.5l3 3-8 8h-3v-3z"></path></svg>
+                  <span class="mono trunc">src/intake/schema.ts</span>
+                  <span class="t12 t2">+1 -1</span>
+                  <button class="btn btn-g btn-sm" style="margin-left: auto;">Open file</button>
+                </div>
+                <div class="tool-b diff">
+                  <div class="dl"><span class="n">42</span><span> </span><span>    case "estate":</span></div>
+                  <div class="dl dl-del"><span class="n">43</span><span>-</span><span>      return [...baseFields, ...estateFields];</span></div>
+                  <div class="dl dl-add"><span class="n">43</span><span>+</span><span>      return [...baseFields, ...contactFields, ...estateFields];</span></div>
+                </div>
+              </div>
+
+              <div class="tool">
+                <button class="tool-h" onClick="{{tBash}}" aria-expanded="{{oBash}}">
+                  <svg class="ic ic-12 chev {{chBash}}" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg>
+                  <svg class="ic t3" viewBox="0 0 16 16"><path d="M2.5 4l4 4-4 4M8.5 12.5h5"></path></svg>
+                  <span class="w6">Bash</span><span class="mono t12 t2 trunc">npm test -- intake</span>
+                  <span class="row t2" style="margin-left: auto; gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="t12">7 passed</span></span>
+                </button>
+                <sc-if value="{{oBash}}" hint-placeholder-val="{{ false }}">
+                  <div class="tool-b mono t12 t2" style="padding: 8px 12px;">Tests: 7 passed, 7 total · 1.8s</div>
+                </sc-if>
+              </div>
+
+              <div class="card">
+                <sc-if value="{{open}}" hint-placeholder-val="{{ false }}">
+                  <div class="card-h" style="height: 36px;"><span class="dot dot-need"></span><span class="lbl bea">Question</span><span class="t12 t3" style="margin-left: auto;">kit · 14:18</span></div>
+                </sc-if>
+                <sc-if value="{{answered}}" hint-placeholder-val="{{ true }}">
+                  <div class="card-h" style="height: 36px;"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="lbl">Question</span><span class="t12 t3" style="margin-left: auto;">Answered by you · 14:20</span></div>
+                </sc-if>
+                <p style="padding: 0 16px 8px;">Estate clients often call from a landline. Should phone be required for Estate matters?</p>
+                <button class="choice {{c1}}" onClick="{{p1}}" style="align-items: center; padding: 6px 16px;"><span class="radio {{r1}}"></span><span class="w6">Required, like Injury</span><span class="t12 t3 trunc">The form will not submit without it</span></button>
+                <button class="choice {{c2}}" onClick="{{p2}}" style="align-items: center; padding: 6px 16px; border-radius: 0 0 11px 11px;"><span class="radio {{r2}}"></span><span class="w6">Optional, with a hint</span><span class="t12 t3 trunc">Label it "Best number to reach you"</span></button>
+              </div>
+
+              <p class="prose">Phone is optional for Estate now, with the hint. I'll push so the form goes live before Monday.</p>
+            </div>
+          </div>
+
+          <article class="card is-focus" style="margin-left: 36px;" aria-label="Permission">
+            <div class="card-h" style="height: 40px;"><span class="dot dot-need"></span><span class="lbl bea">Permission</span><span class="t12 t3" style="margin-left: auto;">kit · 14:21</span></div>
+            <div class="col" style="padding: 0 16px; gap: 2px;">
+              <h3 class="t15 w6">Allow kit to push to main?</h3>
+              <span class="t2">Your rule "Ask before pushing to a client's main branch" held this.</span>
+            </div>
+            <div class="code" style="margin: 10px 16px 14px;">git push origin main</div>
+            <div class="card-f">
+              <button class="btn btn-p">Allow once<span class="k">A</span></button>
+              <button class="btn">Always in Harlow Legal</button>
+              <button class="btn btn-g" style="margin-left: auto;">Deny<span class="k">D</span></button>
+            </div>
+          </article>
+
+        </div>
+      </div>
+
+      <div style="flex: none; padding: 0 24px 16px;">
+        <div class="composer" style="max-width: 680px; margin: 0 auto;">
+          <div class="composer-in">Reply to kit</div>
+          <div class="composer-bar">
+            <button class="cchip" aria-label="Attach a file"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
+            <button class="cchip"><span class="av" style="width: 18px; height: 18px; border-radius: 5px;">k</span>kit<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+            <button class="cchip">Sonnet 5<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+            <span class="row t12 t2" style="margin-left: auto; gap: 8px;"><span class="spin" aria-hidden="true"></span>Working · 3m 12s</span>
+            <button class="ibtn" style="width: auto; padding: 0 10px; gap: 6px; margin-left: 4px;" aria-label="Stop kit"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5" style="fill: currentColor;"></rect></svg>Stop<span class="t12 t3">Esc</span></button>
+            <button class="ibtn" disabled aria-label="Send"><svg class="ic" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- This session -->
+    <aside class="col" style="min-height: 0; border-left: 1px solid var(--rule);" aria-label="This session">
+      <div class="row" style="height: 52px; padding: 0 20px; flex: none; border-bottom: 1px solid var(--rule);">
+        <span class="w6">This session</span><span class="t12 t3" style="margin-left: auto;">Started 14:12</span>
+      </div>
+
+      <section class="col" style="padding: 16px 20px; gap: 10px; border-bottom: 1px solid var(--rule);">
+        <div class="row" style="gap: 8px;"><span class="lbl">Plan</span><span class="t12 t3" style="margin-left: auto;">3 of 4</span></div>
+        <div class="row" style="gap: 10px;"><span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16" style="stroke-width: 2;"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t2 trunc">Find why Estate drops phone</span></div>
+        <div class="row" style="gap: 10px;"><span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16" style="stroke-width: 2;"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t2 trunc">Fix the field list</span></div>
+        <div class="row" style="gap: 10px;"><span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16" style="stroke-width: 2;"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t2 trunc">Add a test for each matter type</span></div>
+        <div class="row" style="gap: 10px;"><span class="chk"></span><span class="w6 trunc grow">Push to main</span><span class="dot dot-need"></span><span class="lbl bea">Waiting on you</span></div>
+      </section>
+
+      <section class="col" style="padding: 16px 20px; gap: 10px; border-bottom: 1px solid var(--rule);">
+        <div class="row" style="gap: 8px;"><span class="lbl">Changed</span><span class="t12 t3" style="margin-left: auto;">2 files</span></div>
+        <div class="row" style="gap: 8px;"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><circle cx="5" cy="3.5" r="1.5"></circle><circle cx="5" cy="12.5" r="1.5"></circle><circle cx="11" cy="6" r="1.5"></circle><path d="M5 5v6M11 7.5c0 2.5-6 1.5-6 3.5"></path></svg><span class="mono t12 t2 grow trunc">fix/estate-phone</span><span class="t12 t3">not pushed</span></div>
+        <a class="row" href="#" style="gap: 8px;"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg><span class="mono t12 grow trunc">src/intake/schema.ts</span><span class="t12 t2">+1 -1</span></a>
+        <a class="row" href="#" style="gap: 8px;"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg><span class="mono t12 grow trunc">test/intake.test.ts</span><span class="t12 t2">+18</span></a>
+      </section>
+
+      <section class="col" style="padding: 16px 20px; gap: 10px;">
+        <div class="row" style="gap: 8px;"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg><span class="lbl">Remembered</span><a class="t12 t2" href="#" style="margin-left: auto;">Memory</a></div>
+        <div class="col" style="gap: 2px;"><span>Harlow's intake form lives in their website repo.</span><span class="t12 t3">From your notes, 12 Sep</span></div>
+        <div class="col" style="gap: 2px;"><span>Harlow Legal wants a test with every fix.</span><span class="t12 t3">From call notes, 4 Sep</span></div>
+      </section>
+
+      <section class="col" style="padding: 16px 20px; gap: 10px; border-top: 1px solid var(--rule);">
+        <div class="row" style="gap: 8px;"><span class="lbl">Rules in play</span><a class="t12 t2" href="#" style="margin-left: auto;">Edit rules</a></div>
+        <div class="row" style="gap: 10px; align-items: flex-start;"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M8 1.5l5 2v4c0 3.2-2.2 5.6-5 7-2.8-1.4-5-3.8-5-7v-4z"></path></svg><div class="col grow" style="gap: 2px;"><span>Ask before pushing to a client's main branch</span><span class="t12 t3">Held the push at 14:21</span></div></div>
+        <div class="row" style="gap: 10px; align-items: flex-start;"><svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 3px;"><path d="M8 1.5l5 2v4c0 3.2-2.2 5.6-5 7-2.8-1.4-5-3.8-5-7v-4z"></path></svg><div class="col grow" style="gap: 2px;"><span>Run the tests before any commit</span><span class="t12 t3">Passed at 14:19</span></div></div>
+      </section>
+
+      <div class="col" style="margin-top: auto; padding: 16px 20px; gap: 12px; border-top: 1px solid var(--rule);">
+        <div class="row" style="gap: 10px;">
+          <span class="av">k</span>
+          <div class="col grow" style="min-width: 0;"><span class="w6 trunc">kit on alex-box</span><span class="t12 t3 trunc">14.2k tokens · $0.21 this session</span></div>
+        </div>
+        <div class="row" style="gap: 8px;">
+          <button class="btn btn-g btn-sm" style="margin-left: -10px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2.5 4l4 4-4 4M8.5 12.5h5"></path></svg>Open in terminal</button>
+        </div>
+      </div>
+    </aside>
+
+  </div>
+</main>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { steps: false, bash: false, pick: 2, answered: true };
+  }
+  renderVals() {
+    const s = this.state;
+    const flip = (k) => () => this.setState({ [k]: !this.state[k] });
+    const pick = (n) => () => this.setState({ pick: n, answered: true });
+    return {
+      theme: this.props.theme ?? 't-dark',
+      oSteps: s.steps, oBash: s.bash,
+      chSteps: s.steps ? 'chev-open' : '', chBash: s.bash ? 'chev-open' : '',
+      tSteps: flip('steps'), tBash: flip('bash'),
+      open: !s.answered, answered: s.answered,
+      c1: s.pick === 1 ? 'choice-on' : '', c2: s.pick === 2 ? 'choice-on' : '',
+      r1: s.pick === 1 ? 'radio-on' : '', r2: s.pick === 2 ? 'radio-on' : '',
+      p1: pick(1), p2: pick(2)
+    };
+  }
+}
+</script>
+</body>
+</html>

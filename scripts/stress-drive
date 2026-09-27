@@ -23,8 +23,10 @@
 //   leases   no send was refused for a holder whose process is gone; at checkpoints no
 //            cli:<pid> holder is a dead pid.
 //   orphans  after the threads and vyred stop, no process the run started remains.
-//   rss      vyred's resident size stays flat after a 2 minute warmup (slope under 1 MB per
-//            10 minutes, on runs of 10 minutes or more) and under 150 MB.
+//   rss      vyred's resident size stays flat over the second half of the run (slope under 1 MB
+//            per 10 minutes, on runs of 10 minutes or more) and under 150 MB. The first half is
+//            warmup: runs of 20 and 30 minutes both rose about 8 MB over 13 to 15 minutes with the
+//            JS heap flat, then held.
 //
 // Manual: `npm run stress-drive -- --quick`. Not part of `npm test`.
 
@@ -48,7 +50,9 @@ const QUICK = argv.includes("--quick");
 const MINUTES = Number(opt("--minutes") || (QUICK ? 2 : 30));
 const THREADS = Number(opt("--threads") || 4);
 const KEEP = argv.includes("--keep");
-const WARMUP_MS = 120_000;
+// Half the run, at least 2 minutes: SQLite's page cache and V8's heap reservation fill for the
+// first 13 to 15 minutes of a 4-thread run, with no JS heap growth, then stay put.
+const WARMUP_MS = Math.max(120_000, MINUTES * 60_000 / 2);
 const SAMPLE_MS = QUICK ? 10_000 : 30_000;
 const RSS_MAX_MB = 150;
 const SLOPE_MB_PER_10MIN = 1;
@@ -258,7 +262,7 @@ async function main() {
       samples.push(at);
       // vyred's own view: JS heap against native (SQLite's page cache, buffers), so growth has a name.
       http.get({ socketPath: SOCKET, path: "/v1/health", headers: { "x-vyre-caller": "cli" } }, res => {
-        let b = ""; res.on("data", d => (b += d)); res.on("end", () => { try { const m = JSON.parse(b).data.memory; if (m) Object.assign(at, { heap_mb: m.heapUsed, external_mb: m.external }); } catch {} });
+        let b = ""; res.on("data", d => (b += d)); res.on("end", () => { try { const m = JSON.parse(b).data.memory; if (m) Object.assign(at, { heap_mb: m.heapUsed, heap_total_mb: m.heapTotal, external_mb: m.external }); } catch {} });
       }).on("error", () => {});
     }
     noteChildren(VPID);
@@ -508,7 +512,7 @@ async function main() {
   const maxRss = Math.max(...samples.map(s => s.rss_mb));
   const cpu = samples.length > 1 ? (samples[samples.length - 1].cpu_s - samples[0].cpu_s) / ((samples[samples.length - 1].t - samples[0].t) / 1000) * 100 : null;
   if (maxRss > RSS_MAX_MB) fail(`vyred reached ${maxRss.toFixed(1)} MB (budget ${RSS_MAX_MB})`);
-  if (MINUTES >= 10 && slope10 !== null && slope10 > SLOPE_MB_PER_10MIN) fail(`vyred grew ${slope10.toFixed(2)} MB per 10 min after warmup (budget ${SLOPE_MB_PER_10MIN})`);
+  if (MINUTES >= 10 && slope10 !== null && slope10 > SLOPE_MB_PER_10MIN) fail(`vyred grew ${slope10.toFixed(2)} MB per 10 min after warmup (budget ${SLOPE_MB_PER_10MIN}; JS heap ${heapFit ? (heapFit.slope * 10).toFixed(2) : "?"} of it)`);
 
   const report = {
     ok: failures.length === 0, minutes: MINUTES, threads: THREADS, duration_s: Math.round((Date.now() - T0) / 1000),
