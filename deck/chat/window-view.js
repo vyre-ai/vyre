@@ -32,7 +32,9 @@ const VIEWPORT = 800;
 
 /**
  * @param {HTMLElement} box the scroller the rows go in
- * @param {{ following: () => boolean, onUnmount?: (key: string, el: HTMLElement) => void, threshold?: number }} opts
+ * @param {{ following: () => boolean, onUnmount?: (key: string, el: HTMLElement) => void, threshold?: number,
+ *   resize?: { observe: (el: Element) => void, unobserve: (el: Element) => void } }} opts
+ *   resize: told of every element mounted and let go (createStick's ResizeObserver hears them grow).
  */
 export function createWindowView(box, opts) {
   const threshold = opts.threshold ?? THRESHOLD;
@@ -109,6 +111,8 @@ export function createWindowView(box, opts) {
     while (cur) { const n = /** @type {any} */ (cur).nextSibling; cur.remove(); cur = n; }
   }
 
+  /** Elements the resize observer is told of. */
+  const watched = new Set();
   /** Mount `next`: make what is new, hand back what left, lay out. */
   function mount(next) {
     const want = [...head];
@@ -123,6 +127,11 @@ export function createWindowView(box, opts) {
     }
     if (next.windowed) want.push(bottom);
     for (const [k, el] of [...mounted]) if (!keep.has(k)) { mounted.delete(k); opts.onUnmount?.(k, el); }
+    if (opts.resize) {
+      const now = new Set(want);
+      for (const el of watched) if (!now.has(el)) { watched.delete(el); opts.resize.unobserve(el); }
+      for (const el of want) if (!watched.has(el)) { watched.add(el); opts.resize.observe(el); }
+    }
     range = next;
     box.classList?.toggle("cv-windowed", next.windowed);
     reconcile(want);
@@ -227,5 +236,156 @@ export function createWindowView(box, opts) {
     /** How many rows are mounted, and how many there are. */
     get count() { return { mounted: mounted.size, rows: rows.length, windowed: !!range?.windowed }; },
     stop() { if (queued) { if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(queued); clearTimeout(queued); queued = null; } },
+  };
+}
+
+// ---- stick to the bottom ----------------------------------------------------------------------
+// Derived from Paseo (https://github.com/getpaseo/paseo), packages/app/src/agent-stream/strategy-web.tsx
+// (scheduleStickToBottom, handleDomScroll and the upward-input evidence handlers), Copyright (c)
+// 2025-present Mohamed Boudra, Apache License 2.0. Modified for Vyre: plain DOM, no React; the
+// rows are observed one by one as window-view mounts them (the timeline has no content wrapper).
+//
+// Nothing is read or written per event. A ResizeObserver on the scroller and on every mounted row
+// hears the content grow; while stuck, at most one frame per burst sets scrollTop to the bottom.
+// Only the reader's own intent detaches: an upward wheel, PageUp / ArrowUp / Home / Shift+Space
+// outside a text field, a finger dragging the content down, or a press on the scrollbar, each
+// counting when the scroll event that moves the view up comes within 100 ms of it (the scrollbar
+// for as long as it is held). Content that shrinks and clamps scrollTop is not the reader, so it
+// stays stuck. Scrolling back to within 1 px of the bottom sticks again.
+
+const EVIDENCE_MS = 100;
+const RESTICK_PX = 1;
+const EPSILON = 1;
+const SCROLLBAR_PX = 16;
+
+/**
+ * @param {HTMLElement} box the scroller
+ * @param {{ onStick?: () => void, onChange?: (stuck: boolean) => void, onGrowDetached?: () => void, keys?: EventTarget | null }} [o]
+ *   onStick: before each stick frame sets scrollTop (window-view's follow(), so the tail is mounted);
+ *   onChange: stuck or not changed; onGrowDetached: the content grew while the reader was away;
+ *   keys: where keydown is heard (the document by default).
+ */
+export function createStick(box, o = {}) {
+  const b = /** @type {any} */ (box);
+  const clock = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+  const raf = typeof requestAnimationFrame === "function" ? (/** @type {() => void} */ f) => requestAnimationFrame(f) : (/** @type {() => void} */ f) => setTimeout(f, 16);
+  const unraf = (/** @type {any} */ id) => { if (typeof cancelAnimationFrame === "function") cancelAnimationFrame(id); clearTimeout(id); };
+  const num = (/** @type {any} */ v) => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  let stuck = true;
+  let last = num(b.scrollTop) ?? 0;
+  let evidenceUntil = 0;
+  let scrollbar = /** @type {number|null} */ (null);
+  let touchY = /** @type {number|null} */ (null);
+  /** @type {any} */ let pending = null;
+  /** Content height seen by the last frame without an observer (the fallback's growth check). */
+  let seen = -1;
+
+  const set = (/** @type {boolean} */ v) => {
+    if (v === stuck) return;
+    stuck = v;
+    // Detached: without an observer, the next frames compare the height with this one.
+    if (!v && !observer) seen = num(b.scrollHeight) ?? -1;
+    o.onChange?.(v);
+  };
+  const distance = () => {
+    const top = num(b.scrollTop), vp = num(b.clientHeight), h = num(b.scrollHeight);
+    return top == null || vp == null || h == null ? 0 : h - vp - top;
+  };
+  const toEnd = () => { const h = num(b.scrollHeight); if (h != null && distance() > 0.5) b.scrollTop = h; last = num(b.scrollTop) ?? last; };
+
+  function frame() {
+    pending = null;
+    if (!stuck) {
+      if (!observer) { const h = num(b.scrollHeight); if (h != null && seen >= 0 && h > seen) o.onGrowDetached?.(); if (h != null) seen = h; }
+      return;
+    }
+    o.onStick?.();
+    toEnd();
+    if (!observer) seen = num(b.scrollHeight) ?? seen;
+  }
+  /** Something may have grown: one frame, coalesced. */
+  function poke() {
+    if (pending) return;
+    pending = raf(frame);
+  }
+
+  const observer = typeof ResizeObserver === "function"
+    ? new ResizeObserver(() => { if (stuck) poke(); else o.onGrowDetached?.(); })
+    : null;
+  observer?.observe(box);
+
+  const mark = () => { evidenceUntil = clock() + EVIDENCE_MS; };
+  const editable = (/** @type {any} */ t) => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
+  /** A nested scroller (a tool's output) that can still take the upward input itself. */
+  const nestedTakes = (/** @type {any} */ t) => {
+    for (let n = t; n && n !== box; n = n.parentNode) {
+      if (!n.getBoundingClientRect || typeof getComputedStyle !== "function") return false;
+      try {
+        const y = getComputedStyle(n).overflowY;
+        if ((y === "auto" || y === "scroll") && n.scrollHeight > n.clientHeight && n.scrollTop > 0) return true;
+      } catch { return false; }
+    }
+    return false;
+  };
+  const onWheel = (/** @type {any} */ e) => { if (!e.ctrlKey && e.deltaY < 0 && !nestedTakes(e.target)) mark(); };
+  const onKey = (/** @type {any} */ e) => {
+    if (editable(e.target)) return;
+    if (e.key === "ArrowUp" || e.key === "PageUp" || e.key === "Home" || (e.key === " " && e.shiftKey)) { if (!nestedTakes(e.target)) mark(); }
+  };
+  const onPointerDown = (/** @type {any} */ e) => {
+    scrollbar = null;
+    if (e.pointerType && e.pointerType !== "mouse") return;
+    if (e.button !== 0 || e.target !== box) return;
+    const r = b.getBoundingClientRect?.();
+    const w = Math.max((num(b.offsetWidth) ?? 0) - (num(b.clientWidth) ?? 0), SCROLLBAR_PX);
+    if (r && e.clientX >= r.right - w) scrollbar = e.pointerId ?? 0;
+  };
+  const onPointerUp = (/** @type {any} */ e) => { if (scrollbar != null && (e.pointerId ?? 0) === scrollbar) scrollbar = null; };
+  const onTouchStart = (/** @type {any} */ e) => { touchY = e.touches?.[0]?.clientY ?? null; };
+  const onTouchMove = (/** @type {any} */ e) => {
+    const y = e.touches?.[0]?.clientY;
+    if (y == null) return;
+    // The finger moves down: the content follows it, the view goes up.
+    if (touchY != null && y > touchY + EPSILON && !nestedTakes(e.target)) mark();
+    touchY = y;
+  };
+  const onTouchEnd = () => { touchY = null; };
+  const onScroll = () => {
+    const top = num(b.scrollTop);
+    if (top == null) return;
+    const up = top < last - EPSILON;
+    const intent = scrollbar != null || clock() < evidenceUntil;
+    if (stuck && up && intent) set(false);
+    else if (!stuck && distance() <= RESTICK_PX) set(true);
+    last = top;
+  };
+
+  const keys = o.keys !== undefined ? o.keys : (typeof document !== "undefined" ? document : null);
+  const win = typeof window !== "undefined" && window.addEventListener ? window : null;
+  /** @type {[any, string, (e: any) => void][]} */
+  const wired = [[box, "scroll", onScroll], [box, "wheel", onWheel], [box, "pointerdown", onPointerDown], [box, "touchstart", onTouchStart],
+    [box, "touchmove", onTouchMove], [box, "touchend", onTouchEnd], [box, "touchcancel", onTouchEnd], [keys, "keydown", onKey],
+    [win, "pointerup", onPointerUp], [win, "pointercancel", onPointerUp]];
+  for (const [t, name, f] of wired) try { t?.addEventListener(name, f, { passive: true }); } catch {}
+
+  return {
+    get stuck() { return stuck; },
+    /** Whether a ResizeObserver hears growth; without one the caller pokes after a change. */
+    observing: !!observer,
+    /** Stuck again (Jump to latest, a sent message): to the bottom now. */
+    stick() { set(true); evidenceUntil = 0; o.onStick?.(); toEnd(); },
+    /** The view moved on purpose (a deep link): not stuck until the reader comes back down. */
+    detach() { set(false); },
+    poke,
+    /** @param {Element} el */
+    observe(el) { observer?.observe(el); },
+    /** @param {Element} el */
+    unobserve(el) { observer?.unobserve(el); },
+    stop() {
+      if (pending) unraf(pending);
+      pending = null;
+      observer?.disconnect();
+      for (const [t, name, f] of wired) try { t?.removeEventListener(name, f); } catch {}
+    },
   };
 }

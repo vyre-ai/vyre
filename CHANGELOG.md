@@ -13,6 +13,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   reset; the session view then re-reads threads.get (events since the last one applied),
   threads.asks and the transcript from `next`, merged through session-state, so nothing is missing
   or shown twice.
+- Stick to the bottom (window-view.js createStick, after Paseo's web stream): a ResizeObserver on
+  the scroller and every mounted row, and at most one frame per burst setting scrollTop, replace
+  reading scrollHeight around every live event and scrolling on every reveal frame. Only the
+  reader's intent detaches (an upward wheel, PageUp / ArrowUp / Home, a touch drag, the
+  scrollbar, within 100 ms of the scroll); within 1 px of the bottom sticks again. The windowed
+  view's anchoring and the Jump to latest pill are kept.
 
 #### Chat: matched to the sessions team's real Switchboard (work/sessions)
 
