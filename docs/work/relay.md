@@ -64,7 +64,7 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - testbox: `core/relay`, `relay/**`, `test/relay.test.js` 93/93; docs tests 50/50.
 
 ## Doing
-- Freeze lifted. Targeted runs on testbox all green: core/relay, relay/**, test/relay.test.js,
+- Freeze lifted. Targeted runs on testbox all green: `core/relay`, `relay/**`, `test/relay.test.js`,
   CLI relay test 104/104 (after two test fixes in relay/app); docs + CLI consistency 59/59.
 - Next build: the relay side of the ADR 0032 ceremony (lead approved; waiting on e2e's
   presence.person.start shape): enroll the app.vyre.run passkey at web pairing, and the loader's
