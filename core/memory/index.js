@@ -520,11 +520,14 @@ export default {
     // would be read from, fused from Recall's searches and widened by names memory knows. Personal
     // names widen it only for a caller that may see personal facts.
     const retrieve = retriever({ graph, personal, askDir, quickDir, now: () => Date.now(),
+      // The sessions picked into the project these folders are, so IQ in a project reads them too.
+      picks: cwds => { try { const sc = graph.view(cwds); return sc?.room ? curator.rooms().find(r => r.slug === sc.room)?.threads || [] : []; } catch { return []; } },
+      next: async (session, seq) => { const r = await ctx.call("recall.thread", { session, from: seq + 1, limit: 1 }); return r?.error ? null : (r?.data?.turns || [])[0] || null; },
       search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
     ctx.tool("memory.retrieve", {
       description: "The turns Vyre IQ would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
-        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" },
+        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" }, replies: { type: "boolean" },
         knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const project_cwds = clean(input.project_cwds);
@@ -532,7 +535,7 @@ export default {
         try { await personalOnly(input, caller, "memory.retrieve"); } catch { sees = false; }
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
         return retrieve({ question: String(input.question || ""), project_cwds, k: input.k ?? 8, personal: sees,
-          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, knobs: input.knobs || {} });
+          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, replies: input.replies !== false, knobs: input.knobs || {} });
       },
     });
     // Vyre IQ's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over

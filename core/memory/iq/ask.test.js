@@ -39,6 +39,10 @@ test("ask: a reply stands only on the passages it was given and on their words",
   const N = [{ ...P[0], text: "Juno did the accessibility pass on the Harlow site, legal pages first." }];
   assert.equal(checkAsk({ answer: "Juno did it for Harlow Legal.", cite: [1], confidence: 0.8 }, N).abstained, false);
   assert.equal(checkAsk({ answer: "Juno did it for Harlow Bakery.", cite: [1], confidence: 0.8 }, N).abstained, true);
+  // A passage's reply is what the model read too: an answer from it stands, and cites both turns.
+  const R = [{ ...P[1], text: "why did the croissant order show $10.049999", reply: { seq: 2, text: "Floats: the totals now use integer cents." } }];
+  assert.equal(checkAsk({ answer: "Floats; totals use integer cents.", cite: [1], confidence: 0.8 }, R).abstained, false);
+  assert.match(askPrompt("why", R), /<reply role="assistant">\nFloats/);
 });
 
 function db(t) {

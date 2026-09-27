@@ -40,8 +40,9 @@ const header = p => [p.cwd ? String(p.cwd).split("/").filter(Boolean).pop() : "u
 
 /** The prompt for one question and its passages: numbered from 1, each with its session name and date. */
 export function askPrompt(question, passages) {
-  const fence = s => String(s).replace(/<\/?passage[^>]*>/gi, "");
-  const body = passages.map((p, i) => { const [project, session, date] = header(p); return `<passage n="${i + 1}" project="${fence(project)}" session="${fence(session)}" date="${date}" role="${p.role}">\n${fence(String(p.text).slice(0, 1500))}\n</passage>`; }).join("\n");
+  const fence = s => String(s).replace(/<\/?(?:passage|reply)[^>]*>/gi, "");
+  const body = passages.map((p, i) => { const [project, session, date] = header(p); const said = p.reply ? `${fence(String(p.text).slice(0, 600))}\n<reply role="assistant">\n${fence(String(p.reply.text).slice(0, 1200))}\n</reply>` : fence(String(p.text).slice(0, 1500));
+    return `<passage n="${i + 1}" project="${fence(project)}" session="${fence(session)}" date="${date}" role="${p.role}">\n${said}\n</passage>`; }).join("\n");
   return `${body}\n\nQuestion: ${fence(question)}`;
 }
 
@@ -86,7 +87,7 @@ export function checkAsk(reply, passages) {
   if (!cite.length || cite.some(n => !Number.isInteger(n) || n < 1 || n > passages.length)) return { abstained: true, known, why: "a citation is not a passage given" };
   // What the model was shown for each cited passage: its words and its header (the project folder,
   // the session's name and the date), so "it went live on 2026-06-12" stands on the passage's date.
-  const text = norm(cite.map(n => passages[n - 1]).map(p => `${p.text}\n${header(p).join("\n")}`).join("\n"));
+  const text = norm(cite.map(n => passages[n - 1]).map(p => `${p.text}\n${p.reply ? `${p.reply.text}\n` : ""}${header(p).join("\n")}`).join("\n"));
   // A name of several words stands when each of its words is there ("Friday June" in "Friday, 12 June").
   const has = w => text.includes(norm(w)) || (/^[A-Z][^\s]*(?: [A-Z][^\s]*)+$/.test(w) && w.split(" ").every(x => text.includes(norm(x))));
   const missing = mustAppear(reply.answer).filter(w => !has(w));
@@ -167,7 +168,8 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     stage("checking");
     const c = checkAsk(parseAsk(text), passages);
     if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why });
-    const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).map(p => ({ session: p.session, seq: p.seq, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }));
+    const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).flatMap(p => [{ session: p.session, seq: p.seq, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null },
+      ...(p.reply ? [{ session: p.session, seq: p.reply.seq, name: p.name, quote: String(p.reply.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }] : [])]);
     return refused({ answer: c.answer, confidence: c.confidence, abstained: false, known: c.known, sources, via: "retrieval", cost_usd: usd });
   };
 }
