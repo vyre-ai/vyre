@@ -4,7 +4,8 @@
 // the file and a preview; WebFetch: the URL; anything else: the input as keys and values), why
 // (the reason Claude Code gave), and three answers: Allow once (Enter), Always in <project> (when
 // the ask offers `always_project`: decision "always", scope "project"; "Always for this" when only
-// `always` is offered), Deny (Esc, with an optional "tell <assistant> why" sent as `message`). No passkey: answering
+// `always` is offered), Deny (Esc, with an optional "tell <assistant> why" sent as `message`).
+// Keys: A (or Enter) allows once, D denies at once, Esc opens Deny with a reason. No passkey: answering
 // is the owner's own action (ADR 0024, no nagging). Once answered, here or on another screen (session.js calls .answered on ask.answered),
 // the card loses its buttons and says what was decided; a failure says why and gives them back.
 //
@@ -14,12 +15,19 @@
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
+import { clock } from "../js/fmt.js";
 import { problemLine } from "./presence.js";
 import { renderUnified } from "./lib/diff.js";
 import { outputEl, kvGrid } from "./blocks.js";
 import { langOf } from "./lib/blocks.js";
 
 const WORDS = { allow: "Allowed once", always: "Always allowed", deny: "Denied", cancelled: "Withdrawn" };
+
+/** "Answered from the Capsule · 14:31": another screen answered it (Needs, the phone, the Capsule). */
+export function fromLine(from) {
+  if (!from || !from.where) return null;
+  return h("div", { class: "cv-from" }, `Answered from ${from.where}` + (from.at ? ` · ${clock(from.at)}` : ""));
+}
 
 /** The "always" answer on offer: in a project (always_project), for this (always), or none. */
 export function alwaysChoice(ask) {
@@ -108,12 +116,15 @@ export function changesRow(d, view) {
  * @param {{ id: string, tool: string, summary?: string|null, destination?: string|null, reason?: string|null, agent?: string|null,
  *   kind?: string, detail?: any, always?: boolean, always_project?: string|null, elsewhere?: string|null }} ask
  * elsewhere: the machine the session runs on, when answers cannot go there from here (the paired Mac).
- * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string) => void, onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
+ * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string, answers?: any, from?: { where: string, at?: number|null }|null) => void,
+ *   onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
+ * answered's `from`: the screen that answered, when it was another one ("Answered from the Capsule · 14:31").
  */
 export function askCard(ask) {
   const el = /** @type {any} */ (h("div", { class: "ask-card cv-ask", tabindex: "-1" }));
   el._kind = "card";
-  const state = { busy: false, decided: /** @type {string|null} */ (null), error: /** @type {any} */ (null), denying: false, why: "" };
+  const state = { busy: false, decided: /** @type {string|null} */ (null), error: /** @type {any} */ (null), denying: false, why: "",
+    from: /** @type {{ where: string, at?: number|null }|null} */ (null) };
   const who = ask.agent || "Vyre";
   const changesView = { open: false };
 
@@ -130,7 +141,8 @@ export function askCard(ask) {
   function draw() {
     const title = h("div", { class: "gate-row cv-ask-top" }, h("span", { class: "cv-ask-dot", "aria-hidden": "true" }), h("span", { class: "ask-title" }, `${who} wants to ${askVerb(ask)}`));
     if (state.decided) {
-      put(el, title, h("div", { class: "gate-resolved" }, icon(state.decided === "deny" || state.decided === "cancelled" ? "close" : "check", 14), WORDS[state.decided] || state.decided));
+      put(el, title, h("div", { class: "gate-resolved" }, icon(state.decided === "deny" || state.decided === "cancelled" ? "close" : "check", 14), WORDS[state.decided] || state.decided),
+        fromLine(state.from));
       el.classList.add("answered");
       return;
     }
@@ -156,9 +168,9 @@ export function askCard(ask) {
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: () => answer("deny") }, "Deny"),
         h("button", { class: "btn btn-ghost btn-sm", disabled: state.busy, onclick: () => { state.denying = false; draw(); } }, "Back"))
       : h("div", { class: "gate-actions" },
-        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: () => answer("allow") }, "Allow once", h("span", { class: "kbd" }, "⏎")),
+        h("button", { class: "btn btn-primary", disabled: state.busy, onclick: () => answer("allow") }, "Allow once", h("span", { class: "kbd" }, "A")),
         alwaysBtn(),
-        h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: () => { state.denying = true; draw(); } }, "Deny", h("span", { class: "kbd" }, "esc")),
+        h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: () => { state.denying = true; draw(); } }, "Deny", h("span", { class: "kbd" }, "D")),
       ),
       state.error ? problemLine(state.error) : null,
     );
@@ -171,12 +183,17 @@ export function askCard(ask) {
   }
 
   el.update = a => { Object.assign(ask, a); if (!state.decided) draw(); };
-  el.answered = decision => { state.busy = false; state.error = null; state.decided = ["allow", "always", "deny"].includes(decision) ? decision : "cancelled"; draw(); };
+  el.answered = (decision, _answers, from) => {
+    // Answered here already: the event only confirms it, and says nothing about another screen.
+    if (!state.decided && from) state.from = from;
+    state.busy = false; state.error = null; state.decided = ["allow", "always", "deny"].includes(decision) ? decision : "cancelled"; draw();
+  };
   el.isOpen = () => !state.decided && !ask.elsewhere;
   /** A key routed here by the session (focus not in the composer). Returns whether it was used. */
   el.onKey = e => {
     if (state.decided || state.busy || ask.elsewhere) return false;
-    if (e.key === "Enter" && !state.denying) { answer("allow"); return true; }
+    if ((e.key === "Enter" || e.key === "a" || e.key === "A") && !state.denying) { answer("allow"); return true; }
+    if ((e.key === "d" || e.key === "D") && !state.denying) { answer("deny"); return true; }
     if (e.key === "Escape") { if (state.denying) { state.denying = false; draw(); } else { state.denying = true; draw(); } return true; }
     return false;
   };

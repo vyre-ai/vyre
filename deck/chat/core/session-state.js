@@ -197,6 +197,8 @@ function onTool(s, p, at, out) {
     // A terminal status is never taken back by a late "running".
     item.status = /** @type {any} */ (status);
   }
+  // Live events carry no duration: a call that ends is as long as its two events are apart.
+  if (item.status !== "running" && item.duration_ms == null && item.at !== undefined && at !== undefined && at >= item.at) item.duration_ms = at - item.at;
   const name = p.name ?? p.tool;
   if (name && !item.name) item.name = String(name);
   if (typeof p.summary === "string" && p.summary) item.summary = p.summary;
@@ -333,7 +335,8 @@ export function applyEvent(s, e) {
     case "thread.stopped":
       settle(s, out);
       s.stopped = String(p.reason || "stop");
-      guess(s, /^(crash|exited [^0])/.test(s.stopped) ? "failed" : "stopped");
+      // Closed for idleness (ADR 0030 section 7): no process, but the next message resumes it.
+      guess(s, /^(crash|exited [^0])/.test(s.stopped) ? "failed" : s.stopped === "idle" ? "idle" : "stopped");
       out.add("@session");
       break;
     default: break;
@@ -378,7 +381,7 @@ function matchLive(s, b, taken, later) {
     // An open turn read earlier closes in place; else the oldest live turn marker.
     for (let i = s.items.length - 1; i >= 0; i--) {
       const it = /** @type {TurnItem} */ (s.items[i]);
-      if (it.kind === "turn" && it.open && it.seq !== undefined && it.seq <= b.seq) return it;
+      if (it.kind === "turn" && it.open && it.seq !== undefined && it.seq <= b.seq && !taken.has(it.key)) return it;
       if (it.kind === "turn" && it.seq !== undefined) break;
     }
     return s.items.find(it => it.kind === "turn" && live(it)) ?? null;

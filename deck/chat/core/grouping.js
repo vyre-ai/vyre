@@ -7,7 +7,7 @@
 // Runs of tool calls as one overview row. A session is mostly tool calls between the model's
 // words; each as its own card is a long stack. Consecutive tool items fold into a run with a
 // summary ("Edited 3 files, ran 2 commands"); a view shows the run closed and opens it on a tap.
-// A run of one stays a plain item. A plan (ExitPlanMode) is never folded: it is the thing to read.
+// A run of one stays a plain item. A plan (ExitPlanMode) and a todo list are never folded: they are the things to read.
 // Anything else (text, reasoning, a turn marker, a notice, an ask) ends a run, so an open ask is
 // always its own row, and a run holding a running tool says so (running: true). Shared core: no
 // DOM and no Node APIs.
@@ -28,7 +28,7 @@ const BY_NAME = /** @type {Record<string, string>} */ ({
 const typeOf = item => (item.detail && item.detail.type) || BY_NAME[item.name] || "unknown";
 
 /** @param {any} item */
-const foldable = item => item && item.kind === "tool" && typeOf(item) !== "plan";
+const foldable = item => item && item.kind === "tool" && typeOf(item) !== "plan" && typeOf(item) !== "todo";
 
 /** @param {number} n @param {string} one @param {string} [many] */
 const count = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;

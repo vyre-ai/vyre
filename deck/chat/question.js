@@ -17,11 +17,13 @@ import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { problemLine } from "./presence.js";
+import { fromLine } from "./ask-item.js";
 import { emptyPick, choose, answerText, answered, answerInput } from "./lib/answers.js";
 
 /**
  * @param {{ id: string, questions?: any[], agent?: string|null, elsewhere?: string|null }} ask elsewhere: the machine to answer on (the paired Mac), no buttons here
- * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string, answers?: any) => void, onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
+ * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string, answers?: any, from?: { where: string, at?: number|null }|null) => void,
+ *   onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
  */
 export function questionCard(ask) {
   const el = /** @type {any} */ (h("div", { class: "ask-card cv-q", tabindex: "-1" }));
@@ -29,7 +31,8 @@ export function questionCard(ask) {
   let questions = Array.isArray(ask.questions) ? ask.questions : [];
   let picks = questions.map(() => emptyPick());
   let cursor = questions.map(() => 0);
-  const state = { step: 0, busy: false, error: /** @type {any} */ (null), decided: /** @type {string|null} */ (null), shown: /** @type {Record<string, string>|null} */ (null) };
+  const state = { step: 0, busy: false, error: /** @type {any} */ (null), decided: /** @type {string|null} */ (null), shown: /** @type {Record<string, string>|null} */ (null),
+    from: /** @type {{ where: string, at?: number|null }|null} */ (null) };
   const who = ask.agent || "Vyre";
   const many = () => questions.length > 1;
   const reviewStep = () => questions.length; // only reached when there are several
@@ -100,7 +103,7 @@ export function questionCard(ask) {
     const a = state.shown;
     const list = a && Object.keys(a).length ? h("dl", { class: "cv-q-done" }, Object.entries(a).map(([k, v]) => [h("dt", null, headerFor(k)), h("dd", null, v)])) : null;
     return [list, h("div", { class: "gate-resolved" }, icon(state.decided === "deny" ? "close" : "check", 14),
-      state.decided === "deny" ? "Declined" : state.decided === "cancelled" ? "Withdrawn" : "Answered")];
+      state.decided === "deny" ? "Declined" : state.decided === "cancelled" ? "Withdrawn" : "Answered"), fromLine(state.from)];
   }
   const headerFor = question => { const q = questions.find(x => x.question === question); return (q && q.header) || question; };
 
@@ -183,7 +186,9 @@ export function questionCard(ask) {
     }
     if (!state.decided) draw();
   };
-  el.answered = (decision, answers) => {
+  el.answered = (decision, answers, from) => {
+    // Answered on another screen (Needs, the phone): say where. Answered here: the event only confirms it.
+    if (!state.decided && from) state.from = from;
     state.busy = false; state.error = null;
     state.decided = decision === "allow" || decision === "always" ? "allow" : decision === "deny" ? "deny" : "cancelled";
     if (answers && typeof answers === "object" && !Array.isArray(answers)) state.shown = answers;

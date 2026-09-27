@@ -113,10 +113,19 @@ test("chips: the owner's initial for you, the Vyre mark for replies", () => {
   assert.ok($(container, ".cv-head .cv-av-vyre svg"));
 });
 
-test("open: blocks as rows, one Vyre header per run, tool cards, the turn footer, never claude", () => {
+test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn footer, never claude", async () => {
   assert.equal($$(container, ".cv-user").length, 1);
   assert.equal($$(container, ".cv-head").length, 1);
   assert.match(text($(container, ".cv-head")), /Vyre/);
+  // Changed on purpose (the chat view, 27 Sep): runs of tool calls fold into one quiet row each,
+  // the todo list stays out (it is the thing to read), and a fold's cards are built when it opens.
+  const runs = $$(container, ".cv-run");
+  assert.equal(runs.length, 2);
+  assert.match(text(runs[0]), /^Read 1 file, searched 1 time/);
+  assert.match(text(runs[1]).trim(), /^Edited 1 file, ran 1 command, fetched 1 page, used 1 tool · [\d.]+ s$/);
+  assert.equal($$(container, ".cv-tool").length, 1, "the todo list, not folded");
+  for (const r of runs) await $(r, ".cv-run-head").click();
+  assert.equal($$(container, ".cv-run[data-open]").length, 2);
   assert.equal($$(container, ".cv-tool").length, 7);
   assert.equal($$(container, ".cv-think").length, 1);
   assert.match(text($(container, ".cv-tool[data-tool=Bash]")), /\$ npm test -- src\/order/);
