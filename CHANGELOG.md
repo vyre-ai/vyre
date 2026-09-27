@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ⌘⏎ thinks deeper in the same thread
+
+- ⌘⏎ on an answer, or on a follow-up typed under it, now switches the answer's own thread to the
+  deeper model (threads.model, sonnet) and turns thinking on (threads.thinking), then sends the
+  words there, so the conversation is already in it. The same question again is asked to be
+  thought through; new words go as typed. A quick thread that went idle gets thinking once the
+  send wakes it. A vyred with no threads.model keeps the old way: a new thread told what was said.
+- A new turn in the same thread reveals its words from the start, paced, instead of showing the
+  first part at once.
+- `Sources/Host/AutoAsk.swift` (deeperInThread); `Tests/AutoAskTests.swift`.
+
 #### The Capsule's answer grows, then scrolls; no bare headings
 
 - The user's bug (2026-09-27): a long answer was cut off mid-line in a fixed 200 pt box with no

@@ -9,9 +9,9 @@
 //   or an exact app or file match never asks.
 // - ⏎ keeps the answer and turns the box into the follow-up box ("Ask a follow-up"); ⏎ there
 //   continues the same thread. ↓ into the results first makes ⏎ open that row instead.
-// - ⌘⏎ asks the same question (or the follow-up typed) on the deeper model, with the
-//   conversation so far. threads.send has no model switch yet, so it is a new thread that is told
-//   what was said; its follow-ups continue there.
+// - ⌘⏎ asks the same question (or the follow-up typed) on the deeper model, in the SAME thread:
+//   threads.model switches it and threads.thinking turns thinking on, so the conversation is
+//   already there. With a vyred that has no threads.model, it is a new thread told what was said.
 // - ⌘O opens the answer's thread in Vyre chat on the box. Esc clears back to plain search.
 
 import AppKit
@@ -159,11 +159,40 @@ extension CapsuleModel {
 
     /// ⌘⏎: the same question, or the follow-up typed, on the deeper model, told the conversation.
     func deeper(_ words: String) {
+        // Read before the box empties: emptying it lets the answer on top go.
+        let same = reply.flatMap { r in !r.thread.isEmpty && !doing && vyred.has("threads.model") ? r.thread : nil }
+        let question = asked
+        followUp = true
+        text = ""
+        if let same {
+            Task { @MainActor in self.handle(await self.deeperInThread(words, thread: same, question: question)) }
+            return
+        }
         let said = convo.map { "Q: \($0.q)\nA: \($0.a)" }.joined(separator: "\n\n")
         let context = said.isEmpty ? nil : "Earlier in this conversation (answered by a faster model; answer again, more carefully):\n\n" + said
-        text = ""
-        followUp = true
         Task { @MainActor in self.handle(await self.ask(words, model: "sonnet", context: context)) }
+    }
+
+    /// The model ⌘⏎ switches to.
+    static let deeperModel = "sonnet"
+
+    /// ⌘⏎ in the answer's own thread: the deeper model and thinking on, then the words. The same
+    /// question again is asked to be thought through; words typed after it are sent as they are.
+    /// Thinking needs a running session: a thread that went idle gets it once the send wakes it.
+    func deeperInThread(_ words: String, thread: String, question: String?) async -> ActionOutcome {
+        let switched = await vyred.call("threads.model", ["thread": thread, "model": Self.deeperModel], presence: false)
+        if let why = Bridge.explain(switched) { return .failed("Could not switch to the deeper model: \(why)") }
+        let before = await vyred.call("threads.thinking", ["thread": thread, "on": true], presence: false)
+        let thinking = (before.data as? [String: Any])?["thinking"] as? Bool == true
+        let again = Self.autoKey(words) == Self.autoKey(question ?? "")
+        let prompt = again ? "Think this through more carefully and answer again: \(words)" : words
+        let who = VyreCandidate(kind: .thread, id: thread, label: "this answer")
+        let out = await send(prompt, to: who, model: Self.deeperModel)
+        if reply?.thread == thread { asked = words }
+        if !thinking, reply?.thread == thread {
+            _ = await vyred.call("threads.thinking", ["thread": thread, "on": true], presence: false)
+        }
+        return out
     }
 
     /// Esc with an answer on screen: back to plain search.

@@ -57,7 +57,8 @@ public final class CapsuleModel: ObservableObject {
                 Notifier.shared.post(title: r.ok == false ? "\(who) stopped" : "\(who) answered",
                                      body: text.isEmpty ? (asked ?? "") : String(text.prefix(180)))
             }
-            if reply?.thread != oldValue?.thread || reply == nil { revealed = 0 }
+            // A new answer, or a new turn in the same thread (a follow-up, ⌘⏎), reveals from the start.
+            if reply?.thread != oldValue?.thread || reply.map({ VyState.replyText($0).isEmpty }) ?? true { revealed = 0 }
             if let r = reply, r.finished, oldValue?.finished == false, r.ok != false, !r.cancelled, let q = asked {
                 remember(q, r)
                 if voiceTurn { voiceTurn = false; speakAnswer(VyState.replyText(r)) }

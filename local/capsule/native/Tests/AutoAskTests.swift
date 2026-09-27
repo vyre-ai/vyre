@@ -120,6 +120,41 @@ let autoAskSuite = Suite("auto ask") { t in
         t.eq(r, ["what is archipelago", "sonnet", "told", "true", "false true []"])
     }
 
+    t.test("⌘⏎ switches the SAME thread to the deeper model with thinking on") {
+        let v = quietVyred(); defer { v.stop() }
+        v.tool("threads.model") { i in ["thread": VJ.s(i["thread"]), "model": VJ.s(i["model"])] }
+        let lock = NSLock(); var thinks = 0
+        // The quick thread went idle: thinking waits until the send wakes it.
+        v.tool("threads.thinking") { i in
+            lock.lock(); thinks += 1; let n = thinks; lock.unlock()
+            return n == 1 ? ["thread": VJ.s(i["thread"]), "thinking": NSNull(), "note": "not running"] : ["thread": VJ.s(i["thread"]), "thinking": true]
+        }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.follower.isStreaming && m.vyred.has("threads.model") }
+            await MainActor.run { m.text = "what is archipelago" }
+            _ = await until { m.reply?.thread == "q1" }
+            _ = v.emit("thread.text", thread: "q1", ["message": "m1", "text": "A group of islands.", "done": true])
+            _ = v.emit("thread.finished", thread: "q1", ["ok": true])
+            _ = await until { m.reply?.finished == true }
+            _ = await MainActor.run { m.handleReturn(command: true) }
+            if !(await until { v.callsOf("threads.thinking").count == 2 }) {
+                return ["stuck: model \(v.callsOf("threads.model").count) thinking \(v.callsOf("threads.thinking").count) send \(v.callsOf("threads.send").count) start \(v.callsOf("threads.start").count)"]
+            }
+            let model = v.callsOf("threads.model").first
+            let sent = v.callsOf("threads.send").first
+            let shown = await MainActor.run { "\(m.reply?.thread ?? "") \(m.reply?.model ?? "") \(m.asked ?? "") \(m.followUp)" }
+            // A follow-up typed after it, with ⌘⏎: sent as it is, same thread.
+            await MainActor.run { m.text = "and in Greece?"; _ = m.handleReturn(command: true) }
+            _ = await until { v.callsOf("threads.send").count == 2 }
+            return [VJ.s(model?["thread"]), VJ.s(model?["model"]), VJ.s(sent?["thread"]), VJ.s(sent?["text"]), shown,
+                    VJ.s(v.callsOf("threads.send")[1]["text"]), "starts \(v.callsOf("threads.start").count)",
+                    v.callsOf("threads.thinking").allSatisfy { VJ.s($0["thread"]) == "q1" && ($0["on"] as? Bool) == true } ? "thinking on q1" : "thinking elsewhere"]
+        }
+        t.eq(r, ["q1", "sonnet", "q1", "Think this through more carefully and answer again: what is archipelago", "q1 sonnet what is archipelago true",
+                 "and in Greece?", "starts 1", "thinking on q1"])
+    }
+
     t.test("voice: partial words ask nothing; the final words are asked at once, as ⏎ would") {
         let v = quietVyred(); defer { v.stop() }
         let r: [String]? = t.wait {

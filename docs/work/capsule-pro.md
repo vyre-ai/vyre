@@ -174,7 +174,7 @@ box, and every key below passed through or kept.
 | Esc | Cancel Touch ID, a confirm, or a streaming answer; else clear an answer back to plain search; else clear the box; else hide | Capsule |
 | ↑/↓ | Move in the results; ↑ in an empty box opens what waits on you | Capsule |
 | ⏎ | On a question: keep the answer and open the follow-up box; in it, continue the thread. Otherwise run the row (a held ⏎ counts once) | Capsule |
-| ⌘⏎ | On a question or a follow-up: think deeper (the deeper model, told the conversation). On a row: its other action; on a held card: send | Capsule |
+| ⌘⏎ | On a question or a follow-up: think deeper (the same thread switched to the deeper model, thinking on). On a row: its other action; on a held card: send | Capsule |
 | ⇧⏎ | The row's other action | Capsule |
 | ⌘O | Open the answer's thread in Vyre chat on the box | Capsule |
 | Tab | Pick the @ row, or send the words to the first destination | Capsule |
