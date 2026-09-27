@@ -39,6 +39,8 @@ export const ENDS = { works_at: ["person", "org"], has_email: ["person", "email"
 export function ref(x, where = "subject") {
   if (typeof x === "string") x = { name: x };
   if (!x || typeof x !== "object") throw new Error(`${where} must be a name or { name, email, domain, repo }`);
+  // The user themself: the node the curator keeps for "me" (config.me), never a person named "the user".
+  if (x.kind === "me") return { id: "me:you", kind: "me" };
   const hint = ["person", "org"].includes(x.kind) ? x.kind : null;
   if (x.repo) { if (!REPO.test(String(x.repo))) throw new Error(`${where}.repo must look like owner/name`); return { id: "repo:" + x.repo, kind: "repo" }; }
   const name = typeof x.name === "string" ? x.name.replace(/\s+/g, " ").trim() : "";

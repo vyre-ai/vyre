@@ -637,6 +637,8 @@ export class Curator {
         kind.set(a.id, "repo");
         role.set(a.id, this.me.stems.has(letters(a.key.split("/")[0])) ? "own" : null);
       }
+      // The user themself, when a module taught something about them (a preference).
+      else if (a.id === ME) { kind.set(a.id, "me"); role.set(a.id, "own"); }
     }
     // Names. A name is an organisation when its last word says so, when a domain spells it, or
     // when someone is said to be "at" it; a person when an address or an "at" phrasing is
