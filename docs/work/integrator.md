@@ -63,7 +63,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   vyred's uid), built on pre/rc, reviewer-cleared. Also a main hotfix, with glass's docker-api hotfix if
   they are ready near the same time (fast-forward, targeted run, box-deploy redeploys after a backup).
 - Hotfix shas so far: glass 0f17b106 (on 779cc852, adds /var/lib/vyre-secrets; e2e passes a real stack), waiting
-  for the reviewer. safe-git: pre/rc 1c632637 + 9eb2ee32, main 2f43126d, waiting for the reviewer.
+  for the reviewer. safe-git: pre/rc work/e2e-safegit 9efb1851, main work/e2e-safegit-main a26793cd (NOT 9eb2ee32/2f43126d); land only when the reviewer clears THESE heads.
   Land 0f17b106 the moment it is cleared (do not wait for e2e's crash-loop follow-up, its own sha later).
   box-deploy confirms computers.list works and docker-api is stable after the redeploy.
 - rc.2 candidate, NOT gating: cohesion agentClaim parser (5ef364c3 + fix sha) once e2e AND reviewer sign
