@@ -951,7 +951,7 @@ export default {
       input: { type: "object", required: ["about"], properties: { about: { type: "string" }, project_cwds: cwds, ...roomField, ...agentField } },
       run: async ({ about, project_cwds = [], agent, ...rest }, { caller } = {}) => {
         const room = roomOf(rest);
-        await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const r = await guard({ agent, project_cwds, room }, caller, { tailnet: true });
         const g = graph.facts({ about: String(about), project_cwds: clean(project_cwds), room, limit: 40 });
         let sees = true;
         try { await personalOnly({ agent }, caller, "memory.card"); } catch { sees = false; }
@@ -959,14 +959,21 @@ export default {
         if (!g.about && !mine) return { card: null };
         const a = g.about;
         const facts = (g.facts || []).filter(f => f.rel !== "mentioned_in" && !f.stale).slice(0, 8).map(f => ({ text: f.text, source: f.source, age: f.seen_age || f.age }));
-        const projects = a ? /** @type {any[]} */ (ctx.store.db.prepare("SELECT DISTINCT r.name FROM memory_room_nodes n JOIN memory_rooms r ON r.slug = n.room WHERE n.id = ? ORDER BY r.name").all(a.id)).map(r => String(r.name)) : [];
+        // A caller granted only some projects sees only those projects' names and counts (the
+        // reviewer, 28 Sep): which other clients an entity comes up with is the person's.
+        const rows = a ? /** @type {any[]} */ (ctx.store.db.prepare("SELECT r.slug, r.name, n.sessions, n.last_seen FROM memory_room_nodes n JOIN memory_rooms r ON r.slug = n.room WHERE n.id = ? ORDER BY r.name").all(a.id)) : [];
+        const mayRoom = slug => r.all || r.slugs.has(String(slug));
+        const seen = rows.filter(x => mayRoom(x.slug));
+        const projects = [...new Set(seen.map(x => String(x.name)))];
+        const counts = r.all ? { sessions: a?.sessions ?? 0, last: a?.age ?? null }
+          : { sessions: seen.reduce((n, x) => n + Number(x.sessions || 0), 0), last: seen.length ? ago(Math.max(...seen.map(x => Number(x.last_seen) || 0)), Date.now()) || null : null };
         const sources = a ? /** @type {any[]} */ ((() => { try { return graph.why({ fact: a.id, project_cwds: clean(project_cwds), room, limit: 3 }).turns || []; } catch { return []; } })())
           .map(x => ({ session: String(x.session), name: x.name ?? null, ts: x.ts ?? null })) : [];
         // Who it is to the person: a relative or pet, in their own word for them.
         const link = mine?.links?.find(l => l.subj === "me" && l.current);
         const to_you = link ? `your ${personal.called(mine.entity.id) || link.rel}` : null;
         return { card: { label: a?.label || mine?.entity?.label || String(about), kind: a?.kind || mine?.entity?.kind || null, role: a?.role ?? null,
-          ...(to_you ? { to_you } : {}), facts, projects, sessions: a?.sessions ?? 0, last: a?.age ?? null, sources } };
+          ...(to_you ? { to_you } : {}), facts, projects, sessions: counts.sessions, last: counts.last, sources } };
       },
     });
     // Two values for one thing about the person's life, put to them to settle (graph win 3).
@@ -985,7 +992,8 @@ export default {
         if (running) await running.catch(() => {});
         const c = contradictions(personal).find(x => x.id === id);
         if (!c) throw Object.assign(new Error(`no open contradiction ${id}: it may be settled already`), { code: "not_found" });
-        const r = personal.remember(answerOf(c, pick), { who: `settle:${plain(caller || "", 40)}` });
+        const said = answerOf(c, pick);
+        const r = personal.tell(said.text, said.claim, { who: `settle:${plain(caller || "", 40)}` });
         ctx.events.emit("memory.remembered", { id: r.id, facts: r.facts.length });
         return { id: r.id, text: r.text, facts: r.facts.map(f => ({ id: f.id, subject: f.subject, rel: f.rel, object: f.object, confidence: f.confidence })) };
       }),
