@@ -89,11 +89,9 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
   find-identity lists 1 valid "Vyre Local". codesign then failed because Vyre.app did not
   compile: work/capsule-pro tip AgentDestinations.swift:47 `cannot find 'askItem' in scope`
   (capsule-pro's bug). ci-sign 0066ed2 signs a copy of vyre-launcher when the app is missing;
-  its run is 36282086841 (in progress at logout).
+  run 36282086841 signed it and passed `codesign --verify --strict`, so signing is proven. capsule-pro has the result, and work/ci-sign is deleted from origin.
 
 ## Next
-- Check run 36282086841 (codesign lines at the end of the signing step), then send capsule-pro the signing lines. If it proves signing, delete
-  work/ci-sign from origin (`git push origin --delete work/ci-sign`, no force needed).
 - Recheck node on main after the integrator's fix: `gh run list -R vyre-ai/vyre --branch main --workflow node.yml`.
 - Guard hooks: pre-push and commit-msg are in the shared hooks dir. On 2026-09-27 commit-msg
   rejected a private name and passed a clean message.
