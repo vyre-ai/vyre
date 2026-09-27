@@ -105,6 +105,10 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
   board TipLine), sent to capsule-pro, pwa, chat and mobile. native-core put "tips" in GROUPS
   (ac34c322). cohesion's context.report already takes surface "glass", and pwa sends it from the
   Glass page. When tip.md lands on main, link it from build/tips.md, "Show one on a surface".
+- 591b5e80 (for the batch after 4): docs/releases/0.1.0.md (a draft, with unlanded lines
+  marked "(pending)") and docs/using/first-hour.md (the 20-minute first run). releases/ joins
+  HISTORY in terms.js. When batch 4 lands, drop the "(pending)" marks that no longer apply and
+  update the first hour's Known gap callouts.
 - Rule reminder from the lead: one Chrome on testbox at a time, and no shots while the integrator's
   suite runs.
 
