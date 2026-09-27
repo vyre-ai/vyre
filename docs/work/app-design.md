@@ -192,3 +192,11 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   docs/index.json and docs/reference/index.md regenerated with npm run docs:ref.
 - Proposed only: the CLI verbs `vyre phone add` and `vyre allow` / `vyre deny` (lines marked
   terms: ignore until polish-cli builds them).
+
+## Now (28 Sep, cohesion support)
+
+- Lead asked me to give cohesion Design A's interaction rules for docs/design/interaction.md
+  (motion tokens, card states, key hints, the swipe rule, the Answer card) and offer 2-3 boards if
+  useful. Sent the full rundown by message (msg_id e5bf84f6) rather than drawing boards up front —
+  offered streaming IQ / computer-use step pills / multi-device handoff on request, to keep this
+  light while still on launch RC support. No board drawn yet; waiting to hear if one would help.
