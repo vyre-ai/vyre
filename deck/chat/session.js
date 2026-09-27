@@ -1376,7 +1376,7 @@ export function mountSession(container, opts) {
   const onKb = () => {
     if (!timeline.isConnected) return;
     const p = padNow();
-    if (following) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
+    if (stick.stuck) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
     pad = p;
   };
   container.addEventListener("focusin", onFocus);
