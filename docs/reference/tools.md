@@ -139,7 +139,7 @@ What each agent has used: turns, threads, time, tokens and cost (all of it, and 
 
 ### `apps.act`
 
-Do one thing in an app that sends nothing as the person: a Clock timer or alarm, a note, a reminder, the weather. Returns said, one line to show, and the action's data. An action that sends, posts or pays is refused here with code sends: use apps.send.
+Do one thing in an app that sends nothing as the person: a Clock timer or alarm, a note, a reminder, the weather. Returns said, one line to show, and the action's data. An action that sends, posts or pays is refused here with code sends: use apps.send. A gated send (Slack) runs here and comes back as { held: {id, message}, preview }: nothing is sent until the person approves the held item with gate.approve.
 
 - Input:
   - `action` string, required: One of the app's actions, as apps.list and errors name them.
@@ -158,7 +158,7 @@ Apps installed on this Mac: name, bundle id, path, and tier (how Vyre reaches it
 
 ### `apps.route`
 
-Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. "timer 10 min", "remind me to call juno at 6", "weather tomorrow", "whatsapp juno: running late". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks, as {text, app, to}. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.
+Turn a person's words into one app action without running it: {app, action, args, sends, said, gated?}, or {ambiguous, reason}. gated: run it with apps.act, then approve the held item (gate.approve). "timer 10 min", "remind me to call juno at 6", "weather tomorrow", "whatsapp juno: running late". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks, as {text, app, to}. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.
 
 - Input:
   - `text` string, required

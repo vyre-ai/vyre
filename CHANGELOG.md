@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Apps: Slack messages through the MCP hub, held at the Gate (ADR 0022, slice 3)
+
+- "slack #general: the ovens are in", "tell juno on slack ..." and the Capsule's @Slack now send
+  through the Slack MCP server the person added to Vyre's hub (local/apps/adapters/slack.js). No
+  Slack token lives in the apps module.
+- A Slack send is `gated`: apps.route marks it `gated: true`, apps.act runs it and returns
+  `{ held: {id, message}, preview }`, and nothing reaches Slack until the person approves the item
+  with gate.approve (their proof); the hub then releases exactly those arguments, once.
+  apps.send refuses a gated action with code `gated`.
+- The server is config apps.slack.server, or the only one whose tools look like Slack's; two
+  are a question for settings. Argument keys come from the post tool's own schema, so the
+  official server (slack_post_message) and others (conversations_add_message) both work.
+- Refused before anything is sent: a post tool the hub would run unapproved, a channel or person
+  Slack does not have, and an answer that comes back without `held`.
+- apps.targets for Slack lists live channels (#name) and real people (no bots, no deactivated
+  accounts). "Which app?" offers Slack as an app Vyre sends through only when a Slack server is
+  in the hub.
+
 #### The design docs stay out of the package
 
 - package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at
