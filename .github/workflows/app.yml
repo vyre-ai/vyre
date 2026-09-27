@@ -183,8 +183,8 @@ jobs:
       # key from its vault (the box is the root of trust; there is no Vyre-wide release key).
       # prebuild points release at the debug keystore; that one line goes. A copy signed with a
       # throwaway per-run key proves the APK signs and verifies with the platform's apksigner, and
-      # when apps/app has the box's pure-JS signer (scripts/sign-apk.mjs), its output is verified
-      # with apksigner too.
+      # when the box's pure-JS signer (core/apps/sign-apk.mjs, v2+v3, EC key here) is in the tree,
+      # its output is verified with apksigner too.
       - name: Release build unsigned
         run: |
           node -e '
@@ -226,12 +226,13 @@ jobs:
           "$bt/zipalign" -p -f 4 "$APK" "$RUNNER_TEMP/aligned.apk"
           "$bt/apksigner" sign --ks "$ks" --ks-pass env:APKPASS --ks-key-alias ci --out "$RUNNER_TEMP/platform-signed.apk" "$RUNNER_TEMP/aligned.apk" </dev/null
           "$bt/apksigner" verify -v "$RUNNER_TEMP/platform-signed.apk" | head -6
-          if [ -f scripts/sign-apk.mjs ]; then
-            openssl req -x509 -newkey rsa:2048 -nodes -days 30 -subj "/CN=Vyre throwaway CI" -keyout "$RUNNER_TEMP/k.pem" -out "$RUNNER_TEMP/c.pem" 2>/dev/null
-            node scripts/sign-apk.mjs --key "$RUNNER_TEMP/k.pem" --cert "$RUNNER_TEMP/c.pem" --in "$APK" --out "$RUNNER_TEMP/js-signed.apk" </dev/null
-            "$bt/apksigner" verify -v "$RUNNER_TEMP/js-signed.apk" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -f ../../core/apps/sign-apk.mjs ]; then
+            openssl ecparam -name prime256v1 -genkey -noout 2>/dev/null | openssl pkcs8 -topk8 -nocrypt -out "$RUNNER_TEMP/k.pem"
+            openssl req -x509 -new -key "$RUNNER_TEMP/k.pem" -days 30 -subj "/CN=Vyre throwaway CI" -out "$RUNNER_TEMP/c.pem"
+            (cd ../.. && node core/apps/sign-apk.mjs --key "$RUNNER_TEMP/k.pem" --cert "$RUNNER_TEMP/c.pem" --in "$RUNNER_TEMP/aligned.apk" --out "$RUNNER_TEMP/js-signed.apk" </dev/null) | tee -a "$GITHUB_STEP_SUMMARY"
+            "$bt/apksigner" verify --verbose --min-sdk-version 24 "$RUNNER_TEMP/js-signed.apk" | tee -a "$GITHUB_STEP_SUMMARY"
           else
-            echo "apps/app/scripts/sign-apk.mjs not here yet: platform signing only" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "core/apps/sign-apk.mjs not here yet: platform signing only" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
           rm -f "$ks" "$RUNNER_TEMP/k.pem"
       - uses: actions/upload-artifact@v4
