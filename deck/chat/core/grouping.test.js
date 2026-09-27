@@ -48,3 +48,8 @@ test("summaries count files once and say every kind", () => {
     "Searched 2 times, fetched 1 page, started 1 task, used 1 tool");
   assert.deepEqual(groupItems([]), []);
 });
+
+test("a todo list is never folded: it is the thing to read", () => {
+  const rows = groupItems([tool("t:1", "Grep"), tool("t:2", "TodoWrite"), tool("t:3", "Read"), tool("t:4", "Read", { summary: "Read y" })]);
+  assert.deepEqual(rows.map(r => r.type === "run" ? `${r.key}[${r.keys.length}]` : r.key), ["t:1", "t:2", "run:t:3[2]"]);
+});

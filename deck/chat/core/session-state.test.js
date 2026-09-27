@@ -263,3 +263,36 @@ test("a stop: crash reads failed, streaming ends", () => {
   ev(s, "thread.started", {});
   assert.equal(s.stopped, null);
 });
+
+test("a closed turn and a new open turn in one read each find their own item; a live call learns its length", () => {
+  const s = createSession(T);
+  applyBlocks(s, [
+    { seq: 0, kind: "user", ts: 1000, text: "Draft the Harlow Legal intake" },
+    { seq: 1, kind: "text", ts: 2000, message: "m0", text: "Drafted." },
+    { seq: 1, kind: "turn", ts: 1000, duration_ms: 1000, tokens: { input: 10, output: 2 }, open: true },
+  ]);
+  ev(s, "thread.sent", { text: "Now the Estate branch", surface: "deck" }, { at: 5000 });
+  ev(s, "thread.tool", { call: "c1", name: "Bash", status: "running", summary: "npm test" }, { at: 6000 });
+  ev(s, "thread.tool", { call: "c1", status: "completed" }, { at: 7500 });
+  assert.equal(s.byKey.get("t:c1").duration_ms, 1500);
+  ev(s, "thread.finished", { ok: true, cost_usd: 0.02 }, { at: 8000 });
+  applyBlocks(s, [
+    { seq: 2, kind: "turn", ts: 1000, duration_ms: 1000, tokens: { input: 10, output: 2 } },
+    { seq: 2, kind: "user", ts: 5000, text: "Now the Estate branch" },
+    { seq: 3, kind: "tool", ts: 6000, id: "c1", tool: "Bash", input: { command: "npm test" }, output: "ok", error: false, duration_ms: 1500 },
+    { seq: 4, kind: "turn", ts: 5000, duration_ms: 3000, tokens: { input: 20, output: 4 }, open: true },
+  ]);
+  const turns = s.items.filter(i => i.kind === "turn");
+  assert.equal(turns.length, 2);
+  assert.equal(turns[0].open, false, "the first turn closed in place");
+  assert.equal(turns[1].key, "turn:1", "the live turn took the open one");
+  assert.equal(turns[1].cost_usd, 0.02);
+});
+
+test("a session closed for idleness is idle, not stopped", () => {
+  const s = createSession(T);
+  ev(s, "thread.started", { provider: "claude", model: "opus", auth: "subscription" });
+  ev(s, "thread.stopped", { reason: "idle" });
+  assert.equal(s.state, "idle");
+  assert.equal(s.stopped, "idle");
+});

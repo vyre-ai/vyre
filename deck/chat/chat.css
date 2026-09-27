@@ -505,3 +505,43 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-ch-row { display: flex; align-items: center; gap: 10px; padding: 2px 10px 2px 28px; min-width: 0; }
 .cv-ch-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
 .cv-ch-more { padding: 2px 10px 2px 28px; font-size: 12px; color: var(--label); }
+
+/* session view, native chat (session.js over core/session-state.js) */
+/* Rows off screen skip layout and paint; the growing reply is exempt, so its height is always true. */
+.cv-timeline > .cv-row:not(.cv-live) { content-visibility: auto; contain-intrinsic-size: auto 44px; }
+.cv-md-part { display: contents; }
+
+.cv-run { margin: 2px 0 2px 44px; max-width: calc(100% - 44px); }
+.cv-run-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 0 4px; border: 0; border-radius: 6px;
+  background: none; cursor: pointer; text-align: left; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+.cv-run-head:hover { background: var(--hover); }
+.cv-run-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cv-run .cv-chev { display: inline-flex; color: var(--label); transition: transform 180ms ease-out; }
+.cv-run[data-open] > .cv-run-head .cv-chev { transform: rotate(90deg); }
+.cv-run-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-run-meta { flex-shrink: 0; color: var(--label); font-variant-numeric: tabular-nums; }
+.cv-run[data-state="running"] .cv-run-sum { color: var(--signal-ink-text, var(--signal)); }
+.cv-run[data-state="failed"] .cv-run-meta { color: var(--beacon-ink); }
+.cv-run-body { padding-left: 16px; border-left: 1px solid var(--rule); margin-left: 9px; }
+.cv-run-body .cv-tool { margin-left: 0; max-width: 100%; }
+.cv-tool-time { font-variant-numeric: tabular-nums; }
+.cv-turn-err { color: var(--beacon-ink); }
+@media (prefers-reduced-motion: reduce) { .cv-run .cv-chev { transition: none; } }
+
+.cv-chip { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.cv-state { font-family: var(--mono); font-size: 11px; color: var(--label); white-space: nowrap; }
+.cv-state-running, .cv-state-starting { color: var(--signal-ink-text, var(--signal)); }
+.cv-state-waiting { color: var(--text); }
+.cv-state-failed { color: var(--beacon-ink); }
+.cv-resumes { color: var(--text-2); }
+.cv-stop-err { margin-left: 8px; }
+
+.cv-queued { display: flex; flex-direction: column; gap: 4px; padding: 6px 20px 0; flex-shrink: 0; }
+.cv-queued[hidden] { display: none; }
+.cv-queued-row { display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 6px 0 12px; border: 1px dashed var(--rule-strong);
+  border-radius: 8px; font-size: 13px; }
+.cv-queued-text { flex-grow: 1; min-width: 0; color: var(--text-2); }
+.cv-queued-row .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.composer-stop { flex-shrink: 0; }
+.composer-stop[hidden] { display: none; }
+.cv-from { margin-top: 4px; font-size: 12px; color: var(--label); }

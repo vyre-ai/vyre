@@ -395,7 +395,8 @@ export function mountSession(container, opts) {
     const i = S.items.indexOf(it);
     const nx = S.items.slice(i + 1).find(x => x.at !== undefined);
     const ms = it.at !== undefined && nx ? nx.at - it.at : null;
-    return ms != null && ms >= 1000 && ms < 3_600_000 ? `Thinking · ${duration(ms)}` : "Thinking";
+    if (ms == null || ms < 1000 || ms >= 3_600_000) return "Thinking";
+    return `Thinking · ${ms < 60_000 ? Math.round(ms / 1000) + " s" : duration(ms)}`;
   }
 
   /** The row for an item: made once, then patched. */
