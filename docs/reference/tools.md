@@ -4307,7 +4307,7 @@ One connection's metadata, for the module that acts on it: a row of its own sour
 
 ### `vault.connections.grant`
 
-Let a surface (capsule, chat, agents or phone) use a connection.
+Let a surface (capsule, chat, agents or phone) use a connection. Granting agents asks for presence (Touch ID or a passkey): it hands a credential to an autonomous session. Capsule, chat and phone are one tap.
 
 - Input:
   - `id` string, required
