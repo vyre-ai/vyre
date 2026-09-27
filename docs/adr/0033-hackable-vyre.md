@@ -1,6 +1,6 @@
 ---
 title: ADR 0033: Hackable Vyre
-summary: A stable, versioned module API, an extension point for every part, user modules and overrides that survive updates, `vyre update` with channels and rollback, and third-party modules installed as grants.
+summary: A stable, versioned module API, an extension point for every part, user modules and one settings hub that survive updates, `vyre update` with channels and rollback, and third-party modules installed as grants.
 audience: builders
 owner: platform
 status: stable
@@ -125,9 +125,9 @@ the manifest; code runs only where a description can't do the job.
 | Gate senders | fixed `TYPES` map (gmail, http) | missing | `does.senders`: a tool that runs only after the Gate approved the item; the Gate still owns approval, presence and the log |
 | Capsule @App adapters | `BUILTIN` list, Swift extensions compiled in | missing at runtime | `does.apps`: adapter actions become tools; a `sends` action goes through the Gate like any outbound; Swift extensions stay compile-time |
 | Watchers | `<home>/watchers/` | works | unchanged; later, a module may ship watchers |
-| Themes and tokens | `config.theme.colors` (colours only) | partial | a theme file (tokens JSON: colours, fonts, radii, spacing), from the person's overrides or a module's `themes/`; `/theme.css` for the Deck and `/v1/theme` for the Capsule |
-| Prompt layers | per-agent instructions, project brief | partial | `teaches.prompt`: markdown files at account, project or agent level, ordered, capped in length, shown in Settings > Prompt with their source |
-| Settings | none per module | missing | `settings` in the manifest, merged into native-core's registry, so each key gets a Deck row and `vyre config` with no UI work |
+| Themes and tokens | `config.theme.colors` (colours only) | partial | hub values: `appearance.theme` (a preset, including a module's `themes/`) and `appearance.tokens` (colours, fonts, radii, spacing), checked before they're stored; `/theme.css` for the Deck and `/v1/theme` for the Capsule (section 3) |
+| Prompt layers | per-agent instructions, project brief | partial | `teaches.prompt`: markdown files at account, project or agent level, ordered, capped in length, listed in the hub with their source and switched on or off there |
+| Settings | none per module | missing | `settings` in the manifest, joining native-core's hub (the one place for every setting), so each key gets a Deck row and `vyre config` with no UI work |
 | CLI verbs | a folder scan of `core/cli/commands` | missing | `does.commands`: `vyre <module> <verb>` mapped to a tool, with args from its input schema |
 | Deck views and panels | static `ROUTES`, `PLACES` | missing | `shows.deck` slots (below) |
 | Settings sections | static `SECTIONS` | missing | generated from `settings` groups |
@@ -171,7 +171,14 @@ synchronous. `/v1/modules` gives each module's version and a content hash, so th
 changed module without refetching. The service worker treats `/m/<module>/` as network-only, like
 `/v1/`, so an update is never masked by a stale cache and one module can't poison another's.
 
-### 3. User modules and overrides that survive updates
+### 3. User modules and the one hub, both surviving updates
+
+**One hub (the person's directive, 27 Sep 2026).** Every setting, every session option and every
+design token lives in one place: native-core's settings registry, the hub. Every surface (the Deck,
+the Capsule, the phone, the CLI) reads it live and follows `settings.changed`. The hub's file under
+the home is the single place a person hacks by hand; the Deck's Settings and `vyre config` edit the
+same values. There is no separate override folder: a theme, a theme preset and a prompt layer are
+values in the hub like any other setting. native-core owns the hub and names its file.
 
 The home holds everything the person made. An update never writes there, except forward store
 migrations and the derived files that are listed in the release (the built Capsule app, the
@@ -179,9 +186,8 @@ status line script).
 
 ```
 <home>/
-  modules/<name>/         their own modules and ones they added
-  overrides/prompt/*.md   prompt layers (account level)
-  overrides/theme.json    token overrides
+  <the hub file>          every setting, session option and design token (native-core)
+  modules/<name>/         their own modules and ones they added (code, not settings)
   data/<module>/          each module's own files
   modules.lock.json       what was added, from where, which version, which grants
 ```
@@ -193,27 +199,41 @@ status line script).
 - **Replace a first-party module:** a home module takes the original's name and says so,
   `"name": "memory", "replaces": "memory"` (without `replaces`, a duplicate name is refused as
   today). It must register every tool the original declares, with compatible inputs, or it is
-  refused and the original loads. The same floor list can't be replaced. After an update, `vyre doctor` names any
-  replacement whose original gained tools ("your memory replacement lacks memory.answer, new in
-  0.4").
-- **Patch prompt and theme layers:** files in `overrides/`, read after the shipped layers, shown
-  with their source in Settings.
-- **The theme override file** (`overrides/theme.json`) is a partial `tokens.json`
-  (docs/design/one-app/tokens.json), deep-merged over it: objects merge by key, arrays and plain
-  values replace. It may set `color.dark` and `color.paper` (existing role names only), `font`
-  (the two families and weights), `type`, `space`, `radius`, `control`, `motion`, `shadow` and
-  `popover`. It may not touch `status`, `layout`, `icon` or `color.attentionAlt`, add a key the
-  tokens don't have, or change a value's type. app-design's
-  `scripts/gen-tokens` merges it and refuses the whole file, naming the failing pair, when a
-  text/background pair drops under AA, the focus ring under 3:1, the attention role is removed or
-  reused, a size under 12, a target under 44 or an empty font family (`applyOverride` and `check`
-  in `scripts/lib/theme.js`; `node scripts/gen-tokens --validate <file>` from a terminal). The
-  older `config.theme.colors` is mapped in by `fromLegacy` and read first, and the file wins; it
-  works for one release and is then deprecated. The merge and the checks move into `lib/theme` in
-  phase 4, since vyred serves the result and `scripts/` isn't in the package. The result is `/theme.css` for the Deck and frames, and `/v1/theme`
-  for the Capsule and the phone.
-- A module may ship `themes/<name>.json` in the same shape, which the person can pick in Settings.
-  A module never changes the tokens by itself.
+  refused and the original loads. The same floor list can't be replaced. After an update, `vyre
+  doctor` names any replacement whose original gained tools ("your memory replacement lacks
+  memory.answer, new in 0.4").
+- **A module's settings stay inside its own rows.** A person's change to a setting carries the
+  person's authority, so a module from outside Vyre may keep a setting only in the hub's own table,
+  in its own tools (called as the settings module, never as the person), or under its own name in
+  config.json; never in Claude Code's files. The loader checks this when the manifest loads, and
+  `checkManifest` says the same to authors. A module may write its own plain keys itself through
+  the internal `settings.write`; never a key that asks for a confirm or loosens security.
+
+**The theme, as hub values.** Two keys, declared by the module that serves the theme:
+
+- `appearance.theme`: which preset is in effect, `vyre` or `<module>/<name>`. A module may ship
+  presets as `themes/<name>.json`; they appear as choices of this key and nothing else. A module
+  never applies a preset or changes the tokens by itself.
+- `appearance.tokens`: the person's own changes, an object in the shape of a partial `tokens.json`,
+  deep-merged over the preset (objects merge by key, arrays and plain values replace). It may set
+  `color.dark` and `color.paper` (existing role names only), `font` (the two families and
+  weights), `type`, `space`, `radius`, `control`, `motion`, `shadow` and `popover`. It may not
+  touch `status`, `layout`, `icon` or `color.attentionAlt`, add a key the tokens don't have, or
+  change a value's type.
+
+A change to either key is checked before it is stored, by app-design's `applyOverride` and `check`
+(moving from `scripts/lib/theme.js` to `lib/theme` in phase 4, since vyred runs them and `scripts/`
+isn't in the package). The whole value is refused, naming the failing pair, when a text/background
+pair drops under AA, the focus ring under 3:1, the attention role is removed or reused, a size
+under 12, a target under 44 or a font family is empty. A preset gets the same check when it is
+installed and when it is picked. The older `config.theme.colors` is mapped in by `fromLegacy` for
+one release, then deprecated. The result is `/theme.css` for the Deck and module frames and
+`/v1/theme` for the Capsule and the phone, both rebuilt on `settings.changed`.
+
+**Prompt layers, as hub values.** The person's own prompt text is already a hub value (the sessions
+module's prompt, versioned, at account, project and agent level). A module's `teaches.prompt`
+layers are listed in the hub with their source, each one on or off; the person turns a layer off
+there rather than editing a file.
 
 ### 4. Updates
 
@@ -409,6 +429,12 @@ this is the kernel plus surfaces (the CLI's own vault terminal code).
 4. The template is built in the repo (`templates/module/`); the public template repo waits for the
    person's OK near phase 3.
 5. Automatic rollback restores the database only when health fails within the update window.
+6. One hub (the person, 27 Sep 2026): every setting, session option and design token is a value in
+   native-core's settings registry, read live by every surface; its file under the home is the one
+   place a person hacks. Theme overrides, theme presets and prompt layers are hub values, not a
+   separate path.
+7. A module from outside Vyre keeps its settings inside its own rows (found here, confirmed by e2e);
+   native-core adopts it before merging.
 
 ## Open questions
 
