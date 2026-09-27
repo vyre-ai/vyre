@@ -33,6 +33,12 @@ test("heard: the person's latest turn, naming what is corrected, with the value 
   assert.equal(heard(me("I'm not sure, check the invoice from Jordan's wife account later please today"), { action: "wrong", old: "Your wife is Jordan.", ...WIFE }, NOW).ok, false, "'not sure' is not 'wrong'");
   assert.equal(heard(me("thanks, my wife will like it"), { action: "wrong", old: "Your wife is Jordan.", ...WIFE }, NOW).ok, false, "no word says it is wrong");
   assert.equal(heard(null, { action: "wrong", old: "x", about: [] }, NOW).ok, false);
+  // e2e's LOWs: nothing to name is not named; whole words only; a question is not a statement.
+  assert.match(heard(me("no, it's Juno"), { action: "replace", value: "Juno", about: [] }, NOW).why, /does not name/);
+  assert.match(heard(me("that person has a reason"), { action: "replace", value: "Mara", about: ["son"] }, NOW).why, /does not name/, "son is not in person");
+  assert.match(heard(me("my wife will start tomorrow"), { action: "replace", value: "art", ...WIFE }, NOW).why, /not in what the person said: art/, "art is not in start");
+  assert.match(heard(me("is my wife Juno?"), { action: "replace", value: "Your wife is Juno.", ...WIFE }, NOW).why, /asked it/);
+  assert.equal(heard(me("is it wednesday? my wife is Juno."), { action: "replace", value: "Your wife is Juno.", ...WIFE }, NOW).ok, true);
   assert.deepEqual(valueWords("vegetarian"), ["vegetarian"]);
 });
 
@@ -97,8 +103,13 @@ test("heard: the person's own turn in the agent's thread corrects memory as thei
   const listed = (await call("memory.corrections", { suggested: true }, "deck")).data;
   assert.equal(listed.heard[0].summary, "what is my wife's name?: Your wife is Juno.");
   assert.deepEqual(listed.heard[0].undo, { tool: "memory.uncorrect", input: { fix: ok.data.fix.id } });
-  // One correction per turn of the person's.
+  // One correction per turn of the person's, even when two calls race for it.
   assert.match((await fix(4, "Your wife is Juno.")).data.suggestion.why, /one correction per turn/);
+  turns[`${THREAD}#10`] = me("no, my wife is Noor");
+  const race = await Promise.all([fix(10, "Your wife is Noor."), fix(10, "Your wife is Noor.")]);
+  assert.deepEqual(race.map(r => r.data.applied).sort(), [false, true], JSON.stringify(race));
+  assert.equal(db.prepare("SELECT kind FROM memory_iq_heard WHERE thread = ? AND seq = 10").get(THREAD).kind, "fix");
+  await call("memory.uncorrect", { fix: race.find(r => r.data.applied).data.fix.id }, "deck");
   // Undo, by the person.
   assert.ok((await call("memory.uncorrect", { fix: ok.data.fix.id }, "deck")).data.fix.undone);
   assert.match((await call("memory.ask", { question: "what is my wife's name?" }, "cli")).data.answer, /Jordan/);

@@ -488,9 +488,14 @@ export default {
       const value = ["replace", "add"].includes(input.action) ? String(input.object ?? "") : null;
       const h = heard(r.data, { action: input.action, value, old: value == null ? target.old : null, about: target.about }, t);
       if (!h.ok) return suggest(input, caller, meta, h.why);
-      const out = await apply({ ...input, from_turn: undefined }, `heard:${thread}#${seq}`);
+      // Reserve the turn first, so two calls on one turn cannot both apply; released if apply fails.
+      try { db.prepare("INSERT INTO memory_iq_heard (thread, seq, at, caller, kind, ref, summary) VALUES (?,?,?,?,'pending',0,?)").run(thread, seq, t, plain(caller, 80), plain(target.summary, 200)); }
+      catch { return suggest(input, caller, meta, "one correction per turn of the person's; that turn already made one"); }
+      let out;
+      try { out = await apply({ ...input, from_turn: undefined }, `heard:${thread}#${seq}`); }
+      catch (e) { db.prepare("DELETE FROM memory_iq_heard WHERE thread = ? AND seq = ? AND kind = 'pending'").run(thread, seq); throw e; }
       const kind = out.fix ? "fix" : "correction", ref = out.fix ? out.fix.id : out.correction.id;
-      db.prepare("INSERT INTO memory_iq_heard (thread, seq, at, caller, kind, ref, summary) VALUES (?,?,?,?,?,?,?)").run(thread, seq, t, plain(caller, 80), kind, Number(ref), plain(target.summary, 200));
+      db.prepare("UPDATE memory_iq_heard SET kind = ?, ref = ? WHERE thread = ? AND seq = ?").run(kind, Number(ref), thread, seq);
       ctx.events.emit("memory.updated", { by: "agent", thread, ...(out.fix ? { fix: out.fix.id } : {}), ...(out.correction ? { correction: out.correction.id } : {}) });
       return { applied: true, heard: { thread, seq }, ...out };
     };
@@ -611,7 +616,20 @@ export default {
       if (r?.error || !r?.data?.ok) throw new Error(r?.error?.message || "threads.quick did not answer");
       return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0 };
     });
-    const ask = asker({ db: ctx.store.db, answer, retrieve, fixes: fixed, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
+    const LIFE = new Set(["kin", "of", "birthday", "car", "carFate", "diet", "lives", "born", "myname", "owns"]);
+    const trustOf = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
+    const humanOf = () => { try { return ctx.store.db.prepare("SELECT human FROM recall_sessions WHERE id = ?"); } catch { return null; } };
+    const ask = asker({ db: ctx.store.db, answer, retrieve, fixes: fixed,
+      personalQ: q => {
+        // About the user's own life: a relative, their car, home, diet, birthday, name. Work
+        // questions that the personal parser also reads ("who's priya") stay work questions.
+        const p = /** @type {any} */ (parseQuestion(q));
+        const t = String(q).toLowerCase();
+        if (!p || !LIFE.has(p.kind) || !/\b(?:my|our|i|me|mine)\b/.test(t)) return false;
+        return !p.word || new RegExp(`\\b${String(p.word).replace(/[^a-z]/g, "")}s?\\b`).test(t);
+      },
+      // A session source trust refused, or one a program started (a subagent, a headless run), never grounds a personal answer.
+      trusted: session => /** @type {any} */ (trustOf.get(session))?.ok !== 0 && /** @type {any} */ (humanOf()?.get(session))?.human !== 0, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
         allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : ASK_DAILY_USD) + 1e-9,
         charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)

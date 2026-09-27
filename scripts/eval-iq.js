@@ -44,11 +44,14 @@ import { claudeOnce, modelFor } from "../core/memory/personal/reader.js";
 import { VERSION as ASK_VERSION } from "../core/memory/iq/ask.js";
 import * as openWorld from "../test/fixtures/iq-open.js";
 import * as sealedWorld from "../test/fixtures/iq-sealed.js";
+import * as trustWorld from "../test/fixtures/personal-trust.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const WORLDS = {
   open: () => ({ world: openWorld, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq-open.json"), "utf8")), sealed: false }),
   sealed: () => ({ world: sealedWorld, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/iq-sealed.json"), "utf8")), sealed: true }),
+  // Source trust (the "Jordan" trap) through memory.ask: the personal trust world's sessions and questions.
+  trust: () => ({ world: { SESSIONS: trustWorld.TRUST_SESSIONS, ME: trustWorld.ME, NOW: trustWorld.NOW }, gold: JSON.parse(fs.readFileSync(path.join(ROOT, "test/eval/answer-trust.json"), "utf8")), sealed: false }),
 };
 
 export const ABLATIONS = {
@@ -96,7 +99,7 @@ export function scoreRetrieval(questions, got, ms) {
 }
 
 /**
- * @param {{ world?: "open"|"sealed", embedder?: "fake"|"real", only?: string[], answer?: boolean, record?: boolean, fix?: boolean, explain?: boolean }} [opts]
+ * @param {{ world?: "open"|"sealed"|"trust", embedder?: "fake"|"real", only?: string[], answer?: boolean, record?: boolean, fix?: boolean, explain?: boolean }} [opts]
  */
 export async function runIq(opts = {}) {
   const w = WORLDS[opts.world || "open"];
