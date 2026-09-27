@@ -44,7 +44,7 @@ export function suggestRows(data, limit = 8) {
 
 /**
  * A picked row in the text: its insert replaces the token at the caret, and a space follows
- * unless one is already there. Returns the new text and caret.
+ * unless one is already there; the caret lands after it. Returns the new text and caret.
  * @param {string} text @param {number} cursor @param {{ insert: string }} row
  */
 export function applySuggestion(text, cursor, row) {
@@ -53,7 +53,8 @@ export function applySuggestion(text, cursor, row) {
   const after = s.slice(end);
   const pad = after.startsWith(" ") ? "" : " ";
   const next = s.slice(0, start) + row.insert + pad + after;
-  return { text: next, caret: start + row.insert.length + pad.length };
+  // The caret lands after the space, ready for the next word.
+  return { text: next, caret: start + row.insert.length + 1 };
 }
 
 /** What suggest.picked is told about a row. @param {{ kind: string, source: string, id: string }} row */

@@ -11,7 +11,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   projects, threads and people from suggest above the folder's files; Tab on a word asks suggest
   and completes it (one match goes straight in). Nothing opens by itself while typing.
 - core/sessions: sessions.models.get returns `aliases`, the box's one list of model aliases; the
-  composer's model picker reads it and keeps no list of its own (test/cohesion-drift.test.js shrinks).
+  composer's model picker reads it, and Settings' model rows take it as their choices
+  (choicesFrom), so neither keeps a list of its own (test/cohesion-drift.test.js).
 
 #### The native bar measures a Deck that streams over fetch
 
