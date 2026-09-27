@@ -230,6 +230,12 @@ Plan (to the lead before building):
   MEDIUM: projectOf falls to input when the thread has no project; team.list and notes get read
   across projects. LOW: MAX_VIA off by one; thread.finished subscribed after launch. Lead asked:
   daemon-wide downgrade of person labels that fromClaude catches. Waiting on their fix sha.
+- Person-label downgrade (lead's call): work/e2e-label 1941f2cf off pre/rc 0c13e284. A person
+  label (cli/local/deck/capsule) from under a claude or a thread becomes "mcp" (or
+  "mcp:thread:<id>") for every tool and stream; person-only tools still refused. RC BLOCKER (pre/rc:
+  settings secrets clear to a session's Bash, rules floor, vault generate checks, link/files lists).
+  260/0/1 targeted + 69/69 hygiene/docs on testbox; sent to the integrator. Tests that call as
+  "cli" must not run under a claude now.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
@@ -398,6 +404,9 @@ event stream's first byte. Tear down afterwards.
 - vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
+
+- core/daemon: a socket caller's person label from under a claude or a thread is "mcp" (or
+  "mcp:thread:<id>"), for every tool (work/e2e-label 1941f2cf).
 
 - core/config: `claudeHome(root, env?)`: Claude Code's folder for a Vyre home (real ~/.claude or
   CLAUDE_CONFIG_DIR only for the real ~/.vyre; `<home>/claude` otherwise; VYRE_CLAUDE_HOME
