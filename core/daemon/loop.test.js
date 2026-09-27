@@ -21,6 +21,7 @@ function fake(dir, codes, { termMs = 200, termCode = 0 } = {}) {
 const log = ${JSON.stringify(path.join(dir, "log"))};
 const n = fs.existsSync(log) ? fs.readFileSync(log, "utf8").split("\\n").filter(Boolean).length : 0;
 fs.appendFileSync(log, "start\\n");
+fs.writeFileSync(${JSON.stringify(path.join(dir, "pid"))}, String(process.pid));
 const codes = ${JSON.stringify(codes)};
 if (n < codes.length) process.exit(codes[n]);
 process.on("SIGTERM", () => setTimeout(() => { fs.appendFileSync(${JSON.stringify(path.join(dir, "drained"))}, "yes"); process.exit(${termCode}); }, ${termMs}));
@@ -70,4 +71,19 @@ test("loop: a stop passes on vyred's own exit code, even when vyred is gone befo
   l.p.kill("SIGTERM");
   assert.equal(await l.exited, 7);
   assert.equal(l.starts(), 1);
+});
+
+test("loop: a vyred killed by a signal (SIGKILL, the OOM killer) is started again", { timeout: 20_000 }, async t => {
+  // dash answers a second wait on a vyred killed by SIGKILL with 137 again, forever: the loop
+  // spun there at a full core and never started vyred again.
+  const dir = tempHome(t);
+  const l = run(dir, []);
+  t.after(() => { try { l.p.kill("SIGKILL"); } catch {} });
+  for (let i = 0; i < 100 && l.starts() < 1; i++) await sleep(50);
+  process.kill(Number(fs.readFileSync(path.join(dir, "pid"), "utf8")), "SIGKILL");
+  for (let i = 0; i < 100 && l.starts() < 2; i++) await sleep(50);
+  assert.equal(l.starts(), 2, "vyred was not started again after a SIGKILL");
+  assert.match(l.err(), /exited \(137\); starting it again/);
+  l.p.kill("SIGTERM");
+  assert.equal(await l.exited, 0);
 });
