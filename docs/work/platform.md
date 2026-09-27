@@ -11,9 +11,10 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - P0 written: packages/module-sdk (manifest.schema.json, manifest.js checkManifest, index.d.ts, package.json private, README), test/module-sdk.test.js, docs drift fixes in docs/architecture/spec.md and docs/build/module-contract.md.
 
 ## Doing
-- P0 for batch 4: the integrator should take the newest work/platform sha (it passes over work/native-core's tree too).
-- settings.write on work/platform-settings-write e4515fb6 (worktree ../vyre-platform-sw), off native-core 390ff807, 15/15. HELD: lands only after native-core clears e2e's re-review; e2e reviews it too (lead, 2026-09-27).
-- SECURITY finding sent to lead, native-core and e2e: a home module's setting store ({tool} runs as the person, {config} any path, {claude} permissions) reaches past its rows when the person changes it. Proposed fix for non-core modules: own tools called as module:<name>, config path "<module>." prefix, no claude store. Mirrored in packages/module-sdk checkManifest (firstParty option; repo manifests checked as first-party). Waiting on native-core: do they fix it or do I send a diff.
+- P0 for batch 4: the integrator takes the newest work/platform tip (passes over work/native-core too).
+- settings.write: work/platform-settings-write e4515fb6 (worktree ../vyre-platform-sw), approved by e2e, HELD until e2e signs off native-core.
+- Store limits (security, e2e HIGH 2 fix): work/platform-store-limits c9f1d630 (worktree ../vyre-platform-sl), on native-core 390ff807, settings+modules 40/40. Sent to native-core to adopt before they merge. e2e's other items (CALL_AS scoped to setter tools; settings.set/reset PERSON_ONLY) are native-core's.
+- ONE HUB (user directive): ADR 0033 section 3 rewritten (9f133f35). No overrides/; theme = hub keys appearance.theme + appearance.tokens (checked by lib/theme before storing); prompt layers listed and toggled in the hub. Asked native-core for: hub file + live hand edits, per-key check hook, choices from a tool, prompt-layer toggle key. P4: a first-party `theme` module (mine) declares appearance.* and serves /theme.css and /v1/theme.
 
 ## Next
 1. P1 once native-core's settings are on main: registry.status() rows (GET /v1/modules) gain `commands` from the manifest while running (polish-cli's dispatcher reads them; input schemas come from the existing tools listing); loader adopts packages/module-sdk/manifest.js (add packages/module-sdk to package.json files); apiVersion; ctx.api, ctx.log levels, ctx.paths.data, ctx.settings; watches.on and needs.tools for home modules; replaces (name == replaces) and disable; `vyre module new/list/check/disable/enable`.
