@@ -67,6 +67,20 @@ export default {
         `before going on here, or leave this session and keep working there. Tell the user this before anything else.`;
     };
 
+    /**
+     * Words the user queued for this session from another surface while it was busy in a terminal
+     * (threads.queue in core/switchboard), handed over now and marked so. Empty when there are
+     * none, or no switchboard.
+     * @param {string|undefined} session @param {"stop"|"prompt"} via
+     */
+    const handOver = async (session, via) => {
+      if (!session) return "";
+      const got = await ask("threads.inbox", { session, via });
+      const msgs = got && Array.isArray(got.messages) ? got.messages : [];
+      // "the user": the config has no person's name (config.name is the computer's).
+      return msgs.map(m => `Message from the user via ${SURFACES[m.surface] || m.surface}: ${m.text}`).join("\n\n");
+    };
+
     ctx.tool("harness.brief", {
       description: "SessionStart: what Claude should know about the project this thread is in. Empty outside a project.",
       input: { type: "object", properties: { cwd: { type: "string" }, session: { type: "string" }, source: { type: "string" }, project: { type: "string" }, projects: { type: "string" }, headless: { type: "boolean" } } },
@@ -102,9 +116,12 @@ export default {
         // A lesson broken last turn opens this one, ahead of memory.
         const first = Boolean(learned && Array.isArray(learned.broke) && learned.broke.length);
         if (!prompt.trim() || prompt.trim().startsWith("/")) return { text: lessons };
+        // Words queued for this session while it sat idle in a terminal go with the prompt.
+        const handed = await handOver(session, "prompt");
+        const inbox = handed ? `${handed}\n\nThis was sent while the session was idle. Handle it along with the prompt.` : "";
         const project = await projectOf(cwd);
         // An agent outside its projects gets no memory at all, not memory from elsewhere.
-        if (!inScope(projects, project ? project.slug : null)) return { text: lessons };
+        if (!inScope(projects, project ? project.slug : null)) return { text: [inbox, lessons].filter(Boolean).join("\n\n") };
         const folders = project && (Array.isArray(project.folders) ? project.folders : project.home ? [project.home] : null);
         // A project's room by its slug, so a project nested in another's folder reads its own;
         // its folders go too, for a project Memory has not read yet. Outside every project a
@@ -114,7 +131,7 @@ export default {
           : folders ? { project_cwds: folders } : { room: "unfiled" };
         const facts = await ask("memory.relevant", { text: prompt, ...where, limit: 5 });
         const memory = formatMemory(Array.isArray(facts) ? facts : facts && Array.isArray(facts.facts) ? facts.facts : []);
-        return { text: (first ? [lessons, memory] : [memory, lessons]).filter(Boolean).join("\n\n") };
+        return { text: [inbox, ...(first ? [lessons, memory] : [memory, lessons])].filter(Boolean).join("\n\n") };
       },
     });
 
@@ -177,13 +194,20 @@ export default {
     });
 
     ctx.tool("harness.stop", {
-      description: "Stop: the lessons' output checks, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
+      description: "Stop: the lessons' output checks, then words queued for this session from another surface, then the turn is complete for every surface watching this thread. decision block sends the turn back to Claude with the reason.",
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" },
         headless: { type: "boolean" } } },
       run: async ({ session, ...turn }, { caller } = {}) => {
         const agent = agentOf(turn.agent, caller);
         const check = session ? await ask("learn.check", { stage: "stop", session, ...turn, ...(agent ? { agent } : {}) }) : null;
         if (check && check.decision === "block") return { decision: "block", reason: String(check.reason) };
+        if (session) {
+          // The turn that just ended answered words handed over earlier: its last message is their reply.
+          await ask("threads.replied", { session, text: typeof turn.text === "string" ? turn.text : "" });
+          // Words queued while this turn ran: Claude takes them next, in this same session.
+          const handed = await handOver(session, "stop");
+          if (handed) return { decision: "block", reason: handed };
+        }
         if (session) ctx.events.emit("turn.completed", { session });
         return { ok: true };
       },
@@ -192,6 +216,9 @@ export default {
     return { async stop() {} };
   },
 };
+
+/** How a queued message names where it came from. */
+const SURFACES = { capsule: "the Capsule", deck: "the Deck", cli: "the vyre command", glass: "Glass", mobile: "the phone" };
 
 /** Flags that make a claude process headless: its prompt comes from stdin or an argument, not a person. */
 const HEADLESS_FLAGS = new Set(["-p", "--print", "--output-format", "--input-format"]);

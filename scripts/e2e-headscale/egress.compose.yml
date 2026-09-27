@@ -1,0 +1,63 @@
+# box/compose.egress.yml (main, with the gate), for the e2e tailnet: the same two services and
+# settings, but project vyre-e2e-egress, headscale as the login server, the e2e network in place of
+# vyre-computers, and its own egress network name. Run with an .env holding VYRE_EGRESS_AUTHKEY
+# (a reusable ephemeral key tagged tag:vyre-egress) and VYRE_EGRESS_EXIT_NODE.
+name: vyre-e2e-egress
+
+services:
+  egress:
+    image: vyre-e2e:local
+    command: ["node", "/opt/vyre/core/computers/egressgate.js"]
+    restart: unless-stopped
+    init: true
+    user: "1000:1000"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    labels: { run.vyre.e2e: "1" }
+    depends_on: [egress-node]
+    environment:
+      - VYRE_EGRESS_GATE_PORT=1055
+      - VYRE_EGRESS_GATE_STATUS_PORT=1057
+      - VYRE_EGRESS_UPSTREAM=egress-node:1056
+      - VYRE_EGRESS_SOCKET=/var/run/egress-node/tailscaled.sock
+    volumes:
+      - egress-sock:/var/run/egress-node:ro
+    networks:
+      e2e:
+        aliases: [egress]
+      egress: {}
+
+  egress-node:
+    image: tailscale/tailscale:stable
+    hostname: vyre-egress
+    restart: unless-stopped
+    labels: { run.vyre.e2e: "1" }
+    environment:
+      - TS_AUTHKEY=${VYRE_EGRESS_AUTHKEY:?}
+      - TS_HOSTNAME=vyre-egress
+      - TS_USERSPACE=true
+      - TS_SOCKS5_SERVER=:1056
+      - TS_SOCKET=/var/run/tailscale/tailscaled.sock
+      - TS_ACCEPT_DNS=true
+      - TS_EXTRA_ARGS=--login-server=http://headscale:8080 --advertise-tags=tag:vyre-egress --exit-node=${VYRE_EGRESS_EXIT_NODE:?} --exit-node-allow-lan-access=false
+    read_only: true
+    tmpfs: [/tmp, /var/lib/tailscale]
+    volumes:
+      - egress-sock:/var/run/tailscale
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    networks:
+      e2e:
+        gw_priority: 1
+      egress: {}
+
+volumes:
+  egress-sock: { labels: { run.vyre.e2e: "1" } }
+
+networks:
+  e2e: { external: true, name: vyre-e2e }
+  egress:
+    name: vyre-e2e-egress
+    internal: true
+    labels: { run.vyre.e2e: "1" }

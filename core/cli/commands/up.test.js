@@ -140,7 +140,7 @@ test("up on a Mac: Tailscale signed out is said before the question; choosing 1 
   assert.equal(await up([], f.deps), 0);
   const text = f.text();
   assert.ok(text.indexOf("signed out") >= 0 && text.indexOf("signed out") < text.indexOf("Where should Vyre run?"));
-  assert.match(text, /on a server I can SSH to/);
+  assert.match(text, /On a server I can SSH to/);
   assert.deepEqual(f.added, ["alex@203.0.113.7"]);
 });
 
@@ -172,7 +172,7 @@ test("up on a Mac: an unpaired box starts pairing through link.pair and shows th
   const f = fakes(t, { answering: [BOX], tools: { "link.status": () => ({ data: { linked: false, pending: null } }), "link.pair": () => ({ data: { code: "123-456" } }) } });
   assert.equal(await up([], f.deps), 0);
   assert.deepEqual(f.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
-  assert.match(f.text(), /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
+  assert.match(f.text(), /Approve this Mac on your phone at \S+[\s\S]*Code: 123-456/);
 });
 
 test("up --box on a Mac: the one-time link is printed and opened; --json gives url and port", async t => {
@@ -213,7 +213,7 @@ test("up on a box after onboarding: the ending block, the same as on the Mac", a
 });
 
 /** mac() with a fake box and link; returns what it called and printed. */
-async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, found = [], capsule = true, platform = "darwin", opened = true } = {}) {
+async function runMac(box, { healthy = true, status = { linked: false, pending: null }, pair = { code: "123-456" }, found = [], capsule = true, platform = "darwin", opened = true, io = undefined } = {}) {
   const calls = [], lines = [], saved = [];
   const log = console.log;
   console.log = (...a) => lines.push(a.join(" "));
@@ -228,6 +228,8 @@ async function runMac(box, { healthy = true, status = { linked: false, pending: 
       save: c => saved.push(c),
       platform,
       openCapsule: async () => { calls.push(["capsule"]); return opened; },
+      statusline: async () => { calls.push(["statusline"]); },
+      io: io || { tty: false, ask: async () => "" },
     });
   } finally { console.log = log; }
   return { code, calls, saved, text: lines.join("\n") };
@@ -265,13 +267,20 @@ test("up on a Mac: not paired starts pairing, prints the code to approve, then o
   assert.equal(r.code, 0);
   assert.deepEqual(r.calls.map(c => c[0]), ["link.status", "link.pair", "capsule"]);
   assert.deepEqual(r.calls[1][1], { box: "https://alex.vyre.run" });
-  assert.match(r.text, /Approve this Mac in your Deck[\s\S]*Code: 123-456/);
+  assert.match(r.text, /Approve this Mac on your phone at \S+[\s\S]*Code: 123-456/);
+});
+
+test("up on a Mac: on a terminal the status line is offered before the Capsule; without one it is not", async () => {
+  const tty = await runMac("https://alex.vyre.run", { io: { tty: true, ask: async () => "" } });
+  assert.deepEqual(tty.calls.map(c => c[0]), ["link.status", "link.pair", "statusline", "capsule"]);
+  const piped = await runMac("https://alex.vyre.run", { io: { tty: false, ask: async () => "" } });
+  assert.ok(!piped.calls.some(c => c[0] === "statusline"));
 });
 
 test("up on a Mac: a pairing already waiting shows its code instead of starting another", async () => {
   const r = await runMac("https://alex.vyre.run", { status: { linked: false, pending: { code: "654-321" } } });
   assert.deepEqual(r.calls.map(c => c[0]), ["link.status", "capsule"]);
-  assert.match(r.text, /Approve this Mac in your Deck[\s\S]*Code: 654-321/);
+  assert.match(r.text, /Approve this Mac on your phone at \S+[\s\S]*Code: 654-321/);
 });
 
 test("up on a Mac: already linked goes straight to the Capsule; --no-capsule skips it", async () => {
@@ -328,4 +337,44 @@ test("up --json: a throw anywhere is still exactly one error object and exit 1",
   const f = fakes(t);
   f.deps.bring = async () => { throw new Error("bring broke"); };
   await assert.rejects(up([], f.deps), /bring broke/);
+});
+
+test("up --keep-link on a box (vyre update): reports the open link, mints none, opens nothing", async t => {
+  world(t, running([]));
+  config.save({ role: "box" });
+  const open = { data: { url: null, pending: true, expires: Date.now() + 42 * 60_000, port: 7300, user: "alex", address: null, passkeyUrl: null } };
+  const f = fakes(t, { tools: { "onboard.link": () => open } });
+  f.deps.platform = "linux";
+  assert.equal(await up(["--keep-link"], f.deps), 0);
+  assert.deepEqual(f.calls.find(c => c[0] === "onboard.link")[1], { mint: false });
+  assert.match(f.text(), /set up is not finished; the link you have still works \(42 min left\)/);
+  assert.match(f.text(), /vyre up prints a new link and voids that one/);
+  assert.deepEqual(f.opened, []);
+  t.mock.restoreAll();
+
+  const none = { data: { ...open.data, pending: false, expires: null, port: null } };
+  const j = fakes(t, { tools: { "onboard.link": () => none } });
+  assert.equal(await up(["--keep-link", "--json"], j.deps), 0);
+  const o = JSON.parse(j.lines[0]);
+  assert.deepEqual([o.url, o.pending, o.expires], [null, false, null]);
+});
+
+test("up on a Mac, the very first time: the welcome, the three choices, and choice 3 pairs and says where to approve", async t => {
+  const home = world(t, running([]));
+  fs.rmSync(path.join(home, "config.json"), { force: true });
+  const f = fakes(t, { answering: [BOX], answers: ["3", "vyre.example-tail.ts.net"], tools: {
+    "link.status": () => ({ data: { linked: false, pending: null } }),
+    "link.pair": () => ({ data: { code: "123-456" } }),
+  } });
+  // --local stands in for a Mac's default role, so this runs the same on Linux.
+  assert.equal(await up(["--local"], f.deps), 0);
+  const text = f.text();
+  assert.match(text, /v·  Vyre is installed · 0\.0\.1/);
+  assert.match(text, /Vyre runs Claude Code on a machine you own/);
+  assert.ok(text.indexOf("Vyre is installed") < text.indexOf("Where should Vyre run?"), "the welcome comes first");
+  assert.match(text, /1  On a server I can SSH to[\s\S]*2  On this Mac[\s\S]*3  I already set up a box/);
+  assert.match(text, /Asking https:\/\/vyre\.example-tail\.ts\.net to pair with this Mac/);
+  assert.match(text, /Approve this Mac on your phone at https:\/\/vyre\.example-tail\.ts\.net[\s\S]*Code: 123-456/);
+  assert.doesNotMatch(text, /vyred running ·/, "a first run gets the welcome, not a status line");
+  assert.deepEqual(f.opened, [], "nothing is opened in a browser");
 });

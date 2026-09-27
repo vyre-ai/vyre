@@ -21,6 +21,7 @@ import { call } from "../../daemon/client.js";
 import { VERSION } from "../../daemon/index.js";
 import { printEnding } from "../ending.js";
 import { out, dim, signal, beacon } from "../style.js";
+import { json, emit, usage as usageError } from "../kit.js";
 
 const INSTALLER = fileURLToPath(new URL("../../../scripts/install-box.sh", import.meta.url));
 const VOLUMES = ["vyre-home", "vyre-work", "tailscale-state"];
@@ -164,7 +165,12 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 /** Is onboarding far enough along that the Mac can take over? */
 export function settled(s) {
-  return Boolean(s && (s.finished || (s.address && s.steps && s.steps.name === "done")));
+  if (!s) return false;
+  if (s.finished) return true;
+  // The address serving is not enough: the page still needs the tunnel until the person presses
+  // "Switch to", which asks for the passkey link over it. A box too old to say `arrived` keeps the
+  // old rule.
+  return Boolean(s.address && s.steps && s.steps.name === "done" && (s.arrived === undefined || s.arrived));
 }
 
 /**
@@ -331,10 +337,12 @@ async function finish(r, target, s, t, env, tool = call) {
     printEnding({ address: null, assistant: s.assistant });
     return 0;
   }
-  await passkey(r, env);
+  // The owner who switched to the address was taken to the passkey page there; a second tab with
+  // another one-time link would only compete with it.
+  if (!s.arrived) await passkey(r, env);
   const up = await ensureUp();
   if (!up.ok) out(beacon("  this Mac's vyred did not start: ") + dim(String(up.log)));
-  else await pairOver(s.address, tool);
+  else if (await passkeyMade(r, s.address, env)) await pairOver(s.address, tool, env);
   if (s.owner && t.login && s.owner !== t.login) out(beacon(`  the box serves ${s.owner}, and this Mac is signed in to Tailscale as ${t.login}.`) + " Sign this Mac in to Tailscale as the box's owner, then run vyre up.");
   printEnding({ address: s.address, assistant: s.assistant });
   return 0;
@@ -352,14 +360,53 @@ async function passkey(r, env) {
   out(`\n  Make your passkey, which approves everything on your box from now on ${dim("(works once, for 10 minutes)")}:\n\n    ${signal(l.passkeyUrl)}\n`);
 }
 
-async function pairOver(address, tool) {
+/**
+ * The pairing code is approved with a passkey, so it is made only once one exists: before that it
+ * would tick away its 10 minutes while the person is still making the passkey. Waits up to
+ * VYRE_BOX_WAIT_MS; a box too old to list its keys is taken to have one.
+ */
+async function passkeyMade(r, address, env) {
+  const every = Number(env.VYRE_BOX_POLL_MS) || 5000;
+  const until = Date.now() + (Number(env.VYRE_BOX_WAIT_MS) || 30 * 60_000);
+  let said = false;
+  for (;;) {
+    const keys = await r.json(vyre(["call", "presence.keys"], env)).catch(() => null);
+    if (!Array.isArray(keys) || keys.some(k => k && k.kind === "passkey")) return true;
+    if (!said) { out(dim(`  waiting for your passkey at ${address}; then this Mac asks to pair`)); said = true; }
+    if (Date.now() >= until) { out(beacon("  no passkey yet.") + ` Make one at ${address}, then run ${signal("vyre link pair " + address)}.`); return false; }
+    await sleep(every);
+  }
+}
+
+/**
+ * Ask to pair, show the code, and wait for the approval. A code lives 10 minutes; one that expires
+ * unapproved is replaced with a fresh one, until VYRE_BOX_PAIR_WAIT_MS (30 minutes) runs out.
+ */
+async function pairOver(address, tool, env = process.env) {
   const st = await tool("link.status");
   if (st.error && st.error.code === "no_such_tool") { out(dim("  pairing is not in this version yet; this Mac will pair when it is")); return; }
   if (st.data && st.data.linked) return;
-  const p = await tool("link.pair", { box: address });
-  if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
-  out(`  Approve this Mac in your Deck: it names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(p.data.code)}`);
-  out(dim("  vyre link shows when it is done."));
+  const every = Number(env.VYRE_BOX_POLL_MS) || 5000;
+  const until = Date.now() + (Number(env.VYRE_BOX_PAIR_WAIT_MS) || 30 * 60_000);
+  for (let first = true; ; first = false) {
+    const p = await tool("link.pair", { box: address });
+    if (p.error) { out(beacon("  pairing: ") + p.error.message + dim(` · vyre link pair ${address}`)); return; }
+    if (first) {
+      out(`\n  Approve this Mac on your phone at ${signal(address)}, or in the Deck on this Mac`);
+      out(`  The Deck there names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(p.data.code)}`);
+    } else out(`  That code expired. The new one: ${signal(p.data.code)}`);
+    for (;;) {
+      await sleep(every);
+      const s = (await tool("link.status")).data || {};
+      if (s.linked) { out(`  this Mac is paired with ${address}`); return; }
+      if (s.pending) { if (Date.now() >= until) { out(dim(`  still waiting; vyre link shows when it is done`)); return; } continue; }
+      if (/expired/i.test(String(s.error || ""))) break;
+      if (s.error) out(beacon("  pairing: ") + s.error + dim(` · vyre link pair ${address}`));
+      else out(dim("  vyre link shows when it is done."));
+      return;
+    }
+    if (Date.now() >= until) { out(dim(`  the code expired; run vyre link pair ${address} to get a new one`)); return; }
+  }
 }
 
 /**
@@ -440,6 +487,14 @@ async function withBox(target, fn, stopped = () => out("\n  Stopped.")) {
 }
 
 async function status() {
+  if (json()) {
+    const c = /** @type {any} */ (config.load());
+    const target = (c.box && c.box.ssh) || null;
+    const address = target ? c.network.box || null : null;
+    const h = address ? await tailnet.probe(address) : null;
+    emit({ box: target, address, answering: Boolean(h), version: (h && h.version) || null });
+    return target && !h ? 1 : 0;
+  }
   const target = saved();
   if (!target) return 0;
   const address = config.load().network.box;
@@ -660,11 +715,11 @@ async function run(args) {
     case "backup": return backup(arg, flags);
     case "move": return move(arg, flags);
     case "remove": return remove(flags);
-    default: out(`  ${USAGE}`); return 1;
+    default: return usageError(`vyre box ${sub}: not a subcommand`, USAGE);
   }
 }
 
-const usage = "vyre box [add|update|backup|move|remove]";
+const usage = "vyre box [status|add|update|backup|move|remove] [--json]";
 const USAGE = "vyre box add <user@host> | update | backup [file] | move <user@newhost> | remove [--purge]";
 
 export default [{ name: "box", order: 12, usage, summary: "put Vyre on a server from this Mac, and look after it", run }];

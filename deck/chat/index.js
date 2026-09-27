@@ -10,8 +10,12 @@
 // each per refresh, never one per project. A new session, a rename or a new turn arrives as
 // session.indexed (Recall indexes a session when its turn completes) or thread.started, so the
 // list follows the user's terminal sessions live without polling.
+//
+// On the box, the list takes in the paired Mac's sessions too, each with a machine chip; opening
+// one reads it through the box (recall.thread) and never offers to send to it. A paired Mac that
+// is away shows as one quiet chip in the list's header, from link.macs, read with each refresh.
 
-import { h, put, empty, link, go } from "../js/dom.js";
+import { h, put, empty, link, back } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when, plural } from "../js/fmt.js";
@@ -19,6 +23,7 @@ import { renderNav } from "./nav.js";
 import { mountSession } from "./session.js";
 import { threadHref, projectHref } from "./lib/routes.js";
 import { mergeSessions, title } from "./lib/sessions.js";
+import { machineChip, offlineChip, readMacs } from "../js/machine.js";
 
 /** How many sessions the catalogue returns per refresh: the newest, which is what Chat shows. */
 const CATALOG_LIMIT = 300;
@@ -28,21 +33,29 @@ const CATALOG_LIMIT = 300;
 // shape as Now's own snapshot in deck/views/now.js — deck's call on what "offline read" may hold).
 const SNAP_KEY = "vyre.chat.snapshot";
 const saveSnapshot = (projects, rows) => { try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(),
-  projects: projects.map(p => ({ slug: p.slug, name: p.name, threads: p.threads, last: p.last })),
+  projects: projects.map(p => ({ slug: p.slug, name: p.name, threads: p.threads, last: p.last, source: p.source, machine: p.machine })),
   rows: rows.slice(0, 100).map(t => ({ id: t.id, name: t.name, projects: t.projects, project: t.project, agent: t.agent, status: t.status,
-    last: t.last, turns: t.turns, asks: t.asks, human: t.human, live: t.live })) })); } catch {} };
+    last: t.last, turns: t.turns, asks: t.asks, human: t.human, live: t.live, source: t.source, machine: t.machine })) })); } catch {} };
 const loadSnapshot = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch { return null; } };
+
+/** Every session row this page load has seen, by id, so opening one needs no list first. */
+const seen = new Map();
+const remember = (/** @type {any[]} */ rows) => { for (const r of rows) seen.set(r.id, r); };
 
 /** @param {any} ctx */
 export default async function chat(ctx) {
   const project = ctx.params.project || null;
   const thread = ctx.params.thread || null;
-  const state = { projects: /** @type {any[]} */ ([]), rows: /** @type {import("./lib/sessions.js").Row[]} */ ([]), err: null, offline: false, snapAt: null, loaded: false };
+  let mounted = false;
+  const state = { projects: /** @type {any[]} */ ([]), rows: /** @type {import("./lib/sessions.js").Row[]} */ ([]), err: null, offline: false, snapAt: null, loaded: false,
+    macs: /** @type {any[]} */ ([]) };
 
   /** Fetch and fold the result into state, live or offline. Shared by boot and refresh. */
   async function load() {
-    const [p, c, t] = await Promise.all([attempt("projects.list"), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true })]);
+    const [p, c, t, macs] = await Promise.all([attempt("projects.list"), attempt("projects.catalog", { limit: CATALOG_LIMIT }), attempt("threads.list", { all: true }),
+      readMacs(attempt, state.macs)]);
     if (!ctx.alive()) return;
+    state.macs = macs;
     const offline = [p, c, t].some(r => r.error?.code === "offline");
     const snap = offline ? loadSnapshot() : null;
     state.loaded = true;
@@ -59,10 +72,26 @@ export default async function chat(ctx) {
     state.err = p.error || c.error || null;
     state.offline = offline && !!snap;
     state.snapAt = snap ? snap.at : state.snapAt;
+    remember(state.rows);
     if (p.data && c.data) saveSnapshot(state.projects, state.rows);
   }
 
-  put(ctx.root, h("div", { class: "chat-pad" }, h("div", { class: "empty" }, thread ? "Opening the session…" : "Reading your sessions…")));
+  // A session opens at once: what the list knew about it is enough to start reading it, and the
+  // list itself (for the rail) is read behind it.
+  if (thread) {
+    const row = seen.get(thread) || (loadSnapshot()?.rows || []).find((/** @type {any} */ r) => r.id === thread) || null;
+    if (row) { state.rows = [row]; drawMain(); }
+  }
+  // The list as this phone last saw it, drawn at once; the box's answer replaces it a moment later.
+  const snap = !thread ? loadSnapshot() : null;
+  if (snap) remember(snap.rows || []);
+  if (snap) {
+    state.projects = snap.projects || [];
+    state.rows = snap.rows || [];
+    state.loaded = true;
+    drawNav();
+    drawMain();
+  } else if (!mounted) put(ctx.root, h("div", { class: "chat-pad" }, h("div", { class: "empty" }, thread ? "Opening the session…" : "Reading your sessions…")));
   await load();
   if (!ctx.alive()) return;
   drawNav();
@@ -76,6 +105,8 @@ export default async function chat(ctx) {
     if (!thread) drawMain();               // the session view follows its own events; no full redraw needed
   }, 500); };
   ctx.cleanup(() => clearTimeout(rt));
+  // Coming back to a kept Chat page: it is already on screen; check the box for anything missed.
+  ctx.onShow?.(refresh);
   for (const type of ["thread.started", "thread.finished", "thread.stopped", "lease.changed", "ask.raised", "ask.answered", "project.created", "project.changed", "thread.picked", "thread.unpicked", "session.indexed"])
     ctx.on(type, refresh);
 
@@ -89,11 +120,14 @@ export default async function chat(ctx) {
   function drawMain() {
     if (!ctx.alive()) return;
     if (thread) {
+      if (mounted) return;
+      mounted = true;
       const container = h("div", { class: "chat-session" });
       put(ctx.root, container);
       // A session the list knows the Switchboard never ran opens straight from its transcript.
       const known = state.rows.find(r => r.id === thread);
-      ctx.cleanup(mountSession(container, { thread, project, recorded: !!known && !known.live, onBack: () => go(project ? projectHref(project) : "/chat") }));
+      ctx.cleanup(mountSession(container, { thread, project, recorded: !!known && !known.live, known: !!known, turns: known?.turns || 0,
+        source: known?.source || null, machine: known?.machine || null, onBack: () => back(project ? projectHref(project) : "/chat") }));
       return;
     }
     const note = state.offline ? h("div", { class: "empty chat-offline" }, `Offline. Showing the list as of ${when(state.snapAt)}.`) : null;
@@ -104,7 +138,9 @@ export default async function chat(ctx) {
         h("div", { class: "chat-head" },
           link("/chat", { class: "chat-back", "aria-label": "All sessions" }, icon("left", 16), h("span", null, "Chat")),
           h("h1", { class: "chat-title ellipsis" }, proj ? proj.name : project),
-          rows.length ? h("span", { class: "code faint chat-count" }, plural(rows.length, "session")) : null),
+          machineChip(proj),
+          rows.length ? h("span", { class: "code faint chat-count" }, plural(rows.length, "session")) : null,
+          offlineChip(state.macs)),
         rows.length ? h("div", { class: "rows chat-rows" }, rows.map(r => threadRow(r, project)))
           : !proj && state.projects.length ? h("div", { class: "empty" }, `There is no project called ${project}.`)
           : empty(state.err ? "Sessions could not be read." : "No sessions in this project yet. Pick one into it from Projects, or start one there.", state.err)));
@@ -112,14 +148,14 @@ export default async function chat(ctx) {
     }
     const recent = state.rows.filter(r => r.human || r.live).slice(0, 30);
     put(ctx.root, note, h("div", { class: "chat-pad" },
-      h("div", { class: "chat-head" }, h("h1", { class: "chat-title" }, "Chat")),
+      h("div", { class: "chat-head" }, h("h1", { class: "chat-title" }, "Chat"), offlineChip(state.macs)),
       // On a phone the rail is hidden, so the projects are listed here as well.
       state.projects.length ? h("section", { class: "chat-projects", "aria-labelledby": "chat-projects-h" },
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "chat-projects-h" }, "Projects")),
         h("div", { class: "rows" }, state.projects.map(p => {
           const n = state.rows.filter(r => r.projects.includes(p.slug)).length;
           return link(projectHref(p.slug), { class: "thread-row" },
-            h("div", { class: "r1" }, h("span", { class: "title ellipsis" }, p.name), h("span", { class: "code faint" }, plural(n, "session")), icon("right", 14)));
+            h("div", { class: "r1" }, h("span", { class: "title ellipsis" }, p.name), machineChip(p), h("span", { class: "code faint" }, plural(n, "session")), icon("right", 14)));
         }))) : null,
       h("section", { class: "chat-recent", "aria-labelledby": "chat-recent-h" },
         h("div", { class: "section-head" }, h("h2", { class: "lbl", id: "chat-recent-h" }, "Recent")),
@@ -133,6 +169,7 @@ export default async function chat(ctx) {
       h("div", { class: "r1" },
         h("span", { class: "av-agent", "aria-hidden": "true" }, row.agent ? row.agent.slice(0, 2) : icon("terminal", 14)),
         h("span", { class: "title ellipsis" }, title(row)),
+        machineChip(row),
         row.status === "running" ? h("span", { class: "dot signal", title: "running" }) : null),
       h("div", { class: "meta" },
         h("span", null, row.last ? when(row.last) : "no activity yet"),

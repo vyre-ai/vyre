@@ -3,11 +3,12 @@
 // Everything shown here came from memory rather than a model, so it is drawn in the Recall gold.
 // --project <slug> reads (or corrects) one project's room; "unfiled" is the room of no project.
 
+import { callAsPerson } from "../presence.js";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, recall, beacon } from "../style.js";
+import { json, emit, failTool, usage, fail as failed } from "../kit.js";
 
-const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
-const fail = r => { out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message); return 1; };
+const fail = r => failTool(r.error);
 
 /** One fact on one line, with where it came from underneath. */
 function line(f) {
@@ -21,12 +22,13 @@ function line(f) {
 }
 
 /** Flags that take no value. */
-const BOOLEAN = new Set(["all", "off"]);
+const BOOLEAN = new Set(["all", "off", "json"]);
 /** Pull --name value flags (and bare --flag) out of args. */
 function flags(args, names) {
   const rest = [], opt = /** @type {Record<string, string|true>} */ ({});
   for (let i = 0; i < args.length; i++) {
     const m = /^--([a-z]+)(?:=(.*))?$/.exec(args[i]);
+    if (m && m[1] === "json") continue;
     if (m && names.includes(m[1])) { opt[m[1]] = m[2] ?? (!BOOLEAN.has(m[1]) && args[i + 1] && !args[i + 1].startsWith("--") ? args[++i] : true); continue; }
     rest.push(args[i]);
   }
@@ -54,12 +56,13 @@ async function change(sub, args) {
   const project = typeof opt.project === "string" ? { project: opt.project } : {};
   if (sub === "correct") {
     const [fact, action, ...obj] = rest;
-    if (!fact || !ACTIONS.includes(action)) { out("  " + USAGE.correct); return 1; }
+    if (!fact || !ACTIONS.includes(action)) return usage("vyre memory correct <fact> wrong|ended|replace|confirm", "vyre help memory");
     // The CLI prints the fact as it now reads, so it waits for the graph to have it.
     const input = { fact, action, wait: true, ...project, ...(obj.length ? { object: obj.join(" ") } : {}),
       ...(typeof opt.at === "string" ? { at: opt.at } : {}), ...(typeof opt.note === "string" ? { note: opt.note } : {}) };
-    const r = await call("memory.correct", input);
+    const r = await callAsPerson("memory.correct", input);
     if (r.error) return fail(r);
+    if (json()) return emit(r.data);
     out(`  ${recall("corrected")} ${dim("· undo with vyre memory uncorrect " + r.data.correction.id)}`);
     for (const f of r.data.facts) line(f);
     return 0;
@@ -67,39 +70,44 @@ async function change(sub, args) {
   if (sub === "corrections") {
     const r = await call("memory.corrections", { ...project, all: opt.all === true });
     if (r.error) return fail(r);
+    if (json()) return emit(r.data);
     if (!r.data.length) { out(dim("  nothing corrected yet")); return 0; }
     for (const c of r.data) said(c);
     return 0;
   }
   if (sub === "uncorrect") {
     const id = Number(rest[0]);
-    if (!Number.isInteger(id) || id < 1) { out("  vyre memory uncorrect <id>"); return 1; }
-    const r = await call("memory.uncorrect", { id });
+    if (!Number.isInteger(id) || id < 1) return usage("vyre memory uncorrect needs a correction number", "vyre memory corrections lists them");
+    const r = await callAsPerson("memory.uncorrect", { id });
     if (r.error) return fail(r);
+    if (json()) return emit(r.data);
     said(r.data);
     return 0;
   }
   if (sub === "merge") {
     const [node, into] = rest;
-    if (!node || !into) { out("  " + USAGE.merge); return 1; }
-    const r = await call("memory.merge", { node, into });
+    if (!node || !into) return usage(USAGE.merge, "vyre help memory");
+    const r = await callAsPerson("memory.merge", { node, into });
     if (r.error) return fail(r);
+    if (json()) return emit(r.data);
     out(`  ${recall("merged")} ${dim("· undo with vyre memory uncorrect " + r.data.correction.id)}`);
     return 0;
   }
   if (sub === "split") {
     const [node, other] = rest;
-    if (!node || (!other && !project.project)) { out("  " + USAGE.split); return 1; }
-    const r = await call("memory.split", { node, ...(other ? { other } : project) });
+    if (!node || (!other && !project.project)) return usage("vyre memory split <node> --project <slug> | <other>", "vyre help memory");
+    const r = await callAsPerson("memory.split", { node, ...(other ? { other } : project) });
     if (r.error) return fail(r);
+    if (json()) return emit(r.data);
     out(`  ${recall("split")} ${dim("· undo with vyre memory uncorrect " + r.data.correction.id)}`);
     return 0;
   }
   // pin, mute: steering, everywhere or in one project's folder.
   const node = rest.join(" ").trim();
-  if (!node) { out(`  vyre memory ${sub} <node> [--off]`); return 1; }
-  const r = await call(`memory.${sub}`, { node, ...(opt.off === true ? { off: true } : {}) });
+  if (!node) return usage(`vyre memory ${sub} needs a node`, `vyre memory ${sub} <node> [--off]`);
+  const r = await callAsPerson(`memory.${sub}`, { node, ...(opt.off === true ? { off: true } : {}) });
   if (r.error) return fail(r);
+  if (json()) return emit(r.data);
   out(`  ${recall(r.data.label)} ${dim(r.data.mode ? r.data.mode + "ned" : "back to normal")}`);
   return 0;
 }
@@ -107,7 +115,8 @@ const CHANGES = new Set(["correct", "corrections", "uncorrect", "merge", "split"
 
 export default [
   {
-    name: "memory", order: 30, usage: "vyre memory [about] [--project <slug>] · correct|corrections|uncorrect|merge|split|pin|mute", summary: "what memory holds, or everything about one thing",
+    name: "memory", order: 30, usage: "vyre memory [about] [--project <slug>] [--json]",
+    help: "Change what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
     async run(args0) {
       if (CHANGES.has(args0[0])) return change(args0[0], args0.slice(1));
       const { rest: args, opt } = flags(args0, ["project"]);
@@ -117,6 +126,11 @@ export default [
         const s = await call("memory.stats");
         if (s.error) return fail(s);
         const d = s.data;
+        if (json()) {
+          const f = await call("memory.facts", { limit: 12, ...project });
+          if (f.error) return fail(f);
+          return emit({ stats: d, facts: f.data.facts });
+        }
         if (!d.recall) out(dim("  no Recall index yet, so nothing to remember from"));
         out(`  ${recall(d.facts + " facts")} ${dim(`· ${d.nodes} things · ${d.sessions} sessions read${d.lastRun ? ` · last pass ${d.lastRun.age} ago in ${d.lastRun.ms}ms` : ""}`)}`);
         if (project.project) out(dim(`  in ${project.project}`));
@@ -128,7 +142,8 @@ export default [
       const r = await call("memory.facts", { about, ...project });
       if (r.error) return fail(r);
       const a = r.data.about;
-      if (!a) { out(`  nothing in memory matches ${JSON.stringify(about)}`); return 1; }
+      if (json()) { emit(r.data); return a ? 0 : 1; }
+      if (!a) return failed(`nothing in memory matches ${JSON.stringify(about)}`, { code: "not_found", next: "vyre memory shows what it holds · vyre recall <words> searches what was said" });
       const tags = [a.kind, a.role === "own" ? "yours" : a.role, `${a.sessions} session${a.sessions === 1 ? "" : "s"}`, a.age && "last " + a.age + " ago",
         a.pinned && "pinned", a.muted && "muted"].filter(Boolean);
       out(`\n  ${bold(recall(a.label))}  ${dim(tags.join(" · "))}\n`);
@@ -138,15 +153,16 @@ export default [
     },
   },
   {
-    name: "why", order: 31, usage: "vyre why <fact> [--project <slug>]", summary: "the turns a fact came from",
+    name: "why", order: 31, usage: "vyre why <fact> [--project <slug>] [--json]", summary: "the turns a fact came from",
     async run(args0) {
       const { rest: args, opt } = flags(args0, ["project"]);
       const fact = args.join(" ").trim();
-      if (!fact) { out("  vyre why <fact id or name>"); return 1; }
+      if (!fact) return usage("vyre why needs a fact id or name", "vyre memory lists facts with their ids");
       const r = await call("memory.why", { fact, ...(typeof opt.project === "string" ? { project: opt.project } : {}) });
       if (r.error) return fail(r);
       const d = r.data;
-      if (!d.fact) { out(`  nothing in memory matches ${JSON.stringify(fact)}`); return 1; }
+      if (json()) { emit(d); return d.fact ? 0 : 1; }
+      if (!d.fact) return failed(`nothing in memory matches ${JSON.stringify(fact)}`, { code: "not_found", next: "vyre memory shows what it holds" });
       out(`\n  ${recall(d.fact.text || d.fact.label)}\n`);
       for (const t of d.turns) {
         out(dim(`  ${t.name || t.session.slice(0, 8)} #${t.seq} · ${t.role}${t.age ? " · " + t.age + " ago" : ""}`));

@@ -1,4 +1,12 @@
-# ADR 0002 · Network and identity
+---
+title: ADR 0002: Network and identity
+summary: vyred serves the Deck itself on the box's tailnet addresses with its own certificate and identifies each caller by tailscale whois of the source address, never by a header.
+audience: builders
+owner: tailnet
+status: stable
+---
+
+# ADR 0002: Network and identity
 
 Status: accepted, 26 Sep 2026. Supersedes the "served with `tailscale serve`, identified by
 Tailscale's identity headers" sentence in SPEC 7.1 and 7.10.
