@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
-import { call } from "../daemon/client.js";
+import { call, request } from "../daemon/client.js";
 import { tempHome, present, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { installed } from "./sdk.js";
@@ -209,6 +209,22 @@ test("providers: a module adds one through its manifest, with no core change, an
   assert.deepEqual(await w.said(th.id), ["echo: hello"]);
   const none = await w.tool("threads.start", { cwd: w.work, prompt: "hello", provider: "codex" });
   assert.match(none.error.message, /no session provider codex; this machine has claude, echo/);
+});
+
+test("slots: a terminal session's subagent takes a slot through the plugin's hooks, refused at once with its place when full", async t => {
+  const w = await boot(t, { sessions: { limits: { max_subagents: 1 } } });
+  const rules = (session, id) => w.tool("harness.rules", { tool_name: "Agent", tool_input: { description: "read the menu", prompt: "read the menu" }, session, tool_use_id: id, cwd: w.work }, "harness");
+  const s1 = "11111111-1111-4111-8111-111111111111", s2 = "22222222-2222-4222-8222-222222222222";
+  assert.equal((await rules(s1, "toolu_1")).data.decision, null, "room: it runs");
+  const held = (await rules(s2, "toolu_2")).data;
+  assert.equal(held.decision, "deny");
+  assert.match(held.reason, /number 1 in line/);
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 1);
+  await w.tool("harness.learn", { tool_name: "Agent", tool_input: {}, session: s1, tool_use_id: "toolu_1" }, "harness");
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 0, "the Agent call ending gives it back");
+  assert.equal((await rules(s2, "toolu_3")).data.decision, null, "and the next one runs");
+  await w.tool("harness.stop", { session: s2 }, "harness");
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 0, "a turn's end gives back what is left");
 });
 
 // ------------------------------------------------------------ on either driver
@@ -580,6 +596,48 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the stop");
     const tools = (await w.events(th.id)).filter(e => e.type === "thread.tool").map(e => e.payload.status);
     assert.deepEqual(tools, ["running", "canceled"]);
+  });
+
+  test(`${driver}: a retried send with the same Idempotency-Key is the same message, never a second turn; the queue can be read`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const key = "deck-retry-1";
+    const send = () => call("threads.send", { thread: th.id, text: "only once", surface: "deck" }, { root: w.root, caller: "deck", headers: { "idempotency-key": key } });
+    const a = await send();
+    assert.equal(a.data.sent, true);
+    await w.finished(th.id, 2);
+    const b = await send();
+    assert.equal(b.data.sent, true, "a retry reads as done");
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal((await w.events(th.id)).filter(e => e.type === "thread.turn").length, 2, "no second turn for the retry");
+    // The queue, read.
+    await w.tool("threads.send", { thread: th.id, text: "bash npm test", surface: "deck" });
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const q = (await w.tool("threads.send", { thread: th.id, text: "after", surface: "deck", mode: "queue" })).data;
+    const rows = (await w.tool("threads.queue", { thread: th.id })).data.queued;
+    assert.deepEqual(rows.map(r => [r.queued, r.uuid, r.text]), [[q.queued_id, q.uuid, "after"]]);
+    await w.tool("threads.mode", { thread: th.id, mode: "plan" }, "deck");
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.mode, "plan", "the record says the mode");
+  });
+
+  test(`${driver}: subagents wait for a slot when the box or the project is full, then run`, { skip: driver === "cli" ? "subagent slots need the Agent SDK's in-process hooks" : skip }, async t => {
+    const w = await boot(t, { driver, sessions: { limits: { max_subagents: 1 } } });
+    const a = (await w.tool("threads.start", { cwd: w.work, prompt: "subagent-slow read the menu", surface: "deck" })).data;
+    await until(async () => (await w.tool("sessions.slots.status", {})).data.subagent.held === 1, "the first subagent's slot");
+    const b = (await w.tool("threads.start", { cwd: w.work, prompt: "subagent check the prices", surface: "deck:phone" })).data;
+    const queued = await until(async () => {
+      const s = (await w.tool("sessions.slots.status", {})).data.subagent;
+      return Object.values(s.projects).some(p => p.waiting === 1) ? s : null;
+    }, "the second to wait");
+    assert.equal(queued.held, 1, "never over the limit");
+    await w.finished(a.id);
+    await w.finished(b.id);
+    assert.deepEqual([...await w.said(a.id), ...await w.said(b.id)], ["subagent done: read the menu", "subagent done: check the prices"]);
+    const st = (await w.tool("sessions.slots.status", {})).data.subagent;
+    assert.equal(st.held, 0, "every slot came back");
+    assert.deepEqual((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 2 })).data, { project: "harlow-legal", subagent: 2 });
+    assert.equal((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 9 }, "mcp")).error.code, "denied", "a model never raises its own limits");
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {

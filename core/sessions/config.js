@@ -27,7 +27,7 @@ import { bundledBinary } from "./sdk.js";
  * purpose; sessions.models.set overrides a purpose or a project from a surface; an agent's own
  * model and a launch's explicit model win over both.
  */
-export const DEFAULT_MODELS = { chat: "opus", agent: "opus", project: "opus", capsule: "haiku", job: "haiku", memory: "haiku", planner: "haiku", learn: "haiku" };
+export const DEFAULT_MODELS = { chat: "opus", agent: "opus", project: "opus", teammate: "opus", capsule: "haiku", job: "haiku", memory: "haiku", planner: "haiku", learn: "haiku", helper: "haiku" };
 export const PURPOSES = Object.keys(DEFAULT_MODELS);
 
 /** The model for a purpose from config and the defaults. @param {any} config @param {string} purpose */

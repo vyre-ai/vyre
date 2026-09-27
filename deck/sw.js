@@ -31,7 +31,10 @@ const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/app
   "/chat/index.js", "/chat/session.js", "/chat/composer.js", "/chat/nav.js", "/chat/ask-item.js", "/chat/gate-item.js",
   "/chat/presence.js", "/chat/chat.css", "/chat/lib/routes.js", "/chat/lib/sessions.js", "/chat/lib/markdown.js",
   "/chat/lib/highlight.js", "/chat/lib/diff.js", "/chat/blocks.js", "/chat/question.js", "/chat/lib/blocks.js", "/chat/lib/names.js",
-  "/chat/lib/answers.js", "/chat/newsession.js", "/chat/folders.js", "/chat/term.js", "/chat/term.css", "/chat/lib/term-link.js"];
+  "/chat/lib/answers.js", "/chat/newsession.js", "/chat/folders.js", "/chat/term.js", "/chat/term.css", "/chat/lib/term-link.js",
+  "/chat/live-text.js", "/chat/core/session-state.js", "/chat/core/tool-detail.js", "/chat/core/grouping.js", "/chat/core/pace.js",
+  "/chat/window-view.js", "/chat/core/window.js", "/chat/pickers.js", "/chat/tray.js", "/chat/core/composer-state.js",
+  "/chat/core/caps.js", "/chat/core/commands.js", "/chat/core/match.js"];
 
 self.addEventListener("install", e => e.waitUntil((async () => {
   const cache = await caches.open(CACHE);
