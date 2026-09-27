@@ -682,7 +682,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual((await w.tool("threads.model", { thread: th.id, model: "sonnet" }, "deck")).data, { thread: th.id, model: "sonnet" });
     await until(() => w.launches().some(l => l.model === "sonnet"), "the switch to reach Claude Code");
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.model, "sonnet");
-    assert.ok((await w.events(th.id)).some(e => e.type === "thread.model" && e.payload.model === "sonnet"));
+    assert.ok((await w.events(th.id)).some(e => e.type === "model.switched" && e.payload.model === "sonnet"));
     assert.equal((await w.tool("threads.model", { thread: th.id, model: "opus" }, "mcp")).error.code, "denied");
     // The / menu
     const cmds = (await w.tool("threads.commands", { thread: th.id })).data.commands;

@@ -772,7 +772,7 @@ export class Switchboard {
     if (st.timer) { clearTimeout(st.timer); st.timer = null; }
     if (!st.pending && !st.rpending) return;
     const rec = this.record(id);
-    if (st.rpending) { const delta = st.rpending; st.rpending = ""; this.emit("thread.text", { message: st.message, block: st.pendingBlock, kind: "reasoning", delta }, id, rec ? rec.project : null); }
+    if (st.rpending) { const delta = st.rpending; st.rpending = ""; this.emit("thread.thinking", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
     if (st.pending) { const delta = st.pending; st.pending = ""; this.emit("thread.text", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
   }
 
@@ -1275,7 +1275,7 @@ export class Switchboard {
     const st = this.live.get(id);
     if (st && st.proc.control) await st.proc.control("set_model", { model });
     this.db.prepare("UPDATE threads_runs SET model = ? WHERE id = ?").run(String(model), id);
-    this.emit("thread.model", { model: String(model), live: Boolean(st) }, id, rec.project);
+    this.emit("model.switched", { model: String(model), live: Boolean(st) }, id, rec.project);
     return { thread: id, model: String(model), ...(st ? {} : { note: "applies when the thread next runs" }) };
   }
 
@@ -1301,7 +1301,7 @@ export class Switchboard {
     await st.proc.control("set_max_thinking_tokens", { max_thinking_tokens: on ? null : 0 });
     st.thinking = Boolean(on);
     const rec = this.record(id);
-    this.emit("thread.thinking", { on: Boolean(on) }, id, rec ? rec.project : null);
+    this.emit("thinking.switched", { on: Boolean(on) }, id, rec ? rec.project : null);
     return { thread: id, thinking: Boolean(on) };
   }
 
@@ -1783,13 +1783,12 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "read sessions"); return sb.tasks(i.thread); });
 
-    tool("threads.kill-task", "Stop one of a thread's background tasks (task, or id: the task's id from thread.task).",
-      { type: "object", required: ["thread"], properties: { thread: str, task: str, id: str } },
+    tool("threads.kill-task", "Stop one of a thread's background tasks.",
+      { type: "object", required: ["thread", "task"], properties: { thread: str, task: str } },
       async (i, { caller }) => {
         guard(caller, "stop tasks");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface stops a session's tasks"), { code: "denied" });
-        if (!i.task && !i.id) throw Object.assign(new Error("which task: give task (or id)"), { code: "bad_input" });
-        return sb.killTask(i.thread, i.task || i.id);
+        return sb.killTask(i.thread, i.task);
       });
 
     tool("threads.thinking", "Thinking on (the model decides how much) or off, for a running thread.",

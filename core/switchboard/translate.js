@@ -10,7 +10,7 @@
 //
 // Events stay small (spec 6, the brief): no whole tool inputs or outputs, no hook output (the
 // user's own hooks print whatever they like, personal things included). Thinking is shown as
-// Claude Code shows it (thread.text kind "reasoning"), capped like text.
+// Claude Code shows it, as its own event (thread.thinking), capped like text.
 //
 // An ask is richer, because a person has to judge it: a question's options, or the command, file
 // and change a permission is for. That goes into the ask's row (threads.asks), redacted and
@@ -156,8 +156,8 @@ export function translate(m) {
     // rows share one key, message:block.
     (m.message.content || []).forEach((b, block) => {
       if (b.type === "text" && b.text) out.events.push({ type: "thread.text", payload: { message: id, block, text: String(b.text).slice(0, 20000), done: true } });
-      // Thinking: thread.text with kind "reasoning" (chat's contract); readers of the reply skip that kind.
-      if (b.type === "thinking" && b.thinking) out.events.push({ type: "thread.text", payload: { message: id, block, kind: "reasoning", text: String(b.thinking).slice(0, 20000), done: true } });
+      // Thinking is its own event, so a surface that does not show it never takes it for the reply.
+      if (b.type === "thinking" && b.thinking) out.events.push({ type: "thread.thinking", payload: { message: id, block, text: String(b.thinking).slice(0, 20000), done: true } });
       if (b.type === "tool_use") out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input) } });
     });
     out.blocks = (m.message.content || []).length;

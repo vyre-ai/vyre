@@ -3263,12 +3263,11 @@ Stop the turn a thread is running, as Escape does in Claude Code. The thread sta
 
 ### `threads.kill-task`
 
-Stop one of a thread's background tasks (task, or id: the task's id from thread.task).
+Stop one of a thread's background tasks.
 
 - Input:
+  - `task` string, required
   - `thread` string, required
-  - `id` string
-  - `task` string
 - Callers: any caller
 
 ### `threads.launch`

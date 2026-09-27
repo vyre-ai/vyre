@@ -4,14 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Sessions: chat's event names, the model list, kill-task by id
+#### Sessions: the model list
 
-- Events renamed to chat's contract: `model.switched` is `thread.model`, `thinking.switched` is
-  `thread.thinking {on}`, and thinking text is `thread.text` with `kind: "reasoning"` (readers of
-  the reply skip that kind).
 - `sessions.models`: the models a thread can switch to (opus, sonnet, haiku, plus
   `sessions.models_offered` from config).
-- `threads.kill-task` takes `id` as well as `task`.
 
 #### Sessions: the mode carries over a resume; which device answered
 
@@ -20,6 +16,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `ask.answered` says `device` when the answer came from one of the person's devices that the
   call identifies (a paired device over the relay, the owner's tailnet node), not only the
   surface it names.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or
