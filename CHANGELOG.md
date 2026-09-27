@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The app perf job drags the approve swipe
+
+- The Now row's approve swipe is pointer-driven now (mobile 503414d4), so scrolling its strip did
+  nothing. .github/scripts/app-perf.mjs drags each now-row-swipe 130 px right with the mouse, which
+  commits, and stops at the first approve.collapse sample.
+
 #### app.yml's unsigned release step runs again
 
 - The apostrophe in "owner's key", inside the step's single-quoted `node -e`, ended the quote, and
