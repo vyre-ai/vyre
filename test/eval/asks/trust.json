@@ -1,0 +1,14 @@
+{
+ "version": 2,
+ "model": "haiku",
+ "replies": {
+  "06e5e19dccbebce64d125903048becbf": "```json\n{\n  \"answer\": null,\n  \"cite\": [],\n  \"confidence\": 0,\n  \"abstain\": true,\n  \"known\": [\n    \"User's wife is named Noor (passage 1)\",\n    \"User has another person named Jordan visiting on Friday (passage 2, described as wife)\",\n    \"No information about either person's occupation or work\"\n  ]\n}\n```",
+  "0a7bbece92130cb08265412dfe429c48": "```json\n{\n  \"answer\": null,\n  \"cite\": [],\n  \"confidence\": 0,\n  \"abstain\": true,\n  \"known\": [\"The user mentioned their wife Noor has the car, but no specific car model or make was mentioned in the passages\"]\n}\n```",
+  "0df64fc6521ddf50a8cd90b1940b0abe": "```json\n{\n  \"answer\": null,\n  \"cite\": [],\n  \"confidence\": 0,\n  \"abstain\": true,\n  \"known\": [\n    \"User's wife is named Noor (mentioned in harlow-site project)\",\n    \"User has another wife named Jordan mentioned in northwind project (teammate message context)\",\n    \"No passages discuss either wife's interest in hiking\"\n  ]\n}\n```",
+  "28d333387326cb9525da8d5cc0ec01b4": "```json\n{\n  \"answer\": null,\n  \"cite\": [],\n  \"confidence\": 0,\n  \"abstain\": true,\n  \"known\": [\"The user's wife Noor has the car on 2026-06-04, but the passage does not specify what car the user drives or owns\"]\n}\n```",
+  "54205fb3302dbc8dbc761f38ce256c34": "```json\n{\n  \"answer\": \"Jordan is your wife, a nurse.\",\n  \"cite\": [8, 1],\n  \"confidence\": 0.95,\n  \"abstain\": false,\n  \"known\": [\n    \"Jordan is the user's wife\",\n    \"Jordan is a nurse\",\n    \"Jordan's birthday is 14 March\",\n    \"Jordan works at Harlow Legal\",\n    \"Jordan loves hiking\"\n  ]\n}\n```",
+  "651725191c245d03f04217593326a862": "```json\n{\n  \"answer\": null,\n  \"cite\": [],\n  \"confidence\": 0,\n  \"abstain\": true,\n  \"known\": [\n    \"User has a wife named Noor (mentioned in harlow-site project)\",\n    \"User has a wife named Jordan (mentioned in northwind project)\",\n    \"No information in passages about hiking preferences\"\n  ]\n}\n```",
+  "671dd4225ee6d4dd8682f249c81125ca": "```json\n{\n  \"answer\": null,\n  \"cite\": [],\n  \"confidence\": 0,\n  \"abstain\": true,\n  \"known\": [\n    \"User has a wife named Noor (mentioned in harlow-site project, 2026-06-04)\",\n    \"User has a wife named Jordan (mentioned in northwind project, 2026-06-17)\",\n    \"The passages do not describe what either wife does for work\"\n  ]\n}\n```",
+  "7fddab4675df16bbe45e5794587b5d67": "```json\n{\n  \"answer\": \"Jordan is your wife, a nurse with birthday 14 March.\",\n  \"cite\": [1, 4, 8],\n  \"confidence\": 0.95,\n  \"abstain\": false,\n  \"known\": [\n    \"Jordan is a nurse (passages 1, 8)\",\n    \"Jordan's birthday is 14 March (passage 4)\",\n    \"Jordan loves hiking (passage 2)\",\n    \"Jordan works at Harlow Legal (passage 7)\"\n  ]\n}\n```"
+ }
+}

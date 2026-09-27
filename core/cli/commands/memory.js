@@ -130,11 +130,76 @@ async function change(sub, args) {
 }
 const CHANGES = new Set(["correct", "corrections", "uncorrect", "merge", "split", "pin", "mute"]);
 
-/** `vyre memory ask "<question>"`: one line about the user's life, how sure, and where it came from. */
+/**
+ * `vyre memory ask "<question>"`: Vyre IQ (memory.ask), the answer with the sessions it stands on,
+ * or "not sure yet" with what memory does know. A vyred without memory.ask answers from personal
+ * facts alone (memory.answer).
+ */
 async function ask(args) {
   const { rest, opt } = flags(args, ["sources"]);
   const q = rest.join(" ").trim();
-  if (!q) return usage("vyre memory ask needs a question", 'vyre memory ask "what car do I drive"');
+  if (!q) return usage("vyre memory ask needs a question", 'vyre memory ask "what did we decide about the Harlow login"');
+  const r = await call("memory.ask", { question: q });
+  if (r.error?.code === "no_such_tool") return answerOld(q, opt);
+  if (r.error) return fail(r);
+  const d = r.data;
+  if (json()) { emit(d); return d.answer ? 0 : 1; }
+  if (d.limited) { out(dim(`  ${d.message || "Vyre IQ has used today's share of your Claude plan"}`)); return 1; }
+  if (!d.answer) {
+    out(dim("  not sure yet"));
+    if (d.known?.length) { out(dim("  what memory does know:")); for (const k of d.known) out(`    ${k}`); }
+    if (d.answer_id) out(dim(`  know it? vyre memory fix ${d.answer_id} "<the answer>"`));
+    return 1;
+  }
+  out(`\n  ${bold(recall(d.answer))}`);
+  const n = new Set((d.sources || []).map(s => s.session)).size;
+  const from = d.via === "corrected" ? "you corrected this" : d.via === "fact" ? "from what you have said" : n ? `from ${n} session${n === 1 ? "" : "s"}` : "";
+  out(dim(`  ${["confidence " + Math.round(d.confidence * 100) / 100, from].filter(Boolean).join(" · ")}`));
+  const shown = opt.sources === true ? d.sources || [] : (d.sources || []).slice(0, 3);
+  if (d.via !== "corrected") for (const s of shown) out(dim(`    ${s.name || String(s.session).slice(0, 8)} #${s.seq}: `) + s.quote);
+  if (shown.length < (d.sources || []).length) out(dim(`    and ${d.sources.length - shown.length} more · --sources shows them`));
+  if (d.answer_id) out(dim(`  wrong? vyre memory fix ${d.answer_id} wrong | forget | "<the right answer>"`));
+  out("");
+  return 0;
+}
+
+/**
+ * `vyre memory fix <answer id> wrong | forget | "<the right answer>"`: correct a Vyre IQ answer,
+ * remembered for next time. `vyre memory fix` lists this week's; `vyre memory fix undo <n>` undoes one.
+ */
+async function fix(args) {
+  const [id, ...rest] = args;
+  if (!id) {
+    const r = await call("memory.corrections", { answers: true });
+    if (r.error) return fail(r);
+    if (json()) return emit(r.data);
+    const w = r.data.week;
+    out(`  ${recall(`${w.corrected} answer${w.corrected === 1 ? "" : "s"} corrected this week`)}${w.corrected ? dim(" · " + Object.entries(w.by_kind).map(([k, n]) => `${k} ${n}`).join(", ")) : ""}`);
+    for (const f of r.data.fixes.slice(0, 20)) out(dim(`    ${f.id}  ${f.question} · `) + (f.action === "replace" ? f.text : f.action));
+    return 0;
+  }
+  if (id === "undo") {
+    const n = Number(rest[0]);
+    if (!Number.isInteger(n)) return usage("vyre memory fix undo needs a correction's number", "vyre memory fix lists them");
+    const r = await call("memory.uncorrect", { fix: n });
+    if (r.error) return fail(r);
+    if (json()) return emit(r.data);
+    out(`  ${recall("undone")} ${dim(r.data.fix.question)}`);
+    return 0;
+  }
+  const what = rest.join(" ").trim();
+  if (!what) return usage("vyre memory fix needs wrong, forget or the right answer", 'vyre memory fix <answer id> wrong | forget | "<the right answer>"');
+  const action = what === "wrong" || what === "forget" ? what : "replace";
+  const r = await call("memory.correct", { answer: id, action, ...(action === "replace" ? { object: what } : {}) });
+  if (r.error) return fail(r);
+  if (json()) return emit(r.data);
+  const f = r.data.fix;
+  out(`  ${recall(action === "replace" ? "remembered" : action === "wrong" ? "marked wrong" : "forgotten")} ${dim(`· ${f.question} · undo with vyre memory fix undo ${f.id}`)}`);
+  return 0;
+}
+
+/** The answer from personal facts alone, for a vyred older than memory.ask. */
+async function answerOld(q, opt) {
   const r = await call("memory.answer", { q, ...(opt.sources === true ? { sources: true } : {}) });
   if (r.error) return fail(r);
   const d = r.data;
@@ -162,10 +227,11 @@ async function ask(args) {
 export default [
   {
     name: "memory", order: 30,
-    usage: "vyre memory [about [<thing...>]|ask <question...>|correct <fact> <action>|corrections|uncorrect <id>|merge <node> <into>|split <node>|pin <node>|mute <node>] [--project <slug>] [--json]",
+    usage: "vyre memory [about [<thing...>]|ask <question...>|fix [<answer id> <fix>]|correct <fact> <action>|corrections|uncorrect <id>|merge <node> <into>|split <node>|pin <node>|mute <node>] [--project <slug>] [--json]",
     verbs: [
       { verb: "about", summary: "what memory holds, or everything about one thing", usage: "[<thing...>] [--project v]", read: true },
-      { verb: "ask", summary: "one line about your life, from what you have said", usage: "<question...> [--sources]", read: true },
+      { verb: "ask", summary: "Vyre IQ: an answer from your past sessions and what you have said, with where it came from", usage: "<question...> [--sources]", read: true },
+      { verb: "fix", summary: "correct an IQ answer, remembered next time; bare: what you corrected this week", usage: "[<answer id> wrong|forget|<the right answer...>] [undo <n>]" },
       { verb: "correct", summary: "mark a fact wrong, ended, replaced or confirmed, or add one", usage: "<fact> wrong|ended|replace|confirm|add [<object...>] [--at v] [--note v] [--project v]" },
       { verb: "corrections", summary: "what you corrected, newest first", usage: "[--all] [--project v]", read: true },
       { verb: "uncorrect", summary: "undo a correction", usage: "<id>" },
@@ -174,10 +240,11 @@ export default [
       { verb: "pin", summary: "keep a thing in view", usage: "<node...> [--off]" },
       { verb: "mute", summary: "keep a thing out of view", usage: "<node...> [--off]" },
     ],
-    help: "Read it:\n  vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing\nAsk it:\n  vyre memory ask \"<question>\" [--sources]   one line about your life, from what you have said\nChange what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
+    help: "Read it:\n  vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing\nAsk it:\n  vyre memory ask \"<question>\" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from\n  vyre memory fix <answer id> wrong | forget | \"<the right answer>\"   correct an answer; remembered next time\n  vyre memory fix [undo <n>]   what you corrected this week, or undo one\nChange what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
     async run(args0) {
       if (CHANGES.has(args0[0])) return change(args0[0], args0.slice(1));
       if (args0[0] === "ask") return ask(args0.slice(1));
+      if (args0[0] === "fix") return fix(args0.slice(1));
       // `about` is the verb word a surface calls; bare `vyre memory` and `vyre memory <thing>` still work.
       const { rest: args, opt } = flags(args0[0] === "about" ? args0.slice(1) : args0, ["project"]);
       const project = typeof opt.project === "string" ? { project: opt.project } : {};

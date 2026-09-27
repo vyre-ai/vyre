@@ -58,6 +58,9 @@ const USE_FLUSH = 60_000;
  * module shipped with Vyre; a module from anywhere else is held to more (its settings' stores).
  * @param {any} m @param {{ firstParty?: boolean }} [opts]
  */
+/** Event families only their first-party owners may declare: device sync is federation's. */
+export const RESERVED_EVENTS = { sync: ["sync"] };
+
 export function validate(m, { firstParty = false } = {}) {
   const out = [];
   if (!m || typeof m !== "object") return ["module.json is not an object"];
@@ -70,7 +73,13 @@ export function validate(m, { firstParty = false } = {}) {
     if (!TOOL.test(t)) out.push(`tool "${t}" must look like module.verb`);
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
-  for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+  for (const e of (m.watches && m.watches.emits) || []) {
+    if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+    // Events that make other modules act on the person's data (sync.deleted forgets a device's
+    // history) come only from the first-party module that owns them.
+    const owners = RESERVED_EVENTS[e.split(".")[0]];
+    if (owners && !(firstParty && owners.includes(String(m.name)))) out.push(`event "${e}" is reserved for ${owners.join(" or ")}`);
+  }
   out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: (m.does && m.does.tools) || [] }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
@@ -423,8 +432,10 @@ export class Registry {
       // gives it. A manifest cannot grant this, so a module installed into a home never can.
       call: (tool, input, opts) => {
         const as = opts && opts.as;
-        if (!as) return this.call(tool, input, `module:${m.name}`);
         const rec = this.modules.get(m.name);
+        // firstParty: the loader's word that this module ships in the repo, for a tool that must
+        // trust a first-party caller only (a home module could take a free name).
+        if (!as) return this.call(tool, input, `module:${m.name}`, { firstParty: Boolean(rec && firstParty(rec.dir)) });
         const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
         if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
         // settings relays a person only to the tools first-party modules declared as their own

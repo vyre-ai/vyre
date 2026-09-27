@@ -226,4 +226,18 @@ export const MIGRATIONS = [
   // Vyre IQ (core/memory/iq/ask.js): the model's reply to each exact answer prompt, kept by its
   // hash, so a question over the same passages is answered the same way and never paid twice.
   `CREATE TABLE memory_iq_asks (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, reply TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
+  // Correcting IQ where it appears (core/memory/iq/fix.js): the answers given, by id, the person's
+  // fixes (their local log: never exported), and the personal facts a fix says are not true.
+  `CREATE TABLE memory_iq_answers (id TEXT PRIMARY KEY, at INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, via TEXT, facts TEXT NOT NULL, turns TEXT NOT NULL) WITHOUT ROWID;
+  CREATE TABLE memory_iq_fixes (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, answer TEXT NOT NULL, qkey TEXT NOT NULL, question TEXT NOT NULL, kind TEXT NOT NULL,
+    action TEXT NOT NULL, old TEXT NOT NULL, text TEXT, facts TEXT NOT NULL, turns TEXT NOT NULL, who TEXT, told INTEGER, undone INTEGER);
+  CREATE INDEX memory_iq_fixes_qkey ON memory_iq_fixes (qkey);
+  CREATE TABLE memory_me_denied (fact TEXT NOT NULL, fix INTEGER NOT NULL, PRIMARY KEY (fact, fix)) WITHOUT ROWID;`,
+  // An agent's correction with no words of the person's behind it (core/memory/iq/heard.js): kept
+  // for the person to accept or dismiss in "waiting on you", never applied.
+  `CREATE TABLE memory_iq_suggested (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, caller TEXT NOT NULL, thread TEXT, seq INTEGER, input TEXT NOT NULL, why TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'open', settled INTEGER, target TEXT, seen INTEGER NOT NULL DEFAULT 1);
+  -- The person's turns an agent's correction was applied from: one each, and a cap per thread.
+  CREATE TABLE memory_iq_heard (thread TEXT NOT NULL, seq INTEGER NOT NULL, at INTEGER NOT NULL, caller TEXT NOT NULL, kind TEXT NOT NULL, ref INTEGER NOT NULL, summary TEXT NOT NULL,
+    PRIMARY KEY (thread, seq)) WITHOUT ROWID;`,
 ];

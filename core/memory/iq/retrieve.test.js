@@ -44,9 +44,38 @@ test("retrieve: searches are fused by rank, ties break the same way, and the Cap
   assert.ok(seen.every(q => q.project_cwds?.[0] === "/home/alex/Work/northwind"));
 });
 
+test("retrieve: a project reads its attached sessions, and a user turn carries the reply that followed", async () => {
+  const seen = [];
+  const graph = { phrases: () => ({ phrases: new Map(), longest: 1 }), node: () => null, view: () => null };
+  const turns = { "a:3": { seq: 3, role: "assistant", text: "The cause was floats: use integer cents." } };
+  const r = retriever({ graph, now: () => NOW, picks: cwds => cwds[0] === "/home/alex/Work/northwind" ? ["planning"] : [],
+    next: async (session, seq) => turns[`${session}:${seq + 1}`] || null,
+    search: async q => { seen.push(q); return [hit("a", 2, NOW, { role: "user", text: "the croissant order shows $10.049999, why" }), hit("b", 1, NOW)]; } });
+  const out = await r({ question: "croissant order $10.049999 cause", project_cwds: ["/home/alex/Work/northwind"] });
+  assert.ok(seen.every(q => q.sessions?.[0] === "planning"), "the attached session goes to every search");
+  assert.deepEqual(out.passages.find(p => p.session === "a").reply, { seq: 3, text: "The cause was floats: use integer cents." });
+  assert.equal(out.passages.find(p => p.session === "b").reply, undefined, "an assistant turn has no reply");
+  assert.equal((await r({ question: "croissant order cause", replies: false })).passages.find(p => p.session === "a").reply, undefined);
+  seen.length = 0;
+  await r({ question: "invoice", project_cwds: ["/home/alex/Work/harlow-site"] });
+  assert.ok(seen.every(q => !q.sessions), "no picks, no sessions");
+});
+
 test("retrieve: personal names widen a question only for a caller that may see them", async () => {
   const personal = { entity: a => (/wife/.test(a) ? { label: "Noor" } : null) };
   const r = retriever({ personal, now: () => NOW, search: async () => [] });
   assert.deepEqual((await r({ question: "when did my wife move the demo", personal: true })).expanded, ["Noor"]);
   assert.deepEqual((await r({ question: "when did my wife move the demo" })).expanded, []);
+});
+
+test("retrieve: names the graph knows on the screen widen the search; the screen text itself is not searched", async () => {
+  const seen = [];
+  const graph = {
+    phrases: () => ({ phrases: new Map([["priya shah", [{ node: "name:Priya Shah", weight: 1, via: "label" }]]]), longest: 2 }),
+    node: () => ({ label: "Priya Shah" }), view: () => null,
+  };
+  const r = retriever({ graph, now: () => NOW, search: async q => { seen.push(q.q); return []; } });
+  const out = await r({ question: "who sent this", hint: "From: Priya Shah <priya@harlowlegal.com> please sign the retainer" });
+  assert.deepEqual(out.expanded.sort(), ["Priya Shah", "priya@harlowlegal.com"].sort());
+  assert.ok(!seen.some(q => /retainer/.test(q)), "the screen's own words were searched");
 });

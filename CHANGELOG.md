@@ -54,6 +54,122 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `waiting`'s `fromPending` uses it directly; it only falls back to the old expiry-minus-TTL guess
   for a box that has not shipped the field yet.
 
+#### Vyre IQ: correct it where it appears, streaming, names in predictive text
+
+- Memory's model calls (the reader and Vyre IQ) run on the person's Claude login and never bill API
+  dollars: ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are left out of their environment unless
+  config.memory.model.billing is "api".
+- A fact a module teaches about the user (`subject: {kind: "me"}`, a learned preference) lands on
+  the user's own node, not on a stray "the user", and reads "you prefer pnpm".
+- `memory.ask {stream: true, id?}` emits `memory.thinking {id, stage}` (understanding, searching,
+  reading, checking) as each step starts and `memory.answered {id, abstained, limited}`. The id is
+  the caller's, so a surface can show IQ thinking before the reply comes back. The events never
+  carry the question or the answer. Its description now tells the assistant when to use it.
+- Corrections (memory.correct, uncorrect, merge, split, and IQ answer fixes) follow one rule: the
+  person's own surfaces, or their phone or paired device with a person session (a passkey,
+  ADR 0032). A device without one gets `person_session_required`; agents are always refused.
+- Source trust holds in Vyre IQ's answers: a question about the user's own life (a relative, their
+  car, home, diet, birthday) is answered only from their own words in sessions trust keeps, never
+  from Claude's turns, a reply, an injected block or dev talk; and any answer that says who someone
+  is to the user ("your wife Jordan") must stand on those words too, or IQ abstains. A session's name or folder never grounds a personal answer, a
+  session counts only once recall says a person started it, and each source says whose words it is
+  (role: user or assistant). The trust
+  world through memory.ask (`eval-iq --world trust`): accuracy 1, confident-wrong 0, the "Jordan"
+  trap refused.
+- One card per person, org or project: `memory.card {about}` gives what the graph knows about it,
+  the projects it comes up in, when it last did, and three sessions to open; on the person's own
+  surfaces also who it is to them ("your wife"), never for a project's agent. An agent granted only
+  some projects sees only those projects' names and counts on a card.
+- Contradictions to confirm: `memory.contradictions` lists what memory holds two values for about
+  the person's life ("Where do you live: Porto or Lisbon?", "What your wife's name is: Juno or
+  Jordan?"), when a rival still carries a fifth of the belief and the person has not settled it.
+  `memory.settle {id, pick}` tells memory their answer in their own words ("I live in Porto"),
+  kept as exactly that one claim, which outweighs every older value. The person's surfaces only.
+- memory.ask takes `screen {app, title, selection, text}` (the Capsule's, floor-redacted): for a
+  question that points at it ("who sent this email?"), the names the graph knows on screen widen
+  the search and the model sees the screen marked as never a source. Never for a question about
+  the user's life, never evidence, never cited. The trust world asked again pointing at a screen
+  that says "your wife is Jordan" (`eval-iq --world trust --screen`): accuracy 1, confident-wrong 0.
+- A paired device's synced sessions (ADR 0008, amendment): Recall reads `<home>/synced/<machine>/`
+  as it reads Claude Code's own folder. What came from a device is the person's: unpairing,
+  replacing or losing it deletes nothing. When the person deletes "everything that came from
+  <device>" (`sync.deleted {machine}`), memory forgets everything derived from it (personal claims
+  and reads, graph evidence, IQ answers, kept replies and corrections) and Recall forgets its
+  sessions (`recall.forget`), then says how much went (`memory.forgot`). `memory.device {machine}`
+  is the preview, in counts. Only federation's own module may say `sync.deleted`: memory ignores it from any
+  other, and core/modules reserves the `sync.*` events for the first-party `sync` module (core/sync). import.scan never offers the synced folder as this device's own.
+- Caps in plan terms, never dollars, wherever a person sees them: the Settings entry is "How much
+  of your Claude plan memory may use each day" (a little, a small share, more; `memory.plan_share`,
+  replacing the dollar figure), `vyre status` says "reading 40% of today's plan share", and IQ at
+  its cap says it "has used today's share of your Claude plan". The usage figures stay internal
+  (and never bill: the reads run on the person's Claude login).
+- Import, sending: `import.start {plan, mode: once|sync, pace: fast|gentle}` is the person's own
+  action (never an agent or a device nobody signed in on). It records their consent with the
+  server through federation's `sync.consent` (with the plan's hash), sets the first read's pace
+  (`memory.pace`: fast reads batches of 50 a minute instead of 20, within the plan's normal limits;
+  never a paid allowance; only Vyre's own import module may set it, as the loader vouches: a
+  module's calls now carry `firstParty` in their meta), and sends the plan's sessions through federation's `sync.send`, 25 at a
+  time, in Claude Code's own layout; `import.status` and `import.progress` gain the upload stage
+  (sent, failed, quarantined). `import.stop` and `import.cancel` stop and delete nothing; deleting
+  everything a device sent stays the person's own previewed action (`sync.delete`).
+- Import, first part (docs/design/import.md): `import.scan {folders?}` lists this device's Claude Code
+  sessions by source (projects, the archive, folders the person adds) and by the folder each ran
+  in, with counts, sizes and dates, and suggests only the person's own work (never work on Vyre
+  itself, Vyre's own sessions or temporary folders). It reads file names, sizes, times and each
+  session's folder, never a turn, within caps, and a model cannot call it. Work on Vyre itself,
+  folders the person excluded and credential folders are left out before anything is listed. `import.plan {include, exclude?}`
+  says exactly what an import would take, with how long understanding it would take at each pace
+  (fast or gentle, the person's choice); `import.status` gives each stage's progress, and the
+  `import.progress` event says so as it happens (after Recall indexes or embeds and after memory's
+  passes, at most every 2 s, counts only). Recall emits `recall.embedded {done, total}`.
+  `memory.graph-grew {nodes, edges, new: {person, org, ...}, updated}` says the graph gained people,
+  orgs or projects in a pass (counts only, never names), for a live graph view to read what is new
+  with `memory.graph {since}`.
+- Sessions start knowing the project: `memory.today {room | project_cwds, session?}` gives the
+  project's last session and what memory learned about it this week (at most 300 characters, no
+  model, no personal facts), and the session brief adds it under "Lately in this project", marked
+  as notes, not instructions. Only the person's own words feed it: a fact they corrected or
+  confirmed, or one their own words in a turn say (pasted and injected blocks stripped, no dev
+  talk, a session source trust keeps, not a Vyre folder); never one only Claude, tool output or a
+  module stands behind. The last-session line gives only when, never a session's name.
+- Vyre IQ reads the answer, not only the question: a user turn it finds carries the assistant turn
+  that followed (the open world's misses were mostly the right session's question turn, with the
+  answer one turn later). Retrieval, no model: open recall@8 0.819 to 0.917, sealed 0.613 to 0.75.
+  memory.ask, re-recorded (sealed blind): open 0.867 to 0.878 (confident-wrong 1), sealed 0.72 to
+  0.80 (confident-wrong 7 to 5), about $0.0038 a question.
+- A project's IQ reads its attached sessions: `recall.search {sessions}` also keeps these sessions
+  wherever they ran (from modules and the person's surfaces only; a model's `sessions` is dropped),
+  and memory.retrieve and memory.ask scope a project by its folders plus its picked threads.
+- Vyre IQ's check counts what the model was shown for a cited passage: its date, project folder
+  and session name, and a name of several words when each word is there. It had been refusing
+  grounded answers ("it went live on 2026-06-12" from the passage's date). Replayed, no new model
+  calls: open world 0.778 to 0.867 (confident-wrong 1 to 1); sealed 0.62 to 0.72 (6 to 7).
+  `eval-iq --explain` lists each miss and why, and refuses a sealed world.
+- An agent corrects memory only with the person's own words: memory.correct from a model takes
+  `from_turn: {seq}`, a turn of its own verified thread that the switchboard says the person typed
+  (`threads.said`), one of their latest three and at most 10 minutes old, naming what is corrected,
+  with the new value in their words (or a "no" next to the old value). One correction per turn and
+  3 an hour per thread; suggestions are deduplicated, capped (5 a thread, 50 in all) and expire
+  after 14 days or when their target changes. It is applied as theirs, undoable, with
+  `memory.updated`. Anything else waits as a suggestion (`memory.corrections {suggested}`; the
+  person accepts with `memory.correct {suggestion}` or dismisses with `memory.uncorrect {suggestion}`).
+- Correct Vyre IQ where it appears: every memory.ask answer (a "not sure" too) has an
+  `answer_id`, and `memory.correct {answer, action: wrong|replace|forget, object?}` fixes it with
+  no Touch ID. replace: the same question gets the person's words at once, and a personal answer
+  is told to memory, so other phrasings have it. wrong: that answer is never given to that
+  question again. forget: the facts and turns behind it never ground an answer again.
+  `memory.uncorrect {fix}` undoes one. The fixes are the person's local log
+  (`memory.corrections {answers: true}`, `memory.stats().iq`: "you corrected 3 answers this week",
+  by kind of question). CLI: `vyre memory fix <id> wrong | forget | "<the right answer>"`.
+  eval-iq --fix: correcting every wrong answer on the synthetic worlds makes each one right with
+  none regressed (open 20 of 20, sealed 38 of 38).
+- Predictive text knows the people and things memory knows: memory offers `memory.suggest` to
+  suggest at start (and again on the new `suggest.ready` event), in the offer's `items` shape.
+  Typing "my wi" suggests "wife" with "Juno" beside it, on the user's own surfaces only.
+- `vyre memory ask` is Vyre IQ: memory.ask's answer with the sessions it stands on (three shown,
+  `--sources` for all), or "not sure yet" with what memory does know, or the daily-limit message.
+  A vyred without memory.ask still answers from personal facts.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at

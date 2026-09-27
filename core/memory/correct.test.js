@@ -202,7 +202,10 @@ test("correct: tools are for the owner's surfaces, and the event carries no name
       // The registry refuses other kinds; memory refuses an owner surface that names an agent,
       // and any caller that is not the user's for corrections (a registry that passes tool
       // error codes through reports those as denied too).
-      const e = (await d.registry.call(tool, input, caller)).error;
+      const r = await d.registry.call(tool, input, caller);
+      // A model's correct with no words of the person's behind it waits as a suggestion, unapplied.
+      if (tool === "memory.correct" && r.data) { assert.equal(r.data.applied, false, `${caller}: ${JSON.stringify(r)}`); continue; }
+      const e = r.error;
       assert.ok(e && (e.code === "denied" || /agent|own surfaces/.test(e.message)), `${tool} from ${caller}: ${JSON.stringify(e)}`);
     }
   }
