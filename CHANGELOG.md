@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: an API key never reaches a session's Bash
+
+- Measured against the real bundled Claude Code 2.1.283 and a fake Messages API
+  (scripts/sessions-proof/env-leak.mjs, with cc-plugin's fake-api.mjs): Claude Code keeps
+  `CLAUDE_CODE_OAUTH_TOKEN` from the tools it runs, but a Bash tool call's `env` printed
+  `ANTHROPIC_API_KEY`, so a model could read the key and send it out. Claude Code's own
+  `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` needs bubblewrap and exits without it.
+- core/sessions/spawn.js now takes an API key out of the environment and writes it once to a pipe
+  on fd 3 (`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`), which Claude Code reads at start and its tools
+  do not see. Same measurement after: authenticated, not in Bash's environment; a control run
+  with no credential fails "Not logged in". Both drivers; tested in core/sessions.
+- `recover()` emits `thread.stopped {reason: "restart"}` for each thread a crash left live
+  (ADR 0029 R7), not only the row.
+- Merged main c8fb9aae; its threads.unqueue is folded into this branch's (a superset: uuid,
+  reason, a `denied` code).
+
 #### Sessions: rewind, as a double Esc does; a smoke for the bundled Claude Code
 
 - scripts/sessions-smoke.mjs: with `VYRE_SESSIONS_SDK_DIR` pointing at the pinned SDK installed

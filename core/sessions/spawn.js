@@ -22,14 +22,23 @@ export function findSubreaper() {
 
 /**
  * @param {string} command @param {string[]} args
+ * An API key never goes in the environment: Claude Code passes its environment to every tool it
+ * runs, so a session's Bash would read it (measured: scripts/sessions-proof/env-leak.mjs). It is
+ * written once to a pipe on fd 3 instead (CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR), which Claude Code
+ * reads at start and its tools never inherit. A setup token (CLAUDE_CODE_OAUTH_TOKEN) Claude Code
+ * already keeps from its tools.
  * @param {{ cwd?: string, env?: Record<string, string|undefined>, signal?: AbortSignal, subreaper?: string|null,
  *           uid?: number, gid?: number, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
  */
 export function spawnSession(command, args, o = {}) {
   const posix = process.platform !== "win32";
   const [cmd, argv] = o.subreaper && posix ? [o.subreaper, ["-s", "--", command, ...args]] : [command, args];
-  const child = spawn(cmd, argv, { cwd: o.cwd, env: /** @type {any} */ (o.env), signal: o.signal, stdio: ["pipe", "pipe", "pipe"],
+  const env = { ...(o.env || {}) };
+  const key = env.ANTHROPIC_API_KEY;
+  if (key) { delete env.ANTHROPIC_API_KEY; env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR = "3"; }
+  const child = spawn(cmd, argv, { cwd: o.cwd, env: /** @type {any} */ (env), signal: o.signal, stdio: key ? ["pipe", "pipe", "pipe", "pipe"] : ["pipe", "pipe", "pipe"],
     detached: posix, ...(typeof o.uid === "number" ? { uid: o.uid } : {}), ...(typeof o.gid === "number" ? { gid: o.gid } : {}) });
+  if (key && child.stdio[3]) { const fd = /** @type {any} */ (child.stdio[3]); fd.on("error", () => {}); fd.end(String(key)); }
   // detached is setsid(): the child leads a new session and a new process group, both its pid.
   if (child.pid && o.onSpawn) { try { o.onSpawn({ pid: child.pid, pgid: child.pid, sid: child.pid }); } catch {} }
   return child;

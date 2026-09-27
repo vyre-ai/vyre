@@ -309,6 +309,8 @@ for (const driver of ["cli", "sdk"]) {
     // The limit: the thread goes on under the API key, resumed.
     await w.tool("threads.send", { thread: th.id, text: "limit", surface: "deck" });
     await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.auth === "api-key", "the fallback");
+    const onKey = await until(() => w.launches().find(l => l.auth === "api-key"), "the API-key launch");
+    assert.equal(onKey.key_in_env, false, "the API key reaches Claude Code on fd 3, never its environment (a session's Bash would read it)");
     const all = JSON.stringify(await w.events(th.id));
     assert.ok(!all.includes("fake-setup-value") && !all.includes("fake-api-value"), "no credential reaches an event");
   });

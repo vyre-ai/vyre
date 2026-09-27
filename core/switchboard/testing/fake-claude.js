@@ -37,7 +37,9 @@ import readline from "node:readline";
 const argv = process.argv.slice(2).flatMap(a => (/^--[a-z-]+=/.test(a) ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]));
 const flag = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const session = flag("--session-id") || flag("--resume") || "no-session";
-const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription" : process.env.ANTHROPIC_API_KEY ? "api-key" : "ambient";
+// An API key comes on fd 3 (CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR), never in the environment.
+const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription"
+  : process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR ? "api-key" : "ambient";
 /**
  * One line per launch. Written at the initialize request, which both the runner and the Agent SDK
  * send first, because the SDK sends there what the CLI takes as flags: those are added to argv as
@@ -52,7 +54,7 @@ function logLaunch(init = {}) {
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
   fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
-    projects: process.env.VYRE_PROJECTS || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 

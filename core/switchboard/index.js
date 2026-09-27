@@ -262,11 +262,13 @@ export class Switchboard {
 
   /** After a restart nothing is running: say so, and close the questions nobody can answer now. */
   recover() {
-    const stale = this.db.prepare(`SELECT id FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE);
+    const stale = /** @type {any[]} */ (this.db.prepare(`SELECT id, project FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE));
     for (const r of stale) {
       // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it.
+      // Said as an event too: a surface that missed the old process's end would spin otherwise.
       this.db.prepare("UPDATE threads_runs SET status = 'stopped', stopped_reason = 'restart', pid = NULL WHERE id = ?").run(r.id);
       for (const a of this.asks.open(String(r.id))) this.closeAsk(a, "cancelled", "restart");
+      this.emit("thread.stopped", { code: null, reason: "restart" }, String(r.id), r.project || null);
     }
   }
 
