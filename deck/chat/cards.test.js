@@ -539,3 +539,35 @@ test("the rewind sheet: Claude Code's three restores, code off on a box that res
   await new Promise(r => setTimeout(r, 0));
   assert.deepEqual(chose, [["u1", "code"]]);
 });
+
+test("tool row (tool-row.md): a verb, the path relative to the session's folder, no 'done' word; waiting on you has no clock; failed says so", async () => {
+  const { toolCard } = await import("./blocks.js");
+  const cwd = "/home/alex/Work/harlow-site";
+  const done = toolCard({ kind: "tool", id: "t1", tool: "Edit", input: { file_path: cwd + "/menu.md", old_string: "a", new_string: "b" }, output: "ok", done: true, duration_ms: 225, cwd });
+  assert.equal(text($(done, ".cv-tool-name")), "Edited");
+  assert.equal(text($(done, ".cv-tool-title")), "menu.md");
+  assert.equal(text($(done, ".cv-tool-time")), "0.2 s");
+  assert.equal($(done, ".cv-tool-state"), null, "done carries no state word");
+  assert.doesNotMatch(everything(done), /\/home\/alex/, "no absolute path in the row");
+  const wait = toolCard({ kind: "tool", id: "t2", tool: "Edit", input: { file_path: cwd + "/menu.md" }, output: null, done: false, ts: Date.now() - 38_000, cwd, waiting: true });
+  assert.equal(wait.getAttribute("data-state"), "waiting");
+  assert.equal(text($(wait, ".cv-tool-name")), "Editing");
+  assert.equal(text($(wait, ".cv-tool-state")), "waiting on you");
+  assert.equal($(wait, ".cv-tool-time"), null, "no clock while it waits on you");
+  const run = toolCard({ kind: "tool", id: "t3", tool: "Bash", input: { command: "npm test" }, output: null, done: false, ts: Date.now() - 5_000, cwd });
+  assert.equal(run.getAttribute("data-state"), "running");
+  assert.ok($(run, ".cv-spin"), "a spinner in place of the icon");
+  assert.match(text($(run, ".cv-tool-time")), /^0:0\d$/);
+  const bad = toolCard({ kind: "tool", id: "t4", tool: "Bash", input: { command: "npm test" }, output: "exit 1", error: true, done: true, duration_ms: 1200, cwd });
+  assert.equal(text($(bad, ".cv-tool-name")), "Ran");
+  assert.equal(text($(bad, ".cv-tool-state")), "failed");
+  const todo = toolCard({ kind: "tool", id: "t5", tool: "TodoWrite", input: { todos: [{ content: "Ask kit to review the copy", status: "pending" }] }, output: "ok", done: true, duration_ms: 1, cwd });
+  assert.equal($(todo, ".cv-tool-time"), null, "a todo list's time says nothing");
+});
+
+test("turn footer: time and tokens in one number, nothing while the turn is open", async () => {
+  const { turnRow } = await import("./blocks.js");
+  assert.equal(text(turnRow({ duration_ms: 18_000, tokens: { input: 4000, output: 200 } })), "18 s · 4.2k tokens");
+  assert.equal(text(turnRow({ duration_ms: 15, tokens: { input: 7400, output: 178 }, open: true })), "", "an open turn draws nothing");
+  assert.match(text(turnRow({ canceled: true, byMe: true, duration_ms: 3000 })), /^Stopped by you/);
+});

@@ -36,7 +36,7 @@
 //    indicator, or above the keyboard while it is up (--kb-lift, deck.css);
 //  - no timers but the reconnect wait. Every string from the box is a text node (deck/js/dom.js).
 
-import { h, put, go } from "../js/dom.js";
+import { h, put, go, isPhone } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { surfaceId } from "../glass/util.js";
 import { linkVerdict, holdKeys, withFrom, withMods, step, reopened, onClose, onAttachError, remember,
@@ -146,7 +146,7 @@ function charHeight() {
 }
 
 /** "This phone" in the phone layout (deck.css), else "This screen". */
-const selfWord = () => (typeof matchMedia === "function" && matchMedia("(max-width: 760px), (max-height: 500px) and (pointer: coarse)").matches ? "phone" : "screen");
+const selfWord = () => (isPhone() ? "phone" : "screen");
 
 const SVG = "http://www.w3.org/2000/svg";
 /** The eye on the watch line (no eye in deck/js/icons.js yet). */
