@@ -1,0 +1,38 @@
+#!/usr/bin/env node
+// Writes the one-app design tokens (docs/design/one-app/tokens.json) out for each surface.
+// Usage: scripts/gen-tokens [--check] [--swift <path>] [--ts <path>] [--css <path>]
+// With no path flags it writes the Capsule's Swift file. --check writes nothing and exits 1 when a
+// target on disk differs from what the JSON gives. Change the JSON, never the outputs.
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { swift, ts, css, load } from "./lib/tokens.js";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const DEFAULT_SWIFT = "local/capsule/native/Sources/UI/Tokens.generated.swift";
+
+const args = process.argv.slice(2);
+const check = args.includes("--check");
+const targets = [];
+for (const [flag, render] of [["--swift", swift], ["--ts", ts], ["--css", css]]) {
+  const i = args.indexOf(flag);
+  if (i >= 0) targets.push([args[i + 1], render]);
+}
+if (!targets.length) targets.push([DEFAULT_SWIFT, swift]);
+
+const tokens = load(ROOT);
+let stale = 0;
+for (const [rel, render] of targets) {
+  const file = path.resolve(ROOT, rel);
+  const text = render(tokens);
+  const now = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
+  if (check) {
+    if (now !== text) { stale++; console.log(`stale: ${rel} (run scripts/gen-tokens)`); }
+    continue;
+  }
+  if (now === text) { console.log(`same ${rel}`); continue; }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text);
+  console.log(`wrote ${rel}`);
+}
+process.exit(stale ? 1 : 0);

@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Tokens: one JSON, rendered for the Capsule, the app and the Deck
+
+- scripts/gen-tokens renders docs/design/one-app/tokens.json as Swift (the Capsule's
+  Tokens.generated.swift, the default target), TypeScript (`--ts <path>`, for the Expo app) and
+  CSS custom properties (`--css <path>`, the Deck's role names). `--check` exits 1 when a target is
+  stale. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
+  now a list of sizes (12, 13), not a size and line pair; phone type steps get their own enum.
+  Tests in test/tokens.test.js.
+
+#### Design: teammates, usage limits, planner ring counts
+
+- New boards: the Agents place with teammates (ADR 0031), the teammate kinds in Needs you, and an
+  interactive "Teammates and usage" limits board (presets, custom steppers with live impact, the
+  box ceiling, usage pause, the slot queue). The Planner board counts rings as 1 + escalate_max
+  and ties "Live" to a connected stream.
+
 #### Design: one app for the web, iOS and Android
 
 - docs/design/one-app/: the one-app design sheet (principles, system, layout, key screens on phone

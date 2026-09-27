@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agents place, teammates</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2656px; height: 1180px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">Agents place · teammates (ADR 0031)</span>
+      <h1 class="t28 w6">A teammate is one role in one project: an inbox that runs in order, notes it keeps, and an integrator that owns main.</h1>
+      <p class="t15 t2">Any session, person or teammate in the project asks design, and design takes the work one request at a time. Code teammates work on their own branch; the integrator merges them when the tests pass, so you never approve a merge. Only a person creates, shares or changes a teammate.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <div class="cap">
+      <span class="cap-t">Desktop, 1280 wide · Agents grouped by project, design's Now tab</span>
+      <div class="win" style="width: 1280px; height: 800px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+        <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <nav class="rail" aria-label="Vyre">
+            <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">3</span></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+            <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+            <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+              <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+            </div>
+          </nav>
+          <main class="main">
+            <header class="top" style="grid-template-columns: minmax(0, 1fr) 300px minmax(0, 1fr);">
+              <div class="top-l"><h1 class="t15 w6">Agents</h1><span class="t12 t3 trunc">7 teammates · 1 agent</span></div>
+              <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow trunc">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+              <div class="top-r">
+                <span class="chip" style="cursor: default; font-size: 12px; line-height: 16px; gap: 6px; padding: 0 10px;"><span class="ring"></span><span class="w6" style="color: var(--text);">Harlow Legal</span><span>2 of 3 teammates active · 3 of 4 subagents</span></span>
+                <button class="ibtn" type="button" aria-label="New teammate"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
+              </div>
+            </header>
+            <div class="ld" style="grid-template-columns: 340px minmax(0, 1fr);">
+              <div class="ld-l">
+                <div class="grp"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Harlow Legal<span class="t3" style="margin-left: auto; font-weight: 400;">2 of 3 active</span></div>
+                <div class="lrow lrow-on" style="padding: 8px 16px;">
+                  <span class="av av-32">d</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <div class="row" style="gap: 8px;"><span class="w6 trunc grow">design</span><span class="st"><span class="ring"></span>working</span></div>
+                    <span class="trunc">Make the estate intake form calmer</span>
+                    <span class="t12 t3 trunc">3 queued · last: merged r_8f2c, 42 tests pass</span>
+                  </div>
+                </div>
+                <div class="lrow" style="padding: 8px 16px;">
+                  <span class="av av-32">i</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <div class="row" style="gap: 8px;"><span class="w6 trunc grow">intake</span><span class="st"><span class="dot dot-need"></span><span class="bea">waiting on you</span></span></div>
+                    <span class="t2 trunc">Which fee schedule applies to probate? · 1 queued</span>
+                  </div>
+                </div>
+                <div class="lrow" style="padding: 8px 16px;">
+                  <span class="av av-32">m</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <div class="row" style="gap: 8px;"><span class="w6 trunc grow">integrator</span><span class="st"><span class="dot dot-idle"></span>idle</span></div>
+                    <span class="t2 trunc">Waiting for a clean main · 1 queued</span>
+                  </div>
+                </div>
+                <div class="lrow" style="padding: 8px 16px;">
+                  <span class="av av-32">w</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <div class="row" style="gap: 8px;"><span class="w6 trunc grow">writer</span><span class="st"><svg class="ic xg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg>failed</span></div>
+                    <span class="t2 trunc">Couldn't open brief.docx after 2 attempts</span>
+                  </div>
+                </div>
+                <div class="lrow" style="padding: 6px 16px; align-items: center;">
+                  <span class="av">k</span>
+                  <span class="t13 t2 trunc grow">kit · agent · filling the Estate intake</span>
+                  <span class="st"><span class="ring"></span></span>
+                </div>
+                <div class="grp"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Northwind Bakery<span class="t3" style="margin-left: auto; font-weight: 400;">1 of 1 active · Light</span></div>
+                <div class="lrow" style="padding: 8px 16px;">
+                  <span class="av av-32">r</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <div class="row" style="gap: 8px;"><span class="w6">research</span><span class="tag">assistant</span><span class="grow"></span><span class="st"><span class="ring"></span>working</span></div>
+                    <span class="t2 trunc">Price check on three rival bakeries</span>
+                  </div>
+                </div>
+                <div class="lrow" style="padding: 8px 16px;">
+                  <span class="av av-32">d</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <div class="row" style="gap: 8px;"><span class="w6">design</span><span class="tag trunc" style="display: inline-block; line-height: 20px;">shared from Harlow Legal</span><span class="grow"></span><span class="st"><span class="ring"></span>working</span></div>
+                    <span class="t2 trunc">On a Harlow request · 1 queued from here</span>
+                  </div>
+                </div>
+                <div class="lrow" style="padding: 8px 16px;">
+                  <span class="av av-32">o</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <div class="row" style="gap: 8px;"><span class="w6 trunc grow">ops</span><span class="st"><span class="dot"></span>asleep</span></div>
+                    <span class="t2 trunc">2 queued · last: reconciled September orders</span>
+                  </div>
+                </div>
+                <div class="grp"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>Waiting for a slot<span class="t3" style="margin-left: auto; font-weight: 400;">oldest first</span></div>
+                <div class="lrow" style="padding: 8px 16px; align-items: center;">
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <span class="trunc"><span class="w6">ops</span> · Friday pre-orders</span>
+                    <span class="t12 t3 trunc">queued · #1 · ~12 min · Orders session</span>
+                  </div>
+                  <button class="btn btn-sm" type="button">Run now</button>
+                  <button class="btn btn-g btn-sm" type="button">Cancel</button>
+                </div>
+                <div class="lrow" style="padding: 8px 16px; align-items: center; border-bottom: 0;">
+                  <div class="col grow" style="gap: 2px; min-width: 0;">
+                    <span class="trunc"><span class="w6">ops</span> · October export</span>
+                    <span class="t12 t3 trunc">queued · #2 · ~20 min · asked by alex</span>
+                  </div>
+                  <button class="btn btn-sm" type="button">Run now</button>
+                  <button class="btn btn-g btn-sm" type="button">Cancel</button>
+                </div>
+              </div>
+
+              <div class="ld-d" style="padding: 18px 28px 16px; gap: 14px;">
+                <div class="row" style="gap: 12px;">
+                  <span class="av av-40">d</span>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><h2 class="t20 w6 trunc">design</h2><span class="t12 t2 trunc">Harlow Legal · shared with Northwind Bakery · visual design and UI copy</span></div>
+                  <button class="btn btn-g" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"></path></svg>Pause</button>
+                  <button class="ibtn" type="button" aria-label="More"><svg class="ic" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.8"></circle><circle cx="8" cy="8" r="0.8"></circle><circle cx="12.5" cy="8" r="0.8"></circle></svg></button>
+                </div>
+                <div class="seg" style="align-self: flex-start;"><button class="on" type="button">Now</button><button type="button">Inbox 3</button><button type="button">Results</button><button type="button">Notes</button><button type="button">Setup</button></div>
+
+                <div class="row" style="gap: 24px; align-items: flex-start; flex: 1 1 auto; min-height: 0;">
+                  <div class="col grow" style="gap: 12px; min-width: 0;">
+                    <section class="card" aria-label="Running request">
+                      <div class="card-h"><span class="ring"></span><span class="lbl">Running</span><span class="mono t12 t3">r_9d41</span><span class="t12 t3" style="margin-left: auto;">8m 12s · turn 3</span></div>
+                      <div class="col" style="padding: 0 16px 12px; gap: 6px;">
+                        <p class="t15">Make the estate intake form calmer: fewer fields per step, plain labels.</p>
+                        <span class="t12 t3">From the Intake form session · Harlow Legal · normal priority</span>
+                        <div class="row" style="gap: 6px;"><span class="tag mono">app/intake/estate.tsx</span><span class="tag mono">team/design</span><span class="t12 t3">2 commits ahead of main</span></div>
+                      </div>
+                      <div class="card-f">
+                        <button class="btn" type="button"><svg class="ic" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"></rect></svg>Stop<span class="k">Esc</span></button>
+                        <button class="btn btn-g" type="button">Open session</button>
+                        <span class="t12 t3" style="margin-left: auto;">Typing in its session steers it; asks from elsewhere queue.</span>
+                      </div>
+                    </section>
+                    <div class="col" style="gap: 0;">
+                      <div class="row" style="gap: 8px; height: 22px;"><span class="lbl grow">Live</span><span class="t12 t3">2 helpers · 2 of 4 subagent slots</span></div>
+                      <div class="trow"><svg class="ic" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="trunc grow">Merged main into team/design · clean</span><span class="t12 t3">14:02</span></div>
+                      <div class="trow"><svg class="ic" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg><span>Read</span><span class="mono trunc grow">app/intake/estate.tsx</span><span class="t12 t3">14:03</span></div>
+                      <div class="trow"><svg class="ic" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg><span>Edited</span><span class="mono trunc grow">app/intake/estate.tsx +48 −91</span><span class="t12 t3">14:06</span></div>
+                      <div class="trow"><svg class="ic" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span>Committed</span><span class="mono trunc grow">a1b2c3d split estate intake into 4 steps</span><span class="t12 t3">14:07</span></div>
+                      <div class="trow"><span class="spin"></span><span>Running</span><span class="mono trunc grow">npm test -- intake</span><span class="t12 t2">0:12</span></div>
+                      <p class="prose" style="margin-top: 8px;">Steps 1 and 2 are done. The witness page keeps its own step, as the notes say you decided on 19 Sep.</p>
+                    </div>
+                  </div>
+
+                  <div class="col" style="width: 268px; flex: none; gap: 16px;">
+                    <div class="col" style="gap: 6px;">
+                      <div class="row" style="gap: 8px;"><span class="lbl grow">Up next</span><span class="t12 t3">Inbox 3</span></div>
+                      <div class="list dense">
+                        <div class="li"><div class="col grow" style="min-width: 0;"><span class="trunc">Tidy the fee table</span><span class="t12 t3 trunc">Harlow Legal · Q3 report</span></div></div>
+                        <div class="li"><div class="col grow" style="min-width: 0;"><span class="trunc">Northwind menu card</span><span class="t12 t3 trunc">Northwind Bakery · alex</span></div></div>
+                        <div class="li"><div class="col grow" style="min-width: 0;"><span class="trunc">Logo on the welcome email</span><span class="t12 t3 trunc">Harlow Legal · intake</span></div></div>
+                      </div>
+                    </div>
+                    <div class="col" style="gap: 4px;">
+                      <span class="lbl">Last result</span>
+                      <span class="t13">Merged design's r_8f2c into main, 42 tests pass</span>
+                      <span class="t12 t3">integrator · 13:40 · Open session at this point</span>
+                    </div>
+                    <div class="col" style="gap: 4px;">
+                      <span class="lbl">Notes</span>
+                      <span class="t13 t2">Doing: estate intake steps (r_9d41). Next: fee table.</span>
+                      <span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Saved 14:02 · version 12</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="composer" style="flex: none;">
+                  <div class="composer-in trunc" style="min-height: 40px;">Ask design…</div>
+                  <div class="composer-bar">
+                    <span class="cchip"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Harlow Legal</span>
+                    <span class="cchip">Normal priority<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></span>
+                    <span class="cchip"><svg class="ic" viewBox="0 0 16 16"><path d="M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8"></path></svg>Attach</span>
+                    <span class="t12 t3" style="margin-left: auto; margin-right: 8px;">Queues as #4 · the result comes back here</span>
+                    <button class="btn btn-p btn-sm" type="button">Ask<span class="k">⌘⏎</span></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Phone · the first code teammate brings an integrator</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav">
+          <button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button>
+          <span class="t17 w6 grow trunc">Harlow Legal</span>
+        </div>
+        <div class="ph-body">
+          <div class="ph-sec">Teammates<span class="t12 t3" style="margin-left: auto; font-weight: 400;">none yet</span></div>
+          <p class="t13 t2">Pick a role. It keeps notes and takes work from every session in Harlow Legal.</p>
+          <div class="row" style="flex-wrap: wrap; gap: 8px;"><span class="chip chip-on">design</span><span class="chip">frontend</span><span class="chip">backend</span><span class="chip">research</span><span class="chip">writer</span><span class="chip">qa</span></div>
+        </div>
+        <div class="ph-scrim"></div>
+        <div class="ph-sheet">
+          <div class="grab"></div>
+          <div class="col" style="padding: 16px 16px 0; gap: 14px;">
+            <h2 class="t17 w6">Add design to Harlow Legal, and an integrator, which merges their work when the tests pass</h2>
+            <div class="ph-card">
+              <div class="ph-row" style="align-items: center;"><span class="av av-32">d</span><div class="col grow" style="min-width: 0;"><span class="t17 w6">design</span><span class="t13 t2 trunc">Own worktree on <span class="mono">team/design</span></span></div></div>
+              <div class="ph-row" style="align-items: center;"><span class="av av-32">m</span><div class="col grow" style="min-width: 0;"><span class="t17 w6">integrator</span><span class="t13 t2 trunc">Merges one branch at a time, never forces</span></div></div>
+            </div>
+            <div class="fl">
+              <span class="fl-l">Test command</span>
+              <div class="inp inp-lg inp-focus mono" style="height: 44px; font-size: 17px; line-height: 24px;">npm test<span class="caret"></span></div>
+              <span class="fl-h">Found in package.json. Runs after every merge, before main moves.</span>
+            </div>
+            <div class="row" style="gap: 12px;">
+              <div class="col grow" style="min-width: 0;"><span class="t17">Push main after each merge</span><span class="t13 t2">Off: main stays on this box</span></div>
+              <button class="tog" type="button" aria-label="Push main after each merge" aria-pressed="false"></button>
+            </div>
+            <button class="btn btn-p ph-btn-lg" type="button" style="width: 100%;">Add teammates</button>
+            <button class="btn btn-g ph-btn" type="button" style="width: 100%; margin-top: -8px;">Not now</button>
+          </div>
+          <div class="safe-b"></div>
+        </div>
+        <div class="home-ind" style="z-index: 8;"></div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Phone · design's Setup tab, sharing refused</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav">
+          <button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button>
+          <div class="col grow" style="min-width: 0;"><span class="t17 w6 trunc">design</span></div>
+          <span class="st" style="margin-right: 8px;"><span class="ring"></span>working</span>
+        </div>
+        <div class="row" style="flex: none; gap: 18px; padding: 0 16px; height: 40px; border-bottom: 1px solid var(--rule);">
+          <span class="t13 t2">Now</span><span class="t13 t2">Inbox 3</span><span class="t13 t2">Results</span><span class="t13 t2">Notes</span><span class="t13 w6" style="align-self: stretch; display: flex; align-items: center; box-shadow: inset 0 -2px 0 var(--text);">Setup</span>
+        </div>
+        <div class="col" style="flex: 1 1 auto; min-height: 0; overflow: hidden; padding: 10px 16px 0; gap: 10px;">
+          <div class="ph-card">
+            <div class="row" style="padding: 9px 14px; gap: 12px; align-items: baseline;"><span class="t13 t3" style="width: 84px; flex: none;">Brief</span><span class="t13 grow">Visual design and UI copy for the site and forms</span></div>
+            <div class="row" style="padding: 9px 14px; gap: 12px; border-top: 1px solid var(--rule);"><span class="t13 t3" style="width: 84px; flex: none;">Instructions</span><span class="t13 grow trunc">Version 4 · you, 2 days ago</span><span class="t13 t2">Versions</span></div>
+            <div class="row" style="padding: 9px 14px; gap: 12px; border-top: 1px solid var(--rule);"><span class="t13 t3" style="width: 84px; flex: none;">Model</span><span class="t13 grow trunc">teammate (Opus) · helpers faster</span></div>
+            <div class="row" style="padding: 7px 14px; gap: 12px; border-top: 1px solid var(--rule);"><span class="t13 t3" style="width: 84px; flex: none;">Tools</span><div class="row grow" style="gap: 6px;"><span class="tag">files</span><span class="tag">shell</span><span class="tag">web</span></div></div>
+            <div class="row" style="padding: 9px 14px; gap: 12px; border-top: 1px solid var(--rule);"><span class="t13 t3" style="width: 84px; flex: none;">Isolation</span><span class="t13 grow trunc">worktree · <span class="mono">team/design</span></span></div>
+            <div class="row" style="padding: 9px 14px; gap: 12px; border-top: 1px solid var(--rule); align-items: baseline;"><span class="t13 t3" style="width: 84px; flex: none;">Grants</span><span class="t13 grow">design may fill Figma for Harlow Legal only</span></div>
+            <div class="row" style="padding: 9px 14px; gap: 12px; border-top: 1px solid var(--rule);"><span class="t13 t3" style="width: 84px; flex: none;">Budget</span><span class="t13 grow trunc">64 of 200 turns today</span></div>
+          </div>
+          <div class="ph-sec" style="padding-top: 4px;">Shared with</div>
+          <div class="row" style="flex-wrap: wrap; gap: 8px;">
+            <span class="chip" style="height: 36px; border-radius: 18px; color: var(--text);">Northwind Bakery<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"></path></svg></span>
+            <span class="chip chip-on" style="height: 36px; border-radius: 18px;">Harlow site</span>
+            <span class="chip" style="height: 36px; border-radius: 18px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>Add</span>
+          </div>
+          <div class="ph-card col" style="padding: 12px 14px; gap: 10px;">
+            <div class="row" style="gap: 8px; align-items: flex-start;"><svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg><span class="t13">Harlow site already has a design teammate. Rename first.</span></div>
+            <div class="row" style="gap: 8px;"><div class="inp inp-focus mono" style="height: 44px; font-size: 17px; line-height: 24px;">design-agency<span class="caret"></span></div><button class="btn ph-btn" type="button" style="flex: none;">Rename</button></div>
+          </div>
+          <div class="row" style="gap: 12px; padding: 2px 0;">
+            <div class="col grow" style="min-width: 0;"><span class="t17 trunc">Available in every project</span><span class="t13 t2">Assign to the assistant</span></div>
+            <button class="tog" type="button" aria-label="Available in every project (assistant)" aria-pressed="false"></button>
+          </div>
+        </div>
+        <div class="row" style="flex: none; margin: 8px 12px 34px; height: 52px; border-radius: 26px; border: 1px solid var(--rule-strong); background: var(--panel); padding: 0 6px 0 18px; gap: 10px;">
+          <span class="t17 t3 grow trunc">Ask design…</span>
+          <button class="ibtn" type="button" aria-label="Ask" style="width: 40px; height: 40px; border-radius: 20px; background: var(--hover); color: var(--text);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <div class="anno">
+      <span class="lbl">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>Grouped by project, teammates first, then agents. A row is the role as its name, its state, the running request's first line, the queue and the last result. A shared teammate shows under each project it serves, tagged "shared from Harlow Legal" or "assistant".</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>One status model. Violet means waiting on you and nothing else.</span></div>
+      <div class="row t12 t2" style="gap: 12px; flex-wrap: wrap; padding-left: 32px;"><span class="st"><span class="ring"></span>working</span><span class="st"><span class="dot dot-need"></span>waiting</span><span class="st"><svg class="ic xg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg>failed</span><span class="st"><span class="dot dot-idle"></span>idle</span><span class="st"><span class="dot"></span>asleep</span><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"></path></svg>paused</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Slots count where the work comes from. Waiting for a slot runs oldest first; Run now beats the project limit once, never the box ceiling. Urgent reorders an inbox, never the slot queue.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Tabs: Now (live, Stop), Inbox (reorder, cancel, make urgent; each row names its project), Results, Notes (General plus one section per project; Northwind's page shows General and Northwind only), Setup.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Every pane ends in a summon box. <span class="mono">@design</span> does the same from Chat, the Capsule and the phone; the project comes from where you are.</span></div>
+      <div class="composer" style="margin-left: 32px;">
+        <div class="composer-in" style="color: var(--text); min-height: 36px; padding: 8px 12px 4px; font-size: 13px; line-height: 18px;">@des<span class="caret"></span></div>
+        <div class="li li-sel" style="border-top: 1px solid var(--rule); min-height: 36px; padding: 4px 12px;"><span class="av">d</span><span class="mono t13 grow">@design</span><span class="t12 t3">working · 3 queued</span></div>
+      </div>
+      <div class="anno-i"><span class="anno-n">6</span><span>The integrator comes with the first code teammate. It merges one branch at a time, runs the tests and fast-forwards main; it never forces, and you never approve a merge. A dirty checkout of main parks it ("Waiting for a clean main"). Pushing is off by default.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>One role per project: sharing design into Harlow site is refused in place, with the rename field ready.</span></div>
+      <div class="anno-i"><span class="anno-n">8</span><span>Smooth: Ask lands in the inbox at once through the outbox (Undo 4 s) and takes its real place when the box confirms. Run now, Cancel and inbox reorders are optimistic. Notes save in place ("Saved 14:02"), and the list paints from cache in under 1 s.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2656,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>
