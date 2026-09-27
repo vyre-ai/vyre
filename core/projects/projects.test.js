@@ -156,6 +156,24 @@ test("projects: picks are added once, removed only by hand, and folder membershi
   assert.ok(!w.P.threadsOf(w.P.resolve(p.slug)).some(x => x.id === ID.hub));
 });
 
+test("projects: watchers are added once, removed only by hand, and survive a rebuild of the cache", async t => {
+  const w = world(t);
+  const p = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site") });
+  w.events.length = 0;
+  assert.deepEqual(w.P.addWatchers(p.slug, ["alex", "alex"]).added, ["alex"]);
+  assert.deepEqual(w.P.addWatchers(p.slug, ["alex"]).added, []);
+  assert.deepEqual(w.P.addWatchers(p.slug, ["kit"]).watchers, ["alex", "kit"]);
+  assert.deepEqual(w.events.filter(e => e.type === "project.changed").map(e => e.fields), [["watchers"], ["watchers"]]);
+  // A rebuild of the cache keeps every watcher: the marker holds them.
+  w.db.exec("DELETE FROM projects_projects");
+  w.P.refresh({ walk: true });
+  assert.deepEqual(w.P.resolve(p.slug).watchers, ["alex", "kit"]);
+  const r = w.P.removeWatchers(p.slug, ["alex", "someone-not-watching"]);
+  assert.deepEqual(r.removed, ["alex"]);
+  assert.deepEqual(r.watchers, ["kit"]);
+  assert.deepEqual(w.P.removeWatchers(p.slug, ["nobody"]).removed, []);
+});
+
 test("projects: list carries each project's picked thread ids, subagents folded, counts unchanged", async t => {
   const w = world(t);
   const harlow = w.P.create({ name: "Harlow Legal", home: path.join(w.work, "harlow-site"), threads: [ID.intake, ID.hub, ID.agent] });

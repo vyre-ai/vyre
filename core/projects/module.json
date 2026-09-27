@@ -6,6 +6,7 @@
   "does": {
     "tools": [
       "projects.list", "projects.create", "projects.add-threads", "projects.remove-threads",
+      "projects.watchers.add", "projects.watchers.remove",
       "projects.catalog", "projects.of", "projects.threads", "projects.context", "projects.move"
     ]
   },

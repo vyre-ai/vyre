@@ -96,6 +96,18 @@ export default {
       input: { type: "object", required: ["project", "threads"], properties: { project: str, threads: strs } },
       run: async ({ project, threads }) => P.removeThreads(project, threads),
     });
+    ctx.tool("projects.watchers.add", {
+      description: "Add watchers to a project: names of people who should hear about its Needs (asks, drafts, merges) without running a session in it. Person-only.",
+      input: { type: "object", required: ["project", "watchers"], properties: { project: str, watchers: strs } },
+      callers: OWNER,
+      run: async ({ project, watchers }) => P.addWatchers(project, watchers),
+    });
+    ctx.tool("projects.watchers.remove", {
+      description: "Remove watchers from a project. Person-only.",
+      input: { type: "object", required: ["project", "watchers"], properties: { project: str, watchers: strs } },
+      callers: OWNER,
+      run: async ({ project, watchers }) => P.removeWatchers(project, watchers),
+    });
     ctx.tool("projects.catalog", {
       description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
       input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },

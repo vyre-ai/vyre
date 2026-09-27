@@ -64,6 +64,8 @@ export const HUMAN_ONLY = new Set([
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
   "agents.create", "agents.update", "agents.resume",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "projects.move",
+  // Who watches a project's Needs without running a session in it: the owner's own list to edit.
+  "projects.watchers.add", "projects.watchers.remove",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",
   // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a
