@@ -23,6 +23,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The person session is kept per path too. Over the relay the phone signs in with its paired
   device key (presence.person.start with a device proof, one biometric prompt, no browser); on the
   tailnet it keeps the PKCE sign-in. A relay-only phone now has a person session.
+- Vault and Devices in the app, reached from a Places sheet (the header avatar), per app-design's
+  "trusting a browser for the vault" board: an untrusted relay browser sees names only and a trust
+  card; Devices trusts or stops trusting a browser (relay.devices.trust, with presence), warns on
+  an unknown build and shows the 30-day expiry; trust changes land in place with no reload.
 
 #### One app: the relay path, pairing, the /app/ worker hooks; the box signs the Android APK
 

@@ -21,7 +21,8 @@ export type RowProps = {
   mono?: boolean;
   /** kind · agent · project */
   meta: string;
-  status: Status;
+  /** The mark on the avatar; none for a place's rows (a vault item has no status). */
+  status?: Status;
   /** A refusal: shown in the meta line's place, with the failed mark. */
   reason?: string | null;
   onPress?: () => void;
@@ -35,7 +36,7 @@ export type RowProps = {
  */
 export const Row = memo(function Row(p: RowProps) {
   const { color } = useTheme();
-  const status: Status = p.reason ? "failed" : p.status;
+  const status: Status | undefined = p.reason ? "failed" : p.status;
   return (
     <Pressable
       accessibilityRole="button"
@@ -47,9 +48,11 @@ export const Row = memo(function Row(p: RowProps) {
         <View style={[styles.avatar, { backgroundColor: color.hover }]}>
           <Text style={[styles.avatarText, { color: color.text2 }]}>{p.avatar.slice(0, 1).toLowerCase()}</Text>
         </View>
-        <View style={[styles.mark, { backgroundColor: color.bg }]}>
-          <StatusMark status={status} size={8} />
-        </View>
+        {status ? (
+          <View style={[styles.mark, { backgroundColor: color.bg }]}>
+            <StatusMark status={status} size={8} />
+          </View>
+        ) : null}
       </View>
       <View style={styles.col}>
         <View style={styles.line}>
