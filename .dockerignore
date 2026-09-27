@@ -12,6 +12,8 @@
 coverage
 test
 scripts
+# package.json's postinstall runs this one; npm ci fails without it.
+!scripts/postinstall.mjs
 # Design mockups and working notes: not read at runtime.
 docs/design/boards
 docs/work
