@@ -207,16 +207,23 @@ Filled in as each lands.
   check leaving vyred's socket blocking on a large answer), already fixed on `work/e2e-peerfix`
   and heading into rc.2. Not mine, no action needed.
 - tailnet is being revived (the lead, 29 Sep) to work on Tailscale install/onboarding
-  simplicity; it will contact me about steps 1-2 and `install-box.sh`. Waiting to hear from it
-  before changing those further, per the lead's "fewest steps from nothing to a server plus a
-  paired device" shared goal.
+  simplicity. Messaged it directly (not waiting) about steps 1-2 and `install-box.sh`; no reply
+  yet.
+- Landing page: the "Make it yours" section now tells the module story (Capsule/Glass/memory/
+  vault as pieces, `vyre module new`), on top of the earlier terminology pass.
+- Three more onboarding steps: `secrets` and `drive` stubbed ("Coming soon" cards); `computers`
+  ("Agent computers": Off/Browser only/Browser + desktops) fully built, server sizes as
+  placeholders pending glass-live's `docs/design/agent-browsers.md` and e2e's measurements.
+  `docs/design/onboarding-v2.md` now documents ten steps; the client `STEPS` array still has
+  nine (noted as unreconciled).
 
 ## Next
 
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
 - Start building the step-shell's new pieces (per-step celebration, the final summary) once more
   steps exist to celebrate; premature to scaffold against only 5 of 9 steps today.
-- Coordinate with tailnet once it reaches out about steps 1-2 and install-box.sh.
+- Coordinate with tailnet once it replies about steps 1-2 and install-box.sh.
+- Reconcile the client STEPS array's 9 entries against onboarding-v2.md's 10-step table.
 - Design step 7 (Vyre Drive) once federation's options and the user's choices come back.
 
 ## Needs from others
