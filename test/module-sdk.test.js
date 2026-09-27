@@ -43,7 +43,7 @@ const full = () => ({
     { key: "bakery.opens", group: "bakery", label: "Opening hour", type: "int", min: 0, max: 23, default: 7, levels: ["account", "project"], apply: "live" },
     { key: "bakery.fax", label: "Fax orders", type: "bool", levels: ["account"], apply: "live", security: "loosens", loosens: "outbound fax", confirm: { values: [true] }, store: { config: "bakery.fax" } },
     { key: "bakery.oven", label: "Oven", type: "string", levels: ["project"], apply: "session", confirm: true, store: { tool: { get: { tool: "bakery.orders", input: { project: "$project" }, read: "oven" }, set: { tool: "bakery.order", input: { oven: "$value" } } } } },
-    { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session" },
+    { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session", secret: false },
     { key: "bakery.look", label: "Look", type: "enum", levels: ["account", "device"], apply: "live", choices: { tool: "bakery.orders" }, check: { tool: "bakery.check" } },
   ],
   needs: { vault: ["bakery-api-key"], tools: ["planner.*", "memory.answer"], network: ["api.example.com", "*.example.org:8443"], slots: ["now"] },

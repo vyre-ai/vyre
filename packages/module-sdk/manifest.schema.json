@@ -179,6 +179,7 @@
         "levels": { "type": "array", "items": { "enum": ["account", "project", "device", "session"] }, "minItems": 1, "uniqueItems": true },
         "apply": { "enum": ["live", "session", "restart"] },
         "advanced": { "type": "boolean" },
+        "secret": { "type": "boolean", "description": "Only the person sees its value; everyone else gets it masked, and it never rides on an event." },
         "security": { "enum": ["loosens"], "description": "The setting can loosen what Vyre allows; the Deck marks it." },
         "loosens": { "type": "string", "description": "What it loosens, in a few words." },
         "confirm": {

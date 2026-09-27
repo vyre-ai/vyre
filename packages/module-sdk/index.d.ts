@@ -44,6 +44,8 @@ export interface SettingDef {
   /** live: at once; session: from the next session; restart: when vyred next starts. */
   apply: "live" | "session" | "restart";
   advanced?: boolean;
+  /** Only the person sees its value; everyone else gets it masked, and it never rides on an event. */
+  secret?: boolean;
   /** The setting can loosen what Vyre allows; the Deck marks it. */
   security?: "loosens";
   /** What it loosens, in a few words. */
