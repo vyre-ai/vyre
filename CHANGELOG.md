@@ -27,6 +27,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   "trusting a browser for the vault" board: an untrusted relay browser sees names only and a trust
   card; Devices trusts or stops trusting a browser (relay.devices.trust, with presence), warns on
   an unknown build and shows the 30-day expiry; trust changes land in place with no reload.
+- Android autofill: vault's local module (apps/app/modules/vault-android, from work/vault-next,
+  unchanged) is in the app, loaded only on Android; Settings, Autofill pairs it with the box's fill
+  listener and turns it on. Its 17 unit tests pass and the debug APK builds with it.
 
 #### One app: the relay path, pairing, the /app/ worker hooks; the box signs the Android APK
 

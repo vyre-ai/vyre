@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { boxName, signOut } from "../src/api/box";
 import { deviceName } from "../src/api/relay";
@@ -25,6 +25,12 @@ export default function Settings() {
           <Text style={[styles.title, { color: color.text }]}>Devices</Text>
           <Text style={[styles.detail, { color: color.label }]}>How each device reaches the box, and its trust</Text>
         </Pressable>
+        {Platform.OS === "android" ? (
+          <Pressable accessibilityRole="button" testID="settings-autofill" onPress={() => router.push("/settings/autofill")} style={[styles.row, { borderBottomColor: color.rule }]}>
+            <Text style={[styles.title, { color: color.text }]}>Autofill</Text>
+            <Text style={[styles.detail, { color: color.label }]}>Fill logins in apps and browsers from your vault</Text>
+          </Pressable>
+        ) : null}
         <View style={styles.pad}>
           <Button kind="ghost" label="Sign out of the box" onPress={() => void signOut()} />
         </View>
