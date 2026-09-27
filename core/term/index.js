@@ -1,5 +1,5 @@
 // @ts-check
-// term: a terminal in the browser (ADR 0024, contract 4) that survives like mosh (ADR 0029 R4).
+// term: a terminal in the browser (ADR 0024, contract 4) that survives like mosh (ADR 0029, R4).
 //
 // term.open starts the user's login shell in a folder the files guard allows, and hands back a
 // one-use ticket (30 s) for the WebSocket /v1/streams/term/pty, the same shape as Glass: the
@@ -7,35 +7,28 @@
 // socket, binary frames are what the terminal prints; the browser sends text frames
 // {"t":"in","d":"..."} (keys) and {"t":"size","cols":n,"rows":n}.
 //
-// Where the shell runs: under a holder (holder.js), a small node process of its own session that
-// owns the pty and a 1 MB ring of what it printed, and listens on a unix socket in <home>/run/term
-// (a private folder under /tmp when that path is too long for a socket). vyred talks to it over
-// that socket (ring.js has the wire). A vyred restart or crash leaves every holder running; the
-// next vyred finds them again from their sockets alone (each holder's INFO carries its folder,
-// screen, owner key and start time) and term.attach works as before.
+// Where the shell runs: under a dtach master (dtach.js) when dtach is on the PATH (the box), so it
+// outlives a vyred restart. The next vyred finds it again from <home>/run/term/terms.json (id,
+// folder, screen, owner key, byte count, master pid, socket) and term.attach works as before. With
+// no dtach (a Mac, CI) it is a plain pty (pty.js) that ends with vyred. term.open, term.attach and
+// term.list say which with `durable`.
 //
-// Offsets: the holder counts every byte the terminal prints. A client that wants offsets asks
-// with from=<offset> (on term.attach, or on the stream's URL; 0 for a new screen). It then gets,
-// as text frames:
+// Offsets: the box counts every byte the terminal prints (ring.js), and keeps the newest 1 MB,
+// trimmed only at line ends. A client that wants offsets asks for them with from=<offset> (on
+// term.attach, or on the stream's URL; 0 for a new terminal). It then gets, as text frames:
 //   {"t":"cut","from":<oldest held>,"asked":<its from>}  when bytes after its offset have left the
-//      ring; the replay that follows starts at the oldest byte held, at a line start
-//   {"t":"at","offset":<n>, ...}  the offset after the last byte sent on this socket: once when the
-//      replay is done (with cols, rows and owner, below), then at most once a second while output
-//      flows. A client adopts it.
-//   {"t":"size","cols":n,"rows":n,"owner":"you"|"other"|"none"}  the terminal's size changed hands
+//      ring; the replay that follows starts at the oldest byte held
+//   {"t":"at","offset":<n>}  the offset after the last byte sent: once after the replay, then at
+//      most once a second while output flows. It is the box's count; a client adopts it.
 // and binary frames carry exactly the bytes after its offset, then everything new. A client
 // without from= gets what it always got: the last 64 KB, binary frames only, no text frames.
+// Output while vyred is down (a restart) is lost; the count carries on from where vyred left it.
 //
-// Size: one screen owns the terminal's size, the socket that last sent one. Others watch at the
-// owner's size (the first "at" says so: owner "other") until they send a size of their own
-// ("Take size" in the Deck). When the owner's socket goes, the rest hear owner "none".
+// Keys typed while the client is disconnected are the client's to hold (up to 4 KB) and send as
+// {"t":"in"} after it reattaches; the box never queues input for a screen that is away.
 //
-// Keys typed while a client is disconnected are the client's to hold (up to 4 KB) and send after
-// it reattaches; nothing queues input for a screen that is away.
-//
-// A client going away never ends a terminal. With no socket open the holder keeps it for
-// term.keep_hours (12 h by default), then ends it. term.close ends it at once, and so does its
-// shell exiting. vyred stopping closes its sockets with 1012 "restarting" and leaves the holders.
+// A client going away never ends a terminal. With no socket open it is kept for term.keep_hours
+// (12 h by default), then ended. term.close ends it at once, and so does its shell exiting.
 //
 // Who may: only a person's surfaces (cli, local, deck, capsule; the owner's own Deck over the
 // tailnet counts as deck, a tailnet guest never does). No passkey: opening a terminal is the
@@ -48,8 +41,7 @@
 // other screen is not_found, so the owner's phone cannot pick up the shell open on their laptop.
 //
 // Nothing a terminal prints is written to the event log, vyred's log or the disk; term.opened and
-// term.closed carry the id, the folder and why, never content. The holder's socket carries it
-// and nothing else does.
+// term.closed carry the id, the folder and why, never content. terms.json holds no output.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -57,18 +49,18 @@ import os from "node:os";
 import path from "node:path";
 import { guard } from "../files/safety.js";
 import { acceptKey, encodeFrame, FrameParser } from "../computers/ws.js";
-import { size } from "./pty.js";
-import { spawnHolder, dial } from "./holder.js";
-import { T, frame, json } from "./ring.js";
+import { Pty, size } from "./pty.js";
+import { DtachPty, findDtach, isMaster, socketDir } from "./dtach.js";
+import { Ring } from "./ring.js";
 
 const str = { type: "string" };
 const int = { type: "integer" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** How long a terminal lost to a box update still answers terminal_closed, not not_found. */
+const GONE_MS = 24 * 60 * 60 * 1000;
 const SURFACE = /^(deck|phone|capsule|glass|cli):[A-Za-z0-9_-]{1,64}$/;
-const ID = /^t_[0-9a-f]{12}$/;
-/** A browser socket holding more than this unread makes the holder wait. */
-const SLOW = 256 * 1024;
+const HOUR = 3_600_000;
 
 /** An error with a code the registry passes through to the caller. */
 function fail(code, message) {
@@ -88,37 +80,17 @@ function reject(socket, status, reason) {
 const closeFrame = (code, why = "") => encodeFrame(Buffer.concat([Buffer.from([code >> 8, code & 0xff]), Buffer.from(why.slice(0, 100))]), 0x8);
 const textFrame = m => encodeFrame(Buffer.from(JSON.stringify(m)), 0x1);
 
-/** A non-negative integer offset, or null. */
+/** A byte offset a client sent, or null when it sent none (or nonsense). */
 const offsetOf = v => {
   if (v === undefined || v === null || v === "") return null;
   const n = Number(v);
-  return Number.isInteger(n) && n >= 0 ? n : null;
+  return Number.isSafeInteger(n) && n >= 0 ? n : null;
 };
 
 /**
- * Where holders put their sockets: <home>/run/term, or, when that is too long for a unix socket,
- * a folder under /tmp named by a hash of the home that only this user can open.
- * @param {string} root
- */
-export function socketDir(root) {
-  const near = path.join(root, "run", "term");
-  const far = path.join(os.tmpdir(), `vyre-term-${crypto.createHash("sha256").update(path.resolve(root)).digest("hex").slice(0, 16)}`);
-  const dir = Buffer.byteLength(path.join(near, "t_000000000000.sock")) <= 100 ? near : far;
-  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const st = fs.lstatSync(dir);
-  if (!st.isDirectory() || (typeof process.getuid === "function" && st.uid !== process.getuid())) throw new Error(`${dir} is not ours`);
-  fs.chmodSync(dir, 0o700);
-  return dir;
-}
-
-/**
- * One browser socket on a terminal, and its own attach connection to the holder.
- * @typedef {{ ws: import("node:net").Socket, h: import("node:net").Socket|null, aware: boolean, offset: number,
- *   replayEnd: number, announced: boolean, at: any, closed: boolean, bye: (code?: number, why?: string) => void }} Conn
- */
-/**
- * @typedef {{ id: string, cwd: string, surface: string, key: string, started: number, pid: number, sock: string,
- *   ctl: import("node:net").Socket|null, cols: number, rows: number, sockets: Set<Conn>, owner: Conn|null, ended: boolean }} Term
+ * @typedef {{ id: string, cwd: string, surface: string, key: string, pty: any, started: number, durable: boolean,
+ *   sock: string, sockets: Set<import("node:net").Socket>, aware: Set<import("node:net").Socket>, ring: Ring,
+ *   idle: any, at: any, left: number|null, ended: boolean }} Term
  */
 
 /** @type {{ start(ctx: any): Promise<any> }} */
@@ -128,17 +100,17 @@ export default {
     const max = Number(cfg.max ?? 8);
     const scrollback = Number(cfg.scrollback ?? 64 * 1024);
     const ringCap = Number(cfg.ring ?? 1024 * 1024);
-    const keepMs = Number(cfg.keepMs ?? cfg.endAfterMs ?? Number(cfg.keep_hours ?? 12) * 3600_000);
+    const keepMs = Math.max(0, Number(cfg.keep_hours ?? 12)) * HOUR;
     const ticketMs = Number(cfg.ticketMs ?? 30_000);
     const shell = cfg.shell ? String(cfg.shell) : undefined;
     const login = cfg.login !== false;
+    const dtach = findDtach();
 
     // The same roots and guard the files module builds, from the same config.
     const fcfg = (ctx.config && ctx.config.files) || {};
     const role = ctx.config && ctx.config.role === "box" ? "box" : "local";
     const roots = Array.isArray(fcfg.roots) && fcfg.roots.length ? fcfg.roots.map(String) : role === "box" ? ["/work"] : [os.homedir()];
     const g = guard({ roots, allowDot: Array.isArray(fcfg.allowDot) ? fcfg.allowDot : [], vyreHome: ctx.paths.root, vault: ctx.paths.vault });
-    const dir = socketDir(ctx.paths.root);
 
     /** @type {Map<string, Term>} */
     const terms = new Map();
@@ -148,6 +120,41 @@ export default {
 
     const emit = (type, payload) => { try { ctx.events.emit(type, payload); } catch {} };
     const now = () => Date.now();
+
+    // The table of durable terminals, so the next vyred can find them. It holds no output.
+    const runDir = path.join(ctx.paths.root, "run", "term");
+    const tableFile = path.join(runDir, "terms.json");
+    let saveTimer = null;
+    /**
+     * Terminals a previous vyred left whose shell is gone (the container was recreated by a deploy,
+     * or the machine restarted): kept a day so their screen hears why, not a bare not_found.
+     * @type {Map<string, { key: string, at: number }>}
+     */
+    const gone = new Map();
+    const save = () => {
+      if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
+      const rows = [...terms.values()].filter(t => t.durable && !t.ended).map(t => ({
+        id: t.id, cwd: t.cwd, surface: t.surface, key: t.key, offset: t.ring.end, started: t.started,
+        pid: t.pty.pid, sock: t.sock, left: t.sockets.size && !stopping ? null : t.left ?? now(), cols: t.pty.cols, rows: t.pty.rows,
+      }));
+      // A home that is gone stays gone: never make one back to write an empty table into.
+      if (!fs.existsSync(ctx.paths.root)) return;
+      // Nothing to hand over and no table yet: nothing to write.
+      if (!rows.length && !gone.size && !fs.existsSync(tableFile)) return;
+      try {
+        fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
+        const tmp = `${tableFile}.${process.pid}.tmp`;
+        const lost = [...gone.entries()].map(([id, g]) => ({ id, key: g.key, at: g.at }));
+        fs.writeFileSync(tmp, JSON.stringify({ terms: rows, gone: lost }), { mode: 0o600 });
+        fs.renameSync(tmp, tableFile);
+      } catch (e) { ctx.log(`term table: ${/** @type {Error} */ (e).message}`); }
+    };
+    /** The byte count moves with every output; write it down within 5 s, not on every chunk. */
+    const saveSoon = () => {
+      if (saveTimer) return;
+      saveTimer = setTimeout(save, 5000);
+      saveTimer.unref?.();
+    };
 
     const surfaceOf = input => {
       const s = String(input.surface || "");
@@ -165,101 +172,118 @@ export default {
       return { term: t.id, ticket, path: `/v1/streams/term/pty?ticket=${encodeURIComponent(ticket)}${q}` };
     };
 
-    const view = t => ({ term: t.id, cwd: t.cwd, surface: t.surface, started: t.started, cols: t.cols, rows: t.rows, attached: t.sockets.size, durable: true });
+    const view = t => ({ term: t.id, cwd: t.cwd, surface: t.surface, started: t.started, cols: t.pty.cols, rows: t.pty.rows,
+      attached: t.sockets.size, durable: t.durable, offset: t.ring.end });
 
-    /** The terminal has ended (its holder said so, or went away): tell its sockets and the log. */
-    const end = (t, reason) => {
+    /** End a terminal: its sockets get a close frame, its shell's session a hang-up then a kill. */
+    const end = async (t, reason) => {
       if (t.ended) return;
       t.ended = true;
+      if (t.idle) { clearTimeout(t.idle); t.idle = null; }
+      if (t.at) { clearTimeout(t.at); t.at = null; }
       terms.delete(t.id);
       for (const [k, v] of tickets) if (v.term === t.id) tickets.delete(k);
-      for (const c of t.sockets) c.bye(1000, reason);
-      t.sockets.clear(); t.owner = null;
-      try { t.ctl?.destroy(); } catch {}
-      t.ctl = null;
+      // A close frame with the reason, then the socket, once the frame is out (or 2 s, whichever first).
+      for (const s of t.sockets) {
+        try { s.end(closeFrame(1000, reason)); } catch {}
+        const kill = setTimeout(() => { try { s.destroy(); } catch {} }, 2000);
+        kill.unref?.();
+        s.once("close", () => clearTimeout(kill));
+      }
+      t.sockets.clear(); t.aware.clear();
+      t.ring.clear();
+      if (t.durable && !stopping) save();
       emit("term.closed", { term: t.id, reason });
+      await t.pty.close();
     };
 
-    /** vyred's control connection to a holder: it hears EXIT, and CLOSE goes out on it. @param {Term} t */
-    const watch = async t => {
-      const c = await dial(t.sock, { mode: "control" }, f => {
-        if (f.type === T.EXIT) end(t, String((json(f.body) || {}).reason || "exited"));
-      });
-      t.ctl = c;
-      c.on("error", () => {});
-      // The holder went without a word (killed): the terminal is gone all the same.
-      c.on("close", () => { if (!stopping && t.ctl === c) end(t, "exited"); });
+    /** No socket is open: end the terminal after `ms` unless one opens first. */
+    const idleSoon = (t, ms = keepMs) => {
+      if (t.idle) clearTimeout(t.idle);
+      t.idle = setTimeout(() => { t.idle = null; if (!t.sockets.size) end(t, "detached"); }, Math.max(0, Math.min(ms, 2 ** 31 - 1)));
+      t.idle.unref?.();
     };
 
-    /** The size and who owns it, as a Conn sees it. @param {Term} t @param {Conn} c */
-    const ownerFor = (t, c) => (t.owner === c ? "you" : t.owner ? "other" : "none");
-    const sendText = (c, m) => { if (c.aware && !c.closed) { try { c.ws.write(textFrame(m)); } catch {} } };
-    /** Everyone hears the size and who owns it now. @param {Term} t */
-    const sizeChanged = t => { for (const c of t.sockets) if (c.announced) sendText(c, { t: "size", cols: t.cols, rows: t.rows, owner: ownerFor(t, c) }); };
-
-    /** Tell an offset-aware socket where it is: at most once a second while output flows. @param {Conn} c */
-    const atSoon = c => {
-      if (c.at || !c.aware) return;
-      c.at = setTimeout(() => { c.at = null; sendText(c, { t: "at", offset: c.offset }); }, 1000);
-      c.at.unref?.();
+    /** Tell offset-aware clients where they are: at most once a second while output flows. */
+    const atSoon = t => {
+      if (t.at || !t.aware.size) return;
+      t.at = setTimeout(() => {
+        t.at = null;
+        const f = textFrame({ t: "at", offset: t.ring.end });
+        for (const s of t.aware) { try { s.write(f); } catch {} }
+      }, 1000);
+      t.at.unref?.();
     };
 
-    /** A holder that answers on sock, as a Term, or null. A socket nothing listens on is removed. */
-    const adopt = async sock => {
-      /** @type {any} */ let info;
-      /** @type {import("node:net").Socket|null} */ let probe = null;
-      try {
-        info = await new Promise(resolve => {
-          const timer = setTimeout(() => resolve(undefined), 2000);
-          dial(sock, { mode: "control" }, f => { if (f.type === T.INFO) { clearTimeout(timer); resolve(json(f.body)); } }, 2000)
-            .then(s => { probe = s; s.on("error", () => {}); s.write(frame(T.QUERY, "")); },
-              e => { clearTimeout(timer); resolve(e && (e.code === "ECONNREFUSED" || e.code === "ENOENT") ? null : undefined); });
-        });
-      } finally { try { /** @type {any} */ (probe)?.destroy(); } catch {} }
-      if (info === null) { try { fs.rmSync(sock, { force: true }); } catch {} return null; }
-      const m = info && info.meta;
-      if (!info || !ID.test(String(info.id)) || !m || typeof m.key !== "string" || typeof m.cwd !== "string") return null;
-      /** @type {Term} */
-      const t = { id: info.id, cwd: m.cwd, surface: String(m.surface || ""), key: m.key, started: Number(m.started) || now(), pid: Number(info.pid) || 0,
-        sock, ctl: null, cols: Number(info.cols) || 80, rows: Number(info.rows) || 24, sockets: new Set(), owner: null, ended: false };
-      try { await watch(t); } catch { return null; }
-      return t;
+    const output = (t, b) => {
+      t.ring.push(b);
+      if (t.durable) saveSoon();
+      if (!t.sockets.size) return;
+      const frame = encodeFrame(b);
+      let slow = false;
+      for (const s of t.sockets) { try { s.write(frame); if (s.writableLength > 256 * 1024) slow = true; } catch {} }
+      // A browser that cannot keep up (`yes` in a terminal) holds the shell back instead of vyred's memory.
+      if (slow) t.pty.pause();
+      atSoon(t);
     };
 
-    // Terminals a previous vyred started and left running: pick them up again.
-    for (const name of fs.readdirSync(dir)) {
-      if (!/^t_[0-9a-f]{12}\.sock$/.test(name)) continue;
-      const t = await adopt(path.join(dir, name)).catch(() => null);
-      if (t && !t.ended) terms.set(t.id, t);
+    /** @returns {Term} */
+    const blank = (id, cwd, surface, key, started, offset, durable, sock) => ({
+      id, cwd, surface, key, started, durable, sock, sockets: new Set(), aware: new Set(), ring: new Ring(ringCap, offset),
+      idle: null, at: null, left: now(), ended: false, pty: null,
+    });
+
+    // Pick up the durable terminals a previous vyred left running.
+    let table = [], lostBefore = [];
+    try { const f = JSON.parse(fs.readFileSync(tableFile, "utf8")); table = f.terms || []; lostBefore = f.gone || []; } catch {}
+    for (const g of Array.isArray(lostBefore) ? lostBefore : []) {
+      if (g && typeof g.id === "string" && typeof g.key === "string" && now() - Number(g.at) < GONE_MS) gone.set(g.id, { key: g.key, at: Number(g.at) });
     }
+    /** A shell the box lost while vyred was down: say so once, on the log every screen replays. */
+    const lost = row => {
+      gone.set(row.id, { key: String(row.key), at: now() });
+      emit("term.closed", { term: row.id, reason: "box updated" });
+    };
+    for (const row of Array.isArray(table) ? table : []) {
+      if (!row || typeof row.id !== "string" || typeof row.sock !== "string") continue;
+      if (!fs.existsSync(row.sock)) { lost(row); continue; }
+      if (!(await isMaster(Number(row.pid), row.sock))) { try { fs.unlinkSync(row.sock); } catch {} lost(row); continue; }
+      const t = blank(row.id, String(row.cwd), String(row.surface), String(row.key), Number(row.started) || now(), offsetOf(row.offset) ?? 0, true, row.sock);
+      t.left = Number(row.left) || now();
+      t.pty = new DtachPty({ sock: row.sock, cols: row.cols, rows: row.rows, adopt: { pid: Number(row.pid) }, onData: b => output(t, b), onExit: () => { end(t, "exited"); } });
+      terms.set(t.id, t);
+      idleSoon(t, t.left + keepMs - now());
+    }
+    await Promise.all([...terms.values()].map(t => t.pty.ready));
+    save();
 
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, callers: PEOPLE, ...extra });
 
-    tool("term.open", "Open a terminal: the user's login shell in a folder, on this machine. Returns a one-use ticket (30 s) for the stream at path. The terminal outlives a dropped connection and a vyred restart.",
+    tool("term.open", "Open a terminal: the user's login shell in a folder, on this machine. Returns a one-use ticket (30 s) for the stream at path, and whether the shell outlives a vyred restart (durable).",
       obj({ cwd: str, cols: int, rows: int, surface: str }, ["cwd", "surface"]), async (i, { caller, peer }) => {
         const surface = surfaceOf(i);
         const key = keyOf(caller, peer, surface);
-        let cwd;
-        try { cwd = g.resolveSafe(String(i.cwd)).real; }
+        let dir;
+        try { dir = g.resolveSafe(String(i.cwd)).real; }
         catch (e) { throw fail(/** @type {any} */ (e).code === "not_available" ? "not_available" : "bad_input", /** @type {Error} */ (e).message); }
-        if (!fs.statSync(cwd).isDirectory()) throw fail("bad_input", "cwd must be a folder");
+        if (!fs.statSync(dir).isDirectory()) throw fail("bad_input", "cwd must be a folder");
         if (terms.size >= max) throw fail("too_many", `${max} terminals are open; close one first`);
         if (stopping) throw fail("failed", "vyred is stopping");
         const { cols, rows } = size(i.cols, i.rows);
         const id = "t_" + crypto.randomBytes(6).toString("hex");
-        const sock = path.join(dir, `${id}.sock`);
-        const started = now();
-        let h;
-        try {
-          h = await spawnHolder({ id, cwd, cols, rows, shell, login, sock, ring: ringCap, keepMs, meta: { cwd, surface, key, started } });
-        } catch (e) { throw fail("failed", /** @type {Error} */ (e).message); }
-        /** @type {Term} */
-        const t = { id, cwd, surface, key, started, pid: h.pid, sock, ctl: null, cols, rows, sockets: new Set(), owner: null, ended: false };
-        try { await watch(t); }
-        catch (e) { try { process.kill(h.pid, "SIGTERM"); } catch {} throw fail("failed", /** @type {Error} */ (e).message); }
+        const durable = Boolean(dtach);
+        const sock = durable ? path.join(socketDir(ctx.paths.root), `${id}.sock`) : "";
+        const t = blank(id, dir, surface, key, now(), 0, durable, sock);
+        const hooks = { onData: b => output(t, b), onExit: () => { end(t, "exited"); } };
+        t.pty = durable
+          ? new DtachPty({ bin: dtach, sock, cwd: dir, cols, rows, shell, login, ...hooks })
+          : new Pty({ cwd: dir, cols, rows, shell, login, ...hooks });
         terms.set(id, t);
-        emit("term.opened", { term: id, cwd });
-        return { ...issue(t), cwd, cols, rows, durable: true, offset: 0 };
+        // Never attached: the ticket's life, then the usual keep.
+        idleSoon(t, keepMs + ticketMs);
+        if (durable) save();
+        emit("term.opened", { term: id, cwd: dir });
+        return { ...issue(t), cwd: dir, cols, rows, durable, offset: 0 };
       });
 
     tool("term.attach", "A fresh one-use ticket for a live terminal (after a reload, a dropped connection or a vyred restart), for the screen that opened it. With from, the stream replays exactly the bytes after that offset.",
@@ -267,24 +291,21 @@ export default {
         const surface = surfaceOf(i);
         const key = keyOf(caller, peer, surface);
         const t = terms.get(String(i.term));
+        const g = !t && gone.get(String(i.term));
+        if (g && g.key === key) throw fail("terminal_closed", "the box was updated and this terminal was closed; open a new one");
         if (!t || t.key !== key) throw fail("not_found", "no such terminal on this screen");
-        return { ...issue(t, offsetOf(i.from)), cwd: t.cwd, cols: t.cols, rows: t.rows, durable: true };
+        if (!t.sockets.size) idleSoon(t, keepMs + ticketMs);
+        return { ...issue(t, offsetOf(i.from)), cwd: t.cwd, cols: t.pty.cols, rows: t.pty.rows, durable: t.durable, offset: t.ring.end, oldest: t.ring.start };
       });
 
-    tool("term.list", "The live terminals: id, folder, the screen that opened it, when, size and open connections.",
+    tool("term.list", "The live terminals: id, folder, the screen that opened it, when, size, open connections, bytes printed and whether each outlives a vyred restart.",
       obj({}), async () => ({ terms: [...terms.values()].map(view) }));
 
     tool("term.close", "End a terminal and everything it started.",
       obj({ term: str }, ["term"]), async i => {
         const t = terms.get(String(i.term));
         if (!t) return { closed: false };
-        try { t.ctl?.write(frame(T.CLOSE, "")); } catch {}
-        // The holder answers with EXIT once the shell's session is gone; a holder that does not is ended by signal.
-        for (let n = 0; n < 60 && !t.ended; n++) await new Promise(r => setTimeout(r, 50));
-        if (!t.ended) {
-          try { if (t.pid) process.kill(t.pid, "SIGTERM"); } catch {}
-          end(t, "closed");
-        }
+        await end(t, "closed");
         return { closed: true };
       });
 
@@ -302,21 +323,27 @@ export default {
         if (upgrade !== "websocket" || !key) { reject(socket, 400, "Bad Request"); return; }
         socket.write(`HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${acceptKey(key)}\r\n\r\n`);
         socket.setNoDelay?.(true);
+        if (t.idle) { clearTimeout(t.idle); t.idle = null; }
+        t.sockets.add(socket);
+        t.left = null;
 
-        // The URL's from wins over the one given to term.attach.
+        // The replay. The URL's from wins over the one given to term.attach.
         const from = url.searchParams.has("from") ? offsetOf(url.searchParams.get("from")) : held ? held.from : null;
-        /** @type {Conn} */
-        const c = { ws: socket, h: null, aware: from !== null, offset: from ?? 0, replayEnd: 0, announced: false, at: null, closed: false, bye: () => {} };
-        t.sockets.add(c);
-        /** Keys and sizes that arrive before the holder connection is up. @type {Buffer[]} */
-        let early = [];
+        try {
+          if (from === null) {
+            if (t.ring.bytes) socket.write(encodeFrame(t.ring.tail(scrollback)));
+          } else {
+            t.aware.add(socket);
+            // A client ahead of the box (vyred restarted before it wrote its count down) has nothing to
+            // replay; the "at" below tells it the box's count.
+            if (from < t.ring.start) socket.write(textFrame({ t: "cut", from: t.ring.start, asked: from }));
+            const b = t.ring.since(Math.min(from, t.ring.end));
+            for (let i = 0; i < b.length; i += 64 * 1024) socket.write(encodeFrame(b.subarray(i, i + 64 * 1024)));
+            socket.write(textFrame({ t: "at", offset: t.ring.end }));
+          }
+        } catch {}
 
-        const announce = () => {
-          c.announced = true;
-          sendText(c, { t: "at", offset: c.offset, cols: t.cols, rows: t.rows, owner: ownerFor(t, c) });
-        };
-
-        let missed = 0;
+        let closed = false, missed = 0;
         const parser = new FrameParser();
         const pinger = setInterval(() => {
           if (missed >= 2) { done(); return; }
@@ -324,60 +351,26 @@ export default {
           try { socket.write(encodeFrame(Buffer.alloc(0), 0x9)); } catch { done(); }
         }, 30_000);
         pinger.unref();
-        /** This socket is done. With a code it hears a close frame first (the socket goes once it is out, or 2 s). */
-        const done = (code = 0, why = "") => {
-          if (c.closed) return;
-          c.closed = true;
+        const done = () => {
+          if (closed) return;
+          closed = true;
           clearInterval(pinger);
-          if (c.at) { clearTimeout(c.at); c.at = null; }
-          t.sockets.delete(c);
-          try { c.h?.destroy(); } catch {}
-          if (code) {
-            try { socket.end(closeFrame(code, why)); } catch {}
-            const kill = setTimeout(() => { try { socket.destroy(); } catch {} }, code === 1012 ? 500 : 2000);
-            kill.unref?.();
-            socket.once("close", () => clearTimeout(kill));
-          } else { try { socket.destroy(); } catch {} }
-          if (t.owner === c) { t.owner = null; if (!t.ended && !stopping) sizeChanged(t); }
-        };
-        c.bye = done;
-        const toHolder = b => { if (c.h) { try { c.h.write(b); } catch {} } else early.push(b); };
-
-        dial(t.sock, from === null ? { mode: "attach", from: null, tail: scrollback } : { mode: "attach", from }, f => {
-          if (c.closed) return;
-          if (f.type === T.OUT) {
-            c.offset += f.body.length;
-            try { socket.write(encodeFrame(f.body)); } catch {}
-            // A browser that cannot keep up (`yes` in a terminal) holds the holder back, and it the shell.
-            if (socket.writableLength > SLOW) c.h?.pause();
-            if (!c.announced) { if (c.offset >= c.replayEnd) announce(); }
-            else atSoon(c);
-          } else if (f.type === T.AT) {
-            const m = json(f.body) || {};
-            if (from !== null && m.cut) sendText(c, { t: "cut", from: m.from, asked: from });
-            c.offset = Number(m.from) || 0;
-            c.replayEnd = Number(m.end) || 0;
-            if (Number(m.cols) && Number(m.rows)) { t.cols = Number(m.cols); t.rows = Number(m.rows); }
-            if (c.offset >= c.replayEnd) announce();
-          } else if (f.type === T.EXIT) {
-            end(t, String((json(f.body) || {}).reason || "exited"));
+          t.sockets.delete(socket); t.aware.delete(socket);
+          try { socket.destroy(); } catch {}
+          if (!t.ended && !t.sockets.size) {
+            t.pty.resume();
+            t.left = now();
+            if (t.durable) save();
+            idleSoon(t);
           }
-        }).then(h => {
-          if (c.closed) { h.destroy(); return; }
-          c.h = h;
-          h.on("error", () => {});
-          h.on("close", () => { if (!t.ended && !stopping) done(1011, "lost"); });
-          for (const b of early) { try { h.write(b); } catch {} }
-          early = [];
-        }, () => done(1011, "lost"));
-
+        };
         const onData = chunk => {
-          if (c.closed) return;
+          if (closed) return;
           let frames;
           try { frames = parser.push(chunk); } catch { done(); return; }
           for (const f of frames) {
             if ("control" in f) {
-              if (f.control === "close") { done(1000); return; }
+              if (f.control === "close") { try { socket.write(closeFrame(1000)); } catch {} done(); return; }
               if (f.control === "ping") { try { socket.write(encodeFrame(f.payload, 0xa)); } catch {} }
               if (f.control === "pong") missed = 0;
               continue;
@@ -385,23 +378,16 @@ export default {
             if (f.opcode !== 1 || f.message.length > 256 * 1024) continue;
             let m;
             try { m = JSON.parse(f.message.toString("utf8")); } catch { continue; }
-            if (m && m.t === "in" && typeof m.d === "string") toHolder(frame(T.IN, m.d));
-            else if (m && m.t === "size") {
-              // The screen that sent a size owns it; everyone else watches at that size.
-              const s = size(m.cols, m.rows);
-              t.cols = s.cols; t.rows = s.rows;
-              t.owner = c;
-              toHolder(frame(T.SIZE, s));
-              sizeChanged(t);
-            }
+            if (m && m.t === "in" && typeof m.d === "string") t.pty.write(m.d);
+            else if (m && m.t === "size") t.pty.resize(m.cols, m.rows);
           }
         };
         socket.on("data", onData);
-        socket.on("drain", () => { if (socket.writableLength <= SLOW) c.h?.resume(); });
+        socket.on("drain", () => { if ([...t.sockets].every(s => s.writableLength <= 256 * 1024)) t.pty.resume(); });
         // vyred's server allows half-open sockets, so a browser that goes away may only send a FIN.
-        socket.on("end", () => done());
-        socket.on("close", () => done());
-        socket.on("error", () => done());
+        socket.on("end", done);
+        socket.on("close", done);
+        socket.on("error", done);
         if (head && head.length) onData(head);
       } catch (e) {
         ctx.log(`term stream: ${/** @type {Error} */ (e).message}`);
@@ -411,17 +397,22 @@ export default {
 
     return {
       terms,
-      dir,
-      durable: true,
-      /** vyred is stopping: its sockets hear 1012 "restarting" and the holders are left for the next vyred. */
+      durable: Boolean(dtach),
+      /** vyred is stopping: durable terminals are let go of for the next vyred, the rest end. */
       async stop() {
         stopping = true;
-        for (const t of terms.values()) {
-          for (const c of t.sockets) c.bye(1012, "restarting");
-          t.sockets.clear(); t.owner = null;
-          try { t.ctl?.destroy(); } catch {}
-          t.ctl = null;
-        }
+        const live = [...terms.values()];
+        for (const t of live) if (t.durable && t.sockets.size) t.left = now();
+        save();
+        await Promise.all(live.map(async t => {
+          if (!t.durable) return end(t, "stopped");
+          if (t.idle) { clearTimeout(t.idle); t.idle = null; }
+          if (t.at) { clearTimeout(t.at); t.at = null; }
+          for (const s of t.sockets) { try { s.end(closeFrame(1012, "restarting")); } catch {} setTimeout(() => { try { s.destroy(); } catch {} }, 500).unref?.(); }
+          t.sockets.clear(); t.aware.clear();
+          t.ended = true;
+          t.pty.detach();
+        }));
         terms.clear();
         tickets.clear();
       },

@@ -134,7 +134,7 @@
           <div style="display: flex;">
             <button class="tab" type="button" aria-current="true" style="color: #F1EEE6; background: #1E1C1A;"><span style="width: 7px; height: 7px; border-radius: 4px; background: #F1EEE6;"></span>juno<span style="color: #8C877D;">live</span></button>
             <button class="tab" type="button"><span style="width: 7px; height: 7px; border-radius: 4px; background: #8C877D;"></span>kit<span style="color: #8C877D;">working</span></button>
-            <button class="tab" type="button"><span style="width: 7px; height: 7px; border-radius: 4px; background: #FF7A59;"></span>pax<span style="color: #FF7A59;">needs you</span></button>
+            <button class="tab" type="button"><span style="width: 7px; height: 7px; border-radius: 4px; background: #B8A4FF;"></span>pax<span style="color: #B8A4FF;">needs you</span></button>
           </div>
           <div class="mono" style="display: flex; align-items: center; padding: 0 20px; font-size: 12px; line-height: 16px; color: #8C877D;">{{ host }}/glass/juno</div>
         </div>
@@ -241,7 +241,7 @@
         <div style="height: 28px; display: flex; align-items: center; gap: 16px; padding: 0 12px; background: #161513; border-bottom: 1px solid #2B2926; font-size: 12px; line-height: 16px; color: #B3AEA4;">
           <span style="color: #F1EEE6; font-weight: 600;">Calls</span><span>File</span><span>View</span><span>Window</span>
           <span style="flex-grow: 1;"></span>
-          <span style="display: flex; color: #F1EEE6;"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#FF7A59"/></svg></span>
+          <span style="display: flex; color: #F1EEE6;"><svg width="18" height="18" viewBox="0 0 18 18" fill="none" aria-hidden="true"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#B8A4FF"/></svg></span>
           <span class="mono" style="font-size: 11px;">Thu 14:40</span>
         </div>
         <div style="position: absolute; left: 16px; right: 16px; top: 44px; bottom: 16px; border-radius: 10px; border: 1px solid #2B2926; background: #161513; display: flex; flex-direction: column; overflow: hidden;">
@@ -298,7 +298,7 @@
           <sc-if value="{{ isHeld }}" hint-placeholder-val="{{ false }}">
             <div style="display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg>
               <span style="font-size: 15px; line-height: 20px; color: #F1EEE6; flex-grow: 1;">juno drafted a reply to Dana</span>
-              <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: rgba(255,122,89,0.12); color: #FF7A59; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #FF7A59;"></span>HELD FOR YOU</span>
+              <span class="mono" style="display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: rgba(184,164,255,0.12); color: #B8A4FF; font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em;"><span style="width: 6px; height: 6px; border-radius: 3px; background: #B8A4FF;"></span>HELD FOR YOU</span>
             </div>
             <div style="border-top: 1px solid #2B2926; padding: 12px 16px 14px 44px; display: flex; flex-direction: column; gap: 10px;">
               <div style="display: grid; grid-template-columns: 56px minmax(0, 1fr); row-gap: 4px; font-size: 12px; line-height: 16px;">
@@ -318,17 +318,17 @@
           <sc-if value="{{ isWaiting }}" hint-placeholder-val="{{ false }}">
             <div style="display: flex; align-items: center; gap: 12px; height: 52px; padding: 0 14px 0 16px;"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div style="flex-grow: 1; font-size: 16px; line-height: 22px; color: #8C877D;">Ask, or @agent</div><span class="kbd" style="color: #F1EEE6; border-color: #8C877D;">&#8593;</span></div>
             <div style="border-top: 1px solid #2B2926; padding: 12px 16px 4px 16px; display: flex; align-items: center; justify-content: space-between;">
-              <span class="lbl" style="color: #FF7A59;">Waiting on you &#183; 2</span>
+              <span class="lbl" style="color: #B8A4FF;">Waiting on you &#183; 2</span>
               <span style="font-size: 12px; color: #8C877D;">oldest first</span>
             </div>
             <div style="padding: 4px 6px 6px 6px; display: flex; flex-direction: column;">
               <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px;">
-                <span style="width: 8px; height: 8px; border-radius: 4px; background: #FF7A59; margin-top: 6px; flex-shrink: 0;"></span>
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #B8A4FF; margin-top: 6px; flex-shrink: 0;"></span>
                 <span style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">pax wants to email 14 clients the new intake form</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Harlow Legal &#183; held by rule: bulk email over 10</span></span>
                 <span class="mono" style="font-size: 11px; line-height: 20px; color: #B3AEA4; white-space: nowrap;">18 min</span>
               </div>
               <div style="display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px; background: rgba(198,243,107,0.12);">
-                <span style="width: 8px; height: 8px; border-radius: 4px; background: #FF7A59; margin-top: 6px; flex-shrink: 0;"></span>
+                <span style="width: 8px; height: 8px; border-radius: 4px; background: #B8A4FF; margin-top: 6px; flex-shrink: 0;"></span>
                 <span style="display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0;"><span style="font-size: 14px; line-height: 20px; color: #F1EEE6;">juno drafted a reply to Dana Reyes</span><span style="font-size: 12px; line-height: 16px; color: #8C877D;">Harlow Legal &#8250; Q3 report &#183; email to a client</span></span>
                 <span class="mono" style="font-size: 11px; line-height: 20px; color: #B3AEA4; white-space: nowrap;">6 min</span><span class="kbd" style="color: #F1EEE6;">⏎</span>
               </div>
@@ -396,12 +396,12 @@
         </div>
         <div style="display: grid; grid-template-columns: 200px 64px minmax(0, 1fr); align-items: start; padding: 8px 24px 16px 24px; border-bottom: 1px solid #2B2926;">
           <div></div>
-          <div style="color: #FF7A59;">09:32</div>
+          <div style="color: #B8A4FF;">09:32</div>
           <div style="display: flex; flex-direction: column; gap: 12px;">
-            <div style="display: flex; justify-content: space-between; gap: 16px;"><span><span style="color: #F1EEE6;">Bash</span>  <span style="color: #F1EEE6;">rm -rf exports/2025</span></span><span style="color: #FF7A59;">held &#183; not run</span></div>
-            <div style="padding: 16px 18px; border-radius: 6px; background: rgba(255,122,89,0.12); display: flex; align-items: center; justify-content: space-between; gap: 24px;">
+            <div style="display: flex; justify-content: space-between; gap: 16px;"><span><span style="color: #F1EEE6;">Bash</span>  <span style="color: #F1EEE6;">rm -rf exports/2025</span></span><span style="color: #B8A4FF;">held &#183; not run</span></div>
+            <div style="padding: 16px 18px; border-radius: 6px; background: rgba(184,164,255,0.12); display: flex; align-items: center; justify-content: space-between; gap: 24px;">
               <div style="display: flex; flex-direction: column; gap: 6px;">
-                <div class="lbl" style="color: #FF7A59;">Needs you</div>
+                <div class="lbl" style="color: #B8A4FF;">Needs you</div>
                 <div style="font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; font-size: 17px; line-height: 24px; color: #F1EEE6;">This deletes 214 files. I stopped before running it.</div>
                 <div style="font-size: 12px; line-height: 16px; color: #B3AEA4;">rule  ask before deleting anything under exports/</div>
               </div>
@@ -437,7 +437,7 @@
           <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
             <div class="mono" style="padding: 10px 12px; border: 1px solid #3A3733; border-radius: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 18px; color: #F1EEE6;">juno<span style="font-size: 11px; line-height: 14px; color: #8C877D;">live</span></div>
             <div class="mono" style="padding: 10px 12px; border: 1px solid #3A3733; border-radius: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 18px; color: #F1EEE6;">kit<span style="font-size: 11px; line-height: 14px; color: #8C877D;">working</span></div>
-            <div class="mono" style="padding: 10px 12px; border: 1px solid #3A3733; border-radius: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 18px; color: #F1EEE6;">pax<span style="font-size: 11px; line-height: 14px; color: #FF7A59;">needs you</span></div>
+            <div class="mono" style="padding: 10px 12px; border: 1px solid #3A3733; border-radius: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 13px; line-height: 18px; color: #F1EEE6;">pax<span style="font-size: 11px; line-height: 14px; color: #B8A4FF;">needs you</span></div>
           </div>
           <div style="font-size: 13px; line-height: 18px; color: #B3AEA4;">Each agent has its own desktop, Chrome and terminal. Memory and the Harness run here too.</div>
         </div>

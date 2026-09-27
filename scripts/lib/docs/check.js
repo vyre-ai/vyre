@@ -38,7 +38,7 @@ export const REPO = path.resolve(HERE, "../../..");
 
 export const AUDIENCES = ["users", "builders", "operators", "agents"];
 export const STATUSES = ["stable", "draft", "planned"];
-export const OWNERS = ["tailnet", "capsule-pro", "capsule-sight", "connectors", "mobile", "polish-cli", "polish-surfaces", "e2e", "integrator", "docs", "planner", "cc-plugin", "glass-live", "pwa"];
+export const OWNERS = ["tailnet", "capsule-pro", "capsule-sight", "connectors", "mobile", "polish-cli", "polish-surfaces", "e2e", "integrator", "docs", "planner", "cc-plugin", "glass-live", "pwa", "resilience"];
 const REQUIRED = ["title", "summary", "audience", "owner", "status"];
 const KEYS = [...REQUIRED, "generated"];
 const SITE_HOSTS = ["docs.vyre.run"];

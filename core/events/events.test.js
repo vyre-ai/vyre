@@ -56,3 +56,19 @@ test("events: prune deletes only the matching rows", t => {
   assert.throws(() => ev.prune({ type: "thread.text", before: fin, has: "a'); DROP TABLE events; --" }), /not a payload key/);
   assert.throws(() => ev.prune({ type: "thread.text" }), /event id/);
 });
+
+test("events: ids never go back, even after the newest rows are pruned (ADR 0029, R1)", t => {
+  const ev = fresh(t);
+  ev.emit("x", "thread.text", { delta: "a" });
+  const b = ev.emit("x", "thread.text", { delta: "b" });
+  ev.prune({ type: "thread.text", before: b.id });
+  assert.equal(ev.latestId(), b.id, "the cursor a surface holds must still be the newest");
+  assert.ok(ev.emit("x", "thread.text", {}).id > b.id);
+});
+
+test("events: a cursor past the newest id is not resumable, and says where to follow from", t => {
+  const ev = fresh(t);
+  const e = ev.emit("x", "thing.happened", {});
+  assert.deepEqual(ev.resumable(e.id), { ok: true });
+  assert.deepEqual(ev.resumable(e.id + 10), { ok: false, from: e.id });
+});
