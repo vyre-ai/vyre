@@ -122,6 +122,15 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
+## Doing (28 Sep, import, later)
+- Built: import.scan (caps, exclusions before listing, credential folders never walked,
+  claude_keeps_days), import.plan (pace estimates), import.status, import.progress,
+  memory.graph-grew (counts), synced root read per device, sync.revoked forgets everything derived
+  incl. fixes (9be6e31a). memory.ask screen input (bb455992), trust world with a trap screen 1.0.
+- Waiting: federation's sync.send and the server-side switch record (then import.start/stop/cancel);
+  capsule-pro on the screen shape; app-design's 5-stage boards; e2e's code review of import.
+- Agreed: launch owns the onboarding step shell and wires the three screens to the tools above.
+
 ## Doing (28 Sep, import)
 - 0.1.1 flagship, led here: discover, import and build the graph in onboarding. Design:
   docs/design/import.md; ADR 0008 amendment item 5a (one-time import). Next: build import.scan /
