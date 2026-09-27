@@ -129,6 +129,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - federation 9338a6a5 (supersedes aa9cb40c; e2e signed off: fail-closed ask checks, persisted nonces, files.deliver opt-in).
 - windows 63156fe9 (Tier A+B, ADR 0037, test-windows job non-blocking), AFTER e2e reads the win32
   role-default change in core/config; windows will ping.
+- docs 40dcb26d (supersedes 53bbc146): ADR 0038 terminology, glossary, docs-check terminology rule
+  (hard-fails docs-owned pages only).
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
