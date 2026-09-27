@@ -19,9 +19,13 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing
-- f9389d56 harness landed with first numbers (native-bar.md Results). Waiting on: chat (which of the
-  5 fixes they take), resilience (reconnect), sessions (names, rewind, settings.resolve), app-design
-  (Settings frame), harness subagent a52324e (budget 1 via Event Timing).
+- 42dcb98c modular settings (manifests declare, kernel checks, confirm/proof, preview, backup).
+  70023ba2 Settings rows per design A with confirm and proof. 390ff807 Paseo mapping.
+- Waiting: harness agent a52324e (budget 1 via Event Timing, uncommitted native-bar edits in the
+  tree: commit them when it reports); chat's model/commands/rewind sha, then my composer items
+  (grow without layout, drafts, image drop, @ scoped to cwd, hide absent chips); Chrome slot for a
+  real-browser Settings check and a native-bar re-run (chat's scroll fix, work/pwa reconnect).
+- e2e reviews the CALL_AS change before batch 4.
 
 ## Known follow-ups
 - Screenshots of Settings in one world (needs a Chrome run on testbox).

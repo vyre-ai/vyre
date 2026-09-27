@@ -14,6 +14,11 @@ config-file-only. Every row here gets a control in the app (Settings) and a CLI 
 Status on 2026-09-27: main c8fb9aae, plus work/sessions (9eb5d18b and its uncommitted step 6) and the
 ADR 0031 design on work/teammates. "UI" and "CLI" say what exists today.
 
+Update (42dcb98c): each module now declares its settings in its own module.json ("settings"), with
+keys named after the module (sessions.mode, push.watch, vault.lock_idle). core/config/settings.js
+checks declarations and stores; core/settings serves only running modules' keys. The tables below
+are the inventory the declarations came from.
+
 ## Levels and precedence
 
 Five levels, highest wins:
