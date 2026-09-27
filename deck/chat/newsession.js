@@ -16,6 +16,9 @@ import { icon } from "../js/icons.js";
 import { threadHref } from "./lib/routes.js";
 import { readNames, labelFor } from "./lib/names.js";
 
+/** What the sheet says when threads.start answers "busy", with Try again next to it. */
+export const BUSY_NOTE = "All sessions are busy; one will free up shortly.";
+
 /** The last segment of a path, for a short label. @param {string} p */
 export const baseName = p => String(p).replace(/\/+$/, "").split("/").pop() || p;
 
@@ -145,7 +148,8 @@ export function mountNewSession(container, opts) {
         choice(noFolder, null, w.kind === "none", () => { state.where = { kind: "none" }; }, off)),
       !state.loaded ? h("div", { class: "empty" }, "Reading projects and folders...") : null);
 
-    put(note, state.error || "");
+    put(note, state.error || "", state.error === BUSY_NOTE
+      ? [" ", h("button", { class: "btn btn-ghost btn-sm ns-retry", type: "button", disabled: state.starting, onclick: () => start() }, "Try again")] : null);
     note.hidden = !state.error;
     startBtn.disabled = state.starting;
     put(startBtn, state.starting ? "Starting..." : state.agent ? `Ask ${state.agent}` : "Start session");
@@ -159,6 +163,8 @@ export function mountNewSession(container, opts) {
     const r = await attempt(c.tool, c.input);
     if (!alive) return;
     state.starting = false;
+    // Every session slot in use (threads.start code "busy"): not a failure, so say when to try again.
+    if (r.error && r.error.code === "busy") { state.error = BUSY_NOTE; draw(); return; }
     if (r.error) { state.error = `Could not start: ${r.error.message || r.error.code}`; draw(); return; }
     if (r.data && r.data.ok === false) { state.error = r.data.note || "The agent did not take the message."; draw(); return; }
     const href = openHref(r.data, state.where.kind === "project" && !state.agent ? state.where.slug : null);

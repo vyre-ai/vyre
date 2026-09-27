@@ -102,6 +102,13 @@ export function duration(ms) {
   return `${m} min ${String(s).padStart(2, "0")} s`;
 }
 
+/** A clock counting up: "0:42", "12:05". */
+export function elapsed(ms) {
+  if (ms == null || !isFinite(ms) || ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
 /** "910", "3.2k", "1.4M". */
 export function tokens(n) {
   if (n == null || !isFinite(n)) return "";
@@ -167,9 +174,10 @@ export function toolTitle(tool, input) {
   }
 }
 
-/** A tool block's state word: running (no output yet, not done), failed, or done. */
+/** A tool block's state word: running (no output yet, not done), failed, canceled (the turn was stopped), or done. */
 export function toolState(b) {
   if (b.error) return "failed";
+  if (b.canceled) return "canceled";
   if (b.output == null && !b.done_ts && !b.done) return "running";
   return "done";
 }

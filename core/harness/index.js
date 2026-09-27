@@ -135,6 +135,19 @@ export default {
       },
     });
 
+    const SUBAGENT = /^(Agent|Task)$/;
+    /** Take a subagent slot for a session's Agent call: null when it may run, else why not. */
+    const subagentSlot = async (session, cwd, key) => {
+      const t = await ask("threads.get", { thread: session, limit: 1 });
+      if (t && t.thread && t.thread.driver === "sdk" && ["starting", "working", "waiting", "idle"].includes(t.thread.status)) return null;   // held in-process
+      const of = cwd ? await ask("projects.of", { cwd }) : null;
+      const r = await ask("sessions.slots", { action: "take", kind: "subagent", project: (of && of.slug) || "_none", owner: `session:${session}`, key: String(key || Date.now()), wait: false });
+      if (!r || !r.queued) return null;
+      return `Too many subagents are running right now (Vyre's limit for this project or this machine); this one is number ${r.position} in line. Do the work in this session, or try the subagent again in a little while.`;
+    };
+    const releaseSlots = (session, key = null) => ask("sessions.slots",
+      key ? { action: "release", owner: `session:${session}`, key: String(key) } : { action: "release-owner", owner: `session:${session}`, kind: "subagent" }).catch(() => null);
+
     ctx.tool("harness.rules", {
       description: "PreToolUse: the security floor's verdict on a tool call, then the lessons'. null means no opinion; Claude Code's own permissions decide.",
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" }, prompt_id: { type: "string" }, agent: { type: "string" }, tool_use_id: { type: "string" },
@@ -156,6 +169,13 @@ export default {
             ...(plugin_root ? { plugin_root } : {}) });
           if (l && l.decision) verdict = { decision: l.decision, reason: l.reason, lesson: l.lesson };
         }
+        // A subagent in a session the Agent SDK does not drive (a terminal, or the CLI runner) takes a
+        // subagent slot here (ADR 0030 section 12). No waiting in a hook: when the project or the
+        // box is full it is refused at once, with its place in line.
+        if (!verdict.decision && SUBAGENT.test(String(tool_name)) && session) {
+          const held = await subagentSlot(session, cwd, tool_use_id);
+          if (held) verdict = { decision: "deny", reason: held };
+        }
         if (verdict.decision) ctx.events.emit("tool.held", { session: session || null, tool: tool_name, decision: verdict.decision, rule: verdict.rule ?? null, lesson: verdict.lesson ?? null });
         return verdict;
       },
@@ -167,6 +187,7 @@ export default {
       input: { type: "object", required: ["tool_name"], properties: { tool_name: { type: "string" }, tool_input: { type: "object" }, cwd: { type: "string" }, session: { type: "string" },
         tool_use_id: { type: "string" }, ok: { type: "boolean" }, error_head: { type: "string" }, interrupted: { type: "boolean" } } },
       run: async ({ tool_name, tool_input, cwd, session, tool_use_id, ok = true, error_head, interrupted }) => {
+        if (SUBAGENT.test(String(tool_name)) && session && tool_use_id) await releaseSlots(session, tool_use_id);
         const key = WRITERS[/** @type {keyof typeof WRITERS} */ (tool_name)];
         const raw = key && tool_input ? tool_input[key] : null;
         const file = raw && typeof raw === "string" ? path.resolve(cwd || os.homedir(), raw.startsWith("~/") ? path.join(os.homedir(), raw.slice(2)) : raw) : null;
@@ -198,6 +219,7 @@ export default {
       input: { type: "object", properties: { session: { type: "string" }, prompt_id: { type: "string" }, cwd: { type: "string" }, agent: { type: "string" }, text: { type: "string" }, stop_hook_active: { type: "boolean" },
         headless: { type: "boolean" } } },
       run: async ({ session, ...turn }, { caller } = {}) => {
+        if (session) await releaseSlots(session);                       // a turn's end gives its subagent slots back
         const agent = agentOf(turn.agent, caller);
         const check = session ? await ask("learn.check", { stage: "stop", session, ...turn, ...(agent ? { agent } : {}) }) : null;
         if (check && check.decision === "block") return { decision: "block", reason: String(check.reason) };
