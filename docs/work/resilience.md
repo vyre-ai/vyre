@@ -89,10 +89,12 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   work/sessions: the union is right. Build the box image once in CI (ENTRYPOINT tini, CMD loop.sh).
 - chat: show `term.closed` reason `box updated` / `terminal_closed` as "The box was updated and
   this terminal was closed. Open a new one." (one line, with a reopen button in the same folder).
-- sessions (ADR 0030): threads.send passes `keyUuid(caller, meta.idempotencyKey)` as the SDK
-  message uuid and refuses a uuid it already queued or handed over; the driver's close on vyred
-  stop uses reason `restart` (the Switchboard's stopAll does it today); threads.answer and
-  gate.approve/reject return the earlier outcome on a repeat.
+- sessions (ADR 0030): DONE in work/sessions d12171cc (batch 3a): recover() emits
+  thread.stopped reason "restart"; stopAll's "restart" survives close(); a repeated
+  threads.answer returns {answered:true, already:true}. NEXT (after 3a): threads.send uses
+  keyUuid(caller, meta.idempotencyKey) as the SDK message uuid and refuses a uuid already in
+  threads_inbox or handed over. Then add a chaos test: a send retried across a vyred restart
+  is one turn.
 - pwa + mobile: adopt core/resilience/web.js in the Deck and the Expo web target: outbox for
   sends, answers, approvals, notes, todos; cursor persisted; open from snapshot cache; one quiet
   Reconnecting pill after the first failed retry; never remount or drop drafts on reconnect.
