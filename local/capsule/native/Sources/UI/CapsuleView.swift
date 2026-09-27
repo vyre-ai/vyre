@@ -146,7 +146,7 @@ struct CapsuleView: View {
             // Before the answer is in, what memory said is the answer so far; once it is in, the
             // answer already uses it, so it folds into one line under the answer.
             if let m = model.askedMemory, model.replyText.isEmpty { MemoryLine(memory: m, expanded: $model.memoryExpanded, inset: false) }
-            if let q = model.reply?.queued {
+            if let q = model.reply?.queued, !q.withdrawn {
                 Label(q.delivered ? "Handed over to \(q.name). Its answer comes when this turn ends." : "Queued for \(q.name): it gets this when its current turn ends.",
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
@@ -162,7 +162,7 @@ struct CapsuleView: View {
             if let m = model.askedMemory, !model.replyText.isEmpty, !m.sources.isEmpty {
                 MemorySources(memory: m, expanded: $model.memoryExpanded)
             }
-            if let r = model.reply, r.finished, let e = r.error {
+            if let r = model.reply, r.finished, let e = r.error, r.queued?.withdrawn != true {
                 Label(e == "stopped" ? "Stopped." : "Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone)
             }
             // Rule 3: a notice is status, one faint line, never part of the answer.
@@ -178,6 +178,7 @@ struct CapsuleView: View {
         if model.pending { return "starting" }
         guard let r = model.reply else { return "" }
         if let q = r.queued, !q.delivered, !r.finished { return "queued" }
+        if r.queued?.withdrawn == true { return "taken back" }
         if !r.finished { return model.replyText.isEmpty ? "thinking" : "answering" }
         var parts = [r.ok == false ? "stopped" : "done"]
         if let m = r.model { parts.insert(m, at: 0) }

@@ -69,9 +69,11 @@ lines each in capsule-pro's `Host/CapsuleModel.swift`, `Host/App.swift`, `Host/P
 - A pop-over row for "Waiting on you · N" in capsule-pro's MenuBarPopover (theirs to place).
 - Reports of watched threads on the empty Capsule (Electron listed up to 4); today they are a
   notification or a line.
-- threads.unqueue and streaming a queued session's reply (from capsule-now).
+- Streaming a queued session's reply (from capsule-now). threads.unqueue on Esc is done.
 
 ## Changed contracts
+- The native Capsule calls threads.unqueue on Esc for a queued reply (capsule-now rule 8), with
+  `queued_id` from threads.send (switchboard on work/capsule-now 8c888cb).
 - The native Capsule now calls capsule.report on hotkey state change (once at startup, then only
   on a change; caller capsule). `vyre doctor` reads it as before.
 - Theme.attention (#B8A4FF) is the "needs you" colour in the native Capsule; the Electron Capsule
@@ -85,6 +87,8 @@ lines each in capsule-pro's `Host/CapsuleModel.swift`, `Host/App.swift`, `Host/P
   149); it is theirs to change to the violet attention token.
 
 ## Tests
+- 2026-09-27 through the build lock: "capsule model" 6 (the new Esc test among them), "agent" 26,
+  "sight" 11, "state" 19, "snapshot" 3, "hotkey report" 5, "icon" 3: all passed.
 - Local, through the build lock: `<team-dir>/buildlock.sh capsule-now local/capsule/native/build.sh test "hotkey report"`,
   then the built binary with the filters "hotkey report" 5, "agent small" 2, "agent desk" 4,
   "snapshot" 3: all passed.

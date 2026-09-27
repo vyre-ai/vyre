@@ -88,6 +88,47 @@ let capsuleModelSuite = Suite("capsule model") { t in
         t.eq(r, ["juno", "s1", "rebuild the bakery menu", "juno is busy in your terminal. I'll hand it your message when this turn ends.", "delivered"])
     }
 
+    t.test("Esc on words still queued takes them back; once handed over it only stops following") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("projects.list") { _ in ["projects": [Any]()] }
+        v.tool("projects.catalog") { _ in ["sessions": [Any]()] }
+        v.tool("threads.list") { _ in [["id": "s1", "name": "juno", "cwd": "/home/alex/Work/northwind"]] }
+        v.tool("threads.send") { _ in ["sent": false, "queued": true, "queued_id": 7, "thread": "s1", "name": "juno",
+                                       "note": "juno is busy in your terminal. I'll hand it your message when this turn ends."] }
+        v.tool("threads.unqueue") { _ in ["unqueued": [7]] }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
+            _ = await until { !m.catalog.threads.isEmpty }
+            await MainActor.run { m.text = "@ju" }
+            await MainActor.run { m.run() }
+            _ = await until { m.target != nil }
+            await MainActor.run { m.text = "never mind" }
+            await MainActor.run { m.run() }
+            _ = await until { m.reply?.queued != nil }
+            await MainActor.run { m.stopReply() }
+            _ = await until { m.reply?.queued?.withdrawn == true }
+            let taken = await MainActor.run { [m.line ?? "", m.reply?.finished == true ? "finished" : "open"] }
+            let asked = v.callsOf("threads.unqueue").first
+            // Again, handed over before Esc: only stop following, no unqueue and no threads.stop.
+            await MainActor.run { m.text = "@ju" }
+            await MainActor.run { m.run() }
+            _ = await until { m.target != nil }
+            await MainActor.run { m.text = "which branch" }
+            await MainActor.run { m.run() }
+            _ = await until { m.reply?.queued != nil && m.reply?.finished == false }
+            _ = await until { m.vyred.follower.isStreaming }
+            _ = v.emit("thread.sent", thread: "s1", ["text": "which branch", "queued": 8, "via": "stop"])
+            _ = await until { m.reply?.queued?.delivered == true }
+            await MainActor.run { m.stopReply() }
+            let after = await MainActor.run { m.line ?? "" }
+            await MainActor.run { m.didHide() }
+            return taken + [VJ.s(asked?["thread"]), "\((asked?["queued"] as? NSNumber)?.intValue ?? -1)", after,
+                            "\(v.callsOf("threads.unqueue").count)", "\(v.callsOf("threads.stop").count)"]
+        }
+        t.eq(r, ["Taken back. juno never got it.", "finished", "s1", "7",
+                 "Stopped following. juno already has your message; its reply lands in its thread.", "1", "0"])
+    }
+
     t.test("@ with spaces finds a live terminal session by its name, memory stays quiet, and Enter queues to it") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         let now = Date().timeIntervalSince1970 * 1000

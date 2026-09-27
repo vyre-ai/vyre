@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Esc takes back a queued message in the native Capsule
+
+- Esc on a reply queued for a terminal-busy session calls `threads.unqueue` with the send's
+  `queued_id` ("Taken back. <name> never got it."); handed over, Esc only stops following and
+  never calls threads.stop; a hand-over racing the key says "Too late" once (capsule-now rule 8).
+  `local/capsule/native/Sources/Host/CapsuleModel.swift` `stopReply`, `takeBack`;
+  `Vyred/State.swift` QueuedSend `id`, `withdrawn`; `UI/CapsuleView.swift`. Test in
+  Tests/CapsuleModelTests.swift.
+
 #### No orange in the Capsule
 
 - Beacon orange is gone from both Capsules. Things that need you (the held glyph in results, Kit's

@@ -517,7 +517,11 @@ public struct QueuedSend: Sendable, Equatable {
     public var name: String
     public var note: String?
     public var delivered = false
-    public init(name: String, note: String? = nil) { self.name = name; self.note = note }
+    /// Its id in the queue (threads.send's queued_id), for Esc to take it back (threads.unqueue).
+    public var id: Int?
+    /// Taken back before it was handed over.
+    public var withdrawn = false
+    public init(name: String, note: String? = nil, id: Int? = nil) { self.name = name; self.note = note; self.id = id }
 }
 
 public enum DmRole: String, Sendable, Equatable { case user, agent }
