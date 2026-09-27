@@ -73,7 +73,9 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
   Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
-0. PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
+0. (e2e c8e00e7 has the contract; relay.device.presence added in this commit for the native path.
+   Web: e2e sends a sha for presence.enroll kind webpasskey; then relay admit() calls it.)
+   PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
    (a) at web pairing, the loader makes a passkey with rpId app.vyre.run and sends it in the
    hello; admit() passes it to presence for enrollment bound to the device id; (b) the loader
    and the native app call presence.person.start over the channel and keep the returned token,
