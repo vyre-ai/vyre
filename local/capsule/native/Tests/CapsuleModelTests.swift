@@ -117,7 +117,7 @@ let capsuleModelSuite = Suite("capsule model") { t in
             await MainActor.run { m.run() }
             _ = await until { m.reply?.queued != nil && m.reply?.finished == false }
             _ = await until { m.vyred.follower.isStreaming }
-            _ = v.emit("thread.sent", thread: "s1", ["text": "which branch", "queued": 8, "via": "stop"])
+            _ = v.emit("thread.sent", thread: "s1", ["text": "which branch", "queued": 7, "via": "stop"])
             _ = await until { m.reply?.queued?.delivered == true }
             await MainActor.run { m.stopReply() }
             let after = await MainActor.run { m.line ?? "" }
