@@ -94,7 +94,8 @@ Perf:
   (23d25ac): test/cc-plugin (the real planner through the copied plugin's MCP server: remind in
   2 hours, todo, list, agenda, a no-time reminder refused), core/about, test/harness,
   core/planner/planner, core/memory/personal/answer: 46/46. Again at e1bd6cb (main 964af29) with
-  memory-iq 9cec54f: 48/48. The integrator's failing trial was ddf4653, before the rewrite. This branch alone (stand-in): 15/15.
+  memory-iq 9cec54f: 48/48. With planner ee8c92e (bare times, the agent rule, bare "mcp" is the
+  user's session): 50/50. The integrator's failing trial was ddf4653, before the rewrite. This branch alone (stand-in): 15/15.
 - SessionStart hook with about.md, vyred down, 30 runs on the Mac (load 2.6): 43 ms median, 47 ms
   p95 net of the timer (bare node 21 ms). Imports are about 13 ms, 10 of them core/daemon/client.js.
 
@@ -115,13 +116,11 @@ Perf:
 - memory-iq (shapes confirmed; memory.profile and memory.remember on 892b339): their gate refuses a
   bare "mcp" caller, which is the user's own Claude Code session. Told them; they will add it.
   Then add a combined test through the plugin for memory_answer and memory_remember.
-- planner: asked whether `at: "6pm"` alone and "6pm call ..." should parse (the lead thinks yes).
-  /vyre remind does not depend on it.
 - planner (settled 28 Sep): shapes adopted as merged; no {day, days} sugar needed. Told them a bare
   "mcp" caller is the user's own session (no label, may edit what it added); mcp:agent:<name> is
   an agent. Delivery of a due reminder: push + Capsule + Deck, not a Claude session. The agent
-  rule (free adds, silent ~200/hour cap, label only when not the user's or their assistant's) is
-  theirs to enforce; not yet in their code.
+  rule is in ee8c92e: anyone adds anything with no prompt; bare "mcp" has source "mcp" and no label;
+  `at` takes words ("6pm", "in 20 minutes"); agenda todos include overdue ones.
 - docs: parked text in work/docs docs/work/pending-cc-plugin.md, applied after c4a30dd/2d9a274 merge. Its
   "agents: 20 an hour, only a person edits" line is superseded: agents add freely (silent ~200/hour cap),
   labelled only when not the user's own assistant or session. Told docs.
