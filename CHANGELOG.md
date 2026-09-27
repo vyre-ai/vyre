@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### box/vyre: a checkout build's update downloads nothing
+
+- A box that builds from a checkout the person keeps (VYRE_SOURCE is not /srv/vyre/src) is
+  updated with git: `vyre update` rebuilds from it and restarts, as before phase 2, and fetches no
+  release, checksum or box file (core/names/system.test.js).
+
 #### Settings never read the person's ~/.claude from a temp home
 
 - core/settings: Claude Code's account settings file comes from claudeHome(root), so a temp, dev
