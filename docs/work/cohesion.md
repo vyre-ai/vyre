@@ -63,6 +63,8 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 - vault: allow module:suggest (or per surface) on vault.connections.list; a connection event family.
 - DECIDED (lead): connectors owns core/mail; the argument is `account` = the vault connection id.
 
+- lead: route event renames (platform recorded as PLANNED in core/event-catalog): glass + harness file.* -> files.*, computers computer.* -> computers.*, projects projects.moved -> project.moved. Aliases go live one release after each rename.
+
 ## Changed contracts
 - New tools: sight.targets/now/watch/steps, context.report/now, suggest.query/offer/picked,
   waiting.list/count. New events: sight.stepped, context.changed, waiting.changed.
