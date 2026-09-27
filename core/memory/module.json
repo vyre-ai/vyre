@@ -4,7 +4,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["memory.graph", "memory.facts", "memory.relevant", "memory.why", "memory.pin", "memory.mute", "memory.teach", "memory.curate", "memory.stats",
-    "memory.correct", "memory.corrections", "memory.uncorrect", "memory.merge", "memory.split", "memory.me", "memory.answer", "memory.profile", "memory.remember", "memory.read", "memory.context", "memory.retrieve", "memory.ask", "memory.suggest", "memory.today", "memory.device"] },
+    "memory.correct", "memory.corrections", "memory.uncorrect", "memory.merge", "memory.split", "memory.me", "memory.answer", "memory.profile", "memory.remember", "memory.read", "memory.context", "memory.retrieve", "memory.ask", "memory.suggest", "memory.today", "memory.device", "memory.contradictions", "memory.settle"] },
   "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered", "memory.profile-changed", "memory.thinking", "memory.answered", "memory.fixed", "memory.suggested", "memory.updated", "memory.forgot", "memory.graph-grew"] },
   "shows": { "deck": ["panel:memory"], "capsule": ["answer:memory.relevant"], "cli": ["memory", "why"] },
   "needs": {},
