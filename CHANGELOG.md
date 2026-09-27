@@ -24,9 +24,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### CI: the one Expo app
 
 - .github/workflows/app.yml for apps/app (its own lockfile): typecheck and tests on every push;
-  the web export with its gzipped JS size in the run summary; an Android debug APK and a release
-  APK signed with prebuild's throwaway debug key; the iOS simulator build only when dispatched
-  with `ios: true`. No EAS, no Expo account. Skips until apps/app/package.json exists.
+  the web export with its gzipped JS size in the run summary; an Android debug APK and an
+  UNSIGNED release APK, vyre-<version>-<sha7>.apk, with android.json (version, versionCode, sha,
+  sha256, size, minSdk, built, file) read from the APK itself, for the box to sign with the
+  owner's key; the NDK 27.1 and CMake 3.22 that modules/vyre-signer fetches are cached. The iOS
+  simulator build only when dispatched with `ios: true`. No EAS, no Expo account. Skips until
+  apps/app/package.json exists; also runs on core/resilience changes (the app imports it).
 
 #### CI: ready for the Agent SDK
 

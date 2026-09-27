@@ -1,8 +1,8 @@
 # The one Expo app (ADR 0027), apps/app, with its own package.json and lockfile outside the root;
 # it imports core/resilience (Metro watchFolders), so jobs check out the whole repo
 # (the box's npm ci never pulls Expo). Tests and typecheck on every push; the web export with its
-# gzipped size; an Android debug APK and a release APK (minify and Hermes exercised, signed with
-# the throwaway debug key prebuild generates on the runner, never the real release key). iOS is
+# gzipped size; an Android debug APK and an UNSIGNED release APK (minify and Hermes exercised)
+# named vyre-<version>-<sha7>.apk with android.json beside it; the box signs it with the owner's key. iOS is
 # the fallback only: run by hand with the ios input, simulator build, no signing. Plain prebuild
 # plus gradle/xcodebuild: no EAS, no Expo account. Skips (on a cheap runner) while
 # apps/app/package.json is absent.
@@ -15,6 +15,149 @@ on:
   workflow_dispatch:
     inputs:
       ios:
+        description: "Also build the iOS simulator app (the fallback)"
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: app-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  VYRE_NO_DIALOGS: "1"
+  EXPO_NO_TELEMETRY: "1"
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: apps
+      - id: check
+        run: |
+          if [ -f apps/app/package.json ]; then echo present=true >> "$GITHUB_OUTPUT"; else echo "apps/app/package.json is absent: skipping"; echo present=false >> "$GITHUB_OUTPUT"; fi
+
+  test:
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+
+  web:
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npx expo export -p web --output-dir dist
+      - name: Bundle size (gzipped JS, the ADR expects about 3 MB)
+        run: |
+          total=0
+          for f in $(find dist -name '*.js'); do total=$((total + $(gzip -9c "$f" | wc -c))); done
+          echo "web JS gzipped: $((total / 1024)) KiB" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "web dist on disk: $(du -sh dist | cut -f1)" | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-web-${{ github.sha }}
+          path: apps/app/dist
+          retention-days: 14
+
+  android:
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: apps/app/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      # modules/vyre-signer builds native code: the NDK and CMake gradle fetches are cached.
+      - run: echo "SDK=$ANDROID_HOME" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.SDK }}/ndk/27.1.12297006
+            ${{ env.SDK }}/cmake/3.22.1
+          key: android-ndk-27.1.12297006-cmake-3.22.1
+      - run: npm ci --no-audit --no-fund
+      - run: npx expo prebuild -p android --no-install --clean
+      # The release APK ships UNSIGNED: the box re-signs it with the owner's key from the vault,
+      # so updates install over each other. prebuild points release at the debug keystore; drop
+      # that one line so gradle leaves the release unsigned.
+      - name: Release build unsigned
+        run: |
+          node -e '
+            const fs = require("fs"), f = "android/app/build.gradle"; let s = fs.readFileSync(f, "utf8");
+            const bt = s.indexOf("buildTypes"), rel = s.indexOf("release {", bt), line = "signingConfig signingConfigs.debug";
+            const at = s.indexOf(line, rel);
+            if (bt < 0 || rel < 0 || at < 0) { console.error("no release signingConfig to drop in " + f); process.exit(1); }
+            fs.writeFileSync(f, s.slice(0, at) + "// unsigned: the box signs it" + s.slice(at + line.length));'
+      - run: ./gradlew --no-daemon assembleDebug assembleRelease
+        working-directory: apps/app/android
+      - name: Name the release and write android.json
+        run: |
+          out=android/app/build/outputs/apk
+          unsigned=$(ls $out/release/*-unsigned.apk | head -1)
+          test -f "$unsigned" || { echo "no unsigned release APK"; ls -R $out; exit 1; }
+          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/*/aapt2 | sort -V | tail -1)
+          badging=$("$aapt2" dump badging "$unsigned")
+          version=$(echo "$badging" | sed -n "s/.*versionName='\([^']*\)'.*/\1/p" | head -1)
+          code=$(echo "$badging" | sed -n "s/.*versionCode='\([^']*\)'.*/\1/p" | head -1)
+          minsdk=$(echo "$badging" | sed -n "s/^sdkVersion:'\([^']*\)'.*/\1/p" | head -1)
+          sha7=$(echo "$GITHUB_SHA" | cut -c1-7)
+          mkdir -p dist-android
+          name="vyre-$version-$sha7.apk"
+          cp "$unsigned" "dist-android/$name"
+          cp $out/debug/*.apk dist-android/
+          sum=$(sha256sum "dist-android/$name" | cut -d' ' -f1)
+          size=$(stat -c %s "dist-android/$name")
+          node -e 'const [v,c,sha,sum,size,min,file]=process.argv.slice(1); console.log(JSON.stringify({ version: v, versionCode: Number(c), sha, sha256: sum, size: Number(size), minSdk: Number(min), built: new Date().toISOString(), file }, null, 2))' \
+            "$version" "$code" "$GITHUB_SHA" "$sum" "$size" "$minsdk" "$name" > dist-android/android.json
+          cat dist-android/android.json
+          ls -l dist-android | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-android-${{ github.sha }}
+          path: apps/app/dist-android/
+          retention-days: 14
+
+  ios:
         description: "Also build the iOS simulator app (the fallback)"
         type: boolean
         default: false
