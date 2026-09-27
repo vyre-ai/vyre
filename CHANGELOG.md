@@ -18,6 +18,66 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - capsule-mac.yml also triggers on scripts/capsule-native-check.mjs and core/cli/commands/capsule*,
   which it runs; a change there alone used to need a manual dispatch.
 
+#### Apps: WhatsApp through its own window (ADR 0022, slice 4)
+
+- "whatsapp juno: running late" and the Capsule's @WhatsApp send through WhatsApp for Mac with
+  Vyre's hands (local/hands-mac), after the person's proof (apps.send, or their presence
+  session). WhatsApp is never raised and no key is pressed: the search field is set, the one chat
+  named exactly that is pressed, the open chat is checked by its name, the message field is set
+  (so a line break never sends early), and Send is pressed through hands.commit.
+- Two chats that could be it, or only near misses, are a question; a chat that opens as someone
+  else, or a field that will not take the words, stops before Send and clears the field. The open
+  chat is checked again before the words go in and right before Send, so a chat the person opens
+  in between never gets them. After
+  Send there is no retry: a send not seen to go says "check WhatsApp".
+- Names and roles are lists with config apps.whatsapp overrides, for the first real-Mac check.
+  apps.targets lists the chats on screen; a name off screen still goes to the search. "Which app?"
+  offers an app driven through its window only when it is installed, and one row per app.
+
+#### Gate: settle a send whose answer was lost; the hub says whether a call may have reached the server
+
+- `gate.settle {id, outcome: "sent", evidence}` marks an approved item whose send failed as sent,
+  once, with what the app showed (a Slack message's ts), and emits `gate.settled`. Only for an
+  item that was approved and failed, and only by a person or the module whose sender holds it.
+- An MCP hub error carries `detail.reached`: "no" when the request never reached the server or it
+  refused, "maybe" when it dropped mid-call. A failed gate.approve says `reached` too, so a
+  surface looks in the app only when the send may have gone out.
+
+#### Apps: Slack replies in threads, and a Slack send is never posted twice (ADR 0022, ADR 0029)
+
+- Slack `reply {to, thread, text}` answers in a thread (the server's reply tool, or its post tool
+  with `thread_ts`), held at the Gate like a send. `recent {to, thread?}` lists a channel's
+  messages or a thread's replies with their ts, newest first, to pick a thread from.
+- The same words to the same place already waiting at the Gate are that item again (`again:
+  true`), so a retried apps.act, from an outbox or after a lost answer, never holds a second post.
+- A Slack server that does not answer is code `unreachable` (an outbox retries it), never "no
+  channel called #general".
+- An approval whose answer was lost when the server dropped mid-send may have posted. `sent {to,
+  text, thread?, since}` reads Slack for those words since the item was held. The Capsule asks it
+  when gate.approve comes back failed, and before approving an item whose earlier approval failed
+  (`tried`): "It went out" when it did, otherwise the message waits at the Gate and Enter tries it
+  again. The Capsule no longer reads a failed approval as sent.
+
+#### Apps: Slack messages through the MCP hub, held at the Gate (ADR 0022, slice 3)
+
+- "slack #general: the ovens are in", "tell juno on slack ..." and the Capsule's @Slack now send
+  through the Slack MCP server the person added to Vyre's hub (local/apps/adapters/slack.js). No
+  Slack token lives in the apps module.
+- A Slack send is `gated`: apps.route marks it `gated: true`, apps.act runs it and returns
+  `{ held: {id, message}, preview }`, and nothing reaches Slack until the person approves the item
+  with gate.approve (their proof); the hub then releases exactly those arguments, once.
+  apps.send refuses a gated action with code `gated`.
+- The server is config apps.slack.server, or the only one whose tools look like Slack's; two
+  are a question for settings. Argument keys come from the post tool's own schema, so the
+  official server (slack_post_message) and others (conversations_add_message) both work.
+- Refused before anything is sent: a post tool the hub would run unapproved, a channel or person
+  Slack does not have, and an answer that comes back without `held`.
+- The Gate's presence line for an MCP call held by the hub now shows its words (the post's text
+  or payload in `arguments`), where it showed a blank, and the hub reads `conversation_id` as
+  where a call goes, so the line names the channel and an edited destination is honoured.
+- apps.targets for Slack lists live channels (#name) and real people (no bots, no deactivated
+  accounts). "Which app?" offers Slack as an app Vyre sends through only when a Slack server is
+  in the hub.
 #### The answer eval runs without the Electron Capsule
 #### Onboarding: the first steps load the theme and fonts
 

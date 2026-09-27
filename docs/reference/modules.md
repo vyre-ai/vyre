@@ -24,7 +24,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 25 | 17 | cli, deck |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
-| [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
+| [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
 | [`hands`](#hands) | `local/hands-mac` | `local` | 5 | 3 | none |
@@ -77,7 +77,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 
 ## apps
 
-Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders and the weather. Actions that send as the person go through apps.send, with a proof per call.
+Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders, the weather, Slack and WhatsApp. Actions that send as the person go through apps.send, with a proof per call (WhatsApp, through the hands), or are held at the Gate for the person to approve (Slack).
 
 - Folder: `local/apps`, version 0.1.0
 - Runs on: `local`
@@ -133,8 +133,8 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/gate`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [9](tools.md#gate), 2 of them only for other modules
-- Emits: [5 events](events.md#gate)
+- Tools: [10](tools.md#gate), 2 of them only for other modules
+- Emits: [6 events](events.md#gate)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-sender`
 - Teaches memory: `draft.edited`

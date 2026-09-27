@@ -83,3 +83,10 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/cli/commands/connect
 - `core/harness/rules.js` rule 1 and `gate.route` step aside for `GATED`, an explicit list of Vyre
   module tools that hold at the Gate themselves: today only `google_mail_send` (under
   `mcp__vyre__` and `mcp__plugin_vyre_vyre__`).
+
+## Changed by capsule-apps (2026-09-27, the lead asked)
+- Hub errors from a tool call carry `detail.reached`: "no" before the request is handed to the
+  client or after the server's own refusal (NOT_REACHED: rpc, spawn_failed, unauthorized,
+  session_expired), else "maybe" (exited or closed mid-call, timeout, network). The registry passes
+  detail through; the Gate returns it on a failed approval. Tested in core/mcp/hub.test.js.
+- TO_KEYS gains conversation_id (557421d).
