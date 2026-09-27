@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The box lists the Macs' open asks
+
+- `threads.asks` on a box, for the person, merges each paired Mac's open asks (a new link read,
+  `threads.asks` in ALLOW), labelled `source` and `machine`, oldest first; `machines: "local"`
+  keeps the box's own. Each Mac row's `presence.required` is the box's rule (a gated ask needs a
+  fresh proof), and listing teaches the box which asks are gated. A surface that reconnects has
+  one list to reconcile from. Agents, MCP and modules get the box's own list.
+
 #### The person answers a Mac session's ask from the box (ADR 0021 v2, ADR 0030 step 7)
 
 - core/link: the box signs the person's answer to a paired Mac's ask with its own Ed25519 key

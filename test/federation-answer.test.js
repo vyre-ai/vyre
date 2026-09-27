@@ -81,7 +81,9 @@ test("federation answer: a Mac's ask reaches the box labelled with the Mac, and 
 
   const { thread, raised, ask } = await macAsk(w);
   assert.deepEqual([raised.payload.source, raised.payload.machine, raised.payload.node, raised.payload.tool, raised.project], ["mac", "alex-mac", "nMAC", "Bash", null]);
-  assert.equal((await w.boxCall("threads.asks", {}, "deck")).data.length, 0, "the box keeps no ask of the Mac's");
+  // The box keeps no ask of the Mac's, but lists the Mac's open ones for the person (a reconnect).
+  const listed = (await w.boxCall("threads.asks", {}, "deck")).data;
+  assert.deepEqual(listed.map(a => [a.id, a.source, a.machine, a.presence.required]), [[ask, "mac", "alex-mac", false]]);
 
   const r = await w.boxCall("threads.answer", { ask, decision: "allow" }, "deck");
   assert.ok(!r.error, JSON.stringify(r.error));
@@ -196,4 +198,30 @@ test("federation answer: an ask that approves a floor tool needs a fresh proof o
   assert.ok(!ok.error, JSON.stringify(ok.error));
   assert.deepEqual([ok.data.answered, ok.data.machine], [true, "alex-mac"]);
   assert.equal(w.linked.at(-1).by.presence, "passkey");
+});
+
+test("federation answer: threads.asks on the box lists the Macs' open asks for the person only, gated ones asking a fresh proof", async t => {
+  const w = await world(t);
+  const plain = await macAsk(w, "ls");
+  const gated = await macAsk(w, "", "use mcp__vyre__vault_reveal");
+  const rows = (await w.boxCall("threads.asks", {}, "deck")).data;
+  assert.deepEqual(rows.map(a => [a.id, a.source, a.machine, a.presence.required]),
+    [[plain.ask, "mac", "alex-mac", false], [gated.ask, "mac", "alex-mac", true]], "oldest first, labelled");
+  assert.ok(rows.every(a => !("request_id" in a)));
+  // kind filters on the Mac too, and machines: "local" is the box's own list only.
+  assert.equal((await w.boxCall("threads.asks", { kind: "question" }, "deck")).data.length, 0);
+  assert.equal((await w.boxCall("threads.asks", { machines: "local" }, "deck")).data.length, 0);
+  // An agent, MCP or a module (without machines: "all") gets the box's own list, and no Mac is asked.
+  const before = w.ran.filter(r => r.tool === "threads.asks").length;
+  for (const caller of ["mcp", "module:test"]) {
+    const r = await w.boxCall("threads.asks", {}, caller);
+    assert.ok(r.error || r.data.length === 0, caller);
+  }
+  assert.equal(w.ran.filter(r => r.tool === "threads.asks").length, before, "the Mac was never asked");
+  // Listing taught the box which asks are gated: the listed gated ask needs a proof, the plain one none.
+  const def = w.box.registry.tools.get("threads.answer");
+  assert.equal(Presence.prototype.required.call({}, "threads.answer", def, { ask: gated.ask, decision: "allow" }), true);
+  assert.equal(Presence.prototype.required.call({}, "threads.answer", def, { ask: plain.ask, decision: "allow" }), false);
+  const ok = await w.boxCall("threads.answer", { ask: plain.ask, decision: "deny", machine: "alex-mac" }, "deck");
+  assert.ok(!ok.error, JSON.stringify(ok.error));
 });

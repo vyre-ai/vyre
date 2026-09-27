@@ -429,3 +429,10 @@ loose ends (below); next is rich Mac transcripts (chat's ask), then Taildrive on
 - The Mac answers one question at a time, so a busy Mac delays the next read up to the link's 5 s
   timeout; the Deck should show the box's rows first if it ever waits on that.
 
+
+## threads.asks merges the Macs' open asks (27 Sep 2026, sessions' decision)
+
+threads.asks on a box, for the person, merges each Mac's open asks (ALLOW read), labelled
+source/machine, oldest first, with the box's gated rule in presence.required; listing records
+each ask's gated flag for threads.answer's presence rule. Test box: 117 of 117 (federation
+answer, reads, send, core/link, switchboard, hygiene, docs-build, docs-index).
