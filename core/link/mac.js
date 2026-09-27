@@ -24,7 +24,8 @@ import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js"
 import { createHealth, unknown } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, FOLLOWED } from "./allow.js";
-import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
+import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
+import * as enclave from "./se/index.js";
 import { signed } from "../presence/person.js";
 
 /** The callers that are the person on this Mac: its terminal, the Capsule, its own screens. */
@@ -61,6 +62,10 @@ export function macSide(ctx, seam = {}) {
   const connect = (address, pin) => connector({ address, verify, pinned: () => pin, insecure: Boolean(seam.insecure), ...(seam.ttl !== undefined ? { ttl: seam.ttl } : {}) });
   let conn = saved ? connect(saved.box.address, saved.box.stableId) : null;
   const health = seam.health || createHealth();
+  /** The Secure Enclave (se/): a test passes a software stand-in, which asks nobody. */
+  const se = seam.secureEnclave || enclave;
+  /** Only on a Mac, or with a stand-in: elsewhere there is no enclave to ask. */
+  const hasEnclave = () => Boolean(seam.secureEnclave) || process.platform === "darwin";
 
   // A temp home (a dev world, a demo, a stress run) never looks for or pairs with a real box: one
   // found the user's live box and sent it a pairing request. Test seams, a fake tailscale
@@ -137,15 +142,24 @@ export function macSide(ctx, seam = {}) {
     // socket has already traced. A module or a model never carries it. A human-only tool also
     // needs a proof the box can check, which this Mac cannot give: those are the Deck's.
     let extra = {};
-    if (HUMAN_ONLY.has(String(tool))) {
-      return { error: { code: "person_session_required", message: `${tool} needs your passkey on the box: do it in the Deck or on the phone` } };
-    }
-    if (PERSON_ONLY.has(String(tool))) {
+    const human = HUMAN_ONLY.has(String(tool));
+    if (human || PERSON_ONLY.has(String(tool))) {
       const person = saved.person;
       if (!person || !PEOPLE.has(kindOf(caller))) {
         return { error: { code: "person_session_required", message: `${tool} is the person's own action on the box: sign this Mac in first (vyre link signin), or do it in the Deck, the Capsule or the phone` } };
       }
       extra = personHeaders(person, "/v1/tools/" + encodeURIComponent(tool), input);
+      // A human-only tool also needs a proof the box can check: this Mac's Secure Enclave key,
+      // enrolled on the box at sign-in, signs this exact call after Touch ID (ADR 0032 part 2c).
+      if (human) {
+        if (!person.human || !person.human.key) return { error: { code: "presence_required", message: `${tool} needs your passkey on the box, or sign this Mac in again (vyre link signin) to use Touch ID here` } };
+        const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
+        const msg = Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`);
+        let sig;
+        try { sig = await se.sign(person.human.handle, msg, `Vyre: ${tool} on your box`); }
+        catch (e) { return { error: { code: /** @type {any} */ (e).code || "presence_required", message: /** @type {Error} */ (e).message } }; }
+        extra["x-vyre-presence"] = `device key=${person.human.key} ts=${ts} nonce=${nonce} sig=${sig}`;
+      }
     }
     if (!state.reachable && Date.now() < state.nextTry) return { error: { code: "box_unreachable", message: state.error || "the box is not reachable" } };
     return boxCall(tool, input, conn, { headers: extra });
@@ -397,10 +411,15 @@ export function macSide(ctx, seam = {}) {
         const page = (status, text) => { res.writeHead(status, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }); res.end(text); };
         if (req.method !== "GET" || u.pathname !== `/cb/${nonce}` || !u.searchParams.get("code")) return page(404, "Not found");
         const pub = publicKey.export({ format: "jwk" });
-        const r = await conn.json("POST", "/v1/person/token", { code: u.searchParams.get("code"), verifier, key: pub }).catch(e => ({ body: { error: { message: e.message } } }));
+        // A Secure Enclave key rides the sign-in, so this Mac can prove human-only calls too.
+        let sek = null;
+        if (hasEnclave()) { try { sek = await se.create(); } catch { sek = null; } }
+        const human = sek ? crypto.createPublicKey({ key: Buffer.from(sek.spki, "base64url"), format: "der", type: "spki" }).export({ format: "jwk" }) : undefined;
+        const r = await conn.json("POST", "/v1/person/token", { code: u.searchParams.get("code"), verifier, key: pub, ...(human ? { human } : {}) }).catch(e => ({ body: { error: { message: e.message } } }));
         const data = r.body && r.body.data;
         if (!data || !data.token) return page(403, `Signing in did not work: ${(r.body && r.body.error && r.body.error.message) || "the box refused"}`);
-        save({ ...saved, person: { token: data.token, id: data.id, key: privateKey.export({ format: "jwk" }), expires: data.expires } });
+        const enrolled = sek && data.human && data.human.key ? { handle: sek.handle, key: String(data.human.key) } : null;
+        save({ ...saved, person: { token: data.token, id: data.id, key: privateKey.export({ format: "jwk" }), expires: data.expires, ...(enrolled ? { human: enrolled } : {}) } });
         ctx.events.emit("link.signed-in", { box, expires: data.expires });
         // Closed once the page is sent: close() also drops idle connections, and would cut this one.
         res.on("close", stop);
@@ -441,7 +460,7 @@ export function macSide(ctx, seam = {}) {
       box: saved ? { address: saved.box.address, name: saved.box.name || null, node: saved.box.node || null, stableId: saved.box.stableId || null } : null,
       reachable: state.reachable, lastSeen: state.lastSeen, serving, following: follows.size,
       pending: pairing ? { id: pairing.id, code: pairing.code, expires: pairing.expires } : null,
-      signedIn: saved && saved.person && saved.person.expires > Date.now() ? { expires: saved.person.expires } : null,
+      signedIn: saved && saved.person && saved.person.expires > Date.now() ? { expires: saved.person.expires, touchId: Boolean(saved.person.human) } : null,
       ...(state.error ? { error: state.error } : {}),
     }),
   });

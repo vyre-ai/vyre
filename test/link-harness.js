@@ -82,7 +82,7 @@ export function tailnet(box, net, port = 0, { router = false } = {}) {
  *   the box's presence verifier.
  */
 export async function pair(t, { approve = true, hold = 300, allow, macTranscripts = false, boxTranscripts, health = undefined,
-  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present } = {}) {
+  boxName = "testbox", macHost = "test-mac", heartbeat = 100, boxConfig = {}, router = false, boxPresence = present, macSeam = {} } = {}) {
   const boxRoot = tempHome(t), macRoot = tempHome(t);
   const boxWork = fs.mkdtempSync(path.join(boxRoot, "..", "vyre-boxwork-"));
   const macWork = fs.mkdtempSync(path.join(macRoot, "..", "vyre-macwork-"));
@@ -98,7 +98,7 @@ export async function pair(t, { approve = true, hold = 300, allow, macTranscript
   const net = { who: /** @type {any} */ (MAC), box: /** @type {any} */ (BOX), address: "" };
   // Two peers on the simulated tailnet: the box, and the phone, whose node the box's address does not match.
   linkSeams.set(macRoot, { peers: async () => [{ ip: "127.0.0.1", dns: "test-box", stableId: "nBOX" }, { ip: "127.0.0.1", dns: "test-phone", stableId: "nPHONE" }],
-    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat, hostname: macHost, timeout: 1500, ttl: 0, hold, ...(health ? { health } : {}) });
+    certNames: async () => [], addressOf: () => net.address, insecure: true, verify: async () => net.box, pollMs: 20, heartbeat, hostname: macHost, timeout: 1500, ttl: 0, hold, ...(health ? { health } : {}), ...macSeam });
   linkSeams.set(boxRoot, { hold, ...(allow ? { allow } : {}) });
   // Spotlight, simulated: every file under the Mac's work folder whose name holds the query.
   fileSeams.set(macRoot, { platform: "darwin", remoteTimeout: 1500,

@@ -91,8 +91,9 @@ for PKCE flows only; its code is traded with no Origin, and the trade must be si
 registers (`x-vyre-proof` over the token request), so an intercepted code and verifier are useless
 without the app's hardware key. A web page cannot trade a native code. The phone's
 biometric-bound key (vyre.human) rides the native trade (`human`), is enrolled as a device presence
-key, and proves HUMAN_ONLY with the same 30-minute presence session as the Mac's Touch ID; and a Mac Secure Enclave key lets the Mac prove
-HUMAN_ONLY to the box (to build, after batch 3).
+key, and proves HUMAN_ONLY with the same 30-minute presence session as the Mac's Touch ID. The Mac does the same
+with a Secure Enclave key (core/link/se) made at `vyre link signin` and enrolled with that
+sign-in: link.call signs a human-only tool after Touch ID, for the person's callers only.
 
 ### 3. On the box, a model cannot reach the person's socket
 
