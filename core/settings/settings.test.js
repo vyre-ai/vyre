@@ -447,4 +447,13 @@ test("settings.write: a module's own secret key comes back masked, like settings
   assert.equal(e.key, "bakery.token");
   assert.ok(!("value" in e), "a secret key's event never carries its value");
   assert.ok(Number.isInteger(e.rev));
+  // hub.json is plain text and goes into the backup: the secret never reaches it.
+  let hub = "";
+  try { hub = fs.readFileSync(path.join(root, "hub.json"), "utf8"); } catch {}
+  assert.ok(!hub.includes("northwind-till-1"), "the secret's value is not in hub.json");
+  assert.ok(!hub.includes("bakery.token"), "nor is its key");
+  // The person still gets it back in the clear.
+  const own = await call("settings.get", { key: "bakery.token" }, { root });
+  assert.equal(own.error, undefined, JSON.stringify(own.error));
+  assert.equal(own.data.value, "northwind-till-1");
 });

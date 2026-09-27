@@ -19,6 +19,15 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing (after LOGOUT 4 resume, 2026-09-27)
+LATEST (ac34c322, pushed): e2e signed off 3ae4fc93 (secret masking). Since then: no-passkey text
+in plain words (90617c03); ADR 0035 accepted (b95cc4dc); hub step 1 = hub.json with rev, live hand
+edits, pending asks, .bad on broken JSON, backup (243b016a); platform's validateDecls rules; e2e
+MEDIUMs fixed (98412a66); main 53cd1326 merged. 166/166 targeted + Chrome 7/7 on testbox.
+Next: hub step 2 (device and session levels, LEVELS gains them, settings.snapshot with device
+echo; default device = the caller's own), then step 3 (check/choicesFrom calls with 500 ms
+deadline), then the Deck following rev. Ping mobile after steps 1-2 land on main. Merge e2e's
+claudeHome switch when on main.
+
 DONE on resume: main 7880dfa6 merged (e9b22592); e2e HIGH 1 + HIGH 2 fixed (6fb87f4e: PERSON_ONLY
 settings.set/reset, agent labels refused, CALL_AS for settings limited to registry.settingTools());
 store limits merged (b172c2d0 + 67abc47f); sent e2e 62abf2cf for re-review. Waiting on e2e sign-off.

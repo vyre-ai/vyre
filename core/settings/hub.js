@@ -61,7 +61,7 @@ export function writeHub(root, change, o = {}) {
 }
 
 /**
- * One level's values in a hub: account, or a project's.
- * @param {Hub} h @param {"account"|"project"} level @param {string|null} project
+ * One level's values in a hub: account, a project's or a device's.
+ * @param {Hub} h @param {"account"|"project"|"device"} level @param {string|null} target
  */
-export const levelOf = (h, level, project) => (level === "project" ? (h.projects[String(project)] ||= {}) : h.account);
+export const levelOf = (h, level, target) => (level === "project" ? (h.projects[String(target)] ||= {}) : level === "device" ? (h.devices[String(target)] ||= {}) : h.account);

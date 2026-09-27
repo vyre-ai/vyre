@@ -461,10 +461,26 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
   if (own) return own(req, res, { caller, url });
-  // The Deck's colours from config, read on every request so a changed theme needs no restart.
-  if (req.method === "GET" && url.pathname === "/theme.css") {
-    res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
-    return res.end(themeCss((config.load(root).theme || {}).colors));
+  // What a surface paints (ADR 0035): the appearance module's answer for one device, as CSS for
+  // the Deck and module frames or JSON for the Capsule and the phone. The hub's rev is the ETag,
+  // so a surface that follows settings.changed asks again with If-None-Match and gets a 304 when
+  // nothing it paints moved. Without the appearance module, the Deck's colours from config.
+  if (req.method === "GET" && (url.pathname === "/theme.css" || url.pathname === "/v1/theme")) {
+    const css = url.pathname === "/theme.css";
+    const q = url.searchParams.get("device");
+    const device = q && /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,127}$/.test(q) ? q
+      : /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(String(caller)) ? String(caller) : undefined;
+    const r = registry.tools.has("appearance.resolve") ? await registry.call("appearance.resolve", { ...(device ? { device } : {}) }, caller) : null;
+    if (!r || r.error || !r.data) {
+      if (!css) return send(res, 404, { error: { code: "not_found", message: "the appearance module is not running" } });
+      res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
+      return res.end(themeCss((config.load(root).theme || {}).colors));
+    }
+    const tag = `"${r.data.rev ?? r.data.version ?? 0}${device ? "-" + device : ""}"`;
+    const head = { "cache-control": "no-cache", etag: tag, vary: "cookie, authorization", "x-content-type-options": "nosniff" };
+    if (req.headers["if-none-match"] === tag) { res.writeHead(304, head); return res.end(); }
+    res.writeHead(200, { ...head, "content-type": css ? "text/css" : "application/json" });
+    return res.end(css ? String(r.data.css || "") : JSON.stringify({ data: r.data }));
   }
   // The one app (ADR 0027), beside the Deck until it takes over /.
   if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) return serveApp(res, url.pathname);

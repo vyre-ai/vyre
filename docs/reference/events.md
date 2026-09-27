@@ -288,7 +288,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `settings.changed` | `apply`, `key`, `level`, `rev`; sometimes `by`, `project` |
+| `settings.changed` | `apply`, `key`, `level`, `rev`; sometimes `by`, `session` |
 
 ## system
 
