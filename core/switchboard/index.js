@@ -14,6 +14,7 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
@@ -23,7 +24,7 @@ import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/conf
 import { findSubreaper, groupAlive } from "../sessions/spawn.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
-import { load as loadSdk, install as installSdk, installed as sdkInstalled } from "../sessions/sdk.js";
+import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
@@ -33,6 +34,7 @@ import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+const require_home = () => os.homedir();
 
 /** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
 const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
@@ -92,6 +94,9 @@ export const MIGRATIONS = [
   // And the permission mode a person put the thread in.
   `CREATE TABLE threads_sent (uuid TEXT PRIMARY KEY, thread TEXT NOT NULL, at INTEGER NOT NULL);
    ALTER TABLE threads_runs ADD COLUMN mode TEXT;`,
+  // What a queued item is: a person's message, or a teammate's result (ADR 0031), which waits for
+  // the turn to end and never steers.
+  `ALTER TABLE threads_inbox ADD COLUMN kind TEXT;`,
 ];
 
 /**
@@ -248,6 +253,8 @@ export class Switchboard {
     this.groups = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
     this.states = new Map();
+    /** @type {Map<string, string[]>} `!` shell output waiting to go with a thread's next message */
+    this.shellContext = new Map();
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
     /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
@@ -520,7 +527,8 @@ export class Switchboard {
   }
 
   spawn(id, o) {
-    const env = { ...process.env, VYRE_HOME: this.deps.root, VYRE_THREAD: id };
+    // File checkpoints (the same switch the Agent SDK sets), so a rewind can restore files too.
+    const env = { ...process.env, VYRE_HOME: this.deps.root, VYRE_THREAD: id, CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: "1" };
     // One credential per child, set only in that child. An agent on a setup token must not
     // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
@@ -568,6 +576,9 @@ export class Switchboard {
     if (t.model) this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
+    if (t.commands) st.commands = t.commands;
+    if (typeof t.used === "number" && t.used > 0) st.used = t.used;
+    if (t.window) st.window = t.window;
     if (t.blocks && m.message && m.message.id) {
       const mid = String(m.message.id), base = st.ord.get(mid) || 0;
       for (const e of t.events) if (typeof e.payload.block === "number") e.payload.block += base;
@@ -576,6 +587,17 @@ export class Switchboard {
     // Steered messages Claude Code took in at a step.
     // step: how many tool calls the turn had finished when Claude took the words in.
     for (const u of t.folded || []) if (st.steers.delete(u)) this.emit("thread.steered", { uuid: u, step: st.steps || 0 }, id, project);
+    if (t.reasoning) {
+      if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
+      st.rpending = (st.rpending || "") + t.reasoning;
+      if (!st.timer) st.timer = setTimeout(() => this.flush(id, st), TEXT_EVERY_MS);
+    }
+    if (t.task) {
+      st.tasks = st.tasks || new Map();
+      const task = { ...(st.tasks.get(t.task.id) || {}), ...t.task };
+      st.tasks.set(task.id, task);
+      this.emit("thread.task", task, id, project);
+    }
     if (t.delta) {
       if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
       st.pending += t.delta;
@@ -603,7 +625,9 @@ export class Switchboard {
           VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(id, rec ? rec.agent : null, rec ? rec.auth || "ambient" : "ambient", Date.now(), e.payload.ok ? 1 : 0, cost,
           Number(e.payload.duration_ms) || 0, Number(tk.input) || 0, Number(tk.output) || 0, Number(tk.cache_read) || 0, Number(tk.cache_write) || 0);
         if (st.interrupting) { st.interrupting = false; e.payload.canceled = true; e.payload.reason = "interrupt"; }
-        this.emit("thread.usage", { cost_usd: e.payload.cost_usd, total_cost_usd: total, tokens: tk }, id, project);
+        // context: what the last request held, and the model's window (teammates rotate at 60 percent).
+        this.emit("thread.usage", { cost_usd: e.payload.cost_usd, total_cost_usd: total, tokens: tk,
+          ...(st.used ? { context: { used: st.used, max: st.window || null, ...(st.window ? { share: Math.round((st.used / st.window) * 1000) / 1000 } : {}) } } : {}) }, id, project);
         // A failed turn is said as a state of its own, with its turn, before the thread goes idle.
         if (!e.payload.ok && !e.payload.canceled && !st.stopping) {
           this.emitRaw("thread.state", { state: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
@@ -744,10 +768,10 @@ export class Switchboard {
   /** Send what partial text has built up, as one event. */
   flush(id, st) {
     if (st.timer) { clearTimeout(st.timer); st.timer = null; }
-    if (!st.pending) return;
-    const delta = st.pending; st.pending = "";
+    if (!st.pending && !st.rpending) return;
     const rec = this.record(id);
-    this.emit("thread.text", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null);
+    if (st.rpending) { const delta = st.rpending; st.rpending = ""; this.emit("thread.thinking", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
+    if (st.pending) { const delta = st.pending; st.pending = ""; this.emit("thread.text", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
   }
 
   /**
@@ -799,20 +823,23 @@ export class Switchboard {
    * @param {string} id @param {string} text @param {{ uuid?: string, steer?: boolean }} [o]
    * @returns {{ uuid: string, turn: string|null }}
    */
-  write(id, text, { uuid = crypto.randomUUID(), steer = false } = {}) {
+  write(id, text, { uuid = crypto.randomUUID(), steer = false, images = null } = {}) {
     const st = this.live.get(id);
     this.touch(id, st);
     this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
     st.lastPrompt = text;
     if (steer) {
       st.steers.set(uuid, String(text));
-      st.proc.write(userLine(text, id, { uuid, priority: "next" }));
+      st.proc.write(userLine(text, id, { uuid, priority: "next", ...(images ? { images } : {}) }));
       return { uuid, turn: st.turn };
     }
     st.turn = `${id}:${++st.turnNo}`;
     st.ord.clear();
     st.steps = 0;
-    st.proc.write(userLine(text, id, { uuid }));
+    // `!` shell lines the person ran since the last message go with this one, as Claude Code does.
+    const shells = this.shellContext.get(id);
+    if (shells) this.shellContext.delete(id);
+    st.proc.write(userLine(shells ? `${shells.join("\n")}\n\n${text}` : text, id, { uuid, ...(images ? { images } : {}) }));
     this.set(id, { status: "working" });
     const rec = this.record(id);
     this.emit("thread.turn", { turn: st.turn, uuid, text: cut(text, 2000) }, id, rec ? rec.project : null);
@@ -838,13 +865,13 @@ export class Switchboard {
       this.emit("thread.turn", { turn: st.turn, uuid, text: cut([text, ...rest.map(r => r[1])].join("\n\n"), 2000), steered: true }, id, project);
       return;
     }
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return;
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
-    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn" }, id, project);
+    for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}) }, id, project);
     this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID() });
   }
 
@@ -907,7 +934,7 @@ export class Switchboard {
    * `wait` (the person at the box, through the link) never takes the keyboard: while another
    * surface holds it, the words are queued as for a terminal.
    */
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined } = {}) {
+  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined, kind = undefined, images = null } = {}) {
     // The same message again (a retry whose first answer was lost): already handed over or queued.
     if (uuid) {
       const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
@@ -917,7 +944,7 @@ export class Switchboard {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
-      if (why && queue) return this.queue(id, text, surface, undefined, uuid ? { uuid } : {});
+      if (why && queue) return this.queue(id, text, surface, undefined, { ...(uuid ? { uuid } : {}), kind });
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
@@ -937,15 +964,38 @@ export class Switchboard {
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
-    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid });
+    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind });
     if (busy) {
-      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}) });
+      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
-    const w = this.write(id, text, uuid ? { uuid } : {});
-    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid }, id, rec.project);
+    const w = this.write(id, text, { ...(uuid ? { uuid } : {}), images });
+    this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, ...(kind ? { kind } : {}), ...(images ? { images: images.length } : {}) }, id, rec.project);
     return { sent: true, thread: id };
+  }
+
+  /**
+   * A module's words (a teammate's result): never steer and never need the keyboard. A new turn
+   * when the thread is idle here, queued for the turn's end when one runs, and for a session open
+   * in a terminal, queued as a person's words are.
+   */
+  async post(id, text, from, kind) {
+    if (!this.live.has(id)) {
+      if (!this.record(id)) await this.adopt(id);
+      if (this.elsewhere(id)) return this.queue(id, text, from, undefined, { kind });
+      const rec = this.must(id);
+      if (rec.agent) {
+        const r = await this.deps.call("agents.resume", { agent: rec.agent, thread: id });
+        if (r.error) return { sent: false, note: `could not resume ${rec.agent}'s thread: ${r.error.message}` };
+      } else await this.launch({ resume: id });
+    }
+    const st = this.live.get(id);
+    const rec = this.must(id);
+    if (st.turn && ["working", "waiting"].includes(String(rec.status))) return this.queue(id, text, from, null, { owned: true, kind });
+    const w = this.write(id, text);
+    this.emit("thread.sent", { text: cut(text, 2000), surface: from, uuid: w.uuid, via: "post", kind }, id, rec.project);
+    return { sent: true, thread: id, uuid: w.uuid, turn: w.turn };
   }
 
   /**
@@ -955,11 +1005,11 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID() } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined } = {}) {
     const rec = this.must(id);
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid) VALUES (?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid);
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind) VALUES (?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null);
     const queued = Number(r.lastInsertRowid);
-    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface }, id, rec.project);
+    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}) }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
     // A session Vyre runs is never called a terminal (it is working, and the words go in after).
     if (owned) return { sent: false, queued: true, queued_id: queued, uuid, thread: id, name, busy: "working",
@@ -1179,7 +1229,7 @@ export class Switchboard {
    * The same thread and transcript; a running turn is stopped first.
    * @param {string} id @param {string} uuid the user message (thread.turn's uuid, the transcript line's)
    */
-  async rewind(id, uuid) {
+  async rewind(id, uuid, restore = "conversation") {
     const rec = this.must(id);
     const t = findSession(this.deps.transcripts || [], id);
     if (!t) throw Object.assign(new Error("this session has no transcript here to rewind"), { code: "bad_input" });
@@ -1191,12 +1241,118 @@ export class Switchboard {
     if (!line) throw Object.assign(new Error(`no message ${String(uuid).slice(0, 8)} in this session`), { code: "bad_input" });
     const text = typeof line.message?.content === "string" ? line.message.content
       : (Array.isArray(line.message?.content) ? line.message.content.filter(b => b && b.type === "text").map(b => b.text).join("\n") : "");
-    if (!line.parentUuid) return { rewound: false, thread: id, text, note: "That is the first message: start a new session with it instead." };
+    // The files first, while the session that made the changes is running: Claude Code puts back
+    // what its tools changed since that message (its file checkpoints).
+    let files = null;
+    if (restore === "code" || restore === "both") {
+      if (!this.live.has(id)) await this.launch({ resume: id });
+      const live = this.live.get(id);
+      if (!live || !live.proc.control) throw Object.assign(new Error("this session cannot put files back"), { code: "unavailable" });
+      const r = await live.proc.control("rewind_files", { user_message_id: uuid });
+      files = { restored: true, ...(r && Array.isArray(r.filesChanged) ? { files_changed: r.filesChanged } : {}), ...(r && r.canRewind === false ? { restored: false, why: r.error || "no checkpoint" } : {}) };
+      if (restore === "code") {
+        this.emit("thread.rewound", { uuid, restore, files }, id, rec.project);
+        return { rewound: true, thread: id, uuid, restore, files };
+      }
+    }
+    if (!line.parentUuid) return { rewound: false, thread: id, text, note: "That is the first message: start a new session with it instead.", ...(files ? { files } : {}) };
     const st = this.live.get(id);
     if (st) await this.close(id, st, "rewind");
     await this.launch({ resume: id, resumeAt: String(line.parentUuid) });
-    this.emit("thread.rewound", { uuid, at: String(line.parentUuid) }, id, rec.project);
-    return { rewound: true, thread: id, uuid, text };
+    this.emit("thread.rewound", { uuid, at: String(line.parentUuid), restore, ...(files ? { files } : {}) }, id, rec.project);
+    return { rewound: true, thread: id, uuid, text, ...(restore !== "conversation" ? { restore, files } : {}) };
+  }
+
+  /**
+   * Switch a running thread's model (as /model does). The record and the chip follow.
+   * @param {string} id @param {string} model
+   */
+  async switchModel(id, model) {
+    if (!/^[A-Za-z0-9._:\[\]-]{1,80}$/.test(String(model))) throw Object.assign(new Error("a model is an alias like opus or haiku, or a model id"), { code: "bad_input" });
+    const rec = this.must(id);
+    const st = this.live.get(id);
+    if (st && st.proc.control) await st.proc.control("set_model", { model });
+    this.db.prepare("UPDATE threads_runs SET model = ? WHERE id = ?").run(String(model), id);
+    this.emit("model.switched", { model: String(model), live: Boolean(st) }, id, rec.project);
+    return { thread: id, model: String(model), ...(st ? {} : { note: "applies when the thread next runs" }) };
+  }
+
+  /** A running thread's background tasks (shell commands and subagents), newest last. */
+  tasks(id) {
+    this.must(id);
+    const st = this.live.get(id);
+    return { thread: id, tasks: st && st.tasks ? [...st.tasks.values()] : [] };
+  }
+
+  /** Stop one background task. */
+  async killTask(id, task) {
+    const st = this.live.get(id);
+    if (!st || !st.proc.control) return { thread: id, killed: false, note: "not running" };
+    await st.proc.control("stop_task", { task_id: String(task) });
+    return { thread: id, task: String(task), killed: true };
+  }
+
+  /** Thinking on (the model decides how much) or off. */
+  async thinking(id, on) {
+    const st = this.live.get(id);
+    if (!st || !st.proc.control) return { thread: id, thinking: null, note: "not running" };
+    await st.proc.control("set_max_thinking_tokens", { max_thinking_tokens: on ? null : 0 });
+    st.thinking = Boolean(on);
+    const rec = this.record(id);
+    this.emit("thinking.switched", { on: Boolean(on) }, id, rec ? rec.project : null);
+    return { thread: id, thinking: Boolean(on) };
+  }
+
+  /**
+   * Claude Code's `!` mode: run a shell line in the thread's folder, as the person, under the
+   * floor, and give Claude its output with the next message (not a turn of its own).
+   * @param {string} id @param {string} command
+   */
+  async shell(id, command) {
+    const rec = this.must(id);
+    let v = null;
+    try { v = floorRules({ tool: "Bash", input: { command }, cwd: rec.cwd, home: this.deps.root || undefined }); } catch {}
+    if (v && v.decision === "deny") throw Object.assign(new Error(`Vyre's security floor refused this: ${v.reason || "not allowed"}`), { code: "denied" });
+    const { execFile } = await import("node:child_process");
+    const r = await new Promise(resolve => execFile("/bin/sh", ["-c", String(command)], { cwd: rec.cwd, timeout: 120_000, maxBuffer: 4 << 20, env: { ...process.env, VYRE_THREAD: id } },
+      (e, stdout, stderr) => resolve({ code: e ? (typeof /** @type {any} */ (e).code === "number" ? /** @type {any} */ (e).code : 1) : 0, stdout: String(stdout || ""), stderr: String(stderr || "") })));
+    const out = clip((r.stdout + (r.stderr ? (r.stdout ? "\n" : "") + r.stderr : "")), 30000);
+    const st = this.live.get(id);
+    const block = `<bash-input>${command}</bash-input>\n<bash-stdout>${clip(r.stdout, 30000)}</bash-stdout><bash-stderr>${clip(r.stderr, 10000)}</bash-stderr>`;
+    this.shellContext.set(id, [...(this.shellContext.get(id) || []), block].slice(-5));
+    this.emit("thread.shell", { command: cut(command, 2000), code: r.code, output: cut(out, 4000) }, id, rec.project);
+    return { thread: id, code: r.code, output: out, ...(st ? {} : { note: "Claude sees it with your next message" }) };
+  }
+
+  /**
+   * Claude Code's `#` mode: a line added to CLAUDE.md, the project's (project), the user's own
+   * (user) or this folder's private one (local, CLAUDE.local.md). Vyre's memory is separate.
+   */
+  remember(id, text, scope = "project") {
+    const rec = this.must(id);
+    const file = scope === "user" ? path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require_home(), ".claude"), "CLAUDE.md")
+      : path.join(rec.cwd, scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md");
+    const line = String(text).replace(/\s+/g, " ").trim();
+    if (!line) throw Object.assign(new Error("nothing to remember"), { code: "bad_input" });
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const had = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : "";
+    fs.appendFileSync(file, `${had && !had.endsWith("\n") ? "\n" : ""}- ${line}\n`);
+    this.emit("thread.remembered", { scope, file }, id, rec.project);
+    return { thread: id, scope, file };
+  }
+
+  /** The slash commands a running thread offers (names, and descriptions where the driver has them). */
+  async commands(id) {
+    this.must(id);
+    const st = this.live.get(id);
+    if (!st) return { thread: id, commands: [], note: "not running; the list comes with the session" };
+    if (st.proc.control && this.sdk) {
+      try {
+        const r = await st.proc.control("supported_commands");
+        if (r && Array.isArray(r.commands)) return { thread: id, commands: r.commands.map(c => ({ name: String(c.name), description: c.description || "", argumentHint: c.argumentHint || "" })) };
+      } catch {}
+    }
+    return { thread: id, commands: (st.commands || []).map(name => ({ name, description: "", argumentHint: "" })) };
   }
 
   /** Stop the turn a thread is running; the thread stays and takes the next message. */
@@ -1249,7 +1405,7 @@ export class Switchboard {
     const want = Math.max(1, Math.min(200, Number(limit) || 20));
     const rows = /** @type {any[]} */ (this.db.prepare(`SELECT id, at, type, thread, payload FROM events
       WHERE thread IN (${runs.map(() => "?").join(",")}) AND id < ?
-        AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL))
+        AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL AND json_extract(payload, '$.kind') IS NULL))
       ORDER BY id DESC`).iterate(...runs.map(r => r.id), Number(before) || Number.MAX_SAFE_INTEGER));
     /** @type {Map<string, string[]>} replies seen (newest first) per thread, waiting for their send */
     const replies = new Map();
@@ -1298,7 +1454,7 @@ export class Switchboard {
     if (reason === "asked") summary = payload.summary || payload.tool || null;
     else {
       const last = /** @type {any} */ (this.db.prepare(`SELECT payload FROM events WHERE thread = ? AND type = 'thread.text'
-        AND json_extract(payload, '$.done') = 1 ORDER BY id DESC LIMIT 1`).get(thread));
+        AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.kind') IS NULL ORDER BY id DESC LIMIT 1`).get(thread));
       summary = last ? cut(String(JSON.parse(String(last.payload)).text || ""), 280) : null;
     }
     for (const w of rows) {
@@ -1338,6 +1494,21 @@ export class Switchboard {
 
 const str = { type: "string" };
 
+/** Pasted images a message may carry (Claude Code's own limits are close to these). */
+const IMAGE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"];
+const IMAGES = { count: 5, mb: 5 };
+/** Checked images, or null. @param {any} list */
+function imagesOf(list) {
+  if (!Array.isArray(list) || !list.length) return null;
+  if (list.length > IMAGES.count) throw Object.assign(new Error(`at most ${IMAGES.count} images in a message`), { code: "bad_input" });
+  return list.map(i => {
+    const data = String(i && i.data || "");
+    if (!IMAGE_TYPES.includes(String(i && i.media_type))) throw Object.assign(new Error(`an image is ${IMAGE_TYPES.join(", ")}`), { code: "bad_input" });
+    if (!/^[A-Za-z0-9+/=\s]+$/.test(data) || data.length * 0.75 > IMAGES.mb * 1024 * 1024) throw Object.assign(new Error(`an image is base64, at most ${IMAGES.mb} MB`), { code: "bad_input" });
+    return { media_type: String(i.media_type), data: data.replace(/\s+/g, "") };
+  });
+}
+
 /**
  * The person at the box, through the link: the Mac runs a WRITE only with `as: "person"`, as
  * "link:box" (core/link/mac.js). A caller kind of its own, named here rather than left to fall
@@ -1365,6 +1536,8 @@ export default {
     ctx.store.migrate(MIGRATIONS);
     const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
     const cfg = sessionsConfig(ctx.config);
+    // Where spawnSession (core/sessions/spawn.js) reads it, for both drivers.
+    process.env.VYRE_SESSIONS_SPAWNER = cfg.spawner;
     /** This machine's own Claude credential for threads no agent runs (ADR 0030, "Auth"). */
     // The vault is asked only when a credential was put there for this (onboarding's Claude step,
     // or sessions.auth set on purpose), so a machine without one never touches the vault.
@@ -1399,8 +1572,9 @@ export default {
         if (!module) { failed = true; ctx.log(`threads: the Claude Agent SDK in ${dir} did not load; threads run on the CLI`); return null; }
         return { module, bin: claudeBin(dir, cfg) };
       };
-      // Never from a test run (node --test marks its children): a test brings its own SDK or none.
-      if (!sdkInstalled(dir, { bundled }) && cfg.install && !process.env.NODE_TEST_CONTEXT) {
+      // Never from a test run or a temp or dev home (autoInstallAllowed): a test brings its own SDK
+      // or none, and an npm left running after vyred stops keeps writing into that home.
+      if (!sdkInstalled(dir, { bundled }) && cfg.install && autoInstallAllowed(root)) {
         ctx.log(`threads: installing the Claude Agent SDK into ${dir}; threads run on the CLI until it is ready`);
         installSdk(dir, { bundled }).then(r => { if (r.why) ctx.log(`threads: ${r.why}`); }).catch(() => {});
       }
@@ -1460,7 +1634,9 @@ export default {
 
     tool("threads.send", "Type into a thread. Only the surface holding its lease may type; a free thread is taken on the first keystroke. A stopped thread is resumed first. On a box, the person's words for a paired Mac's thread go to that Mac (machine: its name, to pick one).",
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
-        mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." } } },
+        mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
+        images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
+          description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       async (i, { caller, idempotencyKey }) => {
         guard(caller, "type into sessions");
@@ -1469,7 +1645,7 @@ export default {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
-        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer",
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images),
           ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
 
@@ -1578,13 +1754,59 @@ export default {
         return sb.sendNow(i.thread, i.queued);
       });
 
-    tool("threads.rewind", "Go back to a message, as a double Esc does in Claude Code: the session continues from just before it, and its words come back (text) to edit and send again. uuid: the message's (thread.turn's uuid).",
-      { type: "object", required: ["thread", "uuid"], properties: { thread: str, uuid: str } },
+    tool("threads.rewind", "Go back to a message, as a double Esc does in Claude Code: the session continues from just before it, and its words come back (text) to edit and send again. uuid: the message's (thread.turn's uuid). restore: conversation (the default), code (put back the files its tools changed since, keep the conversation) or both.",
+      { type: "object", required: ["thread", "uuid"], properties: { thread: str, uuid: str, restore: { type: "string", enum: ["conversation", "code", "both"] } } },
       async (i, { caller }) => {
         guard(caller, "rewind sessions");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can rewind a session"), { code: "denied" });
-        return sb.rewind(i.thread, i.uuid);
+        return sb.rewind(i.thread, i.uuid, i.restore || "conversation");
       });
+
+    tool("threads.model", "Switch a thread's model, as /model does in Claude Code: an alias (opus, sonnet, haiku) or a model id. A running thread switches at once; a stopped one when it next runs.",
+      { type: "object", required: ["thread", "model"], properties: { thread: str, model: str } },
+      async (i, { caller }) => {
+        guard(caller, "switch models");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches a session's model"), { code: "denied" });
+        return sb.switchModel(i.thread, i.model);
+      });
+
+    tool("threads.commands", "The slash commands a running thread offers (Claude Code's own, the user's and the project's, and plugins'), for a composer's / menu. Send one as a message, e.g. \"/compact\".",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
+
+    tool("threads.tasks", "A running thread's background tasks (shell commands run in the background, subagents): id, kind, title, status (running, completed, failed, killed), summary.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, { caller }) => { guard(caller, "read sessions"); return sb.tasks(i.thread); });
+
+    tool("threads.kill-task", "Stop one of a thread's background tasks.",
+      { type: "object", required: ["thread", "task"], properties: { thread: str, task: str } },
+      async (i, { caller }) => {
+        guard(caller, "stop tasks");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface stops a session's tasks"), { code: "denied" });
+        return sb.killTask(i.thread, i.task);
+      });
+
+    tool("threads.thinking", "Thinking on (the model decides how much) or off, for a running thread.",
+      { type: "object", required: ["thread", "on"], properties: { thread: str, on: { type: "boolean" } } },
+      async (i, { caller }) => {
+        guard(caller, "switch thinking");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches thinking"), { code: "denied" });
+        return sb.thinking(i.thread, i.on);
+      });
+
+    tool("threads.shell", "Claude Code's ! mode: run a shell line in the thread's folder, as you, under the security floor. Its output shows here and goes to Claude with your next message. Only a person can.",
+      { type: "object", required: ["thread", "command"], properties: { thread: str, command: str } },
+      async (i, { caller, thread }) => {
+        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not run the person's shell lines"), { code: "denied" });
+        return sb.shell(i.thread, i.command);
+      }, ["cli", "local", "deck", "capsule"]);
+
+    tool("threads.remember", "Claude Code's # mode: add a line to CLAUDE.md: the project's (project, the default), your own (user) or this folder's private one (local, CLAUDE.local.md). Vyre's own memory is separate.",
+      { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, scope: { type: "string", enum: ["project", "user", "local"] } } },
+      async (i, { caller, thread }) => {
+        if (thread && thread === i.thread) throw Object.assign(new Error("a session does not edit its own instructions"), { code: "denied" });
+        return sb.remember(i.thread, i.text, i.scope || "project");
+      }, ["cli", "local", "deck", "capsule"]);
 
     tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript.",
       { type: "object", required: ["thread"], properties: { thread: str, prompt: str, name: str, surface: str } },
@@ -1602,6 +1824,13 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); });
 
+    // For other modules (teammates, ADR 0031): put words in a thread that never steer: a new turn
+    // when the thread is idle, else handed over when its running turn ends.
+    ctx.tool("threads.post", {
+      description: "Give a thread words from a module (a teammate's result): a turn of their own now if it is idle, else after its running turn. Never steers.", internal: true,
+      input: { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, kind: str, from: str } },
+      run: async (i, { caller }) => sb.post(i.thread, i.text, String(i.from || caller || "module"), i.kind || "post"),
+    });
     // For other modules only (agents): start or resume with an agent's credentials, scope and
     // instructions. Internal, so no surface or model can hand a thread an environment.
     ctx.tool("threads.launch", {
@@ -1671,6 +1900,7 @@ export default {
       async i => sb.sessions.bind(i.session, i.pid), ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
-    return { async stop() { await sb.stopAll(); } };
+    // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
+    return { async stop() { await abortInstalls(); await sb.stopAll(); } };
   },
 };

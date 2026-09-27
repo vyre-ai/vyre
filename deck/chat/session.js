@@ -70,7 +70,7 @@ import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
 import { textItemRow } from "./live-text.js";
-import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote } from "./core/session-state.js";
+import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
 import { todoPin, tasksTray } from "./tray.js";
@@ -95,7 +95,7 @@ const readHideThinking = () => { try { return localStorage.getItem(THINK_KEY) ==
  * shared stream listen (thread.* only hears the names it knows).
  */
 const MORE_EVENTS = ["thread.state", "thread.turn", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
-  "thread.model", "thread.thinking", "thread.task", "thread.usage", "thread.limit"];
+  "thread.model", "thread.thinking", "thread.task", "thread.shell", "thread.remembered", "thread.usage", "thread.limit"];
 const editable = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
 const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", codex: "Codex", acp: "ACP" });
 const BUSY = new Set(["starting", "running", "waiting"]);
@@ -194,8 +194,11 @@ export function mountSession(container, opts) {
     can: () => CAPS.has("threads.kill-task"),
     onView: t => { if (!t.call) return; const el = reveal("t:" + t.call); if (el) { el.scrollIntoView?.({ block: "center" }); el.classList.add("cv-flash"); setTimeout(() => el.classList.remove("cv-flash"), FLASH_MS); } },
     onKill: async t => {
-      const r = await CAPS.use("threads.kill-task", () => attempt("threads.kill-task", { thread, id: t.id }));
-      return r.error ? (r.missing ? NEEDS_UPDATE : "Could not stop it: " + (r.error.message || r.error.code)) : null;
+      // {thread, task, killed: true}; thread.task {status: "killed"} follows. Not running: {killed: false, note}.
+      const r = await CAPS.use("threads.kill-task", () => attempt("threads.kill-task", { thread, task: t.id }));
+      if (r.error) return r.missing ? NEEDS_UPDATE : "Could not stop it: " + (r.error.message || r.error.code);
+      const d = /** @type {any} */ (r.data) || {};
+      return d.killed === false ? String(d.note || "Could not stop it") : null;
     },
   });
   /** The rewind sheet (Esc Esc), while it is open. */
@@ -282,6 +285,7 @@ export function mountSession(container, opts) {
     tray.set(S.tasks);
     drawEarlier();
     for (const e of early.splice(0)) onLive(e);
+    readTasks();
     if (raw) drawRaw();
     toBottom();
     seek();
@@ -524,13 +528,24 @@ export function mountSession(container, opts) {
     rawSoon();
   }
 
+  /**
+   * The box's background tasks (threads.tasks, sessions 034c71e5): the tray starts from its list,
+   * and the answer tells CAPS whether this box has that release (images, "!", "#", thinking, Stop).
+   */
+  async function readTasks() {
+    if (!switchboard() || CAPS.has("threads.tasks") === false) return;
+    const r = await CAPS.use("threads.tasks", () => attempt("threads.tasks", { thread }));
+    const list = /** @type {any} */ (r.data)?.tasks;
+    if (!r.error && Array.isArray(list)) patch(seedTasks(S, list));
+  }
+
   // ---- rows from items -----------------------------------------------------------------------
 
   /** An item as the block the renderers and the raw view know. */
   function asBlock(it) {
     const at = it.at;
     switch (it.kind) {
-      case "user": return { kind: "user", text: it.text, command: it.command, ts: at };
+      case "user": return { kind: "user", text: it.text, command: it.command, ts: at, ...(it.images ? { images: it.images } : {}) };
       case "text": return { kind: "text", text: it.text, ts: at };
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
@@ -609,7 +624,8 @@ export function mountSession(container, opts) {
   }
   /** A "!" command run in the session's folder, and what it printed. */
   function shellEl(it) {
-    const state = it.error ? "failed" : it.exit == null && !it.output && it.duration_ms == null ? "running" : it.exit ? "failed" : "done";
+    // Running: drawn here and neither answered nor echoed yet. A row from the transcript has no exit code.
+    const state = it.error ? "failed" : it.local && !it.answered && !it.echoed ? "running" : it.exit ? "failed" : "done";
     return h("div", { class: "cv-row cv-shell", "data-state": state },
       h("div", { class: "cv-shell-head" },
         h("span", { class: "lbl" }, "Shell"), h("code", { class: "cv-shell-cmd ellipsis" }, it.command),
@@ -944,7 +960,7 @@ export function mountSession(container, opts) {
       const last = [...S.items].reverse().find(it => it.kind === "user" || it.kind === "turn");
       if (last && last.kind === "user") patch(applyStateEvent(S, { type: "thread.finished", at: e.at, payload: { ok: false, canceled: true, reason: "interrupt" } }));
     }
-    if (/^thread\./.test(e.type) || e.type === "mode.changed" || e.type === "model.switched" || e.type === "model.changed") {
+    if (/^thread\./.test(e.type) || e.type === "mode.changed" || e.type === "model.switched" || e.type === "model.changed" || e.type === "thinking.switched") {
       patch(applyStateEvent(S, e));
       if (e.type === "thread.finished" && !replaying) refresh();
       return;
@@ -1331,6 +1347,7 @@ export function mountSession(container, opts) {
     // Not a thread.* name: heard on its own.
     on("mode.changed", onLive),
     on("model.switched", onLive),
+    on("thinking.switched", onLive),
     // Older boxes said model.changed for a thread's model.
     on("model.changed", onLive),
     on("ask.raised", onLive),
@@ -1348,6 +1365,21 @@ export function mountSession(container, opts) {
     ...MORE_EVENTS.map(name => on(name, () => {})),
     capsOff,
   ];
+  // The phone keyboard (js/keyboard.js) lifted or dropped the composer, and the transcript's
+  // bottom padding (chat.css) moved with it: scroll by as much, in the same frame, so the lines
+  // above the composer stay put. Following the bottom, stay at the bottom.
+  let pad = -1;
+  const padNow = () => parseFloat(getComputedStyle(timeline).paddingBottom) || 0;
+  const onFocus = () => { if (pad < 0) pad = padNow(); };
+  const onKb = () => {
+    if (!timeline.isConnected) return;
+    const p = padNow();
+    if (following) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
+    pad = p;
+  };
+  container.addEventListener("focusin", onFocus);
+  window.addEventListener("deck:kb", onKb);
+  offs.push(() => { container.removeEventListener("focusin", onFocus); window.removeEventListener("deck:kb", onKb); });
   return () => {
     health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop();
     document.removeEventListener("keydown", onKey);

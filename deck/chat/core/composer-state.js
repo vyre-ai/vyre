@@ -395,8 +395,9 @@ export function actionFor(e, mac = false) {
 // ---- pasted images -------------------------------------------------------------------------
 
 export const IMAGE_TYPES = Object.freeze(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-export const MAX_IMAGES = 4;
-/** The API's limit for one image, base64 decoded. */
+/** threads.send's own caps (core/switchboard IMAGES, sessions 034c71e5): at most 5, 5 MB each. */
+export const MAX_IMAGES = 5;
+/** The limit for one image, as the box measures it: its base64 length times 3/4. */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /** @typedef {{ media_type: string, data: string, name?: string, size: number }} Attachment */
@@ -419,7 +420,8 @@ export function addImage(list, img, caps = {}) {
   if (!img || !IMAGE_TYPES.includes(img.media_type)) return { list: [...list], error: "Only PNG, JPEG, GIF and WebP images can be attached." };
   if (list.length >= max) return { list: [...list], error: `At most ${max} images in one message.` };
   const size = typeof img.size === "number" ? img.size : b64Bytes(img.data);
-  if (size > maxBytes) return { list: [...list], error: `That image is over ${Math.round(maxBytes / 1024 / 1024)} MB.` };
+  // The box counts base64 length * 3/4, which rounds a file's bytes up to a multiple of 3.
+  if (3 * Math.ceil(size / 3) > maxBytes) return { list: [...list], error: `That image is over ${Math.round(maxBytes / 1024 / 1024)} MB.` };
   if (!img.data) return { list: [...list], error: "That image is empty." };
   return { list: [...list, { media_type: img.media_type, data: img.data, size, ...(img.name ? { name: img.name } : {}) }] };
 }

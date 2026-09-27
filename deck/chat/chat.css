@@ -41,7 +41,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .session-head .title { font-size: 16px; line-height: 22px; font-weight: 600; }
 .session-head .sub { font-size: 12px; line-height: 16px; color: var(--label); }
 .session-back { display: none; }
-@media (max-width: 760px) { .session-back { display: inline-flex; } }
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) { .session-back { display: inline-flex; } }
 
 .thread-view { flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 16px 20px 24px; }
 /* The timeline's frame, so the "Jump to latest" pill can sit over its bottom edge. */
@@ -162,7 +162,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .thread-row .meta { display: flex; align-items: center; gap: 14px; font-size: 12px; color: var(--label); }
 .thread-row .meta .needs { display: flex; align-items: center; gap: 6px; color: var(--beacon-ink); }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .session-head, .lease-bar, .composer { padding-left: 16px; padding-right: 16px; }
   .thread-view { padding-left: 16px; padding-right: 16px; }
   .composer-menu { left: 16px; right: 16px; }
@@ -201,7 +201,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .chat-problem .err { color: var(--beacon-ink); }
 .ask-card.answered { background: var(--panel); border-color: var(--rule); }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .chat-pad { padding: 16px 16px 24px; gap: 16px; }
   .chat-back { display: inline-flex; }
   .chat-projects { display: block; }
@@ -210,6 +210,16 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
      padding for the tab bar and the offline line, if any): header, timeline (the one scroller), composer. */
   .chat-session { height: 100%; }
   .thread-view { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  /* The keyboard (js/keyboard.js): the composer and the line above it ride up on the compositor,
+     and the transcript's foot grows by as much in the same frame (session.js scrolls it along),
+     so no line jumps. --kb-lift is in deck.css. */
+  :root[data-kb] .chat-session > :is(.lease-bar, .composer) { transform: translateY(calc(-1 * var(--kb-lift))); }
+  :root[data-kb] .chat-session .thread-view { padding-bottom: calc(24px + var(--kb-lift)); }
+  :root[data-kb] .chat-session .jump-latest { bottom: calc(12px + var(--kb-lift)); }
+  /* A long session: the rows well above the last 40 skip layout and paint until they near the
+     screen, and keep the size they last had. The newest 40 always draw, so the bottom is exact. */
+  .cv-timeline > :nth-last-child(n+41) { content-visibility: auto; contain-intrinsic-size: auto 96px; }
+  .rows > .thread-row { content-visibility: auto; contain-intrinsic-size: auto 72px; }
 
   /* Thumb targets: 44px for Back and Send, 56px session rows, the whole row one link. */
   .session-back { width: 44px; height: 44px; margin-left: -10px; }
@@ -289,7 +299,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .fb-when { font-size: 12px; flex-shrink: 0; margin-left: auto; }
 .fb-actions { display: flex; gap: 4px; flex-shrink: 0; }
 .fb-hint { font-size: 12px; }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .fb-row { flex-wrap: wrap; }
   .fb-actions { width: 100%; padding-left: 30px; }
   .fb-actions .btn { height: 36px; }
@@ -479,7 +489,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   background: var(--panel); color: var(--text); font: inherit; font-size: 14px; }
 .cv-why:focus, .cv-q-input:focus { outline: none; border-color: var(--focus); box-shadow: 0 0 0 3px var(--signal-wash); }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .cv-text, .cv-think, .cv-tool, .cv-turn { margin-left: 0; max-width: 100%; }
   .cv-q-review, .cv-q-done, .cv-kv { grid-template-columns: 1fr; }
   .cv-choice { min-height: 44px; }
@@ -628,6 +638,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-task-meta { flex-shrink: 0; font-family: var(--mono); font-size: 11px; color: var(--label); }
 .cv-task[data-status="running"] .cv-task-meta { color: var(--signal-ink-text, var(--signal)); }
 .cv-task-err { font-size: 11px; }
+.cv-task-summary { font-size: 11px; max-width: 40%; }
+.cv-user-images { font-size: 11px; margin-top: 4px; }
 
 .cv-queued-local { border-style: dotted; }
 
@@ -657,3 +669,5 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-steer, .cv-shell { margin-left: 0; max-width: 100%; }
 }
 @media (pointer: coarse) { .composer-chip .kbd, .cv-rewind-acts .btn .kbd { display: none; } }
+.composer-attach { width: 36px; height: 44px; flex-shrink: 0; }
+.composer-attach[hidden] { display: none; }

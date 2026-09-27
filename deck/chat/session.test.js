@@ -83,6 +83,8 @@ const liveEvents = [
 ];
 // The third session: an ADR 0030 thread (provider, model, auth, state, queue, interrupt).
 const NEW = "4b7e2a90-sdk-thread";
+/** What threads.tasks answers for it (sessions 034c71e5). */
+let newTasks = /** @type {any[]} */ ([]);
 let interruptMissing = false;
 /** Tools this box answers "no such tool" for (a box before the sessions update has none of them; this one has some). */
 const MISSING = new Set(["threads.unqueue"]);
@@ -136,6 +138,12 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     else if (tool === "threads.commands") data = { thread: NEW, commands: [{ name: "compact", description: "Clear history but keep a summary", argumentHint: "<instructions>" }] };
     else if (tool === "threads.model") data = { thread: NEW, model: input.model };
     else if (tool === "threads.mode") data = { thread: NEW, mode: input.mode };
+    // Sessions 034c71e5's answers.
+    else if (tool === "threads.tasks") data = { thread: NEW, tasks: newTasks };
+    else if (tool === "threads.kill-task") data = { thread: NEW, task: input.task, killed: true };
+    else if (tool === "threads.thinking") data = { thread: NEW, thinking: input.on };
+    else if (tool === "threads.shell") data = { thread: NEW, code: 1, output: "1 failing\n  estate intake: total" };
+    else if (tool === "threads.remember") data = { thread: NEW, scope: input.scope, file: `/home/alex/work/harlow-legal/${input.scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md"}` };
     else data = tool === "memory.facts" ? { facts: [] } : {};
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
@@ -565,4 +573,111 @@ test("a reconnect or a stream reset re-reads threads.get, threads.asks and the t
   await wait();
   assert.match(text($(box5, ".cv-queued")), /Last one for Northwind Bakery/);
   stop5();
+});
+
+// ---- sessions 034c71e5: background tasks, thinking, ! shell, # memory, images ---------------------
+
+test("the box's background tasks, thinking, ! and # and pasted images, on their real shapes; an older box keeps them off", async () => {
+  const { CAPS, SEND_IMAGES } = await import("./core/caps.js");
+  newTasks = [{ id: "task_1", kind: "shell", title: "npm run dev", status: "running", call: null, background: true }];
+  const box6 = new El("div");
+  doc.body.append(box6);
+  const stop6 = mountSession(box6, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  assert.ok(calls.some(c => c.tool === "threads.tasks" && c.input.thread === NEW), "the tray starts from threads.tasks");
+  assert.equal(CAPS.has(SEND_IMAGES), true, "its answer says images too");
+  assert.match(text($(box6, ".cv-tasks")), /1 running/);
+  assert.match(text($(box6, ".cv-task")), /npm run dev/);
+  // thread.task: a subagent starts and finishes with a summary.
+  at("thread.task", { id: "task_2", status: "running", kind: "agent", title: "Check the menu prices", call: null, background: false });
+  assert.match(text($(box6, ".cv-tasks")), /2 running/);
+  at("thread.task", { id: "task_2", status: "completed", summary: "Two prices were out of date." });
+  assert.match(text($(box6, ".cv-tasks")), /Two prices were out of date\./);
+  // Stop: threads.kill-task {thread, task}, then the box says killed.
+  await $(box6, ".cv-task-stop").click();
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.kill-task").at(-1).input, { thread: NEW, task: "task_1" });
+  at("thread.task", { id: "task_1", status: "killed", summary: "stopped by the user" });
+  assert.match(text($(box6, ".cv-tasks")), /none running/);
+  assert.match(text($(box6, ".cv-tasks")), /stopped/);
+
+  // Thinking: the chip calls threads.thinking {thread, on}; thinking.switched moves it.
+  const chip = () => $(box6, ".composer-thinking");
+  assert.equal(chip().disabled, false);
+  assert.equal(text(chip()), "Thinking", "not said yet");
+  await chip().click();
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.thinking").at(-1).input, { thread: NEW, on: true });
+  assert.equal(text(chip()), "Thinking on");
+  at("thinking.switched", { on: false });
+  await wait();
+  assert.equal(text(chip()), "Thinking off");
+  // A reasoning delta and a text delta of one message are two rows.
+  at("thread.thinking", { message: "msg_th", block: 0, delta: "The total rounds twice." });
+  at("thread.text", { message: "msg_th", block: 1, delta: "Found the rounding." });
+  await wait(40);
+  // Two rows: the thought (folded, its words in its body) and the reply.
+  assert.equal($$(box6, ".cv-think").length, 1);
+  assert.equal($(box6, ".cv-think-body").textContent, "The total rounds twice.");
+  assert.equal($$(box6, ".cv-text").length, 1);
+  at("thread.finished", { ok: true, duration_ms: 1000 });
+  await wait(20);
+
+  // ! shell: threads.shell {thread, command}; the answer's {code, output} fills the row; its event is the same row.
+  const ta = $(box6, "textarea");
+  const key = (k, extra = {}) => { const e = Object.assign(/** @type {any} */ (new Event("keydown")), { key: k, target: ta, ...extra }); ta.dispatchEvent(e); return e; };
+  ta.value = "!npm test";
+  key("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.shell").at(-1).input, { thread: NEW, command: "npm test" });
+  at("thread.shell", { command: "npm test", code: 1, output: "1 failing" });
+  await wait();
+  assert.equal($$(box6, ".cv-shell").length, 1, "the echo is the same row");
+  assert.match(text($(box6, ".cv-shell")), /npm test/);
+  assert.match(text($(box6, ".cv-shell")), /exit 1/);
+  assert.match(text($(box6, ".cv-shell")), /estate intake: total/, "the answer's whole output");
+  assert.equal($(box6, ".cv-shell").getAttribute("data-state"), "failed");
+
+  // # memory: threads.remember {thread, text, scope}; thread.remembered is a notice.
+  ta.value = "#Prices have two decimals.";
+  key("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.remember").at(-1).input, { thread: NEW, text: "Prices have two decimals.", scope: "project" });
+  assert.match(text($(box6, ".composer-note")), /Saved to memory.*CLAUDE\.md/);
+  at("thread.remembered", { scope: "project", file: "/home/alex/work/harlow-legal/CLAUDE.md" });
+  await wait();
+  assert.match(text($(box6, ".thread-view")), /Remembered in CLAUDE\.md \(this project\)/);
+
+  // A pasted image goes with the words as {media_type, data}; thread.sent counts it on the message.
+  /** @type {any} */ (globalThis).FileReader = class { readAsDataURL(f) { this.result = `data:${f.type};base64,${f.b64}`; setTimeout(() => this.onload?.(), 0); } };
+  const png = { type: "image/png", name: "Screenshot 14:36", size: 8, b64: "iVBORw0KGgo=" };
+  const paste = Object.assign(/** @type {any} */ (new Event("paste")), { clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => png }] } });
+  ta.dispatchEvent(paste);
+  await wait(20);
+  assert.equal($$(box6, ".composer-thumb").length, 1);
+  ta.value = "What is wrong on this invoice?";
+  key("Enter");
+  await wait();
+  const sent = calls.filter(c => c.tool === "threads.send").at(-1).input;
+  assert.deepEqual(sent.images, [{ media_type: "image/png", data: "iVBORw0KGgo=" }]);
+  assert.equal($$(box6, ".composer-thumb").length, 0);
+  at("thread.sent", { text: "What is wrong on this invoice?", surface: "deck", uuid: "box-img-1", images: 1 });
+  await wait();
+  assert.match(text($$(box6, ".cv-user").at(-1)), /1 image/);
+
+  // An older box (threads.tasks: no such tool): images, !, #, thinking and Stop are off.
+  at("thread.task", { id: "task_3", status: "running", kind: "shell", title: "npm run e2e", call: null, background: true });
+  CAPS.set("threads.tasks", false);
+  await wait();
+  assert.equal(chip().disabled, true);
+  assert.equal(chip().getAttribute("title"), "Needs the sessions update");
+  assert.equal($(box6, ".composer-attach").hidden, true);
+  assert.equal($(box6, ".cv-task-stop").disabled, true);
+  const before = calls.filter(c => c.tool === "threads.shell").length;
+  ta.value = "!ls";
+  key("Enter");
+  await wait();
+  assert.equal(calls.filter(c => c.tool === "threads.shell").length, before, "never called");
+  ta.value = "";
+  stop6();
 });

@@ -138,6 +138,14 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
     }
 
     func close() { if popover.isShown { popover.performClose(nil) } }
+
+    /// Show the popover (⌘, in the Capsule: its settings live here).
+    func open() {
+        guard let b = item.button, !popover.isShown else { return }
+        health.refresh()
+        popover.contentViewController = NSHostingController(rootView: content())
+        popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
+    }
 }
 
 /// What the popover shows: who is up, how the box is reached, and the few things to do.

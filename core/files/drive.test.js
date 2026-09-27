@@ -251,11 +251,11 @@ test("drive: only the owner shares; agents, Claude and unpaired tailnet nodes ar
   for (const caller of ["mcp:agent:kit", "harness:agent:kit", "mcp", "module:watchers"]) await no(reg, "files.drive.share", { name: "projects" }, caller, "denied");
   await no(reg, "files.drive.share", { name: "projects" }, "local", "denied", { agent: "kit" });
   await no(reg, "files.drive.unshare", { name: "projects" }, "mcp:agent:kit", "denied");
-  await no(reg, "files.drive.share", { name: "projects" }, "tailnet:alex@example.com", "denied", { peer: { stableId: PHONE_ID } });
+  await no(reg, "files.drive.share", { name: "projects" }, "tailnet:alex@example.com", "denied", { person: PERSON, peer: { stableId: PHONE_ID } });
   await no(reg, "files.drive.share", { name: "projects" }, "tailnet:alex@example.com", "denied");
   assert.equal(ts.calls().length, before, "a refused caller never reaches tailscale");
   // The paired Mac, by the node the listener established, and the Capsule on the box.
-  assert.equal((await ok(reg, "files.drive.share", { name: "projects" }, "tailnet:alex@example.com", { peer: { stableId: MAC_ID } })).shared, "projects");
+  assert.equal((await ok(reg, "files.drive.share", { name: "projects" }, "tailnet:alex@example.com", { person: PERSON, peer: { stableId: MAC_ID } })).shared, "projects");
   assert.equal((await ok(reg, "files.drive.unshare", { name: "projects" }, "capsule")).unshared, "projects");
 });
 
@@ -304,6 +304,9 @@ test("drive: status gives each share its access, and the top-level access is rw 
   assert.equal(p.path, path.join(real, "projects"));
 });
 
+// The owner signed in on that device (ADR 0032): the person gate passes, and drive decides.
+const PERSON = { id: "s1", kind: "cookie" };
+
 test("drive: files.drive.access is the owner's, saves the share's access, and says when the mount must change", async t => {
   fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: {} });
   const { work } = boxWorld(t);
@@ -313,7 +316,7 @@ test("drive: files.drive.access is the owner's, saves the share's access, and sa
     cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work], drive: { shares: { notes: path.join(work, "glass") } } } } });
   for (const caller of ["mcp:agent:kit", "harness:agent:kit", "mcp"]) await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, caller, "denied");
   await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, "local", "denied", { agent: "kit" });
-  await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, "tailnet:alex@example.com", "denied", { peer: { stableId: PHONE_ID } });
+  await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, "tailnet:alex@example.com", "denied", { person: PERSON, peer: { stableId: PHONE_ID } });
   await no(reg, "files.drive.access", { name: "nothing", mode: "rw" }, "cli", "unknown_share");
   assert.equal((await ok(reg, "files.drive.status")).access, "ro");
 
@@ -328,7 +331,7 @@ test("drive: files.drive.access is the owner's, saves the share's access, and sa
 
   // A string share becomes { path, access }, from the paired Mac this time; the mount already allows rw.
   process.env.VYRE_DRIVE_ACCESS = "rw";
-  const b = await ok(reg, "files.drive.access", { name: "notes", mode: "rw" }, "tailnet:alex@example.com", { peer: { stableId: MAC_ID } });
+  const b = await ok(reg, "files.drive.access", { name: "notes", mode: "rw" }, "tailnet:alex@example.com", { person: PERSON, peer: { stableId: MAC_ID } });
   assert.deepEqual(b.mount, { want: "rw", now: "rw", change: false });
   assert.deepEqual(config.load(root).files.drive.shares.notes, { path: path.join(work, "glass"), access: "rw" });
 
@@ -354,7 +357,7 @@ test("drive: files.drive.access is the owner's own action: no proof, while share
   });
   const { reg } = await registry(t, { role: "box", peers: [MAC_ID], presence, cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work] } } });
   assert.equal((await ok(reg, "files.drive.access", { name: "projects", mode: "rw" })).access, "rw");
-  assert.equal((await ok(reg, "files.drive.access", { name: "projects", mode: "ro" }, "tailnet:alex@example.com", { peer: { stableId: MAC_ID } })).access, "ro");
+  assert.equal((await ok(reg, "files.drive.access", { name: "projects", mode: "ro" }, "tailnet:alex@example.com", { person: PERSON, peer: { stableId: MAC_ID } })).access, "ro");
   await no(reg, "files.drive.share", { name: "projects" }, "cli", "presence_required");
   for (const caller of ["mcp:agent:kit", "harness:agent:kit", "mcp", "tailnet-guest:sam@harlow.example"]) await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, caller, "denied");
 });

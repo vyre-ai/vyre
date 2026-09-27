@@ -26,10 +26,12 @@ function services(text) {
   return out;
 }
 
-test("box: the image's ENTRYPOINT is tini, and its CMD the vyred restart loop", () => {
+test("box: the image's ENTRYPOINT is tini, and its CMD the spawner, which runs the vyred restart loop as vyre", () => {
   const df = read("box/Dockerfile");
   assert.match(df, /^ENTRYPOINT \["\/usr\/bin\/tini", "--"\]$/m);
-  assert.match(df, /^CMD \["\/opt\/vyre\/core\/daemon\/loop\.sh"\]$/m);
+  // ADR 0032: the spawner (root, capabilities dropped) runs core/daemon/loop.sh as uid vyre.
+  assert.match(df, /^CMD \["node", "\/opt\/vyre\/core\/spawner\/main\.js"\]$/m);
+  assert.match(read("core/spawner/main.js"), /daemon", "loop\.sh"/);
   assert.match(df, /apt-get install[^\n]*\btini\b/);
 });
 

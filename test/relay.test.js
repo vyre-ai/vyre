@@ -15,15 +15,24 @@ import { keyPair } from "../core/relay/noise.js";
 import { deviceSide } from "../core/relay/channel.js";
 import { parsePairUrl } from "../core/relay/pairing.js";
 import { useReleasesFile } from "../core/relay/releases.js";
+import { signed } from "../core/presence/person.js";
+import crypto from "node:crypto";
 import { tempHome } from "./helpers.js";
 
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about who is calling. */
 const lenient = {
   required: (tool, def, input) => HUMAN_ONLY.has(tool) || Boolean(def && def.presence && (typeof def.presence.when !== "function" || input === undefined || def.presence.when(input))),
-  verify: async ({ proof }) => (proof ? { ok: true, method: "passkey" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
+  verify: async ({ proof }) => (proof ? { ok: true, method: proof.method === "device" ? "device" : "passkey", keyId: proof.key || proof.cred || "k1" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
   challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
   summary: async () => "",
+  covered: () => false,
+  coverage: () => ({ covered: false, since: null, expires: null }),
+  enrolled: /** @type {any[]} */ ([]),
+  enroll(k) { this.enrolled.push(k); return { id: `kh${this.enrolled.length}`, kind: k.kind, name: k.name }; },
 };
+const SPKI = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+/** A presence proof, which the lenient presence above takes as given. */
+const P = { "x-vyre-presence": "passkey id=abc" };
 const PROOF = { proof: { method: "passkey", id: "x" } };
 
 async function world(t, relayConfig = {}) {
@@ -38,33 +47,61 @@ async function world(t, relayConfig = {}) {
   return { d, relay, url, root };
 }
 
-/** Alex's phone: scan, connect, handshake. Resolves with a request helper once the box answers. */
-async function phone(scanned, { keys = keyPair(), pair = true, name = "alex's phone", hello = {} } = {}) {
+/**
+ * Alex's phone: scan, connect, handshake. Resolves with a request helper once the box answers. A
+ * paired phone sends its presence key, and `signIn()` makes a person session with it (ADR 0032):
+ * over the relay a device is a device, and a person's action needs that session.
+ */
+async function phone(scanned, { keys = keyPair(), pair = true, name = "alex's phone", hello = {}, presence = true } = {}) {
   const offer = /** @type {any} */ (parsePairUrl(scanned));
   assert.ok(offer, "the QR code parses");
   const ws = new WebSocket(`${offer.relay}/v1/device?route=${offer.route}`);
   ws.binaryType = "arraybuffer";
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
   const side = deviceSide({ send: b => ws.send(b), close: (c, r) => ws.close(c === 1000 || (c >= 3000 && c < 5000) ? c : 4000, r) },
-    { s: keys, box: offer.box, route: offer.route, hello: { v: 1, name, ...hello, ...(pair ? { pair: offer.secret } : {}) } });
+    { s: keys, box: offer.box, route: offer.route, hello: { v: 1, name, ...(pair && presence ? { presenceKey: { public_key: SPKI(), alg: -7 } } : {}), ...hello, ...(pair ? { pair: offer.secret } : {}) } });
   let closed = null;
   ws.onmessage = e => { if (typeof e.data !== "string") side.receive(Buffer.from(e.data)); };
   ws.onclose = e => { closed = { code: e.code, reason: e.reason }; side.gone(e.reason || "closed"); };
   const { channel, reply } = await side.ready;
+  /** @type {{ token: string, key: crypto.KeyObject } | null} */
+  let session = null;
+  /** The person session's headers for one request, signed over method, path, body, time and nonce. */
+  const sign = (method, p, raw) => {
+    if (!session) return {};
+    const t = Date.now(), n = crypto.randomBytes(12).toString("base64url");
+    const sig = crypto.sign("sha256", Buffer.from(signed({ method, path: p, raw, t, n })), { key: session.key, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    return { authorization: `Vyre ${session.token}`, "x-vyre-proof": `t=${t} n=${n} sig=${sig}` };
+  };
   /** One request through the channel; resolves with status, headers and the parsed body. */
   const request = (method, p, body, headers = {}) => new Promise((resolve, reject) => {
-    const s = channel.open({ method, path: p, headers: { "content-type": "application/json", ...headers } });
+    const raw = body === undefined ? "" : JSON.stringify(body);
+    const s = channel.open({ method, path: p, headers: { "content-type": "application/json", ...sign(method, p, raw), ...headers } });
     const parts = [];
     let head;
     s.onhead = h => { head = h; };
     s.ondata = c => parts.push(c);
     s.onend = () => { const raw = Buffer.concat(parts).toString(); resolve({ status: head.status, headers: head.headers, ...(raw ? JSON.parse(raw) : {}) }); };
     s.onreset = reject;
-    if (body !== undefined) s.write(Buffer.from(JSON.stringify(body)));
+    if (raw) s.write(Buffer.from(raw));
     s.end();
   });
   const call = (tool, input = {}, headers) => request("POST", `/v1/tools/${tool}`, input, headers);
-  return { ws, channel, reply, request, call, keys, closed: () => closed, offer };
+  /**
+   * Sign in as the person with this device's own presence key (presence.person.start). The key id
+   * is the one the relay enrolled at pairing, which the phone would have kept from the reply.
+   * @param {any} d the running vyred
+   */
+  const signIn = async d => {
+    const enrolled = (await d.registry.call("relay.device.presence", { id: reply.device }, "module:test")).data.key;
+    const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+    const r = await call("presence.person.start", { key: publicKey.export({ format: "jwk" }) },
+      { "x-vyre-presence": `device key=${enrolled} ts=${Date.now()} nonce=${crypto.randomBytes(8).toString("hex")} sig=x` });
+    assert.equal(r.status, 200, `sign-in: ${JSON.stringify(r)}`);
+    session = { token: r.data.token, key: privateKey };
+    return r.data;
+  };
+  return { ws, channel, reply, request, call, keys, closed: () => closed, offer, signIn };
 }
 
 const firstPairing = async d => {
@@ -93,13 +130,20 @@ test("relay: the first device pairs during onboarding and reaches the box's rout
   assert.equal(events.connected, true);
 });
 
-test("relay: a device is a person that may ask, and presence still decides", async t => {
+test("relay: a relayed device is a device; a person's action needs its person session, then presence", async t => {
   const { d } = await world(t);
   const p = await phone(await firstPairing(d));
+  // ADR 0032: without a person session, even a presence proof is not enough.
+  const device = await p.call("relay.pair.start", {}, P);
+  assert.equal(device.status, 401, JSON.stringify(device));
+  assert.equal(device.error.code, "person_session_required");
+  assert.equal((await p.call("relay.devices.list")).status, 200, "reads stay the device's");
+  // Signed in with its own presence key, the device is the person, and presence still decides.
+  await p.signIn(d);
   const bare = await p.call("relay.pair.start");
   assert.equal(bare.status, 403);
   assert.equal(bare.error.code, "presence_required");
-  const proved = await p.call("relay.pair.start", {}, { "x-vyre-presence": "passkey id=abc" });
+  const proved = await p.call("relay.pair.start", {}, P);
   assert.equal(proved.status, 200, JSON.stringify(proved));
   assert.ok(parsePairUrl(proved.data.url));
 });
@@ -164,7 +208,7 @@ test("relay: a browser from the web app is a web device, limited until trusted f
   const seen = [];
   d.events.on("device.paired", e => seen.push(e));
   const p = await phone(await firstPairing(d));
-  const P = { "x-vyre-presence": "passkey id=abc" };
+  await p.signIn(d);
   const url = (await p.call("relay.pair.start", {}, P)).data.url;
   const web = await phone(url, { name: "Harlow Legal laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
 
@@ -184,17 +228,20 @@ test("relay: a browser from the web app is a web device, limited until trusted f
   assert.equal((await web.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 404);
   assert.equal((await web.call("vault.reveal", { id: "x" }, P)).status, 404);
 
-  // alex trusts it from the phone; the browser's channel closes and its next one has full powers.
+  // alex trusts it from the phone; the browser's channel closes and its next one has the tools
+  // back. Being trusted lifts the relay's limits, not ADR 0032: it still signs in as the person.
   const trust = await p.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P);
   assert.equal(trust.status, 200, JSON.stringify(trust));
   const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
-  assert.equal((await again.call("relay.pair.start", {}, P)).status, 200);
+  const lifted = await again.call("relay.pair.start", {}, P);
+  assert.equal(lifted.error && lifted.error.code, "person_session_required", JSON.stringify(lifted));
 });
 
 test("relay: a web device unused past relay.web_expiry_days is removed at its next knock", async t => {
   const { d } = await world(t, { web_expiry_days: 1e-8 });
   const p = await phone(await firstPairing(d));
-  const url = (await p.call("relay.pair.start", {}, { "x-vyre-presence": "passkey id=abc" })).data.url;
+  await p.signIn(d);
+  const url = (await p.call("relay.pair.start", {}, P)).data.url;
   const web = await phone(url, { name: "kiosk", hello: { kind: "web" } });
   web.ws.close();
   await new Promise(r => setTimeout(r, 20));
@@ -211,7 +258,7 @@ test("relay: the web app's loader asks the box which build to load, and the owne
   useReleasesFile(list);
   t.after(() => useReleasesFile());
   const p = await phone(await firstPairing(d));
-  const P = { "x-vyre-presence": "passkey id=abc" };
+  await p.signIn(d);
   const url = (await p.call("relay.pair.start", {}, P)).data.url;
   const web = await phone(url, { name: "Northwind Bakery laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
 
@@ -255,4 +302,31 @@ test("relay: a device reports its path; the box measures the relay round trip an
   assert.deepEqual([me.path, me.rtt, me.node, me.online], ["direct", 18, "alex-iphone", true]);
   assert.deepEqual(moves.map(m => m.path), ["relay", "direct"]);
   assert.equal((await d.registry.call("relay.devices.path", { path: "direct" }, "tailnet:alex@example.com", { peer: { ...node, stableId: "nOTHER" } })).error.code, "bad_input", "another node is not this device");
+});
+
+test("relay: relay.device.presence names the key a device enrolled, for modules only", async t => {
+  const { d } = await world(t);
+  const p = await phone(await firstPairing(d));
+  const id = p.reply.device;
+  assert.equal((await d.registry.call("relay.device.presence", { id }, "cli")).error.code, "no_such_tool", "not a surface's tool");
+  assert.match((await d.registry.call("relay.device.presence", { id }, "module:presence")).data.key, /\S/, "the key enrolled at pairing");
+  const url = await (async () => { await p.signIn(d); return (await p.call("relay.pair.start", {}, P)).data.url; })();
+  const bare = await phone(url, { name: "kit's tablet", presence: false });
+  assert.deepEqual((await d.registry.call("relay.device.presence", { id: bare.reply.device }, "module:presence")).data, { key: null }, "paired without a presence key");
+  assert.deepEqual((await d.registry.call("relay.device.presence", { id: "nobody" }, "module:presence")).data, { key: null });
+});
+
+test("relay: the pairing offer names the box as configured, never the machine's hostname", async t => {
+  const relay = createRelay();
+  const url = await relay.listen();
+  t.after(() => relay.close());
+  for (const [cfg, want] of [[{ name: "Northwind Bakery" }, "Northwind Bakery"], [{}, "Vyre box"]]) {
+    const root = tempHome(t);
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], ...cfg, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
+    const d = await start({ presence: lenient, root, log: () => {} });
+    t.after(() => d.stop());
+    const offer = /** @type {any} */ (parsePairUrl((await firstPairing(d))));
+    assert.equal(offer.name, want);
+    assert.notEqual(offer.name, (await import("node:os")).hostname().split(".")[0]);
+  }
 });

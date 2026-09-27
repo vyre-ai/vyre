@@ -81,7 +81,8 @@ export default {
 
     // Autofill: a listener only browser extensions (and the Capsule's helper) talk to, after
     // pairing and unlock. vault.fill is a route there, never a registry tool, so no agent has it.
-    const fill = new Fill({ vault, verifyVaultPassphrase: p => vault.checkPassphrase(p) });
+    const fill = new Fill({ vault, verifyVaultPassphrase: p => vault.checkPassphrase(p),
+      extensions: opts.fill && Array.isArray(opts.fill.extensions) ? opts.fill.extensions.map(String) : [] });
     let fillListener = null;
     if (opts.fill && (opts.fill.port !== undefined || opts.fill.host)) {
       fillListener = await serveFill({ host: opts.fill.host || "127.0.0.1", port: Number(opts.fill.port || 0), fill, names: Array.isArray(opts.fill.names) ? opts.fill.names.map(String) : [] });

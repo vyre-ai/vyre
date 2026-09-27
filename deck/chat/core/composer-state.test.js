@@ -184,10 +184,14 @@ test("pasted images: types, a count cap and a size cap; the list is never change
   r = addImage(one, { media_type: "image/jpeg", data: "x", size: 6 * 1024 * 1024 });
   assert.match(String(r.error), /over 5 MB/);
   let list = one;
-  for (let i = 0; i < 3; i++) list = addImage(list, png).list;
-  assert.equal(list.length, 4);
-  assert.match(String(addImage(list, png).error), /At most 4 images/);
-  assert.equal(removeImage(list, 0).length, 3);
+  // threads.send's caps (sessions 034c71e5): 5 images, 5 MB each as base64 length * 3/4.
+  for (let i = 0; i < 4; i++) list = addImage(list, png).list;
+  assert.equal(list.length, 5);
+  assert.match(String(addImage(list, png).error), /At most 5 images/);
+  assert.equal(removeImage(list, 0).length, 4);
+  const MB5 = 5 * 1024 * 1024;
+  assert.equal(addImage([], { ...png, size: MB5 - 2 }).error, undefined, "a multiple of 3 under 5 MB");
+  assert.match(String(addImage([], { ...png, size: MB5 - 1 }).error), /over 5 MB/, "base64 rounds it up past 5 MB: the box would refuse it");
   assert.deepEqual(sendImages(one), [{ media_type: "image/png", data: "iVBORw0KGgo=" }]);
   assert.equal(b64Bytes("iVBORw0KGgo="), 8);
   assert.equal(b64Bytes("TWFu"), 3);

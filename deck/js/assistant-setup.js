@@ -13,6 +13,7 @@
 
 import { h, put } from "./dom.js";
 import { attempt } from "./api.js";
+import { createAgent } from "./agent-create.js";
 
 const VAULT_SUB = "claude-setup-token";
 const VAULT_KEY = "anthropic-api-key";
@@ -65,13 +66,15 @@ export function assistantCard({ onCreated } = {}) {
     const via = st.data?.detail?.claude?.auth || null;
     const input = { name: slug(display), kind: "assistant", projects: "*", auth: authFor(via), computer: computer.checked,
       instructions: `Your name is ${display}.${person ? ` You work for ${person}.` : ""} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` };
-    const r = await attempt("agents.create", input);
+    // createAgent follows up with agents.update { computer: true } if the agent came back without one.
+    const r = await createAgent(input, attempt);
     create.disabled = false;
     nameIn.disabled = false;
     computer.disabled = false;
     if (r.error) { put(status, problem(r.error)); nameIn.focus(); return; }
-    put(status);
-    const a = r.data && typeof r.data === "object" ? r.data : input;
+    // Made either way; a refused computer is said, and its agent page offers the button again.
+    put(status, r.computerError ? `Made, but not given a computer: ${problem(r.computerError)}` : "");
+    const a = r.data || input;
     onCreated?.({ status: "new", doing: "not started", thread: null, ...a });
   };
   nameIn.addEventListener("input", () => { if (status.textContent) put(status); });

@@ -73,7 +73,41 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
   Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
-0. PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
+- From mobile (trust UI on work/mobile 4ea9fcf), after native-core: (1) an untrusted browser's
+  denied tools answer `denied` "trust this browser first" instead of 404 (a WEB_DENY check in
+  the tools or a policy that answers denied, not hides); (2) emit `device.trusted {id, trusted}`
+  and pass the "trust changed" close reason through relay/client; (3) relay.devices.list gains
+  webExpiryDays and trustedBy/trustedAt (relay.devices.trust records trusted_by = the trusting
+  device's id and name, and trusted_at; both cleared when trust is lowered or the browser pairs
+  again; returned in the view for web devices, per app-design); (4) same as app-design (2): name, not id, in the trust
+  summary. The app hides "Ask to trust" until relay.devices.ask-trust is listed.
+- From app-design (board "Devices: trusting a browser for the vault", work/app-design 46f1b3d),
+  after native-core: (1) relay.devices.trust with trusted:false needs no proof (presence.when on
+  input.trusted); (2) the presence summary names the device ("Trust browser Chrome on alex's
+  Pixel 8 fully"), not the id; (3) relay.devices.ask-trust {id}, callable by the untrusted web
+  device itself (not in WEB_DENY), puts one Device row in Needs on trusted devices (Trust / Not
+  now), deduped per device.
+- e2e decision: the pairing presence key is the phone's biometric-bound key (vyre.human). Optional
+  hardening: if the hello's presenceKey carries `biometric: true`, admit() refuses one without it.
+  Untrusted web devices stay blocked from vault reveal/copy by WEB_DENY even though e2e e5aaf88
+  lets presence sessions serve them for device:<id>.
+- From mobile (apps/app on work/mobile 24e2091a wires relay/client), for when relay resumes:
+  (1) README: say createPaths takes `fetch` (RN needs expo/fetch to stream); (2) a `randomBytes`
+  option for paths.js newKey() (Hermes has no getRandomValues); (3) a start-on-the-relay mode:
+  `prefer` path plus a background probe that moves up to direct, so a phone's first request does
+  not wait 1.5 s; (4) make relay/client strict-tsc clean (85 errors, 9 files) so the app drops its
+  hand-written declarations.
+0. (e2e c8e00e7 has the contract; relay.device.presence added in this commit for the native path.
+   Web: e2e a33ad94 has it. WAITS until after the native-core milestone (lead). Then, in admit()
+   for a web pairing whose hello carries a passkey: ctx.call("presence.enroll", { kind: "passkey",
+   name, public_key: <base64url SPKI DER>, alg: -7|-8|-257, rp_id: "app.vyre.run", credential_id,
+   device: <device id> }) as module:relay, and store credential_id as presence_key so
+   relay.devices.remove's presence.remove drops the binding. Loader sign-in: POST
+   /v1/presence/challenge { tool: "presence.person.start", input: { key: <JWK> }, method: "passkey" },
+   navigator.credentials.get on app.vyre.run, then POST presence.person.start { key } with
+   x-vyre-presence `passkey id=<challenge> cred= ad= cd= sig=`; keep { token } and sign with
+   x-vyre-proof. Tests: e2e's test/person.test.js.)
+   PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
    (a) at web pairing, the loader makes a passkey with rpId app.vyre.run and sends it in the
    hello; admit() passes it to presence for enrollment bound to the device id; (b) the loader
    and the native app call presence.person.start over the channel and keep the returned token,

@@ -15,7 +15,6 @@
 // this box knows and shown with every pairing notice.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
@@ -99,7 +98,9 @@ export default {
     let keys = null;
     const k = () => (keys = keys || loadKeys(ctx.paths.root));
     const route = () => routeId(k().route.pub);
-    const boxName = () => (ctx.config.network && ctx.config.network.name) || os.hostname().split(".")[0];
+    // The box's name as the names module knows it (config.name), never the machine's hostname: it rides in QR codes and
+    // shows in screenshots.
+    const boxName = () => String(ctx.config.name || (ctx.config.network && ctx.config.network.name) || "Vyre box").slice(0, 64);
 
     /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */
     /** @type {{ hash: Buffer, exp: number, first: boolean } | null} */
@@ -396,6 +397,19 @@ export default {
         if (!row) throw fail("bad_input", "this tailnet node is not linked to a paired device yet: report over the relay first and pass its code");
         moved(row.id, input.path === "direct" ? "direct" : "relay", rtt);
         return { path: input.path, device: row.id };
+      },
+    });
+
+    // For presence.person.start (ADR 0032): the presence key this box enrolled when it paired a
+    // device, so a relayed device signs in only with its own key. Modules only; null for a device
+    // that is removed, unknown or paired without one.
+    ctx.tool("relay.device.presence", {
+      internal: true,
+      description: "The presence key id enrolled for a paired relay device, or null.",
+      input: obj({ id: str }, ["id"]),
+      run: async input => {
+        const row = /** @type {any} */ (db.prepare("SELECT presence_key FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input.id)));
+        return { key: (row && row.presence_key) || null };
       },
     });
 
