@@ -28,6 +28,8 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
 ## Doing
+- SendAttaching adopted (capsule-pro c61e3af): the screen chip in the Capsule's box. Combined on
+  c61e3af: 218 pass, 0 fail; app links. Waiting on capsule-pro to merge it.
 - Adopted capsule-pro 3882f65's seams in the sight extension: the panel slides in ease-out and out
   ease-in (SessionWindowCurve); the "Side view: <name>" rows and the panel's tabs re-read the
   session list on thread.started / thread.stopped and call host.commandsChanged() only when it
@@ -69,7 +71,6 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
 ## Needs from others
 - chat team: `recall.watch {session, from?}` + `session.turn` events (+ optional `session.state`) for
   live terminal tabs in the session panel. Asked 2026-09-27; wire it up when it lands.
-- capsule-pro: answer on the SendAttaching Kit hook (screen chip in the main box).
 - capsule-pro: the native Capsule host (Sources/Host, UI) so the extension can run in the app.
   Until then the extension compiles and tests but does not run. Also asked of capsule-pro:
   `VyredLink.stream(path:)` for WebSocket streams (sight reuses the internal VySock today),

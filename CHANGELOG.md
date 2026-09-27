@@ -173,6 +173,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   under the bar. Hot keys: ⌥Space with no permission, Control twice once Input Monitoring is
   allowed (asked only from the menu-bar item). `local/capsule/native/Sources/Host`, `Sources/UI`.
 - Fixed a race in the apps scan: a waiting refresh now waits out a scan already running.
+#### The screen chip in the Capsule's box
+
+- capsule-sight: SightExtension adopts capsule-pro's `SendAttaching`. An Ask, a message to an
+  agent or session, or a new project thread whose words point at the screen (or with text
+  selected in the app in front) shows "with your screen: <app> · <window>" in the bar, with the
+  app's icon; Command-Backspace or the x removes it, and the context goes only if it stayed.
+  Questions wait 150 ms for the words to rest and a newer one answers the older ones; hiding
+  cancels them. Blind places, secure fields and a failed read give no chip.
+
 #### Side view and voice from the terminal (ADR 0015)
 
 - Side view on macOS (`local/sideview`, `vyre sideview`): the front terminal session on the left at
