@@ -6,7 +6,7 @@
 // Entities, aliases, facts and evidence are derived from every claim on each derive, so they can
 // never drift from what was said. derive() writes only when the result differs.
 
-import { extractPersonal, CONF, SINGULAR, SINGLE_VALUED, TIME_VARYING, relOfRole } from "./extract.js";
+import { extractPersonal, CONF, KIN, SINGULAR, SINGLE_VALUED, TIME_VARYING, relOfRole } from "./extract.js";
 import { MIGRATIONS } from "../schema.js";
 import { migrate } from "../../store/index.js";
 
@@ -17,7 +17,9 @@ export const TOLD = { explicit: 0.95, indirect: 0.8 };
 /** A remembered line longer than this is cut: it is a fact, not a document. */
 const TOLD_MAX = 1000;
 /** Relations that are bookkeeping for derive, never facts. */
-const INTERNAL = new Set(["called", "ended:owns"]);
+const INTERNAL = new Set(["called", "ended:owns", "named", "at"]);
+/** A fact only Claude's words support is an echo: never sure enough to be told as a fact. */
+export const ASSISTANT_MAX = 0.45;
 const KIN_WORD = { spouse: "spouse", partner: "partner", mother: "mother", father: "father", sister: "sister", brother: "brother", son: "son", daughter: "daughter", child: "child", dog: "dog", cat: "cat" };
 
 const round = x => Math.round(x * 1000) / 1000;
@@ -223,7 +225,21 @@ export class Personal {
     this.dirty = false;
     const db = this.db;
     const claims = db.prepare("SELECT session, seq, ts, subj, rel, obj, conf, method FROM memory_me_claims").all()
-      .map(r => ({ session: String(r.session), seq: Number(r.seq), ts: Number(r.ts) || 0, subj: String(r.subj), rel: String(r.rel), obj: String(r.obj), conf: Number(r.conf) }));
+      .map(r => ({ session: String(r.session), seq: Number(r.seq), ts: Number(r.ts) || 0, subj: String(r.subj), rel: String(r.rel), obj: String(r.obj), conf: Number(r.conf), method: String(r.method || "rule") }));
+    const turnOf = c => `${c.session}\u0000${c.seq}`;
+
+    // ---- a lowercase name ("my partner robin") is confirmed when another turn uses the same
+    // word as a name: "robin and i", "robin's bday", "theo (he's 9)", "owen from harlow legal".
+    const usedAsName = new Map();
+    for (const c of claims) if (c.subj.startsWith("name:") && c.method !== "assistant") {
+      const k = keyOf(c.subj).toLowerCase();
+      if (!usedAsName.has(k)) usedAsName.set(k, new Set());
+      usedAsName.get(k).add(turnOf(c));
+    }
+    for (const c of claims) if (c.method === "lower" && c.rel === "name" && isLit(c.obj)) {
+      const turns = usedAsName.get(keyOf(c.obj).toLowerCase());
+      if (turns && [...turns].some(t => t !== turnOf(c))) c.conf = Math.max(c.conf, CONF.explicit);
+    }
     const parent = new Map(this.hasRecall() ? db.prepare("SELECT id, parent FROM recall_sessions").all().map(r => [String(r.id), r.parent ? String(r.parent) : null]) : []);
     const top = s => parent.get(s) || (s.includes("/") ? s.split("/")[0] : s);
 
@@ -259,6 +275,17 @@ export class Personal {
       if (subj === "me" || SINGULAR.has(/** @type {string} */ (role)) || m.size === 1) union(subj, `name:${nameWinner(m)}`);
       else split.add(subj);
     }
+    // "my partner" and "my husband" are one person when nothing says otherwise: no two different
+    // names, no two genders ("hubby" and "girlfriend" are two people).
+    const linked = r => claims.some(c => c.subj === "me" && c.obj === r);
+    if (linked("kin:spouse") && linked("kin:partner") && find("kin:spouse") !== find("kin:partner")) {
+      const ns = named.get("kin:spouse"), np = named.get("kin:partner");
+      const ws = ns && nameWinner(ns), wp = np && nameWinner(np);
+      const genders = r => new Set(claims.filter(c => c.subj === r && c.rel === "called").map(c => KIN[keyOf(c.obj)]?.[1]).filter(Boolean));
+      const gs = genders("kin:spouse"), gp = genders("kin:partner");
+      const clash = gs.size === 1 && gp.size === 1 && [...gs][0] !== [...gp][0];
+      if ((!ws || !wp || ws.toLowerCase() === wp.toLowerCase()) && !clash && gs.size < 2 && gp.size < 2) union("kin:spouse", "kin:partner");
+    }
     // A make said alone is the one model of that make, when only one was ever said.
     const models = new Map();
     for (const c of claims) for (const r of [c.subj, c.obj]) if (r.startsWith("vehicle:") && keyOf(r).includes(" ")) {
@@ -283,6 +310,20 @@ export class Personal {
         continue;
       }
       rows.push({ ...c, subj: canon(c.subj), obj: canon(c.obj) });
+    }
+
+    // "owen from harlow legal": a person at one of the user's own organisations (a client, where
+    // they work) is their contact there. The raw words are matched against those names only.
+    const myOrgs = [...new Set(rows.filter(r => r.subj === "me" && (r.rel === "client" || r.rel === "works_at") && r.obj.startsWith("org:")).map(r => r.obj))]
+      .map(o => ({ o, l: keyOf(o).toLowerCase() })).sort((a, b) => b.l.length - a.l.length);
+    if (myOrgs.length) for (const c of claims) if (c.rel === "at" && isLit(c.obj)) {
+      const raw = keyOf(c.obj).toLowerCase();
+      const hit = myOrgs.find(x => raw === x.l || raw.startsWith(x.l + " "));
+      if (!hit) continue;
+      const person = canon(c.subj);
+      if (person === "me" || person.startsWith("kin:")) continue;
+      rows.push({ ...c, subj: person, rel: "works_at", obj: hit.o });
+      rows.push({ ...c, subj: "me", rel: "contact", obj: person });
     }
 
     // A plural role whose names became people keeps its bare "my kids" only if something is
@@ -323,7 +364,8 @@ export class Personal {
       if (r.rel === "ended:owns") { const k = `${r.subj}|${r.obj}`; ended.set(k, Math.max(ended.get(k) || 0, r.ts)); continue; }
       if (INTERNAL.has(r.rel)) continue;
       const id = `${r.subj}|${r.rel}|${r.obj}`;
-      const g = groups.get(id) || { id, subj: r.subj, rel: r.rel, obj: r.obj, turns: new Map(), sessions: new Set(), first: r.ts, last: r.ts };
+      const g = groups.get(id) || { id, subj: r.subj, rel: r.rel, obj: r.obj, turns: new Map(), sessions: new Set(), first: r.ts, last: r.ts, user: false };
+      if (r.method !== "assistant") g.user = true;
       const tk = `${r.session}\u0000${r.seq}`;
       const had = g.turns.get(tk);
       if (!had || had.conf < r.conf) g.turns.set(tk, { conf: r.conf, session: r.session, seq: r.seq, ts: r.ts });
@@ -332,7 +374,10 @@ export class Personal {
       g.first = Math.min(g.first, r.ts); g.last = Math.max(g.last, r.ts);
       groups.set(id, g);
     }
-    const facts = [...groups.values()].map(g => ({ ...g, raw: combine([...g.turns.values()].map(t => t.conf)), confidence: 0, current: 1 }));
+    const facts = [...groups.values()].map(g => {
+      const raw = combine([...g.turns.values()].map(t => t.conf));
+      return { ...g, raw: g.user ? raw : Math.min(raw, ASSISTANT_MAX), confidence: 0, current: 1 };
+    });
     // Single-valued relations: rival values share the belief; the newest is favoured where a
     // value changes over a life (where the user lives), and breaks ties everywhere else.
     const bySlot = new Map();

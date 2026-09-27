@@ -92,7 +92,14 @@ const CATEGORY = /** @type {Record<string, string[]>} */ ({
   phone: ["iphone", "pixel", "galaxy", "android", "oneplus"],
   laptop: ["macbook", "thinkpad", "xps", "surface"],
   drink: ["tea", "coffee", "water", "juice", "beer", "wine"],
+  "design tool": ["figma", "sketch", "adobe xd", "xd", "photoshop", "illustrator", "indesign", "canva", "affinity", "framer", "penpot", "procreate"],
+  notes: ["obsidian", "notion", "evernote", "bear", "logseq", "roam", "onenote", "apple notes", "joplin", "craft", "notability", "goodnotes"],
 });
+CATEGORY["design app"] = CATEGORY["design tool"];
+CATEGORY.design = CATEGORY["design tool"];
+CATEGORY.note = CATEGORY.notes;
+CATEGORY["note app"] = CATEGORY.notes;
+CATEGORY["notes app"] = CATEGORY.notes;
 
 /**
  * @typedef {{ kind: "kin", word: string, role: string }
@@ -101,6 +108,7 @@ const CATEGORY = /** @type {Record<string, string[]>} */ ({
  *   | { kind: "car", before: string|null, color: boolean }
  *   | { kind: "lives", before: string|null }
  *   | { kind: "work" }
+ *   | { kind: "job" }
  *   | { kind: "clients" }
  *   | { kind: "contact", org: string }
  *   | { kind: "uses", cat: string|null }
@@ -135,7 +143,10 @@ export function parse(q) {
   const before = (m = /\bbefore (?:the |my |i |we )*(.+)$/.exec(t)) ? content(m[1]) || "then" : /\b(?:previous|previously|used to|old|first|last)\b/.test(t) ? "then" : null;
   if (/\b(?:car|cars|vehicle|drive|driving|ride)\b/.test(t)) return { kind: "car", before, color: /\bcolou?r\b/.test(t) };
   if (/\b(?:live|lived|living|based|reside)\b/.test(t) && /\b(?:i|we|my)\b/.test(t)) return { kind: "lives", before };
+  if (/\b(?:which|what) (?:city|town|place|country)\b.*\b(?:am i|are we|do i|do we)\b|\bwhere am i\b/.test(t)) return { kind: "lives", before };
+  if (/\bwhat do i do\b(?! for (?:fun|lunch|dinner))|\bwhat (?:is|was) my (?:job|role|occupation|profession)\b|\bmy (?:job|occupation|profession|line of work)$|\bwhat do i work as\b/.test(t)) return { kind: "job" };
   if (/\bwhere (?:do|did) i work\b|\bwho do i work for\b|\bmy (?:company|employer|studio|business|firm|agency|job|workplace)\b|\bcompany\b.*\b(?:i|my)\b/.test(t)) return { kind: "work" };
+  if ((m = /\b(?:what|which) (?:app|tool|program|software|thing|service)s? do i (?:keep|take|write|store|put|track|do) (?:all |most )?(?:of )?my ([a-z]+)/.exec(t))) return { kind: "uses", cat: m[1] };
   if ((m = /\b(?:what|which) (.+?) do i use\b/.exec(t)) || (m = /\bwhat do i use for (.+)$/.exec(t))) return { kind: "uses", cat: content(m[1]) || null };
   if (/\bwhat do i use\b/.test(t)) return { kind: "uses", cat: null };
   if (/\bprefer\b/.test(t)) {
@@ -177,6 +188,8 @@ const list = xs => (xs.length <= 1 ? xs.join("") : xs.slice(0, -1).join(", ") + 
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const ROLE_WORD = /** @type {Record<string, string>} */ ({ spouse: "spouse", partner: "partner", mother: "mother", father: "father", child: "child", son: "son", daughter: "daughter", brother: "brother", sister: "sister", pet: "pet", friend: "friend", colleague: "colleague" });
 const PEOPLE = new Set(Object.keys(ROLE_WORD));
+/** Pet names for relatives, in their plain form. */
+const FORMAL = /** @type {Record<string, string>} */ ({ hubby: "husband", wifey: "wife", missus: "wife", mummy: "mum", mommy: "mom", daddy: "dad" });
 const KIN_LABEL = new Set([...Object.keys(KIN), ...Object.keys(ROLE_WORD)]);
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const hasWord = (text, w) => new RegExp(`(^|[^a-z0-9])${esc(w)}($|[^a-z0-9])`, "i").test(text);
@@ -234,7 +247,10 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
   const fromFacts = (line, facts, o = {}) => ({ line, facts, conf: o.conf ?? Math.min(...facts.map(f => f.confidence)) });
 
   const current = fs => fs.filter(f => f.current);
-  const kinWord = (id, fallback) => personal.called(id) || fallback;
+  /** The word for a relative, in its plain form: "hubby" reads as "husband". */
+  const kinWord = (id, fallback) => { const w = personal.called(id); return w ? FORMAL[w] || w : fallback; };
+  /** The genders the words for someone carry ("husband", "hubby": m). Empty when none say. */
+  const gendersOf = id => new Set((personal.about(id)?.aliases || []).map(a => KIN[a.replace(/^my /, "")]?.[1]).filter(Boolean));
   /** Is an entity label just a kin word (the relative was never named)? */
   const unnamed = label => KIN_LABEL.has(String(label).toLowerCase());
 
@@ -250,10 +266,15 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
     switch (p.kind) {
       case "kin": {
         const rel = relOfRole(p.role);
-        const rels = current(personal.lookup({ subj: "me", rel }));
+        // "my kids" are every child, son and daughter.
+        const rels = current(rel === "child" ? ["child", "son", "daughter"].flatMap(r => personal.lookup({ subj: "me", rel: r })) : personal.lookup({ subj: "me", rel }))
+          .filter((f, i, a) => a.findIndex(x => x.obj === f.obj) === i);
         const named = [];
+        const asked = KIN[p.word]?.[1] || null;
         for (const r of rels) {
           if (unnamed(r.object)) continue;
+          // "my wife" is never the one only ever called "husband".
+          if (asked) { const gs = gendersOf(r.obj); if (gs.size && !gs.has(asked)) continue; }
           // A pet is the one of the species asked about: a dog is never the answer about a cat.
           if (rel === "pet" && r.obj !== `kin:${p.role}` && KIN[personal.called(r.obj) || ""]?.[0] !== p.role) continue;
           const nm = current(personal.lookup({ subj: r.obj, rel: "name" }))[0];
@@ -316,6 +337,22 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
         const f = current(personal.lookup({ subj: "me", rel: "works_at" }))[0];
         return f ? fromFacts(`You work at ${f.object}.`, [f]) : null;
       }
+      case "job": {
+        const r = current(personal.lookup({ subj: "me", rel: "role" }))[0];
+        const w = current(personal.lookup({ subj: "me", rel: "works_at" }))[0];
+        if (r && w) return fromFacts(`You are ${/^[aeiou]/i.test(r.object) ? "an" : "a"} ${r.object} at ${w.object}.`, [r, w]);
+        if (r) return fromFacts(`You are ${/^[aeiou]/i.test(r.object) ? "an" : "a"} ${r.object}.`, [r]);
+        return w ? fromFacts(`You work at ${w.object}.`, [w]) : null;
+      }
+      case "contact": {
+        // A person the user's own words put at one of their organisations.
+        const org = personal.entity(p.org);
+        if (!org || org.kind !== "org") return null;
+        const people = current(personal.about(org.id)?.links || []).filter(f => f.rel === "works_at" && f.subj !== "me");
+        if (!people.length) return null;
+        const names = [...new Set(people.map(f => f.subject))];
+        return fromFacts(`Your contact${names.length > 1 ? "s" : ""} at ${org.label} ${names.length > 1 ? "are" : "is"} ${list(names)}.`, people);
+      }
       case "clients": {
         const fs = current(personal.lookup({ subj: "me", rel: "client" }));
         const names = fs.map(f => f.object);
@@ -349,11 +386,19 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
         return null;
       }
       case "who": {
-        const e = personal.entity(p.name);
+        let e = personal.entity(p.name);
+        // "who is owen price" when only "owen" was ever said: the one person of that first name,
+        // as long as no other surname is known for them.
+        if (!e && /\s/.test(p.name)) { const f0 = personal.entity(p.name.split(/\s+/)[0]); if (f0 && f0.kind === "person" && !/\s/.test(f0.label)) e = f0; }
         if (!e || e.id === "me") return null;
         const links = current(personal.about(e.id)?.links || []).filter(f => f.subj === "me");
         const f = links.find(l => PEOPLE.has(l.rel)) || links[0];
         if (!f) return null;
+        if (!PEOPLE.has(f.rel)) {
+          // Someone at an organisation: "Bea works at Northwind Bakery, your client."
+          const w = current(personal.lookup({ subj: e.id, rel: "works_at" }))[0];
+          if (w) return fromFacts(`${e.label} works at ${w.object}${isClient(w.object) ? ", your client" : ""}.`, [w, f]);
+        }
         // The name asked about when it is one of theirs (a rival name is still theirs, less surely).
         const names = personal.lookup({ subj: e.id, rel: "name" });
         const nm = names.find(x => x.object.toLowerCase() === p.name.toLowerCase()) || current(names)[0];
