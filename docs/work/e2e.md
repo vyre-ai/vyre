@@ -240,6 +240,12 @@ Plan (to the lead before building):
   status/cancel/notes in PERSON_ONLY breaks thread-socket calls (threadsock 403), the Harness floor
   (MODEL_NEVER) and owner-device reads. Asked: keep only team.add + team.notes.edit, merge 1941f2cf,
   keep bareforge tests, add a spawner-on test. Sign off on that sha.
+- vault-next a1a4e0b8 (9b connections) + connectors 8be461a9: NOT signed off. HIGH (probe on
+  testbox, appended to connections.test.js boot()): module:planner registers items:[postbox's
+  item] + use planner.add; the person's vault row is deleted, planner's row auto-granted
+  capsule+chat, chat's send_mail pick routes to planner.add. MEDIUM: mcp revokes any surface;
+  tailnet counts as person in allowed() without meta.person. LOW: "mobile" label claimable.
+  connectors 8be461a9 OK (1-line label change since 84f630c9). Rerun the probe on vault's fix sha.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
