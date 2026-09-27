@@ -88,13 +88,41 @@ without editing Capsule files:
 - Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
   fix, the extension seam, `@` targets: see CHANGELOG.
 
-## Doing
-- Session events (ADR 0030, sessions d12171cc): tool rows, turn, state, usage and the paced
-  reveal are built and measured (see CHANGELOG), Swift 287/287. They land after batch 3a is on
-  main: merge main then, run the suite, hand the sha to the integrator, and stop again.
-  Numbers (optimised, off-screen panel): event to paint p95 1.1 ms; first token 2.2 ms; chars per
-  frame CV 0.47; visible-update gap p95 18 ms; 0 size changes; Esc to stopped 1.5 ms; typing
-  p95 8.7 ms.
+## Doing (saved at logout 4, 2026-09-27)
+Branch tip 996a7ee8 (pushed). Swift 297/297. Built today: shortcuts (⌘A etc.), session events and
+the paced reveal, auto-answer and the follow-up box, voice and computer use (see CHANGELOG).
+
+The TRIAL is left RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
+- trial vyred pid 58916 (`node core/daemon/main.js` from this worktree)
+- trial Capsule pid 13018 (this worktree's .build/Vyre.app, launched with
+  `open -n --env VYRE_HOME=/private/tmp/claude-501/vyre-try --env VYRE_ALLOW_DIALOGS=1 <app>`)
+- Stop: quit from the menu-bar mark ("Quit Vyre Capsule"), then
+  `VYRE_HOME=/private/tmp/claude-501/vyre-try vyre down` (from this worktree: `node bin/vyre down`).
+- Its config points at the real box; `vyre up` there makes a pairing request (deny it).
+- The real Vyre (global npm 0.0.1, vyred 60055, ~/.vyre) is untouched.
+
+## Next
+1. USER BUG, TOP PRIORITY. (a) The answer area clips mid-line in a fixed box with no scroll. Make
+   the answer card grow to the panel's max height, then scroll: trackpad, and ⌘↑/⌘↓ and
+   PageUp/PageDown while the box keeps focus. Never clip mid-line. Auto-follow the stream unless
+   the user scrolled up. Add a snapshot test with a long answer. Today the answer at the top is
+   capped at 200 pt and `.clipped()` (CapsuleView `answer.frame(maxHeight: 200)`), and answerAlone
+   scrolls without keys. (b) The "SEND TO" and "COMMANDS" headings render with no rows: hide
+   empty sections.
+2. ⌘⏎ Think deeper: switch the SAME thread with sessions' threads.model and thinking on (db44749b,
+   batch 3b) once it is on main, instead of the new-thread fallback in AutoAsk.deeper().
+3. Design A: app-design's docs/design/system/capsule-mac.md (work/app-design c4f9bb23) and
+   capsule.md when it lands. In their order: every token from Tokens.generated.swift (sizes,
+   fonts, motion; no 10.5/11.5/14/22 and no gold literal); violet and gold misuse; one button system
+   (lime primary, 28/32, busy and disabled); duplicates (one turn renderer, one selected
+   marker); 44 pt rows; sentence case; the presence line; Always in <project> on the ask card.
+4. The settings hub (native-core): read /v1/theme and settings at launch, repaint on
+   settings.changed, and keep Theme.swift as the offline fallback only.
+5. The real-Vyre install after tonight's deploy, through the normal update path (the lead
+   arranges it with the user); then the 11-step real-Mac check below.
+6. "idle" on @ session rows from threads.list `status`. Persist PlannerBanners.unsent.
+7. Voice and computer use first-class are built; the live checks need the user (speech key in the
+   trial via `vyre voice key deepgram`, and the Microphone, Accessibility and Screen Recording grants).
 
 ## Footprint: met (2026-09-27)
 - CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use
@@ -204,15 +232,6 @@ then `vyre call gate.request "$H"` with N changed each time.
 Afterwards: `vyre call gate.held '{}'` shows nothing left over. Discard anything that is, with the
 card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.
 If a step fails, note its number and what the screen said. Screenshots of the Capsule only.
-
-## Next
-2. "idle" on @ session rows from threads.list `status` (VyreThread has no status yet), and
-   "send now".
-3. Switch the "live in terminal" badge to capsule-now's `live` flag (threads.list and
-   projects.catalog rows carry it via fc7fa70).
-4. Local ring answers kept only in memory (PlannerBanners.unsent). Persist them to
-   <home>/capsule/ if a quit before the box returns matters.
-5. The real-Mac check above, when the user says go (the lead hands it over).
 
 ## Needs from others
 - capsule-now: its rules doc (docs/work/capsule-now.md) is not written yet; the lead asked the
