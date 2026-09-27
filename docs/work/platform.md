@@ -27,6 +27,9 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - settings.write: work/platform-settings-write 70242656 (local) merges native-core's local 3ae4fc93 (maskFor), returns secret keys masked; 64/64 settings+modules+presence-bypass on testbox. Waits for e2e's sign-off of native-core, then e2e re-reviews 70242656, then integrator. Later: rev + non-secret value on its settings.changed once the hub store lands.
 - Agreed with native-core: settings.changed = rev + value at the changed level for non-secret keys. Schema: secret flag in 172da703 (local).
 
+- ADR 0035 accepted (native-core b95cc4dc) with my five notes answered. Schema matched in 8c74d585 (choicesFrom, session needs tool store). validateDecls patch sent to native-core (scratchpad validateDecls-adr0035.patch; they apply + test). Waiting: their hub store step 1 sha (rev-returning write) to rebase settings.write.
+- settings.write 70242656 pushed; waiting for e2e's quick look, then integrator.
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
