@@ -230,6 +230,14 @@ Done this session:
   callers plus a test. MEDIUMs sent: firstParty = "under the repo" (dev home in a checkout),
   env/plugins/deny-removal without confirm, asPerson's "deck" fallback. Waiting on their sha.
 
+~/.claude from a temp home (lead, 27 Sep): platform saw a fresh temp home report "107 facts about
+you". recall's readable() guards only under node --test, so a dev world read the real transcripts
+(config default, core/config/index.js:135). Guard test on work/e2e-noclaude (52ac6576 + the next
+commit): vyred in a child with HOME = a planted fake home, NODE_TEST_CONTEXT cleared, every fs call on
+a .claude path recorded and refused. Red on main with exactly those 3 paths. memory-iq is fixing it;
+I review their sha and they carry the test. Other defaults to route through one kernel helper:
+learn/skills.js:414, switchboard/index.js:1333, cli statusline.js:22, native-core settings claudeDir.
+
 Batch 4 lows (lead, 27 Sep): DONE in 8b9b092c. Unknown ids at gate.* and agents.* answer 404
 not_found; `vyre link signin` at a terminal waits on the event stream and says "signed in on the
 box until <date>" (test/daemon.test.js, test/link-person.test.js; 115/115 + 88/88 on testbox).
