@@ -5,6 +5,15 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### The rest of the retired tokens: --beacon-wash (2026-09-27)
+
+- `styles.css` still had `--beacon-wash` and used it for backgrounds: `.dest.do` (dead CSS, no
+  markup used it, so it's gone), `.held-chip`'s fill, and `.ph-card`'s left border. Violet
+  (`--beacon`) is text only, for "needs you" and nothing else, matching the real palette
+  (`core/config/palette.js` has `beacon-ink`/`beacon-dot`, never a wash). `.held-chip` keeps its
+  violet text and its dot; the fill is gone. `.ph-card` keeps its "Needs you" label above it and
+  loses its accent border.
+
 ### Gold retired, the real Capsule hotkey, and app-design's launch art (2026-09-27)
 
 - `index.html`, `styles.css`: removed the last gold from the page. app-design's review found it

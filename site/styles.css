@@ -13,7 +13,6 @@
   --signal-ink: #0E0D0C;
   --signal-wash: rgba(198, 243, 107, 0.12);
   --beacon: #B8A4FF;
-  --beacon-wash: rgba(184, 164, 255, 0.12);
   --paper: #F4F1EA;
   --paper-raised: #FBFAF6;
   --paper-rule: #DCD7CC;
@@ -196,8 +195,6 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .dest.on { background: var(--signal-wash); color: var(--bone); }
 .dest .lbl { width: 76px; }
 .dest .grow { flex-grow: 1; }
-.dest.do { background: var(--beacon-wash); }
-.dest.do .lbl { color: var(--beacon); }
 .cap-note { padding: 4px 10px 6px 96px; font-size: 12px; line-height: 16px; color: var(--ash); }
 .cap-reply { border-top: 1px solid var(--rule); padding: 14px 16px; font-size: 15px; line-height: 22px; color: var(--bone); display: flex; gap: 10px; align-items: baseline; }
 .cap-reply .who { font-family: var(--mono); font-size: 12px; color: var(--ash); flex-shrink: 0; }
@@ -207,7 +204,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .cap-recall { padding: 16px 16px 14px 44px; display: flex; flex-direction: column; gap: 8px; }
 .cap-recall .big { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em; color: var(--bone); }
 .src { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin: 6px; border-radius: var(--r-2); background: var(--raised); font-size: 13px; line-height: 18px; color: var(--stone); flex-wrap: wrap; }
-.held-chip { font-family: var(--mono); display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: var(--r-1); background: var(--beacon-wash); color: var(--beacon); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
+.held-chip { font-family: var(--mono); display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: var(--r-1); color: var(--beacon); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
 .held-chip .dot { width: 6px; height: 6px; }
 .mail { padding: 12px 16px 14px 44px; display: flex; flex-direction: column; gap: 10px; }
 .mail dl { display: grid; grid-template-columns: 56px minmax(0, 1fr); row-gap: 4px; font-size: 12px; line-height: 16px; }
@@ -347,7 +344,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .phone { width: 280px; border: 1px solid var(--rule-strong); border-radius: 34px; background: var(--carbon); padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 12px; box-shadow: var(--light); }
 .ph-top { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--stone); padding: 0 8px 6px; }
 .ph-top .notch { width: 72px; height: 20px; border-radius: 10px; background: var(--graphite); }
-.ph-card { background: var(--raised); border-radius: var(--r-3); padding: 14px; display: flex; flex-direction: column; gap: 6px; border-left: 2px solid var(--beacon); }
+.ph-card { background: var(--raised); border-radius: var(--r-3); padding: 14px; display: flex; flex-direction: column; gap: 6px; }
 .ph-t { font-size: 15px; line-height: 20px; font-weight: 500; }
 .ph-msg { font-size: 13px; line-height: 19px; color: var(--stone); margin-top: 4px; }
 .ph-acts { display: flex; gap: 8px; margin-top: 8px; }
