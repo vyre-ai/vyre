@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Not found is a 404, and `vyre link signin` says when it's done
+
+- An id that isn't there (gate.get, gate.approve and the rest on a held item; agents.* on an
+  agent) answers 404 `not_found` over HTTP instead of 500 `failed`.
+- `vyre link signin` at a terminal now waits for the passkey on the box's page and says "signed
+  in on the box until <date>", or that the page closed first. It listens on vyred's event stream
+  (no polling) and reads link.status once when the stream opens, so a fast passkey still counts.
+  Run from a script (no terminal), it prints the link and returns at once, as before.
+
 #### `vyre up` never asks a box to pair on its own
 
 - `vyre up` on a Mac sends a box a pairing request only when the person asked for that box:
