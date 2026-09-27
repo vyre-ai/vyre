@@ -70,24 +70,23 @@ turns) running past perf-check's 250 ms settle, not idle work. perf-check now wa
 
 ## Doing
 
-SAVED 27 Sep 2026 (the user logged out). Nothing in progress; the test box is clean.
+27 Sep 2026 (resumed): the WebSocket upgrade handler is done (f309059, below). Now on the
+Mac-send loose ends on work/federation (../vyre-federation), in "Next".
 
-Exact next step: the WebSocket upgrade handler, owner-only (lead, 27 Sep). Chat is blocked on it:
-/v1/streams/* (terminal, Glass) works only on the unix socket because neither
-core/names/service.js nor core/onboard/loopback.js handles an upgrade.
-1. core/daemon: an upgrade hook next to ctx.handler, so a module's listener can hand an upgrade
-   (req, socket, head, caller) to registry.upgrades.
-2. core/names/service.js: an `upgrade` handler that runs whois, refuses guests and agent nodes
-   (the same rule as callerAllowed / ownerOverTailnet), and dispatches to registry.upgrades as
-   the owner's caller.
-3. core/onboard/loopback.js: accept an upgrade only with Host 127.0.0.1:<port>, as its HTTP
-   handler does.
-4. Tests: owner allowed, guest refused, agent node refused, wrong Host refused on loopback.
-   Run on the test box only. Then send the sha to chat and the lead.
+Owner-only streams (f309059): the upgrade path already existed on main (ctx.upgrader in
+core/daemon/index.js, onUpgrade in core/names/service.js, from glass-live), but it let a guest
+listed for glass.open through. Now `onUpgrade` refuses any whois kind but "owner" (403), and
+core/onboard/loopback.js takes upgrades itself: non-loopback Host 421, no session 403, then 404
+(onboarding opens no streams). Test box, `nice -n 15`: core/names/service.test.js,
+test/onboard.test.js, core/names/identity.test.js, test/guests.test.js, test/hygiene.test.js,
+53 of 53. A mutation check (rule removed) fails both the guest and the agent assertion.
+Open question for the lead: GUEST_SAFE (core/names/guests.js) still offers guests glass.open,
+whose ticket now cannot be used over the tailnet. Drop glass.open from GUEST_SAFE, or let a
+guest's stream through for Glass only?
 
 Shas waiting to merge:
-- work/tailnet bd833dc: egress fails closed (62ebce3, 7b8242f) and link.health owner-only. The
-  lead asked the integrator to merge it.
+- work/tailnet f309059: owner-only streams, on top of bd833dc (egress fails closed, link.health
+  owner-only).
 - work/federation 2379a0c (../vyre-federation): sending to Mac sessions from the box, and
   ctx.call `as` limited to core modules. Given to the integrator; chat merges it once frozen.
 
