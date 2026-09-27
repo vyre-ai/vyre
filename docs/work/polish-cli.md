@@ -87,7 +87,10 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Next
 
-0. vyre key (cohesion 6): thin verbs over vault.need / vault.connect once work/vault-next lands;
+0. Render (platform agreed to our frame fields, prompt flat as asked; work/platform ~7a0b3f1b):
+   when its sha lands, JSDoc-import Render from packages/module-sdk in core/cli/view.js and add a
+   test that every builder and derived view satisfies it.
+   vyre key (cohesion 6): thin verbs over vault.need / vault.connect once work/vault-next lands;
    vault-next already has `vyre vault need|connect` in vault.js, which will conflict with our
    vault.js views (d035a46c): merge carefully. voice key becomes an alias.
    Statusline: e2e's config.claudeHome switch (work/e2e-noclaude 32dc0956) when it is on main,
