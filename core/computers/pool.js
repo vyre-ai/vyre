@@ -276,7 +276,7 @@ export class Pool {
     }
   }
 
-  /** Who holds the screens, for a person to read: "kit (watched by 1), juno (taken over by glass:laptop)". */
+  /** Who holds the screens, for a person to read: "kit (watched by 1), juno (taken over by you)". */
   holders() {
     return [...this.checkouts.values()].map(c => {
       const h = this.heldBy(c.agent);
