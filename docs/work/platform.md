@@ -51,6 +51,8 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 
 - vyre module new/check/add DONE a79d58f1 (176/176), sent for the RC. Open: loader reads `replaces` (P1 second half); real local restart inside add not under test.
 
+- SAVE (restart): handed off to the integrator for the RC: work/platform a79d58f1 (vyre module + everything before), settings-write d62792d0 (after native-core fa349d31; e2e glancing at the checked() addition). b4fix 97686e1b landed in b4. Waiting on: e2e ok for d62792d0; integrator's RC report; loader `replaces` + ctx.settings (P1 second half) once native-core is on main; event renames after 0.1.0 (lead routes). No testbox processes running.
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
