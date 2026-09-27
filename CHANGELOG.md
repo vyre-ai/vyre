@@ -4,6 +4,39 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### sync.upload: a paired device sends its own Claude Code sessions to the box (ADR 0008 5a, session import, box side only)
+
+- New module core/sync: `sync.consent` (the box's own record of a peer's import switch, off by
+  default, never the device's say-so), `sync.upload.plan` (dedupe against what the box already
+  has, and quota), `sync.upload.start` (offset-based resume, matched by path and hash),
+  `sync.upload.chunk` (the actual bytes) and `sync.upload.finish` (verifies the hash, scrubs for
+  secrets, lands the file or quarantines it). Turning consent off, or unpairing the device
+  entirely (`link.unpaired`), deletes everything it sent and emits `sync.revoked { machine }`.
+- core/sync/scrub.js: a first-pass content scan for known secret shapes (Anthropic, OpenAI,
+  GitHub, Slack, AWS, Google, Stripe keys; PEM private keys) at ingest, before a file's final
+  rename. Never redacts (a transcript's meaning depends on its exact words): an unsafe file is
+  quarantined whole, under `synced/.quarantine/<machine>/`, for the person to look at.
+- core/link/box.js: `link_peers` gains `kind` ("mac", the default, or "device" — a peer paired
+  only to import its own sessions). `link.macs` and `link.macs.call` now filter to `kind = 'mac'`
+  — capability lives on the peer row, not a second identity path (e2e's review). `link.pair.
+  request` takes `kind`. New internal tool `link.peer-of { stableId }` so core/sync can turn a
+  connection's own tailnet node into the peer it is, without reaching into link's table itself.
+- core/daemon/index.js: a dedicated route, `POST /v1/sync/upload/<id>?offset=<n>`, reads the
+  request body as raw bytes (never JSON — a chunk is application/octet-stream) and calls
+  `sync.upload.chunk` with the Buffer. Refuses at once (403) when the connection carries no
+  tailnet peer identity — never reachable over the relay, from a guest, or from an agent's node.
+- core/link/transport.js: `connector().open`/`.json` accept a Buffer body as-is (octet-stream,
+  content-length from its byte length) instead of always JSON-stringifying, for whichever side
+  eventually sends a chunk this way (the device sender, `sync.send`, is not built yet — see
+  docs/work/federation.md).
+- Tests: 13 in core/sync (plan, start, chunk, finish, resume, cross-peer isolation, quota, unsafe
+  quarantine, an unsafe machine-name folder, consent-off and unpair both deleting and emitting
+  `sync.revoked`, and `link.macs`/`link.macs.call` never seeing a "device" peer), 4 for scrub.js.
+  Not yet built or tested: the device-side sender (`sync.send`), a real HTTP-level test of the
+  daemon's new route (only the tool logic is tested directly; the route itself is a small,
+  mechanical translation layer, reviewed by hand), and upload state surviving a box restart
+  (in-memory only, matching link.serve's own request-holding, which has the same limit).
+
 #### files.deliver's opt-in checks the value exactly, not merely truthily (e2e nit on aa9cb40c)
 
 - core/files/drop.js: `cfg.receive !== true` gates the Mac's receiver, not `!cfg.receive`, so a

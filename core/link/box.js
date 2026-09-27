@@ -23,6 +23,12 @@
 // ask.answered) while paired, so the box knows which Mac an ask is on. When the person answers one
 // here, the box signs an assertion with its own key (assert.js) bound to that Mac, that ask and
 // that exact answer, and the Mac checks it against the key it pinned at pairing before it runs.
+//
+// Session import (ADR 0008 5a) gives a peer a kind: "mac" (the full feature set above) or
+// "device" (paired only to send its own sessions). Capability lives on the peer row, not a
+// second identity path (e2e's review): link.macs and link.macs.call never see a "device" peer.
+// The upload protocol itself is core/sync's, which asks link.peer-of (internal) to turn a
+// connection's tailnet node into the peer it is, since sync owns no pairing of its own.
 
 import crypto from "node:crypto";
 import { createHealth, unknown } from "./health.js";
@@ -71,6 +77,10 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   ctx.store.migrate([
     `CREATE TABLE link_peers (id TEXT PRIMARY KEY, name TEXT NOT NULL, login TEXT, node TEXT, stable_id TEXT,
        key_hash TEXT NOT NULL UNIQUE, paired_at INTEGER NOT NULL, last_seen INTEGER)`,
+    // Capabilities live on the peer row, not a second identity path (e2e, session-import review):
+    // "mac" is the full link feature set (reads, Taildrop, ask-answering); "device" is a peer
+    // paired only to import its own sessions (sync.upload.*), never forwarded a read or a write.
+    `ALTER TABLE link_peers ADD COLUMN kind TEXT NOT NULL DEFAULT 'mac'`,
   ]);
   const pepper = crypto.randomBytes(32);
   const mac = s => crypto.createHmac("sha256", pepper).update(String(s)).digest();
@@ -87,17 +97,18 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   const peerOf = meta => (meta && meta.peer) || null;
 
   ctx.tool("link.pair.request", {
-    description: "Start pairing a Mac with this box. Called by the Mac's vyred over the tailnet; the code it returns is shown on the Mac only.",
-    input: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
-    run: async ({ name }, meta) => {
+    description: "Start pairing a device with this box. Called by the device's vyred over the tailnet; the code it returns is shown on the device only. kind: \"mac\" (the default, the full link feature set) or \"device\" (a peer paired only to import its own sessions).",
+    input: { type: "object", properties: { name: { type: "string" }, kind: { type: "string", enum: ["mac", "device"] } }, required: ["name"] },
+    run: async ({ name, kind }, meta) => {
       const login = tailnetLogin(meta.caller);
-      if (!login) throw new Error("pairing starts from the Mac, over the tailnet");
+      if (!login) throw new Error("pairing starts from the device, over the tailnet");
       sweep();
       if (pending.size >= MAX_PENDING) throw new Error("too many pairing requests are waiting; approve or deny them on the box first");
       const id = crypto.randomUUID(), code = newCode(), secret = crypto.randomBytes(32).toString("base64url");
       const peer = peerOf(meta);
-      pending.set(id, { id, name: String(name).slice(0, 80), login, peer, code: mac(code), secret: mac(secret), expires: now() + TTL });
-      ctx.events.emit("link.pair-requested", { id, name: String(name).slice(0, 80), login, expires: now() + TTL });
+      const k = kind === "device" ? "device" : "mac";
+      pending.set(id, { id, name: String(name).slice(0, 80), login, peer, kind: k, code: mac(code), secret: mac(secret), expires: now() + TTL });
+      ctx.events.emit("link.pair-requested", { id, name: String(name).slice(0, 80), login, kind: k, expires: now() + TTL });
       return { id, code: showCode(code), secret, expires: now() + TTL, box: { name: ctx.config.name || null } };
     },
   });
@@ -105,7 +116,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   ctx.tool("link.pending", {
     description: "Pairing requests waiting for approval on this box. The codes are never listed: they are on the Mac's screen.",
     input: { type: "object", properties: {} },
-    run: async () => { sweep(); return [...pending.values()].filter(p => !p.key && !p.denied).map(p => ({ id: p.id, name: p.name, login: p.login, node: p.peer ? p.peer.node : null, expires: p.expires })); },
+    run: async () => { sweep(); return [...pending.values()].filter(p => !p.key && !p.denied).map(p => ({ id: p.id, name: p.name, login: p.login, node: p.peer ? p.peer.node : null, kind: p.kind || "mac", expires: p.expires })); },
   });
 
   /** May this caller approve or deny request p? The box's terminal, or another of the owner's devices. */
@@ -150,11 +161,11 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       if (!mayDecide(p, meta, true)) throw new Error("approve with your passkey (Touch ID on this Mac, or on your phone); a Mac cannot approve its own pairing without one");
       wrong = 0;
       const key = crypto.randomBytes(32).toString("base64url"), id = crypto.randomUUID();
-      db.prepare("INSERT INTO link_peers (id, name, login, node, stable_id, key_hash, paired_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-        .run(id, p.name, p.login, p.peer ? p.peer.node || null : null, p.peer ? p.peer.stableId || null : null, sha(key), now());
+      db.prepare("INSERT INTO link_peers (id, name, login, node, stable_id, key_hash, paired_at, kind) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+        .run(id, p.name, p.login, p.peer ? p.peer.node || null : null, p.peer ? p.peer.stableId || null : null, sha(key), now(), p.kind || "mac");
       Object.assign(p, { key, peerId: id, expires: now() + 60_000 });
-      ctx.events.emit("link.paired", { peer: id, name: p.name, login: p.login });
-      return { peer: id, name: p.name };
+      ctx.events.emit("link.paired", { peer: id, name: p.name, login: p.login, kind: p.kind || "mac" });
+      return { peer: id, name: p.name, kind: p.kind || "mac" };
     },
   });
 
@@ -212,9 +223,9 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.peers", {
-    description: "The Macs paired with this box.",
+    description: "Every device paired with this box, Macs and import-only devices alike, with its kind.",
     input: { type: "object", properties: {} },
-    run: async () => db.prepare("SELECT id, name, login, node, stable_id, paired_at, last_seen FROM link_peers ORDER BY paired_at").all(),
+    run: async () => db.prepare("SELECT id, name, login, node, stable_id, paired_at, last_seen, kind FROM link_peers ORDER BY paired_at").all(),
   });
 
   /** Who may ask link.health: a module, the person at the box, or the owner over the tailnet. */
@@ -247,7 +258,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.unpair", {
-    description: "Forget a paired Mac. On the box, by id; from the Mac, with its own key.",
+    description: "Forget a paired Mac or device. On the box, by id; from the device, with its own key. If it ever synced sessions, core/sync deletes everything it sent when it hears link.unpaired.",
     input: { type: "object", properties: { id: { type: "string" }, key: { type: "string" } } },
     run: async ({ id, key }, meta) => {
       let row = null;
@@ -368,7 +379,9 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
       if (!write && !allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
       // A send that resumes a stopped session headless takes longer than a read.
       const wait = Math.min(15_000, Math.max(100, Number(timeout) || (write ? 15_000 : 5000)));
-      let macs = /** @type {any[]} */ (db.prepare("SELECT id, name, stable_id FROM link_peers ORDER BY paired_at").all());
+      // "device" peers hold no link.serve loop for these tools (sync.upload.* is all they run) —
+      // they never appear in a read or a write forwarded this way (e2e, session-import review).
+      let macs = /** @type {any[]} */ (db.prepare("SELECT id, name, stable_id FROM link_peers WHERE kind = 'mac' ORDER BY paired_at").all());
       if (only) macs = macs.filter(m => m.id === only || m.name === only);
       // An answer goes to the one Mac the ask is on: the one whose ask.raised the box heard, or the
       // one `mac` names (after a box restart). Never to every Mac.
@@ -459,10 +472,24 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     // stableId: the Mac's tailnet peer id (Tailscale status Peer.ID), for a module that needs to
     // find it among the box's own tailnet peers (files.deliver, ADR 0021's "Mac and box as one").
     // node is the paired name shown to surfaces; stableId is never shown, only matched against.
-    run: async () => /** @type {any[]} */ (db.prepare("SELECT id, name, node, stable_id FROM link_peers ORDER BY paired_at").all()).map(m => ({
+    // "device" peers are not Macs (no live reads, no Taildrop): left out here, same as macs.call.
+    run: async () => /** @type {any[]} */ (db.prepare("SELECT id, name, node, stable_id FROM link_peers WHERE kind = 'mac' ORDER BY paired_at").all()).map(m => ({
       mac: m.id, name: m.name, node: m.node || null, stableId: m.stable_id || null,
       online: waiting.has(m.id) || (lastServe.get(m.id) ?? -Infinity) >= now() - hold - 5000,
       lastServe: lastServe.get(m.id) ?? null })),
+  });
+
+  // A peer identified only by its own tailnet node (never a claimed name), for the sync module
+  // (core/sync), which owns the upload protocol itself but not pairing or capability. Internal:
+  // modules only.
+  ctx.tool("link.peer-of", {
+    description: "The paired peer this stableId is, or null: { id, name, kind }. Internal.",
+    input: { type: "object", required: ["stableId"], properties: { stableId: { type: "string" } } },
+    internal: true,
+    run: async ({ stableId }) => {
+      const row = /** @type {any} */ (db.prepare("SELECT id, name, kind FROM link_peers WHERE stable_id = ?").get(String(stableId)));
+      return row ? { id: row.id, name: row.name, kind: row.kind } : null;
+    },
   });
 
   return {

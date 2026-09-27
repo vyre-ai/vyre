@@ -1,0 +1,16 @@
+{
+  "name": "sync",
+  "version": "0.1.0",
+  "description": "A paired device (a Mac or a Windows PC) sends its own Claude Code session files to the box, once its person turns import on for it (ADR 0008 5a).",
+  "roles": ["box", "local"],
+  "requires": ["link"],
+  "does": { "tools": ["sync.consent", "sync.upload.plan", "sync.upload.start", "sync.upload.chunk", "sync.upload.finish"] },
+  "watches": { "emits": ["sync.progress", "sync.revoked"], "hears": ["link.unpaired"] },
+  "shows": { "deck": [], "capsule": [], "cli": ["sync"] },
+  "needs": {},
+  "teaches": {
+    "tips": [
+      {"id": "sync-consent", "text": "A paired device's Claude Code sessions come to your box only once you turn its import on; off by default, and turning it off deletes everything it sent.", "surfaces": ["cli", "deck"], "level": "power", "trigger": "on-use", "since": "0.1.1", "command": "vyre call sync.consent", "docs": "using/tailscale.md#connect-your-mac-to-the-box"}
+    ]
+  }
+}

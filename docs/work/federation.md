@@ -243,6 +243,35 @@ box.
 
 ## Doing
 
+28 Sep 2026: session import (ADR 0008 5a) pulled forward to 0.1.1, memory-iq leading, this stream
+owning the transport. Built the box side: new module core/sync (`sync.consent`,
+`sync.upload.plan/start/chunk/finish`), core/sync/scrub.js (content secret scan at ingest,
+quarantine not redact), `link_peers.kind` ("mac"|"device", capability lives on the peer row per
+e2e's review, not a second identity path) plus `link.peer-of` for core/sync to resolve a
+connection's own tailnet node without reaching into link's table, and a dedicated daemon route
+(`POST /v1/sync/upload/<id>`, raw octet-stream body, never JSON). Design doc:
+docs/design/federation-plan.md (work/federation-transcript, f7108e07) has the full ownership split
+with memory-iq's import.* tools (they own the device-facing surface and consent recording;
+`import.start` calls our sender). CHANGELOG has the file-by-file detail.
+
+Not built yet: the device-side sender (`sync.send`, which walks a plan and calls
+`sync.upload.start/chunk/finish` against the box — this is what `import.start` actually calls),
+a Windows client (this protocol works for any client; nothing Windows-specific was needed on the
+box side), and a real HTTP-level test of the new daemon route (the tool logic underneath it is
+tested directly and thoroughly; the route itself is a small, mechanical body-reading and
+status-code layer). Refactor note for whoever builds `sync.send` next: an earlier draft put the
+sync.* tools inside core/link/box.js directly, using link_peers columns (sync_on, used_bytes,
+quota_bytes, a link_synced_files table) — this failed the registry's own naming rule (a tool must
+start with its module's name) and would have coupled sync's data to link's schema besides. It's a
+separate module now, on purpose; don't merge it back into link.
+
+Tests on the test box, nice -n 15, load under 6: 13/13 on core/sync/sync.test.js, 4/4 on
+core/sync/scrub.test.js, 110/110 across core/sync + core/link + link + link-federation +
+federation-answer + federation-send + federation-reads + boundaries + hygiene + docs-build. One
+run caught my own mistake: two secret-shaped literals in the new tests tripped hygiene's own
+scanner, since it scans all of core/ (fixed: built at run time instead, as the existing switchboard
+redaction fixture already does).
+
 28 Sep 2026: e2e signed off work/federation at aa9cb40c, with one nit: `!cfg.receive` counts the
 string "false" as on. Fixed (`cfg.receive !== true`), with a test trying several truthy-but-wrong
 values. Also tried adding files.receive as a real declared setting (core/files/module.json
