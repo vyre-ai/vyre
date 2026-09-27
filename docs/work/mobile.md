@@ -67,6 +67,12 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   Placeholder icon. Native person sign-in + device presence per e2e 57f32c4c; testIDs for ci.
   94/94 app tests, core/apps 11/11 (Mac).
 
+- releases.sign tool for platform's vyre update (details sent to platform). Testbox set on
+  cb4e988c: 251 tests, 246 pass, 0 fail, 5 skipped (app-package and apksigner tests; both pass on
+  the Mac). Sent to the integrator for batch 4.
+- Relay: keep direct first on native until relay's `prefer` mode exists (paths.js only probes
+  paths ahead of the current one).
+
 ## One app: Doing
 - The real-iPhone run of the spike: needs the box to serve /app/ (pwa) and the user's phone.
 
