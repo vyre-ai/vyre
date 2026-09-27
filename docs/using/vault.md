@@ -48,9 +48,38 @@ In practice:
      stored stripe-live · api-key · sent only to https://api.stripe.com
    ```
 
-Kinds are `secret` (the default), `api-key`, `login`, `card`, `note`, `env-set` and `ssh-key`.
-For a login, add `--username <name>` and `--totp` to store a one-time-code seed (`--totp` needs a
-terminal). For an env set, name each variable with `--field NAME`.
+Kinds say what an item is, so the vault knows which field to hand over and what to warn about:
+
+| Kind | Holds | Hands over |
+|---|---|---|
+| `login` | username, password, one-time-code seed | password |
+| `authenticator` | a one-time-code seed on its own | the code |
+| `passkey` | a site's passkey | nothing: it signs inside the vault |
+| `card`, `address`, `identity` | payment cards, addresses, ID documents | card number; name the field |
+| `note` | text | text |
+| `api-key`, `secret` | one value | value |
+| `pat` | a personal access token, with its scopes and expiry | token |
+| `oauth` | client id and secret, access and refresh tokens | the first token present |
+| `cloud` | AWS keys, a service-account JSON, an Azure secret | the secret |
+| `db-url` | a database URL | url |
+| `env-set` | a .env file's variables | name the variable |
+| `ssh-key` | an SSH key | nothing: it signs through the ssh agent |
+| `cert` | a certificate and its key | certificate |
+| `recovery-codes`, `wifi`, `license`, `file` | backup codes, a network, a licence key, a small file | codes, password, key, content |
+
+```
+vyre vault put kit-github --kind pat --provider github --scope repo --scope read:org --expires 90d
+vyre vault put northwind-aws --kind cloud                # access key id, then the secret, hidden
+vyre vault put harlow-gcp --kind cloud --from sa.json   # a service account file
+vyre vault put harlow-tls --kind cert --from cert.pem --key-from key.pem
+vyre vault put northwind-guest --kind wifi --ssid "Northwind Guest"
+```
+
+The list shows each item's details: the provider, a PAT's scopes, a certificate's end date (read
+from the certificate itself), a network name, how many recovery codes are left. Details never
+hold a value. Watchtower flags anything `expired`, and anything `expiring` within 14 days. For a
+login, add `--username <name>` and `--totp` to store a one-time-code seed (`--totp` needs a
+terminal). For an env set, or to name the fields of any kind, use `--field NAME`.
 
 > [!SNAG] hosts must be origins such as https://api.example.com
 > `--host` takes a whole origin, with the scheme: `--host https://api.stripe.com`, not

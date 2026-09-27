@@ -128,6 +128,26 @@ Not defended, stated plainly:
 - Surfaces: the CLI (`vyre vault import --preview`, `--rewrite`) and the Deck's import sheet (the
   pwa team's surface). Both call these tools.
 
+### 1b. Typed credentials
+
+- Kinds (core/vault/kinds.js, the one list every surface reads): login, authenticator, passkey,
+  card, address, identity, note, api-key, pat, oauth, cloud, db-url, secret, env-set, ssh-key,
+  cert, recovery-codes, wifi, license, file. Each kind names the fields it needs and the field it
+  hands over when a reference names none (`vault://kit-github` is the PAT's token).
+- Personal kinds (login, authenticator, passkey, card, address, identity, note, recovery-codes,
+  wifi, license) start in the personal vault once there is an account. A grant still moves an item
+  to the agent vault, as before.
+- A passkey, like an ssh-key, is never released, injected, revealed or copied. It signs inside
+  vyred (decision 7, later).
+- `details` is a new column: `expires`, `scope`, `provider`, `issuer`, `ssid`, `product`,
+  `filename`, `count`, `rp`. Each has a fixed shape and nothing else is accepted. Details are
+  listable and never decide where a value may go, so they are neither sealed nor MACed. A module
+  that edits vyre.db can hide an expiry reminder and no more. Some details are derived from the
+  fields: a certificate's end date, an authenticator's issuer, the count of recovery codes, a
+  network name. Details the caller leaves out are kept across puts, and they ride in backups.
+- Watchtower adds `expired` and `expiring` (within 14 days). Reuse also counts the value a typed
+  credential hands over. Decision 4's daily job turns both into planner todos.
+
 ### 2. Agent logins: one agent, one login, one origin
 
 A new table, MACed like the other grant rows:

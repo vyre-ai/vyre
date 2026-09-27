@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Typed credentials: PATs with scopes and expiry, cloud keys, certificates, Wi-Fi and more
+
+- New kinds: authenticator, passkey, address, identity, pat, oauth, cloud, db-url, cert,
+  recovery-codes, wifi, license, file (core/vault/kinds.js, now the one list; the four copies of
+  the default-field table are gone). Each kind names the fields it needs and the one it hands over.
+- `details` on vault.put and vault.update (listable, never a value, neither sealed nor MACed):
+  expires ("90d" or a date), scope, provider, issuer, ssid, product, filename, count, rp. A
+  certificate's end date, an authenticator's issuer, a recovery-code count and a network name are
+  read from the fields. Details are kept across puts and carried in backups.
+- A passkey, like an ssh key, is never released, injected, revealed or copied. The Deck and
+  Capsule reveal now also refuses an ssh key's private half.
+- Watchtower: `expired` and `expiring` (within 14 days); tokens of typed kinds count toward reuse.
+- CLI: `vyre vault put --kind pat --scope repo --expires 90d --provider github`, `--from` for a
+  file, a certificate or a service-account JSON, `--key-from`, `--ssid`. The list shows details.
+  Tests: core/vault/kinds.test.js.
+
 #### `vyre run -- <command>` reads a project's .env references
 
 - A top-level `vyre run` is `vyre vault run` with two differences. It adds the `--` when it is

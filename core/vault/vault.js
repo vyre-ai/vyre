@@ -30,6 +30,7 @@ import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
+import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "./kinds.js";
 import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfiles.js";
 import { FILL_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
@@ -89,13 +90,15 @@ export const MIGRATIONS = [
   // ADR 0028, decision 2: agent logins, and where each use happened.
   AGENT_GRANTS_MIGRATION,
   AUDIT_WHERE_MIGRATION,
+  // ADR 0028: typed credentials. What the list shows beside a name (a PAT's scopes and expiry,
+  // the provider); listable, so neither sealed nor MACed, and never a value.
+  `ALTER TABLE vault_items ADD COLUMN details TEXT NOT NULL DEFAULT '{}';`,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
 export const AGENTS = "agents", PERSONAL = "personal";
 const KV = 1;
 /** What goes in the personal vault once there is an account: these kinds, and anything with a TOTP seed. */
-const PERSONAL_KINDS = ["login", "card", "note"];
 
 /**
  * The columns of each row that decide what a value may do: where it goes, who may have it, and
@@ -138,13 +141,10 @@ const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : "
 const locked = message => Object.assign(new Error(message), { code: "locked" });
 const isShared = cls => String(cls || "").startsWith("shared:");
 
-export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set", "ssh-key"];
+export { KINDS };
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MODULE = /^[a-z][a-z0-9-]{1,40}$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$/;
-/** The field a kind hands over when nobody names one. env-set has none: name the variable. */
-// ssh-key has none either: its private half is used by vyred's ssh agent and never handed out.
-const DEFAULT_FIELD = { secret: "value", "api-key": "value", login: "password", card: "number", note: "text", "env-set": null, "ssh-key": null };
 const MAX_VALUE = 64 * 1024;
 const IDENTITY = "identity";
 /** The device identity is sealed in the agent vault at a fixed version: it is written once, or by a restore. */
@@ -1007,7 +1007,7 @@ export class Vault {
    * Add or replace an item. The fields arrive from the CLI's hidden prompt, an import file or a
    * sealed pass; the tool layer refuses them from Claude.
    */
-  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt, relay: relayRules }, who) {
+  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt, relay: relayRules, details }, who) {
     if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
     if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
     if (!fields || typeof fields !== "object" || Array.isArray(fields)) throw new Error("fields must be an object");
@@ -1019,9 +1019,11 @@ export class Vault {
       if (v.length > MAX_VALUE) throw new Error(`field ${k} is larger than 64 KB`);
       clean[k] = v;
     }
-    const need = DEFAULT_FIELD[kind];
-    if (need && !(need in clean) && !(kind === "login" && clean.username)) throw new Error(`a ${kind} needs a ${need}`);
+    checkFields(kind, clean);
     if (!Object.keys(clean).length) throw new Error("an item needs at least one field");
+    // An expiry may be written as "90d" or a date, as grants' are.
+    const given = cleanDetails(details && typeof details === "object" && typeof details.expires === "string" && details.expires
+      ? { ...details, expires: parseExpiry(details.expires) } : details);
     if (kind === "env-set") for (const k of Object.keys(clean)) if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) throw new Error(`env-set field ${k} is not an environment variable name`);
     const u = url ? String(url) : null;
     let h = Array.isArray(hosts) ? hosts.map(origin) : [];
@@ -1048,14 +1050,16 @@ export class Vault {
     writeSealed(this.dir, id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields: clean }));
     const t = now();
     const hist = await this.historyStep(raw, old, next, clean, who, t);
+    // Details the caller left out are kept from before, then filled from the fields.
+    const det = JSON.stringify({ ...derivedDetails(kind, clean), ...(old ? json(old.details, {}) : {}), ...given });
     this.tx(() => {
       if (raw) {
         // Putting an item again is how it is rotated, so the rotate mark goes.
-        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=?, relay=? WHERE id=?")
-          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, next.relay, id);
+        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=?, relay=?, details=? WHERE id=?")
+          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, next.relay, det, id);
       } else {
-        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt, relay) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt, next.relay);
+        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt, relay, details) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt, next.relay, det);
       }
       this.sign("vault_items", id);
       hist.commit();
@@ -1077,6 +1081,7 @@ export class Vault {
         name: r.name, kind: r.kind, description: r.description, fields: json(r.fields, []),
         ...(r.url ? { url: r.url } : {}), hosts: json(r.hosts, []), rotate: Boolean(r.rotate), ...(r.rotate ? { why: r.rotate } : {}),
         ...(r.origin ? { origin: r.origin } : {}), updated: r.updated, vault: r.vault || AGENTS,
+        ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}),
         grants: grants.filter(g => g.item === r.name).map(g => ({ module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}) })),
       }));
     const personal = this.hasAccount() ? (this.pvk ? "unlocked" : "locked") : "none";
@@ -1173,9 +1178,10 @@ export class Vault {
     const r = this.row(name);
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }
     if (r.kind === "ssh-key") { this.audit("release", name, who, false, "ssh key"); throw new Error(`${name} is an ssh key; it signs through the vault's ssh agent and is never handed out`); }
+    if (r.kind === "passkey") { this.audit("release", name, who, false, "passkey"); throw new Error(`${name} is a passkey; it signs inside the vault and is never handed out`); }
     const f = await this.fields(r);
-    const want = field || DEFAULT_FIELD[r.kind];
-    if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is an env-set; name the field you want`); }
+    const want = field || defaultField(r.kind, json(r.fields, []));
+    if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is ${r.kind === "env-set" ? "an env-set" : `a ${r.kind}`}; name the field you want`); }
     if (!(want in f)) { this.audit("release", name, who, false, `no field ${want}`); throw new Error(`${name} has no field ${want}`); }
     this.audit("release", name, who, true, field ? `field ${field}` : null);
     this.emit("vault.released", { name, module: mod, ...(watcher ? { watcher } : {}) });
@@ -1189,10 +1195,11 @@ export class Vault {
       const r = this.row(it.name);
       if (!r) { this.audit("inject", it.name, caller, false, "no such item"); throw new Error(`no item named ${it.name}`); }
       if (r.kind === "ssh-key") throw new Error(`${it.name} is an ssh key; it signs through the vault's ssh agent and is never handed out`);
+      if (r.kind === "passkey") throw new Error(`${it.name} is a passkey; it signs inside the vault and is never handed out`);
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);
       else {
-        const want = it.field || DEFAULT_FIELD[r.kind];
+        const want = it.field || defaultField(r.kind, json(r.fields, []));
         if (!want || !(want in f)) throw new Error(`${it.name} has no field ${want || "(name one)"}`);
         env[it.env || envName(it.name)] = f[want];
       }
@@ -1640,7 +1647,7 @@ export class Vault {
     if (narrow) return refuse(narrow);
     const f = await this.fields(r);
     let sub;
-    try { sub = relay.substitute(env.request, f, DEFAULT_FIELD[r.kind], this.share.relayRules(r)); }
+    try { sub = relay.substitute(env.request, f, defaultField(r.kind, json(r.fields, [])), this.share.relayRules(r)); }
     catch (e) { return refuse(/** @type {Error} */ (e).message); }
     let res;
     try { res = await relay.send(sub.request); }

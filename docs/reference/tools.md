@@ -3090,7 +3090,7 @@ With vault.relay.grants, whether the tailnet policy grants each pass holder vyre
 
 ### `vault.health`
 
-Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor or unprotected. Names and reason codes only.
+Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, unprotected, expired or expiring. Names and reason codes only.
 
 - Input: none
 - Callers: any caller
@@ -3339,10 +3339,20 @@ Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a m
   - `name` string, required
   - `apps` list of string
   - `description` string
+  - `details` object
+    - `count` integer
+    - `expires` integer or string
+    - `filename` string
+    - `issuer` string
+    - `product` string
+    - `provider` string
+    - `rp` string
+    - `scope` list of string
+    - `ssid` string
   - `fields` object
   - `grants` list of string
   - `hosts` list of string
-  - `kind` one of "secret", "api-key", "login", "card", "note", "env-set", "ssh-key"
+  - `kind` one of "login", "authenticator", "passkey", "card", "address", "identity", "note", "api-key", "pat", "oauth", "cloud", "db-url", "secret", "env-set", "ssh-key", "cert", "recovery-codes", "wifi", "license", "file"
   - `relay` object
     - `body` boolean
   - `reprompt` boolean
@@ -3567,6 +3577,16 @@ Add or change an item by merging fields: only the fields given are replaced, `re
 - Input:
   - `name` string, required
   - `description` string
+  - `details` object
+    - `count` integer
+    - `expires` integer or string
+    - `filename` string
+    - `issuer` string
+    - `product` string
+    - `provider` string
+    - `rp` string
+    - `scope` list of string
+    - `ssid` string
   - `fields` object
   - `generate` object
     - `field` string
@@ -3574,7 +3594,7 @@ Add or change an item by merging fields: only the fields given are replaced, `re
     - `symbols` boolean
     - `words` integer
   - `hosts` list of string
-  - `kind` one of "secret", "api-key", "login", "card", "note", "env-set", "ssh-key"
+  - `kind` one of "login", "authenticator", "passkey", "card", "address", "identity", "note", "api-key", "pat", "oauth", "cloud", "db-url", "secret", "env-set", "ssh-key", "cert", "recovery-codes", "wifi", "license", "file"
   - `remove` list of string
   - `url` string
 - Callers: `cli`, `deck`, `local`

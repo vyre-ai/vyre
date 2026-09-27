@@ -26,14 +26,17 @@ mobile and the Capsule (through their owners).
   a module grant (ctx.vault.fetch). Told sessions; asked whether owned sessions' Bash should resolve
   project refs (my default: no).
 
+- Step 3 typed credentials (core/vault/kinds.js, details column, Watchtower expired/expiring,
+  passkey never released, CLI put flags). kinds.test.js 4/4; the full vault suite rerun is pending
+  (testbox load was 16 from other teams).
+
 ## Doing
 
-- Step 3: typed credentials.
+- Step 3 verification: rerun core/vault + core/cli suites when testbox load < 8.
+- Step 4 import sources (subagent: parsers in core/vault/import-more.js).
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
-3. Typed credentials (M): passkey, authenticator, pat (scope, expiry), oauth, cloud, db-url, cert,
-   recovery-codes, wifi, licence, file, address, identity. Expiry -> planner todo.
 4. Import sources (L): LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass XML/CSV,
    Edge/Brave/Arc, Firefox. KDBX4 later (box is Node 22, no argon2).
 5. Google Authenticator migration QR (multi-part) + otpauth (M); the client decodes the image.

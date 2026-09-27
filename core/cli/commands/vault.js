@@ -24,6 +24,7 @@ import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
 import { inspect } from "../../vault/backup.js";
 import { templateRefs, render, parseEnvFile, parseRef } from "../../vault/refs.js";
+import { KINDS as VAULT_KINDS, defaultField as defaultFieldOf } from "../../vault/kinds.js";
 
 // --json, on every command: the tool's own `{"data":...}` or `{"error":{code,message}}` as one
 // line on stdout and nothing else there. Exit codes: 0 ok, 1 error, 3 presence refused or
@@ -71,7 +72,8 @@ const oops = msg => {
   return 1;
 };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : w.endsWith("s") ? "es" : "s"}`;
-const KINDS = ["secret", "api-key", "login", "card", "note", "env-set", "ssh-key"];
+// Kinds, and the field each hands over, come from the vault so the two never disagree.
+const KINDS = [...VAULT_KINDS];
 
 /** An origin from a url a person typed, which may lack the scheme. */
 function origin(url) {
@@ -83,6 +85,13 @@ const day = ms => (ms ? new Date(ms).toISOString().slice(0, 10) : "");
 const grantText = g => g.module + (g.watcher ? `/${g.watcher}` : "");
 
 // ------------------------------------------------------------ list
+
+/** What a typed item's details say, in list words. Never a value. */
+const detailWords = d => !d ? [] : [
+  d.provider, d.issuer, d.ssid && `network ${d.ssid}`, d.product, d.filename,
+  d.scope && d.scope.length && `scope ${d.scope.join(", ")}`, Number.isInteger(d.count) && `${d.count} codes`,
+  d.expires && d.expires - Date.now() >= 14 * 86400_000 && `until ${day(d.expires)}`,
+];
 
 async function list(args) {
   let f;
@@ -106,8 +115,11 @@ async function list(args) {
       it.hosts?.length && "hosts " + it.hosts.join(", "),
       it.ssh && it.ssh.fingerprint,
       it.origin && "from " + it.origin,
+      ...detailWords(it.details),
     ].filter(Boolean);
     if (meta.length) say(dim(`    ${meta.join(" · ")}`));
+    const ends = it.details && it.details.expires;
+    if (ends && ends - Date.now() < 14 * 86400_000) say(beacon(`    ${ends <= Date.now() ? "expired" : "expires"} ${day(ends)}`));
     if (it.grants?.length) say(dim(`    granted to ${it.grants.map(grantText).join(", ")}`));
   }
   say("");
@@ -348,7 +360,7 @@ async function gitCredential(args) {
 // ------------------------------------------------------------ put
 
 async function put(args) {
-  const f = flags(args, { string: ["kind", "description", "url", "username"], list: ["host", "field"], boolean: ["totp", "allow-body"] });
+  const f = flags(args, { string: ["kind", "description", "url", "username", "expires", "provider", "product", "from", "key-from", "ssid"], list: ["host", "field", "scope"], boolean: ["totp", "allow-body"] });
   if (f._.length !== 1) {
     if (f._.length === 0) return oops("vyre vault put <name> [--kind k] [--description d] [--url u] [--host h ...]");
     return oops("values are never taken on the command line, where shell history and your agents would see them. " +
@@ -357,6 +369,8 @@ async function put(args) {
   const name = f._[0];
   const kind = f.kind || "secret";
   if (!KINDS.includes(kind)) return oops(`--kind is one of ${KINDS.join(", ")}`);
+  if (kind === "passkey") return oops("a passkey is made by the site you sign up on, through autofill; it is never typed in");
+  if (kind === "ssh-key") return oops("ssh keys come in through vyre vault ssh generate or vyre vault ssh add");
   const tty = !!process.stdin.isTTY;
 
   /** @type {Record<string, string>} */
@@ -378,10 +392,43 @@ async function put(args) {
       await hidden("number", "number: ");
       fields.expiry = await visiblePrompt("expiry (MM/YY): ");
       await hidden("cvv", "security code: ");
-    } else if (kind === "env-set") {
+    } else if (kind === "env-set" || f.field.length) {
+      // Named fields, for an env-set or any kind: each is asked for, hidden.
       if (!f.field.length) return oops("an env-set needs its variable names: --field NAME --field OTHER");
-      if (!tty && f.field.length > 1) return oops("with piped input an env-set takes one --field; use a terminal for more");
+      if (!tty && f.field.length > 1) return oops(`with piped input ${kind === "env-set" ? "an env-set" : "a put"} takes one --field; use a terminal for more`);
       for (const k of f.field) await hidden(k, `${k}: `);
+    } else if (kind === "address" || kind === "identity") {
+      if (!tty) return oops(`${kind === "address" ? "an address" : "an identity"} needs a terminal: it asks for several fields`);
+      for (const [k, q] of kind === "address"
+        ? [["name", "name: "], ["line1", "street: "], ["line2", "line 2 (optional): "], ["city", "city: "], ["region", "state or region: "], ["postal", "postal code: "], ["country", "country: "], ["phone", "phone (optional): "]]
+        : [["type", "document (passport, driver's license...): "], ["name", "name on it: "], ["country", "country: "], ["expiry", "expires (YYYY-MM-DD): "]]) {
+        const v = await visiblePrompt(q);
+        if (v) fields[k] = v;
+      }
+      if (kind === "identity") await hidden("number", "number: ");
+    } else if (kind === "file" || (kind === "cert" && f.from)) {
+      if (!f.from) return oops("a file comes from disk: --from <path> (64 KB at most)");
+      const bytes = fs.readFileSync(path.resolve(f.from));
+      if (bytes.length > 48 * 1024) return oops(`${f.from} is larger than 48 KB`);
+      if (kind === "file") { fields.content = bytes.toString("base64"); fields.filename = path.basename(f.from); }
+      else fields.certificate = bytes.toString("utf8");
+      if (kind === "cert" && f["key-from"]) fields.private_key = fs.readFileSync(path.resolve(f["key-from"]), "utf8");
+    } else if (kind === "wifi") {
+      fields.ssid = f.ssid ?? (tty ? await visiblePrompt("network name: ") : "");
+      if (!fields.ssid) return oops("a Wi-Fi network needs its name: --ssid <name>");
+      await hidden("password", "password: ");
+    } else if (kind === "cloud") {
+      if (f.from) { fields.json = fs.readFileSync(path.resolve(f.from), "utf8"); }
+      else {
+        if (!tty) return oops("with piped input, a cloud credential takes --field secret_access_key, or --from <service-account.json>");
+        fields.access_key_id = await visiblePrompt("access key id: ");
+        await hidden("secret_access_key", "secret access key: ");
+      }
+    } else {
+      // Every other kind asks for the one field it hands over: a PAT's token, a key, codes.
+      const k = /** @type {string} */ (defaultFieldOf(kind) || "value");
+      if (f.username !== undefined) fields.username = f.username;
+      await hidden(k, kind === "authenticator" ? "secret or otpauth:// URI: " : kind === "recovery-codes" ? "codes, separated by spaces: " : `${k.replace(/_/g, " ")}: `);
     }
   } catch (e) {
     return oops(e.message === "cancelled" ? "cancelled, nothing stored" : e.message);
@@ -395,6 +442,13 @@ async function put(args) {
   if (f.url) input.url = f.url;
   if (hosts.length) input.hosts = hosts;
   if (f["allow-body"]) input.relay = { body: true };
+  /** @type {Record<string, any>} */
+  const details = {};
+  if (f.expires) details.expires = f.expires;
+  if (f.scope.length) details.scope = f.scope.flatMap(x => x.split(/[,\s]+/)).filter(Boolean);
+  if (f.provider) details.provider = f.provider;
+  if (f.product) details.product = f.product;
+  if (Object.keys(details).length) input.details = details;
   const r = await tool("vault.put", input);
   for (const k of Object.keys(fields)) fields[k] = "";
   if (r.error) return fail(r);
@@ -1159,7 +1213,7 @@ const HELP = [
   ["ssh approvals [--revoke [name]] | approve <id> | agent-line", "signing leases, and the IdentityAgent line"],
   ["git-credential <get|store|erase>", "git's credential helper (bin/git-credential-vyre)"],
   ["put <name> [--kind k] [--description d] [--url u] [--host h ...] [--allow-body]", "prompts for the value without echo"],
-  ["    [--username u] [--totp] [--field F ...]", "kinds: " + KINDS.join(", ")],
+  ["    [--username u] [--totp] [--field F ...] [--expires 90d] [--scope s ...] [--provider p] [--from file]", "kinds: " + KINDS.join(", ")],
   ["grant <name> <module> [--watcher w]", "let a module use an item"],
   ["revoke <name> <module> [--watcher w]", "take it back"],
   ["pending", "grants and passes an agent asked for"],

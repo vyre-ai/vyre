@@ -11,6 +11,7 @@
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
+import { DETAILS, defaultField } from "./kinds.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
@@ -126,9 +127,10 @@ export default {
     // or items they made themselves, and they may grant only what they put: neither reveals a
     // value the module did not already have. `value` is shorthand for fields.value.
     tool("vault.put", [...SURFACES, "module"], "Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a module, never from Claude.",
-      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }) }, ["name"]),
+      obj({ name: str, kind: { type: "string", enum: KINDS }, description: str, value: str, fields: { type: "object" }, url: str, hosts: strs, apps: strs, reprompt: { type: "boolean" }, grants: strs, relay: obj({ body: { type: "boolean" } }), details: DETAILS }, ["name"]),
       async ({ value, grants, relay: relayRules, ...input }, { caller }) => {
-        if (value !== undefined) input.fields = { ...(input.fields || {}), value };
+        // `value` is the kind's own field: a PAT's token, a secret's value.
+        if (value !== undefined) input.fields = { ...(input.fields || {}), [defaultField(input.kind || "secret") || "value"]: value };
         if (!input.fields) throw new Error("give the item a value or fields");
         const mod = caller.startsWith("module:") ? caller.slice(7) : null;
         if (!mod && grants) throw new Error("grants on put are for modules; people use vault.grant");
