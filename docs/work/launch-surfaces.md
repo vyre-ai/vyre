@@ -82,6 +82,12 @@ Filled in as each lands.
   `docs/brand/{og-paper,social-preview,social-preview-paper,readme-hero,readme-hero-light}.png`.
   Renamed from the handoff's `Og.png`/etc to lowercase before copying in, since this Mac's
   filesystem is case-insensitive and a same-cased copy would have collided with the existing file.
+- The lead caught one more retired token the app-design review missed: `--beacon-wash` was still
+  live in `site/styles.css` itself (not just onboard.css), backing `.dest.do` (dead CSS, removed),
+  `.held-chip` and `.ph-card`'s border. Violet is text-only now, everywhere: matches
+  `core/config/palette.js` (`beacon-ink`/`beacon-dot`, no wash) and the "needs you" rule.
+  `--beacon-wash` is gone from `:root` entirely. This round wasn't part of aa9da103; sha 342e02f5
+  had already fixed the memory-section gold and the hotkey, so only this token needed a follow-up.
 
 ## Doing
 
