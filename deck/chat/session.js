@@ -71,7 +71,7 @@ import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints,
 import { CAPS, NEEDS_UPDATE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
 import { todoPin, tasksTray } from "./tray.js";
-import { groupItems } from "./core/grouping.js";
+import { createGrouper } from "./core/grouping.js";
 import { createWindowView, createStick } from "./window-view.js";
 
 const PAGE = 400;
@@ -492,7 +492,7 @@ export function mountSession(container, opts) {
     // What loads above keeps the reading position: the row at the top of the viewport is put back
     // from the new offsets (window-view.js), windowed or not, after this line has gone too.
     const keep = win.anchor();
-    applyBlocks(S, older);
+    for (const k of applyBlocks(S, older)) changedKeys.add(k);
     layout();
     pin.set(S.todos);
     tray.set(S.tasks);
@@ -726,7 +726,9 @@ export function mountSession(container, opts) {
    */
   function layout() {
     if (mode !== "blocks") return;
-    const rows = groupItems(S.items);
+    // Only the runs the changed keys touch are grouped again (core/grouping.js createGrouper).
+    const rows = grouper.rows(S.items, changedKeys);
+    changedKeys.clear();
     runOf.clear();
     /** @type {import("./window-view.js").Row[]} */
     const want = [];
@@ -821,9 +823,13 @@ export function mountSession(container, opts) {
     }, 1000);
   }
 
+  /** Items changed since the last layout, for the incremental grouping. */
+  const grouper = createGrouper();
+  const changedKeys = new Set();
   /** Changed keys from session-state: rows patched in place; the order laid out again only when a row came, went or moved. */
   function patch(keys) {
     if (!keys.length) return;
+    for (const k of keys) changedKeys.add(k);
     let order = false;
     for (const k of keys) {
       if (k === "@session") { if (booted) drawHead(); continue; }

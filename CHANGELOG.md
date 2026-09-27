@@ -27,6 +27,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   characters, at least one, at most once per 60 Hz frame; a stall counts as 250 ms at most. The
   pacer's API is unchanged (maxLagMs still reads as the horizon); live-text draws nothing on a
   faster display's extra frames.
+- Grouping (core/grouping.js createGrouper): the session view no longer folds every item on each
+  tool event. Given the changed keys it regroups from the row before the first change and stops
+  at the first old row boundary past the last one; unchanged rows stay the same objects.
+  groupItems stays the pure full pass, and a test checks both agree on random sequences.
 
 #### Chat: matched to the sessions team's real Switchboard (work/sessions)
 
