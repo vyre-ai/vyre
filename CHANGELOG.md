@@ -28,6 +28,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   next message. A refusal (4xx, or a tool's own error such as a Mac's timeout) is the view's error
   as before, never retried. A Send at the Gate (a passkey) is never queued: offline it fails at
   once with the usual offline error.
+- One quiet Reconnecting pill (R3, js/reconnect.js) replaces the phone's offline line: hidden
+  while the stream is open, shown only after the first failed retry, "Reconnecting since 14:32"
+  once the box has been gone 60 s (one timer, no interval), "This phone is offline." without a
+  network. Retry reconnects now. The box coming back no longer re-runs the router (which scrolled
+  the page to the top): the stream replays what was missed.
 
 #### /pair: finishing `vyre phone add --tailscale-only` on the phone
 

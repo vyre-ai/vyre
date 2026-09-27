@@ -270,6 +270,8 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   chat's (composer, ask-item, question, gate-item), find.js, projects.js and planner.js changed to
   them (the chat team's files: one-line swaps, same inputs). planner's drawPlanner deps take
   `write`. IndexedDB database "vyre-resilience", object store per host.
+- The phone's offline line is the Reconnecting pill (js/reconnect.js), driven by `deck:stream`
+  instead of `deck:reach` (which api.js still fires). pwa.test.js needed no wording change.
 
 ## Perf
 - No timers or polls added. The offline line rechecks only on `online`, on becoming visible while

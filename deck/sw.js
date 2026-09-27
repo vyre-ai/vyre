@@ -29,7 +29,7 @@ const OFFLINE_MAX_AGE_MS = 7 * 86_400_000; // a week
 // there too. deck/test/sw.test.js checks every path here exists.
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png", "/favicon.svg",
   "/css/tokens.css", "/css/deck.css", "/fonts/instrument-sans-latin.woff2", "/fonts/jetbrains-mono-latin.woff2", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
-  "/js/pwa.js", "/js/keyboard.js", "/glass/util.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js", "/js/agent-create.js", "/js/empty-actions.js",
+  "/js/pwa.js", "/js/reconnect.js", "/js/keyboard.js", "/glass/util.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js", "/js/agent-create.js", "/js/empty-actions.js",
   "/js/now-phone.js", "/js/sheet.js", "/css/sheet.css", "/js/person.js", "/js/need-sheet.js", "/js/need-rows.js", "/js/capsule.js",
   "/views/now.js", "/css/views/now.css", "/views/projects.js", "/css/views/projects.css", "/views/chat.js", "/css/views/chat.css",
   "/views/find.js", "/css/views/find.css", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
