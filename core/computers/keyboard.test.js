@@ -300,3 +300,15 @@ test("keyboard: an idle hand-back needs no thread", async t => {
   assert.equal(events.at(-1)?.payload.why, "idle");
   assert.deepEqual(sent, []);
 });
+
+test("keyboard: a take-over the thread's lease ends tells the agent's thread how", async t => {
+  const { kb, chat, sent } = setup(t);
+  await kb.takeover("kit", "glass:laptop");
+  chat("th-kit-2", "cli");
+  await new Promise(r => setImmediate(r));
+  assert.deepEqual(sent, [{ thread: "th-kit-2", text: "The take-over from glass ended when the thread moved to chat" }]);
+  await kb.takeover("kit", "deck:laptop");
+  kb.onLease({ thread: "th-kit-2", payload: { holder: null, previous: "deck:laptop" } });
+  await new Promise(r => setImmediate(r));
+  assert.equal(sent.at(-1)?.text, "The take-over from deck ended when the thread's lease was released");
+});
