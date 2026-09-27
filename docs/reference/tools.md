@@ -2058,7 +2058,7 @@ How much memory holds: nodes, edges, facts, evidence, by kind and role, and the 
 
 ### `memory.suggest`
 
-Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }] }. Personal names ("my wife", "juno") only for the user's own surfaces; a project's caller gets that project's graph names.
+Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }], items } (items: the same in suggest.offer's shape; memory offers this tool to suggest). Personal names ("my wife", "juno") only for the user's own surfaces; a project's caller gets that project's graph names.
 
 - Input:
   - `prefix` string, required

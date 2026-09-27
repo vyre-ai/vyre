@@ -52,7 +52,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 4 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
-| [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
+| [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 1 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 40 | 26 | cli |
@@ -459,7 +459,7 @@ Predictive text for every surface: names after @, commands after /, entities, ac
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [3](tools.md#suggest), 1 of them only for other modules
-- Emits: no events
+- Emits: [1 events](events.md#suggest)
 - Shows on: cli
 
 ## system

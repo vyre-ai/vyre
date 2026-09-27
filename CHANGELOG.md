@@ -23,6 +23,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   reading, checking) as each step starts and `memory.answered {id, abstained, limited}`. The id is
   the caller's, so a surface can show IQ thinking before the reply comes back. The events never
   carry the question or the answer. Its description now tells the assistant when to use it.
+- Predictive text knows the people and things memory knows: memory offers `memory.suggest` to
+  suggest at start (and again on the new `suggest.ready` event), in the offer's `items` shape.
+  Typing "my wi" suggests "wife" with "Juno" beside it, on the user's own surfaces only.
 - `vyre memory ask` is Vyre IQ: memory.ask's answer with the sessions it stands on (three shown,
   `--sources` for all), or "not sure yet" with what memory does know, or the daily-limit message.
   A vyred without memory.ask still answers from personal facts.

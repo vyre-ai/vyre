@@ -485,23 +485,24 @@ export default {
     // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory
     // knows whose names start with the prefix. Personal names only for the user's own surfaces.
     ctx.tool("memory.suggest", {
-      description: "Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }] }. Personal names (\"my wife\", \"juno\") only for the user's own surfaces; a project's caller gets that project's graph names.",
+      description: "Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }], items } (items: the same in suggest.offer's shape; memory offers this tool to suggest). Personal names (\"my wife\", \"juno\") only for the user's own surfaces; a project's caller gets that project's graph names.",
       input: { type: "object", required: ["prefix"], properties: { prefix: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 20 },
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const pre = String(input.prefix || "").toLowerCase().replace(/\s+/g, " ").trimStart();
         const limit = Math.max(1, Math.min(20, Number(input.limit) || 8));
-        const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
-        if (pre.length < 1) return { suggestions: [] };
+        // suggest.query passes its surface's context, where project may be a slug: only a folder scopes.
+        const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && path.isAbsolute(input.context.project) ? [input.context.project] : [])];
+        if (pre.length < 1) return { suggestions: [], items: [] };
         let sees = true;
         try { await personalOnly(input, caller, "memory.suggest"); } catch { sees = false; }
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
-        const out = [], seen = new Set();
-        const add = (text, kind, id, via) => { const k = text.toLowerCase(); if (seen.has(k) || out.length >= limit) return; seen.add(k); out.push({ text, kind, id, via }); };
+        const out = [], labels = [], seen = new Set();
+        const add = (text, kind, id, via, label = text) => { const k = text.toLowerCase(); if (seen.has(k) || out.length >= limit) return; seen.add(k); out.push({ text, kind, id, via }); labels.push(label); };
         if (sees) {
           // Aliases are lower case and the key's first column: a range scan, not a table scan.
           for (const r of /** @type {any[]} */ (ctx.store.db.prepare(`SELECT a.alias, e.id, e.kind, e.label FROM memory_me_aliases a JOIN memory_me_entities e ON e.id = a.entity
-              WHERE a.alias >= ? AND a.alias < ? ORDER BY length(a.alias), a.alias LIMIT 40`).all(pre, pre + "\uffff"))) add(String(r.alias), String(r.kind), String(r.id), "personal");
+              WHERE a.alias >= ? AND a.alias < ? ORDER BY length(a.alias), a.alias LIMIT 40`).all(pre, pre + "\uffff"))) add(String(r.alias), String(r.kind), String(r.id), "personal", String(r.label || r.alias));
         }
         try {
           const sc = graph.view(project_cwds);
@@ -513,7 +514,14 @@ export default {
             if (out.length >= limit) break;
           }
         } catch { /* no graph yet */ }
-        return { suggestions: out };
+        // items: the same names in suggest.offer's shape. A name typed as its label ("juno") shows
+        // as the label; a role ("my wife") keeps its words and names who it is.
+        const items = out.map((x, i) => {
+          const same = labels[i].toLowerCase() === x.text.toLowerCase();
+          const label = same ? labels[i] : x.text;
+          return { label, kind: "entity", insert: label, id: x.id, detail: same ? x.kind : labels[i] };
+        });
+        return { suggestions: out, items };
       },
     });
     ctx.tool("memory.profile", {
@@ -631,6 +639,12 @@ export default {
       // Counts over everything are the main graph's.
       run: async ({ agent }, { caller } = {}) => (await guard({ agent }, caller, { tailnet: true }), { ...graph.stats(), personal: { ...personal.stats(), model: model.status() } }),
     });
+
+    // Names memory knows go into every surface's predictive text (suggest, ADR 0036): offered now,
+    // and again when suggest starts after memory. No suggest module is fine.
+    const offerNames = async () => { const r = await ctx.call("suggest.offer", { tool: "memory.suggest", kinds: ["entity"] }); if (r?.error && r.error.code !== "no_such_tool") ctx.log(`could not offer names to suggest: ${r.error.message}`); };
+    offs.push(ctx.events.on("suggest.ready", () => void offerNames()));
+    await offerNames();
 
     return {
       async stop() {
