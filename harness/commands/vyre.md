@@ -36,8 +36,8 @@ The user ran `/vyre $ARGUMENTS`.
   `agenda tomorrow` (or another day) passes `{"from": "YYYY-MM-DD"}` for that day.
 - `remember <fact>`: a fact about the user or their work, for every future session. Call
   `memory_remember` with `{"text": "<fact>"}` and say in one line that it is remembered. If
-  `memory_remember` is not offered, say memory cannot take facts by hand yet, and offer to make
-  it a lesson with `/vyre lesson` instead.
+  `memory_remember` is not offered, or refuses (a session scoped to some projects cannot teach
+  personal facts), say so in one line and offer to make it a lesson with `/vyre lesson` instead.
 - `lesson <rule>`: call `learn_add` with `{"text": "<rule>"}`. Say in one line the lesson it
   made and whether it is checked (a check means hooks enforce it) or a reminder.
 - `lessons`: call `learn_lessons` and show each lesson on one line: its id, rule, level and its

@@ -53,30 +53,29 @@ async function world(t, fakes, config = {}) {
   return { reg, file: path.join(home, "about.md") };
 }
 
-test("about: reads onboarding, projects and memory.me, writes about.md, and nothing when nothing is known", async t => {
+test("about: reads onboarding, projects and memory.profile, writes about.md, and nothing when nothing is known", async t => {
   const empty = await world(t, []);
   assert.deepEqual((await empty.reg.call("about.text", {}, "cli")).data, { text: "" });
   assert.ok(!fs.existsSync(empty.file));
 
   const { reg, file } = await world(t, [
     ["projects", ["projects.list"], `export default { async start(ctx) { ctx.tool("projects.list", { run: async () => ({ projects: [{ slug: "harlow", name: "Harlow Legal site", people: [{ name: "Jordan" }] }] }) }); return {}; } };`],
-    ["memory", ["memory.me"], `export default { async start(ctx) { ctx.tool("memory.me", { run: async ({ limit }) => ({ about: null, facts: [
-      { subj: "me", rel: "works_at", object: "Northwind Bakery", confidence: 0.9, current: true },
-      { subj: "me", rel: "prefers", object: "short replies", confidence: 0.7, current: true },
-      { subj: "me", rel: "lives_in", object: "Leeds", confidence: 0.3, current: true },
-      { subj: "me", rel: "role", object: "baker", confidence: 0.9, current: false },
-      { subj: "me", rel: "birthday", object: "1 March", confidence: 0.9, current: true },
-      { subj: "e1", rel: "works_at", object: "Harlow Legal", confidence: 0.9, current: true },
-      { subj: "me", rel: "uses", object: "token gh" + "p_" + "q".repeat(26), confidence: 0.9, current: true },
+    ["memory", ["memory.profile"], `export default { async start(ctx) { ctx.tool("memory.profile", { run: async ({ limit }) => ({ facts: [
+      { text: "You work at Northwind Bakery.", kind: "work", weight: 0.9 },
+      { text: "You prefer short replies.", kind: "preference", weight: 0.7 },
+      { text: "Your partner is Jordan.", kind: "person", weight: 0.9 },
+      { text: "You drive a blue van.", kind: "vehicle", weight: 0.9 },
+      { text: "Harlow Legal is your client.", kind: "client", weight: 0.9 },
+      { text: "You use token gh" + "p_" + "q".repeat(26), kind: "work", weight: 0.9 },
     ].slice(0, limit) }) }); return {}; } };`],
   ], { onboard: { person: "Alex", assistant: "juno" } });
   const { text } = (await reg.call("about.text", {}, "cli")).data;
   assert.match(text, /Name: Alex\. Their Vyre assistant is juno\./);
   assert.match(text, /Harlow Legal site/);
   assert.match(text, /People in them: Jordan\./);
-  assert.match(text, /Works at: Northwind Bakery\./);
-  assert.match(text, /Prefers: short replies\./);
-  for (const no of ["Leeds", "baker", "1 March", "Harlow Legal."]) assert.ok(!text.includes(no), no);
+  assert.match(text, /You work at Northwind Bakery\./);
+  assert.match(text, /You prefer short replies\./);
+  for (const no of ["Your partner", "blue van", "your client"]) assert.ok(!text.includes(no), no);
   assert.ok(!text.includes("p_qqq"));
   assert.equal(fs.readFileSync(file, "utf8"), text);
   assert.equal((fs.statSync(file).mode & 0o777).toString(8), "600");

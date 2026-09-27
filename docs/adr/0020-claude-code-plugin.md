@@ -96,10 +96,10 @@ settings.
 
 **About you.** A module, `core/about`, keeps `<home>/about.md`: the person's name and their
 assistant's (onboarding's step 1, read from config), their four busiest projects and the people in
-them (`projects.list`), then what memory-iq's `memory.me` knows about their work: facts about the
-user that are still true, with confidence 0.5 or more, for where they work, their role, where they
-live, what they use and what they prefer. Family, birthdays and what they own stay out, because the
-text reaches every project's sessions, clients' included. It recomputes 5 s after a memory, onboarding, project or agent event, writes only
+them (`projects.list`), then memory-iq's `memory.profile {limit: 12}`: second-person lines that still hold at weight
+0.5 or more, of kind work, place or preference only. People, vehicles and clients stay out,
+because the text reaches every project's sessions, and one client's name has no place in
+another's. It recomputes 5 s after a memory, onboarding, project or agent event, writes only
 on change (mode 600), and stays under 600 characters. A line is dropped whole if it looks like a
 credential, a long token, an email address, a phone number or names a password, secret or key.
 The SessionStart hook reads the file directly, not through vyred, so it holds when vyred is down,
