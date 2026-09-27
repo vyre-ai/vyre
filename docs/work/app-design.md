@@ -113,6 +113,12 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   fill, mono meta — the same pattern as the launch boards), no colour-coding by confidence or by
   abstain/limited state, --space-3 gap above the search hits. memory-iq is building against this
   now; the spec write-up is the only thing left.
+- Also fold in correct-in-place (msg_id f9faf5a1): quiet "Wrong?" text after the meta line (not a
+  chip/button), expands in place to two ghost buttons ("That's wrong", "Forget this") + a
+  prefilled text field, Enter sends, Esc collapses; the abstain card skips straight to an always-
+  open empty field ("Know it? Tell me"); after a fix the meta line becomes "you corrected this" +
+  an untimed "Undo" ghost text (not a toast — this card can sit unnoticed in a scroll-past
+  result). Same shell on the phone, row grows in place, never a sheet.
 
 - ADR 0033 theme overrides: validation built (scripts/lib/theme.js, `gen-tokens --validate`).
   Still to do in P4: the board for module UI slots.
