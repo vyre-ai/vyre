@@ -101,6 +101,9 @@ test("reader: a fact must quote the user's own words, and name what it says", ()
   const van = ownOf("theo's van is a white ford transit, he drives it everywhere. my truck is blue");
   assert.equal(checkRead({ subj: "me", rel: "owns", obj: "vehicle:Ford Transit", q: "theo's van is a white ford transit", conf: 0.9 }, van).error, "not the user's vehicle");
   assert.equal(checkRead({ subj: "me", rel: "drives", obj: "vehicle:Ford Transit", q: "he drives it everywhere", conf: 0.9 }, van).error, "not the user's vehicle");
+  const theirs = ownOf("theo's kids sam and mia are coming over, my kid luna is thrilled");
+  assert.equal(checkRead({ subj: "kin:child", rel: "name", obj: "lit:Sam", q: "theo's kids sam and mia", conf: 0.9 }, theirs).error, "someone else's family");
+  assert.equal(checkRead({ subj: "kin:child", rel: "name", obj: "lit:Luna", q: "my kid luna", conf: 0.9 }, theirs).claims?.[0].obj, "lit:Luna");
   const pet = ownOf("walked biscuit (our beagle) in the rain");
   assert.deepEqual(checkRead({ subj: "name:biscuit", rel: "breed", obj: "lit:Beagle", q: "biscuit (our beagle)", conf: 0.9 }, pet).claims?.map(x => x.obj), ["lit:beagle"]);
   assert.equal(checkRead({ subj: "me", rel: "breed", obj: "lit:beagle", q: "our beagle", conf: 0.9 }, pet).error, "a breed is a pet's");

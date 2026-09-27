@@ -33,7 +33,7 @@ const GRAPH_MAX = 0.9;
 const STOP = new Set(`a an the i i'm me my mine myself we our us you your is are was were am be been do does did have has had what whats
   what's which who whom whose where when why how of to for in on at by with and or not no it its this that there here
   name named called call tell know remind please again now currently still ever any some one about like go goes going
-  get got see`.split(/\s+/));
+  get got see other half`.split(/\s+/));
 
 /** Words the rules read. A typo within one edit of one of these is read as it ("wfie" is "wife"). Short
  * common words ("name", "live") are left out: one edit turns too many ordinary words into them. */
@@ -74,7 +74,11 @@ function fixWord(w) {
 export function normalize(q) {
   let t = String(q || "").replace(/[‘’ʼ`´]/g, "'").toLowerCase();
   t = t.replace(/\b(who|what|where|when|how|it|that)'s\b/g, "$1 is").replace(/\bwhats\b/g, "what is").replace(/\b(?:wat|wht|waht)\b/g, "what")
-    .replace(/\bi'm\b/g, "i am").replace(/\bb-day\b/g, "bday").replace(/\bfavorite\b/g, "favourite");
+    .replace(/\bi'm\b/g, "i am").replace(/\bb-day\b/g, "bday").replace(/\bfavorite\b/g, "favourite")
+    // The other parent is the spouse: "the kids' mum", "my son's dad". "the mrs", "the missus", married to.
+    .replace(/\b(?:the|my|our) (?:kids?|children|son|daughter|boys?|girls?)(?:'s|s'|')? (?:mum|mom|mother|dad|father|mama|papa)\b/g, "my spouse")
+    .replace(/\b(?:the|my) (?:mrs|missus|misses|old lady|old man|better half)\b/g, "my spouse").replace(/\bother halfs\b/g, "other half")
+    .replace(/^who am i married to\b|^who(?: am i| is)? (?:i'm |i am )?married to\b|^who did i marry\b/, "who is my spouse");
   t = t.replace(/[?!.,;:()"]+/g, " ").replace(/'s\b|s'(?=\s|$)/g, m => (m === "s'" ? "s" : "")).replace(/'/g, "");
   return t.split(/\s+/).filter(Boolean).map(fixWord).join(" ");
 }

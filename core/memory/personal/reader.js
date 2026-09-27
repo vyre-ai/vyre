@@ -156,7 +156,10 @@ const said = (value, own) => { const w = words(value); return w.length > 0 && w.
 const split = ref => { const i = String(ref).indexOf(":"); return i < 0 ? [String(ref), ""] : [String(ref).slice(0, i), String(ref).slice(i + 1).trim()]; };
 const clean = v => typeof v === "string" && v.length > 0 && v.length <= 120 && !/[\n\r<>{}]/.test(v);
 const cap1 = w => w.charAt(0).toUpperCase() + w.slice(1);
+const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const title = s => s.split(/\s+/).map(w => (/^[a-z]/.test(w) ? cap1(w) : w)).join(" ");
+/** Another person's relative or pet. */
+const OTHERS_KIN = /\b(?:[a-z]+'s|his|her|their)\s+(?:\w+\s+)?(?:wife|husband|partner|sons?|daughters?|kids?|children|boys?|girls?|twins|mum|mom|dad|mother|father|sister|brother|dogs?|cats?|puppy)\b/;
 /** A request to invent people: what follows it is not the user's life. */
 const MADE_UP = /\b(?:persona|personas|seed data|seed script|seed file|demo data|demo user|dummy data|fake data|test data|sample data|mock data|fixture|fixtures|placeholder|lorem|bedtime story|a story|short story|character named|characters|roleplay|role play|pretend|keep it fake|fictional)\b/;
 /** Not so, only wished, planned or supposed. */
@@ -217,9 +220,17 @@ export function checkRead(f, own) {
   let subj = null;
   if (f.subj === "me") subj = "me";
   else if (sk === "kin" && roleConf(sv, own, conf) != null) { conf = /** @type {number} */ (roleConf(sv, own, conf)); subj = `kin:${sv}`; }
+  // "leo's got football": the model knew from the batch that Leo is the son. The name must be in
+  // the turn, and it is held lower than a turn that says "my son leo".
+  else if (sk === "kin" && rel === "name" && ROLE_SAID[sv] && sv !== "friend" && ok === "lit" && NAME.test(title(ov)) && said(ov, own)
+    // Not someone else's: "theo's son jonah", "her daughter mia".
+    && !new RegExp(`\\b(?:[a-z]+'s|his|her|their)\\s+(?:\\w+\\s+)?${esc(ov.toLowerCase())}\\b`).test(own.text)
+    && !/\b[a-z]+'s (?:wife|husband|partner|son|daughter|kids?|children|boy|girl|mum|mom|dad|dog|cat)\b/.test(own.text)) { conf = Math.min(conf, 0.6); subj = `kin:${sv}`; }
   else if (sk === "name" && NAME.test(title(sv)) && said(sv, own)) subj = `name:${title(sv)}`;
   else if (sk === "vehicle" && rel === "color") { const v = canonVehicle(sv); if (v && words(sv).some(w => own.words.has(w))) subj = `vehicle:${v}`; }
   if (!subj) return { error: "subject not in the turn" };
+  // Someone else's family said in the quote ("theo's kids sam and mia", "her son") is theirs.
+  if ((subj.startsWith("kin:") || KIN_RELS.has(rel)) && OTHERS_KIN.test(q) && !/\b(?:my|our)\b/.test(q)) return { error: "someone else's family" };
 
   if (rel === "color") {
     if (!subj.startsWith("vehicle:") || ok !== "lit" || !said(ov, own)) return { error: "not a colour said" };
@@ -377,10 +388,22 @@ export function createReader(deps) {
 
   /** Apply every kept read to the turns waiting for it. Returns the claims added. */
   const applyKept = () => {
+    let n = 0;
+    // A name learned in this apply ("my son leo") lets the turns that call him only "leo" be
+    // checked again: they are queued once more, and a few rounds settle it.
+    for (let round = 0; round < 3; round++) {
+      const before = people();
+      n += applyOnce(before);
+      const now = people(), learned = [...now.keys()].filter(k => !before.has(k));
+      if (!learned.length || !personal.requeue(learned)) break;
+    }
+    return n;
+  };
+  /** @param {Map<string, string>} known */
+  const applyOnce = known => {
     const rows = /** @type {any[]} */ (db.prepare(`SELECT q.session, q.seq, q.ts, q.hash, r.facts FROM memory_me_queue q JOIN memory_me_reads r ON r.hash = q.hash`).all());
     if (!rows.length) return 0;
     let n = 0;
-    const known = people();
     const del = db.prepare("DELETE FROM memory_me_queue WHERE session = ? AND seq = ?");
     for (const r of rows) {
       const t = /** @type {any} */ (turnQ.get(r.session, r.seq));
