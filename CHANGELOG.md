@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Connections: one card's fields, from the vault, whatever the source (mcp-native gap 2)
+
+- `deck/views/connections.js` gains `pickConnections()`: vault's `vault.connections.list` (not yet
+  on main, work/vault-next) to one card's fields per connection (provider word and icon group,
+  account, label, ready/needs, granted surfaces, which capability it defaults for, last used,
+  connected), matching app-design's Connections board (db3dbbfa). Named fields only, like every
+  other picker here. Not wired into `drawConnections` yet (still reads `mcp.servers` and
+  `google.accounts` directly): that swap, and the actual card markup, wait on vault.connections
+  landing on main and on app-design's real `.card`/`.chip` CSS (docs/design/system/components/
+  card.md and chip.md are both draft/partial; Connections has no row there yet).
+- Open question raised with app-design and vault: the board's chips are Chat, Planner, Agents; the
+  real `SURFACE_NAMES` vault grants are capsule, chat, agents, phone. No Planner today. Filed under
+  Needs from others rather than guessed at.
+
 #### MCP: discover the servers Claude Code already knows about (ADR 0016, mcp-native gap 1)
 
 - New `core/mcp/discover.js`: reads (never writes) Claude Code's own `.mcp.json` (project scope,

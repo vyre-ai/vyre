@@ -93,19 +93,35 @@ Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, 
   (work/vault-next, 5d7cbd07 or later: vault.connections.list {caller}, get, use) — still true,
   now against the merged tree.
 - No testbox processes running.
+- Read app-design's Connections board (docs/design/one-app/project/Connections.dc.html, db3dbbfa
+  in work/app-design): corrected my own read of "multi-account, native" (mcp-native gap 2). It is
+  NOT a grouped card with account chips inside it: every connection (Google, mail, Apps Script, an
+  MCP server) is its own flat card, same shape. Two Gmail MCPs are already two vault_connections
+  rows (vault 9b's resync), so they are already two cards, each its own "Granted to" chips and its
+  own "Wrong account?" link; "Connect another account" is the one add-affordance for all of them.
+  Simpler than what I'd sized in docs/design/mcp-native.md gap 2, no grouping-by-command-line logic
+  needed.
+- Built the first slice: `pickConnections()` in deck/views/connections.js (30/30 with the file's
+  existing pickers on testbox), a pure vault.connections.list -> card-fields mapper. Not wired into
+  drawConnections yet: it reads mcp.servers/google.accounts directly today, and the real markup
+  needs app-design's card.md/chip.md to have a Connections row (both still draft/partial, no
+  Connections implementation listed) before I build a one-off version of their CSS.
+- Found a live mismatch, not guessed around: the board's grant chips are Chat, Planner, Agents;
+  vault-next's real SURFACE_NAMES are capsule, chat, agents, phone. No Planner surface exists to
+  grant today. Filed below rather than inventing a chip that grants nothing.
 
 ## Next
 
-1. mcp-native gap 2 (multi-account, native): once vault 9b's connections tools land on main, read
-   them from deck/views/connections.js instead of mcp.servers directly, group rows by a stable
-   same-server key (command+args, or url minus query), render accounts as chips, "add another
-   account" pre-fills the same transport.
+1. mcp-native gap 2: once app-design has a card.md/chip.md row for Connections (or says to build
+   ahead of it) and vault 9b's connections tools are on main, wire pickConnections() into
+   drawConnections, replacing the mcp.servers/google.accounts read; toggle chips call
+   vault.connections.grant/revoke; "Connect another account" reuses the existing add flow.
 2. mcp-native gap 1 follow-up: wire discover() into a pending row surfaced by mcp.servers (or a new
    mcp.discovered tool), and an fs.watch (not polling) on the handful of config files so a server
    added to .mcp.json after Vyre started still shows up. Decide with the lead whether
    core/harness/rules.js's path walk should become a shared export before a third caller needs it.
-3. mcp-native gaps 3-4: mcp.update scope toggle + vault grant/revoke wiring in the Deck card; the
-   Capsule's compact account picker, with app-design, once 1-2 have a shape.
+3. mcp-native gap 4: the Capsule's compact account picker ("send from which account?"), with
+   app-design and capsule-pro, once 1 has a shape.
 4. When vault 9b's sha arrives: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
    instances) on top of it; hand the integrator the new sha.
 5. Tell capsule-pro when mail is on main (they render mail.find rows, open the Gate card).
@@ -114,7 +130,12 @@ Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, 
 
 ## Needs from others
 
-- vault: module-only vault.connections.list {capability?, caller} answering for that caller's surface; useOf send_mail/read_mail of every source -> mail.send/mail.search {account: id}; google-apps-script default capabilities send_mail+read_mail; take core/mail out of work/vault-next (6a0c0760).
+- app-design: card.md and chip.md (docs/design/system/components/) have no Connections row yet;
+  need the real `.card`/`.chip` (with an "on" state) implementation for deck/css/views/
+  connections.css before the Deck card can be built for real, not against board-only class names.
+  Also: the board's grant chips show Chat, Planner and Agents; is Planner meant to become a fifth
+  vault SURFACE_NAME (a real grant), or does it mean something else there?
+- vault: module-only vault.connections.list {capability?, caller} answering for that caller's surface; useOf send_mail/read_mail of every source -> mail.send/mail.search {account: id}; google-apps-script default capabilities send_mail+read_mail; take core/mail out of work/vault-next (6a0c0760). Also: does "expired" (app-design's board shows a Stripe MCP row expired 3d ago) get its own state, or does it fold into needs_credential?
 - capsule-pro: Capsule rendering of mail rows.
 
 - Lead: whoever owns scripts/perf-check, on the first-sample flake.

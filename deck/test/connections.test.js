@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { install, text, everything, $, $$ } from "./fake-dom.js";
 
 install();
-const { drawConnections, pickServers, pickItems, pickGoogleTest, itemsFor, toolModes, EVENTS } = await import("../views/connections.js");
+const { drawConnections, pickServers, pickItems, pickGoogleTest, pickConnections, itemsFor, toolModes, EVENTS } = await import("../views/connections.js");
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(DECK, "fixtures", "connections.json"), "utf8"));
@@ -571,4 +571,34 @@ test("pickers copy named fields only", () => {
   assert.deepEqual(itemsFor(items, "oauth"), []);
   assert.deepEqual(toolModes([{ tool: "b", outward: true }, { tool: "a", outward: false }], { c: "off", a: "write" }).map(t => [t.tool, t.mode]),
     [["a", "write"], ["b", "write"], ["c", "off"]]);
+});
+
+test("pickConnections: one card per row, named fields only, whatever the source", () => {
+  const rows = pickConnections([
+    { id: "c1", source: "google", ref: "alex@harlowlegal.com", provider: "google-oauth", account: "alex@harlowlegal.com",
+      auth: "oauth", label: "alex@harlowlegal.com", capabilities: ["send_mail", "calendar"], state: "ready",
+      surfaces: ["chat", "capsule"], uses: {}, default: ["send_mail"], last_used: 1000, added: 500, value: LEAK },
+    { id: "c2", source: "mcp", ref: "sheets", provider: "mcp", account: "Google Sheets MCP", auth: "env",
+      label: "Google Sheets MCP", capabilities: ["other"], state: "ready", surfaces: ["agents"], uses: {}, default: [], last_used: null, added: 700 },
+    { id: "c3", source: "google-apps-script", ref: "harlow", provider: "google-apps-script", account: "Apps Script",
+      auth: "env", label: "Apps Script", capabilities: ["send_mail"], state: "needs_credential",
+      needs: [{ module: "mail", need: "google-apps-script" }], surfaces: [], uses: {}, default: [], last_used: null, added: 900 },
+  ]);
+  assert.ok(!JSON.stringify(rows).includes(LEAK));
+  assert.deepEqual(rows[0], { id: "c1", provider: "google-oauth", providerWord: "Google", group: "google",
+    account: "alex@harlowlegal.com", label: "alex@harlowlegal.com", ready: true, needs: [],
+    capabilities: ["send_mail", "calendar"], surfaces: ["capsule", "chat"], defaultFor: ["send_mail"], lastUsed: 1000, connected: 500 });
+  assert.deepEqual(rows[1], { id: "c2", provider: "mcp", providerWord: "MCP server", group: "mcp",
+    account: "Google Sheets MCP", label: "Google Sheets MCP", ready: true, needs: [],
+    capabilities: ["other"], surfaces: ["agents"], defaultFor: [], lastUsed: null, connected: 700 });
+  assert.equal(rows[2].ready, false);
+  assert.deepEqual(rows[2].needs, [{ module: "mail", need: "google-apps-script" }]);
+  // A stray surface name (not one of vault's four: "planner" is not a grantable surface yet) is
+  // dropped, not shown as granted.
+  const withStray = pickConnections([{ id: "c4", provider: "mcp", account: "a", label: "a", state: "ready", surfaces: ["chat", "planner", "made-up"], capabilities: [], default: [] }]);
+  assert.deepEqual(withStray[0].surfaces, ["chat"]);
+  // An unrecognized provider still gets a card: the raw name as its word, "other" as its group.
+  assert.deepEqual(pickConnections([{ id: "c5", provider: "stripe", account: "a", label: "a", state: "ready", capabilities: [], default: [] }])[0],
+    { id: "c5", provider: "stripe", providerWord: "stripe", group: "other", account: "a", label: "a", ready: true, needs: [],
+      capabilities: [], surfaces: [], defaultFor: [], lastUsed: null, connected: null });
 });
