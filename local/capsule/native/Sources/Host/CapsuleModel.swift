@@ -141,7 +141,7 @@ public final class CapsuleModel: ObservableObject {
     /// pair of ids can make the same child id ("a:b" + "c" and "a" + "b:c" stay apart).
     nonisolated static func childID(_ parent: String, _ child: String) -> String { parent + "\u{0}" + child }
 
-    /// Chips for what extensions attach to this send ("with your screen"), and the ones the user
+    /// Chips for what extensions attach to this send ("sees: Safari · Northwind Bakery"), and the ones the user
     /// removed for it.
     @Published var attachments: [SendAttachment] = []
     private var removedAttachments = Set<String>()

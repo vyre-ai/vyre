@@ -115,8 +115,14 @@ final class SightExtension: CapsuleExtension, SendAttaching {
     private var attachSeq = 0
     private var attachLatest: Task<SendAttachment?, Never>?
 
-    /// Screen context for the Capsule's box: read once per show, cleared on hide.
-    private(set) lazy var attacher = ScreenAttacher(vyred: host.vyred) { [weak self] in self?.host.log($0) }
+    /// Screen context for the Capsule's box: read once per show, cleared on hide. Every send
+    /// carries it while sharing is on (the default).
+    let sharing = ScreenSharing.standard()
+    private(set) lazy var attacher: ScreenAttacher = {
+        let a = ScreenAttacher(vyred: host.vyred) { [weak self] in self?.host.log($0) }
+        a.always = { [weak self] in self?.sharing.on ?? false }
+        return a
+    }()
 
     init(host: CapsuleHost) {
         self.host = host
@@ -189,8 +195,21 @@ final class SightExtension: CapsuleExtension, SendAttaching {
                     "Read the window in front and ask about it") { await $0.askScreen() },
             command("talk", "Talk", ["voice", "dictate", "speak", "mic"], "mic",
                     "Say it instead of typing (Option-Return)") { await $0.talk() },
+            sharing.on
+                ? command("share-screen-off", "Stop sharing the screen", ["screen", "sees", "context", "privacy", "share"], "eye.slash",
+                          "Asks carry the screen only when the words point at it") { $0.setSharing(false) }
+                : command("share-screen-on", "Share the screen with every ask", ["screen", "sees", "context", "share"], "eye",
+                          "Quick answers and do see the app, window and visible text") { $0.setSharing(true) },
         ]
         return list
+    }
+
+    func setSharing(_ on: Bool) -> ActionOutcome {
+        sharing.on = on
+        attacher.reset()
+        attacher.prime()
+        host.commandsChanged()
+        return .said(on ? "Asks see your screen again (the sees chip shows what goes)." : "Asks carry the screen only when your words point at it.")
     }
 
     var keyChords: [KeyShortcut] { [Self.talkChord] }

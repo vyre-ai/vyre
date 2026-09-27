@@ -151,7 +151,7 @@ public extension VyredLink {
     }
 }
 
-/// Something an extension offers to add to words on their way out ("with your screen: Safari ·
+/// Something an extension offers to add to words on their way out ("sees: Safari ·
 /// Northwind Bakery"). Shown as a chip before sending; one key or a click on its x removes it;
 /// nothing is ever attached without the chip on screen.
 public struct SendAttachment: Sendable, Equatable {

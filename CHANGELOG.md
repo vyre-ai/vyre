@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule always knows what is on screen
+
+- The user's feedback: quick answers and "do ..." carry the screen by default now, not only when
+  the words point at it. Every send from the box attaches the app, window, URL, selection and a
+  visible-text excerpt from screen.context (already redacted; the floor's blind places attach
+  nothing, a password field's value never). The chip reads "sees: Safari · <title>"; its x (or
+  ⌘⌫) leaves it off that send, and the "Stop sharing the screen" command turns it off until "Share
+  the screen with every ask" (kept in the app's own defaults; memory only under tests). Off, the
+  old rule applies: words that point at the screen, or a selection.
+- `Sources/Extensions/sight/ScreenAttach.swift` (ScreenSharing, decide always:),
+  `SightExtension.swift`; `Tests/Sight/ScreenAttachTests.swift`.
+- StreamPerfTests: the ask-on-pause is held off while the test streams by hand. On a slow runner
+  it fired, failed with no vyred and closed the panel, which was CI's "1 size change".
+
 #### ⌘⏎ means one thing: think deeper
 
 - ⌘⏎ on words that are not a question (two words or more) now thinks deeper too, instead of
