@@ -102,6 +102,20 @@ test("new session: shows who and where, says where no folder starts, and starts 
   assert.equal(done, 1, "the Esc listener is gone after cleanup");
 });
 
+test("new session: with no project given, it starts in context.now's project; an unknown slug or none leaves it on no folder", async () => {
+  for (const [now, want] of [[{ project: "northwind-bakery" }, "Northwind Bakery"], [{ project: "gone-project" }, null], [{ project: null }, null]]) {
+    const api = vyred({ ...WORLD, "context.now": now });
+    const box = /** @type {any} */ (document.createElement("div"));
+    const stop = mountNewSession(box, { onDone() {} });
+    await tick(); await tick();
+    assert.deepEqual(api.of("context.now").map(c => c.input), [{}], "the merged answer, no surface");
+    const on = $$(box, "button[aria-checked=true]").map(text).join(" | ");
+    if (want) assert.ok(on.includes(want), `${want} chosen: ${on}`);
+    else assert.ok(!on.includes("Northwind Bakery") && !on.includes("Harlow Legal"), `no project chosen: ${on}`);
+    stop();
+  }
+});
+
 test("new session: an agent switches the folder off, asks without waiting, and opens its thread", async () => {
   const api = vyred(WORLD);
   went.length = 0;
@@ -254,5 +268,25 @@ test("new session: a success clears the message, so a revisit of the kept sheet 
   await tick(); await tick();
   assert.deepEqual(went, ["/chat/thread/t-new"]);
   assert.equal($(box, "textarea").value, "");
+  stop();
+});
+
+test("new session: every session busy says so, with Try again, which starts it once one frees up", async () => {
+  let busy = true;
+  const api = vyred({ ...WORLD, "threads.start": i => (busy ? { $error: { code: "busy", message: "no free session" } } : { id: "t-free", cwd: "/work/harlow-legal", project: i.project || null, status: "starting" }) });
+  went.length = 0;
+  const box = /** @type {any} */ (document.createElement("div"));
+  const stop = mountNewSession(box, { onDone: () => {} });
+  await tick(); await tick();
+  $(box, "textarea").value = "Tidy the Harlow Legal intake";
+  $$(box, "button").find(b => text(b) === "Start session").click();
+  await tick(); await tick();
+  assert.match(text($(box, ".ns-error")), /^All sessions are busy; one will free up shortly\./);
+  assert.deepEqual(went, []);
+  busy = false;
+  $(box, ".ns-retry").click();
+  await tick(); await tick();
+  assert.equal(api.of("threads.start").length, 2);
+  assert.equal(went.length, 1);
   stop();
 });

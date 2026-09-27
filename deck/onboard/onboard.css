@@ -9,12 +9,12 @@
 
 .ob-steps { width: 280px; flex-shrink: 0; border-right: 1px solid var(--rule); padding: 40px 24px 24px; display: flex; flex-direction: column; }
 .ob-steps ol { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.ob-step { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 10px; border-radius: var(--r-2); color: var(--text-2);
+.ob-step { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 10px; border-radius: var(--radius-field, 8px); color: var(--text-2);
   text-decoration: none; cursor: pointer; }
 .ob-step:hover { background: var(--hover); color: var(--text); }
 .ob-step[aria-current="step"] { background: var(--hover); color: var(--text); }
 .ob-step .n { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r-1); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
+  border-radius: var(--radius-chip, 4px); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
 .ob-step[aria-current="step"] .n { border-color: var(--text); color: var(--text); }
 .ob-step.done .n { background: var(--hover); color: var(--text-2); }
 .ob-step .t { display: flex; flex-direction: column; min-width: 0; }
@@ -34,7 +34,7 @@
 .field { display: flex; flex-direction: column; gap: 8px; }
 .field > label { font-size: 13px; line-height: 18px; color: var(--text-2); }
 .field .hint { font-size: 13px; line-height: 18px; color: var(--label); }
-.affix { display: flex; align-items: stretch; height: 48px; border: 1px solid var(--rule-strong); border-radius: var(--r-2); background: var(--panel); }
+.affix { display: flex; align-items: stretch; height: 48px; border: 1px solid var(--rule-strong); border-radius: var(--radius-field, 8px); background: var(--panel); }
 .affix:focus-within { border-color: var(--focus); }
 .affix input { flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; padding: 0 14px; font-family: var(--mono);
   font-size: 18px; color: var(--text); }
@@ -42,11 +42,11 @@
   border-left: 1px solid var(--rule); }
 .check-line { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-2); min-height: 18px; }
 
-.found { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3); }
+.found { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); }
 .found .what { flex-grow: 1; min-width: 0; font-size: 14px; line-height: 20px; }
 .found .what .code { display: block; margin-top: 2px; }
 
-.choice { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+.choice { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); overflow: hidden; }
 .choice label { display: flex; gap: 14px; padding: 16px; cursor: pointer; border-bottom: 1px solid var(--rule); }
 .choice label:last-child { border-bottom: none; }
 .choice label:hover { background: var(--hover); }
@@ -58,7 +58,7 @@
 .choice .t span { font-size: 13px; line-height: 18px; color: var(--text-2); }
 .choice .more { padding: 0 16px 16px 46px; margin-top: -6px; display: flex; flex-direction: column; gap: 10px; }
 
-.cmd { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3);
+.cmd { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card, 12px);
   font-family: var(--mono); font-size: 15px; line-height: 20px; color: var(--text); }
 .cmd code { flex-grow: 1; min-width: 0; overflow-x: auto; white-space: nowrap; }
 
@@ -73,14 +73,17 @@
 .progress .x span:first-child { font-size: 14px; line-height: 20px; }
 .progress .x span + span { font-size: 13px; line-height: 18px; color: var(--label); }
 .progress .todo .x span:first-child { color: var(--text-2); }
-.progress .state { font-family: var(--mono); font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--label); }
+.progress .state { font-size: 12px; color: var(--label); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .progress .st .busy { animation: none; border-color: var(--text); } }
 
-.address-big { font-family: var(--mono); font-size: 36px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em; word-break: break-all; }
+/* Breaks only after a dot (onboard.js puts a <wbr> there), never inside a label; a label wider
+   than the panel scrolls rather than splitting. */
+.address-big { font-family: var(--mono); font-size: 36px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;
+  overflow-wrap: normal; word-break: keep-all; overflow-x: auto; }
 .address-big i { font-style: normal; color: var(--label); }
 
-.meter { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3); }
+.meter { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); }
 .meter .row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .meter .row .code { white-space: nowrap; }
 .meter .big { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
@@ -89,7 +92,7 @@
 @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 @media (prefers-reduced-motion: reduce) { .bar.moving > span { animation: none; width: 100% !important; opacity: 0.4; } }
 
-.picker { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+.picker { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); overflow: hidden; }
 .picker .bar-top { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--rule); }
 .picker .bar-top .input { height: 34px; font-size: 14px; }
 .picker .list { max-height: 320px; overflow: auto; }
@@ -106,7 +109,7 @@
 .made { display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px; color: var(--text-2); }
 .made b { font-weight: 500; color: var(--text); }
 
-.ob-lock { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--rule); border-radius: var(--r-3); }
+.ob-lock { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); }
 .ob-lock .h3 { margin: 0; }
 .ob-lock p { margin: 0; }
 .ob-lock-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
@@ -122,7 +125,7 @@
 .ob-end { max-width: 520px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .ob-end .brand { margin-bottom: 24px; }
 .ob-end-open { margin-top: 24px; }
-.qr { width: 184px; height: 184px; max-width: 100%; padding: 12px; background: #F1EEE6; border-radius: var(--r-2); }
+.qr { width: 184px; height: 184px; max-width: 100%; padding: 12px; background: #F1EEE6; border-radius: var(--radius-field, 8px); }
 .qr svg { display: block; width: 100%; height: 100%; }
 
 /* Step 6: a card a device, equal width, as many to a row as fit and one on a phone. */
@@ -130,14 +133,14 @@
 .ob-col.wide > .lead { max-width: 600px; }
 .dev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; }
 .dev-card { min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px; background: var(--panel); border: 1px solid var(--rule);
-  border-radius: var(--r-3); scroll-margin-top: 24px; }
+  border-radius: var(--radius-card, 12px); scroll-margin-top: 24px; }
 .dev-card:focus { outline: none; }
 .dev-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .dev-card > .h3 { margin: -4px 0 0; }
 .dev-steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 20px; }
 .dev-steps > li { display: flex; gap: 12px; min-width: 0; }
 .dev-steps .n { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r-1); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
+  border-radius: var(--radius-chip, 4px); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
 .dev-steps .x { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .dev-steps .x > * { max-width: 100%; }
 .dev-steps .t { font-size: 14px; line-height: 24px; font-weight: 500; overflow-wrap: anywhere; }
@@ -146,13 +149,13 @@
 .dev-steps .cmd code { white-space: normal; overflow-wrap: anywhere; }
 .dev-card .qr { width: 152px; height: 152px; padding: 10px; }
 .qr-later { width: 152px; height: 152px; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center;
-  border: 1px dashed var(--rule-strong); border-radius: var(--r-2); font-size: 13px; line-height: 18px; color: var(--label); }
+  border: 1px dashed var(--rule-strong); border-radius: var(--radius-field, 8px); font-size: 13px; line-height: 18px; color: var(--label); }
 .dev-net { display: flex; flex-direction: column; gap: 8px; }
 .dev-net:empty { display: none; }
 .dev-ok, .dev-wait, .dev-off { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 20px; min-width: 0; }
 .dev-ok svg, .dev-off svg { flex-shrink: 0; margin-top: 3px; }
 .dev-ok b { font-weight: 500; overflow-wrap: anywhere; }
-.dev-off { padding: 10px 12px; background: var(--beacon-wash); border-radius: var(--r-2); font-size: 13px; line-height: 18px; }
+.dev-off { padding: 9px 11px; border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); font-size: 13px; line-height: 18px; }
 .dev-off svg { margin-top: 1px; color: var(--beacon-ink); }
 .dev-off .code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
 .dev-wait { align-items: center; color: var(--text-2); }
@@ -162,24 +165,64 @@
 .dev-card .pair-list { margin-bottom: 0; }
 .dev-card .pair-form { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .dev-card .pair-actions .btn { flex: 1 1 0; }
+/* Nothing in a card is wider than the card: a long Mac name wraps, a button never sticks out. */
+.dev-card .btn { max-width: 100%; }
+.dev-card .pair-card, .dev-card .pair-title { min-width: 0; }
+.dev-card .pair-title > span { min-width: 0; overflow-wrap: anywhere; }
+.dev-card > .code, .dev-steps .code { overflow-wrap: anywhere; }
 .dev-card .pair-list:not(:empty) + .dev-state { display: none; }
 @media (prefers-reduced-motion: reduce) { .dev-wait .busy { animation: none; border-color: var(--text); } }
 
 .notice { font-size: 13px; line-height: 18px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; }
 .notice svg { flex-shrink: 0; margin-top: 1px; color: var(--label); }
-.need { background: var(--beacon-wash); border-radius: var(--r-3); padding: 14px 16px; font-size: 14px; line-height: 20px; }
+.need { border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); padding: 13px 15px; font-size: 14px; line-height: 20px; }
 .need .lbl { margin-bottom: 6px; }
+
+/* Look only (launch). The bar and ticks use --focus: the signal lime on dark, a readable green on paper.
+   The step bar, the spoken step, the finish burst and the mark's easter egg. */
+.ob-say { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.ob-col > .ob-stepbar { margin-bottom: 20px; display: flex; flex-direction: column; gap: 10px; }
+.ob-stepbar-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.ob-togo { font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--label); white-space: nowrap; }
+.ob-meter { height: 2px; border-radius: 1px; background: var(--rule); overflow: hidden; }
+.ob-meter > span { display: block; height: 100%; border-radius: 1px; background: var(--focus); transition: width 480ms cubic-bezier(.2, .7, .2, 1); }
+.ob-step.done .n { color: var(--focus); }
+
+.ob-end > .lbl { margin-top: 4px; }
+.ob-end > .h1:focus { outline: none; }
+.ob-end > .h1:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--radius-chip, 4px); }
+.ob-end .ob-panel .lbl { margin-bottom: -8px; }
+.ob-mark { position: relative; display: inline-flex; border-radius: var(--radius-chip, 4px); }
+.ob-mark:focus { outline: none; }
+.ob-mark:focus-visible { outline: 2px solid var(--focus); outline-offset: 3px; }
+.ob-burst { position: absolute; left: 20.5px; top: 5.5px; width: 0; height: 0; pointer-events: none; }
+.ob-burst i { position: absolute; left: 0; top: 0; width: var(--size, 4px); height: var(--size, 4px); margin: calc(var(--size, 4px) / -2) 0 0 calc(var(--size, 4px) / -2);
+  border-radius: 50%; background: var(--mark-dot, var(--focus)); opacity: 0;
+  animation: ob-pop 1100ms cubic-bezier(.15, .7, .3, 1) var(--delay, 0ms) 1 forwards; }
+@keyframes ob-pop {
+  0% { opacity: 0; transform: translate(0, 0) scale(.4); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1); }
+}
+.ob-egg { position: absolute; left: 0; top: calc(100% + 8px); white-space: nowrap; font-family: var(--mono); font-size: 11px; line-height: 14px;
+  color: var(--label); opacity: 0; transform: translateY(-2px); transition: opacity 240ms ease, transform 240ms ease; pointer-events: none; }
+.ob-egg.on { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .ob-meter > span { transition: none; }
+  .ob-burst, .ob-egg { display: none; }
+}
 
 .ob-dots { display: none; }
 
-@media (max-width: 760px) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .ob-top { height: 52px; padding: 0 16px; }
   .ob-top .where { display: none; }
   .ob-steps { display: none; }
   .ob-dots { display: flex; gap: 4px; padding: 16px 16px 0; }
   .ob-dots span { flex: 1; height: 3px; border-radius: 2px; background: var(--rule); }
   .ob-dots span.done { background: var(--text-2); }
-  .ob-dots span.now { background: var(--text); }
+  .ob-dots span.now { background: var(--focus); }
+  .ob-meter { display: none; }
   .ob-col { padding: 28px 16px 32px; }
   .ob-col > .h1 { font-size: 32px; line-height: 36px; letter-spacing: -0.025em; }
   .affix input, .affix span { font-size: 16px; padding: 0 10px; }

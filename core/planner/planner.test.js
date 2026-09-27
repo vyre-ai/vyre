@@ -45,7 +45,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
         name: "planner", config: { role, planner: { timezone: tz } }, paths: { root },
         store: { db, migrate: steps => migrate(db, "planner", steps) },
         log: m => logs.push(m),
-        events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn) },
+        events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
         tool: (name, def) => w.tools.set(name, def),
         // No Google account connected: the calendar slice stays asleep (core/planner/calendar.test.js covers it).
         call: async tool => tool === "link.status" ? { data: { linked: w.linked } } : tool === "google.accounts" ? { data: [] }
@@ -399,7 +399,7 @@ test("planner: an idle planner never asks Intl for a zone (ICU's zone data is ab
     db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
     const tools = new Map();
     const h = await planner.start({ name: "planner", config: { role: "box", planner: { timezone: "Asia/Karachi" } }, paths: { root: "/idle" },
-      store: { db, migrate: s => migrate(db, "planner", s) }, log: () => {}, events: { emit: () => {}, on: () => () => {} },
+      store: { db, migrate: s => migrate(db, "planner", s) }, log: () => {}, events: { emit: () => {}, on: () => () => {}, latestId: () => 0 },
       tool: (n, d) => tools.set(n, d), call: async t => t === "google.accounts" ? { data: [] } : { error: { code: "x" } }, remote: async () => ({}) });
     await tools.get("planner.list").run({}, { caller: "cli" });
     const idle = zoned;

@@ -88,20 +88,126 @@ vyre update
 ```
 :::
 
-`vyre update` pulls new images. When `/srv/vyre/.env` lists `compose.build.yml` in `COMPOSE_FILE`,
-it rebuilds the image from `VYRE_SOURCE` with fresh base images instead; and when `VYRE_SOURCE` is
-`/srv/vyre/src`, it first downloads a new `vyre.tgz` from `VYRE_BOX_URL`, checks it against
-`SHA256SUMS` and swaps it in, so a box built from source updates without git. Then it recreates
-what changed, waits up to a minute for vyred, and prints what `vyre up` prints. Your volumes carry
-over, and each module migrates its own data at start
+`vyre update` brings the box to the newest release. It asks GitHub Releases for `vyre-ai/vyre`:
+`stable` (the default) is the newest release that is not a prerelease, and `beta` is the newest of
+either. Pick one with `vyre update --channel beta` or `VYRE_CHANNEL=beta`, or a release by version
+with `--to 0.2.0`. While GitHub has no release yet, or when you set `VYRE_BOX_URL` yourself, it
+uses the site instead (`https://vyre.run/box/` by default), as it always has.
+
+Every file comes from the release and is checked against its `SHA256SUMS` before anything on the
+box changes. Then, in order:
+
+1. It backs up the database with `vyre backup`, into `/home/vyre/.vyre/backups/pre-<version>.tar.gz`
+   in the container, with a copy in `/srv/vyre/backups/` that only you can read. It holds the
+   sealed vault, so treat it like the vault.
+2. It tags the image that runs now as `vyre:prev`, and keeps the box files as they are in
+   `/srv/vyre/box.prev/`.
+3. It refreshes the box files (`compose.yml`, `compose.build.yml`, `vyre.env.example`, `Dockerfile`,
+   `dockerignore`) from the release. `.env` and `vyre.env` are never touched.
+4. When `/srv/vyre/.env` lists `compose.build.yml` in `COMPOSE_FILE` and `VYRE_SOURCE` is
+   `/srv/vyre/src`, it swaps in the new `vyre.tgz` and keeps the old one as `/srv/vyre/src.prev`,
+   then rebuilds the image with fresh base images. Otherwise it pulls the new image.
+5. It recreates what changed and waits up to a minute for vyred.
+
+If vyred does not come up in that minute, the update undoes itself: the old source, the old image,
+the old box files and the database from step 1 all go back, and `vyre update` exits 1 saying it
+rolled back. Store migrations only go forward, which is why the database comes back from the
+backup. Once an update has come up healthy, nothing restores the database on its own, so nothing
+you write after that is lost.
+
+After a healthy update it brings the phone app along, when the release has one: it checks the APK
+and `android.json` against `SHA256SUMS`, copies the APK into `/home/vyre/.vyre/releases/android/`,
+then `android.json` last (the old one stays as `android.json.prev`), and runs
+`vyre call releases.sign`. If signing refuses (`no_release` or `release_mismatch`), the update
+says so and still succeeds. A release without an Android build leaves the folder alone. Last, it
+replaces the `vyre` command itself with the release's copy, and prints what `vyre up` prints.
+
+Your volumes carry over, and each module migrates its own data at start
 ([Specification](../architecture/spec.md#71-store-config-events-modules-daemon), Section 7.1).
 
-To update the box files themselves (`compose.yml`, the wrapper and the rest), run the installer
-again. It rewrites them and leaves `.env` and `vyre.env` alone:
+To go back by hand:
+
+```
+vyre update --rollback
+```
+
+It puts the previous source, image, box files and phone app manifest back, and keeps the database
+as it is now. Run it again to go forward. To put the database from before the update back too:
+
+```
+vyre update --rollback --restore-data
+```
+
+That drops everything written since the update, so it says what it would drop and asks you to
+type `restore`. Off a terminal, pass `--yes` instead.
+
+The image carries the Claude Agent SDK that Vyre's own sessions run on, with the Claude Code it
+bundles, in `/opt/vyre-sessions-sdk` ([ADR 0030](../adr/0030-sessions.md)). The box never
+downloads it at runtime. Its version is pinned as `VERSION` in `core/sessions/sdk-pin.js`: a bump there
+rebuilds the image, and `vyre update` brings it in like any other change.
+
+`vyre update` refreshes the box files and the wrapper. Running the installer again does too, and
+it also leaves `.env` and `vyre.env` alone:
 
 ```
 curl -fsSL https://vyre.run/install.sh | sh
 ```
+
+## Update Vyre on a Mac
+
+On a Mac, or any machine where you installed Vyre with npm, `vyre update` updates Vyre itself:
+
+```
+vyre update --check    # is a newer release out? exit 0 when current, 1 when one waits
+vyre update            # show what changed, then install it
+```
+
+```output
+  0.1.0 → 0.2.0 · stable
+
+  0.2.0
+    what 0.2.0 changed
+
+  Update to 0.2.0 now? (y/N) y
+  updated 0.1.0 → 0.2.0 · vyred answering
+```
+
+It reads the releases of `vyre-ai/vyre` on GitHub and shows the notes of every release between
+the version you run and the new one. When you say yes it:
+
+1. backs up your data into `~/.vyre/backups/pre-<version>/`;
+2. downloads the release into `~/.vyre/releases/<version>/` and checks every file against the
+   release's `SHA256SUMS`, so a damaged or wrong download stops it before anything changes;
+3. installs it with `npm install -g`, restarts vyred the way `vyre up` does after an upgrade, and
+   waits for vyred to report the new version.
+
+If vyred does not come back on the new version, `vyre update` puts the previous version back,
+restores the backup, and says it rolled back. Once the new version has answered, it never touches
+your data again on its own.
+
+| Option | Does |
+|---|---|
+| `--channel stable` or `--channel beta` | which releases to follow; the default is `stable`, or `update.channel` in `config.json` |
+| `--to <version>` | a given release, when an update says to step through one first |
+| `--yes` | installs without asking; needed when there is no terminal to ask on |
+| `--rollback` | puts the previous release back and keeps your current data |
+| `--rollback --restore-data` | also puts back the data from before the last update |
+| `--json` | one line of JSON; `--check --json` prints `{ current, latest, channel }` |
+
+`--restore-data` drops everything written since that backup, so it says the backup's date and
+asks you to type `restore`. With `--json`, or with no terminal, it needs `--yes` instead.
+`~/.vyre/releases` keeps the two newest releases and the one you run.
+
+> [!SNAG] "this vyre runs from a checkout; update it with git"
+> You run Vyre from a clone of the repository, not an npm install. Run `git pull`, then
+> `vyre up`.
+
+> [!SNAG] "0.3.0 updates only from 0.2.0 or newer"
+> A release sometimes needs an older one in between. Run the command it names, for example
+> `vyre update --to 0.2.0`, then `vyre update` again.
+
+On a box, the host's `vyre update` (above) does the job; inside the box's container,
+`vyre update` says so and stops.
 
 ## Run the installer by hand
 

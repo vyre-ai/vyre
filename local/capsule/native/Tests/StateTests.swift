@@ -79,6 +79,48 @@ let stateSuite = Suite("state") { t in
         t.eq(VyState.fromHeld(["id": "g3", "agent": "kit", "kind": "spend", "to": ["a@x.example", "b@x.example"]]).title, "kit drafted a payment to a@x.example and 1 more")
     }
 
+    t.test("Agent SDK sessions (ADR 0030): tool rows by call id, turn, state, usage, cancel") {
+        let turn = "t1:3"
+        var r = Reply(thread: "t1")
+        r = VyState.applyReply(r, ev(1, "thread.turn", ["turn": turn, "uuid": "u", "text": "hi"], thread: "t1"))
+        t.eq(r.turn, turn)
+        r = VyState.applyReply(r, ev(2, "thread.state", ["turn": turn, "state": "running"], thread: "t1"))
+        r = VyState.applyReply(r, ev(3, "thread.tool", ["turn": turn, "id": "c1", "call": "c1", "name": "Read", "summary": "Read menu.md", "status": "running"], thread: "t1"))
+        r = VyState.applyReply(r, ev(4, "thread.tool", ["turn": turn, "id": "c2", "call": "c2", "name": "Bash", "status": "running"], thread: "t1"))
+        r = VyState.applyReply(r, ev(5, "thread.tool", ["turn": turn, "id": "c1", "call": "c1", "status": "completed"], thread: "t1"))
+        t.eq(r.tools.map(\.id), ["c1", "c2"], "a status update keeps the row's place")
+        t.eq(r.tools.map(\.status), [.completed, .running])
+        t.eq(r.tools.map(\.summary), ["Read menu.md", "Bash"])
+        // Another turn of the same thread is not this reply's.
+        let other = VyState.applyReply(r, ev(6, "thread.tool", ["turn": "t1:4", "id": "c9", "call": "c9", "status": "running"], thread: "t1"))
+        t.eq(other.tools.count, 2)
+        r = VyState.applyReply(r, ev(7, "thread.state", ["turn": turn, "state": "waiting"], thread: "t1"))
+        t.eq(r.state, "waiting"); t.eq(r.finished, false)
+        r = VyState.applyReply(r, ev(8, "thread.usage", ["turn": turn, "cost_usd": 0.004, "total_cost_usd": 0.03, "tokens": 900], thread: "t1"))
+        t.eq(r.cost, 0.004); t.eq(r.totalCost, 0.03)
+        // Esc elsewhere: the turn is canceled, a running tool with it.
+        let c = VyState.applyReply(r, ev(9, "thread.finished", ["turn": turn, "canceled": true, "reason": "interrupt"], thread: "t1"))
+        t.eq(c.error, "stopped"); t.eq(c.ok, false)
+        t.eq(c.tools.map(\.status), [.completed, .canceled])
+        // A tool canceled by status, and one that failed.
+        var d = VyState.applyReply(r, ev(10, "thread.tool", ["turn": turn, "id": "c2", "call": "c2", "status": "canceled"], thread: "t1"))
+        d = VyState.applyReply(d, ev(11, "thread.tool", ["turn": turn, "id": "c3", "call": "c3", "name": "Write", "status": "failed"], thread: "t1"))
+        t.eq(d.tools.map(\.status), [.completed, .canceled, .failed])
+        // failed carries its error, then idle follows and leaves it.
+        var f = VyState.applyReply(r, ev(12, "thread.state", ["turn": turn, "state": "failed", "error": "rate limited"], thread: "t1"))
+        f = VyState.applyReply(f, ev(13, "thread.state", ["turn": turn, "state": "idle"], thread: "t1"))
+        t.eq(f.error, "rate limited"); t.eq(f.finished, true); t.eq(f.idle, false); t.eq(f.state, "idle")
+        // A clean finish then idle: done, and marked idle.
+        var g = VyState.applyReply(r, ev(14, "thread.finished", ["turn": turn, "ok": true, "cost_usd": 0.004], thread: "t1"))
+        g = VyState.applyReply(g, ev(15, "thread.state", ["turn": turn, "state": "idle"], thread: "t1"))
+        t.eq(g.error, nil); t.eq(g.idle, true); t.eq(g.cost, 0.004, "a turn's cost is not added twice")
+        // The older shape still works: phase and error, no status.
+        var o = Reply(thread: "t1")
+        o = VyState.applyReply(o, ev(1, "thread.tool", ["id": "u1", "tool": "Read", "phase": "start"], thread: "t1"))
+        o = VyState.applyReply(o, ev(2, "thread.tool", ["id": "u1", "phase": "done", "error": true], thread: "t1"))
+        t.eq(o.tools.map(\.status), [.failed])
+    }
+
     t.test("a reply streams in pieces and the whole message wins") {
         var r = VyState.reply("t1")
         r = VyState.applyReply(r, ev(1, "thread.text", ["message": "m1", "delta": "The Q3 "], thread: "t1"))
@@ -105,6 +147,34 @@ let stateSuite = Suite("state") { t in
         t.eq(r.finished, true); t.eq(r.ok, false); t.eq(r.error, "the thread stopped: stopped")
         t.eq(Bridge.explain(code: "busy", message: ""), "The box is running as many sessions as it allows. Stop one, or try again when one finishes.")
         t.ok(Bridge.explain(code: "error", message: "no thread abc").contains("runs in a terminal"))
+    }
+
+    t.test("a queued reply ignores the turn the session is busy with, then streams its own turn live") {
+        var r = VyState.reply("t1"); r.queued = QueuedSend(name: "Intake form", id: 7)
+        r = VyState.applyReply(r, ev(1, "thread.text", ["message": "m0", "delta": "Still refactoring"], thread: "t1"))
+        r = VyState.applyReply(r, ev(2, "thread.tool", ["id": "c1", "summary": "npm test"], thread: "t1"))
+        r = VyState.applyReply(r, ev(3, "thread.finished", ["ok": true, "cost_usd": 0.4], thread: "t1"))
+        t.eq(VyState.replyText(r), ""); t.eq(r.tools.count, 0); t.eq(r.finished, false); t.eq(r.cost, nil)
+        r = VyState.applyReply(r, ev(4, "thread.sent", ["queued": 6, "via": "turn", "turn": "t1:3"], thread: "t1"))
+        t.eq(r.queued?.delivered, false, "another surface's queued words are not ours")
+        r = VyState.applyReply(r, ev(5, "thread.sent", ["queued": 7, "via": "turn", "turn": "t1:3"], thread: "t1"))
+        t.eq(r.queued?.delivered, true); t.eq(r.queued?.turn, "t1:3")
+        r = VyState.applyReply(r, ev(6, "thread.text", ["message": "m1", "delta": "On ", "turn": "t1:3"], thread: "t1"))
+        r = VyState.applyReply(r, ev(7, "thread.text", ["message": "mX", "delta": "noise", "turn": "t1:2"], thread: "t1"))
+        r = VyState.applyReply(r, ev(8, "thread.text", ["message": "m1", "delta": "main.", "turn": "t1:3"], thread: "t1"))
+        t.eq(VyState.replyText(r), "On main."); t.eq(r.finished, false, "live, before the turn ends")
+        r = VyState.applyReply(r, ev(9, "thread.finished", ["ok": true, "cost_usd": 0.01, "turn": "t1:3"], thread: "t1"))
+        t.eq(r.finished, true); t.eq(r.ok, true); t.eq(r.cost, 0.01)
+    }
+
+    t.test("a queued reply without turn ids ends at the first finish after its hand-over") {
+        var r = VyState.reply("t1"); r.queued = QueuedSend(name: "Intake form")
+        r = VyState.applyReply(r, ev(1, "thread.finished", ["ok": true], thread: "t1"))
+        t.eq(r.finished, false, "the busy turn ending is not the answer")
+        r = VyState.applyReply(r, ev(2, "thread.sent", ["queued": 3, "via": "stop"], thread: "t1"))
+        r = VyState.applyReply(r, ev(3, "thread.text", ["message": "m1", "text": "Done.", "done": true], thread: "t1"))
+        r = VyState.applyReply(r, ev(4, "thread.finished", ["ok": true], thread: "t1"))
+        t.eq(VyState.replyText(r), "Done."); t.eq(r.finished, true)
     }
 
     t.test("a withdrawn question is an ask.answered with decision cancelled") {

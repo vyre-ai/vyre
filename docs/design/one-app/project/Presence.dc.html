@@ -131,8 +131,8 @@
                   </div>
                   <div class="li" style="cursor: default;">
                     <svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg>
-                    <div class="col grow" style="min-width: 0;"><span class="w6 trunc">app.vyre.run on alex's Pixel 8</span><span class="t12 t3 trunc">Over the relay · signed in 11 Sep · until 11 Oct · last used yesterday</span></div>
-                    <div class="col" style="width: 200px; min-width: 0;"><span class="t13 trunc">Passkey, fingerprint</span><span class="t12 t3 trunc">Signed requests, no cookie</span></div>
+                    <div class="col grow" style="min-width: 0;"><span class="w6 trunc">alex's Pixel 8 over the relay</span><span class="t12 t3 trunc">Over the relay · signed in 11 Sep · until 11 Oct · last used yesterday</span></div>
+                    <div class="col" style="width: 200px; min-width: 0;"><span class="t13 trunc">Device key, fingerprint</span><span class="t12 t3 trunc">Paired over the relay, no passkey</span></div>
                     <div style="width: 76px; display: flex; justify-content: flex-end;"><button class="btn btn-sm" type="button">Revoke</button></div>
                   </div>
                   <div class="li" style="cursor: default;">
@@ -145,7 +145,7 @@
                 <p class="t12 t3">Revoke needs no proof and takes effect at once: that device's next person action asks it to sign in again. Native builds keep the presence key in the device's own hardware (Secure Enclave, StrongBox); the web app and app.vyre.run use a passkey.</p>
                 <div class="row" style="gap: 12px;">
                   <button class="btn btn-s" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>Sign in another device</button>
-                  <span class="t12 t3 trunc">Or on the device, type the code from <span class="mono">vyre presence code</span></span>
+                  <span class="t12 t3 trunc">No passkey there? Add one with <span class="mono">vyre presence code</span></span>
                 </div>
               </div>
             </div>
@@ -186,8 +186,8 @@
           </div>
           <div class="col" style="gap: 10px; padding: 12px 20px 0;">
             <button class="btn btn-p ph-btn-lg" type="button"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path><path d="M5.5 6v1M10.5 6v1M8 6v3h-.8M6 10.8c1.2.9 2.8.9 4 0"></path></svg>Sign in with Face ID</button>
-            <button class="btn btn-s ph-btn" type="button">Use a code from your Mac</button>
-            <span class="t13 t2" style="text-align: center;">On the Mac, run <span class="mono">vyre presence code</span></span>
+            <button class="btn btn-s ph-btn" type="button">Add a passkey with a code from your Mac</button>
+            <span class="t13 t2" style="text-align: center;">No passkey here yet? Run <span class="mono">vyre presence code</span> on the Mac, type it, then sign in with the new passkey.</span>
           </div>
           <span class="t12 t3" style="text-align: center; padding: 10px 20px 0;">The passkey stays on this iPhone. vyre.harlow.ts.net as alex.</span>
         </div>
@@ -239,7 +239,7 @@
     <div class="anno">
       <span class="lbl">How it works</span>
       <div class="anno-i"><span class="anno-n">1</span><span>Two cadences. A sign-in per device (passkey, about 30 days, renews with use, 90 days at most) makes person actions work over HTTP: the web, the installed web app, app.vyre.run. Without one the box answers <span class="mono">401 person_session_required</span> and the sheet opens.</span></div>
-      <div class="anno-i"><span class="anno-n">2</span><span>The sheet opens once, on the first person action, and names that action. After sign-in the action resumes; nothing is typed twice. No Face ID on the phone yet? Type the code from <span class="mono">vyre presence code</span> on the Mac.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>The sheet opens once, on the first person action, and names that action. After sign-in the action resumes; nothing is typed twice. No passkey on this device yet? "Add a passkey with a code from your Mac" enrolls one (<span class="mono">vyre presence code</span>), then the same sheet signs in with it. A phone paired over the relay signs in with its own device key (Face ID); the native app uses <span class="mono">vyre://</span>. End now is <span class="mono">presence.session.close</span>.</span></div>
       <div class="anno-i"><span class="anno-n">3</span><span>A proof covers 30 min from <span class="mono">presence.since</span>. A lapse (<span class="mono">403 presence_required</span>) never opens a wall: Send becomes "Send with Face ID" and the line says when the last one was.</span></div>
       <div class="anno-i"><span class="anno-n">4</span><span>Proofs only for pairing, vault secrets, and send, post, pay or delete outside. Answering, allowing an ask, take over and revoking never ask.</span></div>
       <div class="anno-i"><span class="anno-n">5</span><span>Settings lists every signed-in device with its presence key. Revoke is immediate and needs no proof; expired rows stay until removed, so you see what lapsed.</span></div>

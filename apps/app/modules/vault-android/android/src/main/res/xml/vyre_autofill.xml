@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- settingsActivity is the app's main activity (sh.vyre.app, app.json android.package).
+     compatibility-package turns on compatibility mode for browsers that give autofill services no
+     hints of their own; the framework then reads the page through accessibility and puts the
+     page's domain on the URL bar. maxLongVersionCode covers every current version. -->
+<autofill-service xmlns:android="http://schemas.android.com/apk/res/android"
+  android:settingsActivity="sh.vyre.app.MainActivity"
+  android:supportsInlineSuggestions="true">
+  <compatibility-package android:name="com.android.chrome" android:maxLongVersionCode="10000000000" />
+  <compatibility-package android:name="com.chrome.beta" android:maxLongVersionCode="10000000000" />
+  <compatibility-package android:name="org.mozilla.firefox" android:maxLongVersionCode="10000000000" />
+  <compatibility-package android:name="org.mozilla.firefox_beta" android:maxLongVersionCode="10000000000" />
+  <compatibility-package android:name="com.brave.browser" android:maxLongVersionCode="10000000000" />
+  <compatibility-package android:name="com.microsoft.emmx" android:maxLongVersionCode="10000000000" />
+  <compatibility-package android:name="com.sec.android.app.sbrowser" android:maxLongVersionCode="10000000000" />
+</autofill-service>

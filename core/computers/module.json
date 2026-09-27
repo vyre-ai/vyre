@@ -23,5 +23,8 @@
   },
   "shows": { "streams": ["glass"], "cli": ["computers"], "deck": ["panel:glass"] },
   "needs": { "vault": ["tailscale-agent-authkey"] },
-  "teaches": {}
+  "teaches": {},
+  "settings": [
+    {"key": "computers.handback_minutes", "group": "devices", "label": "Hand a computer back after (minutes idle)", "help": "0 is never.", "type": "int", "choices": [0, 2, 5, 15], "default": 5, "levels": ["account"], "apply": "live", "store": {"config": "computers.handbackIdleMin"}}
+  ]
 }

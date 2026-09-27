@@ -23,6 +23,10 @@ test("compose: each part only when there is something to say", () => {
   assert.equal(compose({ link: { role: "box", peers: 1 } }), "vyre", "the box has no box to report");
   assert.equal(compose({ agents: [{ name: "juno", kind: "assistant", doing: "waiting on your answer" }] }), "vyre · juno waits on you");
   assert.equal(compose({ agents: [{ name: "kit", kind: "agent", doing: "idle" }] }), "vyre", "only the assistant is shown");
+  // waiting.count is the one count every surface shows; it wins over the two lists.
+  assert.equal(compose({ waiting: { count: 3 }, held: [{}] }), "vyre · 3 need you");
+  assert.equal(compose({ waiting: { count: 0 }, held: [{}], asks: [{}] }), "vyre");
+  assert.equal(compose({ waiting: null, held: [{}], asks: [{}] }), "vyre · 2 need you", "no waiting module: held plus asks");
 });
 
 async function world(t, fakes = [], role = "local") {
@@ -79,6 +83,14 @@ test("statusline: reads every part, follows events after a debounce, writes only
 
   await reg.stop?.();
   assert.equal(fs.existsSync(file), false);
+});
+
+test("statusline: the need count is waiting.count's, the same one push and the Capsule show", async t => {
+  /** @type {any} */ (globalThis).fake = { held: [{ id: "g1" }], asks: [], link: null, agents: [] };
+  t.after(() => { delete /** @type {any} */ (globalThis).fake; });
+  const waiting = ["waiting", ["waiting.count"], `export default { async start(ctx) { ctx.tool("waiting.count", { run: async () => ({ count: 4, by_kind: { ask: 1, draft: 1, reminder: 1, pairing: 1 } }) }); return {}; } };`];
+  const { reg } = await world(t, [...FAKES, waiting], "box");
+  assert.equal((await reg.call("statusline.line", {}, "cli")).data.line, "vyre · 4 need you", "a reminder and a pairing request count too");
 });
 
 test("statusline: a failing tool drops only its own part", async t => {

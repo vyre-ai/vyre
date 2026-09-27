@@ -48,6 +48,19 @@ const root = /** @type {HTMLElement} */ (document.getElementById("ob"));
 /** Set by step 5's "Pair your Mac": step 6 opens scrolled to the Mac card. */
 let toMac = false;
 
+// Look only: the step bar, the spoken step, the finish burst and one small easter egg.
+const calm = () => { try { return window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch { return false; } };
+/** The polite live region in index.html, outside #ob, so a re-render never swallows what it says. */
+function say(/** @type {string} */ text) {
+  const el = document.getElementById("ob-say");
+  if (!el) return;
+  el.textContent = "";
+  setTimeout(() => { el.textContent = text; }, 50);
+}
+/** The bar's last width, so moving to the next step grows it from where it was. */
+let lastPct = 0;
+let lastStep = -1;
+
 async function boot() {
   // loopback (before an owner exists) serves only /onboard and the onboard.* tools; system.info
   // is not one of them, so the host comes from onboard.status.
@@ -115,15 +128,35 @@ function render() {
             h("span", { class: "n" }, st === "done" ? icon("check", 12) : String(j + 1)),
             h("span", { class: "t" }, h("span", null, s.title), st !== "todo" ? h("span", null, st === "done" ? "Done" : "Skipped") : null)));
         })),
-        h("div", { class: "foot" }, "Every step can be finished later from Settings, or with a vyre command.")),
+        h("div", { class: "foot" }, "Skip anything you like. Every step can be finished later from Settings, or with a vyre command.")),
       h("main", { class: "ob-main" }, col)));
 
-  col.append(h("div", { class: "lbl" }, `Step ${i + 1} of ${STEPS.length} · ${step.title}`));
+  const pct = Math.round(100 * (i + 1) / STEPS.length);
+  const fill = h("span", { style: { width: lastPct + "%" } });
+  const left = STEPS.length - i - 1;
+  col.append(h("div", { class: "ob-stepbar" },
+    h("div", { class: "ob-stepbar-row" },
+      h("div", { class: "lbl", id: "ob-step-label" }, `Step ${i + 1} of ${STEPS.length} · ${step.title}`),
+      h("span", { class: "ob-togo" }, left ? `${left} more after this` : "Last one")),
+    h("div", { class: "ob-meter", role: "progressbar", "aria-labelledby": "ob-step-label", "aria-valuemin": "1",
+      "aria-valuemax": String(STEPS.length), "aria-valuenow": String(i + 1), "aria-valuetext": `Step ${i + 1} of ${STEPS.length}` }, fill)));
+  requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = pct + "%"; }));
+  lastPct = pct;
+  if (lastStep !== i) say(`Step ${i + 1} of ${STEPS.length}: ${step.title}`);
+  lastStep = i;
   if (state.statusError?.missing && i !== 4) {
     col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
       h("div", { class: "lbl beacon" }, "Setup is not running"),
-      "The box module is not running on this machine, so this step cannot finish here. Run ", h("code", null, "vyre up"),
-      " again, or skip to the steps that work."));
+      "The box module is not running on this machine, so this step cannot finish here yet. Run ", h("code", null, "vyre up"),
+      " on the box, then reload this page. Until then, skip ahead to the steps that work."));
+  }
+  // A new browser, or the link already used here: the loopback door refuses every onboard.* call
+  // without the session `vyre up`'s link carries (core/onboard/loopback.js answers 403 "denied").
+  if (state.statusError?.code === "denied") {
+    col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
+      h("div", { class: "lbl beacon" }, "Open your setup link"),
+      "This page needs the one-time link ", h("code", null, "vyre up"), " printed, opened in this browser. Run ", h("code", null, "vyre up"),
+      " on the box for a fresh link, then open it here."));
   }
   SCREENS[step.id](col, screen);
 }
@@ -142,6 +175,11 @@ function devStep(n, title, ...body) {
 }
 
 const LOOPBACK = /^(127\.|localhost$|\[?::1\]?$)/;
+
+/** Whether an address (with or without https://) is the one this page is open at. */
+function here(/** @type {string} */ address) {
+  try { return new URL(/^https?:\/\//.test(address) ? address : "https://" + address).host === location.host; } catch { return false; }
+}
 
 /**
  * A phone or tablet, by the OS Tailscale reports: "iPhone", "iPad" or "Android phone"; null for
@@ -229,7 +267,7 @@ const SCREENS = {
       // defaults to a ts.net address, decided in the address step, and onboard.you no longer
       // checks availability itself (that is still asked for, live, as the person types, so a
       // name they cannot have is caught early; it just isn't shown as a domain here).
-      h("p", { class: "lead" }, "Just your name and your assistant's. Only your own devices will be able to reach it."));
+      h("p", { class: "lead" }, "Let's start with names: yours, and your assistant's. Only your own devices will be able to reach what you set up here."));
     const status = h("div", { class: "check-line", "aria-live": "polite" });
     const nameIn = h("input", { class: "input", id: "name", value: state.name, autocomplete: "off", spellcheck: "false", autocapitalize: "none",
       "aria-describedby": "name-status", placeholder: "alex" });
@@ -259,7 +297,7 @@ const SCREENS = {
     col.append(h("div", { class: "ob-panel" },
       h("div", { class: "field" }, h("label", { for: "name" }, "Your name"), nameIn, status),
       h("div", { class: "field" }, h("label", { for: "assistant" }, "Your assistant's name"), asst,
-        h("span", { class: "hint" }, "The assistant can see every project and drive any session. You can rename it, and change its voice and instructions, later."))));
+        h("span", { class: "hint" }, "Your assistant sees every project and can drive any session, so you never have to start from a blank page. You can rename it, and change its voice and instructions, later."))));
     const sync = () => s.foot({ label: "Continue", disabled: !ok, run: async () => {
       state.assistant = /** @type {HTMLInputElement} */ (asst).value.trim();
       const r = await attempt("onboard.you", { name: state.name, assistant: state.assistant || undefined });
@@ -273,19 +311,19 @@ const SCREENS = {
 
   claude(col, s) {
     col.append(
-      h("h1", { class: "h1" }, "Connect Claude Code."),
-      h("p", { class: "lead" }, "Vyre runs your sessions and agents on your own Claude subscription or an API key. Nothing is typed into a terminal."));
+      h("h1", { class: "h1" }, "Sign in to Claude."),
+      h("p", { class: "lead" }, "Vyre works on your own Claude subscription or API key, so your work stays yours. It all happens on this page: no terminal needed."));
     const panel = h("div", { class: "ob-panel" }, h("div", { class: "found" }, h("span", { class: "faint" }, "Looking for claude on this machine")));
     col.append(panel);
     s.foot(null);
     (async () => {
       const d = await attempt("onboard.claude", { mode: "detect" });
-      if (d.error) { put(panel, empty("Could not look for Claude Code here.", d.error)); s.foot(null); return; }
+      if (d.error) { put(panel, empty("Vyre could not look for Claude Code on this machine. Skip for now and sign in later from Settings, or reload to try again.", d.error)); s.foot(null); return; }
       const info = d.data;
       if (!info.installed) {
         put(panel,
-          h("div", { class: "found" }, icon("terminal"), h("span", { class: "what" }, "Claude Code is not installed on this machine.")),
-          h("div", { class: "field" }, h("label", null, "Install it, then check again"), command(info.install || "npm install -g @anthropic-ai/claude-code")));
+          h("div", { class: "found" }, icon("terminal"), h("span", { class: "what" }, "Claude Code is not on this machine yet.")),
+          h("div", { class: "field" }, h("label", null, "Install it with this command, then press Check again"), command(info.install || "npm install -g @anthropic-ai/claude-code")));
         s.foot({ label: "Check again", run: () => render() });
         return;
       }
@@ -361,7 +399,7 @@ const SCREENS = {
   tailscale(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Put this machine on your tailnet."),
-      h("p", { class: "lead" }, "Tailscale makes your Vyre reachable from your phone and laptop, and from nothing else. You sign in with Tailscale's own page; Vyre never sees your password."),
+      h("p", { class: "lead" }, "Tailscale lets your phone and laptop reach Vyre, and nothing else can. You sign in on Tailscale's own page, so Vyre never sees your password."),
       h("p", { class: "small muted", style: { marginTop: "8px" } }, "No Tailscale account? Sign in with Google, GitHub, Apple or Microsoft; that makes one, free for personal use. Use the same account as your Mac."));
     const panel = h("div", { class: "ob-panel" }, h("div", { class: "found" }, h("span", { class: "faint" }, "Looking for Tailscale")));
     col.append(panel);
@@ -369,7 +407,7 @@ const SCREENS = {
     const show = (/** @type {any} */ t) => {
       if (!t.installed) {
         put(panel,
-          h("div", { class: "found" }, icon("terminal"), h("span", { class: "what" }, "Tailscale is not installed on this machine.")),
+          h("div", { class: "found" }, icon("terminal"), h("span", { class: "what" }, "Tailscale is not on this machine yet.")),
           h("div", { class: "field" }, h("label", null, "Install it with this one command, then check again"), command(t.install || "curl -fsSL https://tailscale.com/install.sh | sh")),
           h("p", { class: "notice" }, icon("lock", 14), "Vyre does not install software for you. Run it yourself, where you can see what it does."));
         s.foot({ label: "Check again", run: () => render() });
@@ -405,14 +443,14 @@ const SCREENS = {
       s.foot({ label: "Starting Tailscale's sign-in", disabled: true, run: () => {} });
       put(panel, h("p", { class: "small muted" }, h("span", { class: "busy-inline faint" }, "Starting Tailscale's sign-in. This takes up to ten seconds.")));
       const r = await attempt("onboard.tailscale", { action: "connect" });
-      if (r.error) { put(panel, empty("Could not start Tailscale's sign-in.", r.error)); return; }
+      if (r.error) { put(panel, empty("Tailscale's sign-in did not start. Reload this page to try again, or skip for now.", r.error)); return; }
       if (r.data.loginUrl) window.open(r.data.loginUrl, "_blank", "noopener");
       show(r.data);
       poll();
     };
     (async () => {
       const r = await attempt("onboard.tailscale", { action: "detect" });
-      if (r.error) { put(panel, empty("Could not look for Tailscale here.", r.error)); return; }
+      if (r.error) { put(panel, empty("Vyre could not look for Tailscale on this machine. Reload to try again, or skip for now.", r.error)); return; }
       show(r.data);
       if (r.data.state === "needs-login" && r.data.loginUrl) poll();
     })();
@@ -423,7 +461,7 @@ const SCREENS = {
       h("h1", { class: "h1" }, "Your address."),
       // ADR 0008 section 4: v0.1 defaults to a ts.net address (tailscale cert), not <you>.vyre.run;
       // "your own domain" is a collapsed, secondary choice, below.
-      h("p", { class: "lead" }, "Vyre gets a certificate for an address on your own tailnet. Only your tailnet can open it."),
+      h("p", { class: "lead" }, "This is where your Deck lives. Vyre gets a certificate for an address on your own tailnet, and only your tailnet can open it."),
       h("p", { class: "small muted" }, "This can take about a minute: each line below shows how it is going."));
     const addr = h("div", { class: "address-big" }, h("span", { class: "faint" }, "Not reserved yet."));
     const list = h("ol", { class: "progress" });
@@ -431,8 +469,9 @@ const SCREENS = {
     col.append(h("div", { class: "ob-panel" }, addr, list, note));
     // Tailnet Lock comes after the HTTPS step, never before it.
     if (stepState("tailscale") === "done") col.append(lockCard());
+    // A line break is allowed only after a dot, never inside a name (onboard.css .address-big).
     const drawAddr = (/** @type {string|null} */ address) => put(addr, address
-      ? [h("i", null, "https://"), address.replace(/^https?:\/\//, "")]
+      ? [h("i", null, "https://"), h("wbr"), address.replace(/^https?:\/\//, "").replace(/\/$/, "").split(".").map((p, j, all) => j < all.length - 1 ? [p + ".", h("wbr")] : p)]
       : h("span", { class: "faint" }, "Not reserved yet."));
     const LABELS = { reserve: "Reserve your address", dns: "Point it at this machine on your tailnet", cert: "Get the certificate" };
     /** @type {Record<string, number>} when each line started working */
@@ -500,6 +539,10 @@ const SCREENS = {
           h("button", { type: "button", class: "btn btn-ghost", onclick: () => goto(0) }, n ? "Change it" : "Pick a name"),
           n ? h("button", { type: "button", class: "btn btn-ghost", onclick: () => reserve(false, "ts.net") }, "Use my tailnet name") : null) });
     };
+    const watch = () => every(async () => {
+      const p = await attempt("onboard.name", { name: state.name, action: "status" });
+      if (p.data && done(p.data)) for (const f of cleanup.splice(0)) f();
+    }, 1500);
     const reserve = async (/** @type {boolean} */ confirm = false, action = "reserve") => {
       const st = await attempt("onboard.status");
       if (blocked(st.data?.detail?.name)) return;
@@ -507,14 +550,28 @@ const SCREENS = {
       put(note);
       s.foot({ label: "Reserving", disabled: true, run: () => {} });
       const r = await attempt("onboard.name", { ...(state.name ? { name: state.name } : {}), action, ...(confirm ? { confirm: true } : {}) });
-      if (r.error) { put(note, empty("Could not reserve the address.", r.error)); s.foot({ label: "Try again", run: () => reserve() }); return; }
+      if (r.error) { put(note, empty("The address was not reserved. Press Try again.", r.error)); s.foot({ label: "Try again", run: () => reserve() }); return; }
       if (done(r.data)) return;
-      every(async () => {
-        const p = await attempt("onboard.name", { name: state.name, action: "status" });
-        if (p.data && done(p.data)) for (const f of cleanup.splice(0)) f();
-      }, 1500);
+      watch();
     };
     s.foot({ label: "Get your address", run: () => reserve() });
+    // Coming back to this step: read where the address is now, so one that already serves shows
+    // as done (not "Not reserved yet"), and one still being set up keeps its progress lines.
+    (async () => {
+      const r = await attempt("onboard.name", { action: "status" });
+      if (!r.data || !addr.isConnected) return;
+      const rows = Array.isArray(r.data.steps) ? r.data.steps : [];
+      if (r.data.url && here(r.data.url)) {
+        // Already on this address: nothing to switch to.
+        draw(rows);
+        drawAddr(r.data.address || r.data.url);
+        put(note);
+        s.foot({ label: "Continue", run: s.next });
+        return;
+      }
+      if (!r.data.url && !rows.some((/** @type {any} */ x) => x.state !== "todo")) return;
+      if (!done(r.data) && rows.some((/** @type {any} */ x) => x.state === "doing")) watch();
+    })();
     col.append(h("details", { class: "ob-collapse" }, h("summary", null, "Your own domain"),
       h("p", { class: "small muted" }, "Point a domain you already own at this box instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the box's own configuration, then come back and reserve again.")));
   },
@@ -522,7 +579,7 @@ const SCREENS = {
   history(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Your history."),
-      h("p", { class: "lead" }, "Vyre reads the Claude Code sessions already on this machine, so you can search every one and group them into projects. It keeps reading in the background; you do not have to wait."));
+      h("p", { class: "lead" }, "Vyre reads the Claude Code sessions already on this machine, so you can search every one and group them into projects. It keeps reading in the background, so carry on whenever you like."));
     const meter = h("div", { class: "meter", "aria-live": "polite" });
     const made = h("div", { class: "rows" });
     const picker = h("div");
@@ -534,7 +591,7 @@ const SCREENS = {
 
     const drawMeter = async () => {
       const r = await attempt("recall.status");
-      if (r.error) { put(meter, empty("Your history cannot be read yet.", r.error)); return; }
+      if (r.error) { put(meter, empty("Your history cannot be read yet. Continue, and it shows up in the Deck once Vyre can read it.", r.error)); return; }
       const st = r.data;
       const v = st.vectors || {};
       const reading = !!st.indexing;
@@ -553,7 +610,7 @@ const SCREENS = {
           ? h("p", { class: "small muted" }, box
             ? ["This box has no sessions of its own. Your Mac's sessions show up here once you pair it, right after setup. ",
               h("a", { class: "link", href: "#devices", onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); toMac = true; goto(5); } }, "Pair your Mac")]
-            : "No Claude Code sessions found on this machine yet.")
+            : "No Claude Code sessions found on this machine yet. Start one with claude and it shows up here.")
           : h("div", { class: "row" },
             h("span", { class: "small muted" }, reading ? "Reading sessions" : "Every session is searchable by what was said."),
             h("span", { class: "code" }, v.on && st.sessions ? `${pct}% ranked by meaning` : reading ? "" : "full-text search")));
@@ -596,9 +653,9 @@ const SCREENS = {
       const n = ++seq;
       const r = await attempt("projects.catalog", { q: qIn.value.trim() || undefined, limit: 60 });
       if (n !== seq) return;
-      if (r.error) { put(list, h("div", { style: { padding: "0 14px" } }, empty("The session catalogue is not available.", r.error))); return; }
+      if (r.error) { put(list, h("div", { style: { padding: "0 14px" } }, empty("The session list is not available yet. Continue, and make projects later in the Deck.", r.error))); return; }
       const rows = r.data.sessions || [];
-      if (!rows.length) { put(list, h("div", { style: { padding: "0 14px" } }, empty(qIn.value ? "No session mentions that." : "No sessions yet."))); return; }
+      if (!rows.length) { put(list, h("div", { style: { padding: "0 14px" } }, empty(qIn.value ? "No session mentions that. Try a word you would have typed in it." : "No sessions yet. They show up here as Vyre reads them."))); return; }
       put(list, rows.map(ses => {
         const box = h("input", { type: "checkbox", checked: chosen.has(ses.id), onchange: (/** @type {any} */ e) => {
           e.target.checked ? chosen.add(ses.id) : chosen.delete(ses.id); syncMake(); } });
@@ -634,7 +691,7 @@ const SCREENS = {
     col.classList.add("wide");
     col.append(
       h("h1", { class: "h1" }, "Your devices."),
-      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this box over your tailnet, and nothing else can."));
+      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this box over your tailnet, and nothing else can. Last step, nearly there."));
 
     // Mac: install, `vyre up`, then approve the request it makes, in this card.
     const macState = h("div", { class: "dev-state", "aria-live": "polite" });
@@ -643,7 +700,7 @@ const SCREENS = {
     let macName = d.mac?.connected ? (d.mac.name || "your Mac") : null;
     const drawMac = () => put(macState, macName
       ? [h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Mac paired: ", h("b", null, macName))),
-        h("p", { class: "small muted" }, "Press Control twice to open the Capsule.")]
+        h("p", { class: "small muted" }, "Press ⌥Space to open the Capsule.")]
       : h("div", { class: "dev-wait" }, h("span", { class: "busy", "aria-hidden": "true" }), "Waiting for your Mac"));
     const paired = (/** @type {string} */ name) => {
       if (macName) return;
@@ -740,31 +797,51 @@ async function finish(col) {
 /**
  * The one ending screen, the same everywhere (ADR 0008 section 6): the assistant's greeting
  * streaming at the top, three ticks (Mac, phone, history), one button, "Open Vyre".
- * @param {{ url: string, thread?: string|null }} d
+ * @param {{ url: string, thread?: string|null, passkeyUrl?: string|null, assistant?: { name: string|null, display?: string|null, why?: string } | null }} d
  */
 function showEnding(d) {
   for (const f of cleanup) f();
   cleanup = [];
   const greet = h("p", { class: "lead", "aria-live": "polite" }, h("span", { class: "busy-inline faint" }, "Saying hello…"));
   const ticks = h("ol", { class: "progress" });
+  const home = d.url.replace(/\/$/, "");
+  const mac = !!state.status?.detail?.devices?.mac?.connected;
   const rows = [
-    { id: "mac", label: "Your Mac", done: !!state.status?.detail?.devices?.mac?.connected },
-    { id: "phone", label: "Your phone", done: stepState("devices") !== "todo" },
-    { id: "history", label: "Your history", done: stepState("history") !== "todo" },
+    { id: "mac", label: "Your Mac", done: mac,
+      note: mac ? "Press ⌥Space on your Mac to open the Capsule." : "Pair it any time: run vyre up on the Mac." },
+    { id: "phone", label: "Your phone", done: stepState("devices") !== "todo",
+      note: `Open ${home.replace(/^https?:\/\//, "")}/now on your phone, then Add to Home Screen.` },
+    { id: "history", label: "Your history", done: stepState("history") !== "todo",
+      note: stepState("history") !== "todo" ? "Every session is searchable in the Deck." : "Vyre keeps reading your sessions in the background." },
   ];
-  put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo")));
+  put(ticks, rows.map(t => progressRow(t.label, t.done ? "done" : "todo", t.note)));
   // The passkey detour already happened earlier, at the address step (onboard.finish only hands
   // back passkeyUrl to the loopback session, which is gone by now); this is a defensive fallback,
   // not the usual path.
-  const open = d.passkeyUrl || (d.url.replace(/\/$/, "") + "/now");
+  const open = d.passkeyUrl || (home + "/now");
+  const who = state.name ? `, ${state.name}` : "";
+  const title = h("h1", { class: "h1", tabindex: "-1" }, `You're all set${who}. Let's get to work.`);
+  const assistant = d.assistant?.name ? (d.assistant.display || state.assistant || d.assistant.name) : null;
   put(root, h("div", { class: "ob-end" },
-    h("span", { class: "brand", "aria-label": "vyre" }, mark(24), wordmark(26)),
-    h("h1", { class: "h1" }, "Vyre is ready."),
+    h("span", { class: "brand", "aria-label": "vyre" }, endMark(assistant), wordmark(26)),
+    h("div", { class: "lbl" }, "Vyre is ready"),
+    title,
     greet,
-    h("div", { class: "ob-panel" }, ticks),
+    h("div", { class: "ob-panel" }, h("div", { class: "lbl" }, "What's next"), ticks),
     h("a", { class: "btn btn-primary ob-end-open", href: open }, d.passkeyUrl ? "Add a passkey" : "Open Vyre"),
-    d.passkeyUrl ? h("p", { class: "small faint", style: { marginTop: "10px" } }, h("a", { class: "link", href: d.url.replace(/\/$/, "") + "/now" }, "Skip for now")) : null));
-  if (!d.thread) { put(greet, `${state.assistant || "Your assistant"} is ready when you are.`); return; }
+    d.passkeyUrl ? h("p", { class: "small faint", style: { marginTop: "10px" } }, h("a", { class: "link", href: home + "/now" }, "Skip for now")) : null));
+  // The button the person pressed is gone: focus goes to the heading, and the live region says it.
+  title.focus({ preventScroll: true });
+  say(`You're all set${who}. Vyre is ready.`);
+  // onboard.finish makes the assistant only with a Claude sign-in: assistant is null without one,
+  // and { name: null, why } when making it failed. Say so rather than greet someone who is not there.
+  if (!d.assistant?.name) {
+    put(greet, d.assistant?.why
+      ? `Your assistant was not made: ${String(d.assistant.why).replace(/\.$/, "")}. Create it on Now.`
+      : "Your assistant is not made yet: sign in to Claude Code, then Create your assistant on Now.");
+    return;
+  }
+  if (!d.thread) { put(greet, `${d.assistant.display || state.assistant || d.assistant.name} is ready when you are.`); return; }
   let text = "";
   const draw = () => put(greet, text || h("span", { class: "busy-inline faint" }, "Saying hello…"));
   cleanup.push(on("thread.text", e => {
@@ -773,6 +850,40 @@ function showEnding(d) {
     if (typeof p.text === "string") text = p.text; else if (typeof p.delta === "string") text += p.delta;
     draw();
   }));
+}
+
+/**
+ * The ending's mark: a short burst of signal dots leaves the mark's dot, once, under 1.5 s. Held
+ * (hover or focus) for two seconds, a tiny line says the assistant is already listening. Both are
+ * off under prefers-reduced-motion, and the line only shows when there is an assistant to name.
+ * @param {string|null} assistant
+ */
+function endMark(assistant) {
+  const wrap = h("span", { class: "ob-mark" }, mark(24));
+  if (calm()) return wrap;
+  const burst = h("span", { class: "ob-burst", "aria-hidden": "true" });
+  const N = 14;
+  for (let k = 0; k < N; k++) {
+    const a = (k / N) * Math.PI * 2 + (k % 2 ? 0.2 : 0);
+    const r = 26 + (k % 3) * 10;
+    burst.append(h("i", { style: `--dx:${Math.round(Math.cos(a) * r)}px;--dy:${Math.round(Math.sin(a) * r)}px;--delay:${(k % 4) * 40}ms;--size:${3 + (k % 3)}px` }));
+  }
+  wrap.append(burst);
+  later(() => burst.remove(), 1400);
+  if (!assistant) return wrap;
+  const egg = h("span", { class: "ob-egg", role: "status" });
+  let t = 0;
+  const hold = () => { clearTimeout(t); t = window.setTimeout(() => { egg.textContent = `${assistant} is already taking notes.`; egg.classList.add("on"); }, 2000); };
+  const drop = () => { clearTimeout(t); egg.classList.remove("on"); };
+  wrap.setAttribute("tabindex", "0");
+  wrap.setAttribute("aria-label", "vyre mark");
+  wrap.addEventListener("mouseenter", hold);
+  wrap.addEventListener("focus", hold);
+  wrap.addEventListener("mouseleave", drop);
+  wrap.addEventListener("blur", drop);
+  cleanup.push(() => clearTimeout(t));
+  wrap.append(egg);
+  return wrap;
 }
 
 /** A QR code as SVG squares, drawn from the vendored encoder's module grid. */

@@ -352,9 +352,17 @@ async function health() {
   return { ok: true, display, size, chrome };
 }
 
-async function screenshot() {
-  // Reads straight off the X display; no window server extension beyond what Xvnc already is.
-  return run("import", ["-window", "root", "png:-"], { binary: true, timeout: 20_000 });
+/**
+ * The display as an image. Reads straight off the X display; no window server extension beyond
+ * what Xvnc already is. A JPEG scaled to `width` is the small still a phone shows for "what the
+ * agent is doing now" (ADR 0036), light enough for the relay.
+ * @param {{ format?: string, width?: number }} [opts]
+ */
+async function screenshot({ format = "png", width } = {}) {
+  if (format !== "jpeg") return run("import", ["-window", "root", "png:-"], { binary: true, timeout: 20_000 });
+  const w = Number.isInteger(width) ? Math.min(1920, Math.max(160, /** @type {number} */ (width))) : 640;
+  // ">" only ever shrinks: a small display is not blown up.
+  return run("import", ["-window", "root", "-resize", `${w}x>`, "-quality", "70", "jpeg:-"], { binary: true, timeout: 20_000 });
 }
 
 /**
@@ -475,7 +483,9 @@ const server = createServer(async (req, res) => {
       return send(200, await atspi(args));
     }
     if (req.method === "GET" && pathname === "/screenshot") {
-      return sendBinary(200, await screenshot(), "image/png");
+      const jpeg = url.searchParams.get("format") === "jpeg";
+      const width = Number.parseInt(url.searchParams.get("width") || "", 10);
+      return sendBinary(200, await screenshot({ format: jpeg ? "jpeg" : "png", width: Number.isInteger(width) ? width : undefined }), jpeg ? "image/jpeg" : "image/png");
     }
     if (req.method === "POST" && pathname === "/act") {
       const body = await readBody(req);

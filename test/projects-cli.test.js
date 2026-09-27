@@ -172,3 +172,49 @@ test("cli: vyre start opens a new named thread in the project's home; pick and u
   assert.match(u.out, /1 unpicked/);
   assert.deepEqual(marker().threads, [INTAKE]);
 });
+
+test("cli: vyre projects move --dry-run on a box says what would move and changes nothing; names and a real move are refused", async t => {
+  const w = world(t);
+  // A box whose homes still sit in the old folder, with a work folder to move them to.
+  const old = path.join(w.root, "home", "Vyre", "projects");
+  const work = path.join(w.root, "work");
+  fs.mkdirSync(old, { recursive: true });
+  fs.mkdirSync(work);
+  w.env.VYRE_OLD_PROJECTS_DIR = old;
+  w.env.VYRE_WORK_DIR = work;
+  delete w.env.VYRE_PROJECTS_MOVE;
+  fs.writeFileSync(path.join(w.root, "config.json"), JSON.stringify({
+    role: "box", projectsDir: old, roots: [w.work], transcripts: [], modules: { disable: ["recall", "memory"] },
+  }));
+  const home = path.join(old, "harlow-legal");
+  const made = await w.run(["new", "Harlow Legal", "--home", home, "--no-pick"]);
+  assert.equal(made.code, 0, made.out);
+
+  const named = await w.run(["projects", "move", "harlow-legal"]);
+  assert.equal(named.code, 2, named.out);
+  assert.match(named.out, /vyre projects move takes no names/);
+  assert.match(named.out, /next: vyre projects move --dry-run shows what would move/);
+
+  const dry = await w.run(["projects", "move", "--dry-run"]);
+  assert.equal(dry.code, 0, dry.out);
+  assert.match(dry.out, /Would move 1 project/);
+  assert.match(dry.out, /harlow-legal/);
+  assert.match(dry.out, /nothing has changed/);
+
+  const j = await w.run(["projects", "move", "--dry-run", "--json"]);
+  assert.equal(j.code, 0, j.out);
+  const r = JSON.parse(j.out);
+  assert.equal(r.dry, true);
+  assert.deepEqual(r.moved, ["harlow-legal"]);
+  assert.equal(r.to, path.join(work, "projects"));
+  assert.ok(Array.isArray(r.rewrites) && r.rewrites.length > 0, "the rewrites are listed");
+  assert.ok(fs.lstatSync(home).isDirectory() && !fs.lstatSync(home).isSymbolicLink(), "the home did not move");
+  assert.equal(fs.existsSync(path.join(work, "projects")), false, "nothing was made in the work folder");
+  assert.equal(fs.existsSync(path.join(w.root, "projects-moved.json")), false, "no record was written");
+
+  // The real move stays off until box-deploy switches it on.
+  const real = await w.run(["projects", "move", "--json"]);
+  assert.equal(real.code, 1, real.out);
+  assert.equal(JSON.parse(real.out).error.code, "move_off");
+  assert.ok(fs.lstatSync(home).isDirectory() && !fs.lstatSync(home).isSymbolicLink());
+});
