@@ -207,10 +207,14 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
    (`core/team/git.js`: no shell, no prompt, no network, a deadline — the same pattern
    `core/switchboard/changes.js` uses for `git diff --numstat`; `git init` is never run on the
    person's behalf).
-   - `team.add` with `isolation: "worktree"` refuses outright when the project's home is not a
-     git repo (`this project isn't a git repo; teammates will share the folder`, the lead's exact
-     wording) — no automatic fallback to folder isolation; the person retries with
-     `isolation: "folder"` if that is what they want. When it is a repo, the teammate's own
+   - `team.add` with `isolation: "worktree"` falls back to `isolation: "folder"` when the
+     project's home is not a git repo (or has no branch checked out to start from), saying why in
+     the answer's `notice` (`"<project> isn't a git repo; teammates will share the folder"`, the
+     lead's exact wording; a first pass here only refused, which the lead caught: the message
+     said "will share the folder" while the tool did not, so it now does what it says). Never
+     `git init` on the person's behalf. `vyre team add` shows the notice. New test: the fallback,
+     the notice, and that only the one folder-isolated teammate exists (no integrator: nothing to
+     merge). When it is a repo, the teammate's own
      worktree and branch (`<repo>/../<repo>-<role>`, `team/<role>`) are made off the project's own
      current branch (whatever it is, not a hardcoded "main"). The project's first
      `isolation: worktree` teammate brings an `"integrator"` teammate along automatically (its own

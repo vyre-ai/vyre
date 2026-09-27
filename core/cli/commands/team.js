@@ -54,6 +54,7 @@ async function add(args) {
   if (r.error) { failTool(r.error); return 1; }
   if (json()) return emit(r.data);
   out(`  ${signal("made")} ${bold(r.data.agent)}  ${dim([r.data.project, r.data.brief].filter(Boolean).join(" · "))}`);
+  if (r.data.notice) out(dim(`  ${r.data.notice}`));
   return 0;
 }
 
