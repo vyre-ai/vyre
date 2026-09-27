@@ -114,6 +114,48 @@ without editing Capsule files:
 - Sessions (61dd9dc): Esc uses threads.interrupt, thread.stopped idle is not a failure, busy is
   said in words, and the terminal-only "not one vyred runs" wording. Swift 284/284.
 
+## Shortcuts in the Capsule (2026-09-27)
+
+The user found ⌘A did nothing. The app is an accessory with a non-activating panel and had no main
+menu, so AppKit had nowhere to find the standard key equivalents. `Sources/Host/MainMenu.swift` now
+installs the standard app, Edit and Window menus (never shown), and `CapsulePanel.performKeyEquivalent`
+routes to them, since the app is never the active one. The Capsule's own handler no longer takes
+⌘↑/⌘↓, ⇧↑/⇧↓, ⌥↑/⌥↓ or ⌘→ (except at the end of the box), and no ⌘ key the menus own goes to a
+row. Checked by `Tests/ShortcutTests.swift`: the menu table, ⌘A and ⌘Z through the panel into the
+box, and every key below passed through or kept.
+
+| Keys | What they do | Where |
+|---|---|---|
+| ⌘A | Select all | Edit menu |
+| ⌘C | Copy the selection; with none, the row (or the answer in an empty box) | Edit menu, Capsule |
+| ⌘X, ⌘V | Cut, paste | Edit menu |
+| ⌥⇧⌘V | Paste and match style | Edit menu |
+| ⌘Z, ⇧⌘Z | Undo, redo | Edit menu (the window's undo) |
+| ⌘F | Find: focus the box and select its words | Edit menu |
+| ⌃⌘Space | Emoji and symbols | Edit menu |
+| Dictation (the system key) | Dictate into the box | AppKit |
+| Services | From the field's context menu and the app menu | AppKit |
+| ←/→, ⌥←/→, ⌘←/→ | Move by character, word, line; with ⇧ they select | the field |
+| ⌘↑/↓ | Start or end of the box; with ⇧ they select | the field |
+| ⌥⌫, ⌘⌫ | Delete a word, delete to the start (⌘⌫ removes an attachment chip first) | the field, Capsule |
+| ⌃A, ⌃E, ⌃K (and the other emacs keys) | Start, end, kill to end | the field |
+| ⌘W | Hide the Capsule | Window menu |
+| ⌘, | Settings: hides the Capsule and opens the menu-bar popover | app menu |
+| ⌘Q | Hides the Capsule. Quitting is "Quit Vyre Capsule" in the menu-bar item's menu, so a stray ⌘Q never loses the hot keys | app menu |
+| Esc | Cancel Touch ID, a confirm, or a streaming answer; else clear the box; else hide | Capsule |
+| ↑/↓ | Move in the results; ↑ in an empty box opens what waits on you | Capsule |
+| ⏎ | Run the row (a held ⏎ counts once) | Capsule |
+| ⌘⏎, ⇧⏎ | The row's other actions; ⌘⏎ sends a held card | Capsule |
+| Tab | Pick the @ row, or send the words to the first destination | Capsule |
+| ⌘K | The row's actions, to pick one | Capsule |
+| ⌘D | The same question to the deeper model | Capsule |
+| ⌘S | Send a file row to the box | Capsule |
+| ⌘→ at the end of the box | Show or fold memory's sources | Capsule |
+| ⌫ in an empty box | Drop the @ chip | Capsule |
+| A in the waiting list | Allow or accept the highlighted row | Capsule |
+| ⌥⏎ | Push to talk (sight) | extension |
+| ⌥Space, Control twice | Open or hide the Capsule from anywhere | hot keys |
+
 ## Real-Mac check for the native Capsule (the user, at the Mac, in their own terminal)
 
 Only what cannot be tested for them: the keychain, Touch ID, lock and sleep, the hot keys, a

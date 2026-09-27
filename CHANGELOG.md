@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ⌘A and every standard shortcut work in the Capsule
+
+- The Capsule had no main menu (an accessory app with a non-activating panel), so ⌘A, ⌘Z, ⌘V and
+  the other key equivalents never reached the box. `Sources/Host/MainMenu.swift` installs the
+  standard menus, never shown: Undo, Redo, Cut, Copy, Paste, Paste and Match Style, Delete,
+  Select All, Find (focuses the box), Emoji & Symbols, Services, Settings (⌘, opens the menu-bar
+  popover), Close (⌘W) and ⌘Q, which hides rather than quits. CapsulePanel.performKeyEquivalent
+  routes to them up the field's responder chain, since the app is never the active one.
+- The Capsule's key handler lets ⌘↑/↓, ⇧↑/↓, ⌥↑/↓ and ⌘→ (except at the end of the box) through to
+  the field, and never gives a row a ⌘ key the menus own.
+- `Tests/ShortcutTests.swift`: the menu table, ⌘A then ⌘Z through the panel into the box, and 26
+  text and window keys passed through while ↑↓, Esc and ⏎ stay the Capsule's. The full shortcut
+  table is in docs/work/capsule-pro.md.
+
 #### The Capsule reads Agent SDK session events, and streams at a steady pace
 
 - Tool rows by call id (thread.tool {call, status}): running, done, failed and canceled, one
