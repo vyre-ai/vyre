@@ -62,8 +62,7 @@ vyre logs      # follow vyred's output (docker compose logs -f vyre)
 ```
 
 vyred also writes a log file per day, `~/.vyre/logs/YYYY-MM-DD.log`. On a Docker box that is
-`/home/vyre/.vyre/logs/` inside the `vyre_vyre-home` volume. On a Mac, the Capsule logs to
-`~/.vyre/logs/capsule.out`.
+`/home/vyre/.vyre/logs/` inside the `vyre_vyre-home` volume.
 
 ## Upgrade
 

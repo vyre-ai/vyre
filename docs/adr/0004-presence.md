@@ -94,7 +94,7 @@ base64url, and ids and codes are plain tokens in the same alphabet.
 |---|---|---|---|
 | `touchid` | the Mac | vyred itself shows the macOS authentication dialog (Touch ID, Watch or password), with the summary as its reason | press the sensor or type into the system dialog, which takes no synthetic keystrokes |
 | `tty` | any terminal, the box over SSH | vyred writes a code and the summary straight to a **login terminal**, and the person types the code back | read what is written to a terminal it does not hold the master of; a `script` pty is not a login terminal |
-| `capsule` | the Capsule | an Ed25519 signature over the call by a per-install key that Electron's main process keeps in the keychain, made only after a click | read a keychain item whose ACL names only the Capsule |
+| `capsule` | the Capsule | an Ed25519 signature over the call by a per-install key that the native Capsule keeps in the login keychain, made only after a click | read a keychain item whose ACL names only the Capsule |
 | `passkey` | the Deck, on the tailnet or locally | a WebAuthn assertion with user verification, over a challenge from vyred | make a platform passkey assertion; that needs the device's biometric |
 | `code` | enrolling a passkey | a one-time code from `presence.code`, which itself needs presence | (only accepted by `presence.enroll`) |
 
