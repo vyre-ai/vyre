@@ -104,7 +104,7 @@ const SHOTS = [
     type(".composer textarea", "Keep the phone field optional"); ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await wait(800);
     type(".composer textarea", "Then update the changelog"); ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", altKey: true, bubbles: true })); await wait(1000);` },
   { name: "7-terminal", term: true },
-  { name: "8-plan", thread: PLAN },
+  { name: "8-plan", thread: PLAN, script: `await waitFor(".cv-plan", 15000); await wait(300);` },
 ];
 
 let failed = 0;

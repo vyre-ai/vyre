@@ -151,7 +151,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   border-radius: var(--r-3); background: var(--panel); }
 .composer textarea { flex-grow: 1; min-width: 0; max-height: 200px; background: transparent; border: none; outline: none; resize: none;
   color: var(--text); font: inherit; font-size: 14px; line-height: 20px; padding: 6px 0; }
-.composer-hint { font-size: 11px; color: var(--label); padding: 0 2px; }
+.composer-hint { display: flex; align-items: center; gap: 12px; min-width: 0; font-size: 11px; color: var(--label); padding: 0 2px; }
 .composer-menu { position: absolute; bottom: 100%; left: 20px; right: 20px; margin-bottom: 6px; background: var(--panel);
   border: 1px solid var(--rule-strong); border-radius: var(--r-3); box-shadow: var(--popover); max-height: 240px; overflow: auto; padding: 6px; z-index: 20; }
 .composer-menu button { display: flex; width: 100%; align-items: center; gap: 8px; padding: 8px 10px; border: none; background: transparent;
@@ -811,7 +811,6 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 
 /* The tip on the composer's hint line (tip.md, tip-line.js): left, the key hints right. Muted,
    never the attention colour, never in the tab order; gone while anything else wants you. */
-.composer-hint { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .composer-keys { margin-left: auto; flex-shrink: 0; }
 .composer-tip { min-width: 0; flex: 1 1 auto; }
 .composer-tip[hidden] { display: none; }
