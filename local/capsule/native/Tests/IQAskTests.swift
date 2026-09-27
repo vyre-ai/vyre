@@ -114,6 +114,11 @@ let iqAskSuite = Suite("iq ask") { t in
         t.eq(unsure.text, "Not sure yet.\n\nWhat I do know:\n- alex reviewed the Harlow Legal homepage draft\n\nAsk Claude instead: ⌘⏎")
         t.ok(unsure.memory == nil, "no chip without an answer")
 
+        let fixed = IQAnswer.from("which car do I drive", ["answer": "You drive a green Subaru.", "confidence": 1, "abstained": false, "known": [Any](), "via": "corrected",
+                                                           "sources": [["session": "fix:3", "name": "your correction", "quote": "green Subaru"]]])
+        t.eq(fixed.text, "You drive a green Subaru.")
+        t.ok(fixed.memory == nil, "a correction's source is not drawn as a chip")
+
         let limited = IQAnswer.from("x", ["limited": true, "abstained": true, "message": "Vyre IQ used today's $0.50. It resets at midnight."])
         t.eq(limited.text, "Vyre IQ used today's $0.50. It resets at midnight.")
     }

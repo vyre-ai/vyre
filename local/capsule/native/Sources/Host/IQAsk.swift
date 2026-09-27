@@ -33,7 +33,8 @@ public struct IQAnswer: Sendable, Equatable {
             let lines = known.isEmpty ? "" : "\n\nWhat I do know:\n" + known.map { "- \($0)" }.joined(separator: "\n")
             return IQAnswer(text: notSure + lines + "\n\n" + askClaude, memory: nil)
         }
-        let sources: [MemorySource] = ((d["sources"] as? [[String: Any]]) ?? []).map { x in
+        // A correction's own source ("fix:<n>", "your correction") is provenance, never a chip.
+        let sources: [MemorySource] = ((d["sources"] as? [[String: Any]]) ?? []).filter { !VJ.s($0["session"]).hasPrefix("fix:") }.map { x in
             MemorySource(kind: .quote, role: "user", session: VJ.s(x["session"]), seq: VJ.int(x["seq"]),
                          name: VJ.nonEmpty(x["name"]) ?? String(VJ.s(x["session"]).prefix(8)), quote: VJ.s(x["quote"]),
                          age: Route.age(VJ.num(x["ts"]), now: now), confidence: nil)
