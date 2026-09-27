@@ -67,13 +67,15 @@ export function questionCard(ask) {
   function back() { if (state.step > 0) { state.step--; draw(); el.focus?.(); } }
 
   const onMac = () => (ask.machine ? { machine: ask.machine } : {});
+  // A Mac's refusal asks for a passkey on the card (macProblem), so the outbox never proves on its own.
+  const presence = (/** @type {{ presence?: boolean }} */ o) => ({ presence: o.presence ? true : ask.machine ? false : undefined });
   /** @param {{ presence?: boolean }} [opts] a passkey proof first (a Mac's refusal asked for one) */
   async function submit(opts = {}) {
     if (state.busy || state.decided) return;
     let input;
     try { input = { ...answerInput(ask.id, questions, picks), ...onMac() }; } catch (e) { state.error = e; draw(); return; }
     state.busy = true; state.error = null; draw();
-    const r = await queued("threads.answer", input, opts.presence ? { presence: true } : {});
+    const r = await queued("threads.answer", input, presence(opts));
     state.busy = false;
     if (!r.error) { state.decided = "allow"; state.shown = input.answers; }
     else failed(r.error, o => submit({ ...opts, ...o }));
@@ -83,7 +85,7 @@ export function questionCard(ask) {
   async function decline(opts = {}) {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
-    const r = await queued("threads.answer", { ask: ask.id, decision: "deny", surface: "deck", ...onMac() }, opts.presence ? { presence: true } : {});
+    const r = await queued("threads.answer", { ask: ask.id, decision: "deny", surface: "deck", ...onMac() }, presence(opts));
     state.busy = false;
     if (!r.error) state.decided = "deny";
     else failed(r.error, o => decline({ ...opts, ...o }));

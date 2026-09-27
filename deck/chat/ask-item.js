@@ -133,12 +133,13 @@ export function askCard(ask) {
   const changesView = { open: false };
 
   /** @param {string} decision @param {Record<string, any>} [extra] @param {{ presence?: boolean }} [opts] a passkey proof first (a Mac's refusal asked for one) */
+  // Through the outbox. A Mac's refusal asks for the passkey on the card, so the outbox never proves on its own for one.
   const answer = async (decision, extra = {}, opts = {}) => {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
     const input = { ask: ask.id, decision, surface: "deck", ...extra, ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}),
       ...(ask.machine ? { machine: ask.machine } : {}) };
-    const r = await queued("threads.answer", input, opts.presence ? { presence: true } : {});
+    const r = await queued("threads.answer", input, { presence: opts.presence ? true : ask.machine ? false : undefined });
     state.busy = false;
     if (!r.error) state.decided = decision;
     else if (!macHeld(ask, r.error)) { state.error = r.error; state.again = o => answer(decision, extra, { ...opts, ...o }); }

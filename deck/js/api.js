@@ -353,7 +353,8 @@ function getOutbox() {
  * A write the person makes, through the outbox. Resolves to its data once the box has it;
  * rejects with an ApiError when the box refuses it (never retried).
  * @param {string} name @param {Record<string, any>} [input]
- * @param {{ presence?: boolean | "asked", onWait?: () => void }} [opts] onWait: called once if the
+ * @param {{ presence?: boolean | "asked", onWait?: () => void }} [opts] presence false: never a passkey, even
+ *   for a tool that asks for one on a refusal (threads.answer); the refusal goes to the caller. onWait: called once if the
  *   first try did not reach the box and the write waits in the outbox, so a view can let the
  *   person go on (the composer takes the next message).
  * @returns {Promise<any>}
@@ -365,7 +366,7 @@ export async function queue(name, input = {}, { presence, onWait } = {}) {
   }
   const box = await getOutbox();
   const key = newKey();
-  if (presence) modes.set(key, presence);
+  if (presence !== undefined) modes.set(key, presence);
   if (onWait) waits.set(key, onWait);
   const { answered } = await box.add(name, input, { key });
   const r = /** @type {any} */ (await answered);
@@ -558,6 +559,10 @@ export function stopEvents() { stream?.stop(); unwire?.(); stream = null; unwire
 /** Hand one event to the listeners, as the stream does (tests feed events through it by hand).
  * @param {{ id: number, type: string }} e */
 export function hear(e) { deliver(e); }
+
+/** Tell onResume's listeners the stream came back or was reset, as the stream does (tests).
+ * @param {"reconnect"|"reset"} why @param {number} [from] */
+export function heardResume(why, from) { resumed(why, from); }
 
 /** @param {{ id: number, type: string }} e */
 function deliver(e) {
