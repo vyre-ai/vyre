@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule reads the one tokens.json
+
+- Theme.swift takes its colours, the status model (needs you, failed, running, unread, done: word,
+  mark and colour key) and the card radius from `Sources/UI/Tokens.generated.swift`. That file is
+  written by scripts/gen-tokens from docs/design/one-app/tokens.json (work/capsule-pro-tokens,
+  450cd16, on mobile's generator), so the Capsule, the app and the Deck cannot drift. The values
+  are unchanged; recall stays the Capsule's own. `Tests/ThemeTokensTests.swift`.
+
 #### CI: the Capsule signing step can no longer hang
 
 - capsule-mac.yml's signing step hung to the 45-minute job timeout on capsule-pro branches:

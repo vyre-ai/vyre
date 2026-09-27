@@ -1,5 +1,7 @@
-// Theme: the design tokens (docs/design/TOKENS.md) as SwiftUI values. Views use these, never a
-// literal colour or size, so the Capsule, the menu-bar popover and mobile read as one thing.
+// Theme: the design tokens as SwiftUI values. Colours, status and radius come from
+// Tokens.generated.swift, which scripts/gen-tokens writes from docs/design/one-app/tokens.json, the
+// one source the app and the Deck read too (Direction A). Views use these, never a literal colour
+// or size. The geometry below is the Capsule's own (Spotlight's), and so is recall.
 
 import AppKit
 import SwiftUI
@@ -10,18 +12,38 @@ public enum Theme {
     }
 
     // Colours, dark (the Capsule is always dark, like Spotlight over a dark desktop).
-    public static let graphite = hex(0x0E0D0C)
-    public static let carbon = hex(0x161513)
-    public static let raised = hex(0x1E1C1A)
-    public static let rule = hex(0x2B2926)
-    public static let ruleStrong = hex(0x3A3733)
-    public static let ash = hex(0x8C877D)
-    public static let stone = hex(0xB3AEA4)
-    public static let bone = hex(0xF1EEE6)
-    public static let signal = hex(0xC6F36B)
+    static let c = Tokens.dark
+    public static let graphite = c.bg
+    public static let carbon = c.panel
+    public static let raised = c.hover
+    public static let rule = c.rule
+    public static let ruleStrong = c.ruleStrong
+    public static let ash = c.label
+    public static let stone = c.text2
+    public static let bone = c.text
+    public static let signal = c.focus
+    /// Memory's colour, the Capsule's own: tokens.json has no recall key.
     public static let recall = hex(0xEBC76B)
-    /// The "needs you" colour: violet, matching the Deck and the phone (never coral for waiting).
-    public static let attention = hex(0xB8A4FF)
+    /// The "needs you" colour: beacon (violet), the same as the Deck and the phone.
+    public static let attention = c.beacon
+
+    /// A status row's word and colour from the shared status model, most urgent first.
+    public static func status(_ key: String) -> (word: String, color: Color)? {
+        guard let s = Tokens.status.first(where: { $0.key == key }) else { return nil }
+        return (s.word, color(s.color))
+    }
+
+    /// A colour by its tokens.json key (the status model names them).
+    public static func color(_ key: String) -> Color {
+        switch key {
+        case "beacon": return c.beacon
+        case "focus": return c.focus
+        case "text": return c.text
+        case "text2": return c.text2
+        case "label": return c.label
+        default: return c.text2
+        }
+    }
 
     public static func tint(_ t: Tint) -> Color {
         switch t {
@@ -41,7 +63,7 @@ public enum Theme {
     public static let headerHeight: CGFloat = 26
     public static let maxRows = 9
     public static let topFraction: CGFloat = 0.22
-    public static let radius: CGFloat = 12
+    public static let radius: CGFloat = Tokens.Radius.card
     public static let iconSize: CGFloat = 24
 
     // Type: SF for words, SF Mono for labels and keys.
