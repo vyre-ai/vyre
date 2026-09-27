@@ -286,7 +286,8 @@ Gate card and approves it there; the Capsule's deeper path (an agent) writes the
 `mail.send` with the row's account.
 
 What the vault serves for this (ADR 0028 decision 9): `vault.connections.list {caller}` from a
-module caller, answering for that caller's surface, and `use` entries that point `send_mail` and
+module caller, answering for that caller's surface; `vault.connections.get {id}` for
+`mail.release`, with no surface filter, since the person already approved; and `use` entries that point `send_mail` and
 `read_mail` of every source at `mail.send` and `mail.search`.
 
 ## Consequences
