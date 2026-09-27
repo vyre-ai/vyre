@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Glass: an idle take-over goes back to the agent
+
+- core/computers/keyboard.js: a take-over with no input from its holder for the owner's idle
+  setting ends with why `idle` (`idle_ms` in `computer.handed-back`), releases the thread's lease
+  and posts "Handed back to <agent> after <n> min idle" to the agent's thread. A pong keeps the
+  lease but is not input. New event `computer.idle-warning { agent, surface, at }` 10 s before,
+  and again with `at: null` when input comes in time. One timer per take-over, armed once per
+  idle window, with the sweep as backstop; nothing runs without a take-over.
+- Config `computers.handbackIdleMin`: 0 (off), 2, 5 or 15; 5 by default. New tools
+  `computers.handback.status` and `computers.handback.set` (the owner's, refused to agents; live,
+  so a running take-over follows a change).
+- Deck: the control bar counts down "Handing back to <agent> in N s"; the hand-back says why.
+  Settings, Network: a "Glass hand-back" choice.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and

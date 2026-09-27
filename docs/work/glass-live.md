@@ -36,6 +36,7 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   Tests after merge (15 files): 187 run, 181 pass, 0 fail, 6 skipped.
 
 ## Doing
+- Idle hand-back (lead's go, 27 Sep): built and tested (below). Pushed work/glass-live; app-design told.
 - Nothing in flight. Waiting for the next live-box deploy (the lead says when).
 - 27 Sep: docs told 71503ab is on main (apply the no-passkey glass.md/presence.md text).
   app-design sent notes on the one-app Agents board: drop Face ID on private sign-in, "Fill a
@@ -49,13 +50,25 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
    https://<owner>.vyre.run/v1/streams/computers/glass?ticket=bogus must not be 404 (expect 403
    or a 101 then close). Send docs any label changes.
 
+- Idle hand-back: keyboard.js input-idle timer (renew(agent, surface, input)), config
+  computers.handbackIdleMin (0/2/5/15, default 5), tools computers.handback.status/set, event
+  computer.idle-warning, 10 s countdown chip in the take-over bar, Settings choice. Tests
+  (testbox, 10 files): 123 run, 123 pass, 0 fail. perf-check (host load 8.9 at start): CPU p95
+  0.00%, RSS mean 112.5 MB, max 156.2 MB (over the 150 budget; this change adds nothing while
+  idle, not re-run under lower load yet), no timer under 60 s.
+
 ## Needs from others
+- docs: `computers.handbackIdleMin` is not explained on any page yet; glass.md needs the idle
+  hand-back (off/2/5/15, 10 s warning, the thread line).
 - presence/security: tools with a `callers` list (e.g. agents.delete) are refused to the real
   Deck over the tailnet, because `callerKind("tailnet:<login>")` is `tailnet:<login>`, not
   `deck`. Not changed here.
 - e2e: a Glass-over-tailnet journey (headscale stack) would cover the listener path in a browser.
 
 ## Changed contracts
+- `computers.handback.status`, `computers.handback.set {minutes}`; event `computer.idle-warning`;
+  `computer.handed-back` why `idle` with `idle_ms`. Keyboard deps `idleMs`, `schedule`.
+- Deck Settings (not ours): a "Glass hand-back" row in Network.
 - `agents.update`: `name` no longer required in the schema; `name` or `agent` names the agent.
 - New tools `computers.restart {agent}`, `computers.limits {agent, cpus, memory_gb}`.
 - `computers.get` / `computers.list` rows add `screens`, `cpus`, `memory_gb`.
