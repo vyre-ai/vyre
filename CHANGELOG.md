@@ -36,8 +36,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   sha256, size, minSdk, built, file, signer "none", cert_sha256 null) read from the APK, for the
   box to sign with the owner's own key (no Vyre-wide release key; the box fills signer and
   cert_sha256). A push to main publishes release android-<version>-<sha7> with both files. A copy signed with a per-run throwaway key is checked with
-  apksigner verify, and so is the output of apps/app/scripts/sign-apk.mjs (the box's pure-JS
-  signer) once it exists; the NDK 27.1 and CMake 3.22 that modules/vyre-signer fetches are cached. The iOS
+  apksigner verify, and so is the output of core/apps/sign-apk.mjs (the box's pure-JS v2+v3
+  signer, fed an EC P-256 throwaway key) once it is in the tree; the NDK 27.1 and CMake 3.22 that modules/vyre-signer fetches are cached. The iOS
   simulator build only when dispatched with `ios: true`. No EAS, no Expo account. Skips until
   apps/app/package.json exists; also runs on core/resilience changes (the app imports it).
 
