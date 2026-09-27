@@ -22,6 +22,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - `waiting.list`, `waiting.count` and `waiting.changed`: one "waiting on you" across questions,
   held drafts, ringing reminders and Mac pairings, each row naming the owner tool that answers it.
 - docs-check knows the cohesion team as a page owner.
+- test/cohesion-drift.test.js freezes the surfaces' own copies of model names and presence's
+  tool-policy sets; a new copy fails, and the list only shrinks.
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 

@@ -26,7 +26,7 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 1. Perf baseline (above). If the glue adds real RSS, lazy-load suggest's lists (they already are)
    and sight's table only on first use.
 2. Owner replies: record below. Send owners the built contracts and their exact asks.
-3. Drift test (item 9): hardcoded model/effort/policy lists and token files.
+3. Drift test: models + policy rules done (test/cohesion-drift.test.js); add tokens once the hub generates them.
 4. Hand the finished sha to the integrator (no WIP pushes until the lead says "pushes open").
 
 ## Agreement tracker
