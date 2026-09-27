@@ -30,42 +30,62 @@ if (process.env.DESKTOP) for (const size of (process.env.DESKTOP === "1" ? "1440
 }
 if (process.env.PHONES === "0") DEVICES.splice(0, 2);
 
-// Each screen: a path, then optional steps in the page, then the shot.
-/** @type {{ name: string, path: string, script?: string, wait?: number, theme?: string, drag?: boolean, offline?: boolean, last?: string, expect?: string, stub?: Record<string, any>, noShell?: boolean }[]} */
+// Each screen: a path, then optional steps in the page, then the shot. `shell` is what the phone
+// shell must show there (docs/design/phone.md section 3): "page" (the header with Now, Chats and
+// Agents, and the Capsule), "pushed" (no Capsule; the header only as a back row, or not at all when
+// the view draws its own back) or "find" (the Capsule opened: neither).
+/** @type {{ name: string, path: string, script?: string, wait?: number, theme?: string, drag?: boolean, swipe?: boolean, offline?: boolean, last?: string, expect?: string, stub?: Record<string, any>, noShell?: boolean, shell?: string }[]} */
 const SCREENS = [
   { name: "now", path: "/now" },
   { name: "now-paper", path: "/now", theme: "paper" },
-  { name: "find", path: "/find" },
-  { name: "find-query", path: "/find?q=intake", wait: 2500 },
-  { name: "find-command", path: "/find?q=tell%20intake%20to%20add%20a%20phone%20field", wait: 2500 },
-  { name: "pull-to-find", path: "/projects", drag: true },
   { name: "chat", path: "/chat" },
-  { name: "chat-project", path: "/chat", script: `await click('.chat-projects a.thread-row'); await wait(1500);` },
-  { name: "chat-session", path: "/chat", script: `await click('.chat-recent a.thread-row'); await wait(2500);` },
+  { name: "chat-paper", path: "/chat", theme: "paper" },
+  { name: "agents", path: "/agents" },
+  { name: "agents-paper", path: "/agents", theme: "paper" },
+  // The header's "+" on Agents opens the New agent form.
+  { name: "agents-new", path: "/agents", script: `await click('.ph-plus'); await wait(600); if (!document.querySelector('.page:not(.away) #ag-new:not([hidden])')) throw new Error('the + did not open New agent');` },
+  // A swipe left on Now lands on Chats, and the address follows.
+  { name: "swipe-to-chats", path: "/now", swipe: true, expect: "/chat" },
+  // A tap on a label jumps there.
+  { name: "label-to-agents", path: "/now", script: `await click('.ph-tab[data-view=agents]'); await wait(900);`, expect: "/agents" },
+  // The Capsule, tapped: Find as a full-height sheet.
+  { name: "capsule-find", path: "/now", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
+  { name: "capsule-find-paper", path: "/now", theme: "paper", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
+  // The avatar: Settings in a sheet, over Now.
+  { name: "settings-sheet", path: "/now", script: `await click('.ph-avatar'); await waitFor('.sheet .set-sec', 6000); await wait(600);` },
+  { name: "find", path: "/find", shell: "find" },
+  { name: "find-query", path: "/find?q=intake", wait: 2500, shell: "find" },
+  { name: "find-command", path: "/find?q=tell%20intake%20to%20add%20a%20phone%20field", wait: 2500, shell: "find" },
+  { name: "pull-to-find", path: "/now", drag: true },
+  { name: "chat-project", path: "/chat", script: `await click('.chat-projects a.thread-row'); await wait(1500);`, shell: "pushed" },
+  { name: "chat-session", path: "/chat", script: `await click('.chat-recent a.thread-row'); await wait(2500);`, shell: "pushed" },
   // Sending from the phone: the fake claude streams an echo back; then a permission ask inline.
-  { name: "chat-send", path: "/chat", script: `await click('.chat-recent a.thread-row:nth-of-type(2)'); await wait(2500);
+  { name: "chat-send", path: "/chat", shell: "pushed", script: `await click('.chat-recent a.thread-row:nth-of-type(2)'); await wait(2500);
       const ta = document.querySelector('.composer textarea'); ta.value = 'hello from the phone'; ta.dispatchEvent(new Event('input'));
       document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); for (let i = 0; i < 80 && !document.body.innerText.includes('echo: hello from the phone'); i++) await wait(100);
       if (!document.body.innerText.includes('hello from the phone')) throw new Error('the sent line is not in the session');` },
-  { name: "chat-ask", path: "/chat", script: `await click('.chat-recent a.thread-row'); await wait(2500);
+  { name: "chat-ask", path: "/chat", shell: "pushed", script: `await click('.chat-recent a.thread-row'); await wait(2500);
       const ta = document.querySelector('.composer textarea'); ta.value = 'write notes.txt'; ta.dispatchEvent(new Event('input'));
       document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); await waitFor('.ask-card', 10000).catch(() => null);
       if (!document.querySelector('.ask-card')) throw new Error('no ask card for the permission question');` },
-  { name: "needs-draft", path: "/now", script: `await click('a[href^="/needs/"]'); await wait(1500);` },
-  { name: "agents", path: "/agents" },
-  { name: "settings", path: "/settings" },
+  { name: "needs-draft", path: "/now", script: `await click('a[href^="/needs/"]'); await wait(1500);`, shell: "pushed" },
+  { name: "agent-pushed", path: "/agents/kit", shell: "pushed" },
+  { name: "settings", path: "/settings", shell: "pushed" },
   { name: "offline", path: "/chat", offline: true },
   // A Mac asking to pair. link.pair.request only answers over the tailnet, so the world cannot
   // make one: link.pending's answer is stubbed in the page, and nothing else is.
   { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `const i = document.querySelector('.pair-code'); if (!i) throw new Error("no pairing card"); i.value = "482"; i.dispatchEvent(new Event("input")); i.value = "482913"; i.dispatchEvent(new Event("input")); await wait(200);` },
-  // Onboarding's history and devices steps (the tab bar is not part of onboarding).
+  // Onboarding's history and devices steps (the phone shell is not part of onboarding).
   { name: "onboard-history", path: "/onboard#history", wait: 3000, noShell: true },
   { name: "onboard-devices", path: "/onboard#devices", wait: 3000, noShell: true },
   // No assistant yet (onboarding's first step skipped): agents.list answers without juno.
   { name: "no-assistant-now", path: "/now", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   { name: "no-assistant-agents", path: "/agents", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
-  // A cold launch from the home screen opens where the user left off, not at start_url.
-  { name: "reopen", path: "/now", last: "/agents", expect: "/agents" },
+  // A cold launch from the home screen opens where the user left off, not at start_url, when
+  // nothing needs them; with something waiting, it opens on Now.
+  { name: "reopen", path: "/now", last: "/agents", expect: "/agents", stub: { "gate.held": [], "threads.asks": [] } },
+  { name: "reopen-needs", path: "/now", last: "/agents", expect: "/now",
+    stub: { "threads.asks": [{ id: "ask-1", kind: "permission", thread: "t-1", agent: "kit", tool: "Bash", at: 1, input: { command: "git push origin q3-report" } }] } },
 ];
 
 let failed = 0;
@@ -96,6 +116,14 @@ for (const dev of DEVICES) {
         await tab.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
         await tab.run(`window.dispatchEvent(new Event("offline")); await wait(800);`);
       }
+      if (s.swipe) {
+        // A finger swiping from right to left across the middle of the page.
+        const y = Math.round(dev.height / 2);
+        await tab.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: dev.width - 40, y }] });
+        for (let i = 1; i <= 10; i++) await tab.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: dev.width - 40 - i * 30, y }] });
+        await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await new Promise(r => setTimeout(r, 1200));
+      }
       if (s.drag) {
         // A finger pulling down 60 px from the top, held there for the shot.
         const x = dev.width / 2, y0 = dev.insets.top + 80;
@@ -105,7 +133,11 @@ for (const dev of DEVICES) {
       await new Promise(r => setTimeout(r, 400));
       fs.writeFileSync(path.join(out, `${label}.png`), await tab.shot());
       const check = await tab.run(`return { sideways: document.documentElement.scrollWidth > innerWidth + 1, path: location.pathname,
-        tabbar: document.querySelector('.tabbar') ? getComputedStyle(document.querySelector('.tabbar')).display : "none", standalone: document.documentElement.dataset.display || "" }`);
+        head: document.querySelector('.ph-head') ? getComputedStyle(document.querySelector('.ph-head')).display : "none",
+        labels: document.querySelector('.ph-tabs') ? getComputedStyle(document.querySelector('.ph-tabs')).display : "none",
+        capsule: document.querySelector('.capsule') ? getComputedStyle(document.querySelector('.capsule')).display : "none",
+        tabbar: !!document.querySelector('.tabbar'), at: document.getElementById('deck')?.dataset.at || "",
+        standalone: document.documentElement.dataset.display || "" }`);
       if (s.drag) {
         await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
         await new Promise(r => setTimeout(r, 1200));
@@ -113,7 +145,15 @@ for (const dev of DEVICES) {
         if (after !== "/find") { failed++; console.log(`FAIL ${label}: releasing the pull went to ${after}, not /find`); }
       }
       const errs = tab.errors.filter(e => !/Failed to load resource|ERR_INTERNET_DISCONNECTED|fonts\.g/.test(e));
-      const bad = [s.expect && check.path !== s.expect && `opened ${check.path}, not ${s.expect}`, check.sideways && "scrolls sideways", !dev.desktop && !s.noShell && check.tabbar !== "flex" && "no tab bar", !dev.desktop && !s.noShell && check.standalone !== "standalone" && "not standalone",
+      const want = s.shell || "page", phoneShell = !dev.desktop && !s.noShell;
+      const bad = [s.expect && check.path !== s.expect && `opened ${check.path}, not ${s.expect}`, check.sideways && "scrolls sideways",
+        phoneShell && check.tabbar && "a tab bar is drawn",
+        phoneShell && check.at !== want && `the shell is in ${check.at || "no"} mode, not ${want}`,
+        phoneShell && want === "page" && (check.head !== "flex" || check.labels !== "flex") && "no header with the page labels",
+        phoneShell && want === "page" && check.capsule !== "flex" && "no Capsule",
+        phoneShell && want !== "page" && check.capsule !== "none" && "the Capsule shows on a pushed screen",
+        phoneShell && want === "find" && check.head !== "none" && "the header shows over Find",
+        phoneShell && check.standalone !== "standalone" && "not standalone",
         errs.length && `errors: ${errs.join(" | ").slice(0, 300)}`].filter(Boolean);
       if (bad.length) { failed++; console.log(`FAIL ${label}: ${bad.join("; ")}`); }
       else console.log(`ok   ${label}`);

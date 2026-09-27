@@ -4,6 +4,7 @@
 // left off. Everything here is shell; views never import it.
 //
 //   start({ view, deck })  once, before the first route
+//   reopen()               once, at launch: the path to reopen (the shell decides), or null
 //   remember(path)         on every route, so a cold launch from the home screen reopens it
 
 import { h, put, go } from "./dom.js";
@@ -37,7 +38,6 @@ export function start({ view, deck }) {
   if (ios()) root.dataset.ios = "";
   themeColor();
   new MutationObserver(themeColor).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
-  reopen();
   offlineLine(deck);
   pullToFind(view);
 }
@@ -48,27 +48,30 @@ function themeColor() {
   for (const m of document.querySelectorAll('meta[name="theme-color"]')) m.setAttribute("content", paper ? "#F4F1EA" : "#0E0D0C");
 }
 
-/** A cold launch from the home screen opens at /now (the manifest's start_url); go back to where
- * the user was instead, if that was within the last day. A reload in the same tab keeps its path. */
-function reopen() {
-  if (!standalone() || session?.getItem("vyre.launched")) return;
+/** A cold launch from the home screen opens at /now (the manifest's start_url); the path to go
+ * back to instead, if the user was there within the last day, or null. The shell makes the move
+ * (it stays on Now when something needs the user). A reload in the same tab keeps its path.
+ * @returns {string | null} */
+export function reopen() {
+  if (!standalone() || session?.getItem("vyre.launched")) return null;
   try { session?.setItem("vyre.launched", "1"); } catch {}
-  if (location.pathname !== "/now" && location.pathname !== "/") return;
+  if (location.pathname !== "/now" && location.pathname !== "/") return null;
   let last = null;
   try { last = JSON.parse(store?.getItem(LAST) || "null"); } catch {}
-  if (!last || typeof last.path !== "string" || !last.path.startsWith("/") || last.path.startsWith("//")) return;
-  if (Date.now() - last.at > 86_400_000 || last.path === "/now") return;
-  history.replaceState(null, "", last.path);
+  if (!last || typeof last.path !== "string" || !last.path.startsWith("/") || last.path.startsWith("//")) return null;
+  if (Date.now() - last.at > 86_400_000 || last.path === "/now") return null;
+  return last.path;
 }
 
-/** One line under the status bar while the box does not answer. It never covers the view: the
+/** One line under the header (the phone's) while the box does not answer. It never covers the view: the
  * view keeps showing what it last drew, or what the service worker kept. */
 function offlineLine(/** @type {HTMLElement} */ deck) {
   const since = { at: 0 };
   const retry = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: check }, "Retry");
   const text = h("span", { class: "reach-text" });
   const bar = h("div", { class: "reach", role: "status", hidden: true }, h("span", { class: "dot beacon" }), text, retry);
-  deck.prepend(bar);
+  const head = deck.querySelector(".ph-head");
+  if (head) head.after(bar); else deck.prepend(bar);
   const draw = (/** @type {boolean} */ ok) => {
     if (ok) {
       if (!bar.hidden) { bar.hidden = true; window.dispatchEvent(new Event("deck:navigate")); } // redraw the view from the box
@@ -92,9 +95,11 @@ function offlineLine(/** @type {HTMLElement} */ deck) {
   if (!reachable || navigator.onLine === false) draw(false);
 }
 
-/** Pull down from the top of any phone screen to open Find. Only when everything under the finger
- * is scrolled to the top, and never from a text field. The page itself does not rubber-band
- * (deck.css), so this is the only thing a pull does. */
+/** Pull down from the top of one of the three pages (Now, Chats, Agents) to open Find, the same
+ * as a tap on the Capsule. Only when everything under the finger is scrolled to the top, never
+ * from a text field or a row that swipes, and never on a pushed screen (a chat pages backwards
+ * when pulled at its top). The page itself does not rubber-band (deck.css), so this is the only
+ * thing a pull does, and a sideways swipe (the pager) cancels it. */
 function pullToFind(/** @type {HTMLElement} */ view) {
   const THRESHOLD = 72;
   const hint = h("div", { class: "pull", "aria-hidden": "true" }, icon("search", 14), h("span", null, "Pull to find"));
@@ -111,7 +116,7 @@ function pullToFind(/** @type {HTMLElement} */ view) {
     pull = null;
     if (!phone() || e.touches.length !== 1 || location.pathname.startsWith("/find")) return;
     const t = /** @type {HTMLElement} */ (e.target);
-    if (t.closest("input, textarea, select, [contenteditable], .no-pull") || !atTop(t)) return;
+    if (!t.closest(".pager") || t.closest("input, textarea, select, [contenteditable], [data-swipe], .no-pull") || !atTop(t)) return;
     pull = { y: e.touches[0].clientY, x: e.touches[0].clientX, dy: 0 };
   }, { passive: true });
   view.addEventListener("touchmove", e => {
