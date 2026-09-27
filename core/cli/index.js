@@ -19,7 +19,8 @@ import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { VERSION } from "../daemon/index.js";
 import { out, dim, bold, beacon } from "./style.js";
-import { EXIT, UsageError, closest, setJson, wantsJson, fail, usage } from "./kit.js";
+import { EXIT, UsageError, closest, setJson, wantsJson, wantsView, setView, emit, fail, usage } from "./kit.js";
+import { done, verbWords, textLines } from "./view.js";
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "commands");
 
@@ -37,7 +38,7 @@ export async function commands() {
 }
 
 /** Where each command sits in `vyre help`. A command not named here goes under "More". */
-const GROUPS = [
+export const GROUPS = [
   ["Start and connect", ["up", "status", "down", "box", "name", "link", "phone", "capsule"]],
   ["Projects and sessions", ["projects", "new", "open", "threads", "sessions", "resume", "start", "context", "pick", "unpick"]],
   ["Waiting on you", ["needs", "gate"]],
@@ -46,7 +47,7 @@ const GROUPS = [
   ["Memory", ["recall", "index", "memory", "why", "learn"]],
   ["Vault and presence", ["vault", "presence"]],
   ["Box care", ["backup", "restore"]],
-  ["Under the hood", ["modules", "tools", "call"]],
+  ["Under the hood", ["modules", "tools", "call", "commands"]],
 ];
 
 const usageOf = c => c.usage || `vyre ${c.name}`;
@@ -120,12 +121,18 @@ export async function main(argv) {
   const c = all.find(x => x.name === want || (x.aliases || []).includes(want));
   if (!c) return unknown(all, want);
   if (asksHelp(rest)) return helpFor(all, c.name);
+  if (wantsView(rest)) return viewRun(c, rest);
   setJson(wantsJson(rest));
+  return runOne(c, rest);
+}
+
+/** @param {Command} c @param {string[]} args */
+async function runOne(c, args) {
   // A promise a command forgot to await still must not print a trace.
   const late = err => { process.exitCode = crashed(c.name, err); };
   process.on("unhandledRejection", late);
   try {
-    const code = await c.run(rest);
+    const code = await c.run(args);
     return typeof code === "number" ? code : EXIT.OK;
   } catch (err) {
     return crashed(c.name, err);
@@ -133,4 +140,40 @@ export async function main(argv) {
     process.off("unhandledRejection", late);
     setJson(false);
   }
+}
+
+/**
+ * `--view`: the verb runs in JSON mode and every line out is a frame (core/cli/view.js). What it
+ * prints for a person instead (a verb with no JSON) comes out as one text frame, without colour.
+ * Nothing is read from stdin: a verb that would ask says what to add to the command instead.
+ * @param {Command} c @param {string[]} rest
+ */
+export async function viewRun(c, rest) {
+  const at = rest.indexOf("--");
+  const head = (at < 0 ? rest : rest.slice(0, at)).filter(a => a !== "--view");
+  const args = [...(head.includes("--json") ? head : [...head, "--json"]), ...(at < 0 ? [] : rest.slice(at))];
+  setView(verbWords(c.name, head));
+  const write = process.stdout.write.bind(process.stdout);
+  /** @type {string[]} */
+  const text = [];
+  process.stdout.write = /** @type {any} */ ((chunk, ...more) => {
+    const s = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+    if (s.startsWith('{"v":1,')) return write(chunk, ...more);
+    text.push(s);
+    const cb = more.find(m => typeof m === "function");
+    if (cb) cb();
+    return true;
+  });
+  let code = EXIT.FAILED;
+  try {
+    code = await runOne(c, args);
+  } finally {
+    const lines = textLines(text);
+    if (lines.length) emit(null, { kind: "text", lines });
+    process.stdout.write = write;
+    write(JSON.stringify(done(code)) + "\n");
+    setView(null);
+    setJson(false);
+  }
+  return code;
 }

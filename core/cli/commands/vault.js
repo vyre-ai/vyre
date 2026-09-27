@@ -20,6 +20,7 @@ import { finished } from "node:stream/promises";
 import os from "node:os";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
+import { emit } from "../kit.js";
 import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
 import { inspect } from "../../vault/backup.js";
@@ -35,7 +36,7 @@ let last = /** @type {any} */ (null);
 let printed = false;
 const say = (/** @type {string} */ s) => { if (!JSON_MODE) out(s); };
 const hint = (/** @type {string} */ s) => { if (!JSON_MODE) process.stderr.write(s); };
-const jsonLine = obj => { if (!printed) { process.stdout.write(JSON.stringify(obj) + "\n"); printed = true; } };
+const jsonLine = obj => { if (!printed) { emit(obj); printed = true; } };
 
 /**
  * Every call to vyred goes through here, so --json can print the reply the command acted on. A
