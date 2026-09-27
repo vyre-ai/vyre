@@ -391,10 +391,12 @@ async function route() {
   const again = current === key;
   const wasKey = current;
   const was = pages.get(current);
+  // The new address is current before the old page is let go: leave() hides a page only while it
+  // is not the current one, so a desk navigation (no animation to wait for) really hides it.
+  current = key;
   if (was && !again) leave(wasKey, was, from, to, backward);
   // Agents is where the assistant is made or renamed: the Capsule reads its name again after.
   if (wasKey === "/agents" && !again && phone()) drawAssistantName();
-  current = key;
   setMode(to, name, params, key);
   railOwned = false;
   // The rail is not drawn on a phone (no rail there), which saves a projects.list per tap.

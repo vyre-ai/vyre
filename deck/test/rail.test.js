@@ -50,7 +50,7 @@ test("rail: nav named Vyre, the home mark to Now, links named by their labels, t
   const places = $$(r.el, "a.rail-place");
   assert.deepEqual(places.map((/** @type {any} */ a) => $(a, ".rail-label").textContent), ["Now", "Chat", "Agents", "Projects", "Planner", "Memory", "Vault", "Devices", "Settings"]);
   // The top group, then the bottom group with the avatar last.
-  const groups = $$(r.el, ".rail-group");
+  const groups = $$(r.el, ".rail-set");
   assert.equal(groups.length, 2);
   assert.equal($$(groups[0], "a.rail-place").length, 7);
   assert.ok(groups[1].className.includes("rail-end"));
@@ -153,6 +153,8 @@ test("rail app: the shell mounts the rail, the brand leaves the header, and the 
   assert.doesNotMatch(app, /const PLACES = \[/, "the order lives in js/rail.js only");
   assert.match(app, /railEl\.el,\s*h\("div", \{ class: "stage" \},\s*h\("header", \{ class: "top" \}/, "the rail is left of the header, not under it");
   assert.match(app, /const href = placeForKey\(e, MAC\);/);
+  // The page being left is hidden on the desk: the new address is current before leave() runs.
+  assert.match(app, /current = key;\n(?: *\/\/.*\n)* *if \(was && !again\) leave\(wasKey, was, from, to, backward\);/);
   assert.match(app, /if \(phone\(\)\) return;\s*const href = placeForKey/, "no rail keys on the phone");
   // The phone shell's own header is untouched.
   assert.match(app, /h\("nav", \{ class: "ph-tabs", "aria-label": "Pages" \}, phLabels\)/);
@@ -187,7 +189,7 @@ test("rail css: 72 wide, 60 by 50 places, 12/16 labels, the badge the only colou
   decl(css, ".rail-initial", /font-size: 13px; line-height: 16px; font-weight: 600/);
   assert.match(noComments(css), /@media \(prefers-reduced-motion: reduce\) \{ \.rail-home, \.rail-place \{ transition: none; \} \}/);
   // No lime, violet, wash or left bar on a place: the badge (marks.css) is the only colour.
-  for (const sel of [".rail", ".rail-place", ".rail-label", ".rail-avatar", ".rail-group"]) {
+  for (const sel of [".rail", ".rail-place", ".rail-label", ".rail-avatar", ".rail-set"]) {
     for (const r of rules(css, sel)) {
       if (/focus-visible|rail-home/.test(r.sel)) continue;
       assert.doesNotMatch(r.body, /--beacon|--focus|--primary|--signal|border-left|box-shadow/, `${r.sel}: ${r.body}`);
@@ -196,5 +198,7 @@ test("rail css: 72 wide, 60 by 50 places, 12/16 labels, the badge the only colou
   // The phone shell hides the rail and the list column; the header is still the first rule there.
   assert.match(css, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n {2}\.top \{ display: none; \}\n {2}\.rail \{ display: none; \}\n {2}\.rail-lower \{ display: none; \}/);
   // The list column is its own width, not the old rail's.
-  decl(css, ".rail-lower", /width: 240px; flex-shrink: 0/);
+  decl(css, ".rail-lower", /width: 240px; min-width: 0; flex-shrink: 0/);
+  decl(css, ".rail-lower", /overflow-x: hidden; overflow-y: auto/);
+  assert.doesNotMatch(read("chat/chat.css"), /\.rail-set\b/, "the rail's groups do not share a name with chat's");
 });

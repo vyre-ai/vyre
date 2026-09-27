@@ -28,6 +28,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   empty. Under 900 a session or a project's board replaces it; the projects beside a board show
   from 1400, and so do Vault's places (was 1200), its chip row below that.
 - The phone shell is unchanged: `.rail` and the list column are hidden under 720.
+- The page being left is hidden on the desk again: the router made the new address current only
+  after leave() ran, so leave() saw the old page as current and never hid it, and on a chat
+  session the Chat list painted under the transcript. The Vault and Glass, never kept, are now
+  really ended when left.
+- The list column never scrolls sideways: `overflow-x: hidden`, and its rows end in an
+  ellipsis. The rail's groups are `.rail-set`, since chat.css already styles `.rail-group`.
 - deck/test/rail.test.js covers the order, labels, names, the badge on Now, the key map and the
   CSS geometry.
 

@@ -93,8 +93,8 @@ export function rail() {
   const home = link("/now", { class: "rail-home", "aria-label": "Vyre home" }, mark(22));
   const el = h("nav", { class: "rail", "aria-label": "Vyre" },
     home,
-    h("div", { class: "rail-group" }, links.filter((_, i) => !PLACES[i].end)),
-    h("div", { class: "rail-group rail-end" }, links.filter((_, i) => PLACES[i].end), avatar));
+    h("div", { class: "rail-set" }, links.filter((_, i) => !PLACES[i].end)),
+    h("div", { class: "rail-set rail-end" }, links.filter((_, i) => PLACES[i].end), avatar));
 
   function setNeeds(/** @type {number} */ n) {
     badge(n, count);

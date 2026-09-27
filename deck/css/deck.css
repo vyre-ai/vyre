@@ -151,7 +151,8 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .rail { width: 72px; flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 12px 0;
   border-right: 1px solid var(--rule); background: var(--bg); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .rail::-webkit-scrollbar { display: none; }
-.rail-group { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+/* .rail-set, not .rail-group: chat.css draws its own session groups with that name. */
+.rail-set { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .rail-end { margin-top: auto; }
 .rail-home { width: 40px; height: 40px; flex-shrink: 0; margin-bottom: 10px; display: inline-flex; align-items: center; justify-content: center;
   border-radius: 10px; text-decoration: none; transition: background-color var(--motion-tap, 120ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1)); }
@@ -176,7 +177,12 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 
 /* The list column right of the rail: a view's own list (ctx.rail: Chat's sessions; deck:rail:
    Vault's places) or the pinned and recent projects beside a project. Hidden while empty. */
-.rail-lower { width: 240px; flex-shrink: 0; display: flex; flex-direction: column; padding: 16px 12px; border-right: 1px solid var(--rule); overflow: auto; }
+.rail-lower { width: 240px; min-width: 0; flex-shrink: 0; display: flex; flex-direction: column; padding: 16px 12px; border-right: 1px solid var(--rule);
+  overflow-x: hidden; overflow-y: auto; }
+/* It never scrolls sideways: whatever a view puts in it fits its width, and a long row ends in an ellipsis. */
+.rail-lower :where(div, section, nav, a, button, label) { min-width: 0; max-width: 100%; }
+.rail-lower :is(.rail-a, .pin-a, .rail-disclose) > span:not(.agent-dot):not(.tag) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail-lower :is(.rail-a, .pin-a, .rail-disclose) > :is(.code, .count, .vt-count, svg) { flex-shrink: 0; }
 .rail-pins:not(:empty), .rail-lower-in:not(:empty) { display: flex; flex-direction: column; gap: 2px; }
 .rail-pins:not(:empty) + .rail-lower-in:not(:empty) { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule); }
 /* Under 900 a detail replaces the list (layout.md): a session, a project's board or thread. */
