@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### An idle planner no longer loads the time zone data
+
+- The planner reads its zone only when something needs placing. The first zoned Intl call loads
+  ICU's zone data, which cost about 7.5 MB of RSS in a planner with nothing to do. Measured on the
+  test box: the planner started on an empty store adds 4.0 MB (was 11.5 MB). Test in
+  core/planner/planner.test.js.
+
 #### The planner reads a time in words wherever it takes one
 
 - planner.add `at` (and a todo's `due`) takes words as people say them: "6pm" is the next 6pm in
