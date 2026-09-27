@@ -57,6 +57,8 @@ type ConnectionState = {
   outbox: OutboxItem[];
   /** The box asked for a person session: show a sign-in. */
   signIn: boolean;
+  /** Which way the box is reached now: its own address, or the relay (no pictures over it). */
+  path: "direct" | "relay";
 };
 
 const useConnectionStore = create<ConnectionState>()(() => ({
@@ -67,6 +69,7 @@ const useConnectionStore = create<ConnectionState>()(() => ({
   stream: null,
   outbox: [],
   signIn: false,
+  path: "direct",
 }));
 
 const set = useConnectionStore.setState;
@@ -77,6 +80,7 @@ export const useConnection = () => useConnectionStore((s) => s.status);
 export const useLastSeen = () => useConnectionStore((s) => s.lastSeen);
 export const useOutbox = () => useConnectionStore((s) => s.outbox);
 export const useSignInNeeded = () => useConnectionStore((s) => s.signIn);
+export const usePath = () => useConnectionStore((s) => s.path);
 /** Hear every change outside React (the answers watch their outbox rows). Returns the unsubscribe. */
 export const onConnection = (f: (s: ConnectionState) => void) => useConnectionStore.subscribe(f);
 
@@ -117,5 +121,10 @@ export const connection = {
   },
   signIn(needed: boolean) {
     set({ signIn: needed });
+  },
+  /** The paths layer moved (relay/client paths.js onstate), or connected on this one. */
+  path(kind: string) {
+    const path = kind === "relay" ? "relay" : "direct";
+    if (get().path !== path) set({ path });
   },
 };

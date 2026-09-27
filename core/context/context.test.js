@@ -70,7 +70,7 @@ test("clean: refuses text, selection and value, and a bad surface or cwd", () =>
 
 test("report and now: fields merge per surface, the newest value of each field wins across surfaces", async t => {
   const { call } = await world(t);
-  assert.deepEqual((await call("context.now")).data, { project: null, cwd: null, thread: null, surface: null, device: null, app: null, window: null, url: null, at: null, surfaces: [] });
+  assert.deepEqual((await call("context.now")).data, { project: null, cwd: null, thread: null, view: null, surface: null, device: null, app: null, window: null, url: null, at: null, surfaces: [] });
 
   const r1 = await call("context.report", { surface: "capsule", device: "alex-mac", app: "Safari", window: "Menu", url: "https://northwind.example/menu?session=abc#top" }, "capsule");
   assert.deepEqual(r1.data.changed.sort(), ["app", "url", "window"]);
@@ -215,4 +215,26 @@ test("stop: a pending trailing event is dropped and no timer keeps the process a
   await stop();
   await wait(INTERVAL + 30);
   assert.equal(seen.length, before, "the trailing event never came");
+});
+
+test("report: a device paired through the relay is named by its caller when the report leaves it out", async t => {
+  const { call } = await world(t);
+  const id = "abcdefghijklmnop";
+  const r = await call("context.report", { surface: "phone", thread: "t1" }, `device:${id}`);
+  assert.equal(r.data.device, id);
+  assert.equal((await call("context.now")).data.device, id);
+  const said = await call("context.report", { surface: "phone", device: "alex-phone" }, `device:${id}`);
+  assert.equal(said.data.device, "alex-phone", "a device the report names wins");
+});
+
+test("view and one surface: context.now {surface} answers from that surface's own report", async t => {
+  const { call } = await world(t);
+  await call("context.report", { surface: "deck", view: "planner", project: "harlow" }, "deck");
+  await call("context.report", { surface: "capsule", app: "Mail" }, "capsule");
+  const deck = (await call("context.now", { surface: "deck" })).data;
+  assert.equal(deck.view, "planner");
+  assert.equal(deck.app, null, "the Capsule's app is not the Deck's");
+  assert.equal(deck.surface, "deck");
+  assert.equal((await call("context.now")).data.view, "planner", "the merge still has it");
+  assert.equal((await call("context.now", { surface: "phone" })).data.surface, null, "a surface that never reported");
 });

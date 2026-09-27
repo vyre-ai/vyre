@@ -7,8 +7,15 @@
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { parse, up, tool } from "./projects.js";
-import { json, emit, fail as kitFail, failTool, usage } from "../kit.js";
+import { json, emit, fail as kitFail, failTool, usage, viewing } from "../kit.js";
 import { callAsPerson } from "../presence.js";
+
+/**
+ * A person-only call. Under --view nothing may open a terminal, so it goes as a plain call and
+ * vyred's presence_required comes back as an error frame (exit 3) for the surface to handle.
+ * @param {string} tool @param {any} input @param {{ timeout?: number }} [opts]
+ */
+const asPerson = (tool, input, opts) => (viewing() ? call(tool, input, opts) : callAsPerson(tool, input, opts));
 
 const SURFACE = "cli:" + process.pid;
 const id8 = s => String(s || "").slice(0, 8);
@@ -55,11 +62,18 @@ function showAgent(a, verb) {
   out(`  ${signal(verb)} ${bold(a.name)}  ${dim([a.kind, projects, a.model].filter(Boolean).join(" · "))}`);
 }
 
+// --json: [{ name, kind, projects, model, computer, instructions, auth, status, doing, thread }]
 async function list() {
   const r = await tool("agents.list", {});
   if (!r) return 1;
   const agents = Array.isArray(r) ? r : [];
-  if (json()) return emit(agents);
+  if (json()) {
+    return emit(agents, { kind: "table", title: "Agents", columns: [{ key: "name", label: "Agent" }, { key: "kind", label: "Kind" }, { key: "status", label: "Status" },
+      { key: "doing", label: "Doing" }, { key: "projects", label: "Projects" }],
+    rows: agents.map(a => ({ id: a.name, name: a.name, kind: a.kind || "", status: a.status || "", doing: cut(a.doing || "", 60),
+      projects: a.projects === "*" ? "every project" : Array.isArray(a.projects) ? a.projects.join(", ") : "" })),
+    empty: "No agents yet" });
+  }
   if (!agents.length) { out(dim(`  no agents yet · vyre agents create <name> [${FLAGS}]`)); return 0; }
   for (const a of agents) {
     const status = a.status === "waiting" ? beacon(String(a.status).padEnd(8)) : a.status === "working" ? signal(String(a.status).padEnd(8)) : dim(String(a.status || "").padEnd(8));
@@ -77,7 +91,7 @@ async function createOrUpdate(which, args) {
   try { fields = agentFields(flags); } catch (e) { return usage(/** @type {Error} */ (e).message, "vyre help agents"); }
   if (which === "update" && !Object.keys(fields).length) return usage("vyre agents update: nothing to change", FLAGS);
   // Both are on the floor's human-only list: Touch ID or a code typed at this terminal.
-  const r = await callAsPerson(which === "create" ? "agents.create" : "agents.update", { name, ...fields });
+  const r = await asPerson(which === "create" ? "agents.create" : "agents.update", { name, ...fields });
   if (r.error) { failTool(r.error); return 1; }
   const a = r.data;
   if (json()) return emit(a);
@@ -113,7 +127,11 @@ async function threads(args) {
   if (!name) return usage("vyre agents threads needs an agent's name", "vyre agents lists them");
   const ts = await tool("agents.threads", { agent: name });
   if (!ts) return 1;
-  if (json()) return emit(ts);
+  // --json: [{ id, status, holder, name, cwd }]
+  if (json()) {
+    return emit(ts, { kind: "table", title: `${name}'s threads`, columns: [{ key: "short", label: "Thread" }, { key: "status", label: "Status" }, { key: "holder", label: "Holder" }, { key: "name", label: "Name" }],
+      rows: ts.map(t => ({ id: t.id, short: id8(t.id), status: t.status || "", holder: t.holder || "", name: cut(t.name || t.cwd, 60) })), empty: `${name} has no threads yet` });
+  }
   if (!ts.length) { out(dim(`  ${name} has no threads yet`)); return 0; }
   for (const t of ts) out(`  ${dim(id8(t.id))}  ${String(t.status).padEnd(8)} ${dim(String(t.holder || "-").padEnd(14))} ${cut(t.name || t.cwd, 40)}`);
   out(dim("  vyre threads watch <id>"));
@@ -131,7 +149,12 @@ async function history(args) {
   if (before !== undefined && !(Number.isInteger(before) && before > 0)) return usage(`--before ${flags.before} is not an exchange id`, "vyre agents history <name> --json shows each id");
   const rows = await tool("agents.history", { agent: name, ...(limit ? { limit } : {}), ...(before ? { before } : {}) });
   if (!rows) return 1;
-  if (json()) return emit(rows);
+  // --json: [{ id, at, agent, surface, thread, text, answer }], oldest first
+  if (json()) {
+    return emit(rows, { kind: "table", title: `Asked of ${name}`, columns: [{ key: "when", label: "When" }, { key: "surface", label: "From" }, { key: "text", label: "Asked" }, { key: "answer", label: "Answer" }],
+      rows: rows.map(x => ({ id: x.id, when: Number.isFinite(x.at) ? new Date(x.at).toISOString().slice(0, 16).replace("T", " ") : "", surface: x.surface || "",
+        text: cut(x.text, 120), answer: x.answer ? cut(x.answer, 200) : "" })), empty: `Nothing asked of ${name} yet` });
+  }
   if (!rows.length) { out(dim(`  nothing asked of ${name} yet · vyre agents ask ${name} <text>`)); return 0; }
   for (const x of rows) {
     const when = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(x.at);
@@ -147,7 +170,7 @@ async function history(args) {
 async function resume(args) {
   const [name, thread] = args;
   if (!name) return usage("vyre agents resume needs an agent's name", "vyre agents lists them");
-  const r = await callAsPerson("agents.resume", { agent: name, ...(thread ? { thread } : {}) });
+  const r = await asPerson("agents.resume", { agent: name, ...(thread ? { thread } : {}) });
   if (r.error) return failTool(r.error, /no thread to resume/.test(String(r.error.message)) ? `vyre agents ask ${name} <text>` : undefined);
   if (json()) return emit(r.data);
   const t = r.data;
@@ -164,6 +187,17 @@ function showComputer(c, verb) {
   out(dim(`      ${facts.filter(Boolean).join(" · ")}`));
 }
 
+/** One computer as a card, for --view. */
+const computerCard = c => ({ kind: "card", title: `${c.agent}'s computer`, state: c.state === "running" ? "ok" : c.state === "stopped" || c.state === "none" ? "unknown" : "wait", fields: [
+  { label: "State", value: String(c.state ?? "") + (c.paused ? " (paused)" : "") },
+  { label: "Cores", value: String(c.cpus ?? "") },
+  { label: "Memory", value: c.memory_gb !== undefined ? `${c.memory_gb} GB` : "" },
+  { label: "Screen", value: c.screen ? String(c.screen) : "none" },
+  ...(c.thread ? [{ label: "Thread", value: id8(c.thread) }] : []),
+  ...(c.viewers ? [{ label: "Watching", value: String(c.viewers) }] : []),
+  ...(c.takeover ? [{ label: "Keyboard", value: String(c.takeover.surface || c.takeover) }] : []),
+] });
+
 /** `vyre agents computer <name> [restart|limits --cpus n --memory gb]`. */
 async function computer(args) {
   const { flags, pos } = parse(args, COMPUTER_FLAGS);
@@ -175,21 +209,23 @@ async function computer(args) {
   if (!verb) {
     const c = await tool("computers.get", { agent: name });
     if (!c) return 1;
-    if (json()) return emit(c);
+    // --json: { agent, state, cpus, memory_gb, screen, thread, viewers, paused, takeover }
+    if (json()) return emit(c, computerCard(c));
     showComputer(c);
     out(dim(`  vyre agents computer ${name} restart · limits --cpus n --memory gb`));
     return 0;
   }
   if (verb === "restart") {
-    const r = await callAsPerson("computers.restart", { agent: name }, { timeout: 180_000 });
+    const r = await asPerson("computers.restart", { agent: name }, { timeout: 180_000 });
     if (r.error) return failTool(r.error);
-    if (json()) return emit(r.data);
+    if (json()) return emit(r.data, computerCard(r.data));
     showComputer(r.data, "restarted");
     return 0;
   }
   if (flags.cpus === undefined && flags.memory === undefined) {
     const c = await tool("computers.get", { agent: name });
     if (!c) return 1;
+    // --json: { agent, cpus, memory_gb }
     if (json()) return emit({ agent: c.agent, cpus: c.cpus, memory_gb: c.memory_gb });
     out(`  ${bold(name)}'s computer: ${c.cpus} cores, ${c.memory_gb} GB ${dim(`· vyre agents computer ${name} limits --cpus n --memory gb changes them`)}`);
     return 0;
@@ -197,9 +233,9 @@ async function computer(args) {
   const num = v => (v === undefined ? undefined : Number(v));
   const input = { agent: name, ...(flags.cpus !== undefined ? { cpus: num(flags.cpus) } : {}), ...(flags.memory !== undefined ? { memory_gb: num(flags.memory) } : {}) };
   for (const [k, v] of Object.entries(input)) if (k !== "agent" && !Number.isFinite(v)) return usage(`--${k === "cpus" ? "cpus" : "memory"} is a number`, `vyre agents computer ${name} limits --cpus 2 --memory 4`);
-  const r = await callAsPerson("computers.limits", input);
+  const r = await asPerson("computers.limits", input);
   if (r.error) return failTool(r.error);
-  if (json()) return emit(r.data);
+  if (json()) return emit(r.data, computerCard(r.data));
   showComputer(r.data, "limits set");
   out(dim(`  they apply at the next restart: vyre agents computer ${name} restart`));
   return 0;
@@ -210,14 +246,22 @@ async function usageOf(args) {
   const name = args.join(" ").trim();
   const rows = await tool("agents.usage", name ? { agent: name } : {});
   if (!rows) return 1;
-  if (json()) return emit(rows);
-  if (!rows.length) { out(dim("  no agents yet")); return 0; }
   const k = n => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n));
+  const money = u => (u.budget_usd != null ? `$${u.spent_usd.toFixed(2)} of $${u.budget_usd.toFixed(2)}` : u.api_cost_usd ? `$${u.api_cost_usd.toFixed(2)} on the API key` : "no API spend");
+  const tokensOf = u => u.tokens.input + u.tokens.output + u.tokens.cache_read + u.tokens.cache_write;
+  // --json: [{ agent, turns, duration_ms, tokens: { input, output, cache_read, cache_write }, spent_usd, budget_usd, api_cost_usd, limit }]
+  if (json()) {
+    return emit(rows, { kind: "table", title: "Agent usage", columns: [{ key: "agent", label: "Agent" }, { key: "turns", label: "Turns" }, { key: "time", label: "Time" },
+      { key: "tokens", label: "Tokens" }, { key: "money", label: "Spend" }, { key: "limit", label: "Limit" }],
+    rows: rows.map(u => ({ id: u.agent ?? null, agent: u.agent ?? "(no agent)", turns: u.turns, time: `${Math.round(u.duration_ms / 1000)}s`, tokens: k(tokensOf(u)), money: money(u),
+      limit: u.limit && u.limit.status !== "allowed" ? `${u.limit.status}${typeof u.limit.utilization === "number" ? " " + Math.round(u.limit.utilization * 100) + "%" : ""}` : "" })),
+    empty: "No agents yet" });
+  }
+  if (!rows.length) { out(dim("  no agents yet")); return 0; }
   for (const u of rows) {
-    const tokens = u.tokens.input + u.tokens.output + u.tokens.cache_read + u.tokens.cache_write;
-    const money = u.budget_usd != null ? `$${u.spent_usd.toFixed(2)} of $${u.budget_usd.toFixed(2)}` : u.api_cost_usd ? `$${u.api_cost_usd.toFixed(2)} on the API key` : "no API spend";
+    const tokens = tokensOf(u);
     const limit = u.limit && u.limit.status !== "allowed" ? beacon(` limit ${u.limit.status}${typeof u.limit.utilization === "number" ? " " + Math.round(u.limit.utilization * 100) + "%" : ""}`) : "";
-    out(`  ${bold(String(u.agent ?? "(no agent)").padEnd(12))} ${String(u.turns).padStart(4)} turns  ${dim((Math.round(u.duration_ms / 1000) + "s").padStart(6))}  ${dim(k(tokens).padStart(6) + " tokens")}  ${money}${limit}`);
+    out(`  ${bold(String(u.agent ?? "(no agent)").padEnd(12))} ${String(u.turns).padStart(4)} turns  ${dim((Math.round(u.duration_ms / 1000) + "s").padStart(6))}  ${dim(k(tokens).padStart(6) + " tokens")}  ${money(u)}${limit}`);
   }
   return 0;
 }
@@ -245,12 +289,30 @@ async function remove(args) {
 
 export default {
   name: "agents", order: 30, usage: USAGE,
+  verbs: [
+    { verb: "list", aliases: ["ls"], summary: "every agent, what it is doing and where", usage: "", read: true },
+    { verb: "create", summary: "make an agent", usage: "<name...> [--assistant] [--projects v] [--model v] [--vault v] [--fallback v] [--budget v] [--instructions v]", person: true },
+    { verb: "update", summary: "change the fields named, leave the rest", usage: "<name...> [--assistant] [--projects v] [--model v] [--vault v] [--fallback v] [--budget v] [--instructions v]", person: true },
+    { verb: "ask", summary: "ask an agent something and wait for its answer", usage: "<name> <text...>" },
+    { verb: "history", summary: "what was asked of it and what it said, oldest first", usage: "<name...> [--limit v] [--before v]", read: true },
+    { verb: "threads", summary: "an agent's threads", usage: "<name...>", read: true },
+    { verb: "resume", summary: "bring its latest thread (or that one) back, with its own credentials", usage: "<name> [<thread>]", person: true },
+    { verb: "computer", summary: "its computer: state, screen, cores and memory; restart it or set its limits", usage: "<name> [restart|limits] [--cpus v] [--memory v]", read: false, person: true },
+    { verb: "usage", summary: "turns, time, tokens and spend per agent", usage: "[<name...>]", read: true },
+    { verb: "stop", summary: "stop an agent's running threads", usage: "<name...>" },
+    { verb: "delete", aliases: ["rm", "remove"], summary: "delete an agent; its threads' transcripts stay", usage: "<name...>" },
+  ],
   summary: "agents: list, create, update, ask, history, threads, resume, computer, usage, stop, delete",
-  help: "vyre agents history <name> [--limit n] [--before id] · what was asked of it, and its answers\n"
+  help: "vyre agents [list] · every agent, what it is doing and where\n"
+    + `vyre agents create|update <name> [${FLAGS}] · make one, or change the fields named\n`
+    + "vyre agents ask <name> <text> · ask it something and wait for its answer\n"
+    + "vyre agents history <name> [--limit n] [--before id] · what was asked of it, and its answers\n"
     + "vyre agents resume <name> [thread] · bring its latest thread (or that one) back, with its own credentials\n"
     + "vyre agents computer <name> · its computer: state, screen, cores and memory\n"
     + "vyre agents computer <name> restart · a new container on the same home; what is open on its screen closes\n"
-    + "vyre agents computer <name> limits [--cpus n] [--memory gb] · shown, or set for the next restart",
+    + "vyre agents computer <name> limits [--cpus n] [--memory gb] · shown, or set for the next restart\n"
+    + "vyre agents threads <name> · its threads · vyre agents usage [name] · turns, time, tokens and spend\n"
+    + "vyre agents stop <name> · stop its threads · vyre agents delete <name> · delete it (its transcripts stay)",
   /** @param {string[]} args */
   async run(args) {
     const [sub, ...rest] = args.filter(a => a !== "--json");

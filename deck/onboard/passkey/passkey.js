@@ -31,7 +31,7 @@ function done() {
   shell(
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "Passkey added."),
-    h("p", { class: "lead" }, "It's yours to approve a held item or take over a session with, from now on — Touch ID, Face ID, or whatever this device offers."),
+    h("p", { class: "lead" }, "From now on it's how you approve a held item or take over a session: Touch ID, Face ID or whatever this device offers. Nice work."),
     h("div", { class: "ob-foot" }, h("a", { class: "btn btn-primary", href: "/onboard#history" }, "Continue setting up")));
 }
 
@@ -83,7 +83,7 @@ function screen() {
   shell(
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "Add a passkey."),
-    h("p", { class: "lead" }, "It proves you're the one approving a held item or taking over a session — never typed, never phished. Touch ID, Face ID, or a security key."),
+    h("p", { class: "lead" }, "It proves it's really you when you approve a held item or take over a session. Nothing to type and nothing to phish: Touch ID, Face ID or a security key."),
     h("div", { class: "ob-panel" }, h("div", { class: "field" }, h("label", { for: "pk-name" }, "Name this device"), nameIn), st),
     h("div", { class: "ob-foot" }, skip, h("div", { class: "grow" }), btn));
   nameIn.focus();
@@ -93,7 +93,7 @@ if (!canProve()) {
   shell(
     h("div", { class: "lbl" }, "Passkey"),
     h("h1", { class: "h1" }, "This browser cannot create a passkey." ),
-    h("p", { class: "lead" }, "Open this link in Safari or Chrome, over your tailnet, or add one later from Settings."),
+    h("p", { class: "lead" }, "Open this link in Safari or Chrome over your tailnet, or carry on and add one later from Settings."),
     h("div", { class: "ob-foot" }, h("a", { class: "btn", href: "/onboard#history" }, "Continue setting up")));
 } else if (!code) missingCode();
 else screen();

@@ -51,9 +51,21 @@ const parser = new DOMParser();
  * @param {keyof typeof P} name @param {number} [size]
  */
 export function icon(name, size = 16) {
-  const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ""}</svg>`;
-  return /** @type {SVGElement} */ (document.importNode(parser.parseFromString(src, "image/svg+xml").documentElement, true));
+  // Parsed once per name and size, then cloned: a fast scroll through a long transcript mounts
+  // many rows a frame, each with its icons (chat, native bar budget 6).
+  const key = name + "@" + size;
+  let made = ICONS.get(key);
+  if (!made) {
+    const src = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[name] || ""}</svg>`;
+    made = /** @type {SVGElement} */ (document.importNode(parser.parseFromString(src, "image/svg+xml").documentElement, true));
+    // A DOM without cloneNode (the tests' fake) gets a fresh parse each time.
+    if (typeof made.cloneNode !== "function") return made;
+    ICONS.set(key, made);
+  }
+  return /** @type {SVGElement} */ (made.cloneNode(true));
 }
+/** @type {Map<string, SVGElement>} */
+const ICONS = new Map();
 
 function parse(src) {
   return /** @type {SVGElement} */ (document.importNode(parser.parseFromString(src, "image/svg+xml").documentElement, true));

@@ -54,14 +54,16 @@ the acting module wrote, the app and the outcome.
 
 ### 2. context: where the user is now
 
-- `context.report {surface, device?, project?, cwd?, thread?, app?, window?, url?}` is how a
+- `context.report {surface, device?, project?, cwd?, thread?, view?, app?, window?, url?}` is how a
   surface says what it sees: the Capsule on app switch, chat on thread open, the phone on
   foreground. Fields not given are left as they were for that surface. `url` is kept without its
   query and fragment. Text and selection are refused.
-- `context.now {parts?}` returns `{project, cwd, thread, surface, device, app, window, url, at,
+- `context.now {parts?, surface?}` returns `{project, cwd, thread, view, surface, device, app, window, url, at,
   surfaces: [{surface, device, at}]}`: the latest value of each field across surfaces, with
   `project` found through `projects.of {cwd}` when only a folder is known. `parts: ["screen"]`
-  adds `sight.now {target: "mac", parts: ["text"]}` on a Mac.
+  adds `sight.now {target: "mac", parts: ["text"]}` on a Mac. `surface` answers from that
+  surface's own report only. `view` is the module or view the person is in there (planner,
+  vault, chat), which tips and ranking read.
 - Event `context.changed {changed: [field names], project?, thread?, surface, device?}`, at most
   one per second per surface. It carries no app, window or url.
 
@@ -89,7 +91,9 @@ Held in memory only. A restart forgets it, which is right: the next report rebui
   `link.pending` into rows `{id, kind: "ask"|"draft"|"reminder"|"pairing", title, detail?,
   project?, thread?, at, source, answer: {tool, input, fill}}`, newest first, with `count`,
   `by_kind` and `partial` (sources that could not be read). `fill` names what the person still
-  gives (a decision, a pairing code).
+  gives (a decision, a pairing code). An ask from a session on the paired Mac names its `machine`
+  and has `answer: {tool: null, on: <machine>}`: it is answered on that Mac until federation lets
+  the box forward the answer.
 - `waiting.count {}` returns `{count, by_kind}` only.
 - Event `waiting.changed {count, by_kind}`, when the count moves, after the owners' own events.
 

@@ -124,7 +124,42 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   (`ONLY=<regex>` for some screens, `DESKTOP=1280x800,1440x900,2000x1100` adds desktop sizes,
   `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
-## Doing (resumed after logout 3, 2026-09-27)
+## Doing (resumed after logout 4, 2026-09-27)
+- READY for batch 4 sent to the integrator: 2a577ede (main 53cd1326 merged, pushed). Chrome check
+  on testbox (deck/test/resilience-shots.js): pill, offline line, Retry, outbox once, /app/ route all
+  ok; pwa-shots at 390/430/720/900/1280/1440 ok. Targeted tests 502, 501 pass, 1 skipped.
+- Merge rules used (7880dfa6): api.js keeps follow() over fetch; e2e's signIn stopgap dropped;
+  chat's answers and send via the outbox (queue() presence false for a Mac ask, so its passkey
+  step stays on the card); deck/chat/api-stream.test.js dropped; tests use hear()/heardResume().
+- Design A done since: d442d8e4 switch point 720; ff09ec5d token roles only (radii as
+  var(--radius-*, px) until app-design 4b77ba51 is on main); 861a6d40 + 544e0f6f the 72 px rail,
+  Cmd+1..9, route() hides the page left (old bug from c0edc567); 6c5df144 phone header and queued
+  row fit the 44 buttons; 2a577ede a view that failed to import offline waits and remounts;
+  79124ccd the Places sheet and a pinned fourth page (Chrome-checked at 390 and 430).
+- native-core budget 8: their harness counts EventSource opens, which the fetch stream never makes;
+  told them to use "deck:stream" or count /v1/events/stream fetches and rerun on 2a577ede. If
+  catch-up is over 1 s: an immediate retry on "online" and on the first failure.
+- Live theme done on the Deck side (ddc9b127, deck/js/theme-live.js, 7 tests), against ADR 0035's
+  paths: settings.snapshot at start, /theme.css?device=&rev=, swap on settings.changed appearance.*
+  and on a reconnect whose rev moved; feature-detected. Not tried against a real hub yet (the
+  theme module is platform P4, not on main). Asked app-design and native-core to agree one route
+  (app-design wrote /v1/appearance/theme). Settings' own Dark/Paper toggle (native-core's view)
+  still writes localStorage; with the hub it should write appearance.scheme at device level.
+- Tested since (d1e41db8, targeted 494: 493 pass, 1 skipped, 0 fail). Built: fd88ef27
+  retired colours + "pin" wording; b623ddcc waiting.list / waiting.count / waiting.changed in
+  js/needs.js (4 tests); 41f9b14d context.report (js/context-report.js, 3 tests); 084036c1 the
+  Glass mini pill on Now (js/glass-mini.js, 3 tests; no picture yet: needs sight.frame or a small
+  viewer, asked cohesion). Chrome check done (testbox, 390/430/1280): now-glass-mini, now, places-sheet, chat-session, and the pill flows all ok.
+- Old next list (done above): cohesion's waiting.list,
+  context.report, connections.list, credential sheet, Glass mini-view (said yes, once on main);
+  docs' tips.next wiring (said yes, once on main).
+- app-design answered (589716e7): retired names and "pin" wording applied in fd88ef27 (not yet
+  tested: testbox runs held until the integrator reports batch 4). Open: the chat header's toggles
+  on the phone read at base size (a menu would be better, chat's call).
+- Theme module is app-design's core/appearance (b756d128, next batch); native-core serves
+  /theme.css?device= and /v1/theme on it (/v1/appearance/theme is an interim alias).
+
+## Earlier (resumed after logout 3, 2026-09-27)
 - ADR 0029 on the Deck, done (2026-09-27): cdf65f1 stream on follow() + vyred serves
   /core/resilience/*.js; 8436536 Idempotency-Key on writes; a593fda outbox for sends, answers,
   Discard, planner add/done (Gate Send with a passkey never queued); a86734c Reconnecting pill;
@@ -262,10 +297,14 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 | Rail | brand in the top bar (`.brand`, 216 wide): now the home mark at the top of the rail, its dot `--beacon-dot` while anything needs you | 861a6d40 |
 | Rail | no Cmd+1 to Cmd+9 place keys: now in rail order, Ctrl off a Mac, never while typing | 861a6d40 |
 | Toast | shadow `--light-top` and words 15/20: now `--float`, base 13/18, phone read 17/24 | 82685182 |
+| Phone shell | the avatar opened a Settings sheet: now the Places sheet (head row, six tiles, hint), a dialog named "Places"; the avatar is "Places and account" | 79124ccd |
+| Phone shell | no pin-a-fourth-page: a held tile (600 ms, or Shift+F10 / the context menu key) joins the pager after Agents and the header, one at most, per device | 79124ccd |
+| Phone shell | the header labels could shrink: they never shrink and scroll sideways when four do not fit | 79124ccd |
+| Top bar | `.needs-pill` was a violet wash: no fill, its count is `--beacon-ink` text | fd88ef27 |
+| Status mark | `.dot.recall` was gold: now `--text-2`; "From memory" is a source chip (1 px `--rule-strong`) | fd88ef27 |
 
 Not closed here: the phone tab bar badge (this branch has no tab bar, the phone shell uses page
-labels); `.needs-pill` is still a violet wash (the spec gives no replacement); `.dot.recall` is
-still gold (memory, not a status, and the spec has no role for it); the 10 s toast under a screen
+labels); the 10 s toast under a screen
 reader (a page cannot tell one is on); Now's rows keep the floating toast rather than in place.
 Chat and native-core draw their own marks: chat/session.js and chat/index.js (`dot signal` for
 running), chat/nav.js (`agent-dot`), chat/gate-item.js (`dot beacon`, now 8 via the alias),

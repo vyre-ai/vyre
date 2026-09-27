@@ -98,13 +98,19 @@ async function drive(page) {
       await tab.click(); await sleep(300);
     }
   }
-  // The approve swipe, as mobile's recipe has it: the row rests at scrollLeft === clientWidth, and
-  // scrolling it to 0 commits an approve (scrollend, or 90 ms after the last scroll). Only a row
-  // that needs no presence commits, so try each until approve.collapse has a sample.
+  // The approve swipe, as mobile's recipe has it (work/mobile 503414d4): the row is pointer-driven,
+  // and a drag right past 100 px commits an approve (13 moves of 10 px, 130 px). Only a row that
+  // needs no presence commits, so try each until approve.collapse has a sample.
   const swipes = page.locator('[data-testid="now-row-swipe"]');
   const count = await swipes.count();
   for (let i = 0; i < count; i++) {
-    await swipes.nth(i).evaluate(el => el.scrollTo({ left: 0, behavior: "instant" })).catch(() => {});
+    const b = await swipes.nth(i).boundingBox().catch(() => null);
+    if (!b) continue;
+    const x = b.x + b.width / 2, y = b.y + b.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    for (let step = 1; step <= 13; step++) await page.mouse.move(x + step * 10, y);
+    await page.mouse.up();
     await sleep(400);
     if ((await page.evaluate(() => /** @type {any} */ (window).__vyrePerf.report().metrics?.["approve.collapse"]?.n || 0)) > 0) break;
   }
