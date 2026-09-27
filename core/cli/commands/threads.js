@@ -13,6 +13,7 @@
 
 import http from "node:http";
 import path from "node:path";
+import readline from "node:readline";
 import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { untilde } from "../../config/index.js";
@@ -29,6 +30,7 @@ const FLAGS = {
   start: { values: ["project", "cwd", "name", "model"], cmd: "threads" },
   list: { bool: ["all"], values: ["agent"], cmd: "threads" },
   ls: { bool: ["all"], values: ["agent"], cmd: "threads" },
+  answer: { bool: ["always"], multi: ["pick", "answer"], values: ["scope", "message"], cmd: "threads" },
 };
 // --json: each subcommand prints one line of JSON (the tool's data, or { error }) and nothing
 // else, so a script can drive threads without parsing the words meant for a person (kit.js).
@@ -113,7 +115,7 @@ export function formatEvent(e, streamed = new Set()) {
     case "ask.raised": {
       const where = p.destination ? ` -> ${p.destination}` : "";
       return beacon(`  ? ask ${p.ask}  ${p.tool}: ${p.summary || ""}${where}`) + "\n"
-        + dim(`    vyre threads answer ${p.ask} allow|deny`) + "\n";
+        + dim(`    vyre threads answer ${p.ask}${p.kind === "question" ? "" : " allow|deny"}`) + "\n";
     }
     case "ask.answered":
       return dim(`  ask ${p.ask} ${p.decision}${p.by ? " by " + p.by : ""}`) + "\n";
@@ -168,9 +170,118 @@ async function resolveAsk(ref) {
   const r = await call("threads.asks", {});
   if (r.error) return { error: r.error.message };
   const hits = /** @type {any[]} */ (r.data || []).filter(a => String(a.id).startsWith(q));
-  if (hits.length === 1) return { id: hits[0].id };
-  if (hits.length > 1 && !hits.some(a => a.id === q)) return { error: `${hits.length} open asks start with "${q}"` };
+  const exact = hits.find(a => a.id === q);
+  if (exact) return { id: q, ask: exact };
+  if (hits.length === 1) return { id: hits[0].id, ask: hits[0] };
+  if (hits.length > 1) return { error: `${hits.length} open asks start with "${q}"` };
   return { id: q };
+}
+
+// ------------------------------------------------------------ answering a question
+
+/**
+ * One question's answer from what was typed: option numbers ("2", "1,3"), option labels (any
+ * case), or free text, which is the "Other" answer. Multi-select joins labels in option order,
+ * typed text last, with ", ", as the Deck's card does (deck/chat/lib/answers.js); single-select
+ * takes one. Returns the answer, or throws saying what is wrong.
+ * @param {{ question: string, header?: string, multiSelect?: boolean, options?: { label: string }[] }} q
+ * @param {string} typed
+ */
+export function answerFor(q, typed) {
+  const opts = Array.isArray(q.options) ? q.options : [];
+  const raw = String(typed || "").trim();
+  if (!raw) throw new Error(`"${q.header || q.question}" has no answer`);
+  const one = s => {
+    const t = s.trim();
+    if (/^\d+$/.test(t)) {
+      const n = Number(t);
+      if (n < 1 || n > opts.length) throw new Error(`"${q.header || q.question}" has options 1 to ${opts.length}; ${t} is not one`);
+      return { label: opts[n - 1].label };
+    }
+    const hit = opts.find(o => o.label.toLowerCase() === t.toLowerCase());
+    return hit ? { label: hit.label } : { text: t };
+  };
+  if (!q.multiSelect) {
+    const whole = one(raw);
+    // "1,3" on a single-select is a mistake, not the text "1,3".
+    if ("text" in whole && /^\d+(\s*,\s*\d+)+$/.test(raw)) throw new Error(`"${q.header || q.question}" takes one answer`);
+    return whole.label ?? whole.text;
+  }
+  const parts = raw.split(",").map(one);
+  const labels = new Set(parts.filter(p => p.label).map(p => p.label));
+  const text = parts.filter(p => p.text).map(p => p.text).join(", ");
+  return [...opts.map(o => o.label).filter(l => labels.has(l)), ...(text ? [text] : [])].join(", ");
+}
+
+/**
+ * threads.answer's `answers` ({ [question text]: answer }) from --pick (one per question, in
+ * order) and --answer "Q=choice" (Q is the question, its header, or its number). Questions still
+ * without an answer are returned in `missing`, for the picker or the error.
+ * @param {any[]} questions @param {{ pick?: string[], answer?: string[] }} given
+ */
+export function answersFrom(questions, { pick = [], answer = [] } = {}) {
+  /** @type {Record<string, string>} */
+  const answers = {};
+  if (pick.length > questions.length) throw new Error(`${pick.length} picks for ${questions.length} question${questions.length === 1 ? "" : "s"}`);
+  pick.forEach((p, i) => {
+    if (!/^\s*\d+(\s*,\s*\d+)*\s*$/.test(p)) throw new Error(`--pick takes option numbers (2, or 1,3); use --answer for words`);
+    answers[questions[i].question] = answerFor(questions[i], p);
+  });
+  for (const a of answer) {
+    const at = String(a).indexOf("=");
+    // Only one question: "--answer Warm crust" needs no "Q=".
+    const [key, value] = at < 0 ? (questions.length === 1 ? ["1", a] : [null, a]) : [String(a).slice(0, at).trim(), String(a).slice(at + 1)];
+    if (key === null) throw new Error(`--answer takes "question=answer" when there are several questions`);
+    const k = key.toLowerCase();
+    const q = /^\d+$/.test(key) ? questions[Number(key) - 1]
+      : questions.find(x => x.question.toLowerCase() === k) || questions.find(x => (x.header || "").toLowerCase() === k)
+        || questions.find(x => x.question.toLowerCase().startsWith(k));
+    if (!q) throw new Error(`no question matches "${key}"`);
+    answers[q.question] = answerFor(q, value);
+  }
+  return { answers, missing: questions.filter(q => !(q.question in answers)) };
+}
+
+/** The ask as a person reads it before answering: who asks, and what. */
+function showAsk(a) {
+  const who = a.agent || a.thread_name || (a.thread ? "thread " + id8(a.thread) : "a session");
+  if (a.kind === "question") {
+    out(`  ${bold(who + " asks")}  ${dim(id8(a.id))}`);
+    (a.questions || []).forEach((q, i) => {
+      out(`  ${a.questions.length > 1 ? dim(i + 1 + ". ") : ""}${q.header ? dim("[" + q.header + "] ") : ""}${q.question}${q.multiSelect ? dim("  (pick any)") : ""}`);
+      (q.options || []).forEach((o, n) => out(`     ${beacon(String(n + 1))}  ${o.label}${o.description ? dim("  " + cut(o.description, 80)) : ""}`));
+      out(dim(`     or type your own answer`));
+    });
+    return;
+  }
+  out(`  ${bold(`${who} asks to run ${a.tool}`)}  ${dim(id8(a.id))}`);
+  out(`  ${cut(a.summary, 200)}${a.destination ? dim(" -> " + a.destination) : ""}`);
+  const d = a.detail || {};
+  for (const k of ["description", "file", "url"]) if (d[k] && !String(a.summary).includes(d[k])) out(dim(`  ${k}: ${cut(d[k], 200)}`));
+  if (a.reason) out(dim(`  ${cut(a.reason, 200)}`));
+  if (a.always) out(dim(`  always is on offer${a.always_project ? " (--scope project: only in " + a.always_project + ")" : ""}`));
+}
+
+/** One line typed at this terminal. Prompts go to stderr, so --json output stays clean. */
+async function ask(text) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stderr, terminal: true });
+  try { return await new Promise(resolve => rl.question(text, resolve)); } finally { rl.close(); }
+}
+
+/**
+ * Ask each missing question at the terminal until it has an answer. `prompt` is the line reader
+ * (a test gives its own).
+ * @param {any[]} missing @param {Record<string, string>} answers @param {(text: string) => Promise<string>} [prompt]
+ */
+export async function pickAnswers(missing, answers, prompt = ask) {
+  for (const q of missing) {
+    for (;;) {
+      const typed = await prompt(`  ${q.header || cut(q.question, 40)}${q.multiSelect ? " (numbers, comma separated)" : ""}: `);
+      try { answers[q.question] = answerFor(q, typed); break; }
+      catch (e) { process.stderr.write(`  ${/** @type {Error} */ (e).message}\n`); }
+    }
+  }
+  return answers;
 }
 
 // ------------------------------------------------------------ watching
@@ -341,19 +452,71 @@ const run = {
       out(`  ${beacon(a.id)}  ${dim(id8(a.thread))}  ${a.tool}: ${cut(a.summary, 60)}${a.destination ? dim(" -> " + a.destination) : ""}`);
       if (a.reason) out(dim(`    ${cut(a.reason, 90)}`));
     }
-    out(dim("  vyre threads answer <ask> allow|deny [message]"));
+    out(dim("  vyre threads answer <ask> allow|deny [message] · a question: --pick N, or no answer to be asked"));
     return 0;
   },
 
   async answer(args) {
-    const [ref, decision, ...words] = args;
-    if (!ref || !["allow", "deny"].includes(decision)) return usage("vyre threads answer <ask> allow|deny [message]", "vyre threads asks lists the open ones");
+    const { flags, pos } = parse(args, FLAGS.answer);
+    const [ref, word, ...words] = pos;
+    const decisionWord = ["allow", "deny", "always"].includes(word) ? word : null;
+    // Without a decision word, what follows the ask is the message only if a decision came by flag.
+    const message = (decisionWord ? words : word !== undefined ? [word, ...words] : []).join(" ") || flags.message;
+    if (!ref) return usage("vyre threads answer <ask> allow|deny|always [message] [--scope project] [--pick N] [--answer \"Q=choice\"]", "vyre threads asks lists the open ones");
     const f = await resolveAsk(ref);
     if ("error" in f) return missed(f);
-    const r = await tool("threads.answer", { ask: f.id, decision, ...(words.length ? { message: words.join(" ") } : {}), surface: SURFACE });
+    const a = f.ask;
+    const interactive = Boolean(process.stdin.isTTY) && !json();
+    let decision = flags.always ? "always" : decisionWord;
+    if (flags.always && decisionWord && decisionWord !== "always") return usage(`--always and ${decisionWord} disagree`);
+    if (flags.scope && flags.scope !== "project") return usage("--scope takes project", "vyre help threads");
+    if (word !== undefined && !decisionWord && !flags.always && !(a && a.kind === "question")) return usage("vyre threads answer <ask> allow|deny|always [message]", "vyre threads asks lists the open ones");
+    if (!json() && a) showAsk(a);
+    /** @type {Record<string, any>} */
+    const input = { ask: f.id, surface: SURFACE };
+
+    if (a && a.kind === "question") {
+      if (decision === "always" || flags.scope) return usage("always and --scope are for permissions; a question is answered or declined (deny)");
+      if (decision === "deny") Object.assign(input, { decision: "deny" });
+      else {
+        // Free words after the ask answer a question with one question: `answer <id> Warm crust`.
+        const given = { pick: flags.pick || [], answer: [...(flags.answer || []), ...(!decisionWord && word !== undefined ? [[word, ...words].join(" ")] : [])] };
+        let got;
+        try { got = answersFrom(a.questions || [], given); } catch (e) { return usage(/** @type {Error} */ (e).message, `vyre threads answer ${id8(f.id)} --pick N`); }
+        if (got.missing.length) {
+          if (!interactive) return usage(`${got.missing.length === 1 ? "a question has" : got.missing.length + " questions have"} no answer: ${got.missing.map(q => q.header || cut(q.question, 40)).join(", ")}`,
+            `vyre threads answer ${id8(f.id)} --pick N (one per question), or --answer "Q=choice"; deny declines`);
+          await pickAnswers(got.missing, got.answers);
+        }
+        Object.assign(input, { decision: "allow", answers: got.answers });
+      }
+      if (decision === "deny" && message) input.message = message;
+    } else {
+      if (!decision && interactive && a) {
+        const offer = a.always ? "[y]es once, [a]lways, [n]o" : "[y]es once, [n]o";
+        for (;;) {
+          const t = (await ask(`  Allow? ${offer}: `)).trim().toLowerCase();
+          if (t === "y" || t === "yes") { decision = "allow"; break; }
+          if (t === "n" || t === "no") { decision = "deny"; break; }
+          if (a.always && (t === "a" || t === "always")) { decision = "always"; break; }
+        }
+      }
+      if (!decision) return usage("vyre threads answer <ask> allow|deny|always [message]", "vyre threads asks lists the open ones");
+      if (flags.scope && decision !== "always") return usage("--scope project goes with always");
+      // Said here, before vyred refuses it, with the reason in words.
+      if (a && decision === "always" && !a.always) return fail("this ask offers no always; answer allow or deny", `vyre threads answer ${id8(f.id)} allow`);
+      if (a && flags.scope && !a.always_project) return fail("this ask offers no always for one project", `vyre threads answer ${id8(f.id)} always`);
+      Object.assign(input, { decision, ...(flags.scope ? { scope: flags.scope } : {}), ...(message ? { message } : {}) });
+    }
+
+    const r = await tool("threads.answer", input);
     if (!r) return 1;
     if (json()) { emit(r); return r.answered ? 0 : 1; }
-    if (r.answered) { out(`  ${decision === "allow" ? signal("allowed") : beacon("denied")} ${dim(r.ask)}`); return 0; }
+    if (r.answered) {
+      const said = input.answers ? "answered" : input.decision === "deny" ? "denied" : input.decision === "always" ? "always allowed" : "allowed";
+      out(`  ${input.decision === "deny" ? beacon(said) : signal(said)} ${dim(id8(r.ask))}`);
+      return 0;
+    }
     return fail(`not answered${r.note ? ": " + r.note : ""}`, "vyre threads asks lists the open ones");
   },
 
@@ -374,6 +537,16 @@ run.show = run.watch;
 export default {
   name: "threads", order: 22, usage: "vyre threads start|send|watch|answer|stop … [--json]",
   summary: "headless threads vyred runs: start, send, list, watch, lease, release, asks, answer, stop (anything else searches sessions)",
+  help: [
+    "Answering an ask (vyre needs and vyre threads asks list them):",
+    "  vyre threads answer <ask> allow|deny [message]    a permission, once",
+    "  vyre threads answer <ask> always [--scope project]  allow, and stop asking (where offered)",
+    "  vyre threads answer <ask> --pick 2                 a question: option 2 (1,3 for several)",
+    "  vyre threads answer <ask> --answer \"Palette=Warm crust\"   by question, header or number; words",
+    "                                                    that match no option are your own answer",
+    "  vyre threads answer <ask>                          in your terminal: shows it and asks",
+    "  vyre threads answer <ask> deny [message]           declines a question",
+  ].join("\n"),
   /** @param {string[]} args */
   async run(args) {
     const [sub, ...more] = args;
@@ -381,7 +554,7 @@ export default {
     const rest = more.filter(a => a !== "--json");
     // A mistyped flag is refused before vyred is started for it. What is sent or answered is
     // free text, so those take the words as they are.
-    if (sub !== "send" && sub !== "answer") parse(rest, FLAGS[sub] || { values: [], cmd: "threads" });
+    if (sub !== "send") parse(rest, FLAGS[sub] || { values: [], cmd: "threads" });
     if (!(await up())) return 5;
     return run[sub](rest);
   },

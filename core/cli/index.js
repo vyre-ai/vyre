@@ -40,6 +40,7 @@ export async function commands() {
 const GROUPS = [
   ["Start and connect", ["up", "status", "down", "box", "name", "link", "capsule"]],
   ["Projects and sessions", ["projects", "new", "open", "threads", "resume", "start", "context", "pick", "unpick"]],
+  ["Waiting on you", ["needs", "gate"]],
   ["Agents and watchers", ["agents", "watchers"]],
   ["Time and lists", ["agenda", "alarm", "timer", "remind", "snooze", "todo", "notes"]],
   ["Memory", ["recall", "index", "memory", "why", "learn"]],
