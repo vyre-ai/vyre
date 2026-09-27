@@ -181,3 +181,21 @@ test("contradictions: the person sees and settles them; a model never does", asy
   assert.equal((await call("memory.contradictions", {}, "deck")).data.contradictions.find(c => c.rel === "lives_in"), undefined);
   assert.equal((await call("memory.settle", { id: home.id, pick: "Porto" }, "deck")).code, "not_found");
 });
+
+test("card: one card per person or org, what it is to the person on their own surfaces only", async t => {
+  const { call } = await module_(t);
+  const dana = (await call("memory.card", { about: "Dana Reyes" }, "deck")).data.card;
+  assert.equal(dana.label, "Dana Reyes");
+  assert.equal(dana.kind, "person");
+  assert.ok(dana.facts.some(f => /Harlow Legal/.test(f.text)), JSON.stringify(dana));
+  assert.ok(dana.projects.includes("Harlow Legal"));
+  assert.ok(dana.sources.length >= 1 && dana.sources.length <= 3);
+  assert.ok(dana.sessions >= 1 && typeof dana.last === "string");
+  assert.equal((await call("memory.card", { about: "Nobody Atall" }, "deck")).data.card, null);
+  // What someone is to the person is theirs: shown on their surfaces, never to a project's agent.
+  await call("memory.remember", { text: "my wife Juno loves the harlow site" }, "cli");
+  const juno = (await call("memory.card", { about: "Juno" }, "deck")).data.card;
+  assert.equal(juno?.to_you, "your wife", JSON.stringify(juno));
+  const kit = await call("memory.card", { about: "Juno", agent: "kit", room: "northwind" }, "mcp:agent:kit");
+  assert.ok(!kit.data?.card?.to_you, JSON.stringify(kit));
+});

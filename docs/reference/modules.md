@@ -39,7 +39,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 27 | 13 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 28 | 13 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
@@ -316,7 +316,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [27](tools.md#memory), 1 of them only for other modules
+- Tools: [28](tools.md#memory), 1 of them only for other modules
 - Emits: [13 events](events.md#memory)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

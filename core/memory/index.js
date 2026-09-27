@@ -943,6 +943,32 @@ export default {
         return { lines: out };
       },
     });
+    // "Who is ..." and "everything about ...": one card per person, org or project (graph win 2).
+    // The graph's facts about it, the projects it comes up in, when it last did, and a few
+    // sessions to open; for the person's own surfaces, what it is to them too (their wife, their dog).
+    ctx.tool("memory.card", {
+      description: "One card about a person, org or project: { card: { label, kind, role, to_you?, facts: [{ text, source, age }], projects: [name], sessions, last, sources: [{ session, name, ts }] } | null }. to_you is who it is to the person (\"your wife\"), for their own surfaces only. project_cwds or room scope it as memory.facts does.",
+      input: { type: "object", required: ["about"], properties: { about: { type: "string" }, project_cwds: cwds, ...roomField, ...agentField } },
+      run: async ({ about, project_cwds = [], agent, ...rest }, { caller } = {}) => {
+        const room = roomOf(rest);
+        await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const g = graph.facts({ about: String(about), project_cwds: clean(project_cwds), room, limit: 40 });
+        let sees = true;
+        try { await personalOnly({ agent }, caller, "memory.card"); } catch { sees = false; }
+        const mine = sees ? personal.about(String(about)) : null;
+        if (!g.about && !mine) return { card: null };
+        const a = g.about;
+        const facts = (g.facts || []).filter(f => f.rel !== "mentioned_in" && !f.stale).slice(0, 8).map(f => ({ text: f.text, source: f.source, age: f.seen_age || f.age }));
+        const projects = a ? /** @type {any[]} */ (ctx.store.db.prepare("SELECT DISTINCT r.name FROM memory_room_nodes n JOIN memory_rooms r ON r.slug = n.room WHERE n.id = ? ORDER BY r.name").all(a.id)).map(r => String(r.name)) : [];
+        const sources = a ? /** @type {any[]} */ ((() => { try { return graph.why({ fact: a.id, project_cwds: clean(project_cwds), room, limit: 3 }).turns || []; } catch { return []; } })())
+          .map(x => ({ session: String(x.session), name: x.name ?? null, ts: x.ts ?? null })) : [];
+        // Who it is to the person: a relative or pet, in their own word for them.
+        const link = mine?.links?.find(l => l.subj === "me" && l.current);
+        const to_you = link ? `your ${personal.called(mine.entity.id) || link.rel}` : null;
+        return { card: { label: a?.label || mine?.entity?.label || String(about), kind: a?.kind || mine?.entity?.kind || null, role: a?.role ?? null,
+          ...(to_you ? { to_you } : {}), facts, projects, sessions: a?.sessions ?? 0, last: a?.age ?? null, sources } };
+      },
+    });
     // Two values for one thing about the person's life, put to them to settle (graph win 3).
     ctx.tool("memory.contradictions", {
       description: "Things memory holds two values for about the person's life (where they live, their wife's name), for them to settle: { contradictions: [{ id, question, values: [{ value, confidence, sessions, last_seen }] }] }. The person's own surfaces only.",
