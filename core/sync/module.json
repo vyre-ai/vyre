@@ -4,7 +4,7 @@
   "description": "A paired device (a Mac or a Windows PC) sends its own Claude Code session files to the box, once its person turns import on for it (ADR 0008 5a).",
   "roles": ["box", "local"],
   "requires": ["link"],
-  "does": { "tools": ["sync.consent", "sync.delete", "sync.upload.plan", "sync.upload.start", "sync.upload.chunk", "sync.upload.finish", "sync.send"] },
+  "does": { "tools": ["sync.consent", "sync.delete", "sync.delete.import", "sync.upload.plan", "sync.upload.start", "sync.upload.chunk", "sync.upload.cancel", "sync.upload.finish", "sync.send"] },
   "watches": { "emits": ["sync.progress", "sync.revoked", "sync.deleted", "sync.sending", "sync.sent"], "hears": ["link.unpaired"] },
   "shows": { "deck": [], "capsule": [], "cli": ["sync"] },
   "needs": {},

@@ -4,6 +4,68 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Reviewer's second pass on the session-import fixes: full-file scrub, a firstParty flag, two LOWs
+
+- MEDIUM (reviewer): `sync.upload.finish` scrubbed only a bounded prefix of the file (the old
+  `SCRUB_MAX_BYTES`), so a secret past that point landed unquarantined and Recall indexed it.
+  Fixed: it now scans every chunk as it streams past to hash it, carrying a small overlap into the
+  next window so a pattern split across a chunk boundary is still caught, not just a prefix.
+- LOW (reviewer): `sync.send`'s check trusted the caller label `module:import` by name alone — a
+  home module can call itself "import" and get that same label. `core/modules/index.js`'s loader
+  now stamps `meta.firstParty` on every module-to-module `ctx.call`, from the calling module's own
+  directory (shipped in core/, local/ or modules/, reusing the existing `firstParty()` helper) — a
+  manifest cannot grant this, same as `as`. `sync.send` now requires both the label and the flag.
+  This is the same mechanism memory-iq's 2ecf79ba already added for `memory.pace` (reviewer-cleared,
+  0.1.1 batch) — checked line for line against it and kept identical rather than a second one; not
+  a rebase, since 2ecf79ba sits 850+ commits from this branch's base, but the same code.
+- LOW (reviewer): `sync.upload.start`'s resume path already returned before the `MAX_OPEN` check
+  and the quota's in-flight sum (read closely to confirm); added a regression test locking that in.
+- LOW (reviewer): `sync.consent { on: true }` without a `planHash` used to keep whatever plan_hash
+  was already on the peer, so new files landed tagged with a stale plan. Now clears it when none
+  is given; turning consent off leaves plan_hash untouched (it stops new uploads either way).
+- Tests: core/sync/sync.test.js (the past-8MB scrub test, the resume-vs-cap regression),
+  core/sync/sync-send.test.js (the firstParty spoof case), core/modules/index.js's own test suite
+  unaffected (40/40). test/link-harness.js's `macCall` now takes an optional `meta`, used by the
+  new sync-send test; every existing caller is unaffected (meta defaults to `{}`).
+
+#### Session-import security review fixes (e2e): path traversal, quota bypass, whole-file reads, per-import delete
+
+- HIGH: `link.upload`'s path was built from a caller-given string; `new URL()`'s own ".." handling
+  could resolve it onto any box tool. Fixed: the carrier now takes `{ upload, offset, data }`, and
+  the path to the box's `/v1/sync/upload/<id>` route is built here, entirely from a validated UUID
+  the box itself handed back at `sync.upload.start`, never from the caller.
+- MEDIUM: `sync.consent` listed `module` as a caller, so any home module could turn a device's
+  import on. Now person-only (`cli`, `local`, `deck`, `capsule`).
+- MEDIUM: `sync.send`'s caller was any `module`, and read whatever path it was given. Now only
+  `module:sync` and `module:import` may call it, and every path is resolved for real (symlinks
+  followed) and refused unless it lands inside `~/.claude` or `CLAUDE_CONFIG_DIR` — the device's
+  own Claude Code folder, nothing else, ever.
+- MEDIUM x2 (quota): a chunk could grow a file past what `sync.upload.start` declared, filling the
+  disk while the quota check only ever saw the declared number; and parallel starts, none finished,
+  each checked alone against `used_bytes`, could together blow the quota. Fixed: a chunk that would
+  grow the file past its declared `bytes` is refused; in-flight declared bytes across all of a
+  peer's open uploads count against the quota too; and a new `MAX_OPEN` (8) caps how many uploads
+  one peer may have open at once, independent of quota. `sync.upload.finish` books the real size on
+  disk, not the declared one.
+- LOW: `safeDest`'s symlink check at the final path segment was inside the same `try` as "does it
+  exist", so the refusal was silently swallowed by the catch. Split apart; the refusal now fires.
+- Whole-file reads: `sync.upload.finish` read the entire temp file into one string to hash and
+  scrub it, undoing `MAX_FILE`'s own memory bound for anything near the cap. Now streams it once
+  (`fs.createReadStream` into a running hash), keeping only the scrub scan's bounded prefix in
+  memory past the stream.
+- New `sync.upload.cancel { upload }`: drops an open upload's temp file and slot before it
+  finishes, freeing one of `MAX_OPEN` without waiting for the idle sweep. Never another device's
+  upload to cancel.
+- New `sync.consent`'s optional `planHash`, stamped onto every file an approved import plan lands
+  in `sync_files`. New `sync.delete.import { machine, planHash, confirm }`: deletes just one
+  approved plan's files, leaving a later, separately-approved plan's files for the same device
+  untouched. Same preview-then-confirm shape as `sync.delete` (added last session): without
+  `confirm: true`, answers file and byte counts and deletes nothing.
+- core/sync/module.json: `sync.delete.import`, `sync.upload.cancel` added to `does.tools`.
+- Tests: core/sync/sync.test.js and sync-send.test.js cover all of the above (path traversal via
+  the UUID carrier, quota bypass, in-flight accounting, MAX_OPEN, cancel, the streamed finish on a
+  ~10 MB file, per-plan delete leaving the other plan's file alone, and the caller restrictions).
+
 #### Unpairing or turning sync off keeps everything a device sent; sync.delete is its own action; sync.send built
 
 - The user overruled the original design: what a device brought is the person's, not the

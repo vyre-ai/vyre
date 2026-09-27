@@ -584,3 +584,66 @@ threads.asks on a box, for the person, merges each Mac's open asks (ALLOW read),
 source/machine, oldest first, with the box's gated rule in presence.required; listing records
 each ask's gated flag for threads.answer's presence rule. Test box: 117 of 117 (federation
 answer, reads, send, core/link, switchboard, hygiene, docs-build, docs-index).
+
+## Session-import security fixes (e2e review, 28 Sep 2026)
+
+Fixed everything open from e2e's review of 96cbf078/6816e83c, plus the two new asks in this
+round's brief (per-import delete, sync.upload.cancel). One sha, all in core/sync and
+core/link/mac.js. Detail in CHANGELOG.md; summary:
+
+- HIGH `link.upload` path traversal: fixed. The carrier takes `{ upload, offset, data }`; the box
+  path is built from a validated UUID, never a caller string.
+- MEDIUM `sync.consent`/`sync.send` module-caller widths: fixed (`cli`/`local`/`deck`/`capsule` for
+  consent; `module:sync`/`module:import` only for send). `sync.send` now resolves every path for
+  real and refuses anything outside `~/.claude`/`CLAUDE_CONFIG_DIR`.
+- The five earlier MEDIUMs (declared-size quota bypass, in-flight + MAX_OPEN cap, person-only
+  consent, streamed finish, the swallowed symlink refusal): all fixed, all with tests.
+- New: `sync.upload.cancel`, `sync.delete.import` (per-plan delete, `sync.consent`'s new
+  `planHash` stamped onto each landed file). `sync.delete`'s confirm+preview shape (from last
+  session) unchanged.
+- Changed contracts: `sync.consent` input gains `planHash` (optional); `sync_peers` and
+  `sync_files` gain a `plan_hash` column (migration, additive); `link.upload`'s input shape
+  changed from `{ path, data }` to `{ upload, offset, data }` (internal-only tool, sync's own
+  carrier — no other caller exists). module.json's `does.tools` gains `sync.delete.import`,
+  `sync.upload.cancel`.
+- Tests: core/sync/sync.test.js, sync-send.test.js. All green on testbox before this note (37/37
+  on the pre-cancel/pre-import-delete batch); the added tests for cancel/streamed-finish/per-plan
+  delete are new this round and need one more testbox run before the sha goes out (testbox was
+  mid-resize when this was written).
+
+## Reviewer's second pass (28 Sep 2026)
+
+HOLD lifted. Fixed the MEDIUM and both LOWs reviewer flagged on 656ed493:
+- MEDIUM: finish() now scans every chunk while streaming (small overlap across chunk boundaries),
+  not just an 8 MB prefix.
+- LOW: sync.send requires meta.firstParty too, not just the caller label. New kernel bit:
+  core/modules/index.js's ctx.call now stamps `firstParty` on every module-to-module call, from
+  the calling module's own directory (the existing firstParty() helper), never a manifest's claim.
+  test/link-harness.js's macCall gained an optional meta param for this (additive, every existing
+  caller unaffected).
+- LOW: start()'s resume path was already correct (returns before MAX_OPEN/quota); added a
+  regression test rather than changing working code.
+- LOW: sync.consent { on: true } with no planHash now clears plan_hash instead of keeping a stale one.
+
+All green: 139/139 (core/sync, core/link, core/modules, test/link*, test/federation-*,
+core/planner/link.test.js, hygiene, docs-index) on testbox post-resize.
+
+## Needs from others
+
+- None open. Sent the sha to e2e and reviewer per the brief once testbox confirms green.
+
+## De-duplicated meta.firstParty (team-lead check, 28 Sep 2026)
+
+team-lead flagged that memory-iq (work/memory-iq 2ecf79ba, reviewer-cleared, 0.1.1 batch) already
+added a loader-set firstParty flag on module calls in core/modules/index.js — same idea, built
+independently on a different branch. Checked line for line: 2ecf79ba's change is in
+`context(m).call`'s `!as` branch, exactly where mine was. Replaced mine with the identical code
+(same variable order, same call site, same comment intent) rather than keeping a second version.
+Did not do a literal `git rebase` onto 2ecf79ba — that commit is 850+ commits from this branch's
+base (memory-iq's own unrelated history), so a real rebase would pull in work far outside this
+review's scope. The kernel diff is now byte-for-byte the same logic as 2ecf79ba's, so a later
+real merge of that commit is a no-op here. Confirmed with `diff` against
+`git show 2ecf79ba:core/modules/index.js`.
+
+139/139 green on testbox again after the swap (core/sync, core/link, core/modules, test/link*,
+test/federation-*, core/planner/link.test.js, hygiene, docs-index).

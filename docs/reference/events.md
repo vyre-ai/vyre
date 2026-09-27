@@ -318,7 +318,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `sync.deleted` | `machine` |
+| `sync.deleted` | `bytes`, `files`, `machine`; sometimes `planHash` |
 | `sync.progress` | `machine`, `path`; sometimes `bytes`, `done`, `quarantined`, `total` |
 | `sync.revoked` | `machine` |
 | `sync.sending` | `ok`, `path`; sometimes `error`, `quarantined` |

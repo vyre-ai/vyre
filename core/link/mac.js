@@ -568,16 +568,20 @@ export function macSide(ctx, seam = {}) {
   // upload's chunk bytes (core/sync). Not a general proxy: only the box's own upload route, by
   // path, never a tool name, so this can never reach anything link.remote already refuses.
   ctx.tool("link.upload", {
-    description: "A raw POST to the box's sync.upload route, with a Buffer body. Internal: core/sync's own carrier for what link.remote (JSON only) cannot send.",
-    input: { type: "object", required: ["path", "data"], properties: { path: { type: "string" }, data: {} } },
+    description: "One chunk of sync.upload's bytes, as a Buffer, to the box's upload route. Internal: core/sync's own carrier for what link.remote (JSON only) cannot send. The path is built here, from a validated upload id, never taken from the caller (e2e's review: a caller-given path resolved through new URL()'s own \"..\" handling would have reached any box tool).",
+    input: { type: "object", required: ["upload", "offset", "data"], properties: { upload: { type: "string" }, offset: { type: "integer", minimum: 0 }, data: {} } },
     internal: true,
-    run: async ({ path: p, data }) => {
-      if (!/^\/v1\/sync\/upload\//.test(String(p))) throw Object.assign(new Error("link.upload reaches only the box's sync.upload route"), { code: "denied" });
+    run: async ({ upload, offset, data }) => {
+      // Exactly what sync.upload.start hands back: a UUID. Nothing else is even attempted.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(upload))) {
+        throw Object.assign(new Error("upload must be the id sync.upload.start gave"), { code: "bad_input" });
+      }
       if (!conn) throw Object.assign(new Error("this Mac is not paired with a box (vyre link pair <address>)"), { code: "no_link" });
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""), "base64");
+      const p = `/v1/sync/upload/${encodeURIComponent(upload)}?offset=${encodeURIComponent(String(offset))}`;
       let r;
       try {
-        r = await conn.json("POST", String(p), buf, { timeout: seam.timeout || 10_000 });
+        r = await conn.json("POST", p, buf, { timeout: seam.timeout || 10_000 });
         up();
       } catch (e) {
         const err = /** @type {any} */ (e);
