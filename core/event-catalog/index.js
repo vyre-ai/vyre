@@ -15,6 +15,23 @@
 export const ALIASES = {};
 
 /**
+ * Renames agreed with cohesion (27 Sep 2026), not made yet: each owner renames its own emits, and
+ * then the old name moves into ALIASES for one release. Until then the old names are the real
+ * ones, so the catalog doesn't mark them.
+ *   file.created, file.moved, file.trashed, file.uploaded (glass), file.touched (harness) -> files.*
+ *   computer.* (15 types, computers) -> computers.*
+ *   projects.moved (projects) -> project.moved
+ * thread.* stays as it is.
+ */
+export const PLANNED = Object.freeze({
+  "file.created": "files.created", "file.moved": "files.moved", "file.trashed": "files.trashed",
+  "file.uploaded": "files.uploaded", "file.touched": "files.touched",
+  "projects.moved": "project.moved",
+  ...Object.fromEntries(["checked-out", "created", "frozen", "handed-back", "idle-warning", "joined", "left", "paused",
+    "released", "resumed", "shielded", "stopped", "taken-over", "thawed", "unshielded"].map(v => [`computer.${v}`, `computers.${v}`])),
+});
+
+/**
  * @param {any[]} status rows from ctx.modules.status()
  * @param {Record<string, string>} [aliases]
  */
