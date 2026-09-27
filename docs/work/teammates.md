@@ -20,13 +20,41 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   boards (work/app-design), Paseo's agent tools and lifecycle docs.
 
 ## Doing
-- Lead approved (2026-09-27): per-project notes parts in each project's own folder, shown as one
-  file; per-project vault grants (the lead told vault about the `project` column).
-- User decisions folded in (auto-merging integrator, sharing and assistant-assigned teammates,
-  one per role, notes per project folder, offered conversion, 200 turns a day, Balanced default).
+- PAUSED (2026-09-27, the lead): the user refocused on the native core. Last sha before this note:
+  c2711b6f, staged in batch 3b.
 
-## Next
-1. When ADR 0030 steps 1 to 3 are on main: migration step 1 (core/team, fake driver), then 2 to 8.
+## Where ADR 0031 stands
+- Built: nothing. Design only: ADR 0031 is complete with every user decision in (integrator
+  auto-merge, sharing and assistant-assigned teammates, one per role, notes per project folder,
+  offered conversion, 200 turns a day, Balanced default, section 14 approved). Docs tests 61 of 61.
+- app-design boards approved (work/app-design 99820a16 and 6a1e2f7a).
+- Blocked on ADR 0030 steps 1 to 3 (sessions) before any build.
+
+## Next (when resumed)
+1. Merge main, then migration step 1: core/team (tables, team.*, inbox, CLI) against the fake
+   driver, with the slot ledger and usage pause in sessions (or through its contract).
+2. Steps 2 to 9 of the ADR's Migration section, in order.
+
+## Settings this feature needs (handed to native-core for Settings)
+Per project (Project settings > Teammates > Limits):
+- `team.preset`: `light` (1, 2) | `balanced` (3, 4, default) | `max` (6, 10) | `custom`. Suggest
+  Light with one line when the rate-limit signals show a Pro plan; never preselect Max.
+- `team.max_active`: 1 to 8 (active teammates at once). `team.max_subagents`: 0 to 16.
+- Impact line: peak = teammates + 0.3 x subagents Opus sessions (1.6, 4.2, 9); shown as how long a
+  5-hour window lasts at the peak; "estimate" until a week of history, then measured from
+  `thread.usage`.
+- `team.pause_at_warning`: on (pause new starts at `allowed_warning` or utilization >= 0.8).
+- `team.api_fallback`: off (use the API key when the plan is exhausted; bills per call).
+- `team.push_after_merge`: off. `team.test_command`: detected, editable.
+Per box (Settings > Box), capping every project:
+- `limits.max_active_teammates`: 6. `limits.max_subagents`: 8.
+Models (Settings > Models):
+- `models.purposes.teammate`: Opus. `models.purposes.helper`: the faster model.
+Per teammate (its Setup tab):
+- `daily_turns`: 200 on a subscription; `budget_usd` per day and month on an API key; model
+  override; tools; isolation; shared projects or assistant; grants per project.
+Read-only state to show: the plan's usage per auth from `thread.limit` (status, window kind,
+utilization, resets_at), the slot chip (per project), the waiting queue, "Resume anyway".
 
 ## Needs from others
 - sessions: the slot ledger (`sessions.slots`, events `slot.taken|released|queued`), the Task-tool
