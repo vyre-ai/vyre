@@ -394,10 +394,10 @@ export function macSide(ctx, seam = {}) {
   }
 
   ctx.tool("link.pair", {
-    description: "Pair this Mac with your box. Shows a code to approve on the box: `vyre link approve <code>` there, or in the Deck.",
-    input: { type: "object", properties: { box: { type: "string" } }, required: ["box"] },
+    description: "Pair this device with your box. Shows a code to approve on the box: `vyre link approve <code>` there, or in the Deck. kind: \"mac\" (the default, the full link feature set) or \"device\" (paired only to import its own sessions, core/sync).",
+    input: { type: "object", properties: { box: { type: "string" }, kind: { type: "string", enum: ["mac", "device"] } }, required: ["box"] },
     callers: ["cli", "local", "capsule"],
-    run: async ({ box }) => {
+    run: async ({ box, kind }) => {
       let address = String(box).trim();
       if (!/^[a-z]+:\/\//i.test(address)) address = "https://" + address;
       if (!mayPair(address)) throw refuse();
@@ -407,7 +407,7 @@ export function macSide(ctx, seam = {}) {
       // pinned to it, and the owner approving on that very box is what makes the pin trustworthy.
       const first = connect(address, null);
       let r;
-      try { r = await first.json("POST", "/v1/tools/link.pair.request", { name: seam.hostname || os.hostname() }, { timeout: seam.timeout || 10_000 }); }
+      try { r = await first.json("POST", "/v1/tools/link.pair.request", { name: seam.hostname || os.hostname(), ...(kind === "device" ? { kind } : {}) }, { timeout: seam.timeout || 10_000 }); }
       catch (e) { throw new Error(/** @type {any} */ (e).code === "not_box" ? /** @type {Error} */ (e).message : `could not reach the box at ${address}: ${/** @type {Error} */ (e).message}`); }
       if (r.body.error) throw new Error(r.body.error.code === "not_owner" ? "the box does not serve this device: sign in to Tailscale as the box's owner" : r.body.error.message);
       const d = r.body.data;
@@ -562,6 +562,31 @@ export function macSide(ctx, seam = {}) {
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } }, required: ["tool"] },
     internal: true,
     run: async ({ tool, input }) => ({ result: await remote(tool, input || {}) }),
+  });
+
+  // A raw POST with a Buffer body, for the one thing link.remote (JSON only) cannot carry: an
+  // upload's chunk bytes (core/sync). Not a general proxy: only the box's own upload route, by
+  // path, never a tool name, so this can never reach anything link.remote already refuses.
+  ctx.tool("link.upload", {
+    description: "A raw POST to the box's sync.upload route, with a Buffer body. Internal: core/sync's own carrier for what link.remote (JSON only) cannot send.",
+    input: { type: "object", required: ["path", "data"], properties: { path: { type: "string" }, data: {} } },
+    internal: true,
+    run: async ({ path: p, data }) => {
+      if (!/^\/v1\/sync\/upload\//.test(String(p))) throw Object.assign(new Error("link.upload reaches only the box's sync.upload route"), { code: "denied" });
+      if (!conn) throw Object.assign(new Error("this Mac is not paired with a box (vyre link pair <address>)"), { code: "no_link" });
+      const buf = Buffer.isBuffer(data) ? data : Buffer.from(String(data ?? ""), "base64");
+      let r;
+      try {
+        r = await conn.json("POST", String(p), buf, { timeout: seam.timeout || 10_000 });
+        up();
+      } catch (e) {
+        const err = /** @type {any} */ (e);
+        throw Object.assign(new Error(err.code === "not_box" ? err.message : `the box is not reachable (${err.code || err.message})`), { code: err.code === "not_box" ? "not_box" : "box_unreachable" });
+      }
+      // Same convention as boxCall/link.call: the box's own error becomes this call's error too.
+      if (r.body && r.body.error) throw Object.assign(new Error(r.body.error.message), { code: r.body.error.code });
+      return r.body && r.body.data !== undefined ? r.body.data : r.body;
+    },
   });
 
   /** @type {Set<() => void>} */

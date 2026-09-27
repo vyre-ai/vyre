@@ -243,6 +243,35 @@ box.
 
 ## Doing
 
+28 Sep 2026, later the same day: the user overruled a condition — unpairing, turning sync off, or
+losing a device deletes nothing; what it brought is the person's. Reworked: `sync.consent { on:
+false }` and `link.unpaired` now only stop new uploads and emit `sync.revoked` informationally.
+New `sync.delete { machine }` (person-only) is the one thing that deletes `synced/<machine>/`,
+emitting `sync.deleted`. Built `sync.send { files, mode }` too (agreed with memory-iq: they own
+`import.start`/`import.scan`/`import.plan`, module-only door into this) — walks a file list
+through `sync.upload.plan/start/finish`, acking each file and a done summary (`sync.sending`,
+`sync.sent`), which is also cohesion's "synced" status-event ask (interaction.md, sha 5debc1bc)
+folded in rather than built twice. New carrier `link.upload` on the Mac (core/link/mac.js) for the
+one thing `link.remote`'s JSON-only channel can't send: the chunk bytes, as a Buffer, straight to
+the box's raw route. `link.pair`/`link.pair.request` take `kind`.
+
+New test core/sync/sync-send.test.js: a real file, over a real paired link (test/link-harness.js's
+`pair()`, `router: true`), through the actual daemon route — the HTTP-level gap flagged in the
+previous entry is closed for the common path (resume-after-restart and Windows are still
+untested, no client exists yet). core/sync/sync.test.js updated for the keep-everything behavior.
+Tests on the test box, nice -n 15, load under 5: 113/113 across core/sync + core/link + link +
+link-federation + federation-answer + federation-send + federation-reads + boundaries + hygiene +
+docs-build. Sent to e2e, memory-iq, and the lead. Replied to memory-iq's module-ownership question
+(sync.deleted, sync.revoked and the acks are all core/sync's, confirmed) and cohesion's ask
+(folded into sync.send rather than answered separately).
+
+Still open: whether `import.start` records consent by calling `sync.consent` itself (my
+recommendation, so the box's copy of the switch stays the one and only record — see the message
+to memory-iq) or some other path; the plan-hash re-consent question memory-iq raised (not built:
+`sync.consent` is on/off only, no plan binding yet); "Replace this device" (whose folder name the
+new device's files land under is undecided — flagged back to memory-iq); Drive onboarding
+(docs/design/drive-onboarding.md, the lead's ask) not started this round.
+
 28 Sep 2026: session import (ADR 0008 5a) pulled forward to 0.1.1, memory-iq leading, this stream
 owning the transport. Built the box side: new module core/sync (`sync.consent`,
 `sync.upload.plan/start/chunk/finish`), core/sync/scrub.js (content secret scan at ingest,

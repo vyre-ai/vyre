@@ -36,7 +36,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 22 | 16 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 23 | 16 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 23 | 6 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
@@ -56,7 +56,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
-| [`sync`](#sync) | `core/sync` | `box`, `local` | 5 | 2 | capsule, cli, deck |
+| [`sync`](#sync) | `core/sync` | `box`, `local` | 7 | 5 | capsule, cli, deck |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 42 | 27 | cli |
@@ -284,7 +284,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [22](tools.md#link), 3 of them only for other modules
+- Tools: [23](tools.md#link), 4 of them only for other modules
 - Emits: [16 events](events.md#link)
 - Shows on: capsule, cli, deck
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
@@ -506,10 +506,10 @@ A paired device (a Mac or a Windows PC) sends its own Claude Code session files 
 - Folder: `core/sync`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `link`
-- Tools: [5](tools.md#sync)
-- Emits: [2 events](events.md#sync)
+- Tools: [7](tools.md#sync)
+- Emits: [5 events](events.md#sync)
 - Shows on: capsule, cli, deck
-- Teaches tips: `[object Object]`
+- Teaches tips: `[object Object]`, `[object Object]`
 
 ## system
 

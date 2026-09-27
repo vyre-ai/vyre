@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Unpairing or turning sync off keeps everything a device sent; sync.delete is its own action; sync.send built
+
+- The user overruled the original design: what a device brought is the person's, not the
+  device's. `sync.consent { on: false }` and unpairing (`link.unpaired`) now only stop new
+  uploads and emit `sync.revoked` informationally — neither deletes anything. New tool
+  `sync.delete { machine }`, person-only, deletes `synced/<machine>/` and everything derived from
+  it, and emits `sync.deleted`.
+- New tool `sync.send { files, mode }` (device role, module-only caller — `import.start`'s one
+  door): walks a given file list through `sync.upload.plan/start/finish`, acks each file
+  (`sync.sending`) and summarizes when done (`sync.sent { sent, failed, quarantined, of, skipped }`
+  — the status line cohesion asked for, so a surface never goes quiet mid-import).
+- core/link/mac.js: a new internal carrier, `link.upload { path, data }`, for the one thing
+  `link.remote` (JSON only) cannot send — an upload's chunk bytes as a Buffer, POSTed straight to
+  the box's `/v1/sync/upload/<id>` route. Scoped to that one route only, never a general proxy.
+  `link.pair` and `link.pair.request` take `kind` ("mac" or "device").
+- core/sync/module.json: sync.delete, sync.send in "does"; sync.deleted, sync.sending, sync.sent
+  in "watches.emits" (event names must be one dot, noun.verb — `sync.send.progress` and
+  `sync.send.done`, my first names, failed the registry's own check).
+- Tests: core/sync/sync-send.test.js (new) sends a real file over a real paired link, chunked
+  route included, not only the tool logic in isolation. core/sync/sync.test.js updated for the
+  keep-everything behavior, plus new tests for sync.delete.
+
 #### sync.upload: a paired device sends its own Claude Code sessions to the box (ADR 0008 5a, session import, box side only)
 
 - New module core/sync: `sync.consent` (the box's own record of a peer's import switch, off by

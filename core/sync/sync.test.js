@@ -141,7 +141,7 @@ test("sync: over quota refuses before any byte moves, and a mac kind may sync to
   assert.equal(start.error?.code, "quota_exceeded");
 });
 
-test("sync: turning consent off, or unpairing, deletes everything the device sent and emits sync.revoked", async t => {
+test("sync: turning consent off, or unpairing, keeps everything the device sent — only sync.delete removes it (the user's overrule)", async t => {
   const { call, events, root } = await boxRegistry(t);
   const { name, peer: id } = await paired(call, { kind: "device" });
   const peer = { stableId: "nPEER0001" };
@@ -153,23 +153,41 @@ test("sync: turning consent off, or unpairing, deletes everything the device sen
   await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
   const dir = path.join(root, "synced", name);
   assert.ok(fs.existsSync(dir));
+
   const revoked = [];
   events.on("sync.revoked", e => revoked.push(e.payload));
   const off = await call("sync.consent", { machine: name, on: false }, "cli");
   assert.deepEqual(off.data, { machine: name, on: false });
-  assert.ok(!fs.existsSync(dir));
-  assert.deepEqual(revoked, [{ machine: name }]);
-  // A plan against the consent-off switch now refuses again.
+  assert.ok(fs.existsSync(dir), "nothing already sent is touched by turning sync off");
+  assert.deepEqual(revoked, [{ machine: name }], "sync.revoked still fires, informationally");
+  // Off stops new uploads, but the file that's already there is untouched.
   assert.equal((await call("sync.upload.plan", { files: [] }, "tailnet:owner", { peer })).error?.code, "sync_disabled");
 
-  // On again, upload again, then unpair: deletes too.
-  await call("sync.consent", { machine: name, on: true }, "cli");
-  const start2 = await call("sync.upload.start", { path: "b.jsonl", bytes: text.length, hash: h }, "tailnet:owner", { peer });
-  await call("sync.upload.chunk", { upload: start2.data.upload, offset: 0, data: Buffer.from(text) }, "tailnet:owner", { peer });
-  await call("sync.upload.finish", { upload: start2.data.upload, hash: h }, "tailnet:owner", { peer });
-  assert.ok(fs.existsSync(dir));
+  // Unpairing keeps the data too.
   await call("link.unpair", { id }, "cli");
+  assert.ok(fs.existsSync(dir), "unpairing keeps what the device sent — it belongs to the person");
+
+  // Only the explicit, person-only sync.delete removes it.
+  const deleted = [];
+  events.on("sync.deleted", e => deleted.push(e.payload));
+  const del = await call("sync.delete", { machine: name }, "cli");
+  assert.deepEqual(del.data, { machine: name, deleted: true });
   assert.ok(!fs.existsSync(dir));
+  assert.deepEqual(deleted, [{ machine: name }]);
+  // A second delete finds nothing left to delete.
+  assert.equal((await call("sync.delete", { machine: name }, "cli")).error?.code, "no_link");
+});
+
+test("sync: sync.delete is a person's own action, never a module's or an agent's", async t => {
+  const { call } = await boxRegistry(t);
+  const { name } = await paired(call, { kind: "device" });
+  const peer = { stableId: "nPEER0001" };
+  await call("sync.consent", { machine: name, on: true }, "cli");
+  const h = hash("hi");
+  const start = await call("sync.upload.start", { path: "a.jsonl", bytes: 2, hash: h }, "tailnet:owner", { peer });
+  await call("sync.upload.chunk", { upload: start.data.upload, offset: 0, data: Buffer.from("hi") }, "tailnet:owner", { peer });
+  await call("sync.upload.finish", { upload: start.data.upload, hash: h }, "tailnet:owner", { peer });
+  for (const caller of ["mcp", "module:test"]) assert.equal((await call("sync.delete", { machine: name }, caller)).error?.code, "denied", caller);
 });
 
 test("sync: an unsafe file (a secret pasted into a chat) is quarantined, never landed where Recall reads", async t => {

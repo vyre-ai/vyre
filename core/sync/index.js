@@ -9,8 +9,10 @@
 // ride a dedicated route (core/daemon/index.js POST /v1/sync/upload/<id>) as
 // application/octet-stream, never JSON (e2e's review), and land in sync.upload.chunk through
 // registry.call with the raw Buffer in the input. The box, not the device, decides whether a
-// peer's sync switch is on (sync.consent): the device's own claim is never trusted, and turning
-// it off, or unpairing the device entirely (link.unpaired), deletes everything it sent.
+// peer's sync switch is on (sync.consent): the device's own claim is never trusted. Turning it
+// off, or unpairing, only stops new uploads — nothing already sent is touched (the user overruled
+// the original design: what came from a device is the person's, not the device's). Deleting is
+// sync.delete, its own explicit, person-only action.
 
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -23,10 +25,13 @@ const CHUNK_CAP = 4 * 1024 * 1024;
 const UPLOAD_TTL = 30 * 60_000;
 const insideDir = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep);
 
+/** How many chunk bytes go in one request (link.upload's carrier: link.reply's own body sizing). */
+const SEND_CHUNK = 1024 * 1024;
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
-    if (ctx.config.role !== "box") return { async stop() {} }; // the device side is federation's sender (sync.send), not built here yet
+    if (ctx.config.role !== "box") return deviceSide(ctx);
     const db = ctx.store.db;
     ctx.store.migrate([
       `CREATE TABLE sync_peers (peer TEXT PRIMARY KEY, name TEXT NOT NULL, sync_on INTEGER NOT NULL DEFAULT 0, used_bytes INTEGER NOT NULL DEFAULT 0, quota_bytes INTEGER)`,
@@ -85,16 +90,20 @@ export default {
     const uploads = new Map();
     const sweepUploads = () => { for (const [id, u] of uploads) if (now() - u.at > UPLOAD_TTL) { try { fs.rmSync(u.tmp, { force: true }); } catch {} uploads.delete(id); } };
 
+    // the user overruled the original design: unpairing, turning sync off, or losing a device
+    // deletes NOTHING. What came from a device is the person's, not the device's. Both events
+    // below only stop new uploads (sync_on off, or the peer gone so peerOf finds nothing) and say
+    // so (sync.revoked, informational); nothing here removes a file, a row or a derived fact.
+    // Deleting is sync.delete, its own person-only action, elsewhere.
     const off = ctx.events.on("link.unpaired", e => {
       const p = e.payload || {};
-      if (typeof p.peer !== "string") return;
-      db.prepare("DELETE FROM sync_files WHERE peer = ?").run(p.peer);
-      db.prepare("DELETE FROM sync_peers WHERE peer = ?").run(p.peer);
-      if (typeof p.name === "string") { deleteSynced(p.name); ctx.events.emit("sync.revoked", { machine: p.name }); }
+      if (typeof p.name !== "string") return;
+      db.prepare("UPDATE sync_peers SET sync_on = 0 WHERE peer = ?").run(String(p.peer || ""));
+      ctx.events.emit("sync.revoked", { machine: p.name });
     });
 
     ctx.tool("sync.consent", {
-      description: "Turn a paired peer's session import on or off, on the box's own record — never the device's say-so. Turning it off deletes everything that peer sent and everything derived from it (sync.revoked).",
+      description: "Turn a paired peer's session import on or off, on the box's own record — never the device's say-so. Off only stops new uploads: nothing already sent is touched. sync.delete removes what a device sent, as its own action.",
       input: { type: "object", required: ["machine", "on"], properties: { machine: { type: "string" }, on: { type: "boolean" } } },
       callers: ["cli", "local", "module", "deck", "capsule"],
       run: async ({ machine, on }) => {
@@ -103,13 +112,23 @@ export default {
         if (!row) throw Object.assign(new Error(`no paired device named "${machine}"`), { code: "no_link" });
         syncRow(row.id, row.name);
         db.prepare("UPDATE sync_peers SET sync_on = ? WHERE peer = ?").run(on ? 1 : 0, row.id);
-        if (!on) {
-          db.prepare("DELETE FROM sync_files WHERE peer = ?").run(row.id);
-          db.prepare("UPDATE sync_peers SET used_bytes = 0 WHERE peer = ?").run(row.id);
-          deleteSynced(row.name);
-          ctx.events.emit("sync.revoked", { machine: row.name });
-        }
+        if (!on) ctx.events.emit("sync.revoked", { machine: row.name });
         return { machine: row.name, on: Boolean(on) };
+      },
+    });
+
+    ctx.tool("sync.delete", {
+      description: "Delete everything a device sent and everything derived from it: synced/<machine>/ and its quarantine, then sync.deleted. Its own person-only action, never implied by unpairing or turning sync off — the person names the device on purpose, from its page in Settings or an unticked option in the unpair dialog.",
+      input: { type: "object", required: ["machine"], properties: { machine: { type: "string" } } },
+      callers: ["cli", "local", "deck", "capsule"],
+      run: async ({ machine }) => {
+        const row = /** @type {any} */ (db.prepare("SELECT * FROM sync_peers WHERE peer = ? OR name = ?").get(machine, machine));
+        if (!row) throw Object.assign(new Error(`no session data from "${machine}" is on this box`), { code: "no_link" });
+        db.prepare("DELETE FROM sync_files WHERE peer = ?").run(row.peer);
+        db.prepare("DELETE FROM sync_peers WHERE peer = ?").run(row.peer);
+        deleteSynced(row.name);
+        ctx.events.emit("sync.deleted", { machine: row.name });
+        return { machine: row.name, deleted: true };
       },
     });
 
@@ -226,3 +245,58 @@ export default {
     };
   },
 };
+
+/**
+ * The device side: the sender import.start calls into (agreed with memory-iq, 28 Sep). Walks a
+ * given file list through the box's sync.upload.plan/start/chunk/finish, module-only (never a
+ * person or a model directly - import.start is the one door). Small control calls ride
+ * ctx.remote (link.remote, JSON); the chunk bytes ride ctx.call("link.upload", ...) instead,
+ * since link.remote cannot carry a Buffer over the wire the box's tools do.
+ * @param {any} ctx
+ */
+async function deviceSide(ctx) {
+  ctx.tool("sync.send", {
+    description: "Send this device's own files to the box: sync.upload.plan/start/chunk/finish per file, a per-file ack, and a completion summary (sync.sent, sent/failed/quarantined). mode: \"once\" sends this list and stops; \"sync\" is the same send, and the idle-batched watch for new and changed files after it is not yet built (see docs/work/federation.md).",
+    input: { type: "object", required: ["files", "mode"], properties: {
+      files: { type: "array", items: { type: "object", required: ["path", "rel", "bytes", "hash"], properties: { path: { type: "string" }, rel: { type: "string" }, bytes: { type: "number" }, hash: { type: "string" } } } },
+      mode: { type: "string", enum: ["once", "sync"] },
+    } },
+    callers: ["module"],
+    run: async ({ files }) => {
+      const byRel = new Map(files.map(f => [f.rel, f]));
+      const plan = await ctx.remote("sync.upload.plan", { files: files.map(f => ({ path: f.rel, bytes: f.bytes, hash: f.hash })) });
+      if (plan.error) return { sent: 0, failed: files.length, quarantined: 0, error: plan.error };
+      const todo = [...plan.data.new, ...plan.data.changed].map(rel => byRel.get(rel)).filter(Boolean);
+      let sent = 0, failed = 0, quarantined = 0;
+      for (const f of todo) {
+        const r = await sendOne(ctx, f);
+        if (r.error) { failed++; ctx.events.emit("sync.sending", { path: f.rel, ok: false, error: r.error }); continue; }
+        const q = Boolean(r.data && r.data.quarantined);
+        if (q) quarantined++; else sent++;
+        ctx.events.emit("sync.sending", { path: f.rel, ok: true, quarantined: q });
+      }
+      // The status line every other live-fact module in Vyre has (cohesion, 28 Sep): a "went
+      // quiet" signal so a surface can say "synced from <machine>, just now" rather than nothing.
+      ctx.events.emit("sync.sent", { sent, failed, quarantined, of: todo.length, skipped: plan.data.done.length });
+      return { sent, failed, quarantined, of: todo.length, skipped: plan.data.done.length };
+    },
+  });
+  return { async stop() {} };
+}
+
+/** Send one file's bytes, resuming from the box's own offset. @param {any} ctx @param {{ path: string, rel: string, bytes: number, hash: string }} f */
+async function sendOne(ctx, f) {
+  const start = await ctx.remote("sync.upload.start", { path: f.rel, bytes: f.bytes, hash: f.hash });
+  if (start.error) return start;
+  let buf;
+  try { buf = fs.readFileSync(f.path); } catch (e) { return { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }; }
+  let offset = Number(start.data.offset) || 0;
+  while (offset < buf.length) {
+    const chunk = buf.subarray(offset, Math.min(offset + SEND_CHUNK, buf.length));
+    const r = await ctx.call("link.upload", { path: `/v1/sync/upload/${encodeURIComponent(start.data.upload)}?offset=${offset}`, data: chunk });
+    if (r.error) return r;
+    offset = Number(r.data ? r.data.offset : r.offset) || offset + chunk.length;
+  }
+  const gotHash = crypto.createHash("sha256").update(buf).digest("hex");
+  return await ctx.remote("sync.upload.finish", { upload: start.data.upload, hash: gotHash });
+}
