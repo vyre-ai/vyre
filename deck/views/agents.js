@@ -23,8 +23,8 @@ import { createProjectInline, action } from "../js/empty-actions.js";
 import { createAgent } from "../js/agent-create.js";
 import { since, initial, count, plural, clock } from "../js/fmt.js";
 
-// agents.create and agents.update are on the floor's human-only list: each asks for the passkey.
-const AS_PERSON = { presence: true };
+// The owner makes and changes their own agents with no prompt (the no-nag rule).
+const AS_PERSON = { presence: /** @type {"asked"} */ ("asked") };
 
 const MODELS = [
   { id: "claude-opus-5-5", name: "Claude Opus 5.5" },

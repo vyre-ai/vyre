@@ -53,11 +53,19 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  * Call a tool. Resolves to its data; rejects with an ApiError.
  * @param {string} name e.g. "projects.list"
  * @param {Record<string, any>} [input]
- * @param {{ presence?: boolean }} [opts] presence: true proves a person is here with a passkey
- *   first (ADR 0004), for a human-only call (Gate approvals, Glass take-over, …). The proof is
- *   bound to this exact tool and input.
+ * @param {{ presence?: boolean | "asked" }} [opts] presence: true proves a person is here with a
+ *   passkey first (ADR 0004), for what goes outside as the person (sending a held draft) and the
+ *   vault. The proof is bound to this exact tool and input. "asked" is the owner's own action
+ *   (answers, approvals, agents): it goes without a proof, and asks for the passkey only if this
+ *   box still says presence_required (the no-nag rule; a box from before it needs one).
  */
 export async function call(name, input = {}, opts = {}) {
+  if (opts.presence === "asked") {
+    try { return await call(name, input, {}); } catch (e) {
+      if (/** @type {any} */ (e)?.code !== "presence_required") throw e;
+      return call(name, input, { presence: true });
+    }
+  }
   let presence;
   if (opts.presence) presence = await presenceProof(name, input); // throws ApiError on refusal or a cancelled passkey
   let res, body;

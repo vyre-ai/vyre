@@ -71,7 +71,7 @@ export function gateCard(held) {
   async function discard() {
     if (state.busy) return;
     state.busy = true; state.problem = null; draw();
-    const r = await attempt("gate.reject", { id: held.id }, { presence: true });
+    const r = await attempt("gate.reject", { id: held.id }, { presence: "asked" });
     state.busy = false;
     if (r.error) { state.problem = r.error; draw(); return; }
     await load();

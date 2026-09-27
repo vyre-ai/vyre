@@ -83,8 +83,8 @@ export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn)
  */
 export async function answer(n, opt, edited) {
   if (n.kind === "draft") {
-    // Every answer here is human-only (core/presence HUMAN_ONLY): the passkey proves a person.
-    if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: true });
+    // Sending goes outside as the person, so it proves presence; discarding is the owner's own act.
+    if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: "asked" });
     else {
       const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id }, { presence: true });
       // Approved, but the sender failed: the item stays held and can be sent again. gate.js keeps
@@ -92,7 +92,7 @@ export async function answer(n, opt, edited) {
       if (r && r.state === "failed") { got.delete(n.id); throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true }); }
     }
   } else {
-    await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" }, { presence: true });
+    await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" }, { presence: "asked" });
   }
   cache = cache.filter(x => x.id !== n.id);
   got.delete(n.id);

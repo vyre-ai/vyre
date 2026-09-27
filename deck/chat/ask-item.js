@@ -86,7 +86,7 @@ export function askCard(ask) {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
     const input = { ask: ask.id, decision, surface: "deck", ...extra, ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}) };
-    const r = await attempt("threads.answer", input, { presence: true });
+    const r = await attempt("threads.answer", input, { presence: "asked" });
     state.busy = false;
     if (r.error) state.error = r.error; else state.decided = decision;
     draw();

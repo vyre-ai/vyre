@@ -11,17 +11,20 @@
 //                              computerError: the agent was made, but giving it a computer was refused
 //                              call is api.js's attempt, passed in so this has no page to load
 
+// The owner's own agents: no prompt, unless an older box still asks (api.js "asked").
+const ASKED = { presence: "asked" };
+
 /**
  * @param {Record<string, any> & { name: string, computer?: boolean }} input agents.create's input
- * @param {(tool: string, input?: any) => Promise<{ data?: any, error?: any }>} call
+ * @param {(tool: string, input?: any, opts?: any) => Promise<{ data?: any, error?: any }>} call
  * @returns {Promise<{ data: any, error: any, computerError: any }>}
  */
 export async function createAgent(input, call) {
-  const r = await call("agents.create", input);
+  const r = await call("agents.create", input, ASKED);
   if (r.error) return { data: null, error: r.error, computerError: null };
   const made = r.data && typeof r.data === "object" ? r.data : null;
   if (!input.computer || made?.computer === true) return { data: made, error: null, computerError: null };
-  const u = await call("agents.update", { name: input.name, computer: true });
+  const u = await call("agents.update", { name: input.name, computer: true }, ASKED);
   // The agent exists either way; a refused update is said, and the agent page still offers the button.
   if (u.error) return { data: { ...made, computer: false }, error: null, computerError: u.error };
   const after = u.data && typeof u.data === "object" && "computer" in u.data ? u.data : { ...made, computer: true };

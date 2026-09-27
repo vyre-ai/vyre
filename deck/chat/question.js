@@ -66,7 +66,7 @@ export function questionCard(ask) {
     let input;
     try { input = answerInput(ask.id, questions, picks); } catch (e) { state.error = e; draw(); return; }
     state.busy = true; state.error = null; draw();
-    const r = await attempt("threads.answer", input, { presence: true });
+    const r = await attempt("threads.answer", input, { presence: "asked" });
     state.busy = false;
     if (r.error) state.error = r.error; else { state.decided = "allow"; state.shown = input.answers; }
     draw();
@@ -74,7 +74,7 @@ export function questionCard(ask) {
   async function decline() {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
-    const r = await attempt("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" }, { presence: true });
+    const r = await attempt("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" }, { presence: "asked" });
     state.busy = false;
     if (r.error) state.error = r.error; else state.decided = "deny";
     draw();
