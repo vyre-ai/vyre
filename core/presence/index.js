@@ -63,18 +63,13 @@ export const HUMAN_ONLY = new Set([
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
   "agents.create", "agents.update", "agents.resume",
-  // A teammate is made by a person (ADR 0031 section 4); a session or another teammate never
-  // can. The rest of core/team's tools trust a verified thread or agent identity for everything
-  // that matters, but each also has a narrow "a person may say so" branch (an explicit project,
-  // reading every project's teammates, checking or cancelling a request that is not the caller's
-  // own, editing a teammate's notes) that has no such verification of its own: without this,
-  // that branch trusts the caller's label alone, which anything running inside a Claude session
-  // can claim (e2e review, HIGH 1, f8cbc882). PERSON_ONLY membership does not narrow who may call
-  // these tools (mcp and module callers are unaffected: the daemon's fromClaude check applies
-  // only to a caller claiming a person label) or force a presence proof by itself; it only makes
-  // sure a "cli"/"local"/"deck"/"capsule" claim over the socket is not itself the thing Claude's
-  // Bash forged.
-  "team.add", "team.ask", "team.list", "team.status", "team.cancel", "team.notes", "team.notes.edit",
+  // A teammate is made by a person (ADR 0031 section 4); a session or another teammate never can.
+  // The rest of core/team's "a person may also..." branches (an explicit project, reading every
+  // project's teammates, checking or cancelling a request that is not the caller's own, editing a
+  // teammate's notes) trust the same caller label, and were first fixed here per-tool (e2e
+  // review, HIGH 1, f8cbc882); the lead moved that fix into the daemon instead, for every tool at
+  // once, so it is not repeated per module (2026-09-28). See core/daemon/index.js.
+  "team.add",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access", "projects.move",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax",

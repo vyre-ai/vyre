@@ -65,7 +65,7 @@ export const agentName = (role, project) => `${role}-${project}`.slice(0, 31).re
 /** A free-text label (a caller's name, a thread id) made safe inside an XML-ish attribute: no quote, no angle bracket. */
 export const attr = s => String(s == null ? "" : s).replace(/[<>"&\n\r]/g, "").slice(0, 200);
 /** Neutralise anything that could be read as one of our own wrapper tags, inside text a teammate or a requester wrote, by splicing in a zero-width space. */
-export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-(request|teammate-result)/gi, "$1vyre-$2​");
+export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-([a-z-]+)/gi, (_, slash, name) => `${slash}vyre-${name}​`);
 
 /** What a teammate's thread is told about itself, before its role instructions. */
 export function preamble(tm) {
@@ -425,39 +425,37 @@ export default {
     });
 
     /** A validated `part` ("general" or a role-shaped word); never touched with an unvalidated one. */
-    const checkPart = part => { if (part !== "general" && !PART.test(part)) throw Object.assign(new Error("part is \"general\" or a lowercase word"), { code: "bad_input" }); return part; };
+    /**
+     * `part` checked against this teammate's own parts (never a bare regex on its shape alone):
+     * "general" always, or a project slug it is shared with (section 3's per-project notes
+     * parts, ADR 0031). Nothing else names a real part yet (`shared` is unused until step 5), so
+     * today this accepts "general" only, which is also what keeps a path traversal like
+     * "../../../etc/passwd" from ever reaching notesPath.
+     */
+    const checkPart = (tm, part) => {
+      const ok = part === "general" || (Array.isArray(tm.shared) && tm.shared.includes(part)) || tm.shared === "*";
+      if (!ok) throw Object.assign(new Error(`part must be "general" or one of ${tm.agent}'s own parts`), { code: "bad_input" });
+      return part;
+    };
 
     ctx.tool("team.notes", {
-      description: "A teammate's notes: its memory of record. Reads the current text and version history. The teammate itself may also write a new version with action \"set\"; a person writes through team.notes.edit instead.",
+      description: "A teammate's notes: its memory of record. action \"get\" reads the current text and version history; \"set\" (the teammate itself, or a person) writes a new version, versioned and copied to <project home>/.vyre/team/<role>/notes.md.",
       input: { type: "object", required: ["agent"], properties: { action: { type: "string", enum: ["get", "set"] }, agent: { type: "string" },
         part: { type: "string" }, text: { type: "string" } } },
       run: async (i, meta) => {
         const tm = mustT(i.agent);
-        const part = checkPart(i.part || "general");
+        const part = checkPart(tm, i.part || "general");
         if ((i.action || "get") === "get") {
-          // Scoped like any other project read: the teammate itself, or a caller whose verified
-          // thread or agent identity is in the project(s) this teammate serves. A person surface
-          // reads too (PERSON_ONLY on this tool means that claim is fromClaude-checked already).
+          // Scoped like any other project read: the teammate itself, a caller whose verified
+          // thread or agent identity is in the project(s) this teammate serves, or a person.
           const allowed = meta.agent === tm.agent || await inProject(meta, tm.project) || PERSON.has(String(meta.caller));
           if (!allowed) throw Object.assign(new Error(`team.notes is for ${tm.project}'s own teammates and sessions, or a person`), { code: "denied" });
           return { agent: tm.agent, part, text: noteCurrent(tm.agent, part), versions: noteVersions(tm.agent, part) };
         }
-        // set: the teammate itself only (a verified agent identity, never a label); a person uses team.notes.edit.
-        if (meta.agent !== tm.agent) throw Object.assign(new Error("team.notes set is the teammate's own tool; a person uses team.notes.edit"), { code: "denied" });
+        const allowed = meta.agent === tm.agent || PERSON.has(String(meta.caller));
+        if (!allowed) throw Object.assign(new Error("team.notes set is for the teammate itself, or a person"), { code: "denied" });
         if (typeof i.text !== "string") throw Object.assign(new Error("text is required to set notes"), { code: "bad_input" });
-        return { agent: tm.agent, part, ...(await writeNotes(tm, part, i.text, meta.agent)) };
-      },
-    });
-
-    ctx.tool("team.notes.edit", {
-      description: "A person writes a new version of a teammate's notes (its Setup tab).",
-      input: { type: "object", required: ["agent", "text"], properties: { agent: { type: "string" }, part: { type: "string" }, text: { type: "string" } } },
-      callers: ["cli", "local", "deck", "capsule"],
-      run: async (i, meta) => {
-        const tm = mustT(i.agent);
-        const part = checkPart(i.part || "general");
-        if (typeof i.text !== "string") throw Object.assign(new Error("text is required to set notes"), { code: "bad_input" });
-        return { agent: tm.agent, part, ...(await writeNotes(tm, part, i.text, String(meta.caller || "vyre"))) };
+        return { agent: tm.agent, part, ...(await writeNotes(tm, part, i.text, meta.agent || String(meta.caller || "vyre"))) };
       },
     });
 

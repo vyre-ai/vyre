@@ -18,7 +18,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { attr, neutralize } from "./index.js";
+import { neutralize } from "./index.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -133,20 +133,24 @@ test("priority: urgent runs before normal and low queued ahead of it", async t =
   assert.equal(low.state, "queued");
   assert.equal(urgent.state, "queued");
   await until(async () => (await tool("team.status", { request: first.request })).state !== "running", "the first request to finish", 8_000);
-  await until(async () => (await tool("team.status", { request: urgent.request })).state !== "queued", "urgent to be picked");
+  await until(async () => (await tool("team.status", { request: urgent.request })).state === "done", "urgent to finish");
   const urgentAfter = await tool("team.status", { request: urgent.request });
   const lowAfter = await tool("team.status", { request: low.request });
-  assert.notEqual(urgentAfter.state, "queued");
+  assert.equal(urgentAfter.state, "done");
   assert.equal(urgentAfter.result, "urgent");
-  assert.equal(lowAfter.state, "queued"); // still behind urgent; only one runs at a time
+  // low may or may not have started by the time this reads (only one request runs at a time, and
+  // both turns are near-instant on the fake driver), but it can never have started before urgent:
+  // check the order, not a state that could already have moved on by the time we look.
+  if (lowAfter.started != null) assert.ok(urgentAfter.started <= lowAfter.started, "urgent must start no later than low");
+  else assert.equal(lowAfter.state, "queued");
 });
 
-test("notes: team.notes.edit (a person) writes a version and the project's notes.md; team.notes get reads it back", async t => {
+test("notes: team.notes set (a person) writes a version and the project's notes.md; get reads it back", async t => {
   const { tool, project } = await boot(t);
   const tm = await tool("team.add", { project: project.slug, role: "design" });
-  const first = await tool("team.notes.edit", { agent: tm.agent, text: "# design\n\nScope: the intake form." });
+  const first = await tool("team.notes", { action: "set", agent: tm.agent, text: "# design\n\nScope: the intake form." });
   assert.equal(first.versions.length, 1);
-  const second = await tool("team.notes.edit", { agent: tm.agent, text: "# design\n\nScope: the intake form.\n\nDone: split into 4 steps." });
+  const second = await tool("team.notes", { action: "set", agent: tm.agent, text: "# design\n\nScope: the intake form.\n\nDone: split into 4 steps." });
   assert.equal(second.versions.length, 2);
   const got = await tool("team.notes", { agent: tm.agent });
   assert.match(got.text, /split into 4 steps/);
@@ -154,33 +158,31 @@ test("notes: team.notes.edit (a person) writes a version and the project's notes
   assert.equal(onDisk, got.text);
 });
 
-// --- e2e review (f8cbc882): regression coverage for the 3 HIGH findings -----------------------
-
-test("HIGH 1: a Bash inside a Claude session cannot forge the 'cli' label (fromClaude), even with no agent key or session header", async t => {
-  const { tool, project } = await boot(t);
-  const tm = await tool("team.add", { project: project.slug, role: "design" });
-  // "bareforge cli team.notes.edit <json>" makes the plainer, more realistic forgery from inside
-  // the teammate's own turn: a bare socket call naming caller "cli", no x-vyre-agent-key, no
-  // session header — what a session's or a teammate's own Bash could send. It carries a real,
-  // complete body, so this attempt would succeed outright if fromClaude did not catch it.
-  // team.notes.edit is PERSON_ONLY, so vyred must check this really is a person before it ever
-  // reaches team.js; it is not (it is the teammate's own spawned process), so fromClaude refuses
-  // it before team.js ever sees it, and no note version exists afterwards.
-  const body = JSON.stringify({ agent: tm.agent, text: "planted by a forged 'cli' call" });
-  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: `bareforge cli team.notes.edit ${body}` });
-  assert.equal(ask.state, "failed"); // this turn never reaches team.done: it only forges the one call
-  const notes = await tool("team.notes", { agent: tm.agent });
-  assert.deepEqual(notes.versions, []);
-});
+// --- e2e review round 1 (f8cbc882): regression coverage for HIGH 2 and HIGH 3 ------------------
+// HIGH 1 (a caller label is only a claim, and nothing but fromClaude checks it, which only runs
+// for PERSON_ONLY/presence-required tools) is fixed once, in the daemon, for every tool at once
+// (the lead, 2026-09-28); it is not core/team's own tools to test.
 
 test("HIGH 2: team.notes part cannot traverse out of the teammate's own notes folder", async t => {
   const { tool, raw, project } = await boot(t);
   const tm = await tool("team.add", { project: project.slug, role: "design" });
-  const r = await raw("team.notes.edit", { agent: tm.agent, part: "../../../../etc/passwd", text: "pwned" });
+  const r = await raw("team.notes", { action: "set", agent: tm.agent, part: "../../../../etc/passwd", text: "pwned" });
   assert.ok(r.error);
   assert.equal(r.error.code, "bad_input");
   assert.ok(!fs.existsSync(path.join(project.home, ".vyre", "team", "passwd")));
   assert.ok(!fs.existsSync(path.join(project.home, "..", "..", "..", "..", "etc", "passwd")));
+});
+
+test("HIGH 2: team.notes part is checked against the teammate's own parts, not just its shape", async t => {
+  const { tool, raw, project } = await boot(t);
+  const tm = await tool("team.add", { project: project.slug, role: "design" });
+  // "other" looks like a perfectly fine slug (PART's old shape check would have allowed it), but
+  // this teammate has no such part: sharing (ADR 0031 section 3's per-project parts) is not
+  // built yet, so nothing but "general" is a real part for any teammate today.
+  const r = await raw("team.notes", { action: "set", agent: tm.agent, part: "other", text: "x" });
+  assert.ok(r.error);
+  assert.equal(r.error.code, "bad_input");
+  assert.match(r.error.message, /own parts/);
 });
 
 test("HIGH 3: a result containing the wrapper's own closing tag is never sent as vyred's own tags", async t => {
