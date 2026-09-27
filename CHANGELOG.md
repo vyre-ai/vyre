@@ -18,6 +18,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Corrections (memory.correct, uncorrect, merge, split, and IQ answer fixes) follow one rule: the
   person's own surfaces, or their phone or paired device with a person session (a passkey,
   ADR 0032). A device without one gets `person_session_required`; agents are always refused.
+- Sessions start knowing the project: `memory.today {room | project_cwds, session?}` gives the
+  project's last session and what memory learned about it this week (at most 300 characters, no
+  model, no personal facts), and the session brief adds it under "Lately in this project".
 - Vyre IQ reads the answer, not only the question: a user turn it finds carries the assistant turn
   that followed (the open world's misses were mostly the right session's question turn, with the
   answer one turn later). Retrieval, no model: open recall@8 0.819 to 0.917, sealed 0.613 to 0.75.

@@ -98,7 +98,11 @@ export default {
         const lessonText = lessons && lessons.text ? lessons.text : "";
         // An agent outside its projects gets no brief, only the lessons.
         if (!inScope(projects, slug)) return { text: withWarning(lessonText), project: null };
-        return { text: withWarning([text, lessonText].filter(Boolean).join("\n\n")), project: slug };
+        // What memory learned about the project lately, and its last session (ADR 0036: sessions
+        // start knowing today). A few short lines; nothing when memory is off or knows nothing.
+        const today = slug ? await ask("memory.today", { room: slug, ...(session ? { session } : {}) }) : null;
+        const lately = today && Array.isArray(today.lines) && today.lines.length ? `Lately in this project (Vyre memory):\n${today.lines.map(l => `- ${l}`).join("\n")}` : "";
+        return { text: withWarning([text, lately, lessonText].filter(Boolean).join("\n\n")), project: slug };
       },
     });
 

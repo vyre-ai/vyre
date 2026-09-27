@@ -7,7 +7,7 @@
 // read; every tool still answers, with nothing.
 
 import { Curator } from "./curator.js";
-import { Graph } from "./graph.js";
+import { Graph, ago } from "./graph.js";
 import { floorPlan } from "./floor.js";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -738,6 +738,37 @@ export default {
         const r = now ? await model.drain({ maxRuns: max_runs }) : null;
         return { ...(r ? { ran: r } : {}), status: model.status() };
       }),
+    });
+    // A session starts knowing today (ADR 0036, "sessions start knowing today"): the project's last
+    // session and what memory learned about it this week, in at most 300 characters. No model and no
+    // personal facts: a project's room only, for its brief.
+    ctx.tool("memory.today", {
+      description: "For a session's brief: the project's last session and the few things memory learned about the project this week, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts.",
+      input: { type: "object", properties: { project_cwds: cwds, ...roomField, session: { type: "string", description: "the session starting, left out" }, days: { type: "integer", minimum: 1, maximum: 30 }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const room = roomOf(input);
+        const project_cwds = clean(input.project_cwds);
+        if (!room && !project_cwds.length) return { lines: [] };
+        await guard({ agent: input.agent, project_cwds, room }, caller, { tailnet: true });
+        let sc;
+        try { sc = graph.view(project_cwds, room); } catch { return { lines: [] }; }
+        if (!sc) return { lines: [] };
+        const t = Date.now(), since = t - (input.days ?? 7) * 86_400_000;
+        const lines = [];
+        const ids = [...(sc.sessions || [])].filter(x => x !== input.session);
+        if (ids.length && personal.hasRecall()) {
+          const last = /** @type {any} */ (ctx.store.db.prepare(`SELECT name, title, ended FROM recall_sessions WHERE id IN (${ids.map(() => "?").join(",")}) AND human = 1 AND parent IS NULL ORDER BY ended DESC LIMIT 1`).get(...ids));
+          if (last && last.ended) lines.push(`Last session here: ${plain(last.name || last.title || "untitled", 60)}, ${ago(Number(last.ended), t)} ago.`);
+        }
+        const learned = graph.facts({ project_cwds, room: sc.room ?? undefined, limit: 80 }).facts
+          .filter(f => f.rel !== "mentioned_in" && !f.stale && Number(f.seen) >= since)
+          .sort((a, b) => Number(b.seen) - Number(a.seen) || (a.id < b.id ? -1 : 1));
+        for (const f of learned.slice(0, 3)) lines.push(`${plain(f.text, 90)} (${f.seen_age} ago).`);
+        const out = [];
+        let n = 0;
+        for (const l of lines) { if (n + l.length > 300) break; out.push(l); n += l.length + 1; }
+        return { lines: out };
+      },
     });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",

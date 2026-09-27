@@ -170,6 +170,10 @@ facts are not a project's.
   memory curator's background pass, in bounded batches that yield.
 
 ## Changed contracts
+- core/harness/index.js harness.brief adds memory.today's lines ("Lately in this project") for a project session.
+- recall.search takes `sessions` (union with project_cwds; dropped for any caller but modules and the person's surfaces); dense keep(cwd, session).
+- New tools memory.today; memory.retrieve takes `replies`; passages may carry `reply {seq, text}`.
+- memory.correct from a model: `from_turn {seq}`, `suggestion`; needs threads.said from the switchboard; events memory.suggested, memory.updated.
 - memory.correct takes `answer` (an IQ answer_id) and action `forget`; memory.uncorrect takes `fix`; memory.corrections takes `answers`; memory.stats adds `iq`; memory.ask replies carry `answer_id` and may be `via: "corrected"`; event memory.fixed {id, action, kind}.
 - core/suggest/index.js emits `suggest.ready` at the end of start (module.json emits it), so a module that started first offers again. memory.suggest also returns `items` (suggest.offer's shape).
 - memory.ask takes `stream` and `id`; events memory.thinking {id, stage} and memory.answered {id, abstained, limited}.
