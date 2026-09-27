@@ -1937,6 +1937,11 @@ Vyre IQ: answer a question about the user's own past work or life (a decision, a
     - `thread` string
   - `id` string
   - `project_cwds` list of string
+  - `screen` object: what the person is looking at (the Capsule, floor-redacted): only to understand a question that points at it; never evidence, never a source
+    - `app` string
+    - `selection` string
+    - `text` string
+    - `title` string
   - `stream` boolean
 - Callers: any caller
 
