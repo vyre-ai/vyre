@@ -12,7 +12,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
-import { call } from "../daemon/client.js";
+import { call, request } from "../daemon/client.js";
 import { tempHome, present, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { installed } from "./sdk.js";
@@ -580,6 +580,29 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the stop");
     const tools = (await w.events(th.id)).filter(e => e.type === "thread.tool").map(e => e.payload.status);
     assert.deepEqual(tools, ["running", "canceled"]);
+  });
+
+  test(`${driver}: a retried send with the same Idempotency-Key is the same message, never a second turn; the queue can be read`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const key = "deck-retry-1";
+    const send = () => call("threads.send", { thread: th.id, text: "only once", surface: "deck" }, { root: w.root, caller: "deck", headers: { "idempotency-key": key } });
+    const a = await send();
+    assert.equal(a.data.sent, true);
+    await w.finished(th.id, 2);
+    const b = await send();
+    assert.equal(b.data.sent, true, "a retry reads as done");
+    await new Promise(r => setTimeout(r, 300));
+    assert.equal((await w.events(th.id)).filter(e => e.type === "thread.turn").length, 2, "no second turn for the retry");
+    // The queue, read.
+    await w.tool("threads.send", { thread: th.id, text: "bash npm test", surface: "deck" });
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const q = (await w.tool("threads.send", { thread: th.id, text: "after", surface: "deck", mode: "queue" })).data;
+    const rows = (await w.tool("threads.queue", { thread: th.id })).data.queued;
+    assert.deepEqual(rows.map(r => [r.queued, r.uuid, r.text]), [[q.queued_id, q.uuid, "after"]]);
+    await w.tool("threads.mode", { thread: th.id, mode: "plan" }, "deck");
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.mode, "plan", "the record says the mode");
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {

@@ -21,6 +21,7 @@ import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
 import { findSubreaper, groupAlive } from "../sessions/spawn.js";
+import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
@@ -86,6 +87,11 @@ export const MIGRATIONS = [
   `ALTER TABLE threads_runs ADD COLUMN cost_total REAL;`,
   // A queued message's own id (the SDK user message uuid it goes to Claude Code with).
   `ALTER TABLE threads_inbox ADD COLUMN uuid TEXT;`,
+  // Every message handed to Claude Code, by its uuid (ADR 0029 R2 with ADR 0030): a retried send
+  // with the same Idempotency-Key is the same message, never a second turn, even after a restart.
+  // And the permission mode a person put the thread in.
+  `CREATE TABLE threads_sent (uuid TEXT PRIMARY KEY, thread TEXT NOT NULL, at INTEGER NOT NULL);
+   ALTER TABLE threads_runs ADD COLUMN mode TEXT;`,
 ];
 
 /**
@@ -303,7 +309,7 @@ export class Switchboard {
     if (!r) return null;
     const holder = this.leases.holder(id);
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", purpose: r.purpose || null,
+      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default",
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -764,6 +770,7 @@ export class Switchboard {
   write(id, text, { uuid = crypto.randomUUID(), steer = false } = {}) {
     const st = this.live.get(id);
     this.touch(id, st);
+    this.db.prepare("INSERT OR IGNORE INTO threads_sent (uuid, thread, at) VALUES (?,?,?)").run(uuid, id, Date.now());
     st.lastPrompt = text;
     if (steer) {
       st.steers.set(uuid, String(text));
@@ -867,16 +874,22 @@ export class Switchboard {
    * `wait` (the person at the box, through the link) never takes the keyboard: while another
    * surface holds it, the words are queued as for a terminal.
    */
-  async send(id, text, surface, { queue = true, wait = false, mode = "steer" } = {}) {
+  async send(id, text, surface, { queue = true, wait = false, mode = "steer", uuid = undefined } = {}) {
+    // The same message again (a retry whose first answer was lost): already handed over or queued.
+    if (uuid) {
+      const was = /** @type {any} */ (this.db.prepare("SELECT thread FROM threads_sent WHERE uuid = ?").get(uuid))
+        || this.db.prepare("SELECT thread, id AS queued FROM threads_inbox WHERE uuid = ?").get(uuid);
+      if (was) return { sent: true, already: true, thread: String(was.thread), uuid, ...(was.queued ? { queued_id: Number(was.queued) } : {}) };
+    }
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
-      if (why && queue) return this.queue(id, text, surface);
+      if (why && queue) return this.queue(id, text, surface, undefined, uuid ? { uuid } : {});
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
     const held = wait && this.leases.holder(id);
-    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface);
+    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface, uuid ? { uuid } : {});
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
@@ -891,13 +904,13 @@ export class Switchboard {
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
-    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true });
+    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid });
     if (busy) {
-      const w = this.write(id, text, { steer: true });
+      const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}) });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
       return { sent: true, steered: true, thread: id, uuid: w.uuid, turn: w.turn };
     }
-    const w = this.write(id, text);
+    const w = this.write(id, text, uuid ? { uuid } : {});
     this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid }, id, rec.project);
     return { sent: true, thread: id };
   }
@@ -909,9 +922,8 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID() } = {}) {
     const rec = this.must(id);
-    const uuid = crypto.randomUUID();
     const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid) VALUES (?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid);
     const queued = Number(r.lastInsertRowid);
     this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface }, id, rec.project);
@@ -1121,6 +1133,7 @@ export class Switchboard {
     if (st.proc.setMode) await st.proc.setMode(mode);
     else st.proc.write({ type: "control_request", request_id: `vyre-mode-${Date.now()}`, request: { subtype: "set_permission_mode", mode } });
     st.mode = mode;
+    this.db.prepare("UPDATE threads_runs SET mode = ? WHERE id = ?").run(mode, id);
     const rec = this.record(id);
     this.emit("mode.changed", { mode }, id, rec ? rec.project : null);
     return { thread: id, mode };
@@ -1416,14 +1429,15 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
-      async (i, { caller }) => {
+      async (i, { caller, idempotencyKey }) => {
         guard(caller, "type into sessions");
         // Only the person's own callers reach a Mac; agents, MCP, guests and modules get the box's answer.
         if (wantsMacs(ctx, {}, caller) && !sb.knows(i.thread)) {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
-        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer" });
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer",
+          ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
@@ -1504,6 +1518,15 @@ export default {
         guard(caller, "take back queued words");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can take back queued words"), { code: "denied" });
         return sb.unqueue(i.thread, i.queued, surfaceOf(i, caller));
+      });
+
+    tool("threads.queue", "The words queued for a thread and not handed over yet, oldest first: queued (the row id), uuid, text, surface, at.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, { caller }) => {
+        guard(caller, "read queued words");
+        sb.must(i.thread);
+        return { queued: /** @type {any[]} */ (sb.db.prepare("SELECT id, uuid, text, surface, at FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(i.thread))
+          .map(r => ({ queued: Number(r.id), uuid: r.uuid || null, text: String(r.text), surface: r.surface, at: r.at })) };
       });
 
     tool("threads.edit", "Change queued words before they are handed over (re-emits thread.queued with the same ids). Only a person's surface can.",
