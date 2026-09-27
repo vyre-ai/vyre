@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Presence: the device method, a phone's own key
+
+- core/presence: a seventh method, `device`. A phone's P-256 key (Secure Enclave or StrongBox,
+  behind the biometric prompt) enrolls with `presence.enroll {kind: "device", alg: -7}` under a
+  passkey or one-time code and signs the Capsule's message with ES256; one code path and one
+  nonce set with the Capsule. It opens a presence session. Migration 3 widens
+  `presence_keys.kind`. For the native Android build and relay `device:<id>` callers (ADR 0026,
+  ADR 0027). ADR 0004 addendum; tests in core/presence/presence.test.js.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
