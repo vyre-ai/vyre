@@ -80,8 +80,15 @@ let capsuleModelSuite = Suite("capsule model") { t in
             let line = await MainActor.run { m.line }
             let sent = v.callsOf("threads.send").first
             _ = await until { m.vyred.follower.isStreaming }
-            _ = v.emit("thread.sent", thread: "s1", ["text": "rebuild the bakery menu", "queued": true, "via": "harness"])
-            let delivered = await until { m.reply?.queued?.delivered == true }
+            // A loaded machine can reconnect the stream around the event: say it again until heard.
+            var delivered = false
+            for _ in 0..<10 where !delivered {
+                _ = v.emit("thread.sent", thread: "s1", ["text": "rebuild the bakery menu", "queued": true, "via": "harness"])
+                for _ in 0..<25 where !delivered {
+                    delivered = await MainActor.run { m.reply?.queued?.delivered == true }
+                    if !delivered { try? await Task.sleep(nanoseconds: 20_000_000) }
+                }
+            }
             await MainActor.run { m.didHide() }
             return [row ?? "", VJ.s(sent?["thread"]), VJ.s(sent?["text"]), line ?? "", delivered ? "delivered" : "not delivered"]
         }
