@@ -1,7 +1,9 @@
 // @ts-check
 // The term module inside a real Registry: who may open a terminal (no passkey for the owner), the files
 // guard on cwd, one-use tickets, and on Linux a real shell over a real WebSocket (echo, resize,
-// close ending the whole session, and the end after the last socket goes away).
+// close ending the whole session, and the end after the keep time with no socket). ADR 0029 R4: the
+// byte-offset ring (replay after an offset, trimmed at line ends, the cut marker), the fallback to a
+// plain pty without dtach, and with a real dtach a shell that survives a vyred stop and start.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -17,10 +19,16 @@ import * as config from "../config/index.js";
 import { tempHome } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
 import { encodeClientFrame } from "../computers/ws.js";
+import { Ring } from "./ring.js";
+import { findDtach } from "./dtach.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LINUX = process.platform === "linux";
 const DECK = "deck:abc123";
+const DTACH = findDtach();
+const NO_DTACH = !LINUX ? "the pty runs on the box (util-linux script)" : !DTACH ? "no dtach on the PATH: put one there (or VYRE_DTACH_BIN) to run it" : false;
+/** keep_hours for a keep of ms milliseconds. */
+const keep = ms => ms / 3_600_000;
 
 /** A presence verifier that passes only a call carrying a proof, so a presence gate here would bite. */
 const presence = {
@@ -28,19 +36,44 @@ const presence = {
   verify: async ({ proof }) => proof ? { ok: true, method: "test" } : { ok: false, code: "presence_required", message: "needs a person", methods: ["passkey"] },
 };
 
-async function registry(t, term = {}) {
-  const root = tempHome(t);
+/**
+ * A Registry running only the term module. o.root and o.work reuse a home (a vyred restart);
+ * o.dtach false starts it with no dtach, as on a Mac. Terminals still open at the end are closed,
+ * so no shell outlives the test.
+ */
+async function registry(t, term = {}, o = {}) {
+  const root = o.root || tempHome(t);
   const p = config.ensure(root);
-  const work = fs.mkdtempSync(path.join(SCRATCH, "vyre-term-work-"));
-  fs.mkdirSync(path.join(work, "proj"));
-  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  let work = o.work;
+  if (!work) {
+    work = fs.mkdtempSync(path.join(SCRATCH, "vyre-term-work-"));
+    fs.mkdirSync(path.join(work, "proj"));
+    const w = work;
+    t.after(() => fs.rmSync(w, { recursive: true, force: true }));
+  }
   const db = open(p.db);
   const events = new Events(db);
   const reg = new Registry({ db, events, config: { role: "box", files: { roots: [work] }, term: { shell: "/bin/sh", ...term } }, paths: p, log: () => {}, presence: /** @type {any} */ (presence) });
-  await reg.start(discover([CORE]).filter(f => f.manifest && f.manifest.name === "term"), { role: "box" });
-  t.after(async () => { await reg.stop(); db.close(); });
+  const prev = process.env.VYRE_DTACH_BIN;
+  if (o.dtach === false) process.env.VYRE_DTACH_BIN = "";
+  try { await reg.start(discover([CORE]).filter(f => f.manifest && f.manifest.name === "term"), { role: "box" }); }
+  finally { if (o.dtach === false) { if (prev === undefined) delete process.env.VYRE_DTACH_BIN; else process.env.VYRE_DTACH_BIN = prev; } }
+  let stopped = false;
+  const stop = async () => {
+    if (stopped) return;
+    stopped = true;
+    await reg.stop();
+    db.close();
+  };
+  t.after(async () => {
+    if (!stopped) {
+      const handle = reg.modules.get("term")?.handle;
+      for (const id of handle ? [...handle.terms.keys()] : []) await reg.call("term.close", { term: id }, "deck");
+    }
+    await stop();
+  });
   assert.equal(reg.modules.get("term")?.state, "running", reg.modules.get("term")?.error);
-  return { reg, work, events };
+  return { reg, work, events, root, stop, handle: reg.modules.get("term")?.handle };
 }
 
 const ok = async (reg, tool, input, caller = "deck", meta = {}) => {
@@ -71,8 +104,19 @@ function connect(port, p) {
     let buf = Buffer.alloc(0), upgraded = false, text = "";
     const waiters = [];
     const c = {
-      sock, status: 0, closed: false,
+      sock, status: 0, closed: false, closeCode: 0,
+      /** Text frames from the box, parsed: {"t":"at"} and {"t":"cut"}. */
+      msgs: /** @type {any[]} */ ([]),
+      /** Everything in order: binary as { b: string }, text frames as they are. */
+      log: /** @type {any[]} */ ([]),
       get text() { return text; },
+      reset() { text = ""; c.msgs.length = 0; c.log.length = 0; },
+      untilMsg: (pred, ms = 8000) => new Promise((res, rej) => {
+        const check = () => { const m = c.msgs.find(pred); if (m) { res(m); return true; } return false; };
+        if (check()) return;
+        const timer = setTimeout(() => rej(new Error(`timed out waiting for a message in ${JSON.stringify(c.msgs)}`)), ms);
+        waiters.push(() => { if (check()) { clearTimeout(timer); return true; } return false; });
+      }),
       send: obj => sock.write(encodeClientFrame(Buffer.from(JSON.stringify(obj)), 1)),
       until: (re, ms = 8000) => new Promise((res, rej) => {
         const check = () => { const m = re.exec(text); if (m) { res(m); return true; } return false; };
@@ -100,7 +144,9 @@ function connect(port, p) {
         else if (len === 127) { if (buf.length < 10) break; len = Number(buf.readBigUInt64BE(2)); off = 10; }
         if (buf.length < off + len) break;
         const op = buf[0] & 0x0f;
-        if (op === 2) text += buf.subarray(off, off + len).toString("utf8");
+        if (op === 2) { const b = buf.subarray(off, off + len).toString("utf8"); text += b; c.log.push({ b }); }
+        if (op === 1) { const m = JSON.parse(buf.subarray(off, off + len).toString("utf8")); c.msgs.push(m); c.log.push(m); }
+        if (op === 8 && len >= 2) c.closeCode = buf.readUInt16BE(off);
         buf = buf.subarray(off + len);
       }
       for (let i = waiters.length - 1; i >= 0; i--) if (waiters[i]()) waiters.splice(i, 1);
@@ -109,6 +155,11 @@ function connect(port, p) {
     sock.on("error", e => { if (!upgraded) reject(e); });
   });
 }
+
+/** The bytes a client got in binary frames before a given text frame. */
+const bytesBefore = (c, m) => c.log.slice(0, c.log.indexOf(m)).reduce((n, x) => n + (x.b === undefined ? 0 : Buffer.byteLength(x.b, "utf8")), 0);
+/** Output has settled for over a second, so the last at frame counts every byte: that frame. */
+const lastAt = async c => { await wait(1300); const all = c.msgs.filter(m => m.t === "at"); return all[all.length - 1]; };
 
 const alive = pid => { try { process.kill(pid, 0); return true; } catch { return false; } };
 const wait = ms => new Promise(r => setTimeout(r, ms));
@@ -163,11 +214,13 @@ test("term: a ticket works once and expires", { skip: !LINUX && "the pty runs on
   a.sock.destroy();
 });
 
-test("term: a real shell round trip, resize, and close ends the whole session", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
-  const { reg, work, events } = await registry(t);
+for (const mode of ["dtach", "plain"]) test(`term: a real shell round trip, resize, and close ends the whole session (${mode})`, { skip: mode === "dtach" ? NO_DTACH : !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
+  const { reg, work, events } = await registry(t, {}, { dtach: mode === "dtach" ? undefined : false });
   const port = await server(t, reg);
   const o = await ok(reg, "term.open", { cwd: path.join(work, "proj"), surface: DECK, cols: 80, rows: 24 });
   assert.match(o.path, /^\/v1\/streams\/term\/pty\?ticket=/);
+  assert.equal(o.durable, mode === "dtach");
+  assert.equal(o.offset, 0);
   const c = await connect(port, o.path);
   assert.equal(c.status, 101);
   c.send({ t: "in", d: "echo h''i; pwd\n" });
@@ -195,8 +248,8 @@ test("term: a real shell round trip, resize, and close ends the whole session", 
   assert.ok(!JSON.stringify(events.since(0, {})).includes("BG="));
 });
 
-test("term: the terminal ends a while after its last socket closes, unless reattached", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
-  const { reg, work } = await registry(t, { endAfterMs: 400 });
+test("term: a disconnect never ends it; it ends term.keep_hours after its last socket closes, unless reattached", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
+  const { reg, work } = await registry(t, { keep_hours: keep(400) });
   const port = await server(t, reg);
   const o = await ok(reg, "term.open", { cwd: work, surface: DECK });
   const c = await connect(port, o.path);
@@ -215,8 +268,8 @@ test("term: the terminal ends a while after its last socket closes, unless reatt
   assert.equal((await reg.call("term.attach", { term: o.term, surface: DECK }, "deck")).error?.code, "not_found");
 });
 
-test("term: at most max terminals, and stop ends them all", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
-  const { reg, work } = await registry(t, { max: 2 });
+test("term: at most max terminals, and without dtach stop ends them all", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
+  const { reg, work } = await registry(t, { max: 2 }, { dtach: false });
   await ok(reg, "term.open", { cwd: work, surface: DECK });
   await ok(reg, "term.open", { cwd: work, surface: DECK });
   assert.equal((await reg.call("term.open", { cwd: work, surface: DECK }, "deck")).error?.code, "too_many");
@@ -225,4 +278,200 @@ test("term: at most max terminals, and stop ends them all", { skip: !LINUX && "t
   await handle.stop();
   for (let i = 0; i < 20 && pids.some(alive); i++) await wait(100);
   assert.ok(!pids.some(alive));
+});
+
+test("ring: offsets count every byte, and since(from) is exactly the bytes after it", () => {
+  const r = new Ring(4096);
+  r.push(Buffer.from("one\n"));
+  r.push(Buffer.from("two\nthr"));
+  r.push(Buffer.from("ee\n"));
+  assert.equal(r.start, 0);
+  assert.equal(r.end, 14);
+  assert.equal(r.since(0).toString(), "one\ntwo\nthree\n");
+  assert.equal(r.since(4).toString(), "two\nthree\n");
+  assert.equal(r.since(11).toString(), "ee\n");
+  assert.equal(r.since(14).length, 0);
+  // A ring that starts later (after a vyred restart) keeps counting from there.
+  const later = new Ring(4096, 1000);
+  later.push(Buffer.from("x\n"));
+  assert.equal(later.end, 1002);
+  assert.equal(later.since(1001).toString(), "\n");
+});
+
+test("ring: trimmed only at line ends, and a line longer than the ring is the one cut mid-line", () => {
+  const r = new Ring(1024);
+  let all = "";
+  for (let i = 0; i < 200; i++) { const line = `line ${String(i).padStart(4, "0")} ${"z".repeat(i % 17)}\n`; all += line; r.push(Buffer.from(line)); }
+  assert.ok(r.bytes <= 1024, `${r.bytes} bytes held`);
+  assert.ok(r.start > 0);
+  assert.equal(r.end, Buffer.byteLength(all));
+  assert.equal(all[r.start - 1], "\n", "the ring starts in the middle of a line");
+  assert.match(r.since(0).toString(), /^line \d{4} z*\n/);
+  assert.equal(r.since(0).toString(), all.slice(r.start));
+  // No newline at all: it has to cut, and still counts every byte.
+  const long = new Ring(1024);
+  long.push(Buffer.from("a".repeat(3000)));
+  assert.ok(long.bytes <= 1024);
+  assert.equal(long.end, 3000);
+  // tail(n) starts at a line when one begins in it.
+  assert.match(r.tail(100).toString(), /^line \d{4}/);
+});
+
+test("term: without dtach it falls back to a plain pty and says so", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
+  for (const dtach of [false, "missing"]) {
+    const prev = process.env.VYRE_DTACH_BIN;
+    if (dtach === "missing") process.env.VYRE_DTACH_BIN = path.join(SCRATCH, "no-such-dtach");
+    t.after(() => { if (prev === undefined) delete process.env.VYRE_DTACH_BIN; else process.env.VYRE_DTACH_BIN = prev; });
+    const { reg, work, handle } = await registry(t, {}, dtach === false ? { dtach: false } : {});
+    if (dtach === "missing") { if (prev === undefined) delete process.env.VYRE_DTACH_BIN; else process.env.VYRE_DTACH_BIN = prev; }
+    assert.equal(handle.durable, false);
+    const o = await ok(reg, "term.open", { cwd: work, surface: DECK });
+    assert.equal(o.durable, false);
+    assert.equal((await ok(reg, "term.list", {})).terms[0].durable, false);
+    assert.equal((await ok(reg, "term.attach", { term: o.term, surface: DECK })).durable, false);
+  }
+});
+
+test("term: from=<offset> replays exactly the bytes after it, with at frames; no from is the old replay", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
+  const { reg, work } = await registry(t);
+  const port = await server(t, reg);
+  const o = await ok(reg, "term.open", { cwd: work, surface: DECK });
+  const c = await connect(port, o.path + "&from=0");
+  assert.equal(c.status, 101);
+  // Nothing printed yet, or only the prompt: the first word is where the box is.
+  const first = await c.untilMsg(m => m.t === "at");
+  assert.equal(typeof first.offset, "number");
+  c.send({ t: "in", d: "echo AA''AA\n" });
+  await c.until(/AAAA\r?\n/);
+  // An at frame follows the output within a second, with the byte count so far.
+  const at = await lastAt(c);
+  assert.ok(at.offset > first.offset);
+  assert.equal(at.offset, bytesBefore(c, at), "the at offset is not the count of bytes sent");
+  c.sock.destroy();
+  await wait(100);
+  // Something printed while nobody watched.
+  const mid = await ok(reg, "term.attach", { term: o.term, surface: DECK, from: at.offset });
+  assert.equal(mid.offset, at.offset);
+  assert.match(mid.path, new RegExp(`&from=${at.offset}$`));
+  const c2 = await connect(port, mid.path);
+  await c2.untilMsg(m => m.t === "at");
+  c2.send({ t: "in", d: "echo BB''BB\n" });
+  await c2.until(/BBBB\r?\n/);
+  c2.sock.destroy();
+  await wait(100);
+  const re = await ok(reg, "term.attach", { term: o.term, surface: DECK, from: at.offset });
+  const c3 = await connect(port, re.path);
+  const back = await c3.untilMsg(m => m.t === "at");
+  assert.ok(!c3.text.includes("AAAA"), "bytes before the offset came back");
+  assert.match(c3.text, /BBBB/);
+  assert.ok(!c3.msgs.some(m => m.t === "cut"));
+  assert.equal(back.offset, at.offset + bytesBefore(c3, back));
+  // The first thing on the socket is the replay; the at comes after it.
+  assert.ok(c3.log.findIndex(x => x.b !== undefined) < c3.log.findIndex(x => x.t === "at"));
+  // Without from: binary frames only, the whole recent screen, as before.
+  const plain = await ok(reg, "term.attach", { term: o.term, surface: DECK });
+  assert.ok(!plain.path.includes("from="));
+  const c4 = await connect(port, plain.path);
+  await c4.until(/BBBB/);
+  await wait(1200);
+  assert.match(c4.text, /AAAA[\s\S]*BBBB/);
+  assert.equal(c4.msgs.length, 0, "a client that did not ask for offsets got text frames");
+  c3.sock.destroy(); c4.sock.destroy();
+});
+
+test("term: an offset that has left the ring gets the whole ring, from a line start, after a cut marker", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
+  const { reg, work } = await registry(t, { ring: 4096 });
+  const port = await server(t, reg);
+  const o = await ok(reg, "term.open", { cwd: work, surface: DECK });
+  const c = await connect(port, o.path);
+  c.send({ t: "in", d: "i=0; while [ $i -lt 400 ]; do i=$((i+1)); echo L$i-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa; done; echo DO''NE\n" });
+  await c.until(/DONE\r?\n/, 15_000);
+  c.sock.destroy();
+  const re = await ok(reg, "term.attach", { term: o.term, surface: DECK, from: 0 });
+  assert.ok(re.oldest > 0, "nothing left the ring");
+  assert.ok(re.offset - re.oldest <= 4096);
+  const c2 = await connect(port, re.path);
+  const at = await c2.untilMsg(m => m.t === "at");
+  assert.deepEqual(c2.log[0], { t: "cut", from: re.oldest, asked: 0 });
+  assert.match(c2.text, /^L\d+-a+\r?\n/, "the replay starts mid-line");
+  assert.match(c2.text, /L400-a+\r?\n[\s\S]*DONE/);
+  assert.equal(at.offset, re.oldest + bytesBefore(c2, at));
+  c2.sock.destroy();
+});
+
+test("term: with a real dtach the shell survives a vyred stop and start, and from= gets only new bytes", { skip: NO_DTACH, timeout: 60_000 }, async t => {
+  const first = await registry(t);
+  const port1 = await server(t, first.reg);
+  const o = await ok(first.reg, "term.open", { cwd: path.join(first.work, "proj"), surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } });
+  assert.equal(o.durable, true);
+  const c = await connect(port1, o.path + "&from=0");
+  c.send({ t: "in", d: "sleep 1000 & echo BG=$!; echo OL''D-MARK\n" });
+  const bg = Number((await c.until(/BG=(\d+)/))[1]);
+  t.after(() => { try { process.kill(bg, "SIGKILL"); } catch {} });
+  await c.until(/OLD-MARK\r?\n/);
+  const at = await lastAt(c);
+  assert.equal(at.offset, bytesBefore(c, at));
+  const pid = first.handle.terms.get(o.term).pty.pid;
+  t.after(() => { try { process.kill(pid, "SIGKILL"); } catch {} });
+
+  // vyred stops: the client is told it is a restart (1012), the shell and its job live on.
+  await first.stop();
+  for (let i = 0; i < 20 && !c.closed; i++) await wait(50);
+  assert.equal(c.closeCode, 1012);
+  await wait(300);
+  assert.ok(alive(bg), "the shell's job died with vyred");
+  assert.ok(alive(pid), "the dtach master died with vyred");
+  const table = fs.readFileSync(path.join(first.root, "run", "term", "terms.json"), "utf8");
+  assert.ok(!table.includes("OLD-MARK"), "terminal output reached the disk");
+  assert.equal(JSON.parse(table).terms[0].offset, at.offset);
+
+  // vyred starts again on the same home: the terminal is there, for the same screen only.
+  const second = await registry(t, {}, { root: first.root, work: first.work });
+  const port2 = await server(t, second.reg);
+  const listed = (await ok(second.reg, "term.list", {})).terms;
+  assert.deepEqual(listed.map(x => [x.term, x.durable, x.offset]), [[o.term, true, at.offset]]);
+  assert.equal((await second.reg.call("term.attach", { term: o.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } })).error?.code, "not_found");
+  const re = await ok(second.reg, "term.attach", { term: o.term, surface: DECK, from: at.offset }, "tailnet:alex", { peer: { stableId: "nLaptop" } });
+  assert.equal(re.durable, true);
+  const c2 = await connect(port2, re.path);
+  assert.equal(c2.status, 101);
+  const back = await c2.untilMsg(m => m.t === "at");
+  assert.equal(back.offset, at.offset);
+  assert.ok(!c2.msgs.some(m => m.t === "cut"));
+  c2.send({ t: "in", d: "echo NE''W-MARK; pwd\n" });
+  await c2.until(/NEW-MARK\r?\n/);
+  await c2.until(/proj/);
+  assert.ok(!c2.text.includes("OLD-MARK"), "bytes before the offset came back after the restart");
+  // The same shell: its job is still its job.
+  c2.send({ t: "in", d: "jobs -p\n" });
+  await c2.until(new RegExp(`\\b${bg}\\b`));
+  // And closing it now ends everything it started.
+  assert.deepEqual(await ok(second.reg, "term.close", { term: o.term }), { closed: true });
+  for (let i = 0; i < 40 && (alive(bg) || alive(pid)); i++) await wait(100);
+  assert.ok(!alive(bg), "the background job outlived the terminal");
+  assert.ok(!alive(pid), "the dtach master outlived the terminal");
+  c2.sock.destroy();
+});
+
+test("term: a terminal the box lost while vyred was down (a deploy) answers terminal_closed and says so on the log", async t => {
+  const root = tempHome(t);
+  const dir = path.join(root, "run", "term");
+  fs.mkdirSync(dir, { recursive: true });
+  // What a vyred in the old container left: a table row whose socket and master went with it.
+  const key = `tailnet:alex|nLaptop|${DECK}`;
+  fs.writeFileSync(path.join(dir, "terms.json"), JSON.stringify({ terms: [{ id: "tlost", cwd: "/", surface: DECK, key, offset: 42, started: Date.now(),
+    pid: 999_999, sock: path.join(dir, "tlost.sock"), left: Date.now(), cols: 80, rows: 24 }] }));
+  const { reg, events, work, stop } = await registry(t, {}, { root });
+  const closed = events.since(0, { type: "term.closed", limit: 10 });
+  assert.deepEqual(closed.map(e => e.payload), [{ term: "tlost", reason: "box updated" }]);
+  const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } });
+  assert.equal(r.error?.code, "terminal_closed");
+  assert.match(r.error.message, /box was updated/);
+  // Another screen still learns nothing about it.
+  assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } })).error?.code, "not_found");
+  // And it is remembered across the next restart, without a second announcement.
+  await stop();
+  const again = await registry(t, {}, { root, work });
+  assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "terminal_closed");
+  assert.equal(again.events.since(0, { type: "term.closed", limit: 10 }).length, 1);
 });

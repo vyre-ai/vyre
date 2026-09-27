@@ -56,6 +56,8 @@ export class Pty {
     /** @type {number|null} */ this.leader = null;
     /** @type {string|null} */ this.tty = null;
     this.exited = false;
+    /** A plain pty ends with vyred (dtach.js is the one that outlives it). */
+    this.durable = false;
     const env = { ...(o.env || process.env), SHELL: shell, TERM: "xterm-256color", COLORTERM: "truecolor", COLUMNS: String(cols), LINES: String(rows) };
     this.child = spawn("script", scriptArgs(shell, this.platform, o.login !== false), { cwd: o.cwd, env, detached: true, stdio: ["pipe", "pipe", "pipe"] });
     this.pid = this.child.pid || 0;
@@ -112,6 +114,12 @@ export class Pty {
     const fg = Number((await run("ps", ["-o", "tpgid=", "-p", String(this.leader)])).trim());
     if (fg > 0) { try { process.kill(-fg, "SIGWINCH"); } catch {} }
   }
+
+  pause() { this.child.stdout?.pause(); }
+  resume() { this.child.stdout?.resume(); }
+
+  /** A plain pty cannot outlive vyred: letting go of it ends it. */
+  detach() { return this.close(); }
 
   /** End the shell's whole session and script's group: a hang-up first, then a kill a second later. */
   async close() {

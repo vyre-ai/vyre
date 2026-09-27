@@ -285,8 +285,9 @@ test("up on a Mac: a pairing already waiting shows its code instead of starting 
 
 test("up on a Mac: already linked goes straight to the Capsule; --no-capsule skips it", async () => {
   const linked = { linked: true };
-  assert.deepEqual((await runMac("https://alex.vyre.run", { status: linked })).calls.map(c => c[0]), ["link.status", "capsule"]);
-  assert.deepEqual((await runMac("https://alex.vyre.run", { status: linked, capsule: false })).calls.map(c => c[0]), ["link.status"]);
+  // Linked: the ending asks the box for its assistant, over the link.
+  assert.deepEqual((await runMac("https://alex.vyre.run", { status: linked })).calls.map(c => c[0]), ["link.status", "capsule", "link.call"]);
+  assert.deepEqual((await runMac("https://alex.vyre.run", { status: linked, capsule: false })).calls.map(c => c[0]), ["link.status", "link.call"]);
 });
 
 test("up on a Mac: with no Capsule installed it points at the download", async () => {

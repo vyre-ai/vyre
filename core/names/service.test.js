@@ -29,7 +29,7 @@ function selfSigned(cn, days = 90) {
 }
 
 /** A world of fakes, and the service built on it. */
-function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined } = {}) {
+function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.1"], taken = false, agentOf = undefined, webSession = undefined } = {}) {
   const root = tempHome(t);
   const cfg = config.load(root);
   cfg.network.port = 0;
@@ -37,7 +37,7 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
   const ctx = {
     config: cfg, paths: config.ensure(root), log: () => {},
     events: { emit: (type, payload) => emitted.push({ type, payload }) },
-    handler: () => async (req, res, caller) => { calls.push(caller); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data: { caller } })); },
+    handler: () => async (req, res, caller, peer) => { calls.push(caller); if (peer && peer.origin) calls.push(`from ${peer.origin}`); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data: { caller } })); },
     // A stream router that answers every upgrade it is handed, saying who the caller was.
     upgrader: () => (req, socket, head, caller) => { calls.push(`stream ${caller}`); socket.end(`HTTP/1.1 101 Switching Protocols\r\nx-caller: ${caller}\r\n\r\n`); },
   };
@@ -60,7 +60,7 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
     set: async () => "txt", clear: async () => {},
   };
   let issued = 0;
-  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
+  const deps = { ctx, ts, certs, ...(agentOf ? { agentOf } : {}), ...(webSession ? { webSession } : {}), save: p => config.save(p, root, cfg), dns: async () => dns,
     issue: async ({ names: list }) => { issued++; return selfSigned(list[0]); } };
   const svc = names(deps);
   t.after(() => svc.close());
@@ -279,11 +279,70 @@ test("names: the owner's WebSockets reach vyred's streams as the owner; nobody e
   assert.equal(await up("100.101.1.2", { host: "evil.example" }), "HTTP/1.1 421 Misdirected Request", "another host name");
   assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "someone else on the tailnet");
   assert.equal(await up("100.101.9.9", {}), "HTTP/1.1 403 Forbidden", "an address whois does not know");
-  // Streams are the owner's alone: a guest gets none, even one listed for Glass, and nor does an
-  // agent's node, though both are callers the listener knows.
-  w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["glass.open"] } } };
-  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "a guest listed for Glass");
+  // Streams are the owner's alone: a listed guest gets none, and nor does an agent's node, though
+  // both are callers the listener knows.
+  w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["threads.list"] } } };
+  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "a listed guest");
   assert.equal(await up("100.101.3.1", {}), "HTTP/1.1 403 Forbidden", "an agent's node");
   assert.deepEqual(w.calls.filter(c => c.startsWith("stream")),
     ["stream tailnet:alex@example.com", "stream tailnet:alex@example.com"]);
+});
+
+test("names: the hosted app's origin gets CORS for the owner, and every call but the probe needs a web session", async t => {
+  let session = null;
+  const w = world(t, { webSession: async () => session });
+  w.cfg.name = "alex";
+  w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["threads.list"] } } };
+  await w.svc.tailscale();
+  const app = "https://app.vyre.run";
+  const send = async (ip, url, method, headers) => { const r = fakeRes(); await w.svc.onRequest(fakeReq(ip, url, method, headers), r); return r; };
+  // The preflight: exact origin, the allowed methods and headers, and Chrome's private-network ask.
+  const pre = await send("100.101.1.2", "/v1/tools/threads.list", "OPTIONS", { origin: app, "access-control-request-method": "POST",
+    "access-control-request-headers": "content-type, x-vyre-session", "access-control-request-private-network": "true" });
+  assert.equal(pre.status, 204);
+  assert.equal(pre.headers["access-control-allow-origin"], app);
+  assert.equal(pre.headers["access-control-allow-private-network"], "true");
+  assert.equal(pre.headers.vary, "Origin");
+  assert.equal(pre.headers["access-control-allow-credentials"], undefined, "no cookies, ever");
+  assert.equal((await send("100.101.1.2", "/v1/tools/x", "OPTIONS", { origin: app, "access-control-request-method": "DELETE" })).status, 403, "a method it never needs");
+  assert.equal((await send("100.101.1.2", "/v1/tools/x", "OPTIONS", { origin: app, "access-control-request-method": "POST", "access-control-request-headers": "x-vyre-caller" })).status, 403, "a header that claims a caller");
+  // The probe answers without vyred, and says nothing but that the box is reachable.
+  const probe = await send("100.101.1.2", "/v1/health", "GET", { origin: app });
+  assert.deepEqual([probe.status, JSON.parse(probe.body)], [200, { data: { reachable: true } }]);
+  // No web session: refused, with CORS headers so the app can read why.
+  const json = { origin: app, "content-type": "application/json" };
+  const bare = await send("100.101.1.2", "/v1/tools/threads.list", "POST", json);
+  assert.deepEqual([bare.status, JSON.parse(bare.body).error.code, bare.headers["access-control-allow-origin"]], [401, "web_session_required", app]);
+  assert.equal((await send("100.101.1.2", "/v1/tools/threads.list", "POST", { origin: app, "content-type": "text/plain" })).status, 403, "still JSON only");
+  // With one, the owner's call reaches the router, the origin riding beside the caller.
+  session = { id: "s1" };
+  assert.equal((await send("100.101.1.2", "/v1/tools/threads.list", "POST", json)).status, 200);
+  assert.deepEqual(w.calls, ["tailnet:alex@example.com", "from https://app.vyre.run"]);
+  // A guest or an agent's node from the same origin gets no CORS at all, session or not.
+  const guest = await send("100.101.1.3", "/v1/tools/threads.list", "POST", json);
+  assert.deepEqual([guest.status, guest.headers["access-control-allow-origin"]], [403, undefined]);
+  const guestPre = await send("100.101.1.3", "/v1/tools/threads.list", "OPTIONS", { origin: app, "access-control-request-method": "POST" });
+  assert.deepEqual([guestPre.status, guestPre.headers["access-control-allow-origin"]], [403, undefined]);
+  // Another site, or the hosted origin once the owner empties the list, is refused as before.
+  assert.equal((await send("100.101.1.2", "/v1/tools/threads.list", "POST", { ...json, origin: "https://app.vyre.run.evil.example" })).status, 403);
+  w.cfg.network.origins = [];
+  assert.equal((await send("100.101.1.2", "/v1/tools/threads.list", "POST", json)).status, 403);
+  assert.equal(w.calls.length, 2);
+});
+
+test("names: a WebSocket from the hosted app needs a web session", async t => {
+  let session = null;
+  const w = world(t, { webSession: async () => session });
+  w.cfg.name = "alex";
+  await w.svc.tailscale();
+  const up = async (ip, headers) => {
+    let out = "";
+    const socket = { on() {}, end(x) { out = String(x); }, destroy() {} };
+    await w.svc.onUpgrade({ url: "/v1/streams/computers/glass?ticket=x", headers: { host: "alex.vyre.run:0", ...headers }, socket: { remoteAddress: ip } }, socket, Buffer.alloc(0));
+    return out.split("\r\n")[0];
+  };
+  assert.equal(await up("100.101.1.2", { origin: "https://app.vyre.run" }), "HTTP/1.1 403 Forbidden", "no session");
+  session = { id: "s1" };
+  assert.equal(await up("100.101.1.2", { origin: "https://app.vyre.run" }), "HTTP/1.1 101 Switching Protocols");
+  assert.equal(await up("100.101.1.3", { origin: "https://app.vyre.run" }), "HTTP/1.1 403 Forbidden", "not the owner");
 });

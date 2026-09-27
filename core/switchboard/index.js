@@ -1075,7 +1075,9 @@ export class Switchboard {
     return null;
   }
 
+  /** vyred is stopping: every live thread ends with reason "restart" (ADR 0029 R7), so a surface says why. */
   async stopAll() {
+    for (const st of this.live.values()) if (!st.haltReason) st.haltReason = "restart";
     await Promise.all([...this.live.keys()].map(id => this.stop(id)));
     for (const job of [...this.prunes]) job.run();                     // no surface is left to catch up
   }
@@ -1227,14 +1229,15 @@ export default {
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
       });
 
-    // Every ask says what answering it takes: `presence: {required, covered}`. Answering is the
+    // Every ask says what answering it takes: `presence: {required, covered, since}`. Answering is the
     // person's own business (the no-nag rule), so required is false; covered says whether this
     // device has a live presence session. Surfaces render from this, never from tool names.
     const withPresence = async (asks, peer) => {
       if (!asks.length) return asks;
       const r = await ctx.call("presence.covered", peer ? { peer } : {});
-      const covered = Boolean(r.data && r.data.covered);
-      return asks.map(a => ({ ...a, presence: { required: false, covered } }));
+      const d = r.data || {};
+      const c = { covered: Boolean(d.covered), since: d.since ?? null };
+      return asks.map(a => ({ ...a, presence: { required: false, ...c } }));
     };
 
     tool("threads.get", "One thread: its record, its open permission questions, and its recent events (since: an event id).",

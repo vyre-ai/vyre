@@ -6,7 +6,7 @@
 // Every section loads on its own and shows its own empty state, so one missing module never
 // blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box, also its read-only "lock"), agents.list and
 // agents.update (switchboard), link.health (link), files.drive.status and files.drive.audit (files), hooks.list and hooks.status (hooks),
-// network.guests.list (network), computers.tailnet.status and computers.egress.status (computers), recall.status, recall.index, memory.stats, memory.curate,
+// network.guests.list (network), computers.tailnet.status, computers.egress.status and computers.handback.status/set (computers), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 // Connections is drawn by views/connections.js (the connectors workstream, ADR 0016).
 
@@ -235,7 +235,7 @@ async function drawNetwork(el, ctx) {
   const conn = h("div");
   const lockRow = h("div");
   // The tailnet features below each load on their own; a tool not on this vyred leaves its row out.
-  const extra = ["shares", "hooks", "guests", "agents", "egress"].map(() => h("div"));
+  const extra = ["shares", "hooks", "guests", "agents", "egress", "handback"].map(() => h("div"));
   put(el, r.error ? empty("Tailscale is checked by the box module.", r.error) : null,
     h("div", { class: "rows" },
       r.error ? null : row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
@@ -246,8 +246,8 @@ async function drawNetwork(el, ctx) {
       extra),
     on ? null : foot(toOnboard("tailscale", "Connect")));
   if (on) drawLink(conn, ctx);
-  const [shares, hooks, guests, agents, egress] = extra;
-  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress)]);
+  const [shares, hooks, guests, agents, egress, handback] = extra;
+  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress), drawHandback(handback)]);
 }
 
 /** How the box reaches this device (link.health, the calling node), kept current by deck/js/health.js. */
@@ -288,7 +288,7 @@ async function optional(el, label, tool, draw) {
 const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "Off");
 
 /**
- * Box shares (Taildrive): each folder the box offers, shared or not, and who the tailnet policy
+ * VyreDrive (Taildrive underneath): each folder the box offers, shared or not, and who the tailnet policy
  * lets reach them. The check runs on demand, and a drive.exposed event (after any share) shows
  * its findings here too. Sharing stays with the owner's terminal and the Capsule.
  */
@@ -310,11 +310,12 @@ function drawShares(el, ctx) {
     check.disabled = false; put(st);
     if (a.error) put(st, errText(a.error)); else showAudit(a.data);
   } }, "Check who can reach them");
-  return optional(el, "Box shares", "files.drive.status", d => {
+  const intro = () => faint("VyreDrive (built on Tailscale's Taildrive) opens your box's folders in Finder on your Mac.");
+  return optional(el, "VyreDrive", "files.drive.status", d => {
     const shares = listOf(d.shares, "name");
-    if (!d.enabled) return row("Box shares", onOff(false),
-      faint("Your box's folders, open in Finder on your Mac through Taildrive."), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
-    return row("Box shares", h("span", null, d.access === "rw" ? "Read and write" : "Read only"),
+    if (!d.enabled) return row("VyreDrive", onOff(false),
+      intro(), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
+    return row("VyreDrive", h("span", null, d.access === "rw" ? "Read and write" : "Read only"), intro(),
       shares.length ? plainList(shares, x => [mono(x.name), h("span", { class: "small " + (x.shared ? "muted" : "faint") }, x.shared ? " shared" : " not shared"),
         x.mounted ? h("span", { class: "small faint" }, ", mounted on this Mac") : null]) : faint("The box offers no folders (files.drive.shares)."),
       d.error ? faint(d.error) : null,
@@ -376,7 +377,7 @@ function drawGuests(el) {
       }) : null,
       safeLine,
       faint("Add someone from the box's terminal:"),
-      cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["glass.open"]}'`),
+      cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["threads.list"]}'`),
       people.length ? [faint("Remove them:"), cmd(`vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'`)] : null,
       faint("Turn guests off:"), cmd(`vyre call --tty network.guests.enable '{"on":false}'`));
   });
@@ -417,6 +418,27 @@ function drawEgress(el) {
       d.problem ? h("div", { class: "small set-warn" }, d.problem) : null,
       d.applies ? faint(`This ${d.applies}.`) : null,
       cmd(`vyre call --tty computers.egress.set '{"enabled":false}'`));
+  });
+}
+
+/** Glass hand-back: after how long without input a take-over goes back to the agent. */
+function drawHandback(el) {
+  return optional(el, "Glass hand-back", "computers.handback.status", d => {
+    const choices = Array.isArray(d.choices) ? d.choices : [0, 2, 5, 15];
+    const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select", "aria-label": "Hand back after this long without input" },
+      choices.map(m => h("option", { value: String(m), selected: Number(m) === Number(d.minutes) }, m ? `After ${m} min idle` : "Off"))));
+    const said = h("div", { class: "small faint", role: "status" }, "");
+    sel.onchange = async () => {
+      sel.disabled = true;
+      const r = await attempt("computers.handback.set", { minutes: Number(sel.value) });
+      sel.disabled = false;
+      if (r.error) { put(said, errText(r.error)); sel.value = String(d.minutes); return; }
+      d.minutes = r.data?.minutes;
+      put(said, "Saved. It applies to a take-over already running too.");
+    };
+    return row("Glass hand-back", sel,
+      faint(`When you take over an agent's computer and stop typing and moving, the keyboard goes back to the agent. You get a ${d.warn_s || 10} s warning first.`),
+      said);
   });
 }
 
