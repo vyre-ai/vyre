@@ -223,5 +223,27 @@ test("push: a planner firing reaches the phone as kind planner with a fixed titl
   await until(() => svc.got.length === 5, "three more");
   const titles = await Promise.all(svc.got.slice(2).map(async g => JSON.parse((await decrypt(phone, g.body)).toString()).title));
   assert.deepEqual(titles.sort(), ["Reminder", "Starting soon", "Todo due"]);
+
+  // Done elsewhere closes the notification on every device: a push with the tag and nothing else.
+  // A firing that was never pushed sends nothing.
+  const ack = firing => d.events.emit("planner", "planner.acked", { firing, item: "i_1", action: "done", by: "deck" }, {});
+  ack("f_unpushed");
+  ack("f_alarm");
+  await until(() => svc.got.length === 6, "the ack push");
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(svc.got.length, 6, "only the pushed firing's ack went out");
+  assert.deepEqual({ ...JSON.parse((await decrypt(phone, svc.got[5].body)).toString()), at: 0 }, { kind: "planner-ack", tag: "planner-f_alarm", at: 0 });
+  assert.equal(svc.got[5].headers.urgency, "normal");
+  ack("f_alarm");
+  await new Promise(r => setTimeout(r, 200));
+  assert.equal(svc.got.length, 6, "once per firing");
+
+  // The lock-screen label is the user's choice, off until they turn it on.
+  assert.equal((await deck("push.settings", {})).data.planner_label, false);
+  assert.equal((await deck("push.settings", { planner_label: true })).data.planner_label, true);
+  fire("f_lab", "reminder", "Call kit");
+  await until(() => svc.got.length === 7, "the labelled push");
+  const labelled = JSON.parse((await decrypt(phone, svc.got[6].body)).toString());
+  assert.deepEqual([labelled.title, labelled.body], ["Reminder", "Call kit"]);
   assert.equal((await deck("push.settings", { kinds: { planner: false } })).data.kinds.planner, false);
 });

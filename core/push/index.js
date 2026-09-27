@@ -7,6 +7,8 @@
 // Deck path to open. Never draft content, a tool's input, a value or a name the user typed: a
 // push crosses Google's, Mozilla's or Apple's servers, and the lock screen shows it to anyone
 // holding the phone. The Deck fetches the details after the tap, over the user's own connection.
+// One exception, the user's to make: push.settings planner_label (off by default) puts a planner
+// item's own words on the lock screen as the notification's body.
 //
 // The VAPID private key is made once, on first use, and put in the Vault (item `push-vapid`,
 // granted to this module); only its public half lives in this module's table.
@@ -29,7 +31,7 @@ const PEOPLE = ["cli", "local", "deck", "capsule"];
 /**
  * What each event becomes. Titles are fixed words; the only variable part is an id in the path.
  * `loud` rings through quiet hours: an alarm or a timer the user set themselves (ADR 0025).
- * @type {Record<string, (e: any) => { kind: string, title: string, path: string, tag: string, actions?: string[], loud?: boolean } | null>}
+ * @type {Record<string, (e: any, s: any) => { kind: string, title: string, path: string, tag: string, body?: string, actions?: string[], loud?: boolean } | null>}
  */
 const NOTES = {
   "ask.raised": e => ({ kind: "ask", title: "A session is waiting for your answer", path: `/needs/${enc(e.payload.ask)}`, tag: `ask-${e.payload.ask}` }),
@@ -38,10 +40,11 @@ const NOTES = {
     title: e.payload.reason === "asked" ? "A thread you are watching is asking" : e.payload.reason === "stopped" ? "A thread you are watching stopped" : "A thread you are watching finished",
     path: `/threads/${enc(e.thread)}`, tag: `watch-${e.payload.watch}` }),
   "lesson.proposed": e => ({ kind: "lesson", title: "Vyre has a lesson for you to review", path: "/settings?section=lessons", tag: `lesson-${e.payload.lesson}` }),
-  // Never the label the user typed: a fixed word per item kind, and the firing id as the tag, so
-  // a second ring replaces the first on the device.
-  "planner.fired": e => ({ kind: "planner", title: PLANNER_TITLES[e.payload.kind] || "Reminder", path: `/planner/${enc(e.payload.firing)}`,
-    tag: `planner-${e.payload.firing}`, actions: ["done", "snooze"], loud: e.payload.kind === "alarm" || e.payload.kind === "timer" }),
+  // A fixed word per item kind, and the firing id as the tag, so a second ring replaces the first
+  // on the device. The label the user typed only when they turned planner_label on.
+  "planner.fired": (e, s) => ({ kind: "planner", title: PLANNER_TITLES[e.payload.kind] || "Reminder", path: `/planner/${enc(e.payload.firing)}`,
+    tag: `planner-${e.payload.firing}`, actions: ["done", "snooze"], loud: e.payload.kind === "alarm" || e.payload.kind === "timer",
+    ...(s.planner_label && e.payload.title ? { body: String(e.payload.title).slice(0, 120) } : {}) }),
 };
 const PLANNER_TITLES = /** @type {Record<string, string>} */ ({ alarm: "Alarm", timer: "Timer finished", reminder: "Reminder", event: "Starting soon", todo: "Todo due" });
 const enc = v => encodeURIComponent(String(v ?? ""));
@@ -73,7 +76,8 @@ export default {
       get: k => { const r = /** @type {any} */ (db.prepare("SELECT value FROM push_state WHERE key = ?").get(k)); return r ? JSON.parse(String(r.value)) : undefined; },
       set: (k, v) => db.prepare("INSERT INTO push_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(k, JSON.stringify(v)),
     };
-    const settings = () => ({ quiet: state.get("quiet") ?? null, kinds: { ...Object.fromEntries(KINDS.map(k => [k, true])), ...(state.get("kinds") || {}) } });
+    const settings = () => ({ quiet: state.get("quiet") ?? null, kinds: { ...Object.fromEntries(KINDS.map(k => [k, true])), ...(state.get("kinds") || {}) },
+      planner_label: Boolean(state.get("planner_label")) });
 
     /** The keypair: made once, the private half in the Vault. Held in memory once fetched. */
     let privateKey = null;
@@ -123,15 +127,27 @@ export default {
       return out;
     };
 
+    /** Planner firings pushed since start, so an ack elsewhere can close them; the newest 500. */
+    const rung = new Set();
     const offs = Object.entries(NOTES).map(([type, make]) => ctx.events.on(type, async e => {
       try {
-        const made = make(e);
+        const s = settings();
+        const made = make(e, s);
         if (!made) return;
         const { loud, ...n } = made;
-        const s = settings();
         if (!s.kinds[n.kind] || (!loud && isQuiet(s.quiet))) return;
         if (!db.prepare("SELECT 1 FROM push_devices LIMIT 1").get()) return;
+        if (type === "planner.fired") { rung.add(String(e.payload.firing)); if (rung.size > 500) rung.delete(rung.values().next().value); }
         await deliver({ ...n, at: Date.now() });
+      } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); }
+    }));
+    // Done or Snooze on one device (or the Deck, the Capsule, a deletion) closes the notification on
+    // the others: a push with only a kind and the tag, and nothing to show.
+    offs.push(ctx.events.on("planner.acked", async e => {
+      try {
+        const f = String(e.payload.firing || "");
+        if (!rung.delete(f) || !settings().kinds.planner) return;
+        await deliver({ kind: "planner-ack", tag: `planner-${f}`, at: Date.now() });
       } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); }
     }));
 
@@ -166,8 +182,8 @@ export default {
       async () => /** @type {any[]} */ (db.prepare("SELECT * FROM push_devices ORDER BY at").all()).map(d => ({
         device: d.id, label: d.label, service: new URL(d.endpoint).hostname, at: d.at, last_ok: d.last_ok, fails: d.fails })));
 
-    tool("push.settings", "Quiet hours ({start: \"22:00\", end: \"07:00\", timezone?}, or null for none) and which kinds notify (ask, draft, watch, lesson, planner). With no input, the current settings.",
-      { type: "object", properties: { quiet: { anyOf: [{ type: "object" }, { type: "null" }] }, kinds: { type: "object" } } },
+    tool("push.settings", "Quiet hours ({start: \"22:00\", end: \"07:00\", timezone?}, or null for none), which kinds notify (ask, draft, watch, lesson, planner), and planner_label: show a planner item's own words on the lock screen (off by default). With no input, the current settings.",
+      { type: "object", properties: { quiet: { anyOf: [{ type: "object" }, { type: "null" }] }, kinds: { type: "object" }, planner_label: { type: "boolean" } } },
       async i => {
         if (i.quiet !== undefined) {
           const q = i.quiet;
@@ -180,6 +196,7 @@ export default {
           if (bad.length) throw new Error(`no such kind: ${bad.join(", ")} (kinds: ${KINDS.join(", ")})`);
           state.set("kinds", { ...(state.get("kinds") || {}), ...Object.fromEntries(Object.entries(i.kinds).map(([k, v]) => [k, Boolean(v)])) });
         }
+        if (i.planner_label !== undefined) state.set("planner_label", Boolean(i.planner_label));
         return { ...settings(), quiet_now: isQuiet(settings().quiet) };
       });
 

@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Push: a planner notification closes everywhere once answered, and an opt-in lock-screen label
+
+- core/push sends `{ kind: "planner-ack", tag: "planner-<firing>" }` to every device when a
+  firing it pushed is acknowledged anywhere (done, snooze, dismiss, a deletion), once per firing,
+  at normal urgency, with nothing to show; the service worker closes that tag.
+- push.settings `planner_label` (off by default) adds the item's own words as the planner
+  notification's `body`, for the lock screen. Off, nothing the user typed is in the payload.
+  Tests in core/push/push.test.js.
+
 #### The planner: anyone adds alarms, reminders, todos and notes; one parser, answered on the Mac
 
 - Agents now add alarms and timers as well as reminders, todos and notes, with no prompt. The

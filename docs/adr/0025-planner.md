@@ -44,11 +44,15 @@ the Deck in a browser. Every surface should be able to add, snooze and finish th
 8. **Acknowledgement from anywhere.** `planner.done`, `planner.snooze` and `planner.dismiss` take
    a firing id or an item id from any surface, the push notification's actions included. The
    first acknowledgement wins; it stops escalation and emits `planner.acked`, which tells the
-   other surfaces to drop their banner.
+   other surfaces to drop their banner. The push module then sends every device a push with
+   only `{ kind: "planner-ack", tag }` for a firing it had pushed, so the notification closes on
+   phones with no page open. Done and Snooze need no presence proof.
 9. **Push stays content-free (ADR 0011).** The push payload for kind `planner` has a fixed
    title per item kind ("Alarm", "Reminder", "Timer finished", "Starting soon", "Todo due") and a
-   path `/planner/<firing>`. The label the user typed never crosses the push service. Alarms and
-   timers ring through quiet hours (the user set them); reminders and todos respect quiet hours.
+   path `/planner/<firing>`. The label the user typed never crosses the push service unless the
+   user turns on `push.settings { planner_label: true }` (off by default), which adds it as the
+   notification's `body` for the lock screen. Alarms and timers ring through quiet hours (the
+   user set them); reminders and todos respect quiet hours.
 10. **Email and SMS fallback are off.** A later option: if no surface acknowledges after the last
     ring, send a message. It is outbound, so it goes through the Gate and needs the user to turn
     it on. Not built in the first slice.
@@ -107,8 +111,9 @@ where, url, ... }`; a calendar entry also has `account` and `event` (Google's id
 which the google module holds at the Gate.
 
 Push payload (kind `planner`): `{ kind: "planner", title, path: "/planner/<firing>", tag:
-"planner-<firing>", at, actions: ["done", "snooze"] }`. A notification action posts
-`planner.done` or `planner.snooze` with `{ firing }`.
+"planner-<firing>", at, actions: ["done", "snooze"], body? }` (body only with planner_label on).
+A notification action posts `planner.done` or `planner.snooze` with `{ firing }`. On an ack:
+`{ kind: "planner-ack", tag: "planner-<firing>", at }`, normal urgency, sent once per pushed firing.
 
 ## Consequences
 
