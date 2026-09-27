@@ -256,6 +256,11 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 | Status mark | rail count was violet mono text: the Now count is the 18 badge (99+, "3 need you") | 6a86462d |
 | Toast | two toasts (`.np-toast` on Now, `.vt-toast` in the vault): one js/toast.js + css/toast.css | 82685182 |
 | Toast | no in-place variant: `showToast({ slot })` draws it (Now's rows still use the floating one) | 82685182 |
+| Rail | 216 px text rows 34 tall at 14 px: now the 72 px icon rail, 60 by 50 places, icon 20 over a 12/16 label (js/rail.js) | 861a6d40 |
+| Rail | order was Now, Projects, Memory, Agents, Chat, Vault, Settings; Planner and Devices missing: now the spec's order, Devices and Settings at the bottom with the avatar | 861a6d40 |
+| Rail | the Now count sat at the row's end: the 18 badge now sits on the icon (top 4, right 8), `aria-hidden`, Now reads "Now, 5 need you" | 861a6d40 |
+| Rail | brand in the top bar (`.brand`, 216 wide): now the home mark at the top of the rail, its dot `--beacon-dot` while anything needs you | 861a6d40 |
+| Rail | no Cmd+1 to Cmd+9 place keys: now in rail order, Ctrl off a Mac, never while typing | 861a6d40 |
 | Toast | shadow `--light-top` and words 15/20: now `--float`, base 13/18, phone read 17/24 | 82685182 |
 
 Not closed here: the phone tab bar badge (this branch has no tab bar, the phone shell uses page
