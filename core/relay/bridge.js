@@ -13,8 +13,9 @@ import { duplexPair } from "node:stream";
 
 const METHODS = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE"]);
 /** Headers a device may send. Everything else is dropped: the caller comes from the channel, and a
- * device is never an agent, so it carries no agent or session key. */
-const PASS = /^(accept|accept-language|content-type|last-event-id|if-none-match|x-vyre-presence)$/;
+ * device is never an agent, so it carries no agent or session key. Idempotency-Key rides along so a
+ * retried write runs once (ADR 0029, R2). */
+const PASS = /^(accept|accept-language|content-type|last-event-id|if-none-match|idempotency-key|x-vyre-presence)$/;
 /** Headers that describe the hop, not the response. */
 const HOP = /^(connection|keep-alive|transfer-encoding|upgrade|strict-transport-security)$/;
 const MAX_HEAD = 16 * 1024;

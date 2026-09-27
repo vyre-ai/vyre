@@ -7,7 +7,7 @@
 // unanswered pings end the socket. Reconnects back off from 1 s to 5 minutes. Nothing polls.
 
 import { boxSide } from "./channel.js";
-import { authMessage, signRoute } from "./wire.js";
+import { authMessage, signRoute, CLOSE } from "./wire.js";
 
 const PING_MS = 60_000;
 const BACKOFF_MIN = 1_000;
@@ -83,6 +83,9 @@ export function relayLink(o) {
       clearInterval(pinger);
       state("disconnected", e && e.reason ? String(e.reason) : `closed ${e && e.code}`);
       if (stopped) return;
+      // Replaced means another process holds this route key (a restored copy of the box, say).
+      // Retrying fast would make the two take turns replacing each other, so wait the longest.
+      if (e && e.code === CLOSE.replaced) { log("relay: another box took this route; retrying in 5 minutes"); backoff = BACKOFF_MAX; }
       retry = setTimeout(connect, backoff);
       retry.unref?.();
       backoff = Math.min(backoff * 2, BACKOFF_MAX);
