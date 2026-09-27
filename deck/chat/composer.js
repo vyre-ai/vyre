@@ -4,9 +4,10 @@
 //
 // - Enter sends. While a turn runs it steers: the words join the running turn at its next step
 //   (threads.send mode "steer", the box's default for a running turn; it answers {sent, steered,
-//   uuid, turn}), drawn at once with a "steering" marker that thread.steered confirms. Alt+Enter,
-//   or the "Queue for after this turn" toggle, queues them instead (mode "queue"; the answer is
-//   {queued: <row id>, uuid}): a row above the composer with Edit, Take back and Steer now. A
+//   uuid, turn}, the uuid the box's own), drawn at once with a "steering" marker that
+//   thread.steered confirms. Alt+Enter, or the "Queue for after this turn" toggle, queues them
+//   instead (mode "queue"; the answer is {sent: false, queued: true, queued_id: <row id>, uuid,
+//   busy}): a row above the composer with Edit, Take back and Steer now. A
 //   session busy in a terminal queues every message, steer or not. Shift+Enter is a new line; on
 //   a touch screen Enter is a new line and the send button sends (hold it to queue).
 // - The first character picks the mode and the composer names it: "/" commands (a picker with
@@ -22,13 +23,17 @@
 // - A pasted image is attached (thumbnails, at most 4, 5 MB each) and sent with the words, once
 //   the box takes images on threads.send (core/caps.js SEND_IMAGES; until then a paste says so).
 //
-// Tools are learnt through core/caps.js: what the contract does not offer yet (model, thinking,
-// commands, shell, memory) starts off, and the first "no such tool" from an older box switches
+// The model chip opens the model picker: the aliases (opus, sonnet, haiku) and every model
+// sessions.models.get names per purpose, "now" on this thread's; threads.model switches it (a
+// stopped thread when it next runs) and model.switched moves the chip.
+//
+// Tools are learnt through core/caps.js: what the contract does not offer yet (thinking, shell,
+// memory) starts off, and the first "no such tool" from an older box switches
 // that control off too, with "Needs the sessions update" as its title; the words stay in the box. A paired Mac's session (opts.machine) keeps the plain send it had: threads.send
 // {thread, text, surface, machine}, no chips, and the notes for an offline or slow Mac.
 //
 // A session busy in the user's terminal takes the message into the inbox queue instead: threads.send
-// answers {queued: <row id>, uuid} (an older box: {sent: false, queued: true, name, note}), and
+// answers {queued: true, queued_id: <row id>, uuid, name, note} (an older box: no queued_id), and
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
 import { h, put } from "../js/dom.js";
@@ -37,11 +42,12 @@ import { icon } from "../js/icons.js";
 import {
   draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
   upAction, enterAction, createEsc, escape, nextMode, modeLabel, actionFor, addImage, removeImage, sendImages, newUuid, IMAGE_TYPES,
+  modelChoices, shortModel,
 } from "./core/composer-state.js";
 import { findCommand, rankCommands, applyCommand, normalizeCommands, sourceLabel } from "./core/commands.js";
 import { scorePath, compareScores } from "./core/match.js";
 import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
-import { localSend, dropLocal, localShell } from "./core/session-state.js";
+import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { listMenu, keysLine } from "./pickers.js";
 
 const touch = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
@@ -53,12 +59,6 @@ const HISTORY = historyStore();
 try { const raw = localStorage.getItem(HISTORY_KEY); if (raw) HISTORY.load(JSON.parse(raw)); } catch {}
 const saveHistory = () => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(HISTORY)); } catch {} };
 
-/** Models to offer when the box cannot list them (sessions.models). */
-const MODELS = Object.freeze([
-  { id: "opus", label: "Opus", description: "The most capable" },
-  { id: "sonnet", label: "Sonnet", description: "Fast and capable" },
-  { id: "haiku", label: "Haiku", description: "The fastest" },
-]);
 /** Where a "#" memory goes. */
 const SCOPES = Object.freeze([
   { id: "project", label: "This project", hint: "Only here" },
@@ -67,8 +67,8 @@ const SCOPES = Object.freeze([
 ]);
 /** How long the send button is held to queue. */
 const HOLD_MS = 450;
-/** The model's family name, never the vendor's: "claude-opus-4-5" reads "opus". @param {string|null|undefined} m */
-const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.toLowerCase() || String(m).replace(/^claude-/i, "")) : null);
+/** A fallback "/" list is asked again after this long (the session was not running: it had none). */
+const COMMANDS_RETRY_MS = 15_000;
 
 /**
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
@@ -99,8 +99,9 @@ export function mountComposer(opts) {
   const hist = HISTORY.get(thread);
   const esc = createEsc();
   const menu = listMenu();
-  /** The session's commands, once asked for. */
+  /** The session's commands, once asked for; `commandsAt` when, if they were the static fallback. */
   let commands = /** @type {import("./core/commands.js").Command[]|null} */ (null);
+  let commandsAt = 0;
   let fileTimer = /** @type {any} */ (null), fileSeq = 0;
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
@@ -187,7 +188,10 @@ export function mountComposer(opts) {
     patch(["@session"]);
     drawChips();
     const r = await CAPS.use("threads.mode", () => attempt("threads.mode", { thread, mode: next }));
-    if (r.error) { s.mode = was; patch(["@session"]); drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not change the mode: " + r.error.message); }
+    if (r.error) { s.mode = was; patch(["@session"]); drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not change the mode: " + r.error.message); return; }
+    // Not running: the box takes no mode ({mode: null, note}), so the chip goes back and says why.
+    const d = /** @type {any} */ (r.data) || {};
+    if (d.mode === null) { s.mode = was; patch(["@session"]); drawChips(); say(String(d.note || "The mode applies to a running session.")); }
   }
 
   async function toggleThinking() {
@@ -205,13 +209,13 @@ export function mountComposer(opts) {
   async function openModels() {
     if (!rich()) return;
     if (off("threads.model")) { say(NEEDS_UPDATE); return; }
-    const r = await CAPS.use("sessions.models", () => attempt("sessions.models", {}));
-    const list = Array.isArray(r.data) && r.data.length ? r.data.map((/** @type {any} */ m) => typeof m === "string" ? { id: m, label: m } : m) : MODELS;
-    const cur = shortModel(/** @type {any} */ (S).model);
+    // No list of models on the box: the aliases, the per-purpose map, and this thread's own.
+    const r = await CAPS.use("sessions.models.get", () => attempt("sessions.models.get", {}));
+    const list = modelChoices({ current: /** @type {any} */ (S).model, purposes: /** @type {any} */ (r.data)?.purposes });
     menu.setKind("model");
-    menu.open(list.map((/** @type {any} */ m) => ({ key: String(m.id), value: m, render: () => [
+    menu.open(list.map(m => ({ key: m.id, value: m, render: () => [
       h("span", { class: "cv-menu-name" }, m.label || m.id), m.description ? h("span", { class: "cv-menu-desc" }, m.description) : null,
-      shortModel(m.id) === cur ? h("span", { class: "cv-menu-badge" }, "now") : null] })),
+      m.now ? h("span", { class: "cv-menu-badge" }, "now") : null] })),
     row => pickModel(row.value), "Switch the model for this session", keysLine(["↑↓", "move"], ["⏎", "switch"], ["Esc", "close"]));
   }
   async function pickModel(/** @type {any} */ m) {
@@ -222,16 +226,23 @@ export function mountComposer(opts) {
     patch(["@session"]); drawChips();
     const r = await CAPS.use("threads.model", () => attempt("threads.model", { thread, model: String(m.id) }));
     if (r.error) { s.model = was; patch(["@session"]); drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not switch the model: " + r.error.message); }
+    // A stopped thread takes it when it next runs: the box says so. model.switched follows either way.
+    else if (/** @type {any} */ (r.data)?.note) say(String(/** @type {any} */ (r.data).note));
     ta.focus();
   }
 
   // ---- "/" and "@" --------------------------------------------------------------------------
 
   async function loadCommands() {
-    if (commands) return commands;
-    if (machine) { commands = normalizeCommands(null); return commands; }
+    if (commands && (!commandsAt || Date.now() - commandsAt < COMMANDS_RETRY_MS)) return commands;
+    if (machine) { commands = normalizeCommands(null); commandsAt = 0; return commands; }
+    // {thread, commands: [{name, description, argumentHint}]}; empty while the thread is not
+    // running (the list comes with the session), so the static one stands in and is asked again.
     const r = await CAPS.use("threads.commands", () => attempt("threads.commands", { thread }));
-    commands = normalizeCommands(r.data);
+    const d = /** @type {any} */ (r.data);
+    const got = Array.isArray(d) ? d : Array.isArray(d?.commands) ? d.commands : null;
+    commands = normalizeCommands(got);
+    commandsAt = got && got.length ? 0 : (r.missing ? 0 : Date.now());
     return commands;
   }
 
@@ -394,10 +405,11 @@ export function mountComposer(opts) {
     if (machine) opts.onOffline?.(null);
     if (d.queued != null && d.queued !== false) {
       // Queued: asked for (mode "queue"), or a session busy in a terminal, which queues every
-      // message. The answer names the row ({queued: <id>, uuid}; an older box says queued: true
-      // and thread.queued names it). A steer drawn on send was not one: it becomes the row.
-      const id = d.queued === true ? null : d.queued;
+      // message. The answer names the row (queued_id, and the box's uuid; an older box only says
+      // queued: true and thread.queued names it). A steer drawn on send was not one: it becomes the row.
+      const id = d.queued_id ?? (d.queued === true ? null : d.queued);
       if (drawn && mode === "steer") patch(dropLocal(/** @type {any} */ (S), uuid));
+      if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
       if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
       if (id != null && !machine) return;
       busyName = d.name || busyName;
@@ -406,6 +418,8 @@ export function mountComposer(opts) {
       if (machine && d.note) say(`On ${machine} · ${d.note}`);
       return;
     }
+    // A steer: the box's uuid names the words drawn under ours (thread.steered will use it).
+    if (drawn && d.uuid) patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
     if (d.sent === false) {
       back();
       say([h("span", null, d.note || "The session did not take the message."), " ", retry()]);
@@ -537,6 +551,11 @@ export function mountComposer(opts) {
       if (e.thread !== thread || !e.payload?.queued) return;
       waiting.delete("pending:" + e.payload.text);
       waiting.set(String(e.payload.queued), String(e.payload.text || ""));
+      drawQueued();
+    }),
+    on("thread.unqueued", e => {
+      if (e.thread !== thread || e.payload?.queued == null) return;
+      waiting.delete(String(e.payload.queued));
       drawQueued();
     }),
     // Handed over (or typed in directly): a queued one leaves the list, and the note goes with the last.

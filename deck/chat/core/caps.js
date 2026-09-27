@@ -1,15 +1,16 @@
 // @ts-check
 // Which of the sessions tools this box has: the one place that knows (shared core, no DOM).
 //
-// The sessions contract (final, 27 Sep): threads.interrupt, .unqueue, .edit, .send_now, .rewind
-// and .mode are live; an older box may still lack them. The Deck gets no list of tools, so each
+// The sessions contract (core/switchboard on work/sessions): threads.interrupt, .unqueue, .edit,
+// .send-now (a dash), .rewind, .mode, .model and .commands are live (sessions.models.get lists
+// the model per purpose); an older box may still lack them. The Deck gets no list of tools, so each
 // is learnt lazily: the first call that comes back "no such tool" marks it missing, and every
 // control that needs it is disabled from then on with NEEDS_UPDATE as its title. A tool that
 // answered once is known to be there. Listeners hear each change, so a control drawn before the
 // answer updates.
 //
-// What the contract does not offer yet (NOT_OFFERED: the model picker, commands, "!" shell, "#"
-// memory, thinking, killing a background task, images on send) starts off on the page's probe,
+// What the contract does not offer yet (NOT_OFFERED: "!" shell, "#" memory, thinking, killing a
+// background task, images on send) starts off on the page's probe,
 // so those controls are off from the first draw and never called. When the sessions team ships
 // one, take it out of the list.
 
@@ -17,16 +18,28 @@ export const NEEDS_UPDATE = "Needs the sessions update";
 
 /** The contract's tools chat calls that older boxes lack. */
 export const SESSION_TOOLS = Object.freeze([
-  "threads.interrupt", "threads.unqueue", "threads.edit", "threads.send_now", "threads.rewind", "threads.mode",
+  "threads.interrupt", "threads.unqueue", "threads.edit", "threads.send-now", "threads.rewind", "threads.mode",
+  "threads.model", "threads.commands", "sessions.models.get",
 ]);
 
 /** Images sent with threads.send: a feature, not a tool, so it has a name of its own here. */
 export const SEND_IMAGES = "threads.send:images";
 
+/**
+ * threads.rewind with restore "code" or "both" (files put back): a feature of threads.rewind, not
+ * a tool. It shipped with threads.model and threads.commands, so the answer either gives (there
+ * or missing) says it for this one too (LINKED).
+ */
+export const REWIND_CODE = "threads.rewind:code";
+
+/** Features that came in with a tool: what the tool's answer says holds for them too. */
+const LINKED = Object.freeze(/** @type {Record<string, string[]>} */ ({
+  "threads.model": [REWIND_CODE], "threads.commands": [REWIND_CODE],
+}));
+
 /** Not offered by the server yet: off from the start on the page's probe. */
 export const NOT_OFFERED = Object.freeze([
-  "threads.model", "sessions.models", "threads.commands", "threads.shell", "threads.remember", "threads.thinking",
-  "threads.kill_task", SEND_IMAGES,
+  "threads.shell", "threads.remember", "threads.thinking", "threads.kill-task", SEND_IMAGES,
 ]);
 
 const MISSING_CODES = new Set(["no_such_tool", "unknown_tool", "http_404"]);
@@ -56,6 +69,7 @@ export function createCaps(o = {}) {
     if (known.get(tool) === ok) return;
     known.set(tool, ok);
     for (const fn of subs) { try { fn(tool, ok); } catch {} }
+    for (const f of LINKED[tool] || []) set(f, ok);
   };
   return {
     /** true: answered before; false: missing; null: not asked yet. */

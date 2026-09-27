@@ -559,12 +559,62 @@ function blocksBefore(buf, at, id) {
   return n;
 }
 
+const PARENT = Buffer.from('{"parentUuid":"');
+
+/**
+ * Lines a rewind left behind. A rewind (a double Esc in Claude Code, threads.rewind in Vyre)
+ * resumes the session from a message's parent, so the next message the person sends is a second
+ * child of that parent, and everything from the first child up to it is a branch the session no
+ * longer follows. Such a branch is found as two person's lines (text, not a tool result, not meta,
+ * not a sidechain) with the same parentUuid: the lines from the earlier to the later are skipped.
+ * Only the line's start is looked at for the parent (Claude Code writes parentUuid first); only
+ * the few lines that share a parent are parsed. A rewind nothing has been sent after yet is not a
+ * branch in the file: the Deck skips it from the thread.rewound event until then.
+ * @param {Buffer} buf @returns {(line: number) => boolean}
+ */
+function abandonedLines(buf) {
+  /** @type {Map<string, number[]>} */
+  const kids = new Map();
+  let pos = 0, line = 0, twins = false;
+  while (pos < buf.length) {
+    let end = buf.indexOf(0x0a, pos);
+    if (end < 0) end = buf.length;
+    if (end - pos > PARENT.length + 36 && buf.compare(PARENT, 0, PARENT.length, pos, pos + PARENT.length) === 0) {
+      const parent = buf.toString("latin1", pos + PARENT.length, pos + PARENT.length + 36);
+      const list = kids.get(parent);
+      if (list) { list.push(line); twins = true; } else kids.set(parent, [line]);
+    }
+    pos = end + 1; line++;
+  }
+  if (!twins) return () => false;
+  /** @param {number} n */
+  const person = n => {
+    const at = lineStart(buf, n);
+    let end = buf.indexOf(0x0a, at);
+    if (end < 0) end = buf.length;
+    const o = parse(buf, at, end);
+    if (!o || o.type !== "user" || o.isMeta || o.isSidechain === true || o.parent_tool_use_id) return false;
+    const c = o.message && o.message.content;
+    return typeof c === "string" || (Array.isArray(c) && c.some(p => p && p.type === "text") && !c.some(p => p && p.type === "tool_result"));
+  };
+  /** @type {[number, number][]} */
+  const ranges = [];
+  for (const list of kids.values()) {
+    if (list.length < 2) continue;
+    const people = list.filter(person);
+    for (let i = 1; i < people.length; i++) ranges.push([people[i - 1], people[i]]);
+  }
+  if (!ranges.length) return () => false;
+  return n => ranges.some(([a, b]) => n >= a && n < b);
+}
+
 /**
  * Read lines [fromLine, toLine) starting at byte `at`, then read on past toLine for the results
- * and the close of what the window opened.
+ * and the close of what the window opened. Lines on a branch a rewind left are skipped.
  * @param {Buffer} buf @param {number} at @param {number} fromLine @param {number} toLine @param {number} limit
+ * @param {(line: number) => boolean} [dead] the lines to skip (abandonedLines), when the caller has them
  */
-function scan(buf, at, fromLine, toLine, limit) {
+function scan(buf, at, fromLine, toLine, limit, dead = abandonedLines(buf)) {
   const r = new Reader();
   // A read from the top of the file owns the turn it starts in, human line or not.
   if (fromLine === 0) r.turn.zero = true;
@@ -580,7 +630,7 @@ function scan(buf, at, fromLine, toLine, limit) {
     const o = parse(buf, pos, end);
     // A live session's last line is often half written: not read, so the next read starts there.
     if (o === undefined && last) { torn = seq; break; }
-    if (o) r.line(o, seq);
+    if (o && !dead(seq)) r.line(o, seq);
     pos = end + 1; seq++;
   }
   const stop = seq;
@@ -594,7 +644,7 @@ function scan(buf, at, fromLine, toLine, limit) {
       if (last) end = buf.length;
       const o = parse(buf, pos, end);
       if (o === undefined && last) break;
-      if (o && r.line(o, s, true) === "human") {
+      if (o && !dead(s) && r.line(o, s, true) === "human") {
         r.closeTurn(s, false);
         r.turn = r.fresh(s, 0);
         break;
@@ -631,7 +681,7 @@ export function blocks(file, { from, limit = 400, before } = {}) {
 
   if (from !== undefined) {
     from = Math.max(0, Math.floor(Number(from) || 0));
-    const { r, stop, truncated, eof } = scan(buf, lineStart(buf, from), from, Infinity, limit);
+    const { r, stop, truncated, eof } = scan(buf, lineStart(buf, from), from, Infinity, limit, abandonedLines(buf));
     return out(r.blocks, nextOf(r, from, stop, truncated, eof));
   }
 
@@ -640,6 +690,7 @@ export function blocks(file, { from, limit = 400, before } = {}) {
   const end = before === undefined ? total : Math.max(0, Math.min(total, Math.floor(Number(before) || 0)));
   const endAt = before === undefined ? buf.length : lineStart(buf, end);
   let back = limit * 2;
+  const dead = abandonedLines(buf);
   for (;;) {
     let at = endAt, n = 0;
     while (n < back && at > 0) {
@@ -657,7 +708,7 @@ export function blocks(file, { from, limit = 400, before } = {}) {
       at = nl + 1; n++;
     }
     const startLine = end - n;
-    const { r, stop, truncated, eof } = scan(buf, at, startLine, end, Number.MAX_SAFE_INTEGER);
+    const { r, stop, truncated, eof } = scan(buf, at, startLine, end, Number.MAX_SAFE_INTEGER, dead);
     if (r.blocks.length >= limit || startLine === 0) {
       const bs = r.blocks.slice(-limit);
       return out(bs, before === undefined ? nextOf(r, startLine, stop, truncated, eof) : end);

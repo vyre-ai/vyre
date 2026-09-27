@@ -24,7 +24,7 @@ Object.assign(globalThis, {
   addEventListener: () => {}, removeEventListener: () => {},
   localStorage: { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) },
 });
-/** Where go() sent the page (a rewind opens its fork). */
+/** Where go() sent the page (a rewind stays on the same thread: nothing goes here). */
 const went = [];
 Object.defineProperty(globalThis, "history", { value: { state: null, pushState: (_s, _t, url) => went.push(url), replaceState: () => {} },
   configurable: true, writable: true });
@@ -86,11 +86,37 @@ const NEW = "4b7e2a90-sdk-thread";
 let interruptMissing = false;
 /** Tools this box answers "no such tool" for (a box before the sessions update has none of them; this one has some). */
 const MISSING = new Set(["threads.unqueue"]);
+// The fourth session: one the stream drops and resumes (ADR 0029 R1). What the box holds is
+// changed by the test between reads.
+const RES = "5e6f7a8b-resume-thread";
+const res = {
+  events: /** @type {any[]} */ ([{ id: 10, type: "thread.finished", thread: RES, at: T0 + 2000, payload: { ok: true } }]),
+  blocks: /** @type {any[]} */ ([
+    { seq: 0, kind: "user", ts: T0, text: "Open the Northwind Bakery order form" },
+    { seq: 1, kind: "text", ts: T0 + 1000, message: "msg_r0", text: "It is open." },
+    { seq: 1, kind: "turn", ts: T0, duration_ms: 2000, tokens: { input: 300, output: 20 }, model: "sample-model" },
+  ]),
+  next: 2,
+  asks: /** @type {any[]} */ ([]),
+};
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
   const input = JSON.parse(o.body);
   calls.push({ tool, input });
   let data;
+  // sessions.models.get names no thread: the per-purpose map.
+  if (tool === "sessions.models.get") return { status: 200, statusText: "", json: async () => ({ data: {
+    purposes: { chat: { model: "opus", from: "config:chat" }, job: { model: "claude-haiku-4-5", from: "config:job" } }, projects: {} } }) };
+  if (input.thread === RES || input.session === RES) {
+    if (tool === "threads.get") data = { thread: { id: RES, name: "Northwind order form", cwd: "/home/alex/work/northwind", status: "idle", holder: null, agent: null },
+      events: res.events.filter(e => e.id > (input.since ?? 0)), asks: res.asks };
+    else if (tool === "recall.transcript") {
+      const from = input.from ?? 0;
+      data = { session: { id: RES, cwd: "/home/alex/work/northwind" }, blocks: res.blocks.filter(b => b.seq >= from), next: res.next, first: 0 };
+    } else if (tool === "threads.asks") data = res.asks;
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
   if (input.thread === NEW || input.session === NEW) {
     if (tool === "threads.interrupt" && interruptMissing) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no tool threads.interrupt" } }) };
     if (MISSING.has(tool)) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool here" } }) };
@@ -98,8 +124,18 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     else if (tool === "recall.transcript") data = { session: { id: NEW, cwd: "/home/alex/work/harlow-legal" }, blocks: [], next: 0, first: 0 };
     else if (tool === "threads.asks") data = [];
     else if (tool === "threads.answer") data = { answered: true };
-    // The final contract's answers: a steer {sent, steered, uuid, turn}; a queued message {queued: <row id>, uuid}.
-    else if (tool === "threads.send") data = input.mode === "queue" ? { queued: 41, uuid: input.uuid } : { sent: true, steered: input.mode === "steer", uuid: input.uuid, turn: `${NEW}:9` };
+    // core/switchboard's answers (work/sessions): the box mints the uuid. A steer {sent, steered,
+    // thread, uuid, turn}; a queued message {sent: false, queued: true, queued_id, uuid, thread, busy}.
+    else if (tool === "threads.send") data = input.mode === "queue"
+      ? { sent: false, queued: true, queued_id: 41, uuid: "box-q41", thread: NEW, name: "Q3 report", busy: "working", note: "Q3 report is working on something." }
+      : input.mode === "steer" ? { sent: true, steered: true, thread: NEW, uuid: "box-steer-1", turn: `${NEW}:9` } : { sent: true, thread: NEW };
+    else if (tool === "threads.rewind") data = input.restore === "code"
+      ? { rewound: true, thread: NEW, uuid: input.uuid, restore: "code", files: { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts"] } }
+      : { rewound: true, thread: NEW, uuid: input.uuid, text: "Use Estate intake v2 instead",
+        ...(input.restore ? { restore: input.restore, files: { restored: true, files_changed: ["src/intake/estate.ts"] } } : {}) };
+    else if (tool === "threads.commands") data = { thread: NEW, commands: [{ name: "compact", description: "Clear history but keep a summary", argumentHint: "<instructions>" }] };
+    else if (tool === "threads.model") data = { thread: NEW, model: input.model };
+    else if (tool === "threads.mode") data = { thread: NEW, mode: input.mode };
     else data = tool === "memory.facts" ? { facts: [] } : {};
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
@@ -295,7 +331,7 @@ test("thinking folds to its length, a run of tools is one row that counts up, th
 });
 
 // Changed on purpose (the composer like Claude Code, 27 Sep): the row reads "Queued for after",
-// "Send now" is "Steer now" (threads.send_now in the final contract), and each button is on until
+// "Send now" is "Steer now" (threads.send-now in the sessions contract), and each button is on until
 // the box says it has no such tool (core/caps.js), not off from the start. Rows are named by the
 // box's row id (`queued`): a row without one yet has its buttons off.
 test("queued rows sit above the composer: Edit, Take back, Steer now by row id; a box without the tool turns that button off", async () => {
@@ -370,7 +406,7 @@ test("an inline ask: A allows, D denies, and one answered on another screen says
 
 // ---- the composer like Claude Code: steer, queue, mode, rewind ----------------------------------
 
-test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc forks", async () => {
+test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc rewinds this thread", async () => {
   const box4 = new El("div");
   doc.body.append(box4);
   const stop4 = mountSession(box4, { thread: NEW, project: null, onBack() {} });
@@ -388,11 +424,14 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   assert.equal(sent.text, "Use Estate intake v2 instead");
   assert.match(sent.uuid, /^[0-9a-f-]{36}$/);
   assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/);
-  at("thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: sent.uuid, turn: `${NEW}:9`, via: "steer" });
+  // The box's own uuid, not the Deck's: the echo and the answer tie it to the words drawn on send.
+  at("thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: "box-steer-1", via: "steer" });
+  assert.equal($$(box4, ".cv-user").length, 2, "the echo is the same message");
   assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/, "the echo is not the join");
   at("thread.tool", { call: "s1", status: "completed" });
   // No step on the event: counted here, one call of this turn done.
-  at("thread.steered", { uuid: sent.uuid, turn: `${NEW}:9` });
+  at("thread.steered", { uuid: "box-steer-1" });
+  assert.equal($$(box4, ".cv-steer").length, 1);
   assert.match(text($(box4, ".cv-steer")).trim(), /^Steered at step 1 · \d\d:\d\d$/);
   const order = box4.querySelectorAll(".cv-row").map(n => n.className.split(" ").find(c => /^cv-(user|steer|tool)$/.test(c))).filter(Boolean);
   assert.deepEqual(order, ["cv-user", "cv-tool", "cv-steer", "cv-user"], "the words sit where they joined, after the Read");
@@ -402,7 +441,10 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   await wait();
   assert.equal(calls.filter(c => c.tool === "threads.send").at(-1).input.mode, "queue");
   assert.match(text($(box4, ".cv-queued-row")), /Then open a PR against main/);
-  assert.equal($(box4, ".cv-queued-row .cv-q-edit").disabled, false, "the answer named the row (queued: 41)");
+  assert.equal($(box4, ".cv-queued-row .cv-q-edit").disabled, false, "the answer named the row (queued_id: 41)");
+  assert.equal($$(box4, ".cv-queued-row").length, 1);
+  at("thread.queued", { queued: 41, uuid: "box-q41", text: "Then open a PR against main", surface: "deck" });
+  assert.equal($$(box4, ".cv-queued-row").length, 1, "the event is the same row");
 
   assert.match(text($(box4, ".composer-mode")), /^Asks first/);
   assert.equal(key("Tab", { shiftKey: true }).defaultPrevented, true);
@@ -418,22 +460,109 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   const sheet = $(box4, ".cv-rewind");
   assert.ok(sheet, "Esc Esc opens the rewind sheet");
   assert.match(text(sheet), /Use Estate intake v2 instead/);
-  assert.equal($(sheet, ".cv-rw-conversation"), null, "no conversation / code / both choice: the box forks");
+  await wait();
+  // Claude Code's three choices; the box answered threads.commands, so it can put files back.
+  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"]);
+  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => b.disabled), [false, false, false]);
+  assert.equal(text($(box4, ".cv-rw-opt[aria-checked=true]")), "Restore code and conversation", "both is the default");
   press3("Enter");
   await wait();
-  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: sent.uuid });
-  assert.deepEqual(went, [], "the answer did not name the fork: thread.rewound will");
-  at("thread.rewound", { uuid: sent.uuid, fork: "th-harlow-fork" });
-  await wait();
-  assert.deepEqual(went, ["/chat/thread/th-harlow-fork"], "the fork opens");
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "box-steer-1", restore: "both" }, "the box's uuid for the message");
+  assert.deepEqual(went, [], "the same thread: nothing opens");
   assert.equal($(box4, ".cv-rewind"), null);
-  assert.equal($$(box4, ".cv-user").length, 2, "this session keeps every word");
-  assert.match(text($(box4, ".thread-view")), /Rewound to before "Use Estate intake v2 instead" in a new session/);
-  // The fork, opened: the words are back in its composer.
+  assert.equal($$(box4, ".cv-user").length, 1, "the message and everything after it are gone");
+  assert.equal($$(box4, ".cv-steer").length, 0);
+  assert.equal(ta.value, "Use Estate intake v2 instead", "the words come back to edit");
+  assert.match(text($(box4, ".thread-view")), /Rewound to before "Use Estate intake v2 instead" · Restored 1 file/);
+  at("thread.rewound", { uuid: "box-steer-1", at: "u-first", restore: "both", files: { restored: true, files_changed: ["src/intake/estate.ts"] } });
+  await wait();
+  assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Rewound/.test(text(n))).length, 1, "its event is the same rewind");
+
+  // Code only: the files go back; the conversation, the view and the composer stay.
+  ta.value = "";
+  key("Escape"); key("Escape");
+  await wait();
+  press3("ArrowLeft");
+  assert.equal(text($(box4, ".cv-rw-opt[aria-checked=true]")), "Restore code");
+  const users = $$(box4, ".cv-user").length;
+  ta.value = "keep this draft";
+  press3("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "u-first", restore: "code" });
+  assert.equal($(box4, ".cv-rewind"), null);
+  assert.equal($$(box4, ".cv-user").length, users, "nothing leaves the view");
+  assert.equal(ta.value, "keep this draft", "the composer keeps its words");
+  assert.match(text($(box4, ".thread-view")), /Restored 2 files/);
+  at("thread.rewound", { uuid: "u-first", restore: "code", files: { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts"] } });
+  await wait();
+  assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Restored 2 files/.test(text(n))).length, 1, "its event is the same restore");
+
+  // The context meter, only once the box says the share; the model chip follows model.switched.
+  assert.equal($(box4, ".cv-context"), null);
+  at("thread.usage", { cost_usd: 0.01, total_cost_usd: 0.2, context: { used: 124000, max: 200000, share: 0.62 } });
+  await wait();
+  assert.equal(text($(box4, ".cv-context")), "62% of context");
+  at("model.switched", { model: "haiku", live: true });
+  await wait();
+  assert.match(text($(box4, ".composer-model")), /haiku/);
+  await $(box4, ".composer-model").click();
+  await wait();
+  assert.ok(calls.some(c => c.tool === "sessions.models.get"), "the picker reads the per-purpose map");
+  assert.match(text($(box4, ".composer-menu")), /claude-haiku-4-5/);
+  assert.match(text($(box4, ".composer-menu")), /Used for job/);
+  ta.value = "";
+  stop4();
+});
+
+// ---- the stream drops and comes back, or is reset (ADR 0029 R1) ---------------------------------
+
+test("a reconnect or a stream reset re-reads threads.get, threads.asks and the transcript: nothing missing, nothing twice", async () => {
   const box5 = new El("div");
   doc.body.append(box5);
-  const stop5 = mountSession(box5, { thread: "th-harlow-fork", project: null, onBack() {} });
-  assert.equal($(box5, "textarea").value, "Use Estate intake v2 instead", "the words come back to edit in the fork");
+  const stop5 = mountSession(box5, { thread: RES, project: null, onBack() {} });
+  await wait(30);
+  assert.match(text($(box5, ".thread-view")), /It is open\./);
+  const es = FakeES.last;
+  const fireOpen = () => { for (const f of es.l.get("open") || []) f({}); };
+  fireOpen(); // the first open: not a resume
+  const before = calls.length;
+  // While the stream was down: a message, a queued row and an ask, and their transcript.
+  res.events.push(
+    { id: 11, type: "thread.sent", thread: RES, at: T0 + 3000, payload: { text: "Check the Harlow Legal invoice", surface: "deck" } },
+    { id: 12, type: "thread.queued", thread: RES, at: T0 + 3500, payload: { queued: 9, uuid: "q9", text: "Then email juno", surface: "deck" } });
+  res.asks = [{ id: "ask_r1", thread: RES, kind: "permission", tool: "Bash", summary: "npm test", at: T0 + 4000 }];
+  res.blocks.push(
+    { seq: 2, kind: "user", ts: T0 + 3000, text: "Check the Harlow Legal invoice" },
+    { seq: 3, kind: "text", ts: T0 + 4000, message: "msg_r1", text: "The invoice totals match." });
+  res.next = 4;
+  fireOpen(); // the stream is back
+  await wait(40);
+  const since = calls.slice(before);
+  assert.deepEqual(since.find(c => c.tool === "threads.get")?.input, { thread: RES, since: 10, limit: 500 }, "events since the last one applied");
+  assert.ok(since.some(c => c.tool === "recall.transcript" && c.input.from === 2), "the transcript from next");
+  assert.ok(since.some(c => c.tool === "threads.asks" && c.input.thread === RES));
+  const view = () => text($(box5, ".thread-view"));
+  assert.equal(view().split("Check the Harlow Legal invoice").length - 1, 1, "the missed message, once");
+  assert.equal(view().split("The invoice totals match.").length - 1, 1, "its reply, once");
+  assert.match(text($(box5, ".cv-queued")), /Then email juno/);
+  assert.equal($$(box5, ".cv-ask").length, 1, "the missed ask");
+  // Again: the same reads change nothing.
+  fireOpen();
+  await wait(40);
+  assert.equal(view().split("Check the Harlow Legal invoice").length - 1, 1);
+  assert.equal(view().split("The invoice totals match.").length - 1, 1);
+  assert.equal($$(box5, ".cv-queued-row").length, 1);
+  assert.equal($$(box5, ".cv-ask").length, 1);
+  // The box's log was reset: ids start again at 2, below everything seen.
+  res.events = [{ id: 3, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 10, uuid: "q10", text: "And ping kit", surface: "deck" } }];
+  const b2 = calls.length;
+  for (const f of es.l.get("stream.reset") || []) f({ data: JSON.stringify({ id: 2, type: "stream.reset", source: "vyred", thread: null, project: null, at: Date.now(), payload: { from: 2, reason: "cursor_ahead" } }) });
+  await wait(40);
+  assert.deepEqual(calls.slice(b2).find(c => c.tool === "threads.get")?.input, { thread: RES, since: 2, limit: 500 }, "from vyred's id");
+  assert.match(text($(box5, ".cv-queued")), /And ping kit/, "an event after the reset is applied, though its id is low");
+  // A live event with a low id after the reset is heard too (api.js lowered its cursor).
+  for (const f of es.l.get("thread.queued") || []) f({ data: JSON.stringify({ id: 4, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 11, uuid: "q11", text: "Last one for Northwind Bakery", surface: "deck" } }) });
+  await wait();
+  assert.match(text($(box5, ".cv-queued")), /Last one for Northwind Bakery/);
   stop5();
-  stop4();
 });

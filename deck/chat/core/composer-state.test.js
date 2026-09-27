@@ -8,6 +8,7 @@ import {
   MODES, nextMode, modeLabel, draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles,
   createHistory, remember, recall, recalling, stopRecall, historyStore, upAction, enterAction,
   createEsc, escape, KEYMAP, binding, keyOf, actionFor, addImage, removeImage, sendImages, b64Bytes, newUuid,
+  modelChoices, shortModel,
 } from "./composer-state.js";
 import { scorePath, compareScores } from "./match.js";
 
@@ -198,4 +199,20 @@ test("uuids are v4 shaped, with or without crypto", () => {
   const c = Object.getOwnPropertyDescriptor(globalThis, "crypto");
   Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
   try { assert.match(newUuid(), re); } finally { if (c) Object.defineProperty(globalThis, "crypto", c); }
+});
+
+test("the model picker: the aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
+  const plain = modelChoices({ current: "opus" });
+  assert.deepEqual(plain.map(m => [m.id, m.now]), [["opus", true], ["sonnet", false], ["haiku", false]]);
+  const got = modelChoices({
+    current: "claude-sonnet-4-5",
+    purposes: { chat: { model: "opus", from: "config:chat" }, agent: { model: "opus", from: "config:agent" }, job: { model: "claude-haiku-4-5", from: "purpose:job" } },
+  });
+  assert.deepEqual(got.map(m => m.id), ["opus", "sonnet", "haiku", "claude-haiku-4-5", "claude-sonnet-4-5"]);
+  assert.equal(got[0].description, "Used for chat, agent");
+  assert.equal(got[3].description, "Used for job");
+  assert.deepEqual(got.filter(m => m.now).map(m => m.id), ["claude-sonnet-4-5"], "the exact id wins over its family");
+  assert.deepEqual(modelChoices({ current: "claude-opus-4-5[1m]" }).filter(m => m.now).map(m => m.id), ["claude-opus-4-5[1m]"]);
+  assert.deepEqual(modelChoices({ current: null, purposes: { chat: { model: "<b>x</b>" } } }).map(m => m.id), ["opus", "sonnet", "haiku"], "only what a model id can be");
+  assert.equal(shortModel("claude-opus-4-5"), "opus");
 });

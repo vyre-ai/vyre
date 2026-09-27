@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createCaps, isMissing, NEEDS_UPDATE, SESSION_TOOLS, NOT_OFFERED, SEND_IMAGES, CAPS } from "./caps.js";
+import { createCaps, isMissing, NEEDS_UPDATE, SESSION_TOOLS, NOT_OFFERED, SEND_IMAGES, REWIND_CODE, CAPS } from "./caps.js";
 
 test("a tool is unknown until asked, there once it answers, missing once it is no such tool (and never called again)", async () => {
   const caps = createCaps();
@@ -26,7 +26,7 @@ test("a tool is unknown until asked, there once it answers, missing once it is n
   assert.equal(caps.has("threads.rewind"), null);
   off();
   caps.set("threads.edit", true);
-  assert.deepEqual(heard, [["threads.mode", false], ["threads.model", true]]);
+  assert.deepEqual(heard, [["threads.mode", false], ["threads.model", true], [REWIND_CODE, true]], "rewind's code restore came with threads.model");
 });
 
 test("what counts as missing", () => {
@@ -38,16 +38,19 @@ test("what counts as missing", () => {
   assert.equal(isMissing({ code: "not_found", message: "no such thread" }), false);
   assert.equal(isMissing({ code: "busy" }), false);
   assert.equal(isMissing(null), false);
-  assert.ok(SESSION_TOOLS.includes("threads.send_now"));
+  assert.ok(SESSION_TOOLS.includes("threads.send-now"));
+  assert.ok(!SESSION_TOOLS.includes("threads.send_now"));
 });
 
 test("the final contract: its tools are learnt, what it does not offer starts off and is never called", async () => {
   for (const gone of ["threads.steer", "threads.checkpoints", "threads.tasks"]) assert.ok(!SESSION_TOOLS.includes(gone), gone);
-  for (const t of ["threads.interrupt", "threads.unqueue", "threads.edit", "threads.rewind", "threads.mode"]) {
+  for (const t of ["threads.interrupt", "threads.unqueue", "threads.edit", "threads.rewind", "threads.mode", "threads.model", "threads.commands", "sessions.models.get"]) {
     assert.ok(SESSION_TOOLS.includes(t), t);
+    assert.ok(!NOT_OFFERED.includes(t), t);
     assert.equal(CAPS.has(t), null, "live tools are asked, not assumed");
   }
-  for (const t of ["threads.model", "sessions.models", "threads.commands", "threads.shell", "threads.remember", "threads.thinking", "threads.kill_task", SEND_IMAGES]) {
+  assert.equal(CAPS.has(REWIND_CODE), null, "rewind's code restore is learnt too");
+  for (const t of ["threads.shell", "threads.remember", "threads.thinking", "threads.kill-task", SEND_IMAGES]) {
     assert.ok(NOT_OFFERED.includes(t), t);
     assert.equal(CAPS.has(t), false, t);
   }
@@ -57,4 +60,16 @@ test("the final contract: its tools are learnt, what it does not offer starts of
   assert.equal(calls, 0);
   assert.equal(r.missing, true);
   assert.equal(createCaps().has("threads.shell"), null, "a probe of its own starts empty");
+});
+
+test("rewind's code restore is learnt from threads.commands or threads.model: an older box turns it off with them", async () => {
+  const caps = createCaps();
+  await caps.use("threads.commands", async () => ({ error: { code: "no_such_tool", message: "no tool threads.commands" } }));
+  assert.equal(caps.has(REWIND_CODE), false);
+  const again = createCaps();
+  await again.use("threads.commands", async () => ({ data: { thread: "t1", commands: [], note: "not running" } }));
+  assert.equal(again.has(REWIND_CODE), true);
+  const other = createCaps();
+  await other.use("threads.commands", async () => ({ error: { code: "not_found", message: "no such thread" } }));
+  assert.equal(other.has(REWIND_CODE), null, "a missing thread says nothing about the box");
 });

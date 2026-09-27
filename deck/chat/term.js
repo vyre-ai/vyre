@@ -24,15 +24,20 @@
 //  - after a box update the shell is gone: term.closed {reason: "box updated"} on the event
 //    stream, and term.attach answers terminal_closed for a day. One line says so, with a button
 //    that opens a new terminal in the same folder;
-//  - the size: the box has no owner for it, the last size any socket sends wins. This screen
-//    sends its own on every fit and each time it catches up; there is no Take size;
+//  - the size: one screen owns it (the first to attach, or the last to Take size) and only its
+//    size resizes the shell. The box says {"t":"size",cols,rows,"owner"} after the "at" and on every
+//    change. Owning, this screen fits and sends its size as before. Not owning, it draws at the
+//    owner's size, scaled down to fit (letterboxed, never reflowed), and shows "Watching at
+//    <cols>x<rows> · Take size"; its own fitted size still goes to the box as the size it would
+//    like. A box that sends no size frames: fit and send, no Take size (lib/term-link.js);
 //  - on a phone a key bar gives Esc, Tab, Ctrl, Alt, arrows and Paste;
 //  - no timers but the reconnect wait. Every string from the box is a text node (deck/js/dom.js).
 
 import { h, put, go } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { surfaceId } from "../glass/util.js";
-import { linkVerdict, holdKeys, withFrom, withMods, arrow, step, reopened, onClose, onAttachError, remember } from "./lib/term-link.js";
+import { linkVerdict, holdKeys, withFrom, withMods, arrow, step, reopened, onClose, onAttachError, remember,
+  unsized, sizeReopened, drawAt, watching, onFit, onSizeFrame, takeSize, watchLabel, letterbox } from "./lib/term-link.js";
 
 /** Tickets term.open already issued, so the first mount needs no second round trip. One use, 30 s. */
 /** @type {Map<string, { path: string, cwd: string, until: number }>} */
@@ -150,6 +155,8 @@ export function mountTerminal(container, { term, onBack }) {
   let track = { offset: 0, drawn: false, caughtUp: false };
   /** Keys typed while away. */
   let queue = "";
+  /** Who owns the size, and what this screen last sent on this socket (lib/term-link.js). */
+  /** @type {import("./lib/term-link.js").Sizing} */ let sizing = unsized;
   const mods = { ctrl: false, alt: false };
 
   const dot = h("span", { class: "dot term-dot", "aria-hidden": "true" });
@@ -159,6 +166,9 @@ export function mountTerminal(container, { term, onBack }) {
   const closeBtn = h("button", { type: "button", class: "btn btn-sm", onclick: () => closeIt() }, "Close");
   const note = h("div", { class: "term-note", role: "status", "aria-live": "polite", hidden: true });
   const screen = h("div", { class: "term-screen" });
+  const watchWords = h("span", { class: "term-watch-words" }, "");
+  const takeBtn = h("button", { type: "button", class: "term-take", title: "Size the terminal to this screen", onclick: () => take() }, "Take size");
+  const watch = h("span", { class: "term-watch", hidden: true }, watchWords, h("span", { class: "term-watch-sep", "aria-hidden": "true" }, " · "), takeBtn);
 
   /** A key-bar button: it never takes focus from the terminal. @param {string} label @param {() => void} act @param {object} [attrs] */
   const key = (label, act, attrs = {}) => h("button", { type: "button", class: "term-key", onpointerdown: e => e.preventDefault(), onclick: () => { act(); xt?.focus(); }, ...attrs }, label);
@@ -174,7 +184,7 @@ export function mountTerminal(container, { term, onBack }) {
     key("Paste", () => paste()));
 
   const root = h("section", { class: "term", "aria-label": "Terminal" },
-    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), closeBtn),
+    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), watch, closeBtn),
     note, screen, keys);
   put(container, root);
 
@@ -186,6 +196,7 @@ export function mountTerminal(container, { term, onBack }) {
     else { put(note); note.hidden = true; }
     // Dim what is drawn while the box catches this screen up.
     if (state === "live" || state === "ended" || state === "gone" || !track.drawn) delete root.dataset.catching; else root.dataset.catching = "";
+    showWatch();
   }
 
   const setWhere = dir => {
@@ -226,11 +237,63 @@ export function mountTerminal(container, { term, onBack }) {
     } catch { if (!dead && root.dataset.state === "live") status("live", "Paste needs permission to read the clipboard."); }
   }
 
-  /** Fit this screen and send its size: the box sizes the shell to the last screen that sent one. */
+  /** The size this screen would fit, without resizing anything. @returns {{ cols: number, rows: number } | null} */
+  function fitted() {
+    try { const d = fit?.proposeDimensions(); return d && d.cols > 0 && d.rows > 0 ? { cols: d.cols, rows: d.rows } : null; } catch { return null; }
+  }
+
+  /** "Watching at <cols>x<rows> · Take size", only while live and another screen owns the size. */
+  function showWatch() {
+    const on = watching(sizing) && root.dataset.state === "live" && !ended;
+    watch.hidden = !on;
+    if (on) watchWords.textContent = watchLabel(sizing);
+  }
+
+  /**
+   * Draw xterm at the size the sizing says: this screen's own when it owns it, else the owner's,
+   * scaled down to fit and centred (never reflowed to this screen's width).
+   */
+  function draw() {
+    if (!xt) return;
+    const want = fitted();
+    const at = want ? drawAt(sizing, want) : watching(sizing) ? { cols: sizing.cols, rows: sizing.rows } : null;
+    if (at && (at.cols !== xt.cols || at.rows !== xt.rows)) { try { xt.resize(at.cols, at.rows); } catch {} }
+    const el = /** @type {HTMLElement|null} */ (xt.element);
+    if (!el) return;
+    if (!watching(sizing)) {
+      delete root.dataset.watching;
+      el.style.transform = ""; el.style.transformOrigin = "";
+      return;
+    }
+    root.dataset.watching = "";
+    const drawn = /** @type {HTMLElement|null} */ (el.querySelector(".xterm-screen"));
+    const cs = getComputedStyle(screen);
+    const box = { w: screen.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), h: screen.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) };
+    const lb = letterbox({ w: drawn?.offsetWidth || 0, h: drawn?.offsetHeight || 0 }, box);
+    el.style.transformOrigin = "0 0";
+    el.style.transform = `translate(${lb.x}px, ${lb.y}px) scale(${lb.scale})`;
+  }
+
+  /** @param {{ state: import("./lib/term-link.js").Sizing, send: any }} r */
+  function apply(r) {
+    sizing = r.state;
+    if (r.send) send(r.send);
+    draw();
+    showWatch();
+  }
+
+  /** This screen was fitted: draw at the right size and tell the box this screen's size. */
   function fitAndSend() {
     if (!xt) return;
-    try { fit.fit(); } catch {}
-    send({ t: "size", cols: xt.cols, rows: xt.rows });
+    if (!ws || ws.readyState !== 1) { draw(); return; }
+    apply(onFit(sizing, fitted()));
+  }
+
+  /** Take size: this screen owns it, at its fitted size. The box's owner:true frame follows. */
+  function take() {
+    if (!ws || ws.readyState !== 1) return;
+    apply(takeSize(sizing, fitted()));
+    xt?.focus();
   }
 
   async function ticket() {
@@ -254,13 +317,13 @@ export function mountTerminal(container, { term, onBack }) {
       xt.open(screen);
       xt.onData(d => input(d));
       xt.onBinary(d => input(d));
-      xt.onResize(s => send({ t: "size", cols: s.cols, rows: s.rows }));
-      ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { try { fit.fit(); } catch {} }); });
+      // Sizes go to the box from fitAndSend only: a resize to the owner's size is not this screen's.
+      ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => fitAndSend()); });
       ro.observe(screen);
       // The Deck switches light and dark on <html data-theme>; follow it.
       mo = new MutationObserver(() => { if (xt) xt.options.theme = theme(); });
       mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
-      try { fit.fit(); } catch {}
+      draw();
     }
     const r = await ticket();
     if (dead) return;
@@ -284,6 +347,7 @@ export function mountTerminal(container, { term, onBack }) {
     sock.binaryType = "arraybuffer";
     ws = sock;
     track = reopened(track);
+    sizing = sizeReopened(sizing);
     const seen = { opened: false, data: false, code: 0 };
     sock.onopen = () => {
       if (ws !== sock) return;
@@ -301,6 +365,7 @@ export function mountTerminal(container, { term, onBack }) {
       }
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
+      if (m && m.t === "size") { apply(onSizeFrame(sizing, m, fitted())); return; }
       const r = step(track, m);
       track = r.state;
       // Bytes this screen missed have left the box's ring: say so under what it already drew,

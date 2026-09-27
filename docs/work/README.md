@@ -59,3 +59,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0026 | relay | End-to-end encrypted relay with QR pairing |
 | 0027 | mobile | One app: the phone, the box's web app and app.vyre.run from one Expo codebase |
 | 0029 | resilience | The resilience contract: every surface survives network outages |
+| 0030 | sessions | Vyre-owned sessions and the provider router |

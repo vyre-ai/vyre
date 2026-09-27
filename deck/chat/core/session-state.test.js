@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell } from "./session-state.js";
+import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind, filesNote, contextLabel } from "./session-state.js";
 
 const T = "th-harlow";
 /** @param {any} s */
@@ -259,11 +259,12 @@ test("events for another thread, and events already applied, are skipped", () =>
   assert.deepEqual(applyEvent(s, /** @type {any} */ (null)), []);
 });
 
-test("a stop: crash reads failed, streaming ends", () => {
+test("a stop: a crash reads stopped (there is no failed state), streaming ends", () => {
   const s = createSession(T);
   ev(s, "thread.text", { message: "m", delta: "partial" });
   ev(s, "thread.stopped", { reason: "crash" });
-  assert.equal(s.state, "failed");
+  assert.equal(s.state, "stopped");
+  assert.equal(s.stopped, "crash");
   assert.equal(s.byKey.get("m:m:0").streaming, false);
   ev(s, "thread.started", {});
   assert.equal(s.stopped, null);
@@ -384,7 +385,7 @@ test("queued on send, named by the answer, then Steer now: via now, the queued w
   ev(s, "thread.queued", { queued: 12, uuid: "q-1", text: "Then open a PR against main", surface: "deck" }, { at: 6 });
   assert.deepEqual(s.queued, [{ uuid: "q-1", text: "Then open a PR against main", queued: 12, at: 6 }], "one row, the box's");
   ev(s, "thread.tool", { call: "c1", name: "Read", status: "completed" });
-  // threads.send_now: the row goes into the running turn.
+  // threads.send-now: the row goes into the running turn.
   ev(s, "thread.sent", { queued: 12, uuid: "q-1", via: "now" }, { at: 8 });
   assert.equal(s.queued.length, 0);
   assert.equal(s.byKey.get("u:q-1").text, "Then open a PR against main");
@@ -412,26 +413,135 @@ test("a failed send takes back what was drawn; an echo without a uuid is the wor
   assert.deepEqual([s.byKey.get("steer:u-10").pending, s.byKey.get("steer:u-10").step], [false, null]);
 });
 
-test("a rewind forks: this session keeps every word, s.rewound names the fork and the words", () => {
+test("a rewind is the same thread: the message and everything after it go, the words come back, and re-reads skip the old branch", () => {
   const s = createSession(T);
   const blocks = [
-    { seq: 0, kind: "user", ts: 1, text: "Read the intake folder", uuid: "a" },
-    { seq: 1, kind: "text", ts: 2, message: "msg_a", text: "It has three forms." },
-    { seq: 2, kind: "turn", ts: 1, duration_ms: 1, tokens: { input: 1, output: 1 }, model: "m" },
-    { seq: 2, kind: "user", ts: 3, text: "Rebuild the Estate intake", uuid: "b" },
-    { seq: 3, kind: "tool", ts: 4, id: "c1", tool: "Edit", input: { file_path: "src/intake/estate.ts", old_string: "a", new_string: "b" }, output: "ok", error: false },
-    { seq: 4, kind: "text", ts: 5, message: "msg_b", text: "Done." },
+    { seq: 0, kind: "user", ts: 1000, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "text", ts: 2000, message: "msg_a", text: "It has three forms." },
+    { seq: 2, kind: "turn", ts: 1000, duration_ms: 1000, tokens: { input: 1, output: 1 }, model: "m" },
+    { seq: 2, kind: "user", ts: 3000, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 3, kind: "tool", ts: 4000, id: "c1", tool: "Edit", input: { file_path: "src/intake/estate.ts", old_string: "a", new_string: "b" }, output: "ok", error: false },
+    { seq: 4, kind: "text", ts: 5000, message: "msg_b", text: "Done." },
   ];
   applyBlocks(s, blocks);
   assert.deepEqual(checkpoints(s).map(c => c.uuid), ["b", "a"], "newest first");
-  const out = ev(s, "thread.rewound", { uuid: "b", fork: "th-harlow-fork" }, { at: 10 });
+  const out = ev(s, "thread.rewound", { uuid: "b", at: "a" }, { at: 10_000 });
   assert.ok(out.includes("@rewound"));
-  assert.deepEqual(s.rewound, { uuid: "b", fork: "th-harlow-fork", text: "Rebuild the Estate intake", at: 10 });
-  assert.equal(s.items.length, 7, "nothing dropped");
-  assert.equal(s.items[6].text, 'Rewound to before "Rebuild the Estate intake" in a new session');
-  applyBlocks(s, blocks);
-  assert.equal(s.items.length, 7, "a re-read changes nothing");
+  assert.ok(["u:@2", "t:c1", "m:msg_b:0"].every(k => out.includes(k)), "the rows that went are named");
+  assert.deepEqual(s.rewound, { uuid: "b", text: "Rebuild the Estate intake", at: 10_000 });
+  assert.deepEqual(keys(s).slice(0, 3), ["u:@0", "m:msg_a:0", "turn:@2"], "what came before stays, its turn too");
+  assert.equal(s.items.length, 4);
+  assert.equal(s.items[3].text, 'Rewound to before "Rebuild the Estate intake"');
+  assert.deepEqual(checkpoints(s).map(c => c.uuid), ["a"]);
+  // The answer's own copy, then the event (or the other way round): one notice.
+  assert.deepEqual(ev(s, "thread.rewound", { uuid: "b", local: true }, { at: 10_050 }), []);
+  assert.equal(s.items.length, 4);
+  // The transcript keeps the abandoned branch; the new one is written after the rewind.
+  applyBlocks(s, [...blocks, { seq: 5, kind: "turn", ts: 3000, duration_ms: 2000, tokens: { input: 1, output: 1 }, model: "m" },
+    { seq: 5, kind: "user", ts: 11_000, text: "Rebuild it as Estate intake v2", uuid: "c" },
+    { seq: 6, kind: "text", ts: 12_000, message: "msg_c", text: "On it." }]);
+  assert.deepEqual(keys(s), ["u:@0", "m:msg_a:0", "turn:@2", "rw:b:1", "u:@5", "m:msg_c:0"], "the old branch is never drawn again");
 });
+
+test("a rewind read back on open (noteRewind before the blocks): the old branch is skipped from the start", () => {
+  const s = createSession(T);
+  noteRewind(s, { uuid: "b", at: 10_000 });
+  applyBlocks(s, [
+    { seq: 0, kind: "user", ts: 1000, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "text", ts: 2000, message: "msg_a", text: "It has three forms." },
+    { seq: 2, kind: "turn", ts: 1000, duration_ms: 1000, tokens: { input: 1, output: 1 }, model: "m" },
+    { seq: 2, kind: "user", ts: 3000, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 3, kind: "tool", ts: 4000, id: "c1", tool: "Edit", input: {}, output: "ok", error: false },
+    { seq: 4, kind: "turn", ts: 3000, duration_ms: 1000, tokens: { input: 1, output: 1 }, model: "m", open: true },
+  ]);
+  assert.deepEqual(keys(s), ["u:@0", "m:msg_a:0", "turn:@2"]);
+});
+
+test("the box mints the steer's uuid: the echo (same words) and the answer (confirmSend) tie it to the drawn item, and thread.steered uses it", () => {
+  const s = createSession(T);
+  ev(s, "thread.turn", { turn: `${T}:1`, uuid: "box-1", text: "Rebuild the Estate intake" });
+  ev(s, "thread.sent", { text: "Rebuild the Estate intake", uuid: "box-1" });
+  ev(s, "thread.tool", { call: "c1", name: "Read", status: "running" });
+  localSend(s, { uuid: "deck-2", text: "Use Estate intake v2 instead", mode: "steer", at: 3000 });
+  ev(s, "thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: "box-2", via: "steer" });
+  assert.equal(s.items.filter(i => i.kind === "user").length, 2, "one row for the steer");
+  assert.equal(s.items.filter(i => i.kind === "steer").length, 1);
+  assert.deepEqual(confirmSend(s, "deck-2", "box-2"), [], "the echo got there first");
+  ev(s, "thread.tool", { call: "c1", status: "completed" });
+  ev(s, "thread.steered", { uuid: "box-2" });
+  const m = /** @type {any} */ (s.items.find(i => i.kind === "steer"));
+  assert.deepEqual([m.pending, m.step, m.taken], [false, 1, true]);
+  assert.equal(s.items.filter(i => i.kind === "steer").length, 1, "no second marker under the box's uuid");
+
+  // The answer first, then thread.steered, then the echo.
+  localSend(s, { uuid: "deck-3", text: "And keep the witness page", mode: "steer" });
+  confirmSend(s, "deck-3", "box-3");
+  ev(s, "thread.steered", { uuid: "box-3" });
+  ev(s, "thread.sent", { text: "And keep the witness page", uuid: "box-3", via: "steer" });
+  assert.equal(s.items.filter(i => i.kind === "user").length, 3);
+  assert.equal(s.items.filter(i => i.kind === "steer").length, 2);
+});
+
+test("steered words the turn never reached run as the next turn: markers go, one plain message with the joined words", () => {
+  const s = createSession(T);
+  ev(s, "thread.turn", { turn: `${T}:1`, uuid: "u-1", text: "Draft the Northwind Bakery menu" });
+  ev(s, "thread.sent", { text: "Draft the Northwind Bakery menu", uuid: "u-1" });
+  ev(s, "thread.tool", { call: "c1", name: "Read", status: "running" });
+  localSend(s, { uuid: "d-2", text: "Keep the prices under 10", mode: "steer" });
+  ev(s, "thread.sent", { text: "Keep the prices under 10", uuid: "b-2", via: "steer" });
+  ev(s, "thread.sent", { text: "And add a gluten-free line", surface: "phone", uuid: "b-3", via: "steer" });
+  ev(s, "thread.tool", { call: "c1", status: "completed" });
+  ev(s, "thread.finished", { ok: true, cost_usd: 0.02 });
+  ev(s, "thread.turn", { turn: `${T}:2`, uuid: "b-2", text: "Keep the prices under 10\n\nAnd add a gluten-free line", steered: true });
+  assert.equal(s.items.filter(i => i.kind === "steer").length, 0, "no steer markers");
+  const users = /** @type {any[]} */ (s.items.filter(i => i.kind === "user"));
+  assert.equal(users.length, 2, "no duplicate rows");
+  assert.equal(users[1].text, "Keep the prices under 10\n\nAnd add a gluten-free line");
+  assert.equal(users[1].steered, false);
+  assert.equal(s.items.at(-1), users[1], "at the tail, after the turn that ended");
+  assert.equal(s.turn, 2);
+  // Its echo, if any, is the same message.
+  ev(s, "thread.sent", { text: "Keep the prices under 10", uuid: "b-3", via: "turn" });
+  assert.equal(s.items.filter(i => i.kind === "user").length, 2);
+});
+
+test("a queued send: the answer's queued_id and the box's uuid name the row drawn under the Deck's", () => {
+  const s = createSession(T);
+  ev(s, "thread.turn", { turn: `${T}:1`, uuid: "u-1", text: "Rebuild the intake" });
+  localSend(s, { uuid: "deck-q", text: "Then open a PR against main", mode: "queue", at: 5 });
+  // The event first, under the box's ids.
+  ev(s, "thread.queued", { queued: 41, uuid: "box-q", text: "Then open a PR against main", surface: "deck" }, { at: 6 });
+  assert.equal(s.queued.length, 1, "the drawn row is the event's");
+  confirmSend(s, "deck-q", "box-q");
+  localSend(s, { uuid: "box-q", text: "Then open a PR against main", mode: "queue", queued: 41 });
+  assert.deepEqual(s.queued.map(q => [q.queued, q.uuid]), [[41, "box-q"]]);
+  ev(s, "thread.queued", { queued: 41, uuid: "box-q", text: "Then open a PR against main, as a draft", surface: "deck", edited: true });
+  assert.deepEqual(s.queued.map(q => q.text), ["Then open a PR against main, as a draft"], "an edit re-emits the same row");
+  // Handed over at the turn's end: thread.sent via turn, then its thread.turn.
+  ev(s, "thread.finished", { ok: true });
+  ev(s, "thread.sent", { text: "Then open a PR against main, as a draft", queued: 41, uuid: "box-q", via: "turn" });
+  ev(s, "thread.turn", { turn: `${T}:2`, uuid: "box-q", text: "Then open a PR against main, as a draft" });
+  assert.equal(s.queued.length, 0);
+  assert.equal(s.items.filter(i => i.kind === "user").length, 2);
+});
+
+test("send-now with no turn running starts one: a message of its own, not a steer", () => {
+  const s = createSession(T);
+  ev(s, "thread.queued", { queued: 7, uuid: "q-7", text: "Summarise the Harlow Legal notes" });
+  ev(s, "thread.turn", { turn: `${T}:1`, uuid: "q-7", text: "Summarise the Harlow Legal notes" });
+  ev(s, "thread.sent", { text: "Summarise the Harlow Legal notes", queued: 7, uuid: "q-7", via: "now" });
+  assert.equal(s.items.filter(i => i.kind === "steer").length, 0);
+  assert.equal(s.queued.length, 0);
+});
+
+test("thread.usage: the turn's own cost and the session's total are kept apart", () => {
+  const s = createSession(T);
+  ev(s, "thread.usage", { cost_usd: 0.02, total_cost_usd: 1.4, tokens: { input: 10, output: 5 } });
+  assert.deepEqual([s.usage.cost_usd, s.usage.total_cost_usd], [0.02, 1.4]);
+  ev(s, "thread.finished", { ok: true, cost_usd: 0.02, total_cost_usd: 1.4 });
+  assert.equal(/** @type {any} */ (s.items.find(i => i.kind === "turn")).cost_usd, 0.02, "the turn shows its own cost");
+});
+
 test("mode, model and thinking: from thread.started and their own events", () => {
   const s = createSession(T);
   ev(s, "thread.started", { provider: "claude", model: "opus", auth: "subscription", purpose: "chat", mode: "default", modes: ["default", "acceptEdits", "plan", "bypassPermissions"], thinking: false });
@@ -439,7 +549,9 @@ test("mode, model and thinking: from thread.started and their own events", () =>
   assert.equal(s.mode, "default");
   assert.deepEqual(s.modes, ["default", "acceptEdits", "plan", "bypassPermissions"]);
   assert.equal(s.thinking, false);
-  assert.deepEqual(ev(s, "thread.mode", { mode: "plan" }), ["@session"]);
+  assert.deepEqual(ev(s, "mode.changed", { mode: "plan" }), ["@session"]);
+  assert.equal(s.mode, "plan");
+  assert.deepEqual(ev(s, "thread.mode", { mode: "acceptEdits" }), [], "the box says mode.changed");
   assert.equal(s.mode, "plan");
   assert.deepEqual(ev(s, "thread.model", { model: "sonnet" }), ["@session"]);
   assert.equal(s.model, "sonnet");
@@ -485,4 +597,74 @@ test("a ! command's answer is a row of its own, updated in place", () => {
   localShell(s, { id: "1", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200, at: 5 });
   assert.deepEqual(keys(s), ["sh:1"]);
   assert.deepEqual(s.byKey.get("sh:1"), { key: "sh:1", kind: "shell", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200, at: 5 });
+});
+
+test("a code-only rewind puts the files back and drops nothing; answer and event are one notice; re-reads keep the branch", () => {
+  const s = createSession(T);
+  const blocks = [
+    { seq: 0, kind: "user", ts: 1000, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "text", ts: 2000, message: "msg_a", text: "It has three forms." },
+    { seq: 2, kind: "user", ts: 3000, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 3, kind: "tool", ts: 4000, id: "c1", tool: "Edit", input: { file_path: "src/intake/estate.ts", old_string: "a", new_string: "b" }, output: "ok", error: false },
+    { seq: 4, kind: "text", ts: 5000, message: "msg_b", text: "Done." },
+  ];
+  applyBlocks(s, blocks);
+  const before = keys(s);
+  const files = { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts", "README.md"] };
+  const out = ev(s, "thread.rewound", { uuid: "b", restore: "code", files, local: true }, { at: 10_000 });
+  assert.ok(!out.includes("@rewound"), "the composer keeps what it has");
+  assert.equal(s.rewound, null);
+  assert.deepEqual(keys(s).slice(0, before.length), before, "nothing leaves the view");
+  assert.equal(s.items.at(-1).text, "Restored 3 files");
+  assert.deepEqual(checkpoints(s).map(c => c.uuid), ["b", "a"], "both messages can still be gone back to");
+  assert.equal(s.meta.rewinds.length, 0, "no branch is abandoned");
+  // Its event: the same restore.
+  assert.deepEqual(ev(s, "thread.rewound", { uuid: "b", restore: "code", files }, { at: 10_050 }), []);
+  assert.equal(s.items.filter(i => i.kind === "notice").length, 1);
+  applyBlocks(s, blocks);
+  assert.deepEqual(keys(s).slice(0, before.length), before, "a re-read draws the same conversation");
+  // A second restore to the same message is its own.
+  ev(s, "thread.rewound", { uuid: "b", restore: "code", files: { restored: false, why: "no checkpoint" } }, { at: 20_000 });
+  assert.equal(s.items.at(-1).text, "Could not restore the files: no checkpoint");
+});
+
+test("a rewind of both: the conversation goes back as before, and the notice says what the files did", () => {
+  const s = createSession(T);
+  applyBlocks(s, [
+    { seq: 0, kind: "user", ts: 1000, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "user", ts: 3000, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 2, kind: "text", ts: 5000, message: "msg_b", text: "Done." },
+  ]);
+  const out = ev(s, "thread.rewound", { uuid: "b", at: "a", restore: "both", files: { restored: true, files_changed: ["src/intake/estate.ts"] } }, { at: 10_000 });
+  assert.ok(out.includes("@rewound"));
+  assert.equal(s.rewound?.text, "Rebuild the Estate intake");
+  assert.equal(s.items.at(-1).text, 'Rewound to before "Rebuild the Estate intake" · Restored 1 file');
+  assert.equal(s.items.filter(i => i.kind === "user").length, 1);
+});
+
+test("filesNote and contextLabel", () => {
+  assert.equal(filesNote(null), null);
+  assert.equal(filesNote({ restored: true }), "Restored the files");
+  assert.equal(filesNote({ restored: true, files_changed: [] }), "No files to restore");
+  assert.equal(filesNote({ restored: true, files_changed: ["a.ts", "b.ts"] }), "Restored 2 files");
+  assert.equal(filesNote({ restored: false }), "Could not restore the files");
+  assert.equal(contextLabel(null), null);
+  assert.equal(contextLabel({ context: { used: 1000, max: null } }), null, "no share, no meter");
+  assert.deepEqual(contextLabel({ context: { used: 124000, max: 200000, share: 0.62 } }), { text: "62% of context", title: "124,000 of 200,000 tokens", share: 0.62 });
+  assert.equal(contextLabel({ context: { used: 250000, max: 200000, share: 1.25 } })?.text, "100% of context");
+});
+
+test("thread.usage keeps the context; model.switched moves the model, and a scoped model.changed is not this thread's", () => {
+  const s = createSession(T);
+  ev(s, "thread.started", { provider: "claude", model: "opus" });
+  assert.deepEqual(ev(s, "thread.usage", { cost_usd: 0.01, total_cost_usd: 0.3, context: { used: 124000, max: 200000, share: 0.62 } }), ["@session"]);
+  assert.equal(contextLabel(s.usage)?.text, "62% of context");
+  ev(s, "thread.usage", { cost_usd: 0.01, total_cost_usd: 0.31 });
+  assert.equal(contextLabel(s.usage)?.text, "62% of context", "a usage without context keeps the last");
+  assert.deepEqual(ev(s, "model.switched", { model: "haiku", live: true }), ["@session"]);
+  assert.equal(s.model, "haiku");
+  assert.deepEqual(ev(s, "model.changed", { scope: "purpose:job", model: "sonnet" }), [], "sessions.models.set, a purpose's default");
+  assert.equal(s.model, "haiku");
+  assert.deepEqual(ev(s, "model.changed", { model: "sonnet" }), ["@session"], "an older box's thread model");
+  assert.equal(s.model, "sonnet");
 });
