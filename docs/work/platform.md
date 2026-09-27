@@ -17,10 +17,13 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - ONE HUB (user directive): ADR 0033 section 3 rewritten (9f133f35). No overrides/; theme = hub keys appearance.theme + appearance.tokens (checked by lib/theme before storing); prompt layers listed and toggled in the hub. Asked native-core for: hub file + live hand edits, per-key check hook, choices from a tool, prompt-layer toggle key. P4: a first-party `theme` module (mine) declares appearance.* and serves /theme.css and /v1/theme.
 
 ## Next
-1. P1 once native-core's settings are on main: registry.status() rows (GET /v1/modules) gain `commands` from the manifest while running (polish-cli's dispatcher reads them; input schemas come from the existing tools listing); loader adopts packages/module-sdk/manifest.js (add packages/module-sdk to package.json files); apiVersion; ctx.api, ctx.log levels, ctx.paths.data, ctx.settings; watches.on and needs.tools for home modules; replaces (name == replaces) and disable; `vyre module new/list/check/disable/enable`.
-2. P2: release workflow (ci) + `vyre update` (Mac and box), rollback restores the DB only on a failed health check inside the update window; SHA256SUMS over TLS from GitHub Releases.
-3. P3: module add/remove/update, modules.lock.json, testing harness, templates/module/ (public template repo waits for the lead to ask the user).
-4. P4 slots/hooks/senders/apps/themes/prompt; P5 out-of-process host, keyless signing (attestations or sigstore via OIDC first), kernel thinning.
+(Resume after logout 4: all three branches pushed; nothing uncommitted.)
+1. native-core: confirm they adopted work/platform-store-limits c9f1d630 before merging; answer their reply on the four hub asks (hub file + live hand edits, per-key check hook, choices from a tool, prompt-layer toggle key).
+2. settings.write e4515fb6: hand to the integrator only when e2e signs off native-core.
+3. P0: confirm the integrator took the newest work/platform tip into batch 4.
+4. P1 once native-core's settings are on main: loader adopts packages/module-sdk/manifest.js (add packages/module-sdk to package.json files); apiVersion; ctx.api, ctx.log levels, ctx.paths.data, ctx.settings (get/on via settings.get + settings.changed, set via settings.write); watches.on and needs.tools for home modules; replaces (name == replaces) and disable; registry.status() rows gain `commands` (polish-cli's dispatcher reads GET /v1/modules); core/cli/commands/module.js (aliases ["modules"], remove modules from daemon.js, GROUPS "Under the hood") per polish-cli kit.js conventions, they review.
+5. P2: `vyre update` (Mac: install then vyre up's restart path; box/vyre: refresh box files, vyre:prev + src.prev, backup, APK fetch/check/copy android.json last + android.json.prev, `vyre call releases.sign`). Reads GitHub Releases API (stable = newest non-prerelease, beta = newest). SHA256SUMS over TLS. Rollback restores DB only if health fails in the update window; --restore-data asks a typed confirm. Fixture = ci's dry-run dist/ (release.yml work/ci 4b49ecf5, VYRE_RELEASES gate).
+6. P3 to P5 per ADR 0033 (P4 includes the first-party `theme` module for appearance.theme/appearance.tokens using app-design's lib/theme; first lib/ adds "lib" to package files).
 
 ## Needs from others
 - ci: release.yml on work/ci 4b49ecf5. APK asset is android-<version>-<sha7>.apk and android.json's `file` is rewritten to match. Dry run only until repo variable VYRE_RELEASES=go. Its dist/ artifact is the P2 test fixture shape; waiting on the dry-run result.
