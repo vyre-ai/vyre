@@ -1,5 +1,5 @@
 // @ts-check
-// safe git (lib/git/safe.js): a folder someone else can write to never runs its own commands
+// safe git (lib/git-safe.js): a folder someone else can write to never runs its own commands
 // through vyred's git. A planted core.fsmonitor, textconv, filter driver or hook leaves a marker if
 // it runs; none may.
 import { test } from "node:test";
@@ -8,7 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { tempHome } from "./helpers.js";
-import { safeGitArgs, safeGitEnv } from "../lib/git/safe.js";
+import { safeGitEnv, gitSync } from "../lib/git-safe.js";
 import { gitState } from "../core/vault/envfiles.js";
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
@@ -54,13 +54,14 @@ test("safe git: status, ls-files, check-ignore, diff and log with the safe argum
   fs.writeFileSync(path.join(dir, "notes.txt"), "changed\n");
   for (const args of [["status", "--porcelain"], ["ls-files", "--error-unmatch", "--", ".env"], ["check-ignore", "-q", "--", ".env"],
     ["diff", "--numstat"], ["diff", "HEAD"], ["log", "-p", "-1"], ["rev-parse", "HEAD"], ["checkout", "--", "notes.txt"]]) {
-    try { execFileSync("git", [...safeGitArgs(dir), "-C", dir, ...args], { stdio: "ignore", env: safeGitEnv(), timeout: 10_000 }); } catch {}
+    gitSync(dir, args, { timeout: 10_000 });
     assert.deepEqual(runs(ran), [], `git ${args.join(" ")} ran something planted`);
   }
 });
 
-test("safe git: every git vyred starts goes through the safe arguments", () => {
-  // The person's own terminal (core/cli) runs git as they would; everything vyred runs does not.
+test("safe git: nothing but lib/git-safe.js starts git", () => {
+  // The person's own terminal (core/cli) runs git as they would, for their own global config;
+  // everything vyred itself runs goes through lib/git-safe.js.
   const bad = [];
   const walk = d => {
     for (const e of fs.readdirSync(d, { withFileTypes: true })) {
@@ -68,11 +69,17 @@ test("safe git: every git vyred starts goes through the safe arguments", () => {
       if (e.isDirectory()) { if (!["node_modules", "testing", "cli", ".build"].includes(e.name)) walk(f); continue; }
       if (!f.endsWith(".js") || f.endsWith(".test.js")) continue;
       const src = fs.readFileSync(f, "utf8");
-      for (const m of src.matchAll(/(?:execFile|execFileSync|spawn|spawnSync)\(\s*"git"\s*,\s*\[([^\]]*)/g)) {
-        if (!/SAFE_GIT_ARGS|safeGitArgs\(/.test(m[1])) bad.push(`${path.relative(REPO, f)}: git ${m[1].slice(0, 60)}`);
-      }
+      if (path.relative(REPO, f) === "lib/git-safe.js") continue;
+      for (const m of src.matchAll(/(?:execFile|execFileSync|spawn|spawnSync|exec|execSync)\(\s*["'`]git\b[^,)]*/g)) bad.push(`${path.relative(REPO, f)}: ${m[0].slice(0, 60)}`);
     }
   };
   for (const d of ["core", "local", "modules", "lib"]) walk(path.join(REPO, d));
   assert.deepEqual(bad, []);
+});
+
+test("safe git: a failed call carries git's own explanation", t => {
+  const { dir } = planted(t);
+  const r = gitSync(dir, ["rev-parse", "--verify", "no-such-branch-northwind"]);
+  assert.equal(r.ok, false);
+  assert.match(r.stderr, /./, "stderr says why");
 });
