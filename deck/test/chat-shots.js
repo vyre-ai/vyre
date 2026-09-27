@@ -75,11 +75,11 @@ for (let i = 0; i < 60; i++) {
   const r = await tool("threads.list", {});
   threads = r.data?.threads || r.data || [];
   const asks = (await tool("threads.asks", {})).data || [];
-  if (threads.length >= 3 && asks.length >= 2) break;
+  if (threads.length >= 4 && asks.length >= 3) break;
   await sleep(500);
 }
 const idOf = (/** @type {string} */ name) => { const t = threads.find((/** @type {any} */ t) => t.name === name); if (!t) throw new Error(`no thread named ${name}`); return t.id; };
-const DEMO = idOf("Tidy the intake form"), ASK = idOf("Intake form, second pass"), QUESTION = idOf("Northwind menu page");
+const DEMO = idOf("Tidy the intake form"), ASK = idOf("Intake form, second pass"), QUESTION = idOf("Northwind menu page"), PLAN = idOf("Northwind price list plan");
 const cwd = threads.find((/** @type {any} */ t) => t.id === DEMO).cwd;
 
 const DEVICES = [
@@ -102,6 +102,7 @@ const SHOTS = [
     type(".composer textarea", "Keep the phone field optional"); ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); await wait(800);
     type(".composer textarea", "Then update the changelog"); ta.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", altKey: true, bubbles: true })); await wait(1000);` },
   { name: "7-terminal", term: true },
+  { name: "8-plan", thread: PLAN },
 ];
 
 let failed = 0;

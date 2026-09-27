@@ -61,6 +61,8 @@ import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
 import { healthDot } from "../js/health.js";
 import { gateCard } from "./gate-item.js";
+import { planCard } from "./plan-card.js";
+import { isPlanAsk } from "./core/plan.js";
 import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
 import { macAnswersHeld } from "./presence.js";
@@ -663,7 +665,7 @@ export function mountSession(container, opts) {
   }
   function askEl(it) {
     const full = askData(it.ask, it);
-    const el = /** @type {any} */ (full.kind === "question" ? questionCard(full) : askCard(full));
+    const el = /** @type {any} */ (isPlanAsk(full) ? planCard(full, { thread }) : full.kind === "question" ? questionCard(full) : askCard(full));
     el._ask = full;
     cards.set(it.ask, el);
     settleAsk(el, it);
@@ -1174,7 +1176,7 @@ export function mountSession(container, opts) {
     const full = { ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
     let el = cards.get(a.id);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return; }
-    el = /** @type {any} */ (a.kind === "question" ? questionCard(full) : askCard(full));
+    el = /** @type {any} */ (isPlanAsk(full) ? planCard(full, { thread }) : a.kind === "question" ? questionCard(full) : askCard(full));
     el._ask = full;
     cards.set(a.id, el);
     timeline.append(el);
@@ -1198,6 +1200,8 @@ export function mountSession(container, opts) {
     if (editable(t)) return; // the composer (its own keys), the "Other" field, the deny reason: their own keys
     if (t && (t.tagName === "BUTTON" || t.tagName === "A") && (e.key === "Enter" || e.key === " ")) return; // the focused control's own press
     if (rewind && rewind.key(e)) { e.preventDefault(); return; }
+    // Cmd/Ctrl+Enter is a plan card's Start building (plan-card.md); every other modified key is the composer's.
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { const c = cardFor(t); if (c?.classList?.contains("cv-plan") && c.onKey(e)) { e.preventDefault(); return; } }
     // Ctrl+O, Ctrl+B, Alt+T and the like: the composer's page-wide keys, never a card's.
     if (e.metaKey || e.ctrlKey || e.altKey) { if (composer.key(e)) e.preventDefault(); return; }
     const card = cardFor(t);

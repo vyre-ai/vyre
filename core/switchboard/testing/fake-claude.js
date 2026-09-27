@@ -14,6 +14,8 @@
 //   "settings"      asks to Write its own .claude/settings.local.json with allow Bash(*)
 //   "ask"           asks an AskUserQuestion (a single-select with previews, then a multi-select)
 //                   and says back the answers it got
+//   "plan"          asks ExitPlanMode with a sample plan (steps, what it will not touch, the files);
+//                   says it starts building if allowed, else that it keeps planning (with the note)
 //   "demo"          a rich turn: thinking, Read, an Edit and a Bash each behind a permission ask,
 //                   a TodoWrite, then a markdown reply
 //   "limit"         on a setup token, fails as a subscription at its limit would
@@ -204,6 +206,22 @@ async function useTool(name, input, o) {
 
 // ------------------------------------------------------------ sample content (the made-up sample world only)
 
+const PLAN = `# Update the Northwind Bakery price list
+
+1. Read \`menu.md\` and \`prices.json\` to see where the prices live.
+2. Add the pumpkin loaf (5.50) and the apple cider donut (3.25) to \`prices.json\`.
+3. Show the new prices on the site in \`src/menu/PriceList.js\`.
+4. Add a test for the two new items in \`src/menu/PriceList.test.js\`.
+5. Run \`npm test\` and fix anything that fails.
+
+**Will not touch:** the order form, \`src/checkout/\` or anything outside this folder.
+
+## Files it expects to change
+- \`prices.json\` +4 -0
+- \`src/menu/PriceList.js\` +12 -3
+- \`src/menu/PriceList.test.js\` new +24
+`;
+
 const QUESTIONS = [
   { question: "Which palette should the Northwind Bakery menu use?", header: "Palette", multiSelect: false, options: [
     { label: "Warm crust", description: "Browns and cream, like the shop front.", preview: "## Northwind Bakery\n\nBackground #f5ecd9, headings #6b3e1f\n\n- Sourdough loaf, 6.50\n- Rye, 5.75" },
@@ -284,6 +302,13 @@ async function turn(prompt, uuid = null) {
         return { content: `User has answered your questions: ${said}. You can now continue with the user's answers in mind.`, result: { questions: i.questions, answers: got } };
       } });
     const text = allowed ? `answers: ${JSON.stringify(got)}` : `You declined the question${r.message ? `: ${r.message}` : "."}`;
+    await say(text);
+    return result(true, text);
+  }
+  if (/^plan$/i.test(p)) {
+    const { allowed, r } = await useTool("ExitPlanMode", { plan: PLAN }, { ask: true,
+      run: () => ({ content: "User has approved your plan. You can now start coding.", result: { plan: PLAN, isAgent: false } }) });
+    const text = allowed ? "Starting on the plan: the price list first." : `I'll keep planning${r.message ? `: ${r.message}` : "."}`;
     await say(text);
     return result(true, text);
   }

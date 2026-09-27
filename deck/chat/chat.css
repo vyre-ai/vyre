@@ -768,3 +768,43 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (pointer: coarse) { .composer-chip .kbd, .cv-rewind-acts .btn .kbd { display: none; } }
 .composer-attach { width: 36px; height: 44px; flex-shrink: 0; }
 .composer-attach[hidden] { display: none; }
+
+/* Plan card (plan-card.md, plan-card.js): the ask card's frame and header; the body a short
+   document (title, numbered steps, what it will not touch, the files it expects), the mode it
+   continues in as a segmented control, then Start building, Revise and Keep planning. */
+.cv-plan-body { display: flex; flex-direction: column; gap: 12px; padding: 4px 16px 16px; }
+.cv-plan-title { font-size: 15px; line-height: 22px; font-weight: 600; }
+.cv-plan-steps { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; font-size: 15px; line-height: 22px; color: var(--text); }
+.cv-plan-steps li::marker { color: var(--label); }
+.cv-plan-code { font-family: var(--mono); font-size: 13px; padding: 0 4px; border-radius: 4px; background: var(--hover); }
+.cv-plan-not { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.cv-plan-not .cv-plan-code { font-size: 12px; }
+.cv-plan-rest { font-size: 13px; line-height: 18px; color: var(--text-2); white-space: pre-wrap; }
+.cv-plan-more { align-self: flex-start; }
+.cv-plan-fileset { display: flex; flex-direction: column; gap: 4px; }
+.cv-plan-files-head { display: flex; align-items: center; gap: 8px; min-height: 20px; padding: 0; border: 0; background: none; font: inherit; font-size: 12px;
+  line-height: 16px; color: var(--text-2); text-align: left; }
+.cv-plan-lbl { font-weight: 600; color: var(--label); }
+.cv-plan-counts { margin-left: auto; font-size: 12px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cv-plan-file { display: flex; align-items: center; gap: 10px; min-height: 20px; }
+.cv-plan-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; color: var(--text); }
+.cv-plan-then { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.cv-plan-then-l { font-size: 12px; color: var(--text-2); }
+.cv-plan-seg { display: inline-flex; padding: 2px; gap: 2px; border: 1px solid var(--rule); border-radius: 8px; height: 32px; box-sizing: border-box; }
+.cv-plan-opt { height: 26px; padding: 0 12px; border: 0; border-radius: 6px; background: none; font: inherit; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.cv-plan-opt[aria-checked="true"] { background: var(--hover); color: var(--text); font-weight: 600; }
+.cv-plan-opt:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cv-plan-actions { padding: 12px 16px; border-top: 1px solid var(--rule); }
+.cv-plan-revise-row { padding: 0 16px 8px; }
+.cv-plan-building { display: flex; align-items: center; gap: 8px; padding: 0 16px; font-size: 13px; font-weight: 600; }
+.cv-plan-err { padding: 0 16px 8px; font-size: 12px; color: var(--text); }
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+  .cv-plan-title, .cv-plan-steps { font-size: 17px; line-height: 24px; }
+  .cv-plan-then, .cv-plan-seg { width: 100%; }
+  .cv-plan-seg { height: 40px; }
+  .cv-plan-opt { flex: 1; height: 34px; }
+  .cv-plan-file { min-height: 24px; }
+  .cv-plan-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cv-plan-actions > [data-act="start"] { grid-column: 1 / -1; min-height: 54px; }
+  .cv-plan-actions > .btn:not([data-act="start"]) { min-height: 44px; }
+}
