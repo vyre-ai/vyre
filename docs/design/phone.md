@@ -23,7 +23,7 @@ standard sheets. Mono is for commands, code and logs only.
 
 In order of how often it happens:
 
-1. Glance at what needs you, and answer it (approve with Face ID, deny, reply, pick a choice).
+1. Glance at what needs you, and answer it (approve, deny, reply, pick a choice).
 2. Chat with a session or an agent, and read what it did.
 3. Find anything: a session, a file, a memory, a command to run.
 4. Watch an agent work.
@@ -70,9 +70,9 @@ docs/design/deck-directions/vyre.css), so a phone view and a Deck view read the 
 | `--scrim` (phone) | rgba(0,0,0,0.62) | rgba(20,19,17,0.34) | Behind a sheet |
 
 **No coral or red, anywhere** (the user's rule). The attention colour ("needs you") keeps the
-`--beacon-*` names but is violet, deck-design's recommendation while the user picks between violet,
-honey and teal (docs/design/deck-directions/Attention.dc.html). Swapping it is one line per theme:
-change the three `--beacon-*` values. Every pair above passes WCAG AA.
+`--beacon-*` names but is violet, deck-design's recommendation; teal is the only alternative
+(honey is out, the user's rule). Swapping it is one line per theme: change the three `--beacon-*`
+values. Every pair above passes WCAG AA.
 
 The mark's dot is Signal (dark) or Ink (paper) when nothing is waiting, and the attention colour
 when anything needs you. A deleted line in a diff is `--text-2` on `--del-wash`, never attention.
@@ -216,8 +216,9 @@ The row:
 Swipe:
 
 - **Right** reveals the primary action from the left edge, 100 wide, in `--primary-bg` with
-  `--primary-ink`: the Face ID glyph (24) over "Approve" (asks) or "Send" (drafts) in 13/600.
-  Past 100 or a fast fling, it commits: the presence check runs (section 5), and on success the
+  `--primary-ink`: a check glyph (24) over "Approve" (asks) or "Send" (drafts) in 13/600, the
+  Face ID glyph instead when the item needs a proof (section 5, When Face ID shows).
+  Past 100 or a fast fling, it commits: the proof runs if one is needed, and on success the
   row collapses. Letting go short of 100 leaves the action showing; tapping it commits.
 - **Left** reveals "Deny" (asks) or "Discard" (drafts) from the right edge, 100 wide, `--hover`
   fill with `--text` label and an x glyph. Committing needs no presence check unless the tool
@@ -294,16 +295,22 @@ Body by kind:
 
 Action area (8 between buttons, 34 bottom):
 
-- Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: Face ID glyph (22) +
-  "Approve with Face ID" ("with Touch ID", "with fingerprint", "with passkey" by device). Under
-  it, two secondary buttons side by side, 46 tall, radius 12: "Always in
-  <project>" (approves and writes the rule, after the same presence check) and "Deny". Where
+- Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: "Approve". When the ask
+  needs a proof it reads "Approve with Face ID" with the glyph (22) ("with Touch ID", "with
+  fingerprint", "with passkey" by device). Under it, two secondary buttons side by side, 46
+  tall, radius 12: "Always in <project>" (approves and writes the rule, with a proof only when
+  the approval itself needs one) and "Deny". Where
   `ask.always_project` is null, Deny takes the full width.
-- Draft: "Send with Face ID" primary; "Discard" secondary. Nothing else.
+- Draft: "Send with Face ID" primary ("Send" while a proof is fresh); "Discard" secondary.
+  Nothing else.
 - Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" secondary. No
   presence check unless the tool asks for one.
-- The primary runs the presence check, the same box-verified proof per ADR 0004 on every
-  surface. The PWA uses a WebAuthn passkey assertion. The native apps use a device-key signature
+- When Face ID shows (the no-nag rule): only for pairing a device, reading or using a vault
+  secret, and outbound actions (send, post, pay). Ordinary asks (edits, commands) are
+  one tap. One proof lasts about 30 minutes on that device: while it is fresh the glyph drops
+  and the buttons read "Approve" and "Send". The box decides which asks need a proof and says
+  so on the ask; the phone never guesses from the tool name.
+- A proof is the same box-verified check per ADR 0004 on every surface. The PWA uses a WebAuthn passkey assertion. The native apps use a device-key signature
   after Face ID or the fingerprint (ADR 0018): a P-256 key in the Secure Enclave or StrongBox,
   enrolled once through the Deck's passkey, signs the same message the Capsule signs, and the box
   checks it as method `device`. (A store app cannot assert passkeys for a self-hosted box's
@@ -351,8 +358,8 @@ gap of more than an hour ("Today 12:01"):
   between parts. A 7 px `--beacon-dot` and "<agent> is waiting on you" in 13/600
   `--beacon-ink`, "Details" on the right, a ghost in 13/600 `--text` (opens the detail sheet). The command
   in a mono block (`--bg`, radius 6, 10 x 12, 14/20). One Meta `--text-2` line of facts ("3
-  commits · 6 files · harlow-legal/reports"). Then Deny (secondary) and Approve (primary, Face ID
-  glyph) side by side, 44 tall, radius 10, 15/600. Answered, it shrinks to one Meta line:
+  commits · 6 files · harlow-legal/reports"). Then Deny (secondary) and Approve (primary, with the Face ID
+  glyph only when the ask needs a proof) side by side, 44 tall, radius 10, 15/600. Answered, it shrinks to one Meta line:
   "Approved by you, 12:07".
 - **Question card**: the same card with the choices as rows inside it.
 - **Recalled**: a "From memory" `--recall-wash` block when memory fed the reply.

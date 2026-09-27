@@ -16,7 +16,12 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 
 ## Doing
 - Waiting on deck-design's reduced system (2 families, neutrals, lime, one attention colour, no
-  gold, no red) to apply it to phone.md and the canvas.
+  gold, no red) to apply it to phone.md and the canvas. Not landed on work/deck-design as of
+  1b37bda (their Next 1 is still open).
+- Done this session: honey dropped (the user does not like it; violet recommended, teal the
+  alternative). The no-nag rule is in phone.md section 5 "When Face ID shows": a proof only for
+  pairing, vault secrets and outbound send/post/pay, one proof lasts about 30 minutes, ordinary
+  asks are one tap with no glyph.
 
 ## Next
 1. Apply deck-design's reduced set when they send it (first job after their restart; their notes
@@ -25,11 +30,15 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
    22/26 to 20 or 28, 17/16 to 15). Agreed with deck-design (f0c9738): the phone adds +2 on 15
    and 20 (17 for messages and row titles, 22 for page labels); 12, 13 and 28 stay shared. Then re-run the contrast pass (scratchpad phone-render/
    build.py, rebuilt if the scratchpad is gone), republish the canvas, tell the integrator.
-2. The attention colour pick is still pending with the user: violet (current), honey or teal.
-   It is a one-line swap per theme of the three --beacon-* values.
+2. The attention colour pick is still pending with the user: violet (current) or teal. Honey is
+   out. It is a one-line swap per theme of the three --beacon-* values.
 3. Review pwa and mobile builds against phone.md as screenshots arrive.
 
 ## Needs from others
+- lead / presence owner: the ask must say whether it needs a proof (and whether a fresh one
+  covers it) so the phone shows the Face ID glyph only then; the phone never guesses from the
+  tool name. Also: is a git push "outbound" (a proof) or an ordinary ask? phone.md treats edits
+  and commands as ordinary and leaves push to the box.
 - chat: the diff summary (detail.changes on Edit/Write asks; changes + totals on held pushes),
   queued for their next session.
 - deck-design: shared chat items (gate card without a left rule, neutral deletions, author names).
