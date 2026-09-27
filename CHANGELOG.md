@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One system: sight, context, suggest and waiting (ADR 0036)
+
+- `sight.*`: one screen service on both sides. `sight.now {target: "mac" | "agent:<name>"}` gives
+  the app, window, URL without its query, the last step and who holds the keyboard; the Mac adds
+  text only when asked and only on the Mac. `sight.watch` hands out an agent's frames (the Mac
+  answers local_only). `sight.stepped` turns `desktop.acted`, `chrome.acted` and `hands.acted`,
+  which nothing read, into "what the agent is doing now", kept as the newest 500 steps.
+- `context.report` and `context.now`: where the user is (project, folder, thread, surface,
+  device, front app) merged across surfaces, with the project found from the folder.
+  `context.changed` names what changed at most once a second and never carries the app, window
+  or URL. Text and selection are refused, and a model can neither report nor read it.
+- `suggest.query`: one predictive-text tool for the Capsule, chat and the phone. Mentions,
+  commands, accounts and times from cached lists (about 2 ms at p95 with 500 threads), plus
+  sources a module offers with `suggest.offer` under a 25 ms deadline; `suggest.picked` teaches
+  the ranking.
+- `waiting.list`, `waiting.count` and `waiting.changed`: one "waiting on you" across questions,
+  held drafts, ringing reminders and Mac pairings, each row naming the owner tool that answers it.
+- docs-check knows the cohesion team as a page owner.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or

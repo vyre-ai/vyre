@@ -79,7 +79,8 @@
       "adr/0029-resilience.md",
       "adr/0030-sessions.md",
       "adr/0031-teammates.md",
-      "adr/0032-person-and-device.md"
+      "adr/0032-person-and-device.md",
+      "adr/0036-one-system.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
@@ -90,7 +91,8 @@
       "design/deck.md",
       "design/phone.md",
       "design/one-app/README.md",
-      "design/one-app/DIRECTION.md"
+      "design/one-app/DIRECTION.md",
+      "design/cohesion.md"
     ]},
     { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
   ],
