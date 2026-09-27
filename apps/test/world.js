@@ -36,13 +36,18 @@ const ADDRESS = "https://vyre.example.ts.net";
 const PHONE = { node: "alex-phone", stableId: "nTEST", login: OWNER };
 
 const root = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-mobile-")));
-process.on("exit", () => { try { fs.rmSync(root, { recursive: true, force: true }); } catch {} });
+// alex's folders sit outside VYRE_HOME: the security floor refuses writes into Vyre's own state.
+const alexRoot = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vy-mobile-alex-")));
+const ALEX = path.join(alexRoot, "alex");
+process.on("exit", () => { for (const d of [root, alexRoot]) try { fs.rmSync(d, { recursive: true, force: true }); } catch {} });
 
 // No real Claude Code, no hooks in the user's settings, no login keychain: a fake claude that
 // speaks stream-json, a harness dir inside the home, and the file keystore.
 process.env.VYRE_HOME = root;
 process.env.VYRE_NO_DIALOGS = "1";
 process.env.VYRE_CLAUDE_BIN = path.join(REPO, "core", "switchboard", "testing", "fake-claude.js");
+// The fake speaks the CLI's stream-json, so threads run on the CLI runner, not the Agent SDK.
+process.env.VYRE_SESSIONS_DRIVER = "cli";
 process.env.VYRE_HARNESS_DIR = path.join(root, "no-harness");
 process.env.FAKE_CLAUDE_LOG = path.join(root, "claude.log");
 
@@ -65,11 +70,11 @@ const w = buildHome(root, {
     mail: { type: "gmail", vault: "harlow-gmail", from: "alex@harlowlegal.com", base: OUT },
     billing: { type: "http", vault: "northwind-ads", hosts: [OUT] },
   } },
-  files: { roots: [path.join(root, "alex", "Work")] },
+  files: { roots: [path.join(ALEX, "Work")] },
   // Nothing here listens on the network, starts containers or opens a browser: the proxy below is
   // the only listener, and no box module reaches Tailscale, Docker or Chrome.
   modules: { disable: ["names", "onboard", "link", "computers", "glass", "hands-chrome", "hands-desktop"] },
-});
+}, ALEX);
 
 const { start } = await import("../../core/daemon/index.js");
 const d = await start({ root });
