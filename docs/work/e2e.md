@@ -263,6 +263,8 @@ run check.sh + thread.sh.
 - connectors 7e648545: HIGH + MEDIUMs fixed, OK once tests run; build firstParty(name) on
   native-core's firstParty(dir).
 
+RC SMOKE PROVEN: build-app.sh + npm pack of pre/batch4b 63d943f5 (build.json stamped): 21 pass,
+0 fail, 3 skip (pairing, mail, theme). /app/ 200. Rerun on ci's rc.1 dry-run artifact later.
 RC SMOKE (lead, 27 Sep): scripts/rc-smoke.sh <tgz> + scripts/rc-smoke/ (e62b0d22). Dry run on an
 npm pack of pre/batch4b 63d943f5: 19 pass, 2 FAIL (/app/ no_app: npm pack has no built app; a
 build-site tgz must pass), 3 skip (phone enrol needs a tailnet; mail and appearance not in b4).
