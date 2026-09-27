@@ -106,7 +106,9 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     assert.doesNotMatch(note, /not free|could not check/);
 
     await page.run(`document.querySelector("#primary").click()`);
-    await page.until(`location.hash === "#claude"`, "step 2");
+    // Reconciled with docs/design/onboarding-v2.md (the lead, 29 Sep): step 2 is now pairing
+    // (tailscale, then name), with Claude sign-in moved after it as step 3.
+    await page.until(`location.hash === "#tailscale"`, "step 2");
     const saved = config.load(root);
     assert.equal(saved.name, "alex");
     assert.equal(saved.onboard.person, "alex");

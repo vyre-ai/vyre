@@ -77,19 +77,27 @@ onboarding-v2, not a second experience. A new Mac or PC runs the exact same step
 | 3 | Sign in to Claude, through the vault | launch, sessions, vault | S | mostly exists (`claude` step), wire to vault |
 | 4 | Import your sessions: discover, choose, watch Vyre IQ learn | memory-iq (leads), federation | M | built, real memory-iq shapes: `docs/design/import.md` (work/memory-iq); board: `Import.dc.html`/-paper (work/app-design, e7aab867, owed a revision for the real 5-stage shapes) |
 | 5 | Import your secrets, from several sources | vault (leads) | L | stubbed (`secrets`, a "Coming soon" card); board ready: `VaultImport.dc.html`/-paper (work/app-design, 19a96abd); tool shapes still needed from vault |
-| 6 | Connect accounts: Google and email, MCP servers | vault, connectors | M | board available: `Connections.dc.html`/-paper (work/app-design, db3dbbfa), sent to vault; spec needed |
+| 6 | Connect accounts: Google and email, MCP servers | vault, connectors | M | stubbed (`accounts`, a "Coming soon" card); board available: `Connections.dc.html`/-paper (work/app-design, db3dbbfa), sent to vault; spec needed |
 | 7 | Agent computers: Off / Browser only / Browser + desktops | glass-live (backend) | S | built (`computers`); server-size numbers are placeholders ("still measuring") until `docs/design/agent-browsers.md` and e2e's measurements land |
 | 8 | Vyre Drive | federation (leads) | ? | stubbed (`drive`, a "Coming soon" card); federation drafting the options (see below); design once the lead brings back the user's choices |
 | 9 | Your phone: pair it, swipe-to-approve | mobile | S | later, per the lead; stub/skippable for 0.1.1 |
 | 10 | A tour of the Capsule: press &#8997;Space | capsule-pro | S | can reuse the landing page's Capsule demo pattern (`site/index.html`'s hero demo) as a starting shape |
 
-The client's actual `STEPS` array (`deck/onboard/onboard.js`) has 9 entries today, not 10: steps
-1-3 above map onto the three existing `you`/`claude`/`tailscale`+`name` screens (address and
-Tailscale are still two separate screens client-side, not yet merged into one "pair" step), and
-steps 9-10 above (phone, Capsule tour) are still one combined `devices` screen, as they always
-have been. `secrets`, `computers` and `drive` were added as their own new entries between
-`history` and `devices`. Reconciling the two numberings (splitting or merging screens to match
-this table 1:1) is a `Next`, not done yet.
+Reconciled (the lead, 29 Sep): the client `STEPS` array (`deck/onboard/onboard.js`) now has 11
+entries, in the same order as this table, with two intentional differences kept on purpose rather
+than forced into a false 1:1 mapping:
+
+- **Step 2 is two client screens**, `tailscale` then `name`: connecting to Tailscale and reserving
+  an address are different enough pieces of work (one is a sign-in and a wait, the other is a
+  certificate request with its own multi-row progress) that merging them into one screen would
+  lose the per-piece progress each already shows. They're adjacent and both still called "Pair
+  this device with the server" in spirit.
+- **Step 10 (the Capsule tour) is its own screen, `capsule`, split out of the old `devices`
+  step.** `devices` (Mac and phone pairing, step 9) used to be the mandatory, non-skippable final
+  screen; that property moved to `capsule`, which is genuinely last now and triggers `finish()`.
+  `devices` is a normal, skippable middle step today.
+
+No step is silently combined or renumbered without a note here.
 
 ### Step 2: Pair this device with the server
 
@@ -136,8 +144,10 @@ asked vault for the discover/import tool shapes per source before building the r
 
 ### Step 6: Connect accounts
 
-Google and email, MCP servers, through vault and connectors. Spec needed; likely close to
-existing connectors flows, reframed as its own step with the shell's progress/celebration.
+Stubbed for now (`accounts` in `deck/onboard/onboard.js`'s `STEPS`, a "Coming soon" card,
+Skip/Continue, no backend call). Google and email, MCP servers, through vault and connectors.
+Spec needed; likely close to existing connectors flows, reframed as its own step with the shell's
+progress/celebration.
 
 ### Step 7: Agent computers
 
@@ -183,6 +193,3 @@ open/close handling are a reasonable starting point for capsule-pro's real, sign
 - tailnet: the proposed names.discover tool for step 2's existing-server detection (design agreed, not built).
 - windows: confirm `docs/using/windows.md` covers what step 2 needs to point a fresh Windows PC
   at for install, once that guide exists.
-- launch: reconcile the client `STEPS` array (9 entries) with this doc's numbering (10 steps,
-  `name`/`tailscale` split and `devices` combining phone+Capsule differently than the table
-  above); not done yet, noted under "The ten steps".

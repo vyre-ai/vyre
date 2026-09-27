@@ -11,19 +11,26 @@ import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 
-// Steps beyond the original six are client-side stubs for now (onboarding-v2.md): stepState()
-// defaults an unknown id to "todo" and mark_() only tries the server for a real onboard.<id>
-// tool, so a step with no server-side counterpart yet still marks, skips and counts correctly.
+// Reconciled with docs/design/onboarding-v2.md's 10-step table (the lead, 29 Sep): this array's
+// order now matches it exactly, with two client screens standing in for the doc's single step 2
+// ("Pair this device with the server" is tailscale then name here) and the doc's step 10
+// ("A tour of the Capsule") as its own final, non-skippable screen split out of the old
+// "devices" step, which keeps Mac- and phone-pairing but is a normal, skippable middle step now.
+// Steps beyond the original six are client-side stubs for now: stepState() defaults an unknown
+// id to "todo" and mark_() only tries the server for a real onboard.<id> tool, so a step with no
+// server-side counterpart yet still marks, skips and counts correctly.
 const STEPS = [
-  { id: "you", title: "You" },
-  { id: "claude", title: "Claude Code" },
-  { id: "tailscale", title: "Tailscale" },
-  { id: "name", title: "Your address" },
-  { id: "history", title: "Your history" },
-  { id: "secrets", title: "Your secrets" },
-  { id: "computers", title: "Agent computers" },
-  { id: "drive", title: "Vyre Drive" },
-  { id: "devices", title: "Your devices" },
+  { id: "you", title: "You" },                    // 1
+  { id: "tailscale", title: "Tailscale" },         // 2a
+  { id: "name", title: "Your address" },           // 2b
+  { id: "claude", title: "Claude Code" },          // 3
+  { id: "history", title: "Your history" },        // 4
+  { id: "secrets", title: "Your secrets" },        // 5
+  { id: "accounts", title: "Connect accounts" },   // 6
+  { id: "computers", title: "Agent computers" },   // 7
+  { id: "drive", title: "Vyre Drive" },            // 8
+  { id: "devices", title: "Your devices" },        // 9
+  { id: "capsule", title: "The Capsule" },         // 10
 ];
 
 // The session vyred gave for `vyre up`'s one-time link: the server redeems ?t= itself and
@@ -775,6 +782,18 @@ const SCREENS = {
     s.foot({ label: "Continue", run: s.next });
   },
 
+  // Stub (docs/design/onboarding-v2.md step 6): connectors/vault own the engine; spec not sent
+  // yet. Existing connector flows (Settings > Connections) work today outside onboarding.
+  accounts(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Connect accounts."),
+      h("p", { class: "lead" }, "Google and email, and MCP servers: connect them once, and every agent can use them with your permission."));
+    col.append(h("div", { class: "need" },
+      h("div", { class: "lbl" }, "Coming soon"),
+      "This step isn't built yet. Skip it for now, and connect accounts later from Settings."));
+    s.foot({ label: "Continue", run: s.next });
+  },
+
   // Full build (lead, 29 Sep): Off / Browser only / Browser + desktops. Glass owns the backend
   // (docs/design/agent-browsers.md, coming) and the actual server-size numbers; this step's own
   // choice is kept locally only until a real tool exists to save it to, same degrade-gracefully
@@ -825,7 +844,7 @@ const SCREENS = {
     col.classList.add("wide");
     col.append(
       h("h1", { class: "h1" }, "Your devices."),
-      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this server over your tailnet, and nothing else can. Last step, nearly there."));
+      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this server over your tailnet, and nothing else can. One more step after this."));
 
     // Mac: install, `vyre up`, then approve the request it makes, in this card.
     const macState = h("div", { class: "dev-state", "aria-live": "polite" });
@@ -911,6 +930,20 @@ const SCREENS = {
       toMac = false;
       later(() => { macCard.scrollIntoView({ block: "start" }); macCard.focus({ preventScroll: true }); }, 0);
     }
+    // No longer the mandatory final step (the Capsule tour is, now): normal Continue and Skip.
+    s.foot({ label: "Continue", run: s.next });
+  },
+
+  // The Capsule tour (docs/design/onboarding-v2.md step 10), split out of "devices" so the
+  // mandatory, non-skippable final screen is this one, not Mac/phone pairing. capsule-pro owns
+  // the real, signed-in tour; this reuses the landing page's copy and hotkey
+  // (site/index.html, docs/work/launch-surfaces.md) as a starting shape.
+  capsule(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "A tour of the Capsule."),
+      h("p", { class: "lead" }, "Press ⌥Space over any app, a call or a doc, on your Mac, and the Capsule opens. Say what you need. It's gone when you're done."));
+    col.append(h("div", { class: "ob-panel" },
+      h("p", { class: "small muted" }, "Try it now if your Mac is already paired: press ⌥Space anywhere. Not paired yet? Pair it from the devices step, or open the Deck and pair it any time.")));
     s.foot({ label: "Open Vyre", run: s.next }, { skip: false });
   },
 };
