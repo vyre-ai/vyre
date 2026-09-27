@@ -3305,7 +3305,7 @@ What this machine is running: Vyre version and the commit it was built from, rol
 
 ### `team.add`
 
-Add a teammate to a project: a role (how sessions address it, e.g. "design"), a brief (what work goes to it) and, optionally, instructions, tools and isolation. Makes agent <role>-<project>. isolation: "worktree" gives it its own git worktree and branch, and brings an "integrator" teammate along the first time, which merges finished work into the project's own branch; refused when the project's home is not a git repo.
+Add a teammate to a project: a role (how sessions address it, e.g. "design"), a brief (what work goes to it) and, optionally, instructions, tools and isolation. Makes agent <role>-<project>. isolation: "worktree" gives it its own git worktree and branch, and brings an "integrator" teammate along the first time, which merges finished work into the project's own branch; when the project's home is not a git repo it falls back to isolation: "folder" instead (shared with any other folder-isolated teammate), saying so in the answer's `notice`.
 
 - Input:
   - `project` string, required

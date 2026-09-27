@@ -239,6 +239,37 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 9. Also from the lead: a project home is confirmed not guaranteed to be a repo — handled above.
    Vault is adding a project column to grants; sharing (step 5) will not start until that lands,
    which is unaffected by slice A (no sharing here).
+10. Slice A review (e2e and reviewer, 8eb1a785), both NOT signed off on the same HIGH: vyred's
+    own git ran whatever the teammate planted in the shared .git (hooks; config naming a
+    program: filters, merge drivers, textconv; a .gitattributes pointing at them), as vyred's own
+    child, outside Claude's permission floor, and on a Mac with vyred's ancestry, so the socket
+    would take it for the person. Fixed in `core/team/git.js`'s one `git()`:
+    - switched off from the command line, which beats repo config: hooks
+      (`core.hooksPath=/dev/null`, plus `merge --no-verify`), commit/tag signing and
+      `merge.verifySignatures`, `core.attributesFile`, fsmonitor, the pager and editors,
+      `core.sshCommand`, `protocol.allow=never`; no system or global config read
+      (`GIT_CONFIG_NOSYSTEM=1`, `GIT_CONFIG_GLOBAL=/dev/null`); vyred's own identity on its
+      merges (global config is off, so git would not guess one);
+    - what cannot be switched off by name from the command line (filter smudge/clean/process,
+      diff textconv/command, merge drivers, include/includeIf, aliases) makes checkout and merge
+      refuse outright while the repo's own config has one, naming the key (`unsafeConfig`).
+      Not refused, since the command line already neutralises them and refusing would break
+      ordinary repos (husky sets `core.hooksPath`, many set `core.editor`): hooksPath, gpg.*,
+      editor, pager, fsmonitor, sshCommand.
+    - reviewer's MEDIUM: a folder already at `<repo>-<role>` must be this repo's own worktree
+      (same `--git-common-dir`, on `team/<role>`) or `team.add` refuses, and vyred re-checks it
+      before every merge; an unrelated `acme-design` beside `acme`, or a folder a teammate made
+      there first, is never adopted.
+    - e2e's LOW: `--end-of-options` before every rev and path; branch names come only from
+      `symbolic-ref` and a NAME-checked role (comment in git.js).
+    New tests: planted post-checkout/post-merge/pre-merge-commit hooks never run (while the
+    merge itself still happens); a smudge filter in repo config refuses the merge and never
+    runs; `team.add` refused while a merge driver is set; a pre-existing unrelated repo at
+    `<repo>-design` refused. The hook and filter tests go red with the fixes removed (checked on
+    testbox, then restored). 30/30 team tests + 5/5 boundaries green on testbox.
+    Reviewer's note for slice B, taken: a worktree is not a security boundary (a teammate that
+    writes the shared .git can move any ref, main included), so slice B's compare-and-swap will
+    compare main against a tip vyred itself recorded, not trust git's refs alone.
 
 ## e2e review round 1 (2026-09-28, f8cbc882)
 

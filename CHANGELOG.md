@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Project teammates: vyred's own git runs nothing the repo names
+
+- A teammate can write a repo's shared .git, so vyred's own worktree checkout and merge could
+  run a hook, filter or merge driver it planted, as vyred and outside every permission check.
+  `core/team/git.js` now switches off hooks, signing, editors, the pager, fsmonitor and system
+  and global config on every call, and refuses to check out or merge while the repo's own config
+  names a filter, textconv, merge driver, include or alias, saying which. A folder already at a
+  teammate's worktree path must be that repo's own worktree on that teammate's branch, or it is
+  refused rather than adopted.
+
 #### Project teammates, step 4 slice A: worktree isolation, the integrator, merge-before-dispatch
 
 - `team.add` with `isolation: "worktree"` now gives a teammate its own git worktree and branch
