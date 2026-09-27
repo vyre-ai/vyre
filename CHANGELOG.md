@@ -6,19 +6,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### A box keeps projects in /work/projects
 
-- On a box with a `/work` folder and no `projectsDir` in config.json, projects live in
-  `/work/projects`, where VyreDrive can share them. The first start moves homes out of
-  `~/Vyre/projects` once (copying across volumes), leaves a link at each old folder so Claude
-  sessions keyed by the old path still resume, rewrites the stored rows and markers, records the
-  outcome in `projects-moved.json`, and emits `projects.moved`. A Mac is unchanged.
+- Projects on a box: nothing moves on its own. A new box (no homes in `~/Vyre/projects`) keeps
+  projects in `/work/projects`, where VyreDrive can share them; an existing box stays on
+  `~/Vyre/projects` until the owner runs `projects.move` (`vyre projects move [--dry-run]`,
+  PERSON_ONLY). The dry run answers what would move, what would be skipped and why, and the
+  marker and row rewrites, and changes nothing. The real move runs once, only with
+  `VYRE_PROJECTS_MOVE=1` or config `projects.move` set to `"enabled"` (off until box-deploy
+  validates it on a copy), leaves a link at each old folder so Claude sessions still resume,
+  records `projects-moved.json`, emits `projects.moved`, and asks for a vyred restart. It refuses
+  a Mac (`not_box`), agents, a second run (`already_moved`) and a box without `/work`
+  (`no_work_folder`).
 
 #### The hosted app may call the box from the owner's browser
 
 - The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the
   owner only: an exact origin, GET and POST, no credentials, and Chrome's private-network ask.
-  `GET /v1/health` from it answers only `{ reachable: true }`; every other call and WebSocket
-  needs a web session (`deps.webSession`, e2e's rule), else `401 web_session_required`. The call
-  reaches the router with `peer.origin` and `peer.webSession`.
+  Allowed headers: content-type, authorization, x-vyre-proof. `GET /v1/health` from it answers
+  only `{ reachable: true }`. Every other call reaches the router with `peer.origin`, and the
+  router refuses it with `401 person_session_required` unless `core/presence/person.js`
+  (`personSessions(db).sessionOf`, e2e's; a stub that finds none for now) finds a person session;
+  only `POST /v1/person/token` passes without one. WebSockets from it are the owner's (every
+  stream needs a ticket a tool minted).
+- Guests: GUEST_SAFE is `threads.list` only (`glass.close` dropped too).
 - Tailscale docs: the iPhone DNS failure behind tailscale#19147 in "When a device cannot connect".
 
 #### VyreDrive: the name, a lighter secrets scan, no proof to switch a share, and no guest Glass

@@ -20,6 +20,7 @@ import { build } from "./build.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, parse as parsePresence } from "../presence/index.js";
 import { peerPid, insideClaude } from "./peer.js";
+import { personSessions } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 
@@ -34,7 +35,7 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any }} [opts]
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any, person?: ReturnType<typeof personSessions> }} [opts]
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -75,7 +76,9 @@ async function startLocked(opts, root, p, release) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root }, { ...policy, caller, ...(peer ? { peer } : {}) })
+  // A test may pass its own person sessions (core/presence/person.js).
+  const person = opts.person || personSessions(db);
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, person }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
@@ -153,7 +156,7 @@ async function body(req) {
 /**
  * @typedef {{ caller?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
  *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string|null,
- *   tags?: string[], caps?: Record<string, any[]>, kind?: "owner"|"guest"|"agent", agent?: string } }} Policy
+ *   tags?: string[], caps?: Record<string, any[]>, kind?: "owner"|"guest"|"agent", agent?: string, origin?: string } }} Policy
  * A policy from a module's listener: the caller it established, which tools and paths it may reach,
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
@@ -188,8 +191,15 @@ async function fromClaude(socket, registry) {
   return inside ? "this comes from inside a Claude session; only the person answers and approves, on their own screen" : null;
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, socket = false }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root, socket = false, person = null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
+  // A call from the hosted app's page (another origin, the tailnet listener set peer.origin) needs
+  // a person session, reads included. Only the token exchange, which is how the app gets one,
+  // answers without it (core/presence/person.js).
+  if (policy.peer && policy.peer.origin && !(req.method === "POST" && url.pathname === "/v1/person/token")) {
+    const s = person ? await person.sessionOf(req, policy.peer) : null;
+    if (!s || !s.ok) return send(res, 401, { error: { code: "person_session_required", message: "Sign in to this box from the app first." } });
+  }
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
   // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes

@@ -50,7 +50,8 @@ export const HUMAN_ONLY = new Set([
  * making and changing agents, changing or discarding a held draft (gate.revise, gate.reject send
  * nothing), the owner's hands on an agent's computer (taking the keyboard pauses the agent,
  * handing it back returns what it had), and switching one of the box's VyreDrive shares between
- * read-only and read-write (files.drive.access: the share already exists and reaches no one new).
+ * read-only and read-write (files.drive.access: the share already exists and reaches no one new),
+ * and moving a box's project homes to /work/projects (projects.move).
  * None sends, pays, pairs or releases a secret. The tools' caller checks keep models, agents and
  * guests out (computers ownSurface, glass surfaceOf, drive's owner check, the allowlists), the
  * harness floor refuses a model's shell that names one of these, as it does the list above, and
@@ -59,7 +60,8 @@ export const HUMAN_ONLY = new Set([
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach",
   "agents.create", "agents.update", "gate.revise", "gate.reject",
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access"]);
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access",
+  "projects.move"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
 

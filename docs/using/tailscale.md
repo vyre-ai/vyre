@@ -134,8 +134,8 @@ More in [Troubleshooting](../get-started/troubleshooting.md) and
   `funnel` or `lock` command. Nothing about your box is public unless you publish a webhook route
   with Funnel yourself.
 - No other site's page can call it, except Vyre's hosted app (`https://app.vyre.run`), and only
-  from the owner's browser with a web session. Without one, the app learns only that the box is
-  reachable. `network.origins` changes the list; `[]` turns it off.
+  from the owner's browser with a person session (signed in on the box). Without one, the app
+  learns only that the box is reachable. `network.origins` changes the list; `[]` turns it off.
 - It turns on none of the optional features below by itself.
 
 ## Optional Tailscale features
