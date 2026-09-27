@@ -57,6 +57,12 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   cannot page backwards; no presence proof from the web app yet (held sends open the item);
   native not run.
 
+- Merged main c8fb9aa, work/resilience, work/relay fe94ed13, work/app-design (generator is
+  theirs now). Relay paths + noble on native, vyre://pair, pwa hooks (precache.json, /app/sw.js,
+  push from a tap, vyre:navigate, push.seen). core/apps `releases` module: APK routes + pure-JS
+  v2/v3 signer, apksigner verify passes (11 tests, Mac). iOS compiles (sim + device, Xcode 26.6).
+  83/83 app tests. Testbox runs queued for the integrator's open.
+
 ## One app: Doing
 - The real-iPhone run of the spike: needs the box to serve /app/ (pwa) and the user's phone.
 
@@ -187,6 +193,7 @@ down after):
 - switchboard: review of the push transports; a `thread.status` event would save a re-read.
 
 ## Changed contracts
+- `core/daemon/index.js` (daemon): route() sends `/apps/*` to the `releases` module's route.
 - `core/presence/index.js`, `module.js` (security): method `device`, kind `device` in
   `presence.enroll` (enum and checks), migration 3 rebuilding `presence_keys` with the wider
   CHECK, `device` in `SESSION_FROM`. `docs/adr/0004-presence.md`: an addendum.

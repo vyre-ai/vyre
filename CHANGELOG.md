@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: the relay path, pairing, the /app/ worker hooks; the box signs the Android APK
+
+- apps/app goes to the box through relay/client's paths: the web tries the box's own origin and
+  then the relay; the phone is relay-first (the lead's default), with the Noise crypto from @noble
+  (curves, ciphers, hashes; pure JS, audited; the relay's X25519 key as bytes in expo-secure-store,
+  this device only) and random bytes from vyre-signer. The person proof signs the box path and
+  query only, whatever route prefix the relay adds. New app dependencies: @noble/curves,
+  @noble/ciphers, @noble/hashes (native only; none in the web bundle).
+- `vyre://pair?offer=...` (and /app/pair) pairs the phone with the box through the relay.
+- For pwa's /app/ worker: `npm run export:web` writes dist/precache.json; the app registers
+  /app/sw.js, subscribes to push only from a tap on Now, follows the worker's vyre:navigate, and
+  reports push.seen.
+- core/apps (module `releases`): the box serves /apps/android.json and /apps/android/<file>.apk to
+  the owner's devices only, signing CI's unsigned APK with the owner's own key (EC P-256, made on
+  first use, kept in the vault as android-release-key). The signer is pure JS on node:crypto (APK
+  Signature Scheme v2 and v3, with a DER X.509 encoder); `apksigner verify` passes v2 and v3.
+  core/apps/sign-apk.mjs is the same signer for CI. core/daemon routes /apps/* to it (one line).
+- The iOS app, with the Secure Enclave signer, compiles for the simulator and the device.
+- Tokens regenerated from tokens.json (popover).
+
 #### One app: the spike screens (Now, the approve swipe, a session)
 
 - Now: Needs you (held Gate items and open asks, oldest first) painted from the cache, then kept

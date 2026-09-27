@@ -369,7 +369,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return stream(req, res, url, events, streams);
   }
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
-  const own = registry.routes.get(url.pathname);
+  // /apps/ (the Android APK and its manifest, ADR 0027 4a) is plain URLs outside /v1/ for the
+  // system installer and adb, all answered by the releases module's one route (core/apps).
+  const own = registry.routes.get(url.pathname) || (url.pathname.startsWith("/apps/") ? registry.routes.get("/v1/releases/apps") : undefined);
   if (own) return own(req, res, { caller, url });
   // The Deck's colours from config, read on every request so a changed theme needs no restart.
   if (req.method === "GET" && url.pathname === "/theme.css") {

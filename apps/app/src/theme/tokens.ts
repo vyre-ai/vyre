@@ -210,6 +210,10 @@ export const tokens = {
       20
     ]
   },
+  "popover": {
+    "dark": "inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55)",
+    "paper": "0 12px 24px -12px rgba(20,19,17,0.3)"
+  },
   "shadow": {
     "dark": "inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6)",
     "paper": "0 24px 48px -24px rgba(20,19,17,0.28)"

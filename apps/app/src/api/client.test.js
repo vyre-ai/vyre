@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { caller } from "../../../../core/resilience/web.js";
+import { caller, over } from "../../../../core/resilience/web.js";
 import { memoryStore } from "../../../../core/resilience/outbox.js";
 import { backoff } from "../../../../core/resilience/backoff.js";
 
@@ -158,9 +158,39 @@ test("client: auth headers ride on every call and stream open, signed per reques
     await until(() => opens.length === 1);
     c.stop();
   });
-  assert.deepEqual(asked[0], ["POST", `${BOX}/v1/tools/agents.list`, '{"owner":"alex"}']);
+  assert.deepEqual(asked[0], ["POST", "/v1/tools/agents.list", '{"owner":"alex"}'], "the path relative to the box, not a URL");
   assert.equal(asked[1][0], "GET");
-  assert.equal(asked[1][1], `${BOX}/v1/events/stream?type=*&since=latest`);
+  assert.equal(asked[1][1], "/v1/events/stream?type=*&since=latest");
   assert.equal(seen[0].authorization, "Vyre abc");
   assert.equal(opens[0].headers["x-vyre-proof"], "sig-for-GET");
+});
+
+test("client: over a relay base with a route prefix, the proof signs the box's path, not the relay's", { skip: !strip }, async () => {
+  const { personSession, memorySlot, newKey: newPair, proofMessage, fromB64url } = await import("../auth/person.ts");
+  const RELAY = "https://relay.example.net/abcdefghijklmnopqrstuvwxyz";
+  const pair = await newPair();
+  const person = personSession({ box: RELAY, stores: { key: memorySlot(pair), token: memorySlot("tok12345.secretsecretsecret12") }, signIn() {} });
+  /** @type {{ path: string, headers: Record<string, string>, body?: string }[]} */ const sent = [];
+  // relay/client's createPaths().fetch takes a path; this one answers every call and holds the stream.
+  const pathFetch = async (/** @type {string} */ path, /** @type {any} */ init) => {
+    sent.push({ path, headers: init.headers, body: init.body });
+    if (init.method === "GET") return { status: 200, ok: true, body: { async *[Symbol.asyncIterator]() { await hang(init.signal); } } };
+    return { status: 200, ok: true, text: async () => '{"data":1}' };
+  };
+  const o = over(pathFetch);
+  const c = await client({ base: RELAY, paths: ["box"], auth: person, open: o.open, caller: (_b, co) => o.caller(co) });
+  assert.deepEqual(await c.call("notes.add", { text: "hi" }), { data: 1 });
+  c.events(() => {});
+  await until(() => sent.length === 2);
+  c.stop();
+  const verify = async (/** @type {typeof sent[0]} */ r, /** @type {string} */ method, /** @type {string} */ path) => {
+    const m = /^t=(\d+) n=([A-Za-z0-9_-]+) sig=([A-Za-z0-9_-]+)$/.exec(r.headers["x-vyre-proof"]);
+    assert.ok(m, r.headers["x-vyre-proof"]);
+    const msg = await proofMessage({ method, path, body: r.body ?? "", t: m[1], n: m[2] });
+    assert.equal(await crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, pair.publicKey, fromB64url(m[3]), new TextEncoder().encode(msg)), true, `${method} ${path}`);
+  };
+  assert.equal(sent[0].path, "/v1/tools/notes.add");
+  await verify(sent[0], "POST", "/v1/tools/notes.add");
+  assert.equal(sent[1].path, "/v1/events/stream?type=*&since=latest");
+  await verify(sent[1], "GET", "/v1/events/stream?type=*&since=latest");
 });

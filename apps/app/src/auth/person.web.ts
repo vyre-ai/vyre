@@ -10,7 +10,7 @@
 // Where IndexedDB is refused (a private window), both live in memory for the page: the person
 // signs in again on the next load, and nothing weaker is written anywhere.
 
-import { memorySlot, personSession, pkce, type PersonSession, type Slot } from "./person.ts";
+import { memorySlot, newKey, personSession, pkce, type PersonSession, type Slot } from "./person.ts";
 
 const DB = "vyre-person";
 const STORE = "person";
@@ -139,12 +139,27 @@ export async function finishSignIn(box: string, person: PersonSession): Promise<
   return r.ok;
 }
 
+const keySlot = () => idbSlot<CryptoKeyPair>("key");
+
+/**
+ * This browser's one ECDSA P-256 pair (the person session's key), made on first use. Pairing
+ * offers its public half to the box as the device's presence key.
+ */
+export async function personKey(): Promise<CryptoKeyPair> {
+  const slot = keySlot();
+  const k = await slot.load();
+  if (k) return k;
+  const made = await newKey();
+  await slot.save(made);
+  return made;
+}
+
 /** The person session for `box` in this browser. `onSignIn` hears every request for one. */
 export function webPerson(box: string, onSignIn?: () => void): PersonSession {
   const origin = new URL(box).origin;
   return personSession({
     box: origin,
-    stores: { key: idbSlot<CryptoKeyPair>("key"), token: idbSlot<string>("token:" + origin) },
+    stores: { key: keySlot(), token: idbSlot<string>("token:" + origin) },
     signIn: () => {
       onSignIn?.();
       void startSignIn(origin);

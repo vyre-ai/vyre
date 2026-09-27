@@ -1,12 +1,16 @@
-// The box connection on the web target: core/resilience/web.js for the stream's transport, the
-// tool caller, the outbox and cursor in IndexedDB, and the page lifecycle. At the box's own
-// origin (the app at /app/) the person cookie rides along by itself; at another origin every
-// request is signed with the person session (src/auth/person.web.ts).
+// The box connection on the web target: relay/client's paths as the transport (the box's origin
+// directly, then the relay when this browser is paired), core/resilience/web.js over() for the
+// stream and the tool calls on whichever path answers, the outbox and cursor in IndexedDB, and the
+// page lifecycle. At the box's own origin (the app at /app/) the person cookie rides along on the
+// direct path by itself; at another origin every request is signed with the person session
+// (src/auth/person.web.ts), over the box's own path so a relay route never enters the proof.
 
-import { caller, cursorStore, idbStore, lifecycle, open } from "@vyre/resilience/web.js";
+import { cursorStore, idbStore, lifecycle, over } from "@vyre/resilience/web.js";
+import { createPaths } from "@vyre/relay-client/paths.js";
 import { finishSignIn, startSignIn, webPerson } from "../auth/person.web";
 import type { PersonSession } from "../auth/person";
 import { connection } from "../state/connection";
+import { relayCrypto, relayKeyStore, loadPairing, about } from "./relay";
 import { makeBox } from "./wire";
 
 let base = "";
@@ -31,14 +35,20 @@ const b = makeBox(async () => {
   const origin = boxOrigin();
   const name = boxName();
   person = crossOrigin() ? webPerson(origin, () => connection.signIn(true)) : null;
-  const cursor = cursorStore(name);
+  const pairing = await loadPairing();
+  const direct = (paths?.length ? paths : [origin]).map((p) => ({ kind: "direct" as const, base: p }));
+  const p = createPaths({
+    paths: pairing ? [...direct, { kind: "relay" as const, ...pairing, about, keyStore: relayKeyStore(), crypto: relayCrypto() }] : direct,
+  });
+  const o = over(p.fetch);
   return {
     base: origin,
-    paths,
-    open,
-    caller,
+    // One path for follow(): which way the box is reached is the paths layer's job.
+    paths: ["box"],
+    open: o.open,
+    caller: (_base, co) => o.caller(co),
     outboxStore: idbStore(name),
-    cursor,
+    cursor: cursorStore(name),
     auth: person,
     async before() {
       if (person && (await finishSignIn(origin, person))) connection.signIn(false);
@@ -53,12 +63,27 @@ const b = makeBox(async () => {
         off();
         removeEventListener("online", net);
         removeEventListener("offline", net);
+        p.close();
       };
     },
   };
 });
 
 export const { connect, listen, call, send, prove, disconnect } = b;
+
+/**
+ * A hint the page may not outlive (push.seen on hide): straight to the box's origin with
+ * keepalive, so it is sent even as the page goes. Never queued, never thrown.
+ */
+export async function beacon(tool: string, input: Record<string, unknown>): Promise<void> {
+  const origin = boxOrigin();
+  const path = "/v1/tools/" + encodeURIComponent(tool);
+  const body = JSON.stringify(input);
+  try {
+    const h = person ? await person.headers("POST", path, body) : {};
+    await fetch(origin + path, { method: "POST", keepalive: true, credentials: "same-origin", headers: { "content-type": "application/json", ...h }, body });
+  } catch {}
+}
 
 /** Sign in as the person: the box's passkey page at another origin, its own at the same one. */
 export async function signIn(): Promise<void> {

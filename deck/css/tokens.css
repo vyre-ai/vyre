@@ -23,8 +23,18 @@
   --beacon-dot: #B8A4FF;
   --beacon-badge-ink: #0E0D0C;
   --float: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);
+  --popover: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);
   --sans: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --radius-chip: 4px;
+  --radius-field: 8px;
+  --radius-button: 8px;
+  --radius-button-touch: 10px;
+  --radius-card: 12px;
+  --radius-card-phone: 10px;
+  --radius-sheet: 14px;
+  --radius-bubble: 12px;
+  --radius-full: 999px;
   color-scheme: dark;
 }
 :root[data-theme="paper"] {
@@ -50,5 +60,6 @@
   --beacon-dot: #5B3FC4;
   --beacon-badge-ink: #F4F1EA;
   --float: 0 24px 48px -24px rgba(20,19,17,0.28);
+  --popover: 0 12px 24px -12px rgba(20,19,17,0.3);
   color-scheme: light;
 }

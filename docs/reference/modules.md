@@ -43,7 +43,8 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
-| [`relay`](#relay) | `core/relay` | `box` | 9 | 4 | capsule, cli, deck |
+| [`relay`](#relay) | `core/relay` | `box` | 12 | 5 | capsule, cli, deck |
+| [`releases`](#releases) | `core/apps` | `box` | 1 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -324,9 +325,21 @@ A second way to reach the box besides Tailscale: the box dials out to a relay, a
 - Folder: `core/relay`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [9](tools.md#relay)
-- Emits: [4 events](events.md#relay)
+- Tools: [12](tools.md#relay)
+- Emits: [5 events](events.md#relay)
 - Shows on: capsule, cli, deck
+
+## releases
+
+The Android app from the box: CI's unsigned APK, signed with the owner's own key, served to the owner's devices at /apps/.
+
+- Folder: `core/apps`, version 0.1.0
+- Runs on: `box`
+- Requires: `vault`
+- Tools: [1](tools.md#releases)
+- Emits: no events
+- Shows on: cli
+- Needs vault: `android-release-key`
 
 ## screen
 

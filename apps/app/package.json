@@ -6,11 +6,14 @@
   "main": "expo-router/entry",
   "scripts": {
     "web": "expo start --web",
-    "export:web": "expo export -p web",
+    "export:web": "expo export -p web && node scripts/precache.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"perf/*.test.js\" \"src/**/*.test.js\""
+    "test": "node --test \"perf/*.test.js\" \"scripts/*.test.js\" \"src/**/*.test.js\""
   },
   "dependencies": {
+    "@noble/ciphers": "^1.3.0",
+    "@noble/curves": "^1.9.7",
+    "@noble/hashes": "^1.8.0",
     "expo": "~54.0.0",
     "expo-constants": "~18.0.14",
     "expo-linking": "~8.0.12",
