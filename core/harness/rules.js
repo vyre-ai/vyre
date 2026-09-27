@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { socketPath } from "../config/index.js";
-import { HUMAN_ONLY } from "../presence/index.js";
+import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { ownerOverTailnet } from "../modules/index.js";
 import { flatten, words, dynamic, globReaches } from "./shell.js";
 
@@ -105,9 +105,9 @@ const ask1 = reason => ({ decision: /** @type {const} */ ("ask"), rule: 1, reaso
 const HUMAN_VERBS = { gate: ["approve", "revise", "reject"], threads: ["answer"],
   vault: ["put", "approve", "unlock", "offboard", "run", "inject", "backup", "restore", "pair", "export", "kit", "delete", "reveal", "copy", "totp"],
   learn: ["accept", "retire", "relax", "skill"], computers: ["takeover", "giveback"], link: ["approve"] };
+/** Tools a model's shell may never name: the floor's human-only list and the person's own actions. */
+const MODEL_NEVER = new Set([...HUMAN_ONLY, ...PERSON_ONLY]);
 const isVyre = w => path.basename(w) === "vyre" || /\/bin\/vyre(\.js)?$/.test(w);
-/** Tools a model's shell never names: the floor's list, and the user's own lessons, which ask no presence. */
-const MODEL_NEVER = new Set([...HUMAN_ONLY, "learn.accept", "learn.retire", "learn.relax"]);
 const isHumanPair = (a, b) => a === "presence" || (HUMAN_VERBS[a] || []).includes(b) || (a === "call" && MODEL_NEVER.has(b));
 /** Vyre's files by name, wherever they are: the store, its journal, the socket, the pid file. */
 const INTERNAL_FILE = /(^|\/)(vyre\.db(-wal|-shm|-journal)?|vyred\.(sock|pid))$/;

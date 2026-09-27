@@ -61,7 +61,7 @@ test("markdown: nested lists nest, and pathologically deep nesting is clamped, n
   assert.ok(inner, "expected a nested ul under the first li");
 
   // 2000 levels of indentation is adversarial input, not a real document. It must not hang or
-  // blow the stack — it should render, clamped to a bounded depth.
+  // blow the stack, it should render, clamped to a bounded depth.
   const lines = [];
   for (let i = 0; i < 2000; i++) lines.push(`${"  ".repeat(i)}- item ${i}`);
   const start = Date.now();
@@ -94,7 +94,7 @@ test("markdown: blockquotes", () => {
   assert.equal(allText(bq), "a wise remark continued");
 });
 
-test("markdown: raw HTML in the input is never parsed as markup — it is text, or nothing", () => {
+test("markdown: raw HTML in the input is never parsed as markup, it is text, or nothing", () => {
   const payload = '<img src=x onerror=alert(1)> and <script>alert(1)</script> and <b>bold via html</b>';
   const frag = renderMarkdown(payload);
   assert.equal(find(frag, "img"), null);

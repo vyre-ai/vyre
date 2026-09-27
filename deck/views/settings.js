@@ -195,7 +195,7 @@ async function drawAssistant(el, ctx) {
       if (ins.value !== (a.instructions || "")) input.instructions = ins.value;
       if (Object.keys(input).length === 1) { show(); return; }
       /** @type {HTMLButtonElement} */ (save).disabled = true;
-      const u = await attempt("agents.update", input, { presence: true });
+      const u = await attempt("agents.update", input);
       if (u.error) { put(st, errText(u.error)); /** @type {HTMLButtonElement} */ (save).disabled = false; return; }
       Object.assign(a, u.data && u.data.name ? u.data : { name: input.name || a.name, instructions: input.instructions ?? a.instructions });
       show();
@@ -739,7 +739,7 @@ async function drawNotifications(el, ctx) {
 // ---- security (passkeys, ADR 0004) -------------------------------------------------------------
 
 /**
- * Add a passkey: proves a person is here for a Gate approval or a Glass take-over (ADR 0004).
+ * Add a passkey: proves a person is here for a Gate approval or a vault secret (ADR 0004).
  * The first one needs a one-time code from `vyre presence code`, typed on the box, since there
  * is no passkey yet to prove with. The enrollment itself is js/phone-setup.js's enrollPasskey,
  * shared with the phone's setup card.
@@ -771,7 +771,7 @@ function drawSecurity(el, ctx) {
       h("span", null, x.name || "A passkey", h("span", { class: "small faint" }, x.last_used ? `  used ${since(x.last_used)} ago` : "  not used yet")))))) : null);
   };
   put(el,
-    note("A passkey (Touch ID, Face ID, a security key) proves you are the one approving a Gate item or taking over a session in Glass. It is never typed, so it cannot be phished."),
+    note("A passkey (Touch ID, Face ID, a security key) proves you are the one approving a Gate item or opening a vault secret. It is never typed, so it cannot be phished."),
     keysBox,
     h("div", { class: "rows" },
       row("Code", codeIn),

@@ -1,6 +1,6 @@
 // @ts-check
-// What an inline card says when a human-only call (threads.answer, gate.approve, gate.reject: the
-// floor's list in core/presence/index.js, ADR 0004) did not go through. The call itself is
+// What an inline card says when a call did not go through: a human-only one (gate.approve,
+// gate.reject: the floor's list in core/presence/index.js, ADR 0004) or an answer (threads.answer). The call itself is
 // api.js's call(..., { presence: true }); this only words the failure. A cancelled passkey, a
 // browser that cannot make one, or a box with none enrolled all end in the same place: Settings,
 // Security, where a passkey for this phone is added.

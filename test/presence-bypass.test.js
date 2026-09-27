@@ -43,6 +43,17 @@ function raw(socketPath, url, body, headers) {
   });
 }
 
+/** raw, with the response headers too. */
+function rawWithHeaders(socketPath, url, body, headers) {
+  return new Promise(resolve => {
+    const data = JSON.stringify(body);
+    const req = http.request({ socketPath, path: url, method: "POST", headers: { "content-type": "application/json", "content-length": Buffer.byteLength(data), ...headers } }, res => {
+      let out = ""; res.on("data", c => (out += c)); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: JSON.parse(out) }));
+    });
+    req.end(data);
+  });
+}
+
 /** Run a child with pipes and no controlling terminal, as the Bash tool does. */
 function child(args, env, input = "") {
   return new Promise(resolve => {
@@ -62,7 +73,8 @@ async function box(t) {
   const root = tempHome(t);
   const mail = await outbox(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", vault: { keystore: "file" },
-    gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "me@example.com", base: mail.base } } } }));
+    gate: { senders: { mail: { type: "gmail", vault: "mail-token", from: "me@example.com", base: mail.base },
+      drive: { type: "http", vault: "mail-token", hosts: [mail.base] } } } }));
   const screen = [];
   const d = await start({ root, log: () => {}, presence: deps => new Presence({ ...deps,
     touchid: { available: async () => false, authenticate: async () => ({ ok: false, reason: "unavailable" }) },
@@ -157,27 +169,74 @@ test("bypass: the person's own routes still work, once each", async t => {
   // A terminal: vyred writes a code to a login terminal, and the person types it back.
   const second = await call("gate.request", { kind: "send", via: "mail", to: "someone@example.com", content: { subject: "Two", body: "Second draft" } }, { root: b.root, caller: "mcp" });
   const input = { id: second.data.id };
-  const c = await raw(b.socket, "/v1/presence/challenge", { tool: "gate.reject", input, method: "tty", tty: "/dev/ttys007" }, {});
+  const c = await raw(b.socket, "/v1/presence/challenge", { tool: "gate.approve", input, method: "tty", tty: "/dev/ttys007" }, {});
   assert.equal(c.status, 200, JSON.stringify(c.body));
   assert.equal(b.screen.at(-1).file, "/dev/ttys007");
   const code = /type this code[^:]*: ([A-Z0-9]+)/i.exec(b.screen.at(-1).text)?.[1];
   assert.ok(code, b.screen.at(-1).text);
-  const rejected = await raw(b.socket, "/v1/tools/gate.reject", input, { "x-vyre-caller": "cli", "x-vyre-presence": `tty id=${c.body.data.challenge} code=${code}` });
-  assert.equal(rejected.status, 200, JSON.stringify(rejected.body));
-  const notLogin = await raw(b.socket, "/v1/presence/challenge", { tool: "gate.reject", input, method: "tty", tty: "/dev/ttys099" }, {});
+  const sent = await raw(b.socket, "/v1/tools/gate.approve", input, { "x-vyre-caller": "cli", "x-vyre-presence": `tty id=${c.body.data.challenge} code=${code}` });
+  assert.equal(sent.status, 200, JSON.stringify(sent.body));
+  assert.equal(b.mail.got.length, 2);
+  const notLogin = await raw(b.socket, "/v1/presence/challenge", { tool: "gate.approve", input, method: "tty", tty: "/dev/ttys099" }, {});
   assert.equal(notLogin.status, 403, "a terminal who does not list, like a script pty, gets no code");
 });
 
-test("bypass: a presence session never approves, and only a strong proof opens one", async t => {
+test("bypass: one strong proof opens a session on that device, and the sends after it ride it; nothing else opens one", async t => {
   const b = await box(t);
+  const draft = async subject => (await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject, body: "Draft by the model" } }, { root: b.root, caller: "mcp" })).data.id;
   const tty = await raw(b.socket, "/v1/tools/presence.session.open", {}, { "x-vyre-caller": "cli" });
   assert.equal(tty.status, 403, "no proof, no session");
-  const opened = await raw(b.socket, "/v1/tools/presence.session.open", {}, { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("presence.session.open", {}) });
-  assert.equal(opened.status, 200, JSON.stringify(opened.body));
-  const { session, secret } = opened.body.data;
-  const r = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, { "x-vyre-caller": "capsule", "x-vyre-presence": `session id=${session} secret=${secret}` });
-  assert.equal(r.status, 403);
+  // Held items say what approving takes, before anything is proved.
+  const before = (await call("gate.held", {}, { root: b.root, caller: "deck" })).data;
+  assert.deepEqual(before.map(x => x.presence), [{ required: true, covered: false }]);
+  // The Capsule's proof for this send, asking to keep: sent, and a session comes back in a header.
+  const first = await rawWithHeaders(b.socket, "/v1/tools/gate.approve", { id: b.id },
+    { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("gate.approve", { id: b.id }), "x-vyre-presence-keep": "1" });
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  assert.equal(first.body.session, undefined, "the secret is never in the body");
+  const kept = String(first.headers["x-vyre-presence-session"] || "");
+  assert.match(kept, /^session id=\S+ secret=\S+ expires=\d+$/);
+  // The next send on this device rides it: no second Touch ID, and the item says it is covered.
+  const next = await draft("Engagement letter");
+  assert.deepEqual((await call("gate.get", { id: next }, { root: b.root, caller: "deck" })).data.presence, { required: true, covered: true });
+  const second = await raw(b.socket, "/v1/tools/gate.approve", { id: next }, { "x-vyre-caller": "capsule", "x-vyre-presence": kept });
+  assert.equal(second.status, 200, JSON.stringify(second.body));
+  assert.equal(b.mail.got.length, 2);
+  // A session is not a proof for anything outside its list, and a model with it still cannot approve.
+  const vault = await raw(b.socket, "/v1/tools/vault.delete", { name: "mail-token" }, { "x-vyre-caller": "cli", "x-vyre-presence": kept });
+  assert.equal(vault.body.error.code, "presence_required");
+  const third = await draft("Third");
+  assert.equal((await raw(b.socket, "/v1/tools/gate.approve", { id: third }, { "x-vyre-caller": "mcp", "x-vyre-presence": kept })).status, 403);
+  // A proof without keep opens nothing.
+  const plain = await rawWithHeaders(b.socket, "/v1/tools/gate.approve", { id: third }, { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("gate.approve", { id: third }) });
+  assert.equal(plain.status, 200);
+  assert.equal(plain.headers["x-vyre-presence-session"], undefined);
+});
+
+test("bypass: revising, discarding and deleting sends nothing and asks for no proof; answering needs only a person", async t => {
+  const b = await box(t);
+  const deck = { "x-vyre-caller": "deck" };
+  const send = await raw(b.socket, "/v1/tools/gate.approve", { id: b.id }, deck);
+  assert.equal(send.body.error.code, "presence_required", "a send still asks");
+  assert.equal((await raw(b.socket, "/v1/tools/gate.revise", { id: b.id, edited: { subject: "Hello again" } }, { "x-vyre-caller": "cli" })).status, 200);
+  assert.equal((await raw(b.socket, "/v1/tools/gate.reject", { id: b.id }, deck)).status, 200);
   assert.equal(b.mail.got.length, 0);
+  // Deleting the user's data outside cannot be undone, so it asks like a send.
+  const del = (await call("gate.request", { kind: "delete", via: "drive", to: "northwind-bakery", content: { method: "DELETE", url: `${b.mail.base}/files/menu.pdf` } }, { root: b.root, caller: "mcp" }));
+  assert.ok(del.data, JSON.stringify(del.error));
+  assert.deepEqual((await call("gate.get", { id: del.data.id }, { root: b.root, caller: "deck" })).data.presence, { required: true, covered: false });
+  assert.equal((await raw(b.socket, "/v1/tools/gate.approve", { id: del.data.id }, deck)).body.error.code, "presence_required");
+  // A model is refused all of them, silently: no proof is asked of it.
+  const other = (await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "x", body: "y" } }, { root: b.root, caller: "mcp" })).data.id;
+  for (const tool of ["gate.reject", "gate.revise"]) {
+    const r = await raw(b.socket, `/v1/tools/${tool}`, { id: other, edited: { subject: "z" } }, { "x-vyre-caller": "mcp" });
+    assert.equal(r.status, 403, tool);
+    assert.notEqual(r.body.error.code, "presence_required", tool);
+  }
+  // threads.answer: no proof from a person's surface (the answer itself fails: no such ask), refused to a model.
+  const ans = await raw(b.socket, "/v1/tools/threads.answer", { ask: "nope", decision: "allow" }, deck);
+  assert.notEqual(ans.body.error?.code, "presence_required", JSON.stringify(ans.body));
+  assert.equal((await raw(b.socket, "/v1/tools/threads.answer", { ask: "nope", decision: "allow" }, { "x-vyre-caller": "mcp" })).body.error.code, "denied");
 });
 
 test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it fetched, and the owner can only for the box's own address", async t => {
@@ -201,25 +260,41 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
 });
 
-test("bypass: making or changing an agent (its credentials and budget) needs a person", async t => {
+test("bypass: making or changing an agent is a person's, with no passkey; the assistant changes only words and model", async t => {
   const b = await box(t);
-  const make = { name: "kit", kind: "agent", auth: { vault: "claude-setup-token", budget_usd: 5 } };
-  // An agent, through its MCP server, is refused whatever it claims.
-  for (const caller of ["mcp", "mcp:agent:juno"]) {
-    const r = await raw(b.socket, "/v1/tools/agents.create", make, { "x-vyre-caller": caller });
-    assert.equal(r.status, 403, caller);
+  const refused = async (tool, input, caller) => {
+    const r = await raw(b.socket, `/v1/tools/${tool}`, input, { "x-vyre-caller": caller });
+    assert.equal(r.status, 403, `${tool} ${caller}: ${JSON.stringify(r.body)}`);
+    assert.notEqual(r.body.error.code, "presence_required", `${tool} ${caller} is refused, never asked`);
+  };
+  const allowed = async (tool, input, caller) => {
+    const r = await raw(b.socket, `/v1/tools/${tool}`, input, { "x-vyre-caller": caller });
+    assert.equal(r.status, 200, `${tool} ${caller}: ${JSON.stringify(r.body)}`);
+    return r.body.data;
+  };
+  // A person's surfaces make agents without a proof, "Give it its own computer" and credentials included.
+  await allowed("agents.create", { name: "juno", kind: "assistant" }, "cli");
+  await allowed("agents.create", { name: "kit", auth: { vault: "claude-setup-token", budget_usd: 5 }, computer: true }, "deck");
+  await allowed("agents.create", { name: "scout", projects: [] }, "capsule");
+  // No model makes one, the assistant included, and no bare MCP session or guest.
+  const make = { name: "ledger", auth: { vault: "claude-setup-token", budget_usd: 5 } };
+  for (const caller of ["mcp", "mcp:agent:juno", "mcp:agent:kit", "tailnet-guest:sam@example.com"]) await refused("agents.create", make, caller);
+  assert.ok(!(await call("agents.list", {}, { root: b.root, caller: "cli" })).data.some(a => a.name === "ledger"), "nothing was made");
+  // A person changes anything, with no proof: credentials and budget, projects, skills, its computer.
+  for (const change of [{ auth: { vault: "claude-setup-token", budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: false }]) {
+    await allowed("agents.update", { name: "kit", ...change }, "deck");
+    await allowed("agents.update", { agent: "kit", ...change }, "cli");
   }
-  // A person's surface without a proof is refused for want of one.
-  for (const caller of ["cli", "deck", "capsule"]) {
-    const r = await raw(b.socket, "/v1/tools/agents.create", make, { "x-vyre-caller": caller });
-    assert.equal(r.status, 403, caller);
-    assert.equal(r.body.error.code, "presence_required", caller);
+  // The assistant changes an agent's words and model, and nothing it can reach or spend. vyred
+  // names an agent caller only from inside its running thread, so this is that call as it arrives.
+  const words = { name: "kit", instructions: "Drafts replies for Northwind Bakery.", model: "claude-sonnet-5" };
+  const asJuno = input => b.d.registry.call("agents.update", input, "mcp:agent:juno", { agent: "juno" });
+  const mine = await asJuno(words);
+  assert.equal(mine.data?.instructions, words.instructions, JSON.stringify(mine));
+  for (const change of [{ auth: { budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: true }]) {
+    assert.equal((await asJuno({ ...words, ...change })).error?.code, "denied", Object.keys(change)[0]);
   }
-  assert.deepEqual((await call("agents.list", {}, { root: b.root, caller: "cli" })).data, [], "nothing was made");
-  // With a proof, it is made, and changing its budget asks again.
-  assert.ok((await b.person("agents.create", make)).data, "a person may make one");
-  const raise = { name: "kit", auth: { vault: "claude-setup-token", budget_usd: 500 } };
-  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "cli" })).body.error.code, "presence_required");
-  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "mcp:agent:kit" })).status, 403);
-  assert.ok((await b.person("agents.update", raise)).data, "a person may change it");
+  assert.equal((await b.d.registry.call("agents.update", words, "mcp:agent:kit", { agent: "kit" })).error?.code, "denied", "kit is not the assistant");
+  // Any other agent, a bare MCP session and a guest change nothing, not even words.
+  for (const caller of ["mcp", "mcp:agent:kit", "mcp:agent:scout", "tailnet-guest:sam@example.com"]) await refused("agents.update", words, caller);
 });

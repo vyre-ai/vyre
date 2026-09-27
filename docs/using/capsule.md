@@ -28,9 +28,10 @@ Type in the Capsule and it finds your threads, projects and agents, and offers t
    vyre capsule install
    ```
 
-   This downloads `Vyre-mac.zip` for your version, checks it against the published
-   `SHA256SUMS` and the hash shipped in the npm package, and puts `Vyre.app` in
-   `~/Applications`. It never uses `/Applications` or sudo.
+   This builds `Vyre.app` on your Mac from the package you installed: it fetches the Capsule's
+   Electron into the package's own folder, builds the helpers with the Xcode command line
+   tools, and signs the app ad hoc. Nothing is downloaded from vyre.run, and it never uses
+   `/Applications` or sudo.
 
 2. Open it:
 

@@ -181,7 +181,7 @@ test("home (interactive): New session in a project starts claude in its home; th
   const first = await drive(["q"]);
   assert.equal(first.code, 0);
   assert.match(first.term.screen(), /Agents[^\n]*\n\s+none yet/);
-  await w.d.registry.call("agents.create", { name: "juno", kind: "assistant" });
+  await w.d.registry.call("agents.create", { name: "juno", kind: "assistant" }, "local");
   const again = await drive(["q"]);
   assert.equal(again.code, 0);
   assert.match(again.term.screen(), /juno\s+not started/);

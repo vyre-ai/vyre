@@ -250,7 +250,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root }
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]) });
+    const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]),
+      keep: req.headers["x-vyre-presence-keep"] === "1" });
+    // A session the proof opened goes back in a header, in the form x-vyre-presence takes.
+    if (result.session) {
+      const s = result.session;
+      delete result.session;
+      res.setHeader("x-vyre-presence-session", `session id=${s.session} secret=${s.secret} expires=${s.expires}`);
+    }
     const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
   }
@@ -312,6 +319,9 @@ function stream(req, res, url, events, streams) {
   // the stream (a Deck view, or a test) can then race the listener registration below and lose
   // that event to a window the client had no signal it needed to wait out.
   res.flushHeaders();
+  // And one byte of body: iOS URLSession reports nothing (it sits on "connecting", up to the 15s
+  // heartbeat) until the body starts, whatever the headers say.
+  res.write(": open\n\n");
   const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
   let cursor = lastId;
   // Backlog in pages, then live. Anything emitted while paging is caught by the cursor check.
