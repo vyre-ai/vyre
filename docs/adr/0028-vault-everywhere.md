@@ -447,6 +447,11 @@ the change survives every resync and re-register. `use` is a map from capability
 - A module that cannot act because a credential is missing answers with one shape,
   `{code: "needs_credential", message, detail: {module, need, account?}}` (the kernel helper
   core/modules/needs-credential.js), so every surface offers the same fix, `vault.connect`.
+- The account picker: each row carries `default`, the capabilities it is the default for (one
+  default per capability; `vault.connections.update {id, default_for}`, a person's surfaces only,
+  no presence since it changes no access), and `last_used`, set when `allowed` says yes, at most
+  once a minute per row. Both only rank rows and sit outside the MAC. With a capability, `list`
+  adds `is_default` and sorts default first, then most recently used, then by label.
 - Events: `vault.connection-added {id, source, provider, account}`,
   `vault.connection-removed {id}`, `vault.connection-changed {id, fields}`.
 - A need may take several accounts: `multiple: true` in `needs.credentials`, and `vault.connect`

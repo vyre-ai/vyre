@@ -3774,11 +3774,12 @@ A module removes one of its own connections.
 
 ### `vault.connections.update`
 
-Rename a connection or set its capabilities. The change survives every resync.
+Rename a connection or set its capabilities (both survive every resync), or make it the default for some capabilities (`default_for`; one default per capability, so this clears it elsewhere). A default changes no access and needs no proof of presence.
 
 - Input:
   - `id` string, required
   - `capabilities` list of string
+  - `default_for` list of string
   - `label` string
 - Callers: `capsule`, `cli`, `deck`, `local`
 - Needs a person present.

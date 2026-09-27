@@ -41,9 +41,9 @@ export function register({ ctx, vault, tool }) {
   tool("vault.connections.revoke", [...PEOPLE, "mcp"], "Take a surface's use of a connection away. Needs no one: taking access away is always allowed.",
     obj({ id: str, surface: str }, ["id", "surface"]), (input, { caller }) => c.revoke(input, caller));
 
-  tool("vault.connections.update", PEOPLE, "Rename a connection or set its capabilities. The change survives every resync.",
-    obj({ id: str, label: str, capabilities: strs }, ["id"]), (input, { caller }) => c.update(input, caller),
-    presence("Change a connection", input => c.summary({ id: input.id })));
+  tool("vault.connections.update", PEOPLE, "Rename a connection or set its capabilities (both survive every resync), or make it the default for some capabilities (`default_for`; one default per capability, so this clears it elsewhere). A default changes no access and needs no proof of presence.",
+    obj({ id: str, label: str, capabilities: strs, default_for: strs }, ["id"]), (input, { caller }) => c.update(input, caller),
+    presence("Change a connection", input => c.summary({ id: input.id }), { when: input => input.label !== undefined || input.capabilities !== undefined }));
 
   tool("vault.connections.sync", PEOPLE, "Resync now: the vault's own items with a catalog provider, google.accounts, and mcp.servers with their cached tools. It happens on its own on each source's events.",
     obj({}), () => c.resync());

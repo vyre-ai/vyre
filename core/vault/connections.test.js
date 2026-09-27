@@ -12,7 +12,8 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
-import { surfaceOf, words, toolCapabilities, usesOf, checkUse, Connections, moduleOf } from "./connections.js";
+import { DatabaseSync } from "node:sqlite";
+import { surfaceOf, words, toolCapabilities, usesOf, checkUse, Connections, moduleOf, CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, LAST_USED_EVERY_MS } from "./connections.js";
 import { needsCredential, needsCredentialError, isNeedsCredential } from "../modules/needs-credential.js";
 import { validate } from "../modules/index.js";
 import { PROVIDERS, checkProviderFields } from "./providers.js";
@@ -135,7 +136,8 @@ async function boot(t) {
   writeModule(path.join(root, "modules"), "postbox", { does: { tools: ["postbox.use"] },
     needs: { credentials: [{ id: "account", kind: "env-set", provider: "imap-smtp", purpose: "a mailbox", multiple: true }] } }, POSTBOX);
   const pres = { deny: false,
-    required: (_tool, def) => Boolean(def && def.presence),
+    // As the real verifier does: a tool may ask only for some inputs (presence.when).
+    required: (_tool, def, input) => Boolean(def && def.presence) && !(typeof def.presence.when === "function" && input !== undefined && !def.presence.when(input)),
     verify: async () => (pres.deny ? { ok: false, code: "presence_required", message: "prove presence" } : { ok: true, method: "test" }),
     challenge: async () => ({ error: { code: "bad_input", message: "no challenge in this test" } }) };
   const lines = [];
@@ -315,6 +317,21 @@ test("connections: several email accounts, one list, granted per surface", async
   ok(await cli("vault.connections.grant", { id: m1.id, surface: "capsule" }));
   assert.equal((await ask({ id: m1.id, caller: "capsule" })).allowed, true);
 
+  // A default needs no proof of presence, and only a person sets it.
+  pres.deny = true;
+  assert.deepEqual(ok(await cli("vault.connections.update", { id: im.id, default_for: ["send_mail"] })).connection.default, ["send_mail"]);
+  assert.equal((await cli("vault.connections.update", { id: im.id, label: "x", default_for: ["send_mail"] })).error.code, "presence_required", "a label still needs a person");
+  pres.deny = false;
+  assert.equal((await mcp("vault.connections.update", { id: im.id, default_for: ["read_mail"] })).error.code, "denied");
+  assert.equal((await postbox("vault.connections.update", { id: im.id, default_for: ["read_mail"] })).error.code, "denied");
+  const picked = ok(await capsule("vault.connections.list", { capability: "send_mail" })).connections;
+  assert.equal(picked[0].id, im.id); assert.equal(picked[0].is_default, true);
+  // Neither ranking column is under the MAC: changing them behind the vault's back breaks nothing.
+  db.prepare("UPDATE vault_connections SET defaults = ?, last_used = ? WHERE id = ?").run(JSON.stringify(["calendar"]), 42, im.id);
+  assert.equal((await ask({ id: im.id, caller: "capsule" })).allowed, true);
+  const after = await one(im.id);
+  assert.deepEqual(after.default, ["calendar"]); assert.equal(after.tampered, undefined);
+
   // The vault's own rows follow deletes; a released claim brings the item's row back.
   ok(await postbox("vault.connections.unregister", { ref: "northwind" }));
   assert.ok(ok(await cli("vault.connections.list")).connections.some(r => r.source === "vault" && r.ref === "postbox-northwind"));
@@ -399,4 +416,54 @@ test("connections: google.accounts and mcp.servers are read on their events; reg
   assert.ok(await find("google", "harlow"), "the registered row stays");
   assert.ok(events("vault.connection-removed").some(e => e.payload.id === g.id));
   void d;
+});
+
+/** A Connections over an in-memory table, with a vault that signs nothing and trusts every row. */
+function bare(now) {
+  const db = new DatabaseSync(":memory:");
+  db.exec(CONNECTIONS_MIGRATION); db.exec(CONNECTIONS_PICKER_MIGRATION);
+  const vault = { db, key: async () => {}, list: () => ({ items: [] }), rowOk: () => true, sign: () => {}, audit: () => {}, emit: () => {},
+    tx: fn => { db.exec("BEGIN"); try { fn(); db.exec("COMMIT"); } catch (e) { db.exec("ROLLBACK"); throw e; } } };
+  const c = new Connections(/** @type {any} */ (vault), { now: () => now.t });
+  c.synced = new Set(["vault", "google", "mcp"]);
+  return { db, c };
+}
+
+test("connections: one default per capability, the picker's order, and last_used at most once a minute", async () => {
+  const now = { t: 1_000_000 };
+  const { db, c } = bare(now);
+  const reg = (ref, label) => c.register({ ref, provider: "mcp", account: `${ref}@harlowlegal.test`, auth: "oauth", label, capabilities: ["send_mail", "read_mail"] }, "module:hub");
+  const a = await reg("alpha", "Beta mail"), b = await reg("bravo", "Alpha mail"), z = await reg("zulu", "Zed mail");
+  const pick = async () => (await c.list({ capability: "send_mail" }, "cli")).connections.map(r => [r.ref, r.is_default]);
+  // No default, never used: by label.
+  assert.deepEqual(await pick(), [["bravo", false], ["alpha", false], ["zulu", false]]);
+  // Used most recently first.
+  assert.deepEqual(await c.allowed({ id: z.id, caller: "capsule" }), { allowed: true, surface: "capsule" });
+  now.t += 5_000;
+  await c.allowed({ id: a.id, caller: "capsule" });
+  assert.deepEqual(await pick(), [["alpha", false], ["zulu", false], ["bravo", false]]);
+  // The default first. Setting it again elsewhere clears it here.
+  await c.update({ id: b.id, default_for: ["send_mail", "read_mail"] }, "cli");
+  assert.deepEqual(await pick(), [["bravo", true], ["alpha", false], ["zulu", false]]);
+  await c.update({ id: z.id, default_for: ["send_mail"] }, "cli");
+  assert.deepEqual(await pick(), [["zulu", true], ["alpha", false], ["bravo", false]]);
+  const rows = Object.fromEntries((await c.list({}, "cli")).connections.map(r => [r.ref, r.default]));
+  assert.deepEqual(rows, { alpha: [], bravo: ["read_mail"], zulu: ["send_mail"] }, "only send_mail moved; bravo keeps read_mail");
+  assert.equal((await c.list({ capability: "read_mail" }, "cli")).connections[0].ref, "bravo");
+  await assert.rejects(c.update({ id: a.id, default_for: ["everything"] }, "cli"), /default_for must be a list/);
+
+  // last_used: written on the first allowed, then not again for a minute.
+  const used = id => /** @type {any} */ (db.prepare("SELECT last_used FROM vault_connections WHERE id = ?").get(id)).last_used;
+  assert.equal(used(b.id), null);
+  await c.allowed({ id: b.id, caller: "mcp:agent:kit" });
+  assert.equal(used(b.id), null, "a refusal writes nothing");
+  await c.allowed({ id: b.id, caller: "capsule" });
+  const first = used(b.id);
+  assert.equal(first, now.t);
+  now.t += LAST_USED_EVERY_MS - 1;
+  await c.allowed({ id: b.id, caller: "mcp" });
+  assert.equal(used(b.id), first, "within a minute: skipped");
+  now.t += 1;
+  await c.allowed({ id: b.id, caller: "cli" });
+  assert.equal(used(b.id), now.t, "a minute on: written, a person's check too");
 });

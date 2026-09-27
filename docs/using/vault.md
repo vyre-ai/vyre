@@ -306,7 +306,9 @@ vyre vault connections revoke cn_Vq3k9x0aB2c chat
 vyre vault connections sync
 ```
 
-Granting asks you to prove you are there; revoking never does. You can also rename a connection
+Pick a default per capability, `vault.connections.update {id, default_for: ["send_mail"]}`, and
+it comes first wherever an account is chosen; after it, the one used most recently. Granting asks
+you to prove you are there; revoking and picking a default never do. You can also rename a connection
 or change what it can do (`vault.connections.update`), and that survives every resync. A
 connection whose key is missing or not granted to its module shows `needs credential` and the
 `vyre vault connect` that fixes it. A row someone changed behind the vault's back fails its check

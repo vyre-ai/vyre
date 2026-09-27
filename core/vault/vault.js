@@ -41,7 +41,7 @@ import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
-import { CONNECTIONS_MIGRATION, CONNECTION_MACED } from "./connections.js";
+import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED } from "./connections.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -104,6 +104,8 @@ export const MIGRATIONS = [
   FILL_KEY_MIGRATION,
   // ADR 0028, decision 9b: connections, and which surfaces may use each.
   CONNECTIONS_MIGRATION,
+  // The account picker's ranking: the default per capability, and when each was last used.
+  CONNECTIONS_PICKER_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */

@@ -32,6 +32,17 @@ export const CONNECTIONS_MIGRATION = `CREATE TABLE vault_connections (
      items TEXT NOT NULL DEFAULT '[]', use TEXT, edited TEXT NOT NULL DEFAULT '[]', UNIQUE (source, ref)
    );`;
 
+/**
+ * The account picker's two columns (defaults: the capabilities a row is the default for;
+ * last_used: when a module last acted on it). They only rank rows, never decide access, so like
+ * an item's details they are outside the MAC.
+ */
+export const CONNECTIONS_PICKER_MIGRATION = `ALTER TABLE vault_connections ADD COLUMN defaults TEXT NOT NULL DEFAULT '[]';
+   ALTER TABLE vault_connections ADD COLUMN last_used INTEGER;`;
+
+/** last_used is written at most this often per row. */
+export const LAST_USED_EVERY_MS = 60_000;
+
 /** The MACed columns: which connection it is, what it can do and who may use it. */
 export const CONNECTION_MACED = ["id", "source", "ref", "provider", "account", "auth", "capabilities", "surfaces"];
 
@@ -176,7 +187,7 @@ export function checkUse(use) {
 export class Connections {
   /**
    * @param {import("./vault.js").Vault} vault
-   * @param {{ call?: (tool: string, input: any) => Promise<any>, modules?: () => any[], log?: (m: string) => void }} deps
+   * @param {{ call?: (tool: string, input: any) => Promise<any>, modules?: () => any[], log?: (m: string) => void, now?: () => number }} deps
    */
   constructor(vault, deps = {}) {
     this.v = vault;
@@ -184,6 +195,9 @@ export class Connections {
     this.call = deps.call || null;
     this.modules = deps.modules || (() => []);
     this.log = deps.log || (() => {});
+    this.now = deps.now || Date.now;
+    /** When last_used was last written, per row, so a busy row writes once a minute. @type {Map<string, number>} */
+    this.touched = new Map();
     /** Sources synced since start; one not yet synced is synced before anything is read. */
     this.synced = new Set();
     /** Resyncs run one at a time, in order; readers wait for the queue. @type {Promise<any>} */
@@ -427,7 +441,7 @@ export class Connections {
     const { state, needs } = this.stateOf(r, byName);
     return { id: r.id, source: r.source, ref: r.ref, provider: r.provider, account: r.account, auth: r.auth, label: r.label, capabilities,
       state, ...(needs.length ? { needs } : {}),
-      ...(full ? { surfaces: ok ? json(r.surfaces, []) : [], ...(ok ? {} : { tampered: true }) } : {}), uses, added: r.added, updated: r.updated };
+      ...(full ? { surfaces: ok ? json(r.surfaces, []) : [], ...(ok ? {} : { tampered: true }) } : {}), uses, default: json(r.defaults, []), last_used: r.last_used ?? null, added: r.added, updated: r.updated };
   }
 
   /**
@@ -487,8 +501,10 @@ export class Connections {
       if (eyes && !(ok && json(r.surfaces, []).includes(eyes))) continue;
       const row = this.out(r, ok, person, byName);
       if (capability && !row.capabilities.includes(capability)) continue;
-      out.push(capability ? { ...row, use: row.uses[capability] || null } : row);
+      out.push(capability ? { ...row, use: row.uses[capability] || null, is_default: row.default.includes(capability) } : row);
     }
+    // For a pick: the default first, then the most recently used, then by label.
+    if (capability) out.sort((a, b) => Number(b.is_default) - Number(a.is_default) || (b.last_used || 0) - (a.last_used || 0) || a.label.localeCompare(b.label));
     return { surface: eyes || "person", connections: out };
   }
 
@@ -560,10 +576,24 @@ export class Connections {
   }
 
   /** @param {{ id: string, label?: string, capabilities?: string[] }} input @param {string} caller */
-  async update({ id, label, capabilities }, caller) {
+  async update({ id, label, capabilities, default_for }, caller) {
     await this.ready();
     const r = this.must(id);
     await this.v.key();
+    if (default_for !== undefined) {
+      if (!Array.isArray(default_for) || default_for.some(c => !CAPABILITIES.includes(c))) throw fail(`default_for must be a list of ${CAPABILITIES.join(", ")}`);
+      const mine = CAPABILITIES.filter(c => default_for.includes(c));
+      // One default per capability: setting it here clears it everywhere else.
+      this.v.tx(() => {
+        for (const o of /** @type {any[]} */ (this.db.prepare("SELECT id, defaults FROM vault_connections WHERE id != ?").all(r.id))) {
+          const d = json(o.defaults, []), next = d.filter(c => !mine.includes(c));
+          if (next.length !== d.length) this.db.prepare("UPDATE vault_connections SET defaults=? WHERE id=?").run(JSON.stringify(next), o.id);
+        }
+        this.db.prepare("UPDATE vault_connections SET defaults=? WHERE id=?").run(JSON.stringify(mine), r.id);
+      });
+      this.v.emit("vault.connection-changed", { id: r.id, fields: ["default"] });
+      if (label === undefined && capabilities === undefined) return { connection: this.out(this.must(id), this.v.rowOk("vault_connections", r), true, this.items()) };
+    }
     if (!this.v.rowOk("vault_connections", r)) throw fail(`connection ${r.id} failed its check; resync it (vault.connections.sync) and grant it again`, "tampered");
     const edited = new Set(json(r.edited, []));
     let l = r.label, caps = json(r.capabilities, []);
@@ -576,7 +606,7 @@ export class Connections {
       if (!Array.isArray(capabilities) || capabilities.some(c => !CAPABILITIES.includes(c))) throw fail(`capabilities must be a list of ${CAPABILITIES.join(", ")}`);
       caps = CAPABILITIES.filter(c => capabilities.includes(c)); edited.add("capabilities"); fields.push("capabilities");
     }
-    if (!fields.length) throw fail("say what to change: label or capabilities");
+    if (!fields.length) throw fail("say what to change: label, capabilities or default_for");
     this.db.prepare("UPDATE vault_connections SET label=?, capabilities=?, edited=?, updated=? WHERE id=?").run(l, JSON.stringify(caps), JSON.stringify([...edited]), Date.now(), r.id);
     this.v.sign("vault_connections", r.id);
     this.v.audit("connection-update", null, caller, true, `connection ${r.id}: ${fields.join(", ")}`);
@@ -592,18 +622,29 @@ export class Connections {
    */
   async allowed({ id, source, ref, caller }) {
     const own = await this.surface(caller);
-    if (own === "person") return { allowed: true, surface: "person" };
+    const find = () => /** @type {any} */ (id !== undefined
+      ? this.db.prepare("SELECT * FROM vault_connections WHERE id = ?").get(String(id))
+      : this.db.prepare("SELECT * FROM vault_connections WHERE source = ? AND ref = ?").get(String(source ?? ""), String(ref ?? "")));
+    if (own === "person") { const p = find(); if (p) this.touch(p.id); return { allowed: true, surface: "person" }; }
     if (own === "module") return { allowed: false, surface: null, reason: "pass the caller the module acts for, not a module" };
     if (!own) return { allowed: false, surface: null, reason: "this caller is no surface a connection can be granted to" };
     await this.ready();
-    const r = /** @type {any} */ (id !== undefined
-      ? this.db.prepare("SELECT * FROM vault_connections WHERE id = ?").get(String(id))
-      : this.db.prepare("SELECT * FROM vault_connections WHERE source = ? AND ref = ?").get(String(source ?? ""), String(ref ?? "")));
+    const r = find();
     if (!r) return { allowed: false, surface: own, reason: "no such connection" };
     await this.v.key();
     if (!this.v.rowOk("vault_connections", r)) return { allowed: false, surface: own, reason: "the connection failed its check; a person must grant it again" };
     if (!json(r.surfaces, []).includes(own)) return { allowed: false, surface: own, reason: `${cut(r.label, 80)} is not granted to ${own}; grant it in Vault, Connections` };
+    this.touch(r.id);
     return { allowed: true, surface: own };
+  }
+
+  /** A module is about to act on a row: note when, at most once a minute per row. @param {string} id */
+  touch(id) {
+    const t = this.now();
+    const last = this.touched.get(id);
+    if (last !== undefined && t - last < LAST_USED_EVERY_MS) return;
+    this.touched.set(id, t);
+    this.db.prepare("UPDATE vault_connections SET last_used = ? WHERE id = ?").run(t, id);
   }
 }
 

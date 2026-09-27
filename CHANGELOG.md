@@ -17,6 +17,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `get`, `grant` (presence), `revoke` (no presence), `update` (presence; label and capabilities
   survive resyncs), `sync`, and `allowed` for modules. New rows are granted to capsule and chat.
   A tampered row is granted to nothing. Events `vault.connection-added`, `-removed`, `-changed`.
+- The account picker: `default` (one per capability, set with `update {default_for}` from a
+  person's surface, no presence) and `last_used` (on each yes from `allowed`, at most once a
+  minute). Outside the MAC; with a capability, `list` adds `is_default` and sorts by them.
 - core/modules/needs-credential.js: the one missing-key shape, `{code: "needs_credential",
   message, detail: {module, need, account?}}`.
 - `needs.credentials` takes `multiple: true`: `vault.connect` then needs a `label`, and the item
