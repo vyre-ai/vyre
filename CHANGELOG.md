@@ -4,6 +4,100 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Docs: the planner page
+
+- docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
+  the Deck, answering a ring, the lock-screen label, what agents may do, connected calendars,
+  settings. ADR 0025 gains front matter and joins the nav; the reference pages are regenerated.
+
+#### Push: a planner notification closes everywhere once answered, and an opt-in lock-screen label
+
+- core/push sends `{ kind: "planner-ack", tag: "planner-<firing>" }` to every device when a
+  firing it pushed is acknowledged anywhere (done, snooze, dismiss, a deletion), once per firing,
+  at normal urgency, with nothing to show; the service worker closes that tag.
+- push.settings `planner_label` (off by default) adds the item's own words as the planner
+  notification's `body`, for the lock screen. Off, nothing the user typed is in the payload.
+  Tests in core/push/push.test.js.
+- deck/sw.js (pwa owns it; the smallest change): a `planner-ack` push closes the notification
+  with that tag and shows nothing, and a push's `body` is shown when present. Test in
+  deck/test/pwa.test.js.
+
+#### The planner: anyone adds alarms, reminders, todos and notes; one parser, answered on the Mac
+
+- Agents now add alarms and timers as well as reminders, todos and notes, with no prompt. The
+  person edits, completes, snoozes and deletes anything with no prompt; an agent changes only
+  what it added (planner.snooze, planner.dismiss and planner.delete are open to agents for their
+  own items). Agents still never add events. Items carry `added_by`, the agent's name, when an
+  agent other than the person's assistant added them; planner.added, planner.fired and
+  planner.ringing carry it too, and the Deck panel shows "from kit". Migration 3 adds
+  planner_items.source_name. A silent guard refuses one agent's 201st add in an hour (`busy`).
+- A paired Mac forwards an agent's call with `as { source, name }` so the box applies the agent's
+  rules; `as` is honoured only on a person's call. The Mac no longer checks before forwarding.
+- planner.parse returns `{ kind, title, at (ms), tz, duration?, repeat? }`, `{ ambiguous, reason }`
+  or null, takes a `kind` hint, and answers on the Mac without the box. parse.js holds the apps
+  router's time rules and its test cases as fixtures (current minute, tonight at 12 and 1 to 4,
+  today after 09:00, trailing please). planner.add with text refuses ambiguous words with the
+  reason (code `ambiguous`); a reminder for the current minute is no longer "already passed".
+
+#### The planner's calendar: Google copies, event reminders, busy time, and events through the Gate
+
+- planner.calendar.sync reads connected Google calendars through google.calendar.list (never a
+  token), a day back to 14 days ahead, into planner_calendar: new and moved events are added,
+  cancelled ones dropped, a failing account keeps its copy, a removed account's events go. It runs
+  every 15 minutes as a scheduler wake hook while any account is connected, and on google.added /
+  google.removed; with no account it never runs.
+- Each timed calendar event rings event_lead minutes (10) before it starts, as planner.fired kind
+  event with account and start; once per event and start, whatever the resyncs. All-day events do
+  not ring. done, snooze and dismiss work on these rings.
+- planner.agenda entries carry source (planner or the account name), start, end, all_day, where,
+  url; `busy: true` returns merged busy intervals; `next: n` the next n entries.
+- planner.calendar.create: without account the planner's own event; with account it calls
+  google.calendar.create, where attendees are held at the Gate. Agents may only ask for an invite.
+- Migration 2 adds next_fire, rung_start and snooze_until to planner_calendar and where_ to
+  planner_items. Tests in core/planner/calendar.test.js.
+
+#### The planner in the Deck: a minimal panel at /planner
+
+- deck/views/planner.js: Agenda (planner.agenda, today), Alarms (the next five alarms and timers,
+  and an add box that sends planner.add { text }), Todos (open, a checkbox calls planner.done
+  { item }) and Notes (pinned first). planner.fired shows one banner per firing with Done and
+  Snooze (planner.done / planner.snooze { firing }); planner.acked removes it. /planner/<firing>,
+  where a push notification opens, shows that firing's item on top. No polling: planner.* events
+  redraw only while the page is visible. Routes added to deck/js/app.js. Tests in
+  deck/test/planner.test.js.
+
+#### The planner from the terminal: vyre alarm, timer, remind, todo, notes, agenda and snooze
+
+- `vyre alarm 7am`, `vyre alarm 6:30 weekdays`, `vyre alarm` (upcoming), `vyre alarm off <id>`;
+  `vyre timer 10m [label]`; `vyre remind "call juno" at 6`, `vyre remind me in 20 minutes to
+  check the oven` (words the parser cannot place say so, and nothing is added); `vyre todo`
+  (open todos by list), `vyre todo add buy flour !high`, `vyre todo done <id>`; `vyre notes`
+  (pinned first), `vyre notes add <text>`, `vyre notes show <id>`; `vyre agenda [tomorrow|
+  YYYY-MM-DD]`; `vyre snooze <id> [minutes]`. Times print in the planner's zone. --json on all.
+  A "Time and lists" group in `vyre help`. Tests in core/cli/commands/planner.test.js.
+
+#### The planner: alarms, timers, reminders, todos and notes kept on the box (ADR 0025, slice 1)
+
+- New core module `planner` (core/planner, both roles). Tools: planner.add, list, get, update,
+  done, snooze, dismiss, delete (soft, restorable for 30 days), agenda, parse and settings.
+  Events: planner.added, changed, removed, fired and acked. No new dependency: zone math is Intl.
+- Time is UTC plus a zone. Repeats (day, weekday, week with days, month, year, interval, until)
+  keep their wall time in their zone, so a daily 07:00 stays 07:00 across DST; a skipped 02:30
+  moves forward and a repeated 01:30 takes the first. Alarms and timers are floating and follow
+  planner.settings timezone; reminders and events stay in the zone they were made in.
+- One unref'd timer to the earliest fire, escalation or wake hook, capped at 6 hours, none when
+  nothing is due; a clock jump over 60 s is logged and everything recomputed. At start, what fell
+  due while vyred was down rings once, marked missed (a repeat once, for its latest time); a day
+  stale is kept as missed without ringing. An unacknowledged firing rings again every
+  escalate_after minutes (5), escalate_max more times (3). The first done, snooze or dismiss wins.
+- Agents (mcp, module, harness) may read and may add, change and finish todos, reminders and
+  notes; alarms, timers, events, snooze, dismiss, delete and settings are for people's surfaces.
+- A Mac paired with a box forwards every planner tool to the box and keeps its scheduler idle; an
+  agent's limits are checked on the Mac first. An unpaired Mac runs the planner itself.
+- push: planner.fired becomes kind `planner` with a fixed title per item kind (Alarm, Timer
+  finished, Reminder, Starting soon, Todo due), path /planner/<firing>, tag planner-<firing> and
+  actions done and snooze, at high urgency. The label never crosses the push service. Alarms and
+  timers ring through quiet hours; reminders and todos wait.
 #### `vyre capsule install` builds the Capsule on the Mac
 
 - vyre.run no longer serves `Vyre-mac.zip`, so the download would have failed. `vyre capsule
@@ -12,8 +106,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `capsule-install.js`, its test and `VYRE_DOWNLOAD_BASE`/`VYRE_APPS_DIR` are gone (capsule-pro's
   native build replaces this path when it merges). docs/using/capsule.md and
   docs/get-started/install.md say so; the reference is regenerated.
+#### The box reads a Mac session as blocks
 
-#### The site has no Capsule zip, and a clean checkout stamps clean
+- `recall.transcript` on the box, for the person, reads a session the box does not have from the
+  paired Mac (or any session with `source: "mac"`), labelled `source: "mac"` and `machine`, so a
+  Mac reply keeps its rich view after the re-read. Nothing is stored on the box. An id no machine
+  has is still `not_found`; an away Mac says so. `recall.transcript` joins the link's read
+  allowlist (core/link/allow.js), and agents and MCP still never get it. Test:
+  test/federation-reads.test.js.
 
 - The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
   `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still
@@ -52,6 +152,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   runs `git diff --numstat` over what is ahead of `@{push}` (else the upstream, else origin's
   default branch) with no shell, no network and a 3 s budget. Binary files are counted as files
   with `binary: true`, and a push keeps 200 rows (`truncated: true`). ask.raised stays small.
+  offer Always for this (decision `always`, when Claude Code suggests it).
+
+#### Find shows which sessions are the Mac's
+
+- The phone's Find page puts the machine chip beside a Mac session's title, in search results,
+  Recent and the "Type into" list, outside the title's ellipsis so a long title never hides it
+  (deck/views/find.js, deck/css/views/find.css). The files note no longer says Mac files show
+  when the Mac is online: the box does not search the Mac's files, so it says that.
+
+#### The box's words wait for whoever holds a Mac session
+
+- The person at the box never takes a Mac session's keyboard. While another surface on the Mac
+  holds it (the Capsule, say), `threads.send` queues the words as it does for a terminal, and
+  answers with `busy` (`"terminal"` or the holder). The box's note names the Mac: "<name> is busy
+  in your terminal on alex-mac." The link's caller `link:box` is a caller kind of its own
+  (`fromLink` in core/switchboard/index.js): it queues, is no agent, and its surface is always
+  `box:<surface>`. A queued message from the box reaches Claude as "via the Deck on the box"
+  (core/harness/index.js). Decided with capsule-now. Tests: test/federation-send.test.js,
+  core/switchboard/switchboard.test.js.
 
 #### The person on the box types into a Mac's session
 
@@ -84,6 +203,53 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a running Chrome (CDP); each asserts its chip or note, no sideways scroll and no page errors.
 - `pair()` in test/link-harness.js takes `boxName`, `macHost`, `heartbeat`, `boxConfig`, and
   `macTranscripts` as a list of sessions, and needs only `name` and `after` from its context.
+#### Streams over the tailnet are the owner's alone
+
+- The tailnet listener hands a WebSocket (`/v1/streams/...`: the terminal, Glass's screen) to
+  vyred's stream router only for the owner. A guest and an agent's node are refused with 403,
+  whatever tools they hold (`core/names/service.js`). The onboarding loopback now takes upgrades
+  itself: a Host that is not a loopback name gets 421, no session gets 403, and past both it
+  still opens no stream (`core/onboard/loopback.js`). Tests: owner allowed, guest and agent node
+  refused (`core/names/service.test.js`), wrong Host and no session on loopback
+  (`test/onboard.test.js`).
+
+#### Taking over an agent's computer asks for no passkey
+
+- The owner's take-over, hand-back and Sign in privately in Glass no longer ask for Touch ID or
+  a passkey (Touch ID stays for pairing, vault secrets, and sending, posting or paying outside).
+  `computers.takeover` and `computers.giveback` leave the floor's list; they, `glass.take` and
+  `glass.release` are on a new `PERSON_ONLY` list in `core/presence/index.js`. An agent is still
+  refused by the tools, a tailnet guest by the registry (`core/modules/index.js`), and Claude's
+  sessions by the harness (`core/harness/rules.js`). The Deck's "Confirm it's you" step is gone
+  (`deck/glass/takeover.js`). Tests: core/computers/computers.test.js, core/glass/glass.test.js,
+  core/harness/floor.test.js. ADR 0004 and 0005 amended.
+#### Every Claude Code session knows the user
+
+- `core/about`: keeps `<home>/about.md`, a few lines on the user (name, assistant, busiest projects
+  and their people, and memory's `memory.profile` lines of kind work, place or preference; never
+  people, vehicles or clients), under 600 characters,
+  with anything shaped like a credential, email or phone number dropped. Tool `about.text`.
+- The SessionStart hook reads that file and adds it ahead of the project brief, also with vyred
+  down. An agent scoped to some projects does not get it.
+- `/vyre todo`, `/vyre remind <when> <text>`, `/vyre agenda` (the planner's `planner.add`,
+  `planner.list` and `planner.agenda`; the planner reads the reminder's time) and
+  `/vyre remember <fact>` (memory's `memory.remember`; a lesson where it refuses). Making a lesson
+  moves from `/vyre remember` to `/vyre lesson <rule>`.
+- The MCP server's instructions: back a promised reminder with `planner_add`, ask `memory_answer`
+  before saying you do not know.
+
+#### The site has no Capsule zip, and a clean checkout stamps clean
+
+- The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
+  `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still
+  redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
+  stamp in build.json ignores the files build-site writes, so running it twice on a clean checkout
+  says `dirty: false`. `release-check.sh` asserts both redirects, that nothing names the zip, that
+  `/start` is served as committed, and that the install has no node_modules. The docs
+  screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
+  brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
+  still fetches the zip until capsule-pro retires it.
+
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
 - npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size

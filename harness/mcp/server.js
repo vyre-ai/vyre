@@ -92,7 +92,9 @@ async function handle(msg) {
   switch (method) {
     case "initialize":
       return { protocolVersion: params?.protocolVersion || PROTOCOL, capabilities: { tools: { listChanged: false } }, serverInfo: { name: "vyre", version: VERSION },
-        instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Facts from memory come with their source; say where a fact came from when you use one." };
+        instructions: "Vyre's tools: projects, recall across every past session, memory, and whatever modules this machine runs. Facts from memory come with their source; say where a fact came from when you use one. " +
+          "When the user asks what you know about them or their work, ask memory_answer, when it is offered, before saying you do not know. " +
+          "When you promise a reminder or a todo (\"I'll remind you at 6\"), make it real with planner_add in the same turn and say when it is set. Without planner_add, say Vyre cannot remind yet rather than promise." };
     case "ping": return {};
     case "tools/list": return { tools: await tools() };
     case "tools/call": {

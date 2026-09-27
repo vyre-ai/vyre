@@ -248,24 +248,45 @@ export default {
     ctx.tool("recall.transcript", {
       description: "A rich read of one session for a person's own screen: what was said, thinking, every tool call with its input and output, and each turn's time and tokens. Takes a session id or an unambiguous prefix of one. Without from, the last blocks; before pages back.",
       input: { type: "object", required: ["session"], properties: {
-        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" } } },
+        session: { type: "string" }, from: { type: "integer" }, limit: { type: "integer" }, before: { type: "integer" }, machines,
+        source: { type: "string", enum: ["box", "mac"] } } },
       // A person's surfaces only: tool output can hold anything the session read, so it is never
       // handed to Claude over MCP or to an agent. callers is an allowlist, so every "mcp" is out.
       callers: ["cli", "local", "deck", "capsule", "module"],
-      run: async input => {
-        // A thread that started a moment ago has a transcript before any pass has indexed it, so
-        // an id Recall does not know yet is looked for on disk (exact ids only). No file at all
-        // is "not_found", which the Deck takes quietly.
-        let row = sessionRow(db, input.session);
-        if (!row) {
-          const e = find(folders, input.session);
-          if (!e) throw Object.assign(new Error(`no session ${input.session}`), { code: "not_found" });
-          row = { id: e.id, file: e.file, ...peek(e.file), title: null };
+      run: async (input, { caller } = {}) => {
+        const { machines: _, source, ...q } = input;
+        if (!wantsMacs(ctx, input, caller)) return transcript(q);
+        // On the box, for the person: a session the box does not have, or one the caller says is
+        // on the Mac, is read from the Macs, as recall.thread does. The blocks go back to the
+        // caller and are never stored here.
+        if (source !== "mac") {
+          try { return { ...transcript(q), ...boxLabel(ctx) }; }
+          catch (e) { if (/** @type {any} */ (e).code !== "not_found") throw e; }
         }
-        const { id, cwd, name, title } = row;
-        return { session: { id, cwd, name, title }, ...blocks(String(row.file), { from: input.from, limit: input.limit, before: input.before }) };
+        const answers = await askMacs(ctx, "recall.transcript", q);
+        const found = answers.find(a => a.ok && a.data);
+        if (found) return { ...found.data, ...macLabel(found) };
+        // Still "not_found" when every Mac answered that it has no such session, so the Deck
+        // takes it as quietly as the box's own miss; an away Mac says so.
+        const why = answers.length ? answers.map(a => `${a.name}: ${a.error ? a.error.code : "no answer"}`).join(", ") : "no Mac is paired";
+        const none = answers.every(a => a.error && (a.error.code === "not_found" || /^no session /.test(String(a.error.message || ""))));
+        throw Object.assign(new Error(`no session ${q.session} (${why})`), none ? { code: "not_found" } : {});
       },
     });
+    /** One session read as blocks, on this machine. @param {any} input */
+    function transcript(input) {
+      // A thread that started a moment ago has a transcript before any pass has indexed it, so
+      // an id Recall does not know yet is looked for on disk (exact ids only). No file at all
+      // is "not_found", which the Deck takes quietly.
+      let row = sessionRow(db, input.session);
+      if (!row) {
+        const e = find(folders, input.session);
+        if (!e) throw Object.assign(new Error(`no session ${input.session}`), { code: "not_found" });
+        row = { id: e.id, file: e.file, ...peek(e.file), title: null };
+      }
+      const { id, cwd, name, title } = row;
+      return { session: { id, cwd, name, title }, ...blocks(String(row.file), { from: input.from, limit: input.limit, before: input.before }) };
+    }
     // Live tails (watch.js). Times are settings so tests need not wait minutes.
     const watches = new Watches({
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
