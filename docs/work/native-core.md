@@ -19,6 +19,12 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing (after LOGOUT 4 resume, 2026-09-27)
+LATEST: work/native-core-composer c012c13c (pushed) = work/native-core (6ccad201 + 917f693a ADR
+LOW + 26ef7da4 harness fetch stream) + cohesion 0f4d1105 + composer suggest.query/Tab + model
+aliases from sessions.models.get (choicesFrom on model keys). Budget 8 on pwa 15d02055: 3,240 ms,
+3,254 px jump (sent to pwa). Waiting: vault 5d7cbd07 green for the Connections entry; pwa's
+backoff fix for a budget 8 rerun; chat for fling/cold open/send.
+
 NOW: tip 6ccad201 (fa349d31 + test-only commits), e2e SIGNED OFF fa349d31 (with platform d62792d0). fa349d31 PUSHED + TESTED (targeted 146/146, daemon.test.js 21/21 alone). Hub steps 1-3, theme
 routes, secrets out of hub.json, Dark/Paper switch on appearance.scheme. Sent to integrator, e2e
 (review steps 2-3), platform (settings.write rebases), app-design (work/app-design-hub).
