@@ -1849,7 +1849,7 @@ Answer a question about the user's own life in one line ("Your wife is Jordan.",
 
 ### `memory.ask`
 
-Vyre IQ: answer a question from everything memory holds, with its sources, or abstain. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing.
+Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.
 
 - Input:
   - `question` string, required
@@ -1857,7 +1857,9 @@ Vyre IQ: answer a question from everything memory holds, with its sources, or ab
   - `context` object
     - `project` string
     - `thread` string
+  - `id` string
   - `project_cwds` list of string
+  - `stream` boolean
 - Callers: any caller
 
 ### `memory.context`

@@ -113,11 +113,39 @@ async function change(sub, args) {
 }
 const CHANGES = new Set(["correct", "corrections", "uncorrect", "merge", "split", "pin", "mute"]);
 
-/** `vyre memory ask "<question>"`: one line about the user's life, how sure, and where it came from. */
+/**
+ * `vyre memory ask "<question>"`: Vyre IQ (memory.ask), the answer with the sessions it stands on,
+ * or "not sure yet" with what memory does know. A vyred without memory.ask answers from personal
+ * facts alone (memory.answer).
+ */
 async function ask(args) {
   const { rest, opt } = flags(args, ["sources"]);
   const q = rest.join(" ").trim();
-  if (!q) return usage("vyre memory ask needs a question", 'vyre memory ask "what car do I drive"');
+  if (!q) return usage("vyre memory ask needs a question", 'vyre memory ask "what did we decide about the Harlow login"');
+  const r = await call("memory.ask", { question: q });
+  if (r.error?.code === "no_such_tool") return answerOld(q, opt);
+  if (r.error) return fail(r);
+  const d = r.data;
+  if (json()) { emit(d); return d.answer ? 0 : 1; }
+  if (d.limited) { out(dim(`  ${d.message || "Vyre IQ's daily limit is reached"}`)); return 1; }
+  if (!d.answer) {
+    out(dim("  not sure yet"));
+    if (d.known?.length) { out(dim("  what memory does know:")); for (const k of d.known) out(`    ${k}`); }
+    return 1;
+  }
+  out(`\n  ${bold(recall(d.answer))}`);
+  const n = new Set((d.sources || []).map(s => s.session)).size;
+  const from = d.via === "fact" ? "from what you have said" : n ? `from ${n} session${n === 1 ? "" : "s"}` : "";
+  out(dim(`  ${["confidence " + Math.round(d.confidence * 100) / 100, from].filter(Boolean).join(" · ")}`));
+  const shown = opt.sources === true ? d.sources || [] : (d.sources || []).slice(0, 3);
+  for (const s of shown) out(dim(`    ${s.name || String(s.session).slice(0, 8)} #${s.seq}: `) + s.quote);
+  if (shown.length < (d.sources || []).length) out(dim(`    and ${d.sources.length - shown.length} more · --sources shows them`));
+  out("");
+  return 0;
+}
+
+/** The answer from personal facts alone, for a vyred older than memory.ask. */
+async function answerOld(q, opt) {
   const r = await call("memory.answer", { q, ...(opt.sources === true ? { sources: true } : {}) });
   if (r.error) return fail(r);
   const d = r.data;
@@ -134,7 +162,7 @@ async function ask(args) {
 export default [
   {
     name: "memory", order: 30, usage: "vyre memory [about] [--project <slug>] [--json]",
-    help: "Ask it:\n  vyre memory ask \"<question>\" [--sources]   one line about your life, from what you have said\nChange what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
+    help: "Ask it:\n  vyre memory ask \"<question>\" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from\nChange what it holds:\n  " + USAGE.correct + "\n  vyre memory corrections [--all] · vyre memory uncorrect <id>\n  " + USAGE.merge + "\n  " + USAGE.split + "\n  vyre memory pin|mute <node> [--off]", summary: "what memory holds, or everything about one thing",
     async run(args0) {
       if (CHANGES.has(args0[0])) return change(args0[0], args0.slice(1));
       if (args0[0] === "ask") return ask(args0.slice(1));

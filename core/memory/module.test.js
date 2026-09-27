@@ -75,3 +75,23 @@ test("memory module: with no Recall index vyred still starts and memory answers 
   assert.deepEqual((await call("memory.relevant", { text: "Harlow Legal" }, { root })).data, []);
   assert.equal((await call("memory.stats", {}, { root })).data.recall, false);
 });
+
+test("memory module: memory.ask streamed tells each step under the caller's id, then that it answered", async t => {
+  const root = seeded(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await call("memory.curate", {}, { root });
+  // Under node --test there is no model: IQ answers from what memory holds, or searches and is not sure.
+  const r = (await call("memory.ask", { question: "which port did the Northwind staging deploy use?", stream: true, id: "cap_1" }, { root })).data;
+  assert.equal(r.id, "cap_1");
+  assert.equal(r.abstained, true);
+  const stages = (await request("GET", "/v1/events?type=memory.thinking", undefined, { root })).data.map(e => e.payload).filter(p => p.id === "cap_1").map(p => p.stage);
+  assert.deepEqual(stages.sort(), ["searching", "understanding"]);
+  const answered = (await request("GET", "/v1/events?type=memory.answered", undefined, { root })).data.map(e => e.payload);
+  assert.deepEqual(answered.find(p => p.id === "cap_1"), { id: "cap_1", abstained: true, limited: false }, "events carry the id and the outcome, never the question or the answer");
+  // Not streamed: no id and no events.
+  const plain = (await call("memory.ask", { question: "which port did the Northwind staging deploy use?" }, { root })).data;
+  assert.equal(plain.id, undefined);
+  // A made-up id that is not a plain token is replaced.
+  assert.match((await call("memory.ask", { question: "which port did the Northwind staging deploy use?", stream: true, id: "../x" }, { root })).data.id, /^iq_[0-9a-f]{12}$/);
+});

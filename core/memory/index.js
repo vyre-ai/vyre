@@ -9,6 +9,7 @@
 import { Curator } from "./curator.js";
 import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { retriever } from "./iq/retrieve.js";
@@ -464,15 +465,21 @@ export default {
           ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
       } });
     ctx.tool("memory.ask", {
-      description: "Vyre IQ: answer a question from everything memory holds, with its sources, or abstain. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing.",
+      description: "Vyre IQ: answer a question about the user's own past work or life (a decision, a file, a bug, a date, who someone is, what was deployed) from every past session and personal fact, with its sources, or abstain. Ask it before saying you do not know or cannot remember something from earlier sessions, and name the session it cites. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing. stream: true emits memory.thinking { id, stage: understanding|searching|reading|checking } as each step starts, then memory.answered { id, abstained, limited }; id is the caller's (so it can match the events before the reply comes back), else a new one, and is in the reply.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
-        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
+        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, stream: { type: "boolean" }, id: { type: "string", maxLength: 64 }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
         let sees = true;
         try { await personalOnly(input, caller, "memory.ask"); } catch { sees = false; }
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
-        return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread: typeof input.context?.thread === "string" ? input.context.thread : null });
+        const thread = typeof input.context?.thread === "string" ? input.context.thread : null;
+        if (input.stream !== true) return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread });
+        // Streamed: the events carry the id and the step, never the question or the answer.
+        const id = typeof input.id === "string" && /^[A-Za-z0-9_-]{1,64}$/.test(input.id) ? input.id : `iq_${crypto.randomBytes(6).toString("hex")}`;
+        const r = await ask({ question: String(input.question || ""), project_cwds, personal: sees, thread, stage: s => ctx.events.emit("memory.thinking", { id, stage: s }) });
+        ctx.events.emit("memory.answered", { id, abstained: Boolean(r.abstained), limited: Boolean(r.limited) });
+        return { id, ...r };
       },
     });
     // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory

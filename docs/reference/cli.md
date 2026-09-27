@@ -373,7 +373,7 @@ vyre memory [about] [--project <slug>] [--json]
 ```
 
 Ask it:
-  vyre memory ask "<question>" [--sources]   one line about your life, from what you have said
+  vyre memory ask "<question>" [--sources]   Vyre IQ: an answer from your past sessions and what you have said, with where it came from
 Change what it holds:
   vyre memory correct <fact> wrong|ended|replace|confirm [new object] [--at <date>] [--note <why>] [--project <slug>]
   vyre memory correct '<subject>|<rel>|<object>' add [--project <slug>]

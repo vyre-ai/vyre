@@ -19,6 +19,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the graph know in it, fused by rank, with time words and a small recency prior. The Capsule's
   ask threads are never read. scripts/eval-iq.js measures it (recall@8 and ablations) and
   memory.ask (`--answer`, `--record`) on the open and sealed sessions worlds.
+- `memory.ask {stream: true, id?}` emits `memory.thinking {id, stage}` (understanding, searching,
+  reading, checking) as each step starts and `memory.answered {id, abstained, limited}`. The id is
+  the caller's, so a surface can show IQ thinking before the reply comes back. The events never
+  carry the question or the answer. Its description now tells the assistant when to use it.
+- `vyre memory ask` is Vyre IQ: memory.ask's answer with the sessions it stands on (three shown,
+  `--sources` for all), or "not sure yet" with what memory does know, or the daily-limit message.
+  A vyred without memory.ask still answers from personal facts.
 - `memory.suggest {prefix}`: names memory knows for completion. Personal ones only for the user's
   own surfaces. `recall.search {prefix: true}` treats each typed word as a prefix (FTS5 term*).
 
