@@ -17,13 +17,17 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 - docs-check OWNERS gains "cohesion" (scripts/lib/docs/check.js, docs team's file).
 
 ## Doing
-- Handed 3383d308 to the integrator (pushed): on top of f5cd36f7, the hands privacy fix (c362505b,
-  a4efd0d8, 533f84e2; e2e signed off), context view + now {surface}, sight.frame, Mac asks answered
-  on the Mac, suggest account ranking, Chrome teardown fix. testbox: targeted non-Chrome set 156
-  (all pass after the context shape fix), hands-chrome e2e on testbox Chromium 8/8, no Chrome left.
-- Owe chat: tell it when platform P1 (382a8574, commands.list) and the settled Render shape are both on main (item 5).
-- Next: follow owners as their parts land; switch suggest/waiting to ctx.modules.status() when
-  platform 382a8574 is on main.
+- SAVED for restart. Integrator has 0f4d1105 (release candidate; supersedes f5cd36f7): glue modules,
+  drift test, hands privacy fix (e2e signed off), sight.frame, context view/now {surface}, Mac asks,
+  suggest account ranking, Chrome teardown fix. testbox: 156 targeted pass; hands-chrome 8/8 on
+  CHROME_BIN=/usr/local/bin/vyre-chrome. No testbox processes of mine running.
+- Waiting on: integrator landing 0f4d1105; platform P1 382a8574 + settled Render (then tell chat item 5);
+  vault 9b 6cf9a99f + default/last_used follow-up; memory-iq memory.suggest + recall prefix;
+  capsule-pro screen chip + context.report; sessions thread.status + meta.call header; lead routing
+  event renames (glass, harness, computers, projects).
+- Owners' built work: pwa work/pwa b623ddcc, 41f9b14d, 084036c1, ca934d2d; chat work/chat 4793f351,
+  ccb8b410; native-core work/native-core-composer c012c13c; docs work/docs 393b7c97; app-design specs
+  work/app-design b756d128, e00280ad.
 
 ## Next
 2. Owner replies: record below. Send owners the built contracts and their exact asks.
