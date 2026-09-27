@@ -7,7 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { recorded } from "./testing.js";
-import { KINDS, SPEC, defaultField, checkFields, cleanDetails, derivedDetails, PERSONAL_KINDS } from "./kinds.js";
+import { KINDS, SPEC, defaultField, checkFields, cleanDetails, derivedDetails, PERSONAL_KINDS } from "../../lib/vault-kinds/kinds.js";
 import { judge } from "./health.js";
 
 // A throwaway self-signed certificate for intake.harlow.test, public half only.

@@ -13,7 +13,7 @@
 import { judge, breachCheck } from "../health.js";
 import { generate as makeValue } from "../generate.js";
 import { KINDS } from "../vault.js";
-import { DETAILS } from "../kinds.js";
+import { DETAILS } from "../../../lib/vault-kinds/kinds.js";
 import { callerAllowed } from "../../modules/index.js";
 
 const str = { type: "string" };

@@ -11,7 +11,7 @@
 // Vyre come through. It serves a single route and only answers signed requests for live passes.
 
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
-import { DETAILS, defaultField } from "./kinds.js";
+import { DETAILS, defaultField } from "../../lib/vault-kinds/kinds.js";
 import { codes, importCodes } from "./codes.js";
 import { sweep } from "./sweep.js";
 import { scheduleReminders, remindRun } from "./remind.js";

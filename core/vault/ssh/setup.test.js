@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { setupPlan, addAllowedSigner, findPrivateKeys } from "./setup.js";
+import { setupPlan, addAllowedSigner, findPrivateKeys } from "../../../lib/vault-ssh-setup/setup.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
 // Private-key PEM headers are assembled here, so no key-shaped header sits whole in the source.

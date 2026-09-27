@@ -21,7 +21,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { PERSONAL_KINDS, defaultField } from "./kinds.js";
+import { PERSONAL_KINDS, defaultField } from "../../lib/vault-kinds/kinds.js";
 
 export const WEAK_BITS = 50;
 export const OLD_MS = 365 * 86400_000;

@@ -15,7 +15,7 @@
 
 import { gate, openFailed } from "./fill-save.js";
 import { reprompt } from "./session.js";
-import { SPEC } from "./kinds.js";
+import { SPEC } from "../../lib/vault-kinds/kinds.js";
 
 /** How recent the proof must be for an item that asks every time. */
 export const REPROMPT_MS = 60_000;

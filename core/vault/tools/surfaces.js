@@ -19,7 +19,7 @@ import { LockWatch } from "../watch.js";
 import { Helper } from "../mac/helper.js";
 import { fillNative, appLabel } from "../native.js";
 import { callerKind } from "../../modules/index.js";
-import { defaultField } from "../kinds.js";
+import { defaultField } from "../../../lib/vault-kinds/kinds.js";
 
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 

@@ -16,7 +16,7 @@
 import crypto from "node:crypto";
 import { canonical } from "./crypto.js";
 import { readSealed } from "./store.js";
-import { cleanDetails } from "./kinds.js";
+import { cleanDetails } from "../../lib/vault-kinds/kinds.js";
 
 const PREFIX = "vyre-backup:v1:";
 const AAD = "vyre:backup:v1";
