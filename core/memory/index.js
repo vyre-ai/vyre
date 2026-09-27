@@ -210,7 +210,7 @@ export default {
     };
     // Only federation's own module says a device's history was deleted (the reviewer, 28 Sep): the
     // same event from anyone else forgets nothing. core/modules reserves sync.* for it too.
-    const SYNC_OWNERS = new Set(["sync", "link"]);
+    const SYNC_OWNERS = new Set(["sync"]);
     const revokedOff = ctx.events.on("sync.deleted", e => {
       if (!SYNC_OWNERS.has(String(e.source || ""))) { ctx.log(`ignored sync.deleted from ${plain(e.source || "an unknown module", 40)}`); return; }
       forgetMachine(e.payload?.machine).catch(err => ctx.log(`forgetting a deleted device's sessions failed: ${err.message}`));

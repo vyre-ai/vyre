@@ -59,7 +59,7 @@ const USE_FLUSH = 60_000;
  * @param {any} m @param {{ firstParty?: boolean }} [opts]
  */
 /** Event families only their first-party owners may declare: device sync is federation's. */
-export const RESERVED_EVENTS = { sync: ["sync", "link"] };
+export const RESERVED_EVENTS = { sync: ["sync"] };
 
 export function validate(m, { firstParty = false } = {}) {
   const out = [];
