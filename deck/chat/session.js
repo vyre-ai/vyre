@@ -18,7 +18,8 @@
 // off screen skip layout (content-visibility in chat.css).
 //
 // The header chip reads the session's provider, model and auth ("Claude · opus · subscription",
-// unknown parts left out) and its state word (starting, idle, running, waiting, stopped);
+// unknown parts left out), how full the context is ("62% of context", from thread.usage, only
+// when the box says the share) and its state word (starting, idle, running, waiting, stopped);
 // a session closed for idleness says "Resumes on your next message". While a turn runs the
 // composer has Stop (Esc): threads.interrupt, or on a Switchboard without it threads.stop.
 //
@@ -29,7 +30,9 @@
 // now (threads.edit, threads.unqueue, threads.send-now, each naming the row's `queued` id). Esc
 // Esc opens the rewind sheet: your messages from the session state; choosing one rewinds this
 // same thread to just before it (threads.rewind): that message and everything after it leave the
-// view, and its words come back to the composer to edit and send again. The
+// view, and its words come back to the composer to edit and send again. It offers what Claude
+// Code does: code and conversation (the default), conversation, or code (the files put back, the
+// conversation kept; a notice "Restored N files"). The
 // pinned todo list and the background tasks tray sit above the composer, and Ctrl+O hides or
 // shows the thinking. A box without the sessions update is learnt from its first "no such tool"
 // (core/caps.js): that control turns off and says "Needs the sessions update".
@@ -67,8 +70,8 @@ import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
 import { textItemRow } from "./live-text.js";
-import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind } from "./core/session-state.js";
-import { CAPS, NEEDS_UPDATE } from "./core/caps.js";
+import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks } from "./core/session-state.js";
+import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
 import { todoPin, tasksTray } from "./tray.js";
 import { createGrouper } from "./core/grouping.js";
@@ -92,7 +95,7 @@ const readHideThinking = () => { try { return localStorage.getItem(THINK_KEY) ==
  * shared stream listen (thread.* only hears the names it knows).
  */
 const MORE_EVENTS = ["thread.state", "thread.turn", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
-  "thread.model", "thread.thinking", "thread.task", "thread.usage", "thread.limit"];
+  "thread.model", "thread.thinking", "thread.task", "thread.shell", "thread.remembered", "thread.usage", "thread.limit"];
 const editable = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
 const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", codex: "Codex", acp: "ACP" });
 const BUSY = new Set(["starting", "running", "waiting"]);
@@ -191,8 +194,11 @@ export function mountSession(container, opts) {
     can: () => CAPS.has("threads.kill-task"),
     onView: t => { if (!t.call) return; const el = reveal("t:" + t.call); if (el) { el.scrollIntoView?.({ block: "center" }); el.classList.add("cv-flash"); setTimeout(() => el.classList.remove("cv-flash"), FLASH_MS); } },
     onKill: async t => {
-      const r = await CAPS.use("threads.kill-task", () => attempt("threads.kill-task", { thread, id: t.id }));
-      return r.error ? (r.missing ? NEEDS_UPDATE : "Could not stop it: " + (r.error.message || r.error.code)) : null;
+      // {thread, task, killed: true}; thread.task {status: "killed"} follows. Not running: {killed: false, note}.
+      const r = await CAPS.use("threads.kill-task", () => attempt("threads.kill-task", { thread, task: t.id }));
+      if (r.error) return r.missing ? NEEDS_UPDATE : "Could not stop it: " + (r.error.message || r.error.code);
+      const d = /** @type {any} */ (r.data) || {};
+      return d.killed === false ? String(d.note || "Could not stop it") : null;
     },
   });
   /** The rewind sheet (Esc Esc), while it is open. */
@@ -249,7 +255,8 @@ export function mountSession(container, opts) {
     recorded.on = !!r.error;
     if (t.data?.session) recorded.session = t.data.session;
     // Rewinds first: the transcript still holds the branch each one left, which is never drawn.
-    if (!r.error) for (const e of /** @type {any} */ (r).data.events || []) if (e.type === "thread.rewound" && e.payload?.uuid) noteRewind(S, { uuid: String(e.payload.uuid), at: Number(e.at) || Date.now() });
+    // A code-only restore left the conversation as it was: nothing to skip.
+    if (!r.error) for (const e of /** @type {any} */ (r).data.events || []) if (e.type === "thread.rewound" && e.payload?.uuid && e.payload.restore !== "code") noteRewind(S, { uuid: String(e.payload.uuid), at: Number(e.at) || Date.now() });
     const got = t.data ? t.data.blocks : [];
     applyBlocks(S, got);
     if (!r.error && !got.length) {
@@ -278,6 +285,7 @@ export function mountSession(container, opts) {
     tray.set(S.tasks);
     drawEarlier();
     for (const e of early.splice(0)) onLive(e);
+    readTasks();
     if (raw) drawRaw();
     toBottom();
     seek();
@@ -326,6 +334,7 @@ export function mountSession(container, opts) {
     const ses = recorded.session;
     const sb = switchboard();
     const chip = chipText();
+    const ctx = contextLabel(S.usage);
     put(head,
       h("button", { class: "ibtn session-back", "aria-label": "Back", onclick: opts.onBack }, icon("left", 16)),
       h("div", { class: "cv-head-text" },
@@ -335,6 +344,7 @@ export function mountSession(container, opts) {
       machineChip(where),
       mac.offline ? h("span", { class: "tag machine off cv-offline", title: `${mac.offline} is not reachable` }, `${mac.offline} offline`) : null,
       chip ? h("span", { class: "tag cv-chip" }, chip) : null,
+      ctx ? h("span", { class: "tag cv-context" + (ctx.share >= 0.8 ? " high" : ""), title: ctx.title }, ctx.text) : null,
       sb ? h("span", { class: "cv-state cv-state-" + S.state, title: "This session is " + S.state }, S.state + (S.turn && BUSY.has(S.state) ? ` · turn ${S.turn}` : "")) : null,
       mode === "blocks" ? h("button", { class: "btn btn-ghost btn-sm cv-think-toggle", type: "button", "aria-pressed": String(!hideThinking),
         title: "Show or hide the thinking (Ctrl+O)", onclick: () => setHideThinking(!hideThinking) }, hideThinking ? "Show thinking" : "Hide thinking") : null,
@@ -411,24 +421,39 @@ export function mountSession(container, opts) {
     rewind = rewindSheet({
       points: checkpoints(S),
       can: () => CAPS.has("threads.rewind"),
+      codeOk: () => CAPS.has(REWIND_CODE),
       onClose: closeRewind,
-      onChoose: async p => {
+      onChoose: async (p, restore) => {
         rewinding = { uuid: p.uuid, text: p.text, at: p.at };
-        const res = await CAPS.use("threads.rewind", () => attempt("threads.rewind", { thread, uuid: p.uuid }));
+        // Conversation is the box's default and all an older box does: sent without restore.
+        const res = await CAPS.use("threads.rewind", () => attempt("threads.rewind", { thread, uuid: p.uuid, ...(restore !== "conversation" ? { restore } : {}) }));
         const was = rewinding;
         rewinding = null;
-        if (res.error) return res.missing ? NEEDS_UPDATE : "Could not rewind: " + (res.error.message || res.error.code);
+        if (res.error) return res.missing ? NEEDS_UPDATE : (restore === "code" ? "Could not restore the files: " : "Could not rewind: ") + (res.error.message || res.error.code);
         const d = /** @type {any} */ (res.data) || {};
+        const uuid = d.uuid || was?.uuid || p.uuid;
+        // Code only: the files went back, the conversation and the composer stay.
+        if (restore === "code") {
+          patch(applyStateEvent(S, { type: "thread.rewound", at: Date.now(), payload: { uuid, restore: "code", files: d.files || null, local: true } }));
+          if (rewind) closeRewind();
+          return null;
+        }
         // The first message has nothing before it: the box says so (start a new session with it).
-        if (d.rewound === false) return String(d.note || "This message cannot be rewound to.");
+        if (d.rewound === false) {
+          const f = filesNote(d.files);
+          return String(d.note || "This message cannot be rewound to.") + (f ? ` ${f}.` : "");
+        }
         // Same thread, back to just before it: thread.rewound takes the rows away (here too, in
         // case the event is late), and the words come back to the box to edit and send again.
-        patch(applyStateEvent(S, { type: "thread.rewound", at: Date.now(), payload: { uuid: d.uuid || was?.uuid || p.uuid, text: typeof d.text === "string" ? d.text : p.text, local: true } }));
+        patch(applyStateEvent(S, { type: "thread.rewound", at: Date.now(), payload: { uuid, text: typeof d.text === "string" ? d.text : p.text,
+          ...(d.files ? { files: d.files } : {}), local: true } }));
         composer.setText(typeof d.text === "string" ? d.text : p.text, "Prefilled from " + (p.at ? clock(p.at) : "the rewind"));
         if (rewind) closeRewind();
         return null;
       },
     });
+    // Whether this box can put files back: learnt with threads.commands (a read, the same ship).
+    if (CAPS.has(REWIND_CODE) === null) CAPS.use("threads.commands", () => attempt("threads.commands", { thread })).catch(() => {});
     rewindBox.hidden = false;
     put(rewindBox, rewind.el);
     rewind.el.setAttribute("tabindex", "-1");
@@ -503,13 +528,24 @@ export function mountSession(container, opts) {
     rawSoon();
   }
 
+  /**
+   * The box's background tasks (threads.tasks, sessions 034c71e5): the tray starts from its list,
+   * and the answer tells CAPS whether this box has that release (images, "!", "#", thinking, Stop).
+   */
+  async function readTasks() {
+    if (!switchboard() || CAPS.has("threads.tasks") === false) return;
+    const r = await CAPS.use("threads.tasks", () => attempt("threads.tasks", { thread }));
+    const list = /** @type {any} */ (r.data)?.tasks;
+    if (!r.error && Array.isArray(list)) patch(seedTasks(S, list));
+  }
+
   // ---- rows from items -----------------------------------------------------------------------
 
   /** An item as the block the renderers and the raw view know. */
   function asBlock(it) {
     const at = it.at;
     switch (it.kind) {
-      case "user": return { kind: "user", text: it.text, command: it.command, ts: at };
+      case "user": return { kind: "user", text: it.text, command: it.command, ts: at, ...(it.images ? { images: it.images } : {}) };
       case "text": return { kind: "text", text: it.text, ts: at };
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
@@ -588,7 +624,8 @@ export function mountSession(container, opts) {
   }
   /** A "!" command run in the session's folder, and what it printed. */
   function shellEl(it) {
-    const state = it.error ? "failed" : it.exit == null && !it.output && it.duration_ms == null ? "running" : it.exit ? "failed" : "done";
+    // Running: drawn here and neither answered nor echoed yet. A row from the transcript has no exit code.
+    const state = it.error ? "failed" : it.local && !it.answered && !it.echoed ? "running" : it.exit ? "failed" : "done";
     return h("div", { class: "cv-row cv-shell", "data-state": state },
       h("div", { class: "cv-shell-head" },
         h("span", { class: "lbl" }, "Shell"), h("code", { class: "cv-shell-cmd ellipsis" }, it.command),
@@ -923,7 +960,7 @@ export function mountSession(container, opts) {
       const last = [...S.items].reverse().find(it => it.kind === "user" || it.kind === "turn");
       if (last && last.kind === "user") patch(applyStateEvent(S, { type: "thread.finished", at: e.at, payload: { ok: false, canceled: true, reason: "interrupt" } }));
     }
-    if (/^thread\./.test(e.type) || e.type === "mode.changed") {
+    if (/^thread\./.test(e.type) || e.type === "mode.changed" || e.type === "model.switched" || e.type === "model.changed" || e.type === "thinking.switched") {
       patch(applyStateEvent(S, e));
       if (e.type === "thread.finished" && !replaying) refresh();
       return;
@@ -1309,6 +1346,9 @@ export function mountSession(container, opts) {
     on("thread.*", onLive),
     // Not a thread.* name: heard on its own.
     on("mode.changed", onLive),
+    on("model.switched", onLive),
+    on("thinking.switched", onLive),
+    // Older boxes said model.changed for a thread's model.
     on("model.changed", onLive),
     on("ask.raised", onLive),
     on("ask.answered", onLive),
