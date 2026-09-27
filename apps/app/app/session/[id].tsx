@@ -6,7 +6,7 @@
 
 import { memo, useCallback, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Queued } from "@vyre/chat-core/session-state.js";
 import { modeLabel } from "@vyre/chat-core/composer-state.js";
@@ -22,6 +22,7 @@ import { useThread } from "../../src/state/threads";
 import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
 import { type } from "../../src/theme/type";
+import { BackButton } from "../../src/ui/BackButton";
 import { Button } from "../../src/ui/Button";
 import { SignInBar } from "../../src/ui/SignInBar";
 import { StatusMark } from "../../src/ui/StatusMark";
@@ -37,7 +38,6 @@ export default function SessionScreen() {
   const { id } = useLocalSearchParams<{ id: string; ask?: string }>();
   const thread = String(id);
   const store = useMemo(() => sessionStore(thread), [thread]);
-  const router = useRouter();
   const insets = useSafeAreaInsets();
   const { color } = useTheme();
   useLayoutEffect(() => store.opened(), [store]);
@@ -62,7 +62,7 @@ export default function SessionScreen() {
   return (
     <View style={[styles.page, { backgroundColor: color.bg, paddingTop: insets.top }]}>
       <View style={[styles.header, { borderBottomColor: color.rule }]}>
-        <Button kind="ghost" label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} />
+        <BackButton />
         <View style={styles.headCol}>
           <Text numberOfLines={1} accessibilityRole="header" style={[type.readStrong, { color: color.text }]}>{title}</Text>
           <View style={styles.stateLine}>

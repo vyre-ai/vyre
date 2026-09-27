@@ -4,7 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### App: icons generated from icons.txt, and Back as the chevron with the page's name
+
+- `apps/app/scripts/gen-icons.mjs` (`npm run icons`, `-- --check` in CI) writes
+  `src/ui/icons.generated.ts` from `docs/design/one-app/icons.txt`, now app-design's copy with
+  unlock and minus; `Icon` draws from it, so a name the set lacks does not type-check.
+- `IconButton` draws 16 at 28 and 32 and 20 at 44 (the composer circles, nav buttons).
+- `src/ui/BackButton.tsx` is the one Back (phone-shell item 6): chev-l at 44, the previous page's
+  name at 17 when it fits, named "Back to <page>" or "Back", testID `back`. Screen, the session
+  and the needs item all use it; Screen takes `backTo`, else the page under it in the stack.
+
 #### One app: the swipe releases by the needs-row rule
+
+- `SwipeRow` releases by `src/ui/swipe.js` (the pwa's `release(x, v)`): a 100 px reveal or a
+  0.5 px/ms fling past 24 commits, 40 to 100 rests open with the action a button that commits, under
+  40 springs back. The web drops the scroll-snap strip for pointer events on the row's face.
+
 #### A bare "tailnet" label is never a caller
 
 - core/modules callerAllowed: a tool whose callers list says "tailnet" opens to the owner's
