@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The sign-in sheet says what carries on after it
+
+- When the box asks for a person session in the middle of an action, the sheet's second line
+  names it ("Then Vyre carries on with sending your message."), for sends, answers, the Gate,
+  the terminal and agents; any other tool shows no line. `carryOn` in deck/js/person.js, tested
+  in person.test.js.
+
 #### Settings says whether the hosted app can reach the box
 
 - Settings, Network gains a read-only "Hosted app" row from system.info `network.origins` (the

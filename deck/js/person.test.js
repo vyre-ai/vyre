@@ -133,3 +133,11 @@ test("person: presence.person.* never waits on a sign-in", async () => {
   assert.equal(sheets().length, 0);
   assert.equal(await person.personStatus(), null, "an unreadable status is no person sessions");
 });
+
+test("person: the sheet names what carries on after sign-in, and says nothing for a tool it does not know", async () => {
+  const { carryOn } = await import("./person.js");
+  assert.equal(carryOn(/** @type {any} */ ({ tool: "threads.send" })), "Then Vyre carries on with sending your message.");
+  assert.equal(carryOn(/** @type {any} */ ({ tool: "gate.approve" })), "Then Vyre carries on with the send.");
+  assert.equal(carryOn(/** @type {any} */ ({ tool: "vault.reveal" })), null);
+  assert.equal(carryOn(undefined), null);
+});
