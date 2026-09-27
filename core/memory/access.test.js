@@ -129,3 +129,16 @@ test("presence: correct, merge and split are the user's own, with no prompt; age
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "mcp", { person: { id: "s1" } })).data.applied, false);
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "deck agent:kit")).code, "denied");
 });
+
+test("today: a project's brief line, its last session and what memory learned lately, no personal facts", async t => {
+  const { call } = await module_(t);
+  await call("memory.remember", { text: "my wife is Juno" }, "cli");
+  const r = await call("memory.today", { room: "harlow", days: 30 }, "module:harness");
+  assert.ok(!r.error, JSON.stringify(r));
+  assert.match(r.data.lines[0], /^Last session here: .+, .+ ago\.$/);
+  assert.ok(r.data.lines.join(" ").length <= 300);
+  assert.ok(!/Juno/.test(r.data.lines.join(" ")), "a personal fact in a project's brief");
+  assert.deepEqual((await call("memory.today", {}, "module:harness")).data, { lines: [] }, "outside a project, nothing");
+  // An agent granted only northwind gets nothing of harlow's.
+  assert.equal((await call("memory.today", { room: "harlow", agent: "kit" }, "mcp:agent:kit")).code, "denied");
+});
