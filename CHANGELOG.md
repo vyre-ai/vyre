@@ -23,6 +23,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### CI: the one Expo app
 
+- app.yml's perf job (.github/scripts/app-perf.mjs): apps/app/dist at /app/ beside
+  apps/test/world.js, headless Chromium at 390x844 with the CPU 4x throttled; waits for Now, five
+  rounds of tab switches, opens a session and scrolls it, reads window.__vyrePerf.report(). It
+  fails on tab.switch p95, open.cold p95, approve.collapse p95, dropped frames or long tasks over
+  50 ms more than 20% worse than the last green run on main (its app-perf artifact), or web JS
+  more than 10% bigger; a measure with no samples is "not measured". Playwright is installed
+  outside the repo.
 - .github/workflows/app.yml for apps/app (its own lockfile): typecheck and tests on every push;
   the web export with its gzipped JS size in the run summary; an Android debug APK and an
   UNSIGNED release APK, vyre-<version>-<sha7>.apk, with android.json (version, versionCode, sha,

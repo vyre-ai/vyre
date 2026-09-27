@@ -1,7 +1,7 @@
 # The one Expo app (ADR 0027), apps/app, with its own package.json and lockfile outside the root;
 # it imports core/resilience (Metro watchFolders), so jobs check out the whole repo
 # (the box's npm ci never pulls Expo). Tests and typecheck on every push; the web export with its
-# gzipped size; an Android debug APK and an UNSIGNED release APK (minify and Hermes exercised),
+# gzipped size; a web perf guard (Chromium, 4x CPU, against the last green run); an Android debug APK and an UNSIGNED release APK (minify and Hermes exercised),
 # vyre-<version>-<sha7>.apk with android.json, published as a release on main, for the box to sign
 # with the owner's key. iOS is
 # the fallback only: run by hand with the ios input, simulator build, no signing. Plain prebuild
@@ -87,6 +87,65 @@ jobs:
           name: app-web-${{ github.sha }}
           path: apps/app/dist
           retention-days: 14
+
+  # The web perf guard (ADR 0027, section 6): the exported web app at /app/ beside
+  # apps/test/world.js, headless Chromium at 390x844 with the CPU 4x throttled. It fails on a
+  # tracked measure more than 20% worse than the last green run on main, or JS more than 10%
+  # bigger; a measure with no samples is "not measured". The numbers of record come from real
+  # phones; these only guard regressions. Playwright is installed outside the repo.
+  perf:
+    needs: [detect, web]
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read  # the last green run's perf artifact
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-web-${{ github.sha }}
+          path: apps/app/dist
+      - name: Playwright (outside the repo)
+        run: |
+          echo "PLAYWRIGHT_DIR=$RUNNER_TEMP/pw" >> "$GITHUB_ENV"
+          mkdir -p "$RUNNER_TEMP/pw" && cd "$RUNNER_TEMP/pw"
+          echo '{"private":true}' > package.json
+          npm i --no-audit --no-fund --no-package-lock playwright@1
+          npx playwright install --with-deps chromium
+      - name: The last green run's numbers
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow app.yml --branch main --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
+          if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n app-perf -D "$RUNNER_TEMP/base" 2>/dev/null; then
+            echo "baseline: run $id"; else echo "no baseline yet"; fi
+      - name: Perf run
+        run: node .github/scripts/app-perf.mjs --dist apps/app/dist --out perf.json --baseline "$RUNNER_TEMP/base/perf.json" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Bundle size against the last green run
+        if: success() || failure()
+        run: |
+          total=0
+          for f in $(find apps/app/dist -name '*.js'); do total=$((total + $(gzip -9c "$f" | wc -c))); done
+          kib=$((total / 1024))
+          echo "{\"js_gzip_kib\": $kib}" > size.json
+          base=$(node -e 'try { console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).js_gzip_kib) } catch { console.log("") }' "$RUNNER_TEMP/base/size.json")
+          echo "web JS gzipped: ${kib} KiB${base:+ (last green ${base} KiB)}" | tee -a "$GITHUB_STEP_SUMMARY"
+          if [ -n "$base" ] && [ $((kib * 100)) -gt $((base * 110)) ]; then echo "JS grew more than 10%"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        if: success() || failure()
+        with:
+          name: app-perf
+          path: |
+            perf.json
+            size.json
+          retention-days: 90
 
   android:
     needs: detect
