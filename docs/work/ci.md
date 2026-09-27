@@ -75,23 +75,31 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing (2026-09-27, late)
-- Batch 4: work/ci 2746b636 (integrator has it); 1b1c8573 (sessions smoke invocation) rides next.
-  work/ci-boundaries a1be584e (off main): test/boundaries.test.js + docs/architecture/boundaries.md,
-  26 frozen edges (17 lib, 8 ctx.call, 1 surface). Waiting on its GitHub node run.
-- Batch 3: work/ci-pid1 0f804c11 with resilience d0129781, proven green.
-- Watching capsule-mac 36317665732 (58a2c49) for capsule-pro and the b4 verify runs; report to
-  integrator + lead.
-- APK: owner-key model, unsigned + android.json signer "none", release on main. No key, no secrets.
-- sessions-sdk: 207/1 on the driver job (sessions' test under the env override); real green.
-- TESTBOX HOLD: nothing on testbox until the integrator announces open. Then `uptime` first,
-  wait if load > 8. GitHub runners only meanwhile.
-- Never run an extensionless script to "check" it: `node --check` needs a .js/.mjs copy.
+## Doing (LOGOUT 4, 2026-09-27 ~18:10)
+- b4 verify c8eee9c3 (has work/ci 1b1c8573 + ci-boundaries de5651bf): box-image, app, capsule-mac,
+  sessions-sdk GREEN. node RED on perf-check only: "RSS (settled, last 8) 190.2 MB" on Node 24
+  (tests passed). Real signal, not the harness: RSS settled ~190 MB with the b4 merges (was ~85 MB
+  on c8fb9aae). Next: bisect the b4 merges for the idle RSS jump (GitHub runners; testbox only if
+  load < 8), report to lead + that owner. Do NOT raise the budget.
+- work/ci-boundaries de5651bf node RED (not read yet): check the run (36319211841).
+- Release dry run GREEN (work/ci-release ec456318, run 36320674327, v0.0.1 dry run). Send
+  platform the artifact list (release-dry-run-v0.0.1). release.yml publishes only with repo var
+  VYRE_RELEASES=go (unset; the lead's/user's call). APK attached as android-<v>-<sha7>.apk.
+- App perf job: work/ci c8661ad7 (waits for transcript, chat-row, approve swipe via
+  now-row-swipe scrollTo 0). Proof on work/ci-app 1c37c92b (mobile b5947faa) FAILED: read run
+  36320966093. Earlier proof failed with exit 216 on npx/tsc in all app jobs (not reproducible on
+  testbox; b4's app run is green, so likely the proof branch). JS signer check wired to
+  core/apps/sign-apk.mjs.
+- Batch 3: work/ci-pid1 0f804c11 merged with resilience (ab4fdc4d). box-image on the 3b
+  candidate: not yet run; do it on the next integrator ask.
+- Boundaries follow-ups: integrator has de5651bf (lib/ rule). First cleanup (lib/tailnet) comes
+  from platform after native-core; each step shrinks ALLOW + boundaries.md.
+- TESTBOX: open, but GitHub runners first; `uptime` before anything, wait if load > 8.
 
 ## Next
-- Delete throwaway branches (work/ci-app, ci-box-c8fb9aa, ci-pid1-proof, ci-sessions) once their
-  workflows are on main.
-- Perf job for app.yml when mobile pings. Match mobile's JS signer CLI when they send it.
+- Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,
+  ci-pid1-proof, ci-sessions, ci-release, ci-pid1, ci-boundaries (after merge).
+- actionlint v1.7.7 in the scratchpad (re-download). `gh run list -c` needs the FULL sha.
 
 ## Needs from others
 - None.
