@@ -66,19 +66,41 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Doing
 
-Stopped at the lead's wrap-up (27 Sep 2026). Nothing running. Head handed to the integrator
-(batch 4). Everything below is done; see "Still open" for what waits.
+VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead first.
+- DONE d960197d on work/docs (merged main 7880dfa6 at 9305e4b9):
+  - core/tips: check.js has the tip rules; pick.js has the selection rules (off, busy, gap 30 min
+    per surface, spread 2 min, cap 6 per 24 h, then current module, never-used, update, idle; at
+    most 2 showings). index.js has tips.next/seen/used/dismiss/whatsnew/list/reset and the
+    tips.updated event. Versions are tracked with ran: and seen: meta, and a third-party module
+    uses its own version. Hub settings tips.enabled and tips.gap_minutes, with a config.tips
+    fallback.
+  - The loader has ctx.declaredTips() (core/modules/index.js, the inRepo helper).
+  - 306 tips in 32 manifests. The surface tips (deck, chat, phone, cli, claude-code, modules, box)
+    are in core/tips/module.json with about set and ids prefixed by surface. 48 pending tips are
+    in docs/work/tips-pending.json, keyed by module and branch: capsule-pro, platform (update,
+    module new/check), native-core (settings), teammates (team), vault-next, memory-iq, mobile,
+    polish-cli.
+  - `vyre tips [module|new|reset]`. Pages using/tips.md and build/tips.md are in nav. CHANGELOG
+    updated.
+  - Tests on testbox: core/tips 30/30, test/tips-content 6/6, plus modules, cli, docs-build and
+    hygiene: 133 pass, 0 fail. docs-check is clean except 263 stale shots (the queued retake).
+- The drafts and generator scripts are in the session scratchpad (they may be gone). The
+  manifests are now the source of truth.
 
-- Full screenshot retake on main 9efbddc0 (violet, VyreDrive, idle hand-back): 52 files, 0
-  failures; six new shots placed. Docs tests 79/79 on testbox, docs-check clean, 73 pages.
-  Preview redeployed: https://preview.vyre-docs.pages.dev (8d9475ec).
-- Fixed on the way: the onboarding loopback link now serves `/theme.css` and `/fonts/*`
-  (core/onboard/loopback.js, test in test/onboard.test.js); the sample world's folder is `alex`.
-- Pages applied: Glass no passkey and idle hand-back; the Gate's 30-minute proof; /vyre planner
-  verbs; Chat's terminal on the box (kept 12 h); ADR 0024 note pointing at ADR 0029.
-- Shots commands: `uptime` on the test box first (wait while load > 8), rsync to
-  ~/vyre-ci/docs-s, `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools CHROME=/usr/local/bin/vyre-chrome
-  nice -n 15 node scripts/docs-shots [--only a,b]`, copy back the shots PNGs and docs/shots.json.
+## Still open (tips)
+
+- Surface wiring asked of app-design (look), capsule-pro, pwa, chat, mobile, polish-cli (the
+  dim tip line after a command) and native-core (the tips group in GROUPS).
+- platform: the teaches.tips schema in packages/module-sdk/manifest.schema.json. Also whether
+  ctx.declaredTips stays in my diff or they take it. And `vyre update` should call
+  tips.whatsnew {since} after the changelog.
+- As each branch lands on main, move its tips out of tips-pending.json into the manifest, then
+  run test/tips-content.
+- Docs bugs the tip drafting found: using/cli.md:210 (`vyre help <cmd>` shows that command's
+  help, polish-cli); using/capsule.md:203 says screen asks aren't built, but they are
+  (capsule-pro); using/connectors.md:128 lists Google sign-in as coming, but `vyre connect add
+  google --sign-in` exists (connectors).
+- No CLI test for core/cli/commands/tips.js yet (it's thin; the tools are tested).
 
 ## Still open
 
