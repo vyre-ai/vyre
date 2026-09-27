@@ -36,14 +36,33 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   Option-Return push-to-talk. 12/12 sight tests in a combined scratch copy of capsule-pro's tree
   (174 pass, 1 fail: capsule-pro's own contact-photo icon test).
 
+- Real-vyred perf check on the Mac (2026-09-27, main ef51363 merged as 1449b5d; capsule-pro
+  b76552d + this branch's sight, stale askItem line dropped in the scratch copy only). A temp
+  home under the test SCRATCH (HOME and VYRE_HOME both), VYRE_NO_DIALOGS=1, fake Tailscale, the
+  Mac modules capsule/hands/screen/sideview/voice disabled, recall vectors off; 41 sessions,
+  8,300 turns. The real SessionPanelModel + SessionPanelView in one offscreen, unfocused
+  "vyre-test" window, following a terminal session through recall.watch. Run through buildlock.
+  | Phase | vyred CPU avg / p95 | vyred RSS | panel CPU avg / p95 | panel RSS |
+  |---|---|---|---|---|
+  | A vyred alone, 60 s | 0.017% / 0% | 110 MB | | |
+  | B tab shown, idle, 90 s | 0.022% / 0% | 110 -> 93 MB | 0.066% / 0.66% | 68 MB |
+  | C a turn pair every 2 s, 60 s | 0.099% / 0.67% | 93 -> 89 MB | 0.63% / 1.33% | 67 -> 68 MB |
+  | D tab closed, 30 s | 0% / 0% | 90 MB | | |
+  First show (history + watch) 304 ms. 29 of 29 appended turns drawn, append-to-row p50 27 ms,
+  max 28 ms. After close: recall.status watches 0 (the unwatch landed), panel exit 0, home removed.
+  p95 figures sit at ps's 10 ms tick (0.67% of a 1.5 s sample). The window was offscreen, so
+  compositing is not in the panel number; the SwiftUI updates are. The panel RSS is a harness
+  carrying the whole Capsule codebase, not the Capsule's own footprint.
+
 ## Doing
-- Nothing in flight (2026-09-27). Last: terminal tabs on recall.watch (see Done).
+- Nothing in flight (2026-09-27). Last: the real-vyred perf check (see Done).
 
 ## Next
-1. GO-AHEAD GIVEN (lead, 2026-09-27): once chat's recall.watch (10604b9) is on main, one real-vyred
-   perf check on the Mac: temp home, VYRE_NO_DIALOGS=1, VYRE_TAILSCALE_BIN=deck/test/fake-tailscale.js,
-   through buildlock, only my own unfocused window; close everything after; CPU/RSS of a shown
-   watching terminal tab go in this doc and to the lead. Not on main yet at 964af29.
+1. Vyre-owned sessions (ADR 0030): the panel's assistant and thread tabs already follow `thread.*`
+   through threads.get + VyState.applyDm, so they pick up SDK sessions with no new call. When
+   sessions lands `thread.turn`, `thread.state` and `thread.tool` {call, status}, check that
+   capsule-pro's reducer folds them (tool rows by call id, the working dot from thread.state) and
+   add panel tests. Terminal tabs stay on recall.watch (the user's own `claude` sessions).
 2. capsule-apps slice 4 (WhatsApp over hands): answer any further hands asks.
 
 ## Try it (the user, own terminal, a vyred from this worktree in a separate home)
