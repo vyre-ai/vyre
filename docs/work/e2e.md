@@ -153,6 +153,34 @@ example.com in kit's address bar; the page loaded). Hand back also asks for the 
 (glass.release is on the presence list): is that intended? Torn down afterwards, including the
 computer container and its home volume.
 
+## Doing (27 Sep, after the restart)
+
+Done this session: main c48959b merged in (fc80279); the no-nag agents reversal and the SSE
+`: open` byte at 61692fd, pushed, sha sent to the integrator and the lead. The docs "403
+not_owner" is world setup (127.0.0.2 fails isTailnet before whois; docs' local 0039172 maps it to
+100.64.0.2), told docs.
+
+Also 5b30ed3 (pushed): asks and held items carry `presence: {required, covered}`; gate.revise,
+gate.reject and threads.answer off the floor; gate.approve asks only for send/spend (NARROWABLE)
+and is sessionable (x-vyre-presence-keep: 1 returns x-vyre-presence-session). Shape sent to pwa,
+chat, mobile, phone-design. Lead decided: Gate deletions ask; a presence session lasts 30 min from the proof, no idle cutoff
+(done in the commit after 5b30ed3).
+
+Waiting for the integrator's deployed sha. Then: build a throwaway box from it on the test box
+with scripts/e2e-headscale (README there), never /srv/vyre, and report pass or fail per item to the
+lead: onboarding; same-Mac pairing through the Deck card (pwa's pair.js); Claude sign-in fresh-code
+path (refusal at once plus "Open it again"); agents made and edited in the Deck with NO passkey
+(New agent, Give a computer, job, model); Glass take (passkey) and hand-back (none); the phone PWA
+send queue (touch a fake transcript on the box within ACTIVE_MS); tailnet's egress list (gate,
+status fields per case, recovery within 2 s, restart with a reusable key, Chromium data: PAC); the
+event stream's first byte. Tear down afterwards.
+
+## Next
+
+- The standing rule itself: Touch ID only for pairing a new device, revealing or granting vault
+  secrets, and sending, posting or paying as the user outside; one proof covers a ~30 minute
+  presence session per device. Owners elsewhere.
+
 ## Needs from others
 
 - Done 27 Sep: the asking Mac approves its own pairing with a fresh passkey and its code
@@ -173,3 +201,15 @@ computer container and its home volume.
   admits only the owner) may use any tool whose callers list names `deck`; `tailnet:agent:*` and
   `tailnet-guest:*` may not. The registry and vault.update use it.
 - agents.list: each entry now carries `instructions`.
+- agents.create: no presence, callers cli, local, deck, capsule, module (and the owner over the
+  tailnet). agents.update: no presence; the same callers plus mcp, where only the assistant passes,
+  and only for name, instructions, model, effort and description. Refusals are `denied` (403).
+- /v1/events/stream sends `: open` as its first body bytes.
+- PERSON_ONLY adds agents.create, agents.update, gate.revise, gate.reject. A socket call to a
+  PERSON_ONLY tool from under a `claude` or a thread process is refused `denied` (core/daemon/peer.js).
+  threads.answer refuses the ask's own thread. Internal tool threads.pids.
+- work/e2e now contains work/chat 2551cb9 (merged in 64a7d1d for PERSON_ONLY).
+- threads.asks, threads.get asks, gate.held, gate.get: each item has `presence: {required, covered}`.
+  gate.revise, gate.reject, threads.answer: no presence. gate.approve: presence for send, spend
+  and delete, sessionable. A presence session lasts 30 minutes from the proof. Request header `x-vyre-presence-keep: 1` + strong proof returns
+  `x-vyre-presence-session: session id=.. secret=.. expires=..`. Internal tool presence.covered.

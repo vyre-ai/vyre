@@ -3,13 +3,12 @@
 // at a time: this surface asks glass.take, and while it holds, noVNC sends input and the control
 // bar counts the time. Hand-back is the button, Ctrl+Enter, or the lease lapsing on the box.
 //
-// glass.take needs a presence proof; glass.release does not (handing back is always safe), but
-// the view still answers a box that asks for one. When the box asks
-// (presence_required), the view shows a "Confirm it's you" step; its button makes a passkey
-// proof (api.js, { presence: true }) and repeats the same call with it.
+// Neither glass.take nor glass.release asks for a passkey: taking the keyboard only pauses the
+// agent, so the owner is never stopped for Touch ID (core/presence PERSON_ONLY). The box still
+// refuses an agent, never a person.
 
-import { h, put, link } from "../js/dom.js";
-import { attempt, canProve } from "../js/api.js";
+import { h, put } from "../js/dom.js";
+import { attempt } from "../js/api.js";
 import { gicon, errText, clock, surfaceKind } from "./util.js";
 
 /**
@@ -46,14 +45,14 @@ export function takeover(s, hooks) {
   }
 
   /** @param {boolean} priv */
-  async function take(priv, proved = false) {
+  async function take(priv) {
     if (busy || mine()) return;
     busy = true; hooks.changed();
     const input = { target: s.target, surface: s.surface, ...(priv ? { private: true } : {}) };
-    const r = await attempt("glass.take", input, proved ? { presence: true } : {});
+    const r = await attempt("glass.take", input);
     busy = false;
     if (r.error) {
-      hooks.notice(r.error.code === "presence_required" && !proved ? confirm(r.error, () => take(priv, true)) : failed(priv ? "Private sign-in did not start" : "Take-over did not start", r.error));
+      hooks.notice(failed(priv ? "Private sign-in did not start" : "Take-over did not start", r.error));
       hooks.changed();
       return;
     }
@@ -62,15 +61,15 @@ export function takeover(s, hooks) {
     hooks.changed();
   }
 
-  async function release(proved = false) {
+  async function release() {
     if (busy || !mine()) return;
     busy = true; hooks.changed();
     const text = note.value.trim();
     const input = { target: s.target, surface: s.surface, ...(text ? { note: text } : {}) };
-    const r = await attempt("glass.release", input, proved === true ? { presence: true } : {});
+    const r = await attempt("glass.release", input);
     busy = false;
     if (r.error) {
-      hooks.notice(r.error.code === "presence_required" && proved !== true ? confirm(r.error, () => release(true)) : failed("Hand-back did not go through", r.error));
+      hooks.notice(failed("Hand-back did not go through", r.error));
       hooks.changed();
       return;
     }
@@ -81,28 +80,9 @@ export function takeover(s, hooks) {
     hooks.changed();
   }
 
-  /** The "Confirm it's you" step: its button makes a passkey proof and repeats the call with it. */
-  function confirm(err, retry) {
-    const methods = [err.methods, err.detail?.methods, err.data?.methods].find(Array.isArray) || [];
-    const passkey = canProve() && (!methods.length || methods.includes("passkey"));
-    const how = passkey ? "Use your passkey: Touch ID or Face ID on this device."
-      : methods.length ? `This device cannot make that proof. The box accepts: ${methods.join(", ")}.` : "This browser cannot use a passkey.";
-    return h("div", { class: "gl-notice gl-notice-hold", role: "alert" },
-      h("div", { class: "gl-notice-text" },
-        h("div", { class: "lbl beacon" }, "Confirm it's you"),
-        h("p", null, `Taking or handing back the keyboard pauses ${s.name}, so only a person may do it. `, how),
-        h("p", { class: "code" }, err.message || err.code)),
-      h("div", { class: "gl-notice-acts" },
-        h("button", { type: "button", class: "btn btn-ghost", onclick: () => hooks.notice(null) }, "Cancel"),
-        passkey ? h("button", { type: "button", class: "btn btn-primary", onclick: retry }, gicon("shield"), "Confirm with passkey") : null));
-  }
-
   function failed(title, err) {
-    // No passkey on the box yet: enrolling one is in Settings, so say where.
-    const enroll = /no passkey is enrolled/i.test(String(err?.message || ""))
-      ? h("p", null, link("/settings?section=security", { class: "link" }, "Add a passkey in Settings"), ", then take over again.") : null;
     return h("div", { class: "gl-notice gl-notice-hold", role: "alert" },
-      h("div", { class: "gl-notice-text" }, h("div", { class: "lbl beacon" }, title), h("p", null, errText(err)), enroll),
+      h("div", { class: "gl-notice-text" }, h("div", { class: "lbl beacon" }, title), h("p", null, errText(err))),
       h("div", { class: "gl-notice-acts" }, h("button", { type: "button", class: "btn btn-ghost", onclick: () => hooks.notice(null) }, "Dismiss")));
   }
 

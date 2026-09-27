@@ -48,6 +48,12 @@ Verified:
 - `statusline.sh` drains Claude Code's stdin when it is not chaining: exiting with it unread made
   the writer fail with EPIPE (seen once in the install test on the test box). Still 3.96 ms mean,
   4.44 ms p95 with a 600-byte stdin. The statusline cli test then passed 5 runs in a row.
+- Merged to main at c4bf9ea. Plain form from public main (205387e), temp config:
+  `claude plugin marketplace add vyre-ai/vyre`, `claude plugin install vyre@vyre`, the no-Vyre
+  line, `plugin:vyre:vyre` connected, `claude plugin uninstall vyre@vyre`: all pass.
+- docs/using/claude-code.md (work/docs 7421fb5) reviewed for accuracy; corrections sent to docs
+  (drop the local-path snag, backup only when settings.json exists, empty line while vyred is
+  down, the up offer only on a terminal).
 - A `vyre` on PATH that is not the Vyre package (the old prototype's bin/ on this Mac) is skipped,
   and the search goes on down PATH.
 - `claude plugin validate . --strict` and `claude plugin validate harness --strict` pass (2.1.283).
@@ -67,17 +73,58 @@ Perf:
   max 137.6 MB, no timer under 60 s. The sustained-CPU line fails at 13.1%, and fails the same way
   on main 7edfbfa (12.75%), so it predates this branch: the startup indexing tail, not statusline.
 
+## Done: the session knows the user (27 Sep)
+
+- `c4a30dd` core/about module + about.md, the hook reads it, `/vyre todo|remind|agenda|remember|lesson`,
+  MCP instructions for memory_answer and planner_add. ADR 0020 addendum.
+- Tests on the test box: core/about, cc-plugin (a stand-in planner module in the home, called
+  through the copied plugin's MCP server), harness, hygiene, modules: 54/54.
+- SessionStart hook with about.md and vyred down, on the Mac: 41 ms median, 47 ms p95, nearly all
+  node start and hook.js's imports; reading the file is well under 1 ms. The no-Vyre path is
+  unchanged (about 20 ms).
+
+## Done: stand-ins replaced (28 Sep)
+
+- `749317f`, `1505f42` on main c48959b: `/vyre todo|remind|agenda` use the planner's merged shapes
+  (planner.add {text, kind?}, planner.list {kind: "todo"}, planner.agenda {from?}); a reminder is
+  `{text: "remind me <when> <what>"}` so parse.js reads the time. `f39404e`: core/about reads
+  memory-iq's `memory.profile {limit: 12}` and keeps kinds work, place, preference only (no people,
+  vehicles, clients); `/vyre remember` calls `memory_remember` and offers a lesson when refused. Real client names in tests replaced by the sample world.
+- End to end on the test box, a scratch tree of this branch + work/planner (8acf291) + work/memory-iq
+  (23d25ac): test/cc-plugin (the real planner through the copied plugin's MCP server: remind in
+  2 hours, todo, list, agenda, a no-time reminder refused), core/about, test/harness,
+  core/planner/planner, core/memory/personal/answer: 46/46. Again at e1bd6cb (main 964af29) with
+  memory-iq 9cec54f: 48/48. The integrator's failing trial was ddf4653, before the rewrite. This branch alone (stand-in): 15/15.
+- SessionStart hook with about.md, vyred down, 30 runs on the Mac (load 2.6): 43 ms median, 47 ms
+  p95 net of the timer (bare node 21 ms). Imports are about 13 ms, 10 of them core/daemon/client.js.
+
 ## Doing
 
-- Nothing in progress. Queued to merge after work/connectors.
+- Nothing running. Waiting on memory-iq's answers (Needs) and the integrator's queue.
 
 ## Next
 
-- After this branch merges to main: repeat the install with the plain `vyre-ai/vyre` form.
-- docs: a "Vyre in Claude Code" page; content sent to the docs team, waiting for their draft to review.
+- When memory-iq allows bare "mcp": a combined test (memory_remember then memory_answer through
+  the copied plugin's MCP server).
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
+- If the hook's p95 creeps past 50 ms: import core/daemon/client.js lazily in hook.js (harness
+  owner's file; ask first).
 
 ## Needs from others
+
+- memory-iq (shapes confirmed; memory.profile and memory.remember on 892b339): their gate refuses a
+  bare "mcp" caller, which is the user's own Claude Code session. Told them; they will add it.
+  Then add a combined test through the plugin for memory_answer and memory_remember.
+- planner: asked whether `at: "6pm"` alone and "6pm call ..." should parse (the lead thinks yes).
+  /vyre remind does not depend on it.
+- planner (settled 28 Sep): shapes adopted as merged; no {day, days} sugar needed. Told them a bare
+  "mcp" caller is the user's own session (no label, may edit what it added); mcp:agent:<name> is
+  an agent. Delivery of a due reminder: push + Capsule + Deck, not a Claude session. The agent
+  rule (free adds, silent ~200/hour cap, label only when not the user's or their assistant's) is
+  theirs to enforce; not yet in their code.
+- docs: parked text in work/docs docs/work/pending-cc-plugin.md, applied after c4a30dd/2d9a274 merge. Its
+  "agents: 20 an hour, only a person edits" line is superseded: agents add freely (silent ~200/hour cap),
+  labelled only when not the user's own assistant or session. Told docs.
 
 - ci: publish `vyre-ai/vyre` with `.claude-plugin/marketplace.json` at the root. Keep
   `harness/.claude-plugin/plugin.json`'s version equal to `package.json` on release (a test checks).
@@ -88,6 +135,10 @@ Perf:
   work/connectors merges: its server.js changes arrive through the same import.
 
 ## Changed contracts
+
+- `/vyre remember <fact>` is a memory fact now; lessons are `/vyre lesson <rule>`.
+- New module `about`, tool `about.text` (not offered over MCP), file `<home>/about.md`.
+- SessionStart additionalContext now starts with about.md's text for a person's own session and the assistant.
 
 - `harness/hooks/hooks.json` runs `hooks/run.js <piece>`, and `harness/.mcp.json` runs `mcp/run.js`.
   `hook.js` and `server.js` are unchanged and still run directly.

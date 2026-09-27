@@ -81,6 +81,9 @@ could stop any agent, and one that could hand back could end a person's take-ove
   `computers.takeover` and `computers.giveback` as `module:glass`. We ask security to put
   `computers.takeover` and `computers.giveback` on the floor's human-only list, so a direct
   call from a model is refused too.
+- Changed 27 Sep 2026 (ADR 0004 addendum): none of the four asks for a proof now, private
+  sign-in included. They are `PERSON_ONLY`: an agent, a guest and Claude's sessions are still
+  refused, and the owner takes and hands back with one click.
 - **No client timers.** ADR 0003 has Glass renew the lease every 30 seconds, which breaks the
   Deck's one-minute rule for a background tab. Instead the relay renews the take-over and the
   thread lease on each pong and each forwarded input. A hidden tab disconnects (decision 1), so a

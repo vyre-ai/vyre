@@ -207,7 +207,8 @@ function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.random
 const of = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
 
 test("switchboard: a thread streams to two clients, asks, is answered, and changes hands", async t => {
-  const { root, work, tool, launches } = await boot(t);
+  const w = await boot(t);
+  const { root, work, tool, launches } = w;
   const a = sse(root), b = sse(root);
   t.after(() => { a.close(); b.close(); });
 
@@ -240,7 +241,10 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   const open = (await tool("threads.asks", {})).data;
   assert.equal(open.length, 1);
   assert.equal(open[0].request_id, undefined, "Claude Code's request id stays inside vyred");
-  assert.equal((await tool("threads.get", { thread: id })).data.thread.status, "waiting");
+  assert.deepEqual(open[0].presence, { required: false, covered: false }, "answering takes no proof; a surface renders from this");
+  const got = (await tool("threads.get", { thread: id })).data;
+  assert.equal(got.thread.status, "waiting");
+  assert.deepEqual(got.asks[0].presence, { required: false, covered: false });
 
   // A model never approves a permission: the loader refuses both MCP caller forms and hides the
   // tool. (An agent named without its thread's key is refused before that, listing included.)
@@ -254,6 +258,10 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   for (const who of ["deck", "capsule", "local"]) {
     assert.ok((await request("GET", "/v1/tools", undefined, { root, caller: who })).data.some(x => x.name === "threads.answer"), `${who} can answer`);
   }
+  assert.equal(fs.existsSync(target), false);
+  // A call vyred traced to this very thread never answers its own ask, even as a person's surface.
+  const own = await w.d.registry.call("threads.answer", { ask: raised.payload.ask, decision: "allow" }, "cli", { thread: id });
+  assert.equal(own.error?.code, "denied", JSON.stringify(own));
   assert.equal(fs.existsSync(target), false);
 
   const ans = await tool("threads.answer", { ask: raised.payload.ask, decision: "allow", surface: "capsule" });
