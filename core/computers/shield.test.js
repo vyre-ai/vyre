@@ -106,7 +106,7 @@ test("computers.shield: refuses reads and input, tells computerd, and ends with 
   assert.deepEqual(cd.told.map(x => x.body.on), [true, false]);
   const types = s.events().map(e => e.type).filter(x => /shield|handed/.test(x));
   assert.deepEqual(types, ["computer.shielded", "computer.handed-back", "computer.unshielded"]);
-  assert.deepEqual(s.events().find(e => e.type === "computer.shielded").payload, { agent: "kit" });
+  assert.deepEqual(s.events().find(e => e.type === "computer.shielded").payload, { agent: "kit", reason: "person" });
   assert.equal((await s.cli("computers.shield", { agent: "kit", on: true })).error.code, "no_such_tool");
 });
 

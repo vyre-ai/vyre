@@ -20,6 +20,7 @@ import { Keyboard, isSurface, idleMsOf, IDLE_CHOICES, IDLE_WARN_MS } from "./key
 import { FakeDriver } from "./driver/fake.js";
 import { DockerDriver } from "./driver/docker.js";
 import { Shield } from "./shield.js";
+import { Fills } from "./fill.js";
 import { helper, tellComputerd } from "./helper.js";
 import * as egress from "./egress.js";
 import * as tailnet from "./tailnet.js";
@@ -57,7 +58,8 @@ export default {
     // Live too: computers.handback.set changes the idle hand-back for a take-over already running.
     const idleMin = () => ctx.config && ctx.config.computers ? ctx.config.computers.handbackIdleMin : undefined;
     const keyboard = new Keyboard({ pool, call: ctx.call, emit, on: ctx.events.on, log: ctx.log, idleMs: () => idleMsOf(idleMin()) });
-    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on) => tellComputerd(pool, agent, on) });
+    const shield = new Shield({ pool, emit, on: ctx.events.on, log: ctx.log, tell: (agent, on, o) => tellComputerd(pool, agent, on, o) });
+    const fills = new Fills({ pool, shield, keyboard, emit, on: ctx.events.on, log: ctx.log, helper: agent => helper(pool, agent) });
 
     if (!driver) ctx.log("no computer driver configured (computers.docker is not set); computers cannot start");
     else {
@@ -217,7 +219,10 @@ export default {
       obj({ agent: str, surface: str }, ["surface"]), async (i, { caller }) => {
         const agent = await resolve(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
-        return keyboard.takeover(agent, await ownSurface(i, caller), caller);
+        const surface = await ownSurface(i, caller);
+        // Nobody types into a computer the Vault is signing in on; the fill ends in seconds.
+        if (fills.has(agent)) throw Object.assign(new Error(`${agent}'s computer is busy: a sign-in is being filled; try again in a few seconds`), { code: "busy" });
+        return keyboard.takeover(agent, surface, caller);
       });
 
     tool("computers.giveback", "Hand the keyboard back to the agent.", obj({ agent: str, surface: str }, ["surface"]),
@@ -252,7 +257,26 @@ export default {
       obj({ agent: str }), async (i, { caller }) => helper(pool, await resolve(i, caller)), { internal: true });
 
     tool("computers.shield", "Shield an agent's computer while a person signs in: its hands refuse reads as well as input.",
-      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true), { internal: true });
+      obj({ agent: str, on: { type: "boolean" } }, ["on"]), async (i, { caller }) => shield.set(await resolve(i, caller), i.on === true, { reason: "person" }), { internal: true });
+
+    // ---- fill: the Vault signs an agent in without the agent seeing the login (fill.js) -------
+
+    const vaultOnly = caller => {
+      if (String(caller || "") !== "module:vault") throw Object.assign(new Error("only the vault fills a login into an agent's computer"), { code: "denied" });
+    };
+
+    tool("computers.fill.begin", "Shield an agent's computer for a Vault fill: the agent's hands and CDP sockets are cut, and the vault gets a CDP address and a token for this fill only, good for 60 s.",
+      obj({ agent: str, origin: str }, ["agent", "origin"]), async (i, { caller }) => {
+        vaultOnly(caller);
+        if (!AGENT.test(String(i.agent || ""))) throw new Error(`"${i.agent}" is not an agent name`);
+        return fills.begin(String(i.agent), String(i.origin || ""));
+      }, { internal: true });
+
+    tool("computers.fill.end", "End a Vault fill: its token and socket are dropped and the agent's computer is unshielded. target: the tab signed in, for the agent's hands.",
+      obj({ agent: str, fill: str, target: str }, ["agent", "fill"]), async (i, { caller }) => {
+        vaultOnly(caller);
+        return fills.end(String(i.agent), String(i.fill || ""), { target: i.target, why: "done" });
+      }, { internal: true });
 
     // ---- egress: the listed sites through the user's Mac (egress.js) -------------------------
 
@@ -362,11 +386,12 @@ export default {
       }, { internal: true });
 
     return {
-      pool, keyboard, shield, driver, sweep,
+      pool, keyboard, shield, fills, driver, sweep,
       async stop() {
         if (timer) clearTimeout(timer);
         keyboard.stop();
         shield.stop();
+        fills.stop();
         pool.wake();
         if (glass && typeof glass.stop === "function") { try { await glass.stop(); } catch {} }
       },
