@@ -63,7 +63,7 @@ them, one per fix.
   `VYRE_CAPSULE_STAY=1`. `present()` in lib/present.js is shared by main.js and the check script;
   unit tests in present.test.js. Default behaviour is unchanged.
 - 9c9514a fix(capsule): the memory box ranks for the question (lib/said.js), rule 7.
-- (this commit) feat(threads): `live` on threads.list and projects.catalog rows; threads.unqueue.
+- 8c888cb feat(threads): `live` on threads.list and projects.catalog rows; threads.unqueue.
 - On work/capsule-agent: 3ce1433 the native Capsule calls capsule.report on hotkey state change
   (HotkeyReport, retried on reconnect); a132faf waiting on you is violet #B8A4FF (Theme.attention)
   in the native and Electron Capsules; 7526089 a compile fix for a stray `askItem` line that is
