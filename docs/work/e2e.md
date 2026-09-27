@@ -341,6 +341,13 @@ Plan (to the lead before building):
   reverting core/daemon/index.js fixes it (teammates). Suspect per-connection peer check on macOS
   (perl LOCAL_PEERPID or ps -A). rc.1 carries it; the Capsule's stream goes through it. Asked lead for
   one instrumented Mac run. Orphan teammates run pid 30878 on the Mac (not mine). Scratch: maccheck/.
+- memory-iq 11b9147f (memory.today fixes) SIGNED OFF for 0.1.1 (read). Import design (8702ab66): notes
+  sent (scan caps, plan-hash consent, cancel = revoke, scrub+quarantine, machine on every row, no agent).
+- federation transport design (8d982f85): dedicated tailnet upload route (paired node only, chunk cap,
+  resume keyed by machine, box switch); device role = capability-limited peer kind, not a 2nd identity.
+- glass-live 14f1824c SIGNED OFF (read with a sonnet helper, key lines verified). MEDIUM latent: cdpmux
+  target discovery isn't per-session in Chrome; safe only because agent and fill never connect at
+  once. LOW: shield in memory, a restart unshields.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
