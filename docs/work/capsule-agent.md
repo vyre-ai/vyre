@@ -28,7 +28,7 @@ lines each in capsule-pro's `Host/CapsuleModel.swift`, `Host/App.swift`, `Host/P
   in an empty box) (UI/AgentReplyView.swift).
 - 4 @agent as a conversation: history (threads.get), asks, pending words reconciled, the reply
   streaming, notices as status (Agent/AgentDirect.swift, UI/AgentDirectView.swift).
-- 5 Beacon dot on the menu-bar mark while anything loud waits (capsule-pro's corner dot stays the
+- 5 Attention (violet) dot on the menu-bar mark while anything loud waits (capsule-pro's corner dot stays the
   health dot), "Waiting on you · N" in the right-click menu, the tooltip; the list is followed from
   launch and read again when vyred comes back (Agent/AgentMenuBar.swift).
 - 6 In the running Capsule: clipboard history (store and watcher), contacts (asked once, from its
@@ -43,6 +43,19 @@ lines each in capsule-pro's `Host/CapsuleModel.swift`, `Host/App.swift`, `Host/P
   (`vyre capsule --hidden`); the app follows capsule.requested (show, hide, toggle); a driven mode
   (VYRE_CAPSULE_DRIVE=1, Agent/AgentDrive.swift) with open and keystroke timings; and
   scripts/capsule-native-check.mjs builds, drives and measures the app on CI.
+- capsule.report from the native app: Hotkeys reports once after start() and then only when
+  Control twice turns on or off (requestDoubleControl, startDoubleControl, or a tap macOS turned
+  off that would not come back on). The message says why in plain words and names the chord that
+  still works ("Input Monitoring is off, so Control twice is off. ⌥Space still opens the
+  Capsule."). A send that fails because vyred is not up goes again when the follower reconnects.
+  The change detection is Host/HotkeyReport.swift (pure); App.swift wires Hotkeys.onChange to
+  the call. Headless mode starts no taps and sends nothing.
+- The waiting-on-you colour is the violet attention token (Theme.attention, #B8A4FF), matching the
+  Deck and the phone: the "WAITING ON YOU" label, the row dot, the selected-row bar, the source
+  label, the WaitingHint dot, and the menu-bar mark's dot. The Electron Capsule's waiting label,
+  row dot, "HELD FOR YOU" badge, header dot and tray dot are violet too (--attention).
+- Fixed a stale line from the capsule-pro merge in Agent/AgentDestinations.swift (a second @app
+  branch calling the removed `askItem`), which stopped the native tree compiling.
 
 ## Measured (CI, macos-latest, headless driven run, vyred absent)
 - open 3.3 to 4.3 ms, keystroke to rows 78 to 86 ms.
@@ -58,7 +71,23 @@ lines each in capsule-pro's `Host/CapsuleModel.swift`, `Host/App.swift`, `Host/P
   notification or a line.
 - threads.unqueue and streaming a queued session's reply (from capsule-now).
 
+## Changed contracts
+- The native Capsule now calls capsule.report on hotkey state change (once at startup, then only
+  on a change; caller capsule). `vyre doctor` reads it as before.
+- Theme.attention (#B8A4FF) is the "needs you" colour in the native Capsule; the Electron Capsule
+  has `--attention`. Beacon stays for errors and confirm lines (see Needs from others).
+
+## Needs from others
+- Lead / deck-design: Beacon (#FF7A59) is still used for things that are not the waiting list:
+  native CapsuleView error line (Stopped.) and an action's confirm line, AgentDirectView and the
+  sight SessionPanel failed-turn label and error line, SightPanel and SessionPanel status lines,
+  Kit's `Tint.beacon` (IconCache); Electron `.ic.vy.hot` (held glyph wash), the held glyph and
+  TONE.held in capsule.js. Keep, or move to attention?
+
 ## Tests
+- Local, through the build lock: `<team-dir>/buildlock.sh capsule-now local/capsule/native/build.sh test "hotkey report"`,
+  then the built binary with the filters "hotkey report" 5, "agent small" 2, "agent desk" 4,
+  "snapshot" 3: all passed.
 - CI (capsule-mac on work/capsule-agent): native 218 passed, 0 failed. Agent suites: keeper 2,
   desk 4, route 5, direct 1, small 2, wiring 3. Node (on the test box): capsule 15, up 24.
 - Known flake, capsule-pro's: frecency debounce under a loaded runner (FrecencyTests.swift:68).

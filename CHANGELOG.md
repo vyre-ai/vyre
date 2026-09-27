@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule tells `vyre doctor` why Control twice is off, and waiting is violet
+
+- The native Capsule calls capsule.report once after its hot keys start and again only when
+  Control twice turns on or off (asked for from the menu, or a tap macOS turned off for good). The
+  message names the cause and the chord that still works, for example "Input Monitoring is off,
+  so Control twice is off. ⌥Space still opens the Capsule." A report vyred missed goes again when
+  it is back. `local/capsule/native/Sources/Host/HotkeyReport.swift`, `Host/Hotkeys.swift`.
+- "Waiting on you" is violet (`Theme.attention`, #B8A4FF), as on the Deck and the phone: the list
+  label, dots, selected bar, source label, the hint under an empty box, and the menu-bar mark's
+  dot. The Electron Capsule's waiting label, dot, badge and tray dot match (`--attention`).
+
 #### The box's alarms and reminders ring on the Mac
 
 - The native Capsule keeps /v1/link/events open (hidden too: a timer on the box has to ring

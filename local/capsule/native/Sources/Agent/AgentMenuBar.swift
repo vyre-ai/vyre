@@ -1,6 +1,6 @@
-// The menu-bar mark says when something waits: the mark carries the Beacon dot while anything
+// The menu-bar mark says when something waits: the mark carries the attention dot (violet) while anything
 // held or asking waits (proposed lessons are quiet and do not count), and the menu names how many.
-// The small corner dot stays capsule-pro's health dot (Host/MenuBar.swift); Beacon is this one.
+// The small corner dot stays capsule-pro's health dot (Host/MenuBar.swift); the attention dot is this one.
 
 import AppKit
 import Combine
@@ -51,7 +51,7 @@ extension CapsuleApp {
         model.desk.openList()
     }
 
-    /// The mark with the Beacon dot. Not a template (the dot keeps its colour), so the wire is drawn
+    /// The mark with the attention dot. Not a template (the dot keeps its colour), so the wire is drawn
     /// in the label colour of the menu bar's appearance at draw time.
     static func menuBarMarkWaiting() -> NSImage {
         NSImage(size: NSSize(width: 18, height: 18), flipped: true) { r in
@@ -65,7 +65,7 @@ extension CapsuleApp {
             p.lineJoinStyle = .round
             NSColor.labelColor.setStroke()
             p.stroke()
-            NSColor(srgbRed: 1, green: 0x7A / 255, blue: 0x59 / 255, alpha: 1).setFill()
+            NSColor(srgbRed: 0xB8 / 255, green: 0xA4 / 255, blue: 0xFF / 255, alpha: 1).setFill() // Theme.attention
             NSBezierPath(ovalIn: NSRect(x: (13.5 - 2.2) * k, y: (4 - 2.2) * k, width: 4.4 * k, height: 4.4 * k)).fill()
             return true
         }

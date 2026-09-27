@@ -11,6 +11,7 @@
   --signal: #C6F36B; --signal-hover: #D4F88A; --signal-ink: #0E0D0C; --signal-wash: rgba(198,243,107,0.12);
   --recall: #EBC76B; --recall-wash: rgba(235,199,107,0.10);
   --beacon: #FF7A59; --beacon-wash: rgba(255,122,89,0.12);
+  --attention: #B8A4FF; --attention-wash: rgba(184,164,255,0.12); /* needs you: violet, as on the Deck and the phone */
   --sans: "Instrument Sans", "Helvetica Neue", Arial, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
 }
@@ -84,13 +85,13 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .turn .x { font-size: 13px; line-height: 19px; color: var(--stone); white-space: pre-wrap; user-select: text; max-height: 160px; overflow: auto; }
 .turn .x.on { color: var(--bone); }
 
-/* Beacon: needs you. Nothing else is coral. */
+/* Attention (violet): needs you. */
 .waithead { padding: 12px 16px 4px; display: flex; align-items: center; justify-content: space-between; }
-.waithead .lbl { color: var(--beacon); }
+.waithead .lbl { color: var(--attention); }
 .waithead .s { font-size: 12px; color: var(--ash); }
 .wait { display: flex; align-items: flex-start; gap: 12px; padding: 12px 10px; border-radius: 6px; }
 .wait.on { background: var(--signal-wash); }
-.wait .b { width: 8px; height: 8px; border-radius: 4px; background: var(--beacon); margin-top: 6px; flex-shrink: 0; }
+.wait .b { width: 8px; height: 8px; border-radius: 4px; background: var(--attention); margin-top: 6px; flex-shrink: 0; }
 .wait .c { display: flex; flex-direction: column; gap: 3px; flex-grow: 1; min-width: 0; }
 .wait .t { font-size: 14px; line-height: 20px; color: var(--bone); }
 .wait .s { font-size: 12px; line-height: 16px; color: var(--ash); }
@@ -98,8 +99,8 @@ body { padding: 8px 24px 40px; font-family: var(--sans); color: var(--bone); -we
 .wait .kbd { margin-left: 8px; color: var(--bone); }
 
 .heldtitle { font-size: 15px; line-height: 20px; color: var(--bone); flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: var(--beacon-wash); color: var(--beacon); font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; white-space: nowrap; }
-.badge i { width: 6px; height: 6px; border-radius: 3px; background: var(--beacon); }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: 4px; background: var(--attention-wash); color: var(--attention); font-family: var(--mono); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.16em; white-space: nowrap; }
+.badge i { width: 6px; height: 6px; border-radius: 3px; background: var(--attention); }
 .held { padding: 12px 16px 14px 44px; display: flex; flex-direction: column; gap: 10px; }
 .held .grid { display: grid; grid-template-columns: 56px minmax(0, 1fr); row-gap: 4px; font-size: 12px; line-height: 16px; }
 .held .grid .k { color: var(--ash); }

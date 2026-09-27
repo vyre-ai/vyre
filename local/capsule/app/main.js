@@ -8,7 +8,7 @@
 //     fullscreen terminal, which is where people spend their day.
 //   - Focus follows the user's gesture and nothing else. A focused box in a panel over another
 //     app once swallowed what the user was typing into their terminal. So a question arriving
-//     from an agent turns the menu-bar dot Beacon and waits; it never opens the Capsule and never
+//     from an agent turns the menu-bar dot violet (attention) and waits; it never opens the Capsule and never
 //     takes the keyboard (floor rule 6).
 //   - Escape hides the window rather than blurring the box: blurring alone does not reliably
 //     hand the keyboard back to the app behind.
@@ -262,7 +262,7 @@ async function trayImages() {
   };
   const idle = await draw(svg("currentColor", 1.9));
   idle.setTemplateImage(true);
-  const needs = await draw(svg("#FF7A59", 2.3));
+  const needs = await draw(svg("#B8A4FF", 2.3)); // attention: violet
   return { idle, needs };
 }
 let images = null;

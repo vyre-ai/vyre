@@ -415,9 +415,9 @@ function paint() {
   const hint = $("hint");
   const kids = [];
   const nWait = snap.waiting.length;
-  // A proposed lesson waits quietly: it never turns the dot Beacon on its own.
+  // A proposed lesson waits quietly: it never turns the dot violet (attention) on its own.
   const loud = snap.waitingLoud ?? nWait;
-  $("dot").setAttribute("fill", loud ? "#FF7A59" : "#C6F36B");
+  $("dot").setAttribute("fill", loud ? "#B8A4FF" : "#C6F36B");
   $("chip").hidden = !S.chip;
   if (S.chip) $("chip").textContent = "@" + S.chip.label;
   hint.replaceChildren();
