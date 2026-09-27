@@ -103,6 +103,24 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 
 - lead: route event renames (platform recorded as PLANNED in core/event-catalog): glass + harness file.* -> files.*, computers computer.* -> computers.*, projects projects.moved -> project.moved. Aliases go live one release after each rename.
 
+## One-product audit: findings tracked to done
+
+The lead approved and assigned owners. Tracking each:
+- **1 (vault, grants per-agent not per-project) and 5 (no session-credentials design doc, also to
+  sessions):** sent to vault and sessions. Vault is already writing session-credentials.md per the
+  lead. Status: sent, not yet confirmed.
+- **2 (watchers field/UI) and 4 (one canonical project id):** sent to sessions (projects owner).
+  Status: sent, not yet confirmed.
+- **3 (one shared agent-caller parser):** built, cohesion's own to do since it's glue. Done:
+  5ef364c3, `agentClaim` in core/modules, migrated computers/hands-desktop/sight/network/relay/
+  planner (6 files); found and closed two real gaps while doing it (computers.resolve/list and
+  hands-desktop.resolveAgent only matched the narrower "mcp:agent:" shape). testbox: 340/340. Left
+  core/daemon/index.js's own copy alone - e2e's work/e2e-agentclaim (1ff45c03) touches that same
+  file and I didn't want to risk a conflict with work still landing; flagged for e2e/integrator to
+  fold in after. Sent to e2e for review.
+- **6 (chat's project-picker UI, first end-to-end check on restart):** added to the paused-teams
+  hand-over note below.
+
 ## One-product audit (projects x sessions x IQ x watchers x teammates x helpers x chat x vault)
 
 Merged main into work/cohesion first (58007a54; rc.1 landed since my last merge, resolved
@@ -146,11 +164,16 @@ the lead delivers this when each restarts after rc.2, so it's collected here rat
   `thread.status` once sessions emits it. The Answer card (app-design's confirmed shape, section 6
   of interaction.md: no header, plain never-colour-coded confidence line, source chips, quiet
   inline "Wrong?", untimed Undo after a correction) is what memory-iq's card should render as, once
-  you cut over to `memory.ask`.
+  you cut over to `memory.ask`. **One-product audit finding 6 (lead-assigned):** the project picker
+  (`context.now`-started sessions) is data-ready but the UI is unconfirmed shipped, per sessions'
+  projects-map.md - make this the first thing verified end-to-end on restart, before anything else,
+  since a person's `@design` landing in the wrong project silently is the kind of seam this whole
+  pass exists to catch.
 - **pwa.** Everything under cohesion items 1, 2, 8 and 11 that already lists pwa as an owner
   (sight/context/waiting/tips) should read app-design's shared card-and-row state vocabulary
   (interaction.md section 0: hover/pressed/focus/selected/swiping/committed, the seven list states
-  in states.md) rather than a PWA-specific version of any of them.
+  in states.md) rather than a PWA-specific version of any of them. **Finding 6** applies to pwa's
+  own project picker too, same as chat's.
 - **mobile.** Same vocabulary as pwa, plus: the swipe rule's exact numbers now have a citation
   (interaction.md section 3: 100pt full reveal or 0.5px/ms fling past 24pt commits, presence-gated
   primaries show the biometric glyph in the reveal itself). Sight.frame stills (item 18) apply to
