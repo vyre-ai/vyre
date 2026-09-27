@@ -207,7 +207,8 @@ function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.random
 const of = (events, thread, type) => events.filter(e => e.thread === thread && e.type === type);
 
 test("switchboard: a thread streams to two clients, asks, is answered, and changes hands", async t => {
-  const { root, work, tool, launches } = await boot(t);
+  const w = await boot(t);
+  const { root, work, tool, launches } = w;
   const a = sse(root), b = sse(root);
   t.after(() => { a.close(); b.close(); });
 
@@ -240,7 +241,10 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   const open = (await tool("threads.asks", {})).data;
   assert.equal(open.length, 1);
   assert.equal(open[0].request_id, undefined, "Claude Code's request id stays inside vyred");
-  assert.equal((await tool("threads.get", { thread: id })).data.thread.status, "waiting");
+  assert.deepEqual(open[0].presence, { required: false, covered: false }, "answering takes no proof; a surface renders from this");
+  const got = (await tool("threads.get", { thread: id })).data;
+  assert.equal(got.thread.status, "waiting");
+  assert.deepEqual(got.asks[0].presence, { required: false, covered: false });
 
   // A model never approves a permission: the loader refuses both MCP caller forms and hides the
   // tool. (An agent named without its thread's key is refused before that, listing included.)
@@ -254,6 +258,10 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   for (const who of ["deck", "capsule", "local"]) {
     assert.ok((await request("GET", "/v1/tools", undefined, { root, caller: who })).data.some(x => x.name === "threads.answer"), `${who} can answer`);
   }
+  assert.equal(fs.existsSync(target), false);
+  // A call vyred traced to this very thread never answers its own ask, even as a person's surface.
+  const own = await w.d.registry.call("threads.answer", { ask: raised.payload.ask, decision: "allow" }, "cli", { thread: id });
+  assert.equal(own.error?.code, "denied", JSON.stringify(own));
   assert.equal(fs.existsSync(target), false);
 
   const ans = await tool("threads.answer", { ask: raised.payload.ask, decision: "allow", surface: "capsule" });
@@ -1005,8 +1013,9 @@ test("sessions: claude is known by its command line, since node 24 names its mai
 });
 
 test("queue: a person's words are queued for a terminal-busy session, the owner's phone over the tailnet included; a model's are refused", async () => {
-  const { queuesFor } = await import("./index.js");
-  for (const c of ["deck", "capsule", "cli", "local", "tailnet:alex@example.com"]) assert.equal(queuesFor(c), true, c);
+  const { queuesFor, fromLink } = await import("./index.js");
+  for (const c of ["deck", "capsule", "cli", "local", "tailnet:alex@example.com", "link:box"]) assert.equal(queuesFor(c), true, c);
+  assert.deepEqual(["link:box", "deck", "mcp:link:box"].map(fromLink), [true, false, false], "the link is a caller kind of its own");
   for (const c of ["mcp", "mcp:agent:kit", "harness", "hook", "tailnet:agent:kit", "cli agent:kit", "tailnet:"]) assert.equal(queuesFor(c), false, c);
 });
 
@@ -1048,4 +1057,43 @@ test("always in <project>: offered for a thread in its project's folder, sent as
   assert.equal(ask.always_project, null);
   assert.match((await tool("threads.answer", { ask: ask.id, decision: "always", scope: "project", surface: "deck" })).error.message, /project/);
   assert.equal((await tool("threads.asks", { thread: other })).data.length, 1, "still open after the refusal");
+});
+
+test("switchboard: a push ask and a Write ask carry the Changes row in threads.asks, never in ask.raised", async t => {
+  const { root, work, tool } = await boot(t);
+  const { execFileSync } = await import("node:child_process");
+  const env = { ...process.env, GIT_AUTHOR_NAME: "alex", GIT_AUTHOR_EMAIL: "alex@example.com", GIT_COMMITTER_NAME: "alex", GIT_COMMITTER_EMAIL: "alex@example.com",
+    GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: path.join(root, "gitconfig") };
+  const remote = path.join(root, "remote.git"), site = path.join(work, "site");
+  const git = (...a) => execFileSync("git", a, { cwd: site, env, stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote], { env });
+  fs.mkdirSync(site);
+  git("init", "-q", "-b", "main");
+  git("remote", "add", "origin", remote);
+  fs.writeFileSync(path.join(site, "menu.md"), "- Summer tart, 4.00\n");
+  git("add", "."); git("commit", "-q", "-m", "menu"); git("push", "-q", "-u", "origin", "main");
+  fs.writeFileSync(path.join(site, "menu.md"), "- Pumpkin loaf, 5.50\n- Apple cider donut, 3.25\n");
+  fs.writeFileSync(path.join(site, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 1, 0]));
+  git("add", "."); git("commit", "-q", "-m", "autumn");
+
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "bash git -C site push origin main" })).data.id;
+  const raised = await until(() => of(s.got, id, "ask.raised")[0], "ask.raised");
+  assert.equal("detail" in raised.payload, false, "the event stays small");
+  const [ask] = (await tool("threads.asks", { thread: id })).data;
+  assert.equal(ask.detail.command, "git -C site push origin main");
+  assert.deepEqual(ask.detail.changes, [{ file: "logo.png", added: null, removed: null, binary: true }, { file: "menu.md", added: 2, removed: 1 }]);
+  assert.deepEqual(ask.detail.totals, { files: 2, added: 2, removed: 1 });
+  await tool("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" });
+  await until(async () => (await tool("threads.get", { thread: id })).data.thread.status === "idle", "the turn to end");
+
+  const file = path.join(work, "notes.md");
+  fs.writeFileSync(file, "one\ntwo\n");
+  assert.equal((await tool("threads.send", { thread: id, text: `write ${file}`, surface: "cli" })).data.sent, true);
+  await until(() => of(s.got, id, "ask.raised")[1], "the second ask.raised");
+  const [w] = (await tool("threads.asks", { thread: id })).data;
+  assert.deepEqual(w.detail.changes, [{ file, added: 1, removed: 2 }], "the fake writes \"hi\" over two lines");
+  assert.deepEqual(w.detail.totals, { files: 1, added: 1, removed: 2 });
+  await tool("threads.stop", { thread: id });
 });

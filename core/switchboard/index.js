@@ -20,6 +20,7 @@ import { translate, cut, clip, CAPS } from "./translate.js";
 import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
+import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
@@ -375,26 +376,50 @@ export class Switchboard {
       const ev = this.emit(e.type, e.payload, id, project);
       if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
     }
-    if (t.ask) {
-      const a = this.asks.raise({ thread: id, request_id: t.ask.request_id, tool: t.ask.tool, summary: t.ask.summary, destination: t.ask.destination,
-        reason: t.ask.reason ? cut(clip(t.ask.reason, 2000)) : null, kind: t.ask.kind, questions: t.ask.questions, detail: t.ask.detail, tool_use_id: t.ask.tool_use_id });
-      st.inputs = st.inputs || new Map();
-      st.inputs.set(a.id, t.ask.input);                                    // kept in memory only, to hand back on allow
-      if (t.ask.suggestions) { this.suggestions.set(a.id, t.ask.suggestions); if (rec && rec.project) this.projectScope(id).catch(() => {}); }
-      this.set(id, { status: "waiting" });
-      // Small: a question's options without their previews, and never a permission's detail.
-      // Surfaces read the whole card from threads.asks.
-      const questions = a.kind === "question" ? { questions: (a.questions || []).map(q => ({ ...q, options: q.options.map(({ preview, ...o }) => o) })) } : {};
-      const ev = this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null,
-        agent: a.agent, thread_name: a.thread_name, ...questions }, id, project);
-      this.asks.anchored(a.id, ev && ev.id);
-    }
+    if (t.ask && t.ask.kind === "permission") {
+      // The Changes row: an edit's line counts come from its input, now; a push's from git,
+      // which is held for at most GIT_MS and raised without them if git is slower.
+      const cwd = rec ? rec.cwd : undefined;
+      try { const c = editChanges(t.ask.tool, t.ask.input, cwd); if (c) t.ask.detail = { ...t.ask.detail, ...c }; } catch {}
+      const dir = t.ask.tool === "Bash" && cwd ? pushDir(t.ask.input && t.ask.input.command, cwd) : null;
+      if (dir) {
+        const held = st.held = st.held || new Set();
+        const rid = t.ask.request_id, ask = t.ask;
+        held.add(rid);
+        pushChanges(dir).catch(() => null).then(c => {
+          if (!held.delete(rid) || this.live.get(id) !== st) return;       // withdrawn, or the thread ended meanwhile
+          if (c) ask.detail = { ...ask.detail, ...c };
+          this.raiseAsk(id, st, ask);
+        });
+      } else this.raiseAsk(id, st, t.ask);
+    } else if (t.ask) this.raiseAsk(id, st, t.ask);
     if (t.cancel) {
-      const a = this.asks.byRequest(id, t.cancel);
-      if (a) this.closeAsk(a, "cancelled", "claude");
+      if (st.held && st.held.delete(t.cancel)) { /* withdrawn before it was raised */ }
+      else {
+        const a = this.asks.byRequest(id, t.cancel);
+        if (a) this.closeAsk(a, "cancelled", "claude");
+      }
     }
     if (t.limit) this.limit(id, st, t.limit, project);
     if (t.limited && st.launch.fallback && !st.switching) this.fallback(id, st);
+  }
+
+  /** Record an ask, set the thread waiting and emit ask.raised (small: never a permission's detail). */
+  raiseAsk(id, st, ask) {
+    const rec = this.record(id);
+    const project = rec ? rec.project : null;
+    const a = this.asks.raise({ thread: id, request_id: ask.request_id, tool: ask.tool, summary: ask.summary, destination: ask.destination,
+      reason: ask.reason ? cut(clip(ask.reason, 2000)) : null, kind: ask.kind, questions: ask.questions, detail: ask.detail, tool_use_id: ask.tool_use_id });
+    st.inputs = st.inputs || new Map();
+    st.inputs.set(a.id, ask.input);                                        // kept in memory only, to hand back on allow
+    if (ask.suggestions) { this.suggestions.set(a.id, ask.suggestions); if (rec && rec.project) this.projectScope(id).catch(() => {}); }
+    this.set(id, { status: "waiting" });
+    // Small: a question's options without their previews, and never a permission's detail.
+    // Surfaces read the whole card from threads.asks.
+    const questions = a.kind === "question" ? { questions: (a.questions || []).map(q => ({ ...q, options: q.options.map(({ preview, ...o }) => o) })) } : {};
+    const ev = this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null,
+      agent: a.agent, thread_name: a.thread_name, ...questions }, id, project);
+    this.asks.anchored(a.id, ev && ev.id);
   }
 
   /**
@@ -562,8 +587,10 @@ export class Switchboard {
    * process has it open, since one transcript takes one writer. One that is open elsewhere (a
    * terminal) is not typed into: a person's words are queued instead, and the Harness hands them
    * over when that session's turn ends (queue). `queue` false (a model's call) keeps the refusal.
+   * `wait` (the person at the box, through the link) never takes the keyboard: while another
+   * surface holds it, the words are queued as for a terminal.
    */
-  async send(id, text, surface, { queue = true } = {}) {
+  async send(id, text, surface, { queue = true, wait = false } = {}) {
     if (!this.live.has(id)) {
       if (!this.record(id)) await this.adopt(id);
       const why = this.elsewhere(id);
@@ -571,6 +598,8 @@ export class Switchboard {
       if (why) return { sent: false, open_elsewhere: true, note: `This session is open somewhere else: ${why}. Only one keyboard can type into it, so close it there or type there.` };
     }
     const rec = this.must(id);
+    const held = wait && this.leases.holder(id);
+    if (held && held.surface !== surface) return this.queue(id, text, surface, held.surface);
     const lease = this.leases.typing(id, surface);
     if (!lease.ok) return { sent: false, holder: lease.holder, note: `${lease.holder} has the keyboard; threads.lease takes it` };
     if (lease.took) this.emit("lease.changed", { holder: surface, previous: lease.took.previous, ...(lease.took.took ? { took: lease.took.took } : {}) }, id, rec.project);
@@ -590,16 +619,18 @@ export class Switchboard {
   /**
    * Keep words for a session another process has open. Nothing is typed into it: the Harness's
    * Stop hook in that session hands them to Claude when its current turn ends (deliver), or its
-   * next prompt does when it is idle. Emits thread.queued.
-   * @param {string} id @param {string} text @param {string} surface
+   * next prompt does when it is idle. Emits thread.queued. `busy` in the answer is "terminal", or
+   * the surface holding the keyboard when that is why (a send with `wait`).
+   * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface) {
+  queue(id, text, surface, holder) {
     const rec = this.must(id);
     const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at) VALUES (?,?,?,?)").run(id, String(text), surface, Date.now());
     this.emit("thread.queued", { queued: Number(r.lastInsertRowid), text: cut(text, 2000), surface }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
-    return { sent: false, queued: true, open_elsewhere: true, thread: id, name,
-      note: `${name} is busy in your terminal. I'll hand it your message when this turn ends.` };
+    return { sent: false, queued: true, open_elsewhere: true, thread: id, name, busy: holder || "terminal",
+      note: holder ? `${name} is in use in ${holder}. I'll hand it your message when this turn ends.`
+        : `${name} is busy in your terminal. I'll hand it your message when this turn ends.` };
   }
 
   /**
@@ -858,6 +889,14 @@ export class Switchboard {
 
 const str = { type: "string" };
 
+/**
+ * The person at the box, through the link: the Mac runs a WRITE only with `as: "person"`, as
+ * "link:box" (core/link/mac.js). A caller kind of its own, named here rather than left to fall
+ * through the model-caller patterns: it queues, is no agent, and types only as a box surface.
+ * @param {string} [caller]
+ */
+export const fromLink = caller => /^link:/.test(String(caller || ""));
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 /**
  * Whose words are queued for a session busy in a terminal: a person's. That is every surface of
@@ -868,6 +907,7 @@ const str = { type: "string" };
  */
 export const queuesFor = caller => {
   const c = String(caller || "");
+  if (fromLink(c)) return true;
   return !/^(mcp|harness|hook)/.test(c) && !/(^|[\s:])agent:/.test(c) && c !== "tailnet:";
 };
 
@@ -887,10 +927,15 @@ export default {
      * may drive sessions; other agents stay inside their own work.
      */
     const guard = (caller, what) => {
+      if (fromLink(caller)) return;
       const agent = agentOf(caller);
       if (agent && sb.kindOf(agent) !== "assistant") throw new Error(`only the assistant can ${what}; ${agent} is an agent`);
     };
-    const surfaceOf = (input, caller) => String(input.surface || caller || "vyre");
+    const surfaceOf = (input, caller) => {
+      const s = String(input.surface || caller || "vyre");
+      // The link's words are always the box's surface, whatever the input says.
+      return fromLink(caller) && !s.startsWith("box:") ? `box:${s}` : s;
+    };
     const tool = (name, description, input, run, callers, extra = {}) => ctx.tool(name, { description, input, run, callers, ...extra });
 
     tool("threads.start", "Start a headless Claude Code session in a folder or a project's home, owned by vyred so it outlives every surface. The calling surface gets the keyboard. Returns the thread; its id is the Claude Code session id.",
@@ -908,7 +953,14 @@ export default {
         input: { thread: i.thread, text: i.text, surface: surfaceOf(i, caller) } });
       if (r.error || !Array.isArray(r.data)) return null;
       const done = r.data.find(a => a.ok);
-      if (done) return { ...done.data, source: "mac", machine: done.name };
+      if (done) {
+        const d = done.data || {};
+        // The note names the Mac, so the person knows where the session is busy.
+        const note = d.queued ? (d.busy && d.busy !== "terminal"
+          ? `${d.name} is in use in ${d.busy} on ${done.name}. I'll hand it your message when this turn ends.`
+          : `${d.name} is busy in your terminal on ${done.name}. I'll hand it your message when this turn ends.`) : d.note;
+        return { ...d, ...(note !== undefined ? { note } : {}), source: "mac", machine: done.name };
+      }
       // A Mac that answered with its own error has the thread (or failed on it): say that one. A
       // Mac without the thread says "no thread"; an offline Mac may have it, so nothing was sent.
       const failed = r.data.find(a => a.error && !["mac_offline", "timeout"].includes(a.error.code) && !/^no thread\b/.test(a.error.message));
@@ -930,7 +982,7 @@ export default {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
-        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller) });
+        return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller) });
       });
 
     tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",
@@ -944,9 +996,23 @@ export default {
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
       });
 
+    // Every ask says what answering it takes: `presence: {required, covered}`. Answering is the
+    // person's own business (the no-nag rule), so required is false; covered says whether this
+    // device has a live presence session. Surfaces render from this, never from tool names.
+    const withPresence = async (asks, peer) => {
+      if (!asks.length) return asks;
+      const r = await ctx.call("presence.covered", peer ? { peer } : {});
+      const covered = Boolean(r.data && r.data.covered);
+      return asks.map(a => ({ ...a, presence: { required: false, covered } }));
+    };
+
     tool("threads.get", "One thread: its record, its open permission questions, and its recent events (since: an event id).",
       { type: "object", required: ["thread"], properties: { thread: str, since: { type: "integer" }, limit: { type: "integer" } } },
-      async (i, { caller }) => { guard(caller, "read sessions"); return sb.get(i.thread, i); });
+      async (i, { caller, peer }) => {
+        guard(caller, "read sessions");
+        const t = sb.get(i.thread, i);
+        return t && Array.isArray(t.asks) ? { ...t, asks: await withPresence(t.asks, peer) } : t;
+      });
 
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
@@ -956,22 +1022,27 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
 
-    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), and what always allow is on offer (always, always_project). A surface that reconnects reads these; events alone cannot say what is open now.",
+    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now.",
       { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] } } },
-      async (i, { caller }) => { guard(caller, "read questions"); return sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a); });
+      async (i, { caller, peer }) => { guard(caller, "read questions"); return withPresence(sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a), peer); });
 
     tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
       { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str,
         answers: { type: "object", additionalProperties: { type: "string" } },
         scope: { type: "string", enum: ["project"], description: "With always: allow this tool from now on in the thread's project only (the ask's always_project)." } } },
-      async (i, { caller }) => sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope),
+      async (i, { caller, thread }) => {
+        // A call vyred traced to a session never answers that session's own ask, whoever it says it is.
+        const a = sb.asks.get(i.ask);
+        if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
+        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope);
+      },
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
-      ["cli", "local", "module", "deck", "capsule"],
-      // And a person must be there right now (presence proof, ADR 0004): the summary is what they
-      // read in the Touch ID dialog or at the terminal before the answer goes through.
-      { presence: { summary: i => answerSummary(sb, i) } });
+      // No presence proof: answering is the owner's own action on their own screen, and Vyre does
+      // not nag (ADR 0024, "No nagging"). The allowlist keeps models, agents and guests out, and the
+      // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
+      ["cli", "local", "module", "deck", "capsule"]);
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
@@ -1036,6 +1107,11 @@ export default {
       description: "The live thread of this agent, or this bound session, that holds this key; or null.", internal: true,
       input: { type: "object", required: ["key"], properties: { agent: str, session: str, key: str } },
       run: async i => ({ thread: i.agent ? sb.vouch(i.agent, i.key) : i.session ? sb.sessions.vouch(i.session, i.key) : null }),
+    });
+    ctx.tool("threads.pids", {
+      description: "The processes Claude sessions run in: vyred's own thread children and every live bound session. vyred refuses a person-only call from under any of them.", internal: true,
+      input: { type: "object", properties: {} },
+      run: async () => ({ pids: [...new Set([...sb.ours(), ...sb.sessions.pids()])] }),
     });
     // The SessionStart hook binds its session to the claude process it runs in (sessions.js).
     tool("threads.bind", "SessionStart: bind this session to its claude process, for a key the MCP server sends to say which session a call is from.",

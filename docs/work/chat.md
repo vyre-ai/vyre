@@ -119,40 +119,36 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - 8794777 the seeded demo session releases its lease.
 - Composer hint no longer says "Claude Code's commands" (f857520).
 - Slice 1 screenshots: <team-dir>/chat-shots/ (reported to main).
+- 1ec063b Mac sessions have a composer (threads.send with machine, offline chip, "Answer it on <machine>"); fakes only.
+- f0d60b3 merged main d3ed622.
+- 2f2b1ff no nagging: threads.answer off HUMAN_ONLY onto core/presence PERSON_ONLY (no proof; the
+  harness still refuses a model's shell naming it, with term.open/term.attach); term.unlock gone,
+  a terminal belongs to the screen that opened it (attach elsewhere: not_found); Deck answers and
+  terminals ask no passkey. Diff summary: Edit/MultiEdit/Write/git push permission asks carry
+  detail.changes [{file, added, removed, binary?}] + detail.totals {files, added, removed}
+  (+ truncated at 200 rows), core/switchboard/changes.js; a push ask is raised after git (3 s
+  budget). sw.js SHELL adds chat/term.js, term.css, lib/term-link.js (tell pwa).
+  Tests on testbox: term, presence, floor, harness, switchboard, changes, switchboard-cli,
+  capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
+- composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
 ## Doing
-- Nothing in flight. a577ad8 merged work/federation 2379a0c (tailnet's Mac send core, shapes
-  frozen). 1ec063b: Mac sessions have a composer (threads.send with machine; queued note "On
-  <machine> · ..."; mac_offline keeps the draft with an offline chip; timeout warns it may have
-  gone; lease line "On <machine>[ · Queued for <name>]"; no Take; cards read "Answer it on
-  <machine>"; re-read via recall.thread {source: "mac"} after finished; labelFor treats box:*
-  as "you"; New session shows the assistant's name). Tested against fakes only (85 chat + 5 pwa
-  on testbox); not against a real Mac or in a browser. A re-read replaces live tool cards with the
-  plain turn view on Mac sessions (by design until recall.transcript is federated).
+- Waiting on tailnet: frozen shas for the WebSocket upgrade (work/tailnet f309059?) and the rich
+  Mac transcripts (work/federation-transcript 6731af9, off work/chat). Asked 27 Sep.
 
 ## Next
-- Try Mac messaging against a paired Mac once federation is on main; ask tailnet to federate
-  recall.transcript so Mac sessions get the rich view.
-- Merge tailnet's WebSocket upgrade sha when it lands (next tailnet session).
-- Real-browser screenshot pass and deck/test/pwa-perf.js (Back under 100 ms) after 2254e34.
-- Diff summary for phone-design's Changes row: permission asks for Edit/MultiEdit/Write get
-  detail.changes [{file, added, removed}]; gate.held for a git push gets changes [...] + totals
-  {files, added, removed} from `git diff --numstat` of the pushed range. Promised to phone-design.
-- STANDING RULE (user): Vyre must not nag; the user runs on bypass permissions. term.unlock needs
-  no passkey for the owner (opening a terminal is the person's own action): drop the presence
-  requirement for the owner's own surfaces, keep guests/agents/models out. Touch ID only for
-  pairing a device, vault secrets, and sending, posting or paying outside; one Touch ID lasts
-  about 30 min. Check threads.answer's presence gating against this rule too, and ask the lead.
-- Reshoot after the ports (CHAT_DEMO=1 node deck/test/world.js 4791 from a `git archive HEAD`
-  snapshot on testbox; deck/test/shoot.js with CHROME=/usr/local/bin/vyre-chrome), including the
-  terminal once unlock needs no passkey.
+- Merge tailnet's WebSocket sha, then reshoot (CHAT_DEMO=1 node deck/test/world.js 4791 from a
+  `git archive HEAD` snapshot on testbox; deck/test/shoot.js with CHROME=/usr/local/bin/vyre-chrome):
+  the terminal (no unlock now) and the whole flow; time Back with deck/test/pwa-perf.js (< 100 ms).
+- Merge federation-transcript so Mac replies keep tool cards after the re-read (priority 5).
+- Try Mac messaging against a paired Mac once federation is on main.
 - Folder rows: names truncate ("harlow-si..."); put the path on a second line.
-- Merge tailnet's WebSocket upgrade sha when it lands, then shoot the terminal from the Deck.
+- Show detail.totals/changes on the permission card (phone-design's Changes row consumes it).
 - Restyle with deck-design once the user picks a direction.
 
 ## Needs from others
 - deck-design: visual direction for the cards and the terminal; behaviour is built first.
-- pwa: owns deck views generally; this team owns deck/chat/** and deck/views/chat.js only.
+- pwa: owns deck views generally; this team owns `deck/chat/**` and `deck/views/chat.js` only.
 
 - box/tailnet (reported to main): the tailnet listener (core/names/service.js) and the loopback
   listener carry no WebSocket upgrades, so the terminal (and Glass) only work on vyred's socket.
@@ -163,7 +159,9 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - threads.answer: `answers`, decision `always`. threads.asks / ask.raised: `kind`, `questions`,
   `detail`, `always`. New tools recall.transcript, files.dirs, files.recent, term.*. New stream
   /v1/streams/term/pty. New events term.opened, term.closed.
-- term.attach and term.open take `surface`; term.unlock (presence) grants 12 h per caller, node and surface.
+- term.attach and term.open take `surface`; term.unlock removed (no presence); attach from another screen is not_found.
+- core/presence: threads.answer moved from HUMAN_ONLY to new PERSON_ONLY (with term.open, term.attach); core/harness/rules.js refuses both lists to a model's shell.
+- threads.asks detail adds changes, totals, truncated for Edit/MultiEdit/Write and git push asks. deck/js/needs.js (pwa's) answers without a passkey.
 - recall.transcript / transcripts.blocks: no `from` means the tail; `before`, `first`; turn blocks
   may be `open: true`; user blocks may be `command: true`; tool blocks may carry `patch`.
 - files.dirs adds `limit`, `truncated`; files.recent returns an array. files `forward()` passes arrays through.

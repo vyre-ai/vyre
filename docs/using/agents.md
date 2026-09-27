@@ -121,7 +121,10 @@ takes the same flags and changes only what you name; the change applies from the
 thread.
 
 In the Deck, `/agents` has a form for a new agent, including **Give it its own computer, from the
-pool**. Claude can call `agents.create` and `agents.update`.
+pool**. Making or changing an agent asks for no passkey. It is yours: the CLI, the Deck, the
+Capsule and onboarding may call `agents.create` and `agents.update`. Your assistant may also call
+`agents.update` to change an agent's name, job, model, effort and description. Any other agent, a
+bare MCP session and a guest are refused with "denied", and nobody is asked.
 
 ## Make the assistant later
 

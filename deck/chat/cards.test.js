@@ -72,7 +72,7 @@ test("question card: stepper, number keys, multi-select with space, review, Subm
   await settle();
   const [c] = api.of("threads.answer");
   assert.ok(c, "threads.answer was called");
-  assert.equal(c.presence, true);
+  assert.equal(c.presence, false, "no passkey for an answer (no nagging)");
   assert.deepEqual(c.input, { ask: "ask_q1", decision: "allow", surface: "deck",
     answers: { "Which pickup slots should the form offer?": "Mornings only", "Who should get the order emails?": "juno, kit" } });
   assert.match(text(card), /Answered/);

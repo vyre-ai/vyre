@@ -23,8 +23,7 @@ import { createProjectInline, action } from "../js/empty-actions.js";
 import { createAgent } from "../js/agent-create.js";
 import { since, initial, count, plural, clock } from "../js/fmt.js";
 
-// The owner makes and changes their own agents with no prompt (the no-nag rule).
-const AS_PERSON = { presence: /** @type {"asked"} */ ("asked") };
+// Making and changing an agent is the person's own business: no passkey (the no-nag rule).
 
 const MODELS = [
   { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
@@ -618,7 +617,7 @@ function drawJob(sec, a, w, stub, listErr) {
     ta.value = a.instructions || "";
     const save = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (save).disabled = true;
-      const r = await attempt("agents.update", { name: a.name, instructions: ta.value.trim() }, AS_PERSON);
+      const r = await attempt("agents.update", { name: a.name, instructions: ta.value.trim() });
       /** @type {HTMLButtonElement} */ (save).disabled = false;
       if (r.error) { put(status, why(r.error)); return; }
       a.instructions = ta.value.trim();
@@ -768,7 +767,7 @@ function drawModel(sec, a, stub, listErr) {
     onclick: () => { a.effort = v; drawSeg(); save(); } }, l)));
   const save = async () => {
     put(status, "Saving…");
-    const r = await attempt("agents.update", { name: a.name, model: sel.value, effort: a.effort || "medium" }, AS_PERSON);
+    const r = await attempt("agents.update", { name: a.name, model: sel.value, effort: a.effort || "medium" });
     put(status, r.error ? why(r.error) : "Saved.");
     if (!r.error) a.model = sel.value;
   };
@@ -825,7 +824,7 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
   if (!a.computer) {
     const give = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (give).disabled = true;
-      const r = await attempt("agents.update", { name: a.name, computer: true }, AS_PERSON);
+      const r = await attempt("agents.update", { name: a.name, computer: true });
       /** @type {HTMLButtonElement} */ (give).disabled = false;
       if (r.error) { put(status, why(r.error)); return; }
       a.computer = true;

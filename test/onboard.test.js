@@ -113,6 +113,24 @@ test("onboard: the loopback listener refuses other hosts, forms and other origin
   assert.equal(cross.status, 403);
 });
 
+test("onboard: the loopback listener checks a WebSocket's Host and session, and opens no stream", async t => {
+  const { root } = await box(t);
+  const { url, port } = (await call("onboard.link", {}, { root })).data;
+  const { session } = await redeem(url);
+  /** An upgrade by hand (fetch cannot send one); resolves to the status code. */
+  const up = (host, headers = {}) => new Promise((resolve, reject) => {
+    const req = http.request({ host: "127.0.0.1", port, path: "/v1/streams/computers/glass?ticket=x",
+      headers: { host, connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", ...headers } });
+    req.on("upgrade", (res, socket) => { socket.destroy(); resolve(res.statusCode); });
+    req.on("response", res => { res.resume(); resolve(res.statusCode); });
+    req.on("error", reject);
+    req.end();
+  });
+  assert.equal(await up(`evil.example:${port}`, { "x-vyre-onboard": session }), 421, "a rebinding page's Host is refused");
+  assert.equal(await up(`127.0.0.1:${port}`), 403, "no session");
+  assert.equal(await up(`127.0.0.1:${port}`, { "x-vyre-onboard": session }), 404, "the onboarding page has no streams");
+});
+
 test("onboard: skipping and a bad token say why, a good token goes to the vault, and no zone token means the ts.net address", async t => {
   const { root } = await box(t, { vault: { keystore: "file" } });
   const { url, port } = (await call("onboard.link", {}, { root })).data;
