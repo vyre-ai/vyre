@@ -150,11 +150,13 @@ Tailscale · direct 18 ms" once the phone reaches it. Android with a cable: `vyr
 User requirement, 27 Sep: a session in the app behaves like Claude Code in the terminal.
 
 - **Typing while the agent works steers it** (the default): the words join the running turn at
-  its next step, and the stream shows "you steered here". ⌥⏎ (a long press on the phone's send)
+  its next step, and the stream shows "you steered here · after 3 steps" when the agent picks it
+  up (thread.steered). ⌥⏎ (a long press on the phone's send)
   queues them for after the turn instead, where they can be edited or taken back.
-- **Esc** stops now. **Esc Esc** rewinds: pick an earlier message, fork from it, optionally undo
-  the file changes after it (a hold), and edit the message.
-- **⇧Tab** cycles the modes. **/** opens commands and skills, **@** files, **!** runs a shell
+- **Esc** stops now. **Esc Esc** rewinds this thread to before an earlier message, whose text
+  comes back to edit; "also undo file changes" (a hold) needs file checkpoints on.
+- **⇧Tab** cycles three modes: Plan first, Asks first, Edits allowed. There is no mode that never
+  asks (refused by design); fewer asks come from "Always in <project>" answers. **/** opens commands and skills, **@** files, **!** runs a shell
   line in the session's folder, **#** saves a memory (this project or about you), **⌘V** pastes
   an image, **↑** recalls the last message.
 - Thinking collapses to its length and expands; the todo list updates live (side panel on the
