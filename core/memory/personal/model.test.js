@@ -237,3 +237,26 @@ test("model pass: nothing waiting launches nothing and never asks the Switchboar
   assert.equal((await w.pass.pump()).waiting, "nothing waiting");
   assert.equal(w.calls.length, 0);
 });
+
+test("model pass: friends, diets, breeds and a relative's own facts, checked as strictly", () => {
+  const c = (f, s) => checkFact(f, s);
+  const s1 = "my buddy Kai just moved to Leeds, he's a vegan chef";
+  assert.deepEqual(c({ subj: "me", rel: "friend", obj: "name:Kai", conf: 0.9 }, s1).claims, [{ subj: "me", rel: "friend", obj: "name:Kai", conf: 0.75 }]);
+  assert.ok(c({ subj: "name:Kai", rel: "lives_in", obj: "place:Leeds", conf: 0.7 }, s1).claims);
+  assert.ok(c({ subj: "name:Kai", rel: "diet", obj: "lit:Vegan", conf: 0.7 }, s1).claims?.some(x => x.obj === "lit:vegan"));
+  assert.match(String(c({ subj: "me", rel: "friend", obj: "name:Mara", conf: 0.9 }, s1).error), /not in the sentence/);
+  assert.match(String(c({ subj: "name:Kai", rel: "diet", obj: "lit:carnivore", conf: 0.7 }, "Kai is a carnivore").error), /diet/);
+  // A relative's home and job are theirs; the link to the user comes with them.
+  const s2 = "my mom lives in Tucson and works as a nurse";
+  assert.deepEqual(c({ subj: "kin:mother", rel: "lives_in", obj: "place:Tucson", conf: 0.7 }, s2).claims,
+    [{ subj: "kin:mother", rel: "lives_in", obj: "place:Tucson", conf: 0.7 }, { subj: "me", rel: "mother", obj: "kin:mother", conf: 0.7 }]);
+  assert.ok(c({ subj: "kin:mother", rel: "role", obj: "lit:nurse", conf: 0.7 }, s2).claims);
+  // A breed is a pet's, and must be in the sentence; clients and tools are the user's own.
+  const s3 = "our dog Pepper is a corgi";
+  assert.ok(c({ subj: "kin:dog", rel: "breed", obj: "lit:corgi", conf: 0.7 }, s3).claims);
+  assert.match(String(c({ subj: "me", rel: "breed", obj: "lit:corgi", conf: 0.7 }, s3).error), /pet's/);
+  assert.match(String(c({ subj: "kin:dog", rel: "breed", obj: "lit:beagle", conf: 0.7 }, s3).error), /not in the sentence/);
+  assert.match(String(c({ subj: "kin:mother", rel: "client", obj: "org:Tucson", conf: 0.7 }, "my mom's client is in Tucson").error), /user's own/);
+  const p = modelPrompt([{ text: "x" }]);
+  for (const w of ["friend ->", "diet ->", "breed ->", "kin:mother lives_in"]) assert.ok(p.includes(w), w);
+});

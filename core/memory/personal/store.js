@@ -20,7 +20,7 @@ const TOLD_MAX = 1000;
 const INTERNAL = new Set(["called", "ended:owns", "named", "at"]);
 /** A fact only Claude's words support is an echo: never sure enough to be told as a fact. */
 export const ASSISTANT_MAX = 0.45;
-const KIN_WORD = { spouse: "spouse", partner: "partner", mother: "mother", father: "father", sister: "sister", brother: "brother", son: "son", daughter: "daughter", child: "child", dog: "dog", cat: "cat" };
+const KIN_WORD = { spouse: "spouse", partner: "partner", mother: "mother", father: "father", sister: "sister", brother: "brother", son: "son", daughter: "daughter", child: "child", dog: "dog", cat: "cat", friend: "friend" };
 
 const round = x => Math.round(x * 1000) / 1000;
 const combine = cs => 1 - cs.reduce((p, c) => p * (1 - c), 1);
@@ -236,7 +236,8 @@ export class Personal {
       if (!usedAsName.has(k)) usedAsName.set(k, new Set());
       usedAsName.get(k).add(turnOf(c));
     }
-    for (const c of claims) if (c.method === "lower" && c.rel === "name" && isLit(c.obj)) {
+    // A friend is named by the link itself: me -friend-> name:Theo.
+    for (const c of claims) if (c.method === "lower" && (c.rel === "name" && isLit(c.obj) || c.rel === "friend" && c.obj.startsWith("name:"))) {
       const turns = usedAsName.get(keyOf(c.obj).toLowerCase());
       if (turns && [...turns].some(t => t !== turnOf(c))) c.conf = Math.max(c.conf, CONF.explicit);
     }
@@ -419,7 +420,7 @@ export class Personal {
       if (e.kind === "vehicle") { const k = keyOf(e.id); alias(k, e.id); alias(k.split(" ")[0], e.id); if (k.includes(" ")) alias(k.split(" ").slice(1).join(" "), e.id); }
     }
     for (const f of facts) if (f.subj === "me" && !isLit(f.obj)) {
-      if (["spouse", "partner", "mother", "father", "sister", "brother", "son", "daughter", "child", "pet"].includes(f.rel)) { alias(f.rel, f.obj); alias(`my ${f.rel}`, f.obj); }
+      if (["spouse", "partner", "mother", "father", "sister", "brother", "son", "daughter", "child", "pet", "friend"].includes(f.rel)) { alias(f.rel, f.obj); alias(`my ${f.rel}`, f.obj); }
       if (f.rel === "owns" && f.current && f.obj.startsWith("vehicle:")) { alias("car", f.obj); alias("my car", f.obj); }
     }
     for (const f of facts) if (f.rel === "name" && f.subj !== "me") alias(keyOf(f.obj), f.subj);

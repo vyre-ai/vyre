@@ -237,7 +237,9 @@ test("personal extract: nicknames and a bare relative opening the sentence are t
   has("my other half jordan is away", ["me|partner|kin:partner", "kin:partner|name|lit:Jordan"]);
   // Someone else's.
   noFacts("dana's hubby is a chef");
-  noFacts("my friend dana's husband luis keeps telling me to learn rust");
+  // Dana is the user's friend now; her husband is still hers.
+  const fr = said("my friend dana's husband luis keeps telling me to learn rust");
+  assert.ok(fr.includes("me|friend|name:Dana") && !fr.some(x => /Luis|spouse/.test(x)), JSON.stringify(fr));
   noFacts("dana's partner luis runs the other shop");
   noFacts("Owen, wife (Claire) and son (Max) are away");
 });
@@ -306,4 +308,139 @@ test("personal extract: quoted copy, pasted messages and drafts are someone else
   has("quick one\nHey Claude, my wife Jordan wants dark mode", WIFE);
   // Claude's words inside quotes are not about the user either.
   noFacts(`"Ending a marriage is hard. We'll help you, your partner and your children."`, { role: "assistant" });
+});
+
+// ------------------------------------------------------------------ round 1: relatives' lives, friends, pets, diet
+
+test("personal extract: pronouns typed without the apostrophe", () => {
+  has("my husband sam is home early today, hes a paramedic", ["kin:spouse|name|lit:Sam", "kin:spouse|role|lit:paramedic"]);
+  has("picked up my girlfriend from the station, shes a vet", "kin:partner|role|lit:vet");
+  has("im vegan so skip the cheese examples", "me|diet|lit:vegan");
+  has("ive been a teacher for ten years", "me|role|lit:teacher");
+  // "hes" with nobody to mean is nobody.
+  noFacts("hes a paramedic apparently");
+});
+
+test("personal extract: what relatives do for work", () => {
+  has("my wife is a nurse", "kin:spouse|role|lit:nurse");
+  has("my dad's an electrician, he can look at the wiring", "kin:father|role|lit:electrician");
+  has("my husband works as a chef in town", "kin:spouse|role|lit:chef");
+  has("my mom teaches third grade", "kin:mother|role|lit:teacher");
+  has("my sister is a really good architect", "kin:sister|role|lit:architect");
+  has("robin's a pharmacist", "name:Robin|role|lit:pharmacist");
+  has("My brother got a new job at Northwind Bakery", "kin:brother|works_at|org:Northwind Bakery");
+  has("my wife works at Harlow Legal", "kin:spouse|works_at|org:Harlow Legal");
+  // An unnamed employer, a past job, someone else's relative, a thing that is not a person.
+  assert.ok(!said("my wife got a job at a clinic up there").some(x => x.includes("works_at")));
+  assert.ok(!said("my dad was a plumber before he retired").some(x => x.includes("|role|")));
+  noFacts("Dana's husband Luis is a chef.");
+  noFacts("it's a developer tool, not an app");
+  // "my mom teaches me" is not her job.
+  assert.ok(!said("my mom teaches me to knit").some(x => x.includes("|role|")));
+});
+
+test("personal extract: where relatives live, never where the user does", () => {
+  has("my mom lives in tucson", "kin:mother|lives_in|place:Tucson");
+  has("my sister (in leeds) sent the photos", "kin:sister|lives_in|place:Leeds");
+  has("my brother in Denver says hi", "kin:brother|lives_in|place:Denver");
+  assert.equal(conf("my dad keeps ringing from Leeds about the router", "kin:father|lives_in|place:Leeds"), 0.7);
+  assert.equal(conf("mum is flying in from tucson on friday", "kin:mother|lives_in|place:Tucson"), 0.45);
+  has("ma keeps phoning from boise lol", ["me|mother|kin:mother", "kin:mother|lives_in|place:Boise"]);
+  for (const t of ["my mom lives in tucson", "mum is flying in from tucson on friday", "we're flying in from boise tonight", "my parents are in phoenix"])
+    assert.ok(!said(t).some(x => x.startsWith("me|lives_in")), t);
+  // "in law" is no place; "ma" alone mid-sentence is not a mother.
+  assert.ok(!said("my sister in law is visiting").some(x => x.includes("lives_in")));
+  assert.ok(!said("the ma and pa shop closed").some(x => x.includes("mother")));
+});
+
+test("personal extract: friends are their own people", () => {
+  has("my buddy theo just got a rivian r1s", ["me|friend|name:Theo", "name:Theo|owns|vehicle:Rivian R1S"]);
+  assert.equal(conf("my buddy theo just got a rivian r1s", "me|friend|name:Theo"), 0.45, "a lowercase name, held loosely");
+  assert.ok(!said("my buddy theo just got a rivian r1s").some(x => x.startsWith("me|owns")));
+  has("My friend Sam lives in Denver.", ["me|friend|name:Sam", "name:Sam|lives_in|place:Denver"]);
+  has("my mate jess is a designer", ["me|friend|name:Jess", "name:Jess|role|lit:designer"]);
+  has("my bestie priyanka is getting married", "me|friend|name:Priyanka");
+  // A friend's wife is not the user's; "mate" said to someone is no friend.
+  assert.ok(!said("theo's wife mara just had a baby").some(x => x.includes("spouse")));
+  noFacts("mate this build is broken again");
+  noFacts("buddy, this is not what i asked for");
+});
+
+test("personal extract: pets and their breeds", () => {
+  has("walked pepper (our corgi) before standup", ["me|pet|kin:dog", "kin:dog|name|lit:Pepper", "name:Pepper|breed|lit:corgi"]);
+  has("our beagle mochi ate a sock", ["kin:dog|name|lit:Mochi", "name:Mochi|breed|lit:beagle"]);
+  has("my golden retriever max needs a walk", "name:Max|breed|lit:golden retriever");
+  has("we have a lab called scout", ["kin:dog|name|lit:Scout", "name:Scout|breed|lit:labrador"]);
+  has("the dog's a dachshund so stairs are a no", ["me|pet|kin:dog", "kin:dog|breed|lit:dachshund"]);
+  has("our cat is a ragdoll", ["me|pet|kin:cat", "kin:cat|breed|lit:ragdoll"]);
+  assert.equal(conf("our beagle mochi ate a sock", "kin:dog|name|lit:Mochi"), 0.45);
+  // A lab that is a laboratory, someone else's dog, a dog that might be.
+  noFacts("our lab results came back fine");
+  noFacts("priya's dog is a beagle");
+  noFacts("if we got a beagle called max we'd never sleep");
+});
+
+test("personal extract: diet", () => {
+  has("i'm vegetarian, so no bacon in the seed data", "me|diet|lit:vegetarian");
+  has("lunch first, been vegan about five years and nothing near the office works", "me|diet|lit:vegan");
+  has("as a vegetarian, i find this menu depressing", "me|diet|lit:vegetarian");
+  assert.equal(conf("i don't eat meat so skip the steak example", "me|diet|lit:vegetarian"), 0.7);
+  has("my wife is pescatarian", "kin:spouse|diet|lit:pescatarian");
+  has("robin is vegan", "name:Robin|diet|lit:vegan");
+  // Not the user: a restaurant, a hypothetical, a denial, the past, someone else.
+  noFacts("the vegan place round the corner shut");
+  noFacts("if i went vegan i'd miss cheese");
+  noFacts("i'm not vegan, just curious");
+  noFacts("i was vegetarian in college");
+  assert.ok(!said("robin is vegan").some(x => x.startsWith("me|")));
+});
+
+test("personal extract: trucks, vans, and the vehicle named after buying one", () => {
+  has("GOT THE VAN. white ford transit, high roof", ["me|owns|vehicle:Ford Transit", "vehicle:Ford Transit|color|lit:white"]);
+  has("bought a truck yesterday, a grey toyota tundra", ["me|owns|vehicle:Toyota Tundra", "vehicle:Toyota Tundra|color|lit:grey"]);
+  has("I drive a Chevy Silverado.", "me|drives|vehicle:Chevy Silverado");
+  has("took the tundra up the canyon road", "me|owns|vehicle:Toyota Tundra");
+  has("my car is a tesla model y", "me|owns|vehicle:Tesla Model Y");
+  // Comparisons, plans and other people's trucks stay out.
+  noFacts("compare the ford ranger and the nissan frontier for towing");
+  noFacts("jess just bought a ford maverick");
+  noFacts("got the truck stuck in the mud lol");
+  noFacts("the model y ranking in the eval dropped");
+});
+
+test("personal extract: the user's own company and work", () => {
+  has("add Rivera Studio to the letterhead, thats my llc", "me|works_at|org:Rivera Studio");
+  has("Rivera Studio is my company", "me|works_at|org:Rivera Studio");
+  has("rivera studio is my business, the site is for it", "me|works_at|org:Rivera Studio");
+  has("been a freelance illustrator about four years", "me|role|lit:freelance illustrator");
+  has("i've been a paralegal since 2021", "me|role|lit:paralegal");
+  has("as a designer, i hate this font", "me|role|lit:designer");
+  // Not a role; a company that is someone else's.
+  assert.ok(!said("solo dev, im the whole company").some(x => x.includes("|role|")));
+  noFacts("Northwind Bakery is her company");
+  assert.ok(!said("the logo is my company's").some(x => x.includes("works_at")));
+});
+
+test("personal extract: moves said and planned, and trips that are not moves", () => {
+  assert.equal(conf("we're moving to boise in august!!", "me|lives_in|place:Boise"), 0.45);
+  assert.equal(conf("finally made it to boise, the drive was long", "me|lives_in|place:Boise"), 0.45);
+  has("settling into Boise slowly", "me|lives_in|place:Boise");
+  has("the heat is weird now that we live in boise", "me|lives_in|place:Boise");
+  has("packing up our leeds flat this week", "me|lives_in|place:Leeds");
+  for (const t of ["flying back to leeds next week for a wedding", "weird being a tourist in leeds", "we're flying in from leeds"])
+    assert.ok(!said(t).some(x => x.includes("lives_in")), t);
+  noFacts("if we're moving to boise we need a bigger car");
+});
+
+test("personal extract: tools said in passing", () => {
+  has("im in neovim so give me the keymap", "me|uses|tool:Neovim");
+  has("datagrip is open on the other screen", "me|uses|tool:DataGrip");
+  has("switched to zed last month and not looking back", "me|uses|tool:Zed");
+  has("in figma all day, the handoff is tomorrow", "me|uses|tool:Figma");
+  has("i use obsidian for notes", "me|uses|tool:Obsidian");
+  // A tool is no place, and open source is not open.
+  assert.ok(!said("we moved to neovim last year").some(x => x.includes("lives_in")));
+  noFacts("zed is open source now");
+  noFacts("i'm in charge of the release");
+  noFacts("is anyone in figma right now?");
 });

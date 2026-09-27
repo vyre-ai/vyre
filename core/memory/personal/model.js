@@ -24,16 +24,21 @@ const BUSY = ["starting", "working", "waiting"];
 /** Relatives: the role in kin:<role> and the words that say it. */
 const ROLE_WORDS = /** @type {Record<string, RegExp>} */ ({
   spouse: /\b(?:wife|husband|spouse)\b/i, partner: /\b(?:partner|girlfriend|boyfriend|fianc\w*)\b/i,
-  mother: /\b(?:mother|mom|mum)\b/i, father: /\b(?:father|dad)\b/i, sister: /\bsisters?\b/i, brother: /\bbrothers?\b/i,
+  mother: /\b(?:mother|mom|mum|mama|ma)\b/i, father: /\b(?:father|dad)\b/i, sister: /\bsisters?\b/i, brother: /\bbrothers?\b/i,
   son: /\bsons?\b/i, daughter: /\bdaughters?\b/i, child: /\b(?:kids?|child|children)\b/i,
   dog: /\b(?:dogs?|pupp(?:y|ies))\b/i, cat: /\b(?:cats?|kittens?)\b/i,
+  friend: /\b(?:friends?|buddy|buddies|pals?|bestie|mate)\b/i,
 });
 const ROLES = Object.keys(ROLE_WORDS);
-const KIN_RELS = new Set(["spouse", "partner", "mother", "father", "sister", "brother", "son", "daughter", "child", "pet"]);
+const KIN_RELS = new Set(["spouse", "partner", "mother", "father", "sister", "brother", "son", "daughter", "child", "pet", "friend"]);
+/** Diets the model may name: the same values the rules keep. */
+const DIETS = new Set(["vegetarian", "vegan", "pescatarian", "plant-based", "keto", "paleo", "gluten-free", "halal", "kosher"]);
+/** Relations whose subject may be anyone the user talks about; the rest are the user's own. */
+const ANYONE = new Set(["name", "lives_in", "from", "works_at", "role", "birthday", "diet", "breed", "owns", "drives"]);
 /** Relation -> the reference kinds its object may be. */
 const OBJ = /** @type {Record<string, string[]>} */ ({
   name: ["lit"], lives_in: ["place"], from: ["place"], works_at: ["org"], client: ["org"], role: ["lit"],
-  drives: ["vehicle"], owns: ["vehicle", "lit"], uses: ["tool"], prefers: ["lit"], birthday: ["lit"],
+  drives: ["vehicle"], owns: ["vehicle", "lit"], uses: ["tool"], prefers: ["lit"], birthday: ["lit"], diet: ["lit"], breed: ["lit"],
   ...Object.fromEntries([...KIN_RELS].map(r => [r, ["kin", "name"]])),
 });
 export const RELS = Object.keys(OBJ);
@@ -53,9 +58,14 @@ export function modelPrompt(cues) {
     "  name -> lit:<Name>",
     "  spouse, partner, mother, father, sister, brother, son, daughter, child -> kin:<the same role>, subject me",
     "  pet -> kin:dog or kin:cat, subject me",
+    "  friend -> name:<Name> (or kin:friend when no name is said), subject me",
     "  lives_in, from -> place:<Name>",
-    "  works_at, client -> org:<Name>",
+    "  works_at -> org:<Name>",
+    "  client -> org:<Name>, subject me",
     "  role -> lit:<job title>",
+    "  diet -> lit:<one of vegetarian, vegan, pescatarian, plant-based, keto, paleo, gluten-free, halal, kosher>",
+    "  breed -> lit:<breed>, subject kin:dog, kin:cat or the pet's name:<Name>",
+    "A relative is the subject of their own facts: my mom lives in Tucson is kin:mother lives_in place:Tucson, never me lives_in. The same for role, works_at and diet.",
     "  drives -> vehicle:<Make Model>",
     "  owns -> vehicle:<Make Model> or lit:<thing>",
     "  uses -> tool:<name>",
@@ -114,8 +124,16 @@ export function checkFact(f, sentence) {
   conf = Math.min(MODEL.maxConf, conf);
   const [k, v] = split(f.obj);
   if (!OBJ[rel].includes(k) || !v.trim()) return { error: "object of the wrong kind" };
+  if (!KIN_RELS.has(rel) && !ANYONE.has(rel) && subj !== "me") return { error: "only the user's own" };
+  if (rel === "breed" && !(subj === "kin:dog" || subj === "kin:cat" || subj.startsWith("name:"))) return { error: "a breed is a pet's" };
+  if (rel === "diet" && !DIETS.has(v.trim().toLowerCase())) return { error: "not a diet" };
   if (KIN_RELS.has(rel)) {
     if (subj !== "me") return { error: "a relative is the user's" };
+    // A friend is their own person: me -friend-> name:Theo, never a role with a name under it.
+    if (rel === "friend" && k === "name") {
+      if (!ROLE_WORDS.friend.test(sentence) || !NAME.test(v) || !said(v, sentence)) return { error: "object not in the sentence" };
+      return { claims: [{ subj, rel, obj: f.obj, conf }] };
+    }
     if (k === "kin") {
       if (!ROLE_WORDS[v] || relOfRole(v) !== rel || !ROLE_WORDS[v].test(sentence)) return { error: "role not in the sentence" };
       return { claims: [{ subj, rel, obj: f.obj, conf }] };
@@ -127,7 +145,7 @@ export function checkFact(f, sentence) {
   }
   if (rel === "name" && !NAME.test(v)) return { error: "not a name" };
   if (!said(v, sentence)) return { error: "object not in the sentence" };
-  const claims = [{ subj, rel, obj: `${k}:${v.trim()}`, conf }];
+  const claims = [{ subj, rel, obj: `${k}:${rel === "diet" || rel === "breed" ? v.trim().toLowerCase() : v.trim()}`, conf }];
   // Something said about "my wife" is about the user's wife: the link the rules would add.
   if (subj.startsWith("kin:")) { const role = split(subj)[1]; claims.push({ subj: "me", rel: relOfRole(role), obj: subj, conf }); }
   return { claims };
