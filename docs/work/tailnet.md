@@ -79,9 +79,10 @@ Targeted run for the merged branch (one command, from the worktree root):
 
 After the merge. The lead's decisions of 27 Sep 2026, to build in this order:
 
-1. **link.health on the box: modules and the owner only.** In `core/link/box.js`, refuse
-   `tailnet-guest:*` and `tailnet:agent:*`, and any tailnet login that is not the owner. Today any
-   caller may ask about itself or a paired Mac. Add a test.
+1. Done: **link.health on the box: modules and the owner only.** `core/link/box.js` refuses
+   guests, agent nodes, agents at the box, MCP, anonymous callers and any tailnet login that is not
+   `network.owner`; test in test/link.test.js. Tests on the test box: link, link-federation,
+   guests, health, glass, hygiene 33/33.
 2. **Taildrive:**
    - Read-only by default, with a per-share read-write switch that needs presence: a tool
      `files.drive.access { name, mode: "ro"|"rw" }`, added to HUMAN_ONLY.

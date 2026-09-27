@@ -29,6 +29,8 @@ export const HUMAN_ONLY = new Set([
   "vault.session.open", "vault.export", "vault.kit",
   // What Claude is told in every later session: accepting, weakening and removing lessons and skills.
   "learn.accept", "learn.retire", "learn.relax", "learn.skill-install",
+  // Who an agent is, what it may spend and whose credentials it runs on.
+  "agents.create", "agents.update",
   // A person's hands on an agent's computer, and a new machine joined to this one.
   "computers.takeover", "computers.giveback", "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",

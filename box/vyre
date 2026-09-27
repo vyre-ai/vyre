@@ -56,6 +56,9 @@ refresh_src() {
   rm -rf "$DIR/src.new"
   mkdir -p "$DIR/src.new"
   tar -xzf "$tmp/vyre.tgz" -C "$DIR/src.new" --strip-components=1
+  # npm pack pins every mtime to 1985, and BuildKit skips a changed file whose size and mtime
+  # match what it synced before, so the image would keep stale files: give them today's.
+  find "$DIR/src.new" -exec touch {} +
   [ -f "$DIR/src.new/box/Dockerfile" ] || { rm -rf "$DIR/src.new"; die "vyre.tgz has no box/Dockerfile"; }
   rm -rf "$DIR/src.old"
   if [ -d "$DIR/src" ]; then mv "$DIR/src" "$DIR/src.old"; fi
