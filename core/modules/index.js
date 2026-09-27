@@ -357,7 +357,9 @@ export class Registry {
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
     }
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
-    const run = () => this.run(def, input, { ...meta, caller });
+    // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses
+    // it as the Agent SDK message uuid, ADR 0030), and a retry after a restart is still one turn.
+    const run = () => this.run(def, input, { ...meta, caller, ...(idempotencyKey ? { idempotencyKey } : {}) });
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
     // keep: the person asked that this proof also open a presence session on their device, so
     // the next sessionable call (another send) needs no second Touch ID or passkey. Only a strong

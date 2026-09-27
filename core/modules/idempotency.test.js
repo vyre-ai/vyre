@@ -3,7 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
 import { open } from "../store/index.js";
-import { Idempotency } from "./idempotency.js";
+import { Idempotency, keyUuid } from "./idempotency.js";
 import { tempHome } from "../../test/helpers.js";
 
 const fresh = (t, o) => new Idempotency(open(path.join(tempHome(t), "vyre.db")), o);
@@ -44,4 +44,13 @@ test("idempotency: a record older than its day is forgotten", async t => {
   await idem.once(id("k5"), run);
   now += 25 * 60 * 60 * 1000;
   assert.deepEqual(await idem.once(id("k5"), run), { data: 2 });
+});
+
+test("idempotency: keyUuid keeps a uuid key and maps any other key to one stable uuid per caller", () => {
+  const u = "3F2504E0-4F89-41D3-9A0C-0305E82C3301";
+  assert.equal(keyUuid("deck", u), u.toLowerCase());
+  const a = keyUuid("deck", "send-1234"), b = keyUuid("deck", "send-1234"), c = keyUuid("cli", "send-1234");
+  assert.match(a, /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  assert.equal(a, b);
+  assert.notEqual(a, c);
 });

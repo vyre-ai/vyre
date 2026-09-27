@@ -75,6 +75,23 @@ export class Idempotency {
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The message uuid a tool hands the Agent SDK for a call's key (ADR 0030): the key itself when it
+ * is already a uuid (what every Vyre client sends), else a name-based (version 5 layout) uuid of
+ * the caller and key, so the same retry always maps to the same uuid and two callers never share one.
+ * @param {string} caller @param {string} key
+ */
+export function keyUuid(caller, key) {
+  if (UUID.test(key)) return key.toLowerCase();
+  const b = crypto.createHash("sha1").update(`vyre-idempotency\n${caller}\n${key}`).digest().subarray(0, 16);
+  b[6] = (b[6] & 0x0f) | 0x50;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = b.toString("hex");
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 function conflict(tool) {
   return { error: { code: "idempotency_conflict", message: `this Idempotency-Key was already used for ${tool} with other input; a retry must send the same input, a new write a new key` } };
 }

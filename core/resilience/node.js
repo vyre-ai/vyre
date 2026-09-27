@@ -42,7 +42,7 @@ export function caller(base, { headers = {}, timeoutMs = 15_000 } = {}) {
     const { mod, opts } = target(base, "/v1/tools/" + encodeURIComponent(tool));
     const body = JSON.stringify(input ?? {});
     const req = mod.request({ ...opts, method: "POST", agent: false, timeout: timeoutMs,
-      headers: { "content-type": "application/json", "idempotency-key": key, ...headers } }, res => {
+      headers: { "content-type": "application/json", ...(key ? { "idempotency-key": key } : {}), ...headers } }, res => {
       let raw = "";
       res.setEncoding("utf8");
       res.on("data", c => { raw += c; });
