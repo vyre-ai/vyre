@@ -236,5 +236,8 @@ export const MIGRATIONS = [
   // An agent's correction with no words of the person's behind it (core/memory/iq/heard.js): kept
   // for the person to accept or dismiss in "waiting on you", never applied.
   `CREATE TABLE memory_iq_suggested (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, caller TEXT NOT NULL, thread TEXT, seq INTEGER, input TEXT NOT NULL, why TEXT NOT NULL,
-    state TEXT NOT NULL DEFAULT 'open', settled INTEGER);`,
+    state TEXT NOT NULL DEFAULT 'open', settled INTEGER, target TEXT, seen INTEGER NOT NULL DEFAULT 1);
+  -- The person's turns an agent's correction was applied from: one each, and a cap per thread.
+  CREATE TABLE memory_iq_heard (thread TEXT NOT NULL, seq INTEGER NOT NULL, at INTEGER NOT NULL, caller TEXT NOT NULL, kind TEXT NOT NULL, ref INTEGER NOT NULL, summary TEXT NOT NULL,
+    PRIMARY KEY (thread, seq)) WITHOUT ROWID;`,
 ];

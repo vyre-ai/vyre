@@ -264,33 +264,55 @@ Built on work/memory-iq (core/memory/iq/heard.js), 0.1.1, for e2e's review.
   `memory.correct` as the person would, plus `from_turn: { seq }`: the person's turn that says it.
   The thread is the one vyred verified for the call (meta.thread, from the session key or the
   agent key); a thread named in the input is ignored. Memory asks the switchboard who wrote that
-  turn (threads.said, below). It counts only when the switchboard says `role: "user"` and `by: "person"`,
-  and every name, number or content word of the new value is in that turn's own words, with
-  injected blocks (system reminders, pasted content, command output) removed. For "wrong",
-  "forget" and "ended", which carry no value, the turn must say so ("no", "wrong", "forget").
+  turn (threads.said, below), and applies only when all of these hold (e2e's review, 28 Sep):
+  - the switchboard says `role: "user"` and `by: "person"`;
+  - the turn is fresh: one of the person's latest three in the thread (`back` 0 to 2) and at most
+    10 minutes old, never history;
+  - the turn names what is corrected: a word of the fact's subject or relation, or of the IQ
+    question;
+  - the correction is in the person's words, injected blocks removed: every name, number or content
+    word of the new value (replace, add), or, for wrong, forget and ended, a "no" within six words
+    of the old value's words ("I'm not sure" is not "wrong");
+  - that turn has not made a correction already, and the thread has made fewer than 3 this hour.
 - **Applied as the person's.** It goes through the same path as a correction from the Deck:
   highest trust, told to memory for a personal answer, attributed `heard:<thread>#<seq>`,
   undoable with `memory.uncorrect`. It emits `memory.updated { by: "agent", thread, fix | correction }`
   so the person's surfaces show "Memory updated · Undo". No Touch ID and no confirm: they said it.
 - **Everything else waits.** No verified thread, no `from_turn`, a turn that is not the person's
-  (tool output, a web page, a file, a launch brief, another agent), a value not in their words (a
-  paraphrase), a project-scoped agent, or an action only the person takes (confirm, merge, split):
-  kept as a suggestion (`memory_iq_suggested`), never applied. The agent gets
-  `{ applied: false, suggestion: { id, why } }`. The person lists them with
+  (tool output, a web page, a file, a launch brief, another agent), a stale turn, a turn that names
+  something else, a value not in their words (a paraphrase), a project-scoped agent, or an action
+  only the person takes (confirm, merge, split): kept as a suggestion (`memory_iq_suggested`),
+  never applied. The agent gets `{ applied: false, suggestion: { id, why } }`. The same suggestion
+  again is the same row. At most 5 wait per thread and 50 in all; past that nothing more is kept
+  (`dropped: true`), so an agent in a loop never fills "waiting on you". A suggestion expires after
+  14 days, or at once when what it targets changes before the person decides; expired ones stay
+  listed and never apply. The person lists them (every field plain text) with
   `memory.corrections { suggested: true }`, accepts with `memory.correct { suggestion }` and
-  dismisses with `memory.uncorrect { suggestion }`; an agent can do neither.
+  dismisses with `memory.uncorrect { suggestion }`; an agent can do neither. The same listing's
+  `heard` rows show what agents applied from the person's words this week ("what is my wife's name:
+  Your wife is Juno"), each with its undo, for a "Kit changed ... · Undo" row on every surface.
 - **Tests** (core/memory/iq/heard.test.js): a tool result saying "the user's wife is X", another
   agent quoting a web page, a launch brief, an injected system reminder, pasted content, a
   paraphrase, another thread's turn, no thread, no from_turn and a project-scoped agent are all
   kept as suggestions; the person's own turn is applied and answers at once; undo restores; an agent
   cannot accept a suggestion.
-- **Needs from the switchboard (sessions): `threads.said { thread, seq }`** (internal, modules
-  only) -> `{ role: "user"|"assistant"|"tool", by: "person"|"agent"|"module"|"program", text }`
-  from its own records, never from the caller. `by: "person"` only for a prompt the person typed:
-  in their own terminal session (an interactive claude, not `-p`), or sent by `threads.send` from a
-  person surface (deck, cli, local, capsule, or a device with a person session). A launch brief, a
-  `threads.send` from an agent or module, a queued hand-over, and every tool result are not. Until
-  it exists, every agent correction waits as a suggestion, which is safe.
+- **Needs from the switchboard (sessions): threads.said { thread, seq }**, internal (modules only),
+  -> `{ role: "user"|"assistant"|"tool", by: "person"|"agent"|"module"|"program", text, ts, back }`,
+  from its own records, never from the caller. `back` counts the person's turns after this one in
+  the thread (0 for their latest). `by: "person"` only for a prompt the person typed: in their own
+  interactive terminal session (not `claude -p`), or sent with `threads.send` by a person caller
+  after the daemon's downgrade (cli, local, deck, capsule, or tailnet or device with a person
+  session). Never `by: "person"`, whatever the transcript says (e2e's list, 28 Sep):
+  - tool_result entries;
+  - `isMeta` and `isCompactSummary` entries;
+  - `isSidechain` turns (a subagent's prompt is written by the parent model);
+  - slash-command expansions, skill and hook text (UserPromptSubmit context, system reminders);
+  - `!` shell output and `<local-command-stdout>`;
+  - inbox deliveries: threads.post (teammates' results), threads.notice, and any queued row whose
+    kind is not a person's send;
+  - a launch brief, and threads.send from an agent or a module.
+  When in doubt, it is not the person. This list goes into its doc and its tests. Until it exists,
+  every agent correction waits as a suggestion, which is safe.
 - **Needs from waiting (cohesion):** a fifth source, `memory` (kind `memory`), read from
   `memory.corrections { suggested: true }`, refreshed on `memory.suggested`. The title stays
   generic ("An agent suggests a memory update"), never the value: it reaches the lock screen.
