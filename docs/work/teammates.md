@@ -48,12 +48,13 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   - `team.done`/`team.fail`'s `request` is optional and defaults to the caller's one running
     request (a teammate only ever has one). The ADR's wrapped `<vyre-request id="...">` still
     carries the id for a teammate that wants to be explicit; this just means it never has to be.
-- Not yet built: notes-changed enforcement on `team.done`, compaction re-injection and rotation
-  (step 2); the in-process MCP server and `@role` routing, summon from every session (step 3);
-  worktrees and the integrator (step 4); sharing (`team.share`, per-project notes parts/grants,
-  step 5); the Agents place tabs and Needs rows (step 6); `team.propose`, role templates, project
-  setup (step 7); offering today's single-project agents conversion (step 8); `using/teammates.md`
-  and the reference pages (step 9, the CLI/tools reference already regenerates itself).
+- Not yet built: notes-changed enforcement on `team.done`, compaction re-injection (step 2; see
+  "Steps 2/3" below for rotation, now built); the in-process MCP server and `@role` routing (step
+  3; summon through `vyre mcp` and result injection are built, see below); worktrees and the
+  integrator (step 4); sharing (`team.share`, per-project notes parts/grants, step 5); the Agents
+  place tabs and Needs rows (step 6); `team.propose`, role templates, project setup (step 7);
+  offering today's single-project agents conversion (step 8); `using/teammates.md` and the
+  reference pages (step 9, the CLI/tools reference already regenerates itself).
   `team.cancel` only cancels a queued request for step 1 (a running one needs a person, and
   refuses naming what to do instead: stop the teammate's session, or `team.fail` from inside it).
   The cycle/depth-3 check (`via`) is implemented and exercised by `team.ask`'s own logic, but not
@@ -61,6 +62,45 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   which is easiest to script once step 3's in-process MCP server exists rather than through the
   fake driver's text-prompt scripting.
 - app-design boards approved (work/app-design 99820a16 and 6a1e2f7a) — not yet consumed (step 6).
+
+## Steps 2/3 (2026-09-28, the lead's brief: summon through the contract, result injection, rotation)
+- **Summon through `vyre mcp` needed no new code.** `harness/mcp/server.js` lists and calls every
+  module tool generically (`/v1/tools`, forward to whatever name it gets), so `team.*` was already
+  reachable through it the moment step 1 landed — this is the "through the plugin's `vyre mcp`
+  first" half of the ADR's step 3. Verified end to end with a real (non-agent) thread bound the
+  way a session's own SessionStart hook binds it (`threads.bind` with the fake claude child's own
+  pid, then calling with `{session: {id, key}}` the way `daemon/client.js` does): `team.list` with
+  no project resolves its project from the thread alone, and `team.ask` from that session gets its
+  result posted back into that same thread (new tests: "summon: a real session's own thread...").
+  The in-process MCP server (ADR 0030 phase 3) is still the other half, not built yet anywhere.
+- **Found chasing that test, not obvious from step 1's own suite (which never used a bound
+  thread): `threads.get` answers `{thread: <record>, asks, events}`, not the record flat.**
+  `projectOf`, `inProject` and the new `shouldRotate` were all reading `t.project`/`t.started`
+  directly and getting `undefined`, silently falling through every `meta.thread` branch. Fixed
+  with one `threadRecord()` helper all three now share. This was a real, live gap in step 1
+  (nothing world-readable failed loudly; a bound session's `team.ask` would have thrown "say which
+  project" for every real caller) — every earlier test used a bare `"cli"`/`"mcp:agent:*"` caller,
+  never a genuine bound session, so nothing caught it until this.
+- **Result injection** was already built in step 1 (`threads.post {kind: "teammate-result"}` into
+  `threads_inbox`); confirmed still correct with a real session as the caller. One real gap,
+  cross-team and not fixed here: `threads.post`/`sb.post()` has no way to *not* wake a closed
+  caller's thread, so every result currently wakes it, opposite the ADR's stated default ("does
+  not wake it, unless wake: true"). Already tracked under "Needs from others" below; not adding a
+  `wake` input to `team.ask` until there is something for it to do.
+- **Rotation** (section 3): a teammate's thread is retired (not resumed; a fresh one starts,
+  carrying its current notes and last 3 results in `append`) once it is more than 7 days old, or
+  (in place of the ADR's context-used-60%, which nothing exposes yet — `threads.usage` is
+  per-agent aggregate, not per-thread, and there is no compaction-count signal either) has run 40
+  turns. Both thresholds, like the ADR's own 60%/one-compaction/7-day set, are guesses to be
+  measured, not derived from anything; revisit once a real per-thread context signal exists.
+  `finish()` and freeing a teammate for its next request are now two different moments
+  (`release()`, called only from `thread.finished` or a pre-launch failure, never from
+  `team.done`/`team.fail`, which run mid-turn): found chasing a second dispatch race this
+  introduced (a session's second, immediate `team.ask` was starting before the first turn had
+  actually finished sending its own closing text, so the second turn's `vyre team.done` line
+  never matched and it closed itself as "ended without team.done"). Regression tests for both.
+- 16/16 team tests green, stable over repeat runs; boundaries and docs:ref/docs tests (61) still
+  green.
 
 ## Next
 1. e2e round 3 (2026-09-28, b19f10c2): **signed off.** `projectOf` took `input.project` from a
@@ -77,8 +117,13 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
      own fix, that makes every "cli" call this session's tests make read as "mcp", which is
      exactly the case the fix targets. e2e ran b19f10c2 on testbox (RULES: suites run there, not
      the Mac, and never from a session the fix itself would relabel): 57/57 green in 48s, no hang.
-2. Step 2: notes-changed check on team.done, compaction re-injection, rotation.
-3. Step 3: summon tool in sessions' MCP list, result injection, per ADR 0031 and the lead's brief.
+2. Steps 2/3, the lead's brief (2026-09-28): summon through `vyre mcp` verified, result injection
+   verified, rotation built (see "Steps 2/3" above). Sha with all of it and the `threadRecord` bug
+   fix: pending, send to e2e once committed.
+3. Left from step 2: notes-changed enforcement on `team.done` (refuse to close an item when the
+   notes hash has not changed, unless `notes: "unchanged"` with a reason), compaction re-injection
+   (the SessionStart hook, source `compact`, re-injecting notes and the current item).
+4. Left from step 3: the in-process MCP server (`@role` routing) once ADR 0030 phase 3 lands.
 
 ## e2e review round 1 (2026-09-28, f8cbc882)
 

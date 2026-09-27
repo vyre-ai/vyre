@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Project teammates, steps 2/3: summon verified, rotation
+
+- `core/team`'s teammates now rotate (ADR 0031 section 3): a thread over 7 days old, or one that
+  has run 40 turns (the nearest signal available today to the ADR's context-used-60%, which
+  nothing yet exposes per-thread), is retired rather than resumed: a fresh session starts,
+  carrying the teammate's current notes and its last 3 results forward in its append. Freeing a
+  teammate for its next request now happens only once its current turn has genuinely ended
+  (`thread.finished`), not the moment `team.done`/`team.fail` closes the request record (which
+  runs mid-turn): an earlier version freed it immediately, so a caller's second, fast team.ask
+  could start writing to the same resumed session before its first turn had finished sending its
+  own closing text.
+- Verified summon works from a real (non-agent) session, not only a teammate's own turn: bound the
+  way a session's own SessionStart hook binds it, `team.list` and `team.ask` correctly resolve
+  their project from the session's thread and post results back into it. Found doing this:
+  `threads.get` answers `{thread: <record>, ...}`, not the record flat, so every place `core/team`
+  read a thread's project or age directly (`projectOf`, `inProject`, and rotation's own check) was
+  silently reading `undefined` and falling through, a real gap in step 1 that nothing caught
+  until a genuine bound-thread caller was tested, since every earlier test used a bare "cli" or
+  "mcp:agent:*" caller. Fixed with one shared `threadRecord()` helper.
+
 #### A person's label from a model's shell is the model's, for every tool
 
 - On the socket, `x-vyre-caller` is only a claim. vyred already refused a person-only call from
