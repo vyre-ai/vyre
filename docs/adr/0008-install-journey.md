@@ -119,7 +119,7 @@ runs `vyre up` on their Mac, the Mac finds the box on the tailnet and does step 
   which is off by default. The address screen checks, and when it is off shows one button,
   "Turn on HTTPS", linking to `https://login.tailscale.com/admin/dns`, and "Check again". It
   warns once that this publishes the machine name in public Certificate Transparency logs.
-- **With a Cloudflare token, a name.** When the box has a token (`CLOUDFLARE_VYRE_TOKEN` or the
+- **With a Cloudflare token, a name.** When the box has a token (`CLOUDFLARE_vyre_token` or the
   vault item `cloudflare-vyre-token`) or `network.domain` is set, the address step claims
   `<you>.vyre.run` (or a name in the person's own zone) as ADR 0002 describes, and ts.net is the
   fallback. Without one, ts.net is the default and "Your own domain" is a collapsed choice that

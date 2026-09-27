@@ -100,7 +100,7 @@ function answer(res, text) {
   }
   if (j.ok) return j.data;
   const code = typeof j.code === "string" && /^[a-z_]{1,32}$/.test(j.code) ? j.code : "script";
-  if (code === "auth") throw fail("auth", "the Apps Script web app refused the token: the vault's token must equal the script's VYRE_TOKEN property");
+  if (code === "auth") throw fail("auth", "the Apps Script web app refused the token: the vault's token must equal the script's vyre_token property");
   throw fail(code, typeof j.error === "string" && j.error ? `the script said: ${j.error.slice(0, 500)}` : "the script refused the request");
 }
 
@@ -128,7 +128,7 @@ export function appsScriptAdapter(deps = {}) {
       const token = await field("token");
       values.push(String(token ?? ""));
       if (typeof token !== "string" || token.length < 16) {
-        throw fail("bad_config", "the Apps Script token is missing or shorter than 16 characters; set a long random VYRE_TOKEN and keep the same value in the vault");
+        throw fail("bad_config", "the Apps Script token is missing or shorter than 16 characters; set a long random vyre_token and keep the same value in the vault");
       }
       const { u, loopback } = checkUrl(rawUrl);
       const id = /\/s\/([^/]+)\/exec$/.exec(u.pathname)?.[1];

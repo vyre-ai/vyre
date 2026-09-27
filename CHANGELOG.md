@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Mail: send an email from any connected account (ADR 0016 decision 8)
+
+- New module `mail` (core/mail): `mail.accounts`, `mail.send`, `mail.search`, `mail.read`,
+  `mail.test`, `mail.map`, and the Capsule's `mail.find` and `mail.compose`. `account` is a vault
+  connection id; the vault's list decides which accounts each surface sees.
+- Adapters: Google (through google.mail.*), an MCP server (through mcp.call and a guessed tool
+  map), Google Apps Script web apps (core/mail/apps-script.js and the script to paste,
+  apps-script.gs) and IMAP with SMTP (core/mail/imap.js, TLS required, no dependencies).
+- Every send is held at the Gate. Native accounts hold as `mail:<connection>` and send only
+  from `mail.release`. A missing credential answers `needs_credential`.
+- `mcp.call` hears `hold: true` and `on_behalf {thread, agent}` from module callers only;
+  `google.mail.send` hears `on_behalf`. Both are ignored from anyone else.
+- Shared pure mail helpers moved to core/connectors/message.js; google/mail.js uses them.
+- Tests: fake IMAP and SMTP servers, a fake Apps Script web app (it runs the real script), two
+  instances of one MCP server with their own credentials.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or

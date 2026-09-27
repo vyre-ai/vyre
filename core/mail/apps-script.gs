@@ -6,7 +6,7 @@
 //   1. Open https://script.google.com while signed in to the Gmail account Vyre should use, and
 //      make a New project.
 //   2. Replace the contents of Code.gs with this whole file and save.
-//   3. Project Settings (the gear) > Script Properties > Add script property. Name: VYRE_TOKEN.
+//   3. Project Settings (the gear) > Script Properties > Add script property. Name: vyre_token.
 //      Value: a long random value, at least 32 characters (a password manager can make one).
 //   4. Deploy > New deployment > Select type: Web app. Execute as: Me. Who has access: Anyone.
 //      Deploy, and allow the Gmail access Google asks for.
@@ -35,8 +35,8 @@ function doPost(e) {
   }
   if (!req || typeof req !== "object") return answer_(false, "the request is not a JSON object", "bad_input");
 
-  var expected = PropertiesService.getScriptProperties().getProperty("VYRE_TOKEN") || "";
-  if (expected.length < 16) return answer_(false, "set the VYRE_TOKEN script property to a long random value", "setup");
+  var expected = PropertiesService.getScriptProperties().getProperty("vyre_token") || "";
+  if (expected.length < 16) return answer_(false, "set the vyre_token script property to a long random value", "setup");
   if (!same_(String(req.token || ""), expected)) return answer_(false, "wrong token", "auth");
 
   try {

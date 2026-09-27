@@ -109,7 +109,7 @@ export function loadScript(o) {
     GmailApp,
     ContentService,
     Session: { getEffectiveUser: () => ({ getEmail: () => o.address }) },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === "VYRE_TOKEN" ? o.token ?? null : null) }) },
+    PropertiesService: { getScriptProperties: () => ({ getProperty: k => (k === "vyre_token" ? o.token ?? null : null) }) },
   });
   vm.runInContext(SRC, ctx, { filename: "apps-script.gs" });
   return {

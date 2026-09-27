@@ -24,9 +24,9 @@ export default {
     // The user's own token for the vyre.run zone, from vyred's environment or the vault. It is
     // never logged and never leaves this module.
     const token = async () => {
-      if (process.env.CLOUDFLARE_VYRE_TOKEN) return process.env.CLOUDFLARE_VYRE_TOKEN;
+      if (process.env.CLOUDFLARE_vyre_token) return process.env.CLOUDFLARE_vyre_token;
       try { const v = await ctx.vault.fetch("cloudflare-vyre-token"); if (v) return v; } catch {}
-      throw new Error("no Cloudflare token for the vyre.run zone: set CLOUDFLARE_VYRE_TOKEN in ~/.vyre/env");
+      throw new Error("no Cloudflare token for the vyre.run zone: set CLOUDFLARE_vyre_token in ~/.vyre/env");
     };
     const hasToken = () => token().then(() => true, () => false);
     const which = () => (ctx.config.network || {}).acme === "staging" ? "staging" : "production";

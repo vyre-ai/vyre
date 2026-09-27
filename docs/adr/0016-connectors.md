@@ -206,86 +206,87 @@ stops the paste reader); it gives up after 10 minutes.
 ### 8. Mail: one capability over every account
 
 "Send an email" works from the Capsule, a chat and an agent through any account the person
-connected, and several at once. A new module, `mail` (`core/mail/`), is the one contract. It never
-imports `google` or `mcp`: it reaches them through `ctx.call`, and it serves two kinds of account
-itself.
+connected, and several at once. A module, `mail` (`core/mail/`), is the one contract. It never
+imports `google`, `mcp` or `vault`: it reaches them through `ctx.call`, and it serves two kinds of
+account itself.
 
-| Adapter | Where it runs | Credential | Held at the Gate by |
+A mail account is a vault connection (ADR 0028 decision 9b). The vault keeps the list, the items
+and the surfaces each connection is granted to; `mail` keeps nothing about an account except the
+tool map of one served by an MCP server. Every mail tool's `account` is the connection's id.
+
+| Adapter | Connection | Where it runs | Held at the Gate by |
 |---|---|---|---|
-| `google-dwd`, `google-oauth` | the `google` module, through `google.mail.*` | the Google account's item | `google`, sender `google:<account>` |
-| `mcp` | a hub server, through `mcp.call` with a tool map | the server's own items | the hub, sender `mcp:<server>`, always held |
-| `apps-script` | `mail` itself: HTTPS POST to the person's Apps Script web app | env-set `{url, token}` | `mail`, sender `mail:<account>` |
-| `imap` | `mail` itself: IMAP for reads, SMTP for sends, TLS required | the password in an item; hosts and ports are plain config | `mail`, sender `mail:<account>` |
+| `google` | source `google` (OAuth or DWD) | the `google` module, through `google.mail.*` | `google`, sender `google:<account>` |
+| `mcp` | source `mcp`, one per hub server | the hub, through `mcp.call` and a tool map | the hub, sender `mcp:<server>`, always held |
+| `apps-script` | provider `google-apps-script`: `{url, token}` | `mail`: HTTPS POST to the person's web app | `mail`, sender `mail:<connection>` |
+| `imap` | provider `imap-smtp`: hosts, ports, username, password, security | `mail`: IMAP reads, SMTP sends, TLS required | `mail`, sender `mail:<connection>` |
 
 Tools (callers as in decision 3):
 
 | Tool | Callers | Input | Returns |
 |---|---|---|---|
-| `mail.accounts` | all | `{}` | the accounts this surface may use: `[{account, adapter, address, label, surfaces, state}]`, never a value |
-| `mail.add` | people | `{account, adapter, address, label?, surfaces?, ...adapter config}` | the account |
-| `mail.update` | people | `{account, ...any field of add}` | the account |
-| `mail.remove` | people | `{account}` | `{removed}` |
-| `mail.test` | people | `{account}` | `{ok, can: {send, search, read}, error?}`: a harmless read, never a send |
+| `mail.accounts` | all | `{}` | the accounts this caller may use: `[{account, adapter, address, label, provider, source}]`, never a value |
+| `mail.map` | people | `{account, map?}` | an MCP account's tool map, guessed the first time; with `map`, the person's correction |
+| `mail.test` | people | `{account}` | `{ok, can: {send, search, read}, error?}`: a harmless check, never a send |
 | `mail.send` | all | `{account?, to, subject, body, cc?, bcc?, in_reply_to?, why?}` | `{held, account, via, message}`: always held |
 | `mail.search` | all | `{q, account?, limit?}` | `{messages: [{account, id, thread_id?, from, to, subject, date, snippet}], errors?}` |
 | `mail.read` | all | `{account, id}` | one message as text |
 | `mail.find` | capsule, people | `{q}` | Capsule rows (below) |
-| `mail.compose` | capsule, people | `{id, to?, subject?, body?}` | `{held, ...}`: the Capsule's "Write it" on a row |
-| `mail.release` | internal, gate only | `{id, to, content}` | sends an approved item of a `mail:<account>` sender |
+| `mail.compose` | capsule, people | `{id, to?, subject?, body?}` | a held message, or a message read |
+| `mail.release` | internal, gate only | `{id, to, content}` | sends an approved item of a `mail:<connection>` sender |
 
 Rules, and why:
 
+- **The vault decides who may use which account.** `mail` asks `vault.connections.list` for the
+  caller vyred verified (the Capsule is `capsule`, a person's session `mcp:thread:<id>`, an agent
+  `mcp:agent:<name>`) and acts only on what comes back. An account a surface may not use is
+  invisible to it, and a refusal lists only the accounts it may use.
 - **Every send is held.** `mail.send` never sends. A Google account holds through
-  `google.mail.send`, an MCP account through `mcp.call` with `hold: true` (a new input for module
-  callers only, which forces the Gate whatever the tool's mode or name says, so a mapped tool
-  called `compose` or marked `read` still waits), and the two native adapters through
-  `gate.request` as `mail:<account>`. Approving needs presence (Touch ID), as every outbound item
-  does today; nothing else in this module asks for it (the no-nag rule).
+  `google.mail.send`, an MCP account through `mcp.call` with `hold: true` (a new input heard from
+  module callers only, which forces the Gate whatever the tool's mode or name says, so a mapped
+  tool called `compose` or marked `read` still waits), and the two native adapters through
+  `gate.request` as `mail:<connection>`. Approving needs presence (Touch ID), as every outbound
+  item does; nothing else here asks for it (the no-nag rule). A connection without the
+  `send_mail` capability never sends.
 - **The thread and the agent follow the call.** `mail` passes what vyred verified as
-  `on_behalf: {thread, agent}`, which `google.mail.send` and `mcp.call` accept from a module
-  caller only, the way `gate.request` accepts `agent`. So a held item is filed under the chat or
-  agent that asked.
-- **Surfaces.** Each account says which surfaces may use it: `surfaces: {capsule, chat, agents}`,
-  default `{capsule: true, chat: true, agents: []}`. The surface comes from the verified caller:
-  `capsule` is the Capsule, `mcp` is a person's own session (chat), `mcp:agent:<name>` is that
-  agent. People's managing callers (cli, deck, local) see every account. A module caller names the
-  surface it acts for. An account a surface may not use is invisible to it, not refused with its
-  name. (If the vault's connections model carries grants per surface, this list moves there;
-  see the open question.)
-- **Which account.** `mail.send` with no `account` uses the only account the surface may use;
+  `on_behalf: {thread, agent}`, which `google.mail.send` and `mcp.call` hear from a module caller
+  only, the way `gate.request` hears `agent`. So a held item is filed under the chat or agent
+  that asked. A module calling `mail` may say whom it acts for the same way.
+- **Which account.** `mail.send` with no `account` uses the only account the caller may use;
   with several it answers `ambiguous` and lists them, never a guess. Reads fan out over every
-  account the surface may use, newest first; one failing account becomes an entry in `errors`,
-  not a failed search.
+  account the caller may use, newest first; one failing account is an entry in `errors`, not a
+  failed search.
 - **One query language.** `q` takes words, `from:`, `to:`, `subject:`, `newer_than:<n>d` and
-  `is:unread`. Google and Apps Script pass it to Gmail as is; IMAP translates it to `SEARCH`;
-  an MCP account passes it to the mapped argument.
-- **Each account is a vault connection.** At add, `mail` registers the account with the vault as
-  a connection (its adapter, its items), so the vault's "needs a credential" flow can name a
-  missing or ungranted item. A tool that finds one answers `needs_credential` with the account
-  and the item, never a value. Google accounts appear by themselves: `mail` adds a row for each
-  `google.added` and drops it on `google.removed`.
+  `is:unread`. Google and Apps Script pass it to Gmail as is; IMAP translates it to `SEARCH`
+  and never marks a message read; an MCP account passes it to the mapped argument.
+- **Needs a credential.** A missing or ungranted item answers
+  `{code: "needs_credential", detail: {module: "mail", need: <item>, account: <connection>}}`
+  and emits `mail.needs-credential`, so the vault's flow can ask the person. Never a value.
 - **Native adapters.** IMAP and SMTP need TLS (implicit or STARTTLS), except to a loopback host,
-  which exists for the test fakes. Apps Script is a POST with the token in the body, and one
-  redirect is followed only to `https://script.googleusercontent.com`, as a GET without the
-  token, which is how Apps Script returns its answer. The script to paste is in
-  `core/mail/apps-script.gs`. No dependencies: the IMAP, SMTP and HTTP clients are small files
-  in `core/mail/`. Every result and error is scrubbed of every value used.
-- **MCP tool map.** `mail.add {adapter: "mcp", server}` reads the server's cached tools and
-  guesses the send, search and read tools and their arguments (`to` or `recipient`, `subject`,
-  `body` or `text`), and stores the map it chose, which the person can correct with `mail.update`.
-  Several instances of one server (`gmail-home`, `gmail-work`) are several hub servers, each with
-  its own items, and so several mail accounts.
+  which exists for the test fakes. SMTP never carries Bcc in the headers. Apps Script is a POST
+  with the token in the body, and one redirect is followed only to
+  `https://script.googleusercontent.com`, as a GET without the token, which is how Apps Script
+  returns its answer. The script to paste is `core/mail/apps-script.gs`. No dependencies. Every
+  result and error is scrubbed of every value used.
+- **MCP tool map.** The first use reads the server's cached tools and guesses the send, search
+  and read tools and their arguments (`to` or `recipients`, `subject`, `body` or `text`), and
+  stores that map; `mail.map` shows and corrects it. Several instances of one server
+  (`gmail-home`, `gmail-work`) are several hub servers, each with its own items, and so several
+  connections.
+- **Restarts.** A held `mail:<connection>` item survives a restart of vyred: at start `mail`
+  offers the sender of every such item still waiting.
 
 The Capsule. `shows.capsule` lists `results:mail.find` and `action:mail.compose`. "send an
-email", "email dana@northwind-bakery.example about the order" or "write to alex" gives one row per
-account the Capsule may use ("Send from alex@harlow.example, Google"), with what the words named
-already filled in. "email from dana" gives messages across accounts. `mail.compose` on a send row
-holds the message at once, with what is known, so the person finishes it in the Gate card and
-approves it there with Touch ID; the Capsule's deeper path (an agent) writes the body and calls
+email", "email dana@northwind-bakery.example about the order" or "write to dana" gives one row per
+account the Capsule may send from ("Send from alex@harlow.example"), with what the words named
+filled in; a name is resolved from the person's own mail. "email from dana" gives messages across
+accounts. `mail.compose` on a send row holds the message at once, so the person finishes it in the
+Gate card and approves it there; the Capsule's deeper path (an agent) writes the body and calls
 `mail.send` with the row's account.
 
-Open question for the vault team: the tool names and shapes of the connections model, and whether
-grants per surface live there. `mail` builds against a small wrapper so that swap is one file.
+What the vault serves for this (ADR 0028 decision 9): `vault.connections.list {caller}` from a
+module caller, answering for that caller's surface, and `use` entries that point `send_mail` and
+`read_mail` of every source at `mail.send` and `mail.search`.
 
 ## Consequences
 
