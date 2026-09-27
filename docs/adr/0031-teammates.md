@@ -331,14 +331,99 @@ spans projects), and the request shows it came through juno. Sharing a teammate 
 
 - A sleeping teammate costs nothing: no process, no timer. Everything is event-driven; nothing
   polls (SPEC principle 8).
-- Defaults: at most 8 teammates per project, 50 queued requests per teammate, depth 3, and the
-  live cap of ADR 0030 shared with every session.
+- Defaults: at most 8 teammates per project, 50 queued requests per teammate, depth 3, the
+  concurrency limits of section 14, and the live cap of ADR 0030 shared with every session.
 - Budget per teammate per day and month, including its helpers. At 80 percent a notice, at 100
   percent `paused` with a Needs you row; queued requests wait. On a subscription the budget is in
   turns and tokens, since dollars are not billed per call.
 - Rotation (section 3) keeps context, and so cost per turn, bounded.
 
-### 14. Modules and contracts
+### 14. Concurrency and usage limits
+
+Teammates draw on the same plan as the person's own sessions, and they draw fast. The user asked
+for hard limits, set per project, under a ceiling for the whole box, enforced where sessions
+start: in the sessions layer (ADR 0030), not in the teammate module, so no path around them
+exists.
+
+**Slots.** Two kinds of slot, both taken and released by the sessions layer:
+
+- **An active-teammate slot** is held while a teammate runs a request (from `summon.started` to
+  `summon.finished`, including time spent `waiting` on a person's answer, since its context stays
+  live). A sleeping or idle teammate holds none.
+- **A subagent slot** is held by every subagent while it runs, from any session in the project:
+  teammates, their helpers, the person's own Chat and terminal sessions, jobs. Claude Code runs
+  subagents inside the parent's process, so these slots limit tokens, not processes.
+
+The live-process cap of ADR 0030 (6 on the box) is separate and still applies: it bounds memory.
+The slots here bound usage.
+
+**The limits** (project settings `team.max_active` and `team.max_subagents`, plus box-wide
+`limits.max_active_teammates` and `limits.max_subagents`):
+
+| Preset | Active teammates | Subagents at once | Peak usage, in Opus sessions | For |
+|---|---|---|---|---|
+| Light | 1 | 2 | about 1.6 | a Pro plan, or a project that runs beside heavy personal use |
+| **Balanced** (recommended) | 3 | 4 | about 4.2 | a Max plan and a normal project |
+| Max | 6 | 10 | about 9 | a Max plan given over to one project, or an API key with a budget |
+| Custom | 1 to 8 | 0 to 16 | computed | anything else |
+
+The box-wide ceiling defaults to Balanced's numbers doubled (6 active teammates, 8 subagents),
+and no project setting can exceed it.
+
+How the estimate is made, and why these defaults:
+
+- One unit is one Opus session working without pause. A helper subagent on the `helper` purpose
+  (the faster model) counts as about 0.3 of a unit; a subagent on Opus counts as 1. So Light is
+  1 + 2 x 0.3, Balanced 3 + 4 x 0.3, Max 6 + 10 x 0.3. These are peaks, when every slot is busy at
+  once; a real day sits well below them, because teammates sleep between requests. The factor 0.3
+  is an assumption until measured: the settings screen shows the measured figure from
+  `thread.usage` once a project has a week of history, and the estimate until then.
+- A plan's usage window drains roughly that many times faster at the peak. On Balanced, a window
+  the person alone would use up in 5 hours lasts a little over an hour if every slot is busy.
+- Balanced is the default because three teammates cover the common split (a builder, a reviewer
+  or tester, and one for words or design), and four subagents let one teammate fan out a burst
+  while the others work. Light protects a Pro plan. Max is for someone who wants throughput and
+  accepts reaching the limit.
+
+**The rules.**
+
+1. A teammate request that finds no active slot (in its project, or box-wide) stays `queued` with
+   reason `slots`. Waiting requests start in the order they were queued, oldest first, across the
+   project's teammates. Box-wide, free slots go to projects in turn (round robin), so one busy
+   project cannot starve the others. A request's own priority orders it only inside its teammate's
+   inbox; `urgent` does not jump the slot queue, since that would let any session bypass the
+   limit by asking loudly.
+2. The queue is visible: each waiting request shows its position and an ETA, estimated as the
+   earliest expected finish among the running requests (each teammate's median duration over its
+   last 10 requests, less the time already spent), or "unknown" without history. `team.ask`
+   returns `{state: "queued", reason: "slots", position, eta}` so the caller can say so.
+3. A subagent spawn that finds no subagent slot waits. In owned sessions, `canUseTool` for the
+   Task (Agent) tool holds its promise until a slot frees, for at most 10 minutes, then denies with
+   "No subagent slot free in this project; do the work yourself or try later." In terminal
+   sessions, the plugin's PreToolUse hook cannot wait that long, so it denies at once with the same
+   message and the queue position. Slots are released on the SubagentStop hook, and on the
+   parent's turn ending, whichever comes first, so a crash never leaks a slot.
+4. The person is never locked out. The person's own new sessions take no teammate slot and never
+   wait here (ADR 0030's process cap still applies), but their subagents take subagent slots like
+   anyone's. A person may start a queued request now ("Run now"), which overrides the project
+   limit once, never the box-wide ceiling.
+5. A lowered limit takes effect for new starts; running work finishes.
+
+**Usage-aware pause.** Every `thread.limit` event carries the plan's `status`, `kind` (for
+example `five_hour`), `utilization` and `resets_at`. Vyre keeps the latest per auth:
+
+- At `allowed_warning`, or utilization at 80 percent or more, new teammate requests and new
+  subagent spawns for that auth are paused (reason `usage`); running requests continue. The
+  person gets one notice ("Teammates paused: your plan is at 85 percent until 16:00. Resume
+  anyway?") in Needs you and on the phone. "Resume anyway" lifts the pause until the next window.
+- At `rejected`, everything queued for that auth waits until `resets_at`. A request moves to
+  the API-key fallback of ADR 0030 only if the person turned that fallback on for teammates
+  (off by default, since it turns a free pause into a bill).
+- Helpers always use the `helper` purpose unless the teammate's setup says otherwise, which is
+  the cheapest brake on usage and needs no pause at all.
+- Nothing polls: the pause reacts to events that sessions already emit.
+
+### 15. Modules and contracts
 
 A new module `core/team` (roles box and local) requires `agents`, `threads`, `projects` and
 `memory`. It owns `agents_teammates`, `team_requests` and `team_notes`, the tools above and the CLI
@@ -352,7 +437,10 @@ Changes elsewhere, each through its contract:
 
 - **agents:** kind `teammate`; `agents.ask` on a teammate becomes a `team.ask`; a teammate's
   thread is launched with the team append.
-- **sessions and switchboard:** `threads_inbox` accepts a `teammate-result` item; the in-process
+- **sessions and switchboard:** the slot ledger of section 14 (`sessions.slots`: take, release,
+  queue, with `slot.taken`, `slot.released` and `slot.queued` events), the Task-tool hold in
+  `canUseTool`, SubagentStop release, the per-auth usage state from `thread.limit`, and the pause;
+  `threads_inbox` accepts a `teammate-result` item; the in-process
   MCP server includes `team.*` for sessions in a project; the SessionStart `compact` hook
   re-injects notes.
 - **projects:** `projects.context` lists the project's teammates.
@@ -363,7 +451,9 @@ Changes elsewhere, each through its contract:
 
 In order, after ADR 0030 steps 1 to 3:
 
-1. `core/team`: tables, `team.*`, the inbox engine and CLI, tested against the fake driver.
+1. `core/team`: tables, `team.*`, the inbox engine and CLI, tested against the fake driver; the
+   slot ledger and the usage pause in sessions (section 14) land with it, since no teammate runs
+   without them.
 2. Notes: the file, versions, the `team.done` check, compaction re-injection, rotation.
 3. Summon from every session: through the plugin's `vyre mcp` first, then the in-process server
    when ADR 0030 phase 3 lands. Results through `threads_inbox`.
@@ -399,13 +489,16 @@ For the user:
    under git; the default here) or only in Vyre's home?
 5. **Today's single-project agents.** Offer to convert them (the default here), convert them
    automatically, or leave them?
-6. **Subscription budgets.** Turns and tokens per day as the limit on a subscription: which
+6. **Concurrency preset.** Balanced (3 active teammates, 4 subagents) as the default for new
+   projects, with Light suggested when the plan is Pro?
+7. **Subscription budgets.** Turns and tokens per day as the limit on a subscription: which
    default (the proposal is 200 turns a day per teammate)?
 
 For us:
 
 - The purpose map (`models.purposes`) has no owner yet; sessions is the natural one.
-- Rotation thresholds (60 percent, one compaction, 7 days) are guesses until measured.
+- Rotation thresholds (60 percent, one compaction, 7 days) and the helper factor 0.3 in section
+  14 are guesses until measured.
 - The Stop-hook reminder and the `team.done` notes check can be gamed by a trivial edit; the Notes
   tab's diff is the person's check.
 - The Task tool inside a teammate spends from the same subscription window as everything else; the
