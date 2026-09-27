@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: the resilience client, the person session, and ADR 0027 on auth and alarms
+
+- apps/app runs ADR 0029's client from core/resilience (Metro and TypeScript resolve it; one
+  copy): the stream with its cursor, the outbox with an Idempotency-Key on every write, and on
+  the web web.js (IndexedDB outbox, cursor and view cache, lifecycle). Native reads the event
+  stream with a small XHR reader (src/api/native-open.ts; React Native's fetch cannot stream).
+  src/state/connection.ts: live, reconnecting (one quiet pill, only after the first failed
+  retry), offline; outbox rows show as sending at once and leave only on the box's answer.
+  src/api/sse.js is gone.
+- src/auth/person.ts, person.web.ts: the person session. Same origin needs nothing (the box's
+  cookie); app.vyre.run signs in with PKCE, keeps a non-extractable P-256 key in IndexedDB,
+  sends its JWK to POST /v1/person/token, and signs every request (`authorization: Vyre`,
+  `x-vyre-proof`, ES256 over method, path, body hash, time and nonce). A 401
+  person_session_required clears the token and signs in again. Tests include the RFC 7636 PKCE
+  vector and a signature WebCrypto verifies.
+- ADR 0027: section 2 follows the sessions changes (idle is resumable, interrupt, busy, driver)
+  and names core/resilience as the app's client; new 3a (signing in) and 3b (alarms: Android
+  schedules exact local alarms keyed planner-<item>-<due>; the iPhone web app depends on push).
+- Merged work/resilience (with main 15e82dd) into work/mobile.
+
 #### One app: ADR 0027 and the smoothness meter
 
 - docs/adr/0027-one-app.md (draft): one Expo codebase for the iPhone web app, the Android APK,

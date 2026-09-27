@@ -1,9 +1,23 @@
-// The box client (apps/CONTRACT.md). Tools are POST /v1/tools/<name> with the JSON input as the
-// body; the answer is always {data} or {error}. Events are SSE at /v1/events/stream, resumed with
-// Last-Event-ID. The caller is set by the box's listener (tailnet:<login> or a relay device), so
-// the client never sends x-vyre-caller, and a native build sends no Origin.
+// The box client (apps/CONTRACT.md, docs/adr/0029-resilience.md): a thin adapter over the box's
+// own resilience code, so the app follows events and delivers writes exactly as the Deck does.
+//   - events: core/resilience/stream.js follow(), over the platform's `open` (web.js open on the
+//     web, native-open.ts on the phone). It holds the cursor, resumes with Last-Event-ID, backs
+//     off 2 s to 60 s, and treats a silent stream as dead.
+//   - writes: core/resilience/outbox.js. Every write is queued with an Idempotency-Key that stays
+//     the same across retries, shown at once as sending, and leaves only on the box's answer.
+//   - reads: one call through the same caller (web.js caller), never queued, never thrown.
+// Headers for the person session at another origin (src/auth/person.ts) are added per request,
+// since each proof signs that request's method, path and body.
+//
+// The engine is imported by relative path, not the @vyre/resilience alias, so the Node tests
+// can load this file as it is. The platform pieces come in through createClient (box.web.ts,
+// box.native.ts).
 
-import { createSseParser } from "./sse.js";
+import { follow } from "../../../../core/resilience/stream.js";
+import { outbox as makeOutbox } from "../../../../core/resilience/outbox.js";
+import type { Open, StreamState, VyreEvent } from "../../../../core/resilience/stream.js";
+import type { Call, Entry, Store } from "../../../../core/resilience/outbox.js";
+import type { backoff } from "../../../../core/resilience/backoff.js";
 
 export type BoxError = { code: string; message: string; methods?: string[]; detail?: Record<string, unknown> };
 export type Result<T> = { data: T; error?: undefined } | { data?: undefined; error: BoxError };
@@ -19,150 +33,202 @@ export type BoxEvent = {
   payload: Record<string, unknown>;
 };
 
-export type CallOptions = {
-  /** An x-vyre-presence proof, e.g. "device key=... ts=... nonce=... sig=...". Bound to this exact input. */
-  presence?: string;
-  /** Ask the box to open a presence session from this proof (x-vyre-presence-keep: 1). */
-  keep?: boolean;
-  signal?: AbortSignal;
+/** web.js caller's shape: one tool call with an Idempotency-Key, answered {data} or {error}. */
+export type Caller = (base: string, o?: { headers?: Record<string, string>; timeoutMs?: number }) => Call;
+
+/** What a person session adds to a request, and what to do when the box asks for one. */
+export type Auth = {
+  headers(method: string, url: string, body: string): Promise<Record<string, string>>;
+  required(): void;
 };
 
-export type CallMeta = { session?: string };
+export type Cursor = { load(): Promise<number | null> | number | null; save(n: number): void };
 
-type FetchLike = typeof fetch;
-
-export type ClientConfig = {
-  /** "" means same origin (the web app the box serves at /app/). Native sets the box's https URL. */
-  baseUrl: string;
-  fetch: FetchLike;
+export type OutboxChange = {
+  pending: Entry[];
+  done?: { entry: Entry; data: unknown };
+  refused?: { entry: Entry; error: BoxError };
 };
 
-let config: ClientConfig = { baseUrl: "", fetch: (...a) => globalThis.fetch(...a) };
+export type ClientDeps = {
+  /** The box's http(s) origin, e.g. "https://harlow.example.ts.net". */
+  base: string;
+  /** Every path to the box in order of preference (LAN, tailnet, relay). Default: [base]. */
+  paths?: string[];
+  open: Open;
+  caller: Caller;
+  outboxStore: Store;
+  cursor?: Cursor;
+  /** The person session at another origin; null at the box's own origin (the cookie does it). */
+  auth?: Auth | null;
+  /** Someone asked for a person session: the UI shows a sign-in. */
+  onSignIn?: () => void;
+  onState?: (s: StreamState) => void;
+  /** The stream moved its cursor: an event or a heartbeat, so the box answered just now. */
+  onAlive?: (at: number) => void;
+  onOutbox?: (c: OutboxChange) => void;
+  newKey?: () => string;
+  backoff?: () => ReturnType<typeof backoff>;
+  stallMs?: number;
+  timeoutMs?: number;
+};
 
-/** Set the box URL (native) or swap fetch (tests). */
-export function configure(next: Partial<ClientConfig>): void {
-  config = { ...config, ...next, baseUrl: (next.baseUrl ?? config.baseUrl).replace(/\/+$/, "") };
+export type Stream = ReturnType<typeof follow>;
+
+export type Client = {
+  /** A read: one call now, never queued. Errors come back as {error}. */
+  call<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string }): Promise<Result<T>>;
+  /**
+   * A write: queued in the outbox with an Idempotency-Key, delivered in order, retried until the
+   * box answers. `answered` resolves with that answer.
+   */
+  send<T = unknown>(tool: string, input?: Record<string, unknown>, o?: { presence?: string; key?: string }): Promise<{ key: string; answered: Promise<Result<T>> }>;
+  /** An entry waiting on presence: send it again with a proof bound to its exact input. */
+  prove(key: string, presence: string): Promise<void>;
+  /** Follow the box's events from the saved cursor ("latest" on a first start). One per client. */
+  events(onEvent: (e: BoxEvent) => void, o?: { type?: string; onReset?: (e: BoxEvent) => void }): Stream;
+  readonly stream: Stream | null;
+  readonly pending: Entry[];
+  /** The network changed or the app came to the front: try the stream and the outbox now. */
+  kick(): void;
+  stop(): void;
+};
+
+const PERSON = "person_session_required";
+
+const join = (base: string, path: string) => base.replace(/\/+$/, "") + path;
+
+/** An idempotency key: a UUID where the runtime has one (Hermes does not), else 128 random bits. */
+export function newKey(): string {
+  const c = globalThis.crypto;
+  if (c?.randomUUID) return c.randomUUID();
+  const b = new Uint8Array(16);
+  if (c?.getRandomValues) c.getRandomValues(b);
+  else for (let i = 0; i < 16; i++) b[i] = Math.floor(Math.random() * 256);
+  return Array.from(b, (x) => x.toString(16).padStart(2, "0")).join("");
 }
 
-function url(path: string): string {
-  return config.baseUrl + path;
-}
+export async function createClient(d: ClientDeps): Promise<Client> {
+  const base = d.base.replace(/\/+$/, "");
+  if (!/^https?:\/\//i.test(base)) throw new Error("the box's address must be an http(s) URL");
+  const paths = d.paths?.length ? d.paths : [base];
+  const auth = d.auth ?? null;
+  const timeoutMs = d.timeoutMs ?? 15_000;
+  /** Presence proofs for queued entries, by key; each is bound to that entry's exact input. */
+  const presence = new Map<string, string>();
 
-function isEnvelope(v: unknown): v is Result<unknown> {
-  return typeof v === "object" && v !== null && ("data" in v || "error" in v);
-}
-
-/**
- * Call one tool. Never throws: a network failure is {error:{code:"network"}}, a body that is not
- * the envelope is {error:{code:"bad_response"}}. A presence session the box opened comes back in meta.
- */
-export async function call<T = unknown>(
-  tool: string,
-  input: Record<string, unknown> = {},
-  opts: CallOptions = {},
-  meta?: CallMeta,
-): Promise<Result<T>> {
-  const headers: Record<string, string> = { "content-type": "application/json", accept: "application/json" };
-  if (opts.presence) headers["x-vyre-presence"] = opts.presence;
-  if (opts.keep) headers["x-vyre-presence-keep"] = "1";
-  let res: Response;
-  try {
-    res = await config.fetch(url(`/v1/tools/${encodeURIComponent(tool)}`), {
-      method: "POST",
-      headers,
-      body: JSON.stringify(input),
-      signal: opts.signal,
-      credentials: "same-origin",
-    });
-  } catch (e) {
-    return { error: { code: "network", message: e instanceof Error ? e.message : String(e) } };
+  function sessionRequired(): void {
+    auth?.required();
+    d.onSignIn?.();
   }
-  const session = res.headers.get("x-vyre-presence-session");
-  if (session && meta) meta.session = session;
-  let body: unknown;
-  try {
-    body = await res.json();
-  } catch {
-    return { error: { code: "bad_response", message: `HTTP ${res.status}, not JSON` } };
+
+  /** One tool call, with this request's person headers. */
+  async function once(tool: string, input: unknown, key: string, extra: Record<string, string>) {
+    const url = join(base, "/v1/tools/" + encodeURIComponent(tool));
+    const body = JSON.stringify(input ?? {});
+    const headers = { ...extra, ...(auth ? await auth.headers("POST", url, body) : {}) };
+    return (await d.caller(base, { headers, timeoutMs })(tool, input, key)) as Result<unknown>;
   }
-  if (!isEnvelope(body)) return { error: { code: "bad_response", message: `HTTP ${res.status}, no envelope` } };
-  return body as Result<T>;
-}
 
-export type EventsOptions = {
-  /** Resume after this id. Omitted: "latest" (skip the backlog), as the Deck does. */
-  since?: number | "latest";
-  /** "*" (default), "thread.*" or an exact type. */
-  type?: string;
-  /** Reconnect delay in ms after the stream ends or fails. */
-  retryMs?: number;
-  onError?: (e: unknown) => void;
-};
-
-export type Subscription = { close(): void; lastId(): number | null };
-
-/**
- * Subscribe to the box's events. Reads the SSE body through fetch (the web and Node have a
- * streaming body; React Native's fetch does not, so native gets a transport in the spike).
- * Every reconnect sends Last-Event-ID, which the box honours over `since`, so nothing is lost.
- */
-export function events(onEvent: (e: BoxEvent) => void, opts: EventsOptions = {}): Subscription {
-  let last: number | null = typeof opts.since === "number" ? opts.since : null;
-  let closed = false;
-  let ctrl: AbortController | null = null;
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const retryMs = opts.retryMs ?? 1000;
-
-  async function once(): Promise<void> {
-    ctrl = new AbortController();
-    const q = new URLSearchParams({ type: opts.type ?? "*" });
-    const headers: Record<string, string> = { accept: "text/event-stream" };
-    if (last !== null) headers["last-event-id"] = String(last);
-    else q.set("since", opts.since === undefined ? "latest" : String(opts.since));
-    const res = await config.fetch(url(`/v1/events/stream?${q}`), { headers, signal: ctrl.signal, credentials: "same-origin" });
-    if (!res.ok || !res.body) throw new Error(`events: HTTP ${res.status}${res.body ? "" : ", no stream"}`);
-    const parser = createSseParser((f) => {
-      let ev: BoxEvent;
-      try {
-        ev = JSON.parse(f.data) as BoxEvent;
-      } catch (e) {
-        opts.onError?.(e);
-        return;
-      }
-      if (f.id !== null && /^\d+$/.test(f.id)) last = Number(f.id);
-      onEvent(ev);
-    });
-    const reader = res.body.getReader();
-    const dec = new TextDecoder();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      parser.push(dec.decode(value, { stream: true }));
+  // The outbox's call. A 401 for the person keeps the entry (a retry code) while the person signs
+  // in: the write was refused before it ran, so it is not lost and not run twice.
+  const call: Call = async (tool, input, key) => {
+    const p = presence.get(key);
+    const r = await once(tool, input, key, p ? { "x-vyre-presence": p } : {});
+    if (r.error?.code === PERSON) {
+      sessionRequired();
+      return { error: { code: "offline", message: "waiting for you to sign in to the box" } };
     }
-  }
+    return r;
+  };
 
-  function loop(): void {
-    if (closed) return;
-    once().then(
-      () => schedule(),
-      (e: unknown) => {
-        if (!closed) opts.onError?.(e);
-        schedule();
-      },
-    );
-  }
-
-  function schedule(): void {
-    if (!closed) timer = setTimeout(loop, retryMs);
-  }
-
-  loop();
-  return {
-    close() {
-      closed = true;
-      if (timer) clearTimeout(timer);
-      ctrl?.abort();
+  const ob = await makeOutbox({
+    store: d.outboxStore,
+    call,
+    newKey: d.newKey ?? newKey,
+    backoff: d.backoff?.(),
+    onChange: (c) => {
+      const answered = c.done?.entry.key ?? c.refused?.entry.key;
+      if (answered) presence.delete(answered);
+      d.onOutbox?.(c as OutboxChange);
     },
-    lastId: () => last,
+  });
+
+  // The stream's transport, with the person headers on each GET (the health probe included).
+  const open: Open = async (req) => {
+    const h = auth ? await auth.headers("GET", join(req.base, req.path), "") : {};
+    const r = await d.open({ ...req, headers: { ...req.headers, ...h } });
+    // web.js open drops the body of an error, so any 401 on the stream with a token is taken as
+    // the session lapsing; without auth a 401 is the box's to explain and the stream backs off.
+    if (r.status === 401 && auth) sessionRequired();
+    return r;
+  };
+
+  let stream: Stream | null = null;
+
+  return {
+    async call<T>(tool: string, input: Record<string, unknown> = {}, o: { presence?: string } = {}) {
+      const r = await once(tool, input, "", o.presence ? { "x-vyre-presence": o.presence } : {});
+      if (r.error?.code === PERSON) sessionRequired();
+      return r as Result<T>;
+    },
+    async send<T>(tool: string, input: Record<string, unknown> = {}, o: { presence?: string; key?: string } = {}) {
+      const key = o.key ?? (d.newKey ?? newKey)();
+      if (o.presence) presence.set(key, o.presence);
+      const r = await ob.add(tool, input, { key });
+      return { key: r.key, answered: r.answered as Promise<Result<T>> };
+    },
+    async prove(key: string, proof: string) {
+      presence.set(key, proof);
+      await ob.retry();
+    },
+    events(onEvent, o = {}) {
+      if (stream) throw new Error("this client already follows the box; stop() it first");
+      const start = (cursor: number | null): Stream =>
+        follow({
+          paths,
+          open,
+          onEvent: (e: VyreEvent) => onEvent(e as BoxEvent),
+          onReset: o.onReset ? (e: VyreEvent) => o.onReset?.(e as BoxEvent) : undefined,
+          onState: d.onState,
+          cursor,
+          save: (n: number) => {
+            d.onAlive?.(Date.now());
+            d.cursor?.save(n);
+          },
+          type: o.type ?? "*",
+          backoff: d.backoff?.(),
+          stallMs: d.stallMs,
+        });
+      const loaded = d.cursor?.load() ?? null;
+      if (loaded instanceof Promise) {
+        // Hand back a stream now; it starts once the saved cursor is read.
+        let started: Stream | null = null;
+        let stopped = false;
+        const proxy: Stream = {
+          get cursor() { return started ? started.cursor : null; },
+          get path() { return started ? started.path : paths[0]; },
+          pause: () => started?.pause(),
+          resume: () => started?.resume(),
+          kick: () => started?.kick(),
+          stop: () => { stopped = true; started?.stop(); },
+        };
+        loaded.then((c) => c, () => null).then((c) => { if (!stopped) started = start(c); });
+        stream = proxy;
+        return proxy;
+      }
+      return (stream = start(loaded));
+    },
+    get stream() { return stream; },
+    get pending() { return ob.pending; },
+    kick() {
+      stream?.kick();
+      void ob.kick();
+    },
+    stop() {
+      stream?.stop();
+      stream = null;
+      ob.stop();
+    },
   };
 }

@@ -34,6 +34,13 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   Native fetch cannot stream: the spike needs a native SSE transport. No idempotency header on
   the box yet (ADR 0029 owns it; resilience).
 
+- Resilience client and person session in apps/app (see CHANGELOG); ADR 0027 sections 2, 3a
+  (auth), 3b (alarms). Merged work/resilience with main 15e82dd (ab4e1db6). App: tsc clean,
+  44/44 tests; root on testbox 188 pass before the zustand skip fix, then apps/app + docs 60
+  pass, 3 skipped (they need the app's packages; CI app.yml runs them).
+- The presence-keep response header is not read by the web client (web.js caller cannot see
+  headers); the app takes presence.session.open's body instead.
+
 ## One app: Doing
 - Plan the one-week spike with pwa (Now, a session, the approve swipe) and scaffold apps/app.
 

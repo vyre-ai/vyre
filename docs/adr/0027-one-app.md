@@ -69,11 +69,19 @@ pages that are not rebuilt yet open in the app as plain links, never as a webvie
 - **The event model.** The app speaks ADR 0030's session events (`thread.turn`, `thread.text`,
   `thread.tool`, `thread.state`, `thread.queued`, `ask.raised`, `ask.answered`,
   `thread.finished`, `thread.stopped`) and calls `threads.send`, `threads.unqueue`,
-  `threads.answer`, `threads.interrupt`. The provider is a chip on the session, never a separate
-  screen. The app keeps no Claude-specific code.
-- **Resilience.** The client follows ADR 0029's reference client: SSE with `id` and resume,
-  an idempotency key on every write, and an outbox in IndexedDB (web) or SQLite (native) that
-  replays on reconnect, so an approve or a send made offline is never lost.
+  `threads.answer`, `threads.interrupt`. The provider is a chip on the session (records carry
+  `driver`), never a separate screen. The app keeps no Claude-specific code. Three states read
+  differently: `thread.stopped` with reason `idle` is **idle**, not ended (the next send resumes
+  it); `threads.interrupt` ends the running turn and its asks show as cancelled; `threads.start`
+  answering `busy` (the box's cap of six busy sessions) says so and offers to queue. The system
+  prompt settings (`sessions.prompt.*`, person-only) live in Settings.
+- **Resilience.** The app runs ADR 0029's client code as it is, from `core/resilience/`: the
+  stream (`stream.js`, cursor and resume), the outbox (`outbox.js`, an `Idempotency-Key` on every
+  write, entries shown as sending at once and removed only on the box's answer), and on the web
+  `web.js` (fetch transport, IndexedDB outbox, cursor and view cache, the page lifecycle). Native
+  builds reuse the same stream and outbox with a small XHR reader for the event stream (React
+  Native's fetch cannot stream a body) and a native store behind the same `{load, save}`. Metro
+  resolves `core/resilience` from the repo, so there is one copy.
 
 ### 3. The phone is a full client
 
@@ -86,6 +94,41 @@ send, post, pay or delete outside; one proof opens a 30-minute presence session.
   Tailscale, or the relay's pinned origin for app.vyre.run).
 - **Native targets** prove with the `device` method: a P-256 key in the Secure Enclave or
   StrongBox behind the biometric prompt (ADR 0018, already on the box).
+
+### 3a. Signing in: the person session
+
+Over the tailnet the box treats a device as the owner's device, not as the owner: person-only
+calls, and calls that need presence, also need a **person session** (ADR 0004, e2e). Without one
+the box answers 401 `person_session_required`, and the app signs in.
+
+- **Served by the box (same origin).** A passkey sign-in at the box's `/person/signin` sets a
+  `__Host-` cookie (HttpOnly, Secure, SameSite=Strict). The app stores nothing.
+- **app.vyre.run and other origins.** PKCE: the app makes a verifier and an S256 challenge,
+  sends the page to `/person/signin?cc=<challenge>&return=<app>`, and trades the returned code at
+  `POST /v1/person/token {code, verifier, key}`. `key` is the public half (a JWK) of a
+  non-extractable WebCrypto P-256 key kept in IndexedDB. Every request then carries
+  `authorization: Vyre <id>.<secret>` and `x-vyre-proof: t n sig`, an ES256 signature over the
+  method, path and query, the body's hash, the time and a nonce, so a copied token is useless
+  without the key. The CORS list names only https://app.vyre.run.
+- **Native.** The same flow through the system's authentication browser, the key in the Secure
+  Enclave or StrongBox (the `device` key). Hermes has no WebCrypto, so native sign-in waits on a
+  native signer; until then the native build has no person session, and its person-only actions
+  say to use the web app.
+- Sessions last 30 days sliding (90 at most), are listed and revocable in Settings, and end with
+  `POST /v1/person/end`. The 30-minute presence session for sends and secrets is separate.
+
+### 3b. Alarms on the phone
+
+The planner (ADR 0025) rings alarms on every device, and the first answer clears the rest. Each
+firing has one key, `planner-<item>-<due>`, used as the local notification id, the
+`apns-collapse-id` and the Android notification tag; the app answers with `{key}`.
+
+- **Android (native)** schedules `planner.upcoming` as exact local alarms, refreshed on every
+  `planner.*` event except `fired` and on foreground, so an alarm rings with the phone offline.
+- **iPhone (web app)** cannot schedule local notifications. Alarms there depend on the box's Web
+  Push arriving on time: an alarm made while the phone is offline rings only once it is back
+  online. The native iOS build (the fallback, or later with the $99 account) removes this limit.
+  The app says so where an alarm is set on an iPhone web install.
 
 ### 4. The hosted app at app.vyre.run
 
