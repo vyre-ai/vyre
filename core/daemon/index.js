@@ -360,7 +360,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const r = people ? people.exchange({ code: String(b.code || ""), verifier: String(b.verifier || ""), key: b.key, node: nodeId || "", origin: policy.peer && /** @type {any} */ (policy.peer).origin || null,
       request: { headers: req.headers, method: req.method || "POST", path: url.pathname + url.search, raw } }) : { error: { code: "denied", message: "no person sessions here" } };
     if (r.data) events.emit("presence", "presence.signed-in", { id: r.data.id, node: policy.peer && policy.peer.node, app: true });
-    // The native app's biometric key (vyre.human): enrolled as a device presence key with the
+    // The native app's biometric key (vyre.human), or a Mac's Secure Enclave key (`vyre link
+    // signin`, a loopback code): enrolled as a device presence key with the
     // sign-in it rides on (a passkey on the box's page, moments ago), so its HUMAN_ONLY proofs
     // (x-vyre-presence `device ...`, the same 30-minute session as Touch ID) need no passkey.
     const h = b.human;

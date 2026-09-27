@@ -297,6 +297,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The owner's phone over the tailnet queues for a session busy in the terminal, and an agent's
   tailnet node does not (queuesFor in core/switchboard).
 
+#### The Mac proves human-only actions to its box (Secure Enclave)
+
+- `vyre link signin` also makes a P-256 key in the Mac's Secure Enclave (core/link/se, CryptoKit,
+  usable only with Touch ID, Apple Watch or the password; vyred keeps only an opaque handle that
+  works on this Mac alone) and sends its public half with the sign-in; the box enrolls it as a
+  device presence key. A human-only tool through link.call is then signed on the Mac after Touch
+  ID and carried with the person session, so `vyre phone add`, vault reveals and the like work from
+  the Mac's CLI and Capsule. Only the person's callers ask for the signature; a model or module
+  never does. `vyre link` shows `touchId`. The helper is built on first use and hash-checked.
+
 #### A relayed browser's passkey
 
 - presence.enroll takes `device` (a relay device id) from the relay module only: a passkey the
