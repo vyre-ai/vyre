@@ -36,11 +36,13 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   Tests after merge (15 files): 187 run, 181 pass, 0 fail, 6 skipped.
 
 ## Doing
-- Nothing in flight. Waiting for the next live-box deploy.
+- Nothing in flight. Waiting for the next live-box deploy (the lead says when).
+- 27 Sep: docs told 71503ab is on main (apply the no-passkey glass.md/presence.md text).
+  app-design sent notes on the one-app Agents board: drop Face ID on private sign-in, "Fill a
+  login" only in Sign in privately, no 5 min idle hand-back exists (offer to build it), no 4-viewer
+  cap (the cap is 2 screens), plus missing take-over/hand-back states.
 
 ## Next
-0. When 71503ab (with dcb03ce) is on main, SendMessage docs: they hold the no-passkey glass.md and
-   presence.md changes in docs/work/docs.md until then.
 1. After the live box is redeployed, two read-only checks only (no agents or computers made):
    `ssh <test-box> docker exec vyre-vyre-1 vyre call computers.limits '{}'` must not say
    no_such_tool, and a WS upgrade with a bogus ticket to
