@@ -76,6 +76,16 @@ account + device and drop the tokens tool store. Then polish passes over the spe
     against tokens.json; everything else matches token values exactly).
   - Sample world used correctly throughout (Harlow Legal, kit, juno, alex, Northwind Bakery).
   - Findings sent to launch (msg_id 9bf64bab) with the handoff.
+- Re-review of launch 342e02f5 (both findings fixed + their own hotkey copy fix, Option-Space
+  default / Control-twice optional): gold redesign and onboard.css --hover swap both correct;
+  hotkey copy consistent across site/, site/start/, README, onboard.js; art placement confirmed
+  byte-identical to the handoff. One thing the gold pass missed: `--beacon-wash` still in
+  styles.css :root and still live on `.held-chip` (the hero Capsule's "Held for you" cycling
+  state, index.html:154) — same retired needs-pill pattern, same fix as onboard (drop the wash,
+  keep the text). `.dest.do` also references it but isn't applied anywhere, looks like dead CSS.
+  Minor nit not blocking: `.keys .kc` renders the hero's ⌥Space as two boxed chips; key-hint.md
+  wants one chip per chord. Pre-existing, not part of this session's changes. Sent to launch
+  (msg_id 3050a9b8).
 
 ## Next
 
