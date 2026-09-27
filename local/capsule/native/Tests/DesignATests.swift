@@ -214,7 +214,7 @@ let designASuite = Suite("design A") { t in
     t.test("rc.2: no gold, no epoch ages, one placeholder") {
         let r = MainActor.assumeIsolated { () -> [String] in
             let m = snapModel([]); askWaiting(m)
-            var w = m.desk.waiting[0]
+            guard var w = m.desk.waiting.first else { return ["no waiting row"] }
             let fresh = w.age()
             w.at = 0
             return [fresh, w.age(), CapsuleLayout.placeholder(snapModel([]))]
