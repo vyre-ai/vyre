@@ -122,6 +122,11 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
+## Doing (28 Sep, cutover)
+- Stream cutover: 0.1.1 batch 1 (target 30 Sep, starts after rc.2 lands). memory-iq's 0.1.1 sha must
+  reach the integrator before batch 1 starts; the integrator holds capsule-pro's change until it
+  does. Unpair keeps data (d0b916b9); delete is sync.deleted with memory.device as the preview.
+
 ## Doing (28 Sep, import, later)
 - Built: import.scan (caps, exclusions before listing, credential folders never walked,
   claude_keeps_days), import.plan (pace estimates), import.status, import.progress,
