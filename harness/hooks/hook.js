@@ -9,6 +9,7 @@
 // lessons from the snapshot Learning keeps in the home, or read-only from vyre.db when that file
 // is gone). Neither is switched off by stopping a daemon.
 
+import fs from "node:fs";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -48,6 +49,16 @@ function typedByPerson(session) {
   });
 }
 
+/**
+ * Who the user is, as core/about last wrote it: read from the file, not asked of vyred, so it
+ * costs a millisecond and holds when vyred is down. A person's own session and the assistant's
+ * get it; an agent scoped to some projects does not, since it names projects outside its scope.
+ */
+function about() {
+  if (process.env.VYRE_AGENT && process.env.VYRE_AGENT_KIND !== "assistant") return "";
+  try { return fs.readFileSync(path.join(home(), "about.md"), "utf8").slice(0, 1000).trim(); } catch { return ""; }
+}
+
 /** @param {string} hookEventName @param {Record<string, any>} fields */
 const answer = (hookEventName, fields) => process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName, ...fields } }));
 
@@ -72,7 +83,8 @@ async function main() {
     // resume of the same id) may be a second writer, which harness.brief warns about.
     const headless = Boolean(process.env.VYRE_THREAD) && process.env.VYRE_THREAD === h.session_id;
     const r = await call("harness.brief", { ...base, ...scope, source: h.source, headless, ...(project ? { project } : {}) }, opts);
-    if (r.data && r.data.text) answer(EVENT.brief, { additionalContext: r.data.text });
+    const context = [about(), r.data && r.data.text].filter(Boolean).join("\n\n");
+    if (context) answer(EVENT.brief, { additionalContext: context });
     // Bind this session to its claude process (this hook's parent, as the MCP server's is), so the
     // MCP server can say which session its calls come from. Every SessionStart: /clear changes the id.
     if (h.session_id && !down(r)) {

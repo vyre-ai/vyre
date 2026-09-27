@@ -83,7 +83,7 @@ export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn)
  */
 export async function answer(n, opt, edited) {
   if (n.kind === "draft") {
-    // Every answer here is human-only (core/presence HUMAN_ONLY): the passkey proves a person.
+    // A held item is human-only (core/presence HUMAN_ONLY): the passkey proves a person.
     if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: true });
     else {
       const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id }, { presence: true });
@@ -92,7 +92,8 @@ export async function answer(n, opt, edited) {
       if (r && r.state === "failed") { got.delete(n.id); throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true }); }
     }
   } else {
-    await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" }, { presence: true });
+    // An ask is the owner's own answer and needs no passkey (ADR 0024, no nagging).
+    await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" });
   }
   cache = cache.filter(x => x.id !== n.id);
   got.delete(n.id);

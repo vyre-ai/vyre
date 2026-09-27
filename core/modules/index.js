@@ -12,10 +12,20 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
+import { PERSON_ONLY } from "../presence/index.js";
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
+/** Vyre's own modules live here; a module installed into a home never does. */
+const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/**
+ * The only caller labels a module may call under, and who may. A person's labels ("cli", "deck")
+ * are never here: a module that could call as one would act as the person. The link on a Mac types
+ * into a session for the person at the box as "link:box" (docs/adr/0021-box-reads-the-mac.md).
+ * @type {Record<string, string[]>}
+ */
+const CALL_AS = { link: ["link:box"] };
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 
@@ -247,7 +257,16 @@ export class Registry {
       },
       // Another module's tool, through the same path as every caller: input checked, rules run.
       // This is the only way one module uses another; never import its files.
-      call: (tool, input) => this.call(tool, input, `module:${m.name}`),
+      // `as` calls under another caller label: only a core module, and only a label CALL_AS
+      // gives it. A manifest cannot grant this, so a module installed into a home never can.
+      call: (tool, input, opts) => {
+        const as = opts && opts.as;
+        if (!as) return this.call(tool, input, `module:${m.name}`);
+        const rec = this.modules.get(m.name);
+        const core = Boolean(rec && path.resolve(rec.dir).startsWith(CORE_DIR + path.sep));
+        if (!core || !(CALL_AS[m.name] || []).includes(String(as))) throw new Error(`${m.name} may not call ${tool} as ${as}`);
+        return this.call(tool, input, String(as));
+      },
       // A long-lived connection (a WebSocket) at /v1/streams/<module>/<name>, for what a tool call
       // cannot carry: Glass streams a screen this way. The name must be declared under
       // shows.streams. The handler gets the raw upgrade (req, socket, head) and the caller, and
@@ -307,15 +326,16 @@ export class Registry {
    *   input is not verified and must not be treated as if it were. `proof` is the presence proof
    *   the request carried, checked here and not passed on.
    */
-  async call(tool, input = {}, caller = "unknown", { proof = null, ...meta } = {}) {
+  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
     // A guest from another tailnet is never a person proving they are here, whatever proof it
-    // carries: presence is the owner's (ADR 0014 part 8). The router already hides these tools.
-    if (String(caller).startsWith("tailnet-guest:") && (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence)) {
+    // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
+    // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
+    if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
       return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
     }
     const problems = checkInput(def.input, input);
@@ -334,7 +354,17 @@ export class Registry {
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };
     }
     // The caller is passed on, so a tool like vault.release can check which module is asking.
-    try { return { data: await def.run(input, { ...meta, caller }) }; }
+    try {
+      const data = await def.run(input, { ...meta, caller });
+      // keep: the person asked that this proof also open a presence session on their device, so
+      // the next sessionable call (another send) needs no second Touch ID or passkey. Only a strong
+      // proof opens one (presence.openSession refuses the rest); the secret goes back once.
+      if (keep && presence && meta.presence && meta.presence.method !== "session") {
+        try { return { data, session: presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer || null }) }; }
+        catch { /* a code or tty proof: the call still succeeded, with no session */ }
+      }
+      return { data };
+    }
     catch (e) {
       // A tool may throw an error carrying a code the caller can act on (a presence refusal, a
       // conflict, a missing grant). Pass a short lowercase code through; anything else is "failed".

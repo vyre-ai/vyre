@@ -78,7 +78,7 @@ export default {
       const got = await ask("threads.inbox", { session, via });
       const msgs = got && Array.isArray(got.messages) ? got.messages : [];
       // "the user": the config has no person's name (config.name is the computer's).
-      return msgs.map(m => `Message from the user via ${SURFACES[m.surface] || m.surface}: ${m.text}`).join("\n\n");
+      return msgs.map(m => `Message from the user via ${surfaceName(m.surface)}: ${m.text}`).join("\n\n");
     };
 
     ctx.tool("harness.brief", {
@@ -219,6 +219,11 @@ export default {
 
 /** How a queued message names where it came from. */
 const SURFACES = { capsule: "the Capsule", deck: "the Deck", cli: "the vyre command", glass: "Glass", mobile: "the phone" };
+/** A surface as a person says it; the box's through the link is "box:<surface>". */
+const surfaceName = (/** @type {string} */ s) => {
+  const box = /^box:(.*)$/.exec(String(s));
+  return box ? `${SURFACES[box[1]] || box[1] || "the Deck"} on the box` : SURFACES[s] || s;
+};
 
 /** Flags that make a claude process headless: its prompt comes from stdin or an argument, not a person. */
 const HEADLESS_FLAGS = new Set(["-p", "--print", "--output-format", "--input-format"]);
