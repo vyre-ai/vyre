@@ -86,11 +86,34 @@ const NEW = "4b7e2a90-sdk-thread";
 let interruptMissing = false;
 /** Tools this box answers "no such tool" for (a box before the sessions update has none of them; this one has some). */
 const MISSING = new Set(["threads.unqueue"]);
+// The fourth session: one the stream drops and resumes (ADR 0029 R1). What the box holds is
+// changed by the test between reads.
+const RES = "5e6f7a8b-resume-thread";
+const res = {
+  events: /** @type {any[]} */ ([{ id: 10, type: "thread.finished", thread: RES, at: T0 + 2000, payload: { ok: true } }]),
+  blocks: /** @type {any[]} */ ([
+    { seq: 0, kind: "user", ts: T0, text: "Open the Northwind Bakery order form" },
+    { seq: 1, kind: "text", ts: T0 + 1000, message: "msg_r0", text: "It is open." },
+    { seq: 1, kind: "turn", ts: T0, duration_ms: 2000, tokens: { input: 300, output: 20 }, model: "sample-model" },
+  ]),
+  next: 2,
+  asks: /** @type {any[]} */ ([]),
+};
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
   const input = JSON.parse(o.body);
   calls.push({ tool, input });
   let data;
+  if (input.thread === RES || input.session === RES) {
+    if (tool === "threads.get") data = { thread: { id: RES, name: "Northwind order form", cwd: "/home/alex/work/northwind", status: "idle", holder: null, agent: null },
+      events: res.events.filter(e => e.id > (input.since ?? 0)), asks: res.asks };
+    else if (tool === "recall.transcript") {
+      const from = input.from ?? 0;
+      data = { session: { id: RES, cwd: "/home/alex/work/northwind" }, blocks: res.blocks.filter(b => b.seq >= from), next: res.next, first: 0 };
+    } else if (tool === "threads.asks") data = res.asks;
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
   if (input.thread === NEW || input.session === NEW) {
     if (tool === "threads.interrupt" && interruptMissing) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no tool threads.interrupt" } }) };
     if (MISSING.has(tool)) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool here" } }) };
@@ -442,4 +465,57 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   await wait();
   assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Rewound/.test(text(n))).length, 1, "its event is the same rewind");
   stop4();
+});
+
+// ---- the stream drops and comes back, or is reset (ADR 0029 R1) ---------------------------------
+
+test("a reconnect or a stream reset re-reads threads.get, threads.asks and the transcript: nothing missing, nothing twice", async () => {
+  const box5 = new El("div");
+  doc.body.append(box5);
+  const stop5 = mountSession(box5, { thread: RES, project: null, onBack() {} });
+  await wait(30);
+  assert.match(text($(box5, ".thread-view")), /It is open\./);
+  const es = FakeES.last;
+  const fireOpen = () => { for (const f of es.l.get("open") || []) f({}); };
+  fireOpen(); // the first open: not a resume
+  const before = calls.length;
+  // While the stream was down: a message, a queued row and an ask, and their transcript.
+  res.events.push(
+    { id: 11, type: "thread.sent", thread: RES, at: T0 + 3000, payload: { text: "Check the Harlow Legal invoice", surface: "deck" } },
+    { id: 12, type: "thread.queued", thread: RES, at: T0 + 3500, payload: { queued: 9, uuid: "q9", text: "Then email juno", surface: "deck" } });
+  res.asks = [{ id: "ask_r1", thread: RES, kind: "permission", tool: "Bash", summary: "npm test", at: T0 + 4000 }];
+  res.blocks.push(
+    { seq: 2, kind: "user", ts: T0 + 3000, text: "Check the Harlow Legal invoice" },
+    { seq: 3, kind: "text", ts: T0 + 4000, message: "msg_r1", text: "The invoice totals match." });
+  res.next = 4;
+  fireOpen(); // the stream is back
+  await wait(40);
+  const since = calls.slice(before);
+  assert.deepEqual(since.find(c => c.tool === "threads.get")?.input, { thread: RES, since: 10, limit: 500 }, "events since the last one applied");
+  assert.ok(since.some(c => c.tool === "recall.transcript" && c.input.from === 2), "the transcript from next");
+  assert.ok(since.some(c => c.tool === "threads.asks" && c.input.thread === RES));
+  const view = () => text($(box5, ".thread-view"));
+  assert.equal(view().split("Check the Harlow Legal invoice").length - 1, 1, "the missed message, once");
+  assert.equal(view().split("The invoice totals match.").length - 1, 1, "its reply, once");
+  assert.match(text($(box5, ".cv-queued")), /Then email juno/);
+  assert.equal($$(box5, ".cv-ask").length, 1, "the missed ask");
+  // Again: the same reads change nothing.
+  fireOpen();
+  await wait(40);
+  assert.equal(view().split("Check the Harlow Legal invoice").length - 1, 1);
+  assert.equal(view().split("The invoice totals match.").length - 1, 1);
+  assert.equal($$(box5, ".cv-queued-row").length, 1);
+  assert.equal($$(box5, ".cv-ask").length, 1);
+  // The box's log was reset: ids start again at 2, below everything seen.
+  res.events = [{ id: 3, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 10, uuid: "q10", text: "And ping kit", surface: "deck" } }];
+  const b2 = calls.length;
+  for (const f of es.l.get("stream.reset") || []) f({ data: JSON.stringify({ id: 2, type: "stream.reset", source: "vyred", thread: null, project: null, at: Date.now(), payload: { from: 2, reason: "cursor_ahead" } }) });
+  await wait(40);
+  assert.deepEqual(calls.slice(b2).find(c => c.tool === "threads.get")?.input, { thread: RES, since: 2, limit: 500 }, "from vyred's id");
+  assert.match(text($(box5, ".cv-queued")), /And ping kit/, "an event after the reset is applied, though its id is low");
+  // A live event with a low id after the reset is heard too (api.js lowered its cursor).
+  for (const f of es.l.get("thread.queued") || []) f({ data: JSON.stringify({ id: 4, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 11, uuid: "q11", text: "Last one for Northwind Bakery", surface: "deck" } }) });
+  await wait();
+  assert.match(text($(box5, ".cv-queued")), /Last one for Northwind Bakery/);
+  stop5();
 });

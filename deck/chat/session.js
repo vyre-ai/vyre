@@ -53,7 +53,7 @@
 // Nothing here uses innerHTML: text is untrusted, so it goes through lib/markdown.js or text nodes.
 
 import { h, put, empty } from "../js/dom.js";
-import { attempt, on } from "../js/api.js";
+import { attempt, on, onResume } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
 import { healthDot } from "../js/health.js";
@@ -1236,7 +1236,61 @@ export function mountSession(container, opts) {
     onEvent(e, true);
     if (e.type === "thread.sent") toBottom(); else if (timeline.scrollHeight !== n) grew();
   }
+  /**
+   * The stream came back after a drop, or vyred reset it (its log is behind this tab's cursor,
+   * ADR 0029 R1): read again what may have been missed. threads.get's events since the last one
+   * applied (the queue, the state, live items), threads.asks, and the transcript from `next`,
+   * each merged through session-state, which drops an event id it applied already and swaps a
+   * live item for its block under the same key, so nothing is missing or shown twice. A reset's
+   * ids start again below what this view saw, so its floor drops to vyred's.
+   */
+  const resuming = { busy: false, again: false, reset: /** @type {number|null} */ (null) };
+  async function resume(/** @type {"reconnect"|"reset"} */ why, /** @type {number|undefined} */ from) {
+    if (why === "reset" && typeof from === "number" && Number.isFinite(from)) {
+      resuming.reset = resuming.reset == null ? from : Math.min(resuming.reset, from);
+      if (S.meta.lastId > from) S.meta.lastId = from;
+    }
+    if (!booted) return;
+    if (resuming.busy) { resuming.again = true; return; }
+    resuming.busy = true;
+    try {
+      do {
+        resuming.again = false;
+        await reread();
+      } while (resuming.again);
+    } finally { resuming.busy = false; resuming.reset = null; }
+  }
+  async function reread() {
+    if (mode !== "blocks") {
+      fetchAsks();
+      if (recorded.on || isMac(where)) await readMoreLegacy();
+      return;
+    }
+    if (switchboard() && !recorded.on && !isMac(where)) {
+      const since = resuming.reset != null ? resuming.reset : Number.isFinite(S.meta.lastId) ? S.meta.lastId : 0;
+      const r = await attempt("threads.get", { thread, since, limit: 500 });
+      if (!r.error && r.data) {
+        const data = /** @type {any} */ (r.data);
+        if (data.thread) {
+          record.current = data.thread;
+          const st = data.thread.state || STATUS[data.thread.status];
+          // A state word the events will not repeat: the record's, unless an event said it since.
+          if (st && !(data.events || []).some(e => e.type === "thread.state")) S.state = st;
+        }
+        replaying = true;
+        const n = timeline.scrollHeight;
+        try { for (const e of data.events || []) if (!e.thread || e.thread === thread) onEvent(e, false); } finally { replaying = false; }
+        for (const a of data.asks || []) upsertAsk(a);
+        drawHead();
+        drawQueued();
+        if (timeline.scrollHeight !== n) grew();
+      }
+    }
+    await Promise.all([fetchAsks(), refresh()]);
+  }
+
   const offs = [
+    onResume((why, from) => { resume(why, from); }),
     on("thread.*", onLive),
     // Not a thread.* name: heard on its own.
     on("mode.changed", onLive),

@@ -173,6 +173,8 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
 ## Doing (27 Sep, after logout 3)
+- Chat smoothness (27 Sep, untested: testbox held): 1 reconnect (api.js stream.reset + CLOSED retry,
+  session re-read on resume), 2 stick to bottom, 3 frozen live-text blocks, 4 paced reveal, 5 incremental grouping.
 New direction: ADR 0030 (Agent SDK sessions are the default) and Direction A (docs/design/one-app on
 work/app-design, Session board). Chat is a native chat over Vyre's event stream; the terminal stays.
 - Take size back in the Deck terminal (27 Sep) against resilience's core/term size owner (ab4fdc4d).
