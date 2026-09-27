@@ -353,3 +353,34 @@ test("cdpmux: messages split across chunks and several in one chunk are framed r
   assert.equal(r.sessionId, undefined);
   await a.waitFor(m => m.method === "Test.echoed");
 });
+
+test("cdpmux: the agent may not dump cookies, open file:// or chrome:// pages, or send downloads elsewhere", async () => {
+  const { mux, fake } = world();
+  const agent = client(mux, "agent"), fill = client(mux, "fill");
+  const sid = (await agent.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
+  for (const method of ["Storage.getCookies", "Network.getAllCookies"]) assert.equal((await agent.call(method)).error.code, -32000, method);
+  assert.equal((await agent.call("Network.getCookies", {}, sid)).error.code, -32000, "Network.getCookies on a page");
+  for (const url of ["file:///var/lib/vyre/.vnc/passwd", "chrome://settings", "devtools://devtools/bundled/inspector.html",
+    "chrome-extension://abc/x.html", "view-source:https://a.test", "FILE:///etc/passwd", " https://a.test", undefined]) {
+    assert.equal((await agent.call("Page.navigate", { url }, sid)).error.code, -32000, `Page.navigate ${url}`);
+    assert.equal((await agent.call("Target.createTarget", { url })).error.code, -32000, `Target.createTarget ${url}`);
+  }
+  for (const url of ["https://portal.northwind.test/login", "http://harlow.test", "about:blank", "data:text/html,hi"]) {
+    assert.ok(!(await agent.call("Target.createTarget", { url })).error, `Target.createTarget ${url}`);
+  }
+  const dl = p => agent.call("Browser.setDownloadBehavior", p);
+  assert.equal((await dl({ behavior: "allow", downloadPath: "/var/lib/vyre" })).error.code, -32000);
+  assert.equal((await dl({ behavior: "allow" })).error.code, -32000, "allow must name the folder");
+  assert.equal((await dl({ behavior: "deny", downloadPath: "/tmp" })).error.code, -32000);
+  assert.equal((await agent.call("Page.setDownloadBehavior", { behavior: "allow", downloadPath: "/home/agent" }, sid)).error.code, -32000);
+  for (const p of [{ behavior: "allow", downloadPath: "/home/agent/Downloads" }, { behavior: "allowAndName", downloadPath: "/home/agent/Downloads/" }, { behavior: "deny" }]) {
+    const r = await dl(p);
+    assert.notEqual(r.error && r.error.code, -32000, JSON.stringify(p));
+  }
+  assert.ok(!fake.seen.some(s => /Cookies$/.test(s.method)), "a cookie dump reached Chrome");
+  assert.ok(!fake.seen.some(s => s.method === "Page.navigate"), "a refused navigation reached Chrome");
+  // The Vault's fill client opens its own pages; only the agent is held to this.
+  assert.ok(!(await fill.call("Target.createTarget", { url: "https://portal.northwind.test/login" })).error);
+  const fsid = (await fill.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
+  assert.notEqual((await fill.call("Network.getCookies", {}, fsid)).error?.code, -32000, "the fill client is not refused");
+});

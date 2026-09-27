@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
-import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels } from "./policy.js";
+import { allowCreate, allowExec, allowContainerOp, isComputerLabels, computerLabels, bootTar, allowBootTar } from "./policy.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 import { chromeEnv } from "../egress.js";
 
@@ -32,7 +32,7 @@ async function capture(t) {
 
 const SPEC = {
   agent: "kit", image: "vyre/computer:0.1", network: "vyre-computers", cpus: 2, memoryMb: 3072, size: { w: 1440, h: 900 },
-  env: { VNC_PASSWORD: "abcdefgh", COMPUTERD_TOKEN: "t0ken", SCREEN: "1440x900" },
+  env: { SCREEN: "1440x900" },
   // Real deployments derive this from labelPrefix (pool.js's ensure()); docker.js itself just
   // takes whatever spec.volume says, so this fixture must already be the derived name for the
   // "run.vyre.computers" prefix realBody() configures below, the same way pool.js would build it.
@@ -204,4 +204,35 @@ test("policy: a create carrying the egress PAC passes unchanged, with no other f
   // The PAC travels in Env alone: the rest of the body is what a create without it sends.
   const plain = await realBody(t);
   assert.deepEqual({ ...body, Env: null }, { ...plain, Env: null });
+});
+
+test("policy: a create whose Env carries the computer's secrets is refused", async t => {
+  for (const e of ["COMPUTERD_TOKEN=abc", "VNC_PASSWORD=abcdefgh"]) {
+    const bad = await mutate(t, b => { b.Env.push(e); return b; });
+    assert.equal(allowCreate(bad, CONFIG).ok, false, e);
+  }
+});
+
+test("policy: allowBootTar takes exactly the .boot tar bootTar makes, and nothing else", () => {
+  const good = bootTar({ computerd_token: "k".repeat(43), vnc_password: "Ab-_1234" });
+  assert.deepEqual(allowBootTar(good), { ok: true });
+  assert.throws(() => bootTar({ computerd_token: "short", vnc_password: "Ab-_1234" }), /expected shape/);
+  assert.throws(() => bootTar({ computerd_token: "k".repeat(43), vnc_password: "x\nEVIL=1" }), /expected shape/);
+  /** Change bytes of a copy, fixing the header checksum unless told not to. */
+  const change = (fn, fix = true) => {
+    const b = Buffer.from(good); fn(b);
+    if (fix) { b.fill(0x20, 148, 156); let sum = 0; for (let i = 0; i < 512; i++) sum += b[i]; b.write(sum.toString(8).padStart(6, "0") + "\0 ", 148, 8, "ascii"); }
+    return allowBootTar(b).ok;
+  };
+  assert.equal(change(b => { b.write(".boot2", 0, "ascii"); }), false, "another name");
+  assert.equal(change(b => { b.write("../x\0\0", 0, "ascii"); }), false, "a path");
+  assert.equal(change(b => { b.write("2", 156, "ascii"); }), false, "a symlink");
+  assert.equal(change(b => { b.write("0000644\0", 100, "ascii"); }), false, "a readable mode");
+  assert.equal(change(b => { b.write("0001750\0", 108, "ascii"); }), false, "the agent's uid");
+  assert.equal(change(b => { b[520] = 0x41; }, false), false, "contents changed");
+  assert.equal(change(b => { b[0] = 0x2e; b[1] = 0x62; }, false), true, "same bytes still pass");
+  assert.equal(change(b => { b[100] = 0x31; }, false), false, "a bad checksum");
+  assert.equal(allowBootTar(Buffer.concat([good, Buffer.alloc(512)])).ok, false, "an extra block");
+  assert.equal(allowBootTar(Buffer.concat([good.subarray(0, 1024), good])).ok, false, "a second file");
+  assert.equal(allowBootTar(Buffer.from("not a tar")).ok, false);
 });

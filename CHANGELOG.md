@@ -106,6 +106,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - using/glass.md: take-over, hand-back and Sign in privately ask for no passkey. using/deck.md,
   using/chat.md, concepts/presence.md: only a send, payment or deletion asks, and one proof covers
   30 minutes. using/claude-code.md: `/vyre todo`, `remind`, `agenda`, `remember`, `lesson`.
+
+#### Computers: the computer's secrets leave its Env, and the agent's CDP is fenced (e2e review, HIGH 1 and 2)
+
+- COMPUTERD_TOKEN and VNC_PASSWORD are no longer in the container's Env, which Docker hands to every
+  docker exec. Before each start vyred copies /var/lib/vyre/.boot (0400, vyre) into the computer's
+  volume through the Engine's archive API (driver seed(), policy.js bootTar); the Docker proxy
+  allows that one upload, path and tar checked byte for byte, and nothing else. computerd reads its
+  token from the file (COMPUTERD_TOKEN_FILE). The driver and policy refuse secrets in Env; the
+  image refuses to start with them there.
+- The agent's CDP: no cookie dumps (Storage.getCookies, Network.getAllCookies, Network.getCookies);
+  Page.navigate and Target.createTarget only to http(s), about:blank or data:; downloads only to
+  /home/agent/Downloads. Chrome policy URLBlocklist file://, chrome://, devtools://, extensions,
+  view-source; DownloadDirectory pinned; the new tab is blank.
+
 #### Computers: the agent can no longer reach Chrome's DevTools or computerd's token (uid split)
 
 - core/computers/image: the computer starts as root only to switch users (setpriv, no capability

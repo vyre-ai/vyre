@@ -58,8 +58,23 @@ export const REFUSED = new Set([
   "Target.setRemoteLocations", "Target.attachToBrowserTarget",
 ]);
 
-/** Methods an "agent" client may not call, on any session. */
-export const AGENT_REFUSED = new Set(["Runtime.addBinding", "Page.addScriptToEvaluateOnNewDocument"]);
+/**
+ * Methods an "agent" client may not call, on any session. The cookie dumps would hand it the
+ * HttpOnly session cookies of every login it was lent (a page's own script never sees those); it
+ * uses a login through the browser, never by reading it.
+ */
+export const AGENT_REFUSED = new Set([
+  "Runtime.addBinding", "Page.addScriptToEvaluateOnNewDocument",
+  "Storage.getCookies", "Network.getAllCookies", "Network.getCookies",
+]);
+
+/**
+ * Where an "agent" client may point a page: the web, a blank page, or inline data. Never file://
+ * (Chrome runs as computerd's uid, whose files are the Chrome profile and the VNC password),
+ * chrome:// or devtools:// (the browser's own pages), or an extension's. Chrome's managed
+ * URLBlocklist refuses the same for navigations a page starts itself; this refuses them at the call.
+ */
+export const agentUrlAllowed = url => typeof url === "string" && (/^https?:\/\//i.test(url) || /^about:blank(#.*)?$/i.test(url) || /^data:/i.test(url));
 
 /** A Chrome message larger than this is dropped whole rather than buffered. */
 const MAX_MESSAGE = 256 * 1024 * 1024;
@@ -76,8 +91,10 @@ const MAX_QUEUE = 1000;
 
 export class CdpMux {
   /** @param {{ log?: (line: string) => void }} [o] */
+  /** @param {{ log?: (line: string) => void, downloads?: string }} [o] downloads: the one folder an agent may send downloads to */
   constructor(o = {}) {
     this.log = o.log || (() => {});
+    this.downloads = o.downloads || "/home/agent/Downloads";
     this.nextId = 0;
     this.nextClient = 0;
     /** @type {Map<number, Pending>} */
@@ -384,6 +401,10 @@ export class CdpMux {
       this.log(`cdp: refused ${method} from a ${c.kind} client`);
       return fail(-32000, `${method} is not allowed on this computer`);
     }
+    if (c.kind === "agent") {
+      const why = this._agentParams(method, params);
+      if (why) { this.log(`cdp: refused ${method} from an agent client (${why})`); return fail(-32000, `${method} ${why}`); }
+    }
     if (sid !== undefined && !this._ownsChild(c, sid)) return fail(-32001, "No session with given id");
     if (!this.up) return fail(-32000, "Chrome is not running");
     if ((method === "Target.attachToTarget" || (method === "Target.setAutoAttach" && params.autoAttach)) && params.flatten !== true) {
@@ -397,6 +418,24 @@ export class CdpMux {
       this.pending.delete(id);
       fail(-32000, "Chrome is not running");
     }
+  }
+
+  /**
+   * An agent's call whose parameters would reach past what the agent may touch, and why; null
+   * when it is fine. Checked for the agent only: the Vault's fill client opens its own pages.
+   * @param {string} method @param {any} params @returns {string|null}
+   */
+  _agentParams(method, params) {
+    if ((method === "Page.navigate" || method === "Target.createTarget") && !agentUrlAllowed(params.url)) {
+      return "may open only http(s), about:blank or data: pages";
+    }
+    if (method === "Browser.setDownloadBehavior" || method === "Page.setDownloadBehavior") {
+      const b = params.behavior;
+      const path = typeof params.downloadPath === "string" ? params.downloadPath.replace(/\/+$/, "") : undefined;
+      if (b === "deny" || b === "default") return path === undefined ? null : "takes no downloadPath with deny or default";
+      if (path !== this.downloads) return `may save downloads only to ${this.downloads}`;
+    }
+    return null;
   }
 
   /** A child session (never the browser session) this client owns. @param {Client} c @param {any} sid */

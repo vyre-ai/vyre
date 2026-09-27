@@ -56,6 +56,13 @@ export class FakeDriver {
     return { id };
   }
 
+  /** @param {string} id @param {{ computerd_token: string, vnc_password: string }} secrets */
+  async seed(id, secrets) {
+    const c = this.must(id);
+    c.boot = { ...secrets };
+    this.calls.push({ op: "seed", id });
+  }
+
   async start(id) {
     const c = this.must(id);
     if (c.state === "paused") throw new Error(`container ${id} is paused; unpause it first`);

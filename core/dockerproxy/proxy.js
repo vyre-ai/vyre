@@ -21,6 +21,8 @@
 //   POST   /containers/{id}/exec            exec create, never privileged, never another user
 //   POST   /exec/{id}/start                 exec start, checked through the exec's own container
 //   GET    /volumes/{name}                  volume inspect, the volume's labels are a computer's
+//   PUT    /containers/{id}/archive?path=   the computer's secrets file, and nothing else: path
+//                                            /var/lib/vyre, a tar that is exactly .boot (policy.js)
 // No Upgrade: docker.js never attaches, so a hijacked stdin stream is refused outright.
 
 import http from "node:http";
@@ -46,6 +48,7 @@ const ROUTES = [
   ["POST", new RegExp(`^/containers/(${NAME})/exec$`), "exec", [], true],
   ["POST", new RegExp(`^/exec/(${NAME})/start$`), "execStart", [], true],
   ["GET", new RegExp(`^/volumes/(${NAME})$`), "volume", [], false],
+  ["PUT", new RegExp(`^/containers/(${NAME})/archive$`), "seed", ["path"], true],
 ];
 
 class Refusal extends Error {
@@ -135,7 +138,7 @@ const EXEC_START_SHAPE = { Detach: isBool, Tty: isBool, ConsoleSize: isSize };
  */
 export async function loadPolicy(file = new URL("../computers/driver/policy.js", import.meta.url)) {
   const p = await import(String(file));
-  for (const f of ["computerLabels", "isComputerLabels", "allowCreate", "allowExec", "allowContainerOp"]) {
+  for (const f of ["computerLabels", "isComputerLabels", "allowCreate", "allowExec", "allowContainerOp", "allowBootTar"]) {
     if (typeof p[f] !== "function") throw new Error(`${file} does not export ${f}()`);
   }
   return p;
@@ -208,9 +211,10 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, l
    * @param {http.ServerResponse} res @param {string} method @param {string} path @param {any} [body]
    */
   const forward = (res, method, path, body) => new Promise((resolve, reject) => {
-    const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
+    const tar = Buffer.isBuffer(body);
+    const data = body === undefined ? null : tar ? body : Buffer.from(JSON.stringify(body));
     const up = http.request({ socketPath: socket, method, path, headers: { host: "docker",
-      ...(data ? { "content-type": "application/json", "content-length": data.length } : { "content-length": 0 }) } }, ures => {
+      ...(data ? { "content-type": tar ? "application/x-tar" : "application/json", "content-length": data.length } : { "content-length": 0 }) } }, ures => {
       const headers = {};
       for (const [k, v] of Object.entries(ures.headers)) if (!HOP.has(k.toLowerCase()) && v !== undefined) headers[k] = v;
       res.writeHead(ures.statusCode || 502, headers);
@@ -275,7 +279,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, l
     const v = /^\/v1\.\d{1,2}(?=\/)/.exec(url.pathname);
     const ver = v ? v[0] : "";
     const path = url.pathname.slice(ver.length);
-    if (!["GET", "POST", "DELETE", "HEAD"].includes(method)) refuse(`${method} is not a method this proxy passes`);
+    if (!["GET", "POST", "DELETE", "HEAD", "PUT"].includes(method)) refuse(`${method} is not a method this proxy passes`);
     const route = ROUTES.find(([m, re]) => m === method && re.test(path));
     if (!route) refuse(`${method} ${path} is not an endpoint agents' computers use`);
     const [, re, name, keys, hasBody] = /** @type {[string, RegExp, string, string[], boolean]} */ (route);
@@ -290,7 +294,16 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, l
     if (raw === null) refuse(`the body is over ${MAX_BODY} bytes`, 413);
     const buf = /** @type {Buffer} */ (raw);
     if (!hasBody && buf.length) refuse(`${path} takes no body`);
-    const body = hasBody ? parse(buf) : undefined;
+    // The seed's body is a tar, checked byte for byte below; every other body is JSON.
+    const body = hasBody && name !== "seed" ? parse(buf) : undefined;
+    // The seed: checked whole before the Engine is asked anything, even which container this is.
+    if (name === "seed") {
+      if (typeof policy.allowBootTar !== "function" || !policy.BOOT) refuse("this policy has no secrets file to allow");
+      if (q.get("path") !== policy.BOOT.dir) refuse(`archive: only path=${policy.BOOT.dir}`);
+      if (String(req.headers["content-type"] || "") !== "application/x-tar") refuse("archive: the body must be application/x-tar", 400);
+      const verdict = policy.allowBootTar(buf);
+      if (!verdict.ok) refuse(`archive: ${verdict.why}`);
+    }
 
     if (name === "list") {
       const qs = new URLSearchParams(q);
@@ -359,6 +372,7 @@ export function createProxy({ socket = "/var/run/docker.sock", policy, config, l
     // vyred is the only caller on this network.
     if (name === "op") return forward(res, "POST", `${ver}/containers/${id}/${m[2]}${qs}`);
     if (name === "remove") return forward(res, "DELETE", `${ver}/containers/${id}${qs}`);
+    if (name === "seed") return forward(res, "PUT", `${ver}/containers/${id}/archive?${new URLSearchParams({ path: policy.BOOT.dir })}`, buf);
     if (name === "exec") {
       only(body, EXEC_SHAPE, "exec");
       if (!body.Cmd) refuse("exec needs a Cmd");
