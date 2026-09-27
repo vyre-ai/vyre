@@ -1,0 +1,13 @@
+{
+  "name": "events",
+  "version": "0.1.0",
+  "apiVersion": 1,
+  "description": "Every event type the running modules may emit, and the old names still accepted for one release.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["events.catalog"] },
+  "watches": {},
+  "shows": {},
+  "needs": {},
+  "teaches": {}
+}

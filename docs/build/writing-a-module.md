@@ -12,6 +12,19 @@ A module is a folder with a `module.json` and an `index.js`. Put it in `~/.vyre/
 restart vyred. The full contract is Section 5 of the
 [Specification](../architecture/spec.md#5-the-module-contract) and the
 [module contract](module-contract.md) page; this page is the short way in.
+[Build your first module](first-module.md) is the step-by-step tutorial.
+
+## Start from vyre module new
+
+```
+vyre module new notes
+```
+
+It writes `~/.vyre/modules/notes/` with a `module.json`, an `index.js` that registers one tool
+(`notes.hello`) and emits one event (`notes.said`), a test, a `package.json` and a README. The
+files pass `vyre module check` and their own `node --test` as they are. It refuses a name one of
+Vyre's own modules has, a name vyred already runs, and a folder that is already there.
+`--dir <parent>` makes it somewhere else; `vyre module add <folder>` puts it in the home later.
 
 ## A complete module
 
@@ -56,7 +69,9 @@ vyre modules
 vyre call notes.add '{"text":"call the printer people"}'
 ```
 
-`vyre modules` lists `notes` as `running`, or `failed` or `invalid` with the reason. The call prints what `run` returned:
+`vyre modules` lists `notes` as `running`, or `failed` or `invalid` with the reason.
+`vyre module check ~/.vyre/modules/notes` finds most of those reasons before a restart: the manifest against the
+schema and the loader's rules, and the entry file parsing. The call prints what `run` returned:
 
 ```output
 {
@@ -135,6 +150,18 @@ test("notes.add saves a note and refuses one with no text", async t => {
 ```
 
 See [Testing](../contributing/testing.md) for the rest of the helpers.
+
+## Add a module from somewhere else
+
+```
+vyre module add ./notes
+vyre module add https://github.com/<user>/<repo>
+```
+
+It checks the module, shows its tools, events and what it needs (vault items, hosts,
+credentials), asks you to confirm (or takes `--yes`), copies it into `~/.vyre/modules/<name>/`
+and restarts vyred. A module runs inside vyred with Vyre's own access, so add only code you trust.
+Replacing one of Vyre's own modules needs `"replaces"` with its name in `module.json` and `--yes`.
 
 ## Where to go next
 

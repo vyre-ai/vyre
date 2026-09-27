@@ -84,6 +84,24 @@ test("recall module: under node --test the real ~/.claude is never read", () => 
   assert.deepEqual(readable([real, "/tmp/elsewhere"]), ["/tmp/elsewhere"]);
 });
 
+test("recall module: a temp, dev or trial home never reads the person's ~/.claude, only its own", () => {
+  const real = path.join(os.homedir(), ".claude", "projects");
+  const cfgDir = path.join(os.homedir(), "claude-config", "projects");
+  const dev = "/tmp/vyre-dev-home";
+  const env = { CLAUDE_CONFIG_DIR: path.join(os.homedir(), "claude-config") };   // no NODE_TEST_CONTEXT: a dev world is not a test
+  assert.deepEqual(readable([real, cfgDir, "/tmp/elsewhere", `${dev}/claude/projects`], dev, env), ["/tmp/elsewhere", `${dev}/claude/projects`]);
+  assert.deepEqual(readable(["~/.claude/projects"], dev, env), []);
+  // Said on purpose: the real one is read.
+  assert.deepEqual(readable([real], dev, { ...env, VYRE_ALLOW_REAL_TRANSCRIPTS: "1" }), [real]);
+  // A home kept elsewhere on purpose names its folder, and reads it.
+  const named = path.join(os.homedir(), ".claude", "projects", "fixture-only");
+  assert.deepEqual(readable([named, real], dev, { VYRE_CLAUDE_HOME: path.dirname(path.dirname(named)) }), [named, real]);
+  // The person's own ~/.vyre reads their own conversations.
+  assert.deepEqual(readable([real], path.join(os.homedir(), ".vyre"), {}), [real]);
+  // Under node --test nothing real, even for ~/.vyre or with the opt-in.
+  assert.deepEqual(readable([real], path.join(os.homedir(), ".vyre"), { NODE_TEST_CONTEXT: "child", VYRE_ALLOW_REAL_TRANSCRIPTS: "1" }), []);
+});
+
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "vyre");
 const run = (args, env) => new Promise(resolve =>
   execFile(process.execPath, [BIN, ...args], { env: { ...process.env, ...env, NO_COLOR: "1" } },

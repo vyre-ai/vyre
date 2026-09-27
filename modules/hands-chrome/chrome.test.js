@@ -32,13 +32,15 @@ async function launchChrome(t) {
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`,
     "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-extensions", "about:blank",
   ], { stdio: ["ignore", log, log], detached: true });
+  // Chrome's own helpers outlive a SIGKILL to the browser and keep writing the profile, so the
+  // whole process group goes, and the removal retries and never throws: a throwing after hook
+  // skips the ones after it (vyred's stop), and on Node 22 the file then never exits.
   t.after(async () => {
-    // Its own process group, killed whole: on Linux Chrome's renderer and crashpad children
-    // outlive the browser and keep writing into the profile, so removing it failed ENOTEMPTY.
+    const gone = child.exitCode === null ? new Promise(r => { child.once("exit", r); setTimeout(r, 3000); }) : null;
     try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch {} }
-    await new Promise(r => { child.once("exit", r); setTimeout(r, 500); });
+    await gone;
     try { fs.closeSync(log); } catch {}
-    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
+    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}
   });
   let port = null;
   const deadline = Date.now() + 10_000;
@@ -68,6 +70,9 @@ async function launchChrome(t) {
  */
 function fakeComputerdCdp(chromePort) {
   let token = "";
+  // An upgraded socket still holds server.close() open, so close() destroys the pipes itself.
+  /** @type {Set<import("node:net").Socket>} */
+  const pipes = new Set();
   const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", "http://fake-computerd");
     if (req.method === "GET" && url.pathname === "/cdp/json/version") {
@@ -88,6 +93,7 @@ function fakeComputerdCdp(chromePort) {
     if (url.searchParams.get("token") !== token || !url.pathname.startsWith("/cdp/")) { socket.end("HTTP/1.1 401 Unauthorized\r\nconnection: close\r\n\r\n"); return; }
     const targetPath = url.pathname.slice("/cdp".length);
     const upstream = net.connect(chromePort, "127.0.0.1");
+    for (const p of [socket, upstream]) { pipes.add(p); p.once("close", () => pipes.delete(p)); }
     upstream.on("error", () => { try { socket.destroy(); } catch {} });
     socket.on("error", () => { try { upstream.destroy(); } catch {} });
     upstream.on("connect", () => {
@@ -105,7 +111,7 @@ function fakeComputerdCdp(chromePort) {
   });
   return {
     listen: () => new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(/** @type {any} */ (server.address()).port))),
-    close: () => new Promise(resolve => server.close(() => resolve(undefined))),
+    close: () => new Promise(resolve => { server.close(() => resolve(undefined)); for (const p of pipes) p.destroy(); }),
     setToken: t => { token = t; },
   };
 }

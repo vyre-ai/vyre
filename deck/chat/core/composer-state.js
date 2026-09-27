@@ -261,7 +261,7 @@ export function upAction(o) {
 
 /**
  * @typedef {{ do: "newline" } | { do: "none" } | { do: "pick" }
- *   | { do: "send", kind: DraftKind, mode: SendMode|null }} EnterAction
+ *   | { do: "send", kind: DraftKind, mode: SendMode|null } | { do: "refuse", why: "images-queue" }} EnterAction
  */
 
 /**
@@ -269,6 +269,8 @@ export function upAction(o) {
  * @param {{ text: string, running: boolean, shift?: boolean, alt?: boolean, meta?: boolean, ctrl?: boolean,
  *   queueToggle?: boolean, composing?: boolean, touch?: boolean, pickerOpen?: boolean, images?: number, button?: boolean, hold?: boolean }} o
  *   hold: the send button was long-pressed (the phone's way to queue).
+ *   A message with images is never queued (refused, why "images-queue"): the box keeps a queued
+ *   message's words only, so its images would be lost. It can be sent as a steer or after the turn.
  * @returns {EnterAction}
  */
 export function enterAction(o) {
@@ -284,8 +286,9 @@ export function enterAction(o) {
   const kind = draftKind(text);
   if (kind === "shell" || kind === "memory") return draftBody(text) ? { do: "send", kind, mode: null } : { do: "none" };
   if (!o.running) return { do: "send", kind, mode: null };
-  if (kind === "command") return { do: "send", kind, mode: "queue" };
+  if (kind === "command") return o.images && o.images > 0 ? { do: "refuse", why: "images-queue" } : { do: "send", kind, mode: "queue" };
   const queue = !!(o.alt || o.queueToggle || o.hold);
+  if (queue && o.images && o.images > 0) return { do: "refuse", why: "images-queue" };
   return { do: "send", kind, mode: queue ? "queue" : "steer" };
 }
 

@@ -389,3 +389,47 @@ test("daemon: without the appearance module, /theme.css serves config's theme.co
   fs.writeFileSync(cfgPath, JSON.stringify({ ...cur, theme: { colors: { dark: { signal: "#B4E35A" } } } }));
   assert.match(/** @type {any} */ (await get()).body, /--signal: #B4E35A;/);
 });
+
+test("daemon: asking for something that is not there is a 404 not_found, not a 500", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { paths } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const post = (/** @type {string} */ tool, /** @type {any} */ body) => new Promise((resolve, reject) => {
+    const req = http.request({ socketPath: paths(root).socket, path: "/v1/tools/" + tool, method: "POST", agent: false,
+      headers: { "content-type": "application/json", "x-vyre-caller": "cli" } }, res => {
+      let b = ""; res.setEncoding("utf8"); res.on("data", c => (b += c)); res.on("end", () => resolve({ status: res.statusCode, body: JSON.parse(b) }));
+    });
+    req.on("error", reject); req.end(JSON.stringify(body));
+  });
+  for (const [tool, body] of [["gate.get", { id: "x" }], ["agents.delete", { agent: "x" }]]) {
+    const r = /** @type {any} */ (await post(tool, body));
+    assert.equal(r.status, 404, `${tool}: ${JSON.stringify(r.body)}`);
+    assert.equal(r.body.error.code, "not_found");
+  }
+});
+
+test("daemon: the Deck's resilience client is served from core/resilience, and nothing else there is", { timeout: 20_000 }, async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const { socketPath } = await import("../core/config/index.js");
+  const http = await import("node:http");
+  const get = (/** @type {string} */ p) => new Promise((resolve, reject) => http.get({ socketPath: socketPath(root), path: p }, res => {
+    let b = ""; res.on("data", c => { b += c; }); res.on("end", () => resolve({ status: res.statusCode, headers: res.headers, body: b }));
+  }).on("error", reject));
+  for (const f of ["stream", "sse", "backoff", "outbox", "web"]) {
+    const r = /** @type {any} */ (await get(`/core/resilience/${f}.js`));
+    assert.equal(r.status, 200, f);
+    assert.equal(r.headers["content-type"], "text/javascript");
+    assert.equal(r.headers["cache-control"], "no-cache");
+    assert.match(r.headers["content-security-policy"], /default-src 'self'/);
+    assert.equal(r.body, fs.readFileSync(path.join(import.meta.dirname, "..", "core", "resilience", f + ".js"), "utf8"));
+  }
+  // node.js (Node transports) and the tests are not the Deck's; neither is anything else in core/.
+  for (const p of ["/core/resilience/node.js", "/core/resilience/sse.test.js", "/core/daemon/index.js"]) {
+    const r = /** @type {any} */ (await get(p));
+    assert.doesNotMatch(r.body, /^\/\/ @ts-check/, p);
+  }
+});

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="%LANG_ISO_CODE%">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="theme-color" content="#F4F1EA" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#0E0D0C" media="(prefers-color-scheme: dark)" />
+    <title>%WEB_TITLE%</title>
+    <style id="vyre-shell">
+      /* One fixed shell sized to the dynamic viewport; only inner lists scroll (DIRECTION.md, Smooth). */
+      html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; background: #0E0D0C; }
+      @media (prefers-color-scheme: light) { html, body { background: #F4F1EA; } }
+      body { -webkit-text-size-adjust: 100%; -webkit-tap-highlight-color: transparent; }
+      #root { position: fixed; inset: 0; height: 100dvh; display: flex; flex-direction: column; }
+      [role="button"], [role="tab"], button, a { touch-action: manipulation; }
+    </style>
+  </head>
+  <body>
+    <noscript>Vyre needs JavaScript.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

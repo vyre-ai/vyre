@@ -94,7 +94,8 @@ const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "em
  */
 export function describe(tool, input = {}) {
   const i = input || {};
-  if (tool === "Bash") return { summary: cut(i.command), destination: null };
+  // A command can carry a token (curl -H "Authorization: ..."), and the summary is shown on every device.
+  if (tool === "Bash") return { summary: cut(clip(String(i.command ?? ""), 4000)), destination: null };
   if (["Write", "Edit", "MultiEdit", "Read", "NotebookEdit"].includes(tool)) {
     const file = i.file_path || i.notebook_path || "";
     return { summary: `${tool} ${cut(file)}`, destination: file ? String(file) : null };

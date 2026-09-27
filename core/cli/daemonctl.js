@@ -8,8 +8,13 @@ import { spawn } from "node:child_process";
 import * as config from "../config/index.js";
 import { REPO, ping } from "../daemon/index.js";
 
-/** @returns {Promise<{ ok: boolean, started?: boolean, pid?: number, log?: string }>} */
+/** @returns {Promise<{ ok: boolean, started?: boolean, pid?: number, log?: string, error?: string }>} */
 export async function ensureUp() {
+  // Inside a session Vyre started (VYRE_SOCKET, its own socket): that vyred is running or the
+  // session is ending. Never start a second vyred from inside a session.
+  if (process.env.VYRE_SOCKET && process.env.VYRE_THREAD) {
+    return await ping(process.env.VYRE_SOCKET) ? { ok: true, started: false } : { ok: false, started: false, error: "vyred is not answering this session's socket" };
+  }
   const p = config.ensure();
   if (await ping(p.socket)) return { ok: true, started: false };
   const log = path.join(p.logs, "vyred.out");

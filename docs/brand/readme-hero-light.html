@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vyre README hero, paper</title>
+<!-- Source for docs/brand/readme-hero-light.png (paper, 1600x520). On paper the mark is one colour: ink wire and ink dot. Re-render: see docs/brand/README.md. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+  :root { --ground: #F4F1EA; --wire: #141311; --dot: #141311; --text-2: #4A463F; --rule: #DCD7CC; }
+  html, body { margin: 0; padding: 0; background: var(--ground); }
+  body { padding-top: 1px; } /* the render crops from row 1 */
+  .card { position: relative; width: 1600px; height: 520px; overflow: hidden; background: var(--ground);
+    font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; }
+  .motif { position: absolute; right: -60px; top: -40px; }
+  .motif g { stroke: var(--rule); }
+  .body { position: absolute; left: 120px; top: 50%; transform: translateY(-50%); }
+  .lockup { display: flex; align-items: center; gap: 28px; }
+  p { margin: 44px 0 0; color: var(--text-2); font-weight: 500; font-size: 40px; line-height: 48px; letter-spacing: -0.02em; }
+</style>
+</head>
+<body>
+<div class="card">
+  <svg class="motif" width="560" height="600" viewBox="0 0 560 600" fill="none" aria-hidden="true">
+    <g stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M100 40L280 336L460 40"/>
+      <path d="M60 40L280 401L500 40"/>
+      <path d="M20 40L280 466L540 40"/>
+      <path d="M-20 40L280 531L580 40"/>
+      <path d="M-60 40L280 596L620 40"/>
+    </g>
+  </svg>
+  <div class="body">
+    <div class="lockup">
+      <svg width="112" height="112" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="var(--wire)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="var(--dot)"/></svg>
+      <svg width="267" height="112" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="var(--wire)" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <p>Your best work, with a partner that never drops the thread.</p>
+  </div>
+</div>
+</body>
+</html>

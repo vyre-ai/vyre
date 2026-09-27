@@ -20,16 +20,46 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   threads.commands, rewind restore code (7543952e); images, threads.shell, threads.remember,
   thinking, background tasks (034c71e5).
 
+- After LOGOUT 4: Capsule quick answer = Vyre IQ prompt (core/sessions/iq-prompt.js, capsule@1,
+  replace mode, facts numbered, thinking off, version on thread.started), eval
+  scripts/eval-iq-prompt.js --live + test/eval/iq-prompt.test.js. No temperature knob exists in
+  Claude Code or the SDK (reported to the lead).
+- Event names stay as chat's contract reads them (model.switched, thinking.switched,
+  thread.thinking); sessions.models added.
+
+- Option A wired: per-thread socket (Switchboard.openSocket/closeSocket), VYRE_SOCKET in the
+  child env, client.js honours it, MCP server + ensureUp never start a vyred inside a session,
+  spawner default on for a box, sessions.thread_socket auto|on|off.
+
+- "Doesn't ask": threads.mode bypassPermissions (person-only, no Touch ID), sessions.mode.set
+  project default, plugin required, in-process floor on the SDK, answers never grant it.
+- cohesion catches: Bash ask summary redacted; asks rows keep project.
+
+- Effort (threads.start/launch effort, threads.effort, effort.switched), threads.send
+  {model, effort} for Cmd-Return; queued images kept; steers persisted (threads_steers) and
+  restored on resume.
+
+- threads.quick (warm lean sessions per purpose) for memory-iq; usage pause per auth
+  (sessions.usage.*, usage_paused on sessions.slots take with auth).
+
 ## Doing
-- Waiting on the lead's phase 3 decision: A per-thread socket for the plugin (recommended; e2e
-  builds the daemon side) vs B fully in-process hooks + MCP.
+- X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
+- Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
+- Lead's list done through 7. Compile phase next: the promised items below, then docs + polish.
 
 ## Next
-1. Phase 3 per the decision (gates e2e's uid split and teammates' team.* tools).
-2. Usage pause per auth for teammate starts and subagents (teammates' section 14).
-3. `device` on ask.answered; `mode` on thread.started; threads.asks on the box merging Mac asks
-   (tailnet sends the hunk).
-4. Codex/ACP only as modules later (conformance.js).
+- After 0.1.0 (the lead): the 5 cross-imports among core/sessions, core/switchboard,
+  core/transcripts, core/spawner and core/harness (frozen in test/boundaries allowlist) are mine to
+  remove: merge sessions and switchboard into one module, or talk over ctx.call.
+- vault: threads record origin (the Capsule) for vault's surface mapping; Claude sign-in as a
+  vault need (needs.credentials on threads, onboard.claude callable by module:vault).
+- Promised (after the queue): settings.resolve at start (effort, mode, max_turns, budget_usd,
+  checkpoints, fast); server `t` on thread.text; threads.effort + settings.changed level
+  session (ADR 0035); thread.status event; context.now in enrich/capsule; brief adds planner
+  agenda, needs, connections (cohesion); tool_use id on call meta once kernel has the field.
+Then the compile phase: tests for every piece, docs, polish.
+Testing the SDK driver on testbox: VYRE_SESSIONS_SDK_DIR=~/vyre-ci/sessions-sdk (0.3.283, with
+optional deps; without them the tests silently run on the CLI).
 
 ## Needs from others
 - integrator: one full-suite run with `VYRE_SESSIONS_DRIVER=sdk VYRE_SESSIONS_SDK_DIR=<dir with SDK 0.3.283>`.
@@ -54,6 +84,13 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 - fake-claude.js: launch log written at initialize (argv normalised, SDK init fields added as
   flags); interrupt support.
 - presence: PERSON_ONLY gains sessions.prompt.set, sessions.prompt.revert.
+- daemon/client.js: request opts.socket; VYRE_SOCKET used when no root or socket given.
+  cli/daemonctl ensureUp: inside a session (VYRE_SOCKET + VYRE_THREAD) only pings, never starts.
+- sessions config: spawner defaults "on" for role box; new thread_socket auto|on|off.
+- threads.mode enum adds bypassPermissions; mode.changed {label}; sessions.mode.get/set/resolve,
+  event mode.defaulted; presence PERSON_ONLY adds sessions.mode.set. Fake claude honours the
+  permission mode and runs plugin PreToolUse hooks in bypass.
+- sessions.prompt scope "capsule"; sessions.prompt.compose/preview take purpose "capsule".
 - onboard: CREDENTIAL_READERS gains threads.
 - New module sessions: tools sessions.status, setup, prompt.get/set/history/revert/preview,
   internal prompt.compose; event prompt.changed.

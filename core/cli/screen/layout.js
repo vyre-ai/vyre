@@ -23,11 +23,11 @@ const WIDE = 80;
  *   details?: Map<string, any>, alive?: (pid: number) => boolean }} [o]
  * @returns {string[]}
  */
-export function render(st, { columns = 80, rows = 24, transcripts = new Map(), details = new Map(), alive } = {}) {
+export function render(st, { columns = 80, rows = 24, transcripts = new Map(), details = new Map(), alive, fortune = "" } = {}) {
   const C = Math.max(20, columns);
   const R = Math.max(6, rows);
   const body = R - 2;
-  const out = [titleBar(st, C)];
+  const out = [titleBar(st, C, fortune)];
   if (st.help) out.push(...help(C, body));
   else if (C >= WIDE) {
     const L = Math.max(28, Math.min(48, Math.round(C * 0.38)));
@@ -47,13 +47,15 @@ export function render(st, { columns = 80, rows = 24, transcripts = new Map(), d
   return out.slice(0, R);
 }
 
-function titleBar(st, C) {
+function titleBar(st, C, fortune = "") {
   const d = st.data;
   const working = d.threads.filter(t => t.status === "working").length;
   const counts = [working ? `${working} working` : "", d.asks.length ? `${d.asks.length} ask${d.asks.length === 1 ? "" : "s"}` : "",
     d.drafts && d.drafts.length ? `${d.drafts.length} held` : ""].filter(Boolean).join(" · ");
   const left = st.filter ? `vyre  /${sanitize(st.filter)}` : "vyre";
-  const hint = st.filter ? "" : "  type to filter · ? keys";
+  // The rare fortune line (core/cli/delight.js) takes the hint's place, and only when there is
+  // nothing else to say: a filter or real counts always win over it.
+  const hint = st.filter ? "" : (fortune && !counts ? "  " + fortune : "  type to filter · ? keys");
   const counted = clip(counts, Math.max(0, C - 6));
   const room = C - width(counted) - 1;
   const l = clip(left, room);

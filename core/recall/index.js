@@ -25,7 +25,6 @@
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
-import os from "node:os";
 import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
@@ -36,6 +35,7 @@ import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
 import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
+import { transcriptFolders } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 
 /** @type {import("./embed.js").Embedder | null} */
@@ -49,16 +49,11 @@ let injected = null;
 export function useEmbedder(e) { injected = e; }
 
 /**
- * The transcript folders to read. Under `node --test` the real ~/.claude is never read, whatever
- * the config says: a test that starts vyred with default settings would otherwise index every
- * real conversation on the machine into its temp home. Tests point `transcripts` at fixtures.
- * @param {string[]} folders
+ * The transcript folders to read: the kernel's rule (core/config transcriptFolders). The person's
+ * own ~/.claude only for their own ~/.vyre, never under `node --test`, symlinks followed.
+ * @param {string[]} folders @param {string} [root] the Vyre home @param {NodeJS.ProcessEnv} [env]
  */
-export function readable(folders) {
-  if (!process.env.NODE_TEST_CONTEXT) return folders;
-  const real = path.join(os.homedir(), ".claude") + path.sep;
-  return folders.filter(f => !(path.resolve(f) + path.sep).startsWith(real));
-}
+export const readable = (folders, root = "", env = process.env) => transcriptFolders(folders, root, env);
 
 /**
  * A session's row by id or an unambiguous prefix of one, the way recall.thread finds it, or null.
@@ -82,7 +77,7 @@ export default {
     const db = ctx.store.db;
     const opts = ctx.config.recall || {};
     const every = opts.every ?? 5;
-    const folders = readable(ctx.config.transcripts || []);
+    const folders = readable(ctx.config.transcripts || [], ctx.paths?.root || "");
     // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
     // embedded, and rebuilt only when a rewrite deletes turns or the chunk cap is reached.
     const dense = new Dense(db, { maxChunks: opts.maxChunks });
@@ -207,7 +202,7 @@ export default {
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" }, machines,
+        per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines,
       } },
       run: async (input, { caller } = {}) => {
         const { machines: _, ...q } = input;

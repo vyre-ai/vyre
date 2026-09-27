@@ -14,7 +14,7 @@
 // remembers that something changed and redraws once when it is looked at again.
 
 import { h, put, head, empty } from "../js/dom.js";
-import { attempt as liveAttempt } from "../js/api.js";
+import { attempt as liveAttempt, queued as liveQueued } from "../js/api.js";
 import { clock, when } from "../js/fmt.js";
 
 /** Events that change what the lists show. */
@@ -56,10 +56,13 @@ export default async function view(ctx) {
  * Draw the planner into el and follow its events.
  * @param {HTMLElement} el
  * @param {{ params?: any, on: Function, cleanup: Function, alive: () => boolean }} ctx
- * @param {{ attempt?: (tool: string, input?: any) => Promise<{ data?: any, error?: any }>, doc?: any }} [deps]
+ * @param {{ attempt?: (tool: string, input?: any) => Promise<{ data?: any, error?: any }>, write?: (tool: string, input?: any) => Promise<{ data?: any, error?: any }>, doc?: any }} [deps]
+ *   write: how a todo or note is added and a todo done, through the outbox (ADR 0029) by default,
+ *   or through a test's attempt when it gives only that.
  */
 export async function drawPlanner(el, ctx, deps = {}) {
   const attempt = deps.attempt || liveAttempt;
+  const write = deps.write || deps.attempt || liveQueued;
   const doc = deps.doc || document;
   const firingId = ctx.params?.firing || null;
 
@@ -163,11 +166,13 @@ export async function drawPlanner(el, ctx, deps = {}) {
       e.preventDefault();
       const text = input.value.trim();
       if (!text) return;
-      put(status);
-      const a = await attempt("planner.add", { text });
-      if (!ctx.alive()) return;
-      if (a.error) { put(status, String(a.error.message || a.error)); return; }
+      // Sending at once; a box out of reach gets it from the outbox when it is back.
+      put(status, "Sending");
       input.value = "";
+      const a = await write("planner.add", { text });
+      if (!ctx.alive()) return;
+      if (a.error) { put(status, String(a.error.message || a.error)); if (!input.value) input.value = text; return; }
+      put(status);
       refresh();
     } }, input, h("button", { type: "submit", class: "btn" }, "Add"));
     if (r.error) return headed(alarmsBox, "Alarms", null, [empty("The planner is not available.", r.error), addForm, status]);
@@ -191,7 +196,9 @@ export async function drawPlanner(el, ctx, deps = {}) {
       const row = h("label", { class: "pl-row pl-todo", "data-item": t.id });
       const box = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", "aria-label": `Done: ${t.title}`, onchange: async () => {
         box.disabled = true;
-        const r = await attempt("planner.done", { item: t.id });
+        row.classList.add("sending");
+        const r = await write("planner.done", { item: t.id });
+        row.classList.remove("sending");
         if (!ctx.alive()) return;
         if (r.error) { box.checked = false; box.disabled = false; row.setAttribute("title", String(r.error.message || r.error)); return; }
         row.remove();

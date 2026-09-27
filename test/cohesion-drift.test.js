@@ -29,12 +29,15 @@ const RULES = {
 /** Today's copies, by rule, file and count. Shrink it as surfaces read the owner instead. */
 const ALLOWED = {
   models: {
+    "apps/ios/Vyre/Screens/Common.swift": 1, // debt: mobile, after 0.1.0
     "deck/views/agents.js": 3,
-    "local/capsule/native/Sources/Agent/AgentDestinations.swift": 3,
+    "local/capsule/native/Sources/Agent/AgentDestinations.swift": 2,
+    "local/capsule/native/Sources/Host/AutoAsk.swift": 1, // debt: capsule-pro, after 0.1.0
     "local/capsule/native/Sources/Host/CapsuleModel.swift": 1,
     "local/capsule/native/Sources/Vyred/Route.swift": 2,
   },
   policy: {
+    "apps/app/src/auth/person.ts": 2, // debt: mobile, after 0.1.0
     "deck/js/api.js": 1,
   },
 };

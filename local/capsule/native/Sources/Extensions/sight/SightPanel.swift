@@ -9,12 +9,12 @@ struct SightPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if model.talking || !model.heard.isEmpty {
-                label(model.talking ? "LISTENING" : "HEARD")
+                label(model.talking ? "Listening" : "Heard")
                 Text(model.heard.isEmpty ? "Say it now. Option-Return to stop." : model.heard)
                     .font(Theme.reply).foregroundColor(model.heard.isEmpty ? Theme.ash : Theme.bone)
             }
             if let s = model.summary {
-                label("ON SCREEN")
+                label("On screen")
                 Text(s.window.isEmpty ? s.app : s.window).font(Theme.title).foregroundColor(Theme.bone).lineLimit(2)
                 if !s.window.isEmpty && !s.app.isEmpty { Text(s.app).font(Theme.subtitle).foregroundColor(Theme.stone) }
                 if let url = s.url { Text(url).font(Theme.subtitle).foregroundColor(Theme.ash).lineLimit(1).truncationMode(.middle) }

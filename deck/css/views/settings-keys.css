@@ -8,7 +8,7 @@
 .sk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px 0; border-bottom: 1px solid var(--rule);
   position: sticky; top: 0; z-index: 2; background: var(--bg); }
 .sk-bar .seg { flex-shrink: 0; }
-.sk-find, .sk-proj { height: 32px; font-size: 13px; border-radius: var(--radius-field, var(--r-2)); }
+.sk-find, .sk-proj { height: 32px; font-size: 13px; border-radius: var(--radius-field, var(--radius-field, 8px)); }
 .sk-find { flex: 1 1 200px; min-width: 0; width: auto; }
 .sk-status:not(:empty) { padding-top: 8px; }
 .sk-sec { padding-top: 32px; }
@@ -17,19 +17,19 @@
 /* Project scope: the keys kept per account are hidden, and this says so. */
 .sk-acct-only { margin: 8px 0 0; font-size: 12px; line-height: 16px; color: var(--label); }
 .sk-link { border: none; background: none; padding: 0; font: inherit; color: var(--text); text-decoration: underline;
-  text-underline-offset: 2px; cursor: pointer; border-radius: var(--radius-chip, var(--r-1)); }
+  text-underline-offset: 2px; cursor: pointer; border-radius: var(--radius-chip, var(--radius-chip, 4px)); }
 .sk-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
 /* The restart banner: a quiet fill, never a colour. */
 .sk-banner { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: 40px; margin-top: 12px;
-  padding: 8px 12px 8px 16px; border-radius: var(--radius-card, var(--r-3)); background: var(--hover); }
+  padding: 8px 12px 8px 16px; border-radius: var(--radius-card, var(--radius-card, 12px)); background: var(--hover); }
 .sk-banner[hidden] { display: none; }
 .sk-banner-fact { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text); }
 .sk-banner-detail { font-size: 12px; line-height: 16px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* The row: text, the reserved slot, the control. */
 .set-row.sk-row { display: grid; grid-template-columns: minmax(0, 1fr) 184px minmax(168px, max-content); gap: 4px 12px;
-  align-items: center; min-height: 56px; padding: 8px 16px; margin: 0 -16px; border-radius: var(--radius-card, var(--r-3));
+  align-items: center; min-height: 56px; padding: 8px 16px; margin: 0 -16px; border-radius: var(--radius-card, var(--radius-card, 12px));
   scroll-margin-top: 72px; transition: background 160ms; }
 .set-row.sk-row[hidden] { display: none; }
 .sk-row:hover { background: var(--hover); }
@@ -40,7 +40,7 @@
 .sk-k { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .sk-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sk-label { font-size: 13px; line-height: 18px; font-weight: 400; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
-.sk-src { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--radius-chip, var(--r-1));
+.sk-src { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--radius-chip, var(--radius-chip, 4px));
   background: var(--hover); color: var(--text-2); font-size: 12px; line-height: 16px; cursor: default; }
 .sk-row:hover .sk-src { background: var(--rule); }
 .sk-desc { display: flex; flex-wrap: wrap; gap: 0 6px; font-size: 12px; line-height: 16px; color: var(--label); }
@@ -56,7 +56,7 @@
 /* The reserved slot: always laid out, so Saved, Reset and Undo never move anything. */
 .sk-slot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-height: 28px; min-width: 0;
   font-size: 12px; line-height: 16px; color: var(--text-2); }
-.sk-slot .btn-sm { height: 28px; padding: 0 8px; font-size: 12px; color: var(--text); border-radius: var(--radius-button, var(--r-2)); }
+.sk-slot .btn-sm { height: 28px; padding: 0 8px; font-size: 12px; color: var(--text); border-radius: var(--radius-button, var(--radius-field, 8px)); }
 .sk-slot .btn-sm:hover { background: var(--hover); }
 .sk-row:hover .sk-slot .btn-sm:hover { background: var(--rule); }
 .sk-was { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -70,7 +70,7 @@
 .sk-wide .sk-ctl { justify-content: flex-start; }
 .sk-ctl .seg { margin-top: 0; height: 32px; align-items: center; background: var(--hover); border-color: transparent; }
 .sk-ctl .seg button { height: 28px; }
-.sk-ctl .input, .sk-input { height: 32px; font-size: 13px; background: var(--bg); border-radius: var(--radius-field, var(--r-2)); }
+.sk-ctl .input, .sk-input { height: 32px; font-size: 13px; background: var(--bg); border-radius: var(--radius-field, var(--radius-field, 8px)); }
 .sk-input { max-width: 320px; }
 .sk-ctl select.input { width: auto; min-width: 168px; }
 .sk-num { width: 120px; }
@@ -82,12 +82,12 @@
 
 /* The confirm line: what changes and where, then Confirm or Cancel. */
 .sk-ask { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
-  padding: 10px 12px; border-radius: var(--radius-card, var(--r-3)); background: var(--panel); border: 1px solid var(--rule); }
+  padding: 10px 12px; border-radius: var(--radius-card, var(--radius-card, 12px)); background: var(--panel); border: 1px solid var(--rule); }
 .sk-ask[hidden] { display: none; }
 .sk-ask-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; line-height: 18px; color: var(--text); }
 .sk-where { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); overflow-wrap: anywhere; }
 .sk-ask-btns { display: flex; gap: 8px; flex-shrink: 0; }
-.sk-ask-btns .btn-sm { height: 32px; padding: 0 12px; border-radius: var(--radius-button, var(--r-2)); }
+.sk-ask-btns .btn-sm { height: 32px; padding: 0 12px; border-radius: var(--radius-button, var(--radius-field, 8px)); }
 .sk-ask-btns .btn-ghost { color: var(--text); }
 
 .sk-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
@@ -95,15 +95,15 @@
 .sk-chip { max-width: 100%; }
 .sk-chip .mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 .sk-x { border: none; background: transparent; color: var(--label); cursor: pointer; width: 20px; height: 20px; padding: 0;
-  border-radius: var(--radius-chip, var(--r-1)); font-size: 14px; line-height: 20px; }
+  border-radius: var(--radius-chip, var(--radius-chip, 4px)); font-size: 14px; line-height: 20px; }
 .sk-x:hover { color: var(--text); background: var(--hover); }
 .sk-add-row { display: flex; gap: 8px; align-items: center; max-width: 100%; }
-.sk-add-row .btn-sm { height: 32px; border-radius: var(--radius-button, var(--r-2)); }
+.sk-add-row .btn-sm { height: 32px; border-radius: var(--radius-button, var(--radius-field, 8px)); }
 .sk-obj { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
-.sk-json { font-family: var(--mono); font-size: 12px; line-height: 18px; width: 100%; background: var(--bg); border-radius: var(--radius-field, var(--r-2)); }
+.sk-json { font-family: var(--mono); font-size: 12px; line-height: 18px; width: 100%; background: var(--bg); border-radius: var(--radius-field, var(--radius-field, 8px)); }
 
 /* Phone: label and control on one line, the reserved line under them, every target 44. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .sk-top { padding-top: 40px; }
   .sk-bar { position: static; }
   .sk-find, .sk-proj { height: 44px; font-size: 16px; }

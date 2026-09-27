@@ -10,6 +10,7 @@
 import { h } from "./dom.js";
 import { attempt } from "./api.js";
 import { since } from "./fmt.js";
+import { pathMark } from "./status-mark.js";
 
 export const HEALTH_EVERY = 60_000;
 
@@ -22,7 +23,7 @@ export function linkLine(x) {
   return x?.why === "the node is offline" ? "offline" : "unknown";
 }
 
-/** The dot's colour: green for direct, amber for any relay, grey when the path is not known. */
+/** The path dot (js/status-mark.js pathMark): direct, relayed for any relay, unknown when the path is not known. Relayed is normal, never a warning. */
 export function linkDot(x) {
   if (x?.path === "direct") return "direct";
   if (x?.path === "relay" || x?.path === "peer-relay") return "relayed";
@@ -74,16 +75,16 @@ export function watchHealth(fn) {
 }
 
 /**
- * A small dot for a header: its colour is the path and its title the line ("direct 12 ms").
+ * The path dot for a header (direct, relayed, none) with the line as its title ("direct 12 ms").
  * Hidden until link.health answers, and when there is no link module.
  * @returns {{ el: HTMLElement, stop: () => void }}
  */
 export function healthDot() {
-  const el = h("span", { class: "dot health-dot", role: "img", hidden: true });
+  const el = h("span", { class: "sm sm-path-none health-dot", role: "img", hidden: true });
   const stop = watchHealth(x => {
     if (!x) { el.hidden = true; return; }
     const line = linkLine(x);
-    el.className = `dot health-dot health-${linkDot(x)}`;
+    el.className = `${pathMark(linkDot(x)).className} health-dot`;
     el.title = line;
     el.setAttribute("aria-label", `Connection to the box: ${line}`);
     el.hidden = false;
