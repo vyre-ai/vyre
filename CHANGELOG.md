@@ -812,6 +812,87 @@ neither.
 - `ask.answered` says `device` when the answer came from one of the person's devices that the
   call identifies (a paired device over the relay, the owner's tailnet node), not only the
   surface it names.
+#### Queued replies follow only their own turn (capsule-agent 42e8da05, merged)
+
+- A reply queued for a busy session ignores the turn it was busy with, counts only its own
+  handed-over row (by queued id), and then fixes its turn afresh from the answering turn.
+  `Sources/Vyred/State.swift`; `Tests/CapsuleModelTests.swift`, `Tests/StateTests.swift`.
+- The "@ a name then words" test waits for the box's words as well as the chip: CI read it
+  between the two and failed batch 4.
+
+#### ⌘⏎ thinks deeper in the same thread
+
+- ⌘⏎ on an answer, or on a follow-up typed under it, now switches the answer's own thread to the
+  deeper model (threads.model, sonnet) and turns thinking on (threads.thinking), then sends the
+  words there, so the conversation is already in it. The same question again is asked to be
+  thought through; new words go as typed. A quick thread that went idle gets thinking once the
+  send wakes it. A vyred with no threads.model keeps the old way: a new thread told what was said.
+- A new turn in the same thread reveals its words from the start, paced, instead of showing the
+  first part at once.
+- `Sources/Host/AutoAsk.swift` (deeperInThread); `Tests/AutoAskTests.swift`.
+
+#### The Capsule's answer grows, then scrolls; no bare headings
+
+- The user's bug (2026-09-27): a long answer was cut off mid-line in a fixed 200 pt box with no
+  way to scroll. The answer card is now as tall as its words, up to the room it has (the whole
+  area when it is alone, or all but the first group of results and two of its rows), then it
+  scrolls: with the trackpad, and with ⌘↑ ⌘↓, PageUp PageDown, Home and End while the focus stays
+  in the box. A streaming answer follows its newest words unless the user scrolled up; scrolling
+  back to the end follows again. ⌘↑ ⌘↓ stay the box's own keys while nothing needs scrolling.
+- The card draws its own thumb (4 wide, 3 in from the right edge) whenever it can scroll, and
+  "Jump to latest ⌘↓" at its bottom edge once the user scrolled up from a longer answer. ⌥↑ ⌥↓
+  move three lines (app-design's capsule.md).
+- Empty "Send to" and "Commands" headings are gone: a group with no rows is dropped (with no
+  assistant to ask, the destinations group was empty but still drawn), and the results list ends
+  on a whole row, so a heading is never left at the bottom with its rows out of sight.
+- `Sources/UI/AnswerScroll.swift`; `Tests/AnswerScrollTests.swift` (drawn off screen in a window
+  that is never shown: the card height, overflow, the keys, follow and hold, the whole-row fit,
+  no empty group; pictures 7 and 8 with VYRE_CAPSULE_SNAP).
+
+#### Voice and computer use in the same box
+
+- Voice: Option-Return talks into the box. Hold it to talk while it is down; tap it to talk until
+  the next tap. The words show as they are heard and ask nothing until they are final. The final
+  words are then submitted as ⏎ would: a question answers at once, and in the follow-up box they
+  continue the thread. When spoken replies are on (voice.settings speak), the answer to a spoken
+  question is read aloud (voice.speak, played in the Capsule); Esc or a new answer stops it.
+  Kit: `CapsuleHost.dictate(_:final:)`, `CapsuleExtension.handleUp(key:)` (Return coming up, for
+  hold-to-talk).
+- Computer use: "do …" (⏎ or ⌘⏎), or ⌘⏎ on words that are not a question, starts a full agent
+  session (not lean, purpose agent), which gets hands.* and screen.* through the Vyre plugin. It is
+  told to act visibly and to leave sends, posts, payments and deletions to the Gate. Its tool rows
+  stream in the answer area, held items come to the waiting list with Touch ID in the panel, and
+  Esc interrupts the turn and calls hands.stop.
+
+#### A question answers itself, and the box becomes the follow-up box
+
+- The user's feedback (2026-09-27). Words that read as a question are answered on the fast model
+  (purpose capsule, with what memory said) about 600 ms after typing rests. They qualify with a
+  question word, a "?", or three words or more that nothing on this Mac matches strongly. The
+  answer streams at the top, above the local results. Typing on lets it go (the turn is
+  interrupted) and asks again after the next pause. The same words never ask twice, and the last
+  five answers come back at once. A single word, an exact local match, or words the router sends
+  to the assistant (the user's own work, a command: "Ask juno") never ask on their own.
+- ⏎ keeps the answer and empties the box, which becomes "Ask a follow-up": ⏎ there continues the
+  same thread (threads.send). ↓ into the results first makes ⏎ open that row. ⌘⏎ asks the same
+  question, or the follow-up typed, on the deeper model with the conversation so far. It is a new
+  thread, since threads.send cannot switch the model yet. ⌘O opens the thread in Vyre chat on the
+  box. Esc clears back to plain search; the next Esc hides.
+- The Quick answer, Deeper answer and Follow up rows are gone. Under an answer the footer shows
+  only "Ask ⏎ · Think deeper ⌘⏎ · Clear esc". `Sources/Host/AutoAsk.swift`,
+  `Tests/AutoAskTests.swift` (the pause, cancel, the cache, follow-up threading, ⌘⏎).
+
+#### A Capsule test that timed the clock now counts overlap
+
+- ModuleProvidersTests "search asks every provider in parallel" asserted two 150 ms providers
+  finished under 280 ms, which a slow CI Mac missed (capsule-mac 36322149292). It now counts how
+  many calls were in flight at once and expects two.
+
+#### local/capsule/bin/ is ignored
+
+- The old helper builds (hotkey, local, vyre-launcher) could sit untracked in local/capsule/bin/;
+  it is in .gitignore now. The CI signing step's fallback, used only when Vyre.app did not build,
+  signs a copy of /bin/echo instead of the vyre-launcher nothing builds any more.
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 

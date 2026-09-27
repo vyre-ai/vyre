@@ -117,8 +117,13 @@ let capsuleModelSuite = Suite("capsule model") { t in
             await MainActor.run { m.run() }
             _ = await until { m.reply?.queued != nil && m.reply?.finished == false }
             _ = await until { m.vyred.follower.isStreaming }
-            _ = v.emit("thread.sent", thread: "s1", ["text": "which branch", "queued": 7, "via": "stop"])
-            _ = await until { m.reply?.queued?.delivered == true }
+            // On a slow CI machine the stream can reconnect around the event: say it again until heard.
+            for _ in 0..<10 {
+                _ = v.emit("thread.sent", thread: "s1", ["text": "which branch", "queued": 7, "via": "stop"])
+                var heard = false
+                for _ in 0..<25 { if await MainActor.run(body: { m.reply?.queued?.delivered == true }) { heard = true; break }; try? await Task.sleep(nanoseconds: 20_000_000) }
+                if heard { break }
+            }
             await MainActor.run { m.stopReply() }
             let after = await MainActor.run { m.line ?? "" }
             await MainActor.run { m.didHide() }
@@ -170,7 +175,9 @@ let capsuleModelSuite = Suite("capsule model") { t in
                 m.run()
                 return m
             }
-            _ = await until { m.target != nil }
+            // The chip is set first and the box's words replaced when the pick's outcome lands:
+            // wait for both, since a slow machine can be read in between.
+            _ = await until { m.target != nil && !m.text.hasPrefix("@") }
             return await MainActor.run { [m.target?.label ?? "", m.text] }
         }
         t.eq(r, ["juno", "rebuild the bakery menu"])

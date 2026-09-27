@@ -84,6 +84,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
     private let host: CapsuleHost
     let model = SightModel()
     private var talker: Talker?
+    private var holdStart: Date?
     private var preparing = false, stopWanted = false
     /// Bumped on hide, so a press still waiting on voice.status never starts the mic afterwards.
     private var generation = 0
@@ -196,9 +197,23 @@ final class SightExtension: CapsuleExtension, SendAttaching {
 
     func handle(chord: KeyShortcut, query: Query) -> Bool {
         guard chord == Self.talkChord else { return false }
+        // Held: talk while it is down (hold-to-talk). Tapped: talk until the next tap.
+        if talker == nil && !preparing { holdStart = Date() } else { holdStart = nil }
         toggleTalk()
         return true
     }
+
+    /// Return came up: a press held longer than a tap stops talking, as a walkie-talkie does.
+    func handleUp(key: String) -> Bool {
+        guard key == "return", let t0 = holdStart else { return false }
+        holdStart = nil
+        guard Date().timeIntervalSince(t0) >= Self.holdAfter, model.talking else { return false }
+        toggleTalk()
+        return true
+    }
+
+    /// Longer than this, the talk chord was held rather than tapped.
+    static let holdAfter: TimeInterval = 0.35
 
     func sidePanel(for item: ResultItem?) -> AnyView? {
         if let item, item.panel != Self.id { return nil }
@@ -419,10 +434,10 @@ final class SightExtension: CapsuleExtension, SendAttaching {
             panel.talking = talkToPanel
         case .heard(let text):
             model.heard = text
-            put(text)
+            put(text, final: false)
         case .done(let text):
             model.talking = false; panel.talking = false; talker = nil
-            if text.isEmpty { say("Nothing heard") } else { model.heard = text; put(text) }
+            if text.isEmpty { say("Nothing heard"); if !talkToPanel { host.dictate("", final: true) } } else { model.heard = text; put(text, final: true) }
         case .failed(let why):
             model.talking = false; panel.talking = false; talker = nil
             model.line = why
@@ -430,7 +445,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         }
     }
 
-    private func put(_ text: String) { if talkToPanel { panel.draft = text } else { host.setQuery(text) } }
+    private func put(_ text: String, final: Bool) { if talkToPanel { panel.draft = text } else { host.dictate(text, final: final) } }
     private func say(_ line: String) { if talkToPanel { panel.line = line } else { host.say(line) } }
 
     // MARK: -

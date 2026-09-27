@@ -229,6 +229,8 @@ public enum VyState {
             if let id = q.id, VJ.int(p["queued"]) != id { return r }
             x.queued?.delivered = true
             if let t = VJ.nonEmpty(p["turn"]) { x.queued?.turn = t }
+            // The turn it was busy with is not this reply's: the answering turn fixes it afresh.
+            x.turn = VJ.nonEmpty(p["turn"])
             return x
         }
         // Until then the thread is answering something else (the turn it is busy with): none of that
@@ -237,9 +239,9 @@ public enum VyState {
             if !q.delivered { return r }
             if let t = q.turn, let et = VJ.nonEmpty(p["turn"]), et != t { return r }
         }
-        // Every event of a turn names it: the first one fixes this reply's turn (for a queued reply,
-        // the first one after its hand-over).
-        if x.queued == nil || x.queued?.delivered == true, let t = VJ.nonEmpty(p["turn"]) {
+        // Every event of a turn names it: the first one fixes this reply's turn (for queued words,
+        // the first after they were handed over).
+        if let t = VJ.nonEmpty(p["turn"]), x.queued.map({ $0.delivered }) ?? true {
             if x.turn == nil { x.turn = t } else if t != x.turn { return r }
         }
         switch e.type {
