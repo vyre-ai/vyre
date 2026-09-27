@@ -33,6 +33,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   was not verified.
 - `context.report` from a device paired through the relay takes the device from its caller when
   the report leaves it out.
+- The hands-chrome end-to-end tests kill their Chrome's whole process group and retry removing
+  its profile: on Linux the renderer and crashpad children outlived the browser and the teardown
+  failed ENOTEMPTY. They now pass on the test server's Chromium.
 
 #### One system: sight, context, suggest and waiting (ADR 0036)
 

@@ -48,7 +48,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 15 | 5 | cli |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
-| [`sight`](#sight) | `core/sight` | `box`, `local` | 4 | 1 | none |
+| [`sight`](#sight) | `core/sight` | `box`, `local` | 5 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
@@ -384,7 +384,7 @@ One screen service for the user's Mac and every agent's computer: what is on it,
 - Folder: `core/sight`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [4](tools.md#sight)
+- Tools: [5](tools.md#sight)
 - Emits: [1 events](events.md#sight)
 - Shows on: no surface
 

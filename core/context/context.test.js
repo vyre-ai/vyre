@@ -70,7 +70,7 @@ test("clean: refuses text, selection and value, and a bad surface or cwd", () =>
 
 test("report and now: fields merge per surface, the newest value of each field wins across surfaces", async t => {
   const { call } = await world(t);
-  assert.deepEqual((await call("context.now")).data, { project: null, cwd: null, thread: null, surface: null, device: null, app: null, window: null, url: null, at: null, surfaces: [] });
+  assert.deepEqual((await call("context.now")).data, { project: null, cwd: null, thread: null, view: null, surface: null, device: null, app: null, window: null, url: null, at: null, surfaces: [] });
 
   const r1 = await call("context.report", { surface: "capsule", device: "alex-mac", app: "Safari", window: "Menu", url: "https://northwind.example/menu?session=abc#top" }, "capsule");
   assert.deepEqual(r1.data.changed.sort(), ["app", "url", "window"]);

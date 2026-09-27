@@ -31,12 +31,14 @@ async function launchChrome(t) {
   const child = spawn(CHROME_BIN, [
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`,
     "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-extensions", "about:blank",
-  ], { stdio: ["ignore", log, log] });
+  ], { stdio: ["ignore", log, log], detached: true });
   t.after(async () => {
-    try { child.kill("SIGKILL"); } catch {}
+    // Its own process group, killed whole: on Linux Chrome's renderer and crashpad children
+    // outlive the browser and keep writing into the profile, so removing it failed ENOTEMPTY.
+    try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch {} }
     await new Promise(r => { child.once("exit", r); setTimeout(r, 500); });
     try { fs.closeSync(log); } catch {}
-    fs.rmSync(dir, { recursive: true, force: true });
+    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   });
   let port = null;
   const deadline = Date.now() + 10_000;

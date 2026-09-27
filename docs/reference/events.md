@@ -33,7 +33,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `chrome.acted` | `action`, `agent`, `ok`; sometimes `why` |
+| `chrome.acted` | `action`, `agent`, `app`, `ok`; sometimes `why` |
 
 ## computers
 
@@ -109,7 +109,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `hands.acted` | `acted`, `app`, `kind`, `selector`, `verified`; sometimes `action`, `held` |
+| `hands.acted` | `acted`, `app`, `kind`, `selector`, `verified`; sometimes `action`, `held`, `why` |
 | `hands.resumed` | `app` |
 | `hands.stopped` | `app`, `by` |
 
@@ -117,7 +117,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `desktop.acted` | `action`, `agent`, `ok`, `summary`; sometimes `why` |
+| `desktop.acted` | `action`, `agent`, `ok`, `summary`; sometimes `app`, `call`, `thread`, `why` |
 
 ## harness
 
