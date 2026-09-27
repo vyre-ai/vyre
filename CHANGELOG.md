@@ -28,6 +28,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - box/Dockerfile read the SDK's pinned version by loading core/sessions/sdk.js on its own, which
   now imports core/config/dialogs.js, so the image build failed. The name and version live in
   core/sessions/sdk-pin.js, which has no imports; sdk.js re-exports them.
+#### ADR 0033: Hackable Vyre (accepted), and the module SDK's first piece
+
+- docs/adr/0033-hackable-vyre.md: a versioned module API (apiVersion, a manifest schema, the v1
+  ctx surface, deprecation rules, published types), an extension point for every part, user
+  modules and overrides that survive updates, `vyre update` with channels and rollback, third-party
+  modules added as grants, and the order for thinning the kernel. The lead's decisions are
+  recorded: 0.1.0 first, keyless signing later, third-party UI only in a sandboxed iframe, and a
+  database restore only when health fails inside the update window.
+- packages/module-sdk (not published; private until Vyre's first npm release): the manifest
+  schema for module API 1, a dependency-free checkManifest(), and index.d.ts for the manifest and
+  ctx. Nothing loads it yet; the loader adopts it in phase 1.
+- test/module-sdk.test.js: every module.json in the repo passes the schema, and the types name every
+  manifest key and every ctx member the loader hands a module. A new manifest key goes in the
+  schema first; `x-` keys are free. It knows native-core's setting fields (store, security, confirm,
+  loosens) and the ctx members sessions and settings add (provider, providers, declaredSettings).
+- Docs drift: SPEC's `requires` example named the store and events (never modules), its entry file
+  imported a type that didn't exist, `ctx.events.latestId` was undocumented, and module-contract
+  said the Deck reads `shows.deck` (it doesn't yet).
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
