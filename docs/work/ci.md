@@ -76,20 +76,20 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
 ## Doing (RESUME 5, 2026-09-27)
-- box-image RED on main 7880dfa6 (run 36324075479): the Dockerfile imported a lone /tmp copy of
-  core/sessions/sdk.js, which now imports ../config/dialogs.js (e2e 8aed4887). Fix on
-  work/ci-sdkver 1d7405e4 (read PACKAGE/VERSION with sed; guard in test/box-init.test.js), box-image
-  run 36324429260. Green sha goes to box-deploy + lead as the deploy candidate.
-- Idle-RSS bisect: throwaway branch work/ci-rss-bisect 20f68f09 (only rss-bisect.yml; one runner per
-  first-parent merge c8fb9aae..c8eee9c3, Node 24), run 36324514448. Read each job's RESULT line.
-  Budget stays 150.
-- App perf proof (run 36320966093) failure READ: work/mobile tracks a `node_modules` symlink
-  (ce5f6374), dangling on runners, so every npx exits 216. Told mobile to `git rm --cached`. Guard:
-  test/hygiene.test.js (work/ci 3c26ea2d). Re-run the proof after mobile's fix.
-- ci-boundaries de5651bf node RED (run 36319211841) READ: Node 24 docs-check "owner ci is not a known
-  team" (fixed on the b4 merge by 5c55ab51) and Node 22 the 30-min journey-4 hang (fixed by e2e
-  8aed4887). Nothing left on the branch.
-- work/ci merged main 7880dfa6 (fd1c5f70).
+- box-image RED on main 7880dfa6 (run 36324075479): Dockerfile imported a lone copy of sdk.js,
+  which now imports ../config/dialogs.js. Lead's FINAL PICK is e2e 65cbc02a (pin in
+  core/sessions/sdk-pin.js, imports nothing; its sdk-install test imports the pin alone). My
+  work/ci-sdkver is dropped. NEXT: a real box-image on the new main once the integrator lands it,
+  and report the result to box-deploy and the lead.
+- box-image detect skipped the 3b build (the fixed path list lacked core/sessions/). Fixed on work/ci
+  6b16be62: the list of changed files is checked against `npm pack --dry-run` plus box/ and the build files.
+- Idle-RSS bisect, throwaway work/ci-rss-bisect: run 36324514448 = 23 b4 first-parent merges
+  (c8fb9aae..c8eee9c3); second run (8642f7d8) = main's 3a/3b merges 86f8db5e..7880dfa6 (9 shas). b4
+  is on c8fb9aae WITHOUT 3a/3b, so the chains are separate. Integrator: 7880dfa6 on testbox gave
+  120 mean / 159 max. Each job's last step prints "RESULT <sha> RSS ...". Budget stays 150.
+- App perf proof failure READ: work/mobile tracks a node_modules symlink (ce5f6374), so every npx
+  exits 216. Mobile has been told. Guard: test/hygiene.test.js (3c26ea2d). Re-run the proof after the fix.
+- ci-boundaries de5651bf node RED READ: already fixed on the b4 merge (5c55ab51) and by 8aed4887.
 
 ## Next
 - Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,
