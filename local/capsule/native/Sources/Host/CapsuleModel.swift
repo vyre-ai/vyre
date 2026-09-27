@@ -204,6 +204,27 @@ public final class CapsuleModel: ObservableObject {
     /// Asked to step aside for the front app.
     public var onStepAside: (() async -> Bool)?
 
+    /// The Capsule's own two speeds: memory.ask / a lean thread (quick), and think-deeper's
+    /// session (deeper). Read from sessions.models.get on open (ADR 0036), so a model rename
+    /// needs no Capsule release; today's values (below) when the tool is missing or has not
+    /// answered yet.
+    public struct CapsuleModels: Equatable { public var quick = CapsuleModel.quickModel; public var deeper = CapsuleModel.deeperModel }
+    @Published public internal(set) var models = CapsuleModels()
+    /// Today's fallback for the quick model: sessions.models.get's purpose "capsule" overrides it.
+    static let quickModel = "haiku"
+
+    /// Caches purposes.capsule and purposes.agent from sessions.models.get as the Capsule's quick
+    /// and deeper models. A vyred with no such tool, or one that errors, leaves today's values.
+    func loadModels() async {
+        guard vyred.has("sessions.models.get") else { return }
+        let r = await vyred.call("sessions.models.get", [:], presence: false)
+        guard r.error == nil, let d = r.data as? [String: Any], let purposes = d["purposes"] as? [String: Any] else { return }
+        var m = models
+        if let capsule = purposes["capsule"] as? [String: Any], let q = VJ.nonEmpty(capsule["model"]) { m.quick = q }
+        if let agent = purposes["agent"] as? [String: Any], let dp = VJ.nonEmpty(agent["model"]) { m.deeper = dp }
+        models = m
+    }
+
     public init(home: String, vyred: VyredClient, providers: [ResultProvider]) {
         self.home = home
         self.vyred = vyred
@@ -226,6 +247,7 @@ public final class CapsuleModel: ObservableObject {
         Task { @MainActor [vyred] in
             _ = await vyred.refreshTools()
             guard vyred.isUp else { return }
+            await self.loadModels()
             self.catalog = await CatalogLoader.load(vyred)
             if self.mentionQuery != nil { self.search() }
             self.targetChanged()
@@ -787,10 +809,11 @@ public final class CapsuleModel: ObservableObject {
 
     // MARK: asking
 
-    func ask(_ words: String, model: String = "haiku", context: String? = nil, computerUse: Bool = false) async -> ActionOutcome {
+    func ask(_ words: String, model: String? = nil, context: String? = nil, computerUse: Bool = false) async -> ActionOutcome {
         guard !words.isEmpty else { return .said("Type a question first.") }
+        let model = model ?? models.quick
         // Vyre IQ (IQAsk.swift): a plain quick question is memory.ask's, grounded or "Not sure yet."
-        if !computerUse, context == nil, model == "haiku", let out = await askIQ(words) { return out }
+        if !computerUse, context == nil, model == models.quick, let out = await askIQ(words) { return out }
         let dir = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask")
         do { try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true) } catch {
             return .failed("Could not make the Capsule's folder: \(error.localizedDescription)")

@@ -92,7 +92,7 @@ extension CapsuleModel {
         let iq = IQAnswer.from(words, r.data)
         askedMemory = iq.memory
         var rep = VyState.reply("")
-        rep.model = "haiku"
+        rep.model = models.quick
         reply = rep
         // Finished in a second step, so the answer is kept for follow-ups and read aloud like any other.
         rep.order = ["iq"]; rep.text = ["iq": iq.text]; rep.finished = true; rep.ok = true
