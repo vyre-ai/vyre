@@ -164,6 +164,12 @@ export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(cal
  */
 export const ownerDevice = caller => ownerOverTailnet(caller) || /^device:[a-z2-7]{16}$/.test(String(caller));
 
+/** Shipped in the repo (core, local, modules), not added to a home's modules folder. @param {string} dir @param {any} paths */
+const inRepo = (dir, paths) => {
+  const d = path.resolve(dir), home = paths && paths.modules ? path.resolve(paths.modules) + path.sep : null;
+  return d.startsWith(path.dirname(CORE_DIR) + path.sep) && !(home && d.startsWith(home));
+};
+
 export class Registry {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
@@ -243,6 +249,12 @@ export class Registry {
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
         // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
         .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: firstParty(r.dir) }))),
+      // Every running module's teaches.tips, for the tips module to choose from (core/tips). Tips
+      // are plain text a module chose to show; the tips module checks them, never this loader.
+      // firstParty: shipped in the repo, so its tips follow Vyre's version, not the module's own.
+      declaredTips: () => [...this.modules.entries()]
+        .filter(([, r]) => r.state === "running" && r.manifest && r.manifest.teaches && Array.isArray(r.manifest.teaches.tips))
+        .map(([name, r]) => ({ module: name, version: r.manifest.version, firstParty: inRepo(r.dir, paths), tips: r.manifest.teaches.tips })),
       // The module's namespace in vyre.db: migrations are bound to its name, so its tables must
       // carry that name. Reads may join any table; writes to another module's tables go through
       // that module's tools.

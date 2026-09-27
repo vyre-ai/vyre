@@ -395,6 +395,21 @@ neither.
 - session.js: on open, those are applied after the transcript's blocks, so the "Steering" marker
   and the queued row come back with their ids.
 - core/switchboard test: steer and queue while an ask is open, both kept and delivered.
+#### Tips: one short line at a time about each part of Vyre
+
+- New module `core/tips`: `tips.next {surface, context: {module, idle, busy}}` picks at most one
+  tip (the module in use first, then modules never tried, then what an update brought, then idle
+  tips), never while an ask or a turn is on screen, one per surface per `tips.gap_minutes` (30),
+  two minutes apart across surfaces, six a day, at most two showings each. `tips.seen`,
+  `tips.used`, `tips.dismiss`, `tips.whatsnew`, `tips.list`, `tips.reset`; event `tips.updated`
+  once when the running version moves. Settings `tips.enabled` and `tips.gap_minutes` (hub, with
+  `config.tips` until the hub lands).
+- Modules ship their own tips in module.json under `teaches.tips` (checked by
+  `core/tips/check.js`). The loader hands them over with `ctx.declaredTips()`; the tips module never
+  reads another module's files. 306 tips across 37 modules and the Deck, Chat, phone, CLI, Claude
+  Code, module-building, box and update surfaces; 48 more wait in docs/work/tips-pending.json for
+  their code to land.
+- `vyre tips [module | new | reset]`. Docs: using/tips.md, build/tips.md.
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
@@ -1560,6 +1575,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   beside the home, CHAT_DEMO and the WebSocket pass-through.
 
 
+#### The design docs stay out of the package
 
 
 

@@ -9,7 +9,19 @@
   "watches": { "emits": ["planner.added", "planner.changed", "planner.removed", "planner.fired", "planner.acked", "planner.schedule"] },
   "shows": { "deck": ["panel:planner"], "capsule": [], "cli": ["alarm", "remind", "todo", "notes", "agenda"] },
   "needs": {},
-  "teaches": {},
+  "teaches": {
+    "tips": [
+      {"id": "remind-words", "text": "Type `vyre remind \"call juno\" at 6` and it rings on every device with push on, and as a banner in the Deck.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre remind <what> at <when>", "docs": "using/planner.md#set-an-alarm-a-timer-or-a-reminder-from-the-terminal"},
+      {"id": "timer-label", "text": "`vyre timer 25m bread` starts a labelled timer that rings on every device, even when your Mac is shut.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre timer <length> [label]", "docs": "using/planner.md#set-an-alarm-a-timer-or-a-reminder-from-the-terminal"},
+      {"id": "answer-once", "text": "Answer a ring once, anywhere. Done or Snooze in the Deck closes the notification on your other devices.", "surfaces": ["deck", "phone"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/planner.md#answer-something-that-is-ringing"},
+      {"id": "todo-priority", "text": "End a todo with `!high`, `!!` or `!low` to set its priority: `vyre todo add send the Northwind Bakery invoice by friday !high`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "!high", "docs": "using/planner.md#keep-todos-and-notes"},
+      {"id": "snooze-minutes", "text": "`vyre snooze <id> 15` rings again in 15 minutes. Leave out the number and it waits 9.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre snooze <id> [minutes]", "docs": "using/planner.md#answer-something-that-is-ringing"},
+      {"id": "escalate", "text": "An alarm nobody answers rings again every 5 minutes, 3 more times. Change both with `vyre call planner.settings`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call planner.settings", "docs": "using/planner.md#settings"},
+      {"id": "lock-screen-label", "text": "Want \"Call kit\" on the lock screen, not just \"Reminder\"? Run `vyre call push.settings '{\"planner_label\": true}'`.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre call push.settings", "docs": "using/planner.md#show-the-words-on-your-lock-screen"},
+      {"id": "assistant-adds", "text": "Ask juno to remind you of something and juno adds the reminder itself, with no prompt and no Touch ID.", "surfaces": ["chat", "capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/planner.md#let-your-agents-use-it"},
+      {"id": "agenda-today", "text": "Run `vyre agenda` for today's alarms, reminders and calendar events, then the todos due, overdue ones included.", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre agenda", "docs": "using/planner.md#see-your-day"}
+    ]
+  },
   "settings": [
     {"key": "planner.escalate_after", "group": "planner", "label": "Ring again after (minutes)", "type": "int", "min": 1, "max": 120, "default": 5, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "planner.settings", "input": {}, "read": "escalate_after"}, "set": {"tool": "planner.settings", "input": {"escalate_after": "$value"}}}}},
     {"key": "planner.escalate_max", "group": "planner", "label": "Rings after the first", "type": "int", "min": 0, "max": 10, "default": 3, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "planner.settings", "input": {}, "read": "escalate_max"}, "set": {"tool": "planner.settings", "input": {"escalate_max": "$value"}}}}},

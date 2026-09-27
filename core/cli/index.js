@@ -46,7 +46,7 @@ const GROUPS = [
   ["Memory", ["recall", "index", "memory", "why", "learn"]],
   ["Vault and presence", ["vault", "presence"]],
   ["Box care", ["update", "backup", "restore"]],
-  ["Under the hood", ["modules", "tools", "call"]],
+  ["Under the hood", ["modules", "tools", "call", "tips"]],
 ];
 
 const usageOf = c => c.usage || `vyre ${c.name}`;

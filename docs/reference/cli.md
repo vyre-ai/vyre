@@ -72,6 +72,7 @@ In the order `vyre help` lists them.
 | [`vyre update`](#vyre-update) | install the newest release after a backup, and roll back if it does not come up |
 | [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
+| [`vyre tips`](#vyre-tips) | short tips on using each part of Vyre |
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
 | [`vyre tools`](#vyre-tools) | every tool Claude and the surfaces can call |
 | [`vyre call`](#vyre-call) | run any tool, e.g. vyre call system.echo '{"text":"hi"}' |
@@ -659,6 +660,14 @@ The keys that prove you are here, and a code to enroll a passkey.
 
 ```
 vyre presence [keys|code|remove <id>] [--json]
+```
+
+### vyre tips
+
+Short tips on using each part of Vyre.
+
+```
+vyre tips [module | new | reset] [--json]
 ```
 
 ### vyre modules

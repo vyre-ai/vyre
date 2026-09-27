@@ -8,7 +8,18 @@
   "watches": { "emits": ["capsule.requested", "capsule.hotkey"] },
   "shows": { "capsule": [], "cli": ["capsule"] },
   "needs": {},
-  "teaches": {},
+  "teaches": {
+    "tips": [
+      {"id": "open", "text": "Press `⌃⌃` anywhere to open the Capsule. Until Input Monitoring allows it, `⌥Space` opens it.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "⌃⌃", "docs": "using/capsule.md#allow-double-control"},
+      {"id": "ask-an-agent", "text": "Type `@juno` and your question to ask that agent in its current thread.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "@", "docs": "using/capsule.md#talk-to-an-agent-or-a-session"},
+      {"id": "waiting-list", "text": "Press `↑` in the empty box to see what waits on you: permission asks and drafts held at the Gate.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "↑", "docs": "using/capsule.md#answer-what-is-waiting-on-you"},
+      {"id": "tab-sends", "text": "Press `⇥` to send your words to the \"Sends to\" row, even when an app or file is the top match.", "surfaces": ["capsule"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "⇥", "docs": "using/capsule.md#keys"},
+      {"id": "send-draft", "text": "On a held draft, `⌘⏎` sends exactly what is on screen. Click To, Subject or the body to edit it first.", "surfaces": ["capsule"], "level": "power", "trigger": "on-use", "since": "0.1.0", "key": "⌘⏎", "docs": "using/capsule.md#answer-what-is-waiting-on-you"},
+      {"id": "try-capsule", "text": "Run `vyre capsule` for a command bar on your Mac: find files, ask your assistant, answer what waits on you.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre capsule", "docs": "using/capsule.md#install-it"},
+      {"id": "clipboard", "text": "Type `clip` to get back something you copied earlier. `⏎` puts it on the clipboard for `⌘V`.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/capsule.md#find-something-on-this-mac"},
+      {"id": "watch-thread", "text": "Type `tell me when the intake thread is done` and a notification comes when it finishes, stops or asks.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0"}
+    ]
+  },
   "settings": [
     {"key": "capsule.autostart", "group": "devices", "label": "Start the Capsule at login", "type": "bool", "default": false, "levels": ["account"], "apply": "restart", "store": {"config": "capsule.autostart"}}
   ]

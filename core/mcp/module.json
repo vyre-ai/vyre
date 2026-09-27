@@ -7,7 +7,19 @@
   "watches": { "emits": ["mcp.added", "mcp.updated", "mcp.removed", "mcp.started", "mcp.stopped", "mcp.failed", "mcp.refreshed", "mcp.called", "mcp.held"] },
   "shows": { "deck": ["settings:connections"], "cli": ["connect"] },
   "needs": { "vault": ["per-connection"] },
-  "teaches": {},
+  "teaches": {
+    "tips": [
+      {"id": "add-with-vault", "text": "Put a server's token in the vault, then name the item with `--env VAR=item`. A value never goes on the command line.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre connect add mcp harlow-docs --env DOCS_TOKEN=harlow-docs -- <command>", "docs": "using/connectors.md#add-an-mcp-server"},
+      {"id": "list-test", "text": "`vyre connect list` shows every connection, and `vyre connect test mcp harlow-docs` tries one now.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre connect list", "docs": "using/connectors.md#add-an-mcp-server"},
+      {"id": "held", "text": "A tool that writes or sends is held at the Gate. Claude gets the held item back and waits for your approval.", "surfaces": ["chat", "deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/connectors.md#hold-and-approve-a-send"},
+      {"id": "scope", "text": "Add `--project harlow-legal` to `vyre connect add mcp` to keep a server to one client. The default is every project.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/connectors.md#add-an-mcp-server"},
+      {"id": "tool-modes", "text": "After Test in the Deck, set each tool to Read, Held or Off. A tool whose name sends can never be Read.", "surfaces": ["deck"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/connectors.md#hold-and-approve-a-send"},
+      {"id": "mcp-install", "text": "Add Vyre's tools to a claude you start yourself: `vyre mcp install` prints the line, and runs it with `--yes`.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre mcp install", "docs": "using/connectors.md#use-vyres-tools-in-a-plain-claude"},
+      {"id": "tool-names", "text": "Hub tools reach Claude as `<server>__<tool>`, so no server needs its own line in a Claude config.", "surfaces": ["chat", "cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/connectors.md#use-vyres-tools-in-a-plain-claude"},
+      {"id": "idle-stop", "text": "A server starts on first use and stops after 10 minutes idle. Three crashes in five minutes keep it stopped.", "surfaces": ["deck", "cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/connectors.md#add-an-mcp-server"},
+      {"id": "remove", "text": "`vyre connect remove mcp harlow-docs` disconnects a server and leaves its vault items where they are.", "surfaces": ["cli"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "command": "vyre connect remove mcp harlow-docs", "docs": "using/connectors.md#add-an-mcp-server"}
+    ]
+  },
   "settings": [
     {"key": "mcp.idle", "group": "tools", "label": "Stop an unused MCP server after (minutes)", "type": "int", "min": 1, "max": 1440, "default": 10, "levels": ["account"], "apply": "restart", "store": {"config": "mcp.idle"}}
   ]
