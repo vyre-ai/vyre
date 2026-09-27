@@ -11,6 +11,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import * as config from "../config/index.js";
+import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -19,6 +20,7 @@ import { build } from "./build.js";
 import { acquire } from "./lock.js";
 import { Presence, parse as parsePresence } from "../presence/index.js";
 import { allowedTools } from "../names/guests.js";
+import { registryRules } from "../harness/rules.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO = path.resolve(HERE, "..", "..");
@@ -72,9 +74,28 @@ async function startLocked(opts, root, p, release) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams }, { ...policy, caller, ...(peer ? { peer } : {}) })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
-  registry = new Registry({ db, events, config: cfg, paths: p, log, rules: opts.rules, handler, presence });
+  // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
+  // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
+  // server.close() would wait on a Glass viewer forever. The socket below and every listener a
+  // module opens (the tailnet's, through ctx.upgrader) dispatch here, each with the caller it
+  // established.
+  const upgraded = new Set();
+  const upgrade = (req, socket, head, caller) => {
+    const url = new URL(req.url || "/", "http://vyred");
+    const m = /^\/v1\/streams\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(url.pathname);
+    const u = m && registry.upgrades.get(`${m[1]}/${m[2]}`);
+    if (!u) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
+    upgraded.add(socket);
+    socket.on("close", () => upgraded.delete(socket));
+    try { u.handler(req, socket, head, { caller, url }); }
+    catch (e) { log(`stream ${m[1]}/${m[2]} failed: ${/** @type {Error} */ (e).message}`); socket.destroy(); }
+  };
+  const upgrader = () => (req, socket, head, caller) => upgrade(req, socket, head, caller);
+  // Every call passes the floor's rules (SPEC 5.3), whoever makes it; a test may pass its own.
+  const rules = opts.rules || registryRules({ home: root });
+  registry = new Registry({ db, events, config: cfg, paths: p, log, rules, handler, upgrader, presence });
   await registry.start(discover(moduleRoots(root)), { role: cfg.role, ...cfg.modules });
 
   // A stale socket from a crash would make listen() fail with EADDRINUSE. If nothing answers on
@@ -85,23 +106,10 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams }).catch(e => {
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
-  // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
-  // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
-  // server.close() would wait on a Glass viewer forever.
-  const upgraded = new Set();
-  server.on("upgrade", (req, socket, head) => {
-    const url = new URL(req.url || "/", "http://vyred");
-    const m = /^\/v1\/streams\/([a-z][a-z0-9-]*)\/([a-z][a-z0-9-]*)$/.exec(url.pathname);
-    const u = m && registry.upgrades.get(`${m[1]}/${m[2]}`);
-    if (!u) { socket.end("HTTP/1.1 404 Not Found\r\nconnection: close\r\n\r\n"); return; }
-    upgraded.add(socket);
-    socket.on("close", () => upgraded.delete(socket));
-    try { u.handler(req, socket, head, { caller: socketCaller(req), url }); }
-    catch (e) { log(`stream ${m[1]}/${m[2]} failed: ${/** @type {Error} */ (e).message}`); socket.destroy(); }
-  });
+  server.on("upgrade", (req, socket, head) => upgrade(req, socket, head, socketCaller(req)));
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
   fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
@@ -161,7 +169,7 @@ export function socketCaller(req) {
   return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
 }
 
-async function route(req, res, { registry, events, cfg, started, streams }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -231,6 +239,8 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
     const last = /** @type {any} */ (events.db.prepare("SELECT MAX(id) AS id FROM events").get());
     const b = build();
     return send(res, 200, { data: { version: VERSION, commit: b.commit, dirty: b.dirty, pid: process.pid, role: cfg.role, uptime: Date.now() - started, supervisor: process.env.VYRE_SUPERVISOR || null, last_event: Number(last && last.id) || 0,
+      // Where the memory is, in MB: a stress run tells a heap that grows from a native cache filling.
+      memory: Object.fromEntries(Object.entries(process.memoryUsage()).map(([k, v]) => [k, Math.round(v / 1048576 * 10) / 10])),
       modules: { running: mods.filter(m => m.state === "running").length, failed: mods.filter(m => ["failed", "invalid"].includes(m.state)).length } } });
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
@@ -269,6 +279,11 @@ async function route(req, res, { registry, events, cfg, started, streams }, /** 
   if (req.method === "GET" && url.pathname === "/v1/events" && policy.eventType) return send(res, 404, { error: { code: "not_found", message: url.pathname } });
   const own = registry.routes.get(url.pathname);
   if (own) return own(req, res, { caller, url });
+  // The Deck's colours from config, read on every request so a changed theme needs no restart.
+  if (req.method === "GET" && url.pathname === "/theme.css") {
+    res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
+    return res.end(themeCss((config.load(root).theme || {}).colors));
+  }
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }

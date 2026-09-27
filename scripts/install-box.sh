@@ -210,6 +210,9 @@ unpack() {
   $x rm -rf "$DIR/src.new"
   $x mkdir -p "$DIR/src.new"
   $x tar -xzf "$TMP/vyre.tgz" -C "$DIR/src.new" --strip-components=1
+  # npm pack pins every mtime to 1985, and BuildKit skips a changed file whose size and mtime
+  # match what it synced before, so the image would keep stale files: give them today's.
+  $x find "$DIR/src.new" -exec touch {} +
   if [ "$DRY" = 0 ] && [ ! -f "$DIR/src.new/box/Dockerfile" ]; then
     $x rm -rf "$DIR/src.new"
     die "vyre.tgz has no box/Dockerfile"
@@ -285,6 +288,8 @@ write_env() {
       say "$DIR/.env exists; adding DOCKER_GID=$gid and leaving the rest as it is"
       TMP=${TMP:-$(mktemp -d)}
       # A read, so it runs even in a dry run; sudo only when the .env is not ours to read.
+      # sudo reads the root-only file; the copy is written as this user on purpose.
+      # shellcheck disable=SC2024
       if [ -r "$DIR/.env" ] || [ -z "$SUDO" ]; then cat "$DIR/.env" >"$TMP/env"; else sudo cat "$DIR/.env" >"$TMP/env"; fi
       [ -z "$(tail -c 1 "$TMP/env")" ] || printf '\n' >>"$TMP/env"
       printf 'DOCKER_GID=%s\n' "$gid" >>"$TMP/env"
@@ -348,6 +353,8 @@ start() {
 
 uninstall() {
   if [ -f "$DIR/compose.yml" ]; then
+    # $1 expands in the inner shell, which is the point.
+    # shellcheck disable=SC2016
     dk sh -c 'cd "$1" && docker compose down --remove-orphans' sh "$DIR"
   else
     dk docker compose -p vyre down --remove-orphans

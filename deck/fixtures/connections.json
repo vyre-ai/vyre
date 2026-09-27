@@ -40,12 +40,20 @@
   "google.test": { "$by": "name", "cases": {
     "work": { "ok": false, "account": "work",
       "scopes": { "calendar.readonly": true, "calendar.events": true, "gmail.readonly": true, "gmail.compose": true, "gmail.send": false },
-      "error": "Refused: gmail.send. Allow https://www.googleapis.com/auth/gmail.send for this service account's client ID in the Google Workspace admin console, under Security, API controls, Domain-wide delegation." },
+      "error": "Refused: gmail.send. Allow https://www.googleapis.com/auth/gmail.send for this service account's client ID in the Google Workspace admin console, under Security, API controls, Domain-wide delegation.",
+      "client_id": "104839201847362918475",
+      "admin_scopes": "https://www.googleapis.com/auth/calendar.readonly,https://www.googleapis.com/auth/calendar.events,https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/gmail.compose,https://www.googleapis.com/auth/gmail.send",
+      "private_key": "fixture-leak-7f3a9c" },
     "*": { "ok": true, "account": "bakery",
       "scopes": { "calendar.readonly": true, "calendar.events": true, "gmail.readonly": true, "gmail.compose": true, "gmail.send": true } }
   } },
   "google.add": { "name": "new-account", "email": "dana@harlowlegal.com", "auth": { "type": "oauth", "item": "northwind-google" } },
   "google.remove": { "removed": true },
+  "google.connect": { "id": "gc-5Kq8vR2m", "redirect": "http://127.0.0.1:49152/google/callback",
+    "url": "https://accounts.google.com/o/oauth2/v2/auth?client_id=731940028815-harlow.apps.googleusercontent.com&redirect_uri=http%3A%2F%2F127.0.0.1%3A49152%2Fgoogle%2Fcallback&response_type=code&scope=openid+email&code_challenge=E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM&code_challenge_method=S256&state=af0ifjsldkj&access_type=offline&prompt=consent",
+    "client_secret": "fixture-leak-7f3a9c" },
+  "google.connect.finish": { "name": "dana", "email": "dana@harlowlegal.com", "item": "google-dana", "refresh_token": "fixture-leak-7f3a9c" },
+  "google.connect.cancel": { "cancelled": true },
   "vault.list": { "locked": false, "items": [
     { "name": "tracker-token", "kind": "api-key", "fields": ["value"], "grants": [{ "module": "mcp" }], "value": "fixture-leak-7f3a9c" },
     { "name": "docs-api", "kind": "secret", "fields": ["value"], "grants": [] },

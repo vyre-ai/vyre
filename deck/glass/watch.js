@@ -11,15 +11,21 @@
 //    visible, never after 4003 (bad ticket);
 //  - no timers while hidden. The only interval is the take-over clock, visible and holding only.
 
-import { h, put } from "../js/dom.js";
+import { h, put, link as anchor } from "../js/dom.js";
 import { attempt, call } from "../js/api.js";
 import { gicon, errText, viewerCount, holderOf, surfaceKind } from "./util.js";
 import { takeover } from "./takeover.js";
 import { attach } from "./input.js";
 import { pinchZoom, softKeyboard } from "./phone.js";
 
+/**
+ * A computer's own comings and goings. Opening Glass thaws a frozen computer only once the stream
+ * connects, after glass.opened, so the state is read again on each of these too.
+ */
+export const LIFECYCLE = ["computer.created", "computer.checked-out", "computer.thawed", "computer.frozen", "computer.stopped"];
+
 const EVENTS = ["computer.taken-over", "computer.handed-back", "computer.shielded", "computer.unshielded",
-  "glass.opened", "glass.closed", "glass.taken", "glass.released"];
+  "glass.opened", "glass.closed", "glass.taken", "glass.released", ...LIFECYCLE];
 
 /** Is the box reaching this device through a relay? `link` is glass.open's { path, latencyMs }. */
 export const relayed = link => Boolean(link && (link.path === "relay" || link.path === "peer-relay"));
@@ -160,6 +166,8 @@ export function mountScreen(o) {
       case "refused": return ["The box refused the screen ticket", "Reload the page to ask for a new one."];
       case "ended": return [`${name}'s screen closed`, why];
       case "error": return [`Could not open ${name}'s screen`, why];
+      case "failed": return [`${name}'s computer did not start`,
+        `${why}. Press Restart computer on ${name}'s page, then Retry. If it fails again, the box's log says why.`];
       default: return ["", ""];
     }
   }
@@ -167,11 +175,12 @@ export function mountScreen(o) {
   function drawOver() {
     const [t, d] = overText();
     over.hidden = conn === "live";
-    const retryBtn = conn === "ended" || conn === "error" || conn === "noscreen"
-      ? h("button", { type: "button", class: "btn btn-sm", onclick: () => { backoff = 1; connect(); } }, "Try again") : null;
+    const retryBtn = conn === "ended" || conn === "error" || conn === "noscreen" || conn === "failed"
+      ? h("button", { type: "button", class: "btn btn-sm", onclick: () => { backoff = 1; connect(); } }, conn === "failed" ? "Retry" : "Try again") : null;
+    const restart = conn === "failed" ? anchor(`/agents/${encodeURIComponent(name)}`, { class: "link small" }, `Open ${name}'s page`) : null;
     put(over, h("div", { class: "gl-over-card" },
       h("span", { class: "gl-over-dot" + (conn === "connecting" || conn === "waiting" ? " on" : "") }),
-      h("div", { class: "gl-over-t" }, t), d ? h("div", { class: "gl-over-d small" }, d) : null, retryBtn));
+      h("div", { class: "gl-over-t" }, t), d ? h("div", { class: "gl-over-d small" }, d) : null, retryBtn, restart));
   }
 
   function applyHolding() {
@@ -239,10 +248,10 @@ export function mountScreen(o) {
     const [q, c] = levels(phone, link);
     r2.qualityLevel = q;
     r2.compressionLevel = c;
-    let code = 0;
+    let code = 0, reason = "";
     const sock = r2._sock;
     const orig = sock?._eventHandlers?.close;
-    if (orig) sock._eventHandlers.close = (/** @type {CloseEvent} */ e) => { code = e.code; orig(e); };
+    if (orig) sock._eventHandlers.close = (/** @type {CloseEvent} */ e) => { code = e.code; reason = e.reason || ""; orig(e); };
     r2.addEventListener("connect", () => {
       if (rfb !== r2) return;
       backoff = 1; conn = "live"; why = "";
@@ -254,6 +263,8 @@ export function mountScreen(o) {
       rfb = null; detachInput(); detachInput = () => {};
       keepFrame();
       if (code === 4003) { conn = "refused"; draw(); return; }
+      // The computer did not boot: say why, and wait for a person rather than retrying a broken one.
+      if (code === 4001 && reason) { conn = "failed"; why = reason; draw(); return; }
       if (code === 1000 && e.detail?.clean) { conn = "ended"; why = "The box closed the stream."; draw(); return; }
       later(code === 4001 ? `${name}'s computer is not running yet.` : code === 4008 ? "The stream hit a protocol error." : "The connection dropped.");
     });
@@ -350,6 +361,7 @@ export function mountScreen(o) {
       case "computer.unshielded": addLog(`${name} can see the page again${p.origin ? ` (${p.origin})` : ""}.`); break;
       case "glass.opened": if (p.surface !== surface) addLog(`Someone started watching from ${surfaceKind(p.surface)}.`); refresh(); return;
       case "glass.closed": refresh(); return;
+      default: if (LIFECYCLE.includes(e.type)) { refresh(); return; }
     }
     applyHolding(); draw();
   });

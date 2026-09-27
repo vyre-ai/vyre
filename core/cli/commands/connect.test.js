@@ -15,6 +15,7 @@ import { tempHome, present } from "../../../test/helpers.js";
 import { startFakeMcpHttp } from "../../mcp/testing/fake-mcp.js";
 import { startFakeGoogle } from "../../connectors/testing/fake-google.js";
 import { INSTALL_LINE } from "./mcp.js";
+import { CLIENT_PUT } from "./connect.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const BIN = path.join(HERE, "..", "..", "..", "bin", "vyre");
@@ -32,6 +33,30 @@ function vyre(root, args, env = {}) {
     p.on("close", code => resolve({ code, out, err, all: out + err }));
     p.stdin.end();
   });
+}
+
+/**
+ * Run `vyre` with stdin left open, as a person at a terminal would, never a TTY and never with
+ * dialogs. `line(re)` waits for a stdout line that matches.
+ * @param {string} root @param {string[]} args
+ */
+function live(root, args) {
+  const p = spawn(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" } });
+  let out = "", err = "";
+  /** @type {{ re: RegExp, resolve: (s: string) => void }[]} */ const waits = [];
+  const check = () => {
+    for (const w of [...waits]) {
+      const hit = out.split("\n").find(l => w.re.test(l));
+      if (hit !== undefined) { waits.splice(waits.indexOf(w), 1); w.resolve(hit); }
+    }
+  };
+  p.stdout.on("data", c => { out += c; check(); });
+  p.stderr.on("data", c => { err += c; });
+  const done = new Promise(resolve => p.on("close", code => resolve({ code, out, err, all: out + err })));
+  /** @param {RegExp} re @returns {Promise<string>} */
+  const line = re => Promise.race([new Promise(resolve => { waits.push({ re, resolve }); check(); }),
+    done.then(r => { throw new Error(`vyre ended before ${re}: ${r.all}`); })]);
+  return { p, line, done };
 }
 
 async function vyred(t) {
@@ -170,4 +195,109 @@ test("vyre mcp: serves JSON-RPC and nothing else on stdout; install prints the l
   p.stdin.end();
   assert.equal(await exit, 0, "it ends when stdin closes");
   for (const l of all.split("\n").filter(Boolean)) assert.equal(JSON.parse(l).jsonrpc, "2.0", `not JSON-RPC on stdout: ${l.slice(0, 80)}`);
+});
+
+test("connect: Sign in with Google from the terminal, over the loopback", async t => {
+  const g = await startFakeGoogle(t);
+  const v = await vyred(t);
+  const client = g.oauthClient();
+  await v.put("google-oauth-client", client, "env-set");
+
+  const run = live(v.root, ["connect", "add", "google", "home", "--sign-in", "--base", g.base]);
+  const url = (await run.line(/^https?:\/\//)).trim();
+  assert.ok(url.startsWith(`${g.base}/o/oauth2/v2/auth?`), url);
+  const page = await fetch(g.consent(url));
+  assert.equal(page.status, 200);
+  const r = await run.done;
+  assert.equal(r.code, 0, r.all);
+  assert.match(r.out, /granted google-oauth-client to google/);
+  assert.match(r.out, /Open this address in a browser\. Signing in on another device\? Paste the address it lands on here\./);
+  assert.match(r.out, /added home alex@example\.com/);
+  assert.match(r.out, /ok home/);
+  assert.deepEqual((await v.cli("google.accounts")).data.map(a => [a.name, a.email, a.auth.item]), [["home", "alex@example.com", "google-home"]]);
+  for (const s of [client.client_secret, ...g.issued.keys()]) assert.ok(!r.all.includes(s), "a value reached the terminal");
+});
+
+test("connect: Sign in with Google on another device, by pasting the address it landed on", async t => {
+  const g = await startFakeGoogle(t);
+  const v = await vyred(t);
+  await v.put("bakery-client", g.oauthClient(), "env-set");
+
+  const run = live(v.root, ["connect", "add", "google", "bakery", "--sign-in", "--client", "bakery-client", "--base", g.base]);
+  const url = (await run.line(/^https?:\/\//)).trim();
+  await run.line(/Paste the address it lands on here/);
+  const back = g.consent(url, { email: "kit@northwindbakery.com" });
+  run.p.stdin.write("not an address\n");
+  run.p.stdin.write(back + "\n");
+  const r = await run.done;
+  assert.equal(r.code, 0, r.all);
+  assert.match(r.out, /that is not an address/);
+  assert.match(r.out, /added bakery kit@northwindbakery\.com/);
+  assert.match(r.out, /ok bakery/);
+  assert.ok(!r.all.includes(new URL(back).searchParams.get("code") || "-"), "the code reached the terminal");
+});
+
+test("connect: Sign in with Google without a client item says how to put one, and does nothing else", async t => {
+  const v = await vyred(t);
+  const r = await vyre(v.root, ["connect", "add", "google", "home", "--sign-in"], { VYRE_NO_DIALOGS: "1" });
+  assert.equal(r.code, 1, r.all);
+  assert.match(r.out, /the vault has no google-oauth-client/);
+  assert.match(r.out, /Desktop app OAuth client from the Google Cloud console/);
+  assert.ok(r.out.split("\n").some(l => l.trim() === CLIENT_PUT), r.out);
+  assert.equal(CLIENT_PUT, "vyre vault put google-oauth-client --kind env-set --field client_id --field client_secret");
+  const events = v.d.registry.deps.events.since(0, { limit: 5000 });
+  assert.deepEqual(events.filter(e => e.type.startsWith("google.") || /grant/.test(e.type)).map(e => e.type), []);
+  assert.equal((await v.cli("google.accounts")).data.length, 0);
+});
+
+test("connect: --sign-in refuses --email, --item and --dwd, and --client needs --sign-in", async t => {
+  const v = await vyred(t);
+  for (const extra of [["--email", "alex@example.com"], ["--item", "work-google"], ["--dwd"]]) {
+    const r = await vyre(v.root, ["connect", "add", "google", "home", "--sign-in", ...extra]);
+    assert.equal(r.code, 1, r.all);
+    assert.match(r.out, new RegExp(`--sign-in finds the address itself; leave out ${extra[0]}`));
+  }
+  const r = await vyre(v.root, ["connect", "add", "google", "home", "--client", "x", "--email", "alex@example.com", "--item", "y"]);
+  assert.equal(r.code, 1);
+  assert.match(r.out, /--client goes with --sign-in/);
+  const help = await vyre(v.root, ["connect", "help"]);
+  assert.match(help.out, /vyre connect add google <name> --sign-in \[--client <vault item>\]/);
+});
+
+test("connect: Ctrl-C cancels an open sign-in and stores nothing", async t => {
+  const g = await startFakeGoogle(t);
+  const v = await vyred(t);
+  await v.put("google-oauth-client", g.oauthClient(), "env-set");
+
+  const run = live(v.root, ["connect", "add", "google", "home", "--sign-in", "--base", g.base]);
+  const url = (await run.line(/^https?:\/\//)).trim();
+  await run.line(/Paste the address it lands on here/);
+  run.p.kill("SIGINT");
+  const r = await run.done;
+  assert.equal(r.code, 1, r.all);
+  assert.match(r.out, /cancelled, nothing stored/);
+  const failed = v.d.registry.deps.events.since(0, { limit: 5000 }).filter(e => e.type === "google.connect-failed");
+  assert.equal(failed.length, 1);
+  assert.match(String((failed[0].payload ?? failed[0].data).error), /cancelled/);
+  const late = await fetch(g.consent(url)).then(x => x.status, () => "closed");
+  assert.notEqual(late, 200, "the cancelled sign-in no longer takes the browser's return");
+  assert.equal((await v.cli("google.accounts")).data.length, 0);
+});
+
+test("connect: an empty stdin that is not a terminal does not cancel; the loopback still finishes the sign-in", async t => {
+  const g = await startFakeGoogle(t);
+  const v = await vyred(t);
+  await v.put("google-oauth-client", g.oauthClient(), "env-set");
+
+  const run = live(v.root, ["connect", "add", "google", "home", "--sign-in", "--base", g.base]);
+  run.p.stdin.end();
+  const url = (await run.line(/^https?:\/\//)).trim();
+  await run.line(/Paste the address it lands on here/);
+  const page = await fetch(g.consent(url));
+  assert.equal(page.status, 200);
+  const r = await run.done;
+  assert.equal(r.code, 0, r.all);
+  assert.doesNotMatch(r.out, /cancelled/);
+  assert.match(r.out, /added home alex@example\.com/);
+  assert.match(r.out, /ok home/);
 });

@@ -83,7 +83,10 @@ test("mobile: a tailnet device is asked for presence on gate.approve, and a devi
   for (const name of ["gate.get", "gate.approve", "gate.reject", "gate.revise", "threads.answer", "push.subscribe", "vault.reveal", "vault.totp", "presence.session.open"]) {
     assert.ok(tools.data.some(x => x.name === name), `${name} is listed for the phone`);
   }
-  for (const name of ["memory.correct", "agents.delete", "link.pair"]) assert.ok(!tools.data.some(x => x.name === name), `${name} stays off the phone`);
+  // The owner's phone is the owner: what the Deck may use, it may (callerAllowed on main). A tool
+  // closed to the Deck stays closed to it.
+  for (const name of ["memory.correct", "agents.delete"]) assert.ok(tools.data.some(x => x.name === name), `${name} is listed, as for the Deck`);
+  assert.ok(!tools.data.some(x => x.name === "link.pair"), "link.pair stays off the phone");
   assert.equal((await w.phone("gate.get", { id: w.id })).status, 200, "the phone reads a held item");
 
   const bare = await w.phone("gate.approve", { id: w.id });

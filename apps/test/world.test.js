@@ -59,7 +59,7 @@ test("mobile world: a phone enrolls with a code and gets a Gate approval past pr
   assert.equal(who.status, 200, JSON.stringify(who.body));
   const tools = await (await fetch(w.base + "/v1/tools")).json();
   assert.ok(tools.data.some(x => x.name === "gate.approve"), "the phone sees gate.approve");
-  assert.ok(!tools.data.some(x => x.name === "memory.correct"), "and not memory.correct");
+  assert.ok(!tools.data.some(x => x.name === "link.pair"), "and not link.pair, which the Deck cannot use either");
 
   // As the names listener does: a POST that is not JSON, or from another site, is refused.
   const form = await fetch(w.base + "/v1/tools/gate.held", { method: "POST", headers: { "content-type": "text/plain" }, body: "{}" });

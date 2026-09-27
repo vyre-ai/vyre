@@ -112,23 +112,34 @@ export const callerKind = caller => {
 };
 
 /**
- * May this caller use a tool with this `callers` list? An entry is a caller kind, compared whole,
- * except "tailnet", which lets in any of the owner's devices ("tailnet:<login>", ADR 0018). The
- * bare word is never a caller itself: a socket client could send it as a label.
- * @param {string[]} callers
- * @param {string} caller
+* May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
+ * address, where the names listener admits only the owner and labels the call "tailnet:<login>"
+ * (ADR 0002). That is the owner's own Deck, so a tool open to "deck" is open to it; an agent's own
+ * node ("tailnet:agent:<name>") is not. A "tailnet" entry opens a tool to the owner's devices only,
+ * such as the phone (ADR 0018). The bare word is never a caller itself: a socket client could send
+ * it as a label.
+ * @param {string[]|null|undefined} callers
  */
 export const callerAllowed = (callers, caller) => {
+  if (!callers) return true;
   const kind = callerKind(caller);
   if (kind === "tailnet") return false;
-  return callers.includes(kind) || (callers.includes("tailnet") && /^tailnet:\S+$/.test(kind));
+  return callers.includes(kind) || ((callers.includes("deck") || callers.includes("tailnet")) && ownerOverTailnet(caller));
 };
+
+/**
+ * The box's owner on their own device at the box's address: the tailnet listener names only the
+ * verified owner `tailnet:<login>` (core/names/service.js); a guest is `tailnet-guest:` and an
+ * agent's node `tailnet:agent:`. The owner's Deck and phone always arrive this way on a box.
+ */
+export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(caller));
 
 export class Registry {
   /**
    * @param {{ db: import("node:sqlite").DatabaseSync, events: any, config: any, log: (m: string, x?: any) => void,
    *           rules?: (call: { tool: string, input: any, caller: string }) => Promise<{ allow: boolean, reason?: string }>,
    *           handler?: (policy: any) => (req: any, res: any, caller: string) => Promise<void>, paths?: any,
+   *           upgrader?: (policy: any) => (req: any, socket: any, head: any, caller: string) => void,
    *           presence?: import("../presence/index.js").Presence }} deps
    */
   constructor(deps) {
@@ -256,6 +267,9 @@ export class Registry {
       // vyred's router, for a module that opens a listener of its own (names, onboard). The module
       // establishes the caller; the policy limits what that listener can reach. See ADR 0002.
       handler: policy => { if (!this.deps.handler) throw new Error("this vyred has no router to hand out"); return this.deps.handler(policy); },
+      // The same for WebSocket upgrades (/v1/streams/...): (req, socket, head, caller). Without it
+      // a module's listener cannot carry a stream, and Glass over the tailnet never connected.
+      upgrader: policy => { if (!this.deps.upgrader) throw new Error("this vyred has no stream router to hand out"); return this.deps.upgrader(policy); },
       // A tool on the user's box, from a module on the Mac: the link module carries it over the
       // tailnet. Resolves like call(), and to { error: { code: "box_unreachable" } } when the
       // box cannot be reached, so a caller can fall back to what this machine has.
@@ -304,7 +318,7 @@ export class Registry {
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-    if (def.callers && !callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
+    if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
     // A guest from another tailnet is never a person proving they are here, whatever proof it
     // carries: presence is the owner's (ADR 0014 part 8). The router already hides these tools.
     if (String(caller).startsWith("tailnet-guest:") && (this.deps.presence ? this.deps.presence.required(tool, def) : def.presence)) {
@@ -346,7 +360,7 @@ export class Registry {
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */
   listTools(caller) {
     const needs = (name, d) => (this.deps.presence ? this.deps.presence.required(name, d) : Boolean(d.presence));
-    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || !d.callers || callerAllowed(d.callers, caller)))
+    return [...this.tools.entries()].filter(([, d]) => !d.internal && !d.hook && (!caller || callerAllowed(d.callers, caller)))
       .map(([name, d]) => ({ name, module: d.module, description: d.description, input: d.input, ...(needs(name, d) ? { presence: true } : {}) }));
   }
 

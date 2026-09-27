@@ -1,4 +1,12 @@
-# ADR 0001, addendum A · Autofill
+---
+title: ADR 0010: Vault autofill
+summary: How the Vault fills a login into a browser page, the one path where a value reaches a screen, while staying shut to agents, web pages and stolen browser profiles.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0010: Vault autofill
 
 Status: accepted, 26 Sep 2026 · Workstream: vault · Extends: ADR 0001, decisions 6 and 10 · Code:
 `core/vault/fill.js`, `modules/vault-extension/`

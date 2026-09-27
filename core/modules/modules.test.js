@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry, callerKind } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed } from "./index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -291,22 +291,32 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli" });
 });
 
-test("modules: a \"tailnet\" entry in callers lets any tailnet device in, and nothing else that looks like one", async t => {
+test("modules: a \"tailnet\" entry in callers lets the owner's devices in, and nothing else that looks like one", async t => {
   const src = `export default { async start(ctx) {
-    ctx.tool("notes.add", { callers: ["deck", "tailnet"], run: async (i, meta) => ({ caller: meta.caller }) });
-    ctx.tool("notes.wipe", { callers: ["deck"], run: async () => 1 });
+    ctx.tool("notes.add", { callers: ["cli", "tailnet"], run: async (i, meta) => ({ caller: meta.caller }) });
+    ctx.tool("notes.wipe", { callers: ["cli"], run: async () => 1 });
     return {};
   } };`;
   const reg = await registry(t, [["notes", { ...good, does: { tools: ["notes.add", "notes.wipe"] } }, src]]);
-  for (const caller of ["tailnet:alex@example.com", "tailnet:kit@example.com"]) {
+  for (const caller of ["tailnet:alex@example.com", "tailnet:alex-phone@example.com"]) {
     assert.deepEqual(await reg.call("notes.add", {}, caller), { data: { caller } }, caller);
     assert.ok(reg.listTools(caller).some(x => x.name === "notes.add"), caller);
     assert.ok(!reg.listTools(caller).some(x => x.name === "notes.wipe"), caller);
   }
   assert.equal((await reg.call("notes.wipe", {}, "tailnet:alex@example.com")).error.code, "denied", "a list without tailnet still refuses a device");
-  for (const caller of ["tailnet", "tailnet:", "xtailnet:alex@example.com", "mcp tailnet:alex", "cli", "mcp"]) {
+  for (const caller of ["tailnet", "tailnet:", "tailnet:agent:kit", "tailnet-guest:juno@example.com", "xtailnet:alex@example.com", "mcp tailnet:alex", "mcp"]) {
     assert.equal((await reg.call("notes.add", {}, caller)).error.code, "denied", caller);
     assert.ok(!reg.listTools(caller).some(x => x.name === "notes.add"), caller);
   }
   assert.equal(callerKind("tailnet:alex@example.com"), "tailnet:alex@example.com", "callerKind still returns the whole string");
+});
+
+test("modules: the owner's Deck at the box's tailnet address may use what the Deck may", () => {
+  const deck = ["cli", "local", "deck", "capsule"];
+  assert.equal(callerAllowed(deck, "tailnet:alex@example.com"), true);
+  assert.equal(callerAllowed(["cli", "local"], "tailnet:alex@example.com"), false);
+  assert.equal(callerAllowed(deck, "tailnet:agent:kit"), false);
+  assert.equal(callerAllowed(deck, "tailnet-guest:juno@example.com"), false);
+  assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
+  assert.equal(callerAllowed(null, "anonymous"), true);
 });

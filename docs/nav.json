@@ -1,0 +1,85 @@
+{
+  "site": { "title": "Vyre docs", "url": "https://docs.vyre.run", "repo": "https://github.com/vyre-ai/vyre" },
+  "sections": [
+    { "title": "Start here", "pages": ["index.md"] },
+    { "title": "Get started", "pages": [
+      "get-started/install.md",
+      "get-started/tailscale.md",
+      "get-started/onboarding.md",
+      "get-started/first-day.md",
+      "get-started/without-docker.md",
+      "get-started/troubleshooting.md"
+    ]},
+    { "title": "Using Vyre", "pages": [
+      "using/capsule.md",
+      "using/deck.md",
+      "using/chat.md",
+      "using/cli.md",
+      "using/claude-code.md",
+      "using/projects-and-threads.md",
+      "using/agents.md",
+      "using/vault.md",
+      "using/memory.md",
+      "using/learning.md",
+      "using/glass.md",
+      "using/watchers.md",
+      "using/connectors.md",
+      "using/tailscale.md",
+      "using/mobile.md",
+      "using/box-care.md"
+    ]},
+    { "title": "Concepts", "pages": [
+      "concepts/box-and-mac.md",
+      "concepts/tailnet.md",
+      "concepts/presence.md",
+      "concepts/floor.md",
+      "concepts/modules.md"
+    ]},
+    { "title": "Build on Vyre", "pages": [
+      "build/module-contract.md",
+      "build/tools-and-events.md",
+      "build/writing-a-module.md",
+      "build/mcp-hub.md"
+    ]},
+    { "title": "Reference", "pages": [
+      "reference/cli.md",
+      "reference/tools.md",
+      "reference/events.md",
+      "reference/config.md",
+      "reference/modules.md",
+      "reference/index.md"
+    ]},
+    { "title": "Architecture", "pages": [
+      "architecture/index.md",
+      "architecture/spec.md",
+      "architecture/performance.md",
+      "adr/0001-vault-crypto.md",
+      "adr/0002-network-and-identity.md",
+      "adr/0003-glass-stream.md",
+      "adr/0004-presence.md",
+      "adr/0005-glass.md",
+      "adr/0006-vault-next.md",
+      "adr/0007-intelligence.md",
+      "adr/0008-install-journey.md",
+      "adr/0009-container-hardening.md",
+      "adr/0010-vault-autofill.md",
+      "adr/0011-web-push.md",
+      "adr/0012-cdp-proxy.md",
+      "adr/0014-tailnet.md",
+      "adr/0016-connectors.md",
+      "adr/0019-docs-site.md",
+      "adr/0020-claude-code-plugin.md",
+      "adr/0021-box-reads-the-mac.md"
+    ]},
+    { "title": "Security", "pages": ["security/index.md"] },
+    { "title": "Contributing", "pages": [
+      "contributing/index.md",
+      "CONTRIBUTING-DOCS.md",
+      "contributing/testing.md",
+      "design/TOKENS.md",
+      "design/phone.md"
+    ]},
+    { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
+  ],
+  "unpublished": ["work/", "proposals/", "design/boards/"]
+}

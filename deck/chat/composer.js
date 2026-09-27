@@ -9,6 +9,13 @@
 // keyboard has no Shift. A send the Switchboard did not take ({sent: false, note}: the session is
 // open in a terminal, or another surface has the keyboard) is not an error: the words stay in the
 // box, the note says why, and "Try again" sends them once the way is clear.
+//
+// A session busy in the user's terminal takes the message into a queue instead (capsule-now's
+// contract, docs/work/capsule-now.md): threads.send answers {sent: false, queued: true, name,
+// note}, thread.queued {queued, text} says it is waiting, and thread.sent {queued, via} says the
+// Harness handed it over at the end of the turn. The words leave the box, and a line above it
+// lists what waits until each is handed over. Nothing can withdraw one yet (threads.unqueue is
+// not built).
 
 import { h, put } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
@@ -35,7 +42,16 @@ export function mountComposer(opts) {
   const wrap = h("div", { class: "composer-wrap" }, menu,
     h("div", { class: "composer-row" }, ta, send),
   );
-  const queued = h("div", { class: "composer-queued", role: "status", hidden: true }, icon("clock", 12), "Queued, sends when the session is free");
+  const queued = h("div", { class: "composer-queued", role: "status", hidden: true });
+  /** Messages waiting in the session's queue, by the inbox id thread.queued gives, oldest first. */
+  const waiting = new Map();
+  let busyName = "";
+  function drawQueued() {
+    queued.hidden = waiting.size === 0;
+    put(queued, icon("clock", 12), " ", waiting.size === 1 ? `Queued for ${busyName || "this session"}` : `${waiting.size} queued for ${busyName || "this session"}`,
+      h("span", { class: "faint" }, ", sent when its turn in your terminal ends:"),
+      h("span", { class: "composer-queued-text ellipsis" }, [...waiting.values()].at(-1) || ""));
+  }
   const note = h("div", { class: "composer-note", role: "status" });
   const root = h("div", { class: "composer" }, queued, note, wrap, h("div", { class: "composer-hint" }, h("span", { class: "kbd" }, "Enter"), " to send · ", h("span", { class: "kbd" }, "Shift+Enter"), " for a new line · @ to mention · / for Claude Code's commands"));
 
@@ -47,16 +63,8 @@ export function mountComposer(opts) {
     attempt("threads.lease", { thread }).catch(() => {});
   }
 
-  // ---- QUEUE SEAM -------------------------------------------------------------------------------
-  // What a send asks threads.send for. Once the capsule-now team ships "queue a message for a busy
-  // session and deliver it on the Stop hook", threads.send takes { queue: true } and answers
-  // { queued: true } instead of { sent: false, note }. Turning that on is this one line:
-  //   return { thread, text, queue: true };
-  // Until then the flag is left out, since the tool's input schema does not know it yet. The
-  // answer side is already here: submit() shows the Queued pill for data.queued === true, and the
-  // pill goes when thread.sent for this thread arrives (the queued message was delivered).
   /** @param {string} text @returns {Record<string, any>} */
-  function sendInput(text) { return { thread, text }; }
+  function sendInput(text) { return { thread, text, surface: "deck" }; }
 
   async function submit() {
     const text = /** @type {any} */ (ta.value).trim();
@@ -71,7 +79,13 @@ export function mountComposer(opts) {
     const back = () => { if (!ta.value) { ta.value = text; grow(); } };
     // One note, replaced each time, and the words go back in the box so nothing typed is lost.
     if (r.error) { put(note, "Could not send: " + r.error.message); back(); return; }
-    if (r.data?.queued === true) { queued.hidden = false; return; }
+    if (r.data?.queued === true) {
+      busyName = r.data.name || busyName;
+      // The id comes with thread.queued; until then the words stand in under a temporary key.
+      if (![...waiting.values()].includes(text)) waiting.set("pending:" + text, text);
+      drawQueued();
+      return;
+    }
     if (r.data?.sent === false) {
       back();
       note.classList.add("soft");
@@ -102,8 +116,21 @@ export function mountComposer(opts) {
   }
   function closeMenu() { menu.hidden = true; menu.replaceChildren(); }
 
-  // A queued message went in: the Switchboard emits thread.sent when it types it into the session.
-  const off = on("thread.sent", e => { if (e.thread === thread) queued.hidden = true; });
+  const offs = [
+    on("thread.queued", e => {
+      if (e.thread !== thread || !e.payload?.queued) return;
+      waiting.delete("pending:" + e.payload.text);
+      waiting.set(String(e.payload.queued), String(e.payload.text || ""));
+      drawQueued();
+    }),
+    // Handed over (or typed in directly): a queued one leaves the list, and the note goes with the last.
+    on("thread.sent", e => {
+      if (e.thread !== thread) return;
+      const id = e.payload?.queued;
+      if (id != null) { waiting.delete(String(id)); waiting.delete("pending:" + e.payload.text); }
+      drawQueued();
+    }),
+  ];
 
-  return { el: root, focus: () => ta.focus(), stop: () => { off(); clearTimeout(leaseTimer); } };
+  return { el: root, focus: () => ta.focus(), stop: () => { for (const off of offs) off(); clearTimeout(leaseTimer); } };
 }

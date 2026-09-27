@@ -26,6 +26,20 @@
 .ag-row-projects { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 420px; }
 .ag-chev { color: var(--label); display: flex; }
 
+/* No assistant yet: the Create your assistant card (js/assistant-setup.js), first on the page.
+   The same card rules are in now.css, since each view loads only its own stylesheet. */
+.ag-setup:not(:empty) { margin-bottom: 32px; }
+.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--r-3); background: var(--panel); }
+.asst-title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: var(--text); }
+.asst-lede { margin: 4px 0 0; font-size: 14px; line-height: 20px; }
+.asst-form { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; max-width: 480px; }
+.asst-label { color: var(--text-2); }
+.asst-row { display: flex; gap: 8px; }
+.asst-row .input { flex: 1; min-width: 0; }
+.asst-go { height: 40px; flex-shrink: 0; }
+.asst-status { margin: 2px 0 0; color: var(--beacon-ink); }
+.asst-status:empty { display: none; }
+
 /* New agent form */
 .ag-new { margin-bottom: 32px; }
 .na .section-head { padding-bottom: 10px; }
@@ -161,6 +175,11 @@
   .na-actions { padding-left: 0; }
   .na-auth-detail { padding-left: 0; }
   .na-line { flex-wrap: wrap; }
+  .ag-setup:not(:empty) { margin-bottom: 24px; }
+  .asst-card { padding: 16px 16px 14px; }
+  /* 16px keeps iOS from zooming into the field; 44px is a thumb. */
+  .asst-card .input { font-size: 16px; height: 44px; }
+  .asst-go { height: 44px; }
 
   .ab-head { flex-wrap: wrap; gap: 14px; padding: 16px 16px 18px; }
   .ab-tile { width: 44px; height: 44px; font-size: 18px; border-radius: var(--r-2); }
@@ -177,3 +196,5 @@
   .ab-live { flex-direction: column; align-items: flex-start; gap: 4px; }
   .ab-specs { column-gap: 20px; }
 }
+.asst-check { display: flex; align-items: flex-start; gap: 10px; margin-top: 12px; color: var(--text); cursor: pointer; }
+.asst-check input { width: 18px; height: 18px; margin: 1px 0 0; flex-shrink: 0; accent-color: var(--primary-bg); }

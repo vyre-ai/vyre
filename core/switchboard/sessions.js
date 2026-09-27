@@ -33,10 +33,22 @@ export function alive(pid) {
   try { process.kill(pid, 0); return true; } catch (e) { return /** @type {any} */ (e).code === "EPERM"; }
 }
 
-/** Is this pid a running `claude`? By the name it was started as, which is what `ps` shows. @param {number} pid */
+/**
+ * Is this pid a running `claude`? By its command line, not `ps -o comm=`: node 24 names its main
+ * thread "MainThread", so comm says that for any claude running on node. The first word is the
+ * program (a native claude, or node under the name claude); `node <path>/claude` counts too.
+ * @param {number} pid
+ */
 export function isClaude(pid) {
-  try { return path.basename(execFileSync("ps", ["-o", "comm=", "-p", String(pid)], { encoding: "utf8" }).trim()) === "claude"; }
+  try { return claudeCommand(execFileSync("ps", ["-o", "args=", "-p", String(pid)], { encoding: "utf8" })); }
   catch { return false; }
+}
+
+/** Does a `ps -o args=` line start claude? @param {string} args */
+export function claudeCommand(args) {
+  const [first = "", second = ""] = String(args).trim().split(/\s+/);
+  if (path.basename(first) === "claude") return true;
+  return /^node(\d+)?$/.test(path.basename(first)) && path.basename(second) === "claude";
 }
 
 export class Sessions {
