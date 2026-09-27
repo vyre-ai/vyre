@@ -59,12 +59,15 @@ this round; verification leans on windows-latest CI.
   `file:`/`javascript:` URL was never checked before either). New test: `core/cli/kit.test.js`,
   5 tests covering the injection case, the scheme refusal, and each platform's command. The
   reviewer's LOW (below) is not fixed, it's flagged and open.
+- 8cd4722d **signed off** by the reviewer. One non-blocking nit taken: spawn `parsed.href`
+  (`new URL()`'s normalized form), not the raw `url` string, since a raw string can still carry
+  leading/trailing whitespace or control characters that `href` strips. 6th test added
+  (core/cli/kit.test.js) proving a `\u0000`-prefixed, trailing-whitespace URL reaches argv clean.
 
 ## Doing
 - Asked e2e for a quick read of the role-default change (win32 now defaults to a device), per the
   lead. Waiting on that before sending cac517d4 onward.
 - Sending cac517d4 to the integrator for the first 0.1.1 batch, after rc.2, per the lead.
-- Telling the reviewer the MEDIUM is fixed and tested, and flagging the LOW is open, not fixed.
 
 ## Next
 - Once e2e and the integrator are clear: fix whatever the windows-latest job surfaces once it

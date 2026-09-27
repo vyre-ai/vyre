@@ -59,6 +59,15 @@ test("openInBrowser: file: and javascript: are refused, on every platform, custo
   }
 });
 
+test("openInBrowser: what is spawned is the parsed href, not the raw string (reviewer nit)", () => {
+  const calls = [];
+  // A leading/trailing control character a raw string could carry; new URL() strips it, so it
+  // must never reach the spawned argv either.
+  openInBrowser("\u0000https://x/?a=1&b=2 \t", { platform: "linux", spawn: recordingSpawn(calls), env: {} });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].args[0], "https://x/?a=1&b=2", "the raw whitespace/control bytes are gone");
+});
+
 test("openInBrowser: http(s) still opens through a custom VYRE_OPEN_BIN", () => {
   const calls = [];
   openInBrowser("https://x/?a=1&b=2", { platform: "win32", spawn: recordingSpawn(calls), env: { VYRE_OPEN_BIN: "/bin/echo" } });

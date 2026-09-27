@@ -29,7 +29,9 @@ import { frame } from "./view.js";
  * operators after it, which is a real vulnerability, not a theoretical one, so this uses
  * `rundll32`'s `FileProtocolHandler` (the same path Explorer opens a link through) with the URL
  * as one argv entry instead. `VYRE_OPEN_BIN` (env) always wins, for tests and for a person's own
- * override, but the http(s)-only check still applies to it.
+ * override, but the http(s)-only check still applies to it. What is actually spawned is
+ * `parsed.href`, not the raw `url` string: `new URL()` trims the leading/trailing whitespace and
+ * control characters a raw string could still carry, so nothing unparsed reaches a child process.
  * @param {string} url
  * @param {{ env?: NodeJS.ProcessEnv, platform?: string, spawn?: typeof spawn }} [opts] `spawn` is
  *   for a test to capture the argv without launching anything real.
@@ -38,11 +40,12 @@ export function openInBrowser(url, { env = process.env, platform = process.platf
   let parsed;
   try { parsed = new URL(url); } catch { return; }
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
+  const href = parsed.href;
   const custom = env.VYRE_OPEN_BIN;
-  const [cmd, args] = custom ? [custom, [url]]
-    : platform === "darwin" ? ["open", [url]]
-    : platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
-    : ["xdg-open", [url]];
+  const [cmd, args] = custom ? [custom, [href]]
+    : platform === "darwin" ? ["open", [href]]
+    : platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", href]]
+    : ["xdg-open", [href]];
   try {
     const p = spawnImpl(cmd, args, { stdio: "ignore", detached: true, windowsHide: true });
     p.on("error", () => {});
