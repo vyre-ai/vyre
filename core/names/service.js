@@ -10,17 +10,14 @@ import fs from "node:fs";
 import https from "node:https";
 import path from "node:path";
 import { identifier } from "./identity.js";
+import { hostedOrigins } from "../config/index.js";
 
 const NAME = /^[a-z][a-z0-9-]{0,30}[a-z0-9]$/;
 const RESERVED = new Set(["www", "api", "app", "admin", "mail", "docs", "status", "blog", "help", "support", "deck", "vyre",
   "root", "ns1", "ns2", "dev", "staging", "test", "download", "install", "login", "auth", "directory"]);
 const HSTS = "max-age=31536000";
 
-/**
- * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
- * network.origins replaces the list; an empty list turns cross-origin calls off.
- */
-export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
+export { HOSTED_ORIGINS } from "../config/index.js";
 /** What the hosted app may send. Anything else fails its preflight. */
 const CORS_METHODS = "GET, POST";
 const CORS_HEADERS = "content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key, last-event-id";
@@ -254,10 +251,7 @@ export function names(deps) {
   }
 
   /** Is this origin one of the hosted app's (network.origins, default HOSTED_ORIGINS)? */
-  const hosted = origin => {
-    const list = Array.isArray(net().origins) ? net().origins : HOSTED_ORIGINS;
-    return list.some(o => String(o).toLowerCase().replace(/\/+$/, "") === origin);
-  };
+  const hosted = origin => hostedOrigins(net()).includes(origin);
 
   /**
    * A request from the hosted app's origin. Only the owner gets CORS headers at all; a guest or an

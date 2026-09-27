@@ -47,6 +47,38 @@ Attributes: `name` (me|name|lit:Alex, kin:spouse|name|lit:Jordan), `birthday`, `
 `from`, `works_at`, `role`, `owns` (vehicles and other things), `drives`, `client`, `uses`,
 `prefers`.
 
+### The reader (27 Sep; lead-approved budget)
+
+- Every user turn with a personal signal (reader.js signal(): first person plus a life word or
+  "im in X") waits in memory_me_queue, keyed by the hash of the text and VERSION. The fast model
+  (config.models.memory, then .background, then config.memory.model.model, then haiku) reads 20
+  at a time through `claude -p` (no tools, MCP, settings or session kept), newest first.
+- Budget: config.memory.model {on, dailyUsd 0.25, backfillUsd 2 (one-time pool), batch 20, gapMs
+  >= 60 s}. It runs on events only, never while a user thread works. Spend is what the runner
+  reports. The usage line is memory.read and `vyre status`.
+- Check (checkRead): the quote must be in ownText(turn), and the subject and object must be
+  said there. Relations are the vocabulary of model.js plus sold (-> ended:owns) and color (a
+  vehicle's). method "model", at most 0.8. Kept in memory_me_reads by hash, so it is applied
+  again with no call.
+- Eval: test/eval/reads/<world>.json replays the reads. `--record` records them with `claude -p`
+  (testbox), and the sealed world is recorded without anyone reading the file.
+
+### Round 1 additions (27 Sep, the contract both halves build against)
+
+- Relations: `diet` (me|diet|lit:vegetarian; single-valued), `breed` (a pet|breed|lit:beagle;
+  single-valued), `friend` (me|friend|kin:friend or name:<Name>, many). A relative's own
+  attributes use the existing relations with the relative as subject: kin:spouse|role|lit:nurse,
+  kin:mother|lives_in|place:Tucson, kin:spouse|works_at|org:<Org>.
+- Kin words gain friend: friend, buddy, mate (only as "my mate"), pal, bestie -> role `friend`
+  (not singular: each named friend is name:<Name>).
+- Vehicles: trucks, vans, motorbikes are vehicles; owns/drives/ended:owns as for cars.
+- Answer kinds: `of {who: {kin?|name?}, rel}` (a relative's or named person's attribute),
+  `diet`, `car` also for truck/van/suv/pickup/bike, `carFate {car}` ("what happened to the
+  outback"), friend questions through `kin` with role friend.
+- Evaluation discipline: rules are written for the general phrasing with the agent's own varied
+  test sentences, never by copying a world's sentence. test/fixtures/personal-fresh.js and
+  test/eval/answer-fresh.json are SEALED: never opened, only scored.
+
 ### Confidence
 
 Per claim by method: explicit rule 0.9, indirect rule 0.7, model 0.75, assistant's words 0.35.
@@ -86,17 +118,29 @@ facts are not a project's.
   pasted email). The held-out world is the real number.
 
 ## Doing
-- Held-out extraction gaps: pasted and quoted email text taken as the user's words (Claire),
-  and lowercase names, nicknames (hubby, "robin and i"), "the mazda", and moves ("moved to
-  leeds") missed.
+- Round 4 (27 Sep), pushed at 8478379a. The reader makes two readings per batch and takes a
+  second look at who someone is. Scores: sealed 0.577 (6 confident wrong), fresh 0.76, blind
+  0.959, personal 1.0, heldout 1.0.
+- Evaluation worlds: `sealed` (40c1f23c) is the honest number; never open it (the eval refuses
+  --facts, --claims and --ask on it). `fresh` is now a tuning world, opened on 27 Sep.
+- Cost is about $0.30 per 1,000 turns per reading, plus the second look, so about $0.65 per
+  1,000 with two readings.
 
 ## Next
-- Get held-out to 0.9 without regressing gold. Then write a third, unseen world so the score
-  still means something.
-- CI step for `npm run eval:answer` (both worlds), ADR 0023, contract notes for capsule-pro, pwa
-  and mobile.
+- Model-backed answering with evidence (asked by the lead): too slow for memory.answer's 150 ms
+  bar, so a separate `deep` path the Capsule can call when there's no fact. Design it after the
+  numbers.
+- Once ADR 0030 lands, route the reader's model calls through the sessions layer as a background
+  job: its per-purpose model map, concurrency slots and budget. Today reader.js runs `claude -p` itself.
+  The runner is injected (deps.runner), so this is a swap of one function.
+- CI step for `npm run eval:answer` (replay only), ADR 0023, and contract notes for capsule-pro,
+  pwa and mobile.
 
 ## Needs from others
+- main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
+  backfill of about $2, then about $0.25/day, configurable), and recording eval fixtures with `claude -p`.
+- sessions: the per-purpose model map location and the one-shot background job call. Also
+  per-turn memory.answer or a combined memory.context tool (message sent 27 Sep).
 - polish-cli: the contract of the low-priority index worker. Until then extraction runs in the
   memory curator's background pass, in bounded batches that yield.
 - main/integrator: core/memory/rooms.test.js:227 fails on main's code. agents.create now needs

@@ -15,5 +15,15 @@
       { "id": "elevenlabs", "kind": "api-key", "provider": "elevenlabs", "purpose": "push-to-talk words and spoken replies", "item": "voice-elevenlabs-key", "group": "speech" }
     ]
   },
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "talk-key", "text": "Press `⌥⏎` in the Capsule and talk: your words fill the box as you say them.", "surfaces": ["capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "key": "⌥⏎"},
+      {"id": "save-key", "text": "Run `vyre voice key` once to save a Deepgram key. Talking needs it, and the Capsule says so if it is missing.", "surfaces": ["cli", "capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre voice key", "docs": "reference/cli.md#vyre-voice"},
+      {"id": "stop-talking", "text": "Press `⌥⏎` again to stop listening. Hiding the Capsule stops the mic too.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "⌥⏎"},
+      {"id": "talk-to-session", "text": "Run `vyre voice --send harlow-intake` to talk into that session from the terminal.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre voice --send", "docs": "reference/cli.md#vyre-voice"},
+      {"id": "provider", "text": "Run `vyre voice key openai` or `vyre voice key elevenlabs` to switch to that speech provider.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre voice key", "docs": "reference/cli.md#vyre-voice"},
+      {"id": "terminal-talk", "text": "Run `vyre voice` for push-to-talk in the terminal: `⏎` to talk, `⏎` again to stop.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre voice", "docs": "reference/cli.md#vyre-voice"},
+      {"id": "status", "text": "Run `vyre voice status` to see the speech provider, whether its key is saved, and if replies are spoken.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre voice status", "docs": "reference/cli.md#vyre-voice"}
+    ]
+  }
 }

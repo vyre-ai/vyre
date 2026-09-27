@@ -1,53 +1,82 @@
 /* terminal: a live shell in a folder (deck/chat/term.js). Loaded with xterm's own stylesheet only
-   when a terminal opens. Deck tokens only; xterm's colours come from the same tokens in term.js. */
+   when a terminal opens. Deck tokens only; xterm's colours come from the same tokens in term.js.
+   Spec: docs/design/system/components/terminal.md (vyre-app-design). */
 
-.term { display: flex; flex-direction: column; height: 100%; min-height: 320px; background: var(--panel);
-  border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+/* The view fills the Chat content area: full width and height of the page, no card around it.
+   index.js mounts it in a .chat-pad.chat-term; the pad's list padding and 880 cap do not apply. */
+.chat-pad.chat-term { height: 100%; max-width: none; padding: 0; gap: 0; }
+.chat-term > .empty { padding: 20px; }
+
+.term { display: flex; flex-direction: column; height: 100%; min-height: 0; background: var(--panel); overflow: hidden; }
 .term-head { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px 0 4px; border-bottom: 1px solid var(--rule); flex-shrink: 0; }
 .term-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-where { font-family: var(--mono); font-size: 13px; color: var(--text); }
 .term-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+/* Live: --focus. Connecting and reconnecting: --label. Ended and closed: --label. */
 .term-dot { background: var(--label); }
-.term[data-state="live"] .term-dot { background: var(--signal); }
-.term[data-state="connecting"] .term-dot, .term[data-state="waiting"] .term-dot { background: var(--recall); }
-.term[data-state="error"] .term-dot, .term[data-state="blocked"] .term-dot, .term[data-state="gone"] .term-dot { background: var(--beacon-dot); }
+.term[data-state="live"] .term-dot { background: var(--focus); }
+/* Error and blocked: the failed mark (status-mark.md): a 12 circle with a cross, 1.5 stroke, --text-2. */
+.term:is([data-state="error"], [data-state="blocked"]) .term-dot { position: relative; width: 12px; height: 12px; border-radius: 50%;
+  background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-2); }
+.term:is([data-state="error"], [data-state="blocked"]) .term-dot::before,
+.term:is([data-state="error"], [data-state="blocked"]) .term-dot::after { content: ""; position: absolute; left: 3px; top: 5.25px; width: 6px; height: 1.5px;
+  border-radius: 1px; background: var(--text-2); transform: rotate(45deg); }
+.term:is([data-state="error"], [data-state="blocked"]) .term-dot::after { transform: rotate(-45deg); }
 .term-note { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-2);
   border-bottom: 1px solid var(--rule); background: var(--hover); }
-.term-screen { flex: 1 1 auto; min-height: 0; padding: 8px 4px 4px 10px; }
-.term-screen .xterm { height: 100%; }
+
+/* The screen: xterm on --code-bg. The padding (12 14) is on xterm's own element, which the fit
+   addon subtracts; padding on the screen would be counted as rows it does not have. */
+.term-screen { flex: 1 1 auto; min-height: 0; min-width: 0; position: relative; background: var(--code-bg); }
+.term-screen .xterm { height: 100%; padding: 12px 14px; }
 .term-screen .xterm-viewport { background-color: transparent !important; }
 .term[data-state="ended"] .term-screen, .term[data-state="gone"] .term-screen { opacity: 0.7; }
-/* Catching up after a drop: what is drawn stays, dimmed, until the box has sent what was missed. */
+/* Catching up after a drop: what is drawn stays, dimmed, until the box has sent what was missed.
+   120 ms is the spec's --motion-tap (no --motion-* token in the Deck yet). */
 .term[data-catching] .term-screen { opacity: 0.55; transition: opacity 120ms ease; }
-/* Another screen owns the size: drawn at its size, scaled down to fit and centred (term.js draw). */
-.term[data-watching] .term-screen { overflow: hidden; min-width: 0; }
-.term[data-watching] .term-screen .xterm { height: auto; width: max-content; }
-.term-watch { display: inline-flex; align-items: center; flex-shrink: 0; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+/* Another screen owns the size: drawn at its size, scaled down to fit and centred (term.js draw),
+   letterboxed on --bg. */
+.term[data-watching] .term-screen { overflow: hidden; background: var(--bg); }
+.term[data-watching] .term-screen .xterm { height: auto; width: max-content; background: var(--code-bg); }
+
+/* The watch line: only while another device owns the size. 32 tall on the desktop, 44 on the phone. */
+.term-watch { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 8px 0 16px; flex-shrink: 0;
+  border-bottom: 1px solid var(--rule); font-size: 12px; line-height: 16px; color: var(--text-2); }
 .term-watch[hidden] { display: none; }
-.term-watch-words { font-variant-numeric: tabular-nums; }
-.term-watch-sep { white-space: pre; }
-.term-take { min-height: 32px; padding: 0 4px; border: 0; background: transparent; color: var(--text); font: inherit;
-  text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; cursor: pointer; touch-action: manipulation; }
-.term-take:hover { text-decoration-color: currentColor; }
-.term-take:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
-/* The key bar: shown on touch screens, where there is no Esc, Tab, Ctrl or arrows. */
-.term-keys { display: none; gap: 6px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--rule);
-  overflow-x: auto; flex-shrink: 0; scrollbar-width: none; }
-.term-key { flex: 0 0 auto; min-width: 44px; height: 36px; padding: 0 10px; border: 1px solid var(--rule); border-radius: var(--r-2, 6px);
-  background: var(--hover); color: var(--text); font-family: var(--mono); font-size: 13px; touch-action: manipulation; }
-.term-key[aria-pressed="true"] { background: var(--focus); color: var(--panel); border-color: var(--focus); }
+.term-watch-eye { flex-shrink: 0; color: var(--text-2); }
+.term-watch-words { flex: 1 1 auto; min-width: 0; }
+.term-take { flex-shrink: 0; height: 32px; }
+.term-take:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The key bar (touch screens only): --panel, two rows of seven, gap 6, padding 8, the safe area
+   under it in --panel. Keys 34 tall, radius 6, --hover, mono 12/16. */
+.term-keys { display: none; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; flex-shrink: 0;
+  padding: 8px 8px calc(8px + env(safe-area-inset-bottom, 0px)); background: var(--panel); border-top: 1px solid var(--rule); }
+.term-key { min-width: 0; height: 34px; padding: 0; border: 0; border-radius: var(--radius-field, 8px); background: var(--hover); color: var(--text);
+  font-family: var(--mono); font-size: 12px; line-height: 16px; text-align: center; touch-action: manipulation; cursor: pointer;
+  -webkit-user-select: none; user-select: none; }
+/* Ctrl or Alt latched until the next key. */
+.term-key[aria-pressed="true"] { background: var(--signal-wash); box-shadow: inset 0 0 0 1px var(--focus); }
+.term-key:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 .term[data-state="blocked"] .term-keys, .term[data-state="ended"] .term-keys, .term[data-state="gone"] .term-keys { display: none; }
 /* No live link: the note stands in place of the terminal. */
 .term[data-state="blocked"] .term-screen { display: none; }
 .term[data-state="blocked"] .term-note { flex: 1 1 auto; align-content: center; justify-content: center; text-align: center; border-bottom: 0; background: transparent; padding: 24px; }
 
-@media (pointer: coarse) { .term:not([data-state="blocked"]):not([data-state="ended"]):not([data-state="gone"]) .term-keys { display: flex; } }
+@media (pointer: coarse) { .term:not([data-state="blocked"]):not([data-state="ended"]):not([data-state="gone"]) .term-keys { display: grid; } }
 
 @media (max-width: 599px) {
-  .term { border-radius: 0; border-left: 0; border-right: 0; }
-  .term:not([data-state="blocked"]):not([data-state="ended"]):not([data-state="gone"]) .term-keys { display: flex; }
-  .term-screen { padding: 4px 2px 2px 6px; }
-  /* Room for "Watching at ... · Take size" beside Back and Close: the dot says live on its own. */
-  .term:has(.term-watch:not([hidden])) .term-word { display: none; }
+  .term:not([data-state="blocked"]):not([data-state="ended"]):not([data-state="gone"]) .term-keys { display: grid; }
   .term-head { gap: 6px; }
+}
+
+/* The phone layout (deck.css): the page the terminal is on keeps no bottom padding of its own, so
+   the key bar sits on the home indicator (its safe area painted --panel). With the keyboard up
+   (js/keyboard.js: --kb, data-kb) the page leaves exactly --kb-lift, so the key bar sits on the
+   keyboard and xterm refits to the rows left above it. */
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .view > .page:has(> .chat-term), .pager .page:has(> .chat-term) { padding-bottom: 0; overflow: hidden; }
+  :root[data-kb] .view > .page:has(> .chat-term), :root[data-kb] .pager .page:has(> .chat-term) { padding-bottom: var(--kb-lift); }
+  .term-watch { min-height: 44px; padding: 6px 12px 6px 16px; border-top: 0; }
+
 }

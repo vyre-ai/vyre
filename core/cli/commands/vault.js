@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre vault` — the Vault from the terminal (docs/adr/0001-vault-crypto.md).
+// `vyre vault`: the Vault from the terminal (docs/adr/0001-vault-crypto.md).
 //
 // The terminal is the one place a person types a value, so this file is built around keeping
 // that value off every screen and out of every history. Values are never taken on the command
@@ -150,12 +150,12 @@ const missingSurface = (r, verb) => r.error && r.error.code === "no_such_tool" &
 
 async function get(args) {
   let f;
-  try { f = flags(args, { string: ["field"], boolean: ["reveal", "copy", "otp"] }); } catch (e) { return oops(e.message); }
+  try { f = flags(args, { string: ["field"], boolean: ["reveal", "copy", "otp", "once"] }); } catch (e) { return oops(e.message); }
   const name = f._[0];
-  if (!name || f._.length > 1) return oops("vyre vault get <item> [--reveal | --copy | --otp] [--field f]");
+  if (!name || f._.length > 1) return oops("vyre vault get <item> [--reveal | --copy | --otp [--once]] [--field f]");
   if ([f.reveal, f.copy, f.otp].filter(Boolean).length > 1) return oops("choose one of --reveal, --copy and --otp");
   const field = f.field ? { field: f.field } : {};
-  if (f.otp) return totp([name]);
+  if (f.otp) return totp(f.once ? [name, "--once"] : [name]);
   if (f.reveal) {
     const r = await tool("vault.reveal", { name, ...field });
     if (r.error) return missingSurface(r, "reveal") ?? fail(r);
@@ -770,32 +770,155 @@ async function run(args) {
 
 // ------------------------------------------------------------ for people
 
-async function totp(args) {
-  const name = args[0];
-  if (!name || args.length > 1) return oops("vyre vault totp <name>");
-  const r = await tool("vault.totp", { name });
-  if (r.error) return fail(r);
-  say(`  ${bold(signal(r.data.display || r.data.code))}  ${dim(`${r.data.remaining}s left${r.data.next ? ` · next ${r.data.next}` : ""}`)}`);
-  return 0;
+// ------------------------------------------------------------ one-time codes
+
+/** The live view stops on its own after this, so a forgotten terminal does not ask for codes all day. */
+export const TOTP_LIVE_MS = 5 * 60_000;
+const BAR = 20;
+
+/** Digits grouped as the Deck shows them: 123 456, 1234 5678. Anything else as it came. */
+export function groupCode(code) {
+  const c = String(code ?? "");
+  if (/^\d{6}$/.test(c)) return c.slice(0, 3) + " " + c.slice(3);
+  if (/^\d{8}$/.test(c)) return c.slice(0, 4) + " " + c.slice(4);
+  return c;
 }
 
-/** `health [--breach]`: Watchtower, names and reasons; --breach adds the opt-in breach check. */
-async function healthCmd(args) {
+/**
+ * When the code vault.totp just returned stops being valid, on the local clock. The tool's
+ * `remaining` is whole seconds, so `fetchedAt + remaining` is up to a second past the real end;
+ * TOTP periods start on multiples of `period` since the epoch, so snap to the nearest one.
+ * @param {number} fetchedAt @param {number} remaining @param {number} period
+ */
+export function periodEnd(fetchedAt, remaining, period) {
+  const p = Math.max(1, Number(period) || 30) * 1000;
+  return Math.round((fetchedAt + Math.max(0, Number(remaining) || 0) * 1000) / p) * p;
+}
+
+/**
+ * One frame of the live code: the grouped code, a text bar of the seconds left, and the count.
+ * Pure, so the countdown is tested without a terminal or a clock.
+ * @param {{ now: number, endsAt: number, period: number, code: string, next?: string, paint?: boolean }} f
+ * @returns {{ line: string, left: number }}
+ */
+export function totpFrame({ now, endsAt, period, code, next, paint = true }) {
+  const p = Math.max(1, Number(period) || 30);
+  const left = Math.max(0, Math.min(p, Math.ceil((endsAt - now) / 1000)));
+  const full = Math.round((left / p) * BAR);
+  const low = left <= 5;
+  const c = (/** @type {(s: string) => string} */ fn, /** @type {string} */ s) => (paint ? fn(s) : s);
+  const bar = c(low ? beacon : signal, "█".repeat(full)) + c(dim, "░".repeat(BAR - full));
+  const line = `  ${c(bold, c(low ? beacon : signal, groupCode(code)))}  ${bar} ${c(dim, `${String(left).padStart(2)}s`)}` +
+    (next ? c(dim, `  next ${groupCode(next)}`) : "");
+  return { line, left };
+}
+
+/**
+ * @typedef {{ now(): number, write(s: string): void, every(ms: number, fn: () => void): () => void,
+ *   keys(onQuit: () => void, onEnter?: () => void): () => void }} LiveIO
+ */
+
+/** The terminal for the live code: a one-second timer, q, Esc or Ctrl-C to quit, Enter for another. */
+const liveIO = /** @type {LiveIO} */ ({
+  now: () => Date.now(),
+  write: s => { process.stdout.write(s); },
+  every: (ms, fn) => { const t = setInterval(fn, ms); return () => clearInterval(t); },
+  keys: (onQuit, onEnter) => {
+    const stdin = process.stdin;
+    const onSig = () => onQuit();
+    process.on("SIGINT", onSig);
+    if (!stdin.isTTY) return () => { process.removeListener("SIGINT", onSig); };
+    const onData = (/** @type {Buffer} */ b) => { const k = b.toString("utf8"); if (k === "q" || k === "Q" || k === "\x1b" || k === "\x03") onQuit(); else if ((k === "\r" || k === "\n") && onEnter) onEnter(); };
+    stdin.setRawMode(true);
+    stdin.on("data", onData);
+    stdin.resume();
+    return () => {
+      stdin.removeListener("data", onData);
+      try { stdin.setRawMode(false); } catch {}
+      stdin.pause();
+      process.removeListener("SIGINT", onSig);
+    };
+  },
+});
+
+/**
+ * The live code: redrawn in place each second from the local clock. When the period ends the code
+ * is gone and the next one waits for Enter, since from a terminal every code asks for its own
+ * proof (ADR 0004, the CLI's window covers no codes). With `auto`, one vault.totp call when a
+ * period rolls over instead (never one a second). Resolves with the exit code when the person
+ * quits, the time runs out, or a fetch fails.
+ * @param {{ code: string, period: number, remaining: number, next?: string }} first
+ * @param {{ fetch: () => Promise<any>, io?: LiveIO, maxMs?: number, paint?: boolean, name?: string, auto?: boolean }} o
+ */
+export function liveTotp(first, { fetch, io = liveIO, maxMs = TOTP_LIVE_MS, paint = true, name = "<name>", auto = false }) {
+  const started = io.now();
+  let cur = first;
+  let endsAt = periodEnd(started, cur.remaining, cur.period);
+  let fetching = false, done = false, want = auto;
+  /** @type {() => void} */ let stopTick = () => {};
+  /** @type {() => void} */ let stopKeys = () => {};
+  const clear = "\r\x1b[2K";
+  const draw = () => io.write(clear + totpFrame({ now: io.now(), endsAt, period: cur.period, code: cur.code, next: cur.next, paint }).line);
+  return new Promise(resolve => {
+    const finish = (/** @type {number} */ code, /** @type {string} */ why = "") => {
+      if (done) return;
+      done = true;
+      stopTick(); stopKeys();
+      io.write((why ? clear + why : "") + "\x1b[?25h\n");
+      resolve(code);
+    };
+    const tick = async () => {
+      if (done || fetching) return;
+      const now = io.now();
+      if (now - started >= maxMs) return finish(0, dim(`  stopped after ${Math.round(maxMs / 60_000)} minutes · vyre vault totp ${name} for more`));
+      if (now >= endsAt && !want) {
+        io.write(clear + (paint ? dim : String)(`  expired · Enter for a new code (asks again) · q quits`));
+        return;
+      }
+      if (now >= endsAt) {
+        fetching = true;
+        want = auto;
+        io.write(clear);
+        // The terminal back in its normal mode meanwhile: if this call asks for the terminal code,
+        // the person types it at a line prompt, not into our key reader.
+        stopKeys();
+        const r = await fetch();
+        fetching = false;
+        if (!done) stopKeys = io.keys(() => finish(0), onEnter);
+        if (done) return;
+        if (r.error) { last = r; return finish(exitFor(r), beacon(`  ${r.error.code}: `) + String(r.error.message || "")); }
+        const prev = endsAt;
+        cur = r.data;
+        endsAt = periodEnd(io.now(), cur.remaining, cur.period);
+        // vyred's clock a little behind ours: keep to one call a period rather than asking again next second.
+        if (endsAt <= prev) endsAt = prev + Math.max(1, Number(cur.period) || 30) * 1000;
+      }
+      draw();
+    };
+    const onEnter = () => { if (!done && !fetching && io.now() >= endsAt) { want = true; tick(); } };
+    io.write("\x1b[?25l");
+    draw();
+    stopTick = io.every(1000, () => { tick(); });
+    stopKeys = io.keys(() => finish(0), onEnter);
+  });
+}
+
+async function totp(args) {
   let f;
-  try { f = flags(args, { boolean: ["breach"] }); } catch (e) { return oops(e.message); }
-  const r = await tool("vault.health", {});
+  try { f = flags(args, { boolean: ["once"] }); } catch (e) { return oops(e.message); }
+  const name = f._[0];
+  if (!name || f._.length > 1) return oops("vyre vault totp <name> [--once]");
+  const r = await tool("vault.totp", { name });
   if (r.error) return fail(r);
-  const items = r.data.items || [];
-  say(`  ${items.length ? beacon(plural(items.length, "item")) + " to look at" : signal("nothing to fix")} ${dim(`· ${r.data.checked} checked`)}`);
-  for (const it of items) say(`  ${bold(it.name)}  ${dim(it.kind)}  ${it.reasons.map(x => (x === "expired" || x === "reused" ? beacon(x) : x)).join(", ")}${it.group ? dim(` · shares a value with the others in ${it.group}`) : ""}`);
-  if (f.breach) {
-    const b = await tool("vault.breach.check", {});
-    if (b.error) return fail(b);
-    say(`  ${b.data.breached.length ? beacon(`${b.data.breached.length} found in known breaches`) : signal("none found in known breaches")} ${dim(`· ${b.data.checked} passwords, ${b.data.requests} lookups, only 5 characters of each hash sent`)}`);
-    for (const n of b.data.breached) say(`  ${bold(n)}  ${beacon("breached")} ${dim(`· vyre vault rotate ${n}`)}`);
+  if (JSON_MODE) return 0;
+  const d = r.data;
+  // Piped: the code alone on stdout, for $(...), and the seconds on stderr.
+  if (!process.stdout.isTTY) { process.stdout.write(`${d.code}\n`); hint(`  ${d.remaining}s left\n`); return 0; }
+  if (f.once) {
+    say(totpFrame({ now: Date.now(), endsAt: periodEnd(Date.now(), d.remaining, d.period), period: d.period, code: d.code, next: d.next }).line);
+    return 0;
   }
-  if (items.length) say(dim("  the daily reminder adds these to your planner's Vault list · vyre vault remind runs it now"));
-  return 0;
+  return liveTotp(d, { name, fetch: () => tool("vault.totp", { name }) });
 }
 
 /** `remind`: the daily reminder pass, now. */
@@ -804,28 +927,6 @@ async function remindCmd() {
   if (r.error) return fail(r);
   if (r.data.planner === false) { say(dim("  no planner here, so no reminders · vyre vault health lists them")); return 0; }
   say(`  ${signal(plural(r.data.added.length, "reminder"))} added ${dim(`· ${r.data.closed.length} closed as fixed`)}`);
-  return 0;
-}
-
-/** `history <name> [--field f]` and `revert <name> <version>`. */
-async function historyCmd(args) {
-  let f;
-  try { f = flags(args, { string: ["field"] }); } catch (e) { return oops(e.message); }
-  if (f._.length !== 1) return oops("vyre vault history <name> [--field password]");
-  const r = await tool("vault.history", { name: f._[0], ...(f.field ? { field: f.field } : {}) });
-  if (r.error) return fail(r);
-  for (const e of r.data.entries || []) {
-    say(`  ${bold("v" + e.version)}  ${dim(new Date(e.at).toISOString().replace("T", " ").slice(0, 16))}  ${e.changed.join(", ") || dim("created")}  ${dim("by " + e.by)}${e.current ? "  " + signal("current") : e.readable ? "" : dim("  (value no longer kept)")}`);
-  }
-  say(dim(`  vyre vault revert ${f._[0]} <version> puts one back as a new version`));
-  return 0;
-}
-
-async function revertCmd(args) {
-  if (args.length !== 2 || !/^\d+$/.test(args[1])) return oops("vyre vault revert <name> <version>");
-  const r = await tool("vault.revert", { name: args[0], version: Number(args[1]) });
-  if (r.error) return fail(r);
-  say(`  ${signal("reverted")} ${bold(args[0])} ${dim(`· version ${args[1]} is back, as a new version`)}`);
   return 0;
 }
 
@@ -1059,6 +1160,103 @@ async function audit(args) {
     const res = e.ok ? signal("ok") : beacon("refused") + (e.why ? dim(" " + e.why) : "");
     say(`  ${dim(when)}  ${e.action.padEnd(14)} ${bold(e.name || "")} ${dim("by " + e.who)}  ${res}`);
   }
+  return 0;
+}
+
+// ------------------------------------------------------------ Watchtower, breaches, history
+
+/** The Deck's Watchtower words (deck/vault/model.js REASON), in the order it lists them. */
+const REASONS = [
+  ["weak", "weak", "easy to guess · vyre vault generate <name> makes a strong one"],
+  ["reused", "reused", "the same value is in more than one item"],
+  ["rotate", "rotate", "a copy left this box · replace the value to clear it"],
+  ["old", "old", "not changed for more than a year"],
+  ["2fa-available", "two-factor available", "the site offers one-time codes · vyre vault edit <item> --field totp"],
+  ["unprotected", "not yet protected", "still opened without your password · vyre vault account create"],
+];
+
+/** `health`: Watchtower. Names and reason codes from vyred, never a value. */
+async function health(args) {
+  if (args.length) return oops("vyre vault health");
+  const r = await tool("vault.health");
+  if (r.error) return fail(r);
+  const { items = [], counts = {}, checked = 0 } = r.data || {};
+  say("");
+  say(`  ${bold("Watchtower")} ${dim(`· ${plural(checked, "item")} checked`)}`);
+  say("  " + REASONS.map(([k, label]) => (counts[k] ? beacon(`${counts[k]} ${label}`) : dim(`0 ${label}`))).join(dim(" · ")));
+  if (!items.length) { say(`\n  ${signal("nothing to fix")}\n`); return 0; }
+  for (const [k, label, why] of REASONS) {
+    const rows = items.filter(i => (i.reasons || []).includes(k));
+    if (!rows.length) continue;
+    say(`\n  ${bold(label)} ${dim(`· ${why}`)}`);
+    if (k === "reused") {
+      const groups = new Map();
+      for (const i of rows) { const g = i.group || i.name; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(i.name); }
+      for (const names of groups.values()) say(`    ${names.map(n => bold(n)).join(dim(", "))} ${dim("· same value")}`);
+    } else for (const i of rows) say(`    ${bold(i.name)}  ${dim(i.kind)}`);
+  }
+  say("");
+  return 0;
+}
+
+/** `breach`: every login's password against known breaches, by k-anonymity. Opt-in, and a network call. */
+async function breach(args) {
+  if (args.length) return oops("vyre vault breach checks every login at once (only the first 5 characters of each password's SHA-1 leave); it takes no item");
+  const r = await tool("vault.breach.check", {}, { timeout: 120_000 });
+  if (r.error) {
+    if (!JSON_MODE && /breach check is off/.test(String(r.error.message))) {
+      last = r;
+      out(beacon("  the breach check is off ") + dim('· set "vault": { "breach": "ask" } in config.json, then vyre restart; every check still asks you first'));
+      return 1;
+    }
+    return fail(r);
+  }
+  const { breached = [], checked = 0 } = r.data || {};
+  if (!breached.length) { say(`  ${signal("none found")} ${dim(`· none of ${plural(checked, "password")} appears in a known breach`)}`); return 0; }
+  say(`  ${beacon(`${breached.length} of ${plural(checked, "password")}`)} appear in known breaches ${dim("· replace them: vyre vault edit <item> --field password")}`);
+  for (const n of breached) say(`    ${bold(n)}`);
+  return 0;
+}
+
+/** `history <item> [--field f]`: versions, who and which fields changed. Never a value. */
+async function history(args) {
+  let f;
+  try { f = flags(args, { string: ["field"] }); } catch (e) { return oops(e.message); }
+  if (f._.length !== 1) return oops("vyre vault history <item> [--field f]");
+  const r = await tool("vault.history", { name: f._[0], ...(f.field ? { field: f.field } : {}) });
+  if (r.error) return fail(r);
+  const entries = r.data.entries || [];
+  if (!entries.length) { say(dim(f.field ? `  no version of ${f._[0]} changed ${f.field}` : `  no versions of ${f._[0]} kept yet`)); return 0; }
+  say("");
+  for (const e of entries) {
+    const when = new Date(e.at).toISOString().replace("T", " ").slice(0, 16);
+    const tag = e.current ? signal("current") : e.readable ? dim("kept   ") : dim("gone   ");
+    say(`  ${bold(("v" + e.version).padEnd(5))} ${tag}  ${dim(when)}  ${(e.changed || []).join(", ") || dim("no fields")}  ${dim("by " + e.by)}`);
+  }
+  const back = entries.find(e => !e.current && e.readable);
+  if (back) say(dim(`\n  vyre vault revert ${f._[0]} <version> puts one back, as a new version`));
+  say("");
+  return 0;
+}
+
+/** `revert <item> <version>`: an older version's fields back, as a new version. */
+async function revert(args) {
+  const [name, v, ...more] = args;
+  const version = Number(v);
+  if (!name || v === undefined || more.length) return oops("vyre vault revert <item> <version> · vyre vault history <item> lists the versions");
+  if (!Number.isInteger(version) || version < 1) return oops(`${v} is not a version · vyre vault history ${name} lists them`);
+  const r = await tool("vault.revert", { name, version });
+  if (r.error) return fail(r);
+  say(`  ${signal("reverted")} ${bold(r.data.name)} ${dim(`· version ${r.data.from} is back, as version ${r.data.version}`)}`);
+  return 0;
+}
+
+/** `clear-clipboard`: take a copied value off the clipboard now, if it is still there. */
+async function clearClipboard(args) {
+  if (args.length) return oops("vyre vault clear-clipboard");
+  const r = await tool("vault.clipboard.clear");
+  if (r.error) return fail(r);
+  say(`  ${signal("cleared")} ${dim("· anything the vault copied is off the clipboard")}`);
   return 0;
 }
 
@@ -1623,7 +1821,7 @@ async function migrateKey() {
 
 const HELP = [
   ["list [filter] [--kind k] [--host h]", "names, kinds and grants; never values"],
-  ["get <item> [--reveal | --copy | --otp] [--field f]", "metadata; or the value, the clipboard, the code"],
+  ["get <item> [--reveal | --copy | --otp [--once]] [--field f]", "metadata; or the value, the clipboard, the code"],
   ["read vault://<item>/<field>", "one value on stdout; vault://<item>/otp is the current code"],
   ["add <name> ...", "the same as put"],
   ["edit <item> [--rename n] [--description d] [--url u] [--host +h|-h] [--field F] [--remove-field F]", "change in place; --field prompts for the new value"],
@@ -1643,11 +1841,13 @@ const HELP = [
   ["pending", "grants and passes an agent asked for"],
   ["approve <id>", "allow one of them"],
   ["run [--env-file f] <item...> -- <command...>", "items as VAR=name.field, or KEY=vault://item/field lines; output scrubbed"],
-  ["totp <name>", "the current code, and the next"],
+  ["totp <name> [--once]", "the code, live: redrawn each second, the next one fetched as a period ends; q to stop"],
   ["sweep [path] [--history] [--shell]", "where your secrets sit in plain text: files, git history, shell history; places and names only"],
   ["rotate <name> [--how]", "a new credential at its provider (AWS, GitLab, Cloudflare, Google Cloud), or the page and steps"],
-  ["health [--breach] | remind", "Watchtower: weak, reused, old, expiring; --breach checks known breaches; remind adds planner todos now"],
-  ["history <name> [--field f] | revert <name> <version>", "an item's versions, and putting one back"],
+  ["health | remind", "Watchtower: weak, reused, old and to-rotate items, by name; remind adds planner todos now"],
+  ["breach", "check every login's password against known breaches (opt-in: vault.breach \"ask\")"],
+  ["history <item> [--field f] | revert <item> <version>", "an item's versions, and putting one back"],
+  ["clear-clipboard", "take what the vault copied off the clipboard now"],
   ["agent grant <agent> <item> <origin> [--expires 30d] | grants | revoke <id>", "lend one login to one agent for one site; it never reads it"],
   ["uses [item] [--agent a] [--since 7d]", "every use: when, who, which site and surface, allowed or not"],
   ["codes [name...] | codes import <scanned code...> [--from f] [--preview]", "every one-time code, current and next; bring in a Google Authenticator export"],
@@ -1698,7 +1898,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health: healthCmd, remind: remindCmd, history: historyCmd, revert: revertCmd, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, connections: connectionsCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health, remind: remindCmd, breach, history, revert, "clear-clipboard": clearClipboard, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 export default {

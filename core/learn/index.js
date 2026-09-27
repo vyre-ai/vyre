@@ -44,6 +44,7 @@ import { SKILL_MIGRATIONS, createSkills, stepsOf } from "./skills.js";
 import { createJobs, JOBS_MIGRATION } from "./jobs.js";
 import { createMetrics, METRICS_MIGRATION } from "./metrics.js";
 import * as sig from "./signals.js";
+import { claudeHome } from "../config/index.js";
 
 const MIGRATIONS = [
   `CREATE TABLE learn_lessons (
@@ -621,7 +622,7 @@ export default {
 
     // ---- Skills from repeated procedures (ADR 0007, decision 10) ----------------------------
 
-    const skills = createSkills(db, { now, emit: (type, payload) => ctx.events.emit(type, payload) });
+    const skills = createSkills(db, { now, emit: (type, payload) => ctx.events.emit(type, payload), ...(root ? { claudeDir: claudeHome(root) } : {}) });
     /** Does the Switchboard answer here? Only then can a job draft anything. */
     const switchboard = async () => { const r = await ctx.call("threads.list", {}); return Boolean(r && !r.error); };
     /** A procedure clean in 3 sessions: drafted by a job when the Switchboard can, else the template. */

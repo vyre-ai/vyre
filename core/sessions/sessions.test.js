@@ -61,7 +61,9 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role, transcripts: [transcripts],
-    sessions: { install: false, ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
+    // claude "installed": these suites run the fake claude (VYRE_CLAUDE_BIN), so the SDK needs
+    // only its JS, never the bundled binary a box's default asks for (CI installs --omit=optional).
+    sessions: { install: false, ...(driver === "sdk" ? { claude: "installed" } : {}), ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
   // Internal tools answer only modules: a module that asks threads.pids for the test.
   writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.pids", "probe.post"] } }, `
     export default { async start(ctx) {
@@ -409,6 +411,45 @@ for (const driver of ["cli", "sdk"]) {
     await until(async () => !(await w.tool("probe.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
   });
 
+  test(`${driver}: the Capsule's quick answer is Vyre IQ: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    // What an older Capsule sends: its own instruction lines around the facts (dropped).
+    const append = "Answer briefly, in markdown. You have no tools here; if the question needs the user's files or accounts, say so in one line.\n\n"
+      + "What the user's own notes say:\n- Your partner is Sam (noted 2 weeks ago)\n- The user said, 3 days ago: \"the bakery is Northwind\"\n\n"
+      + "If these answer the question, answer from them and say when the user said it.";
+    const q = (await w.tool("threads.start", { cwd: w.work, prompt: "who is my partner", lean: true, purpose: "capsule", surface: "capsule", append })).data;
+    await w.finished(q.id);
+    const l = w.launches().at(-1);
+    assert.ok(!l.argv.includes("--append-system-prompt"), "nothing of Claude Code's own prompt is kept");
+    const sys = l.argv[l.argv.indexOf("--system-prompt") + 1];
+    assert.match(sys, /^You are Vyre IQ/);
+    assert.match(sys, /IQ facts:\n\[1\] Your partner is Sam \(noted 2 weeks ago\)\n\[2\] The user said, 3 days ago: "the bakery is Northwind"$/);
+    assert.doesNotMatch(sys, /no tools here|in markdown|What the user's own notes say/, "the Capsule's old instructions are gone");
+    assert.doesNotMatch(sys, /\u2014/, "no em dash in the prompt itself");
+    assert.equal(l.max_thinking, "0", "thinking off");
+    const started = (await w.events(q.id)).find(e => e.type === "thread.started").payload;
+    assert.equal(started.prompt, "capsule@1");
+
+    // A person's own version at scope capsule, versioned; an agent never edits it.
+    assert.equal((await w.tool("sessions.prompt.set", { scope: "capsule", text: "Call alex by name." }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("sessions.prompt.set", { scope: "capsule", text: "Call alex by name." })).data.version, 1);
+    const r = (await w.tool("threads.start", { cwd: w.work, prompt: "who is my partner", lean: true, purpose: "capsule", surface: "capsule" })).data;
+    await w.finished(r.id);
+    const sys2 = w.launches().at(-1).argv[w.launches().at(-1).argv.indexOf("--system-prompt") + 1];
+    assert.match(sys2, /^You are Vyre IQ[\s\S]*Call alex by name\.\n\nIQ facts:\n\(none\)$/);
+    assert.equal((await w.events(r.id)).find(e => e.type === "thread.started").payload.prompt, "capsule@own-1");
+    const p = (await w.tool("sessions.prompt.preview", { purpose: "capsule" })).data;
+    assert.deepEqual(p.parts.map(x => [x.scope, x.version, x.builtin || false]), [["capsule", 1, true], ["capsule", 1, false]]);
+    assert.equal(p.temperature, 0);
+
+    // A chat thread is untouched: Claude Code's own prompt, nothing of Vyre IQ.
+    const c = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", append: "Vyre's own words." })).data;
+    await w.finished(c.id);
+    const cl = w.launches().at(-1);
+    assert.ok(!cl.argv.includes("--system-prompt"));
+    assert.equal(cl.max_thinking, null);
+  });
+
   test(`${driver}: the model comes from the purpose map, a project override and an agent, and the chip says it`, { skip }, async t => {
     const w = await boot(t, { driver, sessions: { models: { capsule: "claude-haiku-4-5" } } });
     const a = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
@@ -620,6 +661,14 @@ for (const driver of ["cli", "sdk"]) {
     assert.deepEqual(rows.map(r => [r.queued, r.uuid, r.text]), [[q.queued_id, q.uuid, "after"]]);
     await w.tool("threads.mode", { thread: th.id, mode: "plan" }, "deck");
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.mode, "plan", "the record says the mode");
+    // The mode carries over a resume, and the chip hears it from thread.started.
+    await w.tool("threads.stop", { thread: th.id });
+    await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the stop");
+    await w.tool("threads.send", { thread: th.id, text: "back", surface: "deck" });
+    const back = await until(async () => (await w.events(th.id)).filter(e => e.type === "thread.started").at(-1), "the resume");
+    assert.equal(back.payload.mode, "plan");
+    const argv = (await until(() => w.launches().find(l => l.argv && l.argv.includes("plan")), "the resumed launch in plan mode")).argv;
+    assert.equal(argv[argv.indexOf("--permission-mode") + 1], "plan");
   });
 
   test(`${driver}: subagents wait for a slot when the box or the project is full, then run`, { skip: driver === "cli" ? "subagent slots need the Agent SDK's in-process hooks" : skip }, async t => {
@@ -711,6 +760,9 @@ for (const driver of ["cli", "sdk"]) {
     const rem = (await w.tool("threads.remember", { thread: th.id, text: "Prices have two decimals." }, "deck")).data;
     assert.equal(rem.file, path.join(w.work, "CLAUDE.md"));
     assert.match(fs.readFileSync(rem.file, "utf8"), /^- Prices have two decimals\.$/m);
+    // The user's own CLAUDE.md, for a temp home, is the home's own (claudeHome), never ~/.claude.
+    const mine = (await w.tool("threads.remember", { thread: th.id, text: "Call me alex.", scope: "user" }, "deck")).data;
+    assert.equal(mine.file, path.join(w.root, "claude", "CLAUDE.md"));
     // Thinking off
     assert.deepEqual((await w.tool("threads.thinking", { thread: th.id, on: false }, "deck")).data, { thread: th.id, thinking: false });
     await until(() => w.launches().some(l => l.thinking === 0), "thinking off to reach Claude Code");

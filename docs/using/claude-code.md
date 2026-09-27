@@ -103,8 +103,8 @@ paired with a box.
    ```
 
 2. It asks before it edits Claude Code's `settings.json` (`~/.claude/settings.json`, or the one
-   under `CLAUDE_CONFIG_DIR`). Answer `y`. If the file already exists, it keeps a copy of it as
-   `settings.json.vyre-backup`.
+   under `CLAUDE_CONFIG_DIR`). Answer `y`. If the file already exists, it keeps a copy of it beside it, with
+   `.vyre-backup` added to its name.
 3. Start a new Claude Code session. The line is under it.
 
 If you already have a status line, `install` changes nothing and says so. Run

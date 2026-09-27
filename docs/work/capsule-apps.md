@@ -99,6 +99,11 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   after the post arrived: the item goes back to held, sent finds it, a resend is the same item, one
   post only. Swift 285/285.
 
+- Slice 4 WhatsApp (2026-09-27): adapters/whatsapp.js over hands (find/act/commit), sends via
+  apps.send; partialTargets for on-screen chats; ax apps offered only when installed. Testbox:
+  local/apps + cli apps 214 pass, 0 fail, 5 skipped (whatsapp.test.js: a fake WhatsApp window in
+  a Registry with the real apps and hands modules).
+
 ## Doing (2026-09-27, resumed)
 - T4 done (main merged at abd1e79): planner by default, needs prompts on the route and tool side,
   apps.route {text, app, to} for answers (sendTo in route.js), the `vyre apps` prompt loop (TTY:
@@ -181,6 +186,17 @@ and 5 answer code setup, "The planner is not on this Vyre yet" (that answer is i
   apps.notes.trash); the dictionary gives that folder nothing else, so another language needs it.
 - The Capsule half (@App, contacts, Enter twice) is checked once capsule-pro has merged the
   native branch; its steps come with that handoff.
+
+### Real-Mac check, WhatsApp (the lead with the user; sends ONE real message, to the user's own
+"Message yourself" chat, only with the user watching and saying yes)
+  1. Build hands (local/hands-mac/build.sh, through the build lock) and grant Accessibility once.
+  2. With WhatsApp open: `bin/vyre call hands.find '{"app":"net.whatsapp.WhatsApp","role":"AXTextField"}'`
+     and the same for AXCell, AXTextArea, AXButton: note the real names of the search field, the
+     chat rows, the message field and Send. Put any that differ in config apps.whatsapp.
+  3. `bin/vyre apps targets whatsapp`: the chats on screen, by name.
+  4. `bin/vyre apps whatsapp <the user's own chat name>: Vyre check` and prove it: WhatsApp stays
+     in the background, the chat opens, the words appear, Send is pressed, "Sent to ... on WhatsApp".
+  5. A wrong name (`bin/vyre apps whatsapp nobody-here: x`) is not_found and nothing is written.
 
 ## Standing rule (user, 2026-09-27): Vyre must not nag
 The user runs on bypass permissions. No prompt or Touch ID for the person's own actions (notes,

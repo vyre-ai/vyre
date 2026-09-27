@@ -81,16 +81,20 @@ test("presence cli: with the person's proof from their terminal, vault.put and v
   assert.ok(grant.data, JSON.stringify(grant));
 });
 
-test("presence cli: one Touch ID at a login terminal, then that terminal's vault reads ask nothing; MCP and agents are refused", async t => {
-  const { root, screen } = await realVyred(t, { touchid: true, terminal: "ttys007" });
+test("presence cli: one Touch ID at a login, then that login's grants ask nothing and are audited; reveals still ask; MCP and agents are refused", async t => {
+  const { root, screen } = await realVyred(t, { touchid: true, terminal: { key: "ttys007#700@start", tty: "ttys007" } });
   const io = terminal(screen);
   assert.ok((await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io, tty: true })).data);
   const first = await callAsPerson("vault.reveal", { name: "mail-token" }, { root, io });
   assert.ok(first.data, JSON.stringify(first));
   const again = await vyre(["vault", "get", "mail-token", "--reveal"], { VYRE_HOME: root });
-  assert.equal(again.code, 0, again.out);
-  assert.match(again.out, /fixture-value/);
-  assert.doesNotMatch(again.out, /person at a terminal|Type the code/);
+  assert.equal(again.code, 3, "a reveal asks every time: " + again.out);
+  assert.doesNotMatch(again.out, /fixture-value/);
+  const grant = await vyre(["vault", "grant", "mail-token", "gate"], { VYRE_HOME: root });
+  assert.equal(grant.code, 0, grant.out);
+  assert.ok(screen.some(w => /used your Touch ID window for letting gate use mail-token/.test(w.text)), "the notice on the terminal");
+  const audit = await call("vault.audit", { name: "mail-token" }, { root });
+  assert.match(JSON.stringify(audit), /Touch ID window on ttys007/);
   for (const caller of ["mcp", "cli agent:kit"]) assert.ok((await call("vault.reveal", { name: "mail-token" }, { root, caller })).error, caller);
 });
 
@@ -99,7 +103,6 @@ test("presence cli: a caller vyred sees in no login terminal (a model's shell) a
   const io = terminal(screen);
   assert.ok((await callAsPerson("vault.put", { name: "mail-token", kind: "api-key", fields: { value: "fixture-value" } }, { root, io, tty: true })).data);
   assert.ok((await callAsPerson("vault.reveal", { name: "mail-token" }, { root, io })).data);
-  const again = await vyre(["vault", "get", "mail-token", "--reveal"], { VYRE_HOME: root });
+  const again = await vyre(["vault", "grant", "mail-token", "gate"], { VYRE_HOME: root });
   assert.equal(again.code, 3, again.out);
-  assert.doesNotMatch(again.out, /fixture-value/);
 });
