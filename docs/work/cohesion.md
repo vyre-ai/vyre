@@ -17,6 +17,14 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 - docs-check OWNERS gains "cohesion" (scripts/lib/docs/check.js, docs team's file).
 
 ## Doing
+- rc.2 fixes, both from "Needs from others" below: f3977466 (branch merged current main first,
+  fb9a478e). #7 sight.watch now checks its own real caller (agentCaller) before forwarding to
+  computers.watch, which only ever sees "module:sight" once sight forwards; fails closed if
+  agents.list cannot be reached. #3 link.pending carries `created` (core/link/box.js); waiting's
+  fromPending uses it directly, falls back to the old expiry-minus-TTL guess for an older box.
+  testbox: 281/281 targeted (sight, waiting, link*, docs-*, boundaries), nice 15, load 4.65 before.
+  Sent to e2e for review (#7 is security), then to the integrator. No testbox processes of mine
+  running. Items 8, 9, 10 deferred to 0.1.1 per the lead.
 - SAVED for restart. Integrator has 0f4d1105 (release candidate; supersedes f5cd36f7): glue modules,
   drift test, hands privacy fix (e2e signed off), sight.frame, context view/now {surface}, Mac asks,
   suggest account ranking, Chrome teardown fix. testbox: 156 targeted pass; hands-chrome 8/8 on
@@ -58,11 +66,12 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 - vault: core 9b 6cf9a99f (awaiting testbox); default + last_used in a small FOLLOW-UP sha (setting a default is person-only, no Touch ID): default_for via vault.connections.update, is_default with a capability filter, last_used (stamped on allowed, 1/min), list sorted default > last_used > label. suggest: rank accounts in that order (already list order).
 - mobile: per-tool policy flags (human_only, sessionable) on /v1/tools rows (platform or presence).
 - mobile: wants sight.frame (a still JPEG per step) for the relay? Needs a resize in computerd.
-- computers: `sight.watch` calls computers.watch as module:sight, so ownSurface (core/computers/index.js:154)
-  can't see the real caller; sight keeps agents out, but surface is not checked against the caller.
+- DONE by cohesion (rc.2, f3977466): sight.watch checks its own real caller before forwarding to
+  computers.watch, which only ever saw "module:sight"; ownSurface's own note now points at it.
 - switchboard: threads.asks drops `project` in shape() (core/switchboard/asks.js:92); a Bash ask's
   summary isn't redacted (core/switchboard/translate.js:97).
-- link: link.pending has no created time (core/link/box.js:94); waiting derives it from the 10 min TTL.
+- DONE by cohesion (rc.2, f3977466): link.pending carries a real `created` time; waiting's
+  fromPending uses it, falling back to the old TTL guess only for an older box.
 - vault: allow module:suggest (or per surface) on vault.connections.list; a connection event family.
 - DECIDED (lead): connectors owns core/mail; the argument is `account` = the vault connection id.
 
