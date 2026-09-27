@@ -39,7 +39,7 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 
 - Batch 4 red fixed: work/platform-b4fix 97686e1b (checkout build update downloads nothing), with the integrator.
 - work/platform b7bbf5d8 (pushed): merges b4d + fix; ADR 0035 schema; P1 settings-free; vault needs.credentials loader diff (ctx.modules.status(), not .list); Render (7 kinds); statusline surface; ADR 0033 theme -> ADR 0035 (appearance.scheme). 393 pass / 0 fail / 16 skip.
-- settings.write af5160dd (pushed) on native-core ac34c322: mirror() rev + said(); 74/74. e2e ok BUT held (local 691910b3 merges native-core 22d8fae9 + the hub.json secret test, NOT yet run: testbox on hold): lands after native-core fixes e2e MEDIUM (secret keys out of hub.json); then add an assert that a secret written via settings.write is not in hub.json in the clear, new sha to integrator.
+- settings.write af5160dd (pushed) on native-core ac34c322: mirror() rev + said(); 74/74. e2e ok BUT held (local 691910b3 merges native-core 22d8fae9 + the hub.json secret test, NOT yet run: testbox on hold; native-core confirms cli over the socket is the person, test correct as written): lands after native-core fixes e2e MEDIUM (secret keys out of hub.json); then add an assert that a secret written via settings.write is not in hub.json in the clear, new sha to integrator.
 - Reviewed connectors af11226d meta.firstParty: OK (merge after b7bbf5d8). Vault told to read ctx.modules.status().
 - Testbox runs on hold until the integrator reports batch 4 (lead).
 
