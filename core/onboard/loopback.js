@@ -28,7 +28,7 @@ export const TOOLS = new Set(["onboard.status", "onboard.you", "onboard.name", "
   "onboard.skip", "onboard.finish", "onboard.passkey", "projects.catalog", "projects.create", "projects.list", "recall.status",
   // The import step (docs/design/import.md, memory-iq): discover, choose and watch, plus a
   // question box once the first sessions are searchable.
-  "import.scan", "import.plan", "import.start", "import.status", "memory.answer"]);
+  "import.scan", "import.plan", "import.start", "import.status", "memory.ask"]);
 
 const onboardPath = p => p === "/onboard" || p.startsWith("/onboard/");
 /** The Deck's shared files the onboarding page loads, theme and fonts included: static, the same for everyone. */

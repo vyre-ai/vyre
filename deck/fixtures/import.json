@@ -62,20 +62,24 @@
           }
         ]
       }
-    ]
+    ],
+    "left_out": { "vyre": 40, "excluded": 3 },
+    "capped": false,
+    "claude_keeps_days": 30
   },
   "import.plan": {
     "plan": "plan_sample",
-    "sessions": 310,
-    "bytes": 26300000,
-    "folders": ["/Users/alex/Work/harlow-site", "/Users/alex/Work/northwind", "/Users/alex/Work/harlow-site-old"]
+    "sessions": 270,
+    "bytes": 21900000,
+    "folders": ["/Users/alex/Work/harlow-site", "/Users/alex/Work/northwind", "/Users/alex/Work/harlow-site-old"],
+    "pace": { "turns": 1095, "usd": 0.33, "fast": { "hours": 1 }, "gentle": { "days": 2 } }
   },
   "import.start": { "started": true },
   "import.status": {
-    "search": { "done": 310, "total": 310 },
-    "meaning": { "done": 180, "total": 310 },
+    "search": { "done": 270, "total": 270 },
+    "meaning": { "done": 180, "total": 270 },
     "graph": { "people": 6, "orgs": 2, "facts": 22, "sessions": 96 },
     "personal": { "done": 40, "total": 96 },
-    "searchable_sessions": 310
+    "searchable_sessions": 270
   }
 }
