@@ -27,18 +27,19 @@ mobile and the Capsule (through their owners).
   project refs (my default: no).
 
 - Step 3 typed credentials (core/vault/kinds.js, details column, Watchtower expired/expiring,
-  passkey never released, CLI put flags). kinds.test.js 4/4; the full vault suite rerun is pending
-  (testbox load was 16 from other teams).
+  passkey never released, CLI put flags).
+- Step 4 import sources (core/vault/import-more.js): LastPass, Dashlane (zip/CSV), Keeper (CSV/JSON),
+  NordPass, Proton Pass (zip/JSON/CSV), Enpass, KeePass/KeePassXC (XML/CSV; kdbx refused with how
+  to export), Firefox, Edge/Brave/Arc/Opera/Vivaldi (chrome-csv). Safe XML reader (no DOCTYPE).
+  Unsure layouts (from memory, fixtures only): Keeper headerless CSV, Dashlane payments/ids,
+  Proton state/expiry, Enpass cc field types. vault + tools + CLI + extension: 415 pass, 0 fail.
 
 ## Doing
 
-- Step 3 verification: rerun core/vault + core/cli suites when testbox load < 8.
-- Step 4 import sources (subagent: parsers in core/vault/import-more.js).
+- Step 5: Google Authenticator migration QR + otpauth.
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
-4. Import sources (L): LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass XML/CSV,
-   Edge/Brave/Arc, Firefox. KDBX4 later (box is Node 22, no argon2).
 5. Google Authenticator migration QR (multi-part) + otpauth (M); the client decodes the image.
 6. vault.codes: current + next + remaining (S).
 7. Leak sweep + rotation (L): auto for AWS, GCP SA, Cloudflare, Twilio, GitLab, Tailscale; guided

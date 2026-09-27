@@ -128,6 +128,11 @@ Not defended, stated plainly:
 - Surfaces: the CLI (`vyre vault import --preview`, `--rewrite`) and the Deck's import sheet (the
   pwa team's surface). Both call these tools.
 
+- Sources beyond 1Password, Bitwarden, Chrome and Apple (core/vault/import-more.js): LastPass,
+  Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass/KeePassXC XML and CSV, Firefox, and the
+  Chromium browsers' CSV. Encrypted exports (a .kdbx, a PGP Proton export) are refused with how
+  to export again. The XML reader refuses any DOCTYPE, so no entity can expand.
+
 ### 1b. Typed credentials
 
 - Kinds (core/vault/kinds.js, the one list every surface reads): login, authenticator, passkey,

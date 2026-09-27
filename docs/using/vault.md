@@ -88,13 +88,17 @@ terminal). For an env set, or to name the fields of any kind, use `--field NAME`
 Other ways in:
 
 ```
-vyre vault import ~/Downloads/1password-export.csv   # also .env, Bitwarden, Chrome, Safari
+vyre vault import ~/Downloads/1password-export.csv   # any password manager's export, or .env files
 vyre vault generate --words 5 harlow-wifi             # stored, never printed, because it is named
 vyre vault ssh generate deploy-key                    # prints only the public key
 ```
 
 `import` reads the file inside vyred, so the values never pass through Claude, and it leaves the
-file alone. Delete the file afterwards. `generate` without a name prints a password and stores
+file alone. It reads 1Password (.1pux and CSV), Bitwarden (JSON and CSV), LastPass, Dashlane (the
+zip or its CSVs), Keeper (CSV and JSON), NordPass, Proton Pass (the unencrypted zip, JSON or CSV),
+Enpass, KeePass and KeePassXC (XML or CSV; export a .kdbx first), Chrome, Edge, Brave, Arc,
+Firefox and Apple Passwords, and finds the format by itself. `--preview` shows what would come
+in before anything is stored. Delete the file afterwards. `generate` without a name prints a password and stores
 nothing.
 
 A project's `.env` files come in the same way, a file or a whole folder at once:

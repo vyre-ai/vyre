@@ -155,7 +155,7 @@ const newId = () => crypto.randomBytes(9).toString("base64url");
 // Binds an import preview to the file it read. Random per process and never stored, so a token is
 // not forgeable from vyre.db and says nothing about the file's contents (ADR 0028, decision 1).
 const IMPORT_TOKEN_KEY = crypto.randomBytes(32);
-const IMPORT_KINDS = ["login", "note", "card", "secret", "api-key", "env-set"];
+const IMPORT_KINDS = ["login", "note", "card", "secret", "api-key", "env-set", "authenticator", "address", "identity", "wifi"];
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 /** A caller's kind, as the registry sees it. */

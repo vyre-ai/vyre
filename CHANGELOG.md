@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vault import reads LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass and Firefox
+
+- New formats in core/vault/import-more.js, detected without a hint: lastpass-csv, dashlane-csv
+  and dashlane-zip, keeper-csv (headerless) and keeper-json, nordpass-csv, protonpass-csv,
+  protonpass-json and protonpass-zip, enpass-json, keepass-xml, keepassxc-csv, firefox-csv. Edge,
+  Brave, Arc, Opera and Vivaldi write Chrome's CSV: edge-csv, brave-csv, arc-csv, opera-csv and
+  vivaldi-csv parse like chrome-csv, and detection still says chrome-csv.
+- Records land as the kind they fit: login, authenticator (a TOTP seed alone), card, address,
+  identity (Dashlane IDs), wifi (Proton Pass) or note. vault.import.preview counts the new kinds.
+- KeePass XML goes through a small dependency-free reader that refuses a DOCTYPE, so no entity or
+  external entity is ever expanded. A .kdbx file, an encrypted Proton Pass export and a PGP-armoured
+  file are refused with the way to export again. Names, descriptions, skip reasons and errors
+  still never carry a value. Tests: core/vault/import-more.test.js.
+
 #### Typed credentials: PATs with scopes and expiry, cloud keys, certificates, Wi-Fi and more
 
 - New kinds: authenticator, passkey, address, identity, pat, oauth, cloud, db-url, cert,
