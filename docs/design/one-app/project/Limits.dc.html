@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Project settings, Teammates and usage</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2700px; height: 1200px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">Project settings · Teammates and usage</span>
+      <h1 class="t28 w6">Pick how many teammates run at once, and see what that does to your plan before it happens.</h1>
+      <p class="t15 t2">Four presets, Balanced recommended. Each one says its peak drain in plain words, the box ceiling caps anything above it, and a usage pause keeps teammates out of the last fifth of your window. Every change saves where you make it.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <!-- Desktop: Projects, Harlow Legal, Project settings, Teammates, Limits -->
+    <div class="cap">
+      <span class="cap-t">Desktop, 1280 wide · Harlow Legal, Project settings, Teammates, Limits · click a preset, a stepper or a toggle</span>
+      <div class="win" style="width: 1280px; height: 800px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+        <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <nav class="rail" aria-label="Vyre">
+            <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">2</span></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+            <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+            <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+              <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+            </div>
+          </nav>
+          <main class="main">
+            <header class="top" style="grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);">
+              <div class="top-l"><h1 class="t15 w6">Harlow Legal</h1><span class="t12 t3 trunc">Project settings</span></div>
+              <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+              <div class="top-r"><span class="st"><span class="dot dot-run"></span>direct 12 ms</span></div>
+            </header>
+            <div class="ld" style="grid-template-columns: 256px minmax(0, 1fr);">
+              <div class="ld-l">
+                <a class="row t12 t2" href="#" style="gap: 4px; padding: 12px 16px 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg>Projects</a>
+                <div class="col" style="gap: 2px; padding: 4px 16px 12px; border-bottom: 1px solid var(--rule);"><span class="w6">Harlow Legal</span><span class="mono t12 t2 trunc">~/work/harlow-legal</span></div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><span class="w6">General</span><span class="t12 t3 trunc">Name, folder, brief</span></div>
+                </div>
+                <div class="lrow lrow-on" style="align-items: center;">
+                  <svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><span class="w6">Teammates</span><span class="t12 t3 trunc">4 teammates · {{d.name}}</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><span class="w6">Always allowed</span><span class="t12 t3 trunc">3 commands</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"></rect><path d="M4.5 6l2 2-2 2M8.5 10.5h3"></path></svg>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><span class="w6">Session defaults</span><span class="t12 t3 trunc">Claude · opus · asks first</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><span class="w6">Memory</span><span class="t12 t3 trunc">12 notes for this project</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <svg class="ic t2" viewBox="0 0 16 16"><path d="M1.5 10.5l2.5-7h8l2.5 7v2h-13z"></path><path d="M1.5 10.5h13M11.5 12h.5"></path></svg>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><span class="w6">Files</span><span class="t12 t3 trunc">VyreDrive · synced 2m ago</span></div>
+                </div>
+                <div class="row t12 t3" style="margin-top: auto; padding: 10px 16px; border-top: 1px solid var(--rule); gap: 8px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Changes save as you make them</div>
+              </div>
+
+              <div class="ld-d" style="padding: 20px 28px; gap: 14px;">
+                <div class="row" style="gap: 16px; align-items: flex-end;">
+                  <div class="col grow" style="gap: 4px; min-width: 0;"><h2 class="t20 w6">Teammates and usage</h2><span class="t13 t2 trunc">How much runs at once in Harlow Legal, and when teammates step back for your plan.</span></div>
+                  <div class="seg"><button type="button">Roster</button><button class="on" type="button" aria-current="page">Limits</button><button type="button">Budget</button></div>
+                </div>
+
+                <div class="col" style="gap: 8px;">
+                  <div class="row" style="gap: 10px; height: 18px;">
+                    <span class="lbl">How much can run at once</span>
+                    <sc-if value="{{ savedPreset }}"><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Saved</span></sc-if>
+                    <span class="t12 t3" style="margin-left: auto;">Your plan looks like Max, from its usage signals</span>
+                  </div>
+                  <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px;">
+                    <sc-for list="{{ cards }}" as="c">
+                      <button class="tile {{c.cls}}" type="button" onClick="{{ c.onPick }}" aria-label="{{c.aria}}" aria-pressed="{{c.pressed}}" style="gap: 6px; padding: 12px 14px;">
+                        <span class="row" style="gap: 8px; width: 100%;"><span class="radio {{c.radio}}"></span><span class="t15 w6 grow">{{c.name}}</span><sc-if value="{{ c.rec }}"><span class="tag">Recommended</span></sc-if></span>
+                        <span class="t13">{{c.nums}}</span>
+                        <span class="t12 t2">{{c.peak}}</span>
+                        <span class="t12 t3">{{c.expl}}</span>
+                        <sc-if value="{{ c.cap }}"><span class="row t12 t2" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>{{c.cap}}</span></sc-if>
+                      </button>
+                    </sc-for>
+                    <div class="tile {{cu.cls}}" style="gap: 6px; padding: 12px 14px; cursor: default;">
+                      <button class="row" type="button" onClick="{{ cu.onPick }}" aria-label="Custom limits" aria-pressed="{{cu.pressed}}" style="gap: 8px; width: 100%; border: 0; background: transparent; padding: 0; text-align: left; cursor: pointer;"><span class="radio {{cu.radio}}"></span><span class="t15 w6 grow">Custom</span><span class="t12 t2">{{cu.peak}}</span></button>
+                      <div class="row" style="gap: 8px;">
+                        <span class="t13 grow">Teammates</span>
+                        <span class="row" style="gap: 0; border: 1px solid var(--rule-strong); border-radius: 8px;">
+                          <button class="ibtn ibtn-sm" type="button" onClick="{{ tDown }}" aria-label="One fewer teammate" style="color: {{tDownC}};"><svg class="ic" viewBox="0 0 16 16"><path d="M3 8h10"></path></svg></button>
+                          <span class="t13 w6" style="width: 24px; text-align: center;">{{ct}}</span>
+                          <button class="ibtn ibtn-sm" type="button" onClick="{{ tUp }}" aria-label="One more teammate" style="color: {{tUpC}};"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
+                        </span>
+                      </div>
+                      <div class="row" style="gap: 8px;">
+                        <span class="t13 grow">Subagents</span>
+                        <span class="row" style="gap: 0; border: 1px solid var(--rule-strong); border-radius: 8px;">
+                          <button class="ibtn ibtn-sm" type="button" onClick="{{ sDown }}" aria-label="One fewer subagent" style="color: {{sDownC}};"><svg class="ic" viewBox="0 0 16 16"><path d="M3 8h10"></path></svg></button>
+                          <span class="t13 w6" style="width: 24px; text-align: center;">{{cs}}</span>
+                          <button class="ibtn ibtn-sm" type="button" onClick="{{ sUp }}" aria-label="One more subagent" style="color: {{sUpC}};"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
+                        </span>
+                      </div>
+                      <span class="t12 t3">1 to 8 teammates, 0 to 16 subagents</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="card" style="padding: 14px 18px; display: flex; flex-direction: column; gap: 10px;">
+                  <div class="row" style="gap: 12px; align-items: flex-start;">
+                    <span class="t15 grow">{{d.impact}}</span>
+                    <span class="tag">estimate</span>
+                  </div>
+                  <div class="col" style="gap: 6px;">
+                    <div style="position: relative; height: 8px; border-radius: 4px; background: var(--hover);">
+                      <div style="position: absolute; left: 0; top: 0; bottom: 0; width: {{d.meterW}}%; border-radius: 4px; background: var(--focus); transition: width 200ms ease-out;"></div>
+                      <span style="position: absolute; left: 10%; top: -3px; width: 2px; height: 14px; background: var(--text-2);"></span>
+                      <span style="position: absolute; left: 84%; top: -3px; width: 2px; height: 14px; background: var(--text-2);"></span>
+                    </div>
+                    <div style="position: relative; height: 16px;">
+                      <span class="t12 t3" style="position: absolute; left: 10%; transform: translateX(-50%); white-space: nowrap;">1x, you alone</span>
+                      <span class="t12 t3" style="position: absolute; left: 84%; transform: translateX(-50%); white-space: nowrap;">8.4x, box ceiling</span>
+                      <span class="t12 t3" style="position: absolute; right: 0;">10x</span>
+                    </div>
+                  </div>
+                  <div class="row" style="gap: 12px;">
+                    <span class="t13 w6 grow trunc">{{d.feedback}}</span>
+                    <span class="t12 t2">Peak {{d.multTxt}}x one Opus session</span>
+                  </div>
+                  <sc-if value="{{ d.capped }}"><div class="row t13 t2" style="gap: 8px;"><svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="4" rx="1"></rect><rect x="2" y="9" width="12" height="4" rx="1"></rect><path d="M4.5 5h.5M4.5 11h.5"></path></svg><span class="trunc">{{d.capNote}}</span></div></sc-if>
+                  <sc-if value="{{ measuredOn }}"><div class="row" style="gap: 8px;"><span class="tag">measured</span><span class="t13 t2 trunc">Measured this week: 2.1x on average, 3.8x at peak. A real day sits well under the peak.</span></div></sc-if>
+                  <sc-if value="{{ measuredOff }}"><div class="row" style="gap: 8px;"><span class="tag">estimate</span><span class="t13 t2 trunc">Measured figures replace the estimate after a week on this setting.</span></div></sc-if>
+                  <div class="hr"></div>
+                  <div class="row" style="gap: 10px;">
+                    <svg class="ic t3" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>
+                    <span class="t13 t2 grow trunc">This box allows 6 teammates and 8 subagents across all projects.</span>
+                    <a class="btn btn-g btn-sm" href="#">Change in Settings, Box</a>
+                  </div>
+                </div>
+
+                <div class="card">
+                  <div class="card-h" style="height: 40px;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"></path></svg><span class="w6 grow">Usage pause</span><span class="t12 t3">Five-hour window · resets 16:00</span></div>
+                  <div class="col" style="gap: 6px; padding: 0 16px 12px;">
+                    <div class="row" style="gap: 12px;"><span class="t13 t2 grow">Your plan now</span><span class="t13 w6">62 percent</span></div>
+                    <div style="position: relative; height: 8px; border-radius: 4px; background: var(--hover);">
+                      <div style="position: absolute; left: 0; top: 0; bottom: 0; width: 62%; border-radius: 4px; background: var(--label);"></div>
+                      <sc-if value="{{ pauseOn }}"><span style="position: absolute; left: 80%; top: -3px; width: 2px; height: 14px; background: var(--text);"></span></sc-if>
+                    </div>
+                    <div style="position: relative; height: 16px;"><sc-if value="{{ pauseOn }}"><span class="t12 t3" style="position: absolute; left: 80%; transform: translateX(-50%); white-space: nowrap;">pauses at 80</span></sc-if></div>
+                  </div>
+                  <div class="row" style="gap: 12px; padding: 10px 16px; border-top: 1px solid var(--rule);">
+                    <div class="col grow" style="min-width: 0;"><span class="w6">Pause new teammate work at 80 percent</span><span class="t12 t3 trunc">Running work finishes. New requests and helpers wait for the reset, or until you resume.</span></div>
+                    <sc-if value="{{ savedPause }}"><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Saved</span></sc-if>
+                    <button class="tog {{pauseCls}}" type="button" onClick="{{ togglePause }}" role="switch" aria-checked="{{pauseAria}}" aria-label="Pause new teammate work at 80 percent"></button>
+                  </div>
+                  <div class="row" style="gap: 12px; padding: 10px 16px; border-top: 1px solid var(--rule);">
+                    <div class="col grow" style="min-width: 0;"><span class="w6">Fall back to the API key when the plan is exhausted</span><span class="t12 t2 trunc">This bills per call. Off, a full plan means teammates wait for the reset at no cost.</span></div>
+                    <sc-if value="{{ savedFallback }}"><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Saved</span></sc-if>
+                    <button class="tog {{fallbackCls}}" type="button" onClick="{{ toggleFallback }}" role="switch" aria-checked="{{fallbackAria}}" aria-label="Fall back to the API key when the plan is exhausted"></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phone 1: the same screen as a sheet, on a Pro plan -->
+    <div class="cap">
+      <span class="cap-t">Phone · the same screen as a sheet, on a Pro plan</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav" style="display: grid; grid-template-columns: 110px minmax(0, 1fr) 110px;">
+          <span class="row" style="gap: 2px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg><span class="t17">Projects</span></span>
+          <span class="t17 w6" style="text-align: center;">Harlow Legal</span>
+          <span></span>
+        </div>
+        <div class="ph-body">
+          <div class="ph-card"><div class="ph-row"><span class="t17">Threads</span></div></div>
+        </div>
+        <div class="ph-scrim"></div>
+        <div class="ph-sheet" style="top: 64px;">
+          <div class="grab"></div>
+          <div class="row" style="gap: 8px; padding: 6px 8px 4px 16px; height: 50px;">
+            <span class="t17 w6 grow">Teammates and usage</span>
+            <sc-if value="{{ pSavedOn }}"><span class="t13 t2 row" style="gap: 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Saved</span></sc-if>
+            <button class="btn btn-g ph-btn" type="button">Done</button>
+          </div>
+          <div class="col" style="gap: 10px; padding: 0 16px; min-height: 0; overflow: hidden;">
+            <sc-if value="{{ pProLine }}">
+              <div class="row" style="gap: 10px; padding: 8px 8px 8px 12px; border-radius: 10px; background: var(--hover); flex: none;">
+                <span class="t13 grow">Your plan looks like Pro: Light keeps teammates from using up your window</span>
+                <button class="btn ph-btn" type="button" onClick="{{ pUseLight }}" style="flex: none;">Use Light</button>
+              </div>
+            </sc-if>
+            <span class="t13 t2" style="padding: 0 2px; flex: none;">How much can run at once</span>
+            <div class="ph-card" style="flex: none;">
+              <sc-for list="{{ pRows }}" as="r">
+                <button class="choice {{r.cls}}" type="button" onClick="{{ r.onPick }}" aria-label="{{r.aria}}" aria-pressed="{{r.pressed}}" style="padding: 10px 14px; align-items: center; border-top-color: var(--rule);">
+                  <span class="radio {{r.radio}}"></span>
+                  <span class="col grow" style="min-width: 0;">
+                    <span class="row" style="gap: 8px;"><span class="t17 w6">{{r.name}}</span><sc-if value="{{ r.rec }}"><span class="tag">Recommended</span></sc-if></span>
+                    <span class="t13 t2 trunc">{{r.line}}</span>
+                    <sc-if value="{{ r.on }}"><span class="t13 t2">{{r.expl}}</span></sc-if>
+                  </span>
+                </button>
+              </sc-for>
+            </div>
+            <sc-if value="{{ pCustomOn }}">
+              <div class="row" style="gap: 12px;">
+                <div class="col grow" style="gap: 4px;"><span class="t13 t2">Teammates</span><span class="row" style="gap: 0; border: 1px solid var(--rule-strong); border-radius: 10px; align-self: flex-start;"><button class="ibtn" type="button" onClick="{{ pTDown }}" aria-label="One fewer teammate" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M3 8h10"></path></svg></button><span class="t17 w6" style="width: 32px; text-align: center;">{{pct}}</span><button class="ibtn" type="button" onClick="{{ pTUp }}" aria-label="One more teammate" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button></span></div>
+                <div class="col grow" style="gap: 4px;"><span class="t13 t2">Subagents</span><span class="row" style="gap: 0; border: 1px solid var(--rule-strong); border-radius: 10px; align-self: flex-start;"><button class="ibtn" type="button" onClick="{{ pSDown }}" aria-label="One fewer subagent" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M3 8h10"></path></svg></button><span class="t17 w6" style="width: 32px; text-align: center;">{{pcs}}</span><button class="ibtn" type="button" onClick="{{ pSUp }}" aria-label="One more subagent" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button></span></div>
+              </div>
+            </sc-if>
+            <div class="ph-card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; flex: none;">
+              <span class="t17">{{p.impact}}</span>
+              <div style="flex: none; position: relative; height: 8px; border-radius: 4px; background: var(--hover);">
+                <div style="position: absolute; left: 0; top: 0; bottom: 0; width: {{p.meterW}}%; border-radius: 4px; background: var(--focus);"></div>
+                <span style="position: absolute; left: 84%; top: -3px; width: 2px; height: 14px; background: var(--text-2);"></span>
+              </div>
+              <span class="t13 w6">{{p.feedback}}</span>
+              <div class="row" style="gap: 8px;"><span class="tag">estimate</span><span class="t13 t2 trunc">peak {{p.multTxt}}x one Opus session</span></div>
+              <sc-if value="{{ p.capped }}"><span class="t13 t2">{{p.capNote}}</span></sc-if>
+              <span class="t13 t2 trunc">Box allows 6 teammates, 8 subagents · Settings, Box</span>
+            </div>
+            <div class="ph-card" style="flex: none;">
+              <div class="ph-row" style="align-items: center; padding: 10px 14px;"><div class="col grow" style="min-width: 0;"><span class="t17">Usage pause</span><span class="t13 t2 trunc">At 80 percent · plan at 62 · resets 16:00</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+            </div>
+          </div>
+          <div class="safe-b" style="margin-top: auto;"></div>
+        </div>
+        <div class="home-ind" style="z-index: 8;"></div>
+      </div>
+    </div>
+
+    <!-- Phone 2: Agents page with the slot chip, the pause banner and the waiting group -->
+    <div class="cap">
+      <span class="cap-t">Phone · Agents, later: the plan passed 80 percent · Run now, Cancel and Resume work</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-h">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg>
+          <span class="pg">Now</span><span class="pg">Chats</span><span class="pg pg-on">Agents</span>
+        </div>
+        <div class="ph-body" style="gap: 10px;">
+          <div class="row" style="gap: 8px;"><span class="chip" style="cursor: default;"><span class="dot dot-run"></span>{{chip}}</span></div>
+          <sc-if value="{{ pausedOn }}">
+            <div class="banner" style="flex-direction: column; align-items: stretch; gap: 8px; padding: 12px 14px;">
+              <div class="row" style="gap: 10px; align-items: flex-start;"><span class="dot dot-need" style="margin-top: 8px;"></span><div class="col grow" style="min-width: 0;"><span class="t17 w6">Teammates paused: plan at 85 percent until 16:00</span><span class="t13 t2">Running work finishes.</span></div></div>
+              <button class="btn ph-btn" type="button" onClick="{{ resume }}" style="align-self: flex-start; margin-left: 18px;">Resume anyway</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ resumedOn }}">
+            <div class="banner" style="padding: 10px 14px;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z"></path></svg><span class="t13 t2 grow">Resumed until the window resets at 16:00</span><button class="btn btn-g ph-btn" type="button" onClick="{{ unresume }}">Undo</button></div>
+          </sc-if>
+          <div class="ph-sec" style="padding-top: 2px;"><span class="ring"></span>Working<span class="t12 t3" style="margin-left: auto; font-weight: 400;">{{workingN}}</span></div>
+          <div class="ph-card">
+            <div class="ph-row" style="align-items: center; padding: 8px 14px;"><span class="av av-32">d</span><div class="col grow" style="min-width: 0;"><span class="ttl trunc">design</span><span class="t13 t2 trunc">Making the estate intake calmer · 18 min</span></div></div>
+            <div class="ph-row" style="align-items: center; padding: 8px 14px;"><span class="av av-32">b</span><div class="col grow" style="min-width: 0;"><span class="ttl trunc">backend</span><span class="t13 t2 trunc">Fixing the intake form API · 6 min</span></div></div>
+            <sc-for list="{{ ranNow }}" as="w">
+              <div class="ph-row" style="align-items: center; padding: 8px 14px;"><span class="av av-32">{{w.letter}}</span><div class="col grow" style="min-width: 0;"><span class="ttl trunc">{{w.role}}</span><span class="t13 t2 trunc">Started by you · over the project limit once</span></div></div>
+            </sc-for>
+          </div>
+          <div class="ph-sec" style="padding-top: 2px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg>Waiting for a slot<span class="t12 t3" style="margin-left: auto; font-weight: 400;">{{waitingN}}</span></div>
+          <div class="ph-card">
+            <sc-for list="{{ queue }}" as="q">
+              <sc-if value="{{ q.isWait }}">
+                <div class="ph-row" style="align-items: center; padding: 6px 8px 6px 14px;">
+                  <div class="col grow" style="min-width: 0;"><div class="row" style="gap: 8px;"><span class="ttl">{{q.role}}</span><span class="t13 t2 trunc">{{q.ask}}</span></div><span class="t13 t2 trunc">{{q.detail}}</span><span class="t13 t3 trunc">{{q.who}}</span></div>
+                  <button class="btn btn-s ph-btn" type="button" onClick="{{ q.onRun }}" aria-label="{{q.runAria}}" style="padding: 0 12px;">Run now</button>
+                  <button class="ibtn" type="button" onClick="{{ q.onCancel }}" aria-label="{{q.cancelAria}}" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"></path></svg></button>
+                </div>
+              </sc-if>
+              <sc-if value="{{ q.isCancel }}">
+                <div class="ph-row" style="align-items: center; padding: 6px 8px 6px 14px; background: var(--hover);"><span class="t13 t2 grow trunc">Cancelled {{q.role}}: {{q.ask}}</span><button class="btn btn-g ph-btn" type="button" onClick="{{ q.onUndo }}">Undo</button></div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </div>
+        <div class="capsule"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="ph">Ask juno, find, or run</span><button class="mic" type="button" aria-label="Hold to talk"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button></div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <div class="anno" style="width: 340px;">
+      <span class="lbl">Desktop inset · Agents, Harlow Legal (same state as the phone)</span>
+      <div class="card" style="overflow: hidden;">
+        <div class="card-h"><span class="w6 grow">Agents</span><span class="chip" style="cursor: default; font-size: 12px; line-height: 16px; height: 24px;"><span class="dot dot-run"></span>{{chip}}</span></div>
+        <sc-if value="{{ pausedOn }}">
+          <div class="row" style="gap: 8px; padding: 8px 12px 8px 16px; background: var(--hover);"><span class="dot dot-need"></span><span class="t12 grow trunc">Teammates paused: plan at 85 percent until 16:00</span><button class="btn btn-sm" type="button" onClick="{{ resume }}">Resume anyway</button></div>
+        </sc-if>
+        <sc-if value="{{ resumedOn }}">
+          <div class="row" style="gap: 8px; padding: 8px 12px 8px 16px; background: var(--hover);"><span class="t12 t2 grow trunc">Resumed until 16:00</span><button class="btn btn-g btn-sm" type="button" onClick="{{ unresume }}">Undo</button></div>
+        </sc-if>
+        <div class="grp" style="border-top: 1px solid var(--rule);">Waiting for a slot<span class="t3" style="margin-left: auto; font-weight: 400;">{{waitingN}}</span></div>
+        <sc-for list="{{ queue }}" as="q">
+          <sc-if value="{{ q.isWait }}">
+            <div class="row" style="gap: 6px; padding: 6px 10px 6px 16px; border-top: 1px solid var(--rule);">
+              <div class="col grow" style="min-width: 0;"><span class="t13 trunc"><span class="w6">{{q.role}}</span> · {{q.ask}}</span><span class="t12 t3 trunc">{{q.detail}}</span></div>
+              <button class="btn btn-s btn-sm" type="button" onClick="{{ q.onRun }}" aria-label="{{q.runAria}}">Run now</button>
+              <button class="btn btn-g btn-sm" type="button" onClick="{{ q.onCancel }}" aria-label="{{q.cancelAria}}">Cancel</button>
+            </div>
+          </sc-if>
+          <sc-if value="{{ q.isCancel }}">
+            <div class="row" style="gap: 8px; padding: 4px 10px 4px 16px; border-top: 1px solid var(--rule); background: var(--hover);"><span class="t12 t2 grow trunc">Cancelled {{q.role}}</span><button class="btn btn-g btn-sm" type="button" onClick="{{ q.onUndo }}">Undo</button></div>
+          </sc-if>
+        </sc-for>
+      </div>
+
+      <span class="lbl" style="margin-top: 8px;">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>Four choice cards. Balanced is preselected and tagged Recommended; Max is never preselected. Each card gives its two numbers, its peak and one plain line on who it is for.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>One unit is one Opus session working without pause; a helper counts 0.3. The impact line turns that into time: a 5-hour window lasts about 1 h 10 m on Balanced. It says estimate until the project has a week on the setting, then shows the measured average and peak.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>The meter is never red or orange, even at 9x. Heavy is said in words ("heavy, expect to hit your limit"); the fill stays lime for the chosen value.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>The box ceiling is read-only here. Max asks for 10 subagents, so on this box it runs as 8: the card says "Capped at 8 by the box" and the impact uses the capped numbers.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>The pause is on at 80 percent by default; the API-key fallback is off, because it turns a free wait into a bill. A pause shows once in Needs you and as the banner on Agents.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Run now is person-only: it overrides the project limit once, never the box ceiling. Cancel collapses the row with a 4 s Undo.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: every change applies optimistically through the outbox and "Saved" appears in place. The queue updates live from events, and rows keep their height when one moves, so nothing reflows.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2700,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const s = this.state || {};
+    const set = (o) => () => this.setState(o);
+    const BOX_T = 6, BOX_S = 8;
+    const P = {
+      light: { name: 'Light', t: 1, s: 2, peak: 'Peak: at most about 1.6x one Opus session', expl: 'One teammate at a time. Best on a Pro plan.' },
+      balanced: { name: 'Balanced', t: 3, s: 4, peak: 'Peak: about 4.2x one Opus session', expl: 'Good for most projects: a few teammates, room for helpers.' },
+      max: { name: 'Max', t: 6, s: 10, peak: 'Peak: about 9x one Opus session', expl: 'For big pushes on a Max plan. Uses your window fast.' }
+    };
+    const x1 = (v) => String(Math.round(v * 10) / 10);
+    const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const lasts = (mult) => {
+      const m = Math.max(5, Math.round(300 / mult / 5) * 5), h = Math.floor(m / 60), mm = m % 60;
+      const sp = '\u00a0'; return h ? (mm ? h + sp + 'h' + sp + mm + sp + 'm' : h + sp + 'h') : mm + sp + 'm';
+    };
+    const calc = (pre, ct, cs) => {
+      const base = P[pre] || { name: 'Custom', t: ct, s: cs };
+      const et = Math.min(base.t, BOX_T), es = Math.min(base.s, BOX_S);
+      const mult = et + 0.3 * es;
+      const verdict = mult <= 2 ? 'light, leaves most of your window to you'
+        : mult <= 5 ? 'good for most projects'
+        : mult <= 7 ? 'busy, fine on a Max plan'
+        : 'heavy, expect to hit your limit';
+      const caps = [];
+      if (base.t > BOX_T) caps.push('teammates at ' + BOX_T);
+      if (base.s > BOX_S) caps.push('subagents at ' + BOX_S);
+      return {
+        name: base.name,
+        multTxt: x1(mult),
+        impact: 'If every slot is busy, a usage window you would use up in 5 hours lasts about ' + lasts(mult) + '.',
+        feedback: n(et, 'teammate', 'teammates') + ', ' + n(es, 'helper', 'helpers') + ': ' + verdict,
+        meterW: x1(Math.min(mult / 10, 1) * 100),
+        capped: caps.length > 0,
+        capNote: (caps.length > 1 ? 'Capped by the box: ' : 'Capped at ' + (base.s > BOX_S ? BOX_S : BOX_T) + ' by the box: ') + caps.join(' and ') + ', so this runs as ' + n(et, 'teammate', 'teammates') + ' and ' + n(es, 'subagent', 'subagents') + '.'
+      };
+    };
+
+    // Desktop
+    const pre = s.preset ?? 'balanced', ct = s.ct ?? 3, cs = s.cs ?? 4, saved = s.saved ?? 'preset';
+    const pauseOn = s.pause ?? true, fallbackOn = s.fallback ?? false;
+    const d = calc(pre, ct, cs);
+    const cards = ['light', 'balanced', 'max'].map((k) => ({
+      name: P[k].name, nums: n(P[k].t, 'teammate', 'teammates') + ' · ' + n(P[k].s, 'subagent', 'subagents'),
+      peak: P[k].peak, expl: P[k].expl, rec: k === 'balanced', cap: P[k].s > BOX_S ? 'Capped at ' + BOX_S + ' by the box' : '',
+      cls: pre === k ? 'tile-on' : '', radio: pre === k ? 'radio-on' : '', pressed: pre === k ? 'true' : 'false',
+      aria: P[k].name + ' preset' + (k === 'balanced' ? ', recommended' : ''),
+      onPick: set({ preset: k, saved: 'preset' })
+    }));
+    const cc = calc('custom', ct, cs);
+    const cu = { cls: pre === 'custom' ? 'tile-on' : '', radio: pre === 'custom' ? 'radio-on' : '', pressed: pre === 'custom' ? 'true' : 'false',
+      peak: 'about ' + cc.multTxt + 'x', onPick: set({ preset: 'custom', saved: 'preset' }) };
+    const off = 'var(--rule-strong)', on = 'var(--text-2)';
+
+    // Phone 1 (a Pro plan)
+    const pp = s.pp ?? 'balanced', pct = s.pct ?? 3, pcs = s.pcs ?? 4;
+    const p = calc(pp, pct, pcs);
+    const pRows = ['light', 'balanced', 'max', 'custom'].map((k) => {
+      const b = P[k];
+      return {
+        name: b ? b.name : 'Custom', rec: k === 'balanced', on: pp === k,
+        line: b ? n(b.t, 'teammate', 'teammates') + ' · ' + n(b.s, 'subagent', 'subagents') + ' · about ' + x1(b.t + 0.3 * b.s) + 'x'
+                : n(pct, 'teammate', 'teammates') + ' · ' + n(pcs, 'subagent', 'subagents') + ' · about ' + calc('custom', pct, pcs).multTxt + 'x',
+        expl: b ? b.expl : 'Set your own numbers below.',
+        cls: pp === k ? 'choice-on' : '', radio: pp === k ? 'radio-on' : '', pressed: pp === k ? 'true' : 'false',
+        aria: (b ? b.name : 'Custom') + (k === 'balanced' ? ', recommended' : ''),
+        onPick: set({ pp: k, psaved: true })
+      };
+    });
+
+    // Agents queue (phone 2 and the desktop inset share it)
+    const Q = [
+      { id: 'qa', role: 'qa', ask: 'Test the estate intake on staging', eta: '~4 min', who: 'asked by design' },
+      { id: 'writer', role: 'writer', ask: 'Draft the intake welcome email', eta: '~12 min', who: 'asked by the Intake form' },
+      { id: 'research', role: 'research', ask: 'Compare probate filing fees', eta: 'unknown', who: 'asked by alex' }
+    ];
+    const qs = s.q || {};
+    let pos = 0;
+    const queue = Q.map((it) => {
+      const st = qs[it.id] || 'wait';
+      if (st === 'wait') pos += 1;
+      const upd = (v) => () => this.setState({ q: Object.assign({}, this.state.q || {}, { [it.id]: v }) });
+      return Object.assign({}, it, {
+        isWait: st === 'wait', isCancel: st === 'cancel',
+        detail: 'queued · #' + pos + ' · ' + (it.eta === 'unknown' ? 'unknown' : it.eta),
+        runAria: 'Run the ' + it.role + ' request now', cancelAria: 'Cancel the ' + it.role + ' request',
+        onRun: upd('run'), onCancel: upd('cancel'), onUndo: upd('wait')
+      });
+    });
+    const ranNow = Q.filter((it) => qs[it.id] === 'run').map((it) => ({ role: it.role, letter: it.role[0] }));
+    const active = 2 + ranNow.length;
+    const resumed = s.resumed ?? false;
+
+    return {
+      theme: this.props.theme ?? 't-dark',
+      d, cards, cu, ct, cs,
+      savedPreset: saved === 'preset', savedPause: saved === 'pause', savedFallback: saved === 'fallback',
+      measuredOn: pre === 'balanced', measuredOff: pre !== 'balanced',
+      tDown: set({ preset: 'custom', ct: clamp(ct - 1, 1, 8), saved: 'preset' }),
+      tUp: set({ preset: 'custom', ct: clamp(ct + 1, 1, 8), saved: 'preset' }),
+      sDown: set({ preset: 'custom', cs: clamp(cs - 1, 0, 16), saved: 'preset' }),
+      sUp: set({ preset: 'custom', cs: clamp(cs + 1, 0, 16), saved: 'preset' }),
+      tDownC: ct <= 1 ? off : on, tUpC: ct >= 8 ? off : on, sDownC: cs <= 0 ? off : on, sUpC: cs >= 16 ? off : on,
+      pauseOn, pauseCls: pauseOn ? 'tog-on' : '', pauseAria: pauseOn ? 'true' : 'false',
+      fallbackCls: fallbackOn ? 'tog-on' : '', fallbackAria: fallbackOn ? 'true' : 'false',
+      togglePause: set({ pause: !pauseOn, saved: 'pause' }),
+      toggleFallback: set({ fallback: !fallbackOn, saved: 'fallback' }),
+      p, pRows, pct, pcs,
+      pSavedOn: s.psaved ?? false, pProLine: pp !== 'light', pCustomOn: pp === 'custom',
+      pUseLight: set({ pp: 'light', psaved: true }),
+      pTDown: set({ pct: clamp(pct - 1, 1, 8), psaved: true }), pTUp: set({ pct: clamp(pct + 1, 1, 8), psaved: true }),
+      pSDown: set({ pcs: clamp(pcs - 1, 0, 16), psaved: true }), pSUp: set({ pcs: clamp(pcs + 1, 0, 16), psaved: true }),
+      queue, ranNow, workingN: String(active),
+      waitingN: String(queue.filter((q) => q.isWait).length),
+      chip: active + ' of 3 teammates active · 3 of 4 subagents',
+      pausedOn: !resumed, resumedOn: resumed,
+      resume: set({ resumed: true }), unresume: set({ resumed: false })
+    };
+  }
+}
+</script>
+</body>
+</html>
