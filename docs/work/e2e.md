@@ -302,6 +302,7 @@ Plan (to the lead before building):
   signed off as a sha: it carries 0c645473 files.deliver. MEDIUM: every Mac runs `tailscale file
   get --loop` into ~/Vyre/inbox (takes over Taildrop); make it opt-in. LOW: callers "module".
   Lead's rule: security sign-offs need a read of the diff, every commit in the sha.
+  e8302dce (nonces persisted, read: OK). Still blocked on files.deliver (opt-in receiver, no module caller) or a split.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
