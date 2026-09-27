@@ -81,10 +81,9 @@ them, one per fix.
 - Tailnet has my answers to its Mac-send design (sent 2026-09-27).
 
 ## Doing
-- Nothing in flight. Saved 2026-09-27 at logout.
-- The native agent half (the 10 retire blockers in capsule-parity.md) is done on work/capsule-agent,
-  head 74b2f6e, and capsule-pro has merged it into work/capsule-pro (fcfcef0). See
-  docs/work/capsule-agent.md on that branch.
+- Nothing in flight. Saved 2026-09-27 at logout. All work pushed: work/capsule-now (live,
+  threads.unqueue, Electron Esc take-back 6c5bfe0) and work/capsule-agent (capsule.report, no
+  orange b62130d, native Esc take-back 792420c). Merge capsule-now before capsule-agent.
 
 ## Next (open requests, in order)
 - threads.unqueue on the phone (mobile's, rule 8 is the spec). Streaming a queued session's reply live.
