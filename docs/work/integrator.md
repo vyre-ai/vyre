@@ -60,30 +60,24 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   c8fb9aae (batch 2: relay, native Capsule, resilience, tokens, docs; eval said.js),
   fb1ed1d1 (3a: sessions 4311fca5 with the SDK default, chat fb0694d, chat contract 6182766).
 
-## Doing (after Logout 4, 2026-09-27 14:30 UTC)
+## Doing (2026-09-27 16:10 UTC)
 
-- rooms.test.js on main: 10/10 on the test box; memory-iq's failure was its own branch or a run
-  under claude on the Mac (peer.js). Routed back to memory-iq.
-- DEPLOY GATE: box-image on faee38c9 had skipped the build (detect); on 7880dfa6 it built and
-  failed (a lone copy of core/sessions/sdk.js imported config/dialogs.js). The fix landed on
-  origin main as 65cbc02a (pushed by another team, same design as my ccffa0ac, which is dropped).
-  Local main fast-forwarded to it. box-image on main 65cbc02a running; when green, the lead,
-  box-deploy and e2e (headscale) get 65cbc02a. ci's 6b16be62 fixes detect (builds from the npm
-  pack list).
-- idle RSS on main 7880dfa6 (test box, rough, under load): mean 119.8 MB, max 158.9 MB. ci bisects
-  3a/3b (work/ci-rss-bisect). Batch 4 does not land until that is fixed.
-- BATCH 4 staging: pre/batch4b at 5ca7af66 = main 65cbc02a + docs 3ddc281d, capsule-now
-  28246cd0, capsule-agent 42e8da05, app-design be98d494, capsule-apps e99b09d, teammates b5934a4f,
-  platform e8e3d902, memory-iq 5985f489, e2e 0856b9b9, polish-cli 5ac697c8, tailnet a7365a99, plus
-  fixes: the CLI vault-window CHANGELOG entry polish-cli's branch lost, --popover out of deck.css.
-  Full suite on the test box (before the popover fix): 3021 tests, 2941 pass, 3 fail (tokens:
-  fixed; vault watch and memory p95 7.1 ms: load flakes, 38/38 on rerun), 74 skipped, 3 todo.
-- Check with memory-iq: 5985f489 removes most of core/memory/personal/model.js and its test (the
-  reader 07f5c3ca replaces the model pass adc1a94b?).
-- Parked: federation 98048454 (conflicts in daemon, link, switchboard; its owner merges main).
-- Waiting for ready shas: mobile, capsule-pro (capsule-mac green), pwa, ci. ci-boundaries LAST
-  (it has not merged main).
-- State.swift after the capsule-agent merge is not compiled yet: capsule-mac on the batch.
+- main = 53cd1326 (deployed on the live box). The lead pushed 65cbc02a and 53cd1326 during the
+  deploy; main is the integrator's again. fad9ae50 (my loop fix) dropped: ci's 53cd1326 is the same.
+- BATCH 4 staged: pre/batch4b ce725a7c on main 53cd1326: docs 3ddc281d, capsule-now 28246cd0,
+  capsule-agent 42e8da05, app-design be98d494, capsule-apps e99b09d, teammates b5934a4f, platform
+  a1c3fbfc, memory-iq 5985f489, e2e 4e5a27f7, polish-cli 5ac697c8, tailnet a7365a99, mobile
+  2f1ccfff, native-core 3ae4fc93, settings-write 70242656, e2e-noclaude 399ca89f, chat 553017a1,
+  docs fdf8489f, ci faae7da7 + df6c8e82, ci-boundaries de5651bf LAST. Fixes: f67144f3 (bare
+  "tailnet" never a caller), manifests keep tips + settings, --popover in tokens.css only,
+  polish-cli's lost CHANGELOG entry back.
+- boundaries.test: 5 new edges, all from 3a/3b sessions (sessions->transcripts, ->switchboard,
+  ->spawner; switchboard->sessions, ->harness). Waiting on the lead: freeze or fix.
+- Full suite queued on the test box (~/vyre-ci/int-b4-run.sh waits for load < 8; log
+  ~/vyre-ci/int-b4b.log, ends with END).
+- Waiting: memory-iq confirms the model.js removal; capsule-pro and pwa ready shas (not in this
+  batch); federation parked until after 0.1.0.
+- Next: suite green (bar boundaries) -> the lead's edge call -> land on main, push, report.
 
 ## Needs from others
 
