@@ -60,17 +60,31 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   c8fb9aae (batch 2: relay, native Capsule, resilience, tokens, docs; eval said.js),
   fb1ed1d1 (3a: sessions 4311fca5 with the SDK default, chat fb0694d, chat contract 6182766).
 
-## Doing (2026-09-27 16:35 UTC)
+## Done: batch 4 landed (2026-09-27 18:50 UTC)
 
-- BATCH 4 on main 53cd1326: pre/batch4b f7226849, pushed as work/integrator-b4d. Since b4c:
-  polish-cli 4bc5c14b, chat 0f5402c6, pwa 2a577ede, capsule-pro 170dac3b, cohesion f5cd36f7,
-  docs 68aea2f9, mobile 8bc3b5b1 + 48f84c63, ci 7cea2fa6. Fixes: d49d535e (chat/term/settings-keys
-  CSS on the 719 phone query and radius roles), cdd4b768 (cohesion drift list frozen at batch 4),
-  f7226849 (settings claudeDir = claudeHome(root)).
-- Full suite queued on the test box (int-b4-run.sh, log ~/vyre-ci/int-b4b.log, END at the end).
-- Open: platform's box/vyre update curls on a checkout build (system.test.js:522); sessions'
-  sdk-driver fix (d7924a1d?) asked. Then targeted rerun, land on main, push, report.
-- Out: federation (after 0.1.0), sessions 501ca3fc (held), native-core hub step 1 (next batch).
+- main = bc751624 (pushed), fast-forward from 53cd1326. Contents: docs 393b7c97 (tips), capsule-now,
+  capsule-agent + capsule-pro 170dac3b, app-design be98d494 (specs), capsule-apps e99b09d,
+  teammates, platform a1c3fbfc + b4fix 97686e1b, memory-iq 0f0c17a2, e2e 4e5a27f7, e2e-noclaude
+  88c90d56, polish-cli 4bc5c14b, tailnet a7365a99, mobile 8bc3b5b1 + 48f84c63, native-core 3ae4fc93,
+  settings-write 70242656, chat 0f5402c6, pwa 2a577ede, cohesion f5cd36f7, sessions 51eaa964 +
+  e9d734c7, ci d4cb2610, ci-boundaries de5651bf (last).
+- Integrator fixes: f67144f3 bare tailnet caller, 91f34bae module-sdk schema/types, d49d535e
+  chat CSS on the 719 query and radius roles, cdd4b768 + 72e1a2dc drift freeze with owners,
+  f7226849 settings claudeHome, de3c1e9e five edges frozen, 63d943f5 theme test via roles,
+  daemon.test close, bc751624 waiting leaves the planner to the box on a Mac.
+- Checks: full suite at f7226849 3482 tests (fails since fixed or known flakes); targeted rerun at
+  bc751624 on the test box, all green: daemon, federation-reads, waiting, theme, deck-contract,
+  chat contract, cohesion-drift, boundaries, module-sdk, docs-*, hygiene, system, sessions,
+  journey, temp-home guard.
+- Debts after 0.1.0: the five sessions/switchboard edges (sessions); drift copies (mobile x2,
+  native-core, capsule-pro).
+
+## Next: batch 5 queue
+
+- native-core ac34c322 hub step 1 (after e2e review), app-design b756d128 (core/appearance),
+  platform 7398763b, mobile 503414d4, pwa 34195805, sessions db4af9c3 (501ca3fc held for e2e's
+  split check), vault-9a f4272358 (+9b with connectors f71009d9 once on_behalf HIGH is fixed),
+  memory-iq later WIP, chat tip after 0f5402c6, federation after 0.1.0.
 
 ## Needs from others
 
