@@ -263,6 +263,12 @@ run check.sh + thread.sh.
 - connectors 7e648545: HIGH + MEDIUMs fixed, OK once tests run; build firstParty(name) on
   native-core's firstParty(dir).
 
+RC SMOKE (lead, 27 Sep): scripts/rc-smoke.sh <tgz> + scripts/rc-smoke/ (e62b0d22). Dry run on an
+npm pack of pre/batch4b 63d943f5: 19 pass, 2 FAIL (/app/ no_app: npm pack has no built app; a
+build-site tgz must pass), 3 skip (phone enrol needs a tailnet; mail and appearance not in b4).
+Next: the mail step (scripts/rc-smoke/mail.sh) once connectors says how an IMAP account is added;
+run it on the batch-4 build-site tgz when batch 4 lands.
+
 SPLIT VALIDATED on sessions db4af9c3 (callAsPerson ed2715ae) + main 53cd1326: check.sh 30/30,
 thread.sh 8/8; cleared to the integrator. MCP list 258 -> 239 (asked sessions to check the filter).
 connectors SIGNED OFF at 84f630c9 (226/226 + docs 50/50); firstParty dup with native-core at merge.
