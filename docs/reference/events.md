@@ -308,7 +308,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `ask.answered` | `ask`, `by`, `decision`, `summary`, `tool`; sometimes `answers`, `scope` |
+| `ask.answered` | `ask`, `by`, `decision`, `summary`, `tool`; sometimes `answers`, `device`, `scope` |
 | `ask.raised` | `agent`, `ask`, `destination`, `holder`, `kind`, `reason`, `summary`, `thread_name`, `tool`, `tool_use_id` |
 | `lease.changed` | `holder`, `previous`; sometimes `took` |
 | `mode.changed` | `mode` |

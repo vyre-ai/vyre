@@ -399,6 +399,8 @@ export class Switchboard {
       // A fork's running total starts at its source's, as Claude Code continues it.
       if (o.forkFrom) this.db.prepare("UPDATE threads_runs SET cost_total = (SELECT cost_total FROM threads_runs WHERE id = ?) WHERE id = ?").run(o.forkFrom, id);
       const kept = Object.fromEntries(KEPT.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
+      // A quick answer keeps its facts, so a follow-up after an idle close is answered from them too.
+      if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -411,11 +413,13 @@ export class Switchboard {
       if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
     }
     o = { ...o, system: await this.systemPrompt(rec, o) };
+    // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
+    if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
-    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}),
-      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose };
+    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
+      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
     this.emit("thread.started", payload, id, rec.project);
     // The surface that started it gets the keyboard. A prompt given at launch by a module (an
     // agent asked something) is typed without taking the lease, so no surface is locked out.
@@ -433,6 +437,12 @@ export class Switchboard {
    * text alone, as before.
    */
   async systemPrompt(rec, o) {
+    // The Capsule's quick answer is Vyre IQ (core/sessions/iq-prompt.js): the whole prompt, with
+    // the launch's append read as its facts, versioned. Without the sessions module, as before.
+    if (o.purpose === "capsule" && !o.agent) {
+      const r = await this.deps.call("sessions.prompt.compose", { purpose: "capsule", ...(o.append ? { append: String(o.append) } : {}) }).catch(() => null);
+      if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text, version: r.data.version || null };
+    }
     // A job (no settings, no plugin: Learning's distillation) is told only what its launch says.
     if (o.settings === false) return o.append ? { mode: "append", text: String(o.append) } : null;
     const kind = o.agent_kind || (rec.agent ? this.kindOf(rec.agent) : null);
@@ -547,7 +557,9 @@ export class Switchboard {
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
     // In-process hooks (the Agent SDK only): a subagent waits for a concurrency slot (sessions.slots).
     const hooks = { PreToolUse: [{ matcher: "Agent|Task", hooks: [async (/** @type {any} */ input, /** @type {any} */ toolUseID) => this.subagentSlot(id, input, toolUseID)] }] };
-    const lo = { id, hooks, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    // The mode a person put the thread in carries over a resume (never bypass: MODES only).
+    const mode = MODES.includes(String(rec.mode)) && rec.mode !== "default" ? rec.mode : null;
+    const lo = { id, hooks, mode, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
@@ -808,11 +820,11 @@ export class Switchboard {
    * @param {any} a @param {string} decision @param {string|null} by @param {Record<string, string>|null} [answers] what was chosen, as shown
    * @param {string|null} [scope] "project" for an "always in <project>"
    */
-  closeAsk(a, decision, by, answers = null, scope = null) {
+  closeAsk(a, decision, by, answers = null, scope = null, device = null) {
     this.suggestions.delete(a.id);
     if (!this.asks.close(a.id, decision, by)) return false;
     const rec = this.record(a.thread);
-    this.emit("ask.answered", { ask: a.id, decision, by: by || null, tool: a.tool, summary: a.summary || null, ...(answers ? { answers } : {}), ...(scope ? { scope } : {}) },
+    this.emit("ask.answered", { ask: a.id, decision, by: by || null, ...(device ? { device } : {}), tool: a.tool, summary: a.summary || null, ...(answers ? { answers } : {}), ...(scope ? { scope } : {}) },
       a.thread, rec ? rec.project : null);
     return true;
   }
@@ -1126,7 +1138,7 @@ export class Switchboard {
    * @param {string} askId @param {"allow"|"deny"|"always"} decision @param {string} by @param {string} [message]
    * @param {Record<string, string|string[]>} [answers] @param {"project"} [scope]
    */
-  async answer(askId, decision, by, message, answers, scope) {
+  async answer(askId, decision, by, message, answers, scope, device = null) {
     const a = this.asks.get(askId);
     if (!a) throw new Error(`no ask ${askId}`);
     // The same answer again (a retry after a lost response, a forward from the box) is the earlier
@@ -1153,7 +1165,7 @@ export class Switchboard {
     if (this.asks.get(askId)?.state !== "open" || !this.live.has(a.thread)) return { ask: askId, answered: false, note: "it closed while being answered" };
     st.proc.write(answerLine(a.request_id, decision, input, message, extra));
     st.inputs && st.inputs.delete(askId);
-    this.closeAsk(a, decision, by, shown, decision === "always" && scope === "project" ? "project" : null);
+    this.closeAsk(a, decision, by, shown, decision === "always" && scope === "project" ? "project" : null, device);
     if (this.asks.open(a.thread).length === 0) this.set(a.thread, { status: "working" });
     return { ask: askId, answered: true, decision };
   }
@@ -1699,7 +1711,10 @@ export default {
         // A call vyred traced to a session never answers that session's own ask, whoever it says it is.
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
-        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope);
+        // device: which of the person's devices answered, when the call says (a paired device over
+        // the relay, the owner's tailnet node), not only the surface it claims.
+        const device = /^(device|tailnet):./.test(String(caller || "")) ? String(caller) : null;
+        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope, device);
       },
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The

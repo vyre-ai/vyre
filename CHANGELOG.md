@@ -544,6 +544,34 @@ neither.
   their code to land.
 - `vyre tips [module | new | reset]`. Docs: using/tips.md, build/tips.md.
 
+#### Sessions: the Capsule's quick answer is Vyre IQ
+
+- A Capsule question (`threads.start` purpose `capsule`) gets its own prompt, replacing Claude
+  Code's: Vyre IQ answers only from the IQ facts (the Capsule's memory lines, numbered), cites
+  them, says "I don't know yet." in one line when none answers, never discusses its access, 1 to 3
+  sentences, no em dashes, typos fixed silently. The user saw "Jordan" and "I don't have access to
+  a memory system" before this.
+- Versioned: built-in `capsule@1`, a person's own at scope `capsule` (`capsule@own-<n>`); the
+  version is `prompt` on `thread.started`. Thinking off (MAX_THINKING_TOKENS=0); neither Claude
+  Code nor the Agent SDK takes a temperature, so the prompt is written for 0 and determinism
+  comes from no thinking, no tools and a fixed model.
+- A quick answer keeps its facts across an idle close, so a follow-up is answered from them too.
+- `scripts/eval-iq-prompt.js --live` (`npm run eval:iq`): eleven cases, twice each, graded for
+  the rules and for the same answer every run. The grader has its own tests.
+
+#### Sessions: the model list
+
+- `sessions.models`: the models a thread can switch to (opus, sonnet, haiku, plus
+  `sessions.models_offered` from config).
+
+#### Sessions: the mode carries over a resume; which device answered
+
+- `thread.started` says the thread's `mode`; a resumed thread starts in the mode a person put it
+  in (`--permission-mode` on the CLI, `permissionMode` on the SDK).
+- `ask.answered` says `device` when the answer came from one of the person's devices that the
+  call identifies (a paired device over the relay, the owner's tailnet node), not only the
+  surface it names.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or
@@ -598,6 +626,15 @@ neither.
   `thread.sent` say it.
 
 
+#### `vyre up` never asks a box to pair on its own
+
+- `vyre up` on a Mac sends a box a pairing request only when the person asked for that box:
+  `--connect <address>` (onboarding's "I already set up a box" too), a yes to its question on a
+  terminal, or `vyre link pair`. A box named in config, or the one found on the tailnet, gets
+  nothing just because Vyre started; `vyre up` says how to pair instead.
+- A home other than ~/.vyre never talks to a real box (not even to check it answers) unless
+  VYRE_ALLOW_REAL_BOX=1; VYRE_ALLOW_DIALOGS=1 no longer counts for boxes. A box on this machine's
+  loopback (a dev world) is always fine.
 #### Chat: images, ! shell, # memory, thinking and background tasks on the box's real shapes
 
 Wires sessions 034c71e5 and db44749b (thinking as its own event) in deck/chat.

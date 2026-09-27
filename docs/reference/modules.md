@@ -46,7 +46,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
-| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 15 | 5 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 16 | 5 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 6 | 1 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -385,7 +385,7 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Folder: `core/sessions`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [15](tools.md#sessions), 3 of them only for other modules
+- Tools: [16](tools.md#sessions), 3 of them only for other modules
 - Emits: [5 events](events.md#sessions)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
