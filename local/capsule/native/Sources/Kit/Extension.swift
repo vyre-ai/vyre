@@ -115,6 +115,11 @@ public protocol VyredLink: AnyObject, Sendable {
     /// POST /v1/tools/<name>. `presence` attaches a proof for a human-only tool (Touch ID or the
     /// Capsule's key, asked for by the Capsule, never by an extension directly).
     func call(_ tool: String, _ input: [String: Any], presence: Bool) async -> VyredResult
+    /// The same, with the words the panel shows above Touch ID ("Send the email to dana"). One
+    /// proof opens a presence session of about 30 minutes for the tools that may ride one
+    /// (gate.approve, vault reveal/copy/totp), held in memory only and dropped when the Mac
+    /// locks or sleeps or the Capsule quits.
+    func call(_ tool: String, _ input: [String: Any], presence: Bool, summary: String?) async -> VyredResult
     /// Tools vyred has right now (GET /v1/tools), for features that need an optional module.
     func has(_ tool: String) -> Bool
     /// Follow events whose type matches a pattern ("thread.text", "hands.*"). The handler runs on
@@ -129,6 +134,9 @@ public protocol VyredLink: AnyObject, Sendable {
 
 public extension VyredLink {
     func call(_ tool: String, _ input: [String: Any] = [:]) async -> VyredResult { await call(tool, input, presence: false) }
+    func call(_ tool: String, _ input: [String: Any], presence: Bool, summary: String?) async -> VyredResult {
+        await call(tool, input, presence: presence)
+    }
     func stream(_ path: String, onMessage: @escaping @Sendable ([String: Any]) -> Void,
                 onClose: @escaping @Sendable () -> Void) async -> Result<VyredStream, VyredStreamFailure> {
         .failure(VyredStreamFailure(code: "refused", message: "This link to vyred has no streams."))
@@ -243,6 +251,7 @@ public enum VyredResult: @unchecked Sendable {
     case failure(code: String, message: String)
     public var data: Any? { if case .success(let d) = self { return d }; return nil }
     public var error: String? { if case .failure(_, let m) = self { return m }; return nil }
+    public var errorCode: String? { if case .failure(let c, _) = self { return c }; return nil }
 }
 
 public struct VyredEvent: @unchecked Sendable {
@@ -293,11 +302,18 @@ public protocol CapsuleHost: AnyObject {
     /// Your `commands` (or `providers`) changed while the Capsule is open, for example a session
     /// started: the Capsule reads them again and redraws the list.
     func commandsChanged()
+    /// Call a human-only tool (ADR 0004) with your words above Touch ID in the panel ("Send
+    /// 'on my way' to Dana in WhatsApp"). A live presence session covers it without asking when
+    /// the tool may ride one. Esc or a refusal comes back as `.failure(code: "presence")`.
+    func prove(tool: String, input: [String: Any], summary: String) async -> VyredResult
 }
 
 public extension CapsuleHost {
     /// A host with no windows (a test's fake host) hands out one that shows nothing.
     func sessionWindow(owner: String) -> SessionWindow { NoSessionWindow() }
+    func prove(tool: String, input: [String: Any], summary: String) async -> VyredResult {
+        await vyred.call(tool, input, presence: true, summary: summary)
+    }
     func commandsChanged() {}
 }
 

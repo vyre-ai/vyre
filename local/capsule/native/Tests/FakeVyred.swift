@@ -33,6 +33,11 @@ final class FakeVyred: @unchecked Sendable {
     var eventsLog: [[String: Any]] = []
     private(set) var calls: [(tool: String, input: [String: Any])] = []
     private(set) var callers: Set<String> = []
+    /// The request headers of each tool call, in order (x-vyre-presence, x-vyre-presence-keep).
+    private(set) var toolHeaders: [(tool: String, headers: [String: String])] = []
+    /// Looks at a tool call's headers first: an error answers instead of the tool, and the
+    /// headers go back on the answer (x-vyre-presence-session).
+    var headerHook: ((String, [String: String]) -> (FakeError?, [String: String]))?
     private(set) var streamsOpened = 0
     private(set) var healthChecks = 0
     private var lastId = 0
@@ -122,8 +127,16 @@ final class FakeVyred: @unchecked Sendable {
         let path = String(target.split(separator: "?", maxSplits: 1).first ?? "")
         let query = target.contains("?") ? String(target.split(separator: "?", maxSplits: 1)[1]) : ""
         if method == "GET" && path == "/v1/events/stream" { return stream(c, query) }
-        let answer = route(method, path, query, body)
-        respond(c, answer)
+        var extra: [String: String] = [:]
+        var answer: Any
+        if method == "POST", path.hasPrefix("/v1/tools/"), let h = head?.headers {
+            let name = String(path.dropFirst("/v1/tools/".count)).removingPercentEncoding ?? ""
+            lock.lock(); toolHeaders.append((name, h)); let hook = headerHook; lock.unlock()
+            let (err, back) = hook?(name, h) ?? (nil, [:])
+            extra = back
+            answer = err.map { ["error": ["code": $0.code, "message": $0.message]] as Any } ?? route(method, path, query, body)
+        } else { answer = route(method, path, query, body) }
+        respond(c, answer, headers: extra)
         close(c)
     }
 
@@ -154,9 +167,10 @@ final class FakeVyred: @unchecked Sendable {
         return ["error": ["code": "not_found", "message": "no route \(path)"]]
     }
 
-    private func respond(_ c: Int32, _ json: Any) {
+    private func respond(_ c: Int32, _ json: Any, headers: [String: String] = [:]) {
         let body = VJ.encode(json) ?? Data("{}".utf8)
-        var d = Data("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
+        let more = headers.map { "\($0.key): \($0.value)\r\n" }.joined()
+        var d = Data("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\(more)Content-Length: \(body.count)\r\nConnection: close\r\n\r\n".utf8)
         d.append(body)
         _ = VySock.writeAll(c, d, deadline: Date().addingTimeInterval(5))
     }

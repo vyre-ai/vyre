@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One Touch ID in the Capsule covers about 30 minutes
+
+- Sending a held draft from the Capsule now asks for presence when vyred requires it: "Confirm
+  it's you" in the panel with words the person can read ("Send to dana@harlowlegal.com: Intake
+  follow-up"), then Touch ID. The proof goes with `x-vyre-presence-keep: 1`, and the session vyred
+  returns in `x-vyre-presence-session` covers the next gate.approve, vault.reveal, vault.copy and
+  vault.totp without asking. The session is kept in memory only. It is forgotten when vyred
+  refuses it, a minute before it ends, and when the Mac locks or sleeps (presence.session.close
+  ends it on vyred too). `local/capsule/native/Sources/Vyred/VyredClient.swift`.
+- Kit: `CapsuleHost.prove(tool:input:summary:)` and `VyredLink.call(_:_:presence:summary:)`, so an
+  extension (capsule-apps' sends) sets the words above Touch ID. `VyredResult.errorCode`.
+- A cancelled Touch ID on a held send says "Not approved. Nothing was done. It is still held."
+
 #### Esc takes back a queued message in the native Capsule
 
 - Esc on a reply queued for a terminal-busy session calls `threads.unqueue` with the send's

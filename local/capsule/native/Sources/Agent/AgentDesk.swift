@@ -186,6 +186,13 @@ public final class Desk: ObservableObject {
     /// No for the item: Discard, Deny, Decline.
     public func no(_ w: Waiting) async { await answer(w, w.source == .gate ? .discard : w.source == .lesson ? .decline : .deny) }
 
+    /// The words above Touch ID for a held item: "Send to dana@harlowlegal.com: Intake follow-up".
+    nonisolated static func approveWords(_ w: Waiting) -> String {
+        let verb = w.kind == "spend" ? "Pay" : w.kind == "delete" ? "Delete at" : "Send to"
+        let what = w.sub.components(separatedBy: " · ").first.flatMap { $0.isEmpty ? nil : $0 }
+        return "\(verb) \(w.to.flatMap { $0.isEmpty ? nil : $0 } ?? "someone")" + (what.map { ": \($0)" } ?? "")
+    }
+
     /// Answer one item. It leaves the list when vyred says so (the event), and the list is read
     /// again for an older module that answers without one.
     public func answer(_ w: Waiting, _ decision: AnswerDecision) async {
@@ -208,7 +215,13 @@ public final class Desk: ObservableObject {
             let send = decision == .send || decision == .allow
             var input: [String: Any] = ["id": w.id]
             if send, let e = edited { input["edited"] = e.json }
-            r = await vyred.call(send ? "gate.approve" : "gate.reject", input, presence: false)
+            var got = await vyred.call(send ? "gate.approve" : "gate.reject", input, presence: false)
+            // A send, spend or delete needs the person (ADR 0004): Touch ID in the panel, once
+            // for about 30 minutes, or the presence session a proof already opened.
+            if send, got.errorCode == "presence_required" {
+                got = await vyred.call("gate.approve", input, presence: true, summary: Self.approveWords(w))
+            }
+            r = got
             if case .failure(let code, let message) = r {
                 note = Bridge.presenceRefused(code: code, message: message, lesson: false, yes: send, id: w.id) ?? Bridge.explain(code: code, message: message)
                 return

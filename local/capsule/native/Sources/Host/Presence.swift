@@ -221,7 +221,7 @@ public final class CapsulePresence {
 struct UncheckedBox: @unchecked Sendable { let value: [String: Any]; init(_ v: [String: Any]) { value = v } }
 
 extension CapsulePresence {
-    nonisolated func proofFromAnyThread(tool: String, input: UncheckedBox) async -> Result<String, VyredFailure> {
-        await proof(tool: tool, input: input.value)
+    nonisolated func proofFromAnyThread(tool: String, input: UncheckedBox, summary: String? = nil) async -> Result<String, VyredFailure> {
+        await proof(tool: tool, input: input.value, summary: summary)
     }
 }

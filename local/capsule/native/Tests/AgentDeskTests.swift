@@ -95,6 +95,29 @@ let agentDeskSuite = Suite("agent desk") { t in
         t.ok(got?.gone == true, "gone, and the card closed, once gate.released arrived")
     }
 
+    t.test("a send vyred holds for presence asks once in the panel, with words, and goes") {
+        let v = seeded(); defer { v.stop() }
+        v.tool("gate.approve") { _ in ["state": "approved"] }
+        v.headerHook = { tool, h in
+            guard tool == "gate.approve", h["x-vyre-presence"] == nil else { return (nil, [:]) }
+            return (FakeError(code: "presence_required", message: "gate.approve needs presence"), [:])
+        }
+        let asked = NSMutableArray()
+        let got: (calls: Int, note: String?)? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = deskModel(v); m.willShow(front: nil); return m }
+            m.vyred.presenceProof = { _, _, summary in asked.add(summary ?? ""); return .success("capsule key=k1 ts=1 nonce=n sig=s") }
+            _ = await until { m.desk.waiting.count == 3 }
+            let h = await MainActor.run { m.desk.waiting.first { $0.source == .gate }! }
+            await m.desk.yes(h)
+            let note = await MainActor.run { m.desk.note }
+            await MainActor.run { m.didHide() }
+            return (v.callsOf("gate.approve").count, note)
+        }
+        t.eq(asked as? [String], ["Send to dana@harlowlegal.com: Intake follow-up"])
+        t.eq(got?.calls, 1, "the refused try never reached the tool")
+        t.eq(got?.note, nil)
+    }
+
     t.test("an ask is answered with threads.answer; a lesson refused for want of presence says where to do it") {
         let v = seeded(); defer { v.stop() }
         v.tool("threads.answer") { _ in ["answered": true] }

@@ -57,9 +57,17 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
             return await self.model.askPresence(a)
         }
         let presence = self.presence
-        vyred.presenceProof = { tool, input in
+        vyred.presenceProof = { tool, input, summary in
             let box = UncheckedBox(input)
-            return await MainActor.run { presence }.proofFromAnyThread(tool: tool, input: box)
+            return await MainActor.run { presence }.proofFromAnyThread(tool: tool, input: box, summary: summary)
+        }
+        // The presence session lives in memory only: the Mac locking or sleeping ends it.
+        let ws = NSWorkspace.shared.notificationCenter
+        for n in [NSWorkspace.willSleepNotification, NSWorkspace.sessionDidResignActiveNotification, NSWorkspace.screensDidSleepNotification] {
+            ws.addObserver(forName: n, object: nil, queue: .main) { [vyred] _ in vyred.dropPresenceSession() }
+        }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main) { [vyred] _ in
+            vyred.dropPresenceSession()
         }
         vyred.follower.onState = { [weak self] st in
             self?.health.set(up: st == .open)

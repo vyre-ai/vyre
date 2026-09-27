@@ -58,7 +58,9 @@ public enum Bridge {
         if lesson {
             return "Vyre needs proof that a person \(yes ? "accepted" : "declined") this, which the Capsule cannot give yet. Do it in the Deck, or with vyre learn \(yes ? "accept" : "retire") \(id). It is still waiting."
         }
-        return "Vyre needs proof that a person \(yes ? "approved" : "discarded") this, which the Capsule cannot give yet. Do it in the Deck. It is still held."
+        // The Capsule asked and the person said no, or it could not ask: its own words.
+        if code == "presence" { return "\(message) It is still held." }
+        return "Vyre needs proof that a person \(yes ? "approved" : "discarded") this, and it refused the Capsule's. Do it in the Deck. It is still held."
     }
 
     /// vyred's home from its socket, when the socket sits in it (<home>/vyred.sock).
