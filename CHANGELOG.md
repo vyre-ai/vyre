@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A still of what an agent is doing, for the phone
+
+- `sight.frame {target: "agent:<name>", maxWidth?}`: one JPEG of an agent's screen scaled to
+  maxWidth (default 480) with its last step, for a small view that refreshes on `sight.stepped`,
+  never on a timer. A VNC client is too heavy for a phone and the relay; the live view stays
+  `sight.watch`. The shield still refuses it while a person signs in on that computer.
+- `hands-desktop.screenshot {format: "jpeg", maxWidth}` and computerd's
+  `/screenshot?format=jpeg&width=` scale the display down (never up) at quality 70.
+- `context.report` takes `view` (the module the person is in on that surface) and
+  `context.now {surface}` answers from one surface's own report, for tips.
+
 #### An agent's browser steps no longer store query strings, and every step says where it came from
 
 - Privacy: `chrome.acted` put the full URL of `chrome.open`, query and fragment included, into

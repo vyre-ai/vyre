@@ -61,6 +61,8 @@ function fakeComputerd() {
   let token = "";
   /** @type {Array<{ path: string, action: string, value?: string }>} */
   const acted = [];
+  /** @type {string[]} */
+  const shots = [];
   const server = http.createServer((req, res) => {
     const send = (code, body, binary) => {
       res.writeHead(code, { "content-type": binary ? "image/png" : "application/json" });
@@ -72,7 +74,7 @@ function fakeComputerd() {
     if (req.method === "GET" && route === "/health") return send(200, { ok: true, display: ":1", size: { w: 1440, h: 900 } });
     if (req.method === "GET" && route === "/apps") return send(200, [{ name: "Files", pid: 1, windows: [state.window] }]);
     if (req.method === "GET" && route === "/tree") return send(200, { window: state.window, nodes: state.nodes });
-    if (req.method === "GET" && route === "/screenshot") return send(200, PNG, true);
+    if (req.method === "GET" && route === "/screenshot") { shots.push(String(req.url)); return send(200, PNG, true); }
     if (req.method !== "POST") return send(404, { error: { message: `no route ${route}` } });
     let body = "";
     req.on("data", c => { body += c; });
@@ -91,7 +93,7 @@ function fakeComputerd() {
     });
   });
   return {
-    server, state, acted,
+    server, state, acted, shots,
     setToken: t => { token = t; },
     listen: () => new Promise(resolve => server.listen(0, "127.0.0.1", () => resolve(/** @type {any} */ (server.address()).port))),
     close: () => new Promise(resolve => server.close(() => resolve(undefined))),
@@ -181,6 +183,13 @@ test("hands-desktop: apps and screenshot reach the fake computerd", async t => {
   assert.equal(shot.error, undefined);
   assert.equal(shot.data.mime, "image/png");
   assert.deepEqual(Buffer.from(shot.data.image, "base64"), PNG);
+  assert.deepEqual(s.fake.shots, ["/screenshot"]);
+
+  // The small still for a phone's "what the agent is doing now": a scaled JPEG, asked of computerd.
+  const still = await s.kit("hands-desktop.screenshot", { agent: "kit", format: "jpeg", maxWidth: 320 });
+  assert.equal(still.error, undefined);
+  assert.equal(still.data.mime, "image/jpeg");
+  assert.equal(s.fake.shots.at(-1), "/screenshot?format=jpeg&width=320");
 });
 
 test("hands-desktop: act presses a uniquely-named control and verifies the window changed", async t => {

@@ -119,13 +119,14 @@ export default {
         return { apps: await (await clientFor(agent, i.thread)).apps() };
       });
 
-    tool("hands-desktop.screenshot", "A PNG of the agent's whole display, base64-encoded.",
-      obj({ agent: str, thread: str }, ["agent"]),
+    tool("hands-desktop.screenshot", "The agent's whole display, base64-encoded: a PNG, or with format jpeg a JPEG scaled down to maxWidth (160-1920, default 640), the small still a phone shows.",
+      obj({ agent: str, thread: str, format: { type: "string", enum: ["png", "jpeg"] }, maxWidth: { type: "integer", minimum: 160, maximum: 1920 } }, ["agent"]),
       async (i, { caller }) => {
         const agent = await resolveAgent(i, caller);
         await mayRead(agent, "hands-desktop.screenshot");
-        const png = await (await clientFor(agent, i.thread)).screenshot();
-        return { image: png.toString("base64"), mime: "image/png" };
+        const jpeg = i.format === "jpeg";
+        const bytes = await (await clientFor(agent, i.thread)).screenshot(jpeg ? { format: "jpeg", width: i.maxWidth } : {});
+        return { image: bytes.toString("base64"), mime: jpeg ? "image/jpeg" : "image/png" };
       });
 
     tool("hands-desktop.act",
