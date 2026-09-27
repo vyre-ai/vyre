@@ -20,7 +20,7 @@ import { out, dim, bold, signal, beacon } from "../style.js";
 import { up, claude, resume, startThread } from "./projects.js";
 import { runScreen } from "../screen/index.js";
 import { load } from "../screen/live.js";
-import { EXIT } from "../kit.js";
+import { EXIT, emit } from "../kit.js";
 
 // ------------------------------------------------------------ what is on the list
 
@@ -274,8 +274,7 @@ export default {
     if (!(await up())) return EXIT.UNREACHABLE;
     if (args.includes("--json")) {
       const d = await load();
-      process.stdout.write(JSON.stringify({ projects: d.projects, agents: d.agents, here: d.here, threads: d.threads, asks: d.asks, drafts: d.drafts }) + "\n");
-      return 0;
+      return emit({ projects: d.projects, agents: d.agents, here: d.here, threads: d.threads, asks: d.asks, drafts: d.drafts });
     }
     // Both ends must be a terminal: raw mode needs the input, and the drawing needs the output.
     if (!process.stdin.isTTY || !process.stdout.isTTY) {

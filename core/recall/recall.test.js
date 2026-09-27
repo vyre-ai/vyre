@@ -11,7 +11,7 @@ import path from "node:path";
 import { open, migrate } from "../store/index.js";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
-import { search, thread, sessions, anyOf, floorFor } from "./search.js";
+import { search, thread, sessions, anyOf, floorFor, prefixOf } from "./search.js";
 import { Dense } from "./dense.js";
 import { chunks, encode, decode, cosine, CHUNK } from "./embed.js";
 import { SESSIONS, writeTranscripts, seedRecall } from "../../test/fixtures/corpus.js";
@@ -482,4 +482,18 @@ test("recall: vectors that arrive during a build are not lost", async t => {
   await building;
   assert.equal(dense.stats()?.chunks, 3);
   assert.equal((await search(e.db, { q: "blind visitors" }, emb, dense)).hits[0]?.seq, 2);
+});
+
+test("recall: prefix mode completes what is typed: every word a prefix, keyword only", async t => {
+  const db = open(path.join(tempHome(t), "vyre.db"));
+  t.after(() => db.close());
+  seedRecall(db, SESSIONS);
+  assert.equal(prefixOf("harl inta"), '"harl"* "inta"*');
+  assert.equal(prefixOf("  "), null);
+  const hits = (await search(db, { q: "harl inta", prefix: true, per_session: 1 })).hits;
+  assert.ok(hits.length > 0);
+  assert.ok(hits.every(h => /harl/i.test(h.text) && /inta/i.test(h.text)), JSON.stringify(hits.map(h => h.text)));
+  // A half word in FTS5's grammar is still a prefix, never an error.
+  assert.deepEqual((await search(db, { q: "north-(", prefix: true })).hybrid, false);
+  assert.deepEqual((await search(db, { q: "zzzqx", prefix: true })).hits, []);
 });

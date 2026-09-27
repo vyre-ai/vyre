@@ -1,6 +1,6 @@
 ---
 title: Vyre design system
-summary: Design A v1, frozen 27 Sep 2026. Tokens, 41 component specs, layout and navigation, copy rules and the render audit, for the Deck, the app and the Capsule.
+summary: Design A v1, frozen 27 Sep 2026. Tokens, 47 component specs, layout and navigation, copy rules and the render audit, for the Deck, the app and the Capsule.
 audience: builders
 owner: app-design
 status: draft
@@ -12,7 +12,7 @@ Design A v1, frozen 27 Sep 2026. This folder is the design system of record: the
 native-core), the app (mobile) and the Capsule (capsule-pro) build from it with no guessing.
 
 Where this folder and the canvas disagree, this folder wins. Where it is silent, the canvas
-(https://claude.ai/artifact/Ap7uKGmbiEs4wM44iSyi1X) is the reference, and the gap is a bug in this
+(https://claude.ai/artifact/CKLkX4pcZpsyiKYDEnXKWr) is the reference, and the gap is a bug in this
 folder: tell app-design. Where the code disagrees with this folder, the code is wrong, unless the
 spec says "(proposed)".
 
@@ -21,6 +21,9 @@ spec says "(proposed)".
   the Capsule.
 - [Copy](copy.md): voice, words we use and never use, formats.
 - [The render audit](audit.md): the check every board and every change to it passes.
+- [The Capsule, redesigned](capsule.md): the Design A Capsule, keyboard first, with Vyre IQ,
+  voice and computer use.
+- [Spec lists by team](teams.md): every open gap, sorted by the team that closes it.
 - The component specs below, one file each: anatomy, variants, sizes, states, keyboard and touch,
   motion, copy, accessibility, the implementing file on each surface, and its gaps.
 
@@ -36,7 +39,7 @@ accepted difference.
 
 ## Components and status
 
-41 components in six groups. Status is per surface, against these specs, surveyed 27 Sep 2026 on
+47 components in seven groups. Status is per surface, against these specs, surveyed 27 Sep 2026 on
 main and the teams' branches (each spec names the branch): built matches the spec, partial exists
 but differs (the spec lists how under Gaps), not built has no code yet, not used means the surface
 does not have it by design.
@@ -112,9 +115,23 @@ does not have it by design.
 | [Stepper and checks](components/stepper-checks.md) | partial | not built | not used |
 | [States](components/states.md) | partial | partial | partial |
 
+### Shared pieces
+
+The parts every surface draws from one shared answer on the box (ADR 0036).
+
+| Component | Deck | App | Capsule |
+|---|---|---|---|
+| [Suggestions](components/suggestions.md) | partial | not built | partial |
+| [Account picker row](components/account-row.md) | not built | not built | not built |
+| [Credential sheet](components/credential-sheet.md) | not built | not built | not built |
+| [Command result card](components/result-card.md) | not built | not built | not built |
+| [Tip](components/tip.md) | not built | not built | not built |
+| [Glass mini-view](components/glass-mini.md) | not built | not built | not built |
+
 | Surface | Built | Partial | Not built | Not used |
 |---|---|---|---|---|
-| Deck | 5 | 34 | 1 | 1 |
-| App | 1 | 20 | 19 | 1 |
-| Capsule | 0 | 22 | 8 | 11 |
+| Deck | 5 | 35 | 6 | 1 |
+| App | 1 | 20 | 25 | 1 |
+| Capsule | 0 | 23 | 13 | 11 |
+
 Every spec's Gaps section is a checklist. When a surface closes one, tick it in the same commit.

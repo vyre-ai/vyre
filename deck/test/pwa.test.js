@@ -94,7 +94,9 @@ test("pwa shell: three pages, Now Chats Agents, in pager order, and nothing else
   const pages = [...m[1].matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map(x => [x[1], x[2]]);
   assert.deepEqual(pages, [["/now", "Now"], ["/chat", "Chats"], ["/agents", "Agents"]]);
   // A swipe swaps the address in place; pages are not history.
-  assert.match(app, /history\.replaceState\(history\.state, "", PAGER\[i\]\.href\)/);
+  assert.match(app, /history\.replaceState\(history\.state, "", strip\[i\]\.href\)/);
+  // The pager's pages are the three, then the place kept from the Places sheet, if any.
+  assert.match(app, /const strip = \[\.\.\.PAGER\];/);
   // Rows that swipe on their own are left alone by the pager.
   assert.match(app, /\[data-swipe\]/);
   assert.match(phoneCss(), /\[data-swipe\] \{ touch-action: pan-y; \}/);
@@ -147,7 +149,7 @@ test("pwa shell: dictated words go into Find and are never sent on their own", (
   assert.match(cap, /if \(words\) o\.open\(words\)/);
   assert.doesNotMatch(cap, /agents\.ask|threads\.send|requestSubmit|\.submit\(/);
   assert.match(app, /go\("\/find\?q=" \+ encodeURIComponent\(words\)\)/);
-  assert.doesNotMatch(app.slice(app.indexOf("function openFind"), app.indexOf("function openSettings")), /requestSubmit|Enter|\.submit\(/);
+  assert.doesNotMatch(app.slice(app.indexOf("function openFind"), app.indexOf("function openPlaces")), /requestSubmit|Enter|\.submit\(/);
 });
 
 test("pwa shell: light by default: passive gesture listeners, no interval, nothing polls", () => {
@@ -302,7 +304,8 @@ test("pwa ios: the keyboard lifts the composer and a sheet, and the transcript f
   assert.match(read("css/sheet.css"), /:root\[data-kb\] \.sheet \{ bottom: var\(--kb\); \}/);
   const session = read("chat/session.js");
   assert.match(session, /window\.addEventListener\("deck:kb", onKb\)/);
-  assert.match(session, /if \(stick\.stuck\) toBottom\(\); else if \(pad >= 0\) timeline\.scrollTop \+= p - pad;/);
+  // The behaviour, not chat's names for it: at the bottom it stays there, scrolled up it keeps its place.
+  assert.match(session, /if \((following|stick\.stuck)\) toBottom\(\); else if \(pad >= 0\) timeline\.scrollTop \+= p - pad;/);
   assert.match(read("js/pwa.js"), /watchKeyboard\(\);/);
 });
 
@@ -376,11 +379,14 @@ test("pwa ios: the keyboard listener runs only while a field has focus on a phon
   stop();
 });
 
-test("pwa ios: long lists skip off-screen rows; the transcript is windowed instead", () => {
+test("pwa ios: long lists skip off-screen rows; the transcript is windowed or skips its old turns", () => {
   const chat = read("chat/chat.css");
-  // Changed by chat (27 Sep): content-visibility on transcript rows dropped a just-finished reply to
-  // its placeholder and jumped a reader scrolled up to the bottom; window-view.js windows long sessions.
-  assert.doesNotMatch(chat, /\.cv-timeline > [^{]*\{[^}]*content-visibility: auto/);
+  // Chat (27 Sep) replaced content-visibility on transcript rows with window-view.js, which windows
+  // long sessions (a just-finished reply could drop to its placeholder and jump a reader scrolled up).
+  // Either way a long transcript never lays out every row.
+  const skips = /\.cv-timeline > :nth-last-child\(n\+41\) \{ content-visibility: auto; contain-intrinsic-size: auto 96px; \}/.test(chat);
+  const windowed = fs.existsSync(path.join(DECK, "chat", "window-view.js")) && !/\.cv-timeline > [^{]*\{[^}]*content-visibility: auto/.test(chat);
+  assert.ok(skips || windowed, "the transcript skips its off-screen turns or is windowed");
   assert.match(chat, /\.rows > \.thread-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
   assert.match(block(read("css/views/find.css"), "@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {"), /\.fd-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
 });

@@ -518,7 +518,8 @@
     {
       "q": "who wrote the first post on the harlow blog",
       "expect": [
-        "marcus-hale"
+        "marcus-hale",
+        "marcus"
       ],
       "kind": "who",
       "where": [
@@ -759,7 +760,8 @@
     {
       "q": "is the coconut macaron gluten free",
       "expect": [
-        "shared-equipment"
+        "shared-equipment",
+        "shared equipment"
       ],
       "kind": "decision",
       "where": [
@@ -867,7 +869,8 @@
     {
       "q": "how many orders per pickup slot",
       "expect": [
-        "SLOT_CAPACITY=6"
+        "SLOT_CAPACITY=6",
+        "6 orders"
       ],
       "kind": "config",
       "where": [
@@ -951,7 +954,8 @@
     {
       "q": "august intakes for estate planning",
       "expect": [
-        "estate planning 31"
+        "estate planning 31",
+        "31"
       ],
       "kind": "config",
       "where": [

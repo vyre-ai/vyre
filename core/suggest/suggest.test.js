@@ -75,7 +75,9 @@ const DATA = () => ({
     { key: "planner-p2-1", item: "p2", kind: "event", title: "Northwind tasting", at: now + 5 * HOUR, start: now + 5.25 * HOUR },
   ] },
   "vault.connections.list": [{ id: "c1", source: "google", provider: "google", account: "alex@harlow.test", label: "Harlow mail", capabilities: ["send_mail"],
-    use: { tool: "google.mail.send", input: { account: "alex@harlow.test" } } }],
+    use: { tool: "google.mail.send", input: { account: "alex@harlow.test" } } },
+    { id: "c2", source: "vault", provider: "imap", label: "Harlow billing", capabilities: ["send_mail"], last_used: now - HOUR },
+    { id: "c3", source: "vault", provider: "imap", label: "Harlow office", capabilities: ["send_mail"], default: ["send_mail"] }],
 });
 
 const SOURCES = [
@@ -173,6 +175,8 @@ test("text lane: names on the last word insert plain, plus accounts, upcoming ti
   assert.ok(!r.items.some(i => i.kind === "person"), "an item of a kind the source did not offer is dropped");
   assert.deepEqual(F.inputs["memory.entities"].context, { project: "harlow" });
   assert.equal(F.inputs["vault.connections.list"].surface, "capsule", "connections are asked for the caller's surface");
+  const accounts = r.items.filter(i => i.kind === "account").map(i => i.label);
+  assert.deepEqual(accounts.slice(0, 2), ["Harlow office", "Harlow billing"], "the default first, then the most recently used (vault 9b)");
 
   assert.deepEqual((await q("say h")).items, [], "one letter is too little for the built-in lists");
   assert.ok(!(await q("tell juno")).items.some(i => i.label === "juno"), "a name typed out whole needs no suggestion");

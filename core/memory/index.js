@@ -11,11 +11,13 @@ import { Graph } from "./graph.js";
 import { floorPlan } from "./floor.js";
 import fs from "node:fs";
 import path from "node:path";
+import { retriever } from "./iq/retrieve.js";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
-import { createReader, claudeOnce } from "./personal/reader.js";
+import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
+import { asker, ASK_DAILY_USD } from "./iq/ask.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -35,8 +37,11 @@ export default {
     // Source trust (personal/trust.js): never the Capsule's own asks, nor folders the user left out
     // in config.memory.personal.skipCwds.
     const askDir = ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null;
+    // threads.quick's warm sessions (memory.ask's own model calls) run in <home>/quick/<purpose>:
+    // their prompts are passages of the user's history, so they are never read back.
+    const quickDir = ctx.paths?.root ? path.join(String(ctx.paths.root), "quick") : null;
     const personal = new Personal(ctx.store.db, { log: ctx.log,
-      trust: () => ({ scratch: askDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] }) });
+      trust: () => ({ scratch: askDir, quick: quickDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] }) });
     /** Read every unread turn for personal facts, then derive if anything changed. */
     // memory.profile-changed: the about-you lines moved, so a session rebuilds its note on resume.
     // Counts only; the lines themselves are read with memory.profile.
@@ -85,12 +90,13 @@ export default {
       const d = path.join(root, "memory-jobs");
       try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; } catch { return null; }
     };
+    const runner = ctx.memoryRunner !== undefined ? ctx.memoryRunner
+      : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
+      : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null;
     const model = createReader({
       db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
       // Never a real model under node --test unless a test points VYRE_CLAUDE_BIN at a fake.
-      runner: ctx.memoryRunner !== undefined ? ctx.memoryRunner
-        : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
-        : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null,
+      runner,
     });
     const modelOffs = [
       ctx.events.on("thread.stopped", () => void model.pump()),
@@ -410,13 +416,97 @@ export default {
       }
     };
     const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
-      scratch: ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null });
+      scratch: askDir, quick: quickDir });
     ctx.tool("memory.answer", {
       description: "Answer a question about the user's own life in one line (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\") from personal facts, the graph, then the user's own words. Returns { answer, confidence, kind: fact|said|null, from (conversations), facts, sources, via: fact|meaning|keyword|null, ms }; answer is null when memory does not know. sources: true lists more of the turns it came from.",
       input: { type: "object", properties: { q: { type: "string" }, question: { type: "string", description: "the same as q" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
       run: async (input, { caller } = {}) => {
         await personalOnly(input, caller, "memory.answer");
         return answer({ q: String(input.q ?? input.question ?? ""), project_cwds: clean(input.project_cwds), sources: Boolean(input.sources) });
+      },
+    });
+    // Vyre IQ's retrieval (ADR 0034, core/memory/iq/retrieve.js): the passages a question's answer
+    // would be read from, fused from Recall's searches and widened by names memory knows. Personal
+    // names widen it only for a caller that may see personal facts.
+    const retrieve = retriever({ graph, personal, askDir, quickDir, now: () => Date.now(),
+      search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
+    ctx.tool("memory.retrieve", {
+      description: "The turns Vyre IQ would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",
+      input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds, k: { type: "integer", minimum: 1, maximum: 30 },
+        expand: { type: "boolean" }, when: { type: "boolean" }, recency: { type: "boolean" }, hybrid: { type: "boolean" },
+        knobs: { type: "object", description: "evaluation only: passed to recall.search" }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const project_cwds = clean(input.project_cwds);
+        let sees = true;
+        try { await personalOnly(input, caller, "memory.retrieve"); } catch { sees = false; }
+        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
+        return retrieve({ question: String(input.question || ""), project_cwds, k: input.k ?? 8, personal: sees,
+          expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, knobs: input.knobs || {} });
+      },
+    });
+    // Vyre IQ's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
+    // the retrieved passages, checked by code. Questions have their own daily cap
+    // (config.memory.model.askDailyUsd, $0.50, about 150 questions) in memory's budget table.
+    const askDay = () => `ask:${new Date().toISOString().slice(0, 10)}`;
+    const askSpent = () => Number(/** @type {any} */ (ctx.store.db.prepare("SELECT usd FROM memory_me_budget WHERE day = ?").get(askDay()))?.usd || 0);
+    // The answer step runs on sessions' always-warm lean session (threads.quick, purpose memory):
+    // no Claude Code start per question. Where there is none yet, `claude -p` as the reader does.
+    const quick = runner && (async ({ system, prompt, model: m, maxUsd }) => {
+      const r = await ctx.call("threads.quick", { purpose: "memory", system, prompt, model: m, timeout_ms: 20_000 });
+      if (r?.error?.code === "no_such_tool") return runner({ system, prompt, model: m, maxUsd });
+      if (r?.error || !r?.data?.ok) throw new Error(r?.error?.message || "threads.quick did not answer");
+      return { text: String(r.data.text || ""), usd: Number(r.data.cost_usd) || 0 };
+    });
+    const ask = asker({ db: ctx.store.db, answer, retrieve, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
+      budget: {
+        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : ASK_DAILY_USD) + 1e-9,
+        charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
+          ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
+      } });
+    ctx.tool("memory.ask", {
+      description: "Vyre IQ: answer a question from everything memory holds, with its sources, or abstain. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing.",
+      input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
+        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
+        let sees = true;
+        try { await personalOnly(input, caller, "memory.ask"); } catch { sees = false; }
+        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
+        return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread: typeof input.context?.thread === "string" ? input.context.thread : null });
+      },
+    });
+    // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory
+    // knows whose names start with the prefix. Personal names only for the user's own surfaces.
+    ctx.tool("memory.suggest", {
+      description: "Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }] }. Personal names (\"my wife\", \"juno\") only for the user's own surfaces; a project's caller gets that project's graph names.",
+      input: { type: "object", required: ["prefix"], properties: { prefix: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 20 },
+        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const pre = String(input.prefix || "").toLowerCase().replace(/\s+/g, " ").trimStart();
+        const limit = Math.max(1, Math.min(20, Number(input.limit) || 8));
+        const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
+        if (pre.length < 1) return { suggestions: [] };
+        let sees = true;
+        try { await personalOnly(input, caller, "memory.suggest"); } catch { sees = false; }
+        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
+        const out = [], seen = new Set();
+        const add = (text, kind, id, via) => { const k = text.toLowerCase(); if (seen.has(k) || out.length >= limit) return; seen.add(k); out.push({ text, kind, id, via }); };
+        if (sees) {
+          // Aliases are lower case and the key's first column: a range scan, not a table scan.
+          for (const r of /** @type {any[]} */ (ctx.store.db.prepare(`SELECT a.alias, e.id, e.kind, e.label FROM memory_me_aliases a JOIN memory_me_entities e ON e.id = a.entity
+              WHERE a.alias >= ? AND a.alias < ? ORDER BY length(a.alias), a.alias LIMIT 40`).all(pre, pre + "\uffff"))) add(String(r.alias), String(r.kind), String(r.id), "personal");
+        }
+        try {
+          const sc = graph.view(project_cwds);
+          const { phrases } = graph.phrases(sc?.room || "*");
+          const hits = [...phrases.keys()].filter(k => k.startsWith(pre)).sort((x, y) => x.length - y.length || (x < y ? -1 : 1));
+          for (const k of hits) {
+            const node = graph.node(phrases.get(k)[0].node, sc);
+            if (node) add(String(node.label), String(node.kind), String(node.id), "graph");
+            if (out.length >= limit) break;
+          }
+        } catch { /* no graph yet */ }
+        return { suggestions: out };
       },
     });
     ctx.tool("memory.profile", {

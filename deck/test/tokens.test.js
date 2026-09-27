@@ -98,6 +98,20 @@ test("tokens: the Deck's raw palette and radii are gone; every use goes through 
   assert.deepEqual(found, []);
 });
 
+test("tokens: the four Deck-only names app-design retired are gone (tokens.md, Retired names)", () => {
+  // --recall and --recall-ink -> --text-2 or a source chip, --recall-wash -> no fill or --hover,
+  // --beacon-wash -> no fill, --beacon-rule -> --rule. Violet is only for "needs you".
+  const RETIRED = /--(recall|recall-ink|recall-wash|beacon-wash|beacon-rule)(?![\w-])/g;
+  /** @type {string[]} */ const found = [];
+  for (const f of deckSources()) {
+    fs.readFileSync(f, "utf8").split("\n").forEach((line, i) => {
+      for (const m of line.matchAll(RETIRED)) found.push(`${path.relative(DECK, f)}:${i + 1} ${m[0]}`);
+    });
+  }
+  assert.deepEqual(found, []);
+  assert.doesNotMatch(read("css/deck.css"), /Deck-only, no token yet/);
+});
+
 test("tokens: deck.css does not define the radius tokens (they come from tokens.css, with fallbacks until then)", () => {
   const radius = [...declared(read("css/deck.css"))].filter(k => k.startsWith("radius-"));
   assert.deepEqual(radius, []);

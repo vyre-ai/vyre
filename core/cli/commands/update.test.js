@@ -226,6 +226,7 @@ test("update: when health fails inside the window, the previous tarball and the 
   assert.equal(w.calls.restore[0].force, true);
   assert.deepEqual(w.calls.bring.map(b => b.version), ["0.2.0", "0.1.0"]);
   assert.match(w.text(), /the update to 0\.2\.0 failed: vyred did not report 0\.2\.0.*Rolled back: reinstalled 0\.1\.0, restored the backup, restarted vyred/);
+  assert.ok(!fs.existsSync(path.join(w.home, "releases", "0.2.0")), "the failed release is not kept, so --rollback never picks it");
 });
 
 test("update: a failed npm install puts the old code back and leaves the data alone", async t => {

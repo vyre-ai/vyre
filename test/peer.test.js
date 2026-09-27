@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import { tempHome } from "./helpers.js";
+import { tempHome, writeModule } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
 import { ancestry, insideClaude, controllingTty, loginOf, tmuxClients } from "../core/daemon/peer.js";
 
@@ -110,7 +110,7 @@ test("peer: a person-only call from under a claude is refused silently; the same
 
   const outside = await client(dir, socket, "agents.create", { name: "kit" });
   assert.equal(outside.status, 200, JSON.stringify(outside));
-  // Tools that are not person-only are not traced at all.
+  // Tools that are not person-only still answer, as the session's own label (the next test).
   const list = await client(dir, socket, "agents.list", {}, { underClaude: true });
   assert.equal(list.status, 200, JSON.stringify(list));
   // link.call is traced by what it carries: a person's tool inside it is refused as that tool is.
@@ -121,6 +121,41 @@ test("peer: a person-only call from under a claude is refused silently; the same
   const held = await client(dir, socket, "presence.session.open", {}, { underClaude: true, headers: { "x-vyre-presence": "session id=abc secret=def" } });
   assert.equal(held.status, 403, JSON.stringify(held));
   assert.match(held.body.error.message, /inside a Claude session/);
+});
+
+test("peer: a person's label from under a claude is the session's own, for every tool; from outside it stays the person's", async t => {
+  const root = tempHome(t);
+  // A probe that says who vyred took the caller to be, and one open only to the person's surfaces
+  // (a callers list, as core/team, settings and mail check a person's label).
+  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.who", "probe.mine"] } }, `export default { async start(ctx) {
+    ctx.tool("probe.who", { input: { type: "object" }, run: async (i, meta) => ({ caller: meta.caller, thread: meta.thread || null }) });
+    ctx.tool("probe.mine", { input: { type: "object" }, callers: ["cli", "local", "deck", "capsule"], run: async () => ({ ok: true }) });
+    return {};
+  } };`);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "peer-"));
+  const socket = d.paths.socket;
+
+  for (const label of ["cli", "local", "deck", "capsule", "cli:thread:t1"]) {
+    const headers = { "x-vyre-caller": label };
+    const inside = await client(dir, socket, "probe.who", {}, { underClaude: true, headers });
+    assert.equal(inside.status, 200, JSON.stringify(inside));
+    assert.equal(inside.body.data.caller, "mcp", `${label} from a model's shell is the model's`);
+    const mine = await client(dir, socket, "probe.mine", {}, { underClaude: true, headers });
+    assert.equal(mine.status, 403, `${label}: ${JSON.stringify(mine)}`);
+    assert.match(mine.body.error.message, /not available to mcp callers/);
+    // The person at a terminal, the Deck and the Capsule on the socket keep their label.
+    const outside = await client(dir, socket, "probe.who", {}, { headers });
+    assert.equal(outside.body.data.caller, label, JSON.stringify(outside));
+    assert.equal((await client(dir, socket, "probe.mine", {}, { headers })).status, 200);
+  }
+  // A model's own label is not traced and not changed; a person-only tool from inside is still
+  // refused out loud, never run as the model's.
+  assert.equal((await client(dir, socket, "probe.who", {}, { underClaude: true, headers: { "x-vyre-caller": "mcp" } })).body.data.caller, "mcp");
+  const made = await client(dir, socket, "agents.create", { name: "juno" }, { underClaude: true });
+  assert.equal(made.status, 403);
+  assert.match(made.body.error.message, /inside a Claude session/);
 });
 
 test("peer: a detached process has no controlling terminal, whatever it says", async () => {

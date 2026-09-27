@@ -148,16 +148,37 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func height() -> CGFloat { CapsuleLayout.panelHeight(model) }
+    /// The height the open step is easing to, while it eases.
+    private var easingTo: CGFloat?
 
     /// Keep the top edge where it is and grow or shrink downwards.
     func fit() {
         guard panel.isVisible else { return }
         let h = height()
         var f = panel.frame
-        if abs(f.height - h) < 0.5 { return }
+        // Mid-step the frame is still easing: the height it is easing to is what counts.
+        if let to = easingTo, abs(to - h) < 0.5 { return }
+        if easingTo == nil, abs(f.height - h) < 0.5 { return }
+        easingTo = nil
+        let grows = h > f.height
         f.origin.y = top - h
         f.size.height = h
         frameChanges += 1
+        // Opening from the compact bar to the full panel is one 150 ms step (capsule.md); every
+        // other change, and any under Reduce Motion, is at once. Nothing resizes while text streams
+        // (the open panel's height is fixed).
+        if grows, h >= CapsuleLayout.openHeight - 0.5, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            easingTo = h
+            NSAnimationContext.runAnimationGroup { c in
+                c.duration = Tokens.Motion.reveal / 1000
+                c.timingFunction = CAMediaTimingFunction(controlPoints: Float(Tokens.Motion.ease[0]), Float(Tokens.Motion.ease[1]), Float(Tokens.Motion.ease[2]), Float(Tokens.Motion.ease[3]))
+                panel.animator().setFrame(f, display: true)
+            } completionHandler: { [weak self] in MainActor.assumeIsolated {
+                if self?.easingTo == h { self?.easingTo = nil }
+                self?.panel.invalidateShadow()
+            } }
+            return
+        }
         panel.setFrame(f, display: true)
         panel.invalidateShadow()
     }
@@ -214,6 +235,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         switch e.keyCode {
         case 53: // escape
             if model.presenceAsk != nil { model.cancelPresence(); return true }
+            if model.credentialAsk != nil { model.cancelCredential(); return true }
+            if model.escCommand() { return true }
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             // An answer on screen, or the follow-up box: back to plain search. The next Esc hides.
@@ -247,6 +270,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         case 126 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(-1); return true
         case 36, 76: // return; a held key is one press, so a held Enter never confirms what it showed
             if e.isARepeat { return true }
+            // A key being added: ⏎ saves it (the field's own submit does the same).
+            if model.credentialAsk != nil { Task { await model.saveCredential() }; return true }
             // A question: ⏎ asks (or keeps the answer and opens the follow-up box), ⌘⏎ thinks deeper.
             if !shift, model.handleReturn(command: cmd) { return true }
             if cmd || shift { return model.run(shortcut: KeyShortcut("return", command: cmd, shift: shift)) }

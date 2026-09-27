@@ -13,7 +13,8 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail, failTool, usage, parse } from "../kit.js";
+import { json, emit, fail, failTool, usage, parse, viewing, again, EXIT } from "../kit.js";
+import { prompt as promptView } from "../view.js";
 import { up } from "./projects.js";
 
 /** The kinds of session a model is set for (core/sessions/config.js PURPOSES). */
@@ -88,11 +89,22 @@ const first = (s, n = 70) => { const t = String(s || "").split("\n").find(l => l
 
 // ------------------------------------------------------------ subcommands
 
+// --json: { driver, auth, binary, claude, idle_minutes, max_live, sdk: { installed, version, download_mb } }
 async function status() {
   const s = await tool("sessions.status");
   if (!s) return 1;
-  if (json()) { emit(s); return 0; }
   const sdk = s.sdk || {};
+  if (json()) {
+    emit(s, { kind: "card", title: "Sessions", state: sdk.installed ? "ok" : "wait", fields: [
+      { label: "Driver", value: String(s.driver ?? "") },
+      { label: "Sign-in", value: String(s.auth ?? "") },
+      { label: "Claude Code", value: String(s.binary || s.claude || "") },
+      { label: "Close when idle", value: s.idle_minutes ? `after ${s.idle_minutes} min` : "never" },
+      { label: "Running at most", value: s.max_live ? String(s.max_live) : "no cap" },
+      { label: "Agent SDK", value: sdk.installed ? `${sdk.version} installed` : `${sdk.version || ""} not installed (vyre sessions setup)`.trim() },
+    ] });
+    return 0;
+  }
   out(`  ${bold("sessions")}  ${dim("driver")} ${signal(s.driver)}  ${dim("sign-in")} ${s.auth}  ${dim("Claude Code")} ${s.binary || s.claude}`);
   out(dim(`  close when idle after ${s.idle_minutes ? s.idle_minutes + " min" : "never"} · ${s.max_live ? "at most " + s.max_live + " running" : "no cap on running sessions"}`));
   out(sdk.installed ? dim(`  Agent SDK ${sdk.version} installed`)
@@ -134,12 +146,23 @@ async function models(args) {
     const scope = modelScope(which);
     const [kind, name] = [scope.slice(0, scope.indexOf(":")), scope.slice(scope.indexOf(":") + 1)];
     const got = kind === "purpose" ? purposes[name] : projects[name] ? { model: projects[name], from: scope } : null;
-    if (json()) { emit({ scope, ...(got || { model: null }) }); return 0; }
+    // --json: { scope, model, from? }
+    if (json()) {
+      emit({ scope, ...(got || { model: null }) }, { kind: "card", title: scope, fields: [{ label: "Model", value: got ? String(got.model) : "its purpose's" },
+        ...(got && got.from ? [{ label: "From", value: String(got.from) }] : [])] });
+      return 0;
+    }
     if (!got) { out(dim(`  ${scope} has no model of its own · its sessions use their purpose's`)); return 0; }
     out(`  ${signal(scope)}  ${bold(got.model)}  ${dim(got.from ? "from " + got.from : "")}`);
     return 0;
   }
-  if (json()) { emit(m); return 0; }
+  // --json: { purposes: { <purpose>: { model, from } }, projects: { <slug>: model } }
+  if (json()) {
+    const rows = [...Object.entries(purposes).map(([p, v]) => ({ id: `purpose:${p}`, purpose: p, model: String(v?.model ?? v), from: v?.from ? String(v.from) : "" })),
+      ...Object.entries(projects).map(([slug, v]) => ({ id: `project:${slug}`, purpose: `project ${slug}`, model: String(v), from: "" }))];
+    emit(m, { kind: "table", title: "Models", columns: [{ key: "purpose", label: "Purpose" }, { key: "model", label: "Model" }, { key: "from", label: "From" }], rows, empty: "No models set" });
+    return 0;
+  }
   out(bold("  by purpose"));
   for (const [p, v] of Object.entries(purposes)) out(`  ${p.padEnd(9)} ${String(v?.model ?? v).padEnd(24)} ${dim(v?.from ? "from " + v.from : "")}`);
   const slugs = Object.keys(projects);
@@ -165,7 +188,13 @@ async function prompt(args) {
   if (action === "show") {
     const r = await tool("sessions.prompt.get", { scope });
     if (!r) return 1;
-    if (json()) { emit(r); return 0; }
+    // --json: { scope, prompt: { version, text, mode, by, at } | null }
+    if (json()) {
+      const p = r.prompt;
+      emit(r, { kind: "text", lines: p && p.text.trim() ? [`${scope} v${p.version} · ${p.mode === "replace" ? "replaces Claude Code's own" : "added after Claude Code's own"}${p.by ? " · by " + p.by : ""}`, ...p.text.split("\n")]
+        : [`${scope} adds nothing to Claude Code's own system prompt`] });
+      return 0;
+    }
     const p = r.prompt;
     if (!p || !p.text.trim()) { out(dim(`  ${scope} adds nothing to Claude Code's own system prompt · vyre sessions prompt ${scope} set`)); return 0; }
     out(`  ${bold(scope)}  ${dim(`v${p.version} · ${p.mode === "replace" ? "replaces Claude Code's own" : "added after Claude Code's own"}${p.by ? " · by " + p.by : ""}`)}`);
@@ -176,7 +205,14 @@ async function prompt(args) {
   if (action === "history") {
     const r = await tool("sessions.prompt.history", { scope });
     if (!r) return 1;
-    if (json()) { emit(r); return 0; }
+    // --json: { scope, versions: [{ version, at, mode, by, text, note }] }
+    if (json()) {
+      emit(r, { kind: "table", title: `${scope} prompt history`, columns: [{ key: "version", label: "Version" }, { key: "at", label: "When" }, { key: "mode", label: "Mode" },
+        { key: "by", label: "By" }, { key: "text", label: "Text" }],
+      rows: (r.versions || []).map(v => ({ id: v.version, version: `v${v.version}`, at: when(v.at), mode: v.mode, by: v.by || "", text: v.text.trim() ? first(v.text) : "(cleared)" })),
+      empty: `${scope} has never been set` });
+      return 0;
+    }
     const vs = r.versions || [];
     if (!vs.length) { out(dim(`  ${scope} has never been set`)); return 0; }
     for (const v of vs) out(`  ${signal(("v" + v.version).padEnd(4))} ${dim(when(v.at))}  ${v.mode.padEnd(7)} ${dim((v.by || "").padEnd(10))} ${v.text.trim() ? first(v.text) : dim("(cleared)")}${v.note ? dim("  " + v.note) : ""}`);
@@ -197,8 +233,13 @@ async function prompt(args) {
   if (action === "preview") {
     const r = await tool("sessions.prompt.preview", previewInput(scope));
     if (!r) return 1;
-    if (json()) { emit(r); return 0; }
     const parts = (r.parts || []).map(p => `${p.scope} v${p.version}`).join(" + ");
+    // --json: { text, mode, parts: [{ scope, version }], warning? }
+    if (json()) {
+      emit(r, { kind: "text", lines: [`A session here starts with ${r.mode === "replace" ? "only these (Claude Code's own is replaced)" : "Claude Code's own, then these"}${parts ? ": " + parts : ""}`,
+        ...(r.warning ? [String(r.warning)] : []), ...(r.text && r.text.trim() ? r.text.split("\n") : ["(nothing added)"])] });
+      return 0;
+    }
     out(`  ${bold("a session here starts with")} ${dim(r.mode === "replace" ? "only these (Claude Code's own is replaced)" : "Claude Code's own, then these")}${parts ? dim(": " + parts) : ""}`);
     if (r.warning) out(beacon("  " + r.warning));
     out(r.text && r.text.trim() ? r.text.split("\n").map(l => "  " + l).join("\n") : dim("  (nothing added)"));
@@ -213,6 +254,8 @@ async function prompt(args) {
   }
   if (text === undefined && words.length) text = words.join(" ");
   if (text === undefined) {
+    // Nothing is read or opened for a surface: it asks for the text, then runs this again with it.
+    if (viewing()) { emit(null, promptView({ name: "text", label: "The new system prompt", args: again(), answer: "flag", flag: "text" })); return EXIT.USAGE; }
     if (json()) return usage("vyre sessions prompt set needs --text or --file with --json");
     const cur = await tool("sessions.prompt.get", { scope });
     if (!cur) return 1;
@@ -232,10 +275,16 @@ async function prompt(args) {
 }
 
 export default {
-  name: "sessions", order: 23, usage: "vyre sessions [setup|models|prompt] … [--json]",
+  name: "sessions", order: 23, usage: "vyre sessions [status|setup|models|prompt] … [--json]",
+  verbs: [
+    { verb: "status", summary: "the driver, sign-in, Claude Code and the Agent SDK", usage: "", read: true },
+    { verb: "setup", summary: "install the Agent SDK now and wait", usage: "" },
+    { verb: "models", summary: "the model each kind of session runs on, or set one", usage: "[<scope>] [<model>] [--clear]", read: false },
+    { verb: "prompt", summary: "the system prompt at one level: show, set, history, revert, preview", usage: "[<scope>] [show|set|history|revert|preview] [<version>] [--text v] [--file v] [--replace] [--note v]" },
+  ],
   summary: "how the sessions Vyre starts run: driver, sign-in, the model per purpose, the system prompt",
   help: [
-    "  vyre sessions                                   the driver, sign-in, Claude Code, the Agent SDK",
+    "  vyre sessions [status]                          the driver, sign-in, Claude Code, the Agent SDK",
     "  vyre sessions setup                             install the Agent SDK now and wait",
     "  vyre sessions models                            the model each kind of session runs on",
     "  vyre sessions models <purpose|project> <model>  set one (opus, sonnet, haiku or a model id)",
@@ -256,9 +305,9 @@ export default {
     const rest = args.filter(a => a !== "--json");
     const [sub, ...more] = rest;
     const subs = { setup, models, prompt };
-    if (sub && !(sub in subs) && !sub.startsWith("-")) return usage(`"${sub}" is not a vyre sessions command: setup, models or prompt`, "vyre help sessions");
+    if (sub && sub !== "status" && !(sub in subs) && !sub.startsWith("-")) return usage(`"${sub}" is not a vyre sessions command: status, setup, models or prompt`, "vyre help sessions");
     if (!(await up())) return 5;
-    if (!sub || sub.startsWith("-")) { parse(rest, { values: [], cmd: "sessions" }); return status(); }
+    if (!sub || sub.startsWith("-") || sub === "status") { parse(sub === "status" ? more : rest, { values: [], cmd: "sessions" }); return status(); }
     return subs[/** @type {"setup"|"models"|"prompt"} */ (sub)](more);
   },
 };

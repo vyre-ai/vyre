@@ -202,6 +202,24 @@ let moduleProvidersSuite = Suite("module providers") { t in
         t.eq(t.wait { await fill.run(item, ActionContext(query: Query("git", front: app), frontIsBack: true)) }, .close("Filled GitHub in Example"))
     }
 
+    t.test("mail rows: an account to write from holds the send and says so, a message says what it is") {
+        let l = fake(modules: #"[{"name":"mail","state":"running","shows":{"capsule":{"results:mail.find":{"title":"Mail"},"action:mail.compose":{"title":"Write it"}}}}]"#,
+                     tools: ["mail.compose": { i in
+                         if (i["id"] as? String) == "m1" { return .success(["kind": "email", "message": ["subject": "The order", "from": "Dana <dana@northwind-bakery.example>"]]) }
+                         return .success(["kind": "held", "held": "h1", "message": "Held at the Gate: long words"]) }])
+        let p = ModuleProviders(link: l)
+        _ = t.wait { await p.refresh() }
+        let send = ModuleRow(id: "mail:c1", label: "Send from alex@harlow.example", sub: "IMAP · alex@harlow.example · to dana@northwind-bakery.example", module: "mail", provider: "Mail", rowId: "c1", rowKind: "compose", score: 1)
+        let msg = ModuleRow(id: "mail:m1", label: "The order", sub: "Dana", module: "mail", provider: "Mail", rowId: "m1", rowKind: "email", score: 1)
+        let a = p.item(for: send, actions: p.actions(module: "mail")), b = p.item(for: msg, actions: p.actions(module: "mail"))
+        t.eq(a.subtitle, "IMAP · alex@harlow.example · to dana@northwind-bakery.example", "the sub is the module's, as written")
+        t.eq(ModuleProviders.symbol(send), "square.and.pencil")
+        t.eq(ModuleProviders.symbol(msg), "envelope")
+        let ctx = ActionContext(query: Query("email dana"))
+        t.eq(t.wait { await a.actions[0].run(a, ctx) }, .said("Waiting for you: Send from alex@harlow.example. Nothing is sent until you send it from Needs you."))
+        t.eq(t.wait { await b.actions[0].run(b, ctx) }, .said("The order · Dana <dana@northwind-bakery.example>"))
+    }
+
     t.test("warm refreshes on open at most twice a minute") {
         var clock = Date(timeIntervalSince1970: 1000)
         let l = fake(modules: "[]")

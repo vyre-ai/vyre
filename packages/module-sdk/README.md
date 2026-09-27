@@ -27,5 +27,6 @@ export default {
 ```
 
 The package isn't on npm yet: it publishes with Vyre's first npm release. Until then, reference it
-from a checkout of the Vyre repo. A test harness (`@vyre/module-sdk/testing`) and `vyre module new`
-come in phase 3 of the ADR.
+from a checkout of the Vyre repo. `vyre module check` runs `checkManifest()` from the CLI, and
+`vyre module new` scaffolds a module that passes it. A test harness (`@vyre/module-sdk/testing`)
+comes in phase 3 of the ADR.
