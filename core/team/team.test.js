@@ -19,6 +19,8 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
 import { neutralize } from "./index.js";
+import { open as openStore } from "../store/index.js";
+import { paths } from "../config/index.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -36,22 +38,37 @@ const until = async (fn, what, ms = 15_000) => {
 /** A vyred in a temp home, on the fake claude, with a project already made. */
 async function boot(t) {
   const root = tempHome(t);
-  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER };
-  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli" });
+  const log = path.join(root, "claude.log");
+  const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG };
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, VYRE_SESSIONS_DRIVER: "cli", FAKE_CLAUDE_LOG: log });
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   // projectsDir must live under root: its default (~/Vyre/projects) is the user's real home,
   // never a temp one (RULES: temp homes only).
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", sessions: { install: false }, projectsDir: path.join(root, "projects") }));
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  const tool = async (name, input, caller = "cli") => {
-    const r = await call(name, input, { root, caller, timeout: 20_000 });
+  const tool = async (name, input, caller = "cli", extra = {}) => {
+    const r = await call(name, input, { root, caller, timeout: 20_000, ...extra });
     if (r.error) throw Object.assign(new Error(r.error.message || r.error.code), { code: r.error.code });
     return r.data;
   };
   const project = await tool("projects.create", { name: "Harlow Legal" });
   const raw = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
-  return { root, d, tool, raw, project };
+  const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
+  return { root, d, tool, raw, project, launches };
+}
+
+/**
+ * A real (non-agent) thread in a project, bound the way a session's own SessionStart hook binds
+ * it: threads.bind with the fake claude child's own pid, which is how a plain project session
+ * (not a teammate) is meant to reach team.* — the summon path step 3 is about. Returns headers
+ * (`session`) for daemon/client.js's call()/request(), so team.* sees meta.thread, never a label.
+ */
+async function realSession(root, tool, launches, project, name = "a real session") {
+  const started = await tool("threads.start", { project, name, prompt: "hello there" });
+  const launch = await until(() => launches().find(l => l.argv.includes(started.id)), "the session's own launch to log");
+  const bound = await tool("threads.bind", { session: started.id, pid: launch.pid }, "harness");
+  return { thread: started.id, session: { id: started.id, key: bound.key } };
 }
 
 test("team.add makes a teammate; team.list shows it asleep with an empty queue", async t => {
@@ -82,8 +99,9 @@ test("a request runs, the teammate closes it with team.done, and the result come
   const status = await tool("team.status", { request: ask.request });
   assert.equal(status.state, "done");
   assert.equal(status.teammate, `design-${project.slug}`);
-  const [row] = await tool("team.list", { project: project.slug });
-  assert.equal(row.state, "idle"); // still has a thread, just not mid-request
+  // The request's own state flips to "done" as soon as team.done is called, mid-turn; the
+  // teammate itself is not free again (state "idle") until that turn has actually ended.
+  const row = await until(async () => { const [r] = await tool("team.list", { project: project.slug }); return r.state === "idle" ? r : null; }, "the teammate to go idle");
   assert.equal(row.last_result.request, ask.request);
 });
 
@@ -221,4 +239,83 @@ test("HIGH 1 (core/team's own part, e2e round 3): a bare 'mcp' caller with no th
   assert.equal(opsRow.queued, 0);
   assert.equal(opsRow.current_request, null);
   assert.equal(opsRow.last_result, null);
+});
+
+// --- step 3 (2026-09-28): rotation -------------------------------------------------------------
+
+test("rotation: a 7-day-old thread is retired; the fresh one carries the teammate's notes and last results forward", async t => {
+  const { tool, root, project, launches } = await boot(t);
+  const tm = await tool("team.add", { project: project.slug, role: "design" });
+  await tool("team.notes", { action: "set", agent: tm.agent, text: "Scope: the intake form." });
+  const first = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"first pass done"}' });
+  assert.equal(first.state, "done");
+
+  const db = openStore(paths(root).db);
+  const before = /** @type {any} */ (db.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
+  assert.ok(before);
+  // Nothing public sets a thread's age; back-dating it past the 7-day threshold directly is the
+  // same thing a real 7-day-old thread would trigger on its own the next time it is asked.
+  db.prepare("UPDATE threads_runs SET started_at = ? WHERE id = ?").run(Date.now() - 8 * 24 * 60 * 60 * 1000, before);
+  db.close();
+
+  const second = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"after rotation"}' });
+  assert.equal(second.state, "done");
+
+  const db2 = openStore(paths(root).db);
+  const after = /** @type {any} */ (db2.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
+  db2.close();
+  assert.notEqual(after, before); // a fresh thread, not the old one resumed
+
+  const all = launches();
+  const rotated = all[all.length - 1]; // the rotated (second) launch: also fresh, so also carries --append-system-prompt
+  const append = rotated && rotated.argv.includes("--append-system-prompt") ? rotated.argv[rotated.argv.indexOf("--append-system-prompt") + 1] : "";
+  assert.match(append, /Scope: the intake form/); // its notes came with it
+  assert.match(append, /first pass done/); // and its last result
+});
+
+test("rotation: a thread well under the age and turn thresholds is resumed, not retired", async t => {
+  const { tool, root, project } = await boot(t);
+  const tm = await tool("team.add", { project: project.slug, role: "design" });
+  const first = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"first"}' });
+  assert.equal(first.state, "done");
+  const db = openStore(paths(root).db);
+  const before = /** @type {any} */ (db.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
+  db.close();
+  const second = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"second"}' });
+  assert.equal(second.state, "done");
+  const db2 = openStore(paths(root).db);
+  const after = /** @type {any} */ (db2.prepare("SELECT thread FROM team_teammates WHERE agent = ?").get(tm.agent)).thread;
+  db2.close();
+  assert.equal(after, before);
+});
+
+// --- step 3 (2026-09-28): summon from a real session, through the plugin's vyre mcp -------------
+//
+// harness/mcp/server.js lists and calls every module tool generically (it reads /v1/tools and
+// forwards to whatever the daemon has), so team.* needed no new code to be reachable through it:
+// this is the "through the plugin's vyre mcp first" half of ADR 0031's step 3. What this proves
+// is the other half of the contract, and the thing that was actually broken: that a genuine
+// session's own bound thread (never a label, never an input field) is what team.* resolves a
+// project from. It caught a real bug: threads.get answers { thread: <record>, ... }, not the
+// record flat, so every meta.thread branch (projectOf, inProject, shouldRotate) was reading
+// undefined and silently falling through — untested until now, since every earlier test called
+// as a bare "cli"/"mcp:agent:*" caller, never a bound session.
+
+test("summon: a real session's own thread, bound the way its SessionStart hook would, resolves its project without being told", async t => {
+  const { tool, root, project, launches } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design", brief: "visual design" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const [row] = await tool("team.list", {}, "cli", { session });
+  assert.equal(row.agent, `design-${project.slug}`);
+});
+
+test("summon: that same session can team.ask, and the result posts back into its own thread", async t => {
+  const { tool, root, project, launches } = await boot(t);
+  await tool("team.add", { project: project.slug, role: "design" });
+  const { session } = await realSession(root, tool, launches, project.slug);
+  const ask = await tool("team.ask", { to: "design", wait: true, text: 'vyre team.done {"result":"from a real session"}' }, "cli", { session });
+  assert.equal(ask.state, "done");
+  assert.equal(ask.result, "from a real session");
+  const status = await tool("team.status", { request: ask.request }, "cli", { session });
+  assert.equal(status.reply_to, session.id); // the request is bound to this session's own thread
 });

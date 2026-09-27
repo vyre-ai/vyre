@@ -69,12 +69,24 @@ export const attr = s => String(s == null ? "" : s).replace(/[<>"&\n\r]/g, "").s
 export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-([a-z-]+)/gi, (_, slash, name) => `${slash}vyre-${name}​`);
 
 /** What a teammate's thread is told about itself, before its role instructions. */
-export function preamble(tm) {
+/**
+ * What a teammate's thread is told about itself, before its role instructions. `context`, given
+ * on a fresh thread that is not this teammate's very first (a rotation, section 3: "the next item
+ * starts a fresh session from the notes and the last three results"), carries its current notes
+ * and its last few finished requests, so nothing it learned is lost when its session turns over.
+ * @param {any} tm @param {{ notes?: string, recent?: { id: string, state: string, result: string|null }[] }} [context]
+ */
+export function preamble(tm, context) {
   const lines = [`You are ${tm.role}, a teammate in the ${tm.project} project (Vyre, ADR 0031).`,
     `Your brief: ${tm.brief || "no brief set yet"}.`,
     "Work reaches you as requests, one at a time, wrapped in <vyre-request>. Close each one by calling team.done with a result, or team.fail with a reason, before you stop. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's.",
     "For what was decided or done before in your projects, call memory_ask; it sees only your projects."];
   if (tm.instructions) lines.push("", String(tm.instructions));
+  if (context && context.notes) lines.push("", "Your notes (your memory of record, from before this session):", context.notes);
+  if (context && context.recent && context.recent.length) {
+    lines.push("", "Your last few requests, most recent first:");
+    for (const r of context.recent) lines.push(`- ${r.id} (${r.state}): ${r.result || "(no result)"}`);
+  }
   return lines.join("\n");
 }
 
@@ -126,9 +138,12 @@ export default {
      * neither a thread nor an agent": a bare mcp caller with neither has none of these either,
      * and must be refused, not handed the run of `input.project` — e2e review round 3).
      */
+    /** threads.get answers { thread: <record>, asks, events }, not the record flat; null on any failure. */
+    const threadRecord = async thread => { const t = await use("threads.get", { thread }).catch(() => null); return t && t.thread ? t.thread : null; };
+
     const projectOf = async ({ thread, agent, caller }, input) => {
       if (thread) {
-        const t = await use("threads.get", { thread });
+        const t = await threadRecord(thread);
         if (t && t.project) return t.project;
         throw Object.assign(new Error("this session is not in a project"), { code: "bad_input" });
       }
@@ -144,7 +159,7 @@ export default {
 
     /** True once a session's thread, or a teammate's own identity, is verified to belong to (or serve) a project. Never trusts a label. */
     const inProject = async (meta, project) => {
-      if (meta.thread) { const t = await use("threads.get", { thread: meta.thread }); return Boolean(t && t.project === project); }
+      if (meta.thread) { const t = await threadRecord(meta.thread); return Boolean(t && t.project === project); }
       const tm = callerTeammate(meta.agent);
       return Boolean(tm && (tm.project === project || tm.shared === "*" || (Array.isArray(tm.shared) && tm.shared.includes(project))));
     };
@@ -192,6 +207,28 @@ export default {
       return rows[0] || null;
     };
 
+    /** A teammate's last few finished requests, most recent first: what a rotated session is told. */
+    const recentResults = (agent, n = 3) => db.prepare("SELECT id, state, result FROM team_requests WHERE teammate = ? AND state IN ('done','failed') ORDER BY finished_at DESC LIMIT ?")
+      .all(agent, n).map(r => ({ id: String(r.id), state: String(r.state), result: r.result == null ? null : String(r.result) }));
+
+    const ROTATE_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+    // thread.usage has no per-thread context percentage yet (ADR 0031 section 3's 60% threshold
+    // needs one); a turn count is the nearest proxy available today, generous enough that it
+    // rarely fires before genuine old age does, and is revisited once that signal exists.
+    const ROTATE_TURNS = 40;
+
+    /**
+     * Should a teammate's existing thread be resumed, or is it time to close it and start fresh
+     * from its notes and last results (section 3: rotation)? False (resume) for a thread vyred
+     * cannot currently read, since a stale reading here would rotate away a thread with no reason.
+     */
+    const shouldRotate = async tm => {
+      if (!tm.thread) return false;
+      const rec = await threadRecord(tm.thread);
+      if (!rec) return false;
+      return Date.now() - Number(rec.started || Date.now()) > ROTATE_AGE_MS || Number(rec.turns || 0) >= ROTATE_TURNS;
+    };
+
     const setTeammate = (agent, patch) => {
       const cur = { thread: undefined, state: undefined, current_request: undefined, ...patch };
       const sets = [], vals = [];
@@ -200,13 +237,17 @@ export default {
       db.prepare(`UPDATE team_teammates SET ${sets.join(", ")}, updated_at = ? WHERE agent = ?`).run(...vals, Date.now(), agent);
     };
 
+    /**
+     * Close a request's record (state, result) and tell its caller. Never frees its teammate for
+     * the next one: team.done/team.fail call this mid-turn (they are a tool call the teammate's
+     * own turn is still inside), so a request being "closed" and its teammate being "free to
+     * start the next one" are different moments — see release() below, and why.
+     */
     const finish = async (req, status, { result = null, result_refs = [] } = {}) => {
       const fresh = reqById(req.id);
       if (!fresh || fresh.state !== "running") return fresh; // already closed (or never started)
       db.prepare("UPDATE team_requests SET state = ?, result = ?, result_refs = ?, finished_at = ? WHERE id = ?")
         .run(status, result, JSON.stringify(result_refs), Date.now(), req.id);
-      await ctx.call("sessions.slots", { action: "release", owner: req.id, key: req.teammate });
-      setTeammate(req.teammate, { current_request: null, state: "idle" });
       ctx.events.emit("summon.finished", { request: req.id, teammate: req.teammate, project: req.project, status });
       if (req.reply_to) {
         // A teammate wrote `result`, so it is untrusted text: a nonce (chosen here, after the
@@ -219,6 +260,17 @@ export default {
         try { await ctx.call("threads.post", { thread: req.reply_to, text: tag, kind: "teammate-result", from: req.teammate }); } catch (e) { ctx.log?.(`team: could not post ${req.id}'s result to ${req.reply_to}: ${/** @type {Error} */ (e).message}`); }
       }
       return reqById(req.id);
+    };
+
+    /**
+     * Give back a closed request's slot and free its teammate for the next one. Called only once
+     * the request's attempt has genuinely ended: either it never got as far as a live thread (no
+     * slot, or threads.launch itself failed), or thread.finished says the turn that ran it is
+     * over. Never from team.done/team.fail: at that point the turn is still running.
+     */
+    const release = async req => {
+      await ctx.call("sessions.slots", { action: "release", owner: req.id, key: req.teammate }).catch(() => {});
+      setTeammate(req.teammate, { current_request: null, state: "idle" });
     };
 
     const pump = async agent => {
@@ -235,15 +287,21 @@ export default {
           ctx.events.emit("summon.started", { request: req.id, teammate: agent, project: req.project });
           let slot;
           try { slot = await use("sessions.slots", { action: "take", kind: "teammate", project: req.project, owner: req.id, key: agent }); }
-          catch (e) { await finish(reqById(req.id), "failed", { result: `no teammate slot: ${/** @type {Error} */ (e).message}` }); continue; }
+          catch (e) {
+            const closed = await finish(reqById(req.id), "failed", { result: `no teammate slot: ${/** @type {Error} */ (e).message}` });
+            await release(closed || req);
+            continue;
+          }
           try {
             // req.from is a caller-chosen label (a surface name, a thread id): attr() keeps it
             // from breaking out of the attribute; req.text is the requester's own words, which
             // the teammate is meant to read as an instruction, but never as a second wrapper.
             const wrapped = `<vyre-request id="${req.id}" from="${attr(req.from)}" priority="${req.priority}">\n${neutralize(req.text)}${req.refs.length ? `\nFiles: ${req.refs.map(attr).join(", ")}` : ""}\n</vyre-request>`;
-            const first = !tm.thread;
+            const rotate = await shouldRotate(tm);
+            const first = !tm.thread || rotate;
+            const context = first && tm.thread ? { notes: noteCurrent(agent, "general") || undefined, recent: recentResults(agent) } : undefined;
             const t = await use("threads.launch", { agent, agent_kind: "teammate", project: req.project, purpose: "teammate",
-              prompt: wrapped, name: agent, ...(first ? { append: preamble(tm) } : { resume: tm.thread }) });
+              prompt: wrapped, name: agent, ...(first ? { append: preamble(tm, context) } : { resume: tm.thread }) });
             setTeammate(agent, { thread: t.id });
             // Registered the instant t.id is known, with no `await` between threads.launch
             // resolving and this line: nothing else runs on this event loop in that gap, so
@@ -264,11 +322,14 @@ export default {
               if (stillRunning && stillRunning.state === "running") {
                 await finish(stillRunning, "failed", { result: "the teammate's turn ended without team.done or team.fail" });
               }
+              // Only now, with the turn genuinely over, is a slot given back and this teammate
+              // free to start another (release(), not inside finish(): see its own comment).
+              await release(reqById(req.id) || req);
               pump(agent);
             });
           } catch (e) {
-            await use("sessions.slots", { action: "release", owner: req.id, key: agent }).catch(() => {});
-            await finish(reqById(req.id), "failed", { result: `could not start: ${/** @type {Error} */ (e).message}` });
+            const closed = await finish(reqById(req.id), "failed", { result: `could not start: ${/** @type {Error} */ (e).message}` });
+            await release(closed || req);
             continue;
           }
           return; // one running request at a time; the next pump() comes from finish() or thread.finished
