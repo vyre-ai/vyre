@@ -69,7 +69,15 @@ const WRITE_STEMS = ["send", "delete", "remove", "publish", "transfer", "destroy
 const DELETE_WORDS = ["delete", "remove", "destroy", "drop", "erase", "purge", "trash", "archive", "unlink", "wipe", "clear"];
 const PAY_WORDS = ["pay", "payment", "charge", "transfer", "refund", "purchase", "buy", "order", "checkout", "spend", "invoice", "subscribe"];
 /** Where an outward call is going: the first of these arguments, else the server's name. */
-export const TO_KEYS = ["to", "channel", "channel_id", "chat_id", "recipient", "email", "address", "url"];
+/**
+ * Errors after which the call did not reach the server, or the server itself answered no: a
+ * JSON-RPC refusal, a failed start, a lost session or login (the request was refused as a whole).
+ * Anything else once the request was handed over (the server exited or closed mid-call, a
+ * timeout, a network failure) may have reached it: `detail.reached` is "maybe".
+ */
+export const NOT_REACHED = new Set(["rpc", "spawn_failed", "unauthorized", "session_expired"]);
+
+export const TO_KEYS = ["to", "channel", "channel_id", "conversation_id", "chat_id", "recipient", "email", "address", "url"];
 
 /** A tool name as lowercase words: "sendMessage", "send_message" and "send-message" all read the same. */
 export function words(name) {
@@ -637,10 +645,13 @@ export class Hub {
     s.inflight++;
     if (s.timer) { clearTimeout(s.timer); s.timer = null; }
     let ok = false;
+    // Whether the call may have reached the server, for a caller deciding if a retry could send
+    // twice: "no" until the request is handed to the client, and after the server's own refusal.
+    let asked = false;
     try {
       let client = await this.ensure(name);
       let result;
-      try { result = await client.callTool(tool, args); }
+      try { asked = true; result = await client.callTool(tool, args); }
       catch (e) {
         const code = /** @type {any} */ (e)?.code;
         if (code === "unauthorized" || code === "session_expired") {
@@ -656,7 +667,8 @@ export class Hub {
       ok = !(result && result.isError);
       return this.cap(this.creds.scrubAll(result));
     } catch (e) {
-      throw this.scrubbed(e);
+      const code = /** @type {any} */ (e)?.code;
+      throw this.scrubbed(e, { reached: asked && !NOT_REACHED.has(code) ? "maybe" : "no" });
     } finally {
       s.inflight--;
       const at = this.now();
@@ -822,8 +834,9 @@ export class Hub {
   message(e) { return this.creds.scrub(String(/** @type {any} */ (e)?.message || e)); }
 
   /** An error safe to hand back: scrubbed of every value, with its code kept. */
-  scrubbed(e) {
+  /** @param {any} e @param {Record<string, any>} [detail] what the caller may act on, passed through by the registry */
+  scrubbed(e, detail) {
     const code = typeof /** @type {any} */ (e)?.code === "string" ? /** @type {any} */ (e).code : "failed";
-    return Object.assign(new Error(cut(this.message(e), 1000)), { code });
+    return Object.assign(new Error(cut(this.message(e), 1000)), { code, ...(detail ? { detail } : {}) });
   }
 }

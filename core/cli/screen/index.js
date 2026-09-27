@@ -8,13 +8,14 @@
 // Answering an ask or sending a draft goes through callAsPerson, so vyred still decides whether
 // a person is here; the screen steps out of the way while that proof is asked for.
 
-import { call, request } from "../../daemon/client.js";
+import { call, request, write } from "../../daemon/client.js";
 import { callAsPerson } from "../presence.js";
 import * as model from "./model.js";
 import { render } from "./layout.js";
 import { terminal } from "./driver.js";
 import { transcript, apply, load as loadTranscript } from "./transcript.js";
 import { load, sessions, stream, linkStatus, REFRESH } from "./live.js";
+import { fortune } from "../delight.js";
 
 const { SURFACE } = model;
 const LINK_MS = 60_000;
@@ -51,7 +52,7 @@ export async function runScreen(io, o) {
   let ended = false;
 
   const frame = () => {
-    const lines = render(st, { ...term.size(), transcripts, details });
+    const lines = render(st, { ...term.size(), transcripts, details, fortune: fortune({ stream: { isTTY: true } }) });
     o.onFrame?.(lines);
     return lines;
   };
@@ -158,7 +159,8 @@ export async function runScreen(io, o) {
         return;
       }
       case "send": {
-        const send = () => call("threads.send", { thread: ef.thread.id, text: ef.text, surface: SURFACE });
+        // Each try is its own intent (the second follows a lease), so each gets its own key.
+        const send = () => write("threads.send", { thread: ef.thread.id, text: ef.text, surface: SURFACE });
         let r = await send();
         // A holder that is a closed terminal holds nothing: take the keyboard and send again.
         if (!r.error && r.data && !r.data.sent && r.data.holder && !model.liveHolder(r.data.holder)) {

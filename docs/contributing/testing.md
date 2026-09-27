@@ -77,7 +77,6 @@ No test runs the real `claude`, `tailscale`, `ssh`, `docker` or a browser. Each 
 | `VYRE_TAILSCALE_BIN` | `tailscale` | `core/names`, `core/cli/tailnet.js`, `core/link` |
 | `VYRE_SSH_BIN` | `ssh` | `core/cli/ssh.js` |
 | `VYRE_OPEN_BIN` | the command that opens a browser | `vyre up`, `vyre box` |
-| `VYRE_CAPSULE_BIN` | the Capsule app | `vyre capsule`, `local/capsule` |
 | `VYRE_HANDS_BIN` | the macOS accessibility helper | `local/hands-mac` |
 
 The fakes themselves:
@@ -115,7 +114,7 @@ Run from the repository root. A targeted run skips the `tmp-guard` wrapper, so c
 
 ## Measured, not only passed
 
-- `npm run perf-check` (`scripts/perf-check`) holds `vyred` to the idle budget in [Section 2 of the spec](../architecture/spec.md#2-principles), principle 8. It builds a throwaway home, seeds the fixture corpus plus a synthetic one of about 20,000 turns, starts a real `vyred`, waits for indexing to finish, then samples it for 60 seconds of idle. It fails on CPU above budget, resident memory over 150 MB, or any timer that repeats faster than once a minute. CI runs it after `npm test`. See [Performance](../architecture/performance.md).
+- `npm run perf-check` (`scripts/perf-check`) holds `vyred` to the idle budget in [Section 2 of the spec](../architecture/spec.md#2-principles), principle 8. It builds a throwaway home, seeds the fixture corpus plus a synthetic one of about 20,000 turns, starts a real `vyred`, waits for indexing to finish, then samples it for 60 seconds of idle. It fails on CPU above budget, more than 50 MB of heap in use after a full GC, a settled resident size over 150 MB or a startup peak over 200 MB in the first 30 seconds (both on the Node the box ships), or any timer that repeats faster than once a minute. CI runs it after `npm test`. See [Performance](../architecture/performance.md).
 - `npm run eval:memory` (`scripts/eval-memory.js`) scores memory on a fictional world: whether facts are right, and that none leaks from one project to another. `test/eval/memory-eval.test.js` runs it under `npm test` against `test/eval/memory-baseline.json`; `npm run eval:memory -- --write-baseline` rewrites the baseline.
 - `npm run docs:check` holds these docs to their contract. See [Writing the docs](../CONTRIBUTING-DOCS.md).
 

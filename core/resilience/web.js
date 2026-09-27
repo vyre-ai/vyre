@@ -3,6 +3,7 @@
 // PWA and the phone app's web target; docs/adr/0029-resilience.md, R1, R2, R3, R5). No Node imports
 // and no dependencies; Safari 16 and React Native Web are enough.
 //
+//   over          open and caller over any fetch(path, init), such as relay/client's paths
 //   open          one GET for follow(), over fetch and a ReadableStream
 //   caller        one tool call for outbox(), over fetch, never thrown
 //   idbStore      the outbox, kept in IndexedDB
@@ -10,7 +11,8 @@
 //   cacheStore    the last Now, Needs, threads and planner, so the app opens offline
 //   lifecycle     hidden tab, network change and back/forward cache, wired to both
 //
-// A base is an http(s) URL, and may carry a path (a relay route): paths are appended to it.
+// A base is an http(s) URL, and paths are appended to it. The relay is not an HTTP proxy (it is
+// Noise over one WebSocket), so on the phone the transport is relay/client's paths, through over().
 // Storage never throws. IndexedDB comes first ("vyre-resilience", one object store per box);
 // where it is missing or refused (a private window, blocked site data) localStorage takes over,
 // and where that fails too, memory, which lasts as long as the page.
@@ -21,23 +23,27 @@ const join = (base, path) => {
   return base.replace(/\/+$/, "") + path;
 };
 
-/** @type {import("./stream.js").Open} */
-export async function open({ base, path, headers, signal }) {
-  const r = await fetch(join(base, path), { method: "GET", headers, signal, cache: "no-store" });
-  if (!r.ok) { r.body?.cancel().catch(() => {}); return { status: r.status, chunks: text(null) }; }
-  return { status: r.status, chunks: text(r) };
-}
-
 /**
  * The body as text chunks. Read through getReader, because Safari cannot iterate a
- * ReadableStream; a body without a stream (an old React Native fetch) arrives whole.
- * @param {Response|null} res
+ * ReadableStream; a body without a stream (an old React Native fetch) arrives whole. relay/client's
+ * Response-like (conn.fetch, createPaths().fetch) has no getReader: its body is an async iterable
+ * of Uint8Array chunks.
+ * @param {any} res
  */
 async function* text(res) {
   if (!res) return;
   if (!res.body) { const all = await res.text(); if (all) yield all; return; }
-  const reader = res.body.getReader();
   const dec = new TextDecoder();
+  if (typeof res.body.getReader !== "function") {
+    for await (const value of res.body) {
+      const s = dec.decode(value, { stream: true });
+      if (s) yield s;
+    }
+    const tail = dec.decode();
+    if (tail) yield tail;
+    return;
+  }
+  const reader = res.body.getReader();
   try {
     for (;;) {
       const { done, value } = await reader.read();
@@ -51,22 +57,42 @@ async function* text(res) {
 }
 
 /**
- * One tool call with its Idempotency-Key, the same shape as node.js's caller: { data } or
- * { error }, never thrown. No answer is `unreachable`, a 503 is `restarting`, and no answer
- * within `timeoutMs` is `timeout`; the outbox retries all three.
- * @param {string} base
- * @param {{ headers?: Record<string, string>, timeoutMs?: number }} [o]
- * @returns {import("./outbox.js").Call}
+ * A fetch that takes a path, not a URL: relay/client's `createPaths().fetch`, which already picks
+ * the path (tailnet or relay), moves between them and keeps a write's Idempotency-Key when it
+ * does, or the page's own fetch at a base (below). It answers a Response or anything shaped like
+ * one (`status`, `ok`, `body`, `text()`).
+ * @typedef {(path: string, init: { method: string, headers: Record<string, string>, body?: string, signal?: AbortSignal, cache?: RequestCache }) => Promise<any>} PathFetch
  */
-export function caller(base, { headers = {}, timeoutMs = 15_000 } = {}) {
-  return async (tool, input, key) => {
+
+/**
+ * follow()'s `open` and outbox()'s `call` over one PathFetch. With relay/client's paths, give
+ * follow() a single path (`paths: ["box"]`): which way the box is reached is the paths layer's
+ * job, and the cursor, the stall check and the backoff stay here. The outbox's retries are its
+ * slow, durable drain (2 s to 60 s, while the box stays out of reach), not a second quick retry.
+ * @param {PathFetch} f
+ */
+export function over(f) {
+  /** @type {import("./stream.js").Open} */
+  const open = async ({ path, headers, signal }) => {
+    const r = await f(path, { method: "GET", headers, signal, cache: "no-store" });
+    if (!r.ok) { r.body?.cancel?.().catch(() => {}); return { status: r.status, chunks: text(null) }; }
+    return { status: r.status, chunks: text(r) };
+  };
+  /**
+   * One tool call with its Idempotency-Key, the same shape as node.js's caller: { data } or
+   * { error }, never thrown. No answer is `unreachable`, a 503 is `restarting`, and no answer
+   * within `timeoutMs` is `timeout`; the outbox retries all three.
+   * @param {{ headers?: Record<string, string>, timeoutMs?: number }} [o]
+   * @returns {import("./outbox.js").Call}
+   */
+  const caller = ({ headers = {}, timeoutMs = 15_000 } = {}) => async (tool, input, key) => {
     const ac = new AbortController();
     const t = setTimeout(() => ac.abort(), timeoutMs);
     try {
-      const r = await fetch(join(base, "/v1/tools/" + encodeURIComponent(tool)), {
+      const r = await f("/v1/tools/" + encodeURIComponent(tool), {
         method: "POST", signal: ac.signal, cache: "no-store", body: JSON.stringify(input ?? {}),
         headers: { "content-type": "application/json", ...(key ? { "idempotency-key": key } : {}), ...headers } });
-      if (r.status === 503) { r.body?.cancel().catch(() => {}); return { error: { code: "restarting", message: "the box is restarting; trying again in a moment" } }; }
+      if (r.status === 503) { r.body?.cancel?.().catch(() => {}); return { error: { code: "restarting", message: "the box is restarting; trying again in a moment" } }; }
       const raw = await r.text();
       try { return JSON.parse(raw); }
       catch { return { error: { code: "unreachable", message: `vyred answered ${r.status} with no JSON` } }; }
@@ -76,7 +102,21 @@ export function caller(base, { headers = {}, timeoutMs = 15_000 } = {}) {
         : { error: { code: "unreachable", message: /** @type {Error} */ (e)?.message || "the box is out of reach" } };
     } finally { clearTimeout(t); }
   };
+  return { open, caller };
 }
+
+/** The page's own fetch at a base URL. @param {string} base @returns {PathFetch} */
+const at = base => (path, init) => fetch(join(base, path), init);
+
+/** One GET for follow(), straight to a base (the tailnet, or the Deck's own origin). @type {import("./stream.js").Open} */
+export const open = o => over(at(o.base)).open(o);
+
+/**
+ * One tool call for outbox(), straight to a base.
+ * @param {string} base @param {{ headers?: Record<string, string>, timeoutMs?: number }} [o]
+ * @returns {import("./outbox.js").Call}
+ */
+export const caller = (base, o) => over(at(base)).caller(o);
 
 // ---- storage -------------------------------------------------------------------------------
 
@@ -106,7 +146,7 @@ function openDb(idb, box) {
       settled = true; clearTimeout(stuck); resolve(db);
     };
     const stuck = setTimeout(() => done(null), 3_000);   // another tab blocking the upgrade: use the fallback
-    const attempt = (/** @type {number|undefined} */ version, left) => {
+    const attempt = (/** @type {number|undefined} */ version, /** @type {number} */ left) => {
       /** @type {IDBOpenDBRequest} */ let req;
       try { req = version ? idb.open(DB, version) : idb.open(DB); } catch { return done(null); }
       req.onupgradeneeded = () => safely(() => { if (!req.result.objectStoreNames.contains(box)) req.result.createObjectStore(box); });

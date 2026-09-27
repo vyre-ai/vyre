@@ -20,10 +20,12 @@ export async function openTab(cdp, dev) {
   let id = 0;
   const pending = new Map();
   /** @type {string[]} */ const errors = [];
+  /** @type {Map<string, (params: any) => void>} */ const hooks = new Map();
   ws.onmessage = m => {
     const d = JSON.parse(String(m.data));
     if (d.method === "Runtime.exceptionThrown") errors.push(d.params.exceptionDetails.exception?.description || d.params.exceptionDetails.text);
     if (d.method === "Runtime.consoleAPICalled" && d.params.type === "error") errors.push(d.params.args.map((/** @type {any} */ a) => a.value ?? a.description).join(" "));
+    if (d.method && hooks.has(d.method)) hooks.get(d.method)?.(d.params);
     if (d.id && pending.has(d.id)) { pending.get(d.id)(d); pending.delete(d.id); }
   };
   /** @param {string} method @param {any} [params] @returns {Promise<any>} */
@@ -44,6 +46,8 @@ export async function openTab(cdp, dev) {
   if (dev.standalone) await send("Page.addScriptToEvaluateOnNewDocument", { source: "Object.defineProperty(Navigator.prototype, 'standalone', { get: () => true, configurable: true });" });
   return {
     send, errors,
+    /** Hear one kind of protocol event (Fetch.requestPaused, say); a second hook replaces the first. @param {string} method @param {(params: any) => void} fn */
+    on(method, fn) { hooks.set(method, fn); },
     /** @param {string} url */
     async go(url, settle = 2000) { await send("Page.navigate", { url }); await sleep(settle); },
     /** Run JS in the page; `wait(ms)`, `waitFor(sel)`, `await click(sel)` and `type(sel, text)` are defined. */

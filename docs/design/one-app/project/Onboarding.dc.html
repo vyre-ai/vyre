@@ -57,7 +57,7 @@
           </div>
           <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
             <div class="row" style="gap: 8px;"><span class="step-n" style="width: 22px; height: 22px;">6</span><span class="t13 w6 grow trunc">6 · Devices</span></div>
-            <span class="t12 t2">Add your phone, then the Capsule on this Mac.</span>
+            <span class="t12 t2">Add your phone, then the Capsule. Tailscale on the phone is optional.</span>
             <span class="t12 t3 trunc" style="margin-top: auto;">Opens the Add your phone sheet</span>
           </div>
           <div class="tile" style="flex: 1 1 0; min-width: 0; gap: 6px; cursor: default; height: 120px;">
@@ -189,7 +189,7 @@
                 <span class="lbl">You're set</span>
                 <div class="col">
                   <div class="check" style="min-height: 52px;"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t13 w6">Mac</span><span class="t12 t3 trunc">alex's MacBook Pro · paired · Capsule installed</span></div></div>
-                  <div class="check" style="min-height: 52px;"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t13 w6">Phone</span><span class="t12 t3 trunc">alex's iPhone · 5 of 5 checks</span></div></div>
+                  <div class="check" style="min-height: 52px;"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t13 w6">Phone</span><span class="t12 t3 trunc">alex's iPhone · 5 of 5 checks · relay, Tailscale optional</span></div></div>
                   <div class="check" style="min-height: 52px;"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t13 w6">History</span><span class="t12 t3 trunc">412 sessions, 38 projects · indexing in the background</span></div></div>
                 </div>
                 <button class="btn btn-p" type="button" style="height: 40px; width: 100%;"><svg class="ic" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path><path d="M5.5 6v1M10.5 6v1M8 6v3h-.8M6 10.8c1.2.9 2.8.9 4 0"></path></svg>Open Vyre</button>
@@ -213,7 +213,7 @@ Finish in your browser. I'll wait here.
 <span class="g">✓</span> Tailscale      <span class="s">tailnet harlow</span>
 <span class="g">✓</span> Your address   <span class="s">https://vyre.harlow.ts.net</span>
 <span class="g">✓</span> History        <span class="s">412 sessions, 38 projects (indexing)</span>
-<span class="g">✓</span> Devices        <span class="s">alex's iPhone · Capsule installed</span>
+<span class="g">✓</span> Devices        <span class="s">alex's iPhone (relay) · Capsule installed</span>
 <span class="g">✓</span> Passkey saved · this Mac paired
 
   Vyre is ready.
@@ -257,7 +257,7 @@ Finish in your browser. I'll wait here.
                 <div class="row" style="gap: 8px;"><span class="t17 w6 grow">Swipe right to approve, left to deny</span></div>
                 <span class="t13 t2">Try it on this demo row. Nothing runs.</span>
               </div>
-              <div class="swipe" style="border-top: 1px solid var(--rule);">
+              <div class="swipe" data-clip-ok style="border-top: 1px solid var(--rule);">
                 <div class="swipe-a"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Approve</div>
                 <div class="ph-row" style="border-top: 0; flex: 1 1 auto; min-width: 0; margin-right: -100px;">
                   <span class="av av-32">j</span>
@@ -289,7 +289,7 @@ Finish in your browser. I'll wait here.
       <div class="anno-i"><span class="anno-n">3</span><span>Claude Code: the subscription through <span class="mono">claude setup-token</span> (sign in, paste the code) or an API key, straight into the vault. The Mac's own sign-in is never read. Codex is optional, later.</span></div>
       <div class="anno-i"><span class="anno-n">4</span><span>Your address is the one step Tailscale forces. HTTPS off shows Turn on HTTPS and Check again, and says once that certificate names are public. When it passes, the page moves to the box's own address.</span></div>
       <div class="anno-i"><span class="anno-n">5</span><span>The ending is one screen: juno's greeting streams, three ticks, one button. Open Vyre makes the first passkey with Touch ID; after that, proof is asked only to pair, release a secret or send.</span></div>
-      <div class="anno-i"><span class="anno-n">6</span><span>Devices hands off to Add your phone (Install board) and the Capsule. The phone opens on Now with the test notification answered and a one-time swipe hint on a demo row.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Devices hands off to Add your phone (Install board) and the Capsule. The box needs Tailscale (step 3, for HTTPS and the Mac); the phone does not: it pairs over the relay and switches to Tailscale when it answers. The phone opens on Now with the test notification answered and a one-time swipe hint on a demo row.</span></div>
       <div class="anno-i"><span class="anno-n">7</span><span>Smooth: each step saves as it is answered, so a closed tab (or <span class="mono">vyre box add</span> run again) resumes where it stood. Browser and terminal read the same <span class="mono">onboard.status</span>, so a tick in one is a line in the other. History imports in the background and never blocks Open Vyre.</span></div>
     </div>
 

@@ -11,6 +11,8 @@
 // - The id is nine random bytes. A button on a phone carries it, and whoever presents it answers.
 // - held -> sending is one UPDATE guarded by state, so two surfaces pressing Send at once send once.
 // - A failed send goes back to held with its error: the person approved it and may try again.
+//   When the answer was lost but the words did go out (read back from the app), settle marks it
+//   sent with that evidence, so no one sends it a second time.
 // - Events say that something was held or sent and where; never the content. Every module reads
 //   the log, and a draft is the user's words.
 // - What the person changed before approving is a signal (section 7.11). The draft is kept
@@ -72,7 +74,8 @@ const moduleType = o => ({
   summary: (to, c) => cut(String(c.summary || c.subject || c.tool || o.name), 120),
   async send(to, c, s, deps) {
     const r = await deps.call(o.tool, { id: deps.id, to, content: c });
-    if (r && r.error) throw new Error(r.error.message || r.error.code || `${o.tool} failed`);
+    // detail.reached (the MCP hub's "maybe" or "no") rides along, so approve can say it.
+    if (r && r.error) throw Object.assign(new Error(r.error.message || r.error.code || `${o.tool} failed`), r.error.detail ? { detail: r.error.detail } : {});
     return r ? r.data : null;
   },
 });
@@ -203,7 +206,7 @@ export class Gate {
 
   row(id) {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM gate_items WHERE id = ?").get(String(id)));
-    if (!r) throw new Error(`nothing at the Gate has id ${id}`);
+    if (!r) throw Object.assign(new Error(`nothing at the Gate has id ${id}`), { code: "not_found" });
     return r;
   }
 
@@ -241,8 +244,12 @@ export class Gate {
       // Senders scrub their own errors; this is a second net for anything that slipped past.
       const error = cut(scrub(String(/** @type {Error} */ (e)?.message || e), []), 500);
       this.db.prepare("UPDATE gate_items SET state = 'held', error = ? WHERE id = ?").run(error, id);
-      this.deps.emit("gate.failed", { id, via: r.via, error: cut(error, 200) }, w);
-      return { id, state: "failed", error };
+      // Whether it may have gone out anyway, when the sender can tell: "maybe" means read the
+      // app before trying again (and settle it if the words are there), "no" means try again.
+      const reached = /** @type {any} */ (e)?.detail?.reached;
+      const known = reached === "maybe" || reached === "no" ? { reached } : {};
+      this.deps.emit("gate.failed", { id, via: r.via, error: cut(error, 200), ...known }, w);
+      return { id, state: "failed", error, ...known };
     }
   }
 
@@ -291,6 +298,25 @@ export class Gate {
     if (Number(done.changes) === 0) throw new Error(`${id} is already ${this.row(id).state}`);
     this.deps.emit("gate.rejected", { id, kind: r.kind, via: r.via, by: by || null, reason: reason ? cut(String(reason), 200) : null }, where(r.thread, r.project));
     return { id, state: "rejected" };
+  }
+
+  /**
+   * A held item whose send failed, found to have gone out after all (the answer was lost, and
+   * the app shows the words): mark it sent, with the evidence, so it is never sent again. Only an
+   * item that was approved and failed can settle; one never approved is the person's to decide.
+   * @param {{ id: string, outcome: string, evidence?: any, by?: string }} input
+   */
+  settle({ id, outcome, evidence, by }) {
+    if (outcome !== "sent") throw new Error(`outcome must be "sent"`);
+    const r = this.row(id);
+    if (r.state !== "held") throw new Error(`${id} is already ${r.state}`);
+    if (!r.error || !r.final) throw new Error(`${id} was never approved and sent, so it cannot be settled; approve or discard it`);
+    const result = { settled: true, evidence: evidence ?? null };
+    const done = this.db.prepare("UPDATE gate_items SET state = 'sent', result = ?, by = COALESCE(?, by), decided = ? WHERE id = ? AND state = 'held' AND error IS NOT NULL")
+      .run(JSON.stringify(result), by || null, this.now(), id);
+    if (Number(done.changes) === 0) throw new Error(`${id} is already ${this.row(id).state}`);
+    this.deps.emit("gate.settled", { id, kind: r.kind, via: r.via, outcome, by: by || null }, where(r.thread, r.project));
+    return { id, state: "sent", settled: true };
   }
 
   /**

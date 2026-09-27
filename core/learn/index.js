@@ -44,6 +44,7 @@ import { SKILL_MIGRATIONS, createSkills, stepsOf } from "./skills.js";
 import { createJobs, JOBS_MIGRATION } from "./jobs.js";
 import { createMetrics, METRICS_MIGRATION } from "./metrics.js";
 import * as sig from "./signals.js";
+import { claudeHome } from "../config/index.js";
 
 const MIGRATIONS = [
   `CREATE TABLE learn_lessons (
@@ -623,7 +624,7 @@ export default {
 
     // ---- Skills from repeated procedures (ADR 0007, decision 10) ----------------------------
 
-    const skills = createSkills(db, { now, emit: (type, payload) => ctx.events.emit(type, payload) });
+    const skills = createSkills(db, { now, emit: (type, payload) => ctx.events.emit(type, payload), ...(root ? { claudeDir: claudeHome(root) } : {}) });
     /** Does the Switchboard answer here? Only then can a job draft anything. */
     const switchboard = async () => { const r = await ctx.call("threads.list", {}); return Boolean(r && !r.error); };
     /** A procedure clean in 3 sessions: drafted by a job when the Switchboard can, else the template. */
@@ -674,7 +675,7 @@ export default {
     const offText = ctx.events.on("thread.text", e => {
       const p = e.payload || {};
       const thread = e.thread || p.thread;
-      if (p.done !== true || p.notice || p.message === "vyre" || typeof p.text !== "string" || !thread || !jobs.owns(thread)) return;
+      if (p.done !== true || p.notice || p.kind === "reasoning" || p.message === "vyre" || typeof p.text !== "string" || !thread || !jobs.owns(thread)) return;
       jobs.answered(thread, String(p.text || "")).then(r => { if (r && r.skill == null && !r.ok) return skillFallback(); }).catch(err => ctx.log("job answer not read: " + err.message));
     });
     const offStopped = ctx.events.on("thread.stopped", e => {

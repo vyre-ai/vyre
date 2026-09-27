@@ -119,7 +119,7 @@ test("shots: the shot list names real files, sensible places and one file per th
     assert.ok(!names.has(s.name), `${s.name} is listed twice`);
     names.add(s.name);
     assert.ok(s.alt && s.page && s.heading, `${s.name} has alt, page and heading`);
-    assert.ok(["deck", "onboard", "fresh", "capsule", "glass"].includes(s.world), `${s.name}: world ${s.world}`);
+    assert.ok(["deck", "onboard", "fresh", "glass"].includes(s.world), `${s.name}: world ${s.world}`);
     const files = filesOf(s);
     assert.equal(files.length, s.themes.length);
     assert.ok(files.every(f => f.startsWith(`docs/${s.dir}/shots/${s.name}`)));

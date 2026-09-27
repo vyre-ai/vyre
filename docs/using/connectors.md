@@ -22,6 +22,8 @@ You manage both in the Deck, under Settings, Connections, or from the terminal w
 
 ## Add an MCP server
 
+![Settings, Connections: the harlow-docs MCP server with its tools and the projects it serves, and Harlow Legal's Google account, each with Test and Remove, and the buttons to add more.](shots/settings-connections.png)
+
 Put the server's credential in the vault first. Values are never typed on the command line:
 
 ```
@@ -123,8 +125,10 @@ vyre connect add google work --email alex@harlowlegal.com --item harlow-google-s
 message names the scopes to allow for its client ID in the Google Workspace admin console, under
 Security, API controls, Domain-wide delegation.
 
-Coming next: a **Sign in with Google** button in the Deck that runs the consent flow and puts the
-refresh token in the vault for you (the `google.connect` tools already exist in the module).
+To sign in with a browser instead, run `vyre connect add google home --sign-in`. It opens
+Google's consent page, finds the address itself and puts the refresh token in the vault. It uses
+the OAuth client in the vault item `google-oauth-client` unless you name another with `--client`.
+A **Sign in with Google** button in the Deck is coming next.
 
 What Vyre does with the account:
 

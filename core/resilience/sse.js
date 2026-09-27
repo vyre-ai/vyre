@@ -9,8 +9,12 @@
  * @returns {{ frames: { id: string|null, event: string|null, data: string, retry: number|null }[], rest: string }}
  */
 export function parse(buffer) {
-  const parts = String(buffer).replace(/\r\n?/g, "\n").split("\n\n");
-  const rest = parts.pop() ?? "";
+  // A chunk that ends in "\r" may be half of a "\r\n": keep it back until the next chunk says,
+  // or the pair would read as a blank line and end the frame early.
+  const whole = String(buffer);
+  const held = whole.endsWith("\r") ? "\r" : "";
+  const parts = (held ? whole.slice(0, -1) : whole).replace(/\r\n?/g, "\n").split("\n\n");
+  const rest = (parts.pop() ?? "") + held;
   const frames = [];
   for (const block of parts) {
     let id = null, event = null, retry = null, any = false;

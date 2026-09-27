@@ -20,7 +20,8 @@
   ],
   "shortcuts": [
     { "name": "Now", "url": "/now", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
-    { "name": "Chat", "url": "/chat", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Chats", "url": "/chat", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Agents", "url": "/agents", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] },
     { "name": "Find", "url": "/find", "icons": [{ "src": "/icon-192.png", "sizes": "192x192" }] }
   ]
 }

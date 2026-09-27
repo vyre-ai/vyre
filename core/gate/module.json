@@ -3,9 +3,22 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["gate.request", "gate.senders", "gate.held", "gate.get", "gate.revise", "gate.approve", "gate.reject", "gate.route", "gate.offer"] },
-  "watches": { "emits": ["gate.held", "gate.revised", "gate.released", "gate.failed", "gate.rejected"] },
+  "does": { "tools": ["gate.request", "gate.senders", "gate.held", "gate.get", "gate.revise", "gate.approve", "gate.reject", "gate.settle", "gate.route", "gate.offer"] },
+  "watches": { "emits": ["gate.held", "gate.revised", "gate.released", "gate.failed", "gate.rejected", "gate.settled"] },
   "shows": { "deck": [], "capsule": [], "cli": [] },
   "needs": { "vault": ["per-sender"] },
-  "teaches": { "memory": ["draft.edited"] }
+  "teaches": {
+    "memory": ["draft.edited"],
+    "tips": [
+      {"id": "edit-then-send", "text": "Open a held draft from Now, click a field to edit it, then Send exactly what is on screen or Discard it.", "surfaces": ["deck", "phone"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/deck.md#approve-or-change-a-held-draft"},
+      {"id": "capsule-waiting", "text": "Press the up arrow in an empty Capsule box to reach what waits on you. Command-Enter sends a held draft.", "surfaces": ["capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Up arrow", "docs": "using/capsule.md#answer-what-is-waiting-on-you"},
+      {"id": "chat-inline", "text": "Edit a held draft right in the conversation. Edits save as you type, and Command-Enter sends.", "surfaces": ["chat"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "key": "Command-Enter", "docs": "using/chat.md#edit-and-send-a-held-draft-inline"},
+      {"id": "only-send-asks", "text": "Editing or discarding a held draft asks for nothing. Only Send asks you to prove you are there.", "surfaces": ["deck", "chat", "phone", "capsule"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/deck.md#approve-or-change-a-held-draft"},
+      {"id": "exactly-approved", "text": "A held item goes out exactly as you approved it, your edits included, never the original draft.", "surfaces": ["deck", "chat", "phone", "capsule"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/connectors.md#hold-and-approve-a-send"},
+      {"id": "cli-approve", "text": "Approve from a terminal with `vyre call gate.approve '{\"id\":\"h_12\"}'`. It asks for Touch ID or a typed code.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre call gate.approve '{\"id\":\"h_12\"}'", "docs": "concepts/presence.md#how-each-surface-proves-it"},
+      {"id": "phone-full-screen", "text": "Tap a held draft in Now on the phone. It opens full screen, with Send and Discard in reach of your thumb.", "surfaces": ["phone"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/mobile.md#what-you-can-do-from-the-phone"},
+      {"id": "failed-send", "text": "If a send fails, the draft goes back to held with the error above its fields, and Send tries again.", "surfaces": ["deck", "chat"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/deck.md#approve-or-change-a-held-draft"},
+      {"id": "ask-vs-let-go", "text": "Claude may ask to send; only a person lets it go. Every email, post, payment or deletion waits for you.", "surfaces": ["deck", "chat", "capsule", "phone"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/deck.md#approve-or-change-a-held-draft"}
+    ]
+  }
 }

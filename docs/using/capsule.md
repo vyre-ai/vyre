@@ -16,22 +16,23 @@ you: permission questions from sessions and drafts held at the Gate. The vyred o
 it (a module with role `local`). Local search keeps working when vyred or your box is down.
 
 ::: demo capsule
-![The Capsule with harlow intake typed: the Harlow intake thread in Harlow Legal on top, and Ask juno, your assistant, below it](shots/capsule-ask.png)
 Type in the Capsule and it finds your threads, projects and agents, and offers to ask your assistant about the rest.
 :::
 
 ## Install it
 
-1. Install the app:
+1. Build the app on this Mac:
 
    ```sh
    vyre capsule install
    ```
 
-   This builds `Vyre.app` on your Mac from the package you installed: it fetches the Capsule's
-   Electron into the package's own folder, builds the helpers with the Xcode command line
-   tools, and signs the app ad hoc. Nothing is downloaded from vyre.run, and it never uses
-   `/Applications` or sudo.
+   The Capsule is a native Mac app, built here from the npm package with Apple's Command Line
+   Tools (`xcode-select --install` if they are missing). Nothing is downloaded. It builds into
+   `~/.vyre/capsule/Vyre.app`, once, in under a minute, and again whenever the package brings a
+   new version of its source. It never uses `/Applications` or sudo. The first time, it offers to
+   make a local signing identity ("Vyre Local") in your login keychain, so macOS keeps the
+   Capsule's permissions across rebuilds; say no and it is signed ad hoc.
 
 2. Open it:
 
@@ -40,23 +41,22 @@ Type in the Capsule and it finds your threads, projects and agents, and offers t
    ```
 
    ```output
-     Capsule open · press Control twice anywhere · log ~/.vyre/logs/capsule.out
+     Capsule open · ⌥Space, or Control twice once it is allowed · ~/.vyre/capsule/Vyre.app
    ```
 
-   `vyre capsule` starts vyred first if it is not running. `vyre up` on a Mac also opens the
+   `vyre capsule` builds the app first if it is missing or out of date, and starts vyred first if
+   it is not running. `vyre up` on a Mac also opens the
    Capsule when it is installed; `vyre up --no-capsule` starts vyred without it.
 
-3. Allow double-Control (next section).
-
-![The Capsule just opened: an empty box reading Ask, or @agent, and a line saying two things wait on you](shots/capsule-open.png)
+3. Allow double-Control (next section). Until then, Option-Space opens it.
 
 The Capsule lives in the menu bar. Click its mark for a menu that says whether anything is
 waiting on you, whether double-Control works, and whether vyred is running.
 
 ## Allow double-Control
 
-The double-Control listener needs Input Monitoring, and macOS grants it to `Vyre.app` (or to the
-terminal you ran `vyre capsule --dev` from).
+The double-Control listener needs Input Monitoring, and macOS grants it to `Vyre.app`. Option-Space
+needs no permission, so it always works.
 
 1. Click the Capsule's mark in the menu bar. If it reads "Control twice opens it", you are done.
 2. If it reads "Double-Control is off", open System Settings, Privacy and Security, Input
@@ -66,8 +66,9 @@ terminal you ran `vyre capsule --dev` from).
 Only two bare taps of Control within 450 ms count, so Control-C and Control-arrow keep working.
 
 > [!SNAG] Double-Control stopped working after a rebuild
-> A Vyre.app you built yourself (`vyre capsule build --app`) is signed ad hoc, so each build is a
-> new identity to macOS. Turn Vyre off and on again under Input Monitoring.
+> A Capsule signed ad hoc is a new identity to macOS after each rebuild. Turn Vyre off and on
+> again under Input Monitoring. With the "Vyre Local" signing identity (offered the first time
+> you run `vyre capsule`), grants survive rebuilds.
 
 ## Find something on this Mac
 
@@ -111,10 +112,17 @@ anything is sent, and Enter uses exactly that destination:
   which can act.
 - With no assistant made yet, memory answers on its own, with no model.
 
-![The Capsule with harlow intake typed: the Harlow intake thread in Harlow Legal on top, and Ask juno, your assistant, below it](shots/capsule-ask.png)
-
 Answers render in place as markdown, with a copy button and the cost. Anything that came from
 memory is drawn in gold, with its source.
+
+## Ask about your screen
+
+Type `ask about my screen` and the Capsule reads the window in front once, shows what it read in
+the side panel, and starts your question with "About <window>:". Words that point at the screen,
+like `summarize this` or `what's this error`, or text you selected in the app in front, go with a
+chip that says what will be sent ("with your screen: Safari · ..."). Press the chip's x, or `⌘⌫`,
+to leave it off. Nothing about the screen is sent without the chip on show, and a blind place
+(a password manager, a sign-in dialog) gets no chip at all.
 
 ## Talk to an agent or a session
 
@@ -127,8 +135,6 @@ Type `@` to name one. It completes agents, projects and threads:
   you hold the session's keyboard (its lease). If another surface holds it, the Capsule says who,
   and Command-Enter takes it.
 - `@` a project starts a new thread in it, or sends to a matching thread there.
-
-![The Capsule completing @ki to kit, the agent, so what you type next goes to it](shots/capsule-mention.png)
 
 ## Drive or watch a session without `@`
 
@@ -149,16 +155,12 @@ When a session asks permission or the Gate holds a draft, the menu-bar mark turn
 colour. The Capsule does not open itself for this and never takes your keyboard: you open it when
 you choose.
 
-![The Capsule listing what waits on you: an email to dana@harlowlegal.com and a payment for Northwind Bakery, oldest first](shots/capsule-waiting.png)
-
 1. Open the Capsule and press the up arrow in the empty box to reach the waiting list.
 2. Pick the item:
    - **A permission question**: Allow or Deny. Command-Enter allows.
    - **A held draft** (an email, for example): To, Subject and body read as text and become
      editable when you click them. Command-Enter sends exactly what is on screen, through
      `gate.approve`. Discard drops it. Escape leaves a field.
-
-![The held email to Dana opened in the Capsule: click any line to change it, then Send or Discard, with why it was held](shots/capsule-held.png)
 
 ## Open Glass
 
@@ -174,7 +176,7 @@ agent, or `glass box` for the box's files. See [Glass](glass.md).
 
 | Key | Does |
 | --- | --- |
-| Control, Control | open or close the Capsule |
+| Control, Control, or Option-Space | open or close the Capsule |
 | Enter | open the top match, or send to the "Sends to" destination |
 | Tab | send to the "Sends to" destination, whatever the top match is |
 | Down arrow | move down the list, or choose another destination |
@@ -191,19 +193,14 @@ of reach, box features say the box is not reachable; they never hang.
 
 ## Start it with vyred
 
-Only for a Capsule run from source: add a `capsule` key to `~/.vyre/config.json`, then restart
-vyred (`vyre down`, then `vyre up`):
+Add a `capsule` key to `~/.vyre/config.json`, then restart vyred (`vyre down`, then `vyre up`):
 
 ```json
 { "capsule": { "autostart": true } }
 ```
 
-vyred then starts the Capsule hidden in the menu bar each time it starts.
-
-> [!SNAG] vyred's log says "capsule.autostart is on, but Electron is not installed"
-> Autostart runs the Capsule from source, with the Electron in `local/capsule`. A `Vyre.app` from
-> `vyre capsule install` does not count. Run `vyre capsule` after `vyre up` instead, or build from
-> source (below).
+vyred then runs `vyre capsule --hidden` each time it starts, which builds the Capsule if needed
+and starts it hidden in the menu bar.
 
 ## What it will not do
 
@@ -212,29 +209,21 @@ vyred then starts the Capsule hidden in the menu bar each time it starts.
 - It does not send anywhere other than the destination the "Sends to" row showed.
 - It does not paste for you: a clipboard item waits for your Command-V.
 - It runs on macOS only. On Linux or Windows, use `vyre` in a terminal or the [Deck](deck.md).
-- Asking about your screen, and reading text on it, are not built yet.
+- It never reads a password field, a password manager, a sign-in dialog, security settings or
+  Vyre's own windows: those show only the app and the window title.
 
 ## Build from source
 
-For work on the Capsule itself:
+For work on the Capsule itself. The source is Swift, in `local/capsule/native`:
 
 ```sh
-vyre capsule build         # install Electron in local/capsule, build the Swift helpers
-vyre capsule build --app   # also package and sign Vyre.app
-vyre capsule --dev         # run from source in this terminal; Control-C quits
+sh local/capsule/native/build.sh test   # compile with Tests/ and run them
+sh local/capsule/native/build.sh app    # build Vyre.app into local/capsule/native/.build
+vyre capsule                            # rebuild ~/.vyre/capsule/Vyre.app if the source changed, and open it
 ```
 
-`vyre capsule` runs a packaged build only while it matches the source it was made from. If the
-source changed, it runs the source and says so:
-
-```output
-  The packaged app is older than its source, so this runs the source. vyre capsule build --app repackages it.
-```
-
-> [!WHY] Why check the source at all?
-> A packaged Electron app runs `app.asar`, so an edit to the source does nothing until the app is
-> packaged again, and nothing says so. The package records a hash of the source it was made from,
-> and `vyre capsule` compares it.
+`vyre capsule` records a hash of the source each build was made from, so an edit is never
+silently ignored by a stale app: when the source changes, it rebuilds before it opens.
 
 ## Next
 
