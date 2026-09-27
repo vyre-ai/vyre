@@ -583,7 +583,18 @@ Done this session:
   ungated. Verified independently on testbox: 65/65 (connections, deck connections, boundaries,
   docs-check incl. the tools.md regen).
 
-Next: re-review federation's fix sha (the link.upload path guard HIGH + the MEDIUMs) once sent.
+- federation 656ed493 re-reviewed against my 96cbf078/6816e83c notes: SIGNED OFF. link.upload
+  HIGH fixed right (path built server-side from a validated UUID, never the caller); sync.consent
+  person-only; sync.send restricted to module:sync/module:import at runtime (callers list stays
+  generic "module" — the framework collapses all module:* callers to "module", confirmed in
+  core/modules/index.js:180, so a runtime meta.caller check is the only way to narrow further) plus
+  realpath-confined to ~/.claude or CLAUDE_CONFIG_DIR; the five earlier MEDIUMs (quota bypass via
+  chunk overrun, in-flight quota accounting + MAX_OPEN=8, streamed finish, swallowed symlink
+  refusal) all fixed with tests; new sync.upload.cancel and sync.delete.import both correctly
+  scoped/person-only. Verified independently on testbox: 49/49 (core/sync + core/link + hygiene +
+  docs-index), every new test confirmed by name.
+
+Next: task 3 (federation re-review) is done. Idle; watch for a new assignment from the lead.
 
 ## Next
 
