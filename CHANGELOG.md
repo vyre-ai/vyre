@@ -41,8 +41,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   optional "Faster and private: add Tailscale" step. `--tailscale-only`, or a box without the relay,
   takes the old path: Tailscale, the box's address with a terminal QR (a dependency-free encoder,
   `core/cli/qr.js`) and a one-time passkey code. `vyre phone list` (relay devices too),
-  `remove <id>` and `test [id]`. `--android --usb|--wireless` finds adb and says what is missing
-  until the box serves the Android app.
+  `remove <id>` and `test [id]`.
+- `vyre phone add --android --usb` (or `--wireless`) installs the native app: it downloads the APK
+  the box serves at /apps/android/, checks its size and sha256 against /apps/android.json, installs
+  it with adb and opens it on a relay pairing offer (vyre://pair). A mismatch installs nothing.
+- The live checks follow push.subscribed, push.delivered and push.seen: "Test notification arrived"
+  passes when the phone posts back the test's receipt, and "Opened as an app" when an installed app
+  says so. A box without receipts keeps "the push service took it".
 - `vyre todo`, `notes`, `alarm`, `timer` and `remind` take `edit <id>` and `rm <id>` (an id of
   another kind is refused with the command that owns it); `vyre timer list`, `vyre remind list`,
   `vyre ringing` and `vyre dismiss <id>`.
