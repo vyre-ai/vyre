@@ -1005,7 +1005,7 @@ generated: scripts/gen-docs-reference
 - `vyre vault unlock-passphrase` command, [explained](cli.md#vyre-vault). 1 mention: using/vault.md [230](../using/vault.md#autofill-in-the-browser)
 - `vyre vault vaults` command, [explained](cli.md#vyre-vault). 1 mention: using/vault.md [219](../using/vault.md#stripe-live-has-no-hosts-it-may-be-sent-to-so-it-cannot-be-relayed)
 - `vyre version` command, [explained](cli.md#vyre-version). 2 mentions: get-started/install.md [47](../get-started/install.md#1-install-vyre-on-your-mac); security/index.md [69](../security/index.md#report-a-problem)
-- `vyre voice` command, [explained](cli.md#vyre-voice). 1 mention: adr/0015-capsule-sight.md [56](../adr/0015-capsule-sight.md#consequences)
+- `vyre voice` command, [explained](cli.md#vyre-voice). 2 mentions: architecture/boundaries.md [47](../architecture/boundaries.md#the-frozen-exceptions); adr/0015-capsule-sight.md [56](../adr/0015-capsule-sight.md#consequences)
 - `vyre voice key` command, [explained](cli.md#vyre-voice). No mentions.
 - `vyre voice status` command, [explained](cli.md#vyre-voice). No mentions.
 - `vyre watchers` command, [explained](cli.md#vyre-watchers). 12 mentions: using/watchers.md [27](../using/watchers.md#ask-for-a-watcher), [116](../using/watchers.md#look-after-running-watchers), [121, 122](../using/watchers.md#a-watcher-paused-itself-after-three-failed-runs), [130, 132](../using/watchers.md#a-watcher-shows-changed-and-does-not-run), [144, 145, 146, 147, 148](../using/watchers.md#which-surface-does-what), [162](../using/watchers.md#next)
