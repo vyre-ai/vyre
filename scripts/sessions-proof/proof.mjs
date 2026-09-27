@@ -138,6 +138,9 @@ if (process.env.MODE !== "real-idle") {
   results.init_ms = Date.now() - t0;
   await sleep(3000);
   results.real_idle = await measure(s, 30000);
+  // Steady state: a session left alone for a few minutes.
+  await sleep(Number(process.env.IDLE_WAIT_MS || 0));
+  results.real_idle_later = await measure(s, 60000);
   results.real_child = path.basename(String(fs.readlinkSync(`/proc/${s.pid}/exe`)));
   await s.close();
 }

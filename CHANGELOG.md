@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: ADR 0030, Vyre-owned sessions and the provider router (proposed)
+
+- docs/adr/0030-sessions.md (draft): Vyre runs the sessions it starts through the Claude Agent
+  SDK behind a provider router (Claude now, Codex and ACP later), with one session and event
+  model, `canUseTool` into the existing asks, swappable auth from the vault, idle close, and a
+  migration order per team. Joins the nav.
+- scripts/sessions-proof/: a prototype Claude driver and a proof run on testbox with the real
+  SDK driving the fake `claude` (start, stream, an ask answered, the floor, a question, a queued
+  message, resume), plus RSS and CPU of the real binary idle. Not wired into vyred; its SDK
+  dependency is installed only in the proof's own folder.
+- core/switchboard/testing/fake-claude.js reads `--flag=value` as well as `--flag value`, since
+  the Agent SDK passes `--session-id=<id>` and `--resume=<id>`.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
