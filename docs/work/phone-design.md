@@ -41,9 +41,8 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 3. Review pwa and mobile builds against phone.md as screenshots arrive.
 
 ## Needs from others
-- box / web-push owner (ADR 0011): phone.md section 11 Notifications asks for no push when the
-  owner used any surface in the last 3 minutes or the item is on screen, none for errors, and a
-  tap that opens the item's sheet (Paseo's rule). Confirm or say who owns it.
+- pwa (core/push, ADR 0011) owns the box-side push rule in phone.md section 11, with the planner
+  exception (alarms and timers always push and ring). Lead told pwa 2026-09-27.
 - e2e: `presence: {required, covered}` on every ask and held item (lead decided 2026-09-27;
   a git push is an ordinary ask, no proof). phone.md section 5 reads it.
 - chat: the diff summary (detail.changes on Edit/Write asks; changes + totals on held pushes),

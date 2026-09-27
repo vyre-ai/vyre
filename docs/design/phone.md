@@ -501,6 +501,9 @@ Nothing animates in the background.
   for errors. Tapping one opens the app on that item's detail sheet (also from a cold start).
   No action buttons in the notification: an answer always happens in the app, where the
   presence check can run.
+  The one exception: planner alarms and timers always push and ring, even right after you used
+  Vyre and through quiet hours. Planner reminders follow the rule above. The box-side rule is
+  pwa's (core/push, ADR 0011).
 - **Mac away**: its sessions stay, read-only, with a machine chip; Open session still works.
 - **Empty pages**: one sentence and a way forward. Chats: "No sessions yet." plus the Capsule.
   Agents: "Only <assistant> so far." plus "New agent".
