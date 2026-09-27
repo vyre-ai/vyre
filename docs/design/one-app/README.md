@@ -2,7 +2,7 @@
 title: Vyre one app
 summary: One Expo app for the web, iOS and Android, with the Capsule and the CLI on the same tokens, and install with no Apple Developer account.
 audience: builders
-owner: mobile
+owner: app-design
 status: draft
 ---
 

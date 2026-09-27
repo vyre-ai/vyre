@@ -133,3 +133,21 @@ test("person: presence.person.* never waits on a sign-in", async () => {
   assert.equal(sheets().length, 0);
   assert.equal(await person.personStatus(), null, "an unreadable status is no person sessions");
 });
+
+test("person: the sheet names what carries on after sign-in, and says nothing for a tool it does not know", async () => {
+  const { carryOn } = await import("./person.js");
+  assert.equal(carryOn(/** @type {any} */ ({ tool: "threads.send" })), "Then Vyre carries on with sending your message.");
+  assert.equal(carryOn(/** @type {any} */ ({ tool: "gate.approve" })), "Then Vyre carries on with the send.");
+  assert.equal(carryOn(/** @type {any} */ ({ tool: "vault.reveal" })), null);
+  assert.equal(carryOn(undefined), null);
+});
+
+test("person: api.js exports signIn and personCode for the /person/signin page; personCode sends only cc, return and label", async () => {
+  const api = await import("./api.js");
+  assert.equal(typeof api.signIn, "function");
+  assert.equal(typeof api.personCode, "function");
+  const person = await import("./person.js");
+  assert.equal(person.signIn, api.signIn, "person.js re-exports the one signIn");
+  const src = (await import("node:fs")).readFileSync(new URL("./api.js", import.meta.url), "utf8");
+  assert.match(src, /for \(const k of \/\*\* @type \{const\} \*\/ \(\["cc", "return", "label"\]\)\)/);
+});

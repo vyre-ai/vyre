@@ -45,6 +45,7 @@ test("build: /v1/health and system.info report version and commit", async t => {
   assert.deepEqual([h.version, h.commit, h.dirty], [b.version, b.commit, b.dirty]);
   assert.deepEqual([i.version, i.commit, i.dirty], [b.version, b.commit, b.dirty]);
   assert.ok("commit" in h && "commit" in i);
+  assert.deepEqual(i.network, { origins: ["https://app.vyre.run"] }, "the hosted app's origin, when config names none");
 });
 
 test("build: the Deck's service worker carries the build, so a release is a new sw.js", () => {

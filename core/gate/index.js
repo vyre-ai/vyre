@@ -137,21 +137,21 @@ export default {
     ctx.tool("gate.get", {
       description: "One item in full: the draft, what was finally sent, and what the user changed.",
       input: obj({ id: str }, ["id"]),
-      callers: ["cli", "local", "module", "deck", "capsule"],
+      callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
       run: async (input, { peer }) => (await withPresence([gate.get(input)], peer))[0],
     });
 
     ctx.tool("gate.revise", {
       description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
-      callers: ["cli", "local", "module"],
+      callers: ["cli", "local", "module", "tailnet"],
       run: (input, { caller }) => { const c = person(caller); return gate.revise({ ...input, by: input.by || c }); },
     });
 
     ctx.tool("gate.approve", {
       description: "The user approves a held item, optionally with edits (the whole content as it should go out, or the fields that changed; an empty string clears one; `to` included). It sends exactly that, never the original, with the credential added at the boundary.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id"]),
-      callers: ["cli", "local", "module", "deck", "capsule"],
+      callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
       presence: {
         when: ({ id }) => needsProof(id),
         // One passkey or Touch ID opens a ~30 minute session on that device, and the sends after it ride it.
@@ -164,7 +164,7 @@ export default {
     ctx.tool("gate.reject", {
       description: "The user discards a held item. Nothing is sent.",
       input: obj({ id: str, reason: str, by: str }, ["id"]),
-      callers: ["cli", "local", "module", "deck", "capsule"],
+      callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
       run: (input, { caller }) => { const c = person(caller); return gate.reject({ ...input, by: input.by || c }); },
     });
 

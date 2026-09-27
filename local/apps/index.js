@@ -140,15 +140,18 @@ export default {
       /** @type {{ name: string, bundleId?: string, hint?: string }[]} */
       const out = [];
       const seen = new Set();
+      let rows = [];
+      try { rows = await apps.find({ limit: 100 }); } catch {}
       for (const a of registry.all) {
-        if (!Object.values(a.actions).some(x => x.sends)) continue;
+        // Config's adapter for an app stands in for Vyre's own: one row per app.
+        if (seen.has(a.app.toLowerCase()) || !Object.values(a.actions).some(x => x.sends)) continue;
+        // An app driven through its own window (ax) sends only when it is on this Mac.
+        if (a.tier === "ax" && a.bundleIds.length && !rows.some(r => a.bundleIds.includes(r.bundleId))) continue;
         // Slack sends only once a Slack server is in the MCP hub.
         if (typeof a.ready === "function") { try { if (!(await a.ready(env))) continue; } catch { continue; } }
         seen.add(a.app.toLowerCase());
         out.push({ name: a.app, ...(a.bundleIds[0] ? { bundleId: a.bundleIds[0] } : {}), hint: "Vyre sends through it" });
       }
-      let rows = [];
-      try { rows = await apps.find({ limit: 100 }); } catch {}
       for (const name of MESSAGING) {
         const row = rows.find(r => r.name.toLowerCase() === name.toLowerCase());
         if (!row || seen.has(name.toLowerCase())) continue;
@@ -202,6 +205,8 @@ export default {
       if (byId) return { ...r, said: `${a.app} → ${byId.title}: ${r.args.text}` };
       const named = all.filter((/** @type {any} */ t) => t.title.toLowerCase() === to);
       if (named.length === 1) return r;
+      // An app that lists only what is on screen (WhatsApp's visible chats) finds the rest itself.
+      if (!named.length && a.partialTargets) return r;
       if (named.length > 1) {
         return { ambiguous: true, reason: `${a.app} has ${named.length} people called ${r.args.to}`, ask: "Which one?", text: r.args.text, app: r.app, action: r.action, to: r.args.to,
           needs: { recipient: named.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, app: a.app, score: 1 })) } };
