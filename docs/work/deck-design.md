@@ -55,4 +55,6 @@ and docs share. The user found the Deck rudimentary: the new-agent form reads as
 
 ## Changed contracts
 
-None.
+- core/config/palette.js: `ATTENTION` is now `{ violet, teal }` of `{ dark, light }` hexes (was one
+  colour with ink, wash and rule), `withAttention(name)` is new, and the recall and beacon-wash roles
+  are gone. Nothing outside palette.test.js imported them.
