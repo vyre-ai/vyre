@@ -73,6 +73,7 @@ In the order `vyre help` lists them.
 | [`vyre modules`](#vyre-modules) | every module and whether it started |
 | [`vyre tools`](#vyre-tools) | every tool Claude and the surfaces can call |
 | [`vyre call`](#vyre-call) | run any tool, e.g. vyre call system.echo '{"text":"hi"}' |
+| [`vyre commands`](#vyre-commands) | every command and its verbs, as a list (--json for the Capsule and chat) |
 | [`vyre help`](#vyre-help) | every command, with a line on what it does |
 | [`vyre version`](#vyre-version) | the version of Vyre installed |
 
@@ -97,7 +98,7 @@ from, and the command to act on it.
 Start vyred and print the onboarding link, or this box's address.
 
 ```
-vyre up [--box|--connect <addr>] [--json] [--no-capsule] [--keep-link]
+vyre up [--box] [--connect <addr>] [--no-capsule] [--keep-link] [--dry-run] [--json]
 ```
 
 ### vyre down
@@ -105,7 +106,7 @@ vyre up [--box|--connect <addr>] [--json] [--no-capsule] [--keep-link]
 Stop it.
 
 ```
-vyre down
+vyre down [--json]
 ```
 
 ### vyre box
@@ -113,7 +114,7 @@ vyre down
 Put Vyre on a server from this Mac, and look after it.
 
 ```
-vyre box [status|add|update|backup|move|remove] [--json]
+vyre box [status|add <user@host> [--yes]|update|backup [file] [--force]|move <user@newhost> [--yes]|remove [--purge] [--yes]] [--json]
 ```
 
 ### vyre doctor
@@ -140,7 +141,7 @@ vyre status [--json]
 Every project; on a box, move moves the homes to /work/projects.
 
 ```
-vyre projects [--json] | vyre projects move [--dry-run]
+vyre projects [list|move [--dry-run]] [--json]
 ```
 
 ### vyre recall
@@ -148,12 +149,12 @@ vyre projects [--json] | vyre projects move [--dry-run]
 Search every session for what was said (vyre recall eval <file> to measure it).
 
 ```
-vyre recall <query> [--limit n] [--here] [--json]
+vyre recall [search <query...>|status|setup|eval <file>] [--limit n] [--here] [--json]
 ```
 
---user or --assistant: only what that side said · --keyword: no vectors
-vyre recall with no query: how much is indexed
-vyre recall --setup: install the search model now (it installs itself on first use)
+vyre recall <query> or vyre recall search <query>: search · --user or --assistant: only what that side said · --keyword: no vectors
+vyre recall (or vyre recall status): how much is indexed
+vyre recall setup (or --setup): install the search model now (it installs itself on first use)
 vyre recall eval <labelled.json> [--k 10]: measure search against a labelled set
 
 ### vyre index
@@ -185,7 +186,7 @@ vyre open <project> [--json]
 Sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, model, rewind, shell, tasks, open, asks, answer, stop (anything else searches sessions).
 
 ```
-vyre threads start|send|watch|answer|interrupt|stop … [--json]
+vyre threads start|send|list|get|watch|queue|take-back|send-now|edit|interrupt|mode|model|thinking|rewind|fork|shell|remember|tasks|kill-task|commands|open|lease|release|asks|answer|stop … [--json]
 ```
 
 Running a session vyred owns:
@@ -197,10 +198,11 @@ Running a session vyred owns:
   vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, 5 MB, 5 at most)
   vyre threads send <thread> "!ls"                  a leading ! runs it (shell), # remembers it; --raw sends as typed
   vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them
+  vyre threads list [--all] [--agent A]             the headless threads of the last day (ls)
   vyre threads queue <thread>                       what is queued and not yet handed over
   vyre threads take-back|send-now <thread> <queued> take a queued message back, or hand it over now
   vyre threads edit <thread> <queued> [text]        change it (no text: $EDITOR)
-  vyre threads get <thread> [--since ID] [--limit N]  one read: the record, open asks, events
+  vyre threads get <thread> [--since ID] [--limit N]  one read: the record, open asks, events (show)
   vyre threads watch <thread>                       follow it live; reconnects on its own
   vyre threads interrupt <thread>                   stop the turn (Escape); the session stays
   vyre threads fork <thread> [prompt]               a new session from this one's history
@@ -216,11 +218,13 @@ Running a session vyred owns:
   vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)
   vyre threads tasks <thread>                       its background tasks (shells, subagents)
   vyre threads kill-task <thread> <task>            stop one
+  vyre threads commands <thread>                    the slash commands the running session offers
+  vyre threads lease|release <thread>               take the keyboard for this terminal, or give it back
   vyre threads open <thread>                        open it in claude here (vyred lets go of an idle one)
   vyre threads stop <thread>                        end its process; the transcript stays
   Setting a mode is refused from inside Claude Code: use the Deck or a plain terminal.
 
-Answering an ask (vyre needs and vyre threads asks list them):
+Answering an ask (vyre needs and vyre threads asks [thread] list them):
   vyre threads answer <ask> allow|deny [message]    a permission, once
   vyre threads answer <ask> always [--scope project]  allow, and stop asking (where offered)
   vyre threads answer <ask> --pick 2                 a question: option 2 (1,3 for several)
@@ -229,15 +233,18 @@ Answering an ask (vyre needs and vyre threads asks list them):
   vyre threads answer <ask>                          in your terminal: shows it and asks
   vyre threads answer <ask> deny [message]           declines a question
 
+--json prints each verb's data; --view prints it as frames a surface draws (a picker is a prompt frame).
+Anything else (a search, --project P, --all) searches every session: vyre threads search <words>.
+
 ### vyre sessions
 
 How the sessions Vyre starts run: driver, sign-in, the model per purpose, the system prompt.
 
 ```
-vyre sessions [setup|models|prompt] … [--json]
+vyre sessions [status|setup|models|prompt] … [--json]
 ```
 
-vyre sessions                                   the driver, sign-in, Claude Code, the Agent SDK
+vyre sessions [status]                          the driver, sign-in, Claude Code, the Agent SDK
   vyre sessions setup                             install the Agent SDK now and wait
   vyre sessions models                            the model each kind of session runs on
   vyre sessions models <purpose|project> <model>  set one (opus, sonnet, haiku or a model id)
@@ -306,8 +313,11 @@ vyre unpick <project> <thread>...
 What is on today: alarms, reminders, events and todos due.
 
 ```
-vyre agenda [today|tomorrow|YYYY-MM-DD] [--json]
+vyre agenda [today|tomorrow|on <date>] [--json]
 ```
+
+vyre agenda (today) · vyre agenda tomorrow · vyre agenda on 2026-10-01 (vyre agenda 2026-10-01 too)
+Times are the planner's zone.
 
 ### vyre agents
 
@@ -317,18 +327,23 @@ Agents: list, create, update, ask, history, threads, resume, computer, usage, st
 vyre agents [list|create|update|ask|history|threads|resume|computer|usage|stop|delete] … [--json]
 ```
 
+vyre agents [list] · every agent, what it is doing and where
+vyre agents create|update <name> [--assistant --projects a,b|* --model m --vault item --fallback item --budget 20 --instructions text] · make one, or change the fields named
+vyre agents ask <name> <text> · ask it something and wait for its answer
 vyre agents history <name> [--limit n] [--before id] · what was asked of it, and its answers
 vyre agents resume <name> [thread] · bring its latest thread (or that one) back, with its own credentials
 vyre agents computer <name> · its computer: state, screen, cores and memory
 vyre agents computer <name> restart · a new container on the same home; what is open on its screen closes
 vyre agents computer <name> limits [--cpus n] [--memory gb] · shown, or set for the next restart
+vyre agents threads <name> · its threads · vyre agents usage [name] · turns, time, tokens and spend
+vyre agents stop <name> · stop its threads · vyre agents delete <name> · delete it (its transcripts stay)
 
 ### vyre capsule
 
 The Mac command bar: Control twice, anywhere.
 
 ```
-vyre capsule [--hidden] | install
+vyre capsule [open [--hidden] | install | build] [--json]
 ```
 
 ### vyre gate
@@ -336,7 +351,7 @@ vyre capsule [--hidden] | install
 Drafts held at the Gate: list, show one, approve (send), reject, or revise the words.
 
 ```
-vyre gate [show|approve|reject|revise] <id> [--json]
+vyre gate [list|show <id>|approve <id>|reject <id> [reason]|revise <id>] [--json]
 ```
 
 Also: `vyre drafts`.
@@ -358,9 +373,11 @@ An id is its first few characters, as vyre needs and vyre gate print them.
 What memory holds, or everything about one thing.
 
 ```
-vyre memory [about] [--project <slug>] [--json]
+vyre memory [about [<thing...>]|ask <question...>|correct <fact> <action>|corrections|uncorrect <id>|merge <node> <into>|split <node>|pin <node>|mute <node>] [--project <slug>] [--json]
 ```
 
+Read it:
+  vyre memory [about] [<thing>] [--project <slug>]   what it holds, or everything about one thing
 Ask it:
   vyre memory ask "<question>" [--sources]   one line about your life, from what you have said
 Change what it holds:
@@ -377,7 +394,7 @@ Change what it holds:
 This box's address: <you>.vyre.run.
 
 ```
-vyre name [check <n>|claim <n>|ts.net|release] [--json]
+vyre name [status|check <n>|claim <n>|ts.net|release] [--json]
 ```
 
 ### vyre alarm
@@ -385,10 +402,10 @@ vyre name [check <n>|claim <n>|ts.net|release] [--json]
 Set an alarm, list them, change, turn off or delete one.
 
 ```
-vyre alarm [7am|6:30 weekdays|off <id>|edit <id> <time>|rm <id>] [--json]
+vyre alarm [list|set <time...>|off <id>|edit <id> <time...>|rm <id>] [--json]
 ```
 
-vyre alarm 7am · vyre alarm 6:30 weekdays · vyre alarm (upcoming) · vyre alarm off <id>
+vyre alarm 7am (or vyre alarm set 7am) · vyre alarm 6:30 weekdays · vyre alarm (upcoming, or vyre alarm list) · vyre alarm off <id>
 vyre alarm edit <id> 8am (a repeating alarm keeps its days unless you name new ones) · vyre alarm rm <id>
 Times are the planner's zone (vyre agenda shows it). Alarms follow the zone when it changes.
 
@@ -405,20 +422,30 @@ vyre why <fact> [--project <slug>] [--json]
 The lessons Vyre learned from you, and what it proposed.
 
 ```
-vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills] [--json]
+vyre learn [list|show|add|accept|retire|level|scope|relax|stats|signals|skills] [--json]
 ```
 
 Also: `vyre lessons`.
+
+vyre learn [list]                          the active lessons and the ones waiting for your yes
+  vyre learn show <id>                       one lesson, its check and its effect
+  vyre learn add <text>                      a lesson in your own words
+  vyre learn accept|retire <id>              say yes to a proposed lesson, or stop one
+  vyre learn level <id> remind|ask|block     how firmly it holds (lowering it needs you)
+  vyre learn scope <id> all|project [slug]|agent <name>
+  vyre learn relax <id> level <l> | max <l> | pin | paths <pattern> | when <text> | scope ...
+  vyre learn stats · vyre learn signals      each lesson's effect · what Learning heard
+  vyre learn skills [show|install|retire|dismiss <id>] [--agent name|--account|--project] [--private]
 
 ### vyre timer
 
 A timer that rings on every device.
 
 ```
-vyre timer <length> [label]|list|edit <id> <length>|rm <id> [--json]
+vyre timer [list|set <length> [label...]|edit <id> <length> [label...]|rm <id>] [--json]
 ```
 
-vyre timer 10m · vyre timer 1h30m · vyre timer 25m bread · vyre timer list
+vyre timer 10m (or vyre timer set 10m) · vyre timer 1h30m · vyre timer 25m bread · vyre timer list
 vyre timer edit <id> 15m (it starts again from now) · vyre timer rm <id>
 
 ### vyre remind
@@ -426,10 +453,10 @@ vyre timer edit <id> 15m (it starts again from now) · vyre timer rm <id>
 A reminder at a time.
 
 ```
-vyre remind <what> at|in <when>|list|edit <id> <what and when>|rm <id> [--json]
+vyre remind [list|set <words...>|edit <id> <words...>|rm <id>] [--json]
 ```
 
-vyre remind "call juno" at 6 · vyre remind me in 20 minutes to check the oven · vyre remind me tomorrow at 9 to email juno
+vyre remind "call juno" at 6 (or vyre remind set ...) · vyre remind me in 20 minutes to check the oven · vyre remind me tomorrow at 9 to email juno
 vyre remind list · vyre remind edit <id> "call juno" at 7 (words without a time keep the time) · vyre remind rm <id>
 
 ### vyre assistant
@@ -448,10 +475,10 @@ On a Mac paired with a box, the assistant lives on the box.
 Open todos by list; add, change, finish and delete them.
 
 ```
-vyre todo [add <text>|done <id>|edit <id> <text>|rm <id>] [--json]
+vyre todo [list|add <text...>|done <id>|edit <id> <text...>|rm <id>] [--json]
 ```
 
-vyre todo add buy flour !high · vyre todo add call kit by friday · vyre todo done <id>
+vyre todo (or vyre todo list) · vyre todo add buy flour !high · vyre todo add call kit by friday · vyre todo done <id>
 vyre todo edit <id> buy rye flour !! · vyre todo rm <id>
 Priority: !low, !!, !high.
 
@@ -460,8 +487,11 @@ Priority: !low, !!, !high.
 Notes, pinned first.
 
 ```
-vyre notes [add <text>|show <id>|edit <id> <text>|rm <id>] [--json]
+vyre notes [list|add <text...>|show <id>|edit <id> <text...>|rm <id>] [--json]
 ```
+
+vyre notes (or vyre notes list) · vyre notes add kit prefers mornings · vyre notes show <id>
+vyre notes edit <id> kit prefers afternoons · vyre notes rm <id>
 
 ### vyre snooze
 
@@ -495,7 +525,7 @@ A one-off alarm, timer or reminder ends; a repeating alarm rings again at its ne
 Credentials, sealed; shared by pass; used without being seen.
 
 ```
-vyre vault <command>
+vyre vault [list|get|read|put|edit|delete|inject|share|ssh|git-credential|pair|devices|unlock-passphrase|backup|restore|relay|grant|revoke|pending|approve|run|totp|health|breach|history|revert|clear-clipboard|generate|import|audit|card|people|fingerprint|kit|vaults|members|move|device|pass|offboard|unlock|lock|account|migrate-key|help] [--json]
 ```
 
 ### vyre watchers
@@ -511,7 +541,7 @@ vyre watchers [list|test|create|pause|resume|logs|items] [name] [--json]
 MCP servers and Google accounts Vyre can reach for you.
 
 ```
-vyre connect list|add|remove|test [--json]
+vyre connect list|add|remove|rm|test|help [--json]
 ```
 
 ### vyre hooks
@@ -519,7 +549,7 @@ vyre connect list|add|remove|test [--json]
 Webhooks from the internet through Funnel, one route at a time.
 
 ```
-vyre hooks [status|on|off|open|close] [name] [--json]
+vyre hooks [list|status|on|off|open <name>|close <name>] [--json]
 ```
 
 ### vyre link
@@ -527,7 +557,7 @@ vyre hooks [status|on|off|open|close] [name] [--json]
 Pair this Mac with your box, or approve a Mac on the box.
 
 ```
-vyre link [pair|approve|deny|unpair|signin|signout] [--json]
+vyre link [status|pair <address>|approve <code>|deny <id>|unpair [id]|signin|signout] [--json]
 ```
 
 ### vyre phone
@@ -535,7 +565,7 @@ vyre link [pair|approve|deny|unpair|signin|signout] [--json]
 Add a phone to your box, list, remove and test the ones it has.
 
 ```
-vyre phone [add|list|remove <id>|test [id]] [--json]
+vyre phone [add [--iphone|--android] [--tailscale-only] [--usb|--wireless]|list|remove <id...>|test [id]] [--json]
 ```
 
 vyre phone add               the steps to put a phone on the box, then live checks
@@ -574,7 +604,7 @@ vyre relay on|off, pin <release>|unpin: the relay itself, and which web app buil
 Send files from this Mac to your box with Taildrop.
 
 ```
-vyre send <file> [more files] [--json]
+vyre send <file...> [--json]
 ```
 
 ### vyre apps
@@ -582,7 +612,7 @@ vyre send <file> [more files] [--json]
 Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
 
 ```
-vyre apps <words...>
+vyre apps [list | find <words...> | targets <app> [words...] | setup <app> | <words...>] [--app <App>] [--to <who>] [--model] [--json]
 ```
 
 ### vyre sideview
@@ -590,7 +620,7 @@ vyre apps <words...>
 This session on the left, Chrome filling the rest.
 
 ```
-vyre sideview [close|status]
+vyre sideview [open|close|status] [--glass [name]] [--url U] [--ratio R] [--terminal] [--json]
 ```
 
 ### vyre statusline
@@ -598,7 +628,7 @@ vyre sideview [close|status]
 Vyre's line under every Claude Code session.
 
 ```
-vyre statusline [install|uninstall]
+vyre statusline [show | install [--chain] [--yes] | uninstall] [--json]
 ```
 
 ### vyre voice
@@ -606,7 +636,7 @@ vyre statusline [install|uninstall]
 Push-to-talk from the terminal (Enter to talk), status, and the speech key.
 
 ```
-vyre voice [status | key [provider] | --send <thread>]
+vyre voice [talk [--send <thread>] | status | key [provider] [--stdin]] [--json]
 ```
 
 ### vyre mcp
@@ -614,7 +644,7 @@ vyre voice [status | key [provider] | --send <thread>]
 The Vyre MCP server on stdio, for plain claude.
 
 ```
-vyre mcp [install [--yes]]
+vyre mcp [serve | install [--yes]] [--json]
 ```
 
 ### vyre backup
@@ -660,6 +690,16 @@ vyre call [--tty] <tool> [json]
 Prints the tool's data as JSON. A tool that needs you (approving a draft, answering an ask)
 asks you to prove you are here first: Touch ID, or with --tty a code typed back.
 
+### vyre commands
+
+Every command and its verbs, as a list (--json for the Capsule and chat).
+
+```
+vyre commands [<command>] [--all] [--json]
+```
+
+Reads the command files, so it works before vyre up. --all includes hidden commands.
+
 ### vyre help
 
 Every command, with a line on what it does.
@@ -697,7 +737,7 @@ These work, but `vyre help` leaves them out: they are for the box's service mana
 The one Tailscale login this box serves.
 
 ```
-vyre owner <tailscale login>
+vyre owner [<tailscale-login>]
 ```
 
 ### vyre home

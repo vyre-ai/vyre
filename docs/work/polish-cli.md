@@ -73,25 +73,31 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- After LOGOUT 4: merged main 7880dfa6 (presence lists take the union: agents.resume and
-  projects.move). My 3b work (704d325e and before) was NOT in 3b, so it rides batch 4 with the
-  chat parity verbs. Parity verbs run live against main's sessions tools (the test now requires
-  them). `vyre relay pair` uses core/cli/qr.js; phone tests post push receipts. Targeted runs on
-  testbox: 158/160 then 17/17 phone, 18/18 threads-sessions, 99/99 consistency+docs+presence.
-- Compile phase: verb audit done; tests added for about 60 verbs (5 test commits + 1). Still
-  untested: agents update/stop/delete/threads, threads stop/edit/send-now/fork/lease/release/
-  list/show (the subagent hit a usage limit before these). Usage lines leave out many verbs
-  handled in run() (threads names 6 of 28): a usage/help pass is next.
-- Vault usage slips still exit 1 (its documented older codes); left for the vault owners.
-- Link bugs for the link team: link.signin's loopback server outlives the module stop (up to
-  10 min); a second `vyre link pair` leaves the first request listed as waiting on the box.
-- New asks (lead, user): stable documented --json for every verb (rows, statuses, QR payloads,
-  prompts as data) and `vyre commands --json` for the Capsule's autocomplete, with capsule-pro;
-  then docs' dim tip line after a command (tips.next, work/docs d960197d); e2e's statusline
-  switch to config.claudeHome once work/e2e-noclaude 32dc0956 lands (plus a temp-home test);
-  cohesion's plan items 5 to 7 (docs/design/cohesion.md on work/cohesion 199120b5).
+- UNTESTED WORK ON THE BRANCH (testbox runs held by the lead until batch 4 reports): d7c7e4ad..HEAD.
+  The subagents ran their own files green (B: 150 tests, C: 91 + 15), but these are NOT yet run:
+  threads.js verbs/views/prompts (partial subagent, committed by me), d93d03f6 (prompt answer
+  modes, projects verbs, apps args, term.open message and its new test), the tip line
+  (core/cli/tip-line.test.js), docs/reference/cli-json.md with docs:ref. First run when allowed:
+  core/cli/view.test.js core/cli/tip-line.test.js core/cli/consistency.test.js test/cli.test.js
+  core/cli/commands/threads-sessions.test.js core/cli/commands/apps.test.js voice.test.js
+  statusline.test.js sessions.test.js needs.test.js box.test.js core/term/term.test.js
+  test/projects-cli.test.js test/docs-index.test.js test/docs-check.test.js test/docs-build.test.js,
+  then every core/cli/commands/*.test.js one file at a time.
+- Batch 4 sha sent: 4bc5c14b. The next batch gets HEAD once the runs above pass.
 
 ## Next
+
+0. vyre key (cohesion 6): thin verbs over vault.need / vault.connect once work/vault-next lands;
+   vault-next already has `vyre vault need|connect` in vault.js, which will conflict with our
+   vault.js views (d035a46c): merge carefully. voice key becomes an alias.
+   Statusline: e2e's config.claudeHome switch (work/e2e-noclaude 32dc0956) when it is on main,
+   plus a temp-home test. vyre config: after native-core's settings land (tips.enabled and
+   tips.gap_minutes come from core/tips/module.json settings).
+   Capsule-pro's first 10: voice status, status, doctor, threads list, phone add, vault list,
+   timer/remind, agents list, projects list, config get/set: check each --view frame by hand.
+   Follow-ups from subagents: core/cli/presence.js should refuse /dev/tty under --view itself
+   (personIO() in commands/presence.js works around it); verbs.js could split `[--a|--b]`;
+   link team: signin loopback outlives stop, second pair leaves the first waiting.
 
 1. Batch 4: send the integrator the sha after merging main (7d2f9c32 or later).
 2. `vyre config`: once native-core's settings are on main, take over config.js/config.test.js

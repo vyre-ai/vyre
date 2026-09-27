@@ -18,10 +18,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { VERSION } from "../daemon/index.js";
-import { out, dim, bold, beacon } from "./style.js";
+import { out, dim, bold, beacon, err as errPaint } from "./style.js";
 import { EXIT, UsageError, closest, setJson, wantsJson, wantsView, setView, emit, fail, usage } from "./kit.js";
 import { done, verbWords, textLines } from "./view.js";
 
+const errDim = s => errPaint.dim(s);
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "commands");
 
 /** @typedef {{ name: string, aliases?: string[], summary: string, usage?: string, help?: string | (() => number | Promise<number>), order?: number, hidden?: boolean, run(args: string[]): Promise<number> }} Command */
@@ -122,8 +123,46 @@ export async function main(argv) {
   if (!c) return unknown(all, want);
   if (asksHelp(rest)) return helpFor(all, c.name);
   if (wantsView(rest)) return viewRun(c, rest);
-  setJson(wantsJson(rest));
-  return runOne(c, rest);
+  const asJson = wantsJson(rest);
+  setJson(asJson);
+  const code = await runOne(c, rest);
+  if (code === EXIT.OK && !asJson && tipsWanted(c.name)) await tip(/** @type {any} */ (c).module || c.name);
+  return code;
+}
+
+/** Commands a tip never follows: starting and stopping vyred, and the tips themselves. */
+const NO_TIPS = new Set(["up", "down", "tips", "daemon", "commands"]);
+
+/**
+ * Whether one dim tip line may follow this run: a person at an interactive terminal, not a
+ * script, CI or a pipe, and not turned off (VYRE_NO_TIPS=1; tips.enabled in the tips module).
+ * @param {string} name @param {NodeJS.ProcessEnv} [env] @param {{ out?: boolean, err?: boolean }} [tty]
+ */
+export function tipsWanted(name, env = process.env, tty = { out: Boolean(process.stdout.isTTY), err: Boolean(process.stderr.isTTY) }) {
+  if (NO_TIPS.has(name)) return false;
+  if (env.CI || env.VYRE_NO_TIPS === "1" || env.VYRE_NO_TIPS === "true") return false;
+  return Boolean(tty.out && tty.err);
+}
+
+/**
+ * One dim "tip: ..." line on stderr from the tips module (tips.next), when it has one. The
+ * module keeps the rate (30 minutes a surface, 6 a day), so asking every time is fine. It never
+ * waits long: 150 ms, and a vyred that is not running answers at once.
+ * @param {string} module
+ * @param {(tool: string, input: any, o: any) => Promise<any>} [ask]
+ */
+export async function tip(module, ask) {
+  try {
+    const callTool = ask || (await import("../daemon/client.js")).call;
+    const r = await callTool("tips.next", { surface: "cli", context: { module }, mark: true }, { timeout: 150 });
+    const text = r && r.data && (r.data.tip ? r.data.tip.text : r.data.text);
+    if (typeof text !== "string" || !text.trim()) return null;
+    const line = "tip: " + text.replace(/`([^`]*)`/g, "$1").replace(/\s+/g, " ").trim();
+    process.stderr.write(errDim(line) + "\n");
+    return line;
+  } catch {
+    return null;
+  }
 }
 
 /** @param {Command} c @param {string[]} args */
