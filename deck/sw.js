@@ -17,7 +17,7 @@
 // every release is a new sw.js, which the browser installs at once with a fresh cache: the
 // release lands on this launch, not the next one. A checkout without a stamp serves "dev".
 const BUILD = "dev";
-const CACHE = "vyre-deck-7-" + BUILD;
+const CACHE = "vyre-deck-8-" + BUILD;
 const OFFLINE_CACHE = "vyre-deck-offline-1";
 const OFFLINE_TOOLS = new Set(["threads.get", "projects.list"]);
 const OFFLINE_MAX = 20;                    // distinct calls kept, oldest evicted first
@@ -121,7 +121,12 @@ self.addEventListener("push", e => {
   });
   // Something waits on the person: a dot on the app's icon (the app sets the count when it opens).
   const dot = d.kind === "ask" || d.kind === "draft" ? Promise.resolve().then(() => self.navigator?.setAppBadge?.()).catch(() => {}) : null;
-  e.waitUntil(Promise.all([shown, dot]));
+  // A test push with a receipt (push.test receipt: true): once it is shown, tell the box, so
+  // `vyre phone add` can tick "a notification reached this phone". The nonce is all it sends.
+  const receipt = typeof d.receipt === "string" ? d.receipt : "";
+  const posted = receipt ? Promise.resolve(shown).then(() => fetch("/v1/tools/push.receipt", { method: "POST",
+    headers: { "content-type": "application/json", "x-vyre-caller": "deck" }, body: JSON.stringify({ receipt }), credentials: "same-origin" }).catch(() => {})) : null;
+  e.waitUntil(Promise.all([shown, dot, posted]));
 });
 
 self.addEventListener("notificationclick", e => {

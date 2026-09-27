@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["push.key", "push.subscribe", "push.unsubscribe", "push.devices", "push.settings", "push.seen", "push.test"] },
-  "watches": { "emits": [] },
+  "does": { "tools": ["push.key", "push.subscribe", "push.unsubscribe", "push.devices", "push.settings", "push.seen", "push.test", "push.receipt"] },
+  "watches": { "emits": ["push.subscribed", "push.delivered", "push.seen"] },
   "shows": { "deck": ["settings:notifications"], "capsule": [], "cli": [] },
   "needs": { "vault": ["push-vapid"] },
   "teaches": {}

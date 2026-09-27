@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Push: live checks for `vyre phone add` (push.subscribed, push.delivered, push.seen)
+
+- push.subscribe emits `push.subscribed` { device, label, service }, where service is the push
+  service's hostname; never the endpoint or keys.
+- push.test takes `receipt: true`: a one-time nonce rides in the test payload and comes back in
+  the result. The Deck's worker posts it to the new tool `push.receipt` { receipt } once the
+  notification shows, which emits `push.delivered` { receipt, device } (device null when push.test
+  named none). A receipt is good once, for 10 minutes, the newest 50 kept in memory; anything else
+  is `unknown_receipt`. Same callers as push.subscribe.
+- push.seen takes `standalone: true` from an installed Deck and emits `push.seen` { surface,
+  standalone } at most once per surface in 10 minutes. The Deck's worker cache is now vyre-deck-8.
+
 #### Settings shows each VyreDrive share's own access and secrets; a Mac session's ask has no Approve
 
 - Settings > Network > VyreDrive shows each share's access (a share that does not say takes the

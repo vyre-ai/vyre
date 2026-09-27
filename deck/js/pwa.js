@@ -61,7 +61,8 @@ let seenAt = 0;
 function seen(visible) {
   seenAt = Date.now();
   // Hidden: the page may be going away, so the request is sent to outlive it.
-  call("push.seen", { surface: surfaceId(), visible }, { keepalive: !visible }).catch(() => {});
+  // standalone: the app runs installed, which `vyre phone add` ticks off (the box says so once per 10 minutes per surface).
+  call("push.seen", { surface: surfaceId(), visible, standalone: standalone() }, { keepalive: !visible }).catch(() => {});
 }
 
 /** Launch, visibility changes, and input after a quiet minute. Listeners only, all passive. */

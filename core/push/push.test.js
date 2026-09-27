@@ -362,3 +362,57 @@ test("push: a held ask answered, or a held draft resolved, never pushes; planner
   await d.registry.modules.get("push").handle.stop();
   assert.deepEqual(state(), { pending: [], timer: false }, "stop clears the timer and what was held");
 });
+
+test("push: live checks for `vyre phone add`: push.subscribed, a test receipt posted back once as push.delivered, push.seen from an installed app once per surface", async t => {
+  const { d, root, deck, svc, until, sleep } = await held(t, 50);
+  const events = type => d.events.since(0, { limit: 5000 }).filter(e => e.type === type);
+
+  // push.subscribed: the device, its label and the service's name. Never the endpoint or keys.
+  const phone = await browser();
+  const endpoint = `${svc.base}/push/kit-phone`;
+  const { device } = (await deck("push.subscribe", { subscription: { endpoint, keys: phone.keys }, label: "kit's phone" })).data;
+  const subs = await until(() => { const s = events("push.subscribed"); return s.length === 2 && s; }, "two push.subscribed");
+  assert.deepEqual(subs[1].payload, { device, label: "kit's phone", service: "127.0.0.1" });
+  assert.equal(subs[0].payload.label, null);
+  const blob = JSON.stringify(subs);
+  assert.ok(!blob.includes("/push/") && !blob.includes(phone.keys.p256dh) && !blob.includes(phone.keys.auth), "no endpoint or keys in the event");
+
+  // push.test receipt: true: a nonce in the payload and the result; push.receipt with it once.
+  const out = (await deck("push.test", { device, receipt: true })).data;
+  assert.match(out.receipt, /^[A-Za-z0-9_-]{12}$/);
+  assert.deepEqual({ ...out, receipt: "" }, { sent: 1, failed: 0, dropped: 0, receipt: "" });
+  const got = svc.got.find(g => g.path === "/push/kit-phone");
+  assert.equal(JSON.parse((await decrypt(phone, got.body)).toString()).receipt, out.receipt);
+  assert.equal("receipt" in (await deck("push.test", {})).data, false, "no receipt unless asked");
+  assert.equal((await call("push.receipt", { receipt: out.receipt }, { root, caller: "mcp" })).error.code, "denied", "same callers as push.subscribe");
+  assert.deepEqual((await deck("push.receipt", { receipt: out.receipt })).data, { ok: true });
+  const delivered = await until(() => { const e = events("push.delivered"); return e.length && e; }, "push.delivered");
+  assert.deepEqual(delivered.map(e => e.payload), [{ receipt: out.receipt, device }]);
+  assert.equal((await deck("push.receipt", { receipt: out.receipt })).error.code, "unknown_receipt", "once only");
+  assert.equal((await deck("push.receipt", { receipt: "made-up-nonce" })).error.code, "unknown_receipt");
+  const all = (await deck("push.test", { receipt: true })).data;
+  assert.deepEqual((await deck("push.receipt", { receipt: all.receipt })).data, { ok: true });
+  await until(() => events("push.delivered").length === 2, "the second push.delivered");
+  assert.deepEqual(events("push.delivered")[1].payload, { receipt: all.receipt, device: null }, "no device when push.test named none");
+
+  // An expired receipt is unknown too.
+  const now = testHooks.now;
+  t.after(() => { testHooks.now = now; });
+  const late = (await deck("push.test", { receipt: true })).data.receipt;
+  testHooks.now = () => Date.now() + 10 * 60_000;
+  assert.equal((await deck("push.receipt", { receipt: late })).error.code, "unknown_receipt", "expired after 10 minutes");
+  testHooks.now = now;
+
+  // push.seen: only standalone emits, once per surface per 10 minutes.
+  await deck("push.seen", { surface: "deck:a1", visible: true });
+  await deck("push.seen", { surface: "deck:a1", visible: true, standalone: false });
+  await deck("push.seen", { surface: "deck:a1", visible: true, standalone: true });
+  await deck("push.seen", { surface: "deck:a1", visible: false, standalone: true });
+  await deck("push.seen", { surface: "deck:b2", visible: true, standalone: true });
+  await until(() => events("push.seen").length === 2, "two push.seen");
+  await sleep(100);
+  assert.deepEqual(events("push.seen").map(e => e.payload), [{ surface: "deck:a1", standalone: true }, { surface: "deck:b2", standalone: true }]);
+  testHooks.now = () => Date.now() + 10 * 60_000;
+  await deck("push.seen", { surface: "deck:a1", visible: true, standalone: true });
+  await until(() => events("push.seen").length === 3, "again after 10 minutes");
+});

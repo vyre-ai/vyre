@@ -183,7 +183,34 @@ test("pwa: a planner-ack push shows a silent notification under the ring's tag, 
   assert.deepEqual(badges, [[], []], "an ask and a draft each set a dot, with no number");
   await push({ kind: "watch", title: "Done", path: "/now", tag: "watch-w", at: 1 });
   assert.equal(badges.length, 2);
-  assert.match(read("sw.js"), /const BUILD = "dev";\nconst CACHE = "vyre-deck-7-" \+ BUILD;/);
+  assert.match(read("sw.js"), /const BUILD = "dev";\nconst CACHE = "vyre-deck-8-" \+ BUILD;/);
+});
+
+test("pwa: a test push with a receipt shows the notification, then posts the receipt back as the Deck", async () => {
+  const vm = await import("node:vm");
+  const on = {}, steps = [];
+  const self = { addEventListener: (type, fn) => { on[type] = fn; },
+    registration: { showNotification: async (title, o) => { steps.push(["shown", title, o.tag]); }, getNotifications: async () => [] } };
+  const fetch = async (url, init) => { steps.push(["post", url, init]); return { ok: true }; };
+  vm.runInNewContext(read("sw.js"), { self, URL, Response, caches: {}, fetch, console });
+  const waits = [];
+  on.push({ data: { json: () => ({ kind: "test", title: "Vyre can reach this device", path: "/settings", tag: "test", receipt: "r4nd0m-n0nce", at: 1 }) }, waitUntil: p => waits.push(p) });
+  assert.equal(waits.length, 1, "one waitUntil");
+  await Promise.all(waits);
+  assert.deepEqual(steps.map(s => s[0]), ["shown", "post"], "shown first, then posted");
+  const [, url, init] = steps[1];
+  assert.equal(url, "/v1/tools/push.receipt");
+  assert.deepEqual(JSON.parse(JSON.stringify({ ...init, body: JSON.parse(init.body) })), { method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck" },
+    body: { receipt: "r4nd0m-n0nce" }, credentials: "same-origin" });
+  // No receipt, nothing posted; a failed post is swallowed.
+  on.push({ data: { json: () => ({ kind: "test", tag: "test" }) }, waitUntil: p => waits.push(p) });
+  await Promise.all(waits);
+  assert.equal(steps.filter(s => s[0] === "post").length, 1);
+  const quiet = [];
+  vm.runInNewContext(read("sw.js"), { self: { ...self, addEventListener: (t, fn) => { if (t === "push") quiet.push(fn); } }, URL, Response, caches: {}, fetch: async () => { throw new Error("offline"); }, console });
+  const w = [];
+  quiet[0]({ data: { json: () => ({ kind: "test", receipt: "x" }) }, waitUntil: p => w.push(p) });
+  await Promise.all(w);
 });
 
 test("pwa: a push still shows when a browser has no app badge", async () => {
@@ -205,7 +232,8 @@ test("pwa: a push still shows when a browser has no app badge", async () => {
 
 test("pwa: push.seen is reported at launch, on visibility changes and on input after a quiet minute, with no timer", () => {
   const src = read("js/pwa.js");
-  assert.match(src, /call\("push\.seen", \{ surface: surfaceId\(\), visible \}, \{ keepalive: !visible \}\)\.catch\(\(\) => \{\}\)/);
+  assert.match(src, /call\("push\.seen", \{ surface: surfaceId\(\), visible, standalone: standalone\(\) \}, \{ keepalive: !visible \}\)\.catch\(\(\) => \{\}\)/);
+  assert.match(src, /export const standalone = \(\) => \/\*\* @type \{any\} \*\/ \(navigator\)\.standalone === true \|\| matchMedia\("\(display-mode: standalone\)"\)\.matches;/);
   assert.match(src, /SEEN_EVERY = 60_000/);
   assert.match(src, /addEventListener\("pointerdown", touched, \{ passive: true, capture: true \}\)/);
   assert.match(src, /addEventListener\("keydown", touched, \{ passive: true, capture: true \}\)/);

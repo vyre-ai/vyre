@@ -46,6 +46,19 @@ const RESOLVES = {
   "gate.revised": e => `draft-${e.payload.id}`,
   "gate.failed": e => `draft-${e.payload.id}`,
 };
+/** A receipt from push.test is good this long, and only the newest few are kept. */
+const RECEIPT_MS = 10 * 60_000;
+const RECEIPTS_MAX = 50;
+/** push.seen from an installed app tells the box once per surface in this long. */
+const SEEN_EVENT_MS = 10 * 60_000;
+
+/** An error with a code the registry passes through to the caller. */
+function fail(code, message) {
+  const e = /** @type {Error & { code?: string }} */ (new Error(message));
+  e.code = code;
+  return e;
+}
+
 /** For tests only: the clock and the hold. */
 export const testHooks = { now: () => Date.now(), holdMs: HOLD_MS };
 
@@ -219,6 +232,11 @@ export default {
       } catch (err) { ctx.log(`push: ${/** @type {Error} */ (err).message}`); }
     }));
 
+    /** push.test receipts not yet posted back: nonce -> { device, at }, in memory, the newest RECEIPTS_MAX. */
+    const receipts = new Map();
+    /** When each surface last emitted push.seen. */
+    const seenEvents = new Map();
+
     const tool = (name, description, input, run) => ctx.tool(name, { description, input, run, callers: PEOPLE });
     const str = { type: "string" };
 
@@ -234,6 +252,9 @@ export default {
         db.prepare(`INSERT INTO push_devices (id, endpoint, p256dh, auth, label, by, at, expires) VALUES (?,?,?,?,?,?,?,?)
           ON CONFLICT(endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth, label = COALESCE(excluded.label, push_devices.label),
           expires = excluded.expires, fails = 0`).run(id, s.endpoint, s.p256dh, s.auth, i.label ? String(i.label).slice(0, 80) : null, String(caller), Date.now(), s.expires);
+        // The push service's name only: never the endpoint or the keys.
+        const row = /** @type {any} */ (db.prepare("SELECT label FROM push_devices WHERE id = ?").get(id));
+        ctx.events.emit("push.subscribed", { device: id, label: row ? row.label : null, service: new URL(s.endpoint).hostname });
         return { device: id };
       });
 
@@ -268,23 +289,56 @@ export default {
         return { ...settings(), quiet_now: isQuiet(settings().quiet) };
       });
 
-    tool("push.seen", "A person is using this screen: call it when the screen is shown, when it is hidden, and on the first input after a minute of none. Asks, drafts and watches wait until 3 minutes after the last call; planner rings do not.",
-      { type: "object", properties: { surface: { type: "string", maxLength: 80 }, visible: { type: "boolean" } } },
+    tool("push.seen", "A person is using this screen: call it when the screen is shown, when it is hidden, and on the first input after a minute of none. Asks, drafts and watches wait until 3 minutes after the last call; planner rings do not. standalone: the app runs installed (emits push.seen at most once per surface in 10 minutes).",
+      { type: "object", properties: { surface: { type: "string", maxLength: 80 }, visible: { type: "boolean" }, standalone: { type: "boolean" } } },
       async i => {
         if (i.surface !== undefined && String(i.surface).length > 80) throw new Error("surface is at most 80 characters");
         lastUse = testHooks.now();
+        if (i.standalone === true) {
+          const surface = i.surface === undefined ? "" : String(i.surface);
+          const last = seenEvents.get(surface);
+          if (last === undefined || lastUse - last >= SEEN_EVENT_MS) {
+            seenEvents.delete(surface);
+            seenEvents.set(surface, lastUse);
+            while (seenEvents.size > RECEIPTS_MAX) seenEvents.delete(seenEvents.keys().next().value);
+            ctx.events.emit("push.seen", { surface: surface || null, standalone: true });
+          }
+        }
         return { ok: true };
       });
 
-    tool("push.test", "Send a test notification to every device, or one. Ignores quiet hours.",
-      { type: "object", properties: { device: str } },
-      async i => deliver({ kind: "test", title: "Vyre can reach this device", path: "/settings", tag: "test", at: Date.now() }, i.device || null));
+    tool("push.test", "Send a test notification to every device, or one. Ignores quiet hours. receipt: true puts a one-time receipt in it, which the device posts back (push.receipt) once it is shown.",
+      { type: "object", properties: { device: str, receipt: { type: "boolean" } } },
+      async i => {
+        const message = { kind: "test", title: "Vyre can reach this device", path: "/settings", tag: "test", at: Date.now() };
+        if (i.receipt !== true) return deliver(message, i.device || null);
+        const now = testHooks.now();
+        for (const [k, v] of receipts) if (now - v.at >= RECEIPT_MS) receipts.delete(k);
+        const nonce = crypto.randomBytes(9).toString("base64url");
+        receipts.set(nonce, { device: i.device ? String(i.device) : null, at: now });
+        while (receipts.size > RECEIPTS_MAX) receipts.delete(receipts.keys().next().value);
+        return { ...(await deliver({ ...message, receipt: nonce }, i.device || null)), receipt: nonce };
+      });
+
+    tool("push.receipt", "A device showed a test notification: post back its receipt. Known once, for 10 minutes; anything else is unknown_receipt.",
+      { type: "object", required: ["receipt"], properties: { receipt: { type: "string", maxLength: 64 } } },
+      async i => {
+        const nonce = String(i.receipt ?? "");
+        const r = receipts.get(nonce);
+        // One answer for "never made", "used" and "expired": the tool tells nothing else.
+        if (!r || testHooks.now() - r.at >= RECEIPT_MS) { receipts.delete(nonce); throw fail("unknown_receipt", "no such receipt"); }
+        receipts.delete(nonce);
+        ctx.events.emit("push.delivered", { receipt: nonce, device: r.device });
+        return { ok: true };
+      });
 
     return {
       async stop() {
         for (const off of offs) { try { off(); } catch {} }
         if (timer) { clearTimeout(timer); timer = null; }
         pending.clear();
+        receipts.clear();
+        seenEvents.clear();
       },
       /** For tests: what is held, and whether a timer runs. */
       held: () => ({ pending: [...pending.keys()], timer: Boolean(timer) }),
