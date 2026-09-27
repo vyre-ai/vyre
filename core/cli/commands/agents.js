@@ -188,7 +188,7 @@ function showComputer(c, verb) {
 }
 
 /** One computer as a card, for --view. */
-const computerCard = c => ({ kind: "card", title: `${c.agent}'s computer`, state: c.state === "running" ? "ok" : c.state === "stopped" || c.state === "none" ? "off" : "wait", fields: [
+const computerCard = c => ({ kind: "card", title: `${c.agent}'s computer`, state: c.state === "running" ? "ok" : c.state === "stopped" || c.state === "none" ? "unknown" : "wait", fields: [
   { label: "State", value: String(c.state ?? "") + (c.paused ? " (paused)" : "") },
   { label: "Cores", value: String(c.cpus ?? "") },
   { label: "Memory", value: c.memory_gb !== undefined ? `${c.memory_gb} GB` : "" },

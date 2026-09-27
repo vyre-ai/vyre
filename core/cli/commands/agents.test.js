@@ -184,6 +184,6 @@ test("agents cli: --view draws the agents as a table and a computer as a card, w
   assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 0 });
 
   const c = frames((await vyre("agents", "computer", "kit", "--view")).stdout);
-  assert.deepEqual([c[0].view.kind, c[0].view.title, c[0].view.state], ["card", "kit's computer", "off"]);
+  assert.deepEqual([c[0].view.kind, c[0].view.title, c[0].view.state], ["card", "kit's computer", "unknown"]);
   assert.deepEqual(c[0].data, JSON.parse((await vyre("agents", "computer", "kit", "--json")).stdout));
 });

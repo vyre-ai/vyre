@@ -108,7 +108,7 @@ export default [
           const v = d.vectors || {};
           return emit(d, viewing() ? { kind: "card", title: "Recall", fields: [{ label: "Sessions", value: String(d.sessions) }, { label: "Turns", value: String(d.turns) },
             { label: "Indexing", value: d.indexing ? "now" : "no" }, { label: "Search by meaning", value: String(v.why || (v.on ? "on" : "off")) },
-            ...(v.on ? [{ label: "Embedded", value: `${v.embedded} embedded, ${v.pending} to go` }] : [])], state: v.ready ? "ok" : v.on ? "wait" : "off" } : undefined);
+            ...(v.on ? [{ label: "Embedded", value: `${v.embedded} embedded, ${v.pending} to go` }] : [])], state: v.ready ? "ok" : v.on ? "wait" : "unknown" } : undefined);
         }
         out(`  ${d.sessions} sessions · ${d.turns} turns indexed${d.indexing ? dim(" · indexing now") : ""}`);
         out(dim(`  vectors: ${d.vectors.why}${d.vectors.on ? ` · ${d.vectors.embedded} embedded, ${d.vectors.pending} to go` : ""}`));
