@@ -6,6 +6,9 @@
 //
 //   VYRE_COMPUTER_CONTAINER=<container name> node --test core/computers/image/isolation.test.js
 //
+// With VYRE_COMPUTERD_TOKEN set as well (the computer's helper token, from vyred's database), it
+// also raises and lowers the shield and checks the agent's processes stop and continue.
+//
 // Each check runs as the agent (docker exec -u 1000:1000), the way anything the agent starts in
 // its own xterm would. python3 is the tool: the image purges curl, and python3 is there for AT-SPI.
 
@@ -125,4 +128,48 @@ print(json.dumps({
   "fs": call('GET', '/fs/'),
 }))`));
   assert.deepEqual(r, { shield: 401, shield_guess: 401, cdp: 401, fs: 401 });
+});
+
+const TOKEN = process.env.VYRE_COMPUTERD_TOKEN || "";
+
+/** Run python3 code in the computer as vyre (computerd's own uid), the token passed on stdin. */
+function asVyre(code) {
+  return execFileSync("docker", ["exec", "-i", "-u", "1001:1001", C, "python3", "-c", code], { input: TOKEN, encoding: "utf8", timeout: 30_000 }).trim();
+}
+
+const STATES = `
+import os, re, json
+def agent_states():
+    out = {}
+    for p in os.listdir('/proc'):
+        if not p.isdigit(): continue
+        try: st = open(f'/proc/{p}/status').read()
+        except Exception: continue
+        if int(re.search(r'^Uid:\\s+(\\d+)', st, re.M).group(1)) != 1000: continue
+        out[p] = re.search(r'^State:\\s+(\\S)', st, re.M).group(1)
+    return out
+`;
+
+const SHIELD = on => `
+import sys, urllib.request, json
+tok = sys.stdin.read().strip()
+req = urllib.request.Request('http://127.0.0.1:7000/shield', method='POST', data=json.dumps({"on": ${on ? "True" : "False"}}).encode(),
+  headers={'content-type': 'application/json', 'authorization': 'Bearer ' + tok})
+print(urllib.request.urlopen(req, timeout=5).read().decode())
+`;
+
+test("isolation: while shielded every process of the agent's is stopped, and continues after", { skip: skip || (TOKEN ? false : "set VYRE_COMPUTERD_TOKEN too") }, async () => {
+  const before = JSON.parse(asVyre(`${STATES}\nprint(json.dumps(agent_states()))`));
+  assert.ok(Object.keys(before).length > 0, "no agent process to check (is xterm running?)");
+  try {
+    assert.deepEqual(JSON.parse(asVyre(SHIELD(true))), { shielded: true, frozen: true });
+    await new Promise(r => setTimeout(r, 500));
+    const during = JSON.parse(asVyre(`${STATES}\nprint(json.dumps(agent_states()))`));
+    for (const [pid, st] of Object.entries(during)) assert.equal(st, "T", `agent pid ${pid} is ${st}, not stopped, while shielded`);
+  } finally {
+    asVyre(SHIELD(false));
+  }
+  await new Promise(r => setTimeout(r, 500));
+  const after = JSON.parse(asVyre(`${STATES}\nprint(json.dumps(agent_states()))`));
+  for (const [pid, st] of Object.entries(after)) assert.notEqual(st, "T", `agent pid ${pid} is still stopped`);
 });

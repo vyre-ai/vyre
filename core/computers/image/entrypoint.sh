@@ -5,7 +5,9 @@
 # Two users (the Dockerfile makes them):
 #   vyre  (uid 1001)  Xvnc, the session bus, computerd, and Chrome (computerd's child). Its home
 #                     is its own volume at /var/lib/vyre: the Chrome profile, the VNC password.
-#   agent (uid 1000)  the desktop the agent works in: fluxbox and xterm, and everything it starts.
+#   agent (uid 1000)  the terminal the agent works in (xterm), and everything it starts. While
+#                     the shield is up (a person signing in, a Vault fill) all of it is stopped.
+#   fluxbox, the window manager, is vyre's too.
 # The agent's processes cannot trace, signal or read the environment of vyre's (a different uid,
 # no CAP_SYS_PTRACE), cannot reach Chrome's DevTools (computerd holds them over a pipe, there is
 # no port), and never see COMPUTERD_TOKEN or VNC_PASSWORD (their environment is built from
@@ -109,11 +111,30 @@ DBUS_SESSION_BUS_ADDRESS="$(printf '%s\n' "${bus}" | sed -n "s/^DBUS_SESSION_BUS
 DBUS_SESSION_BUS_PID="$(printf '%s\n' "${bus}" | sed -n "s/^DBUS_SESSION_BUS_PID=\([0-9]*\);$/\1/p")"
 log "session bus at ${DBUS_SESSION_BUS_ADDRESS}"
 
-# ---- the agent's desktop: the window manager and a terminal ----------------------------------
-log "starting fluxbox and xterm as the agent"
-as_agent sh -c 'exec fluxbox >"$HOME/.fluxbox/log" 2>&1' &
+# ---- the desktop: the window manager as vyre, the terminal as the agent ------------------------
+# fluxbox is vyre's: the agent's processes are stopped during a sign-in (below), and a stopped
+# window manager would never map the window a fill opens.
+log "starting fluxbox (vyre) and xterm (the agent)"
+as_vyre sh -c 'mkdir -p "$HOME/.fluxbox" && exec fluxbox >"$HOME/.fluxbox/log" 2>&1' &
 sleep 1
 as_agent xterm -geometry 100x30 &
+
+# ---- the freezer: stops the agent's processes while the shield is up --------------------------
+# computerd writes "stop" or "cont" to fd 9; this root loop does it as the agent's uid, which may
+# signal exactly the agent's processes (kill -1 as uid 1000 reaches uid 1000 and nothing else).
+# When computerd exits, the pipe closes and everything the agent runs is continued.
+# Stopping sweeps three times, so a process that forked during one sweep is caught by the next.
+signal_agent() { setpriv --reuid=1000 --regid=1000 --clear-groups --inh-caps=-all -- kill -s "$1" -- -1 2>/dev/null || true; }
+freezer() {
+  while IFS= read -r cmd; do
+    case "${cmd}" in
+      stop) for _ in 1 2 3; do signal_agent STOP; sleep 0.05; done ;;
+      cont) signal_agent CONT ;;
+    esac
+  done
+  signal_agent CONT
+}
+exec 9> >(freezer)
 
 # ---- computerd, in the foreground, as vyre: its exit is the container's exit ------------------
 # Only what computerd needs, named one by one. GTK_MODULES and friends make Chromium build an
@@ -126,4 +147,5 @@ exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
     COMPUTERD_TOKEN="${COMPUTERD_TOKEN}" SCREEN="${SCREEN}" ${VYRE_PROXY_PAC:+VYRE_PROXY_PAC="${VYRE_PROXY_PAC}"} \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
     CHROME_PROFILE="${VYRE_HOME}/chromium" CHROME_LOG="${VYRE_HOME}/chromium.log" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
+    VYRE_FREEZE_FD=9 \
   node /opt/computerd/index.js
