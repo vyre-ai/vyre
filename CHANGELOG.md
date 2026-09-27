@@ -6,6 +6,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Tokens: one JSON, rendered for the Capsule, the app and the Deck
 
+- Theme overrides (ADR 0033 section 3): scripts/lib/theme.js deep-merges a partial tokens.json
+  (the person's overrides/theme.json or a module's themes/<name>.json) over the shipped one, and
+  refuses the whole file, naming each failure, when it touches status, layout, icon or a key the
+  tokens lack, or when the result breaks a rule: AA for every text and ground pair the surfaces
+  draw (washes composited), a 3:1 focus ring, the attention colour reused by another role, text
+  under 12 or touch targets under 44. `fromLegacy()` maps config.theme.colors for one release.
+  `node scripts/gen-tokens --validate <file>` runs it. Tests in test/theme.test.js.
+
 - scripts/gen-tokens (`npm run tokens`) is the one token generator (lead, 27 Sep; it replaces the
   app's and the Capsule's own). It writes apps/app/src/theme/tokens.ts (byte-identical to the
   app's current file: `tokens`, `Scheme`, `Colors`, `attention()`), the Capsule's

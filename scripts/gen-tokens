@@ -9,10 +9,13 @@
 // Either way a surface whose root folder (apps/app, local/capsule/native, deck) is not in the
 // tree is skipped.
 //   --ts <path> --swift <path> --css <path>   write only these, to these paths
+//   node scripts/gen-tokens --validate <theme.json>   check a theme override (ADR 0033): exit 1 and
+//                                        name each failing rule, or print ok
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { swift, ts, css, load, TOKENS } from "./lib/tokens.js";
+import { applyOverride } from "./lib/theme.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const SOURCE = TOKENS;
@@ -36,6 +39,13 @@ export function generate() {
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   const args = process.argv.slice(2);
+  if (args.includes("--validate")) {
+    const file = args[args.indexOf("--validate") + 1];
+    const { problems } = applyOverride(load(REPO), JSON.parse(fs.readFileSync(file, "utf8")));
+    for (const p of problems) console.error(`refused: ${p}`);
+    if (!problems.length) console.log("ok");
+    process.exit(problems.length ? 1 : 0);
+  }
   const check = args.includes("--check");
   let files = generate();
   const picked = [["--ts", ts], ["--swift", swift], ["--css", css]].filter(([f]) => args.includes(f));
