@@ -86,6 +86,12 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   `apps.setup` (setup.js, Clock's shortcuts written, signed, opened) and `vyre apps`
   (core/cli/commands/apps.js). 150 targeted tests pass on the testbox, 5 opt-in skipped.
 
+- Slice 3 Slack (2026-09-27): adapters/slack.js, gated sends (apps.act -> held -> gate.approve),
+  gatedMark in apps.route, apps.send refuses gated, adapter.ready() for "Which app?". Testbox:
+  local/apps/*.test.js + cli apps 204 pass, 0 fail, 5 skipped; slack.test.js includes a real vyred
+  with the real hub and Gate and a fake Slack MCP stdio server: nothing arrives before approval,
+  exactly one call after. docs:ref regenerated, test/docs-* 61 pass.
+
 ## Doing (2026-09-27, resumed)
 - T4 done (main merged at abd1e79): planner by default, needs prompts on the route and tool side,
   apps.route {text, app, to} for answers (sendTo in route.js), the `vyre apps` prompt loop (TTY:
@@ -126,8 +132,10 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
 1. DONE: handed 7423c8c to capsule-pro. Was: send capsule-pro the hash to merge. Then run capsule-mac CI on
    4d40355 (the AppsExtension) and hand that over too (it changes Kit, CapsuleModel,
    ExtensionHost and Panel by one line each: see Changed contracts).
-2. Switch the presence summary to host.prove when capsule-pro ships it.
-3. Slack adapter (slice 3, design below), then WhatsApp over hands (slice 4: hands.find,
+2. DONE (native a8859f0, Swift 284/284): sends prove via host.prove / link.call(summary:). capsule-pro merged
+   7423c8c at 6ff7185 and fixed the CI signing hang. capsule-pro merged a8859f0 (d9e42018) and added
+   apps.send to VyredClient.sessionable (a8dd925a): one Touch ID covers a burst of sends.
+3. DONE: Slack adapter (slice 3), see Done. Next: WhatsApp over hands (slice 4: hands.find,
    settleMs up to 5000, press Send rather than key Return; needs_front for keys), then any-app.
 
 ### Real-Mac check (planner default; the lead with the user, on the Mac, in the user's own terminal)
@@ -183,6 +191,12 @@ outbound sends. So apps.act never asks; apps.send and gate.approve do, riding th
 - lead/user: import of the Vyre Clock shortcuts once (one click each), checked on the real Mac.
 
 ## Changed contracts
+- core/gate/index.js (owner: gate/security): previewOf also reads an MCP call's words from
+  content.arguments (text, payload, message, body, content), so gate.approve's presence line is
+  not blank for hub-held calls. core/mcp/hub.js (owner: connectors): TO_KEYS gains
+  conversation_id. Both from the Slack slice's review; tested in local/apps/slack.test.js.
+- apps: an adapter action may be `gated` (apps.act runs it, the Gate holds it, apps.send refuses
+  it with code gated); apps.route marks such routes `gated: true`; adapters may have ready(env).
 - Native Capsule (owner capsule-pro), on work/capsule-apps-native: Kit `CapsuleExtension.boxChanged()`
   (default no-op); CapsuleModel `extensionBoxChanged` called from the text and target didSets;
   ExtensionHost forwards it to every extension; Panel ignores a repeated Return (isARepeat).

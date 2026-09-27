@@ -20,7 +20,7 @@ import path from "node:path";
 import { execFile as childExecFile } from "node:child_process";
 import { dialogsAllowed, NO_DIALOG } from "../../core/config/dialogs.js";
 
-/** An error with a code a caller can act on: setup, no_dialog, not_mac, not_found, sends, not_sends, bad_input, failed. */
+/** An error with a code a caller can act on: setup, no_dialog, not_mac, not_found, sends, not_sends, gated, bad_input, failed. */
 export class AppsError extends Error {
   /** @param {string} code @param {string} message */
   constructor(code, message) { super(message); this.code = code; }
