@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: a message with images is not queued
+
+The box keeps only the words of a queued message, so its images were lost. Until sessions keeps
+them, the composer refuses to queue a message with images (Alt+Enter, the queue toggle, a hold on
+Send, or a command that would wait) and says to send it as a steer now or after the turn. A
+session busy in a terminal that queues it anyway gets the images back in the box, with a note.
+
 #### Chat: reading back up a session no longer snaps to the bottom when a reply ends
 
 - The timeline's rows had `content-visibility: auto`. The reply that just stopped streaming had
