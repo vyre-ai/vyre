@@ -59,32 +59,50 @@ Filled in as each lands.
 - /start page: re-reviewed on testbox (screenshot below), reads clean and matches Design A. No
   changes needed.
 - Fixed a real bug found while screenshotting the landing page: the install tabs (Linux box /
-  Mac / What it needs) showed all three panels at once and did not respond to clicks — `.ipanel`'s
+  Mac / What it needs) showed all three panels at once and did not respond to clicks. `.ipanel`'s
   own `display: flex` beat the browser's default `[hidden]{display:none}`, and `app.js` never had
   a listener for `.itabs`. Fixed in both files, screenshot-verified fixed. See CHANGELOG.md and
   site/CHANGELOG.md.
 - Screenshots taken on testbox once load dropped from 6.83 to ~1 (`vyre-chrome --headless=new`,
   own http.server on a scratch port, torn down after): landing (1440), landing (390 mobile), 404
   (1440), /start (1440). Confirmed against docs/design/TOKENS.md and the Design A boards; nothing
-  else stood out.
+  else stood out at that pass (the gold finding below came from app-design's own review, after).
+- capsule-pro confirmed the real hotkey: Option-Space by default, Control twice is an optional
+  toggle (menu-bar mark, needs Input Monitoring). Fixed everywhere the old "Control twice only"
+  copy showed: hero hint, feature list, settings preview, keycap icons, the demo's key listener,
+  README.md, site/start/index.html, deck/onboard/onboard.js.
+- app-design's review found two real problems, both fixed: gold (`--recall`) still styling the
+  whole memory section though Design A retired it completely (redesigned as plain source chips
+  and plain text, no fill, `1px solid var(--rule-strong)` border, matching the Og board's "From ·
+  Q3 report · Harlow Legal · Tue" pattern), and `deck/onboard/onboard.css`'s `.dev-off`/`.need`
+  using `var(--beacon-wash)`, a token never generated into deck/css/tokens.css (swapped for
+  `var(--hover)`). Screenshot-verified the memory section and the hotkey copy on testbox.
+- Received app-design's launch art (Og, Social, ReadmeHero, both themes, Design A, audited clean)
+  and put it in place: `site/og.png` (dark, matches the page's `og:image` meta) and
+  `docs/brand/{og-paper,social-preview,social-preview-paper,readme-hero,readme-hero-light}.png`.
+  Renamed from the handoff's `Og.png`/etc to lowercase before copying in, since this Mac's
+  filesystem is case-insensitive and a same-cased copy would have collided with the existing file.
 
 ## Doing
 
-- Confirming the Capsule hotkey with capsule-pro before calling the landing demo final (asked;
-  current copy says "Control twice").
+- Nothing in progress right now.
 
 ## Next
 
-- Nothing blocking on this list right now besides the hotkey confirmation above.
+- Nothing blocking.
 
 ## Needs from others
 
 - lead: which of Vyre IQ, Capsule auto-answer, voice, "do" computer use and the settings hub are in the RC. Until answered, anything not on main shows "coming".
-- capsule-pro: confirm the real Capsule hotkey (asked this session).
 - sessions: pending onboard changes, if any.
-- app-design: review of every visual, flagging in particular the 404 page and onboard step bar,
-  built this session.
+- app-design: a second pass on the memory-section redesign and the hotkey copy, since both
+  changed after their last review.
 - e2e: rc-smoke on the finished sha.
+- integrator: docs/brand/*.html (launch's own standalone renders) are now superseded by
+  app-design's docs/design/one-app/project/*.dc.html on work/app-design (registered in
+  canvas.json, e95897c3). Left launch's .html sources as-is rather than trying to reconcile two
+  branches; worth cleaning up docs/brand/ to point at or drop in favour of the canvas boards once
+  both branches are merged.
 
 ## Changed contracts
 

@@ -140,7 +140,15 @@
     status.textContent = 'Demo: on your Mac this sends the final words you see. Nothing left this page.';
   }));
 
-  // Control pressed twice, with no other key in between, toggles the Capsule.
+  // Option-Space toggles the Capsule, same as the real default. Control pressed twice, with no
+  // other key in between, does too: that's the optional toggle a person turns on from the
+  // menu-bar mark, kept here so the demo matches either way someone tries it.
+  document.addEventListener('keydown', (e) => {
+    if (e.altKey && e.code === 'Space') {
+      e.preventDefault();
+      if (demo.open) close(); else open();
+    }
+  });
   let last = 0;
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Control') { last = 0; return; }

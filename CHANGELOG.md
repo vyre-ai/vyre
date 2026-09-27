@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The real Capsule hotkey, everywhere it was wrong
+
+- README.md, deck/onboard/onboard.js said "Control twice" as if it were the only way to open the
+  Capsule. Confirmed with capsule-pro: the default is Option-Space, and Control twice is an
+  optional toggle turned on from the menu-bar mark (needs Input Monitoring). Fixed the copy in
+  both files; site/ and site/start/index.html are covered in site/CHANGELOG.md.
+- deck/onboard/onboard.css: `.dev-off` and `.need` used `var(--beacon-wash)`, a token never
+  generated into deck/css/tokens.css (app-design caught this), so it resolved to nothing. Changed
+  to `var(--hover)`.
+
 #### A rare fortune line, and a hidden `vyre high-five`
 
 - core/cli/delight.js: the quiet things. `fortune()` returns a line for the screen's title bar,

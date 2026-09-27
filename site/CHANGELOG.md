@@ -5,11 +5,26 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
-### Landing, 404 and install polish for the 0.1.0 push (2026-09-27)
+### Gold retired, the real Capsule hotkey, and app-design's launch art (2026-09-27)
 
+- `index.html`, `styles.css`: removed the last gold from the page. app-design's review found it
+  still styling the whole memory section (`--recall`/`--recall-wash`, the `.gold` utility, the
+  recalled-answer card, the legend swatch, the terminal glimpse's "recalled" chip). Design A
+  retired gold completely; every one of those now reads as a plain source chip or plain text
+  (`--bone`/`--stone`, a `1px solid var(--rule-strong)` border, no fill), the same pattern
+  app-design's Og board uses ("From · Q3 report · Harlow Legal · Tue"). The `--recall`/
+  `--recall-wash` tokens are gone from `:root`.
+- Fixed the Capsule hotkey copy: capsule-pro confirmed the default is Option-Space, with Control
+  twice as an optional toggle (menu-bar mark, needs Input Monitoring), not the only way in as
+  the page previously said. Updated the hero hint, the feature list, the settings preview, the
+  keycap icons (now &#8997; + Space), and `app.js`'s demo listener (opens on Option-Space or
+  Control-twice); `site/start/index.html` too.
+- `docs/brand/`: replaced og.png, social-preview.png and readme-hero(.png/-light.png) with
+  app-design's audited Design A renders (both themes; `-paper.png` added for each). `site/og.png`
+  updated to match (dark only; that's the one the page's `og:image` meta uses).
 - `index.html`, `styles.css`: reworked hero to lead with "Your best work, with a partner that
   never drops the thread." and brought the rest of the page in line with the Design A boards and
-  `lib/theme/tokens.json`: no gold anywhere, violet reserved for "needs you" only.
+  `lib/theme/tokens.json`.
 - `404.html`: rebuilt self-contained (does not load `/styles.css`, so a stylesheet change can
   never break it) with its own small Capsule field and an orbiting dot around the "0" that quiets
   under `prefers-reduced-motion`.

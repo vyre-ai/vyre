@@ -700,7 +700,7 @@ const SCREENS = {
     let macName = d.mac?.connected ? (d.mac.name || "your Mac") : null;
     const drawMac = () => put(macState, macName
       ? [h("div", { class: "dev-ok" }, icon("check", 14), h("span", null, "Mac paired: ", h("b", null, macName))),
-        h("p", { class: "small muted" }, "Press Control twice to open the Capsule.")]
+        h("p", { class: "small muted" }, "Press ⌥Space to open the Capsule.")]
       : h("div", { class: "dev-wait" }, h("span", { class: "busy", "aria-hidden": "true" }), "Waiting for your Mac"));
     const paired = (/** @type {string} */ name) => {
       if (macName) return;
@@ -808,7 +808,7 @@ function showEnding(d) {
   const mac = !!state.status?.detail?.devices?.mac?.connected;
   const rows = [
     { id: "mac", label: "Your Mac", done: mac,
-      note: mac ? "Press Control twice on your Mac to open the Capsule." : "Pair it any time: run vyre up on the Mac." },
+      note: mac ? "Press ⌥Space on your Mac to open the Capsule." : "Pair it any time: run vyre up on the Mac." },
     { id: "phone", label: "Your phone", done: stepState("devices") !== "todo",
       note: `Open ${home.replace(/^https?:\/\//, "")}/now on your phone, then Add to Home Screen.` },
     { id: "history", label: "Your history", done: stepState("history") !== "todo",
