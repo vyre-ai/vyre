@@ -118,6 +118,18 @@ Filled in as each lands.
   `deck/onboard/onboard.css`'s `.progress .state`); and `.dtab[aria-pressed="true"]`'s selected
   text was lime (`--signal`), a pre-existing nit (not from this session) that tabs.md/chip.md say
   should be neutral text with only the ring/fill carrying colour. Fixed to `--bone`.
+- The user asked for a cheap-opportunities list (top 8, sent to the lead, not in this doc since it
+  wasn't a build ask). Lead greenlit 4 for rc.2, gave item 2 (GitHub social-preview upload) to
+  the user directly since only the repo owner can do it, and deferred the rest to 0.1.1:
+  - OS-aware install-tab default (Mac on a Mac, Linux box otherwise), remembered per visitor
+    after their first real choice. `app.js`'s OS guess checks both `navigator.platform` and the
+    UA string (the first pass checked platform only and tested wrong under a `--user-agent`
+    override in headless Chrome, since Chrome doesn't always change `navigator.platform` to
+    match). Verified with real Mac and Linux UA strings on testbox; the remember path is a
+    straightforward `localStorage` get/set already wrapped in `try`/`catch`, verified by code
+    review rather than a scripted browser test (no harness exists for `site/app.js`).
+  - `site/robots.txt`, `site/sitemap.xml`: added, neither existed.
+  - `theme-color`: already present on all three pages, turned out to need nothing.
 
 ## Doing
 
