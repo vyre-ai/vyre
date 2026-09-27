@@ -1,7 +1,8 @@
 // The transcript's rows, drawn from chat core items: what the person said, the reply (paced while
-// it streams), one quiet row per tool call with runs folded (grouping.js, a tap opens a run), turn
-// ends with time and tokens, notices, and asks inline with Allow and Deny. Each row subscribes to
-// its own key, so a streaming reply repaints only itself.
+// it streams: the store's one frame clock says how much shows), one quiet row per tool call with
+// runs folded (grouping.js, a tap opens a run), turn ends with time and tokens, notices, and asks
+// inline with Allow and Deny. Each row subscribes to its own key and is memoized on what it draws
+// (sameRow), so a streaming reply repaints only itself and a new row re-renders no other.
 
 import { memo, useSyncExternalStore } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
@@ -13,8 +14,7 @@ import { MONO } from "../theme/fonts";
 import { useTheme, type Palette } from "../theme/theme";
 import { tokens } from "../theme/tokens";
 import { StatusMark } from "../ui/StatusMark";
-import type { TranscriptRow } from "./model";
-import { PacedText } from "./PacedText";
+import { sameRow, type TranscriptRow } from "./model";
 import type { SessionStore } from "./store";
 
 const phone = tokens.type.phone;
@@ -38,10 +38,13 @@ const kTokens = (t: unknown) => {
 /** A live tool's summary often starts with its own name ("Write /path"): the title already says it. */
 const withoutName = (summary: string, name: string) => (name && summary.startsWith(name + " ") ? summary.slice(name.length + 1) : summary);
 
-export const TranscriptRowView = memo(function TranscriptRowView({ store, row }: { store: SessionStore; row: TranscriptRow }) {
-  if (row.type === "run") return <RunRow store={store} row={row} />;
-  return <ItemRow store={store} k={row.key} />;
-});
+export const TranscriptRowView = memo(
+  function TranscriptRowView({ store, row }: { store: SessionStore; row: TranscriptRow }) {
+    if (row.type === "run") return <RunRow store={store} row={row} />;
+    return <ItemRow store={store} k={row.key} />;
+  },
+  (a, b) => a.store === b.store && sameRow(a.row, b.row),
+);
 
 function RunRow({ store, row }: { store: SessionStore; row: Extract<TranscriptRow, { type: "run" }> }) {
   const { color } = useTheme();
@@ -75,12 +78,16 @@ function ItemBody({ it, color, store }: { it: Item; color: Palette; store: Sessi
           </View>
         </View>
       );
-    case "text":
+    case "text": {
+      const n = store.shown(it.key);
       return (
         <View style={styles.block}>
-          <PacedText text={it.text} streaming={it.streaming} style={[styles.read, { color: color.text }]} />
+          <Text selectable style={[styles.read, { color: color.text }]}>
+            {n === undefined ? it.text : it.text.slice(0, n)}
+          </Text>
         </View>
       );
+    }
     case "reasoning":
       return (
         <View style={styles.tool}>

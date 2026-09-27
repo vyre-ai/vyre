@@ -54,6 +54,23 @@ test("session: a stop that is not for idleness reads as ended", { skip: !strip }
   assert.equal(stateOf("waiting"), "waiting");
 });
 
+test("session: a failed record is stopped for the core, and reads as failed", { skip: !strip }, async () => {
+  const { stateOf, stoppedOf, stateWords } = await load();
+  assert.equal(stateOf("failed"), "stopped");
+  assert.equal(stoppedOf("failed"), "failed");
+  assert.equal(stoppedOf("stopped", "idle"), "idle");
+  assert.equal(stoppedOf("running"), null);
+  assert.deepEqual(stateWords({ state: "stopped", stopped: "failed" }), { word: "failed", note: null, ended: true });
+});
+
+test("session: Stop flips the chip to stopping at once, until the turn has ended", { skip: !strip }, async () => {
+  const { stateWords } = await load();
+  assert.equal(stateWords({ state: "running", stopped: null }, true).word, "stopping");
+  assert.equal(stateWords({ state: "running", stopped: null }, false).word, "running");
+  // The box said it ended: the stop is over, the words are the state's.
+  assert.equal(stateWords({ state: "idle", stopped: null }, true).word, "idle");
+});
+
 test("session: runs of tools fold into one row, open on a tap", { skip: !strip }, async () => {
   const { toSessionEvent, transcriptRows, onlyPatches } = await load();
   const s = createSession("t1");
@@ -72,8 +89,50 @@ test("session: runs of tools fold into one row, open on a tap", { skip: !strip }
 
 test("session: threads.send's answer reads as taken, queued or refused", { skip: !strip }, async () => {
   const { sendOutcome } = await load();
-  assert.deepEqual(sendOutcome({ data: { sent: true, thread: "t1" } }), { ok: true, queued: false });
-  assert.deepEqual(sendOutcome({ data: { sent: false, queued: true, open_elsewhere: true } }), { ok: true, queued: true });
+  assert.deepEqual(sendOutcome({ data: { sent: true, thread: "t1" } }), { ok: true, queued: false, uuid: null });
+  assert.deepEqual(sendOutcome({ data: { sent: true, steered: true, uuid: "box-1" } }), { ok: true, queued: false, uuid: "box-1" });
+  assert.deepEqual(sendOutcome({ data: { sent: false, queued: true, open_elsewhere: true } }), { ok: true, queued: true, id: null, uuid: null });
+  assert.deepEqual(sendOutcome({ data: { sent: false, queued: true, queued_id: 42, uuid: "box-2" } }), { ok: true, queued: true, id: 42, uuid: "box-2" });
   assert.deepEqual(sendOutcome({ data: { sent: false, holder: "deck", note: "deck holds this session" } }), { ok: false, reason: "deck holds this session" });
   assert.deepEqual(sendOutcome({ error: { code: "not_found", message: "no such thread" } }), { ok: false, reason: "no such thread" });
+});
+
+test("session: the cache log folds a streamed block into one event and keeps the newest", { skip: !strip }, async () => {
+  const { appendLog } = await load();
+  /** @type {any[]} */
+  const log = [];
+  appendLog(log, { id: 1, type: "thread.sent", payload: { text: "hi", uuid: "u1" } }, 10);
+  appendLog(log, { id: 2, type: "thread.text", payload: { message: "m1", block: 0, delta: "Hel" } }, 10);
+  appendLog(log, { id: 3, type: "thread.text", payload: { message: "m1", block: 0, delta: "lo" } }, 10);
+  appendLog(log, { id: 4, type: "thread.text", payload: { message: "m1", block: 0, delta: ".", done: true } }, 10);
+  appendLog(log, { id: 5, type: "thread.text", payload: { message: "m1", block: 1, delta: "Next" } }, 10);
+  assert.deepEqual(log.map(e => e.id), [1, 4, 5]);
+  assert.equal(log[1].payload.delta, "Hello.");
+  assert.equal(log[1].payload.done, true);
+  // Replayed, the folded log builds the same session as the events did.
+  const s = createSession("t1");
+  for (const e of log) applyEvent(s, { ...e, payload: { ...e.payload, thread: "t1" } });
+  assert.equal(/** @type {any} */ (s.byKey.get("m:m1:0")).text, "Hello.");
+  assert.equal(s.meta.lastId, 5, "the newest id stays, so a catch-up asks since it");
+  for (let i = 6; i < 30; i++) appendLog(log, { id: i, type: "thread.tool", payload: { id: `c${i}`, phase: "started" } }, 10);
+  assert.equal(log.length, 10);
+  assert.equal(log[9].id, 29);
+});
+
+test("session: box to screen from the event's stamp, skipped when absent or out of sync", { skip: !strip }, async () => {
+  const { boxToScreen } = await load();
+  assert.equal(boxToScreen(1000, 1180), 180);
+  assert.equal(boxToScreen(1000, 1180, 20), 200);
+  assert.equal(boxToScreen(undefined, 1180), null);
+  assert.equal(boxToScreen(5000, 1000), null, "negative: the clocks are not synced");
+});
+
+test("session: a row re-renders only when what it draws changed", { skip: !strip }, async () => {
+  const { sameRow } = await load();
+  const a = { type: "item", key: "m:m1:0", kind: "text" };
+  assert.equal(sameRow(a, { ...a }), true);
+  assert.equal(sameRow(a, { ...a, kind: "reasoning" }), false);
+  const run = { type: "run", key: "run:t:c1", keys: ["t:c1", "t:c2"], summary: "Read 2 files", running: false, failed: 0, open: false };
+  assert.equal(sameRow(run, { ...run, keys: [...run.keys] }), true);
+  assert.equal(sameRow(run, { ...run, summary: "Read 3 files", keys: [...run.keys, "t:c3"] }), false);
 });

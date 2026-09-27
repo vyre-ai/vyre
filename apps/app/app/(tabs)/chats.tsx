@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { sessionOpening } from "../../src/perf";
 import { useTabDrawn } from "../../src/perf/tabs";
 import { age } from "../../src/state/needs-model";
 import { useThreads, useThreadsFrom, type ThreadRow } from "../../src/state/threads";
@@ -46,7 +47,10 @@ export default function Chats() {
               meta={[t.agent, t.projectName ?? t.project, t.model].filter(Boolean).join(" · ")}
               status={statusOf(t)}
               testID="chat-row"
-              onPress={() => router.push({ pathname: "/session/[id]", params: { id: t.id } })}
+              onPress={() => {
+                sessionOpening();
+                router.push({ pathname: "/session/[id]", params: { id: t.id } });
+              }}
             />
           )}
         />

@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createMeter, percentile, BAR } from "./meter.js";
+import { createMeter, percentile, cv, BAR } from "./meter.js";
 
 const P = 1000 / 60;
 
@@ -107,7 +107,8 @@ test("endGap ends a run: the idle time before the next run is not a gap", () => 
 test("every BAR id is present and null with no samples", () => {
   const m = createMeter({ now: () => 0 });
   const v = m.report().verdict;
-  assert.deepEqual(v.map(x => x.id), ["scroll", "tabSwitch", "coldOpen", "warmResume", "approve", "keyboardJump", "streamGap", "longTasks", "terminalEcho"]);
+  assert.deepEqual(v.map(x => x.id), ["scroll", "tabSwitch", "coldOpen", "warmResume", "approve", "keyboardJump", "streamGap", "longTasks", "terminalEcho",
+    "keystroke", "firstToken", "boxToScreen", "streamCV", "streamGapBar", "cls", "viewJump", "openSessionCache", "openSessionCold", "send", "stop"]);
   assert.deepEqual(BAR.map(b => b.id), v.map(x => x.id));
   for (const x of v) assert.equal(x.pass, null, x.id);
 });
@@ -135,6 +136,15 @@ const METRIC_CASES = [
   ["approve", "approve.collapse", 17, 18],
   ["keyboardJump", "keyboard.jump", 0, 3],
   ["terminalEcho", "term.echo", 49, 50],
+  ["keystroke", "keystroke", 15, 16],
+  ["firstToken", "stream.first", 99, 100],
+  ["boxToScreen", "stream.box", 249, 250],
+  ["cls", "cls", 0, 0.01],
+  ["viewJump", "view.jump", 0, 1],
+  ["openSessionCache", "open.session.cache", 299, 300],
+  ["openSessionCold", "open.session.cold", 999, 1000],
+  ["send", "send.paint", 49, 50],
+  ["stop", "stop.paint", 99, 100],
 ];
 
 for (const [id, name, ok, ko] of METRIC_CASES) {
@@ -155,6 +165,42 @@ test("streamGap passes under 50 ms and fails at 50", () => {
   const n = createMeter({ now: () => 0 });
   for (let t = 0; t <= 500; t += 50) n.gap("stream", t);
   assert.equal(check(n, "streamGap").pass, false);
+});
+
+test("the native bar's checks name their row in native-bar.md", () => {
+  const nb = Object.fromEntries(BAR.filter(b => b.nb).map(b => [b.id, b.nb]));
+  assert.deepEqual(nb, { keystroke: 1, firstToken: 2, boxToScreen: 3, streamCV: 4, streamGapBar: 4, cls: 5, viewJump: 5,
+    openSessionCache: 7, openSessionCold: 7, send: 9, stop: 10 });
+});
+
+test("cv is the standard deviation over the mean, null when empty or the mean is 0", () => {
+  assert.equal(cv([]), null);
+  assert.equal(cv([0, 0]), null);
+  assert.equal(cv([3, 3, 3]), 0);
+  assert.ok(Math.abs(/** @type {number} */ (cv([1, 3])) - 0.5) < 1e-12);
+});
+
+test("streamCV passes on an even reveal and fails on lumps", () => {
+  const m = createMeter({ now: () => 0 });
+  for (let i = 0; i < 60; i++) m.record("stream.cpf", 2 + (i % 3));
+  assert.equal(check(m, "streamCV").pass, true);
+  const n = createMeter({ now: () => 0 });
+  // One lump of 400 characters in 60 frames that showed 1: the jagged paint the pacer prevents.
+  for (let i = 0; i < 60; i++) n.record("stream.cpf", 1);
+  n.record("stream.cpf", 400);
+  const c = check(n, "streamCV");
+  assert.equal(c.pass, false);
+  assert.ok(c.value > 2);
+});
+
+test("streamGapBar passes under 250 ms where the phone's streamGap (50 ms) fails", () => {
+  const m = createMeter({ now: () => 0 });
+  for (let t = 0; t <= 2000; t += 100) m.gap("stream", t);
+  assert.equal(check(m, "streamGapBar").pass, true);
+  assert.equal(check(m, "streamGap").pass, false);
+  const n = createMeter({ now: () => 0 });
+  for (let t = 0; t <= 2500; t += 250) n.gap("stream", t);
+  assert.equal(check(n, "streamGapBar").pass, false);
 });
 
 test("longTasks passes while streaming with none over 50 and fails with one", () => {

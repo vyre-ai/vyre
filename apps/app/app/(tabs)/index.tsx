@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Platform, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
-import { afterPaint, perf } from "../../src/perf";
+import { afterPaint, perf, sessionOpening } from "../../src/perf";
 import { useTabDrawn } from "../../src/perf/tabs";
 import { visibleNeeds } from "../../src/state/answers";
 import { answers } from "../../src/state/live";
@@ -22,8 +22,10 @@ function useOpen() {
   const router = useRouter();
   return useCallback(
     (n: Need) => {
-      if (n.source === "ask" && n.thread) router.push({ pathname: "/session/[id]", params: { id: n.thread, ask: n.ref } });
-      else router.push({ pathname: "/need/[id]", params: { id: n.id } });
+      if (n.source === "ask" && n.thread) {
+        sessionOpening();
+        router.push({ pathname: "/session/[id]", params: { id: n.thread, ask: n.ref } });
+      } else router.push({ pathname: "/need/[id]", params: { id: n.id } });
     },
     [router],
   );

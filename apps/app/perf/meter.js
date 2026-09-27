@@ -11,7 +11,8 @@ const LONG_TASK_MS = 50;
  * @typedef {'frames'|'metrics'|'gaps'|'longTasks'} Source
  * @typedef {'<'|'<='|'>='|'=='} Op
  * @typedef {{ source: Source, name?: string, stat: string, op: Op, limit: number }} Test
- * @typedef {{ id: string, text: string, tests: Test[], windowMs?: number }} Bar
+ * @typedef {{ id: string, text: string, tests: Test[], windowMs?: number, nb?: number }} Bar
+ *   nb: the row of docs/design/native-bar.md's budget table this check is (the same number there).
  * @typedef {{ frames: number, dropped: number, droppedPct: number, fps: number, worstMs: number, p95Ms: number }} FrameStats
  * @typedef {{ n: number, p50: number|null, p95: number|null, max: number|null }} Summary
  * @typedef {{ id: string, bar: string, value: number|Record<string, number|null>|null, pass: boolean|null }} Check
@@ -31,6 +32,18 @@ export const BAR = Object.freeze(/** @type {Bar[]} */ ([
   { id: "streamGap", text: "p95 stream gap under 50 ms", tests: [{ source: "gaps", name: "stream", stat: "p95", op: "<", limit: 50 }] },
   { id: "longTasks", text: "no long task over 50 ms while streaming", tests: [{ source: "longTasks", stat: "over50", op: "==", limit: 0 }] },
   { id: "terminalEcho", text: "p95 term.echo under 50 ms", tests: [{ source: "metrics", name: "term.echo", stat: "p95", op: "<", limit: 50 }] },
+  // The native bar (docs/design/native-bar.md): nb is the budget's row in its table.
+  { id: "keystroke", nb: 1, text: "p95 keystroke to paint under 16 ms", tests: [{ source: "metrics", name: "keystroke", stat: "p95", op: "<", limit: 16 }] },
+  { id: "firstToken", nb: 2, text: "p95 first streamed token painted under 100 ms after the event arrives", tests: [{ source: "metrics", name: "stream.first", stat: "p95", op: "<", limit: 100 }] },
+  { id: "boxToScreen", nb: 3, text: "p95 box to screen for the first token under 250 ms", tests: [{ source: "metrics", name: "stream.box", stat: "p95", op: "<", limit: 250 }] },
+  { id: "streamCV", nb: 4, text: "characters per frame while streaming: coefficient of variation under 2", tests: [{ source: "metrics", name: "stream.cpf", stat: "cv", op: "<", limit: 2 }] },
+  { id: "streamGapBar", nb: 4, text: "p95 stream gap under 250 ms", tests: [{ source: "gaps", name: "stream", stat: "p95", op: "<", limit: 250 }] },
+  { id: "cls", nb: 5, text: "layout shift of rows above the live row equals 0", tests: [{ source: "metrics", name: "cls", stat: "max", op: "==", limit: 0 }] },
+  { id: "viewJump", nb: 5, text: "scrolled up, the viewport moves 0 px while the tail changes", tests: [{ source: "metrics", name: "view.jump", stat: "max", op: "==", limit: 0 }] },
+  { id: "openSessionCache", nb: 7, text: "p95 open a session to its last rows from cache under 300 ms", tests: [{ source: "metrics", name: "open.session.cache", stat: "p95", op: "<", limit: 300 }] },
+  { id: "openSessionCold", nb: 7, text: "p95 open a session from cold under 1000 ms", tests: [{ source: "metrics", name: "open.session.cold", stat: "p95", op: "<", limit: 1000 }] },
+  { id: "send", nb: 9, text: "p95 Send to the user row painted under 50 ms", tests: [{ source: "metrics", name: "send.paint", stat: "p95", op: "<", limit: 50 }] },
+  { id: "stop", nb: 10, text: "p95 Stop to the state chip changed under 100 ms", tests: [{ source: "metrics", name: "stop.paint", stat: "p95", op: "<", limit: 100 }] },
 ]).map(b => Object.freeze(b)));
 
 /**
@@ -48,6 +61,23 @@ export function percentile(sorted, p) {
 function summarize(values) {
   const s = values.slice().sort((a, b) => a - b);
   return { n: s.length, p50: percentile(s, 50), p95: percentile(s, 95), max: s.length ? s[s.length - 1] : null };
+}
+
+/**
+ * Coefficient of variation (standard deviation over the mean, population). Null when empty or
+ * the mean is 0.
+ * @param {readonly number[]} values @returns {number|null}
+ */
+export function cv(values) {
+  const n = values.length;
+  if (!n) return null;
+  let sum = 0;
+  for (const v of values) sum += v;
+  const mean = sum / n;
+  if (!mean) return null;
+  let sq = 0;
+  for (const v of values) sq += (v - mean) ** 2;
+  return Math.sqrt(sq / n) / mean;
 }
 
 /** @param {number} v @param {Op} op @param {number} limit */
@@ -172,6 +202,7 @@ export function createMeter({ refreshHz = 60, now = () => performance.now() } = 
     }
     const values = (test.source === "metrics" ? metrics : gaps).get(/** @type {string} */ (test.name));
     if (!values || !values.length) return null;
+    if (test.stat === "cv") return cv(values);
     return /** @type {any} */ (summarize(values))[test.stat];
   }
 

@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: the session screen on the native bar
+
+- One frame clock over chat's pacer (only the live row repaints), instant Send (the user row keeps
+  its key when the box confirms) and Stop (stopping in the same frame; threads.interrupt when the
+  box has it), open from cache then catch up from the newest event, no jump when scrolled up (a
+  Jump to latest pill), the composer on chat's composer-state (Enter steers, hold Send queues, "/"
+  commands, history, a draft per session), a model picker, the context meter, and rewind.
+- The meter carries native-core's native-bar budgets under ids tagged with its table rows
+  (keystroke, firstToken, boxToScreen, streamCV, streamGapBar, cls, viewJump, openSessionCache,
+  openSessionCold, send, stop); the phone's 50 ms stream gap stays its own check.
+- Merged work/chat 80ea6308.
+
 #### One app: the phone signs in and proves presence; the APK is the module's own route; an icon
 
 #### Chat: the model picker, the session's commands, rewind with code, the context meter

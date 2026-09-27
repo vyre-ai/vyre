@@ -79,6 +79,12 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   web passkey presence prompt. No new screens (lead): focus is the chat session screen on the
   native bar (native-core docs/design/native-bar.md) and the real-iPhone run.
 
+- Session screen on the native bar (151/151 app tests, 554 KB gz). Desktop headless Chrome 4x
+  throttle sanity: all pass except keystroke p95 16.5 ms (budget < 16, a frame is 16.7) and
+  boxToScreen (no `t` on thread.text yet). Asked chat: plain-send row in the core, pace seed,
+  threads.get since/limit returns the newest. Asked native-core: keystroke "within one frame"?,
+  a server `t` and box clock.
+
 ## One app: Doing
 - The real-iPhone run of the spike: needs the box to serve /app/ (pwa) and the user's phone.
 

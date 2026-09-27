@@ -12,6 +12,8 @@ export type TranscriptProps = {
   onNearTop: () => void;
   /** Above the oldest row: "Loading earlier" or nothing. */
   head?: ReactNode;
+  /** The "Jump to latest" pill, shown while the reader is up in history; `go` scrolls to the tail. */
+  jump?: (go: () => void) => ReactNode;
 };
 
 /** Newest at the bottom; history loads above without moving what is on screen. */

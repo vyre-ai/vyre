@@ -32,6 +32,53 @@ export function afterPaint(f: (t: number) => void): void {
   else setTimeout(() => f(now()), 16);
 }
 
+// After the paint: a task posted from a frame callback runs once that frame has painted, which
+// is nearer the paint than the next frame's callback. One channel, one queue.
+const later: ((t: number) => void)[] = [];
+let channel: MessageChannel | null = null;
+function post(f: (t: number) => void) {
+  later.push(f);
+  if (later.length > 1) return;
+  if (!channel && typeof MessageChannel === "function") {
+    channel = new MessageChannel();
+    channel.port1.onmessage = run;
+  }
+  if (channel) channel.port2.postMessage(0);
+  else setTimeout(run, 0);
+}
+function run() {
+  const t = now();
+  for (const f of later.splice(0)) f(t);
+}
+
+/**
+ * Called from a frame callback (the session store's frame): `f` runs with the time just after
+ * this frame painted what the callback changed. Nothing when the meter is off.
+ */
+export function thisPaint(f: (t: number) => void): void {
+  if (perfOn) post(f);
+}
+
+/** From an event handler (a key, a tap): `f` runs with the time just after the next paint. Nothing when the meter is off. */
+export function nextPaint(f: (t: number) => void): void {
+  if (!perfOn) return;
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => post(f));
+  else setTimeout(() => post(f), 16);
+}
+
+/** A session was asked for (a tap in Chats or Needs): open.session.* is measured from here. */
+let opening: number | null = null;
+export function sessionOpening(): void {
+  if (perfOn) opening = now();
+}
+/** The time a session open started: the tap, when it was within the last 2 s, else now. */
+export function takeOpening(): number {
+  const t = now();
+  const o = opening;
+  opening = null;
+  return o !== null && t - o < 2000 ? o : t;
+}
+
 /** The screens' marks, each a no-op when the meter is off. */
 export const perf = {
   on: perfOn,

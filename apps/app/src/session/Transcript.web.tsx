@@ -12,19 +12,23 @@
 // - Rows off screen skip paint with `content-visibility: auto`.
 // - The keyboard: the scroller's bottom padding is the one inset variable (--vyre-kb), so the
 //   last row rides up with the composer in the same frame.
+// - Up in history, a "Jump to latest" pill takes the reader back to the tail.
+// - The meter (?perf=1): `cls` is the layout shift of rows above the live row (the last one), and
+//   `view.jump` what the anchor kept of a move while the reader is up in history; both must be 0.
 
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { captureAnchor, createHeights, isAtBottom, offsets, sameRange, spacers, THRESHOLD, windowRange } from "@vyre/chat-core/window.js";
+import { perf } from "../perf";
 import { ESTIMATES } from "./model";
 import type { TranscriptProps } from "./Transcript";
 
 type Range = { start: number; end: number; windowed: boolean };
 
 const NEAR_TOP = 600;
-/** Keys session-state derives from the box's own ids, the same on every read. */
-const STABLE = /^(m|r|t|a|run):/;
+/** Keys session-state derives from the box's own ids, the same on every read (a user row's by its uuid; u:live:N is minted per read). */
+const STABLE = /^(m|r|t|a|run|steer):|^u:(?!live:)/;
 
-export function Transcript({ rows, renderRow, hasMore, onNearTop, head }: TranscriptProps) {
+export function Transcript({ rows, renderRow, hasMore, onNearTop, head, jump }: TranscriptProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const headEl = useRef<HTMLDivElement>(null);
   const heights = useMemo(() => createHeights({ estimates: ESTIMATES }), []);
@@ -65,7 +69,7 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head }: Transc
       return;
     }
     // The row at the top of the viewport, or the first after it whose key survives a reread
-    // (a reply, a tool, an ask); a live user row's key is minted per read.
+    // (a reply, a tool, an ask, a message with its uuid).
     const a = captureAnchor(L.keys, L.offs, Math.max(0, modelTop(el)));
     L.anchor = null;
     if (!a) return;
@@ -88,7 +92,10 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head }: Transc
     const node = el.querySelector<HTMLElement>(`[data-k="${CSS.escape(a.key)}"]`);
     if (!node) return;
     const d = node.getBoundingClientRect().top - a.top;
-    if (Math.abs(d) >= 0.5) el.scrollTop += d;
+    if (Math.abs(d) < 0.5) return;
+    el.scrollTop += d;
+    // Put back before the paint: what the reader would see move is what is left.
+    if (perf.on) perf.record("view.jump", Math.round(Math.abs(node.getBoundingClientRect().top - a.top)));
   }, []);
 
   // Measure mounted rows; a change re-lays spacers (windowed) and keeps the anchor.
@@ -148,6 +155,7 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head }: Transc
       requestAnimationFrame(() => {
         queued = false;
         remember();
+        setAway(live.current.anchor !== null);
         const r = current();
         setRange((was) => (sameRange(was, r) && was?.windowed === r.windowed ? was : r));
         const L = live.current;
@@ -159,6 +167,36 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head }: Transc
   }, [current, remember, modelTop]);
 
   useLayoutEffect(() => () => ro?.disconnect(), [ro]);
+
+  // cls: layout shifts of rows above the live row. A 0 goes in first, so a clean run is judged.
+  useEffect(() => {
+    if (!perf.on || typeof PerformanceObserver === "undefined" || !PerformanceObserver.supportedEntryTypes?.includes("layout-shift")) return;
+    const el = scroller.current;
+    if (!el) return;
+    perf.record("cls", 0);
+    type Shift = PerformanceEntry & { value: number; hadRecentInput: boolean; sources?: { node?: Node | null }[] };
+    const po = new PerformanceObserver((list) => {
+      const rows = el.querySelectorAll<HTMLElement>("[data-k]");
+      const tail = rows[rows.length - 1];
+      for (const e of list.getEntries() as Shift[]) {
+        if (e.hadRecentInput) continue;
+        const above = (e.sources ?? []).some((src) => src.node && el.contains(src.node) && !(tail && tail.contains(src.node)));
+        if (above) perf.record("cls", e.value);
+      }
+    });
+    po.observe({ type: "layout-shift", buffered: false });
+    return () => po.disconnect();
+  }, []);
+
+  const [away, setAway] = useState(false);
+  const toLatest = useCallback(() => {
+    const el = scroller.current;
+    if (!el) return;
+    live.current.anchor = null;
+    // The scroller is reversed: 0 is the bottom.
+    el.scrollTo({ top: 0 });
+    setAway(false);
+  }, []);
 
   const n = rows.length;
   // Rows read in above shift every index: the window keeps the rows it held, found by key.
@@ -175,37 +213,40 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head }: Transc
   const mounted = rows.slice(r.start, r.end);
 
   return (
-    <div
-      ref={scroller}
-      data-testid="transcript"
-      style={{
-        flex: "1 1 auto",
-        minHeight: 0,
-        display: "flex",
-        flexDirection: "column-reverse",
-        overflowY: "auto",
-        overflowX: "hidden",
-        overscrollBehavior: "contain",
-        overflowAnchor: "none",
-        paddingBottom: "var(--vyre-kb, 0px)",
-        WebkitOverflowScrolling: "touch",
-      }}
-    >
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        <div ref={headEl}>{head}</div>
-        {sp.top ? <div aria-hidden style={{ height: sp.top, flex: "none" }} /> : null}
-        {mounted.map((row) => (
-          <div
-            key={row.key}
-            data-k={row.key}
-            ref={observe(row.key)}
-            style={{ contentVisibility: "auto", containIntrinsicSize: `auto ${heights.get(row.key, row.type === "run" ? "run" : row.kind)}px` }}
-          >
-            {renderRow(row)}
-          </div>
-        ))}
-        {sp.bottom ? <div aria-hidden style={{ height: sp.bottom, flex: "none" }} /> : null}
+    <div style={{ flex: "1 1 auto", minHeight: 0, display: "flex", flexDirection: "column", position: "relative" }}>
+      <div
+        ref={scroller}
+        data-testid="transcript"
+        style={{
+          flex: "1 1 auto",
+          minHeight: 0,
+          display: "flex",
+          flexDirection: "column-reverse",
+          overflowY: "auto",
+          overflowX: "hidden",
+          overscrollBehavior: "contain",
+          overflowAnchor: "none",
+          paddingBottom: "var(--vyre-kb, 0px)",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <div ref={headEl}>{head}</div>
+          {sp.top ? <div aria-hidden style={{ height: sp.top, flex: "none" }} /> : null}
+          {mounted.map((row) => (
+            <div
+              key={row.key}
+              data-k={row.key}
+              ref={observe(row.key)}
+              style={{ contentVisibility: "auto", containIntrinsicSize: `auto ${heights.get(row.key, row.type === "run" ? "run" : row.kind)}px` }}
+            >
+              {renderRow(row)}
+            </div>
+          ))}
+          {sp.bottom ? <div aria-hidden style={{ height: sp.bottom, flex: "none" }} /> : null}
+        </div>
       </div>
+      {away && jump ? jump(toLatest) : null}
     </div>
   );
 }
