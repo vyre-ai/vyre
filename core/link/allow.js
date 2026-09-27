@@ -9,7 +9,7 @@
 // someone opens that session.
 
 /** @type {readonly string[]} */
-export const ALLOW = Object.freeze(["projects.catalog", "projects.list", "recall.search", "recall.sessions", "recall.thread", "recall.transcript", "threads.list"]);
+export const ALLOW = Object.freeze(["projects.catalog", "projects.list", "recall.search", "recall.sessions", "recall.thread", "recall.transcript", "threads.list", "threads.asks"]);
 
 // The writes the box may ask of a Mac: typing into one of its sessions, and answering one of its
 // asks. Both ends check the list, as for ALLOW, and both refuse a write unless the request says it

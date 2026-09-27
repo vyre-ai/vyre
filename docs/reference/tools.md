@@ -2710,10 +2710,11 @@ Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code 
 
 ### `threads.asks`
 
-Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now.
+Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: "local" for the box's own only).
 
 - Input:
   - `kind` "question" or "permission"
+  - `machines` "all" or "local"
   - `thread` string
 - Callers: any caller
 

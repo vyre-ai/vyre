@@ -985,13 +985,18 @@ export default {
     // source "mac"): ask id -> gated. Read synchronously by threads.answer's presence rule. Box only.
     /** @type {Map<string, { gated: boolean }>} */
     const macAsks = new Map();
+    /** Record a Mac's ask as gated or not, keeping at most 500. @param {string} ask @param {boolean} gated */
+    const rememberMacAsk = (ask, gated) => {
+      macAsks.delete(ask);
+      while (macAsks.size >= 500) macAsks.delete(/** @type {string} */ (macAsks.keys().next().value));
+      macAsks.set(ask, { gated });
+    };
     const offs = [];
     if (ctx.config && ctx.config.role === "box") {
       offs.push(ctx.events.on("ask.raised", e => {
         const p = e.payload || {};
         if (p.source !== "mac" || typeof p.ask !== "string") return;
-        while (macAsks.size >= 500) macAsks.delete(/** @type {string} */ (macAsks.keys().next().value));
-        macAsks.set(p.ask, { gated: gatedAsk(p) });
+        rememberMacAsk(p.ask, gatedAsk(p));
       }));
       offs.push(ctx.events.on("ask.answered", e => { const p = e.payload || {}; if (p.source === "mac") macAsks.delete(p.ask); }));
     }
@@ -1072,9 +1077,24 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
       async (i, { caller }) => { guard(caller, "release a session"); return sb.release(i.thread, surfaceOf(i, caller)); });
 
-    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now.",
-      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] } } },
-      async (i, { caller, peer }) => { guard(caller, "read questions"); return withPresence(sb.asks.open(i.thread, i.kind).map(({ request_id, ...a }) => a), peer); });
+    tool("threads.asks", "Questions and permission asks waiting on the user, oldest first (kind: only questions or only permissions). Each has its kind, what a card shows (questions, or detail), who asks (agent, thread_name), where it sits in the session (anchor: tool_use_id and its ask.raised event id), what always allow is on offer (always, always_project), and what answering takes (presence: required, covered). A surface that reconnects reads these; events alone cannot say what is open now. On a box, for the person, the paired Macs' open asks too, labelled source and machine (machines: \"local\" for the box's own only).",
+      { type: "object", properties: { thread: str, kind: { type: "string", enum: ["question", "permission"] }, machines: { type: "string", enum: ["all", "local"] } } },
+      async (i, { caller, peer }) => {
+        guard(caller, "read questions");
+        const { machines: _, ...q } = i;
+        const own = await withPresence(sb.asks.open(q.thread, q.kind).map(({ request_id, ...a }) => a), peer);
+        if (!wantsMacs(ctx, i, caller)) return own;
+        // On a box, for the person: the paired Macs' open asks too, each labelled with its machine,
+        // so a surface that reconnects has one list to reconcile from. What answering one takes is
+        // the box's rule, not the Mac's: a gated ask needs a fresh proof here (gatedOnMac), and the
+        // box learns which are gated from this list as it does from the relayed ask.raised.
+        const answers = await askMacs(ctx, "threads.asks", q);
+        const covered = own.length ? own[0].presence : await withPresence([{}], peer).then(r => r[0].presence);
+        for (const a of answers) if (a.ok && Array.isArray(a.data)) for (const r of a.data) if (r && typeof r.id === "string") rememberMacAsk(r.id, gatedAsk(r));
+        return mergeRows(ctx, own, answers.map(a => a.ok && Array.isArray(a.data)
+          ? { ...a, data: a.data.map(r => ({ ...r, presence: { ...covered, required: gatedAsk(r) } })) } : a),
+        { compare: (x, y) => (Number(x.at) || 0) - (Number(y.at) || 0) });
+      });
 
     tool("threads.answer", "Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with \", \", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's. On a box, the person's answer to a paired Mac's ask goes to that Mac (machine: its name, when the box has not seen the ask).",
       { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str, machine: str,
