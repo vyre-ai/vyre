@@ -50,10 +50,10 @@ const LIFE = [
 const PROJECTS = [{ slug: "harlow", name: "Harlow Legal", home: "/home/alex/Work/harlow-site", workspaces: [], threads: 1, picked: 0, picks: [] }];
 const AGENTS = [{ name: "kit", projects: ["harlow"] }, { name: "juno", kind: "assistant" }, { name: "hal", projects: "*" }];
 
-async function world(t) {
+async function world(t, life = LIFE) {
   const db = open(path.join(tempHome(t), "vyre.db"));
   t.after(() => db.close());
-  seedRecall(db, LIFE);
+  seedRecall(db, life);
   const tools = new Map();
   const ctx = {
     name: "memory", config: { me: { name: "Alex Rivera", domains: ["riverastudio.com"] } }, paths: {}, store: { db, migrate: () => {} }, log: () => {},
@@ -263,4 +263,44 @@ test("answer: a lookup is fast", async t => {
   for (let i = 0; i < 20; i++) ms.push((await ask(i % 2 ? "who is my wife" : "what do I drive")).ms);
   ms.sort((a, b) => a - b);
   assert.ok(ms[Math.floor(ms.length * 0.95)] < 150, ms.join(", "));
+});
+
+test("answer: new question shapes parse", () => {
+  const table = [
+    ["which city am i in now", { kind: "lives", before: null }],
+    ["what do i do for work", { kind: "job" }],
+    ["what's my job", { kind: "job" }],
+    ["what app do i keep my notes in", { kind: "uses", cat: "notes" }],
+    ["hubby's name?", { kind: "kin", word: "hubby", role: "spouse" }],
+  ];
+  for (const [q, want] of table) assert.deepEqual(parse(String(q)), want, String(q));
+});
+
+test("answer: a life typed in lower case, in passing", async t => {
+  const { ask } = await world(t, [
+    S(["my partner jordan says the logo looks too corporate, thoughts?", { a: "A lighter weight would soften it." }], { day: 1 }),
+    S(["jordan and i are off to denver for the weekend", { a: "Understood." }], { day: 2 }),
+    S(["hubby's cooking tonight so i can push through this", { a: "Enjoy." }], { day: 3 }),
+    S(["my son sam snapped my pencil", { a: "Oh no." }, "sam's football is at 5 so hard stop", { a: "Noted." }], { day: 4 }),
+    S(["my daughter maya drew all over my sketchbook", { a: "Ha." }, "maya's got a temperature so i'm home", { a: "Hope she's ok." }], { day: 5 }),
+    S(["for context im a freelance designer, mostly figma but i do a bit of front end", { a: "Got it." }], { day: 6 }),
+    S(["i keep all my notes in obsidian, can you give me a template", { a: "Here is one." }], { day: 7 }),
+    S(["my two clients right now are harlow legal and northwind bakery", { a: "Noted." }], { day: 8 }),
+    S(["dana from harlow legal emailed again about the photos", { a: "Want a reply drafted?" }], { day: 9 }),
+    S([`can you help me reply to this from dana:\n\n"Hi Alex, my wife Claire and I are away from the 12th. Best, Dana Reyes"`, { a: "Here is a reply." }], { day: 10 }),
+  ]);
+  assert.equal((await ask("whats my husband's name")).answer, "Your husband is Jordan.");
+  assert.equal((await ask("who is my partner")).answer, "Your partner is Jordan.");
+  assert.equal((await ask("who's jordan")).answer, "Jordan is your husband.", "the plain word, not 'hubby'");
+  assert.equal((await ask("what are my kids called")).answer, "Your kids are Sam and Maya.");
+  assert.equal((await ask("what's my job")).answer, "You are a freelance designer.");
+  assert.equal((await ask("what design tool do i use")).answer, "You use Figma.");
+  assert.equal((await ask("what app do i keep my notes in")).answer, "You use Obsidian.");
+  assert.equal((await ask("who are my clients")).answer, "Your clients are Harlow Legal and Northwind Bakery.");
+  assert.equal((await ask("who is my contact at harlow legal")).answer, "Your contact at Harlow Legal is Dana.");
+  assert.equal((await ask("who is dana reyes")).answer, "Dana works at Harlow Legal, your client.");
+  // The pasted email's wife is Dana's, and a husband is never the answer about a wife.
+  const wife = await ask("what's my wife's name");
+  assert.ok(!wife.answer || wife.confidence < 0.5, JSON.stringify(wife));
+  assert.ok(!/Claire/.test(String(wife.answer)), JSON.stringify(wife));
 });

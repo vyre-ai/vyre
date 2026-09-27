@@ -249,3 +249,86 @@ test("personal store: memory.me through the module, for the user and never for a
   assert.deepEqual(after.filter(f => f.rel === "lives_in").map(f => f.object), ["Denver"]);
   assert.equal((await call("memory.me", { about: "my wife" }, "cli")).data.about, null);
 });
+
+test("personal store: a lowercase name is confirmed by another turn using it as a name", async t => {
+  const { me } = world(t, [
+    S(["my partner jordan says the logo looks too corporate"], { start: T0 }),
+    S(["jordan and i are off to denver so i need this done by fri"], { start: T0 + DAY }),
+    S(["my son sam snapped my pencil"], { start: T0 + 2 * DAY }),
+  ]);
+  await all(me);
+  const jordan = me.lookup({ subj: "my partner", rel: "name" })[0];
+  assert.equal(jordan?.object, "Jordan");
+  assert.equal(jordan?.confidence, 0.9, "confirmed by 'jordan and i'");
+  // Said once, never used as a name elsewhere: a maybe, not a fact.
+  const sam = me.lookup({ subj: "my son", rel: "name" })[0];
+  assert.equal(sam?.object, "Sam");
+  assert.ok(sam.confidence < 0.5, JSON.stringify(sam));
+});
+
+test("personal store: partner and husband are one person unless names or genders differ", async t => {
+  const { me } = world(t, [
+    S(["my partner jordan says hi", "jordan's picking up the kids"], { start: T0 }),
+    S(["hubby's cooking tonight", "need a gift for my husband, his birthday's the 2nd of june"], { start: T0 + DAY }),
+  ]);
+  await all(me);
+  assert.equal(me.entity("my husband")?.id, me.entity("my partner")?.id);
+  assert.equal(me.entity("hubby")?.label, "Jordan");
+  assert.equal(me.lookup({ subj: "jordan", rel: "birthday" })[0]?.object, "2 June");
+
+  const two = world(t, [S(["My wife Jordan says hi.", "My boyfriend Sam is visiting."])]);
+  await all(two.me);
+  assert.notEqual(two.me.entity("my wife")?.id, two.me.entity("my boyfriend")?.id, "two names: two people");
+});
+
+test("personal store: a fact only Claude's words support stays under 0.5", async t => {
+  const { me } = world(t, [
+    S(["draft the family law copy", { a: "Your partner and your children come first." }], { start: T0 }),
+    S(["shorter", { a: "Your partner and your children matter most." }], { start: T0 + DAY }),
+    S(["again", { a: "We help you, your partner and your children." }], { start: T0 + 2 * DAY }),
+  ]);
+  await all(me);
+  for (const f of me.facts({ limit: 50 })) assert.ok(f.confidence < 0.5, JSON.stringify(f));
+});
+
+test("personal store: a person at one of the user's own clients is their contact there", async t => {
+  const { me } = world(t, [
+    S(["my two clients right now are harlow legal and northwind bakery"], { start: T0 }),
+    S(["dana from harlow legal emailed again about the photos", "a guy from denver bought the old car"], { start: T0 + DAY }),
+  ]);
+  await all(me);
+  const dana = me.about("dana");
+  assert.ok(dana?.facts.some(f => f.rel === "works_at" && f.object === "Harlow Legal"), JSON.stringify(dana));
+  assert.ok(dana?.links.some(f => f.subj === "me" && f.rel === "contact"));
+  // Only the user's own organisations: nobody is placed at "denver bought the old car".
+  assert.ok(!me.facts({ limit: 50 }).some(f => f.rel === "works_at" && /denver/i.test(f.object)));
+});
+
+test("personal store: lowercase moves, and the newest place is where the user lives", async t => {
+  const { me } = world(t, [
+    S(["packing boxes all week, the move from portland is friday"], { start: T0 }),
+    S(["the wifi in the new place in seattle is awful"], { start: T0 + 5 * DAY }),
+    S(["still getting used to seattle, everything is further"], { start: T0 + 9 * DAY }),
+  ]);
+  await all(me);
+  const [now, was] = me.lookup({ subj: "me", rel: "lives_in" });
+  assert.equal(now.object, "Seattle");
+  assert.equal(now.current, true);
+  assert.ok(now.confidence >= 0.5, JSON.stringify(now));
+  assert.equal(was.object, "Portland");
+  assert.equal(was.current, false);
+});
+
+test("personal store: a lowercase car bought, the old one sold", async t => {
+  const { me } = world(t, [
+    S(["our green outback failed the inspection lol"], { start: T0 }),
+    S(["just picked up the new car!! blue volvo xc40, bye bye outback"], { start: T0 + 10 * DAY }),
+    S(["sold the subaru to a guy from denver today"], { start: T0 + 12 * DAY }),
+    S(["parked the xc40 at the station"], { start: T0 + 20 * DAY }),
+  ]);
+  await all(me);
+  assert.equal(me.entity("my car")?.id, "vehicle:Volvo XC40");
+  const outback = me.lookup({ subj: "me", rel: "owns" }).find(f => f.object === "Subaru Outback");
+  assert.equal(outback?.current, false);
+  assert.equal(me.lookup({ subj: "vehicle:Volvo XC40", rel: "color" })[0]?.object, "blue");
+});

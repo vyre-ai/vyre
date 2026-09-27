@@ -198,3 +198,112 @@ test("personal extract: dictated words are someone else's", () => {
   // What comes before the dictation is still the user's.
   has("My wife Jordan asked for this. Start with: My husband Tomas is a baker.", WIFE);
 });
+
+// ------------------------------------------------------------------ how people really type
+
+/** No facts: the evidence the store weighs ("named", "at") may still be there. */
+const noFacts = (text, opts) => assert.deepEqual(said(text, opts).filter(x => !/\|(?:named|at)\|/.test(x)), [], JSON.stringify(text));
+/** One claim's confidence, or undefined. */
+const conf = (text, key, opts) => extractPersonal(text, opts).claims.find(c => `${c.subj}|${c.rel}|${c.obj}` === key)?.conf;
+
+test("personal extract: a lowercase name beside a relative is a name, held loosely", () => {
+  has("my partner jordan says the logo looks too corporate", ["me|partner|kin:partner", "kin:partner|name|lit:Jordan"]);
+  assert.equal(conf("my partner jordan says hi", "kin:partner|name|lit:Jordan"), 0.45, "LOWER until another turn confirms it");
+  assert.equal(extractPersonal("my partner jordan says hi").claims.find(c => c.rel === "name")?.method, "lower");
+  has("our dog biscuit is at the vet this morning", ["me|pet|kin:dog", "kin:dog|name|lit:Biscuit"]);
+  has("my daughter maya drew all over my sketchbook lol", "kin:daughter|name|lit:Maya");
+  has("my son sam snapped my pencil", "kin:son|name|lit:Sam");
+  has("my kids sam and maya are off school", ["kin:child|name|lit:Sam", "kin:child|name|lit:Maya"]);
+  has("jordan, my wife, says hi", "kin:spouse|name|lit:Jordan");
+  // Said outright, or in brackets, it is not loose.
+  assert.equal(conf("my son's name is sam", "kin:son|name|lit:Sam"), 0.9);
+  has("dad (Tom) is visiting next week", ["me|father|kin:father", "kin:father|name|lit:Tom"]);
+  has("tom (my dad) wants a website for his club", "kin:father|name|lit:Tom");
+  // An ordinary word in the name's place is not a name.
+  for (const t of ["my husband thinks i should raise my rate", "my dad wants me to call", "my partner reckons it's fine", "my son really likes it",
+    "my wife loves portland", "my cat hates the new house"]) assert.ok(!said(t).some(x => x.includes("|name|")), t);
+});
+
+test("personal extract: the words a lowercase name is used by", () => {
+  for (const t of ["jordan and i are off to denver for the weekend", "jordan's picking up the kids", "sam (he's 9) wants to learn to code",
+    "biscuit chewed the charger, he's in the bad books"]) assert.ok(said(t).some(x => /^name:[A-Z][a-z]+\|named\|/.test(x)), t);
+  // Not after a word that makes it someone else's or a thing's.
+  assert.ok(!said("the robin's nest is back").some(x => x.includes("named")));
+});
+
+test("personal extract: nicknames and a bare relative opening the sentence are the user's", () => {
+  has("hubby's cooking tonight so i can push through this", ["me|spouse|kin:spouse", "kin:spouse|called|lit:hubby"]);
+  has("partner's away for work til thurs so it's just me", "me|partner|kin:partner");
+  has("my other half jordan is away", ["me|partner|kin:partner", "kin:partner|name|lit:Jordan"]);
+  // Someone else's.
+  noFacts("dana's hubby is a chef");
+  noFacts("my friend dana's husband luis keeps telling me to learn rust");
+  noFacts("dana's partner luis runs the other shop");
+  noFacts("Owen, wife (Claire) and son (Max) are away");
+});
+
+test("personal extract: a statement with a question tagged on still counts", () => {
+  has("my partner jordan says the logo looks too corporate, thoughts?", "kin:partner|name|lit:Jordan");
+  noFacts("is my partner jordan right, do you think?");
+  noFacts("if we got a dog what breed is ok with kids?");
+});
+
+test("personal extract: birthdays in lower case and by bday", () => {
+  has("remind me jordan's bday is 14 march, i always forget", "name:Jordan|birthday|lit:14 March");
+  has("need a gift for my husband, his birthday's the 2nd of june", "kin:spouse|birthday|lit:2 June");
+});
+
+test("personal extract: cars in lower case need a car's context", () => {
+  has("just picked up the new car!! blue volvo xc40, bye bye outback", ["me|owns|vehicle:Volvo XC40", "vehicle:Volvo XC40|color|lit:blue", "me|ended:owns|vehicle:Subaru Outback"]);
+  has("sold the subaru to a guy from denver today", "me|ended:owns|vehicle:Subaru");
+  has("the outback's in for its service so i'm at the cafe", "me|owns|vehicle:Subaru Outback");
+  has("our green outback failed the inspection", ["me|owns|vehicle:Subaru Outback", "vehicle:Subaru Outback|color|lit:green"]);
+  has("parked the xc40 at the station", "me|owns|vehicle:Volvo XC40");
+  has("loading the kit into the volvo brb", "me|owns|vehicle:Volvo");
+  has("the subaru is making that noise again", "me|owns|vehicle:Subaru");
+  // A comparison, a friend's car, an ordinary word.
+  noFacts("compare the volvo xc40 and the kia sportage for a family of four");
+  noFacts("he's got a tesla and won't shut up about it");
+  noFacts("we got a mini fridge for the office");
+  noFacts("we played golf with the team");
+});
+
+test("personal extract: moves and new places, in lower case, held loosely", () => {
+  assert.equal(conf("packing boxes all week, the move from portland is friday", "me|lives_in|place:Portland"), 0.45);
+  assert.equal(conf("still getting used to seattle, everything is further", "me|lives_in|place:Seattle"), 0.45);
+  assert.equal(conf("the wifi in the new place in seattle is awful", "me|lives_in|place:Seattle"), 0.7);
+  assert.equal(conf("we moved to seattle in march", "me|lives_in|place:Seattle"), 0.45);
+  has("i grew up in denver", "me|from|place:Denver");
+  // Somebody else, a plan, or an ordinary word.
+  noFacts("sam is still getting used to seattle");
+  noFacts("we're viewing houses in seattle this weekend");
+  noFacts("if we moved to seattle it would be cheaper");
+  noFacts("sam was born in portland so he's gutted about leaving");
+  noFacts("i live in hope");
+});
+
+test("personal extract: work, tools and clients in lower case", () => {
+  has("for context im a freelance designer, mostly figma but i do a bit of front end", ["me|role|lit:freelance designer", "me|uses|tool:Figma"]);
+  has("I'm a product manager, so keep it short", "me|role|lit:product manager");
+  noFacts("i'm a big fan of the new layout");
+  noFacts("pretend i'm a lawyer and review this");
+  has("i keep all my notes in obsidian, can you give me a template", "me|uses|tool:Obsidian");
+  has("my two clients right now are harlow legal and northwind bakery, both want stuff this week", ["me|client|org:Harlow Legal", "me|client|org:Northwind Bakery"]);
+  assert.ok(!said("my two clients right now are harlow legal and northwind bakery, both want stuff this week").some(x => x.includes("Both")));
+  has("our new client, harlow legal, wants a logo", "me|client|org:Harlow Legal");
+  has("harlow legal is my biggest client", "me|client|org:Harlow Legal");
+  // A person at an organisation is kept raw, for the store to match against the user's own.
+  has("dana from harlow legal emailed again", "name:Dana|at|lit:harlow legal emailed again");
+  noFacts("i work for myself");
+});
+
+test("personal extract: quoted copy, pasted messages and drafts are someone else's words", () => {
+  noFacts(`can you help me reply to this from dana:\n\n"Hi Alex, my wife Claire and I are away from the 12th so our son Max will drop it in. Best, Dana"`);
+  noFacts("writing copy for the family law page. draft: 'Separating from your husband or wife is hard. We help you and your children.' make it less stiff");
+  noFacts("proofread this: my wife claire and i are away");
+  noFacts("thanks!\nHi Alex, my husband Luis and I loved the site.\nBest, Dana");
+  // A greeting to Claude is the user's own line.
+  has("quick one\nHey Claude, my wife Jordan wants dark mode", WIFE);
+  // Claude's words inside quotes are not about the user either.
+  noFacts(`"Ending a marriage is hard. We'll help you, your partner and your children."`, { role: "assistant" });
+});
