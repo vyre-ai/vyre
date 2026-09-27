@@ -9,6 +9,48 @@ struct Transcript: Equatable, Sendable {
         var summary: String
         var phase: String
         var error: Bool
+        /// The output, when the box sends it with the result (`output`); none yet on main.
+        var output: String? = nil
+
+        /// The action and its target, as the session's tool rows read: "Ran npm test",
+        /// "Edited q3.tsx". The full command or path is in the expanded row.
+        var action: String {
+            let rest = summary.hasPrefix(tool + " ") ? String(summary.dropFirst(tool.count + 1)) : summary
+            let base = rest.split(separator: "/").last.map(String.init) ?? rest
+            switch tool {
+            case "Bash": return rest.isEmpty ? "Ran a command" : "Ran \(rest)"
+            case "Edit", "MultiEdit", "NotebookEdit": return "Edited \(base)"
+            case "Write": return "Wrote \(base)"
+            case "Read": return "Read \(base)"
+            case "WebFetch":
+                let url = summary.replacingOccurrences(of: "fetch ", with: "")
+                return "Fetched \(URL(string: url)?.host ?? url)"
+            case "WebSearch": return "Searched " + summary.replacingOccurrences(of: "search ", with: "")
+            default: return summary.isEmpty ? tool : summary
+            }
+        }
+    }
+
+    /// How an ask was answered (`ask.answered`): the card shrinks to one line of it.
+    struct Answer: Equatable, Sendable {
+        let decision: String
+        let by: String?
+        let scope: String?
+        let at: Double
+
+        /// "Approved by you, 12:07", "Always allowed in Harlow Legal, 12:07". `time` is the
+        /// answer's time as the phone writes times.
+        func line(project: String?, question: Bool, time: String) -> String {
+            let who = by.map { $0.hasPrefix("agent:") ? String($0.dropFirst(6)) : "you" } ?? "you"
+            let what: String
+            switch decision {
+            case "always": what = scope == "project" ? "Always allowed in \(project ?? "this project")" : "Always allowed"
+            case "allow": what = question ? "Answered by \(who)" : "Approved by \(who)"
+            case "deny": what = question ? "Put off by \(who)" : "Denied by \(who)"
+            default: what = "Withdrawn"
+            }
+            return time.isEmpty ? what : "\(what), \(time)"
+        }
     }
 
     enum Entry: Equatable, Sendable, Identifiable {
@@ -52,16 +94,37 @@ struct Transcript: Equatable, Sendable {
 
     private(set) var entries: [Entry] = []
     private(set) var marks: [Mark] = []
+    /// Answers by ask id, from `ask.answered`.
+    private(set) var answers: [String: Answer] = [:]
+    /// Which asks were questions (`ask.raised` kind), so an answered one reads "Answered by you".
+    private(set) var questions: Set<String> = []
+    /// When each entry began (ms), for the time stamps at gaps of more than an hour.
+    private(set) var times: [String: Double] = [:]
     private(set) var lastId = 0
     /// Texts this phone sent and has already drawn, waiting for their `thread.sent` echo.
     private(set) var pending: [String] = []
     var working = false
 
     /// A turn the phone sent, drawn at once.
-    mutating func echo(_ text: String) {
+    mutating func echo(_ text: String, now: Date = Date()) {
         pending.append(text)
-        entries.append(.said(key: "local-\(pending.count)-\(entries.count)", text: text, surface: "ios"))
+        let key = "local-\(pending.count)-\(entries.count)"
+        entries.append(.said(key: key, text: text, surface: "ios"))
+        times[key] = now.timeIntervalSince1970 * 1000
         working = true
+    }
+
+    /// The entries that get a centred time stamp before them: the first, and each one more than an
+    /// hour after the one before it.
+    func stamped(gap: Double = 3_600_000) -> Set<String> {
+        var out: Set<String> = []
+        var last: Double?
+        for e in entries {
+            guard let t = times[e.id] else { continue }
+            if last == nil || t - last! > gap { out.insert(e.id) }
+            last = t
+        }
+        return out
     }
 
     mutating func apply(_ e: VyreEvent) {
@@ -79,6 +142,7 @@ struct Transcript: Equatable, Sendable {
         if let entry {
             let line = e.type == "thread.tool" ? e["id"].string : nil
             marks.append(Mark(event: e.id, at: e.at, entry: entry, line: line))
+            if times[entry] == nil && e.at > 0 { times[entry] = e.at }
         }
     }
 
@@ -122,13 +186,14 @@ struct Transcript: Equatable, Sendable {
                     if case .tools(let k, var lines) = entries[i], let j = lines.firstIndex(where: { $0.id == id }) {
                         lines[j].phase = "done"
                         lines[j].error = e["error"].bool == true
+                        if let o = e["output"].string ?? e["result"].string { lines[j].output = o }
                         entries[i] = .tools(key: k, lines: lines)
                         return
                     }
                 }
                 return
             }
-            let line = ToolLine(id: id, tool: e["tool"].text, summary: e["summary"].text, phase: "started", error: false)
+            let line = ToolLine(id: id, tool: e["tool"].text, summary: e["summary"].text, phase: "started", error: false, output: e["output"].string)
             if case .tools(let k, var lines)? = entries.last {
                 lines.append(line)
                 entries[entries.count - 1] = .tools(key: k, lines: lines)
@@ -151,6 +216,10 @@ struct Transcript: Equatable, Sendable {
         case "ask.raised":
             let id = e["ask"].string ?? e["id"].text
             if !id.isEmpty, !entries.contains(.ask(id: id)) { entries.append(.ask(id: id)) }
+            if e["kind"].string == "question" { questions.insert(id) }
+        case "ask.answered":
+            let id = e["ask"].text
+            if !id.isEmpty { answers[id] = Answer(decision: e["decision"].string ?? "allow", by: e["by"].string, scope: e["scope"].string, at: e.at) }
         default: break
         }
     }

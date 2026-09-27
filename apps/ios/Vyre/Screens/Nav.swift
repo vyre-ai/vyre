@@ -6,6 +6,8 @@ enum Dest: Hashable {
     case project(slug: String, name: String)
     case thread(String)
     case agent(String)
+    /// An agent's session, live (Agents' Watch).
+    case watch(String)
     /// Memory, optionally about something (a Find search that went to memory).
     case memory(String?)
     case fact(String)
@@ -31,6 +33,7 @@ struct DestView: View {
         case .project(let slug, let name): ProjectView(slug: slug, name: name)
         case .thread(let id): ThreadView(id: id)
         case .agent(let name): AgentDetailView(name: name)
+        case .watch(let thread): AgentLiveView(thread: thread)
         case .memory(let about): MemoryView(initial: about ?? "")
         case .fact(let id): FactView(id: id)
         case .vault: VaultView()

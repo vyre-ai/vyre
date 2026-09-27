@@ -72,6 +72,8 @@ struct MainShell: View {
             }
             .overlay(alignment: .bottom) { CapsuleBar() }
             .vyreGround()
+            // Hidden, but it names the back button of a pushed screen: "< Chats", "< Now".
+            .navigationTitle(app.page.label)
             .toolbar(.hidden, for: .navigationBar)
             .vyreDestinations()
             // The detail sheet (phone.md section 5) sits inside the stack, so it opens over a

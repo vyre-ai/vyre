@@ -1,30 +1,165 @@
 import SwiftUI
 
-/// Find (the phone PWA's Capsule, views/find.js; the Android FindScreen): one box. Plain words
-/// ask the assistant; `@agent` messages an agent (alone, it opens the agent); `@project` starts a
-/// session there and `@thread` types into one; "tell X to Y" types into a session and watches it,
-/// "watch X" waits for it. What Enter will do is written under the box. As you type, results come
-/// in the PWA's order: sessions, files (the box's), agents, memory, projects. With the box empty:
-/// Places (Vault, Memory), examples, and recent sessions.
+/// What a Find query can run: the Deck's Find grammar (deck/views/find.js). `@agent words` asks
+/// that agent (alone, it opens the agent); `@project words` starts a session there and `@session
+/// words` types into one; "tell X to Y" types into a session and watches it; "watch X" waits for
+/// it. Plain words ask the assistant. Pure, so the grammar is tested.
+struct FindGrammar {
+    let agents: [String]
+    let assistant: String?
+    /// Project slugs and names.
+    let projects: [(slug: String, name: String)]
+    /// Sessions, newest first: id and name.
+    let sessions: [(id: String, name: String)]
+
+    enum Action: Equatable {
+        case ask(agent: String, text: String, assistant: Bool)
+        case openAgent(String)
+        case start(project: String, name: String, text: String)
+        case drive(thread: String, name: String, text: String)
+        case watch(thread: String, name: String)
+        case fill(String)
+
+        /// The plain-words action, as the Run card's row title.
+        var label: String {
+            switch self {
+            case .ask(let a, _, _): "Ask \(a)"
+            case .openAgent(let a): "Open \(a)"
+            case .start(_, let n, _): "New session on \(n)"
+            case .drive(_, let n, _): "Tell \(n), then watch it"
+            case .watch(_, let n): "Watch \(n)"
+            case .fill(let s): s.trimmingCharacters(in: .whitespaces)
+            }
+        }
+
+        /// The command it runs, in mono under the label.
+        var command: String {
+            switch self {
+            case .ask(let a, let t, _): "@\(a) \(t)"
+            case .openAgent(let a): "@\(a)"
+            case .start(let p, _, let t): "@\(p) \(t)"
+            case .drive(_, let n, let t): "tell \(n) to \(t)"
+            case .watch(_, let n): "watch \(n)"
+            case .fill(let s): s.trimmingCharacters(in: .whitespaces)
+            }
+        }
+
+        var isAssistantAsk: Bool { if case .ask(_, _, true) = self { return true }; return false }
+    }
+
+    /// Sessions whose name the words match, best first.
+    func candidates(_ words: String) -> [(id: String, name: String)] {
+        let w = words.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !w.isEmpty else { return [] }
+        let exact = sessions.filter { $0.name.lowercased() == w }
+        let part = sessions.filter { $0.name.lowercased().contains(w) && $0.name.lowercased() != w }
+        return exact + part
+    }
+
+    static func match(_ s: String, _ pattern: String) -> [String]? {
+        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+              let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) else { return nil }
+        return (1..<m.numberOfRanges).map { i in Range(m.range(at: i), in: s).map { String(s[$0]) } ?? "" }
+    }
+
+    func actions(_ raw: String) -> [Action] {
+        let s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !s.isEmpty else { return [] }
+        if s.hasPrefix("@") {
+            let body = s.dropFirst()
+            let name = String(body.prefix { !$0.isWhitespace }).lowercased()
+            let rest = String(body.drop { !$0.isWhitespace }).trimmingCharacters(in: .whitespaces)
+            let agentHits = agents.filter { $0.lowercased().hasPrefix(name) }
+            let projectHits = projects.filter { $0.slug.lowercased().hasPrefix(name) }
+            let threadHits = sessions.filter { $0.name.lowercased().hasPrefix(name) }
+            if rest.isEmpty {
+                if let a = agentHits.first(where: { $0.lowercased() == name }) { return [.openAgent(a)] }
+                return agentHits.map { .fill("@\($0) ") } + projectHits.map { .fill("@\($0.slug) ") } + threadHits.prefix(5).map { .fill("@\($0.name) ") }
+            }
+            var out: [Action] = []
+            if let a = agentHits.first(where: { $0.lowercased() == name }) ?? agentHits.first {
+                out.append(.ask(agent: a, text: rest, assistant: a == assistant))
+            }
+            if let p = projectHits.first { out.append(.start(project: p.slug, name: p.name, text: rest)) }
+            if let t = threadHits.first { out.append(.drive(thread: t.id, name: t.name, text: rest)) }
+            return out
+        }
+        if let m = FindGrammar.match(s, #"^(?:tell|ask)\s+(?:the\s+)?(.+?)\s+(?:thread\s+)?to\s+(.+)$"#) {
+            let ts = candidates(m[0])
+            if !ts.isEmpty { return ts.prefix(4).map { .drive(thread: $0.id, name: $0.name, text: m[1]) } }
+        }
+        if let m = FindGrammar.match(s, #"^(?:watch|monitor|track)\s+(?:the\s+)?(.+?)(?:\s+thread)?$"#)
+            ?? FindGrammar.match(s, #"^(?:tell|ping|notify)\s+me\s+when\s+(?:the\s+)?(.+?)(?:\s+thread)?\s+(?:is\s+done|finishes|asks).*$"#) {
+            let ts = candidates(m[0])
+            if !ts.isEmpty { return ts.prefix(4).map { .watch(thread: $0.id, name: $0.name) } }
+        }
+        guard let a = assistant else { return [] }
+        return [.ask(agent: a, text: s, assistant: true)]
+    }
+}
+
+/// Where the query's words appear in a text, for the `--match` highlight: every word of two or
+/// more letters, case-insensitive, without overlaps.
+func matchSpans(_ text: String, _ q: String) -> [Range<String.Index>] {
+    let words = q.lowercased().split(whereSeparator: { $0.isWhitespace }).map(String.init).filter { $0.count >= 2 }
+    var spans: [Range<String.Index>] = []
+    for w in words {
+        var from = text.startIndex
+        while from < text.endIndex, let r = text.range(of: w, options: [.caseInsensitive, .diacriticInsensitive], range: from..<text.endIndex) {
+            if !spans.contains(where: { $0.overlaps(r) }) { spans.append(r) }
+            from = r.upperBound
+        }
+    }
+    return spans.sorted { $0.lowerBound < $1.lowerBound }
+}
+
+/// A text with the query's words on `--match`.
+func highlighted(_ text: String, _ q: String) -> AttributedString {
+    var a = AttributedString(text)
+    for r in matchSpans(text, q) {
+        if let lo = AttributedString.Index(r.lowerBound, within: a), let hi = AttributedString.Index(r.upperBound, within: a) {
+            a[lo..<hi].backgroundColor = Color.match
+        }
+    }
+    return a
+}
+
+/// Find (phone.md section 7): the Capsule, opened as a full-height sheet. The search field and
+/// Done; a segmented scope (All, Chats, Files, Memory, Run); then, as you type, Ask <assistant>,
+/// Run (the Find grammar), From memory, Chats and Files. It searches 150 ms after the last
+/// keystroke and cancels the search before. An empty query shows recent searches and the four
+/// most recent sessions.
 struct FindView: View {
     @Environment(AppModel.self) private var app
     @State private var q = ""
+    @State private var scope: Scope = .all
     @State private var agents: [JSON] = []
     @State private var projects: [JSON] = []
     @State private var found = Found()
     @State private var busy = false
     @State private var note: String?
     @State private var sentThread: String?
-    @State private var voiceNote = false
+    @AppStorage("find.recent") private var recentRaw = ""
     @FocusState private var focused: Bool
+
+    enum Scope: String, CaseIterable, Identifiable, Hashable {
+        case all, chats, files, memory, run
+        var id: String { rawValue }
+        var label: String {
+            switch self { case .all: "All"; case .chats: "Chats"; case .files: "Files"; case .memory: "Memory"; case .run: "Run" }
+        }
+        func shows(_ s: Scope) -> Bool { self == .all || self == s }
+    }
 
     /// One search's results: nil while it is out.
     struct Found: Equatable {
-        var q = ""
+        var key = Key()
         var recall: Outcome?
         var files: Outcome?
         var memory: Outcome?
     }
+
+    struct Key: Hashable { var q = ""; var scope: Scope = .all }
 
     enum Outcome: Equatable {
         case rows([JSON])
@@ -35,72 +170,86 @@ struct FindView: View {
     var body: some View {
         @Bindable var app = app
         NavigationStack(path: $app.findPath) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Space.l) {
-                    HStack {
-                        PageHead(title: "Find")
-                        Button("Done") { app.sheet = nil }.buttonStyle(.quiet)
+            VStack(alignment: .leading, spacing: 12) {
+                topRow
+                segments
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 12) {
+                        if let note { outcomeLine(note) }
+                        if trimmed.isEmpty { idle } else { results }
                     }
-                    box
-                    if let note { outcomeLine(note) }
-                    if !actions.isEmpty { enterRows }
-                    if !searchText.isEmpty { results }
-                    if q.trimmingCharacters(in: .whitespaces).isEmpty { idle }
+                    .padding(.bottom, Space.xxl)
                 }
-                .padding(.horizontal, Space.gutter)
-                .padding(.bottom, Space.xxl)
+                .scrollDismissesKeyboard(.interactively)
             }
-            .scrollDismissesKeyboard(.interactively)
-            .vyreGround()
+            .padding(.horizontal, Space.gutter)
+            .padding(.top, Space.s)
+            .background(Color.panel)
             .toolbar(.hidden, for: .navigationBar)
             .vyreDestinations()
         }
         .task { await loadCatalog() }
-        .task(id: searchText) { await search() }
+        .task(id: key) { await search() }
         .onChange(of: q) { _, _ in note = nil; sentThread = nil }
+        .onAppear { focused = true }
     }
 
-    // MARK: the box
+    private var trimmed: String { q.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    private var box: some View {
-        VStack(alignment: .leading, spacing: Space.s) {
+    // MARK: the top
+
+    private var topRow: some View {
+        HStack(spacing: Space.m) {
             HStack(spacing: Space.s) {
-                HStack(spacing: Space.s) {
-                    Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(Color.label)
-                    TextField("", text: $q, prompt: Text("Find or ask, @agent, tell or watch").foregroundStyle(Color.label))
-                        .vyre(.body)
-                        .foregroundStyle(Color.text)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.go)
-                        .focused($focused)
-                        .onSubmit { Task { await run(actions.first) } }
-                    if !q.isEmpty {
-                        Button { q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.label) }
-                            .buttonStyle(.plain).accessibilityLabel("Clear")
-                    }
+                Image(systemName: "magnifyingglass").font(.system(size: 15, weight: .medium)).foregroundStyle(Color.label)
+                TextField("", text: $q, prompt: Text("Ask \(assistantName), find, or run").foregroundStyle(Color.label))
+                    .vyre(.input)
+                    .foregroundStyle(Color.text)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.go)
+                    .focused($focused)
+                    .onSubmit { Task { await run(grammar.actions(q).first) } }
+                if !q.isEmpty {
+                    Button { q = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(Color.label) }
+                        .buttonStyle(.plain)
+                        .frame(width: 32, height: 40)
+                        .accessibilityLabel("Clear")
                 }
-                .padding(.horizontal, Space.m)
-                .frame(minHeight: Space.target)
-                .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.button))
-                .overlay {
-                    RoundedRectangle(cornerRadius: Radius.button).strokeBorder(focused ? Color.focus : Color.ruleStrong, lineWidth: focused ? 2 : 1)
-                }
-                // Voice needs on-device recognition (ADR 0018 section 8); this build has none yet.
-                Button { voiceNote.toggle() } label: {
-                    Image(systemName: "mic").font(.system(size: 17, weight: .medium)).foregroundStyle(Color.rule)
-                        .frame(width: Space.target, height: Space.target)
+            }
+            .padding(.leading, Space.m)
+            .frame(height: 40)
+            .background(Color.hover, in: RoundedRectangle(cornerRadius: Radius.card))
+            .overlay { RoundedRectangle(cornerRadius: Radius.card).strokeBorder(focused ? Color.focus : Color.rule, lineWidth: focused ? 2 : 1) }
+            Button { app.sheet = nil } label: {
+                Text("Done").vyre(.input).foregroundStyle(Color.text).frame(minHeight: Space.target)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(height: 52)
+    }
+
+    /// All, Chats, Files, Memory, Run: 32 tall, radius 9, a `--hover` track with a `--rule` border.
+    private var segments: some View {
+        HStack(spacing: 0) {
+            ForEach(Scope.allCases) { s in
+                let on = scope == s
+                Button { scope = s; UISelectionFeedbackGenerator().selectionChanged() } label: {
+                    Text(s.label).vyre(.small, weight: on ? 600 : 400)
+                        .foregroundStyle(on ? Color.text : Color.text2)
+                        .frame(maxWidth: .infinity, minHeight: 28)
+                        .background(on ? Color.bg : Color.clear, in: RoundedRectangle(cornerRadius: 7))
+                        .overlay { if on { RoundedRectangle(cornerRadius: 7).strokeBorder(Color.ruleStrong, lineWidth: 1) } }
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Voice, not available in this build")
-            }
-            Text(hint ?? "Voice is not in this build yet. Type instead.")
-                .vyre(.small).foregroundStyle(hint != nil ? Color.text2 : Color.label)
-            if voiceNote {
-                Text("Voice will listen on this phone only and put the words here to read before sending.")
-                    .vyre(.small).foregroundStyle(Color.label)
+                .accessibilityAddTraits(on ? .isSelected : [])
             }
         }
+        .padding(2)
+        .frame(height: 32)
+        .background(Color.hover, in: RoundedRectangle(cornerRadius: 9))
+        .overlay { RoundedRectangle(cornerRadius: 9).strokeBorder(Color.rule, lineWidth: 1) }
     }
 
     private func outcomeLine(_ text: String) -> some View {
@@ -110,123 +259,99 @@ struct FindView: View {
             if let t = sentThread { Button("Open") { app.open(.thread(t)) }.buttonStyle(.quiet) }
         }
         .padding(Space.m)
-        .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.panel))
+        .background(Color.bg, in: RoundedRectangle(cornerRadius: Radius.card))
     }
 
-    // MARK: what Enter does
+    // MARK: the grammar
 
-    enum Action: Equatable {
-        case ask(agent: String, text: String, assistant: Bool)
-        case openAgent(String)
-        case start(project: String, name: String, text: String)
-        case drive(thread: String, name: String, text: String)
-        case watch(thread: String, name: String)
-        case fill(String)
-
-        var label: String {
-            switch self {
-            case .ask(let a, _, let assistant): assistant ? "Ask \(a), the assistant" : "Ask @\(a)"
-            case .openAgent(let a): "Open @\(a)"
-            case .start(_, let n, _): "Start a session in \(n)"
-            case .drive(_, let n, _): "Type into \(n), then watch it"
-            case .watch(_, let n): "Watch \(n)"
-            case .fill(let s): s.trimmingCharacters(in: .whitespaces)
-            }
-        }
-        var detail: String? {
-            switch self {
-            case .ask(_, let t, _), .start(_, _, let t), .drive(_, _, let t): t
-            case .watch: "You will hear when it finishes or asks."
-            case .openAgent, .fill: nil
-            }
-        }
-    }
-
-    private var assistant: String? { agents.first { $0["kind"].string == "assistant" }?["name"].string }
+    private var assistant: String? { agents.first { $0["kind"].string == "assistant" }?["name"].string ?? app.assistantName }
+    private var assistantName: String { assistant ?? app.assistantLabel }
     private var sessions: [JSON] { app.needs.threads.sorted { ($0["last"].double ?? 0) > ($1["last"].double ?? 0) } }
 
-    /// Sessions whose name the words match, best first.
-    private func candidates(_ words: String) -> [JSON] {
-        let w = words.lowercased().trimmingCharacters(in: .whitespaces)
-        guard !w.isEmpty else { return [] }
-        let exact = sessions.filter { threadLabel($0).lowercased() == w }
-        let part = sessions.filter { threadLabel($0).lowercased().contains(w) && !exact.contains($0) }
-        return exact + part
+    private var grammar: FindGrammar {
+        FindGrammar(agents: agents.compactMap { $0["name"].string }, assistant: assistant,
+                    projects: projects.map { (slug: $0["slug"].text, name: $0["name"].string ?? $0["slug"].text) },
+                    sessions: sessions.map { (id: $0["id"].text, name: threadLabel($0)) })
     }
 
-    private static func match(_ s: String, _ pattern: String) -> [String]? {
-        guard let re = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-              let m = re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) else { return nil }
-        return (1..<m.numberOfRanges).map { i in Range(m.range(at: i), in: s).map { String(s[$0]) } ?? "" }
-    }
-
-    var actions: [Action] {
-        let s = q.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !s.isEmpty else { return [] }
-        if s.hasPrefix("@") {
-            let body = s.dropFirst()
-            let name = String(body.prefix { !$0.isWhitespace }).lowercased()
-            let rest = String(body.drop { !$0.isWhitespace }).trimmingCharacters(in: .whitespaces)
-            let typedSpace = q.hasSuffix(" ")
-            let agentHits = agents.compactMap { $0["name"].string }.filter { $0.lowercased().hasPrefix(name) }
-            let projectHits = projects.filter { ($0["slug"].string ?? "").lowercased().hasPrefix(name) }
-            let threadHits = sessions.filter { threadLabel($0).lowercased().hasPrefix(name) }
-            if rest.isEmpty {
-                if typedSpace || agentHits.contains(where: { $0.lowercased() == name }), let a = agentHits.first(where: { $0.lowercased() == name }) {
-                    return [.openAgent(a)]
-                }
-                return agentHits.map { .fill("@\($0) ") } + projectHits.map { .fill("@\($0["slug"].text) ") } + threadHits.prefix(5).map { .fill("@\(threadLabel($0)) ") }
-            }
-            var out: [Action] = []
-            if let a = agentHits.first(where: { $0.lowercased() == name }) ?? agentHits.first {
-                out.append(.ask(agent: a, text: rest, assistant: a == assistant))
-            }
-            if let p = projectHits.first { out.append(.start(project: p["slug"].text, name: p["name"].string ?? p["slug"].text, text: rest)) }
-            if let t = threadHits.first { out.append(.drive(thread: t["id"].text, name: threadLabel(t), text: rest)) }
-            return out
-        }
-        if let m = FindView.match(s, #"^(?:tell|ask)\s+(?:the\s+)?(.+?)\s+(?:thread\s+)?to\s+(.+)$"#) {
-            let ts = candidates(m[0])
-            if !ts.isEmpty { return ts.prefix(4).map { .drive(thread: $0["id"].text, name: threadLabel($0), text: m[1]) } }
-        }
-        if let m = FindView.match(s, #"^(?:watch|monitor|track)\s+(?:the\s+)?(.+?)(?:\s+thread)?$"#)
-            ?? FindView.match(s, #"^(?:tell|ping|notify)\s+me\s+when\s+(?:the\s+)?(.+?)(?:\s+thread)?\s+(?:is\s+done|finishes|asks).*$"#) {
-            let ts = candidates(m[0])
-            if !ts.isEmpty { return ts.prefix(4).map { .watch(thread: $0["id"].text, name: threadLabel($0)) } }
-        }
-        guard let a = assistant else { return [] }
-        return [.ask(agent: a, text: s, assistant: true)]
-    }
-
-    private var hint: String? {
-        let s = q.trimmingCharacters(in: .whitespaces)
-        guard !s.isEmpty else { return nil }
-        guard let a = actions.first else { return assistant == nil ? "This box has no assistant yet. Try @ and an agent's name." : nil }
-        if case .fill = a { return "Choose one, or keep typing." }
-        return "Enter: \(a.label)."
-    }
-
-    /// The words the searches run on: the question, or an @agent's text.
+    /// The words the searches run on: the question, or an @agent's text. None for a command that
+    /// names a session.
     private var searchText: String {
-        let s = q.trimmingCharacters(in: .whitespacesAndNewlines)
+        let s = trimmed
         guard s.count >= 2 else { return "" }
         if s.hasPrefix("@") {
             let rest = String(s.dropFirst().drop { !$0.isWhitespace }).trimmingCharacters(in: .whitespaces)
             return rest.count >= 2 ? rest : ""
         }
-        switch actions.first {
+        switch grammar.actions(s).first {
         case .drive?, .watch?: return ""
         default: return s
         }
     }
 
-    private var enterRows: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHead(title: "Enter does").padding(.bottom, Space.s)
-            Hairline()
-            ForEach(Array(actions.enumerated()), id: \.offset) { i, a in
+    private var key: Key { Key(q: searchText, scope: scope) }
+
+    // MARK: results
+
+    @ViewBuilder
+    private var results: some View {
+        let acts = grammar.actions(q)
+        let words = searchText
+        let f = found.key == key ? found : Found(key: key)
+        if scope.shows(.run) {
+            if let ask = acts.first(where: \.isAssistantAsk) { askRow(ask) }
+            let runs = acts.filter { !$0.isAssistantAsk }
+            if !runs.isEmpty { runCard(runs) }
+            if acts.isEmpty && assistant == nil && scope == .run {
+                EmptyLine(text: "This box has no assistant yet. Try @ and an agent's name.")
+            }
+        }
+        if !words.isEmpty {
+            if scope.shows(.memory) { memoryBlock(f.memory, words) }
+            if scope.shows(.chats) { chats(f.recall, words) }
+            if scope.shows(.files) { files(f.files, words) }
+        }
+    }
+
+    /// Ask <assistant>: the typed words as a question. Tap runs it and pushes the chat.
+    private func askRow(_ a: FindGrammar.Action) -> some View {
+        Button { Task { await run(a) } } label: {
+            HStack(spacing: Space.m) {
+                Tile(name: assistantName)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Ask \(assistantName)").vyre(.rowTitle).foregroundStyle(Color.text)
+                    Text(trimmed).vyre(.secondary).foregroundStyle(Color.text2).lineLimit(2)
+                }
+                Spacer(minLength: Space.s)
+                if busy { ProgressView().controlSize(.small) }
+                else { Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.label) }
+            }
+            .padding(.vertical, 12).padding(.horizontal, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(busy)
+        .background(Color.signalWash, in: RoundedRectangle(cornerRadius: Radius.card))
+        .overlay { RoundedRectangle(cornerRadius: Radius.card).strokeBorder(Color.rule, lineWidth: 1) }
+    }
+
+    /// Run: the matching commands, each its plain-words action and the command below in mono.
+    private func runCard(_ acts: [FindGrammar.Action]) -> some View {
+        Card(fill: .bg) {
+            ForEach(Array(acts.enumerated()), id: \.offset) { i, a in
+                if i > 0 { Hairline() }
                 Button { Task { await run(a) } } label: {
-                    ListRow(title: a.label, detail: a.detail, note: i == 0 ? "return" : nil, dot: i == 0 ? .focus : nil, chevron: false)
+                    HStack(alignment: .top, spacing: Space.m) {
+                        Image(systemName: "terminal").font(.system(size: 18, weight: .regular)).foregroundStyle(Color.label).frame(width: 22)
+                            .padding(.top, 1)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(highlighted(a.label, trimmed)).vyre(.rowTitle).foregroundStyle(Color.text).lineLimit(2)
+                            Text(a.command).font(VyreFonts.base(.codeSmall).asFont(size: 12)).foregroundStyle(Color.label).lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 12).padding(.horizontal, 14)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(busy)
@@ -234,7 +359,39 @@ struct FindView: View {
         }
     }
 
-    // MARK: results, in the PWA's order
+    @ViewBuilder
+    private func memoryBlock(_ o: Outcome?, _ words: String) -> some View {
+        let facts = (o?.rows ?? []).filter { !($0["text"].string ?? "").isEmpty }
+        if !facts.isEmpty || o == nil {
+            VStack(alignment: .leading, spacing: Space.s) {
+                HStack(spacing: 6) {
+                    Image(systemName: "clock.arrow.circlepath").font(.system(size: 14))
+                    Text("From memory").vyre(.small, weight: 600)
+                }
+                .foregroundStyle(Color.recall)
+                if o == nil { Text("Looking.").vyre(.small).foregroundStyle(Color.text2) }
+                ForEach(Array(facts.prefix(4).enumerated()), id: \.offset) { _, m in
+                    NavigationLink(value: m["id"].string.map { Dest.fact($0) } ?? Dest.memory(words)) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(highlighted(m["text"].text, words)).vyre(.secondary).foregroundStyle(Color.text).multilineTextAlignment(.leading)
+                            let meta = [m["source"].string, m["age"].string ?? (m["seen"].double ?? m["since"].double).map { age($0) }].compactMap { $0 }.filter { !$0.isEmpty }
+                            if !meta.isEmpty { Text(meta.joined(separator: " · ")).vyre(.micro).foregroundStyle(Color.text2) }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 12).padding(.horizontal, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.recallWash, in: RoundedRectangle(cornerRadius: Radius.card))
+        } else if case .failed(let why)? = o, scope == .memory {
+            FailedLine(text: "Memory was not searched. \(why)")
+        } else if scope == .memory {
+            EmptyLine(text: "Nothing in memory.")
+        }
+    }
 
     private func matches(_ q: String, _ name: String) -> Bool {
         let n = name.lowercased(), w = q.lowercased()
@@ -242,141 +399,153 @@ struct FindView: View {
     }
 
     @ViewBuilder
-    private var results: some View {
-        let q = searchText
-        let f = found.q == q ? found : Found(q: q)
-        let byName = sessions.filter { matches(q, threadLabel($0)) }
-        let hits = (f.recall?.rows ?? []).filter { h in !byName.contains { $0["id"].string == h["session"].string } }
-        group("Sessions", byName.count + hits.count) {
-            ForEach(byName, id: \.self) { t in
-                NavigationLink(value: Dest.thread(t["id"].text)) {
-                    ListRow(title: threadLabel(t), detail: [t["agent"].string, t["status"].string].compactMap { $0 }.joined(separator: " · "),
-                            dot: statusDot(t["status"].string, asks: t["asks"].int ?? 0))
-                }.buttonStyle(.plain)
-            }
-            ForEach(hits, id: \.self) { h in
-                NavigationLink(value: Dest.thread(h["session"].text)) {
-                    ListRow(title: h["title"].string ?? h["name"].string ?? String(h["session"].text.prefix(8)),
-                            detail: (h["snippet"].string ?? h["text"].string)?.replacingOccurrences(of: "\u{00AB}", with: "")
-                                .replacingOccurrences(of: "\u{00BB}", with: "").replacingOccurrences(of: "\n", with: " "),
-                            note: age(h["ts"].double))
-                }.buttonStyle(.plain)
-            }
-            status(f.recall, failed: "Sessions were not searched.", empty: byName.isEmpty ? "Nothing found." : nil)
-        }
-
-        let files = f.files?.rows ?? []
-        group("Files", files.count, note: "box") {
-            ForEach(files, id: \.self) { x in
-                NavigationLink(value: Dest.file(x)) {
-                    ListRow(title: x["name"].string ?? x["path"].text, detail: x["path"].string,
-                            note: [x["kind"].string, byteSize(x["size"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · "))
-                }.buttonStyle(.plain)
-            }
-            status(f.files, failed: "Files were not searched.", empty: "Nothing on the box. Files on the Mac cannot be reached from a phone yet.")
-        }
-
-        let ag = agents.filter { matches(q, $0["name"].text) }
-        if !ag.isEmpty {
-            group("Agents", ag.count) {
-                ForEach(ag, id: \.self) { a in
-                    NavigationLink(value: Dest.agent(a["name"].text)) {
-                        ListRow(title: "@" + a["name"].text, detail: [a["kind"].string, a["doing"].string].compactMap { $0 }.joined(separator: " · "))
-                    }.buttonStyle(.plain)
-                }
-            }
-        }
-
-        let mem = (f.memory?.rows ?? []).filter { !($0["text"].string ?? "").isEmpty }
-        group("From memory", mem.count, color: .recall) {
-            ForEach(mem, id: \.self) { m in
-                NavigationLink(value: m["id"].string.map { Dest.fact($0) } ?? Dest.memory(q)) {
-                    ListRow(title: m["text"].text, detail: [m["age"].string, m["source"].string].compactMap { $0 }.joined(separator: " · "), dot: .recall)
-                }.buttonStyle(.plain)
-            }
-            status(f.memory, failed: "Memory was not searched.", empty: "Nothing in memory.")
-            NavigationLink(value: Dest.memory(q)) { ListRow(title: "Open Memory about \"\(q)\"", chevron: true) }.buttonStyle(.plain)
-        }
-
-        let pr = projects.filter { matches(q, $0["name"].string ?? $0["slug"].text) }
-        if !pr.isEmpty {
-            group("Projects", pr.count) {
-                ForEach(pr, id: \.self) { p in
-                    NavigationLink(value: Dest.project(slug: p["slug"].text, name: p["name"].string ?? p["slug"].text)) {
-                        ListRow(title: p["name"].string ?? p["slug"].text, detail: p["org"].string)
-                    }.buttonStyle(.plain)
+    private func chats(_ o: Outcome?, _ words: String) -> some View {
+        let byName = sessions.filter { matches(words, threadLabel($0)) }
+        let hits = (o?.rows ?? []).filter { h in !byName.contains { $0["id"].string == h["session"].string } }
+        if !byName.isEmpty || !hits.isEmpty || scope == .chats {
+            Text("Chats").vyre(.title).foregroundStyle(Color.text).padding(.top, Space.xs)
+            if byName.isEmpty && hits.isEmpty {
+                if case .failed(let why)? = o { FailedLine(text: "Chats were not searched. \(why)") }
+                else { EmptyLine(text: o == nil ? "Looking." : "Nothing found.") }
+            } else {
+                let list: [ChatHit] = Array((byName.map { ChatHit(thread: $0) } + hits.map { ChatHit(recall: $0) }).prefix(12))
+                Card(fill: .bg) {
+                    ForEach(Array(list.enumerated()), id: \.offset) { i, h in
+                        if i > 0 { Hairline() }
+                        NavigationLink(value: Dest.thread(h.id)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(h.name).vyre(.rowTitle).foregroundStyle(Color.text).lineLimit(1)
+                                if !h.snippet.isEmpty { Text(highlighted(h.snippet, words)).vyre(.secondary).foregroundStyle(Color.text2).lineLimit(1) }
+                                if !h.meta.isEmpty { Text(h.meta).vyre(.small).foregroundStyle(Color.label).lineLimit(1) }
+                            }
+                            .padding(.vertical, 12).padding(.horizontal, 14)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .simultaneousGesture(TapGesture().onEnded { remember() })
+                    }
                 }
             }
         }
     }
 
-    private func group<C: View>(_ title: String, _ count: Int, note: String? = nil, color: Color = .label, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHead(title: "\(title) · \(count)", note: note, color: color).padding(.bottom, Space.s)
-            Hairline()
-            content()
+    /// One Chats result: a live session matched by name, or a recalled one matched by its words.
+    private struct ChatHit {
+        let id: String
+        let name: String
+        let snippet: String
+        let meta: String
+        init(thread t: JSON) {
+            id = t["id"].text
+            name = threadLabel(t)
+            snippet = t["last_text"].string ?? ""
+            meta = [t["project"].string, age(t["last"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+        init(recall h: JSON) {
+            id = h["session"].text
+            name = h["title"].string ?? h["name"].string ?? String(h["session"].text.prefix(8))
+            snippet = (h["snippet"].string ?? h["text"].string ?? "").replacingOccurrences(of: "\u{00AB}", with: "")
+                .replacingOccurrences(of: "\u{00BB}", with: "").replacingOccurrences(of: "\n", with: " ")
+            meta = [h["project"].string, age(h["ts"].double)].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
         }
     }
 
     @ViewBuilder
-    private func status(_ o: Outcome?, failed: String, empty: String?) -> some View {
-        switch o {
-        case nil: HStack(spacing: Space.s) { ProgressView().tint(Color.label); Engraved("Looking") }.padding(.vertical, Space.m)
-        case .failed(let why)?: EmptyLine(text: "\(failed) \(why)")
-        case .rows(let r)?: if r.isEmpty, let empty { EmptyLine(text: empty) }
+    private func files(_ o: Outcome?, _ words: String) -> some View {
+        let rows = o?.rows ?? []
+        if !rows.isEmpty || scope == .files {
+            Text("Files").vyre(.title).foregroundStyle(Color.text).padding(.top, Space.xs)
+            if rows.isEmpty {
+                if case .failed(let why)? = o { FailedLine(text: "Files were not searched. \(why)") }
+                else { EmptyLine(text: o == nil ? "Looking." : "Nothing on the box.") }
+            } else {
+                Card(fill: .bg) {
+                    ForEach(Array(rows.prefix(20).enumerated()), id: \.offset) { i, x in
+                        if i > 0 { Hairline() }
+                        NavigationLink(value: Dest.file(x)) {
+                            HStack(alignment: .top, spacing: Space.m) {
+                                Image(systemName: "doc").font(.system(size: 18)).foregroundStyle(Color.label).frame(width: 22).padding(.top, 1)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(highlighted(x["path"].string ?? x["name"].text, words)).vyre(.code).foregroundStyle(Color.text).lineLimit(2)
+                                    let meta = [x["repo"].string ?? x["project"].string, x["machine"].string ?? (x["source"].string == "mac" ? "Mac" : "box")]
+                                        .compactMap { $0 }.joined(separator: " · ")
+                                    Text(meta).vyre(.small).foregroundStyle(Color.label).lineLimit(1)
+                                }
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.vertical, 12).padding(.horizontal, 14)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .simultaneousGesture(TapGesture().onEnded { remember() })
+                    }
+                }
+            }
+            if !rows.contains(where: { $0["source"].string == "mac" }) {
+                Text("Files on your Macs show here when they are online.").vyre(.small).foregroundStyle(Color.label)
+            }
         }
     }
 
-    // MARK: the empty box
+    // MARK: the empty query
+
+    private var recent: [String] { recentRaw.split(separator: "\n").map(String.init) }
+
+    /// Keep what was searched, the latest first, six at most (this phone only).
+    private func remember() {
+        let s = trimmed
+        guard s.count >= 2 else { return }
+        recentRaw = ([s] + recent.filter { $0 != s }).prefix(6).joined(separator: "\n")
+    }
 
     @ViewBuilder
     private var idle: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHead(title: "Places").padding(.bottom, Space.s)
-            Hairline()
-            NavigationLink(value: Dest.vault) { ListRow(title: "Vault", detail: "Names on the box. A value shows only after Face ID.") }.buttonStyle(.plain)
-            NavigationLink(value: Dest.memory(nil)) { ListRow(title: "Memory", detail: "What Vyre has learned, and where from.") }.buttonStyle(.plain)
-        }
-        VStack(alignment: .leading, spacing: Space.s) {
-            SectionHead(title: "Try")
-            Hairline()
-            FlowChips(items: tries) { t in
-                q = t
-                focused = true
+        if !recent.isEmpty {
+            HStack {
+                Text("Recent").vyre(.title).foregroundStyle(Color.text)
+                Spacer()
+                Button("Clear") { recentRaw = "" }.buttonStyle(.quiet)
+            }
+            Card(fill: .bg) {
+                ForEach(Array(recent.enumerated()), id: \.offset) { i, r in
+                    if i > 0 { Hairline() }
+                    Button { q = r; focused = true } label: {
+                        HStack(spacing: Space.m) {
+                            Image(systemName: "clock").font(.system(size: 16)).foregroundStyle(Color.label)
+                            Text(r).vyre(.secondary).foregroundStyle(Color.text).lineLimit(1)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 14).frame(minHeight: Space.target)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHead(title: "Sessions · \(sessions.count)", note: sessions.isEmpty ? nil : "Tap to open").padding(.bottom, Space.s)
-            Hairline()
-            if sessions.isEmpty { EmptyLine(text: "No session ran in the last day.") }
-            ForEach(sessions.prefix(12), id: \.self) { t in
-                NavigationLink(value: Dest.thread(t["id"].text)) {
-                    ListRow(title: threadLabel(t), detail: [t["agent"].string, t["status"].string].compactMap { $0 }.joined(separator: " · "),
-                            note: age(t["last"].double), dot: statusDot(t["status"].string, asks: t["asks"].int ?? 0))
-                }.buttonStyle(.plain)
+        Text("Chats").vyre(.title).foregroundStyle(Color.text).padding(.top, Space.xs)
+        if sessions.isEmpty {
+            EmptyLine(text: "No sessions yet. Ask \(assistantName) something to start one.")
+        } else {
+            Card(fill: .bg) {
+                ForEach(Array(sessions.prefix(4).enumerated()), id: \.offset) { i, t in
+                    if i > 0 { Hairline() }
+                    NavigationLink(value: Dest.thread(t["id"].text)) { SessionRow(t: t) }.buttonStyle(.plain)
+                }
             }
         }
-    }
-
-    private var tries: [String] {
-        var out = ["What came in overnight?"]
-        if let a = agents.compactMap({ $0["name"].string }).first(where: { $0 != assistant }) { out.append("@\(a) ") }
-        if let t = sessions.first {
-            out.append("watch \(threadLabel(t))")
-            out.append("tell \(threadLabel(t)) to ")
-        }
-        return out
     }
 
     // MARK: running it
 
-    private func run(_ a: Action?) async {
+    private func run(_ a: FindGrammar.Action?) async {
         guard let a, !busy else { return }
         switch a {
         case .fill(let s): q = s; focused = true; return
-        case .openAgent(let name): q = ""; app.findPath.append(.agent(name)); return
+        case .openAgent(let name): remember(); q = ""; app.findPath.append(.agent(name)); return
         default: break
         }
+        remember()
         busy = true
         defer { busy = false }
         do {
@@ -389,7 +558,7 @@ struct FindView: View {
             case .start(let project, let name, let text):
                 let rec = try await app.call("threads.start", ["project": .string(project), "prompt": .string(text), "surface": "ios"])
                 q = ""
-                if let t = rec["id"].string { app.open(.thread(t)) } else { note = "Started a session in \(name)." }
+                if let t = rec["id"].string { app.open(.thread(t)) } else { note = "Started a session on \(name)." }
             case .drive(let thread, let name, let text):
                 let out = try await app.call("threads.send", ["thread": .string(thread), "text": .string(text), "surface": "ios"])
                 guard out["sent"].bool == true else { note = out["note"].string ?? "\(out["holder"].string ?? "Someone") has the keyboard."; return }
@@ -416,77 +585,44 @@ struct FindView: View {
         else if let c = app.cache.get("projects.list") { projects = c["projects"].list }
     }
 
-    /// Runs once the person pauses typing (300 ms): the task restarts on every change of the words.
+    /// 150 ms after the last keystroke; a new keystroke (or scope) cancels this task and the
+    /// requests in it. Only the searches the scope shows are run.
     private func search() async {
-        let s = searchText
-        guard !s.isEmpty else { found = Found(); return }
-        try? await Task.sleep(for: .milliseconds(300))
+        let k = key
+        guard !k.q.isEmpty else { found = Found(key: k); return }
+        try? await Task.sleep(for: .milliseconds(150))
         if Task.isCancelled { return }
-        found = Found(q: s)
-        async let r = outcome { try await app.call("recall.search", ["q": .string(s), "limit": 20, "per_session": 1]).list }
-        async let f = outcome { try await app.call("files.search", ["q": .string(s), "limit": 20])["results"].list }
-        async let m = outcome {
-            // memory.relevant over the tailnet needs a room for the main graph (CONTRACT.md 4.2);
-            // memory.facts about the words is the fallback.
+        found = Found(key: k)
+        let s = k.q
+        async let r = recall(s, when: k.scope.shows(.chats))
+        async let f = fileHits(s, when: k.scope.shows(.files))
+        async let m = memory(s, when: k.scope.shows(.memory))
+        let (rr, ff, mm) = await (r, f, m)
+        if Task.isCancelled || key != k { return }
+        found = Found(key: k, recall: rr, files: ff, memory: mm)
+    }
+
+    private func recall(_ s: String, when: Bool) async -> Outcome? {
+        guard when else { return nil }
+        return await outcome { try await app.call("recall.search", ["q": .string(s), "limit": 20, "per_session": 1]).list }
+    }
+
+    private func fileHits(_ s: String, when: Bool) async -> Outcome? {
+        guard when else { return nil }
+        return await outcome { try await app.call("files.search", ["q": .string(s), "limit": 20])["results"].list }
+    }
+
+    /// memory.relevant over the tailnet needs a room for the main graph (CONTRACT.md 4.2);
+    /// memory.facts about the words is the fallback.
+    private func memory(_ s: String, when: Bool) async -> Outcome? {
+        guard when else { return nil }
+        return await outcome {
             do { return try await app.call("memory.relevant", ["text": .string(s), "limit": 5]).list }
             catch { return try await app.call("memory.facts", ["about": .string(s), "limit": 5])["facts"].list }
         }
-        let (rr, ff, mm) = await (r, f, m)
-        if Task.isCancelled || found.q != s { return }
-        found = Found(q: s, recall: rr, files: ff, memory: mm)
     }
 
     private func outcome(_ work: @MainActor () async throws -> [JSON]) async -> Outcome {
         do { return .rows(try await work()) } catch { return .failed(describe(error)) }
-    }
-}
-
-/// Chips that wrap onto new lines, for Find's examples.
-struct FlowChips: View {
-    let items: [String]
-    let tap: (String) -> Void
-
-    var body: some View {
-        FlowLayout(spacing: Space.s) {
-            ForEach(items, id: \.self) { t in
-                Button { tap(t) } label: {
-                    Text(t.trimmingCharacters(in: .whitespaces)).vyre(.code).foregroundStyle(Color.text2)
-                        .padding(.horizontal, Space.m)
-                        .frame(minHeight: 36)
-                        .background(Color.panel, in: RoundedRectangle(cornerRadius: Radius.chip))
-                        .overlay { RoundedRectangle(cornerRadius: Radius.chip).strokeBorder(Color.ruleStrong, lineWidth: 1) }
-                }
-                .buttonStyle(.plain)
-            }
-        }
-    }
-}
-
-/// A left-to-right layout that wraps.
-struct FlowLayout: Layout {
-    var spacing: CGFloat
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, line: CGFloat = 0, widest: CGFloat = 0
-        for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
-            if x > 0 && x + s.width > width { x = 0; y += line + spacing; line = 0 }
-            x += s.width + spacing
-            line = max(line, s.height)
-            widest = max(widest, x - spacing)
-        }
-        return CGSize(width: proposal.width ?? widest, height: y + line)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX, y = bounds.minY, line: CGFloat = 0
-        for v in subviews {
-            let s = v.sizeThatFits(.unspecified)
-            if x > bounds.minX && x + s.width > bounds.maxX { x = bounds.minX; y += line + spacing; line = 0 }
-            v.place(at: CGPoint(x: x, y: y), proposal: ProposedViewSize(s))
-            x += s.width + spacing
-            line = max(line, s.height)
-        }
     }
 }
