@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vyre social preview</title>
+<!-- Source for docs/brand/social-preview.png (1280x640, GitHub repo social preview). Key content stays inside the centre 1040x520 safe area. Re-render: see docs/brand/README.md. -->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap">
+<style>
+  html, body { margin: 0; padding: 0; background: #0E0D0C; }
+  body { padding-top: 1px; } /* the render crops from row 1 */
+  .card { position: relative; width: 1280px; height: 640px; overflow: hidden; background: #0E0D0C; color: #F1EEE6;
+    font-family: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif; }
+  .motif { position: absolute; right: -80px; top: -40px; }
+  .top { position: absolute; left: 120px; right: 120px; top: 0; height: 1px; background: #2B2926; }
+  .lockup { position: absolute; left: 120px; top: 96px; display: flex; align-items: center; gap: 18px; }
+  .lockup .rule { width: 1px; height: 30px; background: #3A3733; margin: 0 2px; }
+  .lockup .lbl { font: 500 15px/20px 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.18em; text-transform: uppercase; color: #B3AEA4; }
+  h1 { position: absolute; left: 120px; top: 212px; width: 860px; margin: 0; font-weight: 600; font-size: 62px; line-height: 68px; letter-spacing: -0.03em; }
+  .cmd { position: absolute; left: 120px; bottom: 96px; display: flex; align-items: center; gap: 16px; padding: 20px 26px;
+    background: #161513; border: 1px solid #3A3733; border-radius: 10px;
+    box-shadow: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);
+    font: 500 25px/32px 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: -0.01em; white-space: nowrap; }
+  .cmd .p { color: #8C877D; }
+  .url { position: absolute; right: 120px; bottom: 110px; font: 500 14px/18px 'JetBrains Mono', ui-monospace, Menlo, monospace; letter-spacing: 0.16em; text-transform: uppercase; color: #8C877D; }
+</style>
+</head>
+<body>
+<div class="card">
+  <svg class="motif" width="620" height="620" viewBox="0 0 620 620" fill="none" aria-hidden="true">
+    <g stroke="#2B2926" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M110 40L310 370L510 40"/>
+      <path d="M70 40L310 434L550 40"/>
+      <path d="M30 40L310 498L590 40"/>
+      <path d="M-10 40L310 562L630 40"/>
+      <path d="M-50 40L310 626L670 40"/>
+    </g>
+  </svg>
+  <div class="top"></div>
+  <div class="lockup">
+    <svg width="52" height="52" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+    <svg width="124" height="52" viewBox="-2 3 62 26" fill="none" role="img" aria-label="vyre"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span class="rule"></span>
+    <span class="lbl">Release 0.1.0</span>
+  </div>
+  <h1>Your best work, with a partner that never drops the thread.</h1>
+  <div class="cmd"><span class="p">$</span><span>curl -fsSL https://vyre.run/install.sh | sh</span></div>
+  <div class="url">vyre.run</div>
+</div>
+</body>
+</html>

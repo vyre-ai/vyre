@@ -23,8 +23,44 @@
   --beacon-dot: #B8A4FF;
   --beacon-badge-ink: #0E0D0C;
   --float: inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6);
+  --popover: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);
   --sans: 'Instrument Sans', 'Helvetica Neue', Arial, sans-serif;
   --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+  --radius-chip: 4px;
+  --radius-field: 8px;
+  --radius-button: 8px;
+  --radius-button-touch: 10px;
+  --radius-card: 12px;
+  --radius-card-phone: 10px;
+  --radius-sheet: 14px;
+  --radius-bubble: 12px;
+  --radius-full: 999px;
+  --size-meta: 12px; --line-meta: 16px;
+  --size-base: 13px; --line-base: 18px;
+  --size-read: 15px; --line-read: 22px;
+  --size-title: 20px; --line-title: 26px;
+  --size-hero: 28px; --line-hero: 34px;
+  --space-0: 0px;
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 8px;
+  --space-4: 12px;
+  --space-5: 16px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 48px;
+  --space-9: 64px;
+  --control-xs: 28px;
+  --control-sm: 32px;
+  --control-touch: 44px;
+  --control-touch-lg: 54px;
+  --motion-tap: 120ms;
+  --motion-panel: 220ms;
+  --motion-sheet: 280ms;
+  --motion-reveal: 150ms;
+  --motion-hold: 600ms;
+  --motion-undo: 4000ms;
+  --ease: cubic-bezier(0.25, 0.1, 0.25, 1);
   color-scheme: dark;
 }
 :root[data-theme="paper"] {
@@ -50,5 +86,14 @@
   --beacon-dot: #5B3FC4;
   --beacon-badge-ink: #F4F1EA;
   --float: 0 24px 48px -24px rgba(20,19,17,0.28);
+  --popover: 0 12px 24px -12px rgba(20,19,17,0.3);
   color-scheme: light;
+}
+/* On a phone (under 720 wide, or a phone in landscape) the read and title steps are larger (iOS body
+   size, no zoom on focus). */
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  :root {
+    --size-read: 17px; --line-read: 24px;
+    --size-title: 22px; --line-title: 28px;
+  }
 }

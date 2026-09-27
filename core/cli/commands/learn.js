@@ -9,11 +9,34 @@
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { callAsPerson } from "../presence.js";
-import { json, emit, failTool, usage, EXIT } from "../kit.js";
+import { json, emit, fail as kitFail, failTool, usage, viewing, EXIT } from "../kit.js";
 
 const LEVELS = ["remind", "ask", "block"];
-const USAGE = "vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills] [--json]";
+const USAGE = "vyre learn [list|show|add|accept|retire|level|scope|relax|stats|signals|skills] [--json]";
+
+/**
+ * A human-only call. Under --view nothing may open a terminal, so it goes as a plain call and
+ * vyred's presence_required comes back as an error frame (exit 3) for the surface to handle.
+ * @param {string} tool @param {any} input
+ */
+const asPerson = (tool, input) => (viewing() ? call(tool, input) : callAsPerson(tool, input));
+
+/** A lesson's effect as a plain word, for a view. */
+const effectWord = s => (!s ? "" : s.verdict === "working" ? "working" : s.verdict === "not working" ? "not working" : "measuring");
+
+/** One lesson as a card, for --view. */
+const lessonCard = (l, stats) => ({ kind: "card", title: `Lesson ${l.id}`, state: l.status === "active" ? "ok" : l.status === "proposed" ? "wait" : "off", fields: [
+  { label: "Rule", value: String(l.rule ?? "") },
+  { label: "Status", value: String(l.status ?? "") + (l.dormant ? " (dormant)" : "") },
+  { label: "Level", value: String(l.level ?? "") + (l.max_level ? `, at most ${l.max_level}` : "") },
+  { label: "Where", value: where(l.scope) },
+  { label: "Check", value: l.check ? String(l.check.label || l.check.kind) : "no check, a reminder" },
+  { label: "Counts", value: `applied ${l.applied ?? 0} · caught ${l.caught ?? 0} · broken ${l.broken ?? 0}` },
+  ...(stats ? [{ label: "Effect", value: `${effectWord(stats)} · before ${stats.before ?? "?"} · after ${stats.after ?? "?"} per 100 turns` }] : []),
+] });
 const fail = r => failTool(r.error);
+/** A line that says why nothing was done: as it always read, or the JSON error under --json. */
+const say = (text, message, code = "bad_input") => { if (json()) kitFail(message, { code }); else out(text); };
 
 /** A lesson's effect, in a word. */
 const effect = s => (!s ? "" : s.verdict === "working" ? signal("working") : s.verdict === "not working" ? beacon("not working") : dim("measuring"));
@@ -39,9 +62,9 @@ const idOf = (args, line) => {
 
 /** Run a tool that returns one lesson, and show it. A human-only tool asks for the person's proof. */
 async function one(tool, input, said) {
-  const r = await callAsPerson(tool, input);
+  const r = await asPerson(tool, input);
   if (r.error) return fail(r);
-  if (json()) return emit(r.data);
+  if (json()) return emit(r.data, lessonCard(r.data));
   out(`  ${said} ${bold(String(r.data.id))}`);
   line(r.data);
   return 0;
@@ -52,7 +75,7 @@ async function current(id) {
   const all = await call("learn.lessons", { status: "all" });
   if (all.error) { fail(all); return null; }
   const l = all.data.find(x => x.id === id);
-  if (!l) { out(beacon(`  no lesson ${id}`)); return null; }
+  if (!l) { kitFail(`no lesson ${id}`, { code: "not_found" }); return null; }
   return l;
 }
 
@@ -71,10 +94,10 @@ async function scopeOf(args) {
     if (name) return { project: name };
     const r = await call("projects.of", { cwd: process.cwd() });
     if (r.data && r.data.slug) return { project: r.data.slug };
-    out(`  this folder is in no project ${dim("· vyre learn scope <id> project <slug>")}`);
+    say(`  this folder is in no project ${dim("· vyre learn scope <id> project <slug>")}`, "this folder is in no project; vyre learn scope <id> project <slug>");
     return null;
   }
-  out("  vyre learn scope <id> all|project [slug]|agent <name>");
+  say("  vyre learn scope <id> all|project [slug]|agent <name>", "vyre learn scope <id> all|project [slug]|agent <name>");
   return null;
 }
 
@@ -87,11 +110,11 @@ async function relaxOf(l, args) {
   if (what === "pin") return { pinned: true };
   if (what === "when" && rest.length) return { when: rest.join(" ") };
   if (what === "paths" && rest[0]) {
-    if (!l.check) { out("  that lesson has no check to narrow"); return null; }
+    if (!l.check) { say("  that lesson has no check to narrow", "that lesson has no check to narrow"); return null; }
     return { check: { ...l.check, paths: rest[0] } };
   }
   if (what === "scope") { const scope = await scopeOf(rest); return scope ? { scope } : null; }
-  out(`  ${usage}`);
+  say(`  ${usage}`, usage);
   return null;
 }
 
@@ -99,6 +122,11 @@ async function relaxOf(l, args) {
 async function signals() {
   const r = await call("learn.signals", { limit: 20 });
   if (r.error) return fail(r);
+  // --json: { counts: [{ kind, n }], repeats: [{ n, sessions, lesson }], corrected: [{ rule, n }], jobs: [{ id, kind, status, text }] }
+  if (json()) {
+    return emit(r.data, { kind: "table", title: "What Learning heard", columns: [{ key: "kind", label: "Signal" }, { key: "n", label: "Count" }],
+      rows: (r.data.counts || []).map(c => ({ id: c.kind, kind: c.kind, n: c.n })), empty: "Nothing heard yet" });
+  }
   const { counts, repeats, corrected, jobs } = r.data;
   if (!counts.length && !jobs.length) { out(dim("  nothing heard yet")); return 0; }
   out(`\n  ${signal("signals")} ${dim(counts.map(c => `${c.kind} ${c.n}`).join(" · "))}`);
@@ -124,8 +152,15 @@ async function stats() {
   const [l, s] = [await call("learn.lessons", { status: "active" }), await call("learn.stats", {})];
   if (l.error) return fail(l);
   if (s.error) return fail(s);
-  if (!l.data.length) { out(dim("  no active lessons")); return 0; }
   const by = new Map(s.data.map(x => [x.id, x]));
+  // --json: [{ ...lesson, stats: { id, verdict, before, after, escapes, attempts, turns } | null }]
+  if (json()) {
+    return emit(l.data.map(x => ({ ...x, stats: by.get(x.id) ?? null })), { kind: "table", title: "Lesson effects",
+      columns: [{ key: "id", label: "Lesson" }, { key: "rule", label: "Rule" }, { key: "effect", label: "Effect" }, { key: "before", label: "Before" }, { key: "after", label: "After" }, { key: "turns", label: "Turns" }],
+      rows: l.data.map(x => { const st = by.get(x.id); return { id: x.id, rule: x.rule, effect: effectWord(st), before: st?.before ?? "", after: st?.after ?? "", turns: st?.turns ?? "" }; }),
+      empty: "No active lessons" });
+  }
+  if (!l.data.length) { out(dim("  no active lessons")); return 0; }
   out("");
   for (const x of l.data) {
     const st = by.get(x.id);
@@ -142,6 +177,14 @@ async function skills(args) {
   if (!sub) {
     const r = await call("learn.skills", {});
     if (r.error) return fail(r);
+    // --json: { skills: [{ id, name, status, scope, sessions, path, body }], drift: [{ id, state }] }
+    if (json()) {
+      const moved = new Map((r.data.drift || []).map(d => [d.id, d.state]));
+      return emit(r.data, { kind: "table", title: "Skills", columns: [{ key: "id", label: "Skill" }, { key: "name", label: "Name" }, { key: "status", label: "Status" },
+        { key: "where", label: "Where" }, { key: "sessions", label: "Sessions" }, { key: "drift", label: "Drift" }],
+      rows: (r.data.skills || []).map(s => ({ id: s.id, name: s.name, status: s.status, where: where(s.scope), sessions: s.sessions, drift: moved.get(s.id) || "" })),
+      empty: "No skills yet" });
+    }
     const { skills: list, drift } = r.data;
     const live = list.filter(s => s.status === "proposed" || s.status === "installed");
     if (!live.length) { out(dim("  no skills yet · Vyre proposes one when a procedure repeats cleanly in 3 sessions")); return 0; }
@@ -162,7 +205,13 @@ async function skills(args) {
     const r = await call("learn.skills", {});
     if (r.error) return fail(r);
     const s = r.data.skills.find(x => x.id === id);
-    if (!s) { out(beacon(`  no skill ${id}`)); return 1; }
+    if (!s) return kitFail(`no skill ${id}`, { code: "not_found" });
+    // --json: { id, name, status, scope, sessions, path, body }
+    if (json()) {
+      return emit(s, { kind: "card", title: `Skill ${s.id}: ${s.name}`, state: s.status === "installed" ? "ok" : s.status === "proposed" ? "wait" : "off", fields: [
+        { label: "Status", value: String(s.status) }, { label: "Where", value: where(s.scope) }, ...(s.path ? [{ label: "File", value: String(s.path) }] : []),
+        { label: "Body", value: String(s.body ?? "") }] });
+    }
     out(`\n  ${bold(String(s.id))} ${s.name} ${dim(`[${s.status}] ${where(s.scope)}${s.path ? ` · ${s.path}` : ""}`)}\n`);
     out(s.body);
     return 0;
@@ -175,26 +224,59 @@ async function skills(args) {
     else if (flags.includes("--account")) Object.assign(input, { scope: "account" });
     else if (flags.includes("--project")) Object.assign(input, { scope: "project" });
     if (flags.includes("--private")) Object.assign(input, { private: true });
-    const r = await callAsPerson("learn.skill-install", input);
+    const r = await asPerson("learn.skill-install", input);
     if (r.error) return fail(r);
+    if (json()) return emit(r.data);
     out(`  installed skill ${bold(String(r.data.id))} ${dim(r.data.path)}`);
     return 0;
   }
   const tool = sub === "retire" ? "learn.skill-retire" : "learn.skill-dismiss";
-  const r = await callAsPerson(tool, { id });
+  const r = await asPerson(tool, { id });
   if (r.error) return fail(r);
+  if (json()) return emit(r.data);
   out(`  ${sub === "retire" ? "retired" : "dismissed"} skill ${bold(String(r.data.id))}`);
   return 0;
 }
 
 export default {
   name: "learn", aliases: ["lessons"], order: 32, usage: USAGE, summary: "the lessons Vyre learned from you, and what it proposed",
+  verbs: [
+    { verb: "list", aliases: ["ls"], summary: "the active lessons and the ones waiting for your yes", usage: "", read: true },
+    { verb: "show", summary: "one lesson, its check and its effect", usage: "<id>", read: true },
+    { verb: "add", summary: "a lesson in your own words", usage: "<text...>" },
+    { verb: "accept", summary: "say yes to a proposed lesson", usage: "<id>", person: true },
+    { verb: "retire", summary: "stop a lesson", usage: "<id>", person: true },
+    { verb: "level", summary: "remind, ask or block; lowering one needs you", usage: "<id> remind|ask|block", person: true },
+    { verb: "scope", summary: "where a lesson holds; narrowing one needs you", usage: "<id> all|project|agent [<name>]", person: true },
+    { verb: "relax", summary: "lower, pin, narrow or rescope a lesson", usage: "<id> level|max|pin|paths|when|scope [<value...>]", person: true },
+    { verb: "stats", summary: "each active lesson's effect", usage: "", read: true },
+    { verb: "signals", summary: "what Learning heard, as counts, and the jobs waiting", usage: "", read: true },
+    { verb: "skills", summary: "skills Vyre proposed from repeated work: list, show, install, retire, dismiss", usage: "[show|install|retire|dismiss] [<id>] [--agent v] [--account] [--project] [--private]", read: false, person: true },
+  ],
+  help: [
+    "  vyre learn [list]                          the active lessons and the ones waiting for your yes",
+    "  vyre learn show <id>                       one lesson, its check and its effect",
+    "  vyre learn add <text>                      a lesson in your own words",
+    "  vyre learn accept|retire <id>              say yes to a proposed lesson, or stop one",
+    "  vyre learn level <id> remind|ask|block     how firmly it holds (lowering it needs you)",
+    "  vyre learn scope <id> all|project [slug]|agent <name>",
+    "  vyre learn relax <id> level <l> | max <l> | pin | paths <pattern> | when <text> | scope ...",
+    "  vyre learn stats · vyre learn signals      each lesson's effect · what Learning heard",
+    "  vyre learn skills [show|install|retire|dismiss <id>] [--agent name|--account|--project] [--private]",
+  ].join("\n"),
   async run(args) {
     const [sub, ...rest] = args.filter(a => a !== "--json");
     if (!sub || sub === "list" || sub === "ls") {
       const r = await call("learn.lessons", {});
       if (r.error) return fail(r);
-      if (json()) return emit(r.data);
+      // --json: [{ id, rule, level, status, scope, when, check, applied, caught, broken, dormant, max_level, pinned, source }]
+      if (json()) {
+        const by = viewing() ? await statsById() : new Map();
+        return emit(r.data, { kind: "table", title: "Lessons", columns: [{ key: "id", label: "Lesson" }, { key: "rule", label: "Rule" }, { key: "level", label: "Level" },
+          { key: "status", label: "Status" }, { key: "effect", label: "Effect" }],
+        rows: r.data.map(l => ({ id: l.id, rule: l.rule, level: l.level, status: l.status + (l.dormant ? " (dormant)" : ""), effect: l.status === "active" ? effectWord(by.get(l.id)) : "" })),
+        empty: "No lessons yet" });
+      }
       const active = r.data.filter(l => l.status === "active"), proposed = r.data.filter(l => l.status === "proposed");
       if (!r.data.length) { out(dim("  no lessons yet · vyre learn add <what Claude should always or never do>")); return 0; }
       const by = await statsById();
@@ -222,6 +304,8 @@ export default {
       const l = await current(id);
       if (!l) return 1;
       const s = await call("learn.stats", { id });
+      // --json: { ...lesson, stats: { verdict, before, after, turns, ... } | null }
+      if (json()) return emit({ ...l, stats: s.error ? null : s.data ?? null }, lessonCard(l, s.error ? null : s.data));
       out("");
       line(l, s.data);
       out(dim(`      ${where(l.scope)} · when ${l.when}${l.max_level ? ` · at most ${l.max_level}` : ""}${l.pinned ? " · pinned" : ""} · from ${l.source && l.source.kind}`));
@@ -263,6 +347,6 @@ export default {
     if (sub === "stats") return stats();
     if (sub === "signals") return signals();
     if (sub === "skills") return skills(rest);
-    return usage(`vyre learn ${sub}: not a subcommand`, "vyre learn show, add, accept, retire, level, scope, relax, stats, signals or skills");
+    return usage(`vyre learn ${sub}: not a subcommand`, "vyre learn list, show, add, accept, retire, level, scope, relax, stats, signals or skills");
   },
 };

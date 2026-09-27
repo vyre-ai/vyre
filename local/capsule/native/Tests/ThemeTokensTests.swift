@@ -10,7 +10,7 @@ let themeTokensSuite = Suite("theme tokens") { t in
         t.ok(Theme.bone == Tokens.dark.text)
         t.ok(Theme.signal == Tokens.dark.focus)
         t.ok(Theme.attention == Tokens.dark.beacon)
-        t.eq(Theme.radius, Tokens.Radius.card)
+        t.eq(Theme.radius, Tokens.Radius.sheet, "the panel is a sheet (capsule.md, The panel)")
     }
 
     t.test("the status model: order, words, and colours by key") {

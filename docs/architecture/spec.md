@@ -222,7 +222,7 @@ disabled and reported; it never takes `vyred` down.
   "name": "watchers",
   "version": "0.1.0",
   "roles": ["box", "local"],
-  "requires": ["store", "events", "projects", "vault"],
+  "requires": ["projects", "vault"],
   "does":    { "tools": ["watchers.create", "watchers.list", "watchers.pause"] },
   "watches": { "emits": ["watcher.fired", "watcher.failed"] },
   "shows":   { "deck": ["panel:watchers"], "capsule": [], "cli": ["watchers"] },
@@ -239,15 +239,21 @@ disabled and reported; it never takes `vyred` down.
 | `needs` | Vault items it asks for. It never reads the vault any other way. |
 | `teaches` | Kinds of fact it hands the curator. It never writes Memory directly. |
 
+`requires` names other modules only. The store and the event log are the kernel: every module has
+them, so they are never listed. The published schema for every key, including those module API 1
+adds, is `packages/module-sdk/manifest.schema.json` ([ADR 0033](../adr/0033-hackable-vyre.md)).
+Today the Capsule reads `shows.capsule`; `shows.deck` is declared for the Deck's slot registry,
+which does not read it yet (ADR 0033, phase 4).
+
 ### 5.2 The entry file
 
 ```js
 // @ts-check
-/** @type {import('vyre/core/modules').Module} */
+/** @type {import('@vyre/module-sdk').Module} */
 export default {
   async start(ctx) {
     // ctx.store      the module's own namespace in vyre.db (tables prefixed with its name)
-    // ctx.events     emit(type, payload), on(type, fn)
+    // ctx.events     emit(type, payload), on(type, fn), since(id), latestId()
     // ctx.vault      fetch(name) for items its manifest declares
     // ctx.memory     teach(kind, fact): goes to the curator's queue
     // ctx.call       another module's tool, through the same checks as any caller; projects

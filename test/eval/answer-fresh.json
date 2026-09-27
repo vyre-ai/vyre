@@ -1,0 +1,539 @@
+{
+  "about": "Fresh questions for memory.answer on test/fixtures/personal-fresh.js, a sealed world written without reading the rules or any other world's body. expect: acceptable answers, matched case-insensitively as whole words or phrases; null means the right output is no answer.",
+  "questions": [
+    {
+      "q": "whats my husband's name",
+      "expect": [
+        "caz",
+        "casimir"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "who is my husband",
+      "expect": [
+        "caz",
+        "casimir"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "husbnads name?",
+      "expect": [
+        "caz",
+        "casimir"
+      ],
+      "kind": "spouse-typo"
+    },
+    {
+      "q": "who's my other half",
+      "expect": [
+        "caz",
+        "casimir"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "hubby's name",
+      "expect": [
+        "caz",
+        "casimir"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "who is caz",
+      "expect": [
+        "husband"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "what does caz do for work",
+      "expect": [
+        "teacher",
+        "chemistry",
+        "head of science"
+      ],
+      "kind": "relative-job"
+    },
+    {
+      "q": "what's my husband's job",
+      "expect": [
+        "teacher",
+        "chemistry",
+        "head of science"
+      ],
+      "kind": "relative-job"
+    },
+    {
+      "q": "what subject does caz teach",
+      "expect": [
+        "chemistry",
+        "science"
+      ],
+      "kind": "relative-job"
+    },
+    {
+      "q": "when is caz's birthday",
+      "expect": [
+        "9 november",
+        "november 9",
+        "9 nov",
+        "nov 9",
+        "9th november",
+        "november 9th"
+      ],
+      "kind": "birthday"
+    },
+    {
+      "q": "my husbands bday?",
+      "expect": [
+        "9 november",
+        "november 9",
+        "9 nov",
+        "nov 9",
+        "9th november",
+        "november 9th"
+      ],
+      "kind": "birthday-typo"
+    },
+    {
+      "q": "how many kids do i have",
+      "expect": [
+        "two",
+        "2"
+      ],
+      "kind": "kids"
+    },
+    {
+      "q": "what are my kids called",
+      "expect": [
+        "emrys",
+        "wynne"
+      ],
+      "kind": "kids"
+    },
+    {
+      "q": "whats my son's name",
+      "expect": [
+        "emrys"
+      ],
+      "kind": "son"
+    },
+    {
+      "q": "my daughters name",
+      "expect": [
+        "wynne"
+      ],
+      "kind": "daughter"
+    },
+    {
+      "q": "how old is emrys",
+      "expect": [
+        "8",
+        "eight"
+      ],
+      "kind": "age-current"
+    },
+    {
+      "q": "how old is wynne",
+      "expect": [
+        "4",
+        "four"
+      ],
+      "kind": "age"
+    },
+    {
+      "q": "who is wynne",
+      "expect": [
+        "daughter"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "where does my mum live",
+      "expect": [
+        "leeds"
+      ],
+      "kind": "relative-place"
+    },
+    {
+      "q": "where does mum live now",
+      "expect": [
+        "leeds"
+      ],
+      "kind": "relative-place"
+    },
+    {
+      "q": "what did my mum do for a living",
+      "expect": [
+        "midwife"
+      ],
+      "kind": "relative-job"
+    },
+    {
+      "q": "whats my mums name",
+      "expect": [
+        "glenys"
+      ],
+      "kind": "mother"
+    },
+    {
+      "q": "where does my brother live",
+      "expect": [
+        "bristol"
+      ],
+      "kind": "relative-place-corrected"
+    },
+    {
+      "q": "whats idris's job",
+      "expect": [
+        "paramedic"
+      ],
+      "kind": "relative-job"
+    },
+    {
+      "q": "who is idris",
+      "expect": [
+        "brother"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "what pets do we have",
+      "expect": [
+        "pilchard",
+        "sprout"
+      ],
+      "kind": "pets"
+    },
+    {
+      "q": "whats the dog called",
+      "expect": [
+        "sprout"
+      ],
+      "kind": "pet-name"
+    },
+    {
+      "q": "what breed is sprout",
+      "expect": [
+        "whippet"
+      ],
+      "kind": "pet-breed"
+    },
+    {
+      "q": "what kind of dog do we have",
+      "expect": [
+        "whippet"
+      ],
+      "kind": "pet-breed"
+    },
+    {
+      "q": "what breed is pilchard",
+      "expect": [
+        "maine coon"
+      ],
+      "kind": "pet-breed"
+    },
+    {
+      "q": "what colour is our dog",
+      "expect": [
+        "grey",
+        "gray"
+      ],
+      "kind": "pet-colour"
+    },
+    {
+      "q": "whats the cat's name",
+      "expect": [
+        "pilchard"
+      ],
+      "kind": "pet-name"
+    },
+    {
+      "q": "what car do i drive",
+      "expect": [
+        "octavia",
+        "skoda"
+      ],
+      "kind": "car-current"
+    },
+    {
+      "q": "wat car have i got",
+      "expect": [
+        "octavia",
+        "skoda"
+      ],
+      "kind": "car-typo"
+    },
+    {
+      "q": "what colour is my car",
+      "expect": [
+        "green",
+        "rallye green"
+      ],
+      "kind": "car-colour"
+    },
+    {
+      "q": "what did i drive before",
+      "expect": [
+        "jazz",
+        "honda"
+      ],
+      "kind": "car-history"
+    },
+    {
+      "q": "what car did i have before the skoda",
+      "expect": [
+        "jazz",
+        "honda"
+      ],
+      "kind": "car-history"
+    },
+    {
+      "q": "where do i live",
+      "expect": [
+        "sheffield"
+      ],
+      "kind": "home-current"
+    },
+    {
+      "q": "which city do we live in now",
+      "expect": [
+        "sheffield"
+      ],
+      "kind": "home-current"
+    },
+    {
+      "q": "where did i live before",
+      "expect": [
+        "manchester",
+        "chorlton"
+      ],
+      "kind": "home-history"
+    },
+    {
+      "q": "where did we move to",
+      "expect": [
+        "sheffield"
+      ],
+      "kind": "home-current"
+    },
+    {
+      "q": "where do i work",
+      "expect": [
+        "quillmoss"
+      ],
+      "kind": "work-current"
+    },
+    {
+      "q": "whats my company called",
+      "expect": [
+        "quillmoss"
+      ],
+      "kind": "company"
+    },
+    {
+      "q": "where did i used to work",
+      "expect": [
+        "gullwing"
+      ],
+      "kind": "work-history"
+    },
+    {
+      "q": "who are my clients",
+      "expect": [
+        "northwind",
+        "harlow"
+      ],
+      "kind": "clients"
+    },
+    {
+      "q": "who is bram",
+      "expect": [
+        "northwind"
+      ],
+      "kind": "contact"
+    },
+    {
+      "q": "who's odile",
+      "expect": [
+        "harlow"
+      ],
+      "kind": "contact"
+    },
+    {
+      "q": "who is mags",
+      "expect": [
+        "accountant"
+      ],
+      "kind": "contact"
+    },
+    {
+      "q": "who is rhodri",
+      "expect": [
+        "friend",
+        "climbing",
+        "climber",
+        "climbing partner"
+      ],
+      "kind": "friend"
+    },
+    {
+      "q": "who's seren",
+      "expect": [
+        "rhodri"
+      ],
+      "kind": "friend-family"
+    },
+    {
+      "q": "who is lucien",
+      "expect": [
+        "odile",
+        "harlow"
+      ],
+      "kind": "client-family"
+    },
+    {
+      "q": "what does rhodri drive",
+      "expect": [
+        "transporter",
+        "vw",
+        "van"
+      ],
+      "kind": "friend-attr"
+    },
+    {
+      "q": "what's my diet",
+      "expect": [
+        "pescatarian"
+      ],
+      "kind": "diet"
+    },
+    {
+      "q": "do i eat meat",
+      "expect": [
+        "pescatarian",
+        "fish"
+      ],
+      "kind": "diet"
+    },
+    {
+      "q": "wat are my hobbies",
+      "expect": [
+        "bouldering",
+        "climbing",
+        "birdwatching",
+        "birding"
+      ],
+      "kind": "hobby"
+    },
+    {
+      "q": "what text editor do i use",
+      "expect": [
+        "helix"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "which db client do i use",
+      "expect": [
+        "dbeaver"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "what api client do i use",
+      "expect": [
+        "bruno"
+      ],
+      "kind": "tool-changed"
+    },
+    {
+      "q": "whats my wife's name",
+      "expect": null,
+      "kind": "trap-spouse-gender"
+    },
+    {
+      "q": "whats my dad's name",
+      "expect": null,
+      "kind": "trap-quoted-dad"
+    },
+    {
+      "q": "what's my sister called",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "when is my birthday",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "where was i born",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "whats the kids school called",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "what's our rabbit called",
+      "expect": null,
+      "kind": "trap-hypothetical-pet"
+    },
+    {
+      "q": "whats our dachshund called",
+      "expect": null,
+      "kind": "trap-hypothetical-pet"
+    },
+    {
+      "q": "how old is juniper",
+      "expect": null,
+      "kind": "trap-hypothetical-kid"
+    },
+    {
+      "q": "what model tesla do i drive",
+      "expect": null,
+      "kind": "trap-demo-persona"
+    },
+    {
+      "q": "what car does my husband drive",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "what's my blood type",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "which gym do i go to",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "what's my salary",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "what does my father do",
+      "expect": null,
+      "kind": "trap-quoted-dad"
+    },
+    {
+      "q": "whats the name of my van",
+      "expect": null,
+      "kind": "trap-friend-and-story-van"
+    },
+    {
+      "q": "whats my father in law called",
+      "expect": null,
+      "kind": "never-said"
+    }
+  ]
+}

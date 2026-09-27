@@ -73,15 +73,16 @@ let moduleProvidersSuite = Suite("module providers") { t in
     }
 
     t.test("search asks every provider in parallel and makes launcher rows") {
+        // Overlap is counted, not timed: a slow CI machine stretches the clock, not the overlap.
+        let overlap = Overlap()
         let l = fake(modules: #"[{"name":"vault","state":"running","shows":{"capsule":\#(VAULT)}},{"name":"notes","state":"running","shows":{"capsule":{"results:notes.find":{"title":"Notes","input":{"scope":"all"}}}}}]"#,
-                     tools: ["vault.search": { _ in await sleepMs(150); return .success(["rows": [["id": "GitHub", "name": "GitHub", "kind": "login", "sub": "login · github.com"],
+                     tools: ["vault.search": { _ in overlap.enter(); await sleepMs(150); overlap.leave(); return .success(["rows": [["id": "GitHub", "name": "GitHub", "kind": "login", "sub": "login · github.com"],
                                                                                                 ["id": "Work mail", "name": "Work mail", "kind": "login", "sub": "login · mail.example.com"]]]) },
-                             "notes.find": { _ in await sleepMs(150); return .success([["id": 3, "name": "Git tips", "kind": "note"]]) }])
+                             "notes.find": { _ in overlap.enter(); await sleepMs(150); overlap.leave(); return .success([["id": 3, "name": "Git tips", "kind": "note"]]) }])
         let p = ModuleProviders(link: l)
         _ = t.wait { await p.refresh() }
-        let t0 = Date()
         let rows = t.wait { await p.search("git", limit: 5) } ?? []
-        t.ok(Date().timeIntervalSince(t0) < 0.28, "the two providers ran at once")
+        t.eq(overlap.most, 2, "the two providers ran at once")
         t.eq(rows.first, ModuleRow(id: "vault:GitHub", label: "GitHub", sub: "login · github.com", module: "vault", provider: "Vault", rowId: "GitHub", rowKind: "login", score: 1.0))
         t.near(rows.first?.score, 0.9 + 0.1, 1e-9)
         t.eq(rows.count > 1 ? rows[1].score : nil, 0.5, "matched by the provider on something else: the floor")
@@ -201,6 +202,24 @@ let moduleProvidersSuite = Suite("module providers") { t in
         t.eq(t.wait { await fill.run(item, ActionContext(query: Query("git", front: app), frontIsBack: true)) }, .close("Filled GitHub in Example"))
     }
 
+    t.test("mail rows: an account to write from holds the send and says so, a message says what it is") {
+        let l = fake(modules: #"[{"name":"mail","state":"running","shows":{"capsule":{"results:mail.find":{"title":"Mail"},"action:mail.compose":{"title":"Write it"}}}}]"#,
+                     tools: ["mail.compose": { i in
+                         if (i["id"] as? String) == "m1" { return .success(["kind": "email", "message": ["subject": "The order", "from": "Dana <dana@northwind-bakery.example>"]]) }
+                         return .success(["kind": "held", "held": "h1", "message": "Held at the Gate: long words"]) }])
+        let p = ModuleProviders(link: l)
+        _ = t.wait { await p.refresh() }
+        let send = ModuleRow(id: "mail:c1", label: "Send from alex@harlow.example", sub: "IMAP · alex@harlow.example · to dana@northwind-bakery.example", module: "mail", provider: "Mail", rowId: "c1", rowKind: "compose", score: 1)
+        let msg = ModuleRow(id: "mail:m1", label: "The order", sub: "Dana", module: "mail", provider: "Mail", rowId: "m1", rowKind: "email", score: 1)
+        let a = p.item(for: send, actions: p.actions(module: "mail")), b = p.item(for: msg, actions: p.actions(module: "mail"))
+        t.eq(a.subtitle, "IMAP · alex@harlow.example · to dana@northwind-bakery.example", "the sub is the module's, as written")
+        t.eq(ModuleProviders.symbol(send), "square.and.pencil")
+        t.eq(ModuleProviders.symbol(msg), "envelope")
+        let ctx = ActionContext(query: Query("email dana"))
+        t.eq(t.wait { await a.actions[0].run(a, ctx) }, .said("Waiting for you: Send from alex@harlow.example. Nothing is sent until you send it from Needs you."))
+        t.eq(t.wait { await b.actions[0].run(b, ctx) }, .said("The order · Dana <dana@northwind-bakery.example>"))
+    }
+
     t.test("warm refreshes on open at most twice a minute") {
         var clock = Date(timeIntervalSince1970: 1000)
         let l = fake(modules: "[]")
@@ -217,4 +236,13 @@ let moduleProvidersSuite = Suite("module providers") { t in
         _ = t.wait { await sleepMs(50) }
         t.eq(gets, 2)
     }
+}
+
+/// How many calls were in flight at once, at most.
+final class Overlap: @unchecked Sendable {
+    private let lock = NSLock()
+    private var now = 0
+    private(set) var most = 0
+    func enter() { lock.lock(); now += 1; most = max(most, now); lock.unlock() }
+    func leave() { lock.lock(); now -= 1; lock.unlock() }
 }

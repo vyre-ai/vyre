@@ -144,6 +144,7 @@ test("set refuses secrets, long text, bad modes and empty replaces", () => {
 
 test("bad scopes are refused", () => {
   assert.equal(scopeOf("assistant"), "assistant");
+  assert.equal(scopeOf("capsule"), "capsule");
   assert.equal(scopeOf("agent:juno"), "agent:juno");
   assert.equal(scopeOf("project:harlow-legal.v2_x"), "project:harlow-legal.v2_x");
   for (const bad of ["", "assistants", "agent:", "agent:a b", "project:../x/y", "team:kit", `agent:${"k".repeat(65)}`, "agent:kit;drop"]) {

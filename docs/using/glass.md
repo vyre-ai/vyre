@@ -83,6 +83,19 @@ long, and your note. It never sees what you typed. The activity list shows "You 
 keyboard." and "You handed back to kit." If you close the tab, or the hold lapses on the box, the
 keyboard goes back to kit on its own.
 
+If you stop typing and moving for 5 minutes, the keyboard also goes back to kit. Ten seconds
+before, the control bar says "Handing back to kit in 10 s. Type or move to keep control." Any
+input keeps it. When the time runs out, kit's thread and the activity list say:
+
+```output
+Handed back to kit after 5 min idle.
+```
+
+To change the wait, open Settings, Network, **Glass hand-back** and pick Off, 2, 5 or 15 minutes.
+The change applies to a take-over already running. From a terminal:
+`vyre call computers.handback.set '{"minutes":15}'` (0 turns it off; config
+`computers.handbackIdleMin`).
+
 > [!SNAG] "This box still asks for a passkey to take the keyboard."
 > The box runs an older Vyre. Update it with `vyre box update` from the Mac (see
 > [Box care](box-care.md#upgrade)). Take-over needs no passkey now.
@@ -173,8 +186,8 @@ with the same Take over and Hand back. See [Mobile](mobile.md).
 - It never lets two people type at once.
 - The Terminal tab is not in this version.
 
-Coming: an idle hand-back after five minutes, a cap of four viewers per computer, and filling a
-login from your vault into the agent's Chrome.
+Coming: a cap of four viewers per computer, and filling a login from your vault into the agent's
+Chrome.
 
 ## Next
 

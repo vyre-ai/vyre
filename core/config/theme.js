@@ -16,8 +16,7 @@ export const THEME_COLORS = {
     "graphite": "#0E0D0C", "carbon": "#161513", "raised": "#1E1C1A", "rule": "#2B2926", "rule-strong": "#3A3733",
     "ash": "#8C877D", "stone": "#B3AEA4", "bone": "#F1EEE6",
     "signal": "#C6F36B", "signal-hover": "#D4F88A", "signal-ink": "#0E0D0C", "signal-wash": "rgba(198,243,107,0.12)",
-    "recall": "#EBC76B", "recall-wash": "rgba(235,199,107,0.10)",
-    "beacon": "#B8A4FF", "beacon-wash": "rgba(184,164,255,0.12)", "beacon-rule": "rgba(184,164,255,0.28)", "beacon-badge-ink": "#0E0D0C",
+    "beacon": "#B8A4FF", "beacon-badge-ink": "#0E0D0C",
     "code-bg": "#121110",
   },
   light: {
@@ -25,8 +24,7 @@ export const THEME_COLORS = {
     "text": "#141311", "text-2": "#4A463F", "label": "#6B665D",
     "primary-bg": "#141311", "primary-hover": "#4A463F", "primary-ink": "#F4F1EA",
     "focus": "#46700C", "signal-wash": "rgba(70,112,12,0.10)",
-    "recall-ink": "#7E5B0C", "recall-wash": "rgba(126,91,12,0.08)", "recall": "#7E5B0C",
-    "beacon-ink": "#5B3FC4", "beacon-dot": "#5B3FC4", "beacon-wash": "rgba(91,63,196,0.08)", "beacon-rule": "rgba(91,63,196,0.28)", "beacon-badge-ink": "#F4F1EA",
+    "beacon-ink": "#5B3FC4", "beacon-dot": "#5B3FC4", "beacon-badge-ink": "#F4F1EA",
     "code-bg": "#F0EDE5",
   },
 };
@@ -45,11 +43,7 @@ export const THEME_USE = {
     "signal-hover": "Hover on signal-filled buttons.",
     "signal-ink": "Text on a signal fill.",
     "signal-wash": "Selected row, focus ring fill.",
-    "recall": "Came from your memory; no model was used. Only where memory surfaces: recalled facts, enrichment lines, memory-graph nodes.",
-    "recall-wash": "Background behind a recalled block.",
     "beacon": "Needs you. Held tool calls, approvals, the menu-bar dot. Nothing else.",
-    "beacon-wash": "Background behind a held item.",
-    "beacon-rule": "The border of a held item.",
     "beacon-badge-ink": "The count on a beacon dot badge.",
     "code-bg": "Behind code and command output.",
   },
@@ -67,13 +61,8 @@ export const THEME_USE = {
     "primary-ink": "Text on a primary button.",
     "focus": "Signal on paper: focus rings and primary text links.",
     "signal-wash": "Selected row, focus ring fill.",
-    "recall-ink": "Recall on paper: text that came from memory.",
-    "recall-wash": "Background behind a recalled block.",
-    "recall": "Recall marks on paper.",
     "beacon-ink": "Beacon on paper, for text.",
     "beacon-dot": "Beacon on paper, for the dot graphic.",
-    "beacon-wash": "Background behind a held item.",
-    "beacon-rule": "The border of a held item.",
     "beacon-badge-ink": "The count on a beacon dot badge.",
     "code-bg": "Behind code and command output.",
   },
@@ -85,7 +74,7 @@ export const THEME_USE = {
  * to its roles here (unless config names the role itself): { dark: { graphite } } still repaints
  * the ground.
  */
-const ROLES_OF = {
+export const ROLES_OF = {
   "graphite": ["bg"], "carbon": ["panel"], "raised": ["hover"],
   "bone": ["text"], "stone": ["text-2"], "ash": ["label"],
   "signal": ["primary-bg", "focus", "mark-dot"], "signal-hover": ["primary-hover"], "signal-ink": ["primary-ink"],

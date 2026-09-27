@@ -1,10 +1,15 @@
 <!doctype html>
+<!--
+  Hi. You read source. You're our kind of person.
+  Vyre is open source: github.com/vyre-ai/vyre
+  No build step, no framework, no trackers: one HTML file, one stylesheet, one small script.
+-->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Vyre: Claude Code on a machine you own</title>
-  <meta name="description" content="Vyre is an open-source Claude Code plugin that runs on your own box: projects, memory in gold, agents on your own subscription, a vault, and a private address only your devices can open. npm install -g vyre.">
+  <title>Vyre: your work partner, on a machine you own</title>
+  <meta name="description" content="Vyre remembers every session, keeps every account in one place, and works beside you on a machine you own. Open source, Apache 2.0, built on Claude Code.">
   <link rel="canonical" href="https://vyre.run/">
   <meta name="theme-color" content="#0E0D0C">
   <meta name="color-scheme" content="dark">
@@ -13,15 +18,15 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Vyre">
   <meta property="og:url" content="https://vyre.run/">
-  <meta property="og:title" content="Vyre: Claude Code on a machine you own">
-  <meta property="og:description" content="Open source, Apache 2.0. One install, a private address only your devices can open, and Control twice on your Mac.">
+  <meta property="og:title" content="Vyre: your work partner, on a machine you own">
+  <meta property="og:description" content="Your best work, with a partner that never drops the thread. Open source, Apache 2.0, built on Claude Code.">
   <meta property="og:image" content="https://vyre.run/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="The Vyre mark beside the command npm install -g vyre">
+  <meta property="og:image:alt" content="The Vyre mark, one wire bent into a v with a green dot leaving its end">
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Vyre: Claude Code on a machine you own">
-  <meta name="twitter:description" content="Open source, Apache 2.0. One install, a private address only your devices can open, and Control twice on your Mac.">
+  <meta name="twitter:title" content="Vyre: your work partner, on a machine you own">
+  <meta name="twitter:description" content="Your best work, with a partner that never drops the thread. Open source, Apache 2.0, built on Claude Code.">
   <meta name="twitter:image" content="https://vyre.run/og.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -35,61 +40,151 @@
 <header class="nav">
   <div class="wrap">
     <a class="brand" href="#top" aria-label="Vyre, back to top">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      <span class="mark" id="mark" aria-hidden="true">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path class="wire" d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><path class="heart" d="M10.5 19.5C6.3 16.4 3.5 13.6 3.5 10.4C3.5 8 5.2 6.3 7.3 6.3C8.7 6.3 9.9 7.1 10.5 8.3C11.1 7.1 12.3 6.3 13.7 6.3C15.8 6.3 17.5 8 17.5 10.4C17.5 13.6 14.7 16.4 10.5 19.5Z" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle class="dot-sig" id="mark-dot" cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
+      </span>
       <svg width="52" height="22" viewBox="-2 3 62 26" fill="none" aria-hidden="true"><path d="M0 6L6 20L12 6M16 6L22 20M28 6L19.4 26M33 6V20M33 13Q33 6 40 6M43 13H57A7 7 0 1 0 55.36 17.5" stroke="#F1EEE6" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </a>
     <nav class="nav-links" aria-label="Main">
-      <a href="#agents">Agents</a>
       <a href="#capsule">Capsule</a>
       <a href="#memory">Memory</a>
-      <a class="opt" href="#learning">Learning</a>
       <a href="#vault">Vault</a>
-      <a class="opt" href="#security">Security</a>
+      <a href="#glass">Glass</a>
+      <a href="#yours">Open source</a>
       <span class="nav-sep" aria-hidden="true"></span>
       <a class="keep" href="https://github.com/vyre-ai/vyre">GitHub</a>
-      <button class="nav-caps" type="button" data-open-demo aria-label="Open the Capsule demo. Or press Control twice." title="Press Control twice"><span class="kc">⌃</span><span class="kc">⌃</span></button>
+      <a class="btn btn-signal btn-sm keep" href="#install">Install</a>
     </nav>
   </div>
 </header>
 
 <main id="main">
 
+  <!-- HERO -->
   <section class="hero" id="top" aria-labelledby="hero-h">
     <div class="wrap">
-      <p class="lbl">Open source &#183; Apache 2.0 &#183; A Claude Code plugin</p>
-      <h1 id="hero-h" class="h-display" style="margin-top: 22px;">Claude Code on a machine you own.</h1>
-      <p class="lead">Vyre adds what Claude Code leaves out: projects, memory, agents, a vault, and a private address that only your devices can reach. It plugs in the way any plugin does, so each time Claude Code gets better, Vyre does too.</p>
+      <p class="lbl eyebrow"><span>Open source</span><span aria-hidden="true">&#183;</span><span>Apache 2.0</span><span aria-hidden="true">&#183;</span><span>Built on Claude Code</span></p>
+      <h1 id="hero-h" class="h-display">Your best work, with a partner that never drops the thread.</h1>
 
-      <div class="install">
-        <div class="install-cmd">
-          <div class="cmd cmd-hero"><span class="prompt" aria-hidden="true">$</span><code>npm install -g <span class="pkg">vyre</span></code></div>
-          <button class="btn btn-signal" type="button" data-copy="npm install -g vyre" aria-label="Copy the install command">
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-            <span class="txt" data-copy-label>Copy</span>
-          </button>
-        </div>
-        <div class="install-out" aria-label="What happens next">
-          <div class="row"><span class="k">then</span><span class="bone">vyre up</span></div>
-          <div class="row"><span class="k">prints</span><span>http://127.0.0.1:&lt;port&gt;/onboard?t=&#8230;</span></div>
-          <div class="row"><span class="k">over SSH</span><span>the same link, with the exact ssh -L line</span></div>
-        </div>
-        <ol class="steps" aria-label="The onboarding, in your browser">
-          <li><span class="lbl">1</span><span class="t">You</span><span class="d">Pick a name. It becomes your address.</span></li>
-          <li><span class="lbl">2</span><span class="t">Claude Code</span><span class="d">Sign in with your subscription or an API key.</span></li>
-          <li><span class="lbl">3</span><span class="t">Tailscale</span><span class="d">Connect this machine to your tailnet.</span></li>
-          <li><span class="lbl">4</span><span class="t">Your address</span><span class="d">Vyre reserves the name and gets the certificate.</span></li>
-          <li><span class="lbl">5</span><span class="t">Your history</span><span class="d">Index the Claude Code sessions you already have.</span></li>
-          <li><span class="lbl">6</span><span class="t">Your devices</span><span class="d">A QR code for your phone. The Mac app for the Capsule.</span></li>
-        </ol>
-        <div class="address">
-          <div class="address-line">
-            <span class="scheme">https://</span><label class="sr-only" for="yourname">Your name</label><input id="yourname" class="name-in" type="text" placeholder="yourname" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="20" inputmode="latin" aria-describedby="yourname-hint"><span>.vyre.run</span>
+      <div class="hero-grid">
+        <div class="hero-copy">
+          <p class="lead">Vyre remembers every session, keeps every account in one place, and works beside you on a machine you own. Ask anything with a keystroke. Watch it work. Step in whenever you like.</p>
+
+          <div class="install" id="install" data-install>
+            <div class="install-cmd">
+              <span class="prompt" aria-hidden="true">$</span>
+              <code class="cmd" id="cmd-hero">curl -fsSL https://vyre.run/install.sh<wbr> | sh</code>
+              <button class="btn btn-signal copy" type="button" data-copy="curl -fsSL https://vyre.run/install.sh | sh" data-copy-target="cmd-hero" aria-label="Copy the install command">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                <span class="txt">Copy</span>
+              </button>
+            </div>
+            <div class="itabs" role="tablist" aria-label="Where you install Vyre">
+              <button class="itab" type="button" role="tab" id="h-tab-linux" aria-controls="h-pan-linux" aria-selected="true">Linux box</button>
+              <button class="itab" type="button" role="tab" id="h-tab-mac" aria-controls="h-pan-mac" aria-selected="false" tabindex="-1">Mac</button>
+              <button class="itab" type="button" role="tab" id="h-tab-needs" aria-controls="h-pan-needs" aria-selected="false" tabindex="-1">What it needs</button>
+            </div>
+            <div class="ipanel" role="tabpanel" id="h-pan-linux" aria-labelledby="h-tab-linux" tabindex="0">
+              <p>Run the line above on your Linux box. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link. The rest happens in your browser.</p>
+            </div>
+            <div class="ipanel" role="tabpanel" id="h-pan-mac" aria-labelledby="h-tab-mac" tabindex="0" hidden>
+              <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-hero-mac" aria-label="Copy the Mac install command">Copy</button></div>
+              <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-hero-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-hero-up" aria-label="Copy vyre up">Copy</button></div>
+              <p>Vyre is not on npm yet, so it installs from the same tarball the box uses.</p>
+            </div>
+            <div class="ipanel" role="tabpanel" id="h-pan-needs" aria-labelledby="h-tab-needs" tabindex="0" hidden>
+              <ul class="needs">
+                <li><span class="lbl">Mac</span><span>Node 22.5 or newer</span></li>
+                <li><span class="lbl">Linux box</span><span>Docker Compose 2.24 or newer</span></li>
+                <li><span class="lbl">Claude</span><span>A subscription or an API key</span></li>
+                <li><span class="lbl">Network</span><span>Tailscale (the free plan is enough)</span></li>
+              </ul>
+            </div>
+            <div class="install-foot">
+              <a class="arrow" href="start/">The full steps, in order</a>
+              <span class="copied" data-copied role="status" aria-live="polite"></span>
+            </div>
           </div>
-          <span id="yourname-hint" class="lbl">Type your name. Only your devices can open it.</span>
+
+          <p class="hint">
+            <span class="keys" aria-hidden="true"><span class="kc">&#8997;Space</span></span>
+            <span>Press &#8997;Space to try the Capsule right here.</span>
+            <button class="linkbtn" type="button" data-open-demo>Or open it</button>
+          </p>
+        </div>
+
+        <!-- The live Capsule, over a call -->
+        <div class="hero-demo" aria-label="Try the Capsule. Sample data, nothing leaves this page." role="region">
+          <div class="desk-top">
+            <div class="menubar" aria-hidden="true"><span class="app">Calls</span><span>File</span><span>View</span><span class="grow"></span><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="#F1EEE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="1.9" fill="#F1EEE6"/></svg><span class="mono">Thu 14:40</span></div>
+            <div class="call" aria-hidden="true">
+              <div class="call-bar"><span class="live-dot"></span>Harlow Legal weekly &#183; 23:14</div>
+              <div class="tiles">
+                <div class="tile"><span class="av">HL</span><span class="who">Harlow Legal team</span></div>
+                <div class="tile"><span class="av">A</span><span class="who">alex (you)</span></div>
+              </div>
+            </div>
+            <div class="cap-wrap" data-cap-wrap>
+              <div class="capsule" data-capsule data-state="typing">
+                <div class="st st-typing">
+                  <div class="cap-in">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg>
+                    <input class="cap-field" type="text" placeholder="Ask, or @ an agent or project" autocomplete="off" spellcheck="false" aria-label="Ask the Capsule, or @ an agent or project">
+                    <button class="cap-mic" type="button" aria-pressed="false" aria-label="Say it out loud (demo)"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="1.5" width="5" height="7.5" rx="2.5" stroke="currentColor" stroke-width="1.4"/><path d="M2.5 7A4.5 4.5 0 0 0 11.5 7M7 11.5V13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg></button>
+                    <span class="kbd" aria-hidden="true">&#9166;</span>
+                  </div>
+                  <div class="cap-sec cap-route">
+                    <div class="dest on"><span class="lbl sig">Sends to</span><span data-d-name>juno</span><span class="ash" aria-hidden="true">&#183;</span><span data-d-where>your assistant</span><span class="grow"></span><span class="mono stone xs" data-d-note>default</span></div>
+                    <div class="cap-note" data-d-hint>Type @kit or @northwind to pick where it goes.</div>
+                  </div>
+                  <div class="cap-reply" data-reply hidden></div>
+                  <div class="cap-foot" aria-hidden="true"><span>&#9166; send</span><span>&#8593; waiting on you</span><span>esc close</span></div>
+                </div>
+                <div class="st st-recall">
+                  <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text" data-r-q>what target cost per lead did Harlow Legal give us?</div></div>
+                  <div class="cap-sec cap-recall">
+                    <span class="lbl">From memory &#183; no model used</span>
+                    <span class="big" data-r-a>$180 per signed lead</span>
+                    <span class="small stone" data-r-d>Down from $220 in July. The Harlow Legal team set it on the 12 Sep call, and kit is checking the ads against it today.</span>
+                  </div>
+                  <div class="cap-sec"><div class="src"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#8C877D" stroke-width="1.5" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M6 8h4M6 11h4"/></svg><span data-r-s>Call, 12 Sep &#183; Harlow Legal weekly &#183; turn 41</span></div></div>
+                  <div class="cap-foot" aria-hidden="true"><span>&#9166; open the source</span><span>&#8677; ask juno instead</span><span>esc close</span></div>
+                </div>
+                <div class="st st-held">
+                  <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text">juno drafted a reply to Harlow Legal</div><span class="held-chip"><span class="dot beacon" aria-hidden="true"></span>Held for you</span></div>
+                  <div class="cap-sec mail">
+                    <dl><dt>To</dt><dd class="mono">team@harlowlegal.example</dd><dt>Subject</dt><dd>Re: Q3 report</dd></dl>
+                    <div class="msg"><span>Hi all,</span><span>The Q3 numbers are in the deck, slide 6. Signed leads came in at $171 each, under your $180 target.</span><span>alex</span></div>
+                  </div>
+                  <div class="cap-actions"><button class="btn btn-signal btn-sm" type="button" data-demo-send>Send</button><button class="btn btn-line btn-sm" type="button" data-demo-edit>Edit</button><span class="grow"></span><span class="xs ash">Rule: email to a client waits for you</span></div>
+                </div>
+                <div class="st st-waiting">
+                  <div class="cap-sec waiting-head"><span class="lbl beacon">Waiting on you &#183; 2</span><span class="xs ash">oldest first</span></div>
+                  <div class="waits">
+                    <div class="wait"><span class="dot beacon" aria-hidden="true"></span><span class="body2"><span>kit wants to email 14 Northwind Bakery customers the new order form</span><span class="xs ash">Held by rule: bulk email over 10</span></span><span class="mono xs stone">18 min</span></div>
+                    <div class="wait on"><span class="dot beacon" aria-hidden="true"></span><span class="body2"><span>juno drafted a reply to Harlow Legal</span><span class="xs ash">Harlow Legal &#8250; Q3 report &#183; email to a client</span></span><span class="mono xs stone">6 min</span></div>
+                  </div>
+                  <div class="cap-foot" aria-hidden="true"><span>&#8593;&#8595; move</span><span>&#9166; review</span><span>esc close</span></div>
+                </div>
+              </div>
+              <div class="cap-status" data-status role="status" aria-live="polite"></div>
+              <div class="cap-modes" role="group" aria-label="Capsule modes">
+                <button class="dtab" type="button" data-state="typing" aria-pressed="true">Typing</button>
+                <button class="dtab" type="button" data-state="recall" aria-pressed="false">Recall</button>
+                <button class="dtab" type="button" data-state="held" aria-pressed="false">Held</button>
+                <button class="dtab" type="button" data-state="waiting" aria-pressed="false">Waiting</button>
+              </div>
+            </div>
+          </div>
+          <div class="tries" aria-label="Things to try">
+            <span class="lbl">Try</span>
+            <button class="try" type="button" data-try="@kit the Harlow deck needs the Q3 numbers">@kit the Harlow deck needs the Q3 numbers</button>
+            <button class="try" type="button" data-try="what target cost per lead did Harlow Legal give us?">what target cost per lead did Harlow Legal give us?</button>
+            <button class="try" type="button" data-try="do add the HL-2291 hearing to my calendar">do add the HL-2291 hearing to my calendar</button>
+          </div>
+          <p class="demo-note xs ash">Sample data. Nothing you type leaves this page.</p>
         </div>
       </div>
-
-      <p class="hero-after">Set up like a self-hosted app: one line here, the rest in your browser. Then press <span class="keys" aria-hidden="true"><span class="kc">⌃</span><span class="kc">⌃</span></span><span class="sr-only">Control twice</span> on your Mac for the Capsule. <button class="linkbtn" type="button" data-open-demo>Try it on this page</button></p>
     </div>
   </section>
 
@@ -97,37 +192,124 @@
   <div class="tailnet">
     <div class="gate gate-top" aria-hidden="true"><span class="g">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="2" y="5.5" width="8" height="5" rx="1" stroke="#B3AEA4" stroke-width="1.2"/><path d="M4 5.5V4A2 2 0 0 1 8 4V5.5" stroke="#B3AEA4" stroke-width="1.2"/></svg>
-      <span data-host>yourname.vyre.run</span><span class="ash"><span class="long">Only your tailnet can open this address. Everything inside this line runs there.</span><span class="short">tailnet only</span></span>
+      <span data-host>alex.vyre.run</span><span class="ash"><span class="long">Everything inside this line runs on your own network.</span><span class="short">your network only</span></span>
     </span></div>
 
     <div class="wrap">
 
-      <!-- ASSISTANT AND AGENTS -->
-      <section class="sec" id="agents" aria-labelledby="agents-h">
-        <div class="sec-head">
+      <!-- CAPSULE -->
+      <section class="sec" id="capsule" aria-labelledby="capsule-h">
+        <div class="split">
+          <div class="t rv">
+            <p class="lbl num"><span>01</span>Capsule &#183; on your Mac</p>
+            <h2 id="capsule-h" class="h1">Ask without leaving what you&#39;re doing.</h2>
+            <p class="body">Press &#8997;Space over any app, a call or a doc, and the Capsule opens. Say what you need. It&#39;s gone when you&#39;re done.</p>
+            <dl class="feats">
+              <div><dt>&#8997;Space</dt><dd>Opens over any app on your Mac. Esc closes it. Tap Control twice instead, if you turn that on.</dd></div>
+              <div><dt>@ anything</dt><dd>@ an agent or a project, and it goes there.</dd></div>
+              <div><dt>See where it goes</dt><dd>The destination shows before you send.</dd></div>
+              <div><dt>Answers from memory</dt><dd>If your memory already knows, you get the answer with its source.</dd></div>
+              <div><dt>Say it out loud</dt><dd>Talk instead of typing. Deepgram turns it into text.</dd></div>
+              <div><dt>do &#8230;</dt><dd>Start with &#8220;do&#8221; and it uses your Mac for you. It asks before anything goes out.</dd></div>
+              <div><dt>Auto-answer <span class="chip chip-coming" data-status="coming" data-feature="auto-answer">coming</span></dt><dd>Answers from memory as you type, before you press Enter.</dd></div>
+            </dl>
+          </div>
+
+          <div class="mac rv">
+            <div class="menubar" aria-hidden="true"><span class="app">Docs</span><span>File</span><span>Edit</span><span class="grow"></span><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="#F1EEE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#B8A4FF"/></svg><span class="mono">Thu 14:52</span></div>
+            <div class="doc" aria-hidden="true">
+              <span class="doc-t">Northwind Bakery: autumn order form</span>
+              <span class="ln w90"></span><span class="ln w70"></span><span class="ln w80"></span><span class="ln w40"></span>
+              <span class="ln w90"></span><span class="ln w60"></span>
+            </div>
+            <div class="capsule mac-cap" role="img" aria-label="The Capsule over a document: a message to kit, with where it will go shown before sending.">
+              <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text"><span class="at">@northwind</span><span>send this to the owner for a yes</span><span class="blink" aria-hidden="true"></span></div><span class="kbd">&#9166;</span></div>
+              <div class="cap-sec cap-route">
+                <div class="dest on"><span class="lbl sig">Sends to</span><span>kit</span><span class="ash">&#183;</span><span>Northwind Bakery</span><span class="ash">&#8250;</span><span class="w5">order form</span></div>
+                <div class="dest"><span class="lbl">Then</span><span class="stone">a draft to Northwind Bakery&#39;s owner, held for you</span></div>
+              </div>
+              <div class="cap-foot"><span>&#9166; send</span><span>&#8595; other destination</span><span>esc close</span></div>
+            </div>
+            <div class="mac-foot"><span class="dot beacon" aria-hidden="true"></span><span>The dot in the menu bar turns violet when something needs you.</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- MEMORY -->
+      <section class="sec" id="memory" aria-labelledby="memory-h">
+        <div class="split rev">
+          <div class="t rv">
+            <p class="lbl num"><span>02</span>Memory</p>
+            <h2 id="memory-h" class="h1">It remembers, and shows you where from.</h2>
+            <p class="body">Every session you run goes into your memory. When Vyre recalls something, it shows with its source: the call, the thread, the turn. No model is used to recall it. Everything else came from the model.</p>
+            <p class="body">Ask why, and it opens the source.</p>
+            <div class="legend">
+              <div><span class="sw recall"></span>Recalled from your memory, with the source.</div>
+              <div><span class="sw"></span>Written by the model.</div>
+            </div>
+            <p class="iq"><span class="bone">Vyre IQ</span> <span class="chip chip-coming" data-status="coming" data-feature="iq">coming</span><span class="stone">The new memory engine: better recall across every project.</span></p>
+          </div>
+          <div class="panel thread rv">
+            <div class="panel-head"><span class="lbl">Harlow Legal &#8250; drafts</span><span class="mono ash xs">kit</span></div>
+            <div class="thread-body">
+              <div class="ask">When does Harlow Legal want the drafts, and in what format?</div>
+              <div class="recalled">
+                <span class="lbl">Recalled &#183; Harlow weekly, 3 Mar &#183; no model used</span>
+                <span class="v">Friday before noon. PDFs named by matter number, sent to the team inbox, not the front desk.</span>
+                <button class="why" type="button" aria-expanded="false" aria-controls="why-src">Why? Open turn 41</button>
+                <div class="why-src" id="why-src" hidden>
+                  <span class="lbl">Call transcript &#183; turn 41</span>
+                  <p><span class="ash">Harlow Legal:</span> &#8220;Friday before noon works. Name the PDFs by matter number and send them to the team inbox, please, not the front desk.&#8221;</p>
+                </div>
+              </div>
+              <p class="reply">Two of the three drafts are ready. I&#39;ll export them as <span class="mono xs">HL-2291-engagement.pdf</span> and <span class="mono xs">HL-2291-schedule.pdf</span> and hold the third for you.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- VAULT -->
+      <section class="sec" id="vault" aria-labelledby="vault-h">
+        <div class="split">
+          <div class="t rv">
+            <p class="lbl num"><span>03</span>Vault and connections</p>
+            <h2 id="vault-h" class="h1">Every account, one place.</h2>
+            <p class="body">Keep logins with their one-time codes, and your API keys, in one vault on your own box. Agents use a credential without ever seeing it.</p>
+            <dl class="feats">
+              <div><dt>Connect once</dt><dd>Connect Google and your other accounts once. Every agent can use them, with your permission.</dd></div>
+              <div><dt>Sealed values</dt><dd>No vault value shows on any screen, log or event.</dd></div>
+              <div><dt>Share and revoke</dt><dd>Share one item, then take it back in one step.</dd></div>
+            </dl>
+          </div>
+          <div class="panel vault rv">
+            <div class="panel-head"><span class="lbl">Vault</span><span class="mono ash xs">values stay sealed</span></div>
+            <div class="vault-row"><span class="nm">Harlow billing portal<span class="k">Login &#183; one-time code</span></span><span class="val" aria-label="sealed">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</span><span class="use">used by kit</span></div>
+            <div class="vault-row"><span class="nm">Northwind payments<span class="k">API key</span></span><span class="val">never shown</span><span class="use">used by kit</span></div>
+            <div class="vault-row"><span class="nm">Google<span class="k">Connection &#183; mail, calendar, drive</span></span><span class="val sig-t">connected</span><span class="use">juno, kit</span></div>
+            <div class="vault-row" data-share><span class="nm">harlow-site env<span class="k">Env set &#183; 9 keys</span></span><span class="val" data-share-state>shared with Harlow Legal</span><span class="use"><button class="btn btn-line btn-sm" type="button" data-revoke aria-label="Revoke the harlow-site env share">Revoke</button></span></div>
+            <div class="vault-foot" data-share-note>A shared item keeps its value on your box. Revoke ends access at once.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- GLASS -->
+      <section class="sec" id="glass" aria-labelledby="glass-h">
+        <div class="sec-head rv">
           <div class="t">
-            <p class="lbl">Assistant and agents</p>
-            <h2 id="agents-h" class="h1">One assistant sees every session you run.</h2>
+            <p class="lbl num"><span>04</span>Glass</p>
+            <h2 id="glass-h" class="h1">Watch it work. Take over any time.</h2>
           </div>
-          <p class="body">You get an assistant at setup. It sees every project and every session, and it can start, drive, watch and stop any of them. Make other agents when you need them, a researcher or a bookkeeper. Each runs headless on your own Claude subscription, reads only the projects you give it, and can have its own computer.</p>
+          <p class="body">Each agent gets its own computer: a desktop, Chrome and a terminal. Watch it live from the Deck or your phone. Take the wheel when you want to, and hand it back when you&#39;re done.</p>
         </div>
 
-        <div class="panel">
-          <div class="roster">
-            <div class="roster-row"><span class="n"><span class="dot"></span>juno</span><span class="m">Your assistant &#183; every project &#183; your subscription</span><span class="s">driving Q3 report</span></div>
-            <div class="roster-row"><span class="n"><span class="dot ash"></span>kit</span><span class="m">Research &#183; Harlow Legal &#183; setup token &#183; own computer</span><span class="s">reading case search</span></div>
-            <div class="roster-row"><span class="n"><span class="dot beacon"></span>pax</span><span class="m">Bookkeeping &#183; Northwind Bakery &#183; API key, $20 budget</span><span class="s beacon">needs you</span></div>
-          </div>
-        </div>
-
-        <div class="window glass" role="img" aria-label="Glass: kit's own computer, live. Chrome shows a court case search for HL-2291 and a terminal runs Claude Code.">
+        <div class="window glass rv" data-glass>
           <div class="glass-tabs">
-            <div class="tabs"><span class="tab" aria-current="true"><span class="dot"></span>kit &#183; live</span></div>
-            <span class="url"><span data-host>yourname.vyre.run</span>/glass/kit</span>
+            <div class="tabs"><span class="tab on"><span class="dot sig" aria-hidden="true"></span>kit &#183; <span data-glass-who>live</span></span><span class="tab">juno</span></div>
+            <span class="url"><span data-host>alex.vyre.run</span>/glass/kit</span>
           </div>
-          <div class="desk">
+          <div class="desk" role="img" aria-label="kit's own computer, live. Chrome shows a court case search for HL-2291 and a terminal runs Claude Code.">
             <div class="win chrome">
-              <div class="win-bar"><span class="lbl" style="font-size: 10px;">Chrome</span><span class="url">courts.harlow.example/case-search</span></div>
+              <div class="win-bar"><span class="lbl">Chrome</span><span class="url">courts.harlow.example/case-search</span></div>
               <div class="page">
                 <span class="over">Harlow County Court</span>
                 <span class="title">Case search</span>
@@ -138,276 +320,211 @@
               </div>
             </div>
             <div class="win term">
-              <div class="win-bar"><span class="lbl" style="font-size: 10px;">Terminal</span><span class="mono ash" style="font-size: 11px;">~/harlow-legal</span></div>
+              <div class="win-bar"><span class="lbl">Terminal</span><span class="mono ash xs">~/harlow-legal</span></div>
               <div class="term-body">
                 <span><span class="ash">$</span> <span class="bone">claude</span></span>
                 <span class="bone">&gt; add the HL-2291 hearing</span>
-                <span class="rec">recalled  invites, not email</span>
+                <span class="rec">recalled &#183; calendar invites, not email</span>
                 <span class="opt">&#183; searched HL-2291, 3 results</span>
                 <span class="bone">&#183; reading row 1<span class="caret"></span></span>
               </div>
             </div>
-            <div class="cursor"><svg width="16" height="20" viewBox="0 0 16 20" fill="none"><path d="M1.5 1.5V16L5.4 12.4L8.2 18.4L10.6 17.3L7.8 11.4H13L1.5 1.5Z" fill="#F1EEE6" stroke="#0E0D0C" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="tag">kit</span></div>
+            <div class="cursor"><svg width="16" height="20" viewBox="0 0 16 20" fill="none" aria-hidden="true"><path d="M1.5 1.5V16L5.4 12.4L8.2 18.4L10.6 17.3L7.8 11.4H13L1.5 1.5Z" fill="#F1EEE6" stroke="#0E0D0C" stroke-width="1.3" stroke-linejoin="round"/></svg><span class="tag" data-glass-tag>kit</span></div>
           </div>
-          <div class="glass-foot"><span><span class="bone">Live.</span> You&#39;re watching kit work.</span><span class="btn btn-signal btn-sm" aria-hidden="true">Take over</span></div>
+          <div class="glass-foot"><span data-glass-msg><span class="bone">Live.</span> You&#39;re watching kit work.</span><button class="btn btn-signal btn-sm" type="button" data-takeover aria-pressed="false">Take over</button></div>
         </div>
       </section>
 
-      <!-- PROJECTS AND THE VYRE HOME -->
-      <section class="sec" id="projects" aria-labelledby="projects-h">
+      <!-- DECK AND PHONE -->
+      <section class="sec" id="deck" aria-labelledby="deck-h">
+        <div class="sec-head rv">
+          <div class="t">
+            <p class="lbl num"><span>05</span>Deck and phone</p>
+            <h2 id="deck-h" class="h1">Your desk, and your pocket.</h2>
+          </div>
+          <div class="t">
+            <p class="body">The Deck opens in your browser at your own address, private to your Tailscale network. The phone app brings approvals and Glass with you. Nothing goes out as you until you&#39;ve seen the final words.</p>
+            <div class="address">
+              <label class="lbl" for="yourname">Your address</label>
+              <span class="address-line"><span class="scheme">https://</span><input id="yourname" class="name-in" type="text" value="alex" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="20" aria-describedby="yourname-hint"><span>.vyre.run</span></span>
+              <span id="yourname-hint" class="xs ash">Type your name. Only your devices can open it.</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="deck-row">
+          <div class="window deck rv" role="img" aria-label="The Deck in a browser: what each agent is doing now, and one draft waiting for you.">
+            <div class="browser-bar"><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span><span class="url"><svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><rect x="2" y="5.5" width="8" height="5" rx="1" stroke="#8C877D" stroke-width="1.2"/><path d="M4 5.5V4A2 2 0 0 1 8 4V5.5" stroke="#8C877D" stroke-width="1.2"/></svg><span data-host>alex.vyre.run</span>/now</span></div>
+            <div class="deck-body">
+              <div class="rail" aria-hidden="true"><span class="on">Now</span><span>Projects</span><span>Agents</span><span>Memory</span><span>Vault</span><span>Glass</span><span>Settings</span></div>
+              <div class="deck-main">
+                <span class="lbl">Now</span>
+                <div class="now-row"><span class="dot sig"></span><span class="n">kit</span><span class="m">Reading the Harlow court case search</span><span class="s">Glass &#183; live</span></div>
+                <div class="now-row"><span class="dot beacon"></span><span class="n">juno</span><span class="m">Drafted a reply to Harlow Legal</span><span class="s beacon">needs you</span></div>
+                <div class="now-row"><span class="dot"></span><span class="n">Northwind Bakery</span><span class="m">7 threads &#183; order form updated</span><span class="s">yesterday</span></div>
+                <div class="now-row"><span class="dot"></span><span class="n">Harlow Legal</span><span class="m">12 threads &#183; Q3 report</span><span class="s">2 min ago</span></div>
+              </div>
+            </div>
+          </div>
+          <div class="phone rv" role="img" aria-label="The phone app: a held draft to Harlow Legal, with Send and Edit.">
+            <div class="ph-top" aria-hidden="true"><span class="mono">9:41</span><span class="notch"></span><span class="mono">&#9679;&#9679;&#9679;</span></div>
+            <span class="lbl beacon">Needs you</span>
+            <div class="ph-card">
+              <span class="ph-t">juno drafted a reply to Harlow Legal</span>
+              <span class="xs ash">Held by rule: email to a client</span>
+              <p class="ph-msg">The Q3 numbers are in the deck, slide 6. Signed leads came in at $171 each.</p>
+              <div class="ph-acts"><span class="btn btn-signal btn-sm">Send</span><span class="btn btn-line btn-sm">Edit</span></div>
+            </div>
+            <div class="ph-glass"><span class="dot sig" aria-hidden="true"></span><span>kit is live in Glass</span><span class="ash">Watch</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- MAKE IT YOURS -->
+      <section class="sec" id="yours" aria-labelledby="yours-h">
         <div class="split">
-          <div class="t">
-            <p class="lbl">Projects</p>
-            <h2 id="projects-h" class="h1">Type vyre in any terminal. Your work is there.</h2>
-            <p class="body">A project is a folder with its threads and watchers, and its own context graph. The project graphs feed one main graph, which only your assistant and the agents you grant can read. Nothing from one client&#39;s project reaches another&#39;s.</p>
-            <p class="body">The home lists every project, a new session without a project, and every agent. It works the same over SSH.</p>
+          <div class="t rv">
+            <p class="lbl num"><span>06</span>Make it yours</p>
+            <h2 id="yours-h" class="h1">Open source, and built to be changed.</h2>
+            <p class="body">Vyre is a Claude Code plugin plus one small daemon. It plugs into Claude Code the way any plugin does and never forks it, so each time Claude Code gets better, Vyre does too.</p>
+            <dl class="feats">
+              <div><dt>One settings page</dt><dd>Every setting in one place, on your Deck.</dd></div>
+              <div><dt>Modules</dt><dd>Switch the parts you use on, and the rest off.</dd></div>
+              <div><dt>Stays current</dt><dd><code>vyre update</code> brings the latest release. <code>vyre update --rollback</code> takes you back.</dd></div>
+              <div><dt>Apache 2.0</dt><dd>Read every line, change what you like, send it back if you want.</dd></div>
+            </dl>
           </div>
-          <div class="window" role="img" aria-label="The vyre home in a terminal: three projects, New session without a project, and three agents with what each is doing.">
-            <div class="panel-head"><span class="lbl">Terminal &#183; over SSH</span><span class="mono ash small">alex@box</span></div>
-            <div class="tty">
-              <div><span class="ash">$</span> <span class="bone">vyre</span></div>
-              <div class="grp lbl">Projects</div>
-              <div class="row sel"><span class="car">&#8250;</span><span>Harlow Legal</span><span>12 threads</span><span class="last">2 min ago</span></div>
-              <div class="row"><span></span><span>Northwind Bakery</span><span>7 threads</span><span class="last">yesterday</span></div>
-              <div class="row"><span></span><span>Rivera Studio</span><span>4 threads</span><span class="last">3 days ago</span></div>
-              <div class="row"><span>+</span><span class="bone">New session without a project</span><span></span><span class="last"></span></div>
-              <div class="grp lbl">Agents</div>
-              <div class="row agent"><span></span><span class="bone">juno</span><span>assistant</span><span>driving Q3 report</span></div>
-              <div class="row agent"><span></span><span class="bone">kit</span><span>research</span><span>reading case search</span></div>
-              <div class="row agent"><span></span><span class="bone">pax</span><span>bookkeeping</span><span class="beacon">waiting on you</span></div>
-              <div class="ash" style="margin-top: 12px;">&#8593;&#8595; move &#183; type to filter &#183; &#9166; open</div>
+          <div class="yours-vis rv">
+            <div class="panel modules">
+              <div class="panel-head"><span class="lbl">Settings &#8250; Modules</span><span class="mono ash xs">try them</span></div>
+              <div class="mod"><span><span class="bone">Capsule</span><span class="xs ash">&#8997;Space on your Mac</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Capsule"><span></span></button></div>
+              <div class="mod"><span><span class="bone">Glass</span><span class="xs ash">A computer for each agent</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Glass"><span></span></button></div>
+              <div class="mod"><span><span class="bone">Voice</span><span class="xs ash">Talk to the Capsule</span></span><button class="sw-btn" type="button" role="switch" aria-checked="false" aria-label="Voice"><span></span></button></div>
+              <div class="mod"><span><span class="bone">Computer use</span><span class="xs ash">&#8220;do &#8230;&#8221; uses your Mac</span></span><button class="sw-btn" type="button" role="switch" aria-checked="true" aria-label="Computer use"><span></span></button></div>
+            </div>
+            <div class="panel tty">
+              <div><span class="ash">$</span> <span class="bone">vyre update</span></div>
+              <div class="ash"># the latest release, then a restart</div>
+              <div><span class="ash">$</span> <span class="bone">vyre update --rollback</span></div>
+              <div class="ash"># back to the version you had</div>
             </div>
           </div>
         </div>
       </section>
 
-      <!-- SURFACES -->
-      <section class="sec" id="surfaces" aria-labelledby="surfaces-h">
-        <div class="sec-head">
+      <!-- SAFETY FLOOR -->
+      <section class="sec" id="floor" aria-labelledby="floor-h">
+        <div class="sec-head rv">
           <div class="t">
-            <p class="lbl">Surfaces</p>
-            <h2 id="surfaces-h" class="h1">The same Claude Code session, wherever you open it.</h2>
+            <p class="lbl num"><span>07</span>The floor</p>
+            <h2 id="floor-h" class="h1">Rules no setting can switch off.</h2>
           </div>
-          <p class="body">Vyre never imitates Claude Code. The terminal, Chat, the Deck and your phone all drive real sessions. Start a thread in one and carry on in another. One screen types into it at a time.</p>
+          <p class="body">Vyre enforces these outside the model, in hooks and in the gate every request goes through. The model can&#39;t talk its way past them.</p>
         </div>
-        <div class="surf">
-          <div class="panel"><span class="lbl">Terminal</span><span class="thread">Harlow Legal &#8250; Q3 report</span><div class="mono small stone"><span class="ash">&#9679;</span> kit: The Q3 numbers are in slide 6.</div></div>
-          <div class="panel"><span class="lbl">Chat</span><span class="thread">Harlow Legal &#8250; Q3 report</span><div class="bubble"><span class="ash small">kit</span><br>The Q3 numbers are in slide 6.</div></div>
-          <div class="panel"><span class="lbl">Deck</span><span class="thread"><span data-host>yourname.vyre.run</span></span><div style="display: flex; flex-direction: column; gap: 4px; border-top: 1px solid var(--rule); padding-top: 10px;"><span class="small bone">Q3 report</span><span class="small stone">kit: The Q3 numbers are in slide 6.</span></div></div>
-          <div class="panel"><span class="lbl">Phone</span><div class="phone"><span class="ash">Q3 report</span><span>kit: The Q3 numbers are in slide 6.</span></div></div>
-        </div>
-      </section>
-
-      <!-- CAPSULE -->
-      <section class="sec" id="capsule" aria-labelledby="capsule-h">
-        <div class="split">
-          <div class="t">
-            <p class="lbl">Capsule &#183; on your Mac</p>
-            <div class="keycaps" aria-hidden="true">
-              <div class="keycap"><span class="w">control</span><span class="g">⌃</span></div>
-              <div class="keycap"><span class="w">control</span><span class="g">⌃</span></div>
-            </div>
-            <h2 id="capsule-h" class="h1">Press Control twice.</h2>
-            <p class="body">The Capsule opens over whatever you&#39;re doing, a call or a doc. Talk to your assistant, to any agent, or straight into any session, and see where it goes before you send. It never talks back out loud, and it&#39;s gone when you&#39;re done.</p>
-            <div class="states" role="group" aria-label="Capsule states" data-cap-tabs="cap-section">
-              <button class="state-row" type="button" data-state="typing" aria-pressed="true"><span class="lbl">Typing</span><span>@ any agent. The destination shows before you send.</span></button>
-              <button class="state-row" type="button" data-state="recall" aria-pressed="false"><span class="lbl">Recall</span><span>Answers from your memory, in gold. No model ran.</span></button>
-              <button class="state-row" type="button" data-state="held" aria-pressed="false"><span class="lbl">Held</span><span>A draft waits for your yes, right over the call.</span></button>
-              <button class="state-row" type="button" data-state="waiting" aria-pressed="false"><span class="lbl">Waiting</span><span>Press up in an empty Capsule to see what needs you.</span></button>
-            </div>
-            <div><button class="btn btn-line" type="button" data-open-demo>Try it on this page <span class="keys" aria-hidden="true"><span class="kc">⌃</span><span class="kc">⌃</span></span></button></div>
-          </div>
-
-          <div class="mac">
-            <div class="menubar" aria-hidden="true"><span class="app">Calls</span><span>File</span><span>View</span><span>Window</span><span class="grow"></span><svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M2.8 4.6L9 14.8L13.23 7.85" stroke="#F1EEE6" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="15.2" cy="4.6" r="2.3" fill="#B8A4FF"/></svg><span class="mono" style="font-size: 11px;">Thu 14:40</span></div>
-            <div class="call" aria-hidden="true">
-              <div class="call-bar">Harlow Legal weekly &#183; 23:14</div>
-              <div class="tiles">
-                <div class="tile"><span class="av">DR</span><span class="who">Dana Reyes</span></div>
-                <div class="tile"><span class="av">AR</span><span class="who">Alex Rivera (you)</span></div>
-              </div>
-            </div>
-            <div class="capsule" id="cap-section" data-state="typing" aria-live="polite">
-              <!-- typing -->
-              <div class="st st-typing">
-                <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text"><span class="at">@kit</span><span>the Harlow deck needs the Q3 numbers</span><span class="blink" aria-hidden="true"></span></div><span class="kbd">&#9166;</span></div>
-                <div class="cap-sec" style="padding: 6px;">
-                  <div class="dest on"><span class="lbl sig">Sends to</span><span>kit</span><span class="ash">&#183;</span><span>Harlow Legal</span><span class="ash">&#8250;</span><span style="font-weight: 500;">Q3 report</span><span class="grow"></span><span class="mono stone" style="font-size: 11px;">thread &#183; 4 days</span></div>
-                  <div class="dest"><span class="lbl">Or</span><span class="stone">kit &#183; Harlow Legal &#8250; new thread</span></div>
-                  <div class="cap-note">&#8220;Harlow deck&#8221; matched Q3 report, where kit keeps the deck.</div>
-                </div>
-                <div class="cap-foot"><span>&#9166; send</span><span>&#8595; other destination</span><span>esc close</span></div>
-              </div>
-              <!-- recall -->
-              <div class="st st-recall">
-                <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text">what target cost per lead did Dana give us?</div></div>
-                <div class="cap-sec cap-recall">
-                  <span class="lbl gold">From memory &#183; no model used</span>
-                  <span class="big">$180 per signed lead</span>
-                  <span class="small stone">Down from $220 in July. Dana set it on the 12 Sep call, and kit is auditing ads against it today.</span>
-                </div>
-                <div class="cap-sec"><div class="src"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="#EBC76B" stroke-width="1.5" aria-hidden="true"><path d="M3.5 1.5h6l3 3v10h-9z"/><path d="M6 8h4M6 11h4"/></svg><span>Call notes, 12 Sep</span><span class="ash small">Harlow Legal &#183; &#8220;hold them to 180 a signed lead&#8221;</span></div></div>
-                <div class="cap-foot"><span>&#9166; open source</span><span>&#8677; ask juno instead</span><span>esc close</span></div>
-              </div>
-              <!-- held -->
-              <div class="st st-held">
-                <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text" style="font-size: 15px;">juno drafted a reply to Dana</div><span class="held-chip"><span class="dot beacon" style="width: 6px; height: 6px;"></span>HELD FOR YOU</span></div>
-                <div class="cap-sec mail">
-                  <dl><dt>To</dt><dd class="mono">Dana Reyes &lt;dana@harlow.example&gt;</dd><dt>Subject</dt><dd>Re: Q3 report</dd></dl>
-                  <div class="msg"><span>Hi Dana,</span><span>The Q3 numbers are in the deck now, slide 6. Signed leads came in at $171 each, under your $180 target.</span><span>Alex</span></div>
-                </div>
-                <div class="cap-actions"><span class="btn btn-signal btn-sm">Send <span class="mono" style="letter-spacing: 0;">&#8984;&#9166;</span></span><span class="btn btn-line btn-sm">Edit</span><span class="btn btn-line btn-sm stone">Discard</span><span class="grow"></span><span class="small ash">Rule: email to a client waits for you</span></div>
-              </div>
-              <!-- waiting -->
-              <div class="st st-waiting">
-                <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text ash">Ask, or @agent</div><span class="kbd bone">&#8593;</span></div>
-                <div class="cap-sec" style="padding: 12px 16px 4px; display: flex; justify-content: space-between;"><span class="lbl beacon">Waiting on you &#183; 2</span><span class="small ash">oldest first</span></div>
-                <div style="padding: 4px 6px 6px;">
-                  <div class="wait"><span class="dot beacon"></span><span class="body2"><span style="font-size: 14px; line-height: 20px;">pax wants to email 14 customers the new order form</span><span class="small ash">Northwind Bakery &#183; held by rule: bulk email over 10</span></span><span class="mono stone" style="font-size: 11px; line-height: 20px;">18 min</span></div>
-                  <div class="wait on"><span class="dot beacon"></span><span class="body2"><span style="font-size: 14px; line-height: 20px;">juno drafted a reply to Dana Reyes</span><span class="small ash">Harlow Legal &#8250; Q3 report &#183; email to a client</span></span><span class="mono stone" style="font-size: 11px; line-height: 20px;">6 min</span></div>
-                </div>
-                <div class="cap-foot"><span>&#8593;&#8595; move</span><span>&#9166; review</span><span>A allow</span><span>esc close</span></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- MEMORY -->
-      <section class="sec" id="memory" aria-labelledby="memory-h">
-        <div class="split">
-          <div class="t">
-            <p class="lbl gold">Memory</p>
-            <h2 id="memory-h" class="h1">Gold means it came from your memory.</h2>
-            <p class="body">When Vyre recalls a fact, it shows in gold with where it came from: the call, the thread, the turn. Anything not in gold came from the model. Ask why, and Vyre opens the source.</p>
-            <div class="legend">
-              <div><span class="sw gold"></span>Recalled. No model was used.</div>
-              <div><span class="sw"></span>Written by the model.</div>
-            </div>
-          </div>
-          <div class="panel">
-            <div class="panel-head"><span class="lbl">Harlow Legal &#183; thread</span><span class="mono ash small">kit</span></div>
-            <div class="thread-body">
-              <div class="ask">When does Dana want the drafts, and in what format?</div>
-              <div class="recalled">
-                <span class="lbl gold">Recalled &#183; call notes with Dana Reyes, 3 Mar &#183; no model used</span>
-                <span class="v">Friday before noon. PDFs named by matter number, sent to Dana, not the front desk.</span>
-                <a class="why" href="#memory">Why: turn 41 of &#8220;Harlow weekly, 3 Mar&#8221;</a>
-              </div>
-              <p>Two of the three drafts are ready. I&#39;ll export them as <span class="mono small">HL-2291-engagement.pdf</span> and <span class="mono small">HL-2291-schedule.pdf</span> and hold the third for your review.</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- LEARNING -->
-      <section class="sec" id="learning" aria-labelledby="learning-h">
-        <div class="sec-head">
-          <div class="t">
-            <p class="lbl">Learning</p>
-            <h2 id="learning-h" class="h1">Correct it once. A hook enforces it from then on.</h2>
-          </div>
-          <p class="body">Your corrections, the edits you make to a draft and the tool calls you deny become lessons. Vyre checks each lesson in a hook, so the model can&#39;t forget it. A reply that breaks one goes back to Claude before it reaches you. Break a lesson again and it moves up: remind, then ask, then block.</p>
-        </div>
-        <div class="panel log" role="img" aria-label="A session log: a correction becomes a lesson, a reply that breaks it is sent back and fixed, and a destructive command is held before it runs.">
-          <div class="log-row"><span class="lbl">You correct it</span><span class="tm">09:12</span><div class="ev"><span><span class="bone">you</span>  &#8220;No. Update the changelog before you commit.&#8221;</span><div class="block plain"><span class="lbl">Lesson learned &#183; Harlow Legal &#183; level ask</span><span class="say">Update CHANGELOG.md before any commit.</span><span class="meta">check  commit without a CHANGELOG.md change &#183; source  your message at 09:12</span></div></div></div>
-          <div class="log-row"><span class="lbl">Before the turn ends</span><span class="tm beacon">14:03</span><div class="ev"><div class="line"><span><span class="bone">kit</span>  committed 3 files, CHANGELOG.md untouched</span><span class="beacon">check failed</span></div><div class="block beacon-bg"><span class="lbl beacon">Sent back to kit</span><span class="say">This reply broke a lesson: update the changelog before a commit. Fix it before you finish.</span></div></div></div>
-          <div class="log-row"><span class="lbl">Then</span><span class="tm">14:04</span><div class="ev"><div class="line"><span><span class="bone">kit</span>  updated CHANGELOG.md, amended the commit</span><span>check passed &#183; reply delivered</span></div></div></div>
-          <div class="log-row"><span class="lbl">Before a tool runs</span><span class="tm beacon">14:20</span><div class="ev"><div class="line"><span><span class="bone">Bash</span>  rm -rf exports/2025</span><span class="beacon">held &#183; not run</span></div><div class="block beacon-bg"><span class="lbl beacon">Needs you</span><span class="say">This deletes 214 files. I stopped before running it.</span><span class="meta">rule  ask before deleting anything under exports/</span><span class="acts"><span class="btn btn-line btn-sm">Don&#39;t run</span><span class="btn btn-line btn-sm">Run once</span></span></div></div></div>
-        </div>
-      </section>
-
-      <!-- VAULT -->
-      <section class="sec" id="vault" aria-labelledby="vault-h">
-        <div class="split">
-          <div class="t">
-            <p class="lbl">Vault</p>
-            <h2 id="vault-h" class="h1">One vault for your passwords and your agents&#39; keys.</h2>
-            <p class="body">Keep logins with one-time codes, cards, secure notes, API keys and env sets, with autofill in the browser and on your phone. Import from 1Password, Bitwarden, Chrome or Safari. Agents use a credential without seeing it.</p>
-            <p class="body">Share one item as a pass, and revoke it in one step. When a teammate leaves, one action ends every pass they hold and lists what to rotate, so nobody walks away with your env file.</p>
-          </div>
-          <div class="panel">
-            <div class="panel-head"><span class="lbl">Vault &#183; Rivera Studio</span><span class="mono ash small">values stay sealed</span></div>
-            <div class="vault-row"><span class="nm">Harlow billing portal<span class="k">Login &#183; one-time code</span></span><span class="val">&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;</span><span class="use">used by kit</span></div>
-            <div class="vault-row"><span class="nm">Northwind payments<span class="k">API key</span></span><span class="val">never shown</span><span class="use">used by pax</span></div>
-            <div class="vault-row"><span class="nm">Rivera Studio card<span class="k">Card</span></span><span class="val">&#8226;&#8226;&#8226;&#8226; &#8226;&#8226;&#8226;&#8226;</span><span class="use">autofill</span></div>
-            <div class="vault-row"><span class="nm">harlow-site env<span class="k">Env set &#183; 9 keys</span></span><span class="val">pass &#183; relayed</span><span class="use"><span>Dana Reyes</span><span class="btn btn-line btn-sm">Revoke</span></span></div>
-            <div class="vault-foot">A relayed pass keeps the value on your box. Dana&#39;s calls go through your Gate, and Revoke ends them at once.</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- SECURITY FLOOR -->
-      <section class="sec" id="security" aria-labelledby="security-h">
-        <div class="sec-head">
-          <div class="t">
-            <p class="lbl">Security floor</p>
-            <h2 id="security-h" class="h1">Nine rules no setting can switch off.</h2>
-          </div>
-          <p class="body">Vyre enforces them outside the model, in the Rules hook and the Gate. Section 11 of the spec has the full text.</p>
-        </div>
-        <ol class="floor">
+        <ol class="floor rv">
           <li>Nothing goes out as you until you&#39;ve seen the final words.</li>
           <li>You see where something is going before it goes.</li>
-          <li>A thread is one thing wherever you view it.</li>
-          <li>One screen types into a thread at a time.</li>
-          <li>Every file change shows, including ones a command made without saying so.</li>
-          <li>Only an explicit question from an agent asks for your attention.</li>
+          <li>Every file change shows, including ones a command made quietly.</li>
           <li>Vyre can show the source of anything it tells you.</li>
-          <li>No Vault value appears on any screen, log or event.</li>
+          <li>No vault value appears on any screen, log or event.</li>
           <li>The Capsule works offline on your own Mac.</li>
         </ol>
       </section>
-
-      <!-- HOW IT FITS -->
-      <section class="sec" id="fits" aria-labelledby="fits-h">
-        <div class="sec-head">
-          <div class="t">
-            <p class="lbl">How it fits</p>
-            <h2 id="fits-h" class="h1">Your box. Your Mac. Your tailnet.</h2>
-          </div>
-          <p class="body">Vyre runs on hardware you own, joined by your Tailscale network. The line around this part of the page is that network.</p>
-        </div>
-        <div class="fits">
-          <div class="panel"><span class="lbl">Your box</span><span class="h3">Claude Code and vyred</span><span class="small stone">Projects, memory, the Vault, your assistant, and each agent&#39;s computer with a desktop, Chrome and a terminal.</span></div>
-          <div class="link-h" aria-hidden="true"></div>
-          <div class="panel"><span class="lbl">Your Mac</span><span class="h3 mono" style="font-weight: 500;"><span class="ash">$</span> vyre</span><span class="small stone">Any terminal opens the home. Control twice opens the Capsule over any app.</span></div>
-          <div class="link-h" aria-hidden="true"></div>
-          <div class="panel"><span class="lbl">Your phone</span><span class="h3">Approvals and Glass</span><span class="small stone">Held drafts and tool calls reach you wherever you are.</span></div>
-        </div>
-        <div class="facts">
-          <div><span class="h3" style="font-size: 17px; line-height: 24px;">Only your devices can open <span class="mono" style="font-weight: 500;" data-host>yourname.vyre.run</span>.</span><span class="small stone">The name points at your box&#39;s Tailscale address. Tailscale identifies you, so there is no separate login.</span></div>
-          <div><span class="h3" style="font-size: 17px; line-height: 24px;">Nobody sees anyone else&#39;s anything.</span><span class="small stone">Your sessions, memory and vault stay on your box and your Mac.</span></div>
-        </div>
-      </section>
     </div>
 
-    <div class="gate gate-bottom" aria-hidden="true"><span class="g lbl" style="font-size: 11px;">End of your tailnet</span></div>
+    <div class="gate gate-bottom" aria-hidden="true"><span class="g lbl">End of your network</span></div>
   </div>
 
   <div class="wrap outside">
     <div class="outside-in">
       <span class="stem" aria-hidden="true"></span>
-      <div class="t"><span class="lbl">Outside the line &#183; Vyre AI</span><span class="small stone">Runs the name directory at vyre.run, which holds one DNS record for your name. No user data.</span></div>
+      <div class="t"><span class="lbl">Outside the line &#183; vyre.run</span><span class="xs stone">Holds one DNS record for your name. None of your data.</span></div>
     </div>
   </div>
 
+  <!-- FAQ -->
+  <section class="faq-sec" id="faq" aria-labelledby="faq-h">
+    <div class="wrap">
+      <div class="faq-grid">
+        <div class="rv">
+          <p class="lbl">Questions</p>
+          <h2 id="faq-h" class="h1">Good questions, straight answers.</h2>
+        </div>
+        <div class="faq rv">
+          <details>
+            <summary>Is it free?</summary>
+            <p>Yes. Vyre is open source under Apache 2.0. You bring your own Claude subscription or an Anthropic API key, and your agents run on it.</p>
+          </details>
+          <details>
+            <summary>Where does my data live?</summary>
+            <p>On your box and your Mac. vyre.run only holds one DNS record for your name, so your address can find your box. None of your sessions, memory or vault pass through it.</p>
+          </details>
+          <details>
+            <summary>Do I need a server?</summary>
+            <p>A Linux box with Docker is the best home for Vyre, since your agents keep working when your Mac sleeps. You can also start on your Mac and add a box later.</p>
+          </details>
+          <details>
+            <summary>Does it replace Claude Code?</summary>
+            <p>No. Vyre plugs into Claude Code as a plugin, with one small daemon beside it. You keep using Claude Code, with memory, a vault, agents and the Capsule around it.</p>
+          </details>
+          <details>
+            <summary>What is Tailscale for?</summary>
+            <p>Tailscale joins your box, your Mac and your phone into one private network. Your address only opens from devices on it, and Tailscale already knows it&#39;s you, so there is no separate login. The free plan is enough.</p>
+          </details>
+          <details>
+            <summary>Is it ready?</summary>
+            <p>It&#39;s 0.1.0, which means early. What this page shows works today, except what carries a <span class="chip chip-inline">coming</span> chip. Expect rough edges, and tell us about them on GitHub.</p>
+          </details>
+          <details>
+            <summary>Does it run on Windows?</summary>
+            <p>Not yet. The box runs on Linux and the Capsule on macOS. The Deck opens in any browser on your network.</p>
+          </details>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FINAL CTA -->
   <section class="closing" aria-labelledby="end-h">
     <div class="wrap">
-      <h2 id="end-h" class="h1">One command, then your own address.</h2>
-      <div class="install install-small">
-        <div class="cmd cmd-small"><span class="prompt" aria-hidden="true">$</span><code>npm install -g <span class="pkg">vyre</span></code></div>
-        <button class="btn btn-signal" type="button" data-copy="npm install -g vyre" aria-label="Copy the install command">
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
-          <span class="txt" data-copy-label>Copy</span>
-        </button>
-      </div>
-      <p class="after2"><span>then <span class="bone">vyre up</span></span><span class="ash" aria-hidden="true">&#183;</span><span>up at <span class="bone" data-host>yourname.vyre.run</span></span><span class="ash" aria-hidden="true">&#183;</span><span class="keys" aria-hidden="true"><span class="kc">⌃</span><span class="kc">⌃</span></span><span><span class="sr-only">Control twice</span> on your Mac</span></p>
-      <div class="oss">
-        <span class="bone">Open source under Apache 2.0.</span>
-        <a class="mono" href="https://github.com/vyre-ai/vyre">github.com/vyre-ai/vyre <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-        <a href="https://github.com/vyre-ai/vyre#readme">Docs <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
-        <span class="stone">Needs Node 22.5 or newer, Claude Code and Tailscale.</span>
+      <div class="closing-in rv">
+        <h2 id="end-h" class="h-display small-d">Let&#39;s get to work.</h2>
+        <div class="install install-end" data-install>
+          <div class="install-cmd">
+            <span class="prompt" aria-hidden="true">$</span>
+            <code class="cmd" id="cmd-end">curl -fsSL https://vyre.run/install.sh<wbr> | sh</code>
+            <button class="btn btn-signal copy" type="button" data-copy="curl -fsSL https://vyre.run/install.sh | sh" data-copy-target="cmd-end" aria-label="Copy the install command">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="4.5" y="4.5" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.4"/><path d="M9.5 2.5H3.5A1 1 0 0 0 2.5 3.5V9.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              <span class="txt">Copy</span>
+            </button>
+          </div>
+          <div class="itabs" role="tablist" aria-label="Where you install Vyre">
+            <button class="itab" type="button" role="tab" id="e-tab-linux" aria-controls="e-pan-linux" aria-selected="true">Linux box</button>
+            <button class="itab" type="button" role="tab" id="e-tab-mac" aria-controls="e-pan-mac" aria-selected="false" tabindex="-1">Mac</button>
+            <button class="itab" type="button" role="tab" id="e-tab-needs" aria-controls="e-pan-needs" aria-selected="false" tabindex="-1">What it needs</button>
+          </div>
+          <div class="ipanel" role="tabpanel" id="e-pan-linux" aria-labelledby="e-tab-linux" tabindex="0">
+            <p>Run the line above on your Linux box. It needs Docker (the installer asks before adding it), sets up in <code>/srv/vyre</code>, then hands you your onboarding link.</p>
+          </div>
+          <div class="ipanel" role="tabpanel" id="e-pan-mac" aria-labelledby="e-tab-mac" tabindex="0" hidden>
+            <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-mac">npm install -g https://vyre.run/box/vyre.tgz</code><button class="btn btn-line btn-sm copy" type="button" data-copy="npm install -g https://vyre.run/box/vyre.tgz" data-copy-target="cmd-end-mac" aria-label="Copy the Mac install command">Copy</button></div>
+            <div class="mini-cmd"><span class="prompt" aria-hidden="true">$</span><code id="cmd-end-up">vyre up</code><button class="btn btn-line btn-sm copy" type="button" data-copy="vyre up" data-copy-target="cmd-end-up" aria-label="Copy vyre up">Copy</button></div>
+            <p>Vyre is not on npm yet, so it installs from the same tarball the box uses.</p>
+          </div>
+          <div class="ipanel" role="tabpanel" id="e-pan-needs" aria-labelledby="e-tab-needs" tabindex="0" hidden>
+            <ul class="needs">
+              <li><span class="lbl">Mac</span><span>Node 22.5 or newer</span></li>
+              <li><span class="lbl">Linux box</span><span>Docker Compose 2.24 or newer</span></li>
+              <li><span class="lbl">Claude</span><span>A subscription or an API key</span></li>
+              <li><span class="lbl">Network</span><span>Tailscale (the free plan is enough)</span></li>
+            </ul>
+          </div>
+          <div class="install-foot">
+            <a class="arrow" href="start/">The full steps, in order</a>
+            <span class="copied" data-copied role="status" aria-live="polite"></span>
+          </div>
+        </div>
+        <p class="gh"><a class="mono" href="https://github.com/vyre-ai/vyre">github.com/vyre-ai/vyre <svg width="14" height="14" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M3.5 8.5L8.5 3.5M4.5 3.5H8.5V7.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></a><span class="stone">Star it, read it, fork it.</span></p>
       </div>
     </div>
   </section>
@@ -415,62 +532,28 @@
 
 <footer class="foot">
   <div class="wrap">
-    <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+    <div class="foot-mark">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="#F1EEE6" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3" fill="#C6F36B"/></svg>
-      <span class="lbl">Vyre Platform &#183; Vyre Agent &#183; Vyre AI</span>
+      <span class="stone">Made for people who like finishing things.</span>
     </div>
     <nav class="foot-links" aria-label="Footer">
       <a href="https://github.com/vyre-ai/vyre">GitHub</a>
       <a href="https://github.com/vyre-ai/vyre#readme">Docs</a>
-      <a href="#top">vyre.run</a>
+      <a href="start/">Start</a>
+      <a href="https://github.com/vyre-ai/vyre/blob/main/LICENSE">License</a>
     </nav>
   </div>
 </footer>
 
-<!-- The Capsule demo: Control twice opens it, Esc closes it. -->
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<!-- The floating Capsule: ⌥Space opens it (or Control twice, if turned on), Esc closes it. app.js fills it from the hero Capsule. -->
 <dialog class="demo" id="demo" aria-labelledby="demo-h">
   <div class="demo-head">
-    <h2 id="demo-h">Press <span class="keys" aria-hidden="true"><span class="kc">⌃</span><span class="kc">⌃</span></span><span class="sr-only">Control twice</span> anywhere on vyre.run</h2>
-    <button class="demo-close" type="button" data-close-demo aria-label="Close the demo"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
+    <h2 id="demo-h"><span class="keys" aria-hidden="true"><span class="kc">&#8997;Space</span></span><span>The Capsule</span><span class="lbl">sample data</span></h2>
+    <button class="demo-close" type="button" data-close-demo aria-label="Close the Capsule"><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M3 3L11 11M11 3L3 11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></button>
   </div>
-  <div class="capsule" id="cap-demo" data-state="typing">
-    <div class="st st-typing">
-      <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><label class="sr-only" for="cap-field">Ask, or @agent</label><input id="cap-field" class="cap-field" type="text" placeholder="Ask, or @agent" autocomplete="off" spellcheck="false" aria-describedby="cap-dest"><span class="kbd">&#9166;</span></div>
-      <div class="cap-sec" style="padding: 6px;" id="cap-dest" aria-live="polite">
-        <div class="dest on"><span class="lbl sig">Sends to</span><span data-dest-name>juno</span><span class="ash">&#183;</span><span data-dest-where>your assistant</span><span class="grow"></span><span class="mono stone" style="font-size: 11px;" data-dest-note>default</span></div>
-        <div class="cap-note" data-dest-hint>Type @kit, @pax or @juno to pick an agent.</div>
-      </div>
-      <div class="cap-foot"><span>&#9166; send</span><span>&#8593; waiting on you</span><span>esc close</span></div>
-    </div>
-    <div class="st st-recall">
-      <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text">what target cost per lead did Dana give us?</div></div>
-      <div class="cap-sec cap-recall"><span class="lbl gold">From memory &#183; no model used</span><span class="big">$180 per signed lead</span><span class="small stone">Down from $220 in July. Dana set it on the 12 Sep call.</span></div>
-      <div class="cap-foot"><span>&#9166; open source</span><span>esc close</span></div>
-    </div>
-    <div class="st st-held">
-      <div class="cap-in"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 4L8 13L11.52 7.24" stroke="#F1EEE6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="13.5" cy="4" r="1.8" fill="#C6F36B"/></svg><div class="cap-text" style="font-size: 15px;">juno drafted a reply to Dana</div><span class="held-chip"><span class="dot beacon" style="width: 6px; height: 6px;"></span>HELD FOR YOU</span></div>
-      <div class="cap-sec mail"><dl><dt>To</dt><dd class="mono">Dana Reyes &lt;dana@harlow.example&gt;</dd><dt>Subject</dt><dd>Re: Q3 report</dd></dl><div class="msg"><span>Hi Dana,</span><span>The Q3 numbers are in the deck now, slide 6.</span><span>Alex</span></div></div>
-      <div class="cap-actions"><button class="btn btn-signal btn-sm" type="button" data-demo-send>Send</button><button class="btn btn-line btn-sm" type="button" data-demo-send>Edit</button><span class="grow"></span><span class="small ash">Rule: email to a client waits for you</span></div>
-    </div>
-    <div class="st st-waiting">
-      <div class="cap-sec" style="border-top: none; padding: 14px 16px 4px; display: flex; justify-content: space-between;"><span class="lbl beacon">Waiting on you &#183; 2</span><span class="small ash">oldest first</span></div>
-      <div style="padding: 4px 6px 6px;">
-        <div class="wait"><span class="dot beacon"></span><span class="body2"><span style="font-size: 14px; line-height: 20px;">pax wants to email 14 customers the new order form</span><span class="small ash">Northwind Bakery &#183; held by rule: bulk email over 10</span></span></div>
-        <div class="wait on"><span class="dot beacon"></span><span class="body2"><span style="font-size: 14px; line-height: 20px;">juno drafted a reply to Dana Reyes</span><span class="small ash">Harlow Legal &#8250; Q3 report</span></span></div>
-      </div>
-      <div class="cap-foot"><span>&#8593;&#8595; move</span><span>&#9166; review</span><span>esc close</span></div>
-    </div>
-  </div>
-  <div class="demo-tabs">
-    <div class="g" role="group" aria-label="Capsule states" data-cap-tabs="cap-demo">
-      <button class="dtab" type="button" data-state="typing" aria-pressed="true">Typing</button>
-      <button class="dtab" type="button" data-state="recall" aria-pressed="false">Recall</button>
-      <button class="dtab" type="button" data-state="held" aria-pressed="false">Held</button>
-      <button class="dtab" type="button" data-state="waiting" aria-pressed="false">Waiting</button>
-    </div>
-    <span class="lbl">Demo &#183; sample data</span>
-  </div>
-  <p class="demo-status" data-demo-status aria-live="polite"></p>
+  <div id="demo-mount"></div>
   <p class="demo-foot">On your Mac the Capsule opens over any app and is gone when you&#39;re done. Here, nothing you type leaves this page.</p>
 </dialog>
 </body>

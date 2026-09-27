@@ -187,7 +187,7 @@ test("a 1,500-turn tail opens windowed: the mounted rows stay under 150, stuck t
   assert.ok(n > 5 && n < 150, `mounted ${n}`);
   assert.ok(timeline.children.length < 150);
   assert.equal(timeline.scrollTop + VIEW, timeline.scrollHeight, "at the bottom");
-  assert.match(text(timeline.children.at(-2)), /Done with case 1999|1\.2k in/, "the last turn is mounted");
+  assert.match(text(timeline.children.at(-2)), /Done with case 1999|\d(\.\d)?k tokens/, "the last turn is mounted");
 });
 
 test("history loads above without a jump, and the whole 2,000 turns stay bounded", async () => {

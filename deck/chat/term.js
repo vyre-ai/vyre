@@ -27,17 +27,20 @@
 //  - the size: one screen owns it (the first to attach, or the last to Take size) and only its
 //    size resizes the shell. The box says {"t":"size",cols,rows,"owner"} after the "at" and on every
 //    change. Owning, this screen fits and sends its size as before. Not owning, it draws at the
-//    owner's size, scaled down to fit (letterboxed, never reflowed), and shows "Watching at
-//    <cols>x<rows> · Take size"; its own fitted size still goes to the box as the size it would
+//    owner's size, scaled down to fit (letterboxed, never reflowed), and shows the watch line
+//    ("This phone is watching. Size is owned by ...", with Take size); its own fitted size still goes to the box as the size it would
 //    like. A box that sends no size frames: fit and send, no Take size (lib/term-link.js);
-//  - on a phone a key bar gives Esc, Tab, Ctrl, Alt, arrows and Paste;
+//  - the view fills the Chat content area (term.css), and xterm refits whenever its box changes
+//    (window resize, orientation, the phone keyboard): one ResizeObserver on the screen;
+//  - on a phone a key bar of two rows of seven (lib/term-link.js KEY_ROWS) docks above the home
+//    indicator, or above the keyboard while it is up (--kb-lift, deck.css);
 //  - no timers but the reconnect wait. Every string from the box is a text node (deck/js/dom.js).
 
-import { h, put, go } from "../js/dom.js";
+import { h, put, go, isPhone } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { surfaceId } from "../glass/util.js";
-import { linkVerdict, holdKeys, withFrom, withMods, arrow, step, reopened, onClose, onAttachError, remember,
-  unsized, sizeReopened, drawAt, watching, onFit, onSizeFrame, takeSize, watchLabel, letterbox } from "./lib/term-link.js";
+import { linkVerdict, holdKeys, withFrom, withMods, step, reopened, onClose, onAttachError, remember,
+  unsized, sizeReopened, drawAt, watching, onFit, onSizeFrame, takeSize, watchLabel, letterbox, KEYS, KEY_ROWS, keySend, lineHeightFor } from "./lib/term-link.js";
 
 /** Tickets term.open already issued, so the first mount needs no second round trip. One use, 30 s. */
 /** @type {Map<string, { path: string, cwd: string, until: number }>} */
@@ -110,20 +113,51 @@ function loadXterm() {
 function theme() {
   const cs = getComputedStyle(document.documentElement);
   const v = (name, dflt) => cs.getPropertyValue(name).trim() || dflt;
-  // ANSI colours are the terminal's, not tokens: yellow has no design role, so it is a literal per theme.
-  const yellow = document.documentElement.dataset.theme === "paper" ? "#7E5B0C" : "#EBC76B";
+  // Spec (terminal.md, Colour mapping): ANSI folds onto the roles and lime; no other hue, and
+  // never the beacon colour. Paths (blue) in --text-2, user and host in --label, success in --focus.
+  const text = v("--text", "#F1EEE6"), text2 = v("--text-2", "#B3AEA4"), label = v("--label", "#8C877D"), focus = v("--focus", "#C6F36B");
   return {
-    background: v("--panel", "#161513"), foreground: v("--text", "#F1EEE6"),
-    cursor: v("--focus", "#C6F36B"), cursorAccent: v("--panel", "#161513"),
+    background: v("--code-bg", "#121110"), foreground: text,
+    cursor: focus, cursorAccent: v("--code-bg", "#121110"),
     selectionBackground: v("--rule-strong", "#3A3733"),
-    red: v("--beacon-ink", "#B8A4FF"), brightRed: v("--beacon-dot", "#B8A4FF"),
-    green: v("--focus", "#C6F36B"), brightGreen: v("--focus", "#C6F36B"),
-    yellow, brightYellow: yellow,
-    brightBlack: v("--label", "#8C877D"),
+    black: label, brightBlack: label,
+    red: text, brightRed: text,
+    green: focus, brightGreen: focus,
+    yellow: text2, brightYellow: text,
+    blue: text2, brightBlue: text2,
+    magenta: label, brightMagenta: text2,
+    cyan: text2, brightCyan: text,
+    white: text2, brightWhite: text,
   };
 }
 
 const monoFont = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "ui-monospace, Menlo, monospace";
+
+/** Spec: screen type mono 12/18 on every surface. */
+const FONT_PX = 12, ROW_PX = 18;
+
+/** The mono font's own line at 12 px, as xterm measures it (a span, line-height normal). */
+function charHeight() {
+  const span = h("span", { "aria-hidden": "true", style: { position: "absolute", visibility: "hidden", whiteSpace: "pre", fontFamily: monoFont(), fontSize: `${FONT_PX}px`, lineHeight: "normal" } }, "W");
+  document.body.append(span);
+  const px = span.getBoundingClientRect().height;
+  span.remove();
+  return px;
+}
+
+/** "This phone" in the phone layout (deck.css), else "This screen". */
+const selfWord = () => (isPhone() ? "phone" : "screen");
+
+const SVG = "http://www.w3.org/2000/svg";
+/** The eye on the watch line (no eye in deck/js/icons.js yet). */
+function eyeIcon() {
+  const svg = document.createElementNS(SVG, "svg");
+  for (const [k, v] of Object.entries({ width: "16", height: "16", viewBox: "0 0 16 16", fill: "none", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", class: "term-watch-eye" })) svg.setAttribute(k, v);
+  const p = document.createElementNS(SVG, "path"); p.setAttribute("d", "M1.5 8s2.4-4.5 6.5-4.5S14.5 8 14.5 8s-2.4 4.5-6.5 4.5S1.5 8 1.5 8z");
+  const c = document.createElementNS(SVG, "circle"); c.setAttribute("cx", "8"); c.setAttribute("cy", "8"); c.setAttribute("r", "2");
+  svg.append(p, c);
+  return svg;
+}
 
 /**
  * Draw a live terminal in container. Returns cleanup, which closes the socket; the box keeps the
@@ -167,27 +201,33 @@ export function mountTerminal(container, { term, onBack }) {
   const back = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => onBack?.() }, "Back");
   const closeBtn = h("button", { type: "button", class: "btn btn-sm", onclick: () => closeIt() }, "Close");
   const note = h("div", { class: "term-note", role: "status", "aria-live": "polite", hidden: true });
-  const screen = h("div", { class: "term-screen" });
+  const screen = h("div", { class: "term-screen", role: "application", "aria-label": "Terminal" });
   const watchWords = h("span", { class: "term-watch-words" }, "");
-  const takeBtn = h("button", { type: "button", class: "term-take", title: "Size the terminal to this screen", onclick: () => take() }, "Take size");
-  const watch = h("span", { class: "term-watch", hidden: true }, watchWords, h("span", { class: "term-watch-sep", "aria-hidden": "true" }, " · "), takeBtn);
+  const takeBtn = h("button", { type: "button", class: "btn term-take", title: "Size the terminal to this screen", onclick: () => take() }, "Take size");
+  // Spec: its own line above the screen while another device owns the size.
+  const watch = h("div", { class: "term-watch", hidden: true }, eyeIcon(), watchWords, takeBtn);
 
   /** A key-bar button: it never takes focus from the terminal. @param {string} label @param {() => void} act @param {object} [attrs] */
   const key = (label, act, attrs = {}) => h("button", { type: "button", class: "term-key", onpointerdown: e => e.preventDefault(), onclick: () => { act(); xt?.focus(); }, ...attrs }, label);
-  const ctrlKey = key("Ctrl", () => toggle("ctrl"), { "aria-pressed": "false" });
-  const altKey = key("Alt", () => toggle("alt"), { "aria-pressed": "false" });
   const app = () => Boolean(xt && xt.modes && xt.modes.applicationCursorKeysMode);
+  /** @type {Record<string, HTMLElement>} */ const modKeys = {};
   const keys = h("div", { class: "term-keys", role: "toolbar", "aria-label": "Terminal keys" },
-    key("Esc", () => input("\x1b")), key("Tab", () => input("\t")), ctrlKey, altKey,
-    key("←", () => input(arrow("left", app())), { "aria-label": "Left" }),
-    key("↑", () => input(arrow("up", app())), { "aria-label": "Up" }),
-    key("↓", () => input(arrow("down", app())), { "aria-label": "Down" }),
-    key("→", () => input(arrow("right", app())), { "aria-label": "Right" }),
-    key("Paste", () => paste()));
+    KEY_ROWS.flat().map(id => {
+      const k = KEYS[id];
+      const attrs = { "data-key": id, ...(k.aria ? { "aria-label": k.aria } : {}), ...(k.mod ? { "aria-pressed": "false" } : {}) };
+      const b = key(k.label, () => {
+        if (k.mod) toggle(k.mod);
+        else if (k.paste) paste();
+        else { const d = keySend(id, app()); if (d !== null) input(d); }
+      }, attrs);
+      if (k.mod) modKeys[k.mod] = b;
+      return b;
+    }));
+  const ctrlKey = modKeys.ctrl, altKey = modKeys.alt;
 
   const root = h("section", { class: "term", "aria-label": "Terminal" },
-    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), watch, closeBtn),
-    note, screen, keys);
+    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), closeBtn),
+    watch, note, screen, keys);
   put(container, root);
 
   /** @param {"connecting"|"live"|"waiting"|"ended"|"error"|"blocked"|"gone"} state @param {string} [msg] @param {any} [action] */
@@ -207,6 +247,7 @@ export function mountTerminal(container, { term, onBack }) {
     const parts = cwd.split("/").filter(Boolean);
     where.textContent = parts.length ? parts[parts.length - 1] : "/";
     where.setAttribute("title", cwd);
+    screen.setAttribute("aria-label", `Terminal, ${where.textContent}`);
   };
   setWhere(cwd);
 
@@ -248,7 +289,7 @@ export function mountTerminal(container, { term, onBack }) {
   function showWatch() {
     const on = watching(sizing) && root.dataset.state === "live" && !ended;
     watch.hidden = !on;
-    if (on) watchWords.textContent = watchLabel(sizing);
+    if (on) watchWords.textContent = watchLabel(sizing, selfWord());
   }
 
   /**
@@ -268,10 +309,10 @@ export function mountTerminal(container, { term, onBack }) {
       return;
     }
     root.dataset.watching = "";
-    const drawn = /** @type {HTMLElement|null} */ (el.querySelector(".xterm-screen"));
+    // The xterm element carries the screen's padding (term.css), so its whole box is what is drawn.
     const cs = getComputedStyle(screen);
     const box = { w: screen.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight), h: screen.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) };
-    const lb = letterbox({ w: drawn?.offsetWidth || 0, h: drawn?.offsetHeight || 0 }, box);
+    const lb = letterbox({ w: el.offsetWidth || 0, h: el.offsetHeight || 0 }, box);
     el.style.transformOrigin = "0 0";
     el.style.transform = `translate(${lb.x}px, ${lb.y}px) scale(${lb.scale})`;
   }
@@ -313,7 +354,9 @@ export function mountTerminal(container, { term, onBack }) {
     try { X = await loadXterm(); } catch { status("error", "The terminal did not load."); return; }
     if (dead) return;
     if (!xt) {
-      xt = new X.Terminal({ theme: theme(), fontFamily: monoFont(), fontSize: 13, lineHeight: 1.2, cursorBlink: true, scrollback: 5000, allowProposedApi: false });
+      const still = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+      xt = new X.Terminal({ theme: theme(), fontFamily: monoFont(), fontSize: FONT_PX, lineHeight: lineHeightFor(ROW_PX, charHeight()),
+        cursorBlink: !still, scrollback: 5000, allowProposedApi: false });
       fit = new X.FitAddon();
       xt.loadAddon(fit);
       xt.open(screen);
@@ -325,6 +368,13 @@ export function mountTerminal(container, { term, onBack }) {
       // The Deck switches light and dark on <html data-theme>; follow it.
       mo = new MutationObserver(() => { if (xt) xt.options.theme = theme(); });
       mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "class"] });
+      // JetBrains Mono swaps in after the fallback: measure its line again, then refit.
+      document.fonts?.ready?.then(() => {
+        if (!xt || dead) return;
+        const lh = lineHeightFor(ROW_PX, charHeight());
+        if (lh !== xt.options.lineHeight) xt.options.lineHeight = lh;
+        fitAndSend();
+      }, () => {});
       draw();
     }
     const r = await ticket();
