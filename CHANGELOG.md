@@ -79,6 +79,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - scripts/eval-answer.js replays the reads from test/eval/reads/<world>.json, so CI calls no
   model. `--record` records them with `claude -p` and `--no-model` scores the rules alone.
 
+#### `vyre up` never asks a box to pair on its own
+
+- `vyre up` on a Mac sends a box a pairing request only when the person asked for that box:
+  `--connect <address>` (onboarding's "I already set up a box" too), a yes to its question on a
+  terminal, or `vyre link pair`. A box named in config, or the one found on the tailnet, gets
+  nothing just because Vyre started; `vyre up` says how to pair instead.
+- A home other than ~/.vyre never talks to a real box (not even to check it answers) unless
+  VYRE_ALLOW_REAL_BOX=1; VYRE_ALLOW_DIALOGS=1 no longer counts for boxes. A box on this machine's
+  loopback (a dev world) is always fine.
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or

@@ -209,17 +209,37 @@ Plan (to the lead before building):
   cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
   session raises the bar from one curl to stealing a browser's store.
 
-## Doing (27 Sep, after logout 3)
+## Doing (27 Sep, LOGOUT 4 save)
 
-Deploy blocker done: work/e2e 21ac4910 to the integrator (spawnAsAgent wiring, the split OFF by
-default per the lead's (c), sessions.spawner / VYRE_SESSIONS_SPAWNER; check.sh passes both ways).
-Next: the headscale gate on the candidate sha box-deploy forwards (setup in /srv/vyre-e2e;
-run1/run2/run3 plus the person-session checks). pwa takes its api.js at merge (keep personCode).
+Branches:
+- work/e2e (this worktree): all my work. Tip = the save commit. Contains: person session, Mac signin,
+  Secure Enclave key, relay device sign-in and web passkey, vyre:// + human key, the uid split (off
+  by default, sessions.spawner), per-thread socket (efb02b2c), floor follows links (3f2babe2),
+  no auto-pair on vyre up (f81bb184/9fc65458), phone vault sessions (e5aaf881). Last sent to the
+  integrator: bb0415f8 (batch 3b); 9fc65458 queued for batch 4.
+- work/e2e-sdk (worktree ../vyre-e2e-sdk): the journey 4 fix 8aed4887 on pre/3b 6df7efb9 (SDK
+  auto-install only in ~/.vyre; npm in its own group, aborted on stop). Sent to the integrator.
 
-
-/srv/vyre-e2e; `./run1.sh`, `./run2.sh <link>`, `./run3.sh`, then the person-session checks in
-the 27 Sep notes above). Follow up: sessions' three changes, glass-live's two HIGH, relay's
-relay.device.presence.
+Next, in order:
+1. The headscale gate on tonight's candidate sha (box-deploy forwards it). Setup kept in
+   /srv/vyre-e2e (CA, NSS db). Build `docker build -t vyre-e2e:local -f box/Dockerfile .` from that
+   sha on testbox, then `./run1.sh`, `./run2.sh <link>`, `./run3.sh` (run3 uses `vyre up --connect`),
+   then the person-session checks (curl from the Mac node gets 401; the Deck's first action signs in;
+   `vyre link signin`; a claude-parented call and its orphan refused). A cloned passkey on the phone
+   makes the Mac's counter go backwards: bump signCount or re-add. Tear down: `docker compose
+   --profile mac --profile phone --profile computers down -v` in /srv/vyre-e2e; kill drive*.pid.
+   Report pass/fail per item to box-deploy and the lead.
+2. Re-review native-core when it sends a sha. Open: settings.set/reset into PERSON_ONLY and refuse
+   agent labels (HIGH 1); module-declared stores: home modules only own tools as module:<name>, own
+   config paths, no claude store, checked at load; CALL_AS scoped to core modules' declared setter
+   tools (HIGH 2). platform's settings.write e4515fb6 is approved, lands after.
+3. Batch 4: no auto-pair (9fc65458).
+4. Per-thread socket with sessions: they wire VYRE_SOCKET in spawnSession and client.js, then flip
+   sessions.spawner to "on"; rebuild the image and run scripts/e2e-split/check.sh (it now also checks
+   /run/vyre-threads).
+Also open: glass-live MEDIUMs (docs/work/glass-live.md); sessions' bypass checks (hook floor, refuse
+bypass without the harness plugin); the phone's two identities (tailnet node vs relay device) is a
+design item for the lead.
 
 ## Earlier (27 Sep, after the restart)
 
