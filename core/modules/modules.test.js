@@ -317,3 +317,17 @@ test("modules: the owner's Deck at the box's tailnet address may use what the De
   assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
   assert.equal(callerAllowed(null, "anonymous"), true);
 });
+
+test("modules: declaredTips lists the teaches.tips of running modules, a home module as not first-party", async t => {
+  const tip = { id: "rye", text: "Rye orders show in Now.", surfaces: ["deck"], level: "first-use", trigger: "on-use", since: "1.0.0" };
+  const peek = `export default { async start(ctx) { globalThis.__tipsPeek = ctx.declaredTips; return { async stop() {} }; } };`;
+  const quiet = `export default { async start() { return { async stop() {} }; } };`;
+  await registry(t, [
+    ["bakery", { name: "bakery", version: "1.0.0", teaches: { tips: [tip] } }, quiet],
+    ["oven", { name: "oven", version: "0.1.0", teaches: {} }, quiet],
+    ["peek", { name: "peek", version: "0.1.0" }, peek],
+  ]);
+  const list = /** @type {any} */ (globalThis).__tipsPeek();
+  delete (/** @type {any} */ (globalThis).__tipsPeek);
+  assert.deepEqual(list, [{ module: "bakery", version: "1.0.0", firstParty: false, tips: [tip] }]);
+});

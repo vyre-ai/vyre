@@ -1,0 +1,16 @@
+{
+  "name": "tips",
+  "version": "0.1.0",
+  "description": "One short tip at a time about the part of Vyre you are using, the parts you have not tried, and what an update brought. Each module ships its own tips; this one chooses, never nags, and turns off in Settings.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["tips.next", "tips.seen", "tips.used", "tips.dismiss", "tips.whatsnew", "tips.list", "tips.reset"] },
+  "watches": { "emits": ["tips.updated"] },
+  "shows": { "cli": ["tips"] },
+  "settings": [
+    { "key": "tips.enabled", "group": "tips", "label": "Show tips", "help": "One short line at a time about what you are using. Off hides every tip, on every device.", "type": "bool", "levels": ["account"], "apply": "live", "default": true },
+    { "key": "tips.gap_minutes", "group": "tips", "label": "Time between tips", "help": "At most one tip per screen in this many minutes, and six a day in all.", "type": "int", "choices": [15, 30, 60, 240], "levels": ["account"], "apply": "live", "default": 30 }
+  ],
+  "needs": {},
+  "teaches": { "tips": [] }
+}
