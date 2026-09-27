@@ -114,7 +114,7 @@ Run from the repository root. A targeted run skips the `tmp-guard` wrapper, so c
 
 ## Measured, not only passed
 
-- `npm run perf-check` (`scripts/perf-check`) holds `vyred` to the idle budget in [Section 2 of the spec](../architecture/spec.md#2-principles), principle 8. It builds a throwaway home, seeds the fixture corpus plus a synthetic one of about 20,000 turns, starts a real `vyred`, waits for indexing to finish, then samples it for 60 seconds of idle. It fails on CPU above budget, resident memory over 150 MB, or any timer that repeats faster than once a minute. CI runs it after `npm test`. See [Performance](../architecture/performance.md).
+- `npm run perf-check` (`scripts/perf-check`) holds `vyred` to the idle budget in [Section 2 of the spec](../architecture/spec.md#2-principles), principle 8. It builds a throwaway home, seeds the fixture corpus plus a synthetic one of about 20,000 turns, starts a real `vyred`, waits for indexing to finish, then samples it for 60 seconds of idle. It fails on CPU above budget, a settled resident size over 150 MB, a startup peak over 200 MB in the first 30 seconds, or any timer that repeats faster than once a minute. CI runs it after `npm test`. See [Performance](../architecture/performance.md).
 - `npm run eval:memory` (`scripts/eval-memory.js`) scores memory on a fictional world: whether facts are right, and that none leaks from one project to another. `test/eval/memory-eval.test.js` runs it under `npm test` against `test/eval/memory-baseline.json`; `npm run eval:memory -- --write-baseline` rewrites the baseline.
 - `npm run docs:check` holds these docs to their contract. See [Writing the docs](../CONTRIBUTING-DOCS.md).
 

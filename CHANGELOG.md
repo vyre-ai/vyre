@@ -98,8 +98,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - .github/workflows/app.yml for apps/app (its own lockfile): typecheck and tests on every push;
   the web export with its gzipped JS size in the run summary; an Android debug APK and an
   UNSIGNED release APK, vyre-<version>-<sha7>.apk, with android.json (version, versionCode, sha,
-  sha256, size, minSdk, built, file) read from the APK, for the box to sign with the owner's own
-  key (no Vyre-wide release key). A copy signed with a per-run throwaway key is checked with
+  sha256, size, minSdk, built, file, signer "none", cert_sha256 null) read from the APK, for the
+  box to sign with the owner's own key (no Vyre-wide release key; the box fills signer and
+  cert_sha256). A push to main publishes release android-<version>-<sha7> with both files. A copy signed with a per-run throwaway key is checked with
   apksigner verify, and so is the output of apps/app/scripts/sign-apk.mjs (the box's pure-JS
   signer) once it exists; the NDK 27.1 and CMake 3.22 that modules/vyre-signer fetches are cached. The iOS
   simulator build only when dispatched with `ios: true`. No EAS, no Expo account. Skips until
@@ -128,6 +129,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   Node 24 a late write recreated the temp home and tmp-guard failed the job.
 - test/tmp-guard.mjs lists up to 20 paths inside each leaked dir, so a late writer names itself.
 - node.yml skips pushes to `work/ci-*`, ci's throwaway branches that prove one other workflow.
+- scripts/perf-check: the idle RSS budget (150 MB) reads the settled size, the highest of the last
+  8 samples once they sit within 3 MB (the window runs on to 120 s until they do); a new startup
+  budget holds the first 30 s from spawn under 200 MB. vyred kept the indexing pass's heap
+  (about 160 MB) for some 20 s and then settled near 90 MB, so RSS max failed every run. Mean and
+  max RSS still print. On testbox: settled 87.3 / 84.0 MB, startup peak 150.3 / 154.2 MB.
 
 #### A stopped vyred leaves a removed home removed
 
