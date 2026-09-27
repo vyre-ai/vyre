@@ -83,7 +83,7 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Next
 
-0. Render: platform took our fields, prompt flat (work/platform b5145ee1, local until pushed).
+0. Render: platform took our fields, prompt flat (work/platform e75a6a11, pushed; in the release candidate).
    view.js renderProblems mirrors it at run time (VYRE_CHECK_VIEWS=1 in tests); when the d.ts is
    on main, add the JSDoc type import too.
    vyre key (cohesion 6): thin verbs over vault.need / vault.connect once work/vault-next lands;
