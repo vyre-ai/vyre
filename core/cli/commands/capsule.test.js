@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { spawnSync } from "node:child_process";
 import { tempHome } from "../../../test/helpers.js";
 import { sourceHash, packaged, electron, signing, sign } from "./capsule.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
@@ -80,4 +81,14 @@ test("capsule: a signature that does not verify fails the build", t => {
   const bad = sign(app, a => (a[0] === "--verify" ? { status: 1, stderr: "code has no resources but signature indicates they must be present" } : { status: 0, stderr: "" }));
   assert.equal(bad.ok, false);
   assert.match(bad.message, /no resources/);
+});
+
+test("capsule install: builds here and downloads nothing; off a Mac it says the Capsule is a Mac app", { skip: process.platform === "darwin" }, t => {
+  const root = tempHome(t);
+  const bin = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..", "bin", "vyre");
+  const r = spawnSync(process.execPath, [bin, "capsule", "install"], { encoding: "utf8", env: { ...process.env, VYRE_HOME: root, VYRE_DOWNLOAD_BASE: "http://127.0.0.1:9/never" } });
+  assert.equal(r.status, 1);
+  assert.match(r.stdout, /builds on macOS only/);
+  assert.doesNotMatch(r.stdout + r.stderr, /Vyre-mac\.zip|download/i);
+  assert.doesNotMatch(fs.readFileSync(new URL("./capsule.js", import.meta.url), "utf8"), /Vyre-mac\.zip|capsule-install\.js/);
 });

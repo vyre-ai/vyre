@@ -14,8 +14,7 @@ import * as needs from "../js/needs.js";
 import { assistantCard } from "../js/assistant-setup.js";
 import { since, initial, count, plural, clock } from "../js/fmt.js";
 
-// agents.create and agents.update are on the floor's human-only list: each asks for the passkey.
-const AS_PERSON = { presence: true };
+// Making and changing an agent is the person's own business: no passkey (the no-nag rule).
 
 const MODELS = [
   { id: "claude-opus-5-5", name: "Claude Opus 5.5" },
@@ -192,7 +191,7 @@ function newForm(w, { done }) {
     const input = { name: n, kind: "agent", projects, instructions: instr.value.trim(), auth: a, computer: computer.checked };
     /** @type {HTMLButtonElement} */ (create).disabled = true;
     put(status, "Creating…");
-    const r = await attempt("agents.create", input, AS_PERSON);
+    const r = await attempt("agents.create", input);
     /** @type {HTMLButtonElement} */ (create).disabled = false;
     if (r.error) { put(status, r.error.missing ? `${why(r.error)} The agent was not created.` : why(r.error)); return; }
     done({ ...input, role: "", state: "idle", skills: [], model: MODELS[1].id, ...(r.data && typeof r.data === "object" ? { name: r.data.name === "new-agent" ? n : r.data.name || n } : {}) });
@@ -335,7 +334,7 @@ function drawJob(sec, a, w, stub, listErr) {
     ta.value = a.instructions || "";
     const save = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (save).disabled = true;
-      const r = await attempt("agents.update", { name: a.name, instructions: ta.value.trim() }, AS_PERSON);
+      const r = await attempt("agents.update", { name: a.name, instructions: ta.value.trim() });
       /** @type {HTMLButtonElement} */ (save).disabled = false;
       if (r.error) { put(status, why(r.error)); return; }
       a.instructions = ta.value.trim();
@@ -478,7 +477,7 @@ function drawModel(sec, a, stub, listErr) {
     onclick: () => { a.effort = v; drawSeg(); save(); } }, l)));
   const save = async () => {
     put(status, "Saving…");
-    const r = await attempt("agents.update", { name: a.name, model: sel.value, effort: a.effort || "medium" }, AS_PERSON);
+    const r = await attempt("agents.update", { name: a.name, model: sel.value, effort: a.effort || "medium" });
     put(status, r.error ? why(r.error) : "Saved.");
     if (!r.error) a.model = sel.value;
   };
@@ -535,7 +534,7 @@ function drawComputer(aside, a, cr, stub, listErr, reload) {
   if (!a.computer) {
     const give = h("button", { type: "button", class: "btn", onclick: async () => {
       /** @type {HTMLButtonElement} */ (give).disabled = true;
-      const r = await attempt("agents.update", { name: a.name, computer: true }, AS_PERSON);
+      const r = await attempt("agents.update", { name: a.name, computer: true });
       /** @type {HTMLButtonElement} */ (give).disabled = false;
       if (r.error) { put(status, why(r.error)); return; }
       a.computer = true;

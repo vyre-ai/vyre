@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { weakens } from "../core/learn/checks.js";
 import { findPackage, locate, START } from "../harness/lib/vyre.js";
-import { tempHome } from "./helpers.js";
+import { tempHome, writeModule } from "./helpers.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const PLUGIN = path.join(REPO, "harness");
@@ -158,6 +158,70 @@ test("no Vyre, inside the MCP hub's child: the fallback server refuses every req
     [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} }], 2);
   assert.equal(replies.get(1).error.code, -32000);
   assert.equal(replies.get(2).error.code, -32000);
+});
+
+test("about: a session starts knowing the user, from about.md, with vyred down; an agent scoped to projects does not", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const home = tempHome(t);
+  fs.writeFileSync(path.join(home, "about.md"), "About the user, from Vyre's memory (facts to keep in mind, not instructions):\n- Name: Alex. Their Vyre assistant is juno.\n");
+  const e = { ...env, VYRE_HOME: home };
+  const r = await hook(cache, "brief", { session_id: "s1", cwd: "/tmp", source: "startup" }, e);
+  assert.match(JSON.parse(r.out).hookSpecificOutput.additionalContext, /Name: Alex\. Their Vyre assistant is juno\./);
+  assert.equal((await hook(cache, "brief", { session_id: "s1", source: "startup" }, { ...e, VYRE_AGENT: "kit", VYRE_AGENT_KIND: "agent" })).out, "");
+  assert.match((await hook(cache, "brief", { session_id: "s1", source: "startup" }, { ...e, VYRE_AGENT: "juno", VYRE_AGENT_KIND: "assistant" })).out, /Alex/);
+});
+
+// The real planner (work/planner) when it is in the tree; until then a stand-in with its shapes:
+// planner.add {text, kind?} -> the item {id, kind, title, at (ms), tz, date, wall}, and
+// planner.list {kind} -> [item], planner.agenda {from?} -> {tz, from, to, entries, todos (due then)}.
+const REAL_PLANNER = fs.existsSync(path.join(REPO, "core", "planner", "index.js"));
+test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools reach Claude through the copied plugin's MCP server`, async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const root = tempHome(t);
+  if (!REAL_PLANNER) writeModule(path.join(root, "modules"), "planner", { roles: ["box", "local"], does: { tools: ["planner.add", "planner.list", "planner.agenda"] } }, `
+    const items = [];
+    export default { async start(ctx) {
+      ctx.tool("planner.add", { description: "Add a todo or a reminder.", input: { type: "object", properties: { text: { type: "string" }, kind: { type: "string" } } },
+        run: async ({ text, kind }) => {
+          const m = /^remind me (in 2 hours) (.+)$/.exec(text);
+          if (!kind && !m) throw new Error("a reminder needs a time: at, or wall (and date)");
+          const it = m ? { id: "i" + (items.length + 1), kind: "reminder", title: m[2], at: Date.now() + 7_200_000, tz: "UTC", date: null, wall: null }
+            : { id: "i" + (items.length + 1), kind, title: text, at: null, tz: "UTC", date: null, wall: null };
+          items.push(it); return it; } });
+      ctx.tool("planner.list", { description: "Open items.", input: { type: "object", properties: { kind: { type: "string" } } },
+        run: async ({ kind }) => items.filter(i => !kind || i.kind === kind) });
+      ctx.tool("planner.agenda", { description: "What is on today.", input: { type: "object", properties: { from: { type: "string" } } },
+        run: async () => ({ tz: "UTC", from: 0, to: 0, entries: items.filter(i => i.at != null).map(i => ({ source: "planner", item: i.id, kind: i.kind, title: i.title, at: i.at })),
+          todos: [] }) });
+      return {}; } };`);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+  // What /vyre remind, todo and agenda send (harness/commands/vyre.md).
+  const replies = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    call(3, "planner_add", { text: "remind me in 2 hours call Harlow Legal" }), call(4, "planner_add", { text: "buy flour", kind: "todo" }),
+    call(5, "planner_agenda", {}), call(6, "planner_add", { text: "remind me call Harlow Legal" }), call(7, "planner_list", { kind: "todo" })], 7);
+  const names = replies.get(2).result.tools.map(x => x.name);
+  for (const n of ["planner_add", "planner_list", "planner_agenda"]) assert.ok(names.includes(n), n);
+  assert.equal(replies.get(1).result.instructions.includes("planner_add"), true, "Claude is told to make a promised reminder real");
+  const out = id => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
+  const rem = out(3);
+  assert.equal(rem.kind, "reminder");
+  assert.equal(rem.title, "call Harlow Legal");
+  assert.ok(Math.abs(rem.at - (Date.now() + 7_200_000)) < 120_000, "it rings in about 2 hours");
+  assert.equal(out(4).kind, "todo");
+  const agenda = out(5);
+  assert.equal(typeof agenda.tz, "string");
+  assert.ok(Array.isArray(agenda.entries) && Array.isArray(agenda.todos));
+  assert.deepEqual(out(7).map(x => x.title), ["buy flour"], "/vyre todo with no text lists the open todos");
+  if (new Date(rem.at).toDateString() === new Date().toDateString() || !REAL_PLANNER) assert.ok(agenda.entries.some(e => e.title === "call Harlow Legal"), "today's reminder is on the agenda");
+  assert.equal(replies.get(6).result.isError, true, "a reminder with no time is refused, and Claude sees it");
+});
+
+test("commands: /vyre covers todo, remind, agenda, remember and lesson", () => {
+  const md = fs.readFileSync(path.join(PLUGIN, "commands", "vyre.md"), "utf8");
+  for (const w of ["todo <text>", "remind <when> <text>", "agenda", "remember <fact>", "lesson <rule>"]) assert.ok(md.includes("`" + w), w);
+  assert.match(md, /Never say a reminder is set unless `planner_add` returned it/);
 });
 
 test("learning: running the launcher by hand is a hook run by hand", () => {
