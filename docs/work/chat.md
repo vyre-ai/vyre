@@ -172,7 +172,16 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
-## Doing (27 Sep, evening)
+## Doing (27 Sep, late)
+- Batch 4 landed (main bc751624, notes 68463d04), merged into work/chat; next sha 0b6f9091 (pushed):
+  plan card, tips line, cohesion 1 and 9, raw relative paths, send-to-row, shots on vyre-chrome
+  --headless=new. Tests: 598/598 targeted (1 skipped) after the merge. Shots: team/chat-shots/2026-09-27/after/.
+- The integrator's d49d535e: chat.css/term.css use the 719 phone query (dom.js PHONE_QUERY) and radius
+  roles (--r-* is gone); answers go through pwa's queued() outbox. New chat CSS must follow both.
+- Waiting: perf timing (fling, cold open) until testbox load < 2; cohesion 5 (platform P1 382a8574
+  and the Render shape on main, cohesion says when).
+
+## Before (27 Sep, evening)
 - UNTESTED (testbox held by the lead until batch 4 reports): 00b7a269 plan card (deck/chat/plan-card.js,
   core/plan.js parser, fake claude `plan`, world's third live session, chat-shots 8-plan, switchboard
   test), 942047c2 cohesion 1 (context.report on open, context.now project default), a3e31c67 tips
