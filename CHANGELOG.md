@@ -24,13 +24,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### CI: the one Expo app
 
 - .github/workflows/app.yml for apps/app (its own lockfile): typecheck and tests on every push;
-  the web export with its gzipped JS size in the run summary; an Android debug APK and a release
-  APK, vyre-<version>-<sha7>.apk, signed in CI by apksigner with the one Vyre release key (repo
-  secrets VYRE_ANDROID_KEYSTORE_B64, _PASSWORD, VYRE_ANDROID_KEY_ALIAS; a throwaway key when they
-  are absent, marked "signer": "throwaway" and never published), with android.json (version,
-  versionCode, sha, sha256, size, minSdk, built, file, signer, cert_sha256) read from the APK. A
-  push to main with the real key publishes a GitHub release android-<version>-<sha7> for the box
-  to serve as built; the NDK 27.1 and CMake 3.22 that modules/vyre-signer fetches are cached. The iOS
+  the web export with its gzipped JS size in the run summary; an Android debug APK and an
+  UNSIGNED release APK, vyre-<version>-<sha7>.apk, with android.json (version, versionCode, sha,
+  sha256, size, minSdk, built, file) read from the APK, for the box to sign with the owner's own
+  key (no Vyre-wide release key). A copy signed with a per-run throwaway key is checked with
+  apksigner verify, and so is the output of apps/app/scripts/sign-apk.mjs (the box's pure-JS
+  signer) once it exists; the NDK 27.1 and CMake 3.22 that modules/vyre-signer fetches are cached. The iOS
   simulator build only when dispatched with `ios: true`. No EAS, no Expo account. Skips until
   apps/app/package.json exists; also runs on core/resilience changes (the app imports it).
 
