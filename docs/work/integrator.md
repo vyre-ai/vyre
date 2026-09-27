@@ -45,6 +45,18 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   796bdcb phone-design, 246af82 docs, f3b5e36 SPEC 5.2 ctx.call. Full suite at f3b5e36 on the
   test box: 1917 tests, 0 fail, exit 0.
 
+## Doing: the RC batch on pre/rc (2026-09-27 ~19:00 UTC)
+
+- Merged on pre/rc: native-core 6ccad201, platform e75a6a11 + settings-write d62792d0,
+  app-design-hub 9a6abbcf, cohesion 0f4d1105, sessions db4af9c3 + 501ca3fc, memory-iq 1a76d383,
+  chat ff62e37b, pwa c78b87c0, mobile 01068595, polish-cli 12851fab, docs ecdb22eb, e2e daf63e22,
+  then native-core-composer c012c13c (sessions.models reads MODEL_ALIASES), platform a79d58f1
+  (vyre module; CLI group keeps "commands"), sessions e8fd0e42, memory-iq 1815b37d, chat 0b6f9091,
+  e2e 88610b5e, capsule-pro a127335d, ci 35bfed5f.
+- Waiting: vault work/vault-next (green sha from the vault team) with connectors 8be461a9.
+- Then: full suite once on testbox, ci-rc 1d8ae652 LAST, push main, report to the lead.
+- Generated docs on a conflict: take ours, rerun `node scripts/gen-docs-reference`.
+
 ## Done after Logout 3 (2026-09-27)
 
 - Full suite at ef51363 on the test box: 2085 tests, 2047 pass, 1 fail (google OAuth, real: the
