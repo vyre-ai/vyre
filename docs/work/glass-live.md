@@ -36,31 +36,21 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   Tests after merge (15 files): 187 run, 181 pass, 0 fail, 6 skipped.
 
 ## Doing
-- UID SPLIT FIRST (lead, 27 Sep), then computers.fill with vault. Testbox FROZEN (integrator batch):
-  no testbox runs or stacks until the lead or integrator says so.
-  - Committed WIP 088b40d0: image (root start, setpriv; vyre 1001 = Xvnc/dbus/computerd/Chrome,
-    agent 1000 = fluxbox/xterm with env -i), Dockerfile (two users, policy blocks extensions and
-    DevTools), driver + policy (REQUIRED_CAPS SETUID/SETGID, second volume <prefix>-browser-<agent>
-    at /var/lib/vyre), dockerproxy exec pinned to User 1000:1000, core/computers/image/isolation.test.js.
-  - UNCOMMITTED, a subagent (id ab7c6cde6bf6285d3) reworking computerd: cdpmux.js (per-client
-    browser session via Target.attachToBrowserTarget), ws.js copy, index.js (spawns Chrome with
-    --remote-debugging-pipe, fill token on /shield), cdpmux.test.js, index.test.js,
-    testing/fake-chrome.js, fs.test.js. Review, then commit.
-  - WIP 771096ff: vyred side of computers.fill (fill.js, tools, Shield reasons). Tests not run yet.
-  - Contract proposed to vault (fill.begin {agent, origin} -> {fill, cdpUrl, token, expires};
-    fill.end {agent, fill, target?}; 60 s limit; events computer.fill-began/-ended). No reply yet.
-  - e2e told (security review of the uid split).
-  - 5bc1bb59: agent processes SIGSTOPped while any shield is up (root freezer on fd 9, fluxbox now vyre).
-  - 88284ac0: untrusted-X prototype (cookie-only Xvnc, +extension SECURITY, agent gets an untrusted
-    cookie at /run/vyre-x/agent.xauth). e2e reviewing.
-  - computerd mux rework committed (332a2679).
-  - AFTER THE FREEZE, in order: unit tests (core/computers/image/computerd/*.test.js,
-    modules/hands-chrome/*.test.js, core/computers/driver/*.test.js, core/dockerproxy/*.test.js,
-    core/computers/{fill,shield,keyboard,computers}.test.js); build the image on /srv/vyre-glass and
-    run isolation.test.js with VYRE_COMPUTER_CONTAINER (+ VYRE_COMPUTERD_TOKEN); confirm
-    DeveloperToolsAvailability 2 does not block the pipe, SECURITY ext exists, xauth timeout 0 holds,
-    Chrome on the pipe works; Glass + hands-chrome end to end; then the live box read-only checks.
-- Idle hand-back done (67b85c0, pushed). Live box on b1dbb49b: my two read-only checks wait for the freeze.
+- Nothing in flight. Uid split, freeze and untrusted X are validated; computers.fill waits on vault.
+
+## Done (27 Sep, after the testbox freeze)
+- Targeted tests green on testbox: computerd + hands-chrome 44 (38 pass, 6 Mac-only skipped),
+  driver + dockerproxy 43/43, fill/shield/keyboard/pool 60/60, computers/glass/deck 50/50,
+  shield + docs 55/55.
+- Throwaway stack /srv/vyre-glass with image vyre/computer:glass-uid (never :0.1):
+  isolation.test.js 6/6 on a live computer (uids, no CDP reach, no environ/ptrace/token, 401s,
+  frozen while shielded, untrusted X). hands-chrome over the pipe (open, snapshot, screenshot),
+  hands-desktop (screenshot, AT-SPI tree), VNC banner. Fill path at computerd: shield + freeze,
+  agent 423, fill token CDP + new context + Input.insertText, then socket cut, token 401, agent
+  resumed and sees the tab. Found and fixed: no kill binary (freezer), DevTools policy blocked CDP,
+  fluxbox wallpaper dialog, box/Dockerfile checkout build (.dockerignore, 37370a18). Torn down.
+- Live box (9efbddc0) read-only checks: computers.limits exists; Glass WS upgrade with a bogus
+  ticket is 403, not 404.
 
 ## Next
 1. After the live box is redeployed, two read-only checks only (no agents or computers made):
