@@ -12,7 +12,8 @@
 #                    headscale gate (scripts/e2e-headscale) covers enrolment, not this
 #   5 memory         a question on a synthetic world (test/fixtures/personal-world.js) is answered
 #                    with its sources, and one it cannot know is not answered
-#   6 mail           mail.send through a fake IMAP account is held at the Gate
+#   6 mail           an IMAP account added through vault.connect (made-up hosts, no server),
+#                    then mail.send is held at the Gate and the password never comes back
 #   7 theme          settings.set appearance.tokens changes /theme.css
 #   8 update         box/vyre's `vyre update` to a fake next release (the same package, one
 #                    patch version on), then `vyre update --rollback` back; the vault item from
@@ -193,8 +194,7 @@ none=$(ask "$NONE")
 
 # ---- 6 mail --------------------------------------------------------------------------------------------
 if ! has mail.send; then skip "6 mail: mail is not in this build (no mail.send)"
-elif [ -x "$H/mail.sh" ]; then . "$H/mail.sh"
-else skip "6 mail: mail.send is here, but rc-smoke has no fake IMAP account step yet (scripts/rc-smoke/mail.sh)"
+else . "$H/mail.sh"
 fi
 
 # ---- 7 theme -------------------------------------------------------------------------------------------
