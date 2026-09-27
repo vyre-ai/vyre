@@ -377,6 +377,10 @@ Plan (to the lead before building):
   (the user overruled: only person-chosen delete -> sync.deleted). MEDIUM: chunk ignores declared size
   (disk fill), in-flight not counted, consent callers include module, whole-file read. LOW: safeDest's
   swallowed symlink denial; HTTP-level tests.
+- teammates slice A 8eb1a785 (git worktrees, read): HIGH: vyred's git merge in a model-writable
+  worktree runs repo hooks / filter drivers / hooksPath the model can plant -> hooksPath=/dev/null,
+  --no-verify, empty global/system config, refuse unexpected exec-capable config keys; test with a
+  planted hook + smudge filter. Before slice B.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
