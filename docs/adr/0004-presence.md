@@ -326,7 +326,7 @@ weakness. So the terminal window is narrower than the Deck's:
 
 - It covers vault.approve and vault.grant only (`TERMINAL_WINDOWED`): actions that also show in
   Needs and in notices.
-- Anything that puts a secret or a two-factor code on screen (reveal, copy, TOTP, `vyre run`
+- Anything that puts a secret or a two-factor code on screen (reveal, copy, TOTP, `vyre vault run`
   resolving secrets) and gate.approve (which sends) ask every time from a terminal.
 - Every windowed use writes one line to the terminal it came from ("vyre: used your Touch ID
   window for ...") and one row to the vault's audit, with the terminal.

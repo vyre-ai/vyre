@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions from the terminal: interrupt, steer or queue, take back, send now, open (ADR 0030)
+
+- `vyre threads` catches up with the Deck for sessions Vyre runs: `interrupt` (stop the turn, keep
+  the session), `mode <id> [default|acceptEdits|plan]`, `send --queue|--steer`, `queue`,
+  `take-back`, `edit`, `send-now`, `rewind`, `open` (hands an idle session to `claude --resume` in
+  this terminal), and a one-shot `get --since/--limit` (`watch` still follows). A verb whose tool
+  this vyred does not have yet says so in one line and exits 1.
+- `vyre threads watch` reconnects by itself (1 s, 2 s, 5 s, up to 30 s) from the last event it
+  showed (Last-Event-ID), never prints an event twice, and stays through an idle close or a vyred
+  restart.
+- New `vyre sessions`: the driver and sign-in, `setup` for the Agent SDK, `models` per purpose or
+  project, and `prompt` show, set (text, file or $EDITOR, `--replace`), history, revert, preview.
+- One QR encoder: `core/cli/qr.js` draws the vendored qrcode-generator (the Deck's, all 40
+  versions), so a relay pair URL with a long box name fits.
+
 #### Every Deck feature has a CLI verb: needs, gate, phone, live one-time codes, planner edits
 
 - `vyre needs`: everything waiting on you in one list, held drafts and open asks, newest first,
@@ -39,7 +54,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 - `vyre vault approve` and `vyre vault grant` asked for a proof on every call from a terminal.
   Now one Touch ID (or a Capsule or passkey proof) from a login covers that login's vault.approve
-  and vault.grant for 30 minutes. Reveals, copies, one-time codes and `vyre run` still ask every
+  and vault.grant for 30 minutes. Reveals, copies, one-time codes and `vyre vault run` still ask every
   time in a terminal: other processes can type into a terminal (tmux send-keys, AppleScript), so
   a window must not turn that into a silent reveal (ADR 0004 addendum). Each windowed use writes
   "vyre: used your Touch ID window for ..." to that terminal and a row to `vyre vault audit`.
