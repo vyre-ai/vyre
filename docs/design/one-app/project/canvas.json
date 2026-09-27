@@ -416,6 +416,34 @@
       "w": 2504,
       "x": 7752,
       "y": 19460
+    },
+    "TipLine.dc.html": {
+      "x": 0,
+      "y": 21360,
+      "w": 2640,
+      "h": 1900,
+      "title": "Tips \u00b7 one quiet line on every surface"
+    },
+    "GlassMini.dc.html": {
+      "x": 2720,
+      "y": 21360,
+      "w": 2640,
+      "h": 2000,
+      "title": "Glass mini-view \u00b7 what the agent is doing now"
+    },
+    "TipLine-paper.dc.html": {
+      "x": 0,
+      "y": 23480,
+      "w": 2640,
+      "h": 1900,
+      "title": "Tips \u00b7 one quiet line on every surface \u00b7 paper"
+    },
+    "GlassMini-paper.dc.html": {
+      "x": 2720,
+      "y": 23480,
+      "w": 2640,
+      "h": 2000,
+      "title": "Glass mini-view \u00b7 what the agent is doing now \u00b7 paper"
     }
   },
   "createdOnFiles": {
@@ -511,6 +539,13 @@
       "text": "The Capsule, redesigned (Design A)",
       "kind": "title1",
       "maxW": 10256
+    },
+    "tipsGlass": {
+      "x": 0,
+      "y": 21060,
+      "text": "Tips and the Glass mini-view",
+      "kind": "title1",
+      "maxW": 5360
     }
   },
   "order": [
@@ -572,7 +607,11 @@
     "CapsuleSearch-paper.dc.html",
     "CapsuleIQ-paper.dc.html",
     "CapsuleLong-paper.dc.html",
-    "CapsuleDo-paper.dc.html"
+    "CapsuleDo-paper.dc.html",
+    "TipLine.dc.html",
+    "GlassMini.dc.html",
+    "TipLine-paper.dc.html",
+    "GlassMini-paper.dc.html"
   ],
   "pages": [],
   "title": "Vyre one app"
