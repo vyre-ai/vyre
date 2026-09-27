@@ -8,12 +8,13 @@ status: draft
 
 # Your first hour
 
-Twenty minutes, eight steps, each one small enough to check before the next. You need a Mac,
-your phone, a Claude subscription (or an Anthropic API key), and a Tailscale account. If a step
-stops, [troubleshooting](../get-started/troubleshooting.md) has the fix, and `vyre doctor` says
-what is wrong in under two seconds.
+Let's get Vyre working for you. Twenty minutes, eight small steps, and each one ends with a quick
+check so you know it took before you move on. You need a Mac, your phone, a Claude subscription
+(or an Anthropic API key), and a Tailscale account.
 
-Use your own details throughout. Nothing here needs example data.
+If a step stops, `vyre doctor` tells you what is wrong in under two seconds, and
+[troubleshooting](../get-started/troubleshooting.md) has the fix. Use your own details
+throughout: this is your Vyre from the first minute.
 
 ## 1. Install on the Mac (3 minutes)
 
@@ -138,6 +139,9 @@ A value that is not a plain colour is dropped, so a typo never breaks the Deck.
 > contrast before they are saved, and every surface follows the change live.
 
 ## When you are done
+
+That's it: Vyre is set up, it knows who you are, and it's on your Mac and your phone. From here it
+keeps learning how you work.
 
 - `vyre doctor` for a health check any time.
 - `vyre tips` for short tips on every part of Vyre.
