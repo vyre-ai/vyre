@@ -201,6 +201,19 @@ export function claude(args, cwd, brief, project) {
 
 export async function resume(t, { project, name } = {}) {
   if (!t.cwd || !fs.existsSync(t.cwd)) return fail(`${t.label} ran in ${tilde(t.cwd) || "an unknown folder"}, which is gone; Claude Code can only resume it there`, "vyre start begins a new thread instead");
+  // A session vyred runs (ADR 0030) is handed over, never shared: one transcript takes one
+  // writer. An idle one is closed here first; one in the middle of a turn is left alone.
+  const run = await call("threads.get", { thread: t.id, limit: 1 });
+  const st = run.data?.thread?.status;
+  if (st === "working" || st === "waiting" || st === "starting") {
+    return fail(`${t.label} is ${st === "waiting" ? "waiting on a question" : "in the middle of a turn"} in vyred`,
+      `let it finish, or stop the turn first: vyre call threads.interrupt '{"thread":"${t.id}"}'`);
+  }
+  if (st === "idle") {
+    const stop = await call("threads.stop", { thread: t.id });
+    if (stop.error) return fail(`could not hand ${t.label} over from vyred: ${stop.error.message}`);
+    out(dim(`  handed over from vyred; a message from the Deck or the Capsule brings it back there once you exit`));
+  }
   const ctx = await call("projects.context", { ...(project ? { project } : {}), cwd: t.cwd, session: t.id });
   const brief = ctx.data?.text || "";
   const args = ["--resume", t.id];
@@ -301,8 +314,15 @@ async function moveHomes(args) {
 
 export default [
   {
-    name: "projects", order: 20, usage: "vyre projects [--json] | vyre projects move [--dry-run]", summary: "every project; on a box, move moves the homes to /work/projects",
+    name: "projects", order: 20, usage: "vyre projects [list|move [--dry-run]] [--json]", summary: "every project; on a box, move moves the homes to /work/projects",
+    verbs: [
+      // --json: projects.list's rows [{ slug, name, home, threads, ... }]
+      { verb: "list", summary: "every project", usage: "", read: true },
+      // --json: { moved: [slug], skipped: [{ slug, why }], from, to, rewrites?, next?, done? }
+      { verb: "move", summary: "on a box, move the project homes to /work/projects", usage: "[--dry-run]" },
+    ],
     async run(args) {
+      if (args[0] === "list") args = args.slice(1);
       if (args[0] === "move") return moveHomes(args.slice(1));
       parse(args, { values: [], cmd: "projects" });
       if (!(await up())) return 5;
@@ -328,7 +348,11 @@ export default [
   },
   {
     name: "threads", order: 23, usage: "vyre threads [search] [--project p] [--all] [--json]", summary: "every session on this machine, searched by what was said",
+    // --json: projects.catalog's { sessions: [{ id, label, said, last, cwd, projects }], total, note? },
+    // or with --project, projects.threads' rows.
+    verbs: [{ verb: "search", summary: "every session on this machine, by what was said", usage: "[<words...>] [--project p] [--all]", read: true }],
     async run(args) {
+      if (args[0] === "search") args = args.slice(1);
       const { flags, pos } = parse(args, { bool: ["all"], values: ["project"], cmd: "threads" });
       if (!(await up())) return 5;
       if (flags.project) {

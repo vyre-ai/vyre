@@ -15,6 +15,7 @@
 //     applies under tests, and VYRE_NO_DIALOGS still wins.
 //   - otherwise: yes.
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -34,6 +35,65 @@ export function isRealHome(root) {
   return path.resolve(String(root).replace(/^~(?=$|\/)/, os.homedir())) === realHome();
 }
 
+/**
+ * Claude Code's folder (sessions, transcripts, settings, CLAUDE.md, skills) for the Vyre home at
+ * `root`. The person's real one (CLAUDE_CONFIG_DIR, else ~/.claude) only for their own ~/.vyre;
+ * any other home (a dev world, a demo, a temp home, a test) gets `<root>/claude`, empty until
+ * something puts a fixture there, so it never reads or writes the person's conversations.
+ * VYRE_CLAUDE_HOME names the folder outright, for a home kept elsewhere on purpose.
+ * @param {string} root @param {NodeJS.ProcessEnv} [env]
+ */
+export function claudeHome(root, env = process.env) {
+  if (env.VYRE_CLAUDE_HOME) return path.resolve(env.VYRE_CLAUDE_HOME.replace(/^~(?=$|\/)/, os.homedir()));
+  if (isRealHome(root)) return env.CLAUDE_CONFIG_DIR ? path.resolve(env.CLAUDE_CONFIG_DIR.replace(/^~(?=$|\/)/, os.homedir())) : path.join(os.homedir(), ".claude");
+  return path.join(path.resolve(String(root)), "claude");
+}
+
+const untilde = (/** @type {string} */ p) => String(p).replace(/^~(?=$|\/)/, os.homedir());
+
+/**
+ * A path with its symlinks resolved as far as it exists: the deepest existing folder's real path,
+ * and the rest as written. So a link to ~/.claude, or a ~/.claude that is itself a link, compares
+ * as where it really is.
+ * @param {string} p
+ */
+function realish(p) {
+  let head = path.resolve(untilde(p)), tail = "";
+  for (;;) {
+    try { return path.join(fs.realpathSync(head), tail); } catch {}
+    const up = path.dirname(head);
+    if (up === head) return path.resolve(untilde(p));
+    tail = path.join(path.basename(head), tail);
+    head = up;
+  }
+}
+
+/** Is `p` the folder `dir` or inside it, by the paths as written or as they really are? */
+const within = (/** @type {string} */ p, /** @type {string} */ dir) => {
+  const ps = [path.resolve(untilde(p)), realish(p)], ds = [path.resolve(untilde(dir)), realish(dir)];
+  return ps.some(a => ds.some(d => a === d || a.startsWith(d + path.sep)));
+};
+
+/**
+ * The transcript folders a Vyre home may read. The person's own Claude Code folder (~/.claude, or
+ * CLAUDE_CONFIG_DIR) is read only by their own ~/.vyre: a dev world, a demo, a trial or a temp home
+ * indexing every real conversation on the machine is how a trial Capsule once answered from the
+ * person's dev sessions. Such a home keeps its own folders (claudeHome(root)) and anything outside
+ * the person's, or the real one when VYRE_ALLOW_REAL_TRANSCRIPTS=1 says so on purpose. Under
+ * node --test the real one is never read, whatever the config or the environment says. Symlinks
+ * are followed both ways. Recall and the Switchboard both read through this.
+ * @param {string[]} folders @param {string} [root] the Vyre home @param {NodeJS.ProcessEnv} [env]
+ */
+export function transcriptFolders(folders, root = "", env = process.env) {
+  const theirs = [path.join(os.homedir(), ".claude"), ...(env.CLAUDE_CONFIG_DIR ? [env.CLAUDE_CONFIG_DIR] : [])];
+  const personal = (/** @type {string} */ f) => theirs.some(d => within(f, d));
+  if (env.NODE_TEST_CONTEXT) return folders.filter(f => !personal(f));
+  if (root && isRealHome(root)) return folders;
+  if (env.VYRE_ALLOW_REAL_TRANSCRIPTS === "1") return folders;
+  const own = root ? claudeHome(root, env) : null;
+  return folders.filter(f => !personal(f) || Boolean(own && within(f, own)));
+}
+
 /** @param {NodeJS.ProcessEnv} [env] */
 export function dialogsAllowed(env = process.env) {
   if (env.VYRE_NO_DIALOGS === "1") return false;
@@ -46,14 +106,15 @@ export function dialogsAllowed(env = process.env) {
  * Whether a vyred on `root` may look for, or pair with, a box on the real tailnet. The same rule
  * as dialogs: a dev world, a demo or a stress run on a temp home found the user's live box and
  * sent it a real pairing request. Only ~/.vyre may, or a home whose owner says so with
- * VYRE_ALLOW_DIALOGS=1 or VYRE_ALLOW_REAL_BOX=1. VYRE_NO_DIALOGS does not change it: a stress run
- * sets that and still must not pair.
+ * VYRE_ALLOW_REAL_BOX=1. VYRE_ALLOW_DIALOGS=1 is about dialogs, not boxes: a trial home that
+ * allowed dialogs and named the user's box sent it a pairing request. VYRE_NO_DIALOGS does not
+ * change it either: a stress run sets that and still must not pair.
  * @param {string} root @param {NodeJS.ProcessEnv} [env]
  */
 export function realBoxAllowed(root, env = process.env) {
   if (env.VYRE_ALLOW_REAL_BOX === "1") return true;
   if (env.NODE_TEST_CONTEXT) return false;
-  return isRealHome(root) || env.VYRE_ALLOW_DIALOGS === "1";
+  return isRealHome(root);
 }
 
 /** The error code a refused dialog carries. */

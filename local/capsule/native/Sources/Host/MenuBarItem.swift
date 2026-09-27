@@ -138,6 +138,14 @@ final class MenuBarItem: NSObject, NSPopoverDelegate {
     }
 
     func close() { if popover.isShown { popover.performClose(nil) } }
+
+    /// Show the popover (⌘, in the Capsule: its settings live here).
+    func open() {
+        guard let b = item.button, !popover.isShown else { return }
+        health.refresh()
+        popover.contentViewController = NSHostingController(rootView: content())
+        popover.show(relativeTo: b.bounds, of: b, preferredEdge: .minY)
+    }
 }
 
 /// What the popover shows: who is up, how the box is reached, and the few things to do.
@@ -153,7 +161,7 @@ struct MenuBarPopover: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
                 MarkView(size: 20)
-                Text("Vyre").font(.system(size: 15, weight: .semibold)).foregroundColor(Theme.bone)
+                Text("Vyre").font(Theme.type(Tokens.TypeScale.read, .semibold)).foregroundColor(Theme.bone)
                 Spacer()
                 Circle().fill(Color(nsColor: health.dotColor)).frame(width: 7, height: 7)
             }
@@ -185,8 +193,8 @@ struct MenuBarPopover: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Circle().fill(quiet ? Theme.ash : ok ? Theme.signal : Theme.ash).frame(width: 6, height: 6)
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 13)).foregroundColor(Theme.bone)
-                if let sub { Text(sub).font(.system(size: 11.5)).foregroundColor(Theme.ash) }
+                Text(title).font(Theme.title).foregroundColor(Theme.bone)
+                if let sub { Text(sub).font(Theme.subtitle).foregroundColor(Theme.ash) }
             }
         }
     }
@@ -200,9 +208,9 @@ struct PopoverButton: View {
     var body: some View {
         Button(action: action) {
             HStack {
-                Text(title).font(.system(size: 13)).foregroundColor(Theme.bone)
+                Text(title).font(Theme.title).foregroundColor(Theme.bone)
                 Spacer()
-                if let hint { Text(hint).font(.system(size: 11.5)).foregroundColor(Theme.ash) }
+                if let hint { Text(hint).font(Theme.subtitle).foregroundColor(Theme.ash) }
             }
             .padding(.horizontal, 8).frame(height: 28)
             .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(hover ? Theme.raised : .clear))

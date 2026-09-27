@@ -161,7 +161,7 @@ test("network.guests: add, remove and enable need presence and the owner; agents
   const bad = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["glass.take"] }, "cli", { proof });
   assert.match(bad.error.message, /threads.list; not glass.take/);
   assert.equal((await d.registry.call("network.guests.add", { login: "alex@example.com", tools: [] }, "cli", { proof })).error.code, "bad_input");
-  const added = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list"] }, "tailnet:alex@example.com", { proof });
+  const added = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list"] }, "tailnet:alex@example.com", { proof, person: { id: "s1", kind: "cookie" } });
   assert.deepEqual(added.data.people, [{ login: "sam@harlow.example", tools: ["threads.list"], allowed: [] }], "listed, but guests are off");
   const on = await d.registry.call("network.guests.enable", { on: true }, "cli", { proof });
   assert.deepEqual([on.data.enabled, on.data.people[0].allowed], [true, ["threads.list"]]);

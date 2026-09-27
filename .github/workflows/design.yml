@@ -1,0 +1,46 @@
+# The design audit: renders every Design A board in headless Chrome and fails on text under WCAG AA,
+# text outside its frame or cut off, and any size, weight, family or colour outside the system
+# (docs/design/system/audit.md). It also checks that the generated token files are current.
+name: design
+on:
+  push:
+    paths:
+      - "docs/design/one-app/**"
+      - "docs/design/system/**"
+      - "scripts/design-audit"
+      - "scripts/gen-tokens"
+      - "scripts/lib/tokens.js"
+      - "scripts/lib/theme.js"
+      - "lib/theme/**"
+      - "deck/css/tokens.css"
+      - ".github/workflows/design.yml"
+  pull_request:
+    paths:
+      - "docs/design/one-app/**"
+      - "docs/design/system/**"
+      - "scripts/design-audit"
+      - "scripts/gen-tokens"
+      - "scripts/lib/tokens.js"
+      - "scripts/lib/theme.js"
+      - "lib/theme/**"
+      - "deck/css/tokens.css"
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: design-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: node scripts/gen-tokens --check
+      - run: node --test test/tokens.test.js test/theme.test.js
+      - run: node scripts/design-audit
+        env:
+          CHROME: /usr/bin/google-chrome

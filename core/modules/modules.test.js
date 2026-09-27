@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry, callerAllowed } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerKind, callerAllowed } from "./index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -308,6 +308,26 @@ test("modules: a tool learns how presence was proved, and never sees the proof i
   assert.deepEqual(r.data.meta, { thread: "t1", presence: { method: "capsule", keyId: "k1" }, caller: "cli" });
 });
 
+test("modules: a \"tailnet\" entry in callers lets the owner's devices in, and nothing else that looks like one", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { callers: ["cli", "tailnet"], run: async (i, meta) => ({ caller: meta.caller }) });
+    ctx.tool("notes.wipe", { callers: ["cli"], run: async () => 1 });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", { ...good, does: { tools: ["notes.add", "notes.wipe"] } }, src]]);
+  for (const caller of ["tailnet:alex@example.com", "tailnet:alex-phone@example.com"]) {
+    assert.deepEqual(await reg.call("notes.add", {}, caller), { data: { caller } }, caller);
+    assert.ok(reg.listTools(caller).some(x => x.name === "notes.add"), caller);
+    assert.ok(!reg.listTools(caller).some(x => x.name === "notes.wipe"), caller);
+  }
+  assert.equal((await reg.call("notes.wipe", {}, "tailnet:alex@example.com")).error.code, "denied", "a list without tailnet still refuses a device");
+  for (const caller of ["tailnet", "tailnet:", "tailnet:agent:kit", "tailnet-guest:juno@example.com", "xtailnet:alex@example.com", "mcp tailnet:alex", "mcp"]) {
+    assert.equal((await reg.call("notes.add", {}, caller)).error.code, "denied", caller);
+    assert.ok(!reg.listTools(caller).some(x => x.name === "notes.add"), caller);
+  }
+  assert.equal(callerKind("tailnet:alex@example.com"), "tailnet:alex@example.com", "callerKind still returns the whole string");
+});
+
 test("modules: the owner's Deck at the box's tailnet address may use what the Deck may", () => {
   const deck = ["cli", "local", "deck", "capsule"];
   assert.equal(callerAllowed(deck, "tailnet:alex@example.com"), true);
@@ -316,4 +336,141 @@ test("modules: the owner's Deck at the box's tailnet address may use what the De
   assert.equal(callerAllowed(deck, "tailnet-guest:juno@example.com"), false);
   assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
   assert.equal(callerAllowed(null, "anonymous"), true);
+});
+
+test("modules: a use is a tool that ran for a person, a surface or a model; refusals, modules and hooks are not", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { input: { type: "object", properties: { fail: { type: "boolean" } } },
+      run: async ({ fail }) => { if (fail) throw new Error("no"); return { ok: true }; } });
+    ctx.tool("notes.inside", { callers: ["module"], run: async () => ({ ok: true }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", { ...good, does: { tools: ["notes.add", "notes.inside"] } }, src]]);
+  t.after(() => reg.stop());
+  const use = () => reg.status().find(m => m.name === "notes").use;
+  assert.deepEqual(use(), { calls: 0, lastUsed: null });
+  assert.equal(reg.flushTimer, null, "nothing is scheduled while nothing was used");
+  await reg.call("notes.add", {}, "cli");
+  await reg.call("notes.add", { fail: true }, "mcp:agent:kit");
+  await reg.call("notes.add", { fail: "yes" }, "cli");
+  await reg.call("notes.inside", {}, "cli");
+  await reg.call("notes.add", {}, "module:planner");
+  const u = use();
+  assert.equal(u.calls, 2, "a success and an error count; bad input, a denied caller and a module do not");
+  assert.ok(u.lastUsed && Math.abs(Date.now() - u.lastUsed) < 5000);
+  assert.ok(reg.flushTimer, "the first change arms one write");
+  assert.equal(/** @type {any} */ (reg.flushTimer).hasRef(), false, "and it never keeps vyred awake");
+});
+
+test("modules: use counts are written at stop and read back by the next registry", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", good, echo);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const make = async () => {
+    const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+    await reg.start(discover([root]), { role: "local" });
+    return reg;
+  };
+  const a = await make();
+  await a.call("notes.add", { text: "a" }, "cli");
+  await a.call("notes.add", { text: "b" }, "deck");
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM modules_use").get().n, 0, "not written on every call");
+  await a.stop();
+  assert.equal(a.flushTimer, null);
+  const row = db.prepare("SELECT calls, last_used FROM modules_use WHERE module = 'notes'").get();
+  assert.equal(row.calls, 2);
+  const b = await make();
+  t.after(() => b.stop());
+  assert.equal(b.status().find(m => m.name === "notes").use.calls, 2);
+  assert.equal(b.status().find(m => m.name === "notes").use.lastUsed, Number(row.last_used));
+});
+
+test("modules: status rows carry what a manifest declares for the surfaces, and ctx.modules reads a copy", async t => {
+  const manifest = { ...good, does: { tools: ["notes.add"], commands: [{ verb: "add", tool: "notes.add", summary: "add a note", args: ["text"] }],
+    connections: "notes.add", suggest: "notes.add" }, shows: { notices: ["note-late"] } };
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async () => {
+      const rows = ctx.modules.status();
+      rows[0].name = "changed";
+      return { rows, tools: ctx.modules.tools("cli").map(t => t.name) };
+    } });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", manifest, src]]);
+  const row = reg.status().find(m => m.name === "notes");
+  assert.deepEqual(row.commands, manifest.does.commands);
+  assert.equal(row.connections, "notes.add");
+  assert.equal(row.suggest, "notes.add");
+  assert.deepEqual(row.notices, ["note-late"]);
+  assert.deepEqual(row.emits, ["note.added"]);
+  assert.deepEqual(row.shows, { notices: ["note-late"] });
+  const r = await reg.call("notes.add", {}, "cli");
+  assert.deepEqual(r.data.tools, ["notes.add"]);
+  assert.equal(reg.status()[0].name, "notes", "a module's edit to its copy changes nothing");
+});
+
+test("modules: declaredTips lists the teaches.tips of running modules, a home module as not first-party", async t => {
+  const tip = { id: "rye", text: "Rye orders show in Now.", surfaces: ["deck"], level: "first-use", trigger: "on-use", since: "1.0.0" };
+  const peek = `export default { async start(ctx) { globalThis.__tipsPeek = ctx.declaredTips; return { async stop() {} }; } };`;
+  const quiet = `export default { async start() { return { async stop() {} }; } };`;
+  await registry(t, [
+    ["bakery", { name: "bakery", version: "1.0.0", teaches: { tips: [tip] } }, quiet],
+    ["oven", { name: "oven", version: "0.1.0", teaches: {} }, quiet],
+    ["peek", { name: "peek", version: "0.1.0" }, peek],
+  ]);
+  const list = /** @type {any} */ (globalThis).__tipsPeek();
+  delete (/** @type {any} */ (globalThis).__tipsPeek);
+  assert.deepEqual(list, [{ module: "bakery", version: "1.0.0", firstParty: false, tips: [tip] }]);
+});
+
+test("modules: first-party means shipped in the repo's core/, local/ or modules/, never a dev home inside the checkout", async t => {
+  const { firstParty } = await import("./index.js");
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  const was = process.env.VYRE_HOME;
+  t.after(() => { if (was === undefined) delete process.env.VYRE_HOME; else process.env.VYRE_HOME = was; });
+  process.env.VYRE_HOME = path.join(repo, ".dev");
+  assert.equal(firstParty(path.join(repo, "core", "settings")), true);
+  assert.equal(firstParty(path.join(repo, "modules", "tips")), true);
+  assert.equal(firstParty(path.join(repo, ".dev", "modules", "bakery")), false, "a dev home's module");
+  assert.equal(firstParty(path.join(repo, "test", "fixtures", "oven")), false, "anywhere else in the checkout");
+  assert.equal(firstParty(path.join(repo, "core", "settings", "nested")), false, "only a folder directly in core/");
+});
+
+test("modules: needs.credentials is a list of {id, kind, provider, purpose}, with item, optional and group", () => {
+  const need = { id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "push-to-talk", group: "speech" };
+  assert.deepEqual(validate({ ...good, needs: { credentials: [need, { ...need, id: "openai", provider: "openai", item: "notes-openai-key", optional: true }] } }), []);
+  const bad = c => validate({ ...good, needs: { credentials: c } }).join("; ");
+  assert.match(bad({ id: "x" }), /needs.credentials must be a list/);
+  assert.match(bad([{ ...need, id: "Bad Id" }]), /\.id must be a lowercase name/);
+  assert.match(bad([need, need]), /declared twice/);
+  assert.match(bad([{ ...need, kind: 3 }]), /\.kind must be a string/);
+  assert.match(bad([{ ...need, purpose: "" }]), /\.purpose must be a string/);
+  assert.match(bad([{ ...need, item: "a b" }]), /\.item must be a vault item name/);
+  assert.match(bad([{ ...need, group: "Speech!" }]), /\.group must be a lowercase name/);
+  assert.match(bad([{ ...need, optional: "yes" }]), /\.optional must be true or false/);
+  assert.match(bad(["deepgram"]), /must be an object/);
+});
+
+test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item or <module>-<id>", async t => {
+  const vault = `export default { async start(ctx) {
+    ctx.tool("vault.release", { internal: true, run: async ({ name }, { caller }) => ({ value: "value-of-" + name + "-for-" + caller }) });
+    return {};
+  } };`;
+  const user = `export default { async start(ctx) {
+    ctx.tool("talker.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
+    ctx.tool("talker.mods", { run: async () => ctx.modules.status().find(m => m.name === "talker").credentials.map(c => c.id) });
+    return {};
+  } };`;
+  const creds = [{ id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "speech", item: "talker-deepgram-key" },
+    { id: "openai", kind: "api-key", provider: "openai", purpose: "speech" }];
+  const reg = await registry(t, [
+    ["vault", { version: "0.1.0", does: { tools: ["vault.release"] } }, vault],
+    ["talker", { version: "0.1.0", does: { tools: ["talker.check", "talker.mods"] }, needs: { credentials: creds } }, user],
+  ]);
+  assert.deepEqual(await reg.call("talker.check", { item: "talker-deepgram-key" }, "cli"), { data: { got: "value-of-talker-deepgram-key-for-module:talker" } });
+  assert.deepEqual(await reg.call("talker.check", { item: "talker-openai" }, "cli"), { data: { got: "value-of-talker-openai-for-module:talker" } });
+  assert.match((await reg.call("talker.check", { item: "talker-deepgram" }, "cli")).error.message, /does not declare/);
+  assert.deepEqual((await reg.call("talker.mods", {}, "cli")).data, ["deepgram", "openai"]);
 });

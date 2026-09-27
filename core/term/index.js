@@ -24,6 +24,15 @@
 // without from= gets what it always got: the last 64 KB, binary frames only, no text frames.
 // Output while vyred is down (a restart) is lost; the count carries on from where vyred left it.
 //
+// Size: one socket owns the terminal's size, the first to attach unless another takes it. Only
+// the owner's {"t":"size"} resizes the pty; a size from any other socket is remembered as what it
+// would like, and not applied. {"t":"take","cols"?,"rows"?} makes a socket the owner (and applies
+// its size, given or last asked). When the owner leaves, the oldest socket still attached becomes
+// the owner and its last asked size is applied, so a phone left alone is not stuck at a laptop's
+// size. Sockets that speak the offset protocol (from=, or that sent take) are told
+// {"t":"size","cols","rows","owner":<is it this socket>} on attach and whenever the size or the
+// owner changes; a client without from= never gets text frames, as before.
+//
 // Keys typed while the client is disconnected are the client's to hold (up to 4 KB) and send as
 // {"t":"in"} after it reattaches; the box never queues input for a screen that is away.
 //
@@ -79,6 +88,10 @@ function reject(socket, status, reason) {
 /** A close frame with a status code, so the browser can tell a clean end from a drop. */
 const closeFrame = (code, why = "") => encodeFrame(Buffer.concat([Buffer.from([code >> 8, code & 0xff]), Buffer.from(why.slice(0, 100))]), 0x8);
 const textFrame = m => encodeFrame(Buffer.from(JSON.stringify(m)), 0x1);
+/** The size as one socket should hear it, with whether it is the owner. @param {Term} t @param {any} socket */
+const sizeFrame = (t, socket) => textFrame({ t: "size", cols: t.pty.cols, rows: t.pty.rows, owner: t.owner === socket });
+/** Tell every socket that speaks the protocol the current size and who owns it. @param {Term} t */
+const tellSize = t => { for (const s of t.aware) { try { s.write(sizeFrame(t, s)); } catch {} } };
 
 /** A byte offset a client sent, or null when it sent none (or nonsense). */
 const offsetOf = v => {
@@ -90,7 +103,8 @@ const offsetOf = v => {
 /**
  * @typedef {{ id: string, cwd: string, surface: string, key: string, pty: any, started: number, durable: boolean,
  *   sock: string, sockets: Set<import("node:net").Socket>, aware: Set<import("node:net").Socket>, ring: Ring,
- *   idle: any, at: any, left: number|null, ended: boolean }} Term
+ *   idle: any, at: any, left: number|null, ended: boolean, owner: import("node:net").Socket|null,
+ *   wants: Map<import("node:net").Socket, { cols: number, rows: number }> }} Term
  */
 
 /** @type {{ start(ctx: any): Promise<any> }} */
@@ -158,7 +172,11 @@ export default {
 
     const surfaceOf = input => {
       const s = String(input.surface || "");
-      if (!SURFACE.test(s)) throw fail("bad_input", "surface must name this screen, such as deck:<device> or phone:<device>");
+      if (!SURFACE.test(s)) {
+        // A bare kind ("cli") names no screen: two terminals would share one owner.
+        const bare = /^(deck|phone|capsule|glass|cli)$/.test(s) ? `; "${s}" needs a name after it, such as ${s}:${s === "cli" ? "<tty or pid>" : "<device>"}` : "";
+        throw fail("bad_input", `surface must name this screen as <kind>:<name>, the kind one of deck, phone, capsule, glass or cli (deck:<device>, cli:<tty>)${bare}`);
+      }
       return s;
     };
     /** Which screen is asking, as precisely as vyred verified it: caller, tailnet node, surface. */
@@ -229,7 +247,7 @@ export default {
 
     /** @returns {Term} */
     const blank = (id, cwd, surface, key, started, offset, durable, sock) => ({
-      id, cwd, surface, key, started, durable, sock, sockets: new Set(), aware: new Set(), ring: new Ring(ringCap, offset),
+      id, cwd, surface, key, started, durable, sock, sockets: new Set(), aware: new Set(), owner: null, wants: new Map(), ring: new Ring(ringCap, offset),
       idle: null, at: null, left: now(), ended: false, pty: null,
     });
 
@@ -325,6 +343,7 @@ export default {
         socket.setNoDelay?.(true);
         if (t.idle) { clearTimeout(t.idle); t.idle = null; }
         t.sockets.add(socket);
+        if (!t.owner) t.owner = socket;
         t.left = null;
 
         // The replay. The URL's from wins over the one given to term.attach.
@@ -340,6 +359,7 @@ export default {
             const b = t.ring.since(Math.min(from, t.ring.end));
             for (let i = 0; i < b.length; i += 64 * 1024) socket.write(encodeFrame(b.subarray(i, i + 64 * 1024)));
             socket.write(textFrame({ t: "at", offset: t.ring.end }));
+            socket.write(sizeFrame(t, socket));
           }
         } catch {}
 
@@ -355,7 +375,14 @@ export default {
           if (closed) return;
           closed = true;
           clearInterval(pinger);
-          t.sockets.delete(socket); t.aware.delete(socket);
+          t.sockets.delete(socket); t.aware.delete(socket); t.wants.delete(socket);
+          if (t.owner === socket) {
+            // The oldest socket still here takes the size over, at the size it last asked for.
+            t.owner = t.sockets.values().next().value ?? null;
+            const w = t.owner && t.wants.get(t.owner);
+            if (w) t.pty.resize(w.cols, w.rows);
+            if (t.owner) tellSize(t);
+          }
           try { socket.destroy(); } catch {}
           if (!t.ended && !t.sockets.size) {
             t.pty.resume();
@@ -379,7 +406,18 @@ export default {
             let m;
             try { m = JSON.parse(f.message.toString("utf8")); } catch { continue; }
             if (m && m.t === "in" && typeof m.d === "string") t.pty.write(m.d);
-            else if (m && m.t === "size") t.pty.resize(m.cols, m.rows);
+            else if (m && m.t === "size") {
+              const want = size(m.cols, m.rows);
+              t.wants.set(socket, want);
+              if (t.owner === socket) { t.pty.resize(want.cols, want.rows); tellSize(t); }
+              else if (t.aware.has(socket)) { try { socket.write(sizeFrame(t, socket)); } catch {} }
+            } else if (m && m.t === "take") {
+              t.aware.add(socket);
+              t.owner = socket;
+              const want = m.cols !== undefined || m.rows !== undefined ? size(m.cols, m.rows) : t.wants.get(socket);
+              if (want) { t.wants.set(socket, want); t.pty.resize(want.cols, want.rows); }
+              tellSize(t);
+            }
           }
         };
         socket.on("data", onData);

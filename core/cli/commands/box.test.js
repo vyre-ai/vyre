@@ -12,6 +12,7 @@ import * as config from "../../config/index.js";
 import { ending } from "../ending.js";
 import box, { add, move, parsePreflight, parseLink, plan, unfit, settled, newer, needsGroup, viaTailnet } from "./box.js";
 import { parse as parseTailnet } from "../tailnet.js";
+import { VERSION } from "../../daemon/index.js";
 
 const FAKE_SSH = `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_SSH_LOG"
@@ -71,7 +72,8 @@ case "$1" in
     n=$(( $(cat "$FAKE_BOX/n" 2>/dev/null || echo 0) + 1 )); echo $n > "$FAKE_BOX/n"
     [ -f "$FAKE_BOX/status.$n.json" ] && cp "$FAKE_BOX/status.$n.json" "$FAKE_BOX/last.json"
     cat "$FAKE_BOX/last.json" ;;
-  version) echo 0.0.1 ;;
+  version) cat "$FAKE_BOX/version" 2>/dev/null || echo 0.0.1 ;;
+  update) [ -f "$FAKE_BOX/update-fail" ] && { echo "the image pull failed"; exit 4; }; echo "pulled the new image" ;;
 esac
 `;
 
@@ -336,6 +338,41 @@ test("box add: the wait gives up when the link expires, and says how to carry on
   assert.match(text, /run vyre box add alex@203\.0\.113\.9 again to carry on/);
 });
 
+test("box update: runs vyre update on the saved box and compares versions; a failed update and no box are exit 1", async t => {
+  const r = rig(t);
+  const run = /** @type {any} */ (box[0]).run;
+  const none = await capture(() => run(["update"]));
+  assert.equal(none.code, 1);
+  assert.match(none.text, /no box yet: vyre box add <user@host>/);
+  assert.equal(r.read("vyre.log"), "", "nothing ran without a box");
+
+  config.save({ box: { ssh: OLD } });
+  r.put("version", VERSION + "\n");
+  const same = await capture(() => run(["update"]));
+  assert.equal(same.code, 0, same.text);
+  assert.match(same.text, /pulled the new image/);
+  assert.ok(same.text.includes(`the box and this Mac both run ${VERSION}`), same.text);
+  assert.deepEqual(r.read("vyre.log").trim().split("\n"), ["update", "version"]);
+
+  r.put("version", "0.0.0\n");
+  const older = await capture(() => run(["update"]));
+  assert.equal(older.code, 0, older.text);
+  assert.match(older.text, /the box runs 0\.0\.0, older than this Mac's .*; its next image catches up/);
+  assert.match(ssh(r), new RegExp(OLD.replace(/\./g, "\\.")), "it went to the saved target");
+
+  r.put("version", "99.0.0\n");
+  const newer = await capture(() => run(["update"]));
+  assert.equal(newer.code, 0, newer.text);
+  assert.match(newer.text, /the box runs 99\.0\.0, newer than this Mac's .*&& vyre up/);
+
+  r.put("update-fail", "");
+  const failed = await capture(() => run(["update"]));
+  assert.equal(failed.code, 1, failed.text);
+  assert.match(failed.text, /the image pull failed/);
+  assert.match(failed.text, /vyre update on the box stopped \(exit 4\)/);
+  assert.doesNotMatch(failed.text, /the box runs/, "no version compare after a failed update");
+});
+
 test("box backup: writes through .partial at 0600, refuses to overwrite without --force", async t => {
   const r = rig(t);
   config.save({ box: { ssh: OLD } });
@@ -530,4 +567,35 @@ test("box add: after the switch, the code waits for the passkey, and an expired 
   assert.match(text, /That code expired\. The new one: 654-321/);
   assert.match(text, /this Mac is paired with/);
   assert.deepEqual(asked.filter(x => x === "link.pair").length, 2);
+});
+
+test("box: vyre commands lists every verb run() handles, with its arguments and flags", async () => {
+  const { listing } = await import("./commands.js");
+  const verbs = (await listing({ only: "box" })).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => v.verb), ["status", "add", "update", "backup", "move", "remove"]);
+  assert.deepEqual(verbs.find(v => v.verb === "add").args, [{ name: "user@host", required: true }]);
+  assert.deepEqual(verbs.find(v => v.verb === "remove").flags.map(f => f.name), ["purge", "yes"]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["status"]);
+});
+
+test("box --view: a plan that wants a yes is a prompt frame to run again with --yes, exit 2, and nothing changes", async t => {
+  const r = rig(t);
+  config.save({ box: { ssh: "alex@203.0.113.9" }, network: { box: ADDRESS } });
+  const { setView } = await import("../kit.js");
+  const lines = [];
+  const write = process.stdout.write;
+  t.after(() => { process.stdout.write = write; setView(null); });
+  process.stdout.write = /** @type {any} */ (chunk => { lines.push(String(chunk)); return true; });
+  setView("box remove");
+  const { code } = await capture(() => /** @type {any} */ (box[0]).run(["remove", "--purge", "--json"]));
+  setView(null);
+  process.stdout.write = write;
+  assert.equal(code, 2);
+  const f = lines.join("").trim().split("\n").map(l => JSON.parse(l));
+  assert.equal(f[0].view.kind, "prompt");
+  assert.deepEqual([f[0].view.name, f[0].view.choices, f[0].view.args], ["yes", ["yes", "no"], ["box", "remove", "--purge", "--yes"]]);
+  assert.match(f[0].view.label, /stop the stack.*Go ahead\?$/);
+  assert.equal(f[0].data.question, "Go ahead?");
+  assert.equal(r.read("installer.log"), "", "nothing ran on the server");
+  assert.equal(/** @type {any} */ (config.load()).box.ssh, "alex@203.0.113.9", "the box is still remembered");
 });

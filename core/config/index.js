@@ -9,6 +9,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { claudeHome, transcriptFolders } from "./dialogs.js";
+
+export { claudeHome, transcriptFolders };
 
 /** Resolve a leading ~ against the home directory. */
 export function untilde(p) {
@@ -138,13 +141,15 @@ export function boxProjectsDir() {
 }
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
-function defaults() {
+/** @param {string} root */
+function defaults(root) {
+  const claude = claudeHome(root);
   return {
     role: process.platform === "darwin" ? "local" : "box",
     projectsDir: path.join(os.homedir(), "Vyre", "projects"),
     roots: [],
     me: { domains: [], emails: [] },
-    transcripts: [path.join(os.homedir(), ".claude", "projects"), path.join(os.homedir(), ".claude", "projects-archive")],
+    transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive")],
     modules: { enable: [], disable: [] },
     // Guests from another tailnet: off, nobody listed (ADR 0014 part 8, core/names/guests.js).
     network: { tailscale: false, guests: { enabled: false, people: {} } },
@@ -172,7 +177,7 @@ export function load(root = home()) {
   let user = {};
   try { user = JSON.parse(fs.readFileSync(p.config, "utf8")); }
   catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") problems.push("config.json unreadable: " + /** @type {Error} */ (e).message); }
-  const d = defaults();
+  const d = defaults(root);
   const c = {
     ...d, ...user,
     me: { ...d.me, ...(user.me || {}) },

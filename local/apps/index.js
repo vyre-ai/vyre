@@ -140,13 +140,18 @@ export default {
       /** @type {{ name: string, bundleId?: string, hint?: string }[]} */
       const out = [];
       const seen = new Set();
+      let rows = [];
+      try { rows = await apps.find({ limit: 100 }); } catch {}
       for (const a of registry.all) {
-        if (!Object.values(a.actions).some(x => x.sends)) continue;
+        // Config's adapter for an app stands in for Vyre's own: one row per app.
+        if (seen.has(a.app.toLowerCase()) || !Object.values(a.actions).some(x => x.sends)) continue;
+        // An app driven through its own window (ax) sends only when it is on this Mac.
+        if (a.tier === "ax" && a.bundleIds.length && !rows.some(r => a.bundleIds.includes(r.bundleId))) continue;
+        // Slack sends only once a Slack server is in the MCP hub.
+        if (typeof a.ready === "function") { try { if (!(await a.ready(env))) continue; } catch { continue; } }
         seen.add(a.app.toLowerCase());
         out.push({ name: a.app, ...(a.bundleIds[0] ? { bundleId: a.bundleIds[0] } : {}), hint: "Vyre sends through it" });
       }
-      let rows = [];
-      try { rows = await apps.find({ limit: 100 }); } catch {}
       for (const name of MESSAGING) {
         const row = rows.find(r => r.name.toLowerCase() === name.toLowerCase());
         if (!row || seen.has(name.toLowerCase())) continue;
@@ -200,6 +205,8 @@ export default {
       if (byId) return { ...r, said: `${a.app} → ${byId.title}: ${r.args.text}` };
       const named = all.filter((/** @type {any} */ t) => t.title.toLowerCase() === to);
       if (named.length === 1) return r;
+      // An app that lists only what is on screen (WhatsApp's visible chats) finds the rest itself.
+      if (!named.length && a.partialTargets) return r;
       if (named.length > 1) {
         return { ambiguous: true, reason: `${a.app} has ${named.length} people called ${r.args.to}`, ask: "Which one?", text: r.args.text, app: r.app, action: r.action, to: r.args.to,
           needs: { recipient: named.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, app: a.app, score: 1 })) } };
@@ -249,24 +256,35 @@ export default {
     };
 
     ctx.tool("apps.route", {
-      description: "Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks, as {text, app, to}. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
+      description: "Turn a person's words into one app action without running it: {app, action, args, sends, said, gated?}, or {ambiguous, reason}. gated: run it with apps.act, then approve the held item (gate.approve). \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks, as {text, app, to}. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string", maxLength: 2000 }, app: str, to: str, model: { type: "boolean" } } },
-      async run({ text, app, to, model = false }) {
-        // An answer to a question: the app and who, as picked, and the words kept from it.
-        if (to) return answer(text, app, to);
-        const o = { now: env.now(), timeZone: env.timeZone, planner: opts.planner === "apple" ? "apple" : "planner", ...(app ? { app } : {}) };
-        const r = /** @type {any} */ (await parsed(text, o, route(text, o)));
-        if (r.needs) return fillNeeds(r);
-        if (!r.ambiguous && r.sends) return checkRecipient(r);
-        if (!("ambiguous" in r) || !model || typeof opts.model !== "function") return r;
-        // The seam for a lean model call (config apps.model): only for what the rules left
-        // ambiguous, only when the caller asked. It gets the words and what each app can do.
-        const catalog = registry.all.map(x => ({ app: x.app, actions: Object.entries(x.actions).map(([name, v]) => ({ name, title: v.title, sends: v.sends, input: v.input })) }));
-        let m = null;
-        try { m = fromModel(await opts.model(text, catalog)); } catch {}
-        return m || r;
-      },
+      run: async input => gatedMark(await routeWords(input)),
     });
+
+    /** A route to an action the Gate holds says so (gated), so a surface runs it with apps.act and approves it there. */
+    const gatedMark = (/** @type {any} */ r) => {
+      if (!r || r.ambiguous || typeof r.app !== "string" || typeof r.action !== "string") return r;
+      const a = registry.find(r.app);
+      const act = a && Object.prototype.hasOwnProperty.call(a.actions, r.action) ? a.actions[r.action] : null;
+      return act && act.gated ? { ...r, gated: true } : r;
+    };
+
+    /** @param {{ text: string, app?: string, to?: string, model?: boolean }} input */
+    async function routeWords({ text, app, to, model = false }) {
+      // An answer to a question: the app and who, as picked, and the words kept from it.
+      if (to) return answer(text, app, to);
+      const o = { now: env.now(), timeZone: env.timeZone, planner: opts.planner === "apple" ? "apple" : "planner", ...(app ? { app } : {}) };
+      const r = /** @type {any} */ (await parsed(text, o, route(text, o)));
+      if (r.needs) return fillNeeds(r);
+      if (!r.ambiguous && r.sends) return checkRecipient(r);
+      if (!("ambiguous" in r) || !model || typeof opts.model !== "function") return r;
+      // The seam for a lean model call (config apps.model): only for what the rules left
+      // ambiguous, only when the caller asked. It gets the words and what each app can do.
+      const catalog = registry.all.map(x => ({ app: x.app, actions: Object.entries(x.actions).map(([name, v]) => ({ name, title: v.title, sends: v.sends, input: v.input })) }));
+      let m = null;
+      try { m = fromModel(await opts.model(text, catalog)); } catch {}
+      return m || r;
+    }
 
     ctx.tool("apps.setup", {
       description: "An app's one-time setup, run when a person first asks for something that needs it. For Clock: writes Vyre's Timer and Alarm shortcuts, signs them and opens each in Shortcuts, where one click adds it. Returns steps (plain words to show) and files. ready: true when there is nothing to do.",
@@ -287,11 +305,12 @@ export default {
     });
 
     ctx.tool("apps.act", {
-      description: "Do one thing in an app that sends nothing as the person: a Clock timer or alarm, a note, a reminder, the weather. Returns said, one line to show, and the action's data. An action that sends, posts or pays is refused here with code sends: use apps.send.",
+      description: "Do one thing in an app that sends nothing as the person: a Clock timer or alarm, a note, a reminder, the weather. Returns said, one line to show, and the action's data. An action that sends, posts or pays is refused here with code sends: use apps.send. A gated send (Slack) runs here and comes back as { held: {id, message}, preview }: nothing is sent until the person approves the held item with gate.approve.",
       input: actInput,
       async run({ app, action, args = {} }) {
         const { a, act } = resolve(app, action);
-        if (act.sends) throw new AppsError("sends", `${a.app} ${action} sends as you, so it goes through apps.send, with a person's proof`);
+        // A gated send is held at the Gate, where the person's approval is the proof.
+        if (act.sends && !act.gated) throw new AppsError("sends", `${a.app} ${action} sends as you, so it goes through apps.send, with a person's proof`);
         const out = await run(a, act, args);
         ctx.events.emit("apps.acted", { app: a.app, action });
         return out;
@@ -316,6 +335,7 @@ export default {
       async run({ app, action, args = {} }) {
         const { a, act } = resolve(app, action);
         if (!act.sends) throw new AppsError("not_sends", `${a.app} ${action} sends nothing; use apps.act`);
+        if (act.gated) throw new AppsError("gated", `${a.app} ${action} is held at the Gate: use apps.act, then approve it there (gate.approve)`);
         const out = await run(a, act, args);
         ctx.events.emit("apps.sent", { app: a.app, action });
         return out;

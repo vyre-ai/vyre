@@ -42,11 +42,6 @@ function resolvePicks(ctx, rows, answers) {
   return out.sort((a, b) => Number(Boolean(a.missing)) - Number(Boolean(b.missing)) || (b.last || 0) - (a.last || 0));
 }
 
-/** The person's own surfaces. The loader refuses every other caller (agents' MCP, models' harness, guests, modules). */
-const OWNER = ["cli", "local", "capsule", "deck"];
-/** A caller that names an agent ("cli:agent:kit"): the same test as drive's and glass's. */
-const isAgent = (/** @type {any} */ caller) => /(?:^|[\s:])agent:/.test(String(caller || ""));
-const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 /**
  * The catalogue with live on each session: true when a terminal has it open now, from the
  * Switchboard's binds. Without the Switchboard every row says false.
@@ -57,6 +52,11 @@ export async function withLive(ctx, cat) {
   const live = new Set(r && r.data && Array.isArray(r.data.sessions) ? r.data.sessions : []);
   return { ...cat, sessions: cat.sessions.map(s => ({ ...s, live: live.has(s.id) })) };
 }
+/** The person's own surfaces. The loader refuses every other caller (agents' MCP, models' harness, guests, modules). */
+const OWNER = ["cli", "local", "capsule", "deck"];
+/** A caller that names an agent ("cli:agent:kit"): the same test as drive's and glass's. */
+const isAgent = (/** @type {any} */ caller) => /(?:^|[\s:])agent:/.test(String(caller || ""));
+const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {

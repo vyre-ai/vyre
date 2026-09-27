@@ -13,6 +13,7 @@
 // cannot hold the functions an overlay is made of, so the only way to act without the indicator
 // is to not act on the real Mac at all.
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Hands, KINDS, ACTIONS } from "./hands.js";
 import { makeRunner, HandsError } from "./runner.js";
 import { makeOverlay, NO_OVERLAY } from "./overlay.js";
@@ -67,11 +68,21 @@ export default {
       const s = r && r.data;
       return { box: s && s.linked && s.box && typeof s.box.address === "string" ? s.box.address : null };
     };
-    const hands = new Hands({ run, emit: (type, payload) => ctx.events.emit(type, payload), sleep: opts.sleep, overlay, known });
+    // Which thread, tool call and agent a tool call came from, for the events it causes: a
+    // view ties the step to the chat row that asked for it (ADR 0036). Carried per call, so two
+    // calls in flight never trade their labels.
+    const via = new AsyncLocalStorage();
+    const emit = (/** @type {string} */ type, /** @type {any} */ payload) => {
+      const m = /** @type {any} */ (via.getStore()) || {};
+      const agent = /^mcp:agent:(.+)$/.exec(String(m.caller || ""));
+      const where = { ...(m.thread ? { thread: String(m.thread) } : {}), ...(m.call ? { call: String(m.call) } : {}), ...(agent ? { agent: agent[1] } : {}) };
+      return ctx.events.emit(type, { ...payload, ...where }, where.thread ? { thread: where.thread } : {});
+    };
+    const hands = new Hands({ run, emit, sleep: opts.sleep, overlay, known });
 
     /** Tool errors keep their code, so a caller can tell "not built" from "not granted" from "floor". */
-    const wrap = fn => async input => {
-      try { return await fn(input); }
+    const wrap = fn => async (input, meta) => {
+      try { return await via.run(meta || {}, () => fn(input)); }
       catch (e) { throw e instanceof HandsError ? Object.assign(new Error(`${e.code}: ${e.message}`), { code: e.code }) : e; }
     };
 
