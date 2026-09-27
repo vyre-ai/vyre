@@ -82,6 +82,16 @@ Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, 
      flipped from asserting the old (wrong) behavior to the corrected one.
   Full run: core/config + core/mcp 70/70 on testbox before the connection dropped (testbox went
   unreachable mid docs-check run — one docs test result unseen, re-run before calling this final).
+  Retested after the testbox resize (8 CPUs): docs-check caught docs/reference/tools.md gone stale
+  from vault.connections.grant's new description; regenerated with `node scripts/gen-docs-reference`
+  (no .js extension — the .js form 404s) and pushed as 0f0453b9. boundaries+docs-check 66/66.
+- Reviewer's MEDIUM on 9ca2c50a (signed off to land, fix before wiring): `normalize()` in
+  core/mcp/discover.js drops env/header VALUES but keeps `args` and `url` verbatim, and those are
+  common places a key sits in plain text (`--api-key sk-...`, `?key=...`, `user:pass@host`).
+  Not urgent today: nothing calls discover() outside its own tests yet (see Next item 1 below).
+  Must fix before that wiring lands: reduce `url` to origin+path (hasSecrets on query/userinfo),
+  redact the value after a `--*token/--*key/--*secret/--*password` flag (or its `=value` form) in
+  `args` (hasSecrets too), and add a test with a planted key in both places.
 - LOAD RULE (lead): check `ssh testbox uptime` right before every run; run only under 6.
 - RESUMED 2026-09-28: merged origin/main (794 commits, 0.1.0-rc.1/rc.2 landed) into work/connectors
   at 38a0240c. Conflicts: CHANGELOG.md (kept both entries), core/modules/index.js and
