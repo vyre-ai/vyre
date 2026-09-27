@@ -74,6 +74,18 @@ Answer mobile: meter location (proposed lib/perf/meter.js) and server `t` on thr
 NOT stamped yet (ask sessions for field `t`, ms epoch).
 Answer app-design: check docs/design/system specs (work/app-design c4f9bb23) paths.
 
+## Resume 2026-09-28 (post rc.2, testbox back at 8 CPUs)
+Merged main 57dc12c3 (rc.2: docker-api bearer hotfix, safe-git, module-sdk pack fix) into
+work/native-core-composer clean, no conflicts, at f84366f2. Targeted run on testbox (npm ci +
+node --test composer-state, agents/effort, core/settings/*, boundaries): 60/60 pass. Already
+fixed by others since last session: threads.interrupt exists (switchboard) and chat's Stop uses
+it with "Stopping"/"Stopped by you" (budget 10 should now pass); Agent Effort save/list/validate
+is implemented and tested (core/agents/effort.test.js). Pinged chat (composer.js/pickers.js/caps.js
+overlap) and pwa (budget 8 rerun on their backoff-fix sha) for current heads before editing shared
+files; waiting on replies. Next once confirmed: re-run the native-bar budgets (5, 8, 9, 10) on the
+merged tree and update docs/design/native-bar.md's results table; then continue down the Doing
+list (Vault Connections entry waits on vault's 5d7cbd07 green).
+
 ## Known follow-ups
 - DONE: e2e's three MEDIUMs (firstParty, drops/env/plugins confirm, asPerson).
 - Merge e2e's claudeHome switch (work/e2e-noclaude 32dc0956) once it is on main: settings'
