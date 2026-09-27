@@ -13,7 +13,7 @@
   "scripts": {
     "postinstall": "node scripts/postinstall.mjs",
     "pretest": "node test/tmp-guard.mjs before",
-    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\" \"relay/**/*.test.js\"",
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"relay/**/*.test.js\"",
     "posttest": "node test/tmp-guard.mjs after",
     "perf-check": "node scripts/perf-check",
     "eval:memory": "node scripts/eval-memory.js",
@@ -48,8 +48,8 @@
     "!**/fixtures/**",
     "!deck/test/**",
     "!**/node_modules/**",
-    "!local/capsule/dist/**",
-    "!local/capsule/bin/**",
+    "!local/capsule/native/.build/**",
+    "!local/capsule/native/Tests/**",
     "!**/.DS_Store",
     "!**/testing.js",
     "!**/testing/**"

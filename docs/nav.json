@@ -67,6 +67,7 @@
       "adr/0011-web-push.md",
       "adr/0012-cdp-proxy.md",
       "adr/0014-tailnet.md",
+      "adr/0015-capsule-sight.md",
       "adr/0016-connectors.md",
       "adr/0019-docs-site.md",
       "adr/0020-claude-code-plugin.md",

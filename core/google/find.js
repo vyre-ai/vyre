@@ -1,10 +1,10 @@
 // @ts-check
 // find: what the Capsule's words mean for Google, and the rows it shows.
 //
-// The Capsule asks every results provider as the person types (local/capsule/lib/providers.js),
-// so this stays small and predictable: a few phrases with a fixed meaning ("what's next", "today",
-// "email from dana"), and anything else is a search of both the calendar and the mail, a few rows
-// each. A row's id carries the account, the kind and Google's id, so google.open needs nothing
+// The Capsule asks every results provider as the person types (ModuleProviders.swift in
+// local/capsule/native), so this stays small and predictable: a few phrases with a fixed meaning
+// ("what's next", "today", "email from dana"), and anything else is a search of both the calendar
+// and the mail, a few rows each. A row's id carries the account, the kind and Google's id, so google.open needs nothing
 // else to find it again.
 
 /**
