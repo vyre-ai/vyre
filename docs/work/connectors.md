@@ -58,21 +58,39 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
 ## Doing
 
 - LOAD RULE (lead): check `ssh testbox uptime` right before every run; run only under 6.
-- SAVED for restart 2026-09-27. Handed to the integrator: work/connectors 8be461a9 (pushed;
-  d5b80ce9 adds only notes) for the batch after batch 4. e2e signed off (84f630c9 + row text),
-  platform approved kernel af11226d + test 77dcd644. Merge order: platform b7bbf5d8 first; keep
-  one copy of firstParty with native-core 98412a66; land TOGETHER with vault 9b (work/vault-next,
-  5d7cbd07 or later: vault.connections.list {caller}, get, use).
-- Green on testbox: 226/226 targeted + 50/50 docs (84f630c9), mail 70/70 (8be461a9).
+- RESUMED 2026-09-28: merged origin/main (794 commits, 0.1.0-rc.1/rc.2 landed) into work/connectors
+  at 38a0240c. Conflicts: CHANGELOG.md (kept both entries), core/modules/index.js and
+  modules.test.js (main's countUse/callerKind landed beside HEAD's meta.firstParty — both are
+  independent and now compose in one `run` wrapper), docs/index.json + docs/reference/{events,
+  index,tools}.md (took origin/main's generated files, then `node scripts/gen-docs-reference`
+  regenerated them off the merged tree). Verified locally (not testbox, load was ~5.5-6):
+  core/modules 41/41, connectors+mcp+google+mail+connect.test+harness.test 173/173,
+  docs-build+docs-check+docs-index 50/50 — all green post-merge.
+- New ask from the lead (0.1.1): every Claude Code MCP server (user/project/local scope, .mcp.json,
+  plugin-provided) auto-discovered live in Vyre's Connections UI (not just one-time import), with
+  status/tools/projects; multi-account native (two Gmail MCPs = one server, several vault-backed
+  accounts, "add another account" is one click); per-project/surface on/off with secrets in the
+  vault; Deck Connections view + compact Capsule list ("send from which account?"); live status
+  events, no polling faster than 60s, optimistic toggle + Undo. Writing docs/design/mcp-native.md
+  next (what exists vs. gaps) before touching code, with vault (grants/connections) and app-design.
+- SAVED for restart 2026-09-27 (superseded by the above once mcp-native lands): handed to the
+  integrator work/connectors 8be461a9 for the batch after batch 4; e2e signed off (84f630c9 + row
+  text), platform approved kernel af11226d + test 77dcd644. Land together with vault 9b
+  (work/vault-next, 5d7cbd07 or later: vault.connections.list {caller}, get, use) — still true,
+  now against the merged tree.
 - No testbox processes running.
 
 ## Next
 
-1. When vault 9b's sha arrives: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
+1. Write docs/design/mcp-native.md: current state (hub discovers only servers named in Vyre's own
+   config today, not Claude Code's .mcp.json/user/project/local scopes or plugin-provided ones —
+   confirm exact gap by reading core/mcp/hub.js's discovery path), sizing for live discovery,
+   multi-account grouping in the UI, native per-project toggles, and the Deck/Capsule surfaces.
+2. When vault 9b's sha arrives: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
    instances) on top of it; hand the integrator the new sha.
-2. Tell capsule-pro when mail is on main (they render mail.find rows, open the Gate card).
-3. `vyre connect` for mail.map (CLI), and the Deck row for mail accounts (with pwa/native-core).
-4. Platform's non-blocking note: cache config.home() in the registry; one firstParty definition.
+3. Tell capsule-pro when mail is on main (they render mail.find rows, open the Gate card).
+4. `vyre connect` for mail.map (CLI), and the Deck row for mail accounts (with pwa/native-core).
+5. Platform's non-blocking note: cache config.home() in the registry; one firstParty definition.
 
 ## Needs from others
 
