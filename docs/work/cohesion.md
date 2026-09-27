@@ -17,13 +17,14 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 - docs-check OWNERS gains "cohesion" (scripts/lib/docs/check.js, docs team's file).
 
 ## Doing
-- Integrator has f5cd36f7 (glue + drift test; targeted 125/125). Perf, load under 6: baseline RSS
-  mean 105.1 / max 152.4 MB; with glue 111.0 / 155.3 MB; CPU 0.00%; no timer under 60 s. Lead:
-  don't block on RSS (ci moving the gate to heapUsed).
-- c362505b (not pushed yet): PRIVACY fix, chrome.acted no longer stores URL queries (scrub());
-  thread/call/app on chrome.acted, desktop.acted, hands.acted; context.report fills device from
-  device:<id>. testbox: 46 pass, 10 skipped (Chrome e2e: no Chrome on testbox). Waiting on e2e's
-  review and a Chrome run (Mac or CI), then hand to the integrator.
+- Integrator has f5cd36f7 (glue + drift test; targeted 125/125).
+- Unpushed, waiting on e2e re-review of a4efd0d8 and the Chrome e2e on testbox (Playwright Chromium at
+  /opt/ms-playwright/chromium-1187/chrome-linux/chrome, CHROME_BIN, one Chrome at a time, after the
+  integrator's suite): c362505b + a4efd0d8 (chrome.acted scrub, thread from meta only, call/app on acted
+  events), 9accaebe (context view + now {surface}), 791bd180 (sight.frame JPEG still), 84d42bb0 (Mac asks
+  answered on the Mac until federation). Unit runs so far: 18 pass / 7 Chrome skips; context, sight, docs
+  and waiting runs queued (load gate).
+- Then: merge main, full targeted run, docs:ref, push, hand the sha to the integrator.
 
 ## Next
 2. Owner replies: record below. Send owners the built contracts and their exact asks.
@@ -43,7 +44,7 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 | 8 | Waiting on you | pwa, capsule-pro, mobile, polish-cli | all yes; pwa swaps js/needs.js merge, push resolves by row id; Mac asks carry machine 3610f31a (threads.answer {machine} not on main) |
 | 9 | Hub read live | native-core, platform, sessions, mobile | native-core yes (rev + non-secret level value); mobile wants per-tool policy flags on /v1/tools |
 | 10 | One live catalog | sessions, chat, capsule-pro, mobile | sessions adds thread.status; chat yes |
-| 11 | Tips | docs, app-design | docs building core/tips (work/docs f89e0fad); reads context.now {surface} view + waiting.count |
+| 11 | Tips | docs, app-design | wired on work/docs 393b7c97 (context.now {surface}.view, waiting.count); pwa to report surface glass from the Glass page |
 | 12 | Memory learns | memory-iq, connectors, sessions | memory-iq yes under source trust; reads vault connection events |
 
 ## Needs from others
