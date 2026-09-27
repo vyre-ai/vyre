@@ -13,10 +13,15 @@
 // port: it holds a request to link.serve open, and the box answers it with the next question when
 // a module asks (link.macs.call). The Mac runs it and answers with link.reply. Nothing a Mac
 // answers is written to the store; it goes back to the module that asked and is forgotten.
+//
+// One write crosses the same way (allow.js WRITE): threads.send, for the person only. The Mac
+// then sends that thread's events back with link.events, and the box re-emits them labelled with
+// the Mac, so the Deck sees the answer arrive. Only for threads the box sent to in the last 30
+// minutes, and only from the Mac it sent to.
 
 import crypto from "node:crypto";
 import { createHealth, unknown } from "./health.js";
-import { ALLOW } from "./allow.js";
+import { ALLOW, WRITE, FOLLOWED } from "./allow.js";
 
 const TTL = 10 * 60_000;
 const MAX_PENDING = 5;
@@ -25,6 +30,10 @@ const MAX_WRONG = 5;
 const HOLD = 60_000;
 /** A Mac with no request held and none in this long is offline: link.macs.call does not wait for it. */
 const FRESH = 3000;
+/** How long the box takes a Mac's events for a thread it sent to (link.events). */
+const FOLLOW = 30 * 60_000;
+/** At most this many events in one link.events batch. */
+const BATCH = 500;
 
 const sha = s => crypto.createHash("sha256").update(s).digest("hex");
 
@@ -249,8 +258,17 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   const lastServe = new Map();
   /** @type {Map<string, string[]>} */
   const queues = new Map();
-  /** @type {Map<string, { id: string, mac: string, tool: string, input: any, sent: boolean, done: (r: any) => void }>} */
+  /** @type {Map<string, { id: string, mac: string, tool: string, input: any, as?: string, sent: boolean, done: (r: any) => void }>} */
   const asks = new Map();
+  /** Threads the box sent to on a Mac, for link.events: thread -> (mac id -> when). Memory only. @type {Map<string, Map<string, number>>} */
+  const forwarded = new Map();
+  const sweepForwarded = () => {
+    const old = now() - FOLLOW;
+    for (const [thread, macs] of forwarded) {
+      for (const [m, at] of macs) if (at < old) macs.delete(m);
+      if (!macs.size) forwarded.delete(thread);
+    }
+  };
 
   /** Answer the Mac's held request, if it has one. */
   const release = (macId, q) => {
@@ -264,7 +282,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     const queue = queues.get(macId) || [];
     while (queue.length) {
       const a = asks.get(/** @type {string} */ (queue.shift()));
-      if (a) { a.sent = true; return { id: a.id, tool: a.tool, input: a.input }; }
+      if (a) { a.sent = true; return { id: a.id, tool: a.tool, input: a.input, ...(a.as ? { as: a.as } : {}) }; }
     }
     return null;
   };
@@ -272,6 +290,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   const forget = macId => {
     release(macId, null);
     lastServe.delete(macId); queues.delete(macId);
+    for (const [thread, macs] of forwarded) { macs.delete(macId); if (!macs.size) forwarded.delete(thread); }
     for (const a of [...asks.values()]) if (a.mac === macId) a.done({ ok: false, error: { code: "unpaired", message: "this Mac was unpaired" } });
   };
   // A Mac counts as there when it holds a request, asked within FRESH, or is working on a question
@@ -315,20 +334,34 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.macs.call", {
-    description: "Ask every paired Mac for one of its read tools. Answers [{ mac, name, ok, data?, error? }], one per Mac.",
-    input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" }, timeout: { type: "number" } }, required: ["tool"] },
+    description: "Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send. Answers [{ mac, name, ok, data?, error? }], one per Mac asked.",
+    input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" }, timeout: { type: "number" }, mac: { type: "string" }, as: { type: "string" } }, required: ["tool"] },
     internal: true,
-    run: async ({ tool, input = {}, timeout = 5000 }) => {
-      if (!allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
-      const wait = Math.min(15_000, Math.max(100, Number(timeout) || 5000));
-      const macs = /** @type {any[]} */ (db.prepare("SELECT id, name FROM link_peers ORDER BY paired_at").all());
-      return Promise.all(macs.map(m => new Promise(resolve => {
+    run: async ({ tool, input = {}, timeout, mac: only, as }) => {
+      // A read list widened by a test seam to take a write sends it as a read, without `as`: how
+      // the Mac's own refusal is reached. Production's list never holds a write.
+      const write = WRITE.includes(tool) && !allow.includes(tool);
+      // A write is the person's only: the switchboard says so for the person's own callers.
+      if (write && as !== "person") throw Object.assign(new Error(`${tool} is sent to a Mac only for the person`), { code: "denied" });
+      if (!write && !allow.includes(tool)) throw Object.assign(new Error(`${tool} is not asked of a Mac through the link`), { code: "denied" });
+      // A send that resumes a stopped session headless takes longer than a read.
+      const wait = Math.min(15_000, Math.max(100, Number(timeout) || (write ? 15_000 : 5000)));
+      let macs = /** @type {any[]} */ (db.prepare("SELECT id, name FROM link_peers ORDER BY paired_at").all());
+      if (only) macs = macs.filter(m => m.id === only || m.name === only);
+      const thread = write && input && typeof input.thread === "string" ? input.thread : null;
+      const answers = await Promise.all(macs.map(m => new Promise(resolve => {
         const who = { mac: m.id, name: m.name };
         if (!online(m.id)) return resolve({ ...who, ok: false, error: { code: "mac_offline", message: `the Mac "${m.name}" is offline` } });
+        // The Mac may send this thread's events back from now on (link.events).
+        if (thread) {
+          sweepForwarded();
+          if (!forwarded.has(thread)) forwarded.set(thread, new Map());
+          /** @type {Map<string, number>} */ (forwarded.get(thread)).set(m.id, now());
+        }
         const id = crypto.randomUUID();
         const timer = setTimeout(() => a.done({ ok: false, error: { code: "timeout", message: `the Mac "${m.name}" did not answer in time` } }), wait);
         timer.unref();
-        const a = { id, mac: m.id, tool, input, sent: false, done: r => {
+        const a = { id, mac: m.id, tool, input, ...(write ? { as: "person" } : {}), sent: false, done: r => {
           if (!asks.delete(id)) return;
           clearTimeout(timer);
           const queue = queues.get(m.id);
@@ -341,6 +374,34 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         // A Mac holding a request gets the question now; otherwise it is waiting in the queue for its next serve.
         if (waiting.has(m.id)) release(m.id, next(m.id));
       })));
+      // A Mac that refused the send (it has no such thread) sends nothing back for it.
+      if (thread) {
+        const macsOf = forwarded.get(thread);
+        for (const a of answers) if (macsOf && !a.ok && a.error && a.error.code !== "timeout") macsOf.delete(a.mac);
+        if (macsOf && !macsOf.size) forwarded.delete(thread);
+      }
+      return answers;
+    },
+  });
+
+  ctx.tool("link.events", {
+    description: "A paired Mac sends the events of a thread the box sent to: { key, events: [{ type, thread, project, at, payload }] }. The box re-emits each, labelled with the Mac.",
+    input: { type: "object", properties: { key: { type: "string" }, events: { type: "array", items: { type: "object" } } }, required: ["key", "events"] },
+    run: async ({ key, events }, meta) => {
+      const row = byKey(key, meta);
+      if (!row) return { paired: false };
+      sweepForwarded();
+      let taken = 0;
+      for (const e of events.slice(0, BATCH)) {
+        const thread = e && typeof e.thread === "string" ? e.thread : null;
+        // Only the listed types, only for a thread the box sent to lately, only from that Mac.
+        if (!thread || !FOLLOWED.includes(e.type) || !forwarded.get(thread)?.has(row.id)) continue;
+        const payload = e.payload && typeof e.payload === "object" && !Array.isArray(e.payload) ? e.payload : {};
+        // The project slug is the Mac's, not the box's: it is not filed under a box project.
+        try { ctx.events.emit(e.type, { ...payload, source: "mac", machine: row.name }, { thread, project: null }); taken++; }
+        catch {} // one that looks like a secret, or is not an event, is dropped alone
+      }
+      return { ok: true, taken };
     },
   });
 
@@ -355,7 +416,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
 
   return {
     async stop() {
-      pending.clear();
+      pending.clear(); forwarded.clear();
       for (const id of [...waiting.keys()]) release(id, null);
       for (const a of [...asks.values()]) a.done({ ok: false, error: { code: "stopped", message: "the box is stopping" } });
     },
