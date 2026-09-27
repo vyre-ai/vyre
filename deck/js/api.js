@@ -12,6 +12,13 @@
 //   { "$by": "<input key>", "cases": { "<value>": data, "*": data } }   chosen by an input field
 //   { "$seq": [data, data, ...] }                                         the next one per call, then the last
 // and any string "$ago:<n><s|m|h|d>" becomes that long before now, in ms, so fixture times stay fresh.
+//
+// Resilience (docs/adr/0029-resilience.md) comes from core/resilience, imported as
+// ../../core/resilience/*.js: in a browser that is /core/resilience/*.js, which vyred serves
+// (core/daemon), and in Node the repo's own files, so there is one copy.
+
+import { follow } from "../../core/resilience/stream.js";
+import { open, cursorStore, lifecycle } from "../../core/resilience/web.js";
 
 const store = (() => { try { return window.sessionStorage; } catch { return null; } })();
 const q = new URLSearchParams(location.search);
@@ -337,54 +344,70 @@ export async function modules() {
   try { const r = await fetch("/v1/modules"); const b = await r.json(); return b.data || []; } catch { return []; }
 }
 
-// One EventSource for the whole Deck, shared by every view. Views load their state through tools
-// and then follow events, so the stream starts at the newest event (since=latest) rather than
-// replaying the log. After that, EventSource resumes by Last-Event-ID on its own.
-/** @type {EventSource | null} */
-let source = null;
-let lastSeen = 0;
+// One event stream for the whole Deck, shared by every view (docs/adr/0029-resilience.md, R1, R3).
+// core/resilience's follow() holds it: views load their state through tools and then follow
+// events, so the first connection starts at the newest event (since=latest); from then on every
+// reconnect resumes from the cursor, drops doubles, treats 45 s of silence as a dead stream and
+// backs off 2 s to 60 s. lifecycle() closes it while the page is hidden and reconnects at once
+// when it is back, online again or restored from the back/forward cache. One path: this page's own
+// origin. The cursor is also kept (cursorStore) so the snapshot cache can say what it is current to.
+/** @type {ReturnType<typeof follow> | null} */
+let stream = null;
+/** @type {(() => void) | null} */
+let unwire = null;
 const subs = new Set();
-// The SSE "event:" line carries the type, and named events never reach onmessage, so every type
-// a view may want is listened for by name.
-const known = new Set(["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
-  "ask.raised", "ask.answered", "lease.changed", "session.indexed", "memory.curated", "project.created", "project.changed",
-  "thread.picked", "thread.unpicked", "tool.held", "turn.completed", "file.touched",
-  "gate.held", "gate.released", "gate.failed", "gate.rejected",
-  "lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired",
-  "onboard.stepped", "onboard.finished", "vault.item-added", "vault.granted", "vault.revoked", "pass.created", "pass.revoked"]);
+/** The stream's last state, for the shell's Reconnecting pill (js/reconnect.js). */
+/** @type {import("../../core/resilience/stream.js").StreamState | null} */
+export let streamState = null;
+/** Per box, for the stores: this page's own origin. */
+const BOX = (() => { try { return location.host || "deck"; } catch { return "deck"; } })();
 
 /**
- * Listen to vyred's events. type is "thread.text", "thread.*" or "*"; a prefix type hears only
- * the names in `known`. Returns an unsubscribe.
+ * Listen to vyred's events. type is "thread.text", "thread.*" or "*". Returns an unsubscribe.
  * @param {string} type
  * @param {(e: { id: number, at: number, type: string, source: string, project: string|null, thread: string|null, payload: any }) => void} fn
  */
 export function on(type, fn) {
   const sub = { type, fn };
   subs.add(sub);
-  if (!type.includes("*") && !known.has(type)) { known.add(type); source?.addEventListener(type, deliver); }
-  if (!source && typeof EventSource !== "undefined") {
-    // An EventSource cannot send headers, so the onboarding session rides as ?s=.
-    const s = headers["x-vyre-onboard"];
-    source = new EventSource("/v1/events/stream?since=latest" + (s ? `&s=${encodeURIComponent(s)}` : ""));
-    for (const t of known) source.addEventListener(t, deliver);
-    source.addEventListener("open", () => reach(true));
-    // EventSource retries on its own; CLOSED means it gave up (a 403, say), CONNECTING a lost box.
-    source.addEventListener("error", () => { if (source && source.readyState !== EventSource.OPEN) reach(false); });
-  }
+  // Only in a browser: every one the Deck supports has EventSource, and Node (the tests) does not,
+  // so a test that imports a view never opens a stream by accident.
+  if (!stream && typeof EventSource !== "undefined") startStream();
   return () => { subs.delete(sub); };
 }
 
-/** @param {MessageEvent} m */
-function deliver(m) {
-  let e;
-  try { e = JSON.parse(m.data); } catch { return; }
-  if (e.id <= lastSeen) return;
-  lastSeen = e.id;
+function startStream() {
+  const cursor = cursorStore(BOX);
+  stream = follow({
+    paths: [location.origin], open,
+    // The onboarding session rides as a header now: fetch can send one, EventSource could not.
+    headers: { "x-vyre-caller": "deck", ...headers },
+    onEvent: deliver,
+    // The box's log is behind this cursor (its store was reset): the views reload through tools.
+    onReset: () => { if (typeof window !== "undefined") window.dispatchEvent(new Event("deck:navigate")); },
+    onState: s => {
+      streamState = s;
+      if (s.state === "open") reach(true);
+      else if (s.state === "reconnecting") reach(false);
+      if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:stream", { detail: s }));
+    },
+    save: n => cursor.save(n),
+  });
+  unwire = lifecycle(stream);
+}
+
+/** Reconnect now (the pill's Retry): a no-op while the page is hidden or before any view listens. */
+export function kick() { stream?.kick(); }
+
+/** Close the stream for good (a test's end; a sign-out). The next on() opens a new one. */
+export function stopEvents() { stream?.stop(); unwire?.(); stream = null; unwire = null; }
+
+/** @param {{ id: number, type: string }} e */
+function deliver(e) {
   for (const s of subs) {
     const t = s.type;
     if (t === "*" || t === e.type || (t.endsWith(".*") && e.type.startsWith(t.slice(0, -1)))) {
-      try { s.fn(e); } catch (err) { console.error(err); }
+      try { s.fn(/** @type {any} */ (e)); } catch (err) { console.error(err); }
     }
   }
 }

@@ -254,6 +254,14 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - Tabs on the phone: Now, Projects, Chat, Find, Agents (Ask moved off the tab bar; /ask stays).
 - api.js exports `reachable` and fires `deck:reach` on window. No tool or event changes.
 - Now's first child on a phone may be the setup card (phone-setup.js).
+- ADR 0029, step 1: GET /core/resilience/{backoff,sse,stream,outbox,web}.js served by vyred
+  (core/daemon/index.js, text/javascript, no-cache, the Deck's CSP), and allowed on the onboarding
+  loopback (core/onboard/loopback.js assetPath). Not /js/resilience/ as first planned: js/api.js
+  imports ../../core/resilience/*.js, which is /core/resilience/ in a browser and the repo file in
+  Node, so the Deck's tests import the same code. deck/sw.js SHELL keeps the five files.
+- deck/js/api.js: the event stream is follow() over fetch; the onboarding session rides as the
+  x-vyre-onboard header on the stream (was ?s=; loopback.js reads both). New window event
+  `deck:stream` (detail: follow's state), exports `streamState`, `kick()`, `stopEvents()`.
 
 ## Perf
 - No timers or polls added. The offline line rechecks only on `online`, on becoming visible while

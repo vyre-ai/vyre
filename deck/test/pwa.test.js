@@ -10,10 +10,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const read = (/** @type {string} */ f) => fs.readFileSync(path.join(DECK, f), "utf8");
-const exists = (/** @type {string} */ p) => fs.existsSync(path.join(DECK, p === "/" ? "index.html" : p.slice(1)));
+// vyred serves core/resilience/*.js beside the Deck's own files (core/daemon), and the Deck imports them.
+const file = (/** @type {string} */ f) => path.join(f.startsWith("core/resilience/") ? path.join(DECK, "..") : DECK, f);
+const read = (/** @type {string} */ f) => fs.readFileSync(file(f), "utf8");
+const exists = (/** @type {string} */ p) => fs.existsSync(file(p === "/" ? "index.html" : p.slice(1)));
 
-test("pwa: every path the service worker keeps at install is a file in deck/", () => {
+test("pwa: every path the service worker keeps at install is a file in deck/ (or core/resilience/, which vyred serves)", () => {
   const m = /const SHELL = \[([\s\S]*?)\];/.exec(read("sw.js"));
   assert.ok(m, "SHELL list in sw.js");
   const paths = [...m[1].matchAll(/"([^"]+)"/g)].map(x => x[1]);

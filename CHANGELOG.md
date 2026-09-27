@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck on the resilience client (ADR 0029)
+
+- The Deck's one event stream is core/resilience's follow() over fetch (web.js open), with
+  lifecycle(): the first connection starts at the newest event, every reconnect resumes from the
+  cursor (Last-Event-ID and since=), doubles are dropped, 45 s of silence is a dead stream, and a
+  hidden page closes it and reconnects at once when it is back. The cursor is kept (cursorStore).
+  api.js's on(), the event objects, `reachable` and `deck:reach` are as before; a prefix like
+  "thread.*" now hears every matching type, not only the names the Deck knew. New: `deck:stream`
+  (the stream's state), `kick()`, `stopEvents()`.
+- vyred serves /core/resilience/{stream,sse,backoff,outbox,web}.js with the Deck's headers, which
+  js/api.js imports as ../../core/resilience/*.js (the same file in the browser and in Node tests,
+  no copy). The service worker keeps them at install; the onboarding page may load them.
+
 #### /pair: finishing `vyre phone add --tailscale-only` on the phone
 
 - A new Deck route, /pair, on one screen: the code the laptop shows (XXXX-XXXX, dash optional)
