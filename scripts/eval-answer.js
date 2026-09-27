@@ -5,6 +5,9 @@
 //
 //   node scripts/eval-answer.js          the synthetic personal world, as a report
 //   node scripts/eval-answer.js --json   the same, as JSON
+//   node scripts/eval-answer.js --record  read the world's turns with the fast model (`claude -p`) into
+//            test/eval/reads/<world>.json; by default the reads are replayed from there, no model
+//   node scripts/eval-answer.js --no-model  the rules alone
 //   node scripts/eval-answer.js --facts  also list the personal facts the world left (not for fresh)
 //   node scripts/eval-answer.js --keyword  without the dense index (keyword recall only)
 //   node scripts/eval-answer.js --world heldout  the held-out world (test/fixtures/personal-heldout.js
@@ -47,6 +50,7 @@ import * as fresh from "../test/fixtures/personal-fresh.js";
 import { search, thread } from "../core/recall/search.js";
 import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
+import { claudeOnce, modelFor, VERSION } from "../core/memory/personal/reader.js";
 import { fakeEmbedder } from "../core/recall/testing.js";
 import { rankSaid, yourAnswer } from "../local/capsule/lib/said.js";
 import { words } from "../local/capsule/lib/route.js";
@@ -138,7 +142,7 @@ export function score(questions, got) {
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {{ me: any, embedder: any, dense: any }} opts
  */
-async function startMemory(db, { me, embedder, dense }) {
+async function startMemory(db, { me, embedder, dense, runner = null }) {
   const tools = new Map();
   const ctx = {
     name: "memory",
@@ -160,6 +164,8 @@ async function startMemory(db, { me, embedder, dense }) {
       return { error: { code: "no_such_tool", message: `${tool} is not in the evaluation` } };
     },
     tool: (name, def) => tools.set(name, def),
+    // The reader's model: `claude -p` when recording, none when replaying (reads come from the fixture).
+    memoryRunner: runner,
   };
   const mod = (await import("../core/memory/index.js")).default;
   const handle = await mod.start(ctx);
@@ -265,10 +271,30 @@ export async function runEval(opts = {}) {
     const dense = embedder ? new Dense(db) : null;
     if (embedder) await embedAll(db, embedder);
     const embedMs = now() - t0;
-    mem = await startMemory(db, { me: opts.me || ME, embedder, dense });
+    // The reader's reads: replayed from test/eval/reads/<world>.json, recorded with --record,
+    // or left out with --no-model (the rules alone).
+    const readsFile = path.join(ROOT, "test/eval/reads", `${opts.world || "personal"}.json`);
+    const mode = opts.model || "replay";
+    const runner = mode === "record" ? claudeOnce({ cwd: dir }) : null;
+    mem = await startMemory(db, { me: opts.me || ME, embedder, dense, runner });
+    if (mode !== "off" && fs.existsSync(readsFile)) {
+      const kept = JSON.parse(fs.readFileSync(readsFile, "utf8"));
+      if (kept.version === VERSION) {
+        const ins = db.prepare("INSERT OR REPLACE INTO memory_me_reads (hash, v, at, facts, usd) VALUES (?,?,?,?,?)");
+        for (const [h, f] of Object.entries(kept.reads || {})) ins.run(h, VERSION, 0, JSON.stringify(f), 0);
+      }
+    }
     const t1 = now();
     await mem.call("memory.curate", { full: true });
+    let recorded = null;
+    if (mode === "record") {
+      recorded = (await mem.call("memory.read", { now: true, max_runs: 1000 })).ran;
+      const reads = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT hash, facts FROM memory_me_reads WHERE v = ? ORDER BY hash").all(VERSION)).map(r => [String(r.hash), JSON.parse(String(r.facts))]));
+      fs.mkdirSync(path.dirname(readsFile), { recursive: true });
+      fs.writeFileSync(readsFile, JSON.stringify({ version: VERSION, model: modelFor({}), reads }, null, 1) + "\n");
+    }
     const curateMs = now() - t1;
+    const waitingTurns = Number(/** @type {any} */ (db.prepare("SELECT COUNT(DISTINCT hash) n FROM memory_me_queue").get()).n);
     const count = sql => Number(/** @type {any} */ (db.prepare(sql).get()).n);
     const world = {
       sessions: count("SELECT COUNT(*) n FROM recall_sessions"),
@@ -277,6 +303,7 @@ export async function runEval(opts = {}) {
       embedder: embedder ? "fake (hashed words)" : "none (keyword only)",
       questions: questions.length,
       unknowns: questions.filter(q => !q.expect).length,
+      model: mode, unread_turns: waitingTurns, ...(recorded ? { recorded } : {}),
       embed_ms: round(embedMs),
       curate_ms: round(curateMs),
     };
@@ -308,6 +335,7 @@ function print(r) {
   const out = [];
   out.push(`eval-answer: ${w.sessions} sessions, ${w.turns} turns, ${w.vectors} vectors (${w.embedder}); ${w.questions} questions, ${w.unknowns} with no answer`);
   out.push(`  embedded in ${Math.round(w.embed_ms)} ms, curated in ${Math.round(w.curate_ms)} ms`);
+  out.push(`  reader: ${w.model}, ${w.unread_turns} turns with no read${w.recorded ? `; recorded ${w.recorded.read} turns in ${w.recorded.runs} runs for $${w.recorded.usd}${w.recorded.read ? ` ($${Math.round(w.recorded.usd / w.recorded.read * 1e6) / 1e3} per 1,000 turns)` : ""}${w.recorded.waiting ? `, stopped: ${w.recorded.waiting}` : ""}` : ""}`);
   for (const [name, a] of Object.entries(r.answerers)) {
     out.push("");
     if (!a.supported) { out.push(`${name}: unsupported (${a.reason})`); continue; }
@@ -343,7 +371,8 @@ async function main(argv) {
   const wi = argv.indexOf("--world");
   const world = wi >= 0 ? argv[wi + 1] : "personal";
   if (argv.includes("--facts") && world === "fresh") throw new Error("the fresh world is sealed: no --facts");
-  const r = await runEval({ world, vectors: !argv.includes("--keyword"), facts: argv.includes("--facts") });
+  const model = argv.includes("--record") ? "record" : argv.includes("--no-model") ? "off" : "replay";
+  const r = await runEval({ world, vectors: !argv.includes("--keyword"), facts: argv.includes("--facts"), model });
   if (r.world.facts) for (const f of r.world.facts) process.stdout.write(`  ${f.current ? " " : "x"} ${f.subj} ${f.rel} ${f.obj_label || f.obj} @${round(f.confidence)} (${f.sessions})\n`);
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 2) + "\n"); else print(r);
   // CI runs this: a memory.answer under the bar fails the build.

@@ -7,6 +7,7 @@
 // never drift from what was said. derive() writes only when the result differs.
 
 import { extractPersonal, CONF, KIN, SINGULAR, SINGLE_VALUED, TIME_VARYING, relOfRole } from "./extract.js";
+import { signal, turnHash } from "./reader.js";
 import { MIGRATIONS } from "../schema.js";
 import { migrate } from "../../store/index.js";
 
@@ -69,7 +70,7 @@ export class Personal {
 
   /** Forget what was read from one session (its transcript was rewritten, or is gone). */
   reset(session) {
-    this.tx(() => { for (const t of ["memory_me_claims", "memory_me_cues", "memory_me_cursor"]) this.db.prepare(`DELETE FROM ${t} WHERE session = ?`).run(session); });
+    this.tx(() => { for (const t of ["memory_me_claims", "memory_me_cues", "memory_me_cursor", "memory_me_queue"]) this.db.prepare(`DELETE FROM ${t} WHERE session = ?`).run(session); });
     // A rewritten transcript can reuse rowids: the cached scan is no longer to be trusted.
     this.idx.clear(); this.hw = 0;
     this.dirty = true;
@@ -102,6 +103,8 @@ export class Personal {
     const addClaim = db.prepare(`INSERT INTO memory_me_claims (session, seq, ts, subj, rel, obj, conf, method) VALUES (?,?,?,?,?,?,?,?)
       ON CONFLICT DO UPDATE SET ts = excluded.ts, conf = max(conf, excluded.conf), method = excluded.method`);
     const addCue = db.prepare("INSERT OR IGNORE INTO memory_me_cues (session, seq, ts, text) VALUES (?,?,?,?)");
+    // A user turn with a personal signal waits for the reader (./reader.js), keyed by its text.
+    const enqueue = db.prepare("INSERT INTO memory_me_queue (session, seq, ts, hash) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET ts = excluded.ts, hash = excluded.hash");
     const done = db.prepare("INSERT INTO memory_me_cursor (session, upto, at, focus) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET upto = excluded.upto, at = excluded.at, focus = excluded.focus");
     let turns = 0, claims = 0, more = false;
     // One transaction per batch, not per session: a commit per session was most of a first
@@ -121,6 +124,7 @@ export class Personal {
           focus = r.focus;
           for (const c of r.claims) { addClaim.run(session, seq, ts, c.subj, c.rel, c.obj, c.conf, c.method); claims++; }
           for (const q of r.cues) addCue.run(session, seq, ts, q);
+          if (String(t.role) === "user" && signal(String(t.text))) enqueue.run(session, seq, ts, turnHash(String(t.text)));
         }
         const upto = all ? /** @type {number} */ (recall.get(session)) : take[take.length - 1].seq + 1;
         done.run(session, upto, this.now(), focus ? JSON.stringify(focus) : null);

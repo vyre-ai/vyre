@@ -15,7 +15,7 @@ import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
-import { createModelPass } from "./personal/model.js";
+import { createReader, claudeOnce } from "./personal/reader.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -44,35 +44,27 @@ export default {
         await new Promise(r => setImmediate(r));
       }
       const d = stopping ? { changed: false } : personal.derive();
-      // New turns may have left sentences no rule could read: the model pass may take them.
-      if (turns && !stopping) void model.pump();
+      // New user turns may wait for the reader: kept reads apply at once, the rest in a batch.
+      if (turns && !stopping) { model.applyKept(); void model.pump(); }
       return { turns, claims, changed: d.changed };
     };
-    // What the rules cannot read goes to a budgeted haiku pass through the Switchboard, run like
-    // learn's jobs: on events only, one at a time, under a daily cost cap (config.memory.model).
-    const model = createModelPass({
-      db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log,
-      config: () => ctx.config,
-      dir: () => {
-        const root = ctx.paths && ctx.paths.root;
-        if (!root) return null;
-        const d = path.join(root, "memory-jobs");
-        try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; } catch { return null; }
-      },
+    // The fast model reads every user turn with a personal signal, once (personal/reader.js):
+    // on events, at most a batch a minute, never while a user thread works, under a daily cap and
+    // a one-time backfill allowance (config.memory.model). ctx.memoryRunner replaces `claude -p`
+    // in tests and the evaluation; null there means reads are only replayed from what is kept.
+    const jobs = () => {
+      const root = ctx.paths && ctx.paths.root;
+      if (!root) return null;
+      const d = path.join(root, "memory-jobs");
+      try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; } catch { return null; }
+    };
+    const model = createReader({
+      db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
+      runner: ctx.memoryRunner !== undefined ? ctx.memoryRunner : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null,
     });
-    const threadOf = e => e.thread || (e.payload && e.payload.thread);
     const modelOffs = [
-      ctx.events.on("thread.text", e => {
-        const p = e.payload || {}, thread = threadOf(e);
-        if (p.done !== true || p.notice || p.message === "vyre" || typeof p.text !== "string" || !thread || !model.owns(thread)) return;
-        model.answered(thread, p.text).catch(err => ctx.log("memory model answer not read: " + err.message));
-      }),
-      ctx.events.on("thread.stopped", e => {
-        const thread = threadOf(e);
-        if (thread && model.owns(thread)) model.stopped(thread).catch(err => ctx.log("memory model run not closed: " + err.message));
-        else void model.pump();
-      }),
-      ctx.events.on("thread.finished", e => { const thread = threadOf(e); if (!thread || !model.owns(thread)) void model.pump(); }),
+      ctx.events.on("thread.stopped", () => void model.pump()),
+      ctx.events.on("thread.finished", () => void model.pump()),
     ];
     let running = null, again = false, stopping = false, timer = null;
     // Rooms are stored, so a restart reuses the last list; they are read again from Projects on
@@ -507,6 +499,17 @@ export default {
         return run({ full, force: true });
       },
     });
+    // The reader's usage line, and "read now" for the person (spends from the same caps).
+    ctx.tool("memory.read", {
+      callers: OWNERS,
+      description: "The fast model's reading of your turns for personal facts: spend today and on the one-time backfill, turns waiting, cost per 1,000 turns. now: true reads what is waiting at once, within the caps.",
+      input: { type: "object", properties: { now: { type: "boolean" }, max_runs: { type: "integer", minimum: 1, maximum: 1000 } } },
+      run: ownerWrite(async ({ now = false, max_runs = 50 }) => {
+        if (running) await running.catch(() => {});
+        const r = now ? await model.drain({ maxRuns: max_runs }) : null;
+        return { ...(r ? { ran: r } : {}), status: model.status() };
+      }),
+    });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
@@ -521,6 +524,7 @@ export default {
         off();
         for (const o of offs) o();
         for (const o of modelOffs) if (typeof o === "function") o();
+        model.stop();
         if (running) await running.catch(() => {});
       },
     };

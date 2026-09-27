@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Memory reads your turns with the fast model, once each
+
+- The reader (core/memory/personal/reader.js) sends every user turn with a personal signal to the
+  fast model (config.models.memory, then config.models.background, then haiku) in batches of 20.
+  It never sends code blocks. It runs on events only, a minute apart at the least, never while a
+  user thread is working, and under a daily cap (config.memory.model.dailyUsd, $0.25). A one-time
+  backfill allowance (backfillUsd, $2) covers the history that was already there. Spend is what
+  the model reports.
+- A fact is kept only when it quotes the user's own words in that turn. Pasted, quoted and
+  dictated text does not count. Its subject and object must also be said there. It lands as a
+  model claim at no more than 0.8. The rules stay the cheap first pass.
+- What the model said about a text is kept by the text's hash (memory_me_reads). A re-read, a
+  rewritten transcript or the same words elsewhere never pay twice. The old cue pass through the
+  Switchboard is gone.
+- New tool `memory.read {now?}` gives the usage line: today's spend, the backfill, turns waiting
+  and cost per 1,000 turns. With `now: true` it reads at once, within the caps. `vyre status`
+  shows the backfill and the turns still to read.
+- scripts/eval-answer.js replays the reads from test/eval/reads/<world>.json, so CI calls no
+  model. `--record` records them with `claude -p` and `--no-model` scores the rules alone.
+
 #### Memory answers the user's own Claude Code session
 
 - A bare `mcp` caller (Vyre's MCP server with no agent: the user's own Claude Code session), and

@@ -1092,3 +1092,25 @@ function toolOf(t) {
   if (TOOLS.has(lower(x))) return `tool:${TOOLS.get(lower(x))}`;
   return `tool:${x}`;
 }
+
+/**
+ * A vehicle's label in the rules' spelling, from however the model wrote it: "subaru outback",
+ * "Outback" and "Subaru Outback" are all "Subaru Outback". Unknown makes keep their words.
+ * @param {string} label
+ */
+export function canonVehicle(label) {
+  const w = String(label || "").trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return null;
+  const two = w.length > 1 ? MAKE_OF.get(`${w[0]} ${w[1]}`.toLowerCase()) : null;
+  const make = two || MAKE_OF.get(w[0].toLowerCase()) || null;
+  const rest = w.slice(two ? 2 : make ? 1 : 0);
+  // The longest known model the words start with: "maverick hybrid" is a Maverick.
+  let model = null;
+  for (let n = rest.length; n > 0 && !model; n--) model = MODEL_OF.get(alnum(rest.slice(0, n).join(" "))) || null;
+  const word = x => (/\d/.test(x) ? x.toUpperCase() : /^[a-z]/.test(x) ? cap1(x) : x);
+  if (!make) return model ? `${MODELS[model]} ${model}` : w.map(word).join(" ");
+  return `${make}${model ? " " + model : rest.length ? " " + rest.map(word).join(" ") : ""}`;
+}
+
+/** The user's own words in a turn: no code, no quoted, pasted or dictated text (what the rules read). */
+export const ownText = (/** @type {string} */ text) => readable(String(text || ""), "user").join(" ");
