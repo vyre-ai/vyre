@@ -133,7 +133,7 @@ export function css(t) {
     const c = t.color[theme];
     const out = Object.entries(c).filter(([k]) => k !== "beacon").map(([k, v]) => [kebab(k), v]);
     out.push(["beacon-ink", c.beacon], ["beacon-dot", c.beacon], ["beacon-badge-ink", c.primaryInk]);
-    out.push(["float", t.shadow[theme]]);
+    out.push(["float", t.shadow[theme]], ["popover", t.popover[theme]]);
     return out.map(([k, v]) => `  --${k}: ${v};`).join("\n");
   };
   return `/* ${HEAD} */
@@ -142,6 +142,7 @@ export function css(t) {
 ${roles("dark")}
   --sans: '${t.font.sans}', 'Helvetica Neue', Arial, sans-serif;
   --mono: '${t.font.mono}', ui-monospace, Menlo, monospace;
+${Object.entries(t.radius).map(([k, v]) => `  --radius-${kebab(k)}: ${v}px;`).join("\n")}
   color-scheme: dark;
 }
 :root[data-theme="paper"] {
