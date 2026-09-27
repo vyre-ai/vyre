@@ -279,6 +279,10 @@ down after):
   computer.unshielded); "mac" is local_only. sight.* and tips.* take the owner's devices with no
   presence. answer is `{tool, input, fill}`. context.report fills device for `device:<id>`
   callers; over the tailnet send it (snapshot's echoed id).
+- cohesion item 3 (after 0.1.0): the composer takes chat-core's deck/chat/core/suggest.js
+  (native-core work/native-core-composer c012c13c: queryInput, suggestRows, applySuggestion,
+  pickedInput; @ mentions, Tab completion, suggest.picked). No app contract. The model picker reads
+  sessions.models.get `aliases`; drop any local model list then.
 - docs tips (work/docs d960197d, docs/build/tips.md "Show one on a surface"), after 0.1.0 and an
   app-design look: tips.next {surface:"phone", context:{module, idle}} on Places open and once after a
   pause on Now (one visible-only timer), busy:true during approvals, presence or a running turn;
