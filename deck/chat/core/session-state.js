@@ -43,7 +43,8 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ key: string, kind: "notice", text: string, at?: number }} NoticeItem
  * @typedef {{ key: string, kind: "ask", ask: string, askKind: string, tool: string|null, state: "open"|"answered"|"cancelled",
  *   decision?: string|null, summary?: string|null, answers?: any, at?: number }} AskItem
- * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|AskItem|SteerItem} Item
+ * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number }} ShellItem
+ * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|AskItem|SteerItem|ShellItem} Item
  * @typedef {{ ask: string, kind: string, tool: string|null, state: "open"|"answered"|"cancelled", decision: string|null, at: number|null }} Ask
  * @typedef {{ uuid: string|null, text: string, queued: number|string|null, at: number|null, local?: boolean }} Queued
  * @typedef {{ content: string, status: string, activeForm?: string }} Todo
@@ -332,6 +333,22 @@ function onRewound(s, p, at, out) {
     : `Rewound to before "${quote}"` + (restore === "both" ? ", files too" : "");
   insert(s, /** @type {NoticeItem} */ ({ key: nkey, kind: "notice", text, ...(at !== undefined ? { at } : {}) }));
   out.add(nkey);
+}
+
+/**
+ * A "!" command the person ran in the session's folder, from threads.shell's answer (no event
+ * carries it): a row with the command and its output. Returns the keys touched.
+ * @param {Session} s
+ * @param {{ id: string, command: string, output?: string, exit?: number|null, duration_ms?: number|null, error?: string, at?: number }} r
+ */
+export function localShell(s, r) {
+  const key = `sh:${r.id}`;
+  /** @type {ShellItem} */
+  const item = { key, kind: "shell", command: r.command, output: String(r.output ?? ""), exit: r.exit ?? null, duration_ms: r.duration_ms ?? null,
+    ...(r.error ? { error: r.error } : {}), ...(r.at !== undefined ? { at: r.at } : {}) };
+  const was = s.byKey.get(key);
+  if (was) Object.assign(was, item); else insert(s, item);
+  return [key];
 }
 
 /**

@@ -7,16 +7,21 @@
 // the first word, which starts with "/"), which commands match it best, and the text once one is
 // picked. No DOM: shared core, tested on its own (commands.test.js).
 //
-// Where the list comes from. Claude Code names its commands in the system init message
-// (slash_commands), but the Switchboard keeps only the session id and model from it
-// (core/switchboard/translate.js), so no thread record or threads.get carries them. Until one
-// does, the picker offers this static list: Claude Code's built-in commands that work in a
-// session the box runs, and the one the Vyre plugin adds (harness/commands/vyre.md). Whatever
-// is typed still goes to threads.send verbatim; the list only helps to find a name.
+// Where the list comes from. threads.commands {thread} (proposed to the sessions team) gives the
+// session's own: built-ins, the user's and the project's, plugins' and skills', each with its
+// source; normalizeCommands() makes that list the picker's shape. On a box without it the picker
+// offers this static list: Claude Code's built-in commands that work in a session the box runs,
+// and the one the Vyre plugin adds (harness/commands/vyre.md). Whatever is typed still goes to
+// threads.send verbatim, except the commands the composer answers itself (`local`: /model opens
+// the model picker, /rewind the rewind picker), which are always offered.
 
 import { scoreFields, compareScores } from "./match.js";
 
-/** @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: "session" | "vyre" }} Command */
+/**
+ * source: "session" (built in), "project", "user", "plugin", "skill", "vyre". local: the composer
+ * does it itself, nothing is sent.
+ * @typedef {{ name: string, description: string, hint?: string, aliases?: string[], source: string, local?: "model"|"rewind" }} Command
+ */
 
 /** @type {readonly Command[]} */
 export const COMMANDS = Object.freeze([
@@ -27,6 +32,8 @@ export const COMMANDS = Object.freeze([
   { name: "init", description: "Write a project guide for this folder", source: "session" },
   { name: "review", description: "Review a pull request", hint: "[pr]", source: "session" },
   { name: "rename", description: "Rename this session", hint: "<name>", source: "session" },
+  { name: "model", description: "Switch the model for this session", hint: "[model]", source: "session", local: "model" },
+  { name: "rewind", description: "Go back to an earlier message", source: "session", local: "rewind" },
   { name: "vyre", description: "Vyre status, ask an agent, recall past sessions, remember a lesson", hint: "[status | ask | recall | remember]", source: "vyre" },
 ]);
 
@@ -75,4 +82,40 @@ export function applyCommand(text, range, name) {
   const word = `/${name}`;
   const gap = after.startsWith(" ") ? "" : " ";
   return { text: before + word + gap + after, caret: before.length + word.length + 1 };
+}
+
+/** The badge each source shows in the picker; built-ins show none. */
+export const SOURCE_LABELS = Object.freeze(/** @type {Record<string, string>} */ ({
+  session: "", builtin: "", "built-in": "", project: "project", user: "yours", plugin: "plugin", skill: "skill", vyre: "vyre", mcp: "mcp",
+}));
+
+/** @param {string} source */
+export const sourceLabel = source => (source in SOURCE_LABELS ? SOURCE_LABELS[source] : String(source || ""));
+
+/**
+ * threads.commands' answer as the picker's list: names without their slash, sources as given
+ * ("builtin" read as "session"), unique by name (the first wins), and the composer's own local
+ * commands added when the session does not name them. Anything else (an older box's {}) gives the
+ * static list.
+ * @param {unknown} list @returns {Command[]}
+ */
+export function normalizeCommands(list) {
+  if (!Array.isArray(list) || !list.length) return [...COMMANDS];
+  /** @type {Map<string, Command>} */
+  const out = new Map();
+  for (const c of list) {
+    if (!c || typeof c !== "object") continue;
+    const name = String(/** @type {any} */ (c).name ?? "").replace(/^\//, "").trim();
+    if (!name || /\s/.test(name) || out.has(name)) continue;
+    const src = String(/** @type {any} */ (c).source ?? "session");
+    /** @type {Command} */
+    const cmd = { name, description: String(/** @type {any} */ (c).description ?? ""), source: src === "builtin" || src === "built-in" ? "session" : src };
+    const hint = /** @type {any} */ (c).argumentHint ?? /** @type {any} */ (c).hint;
+    if (hint) cmd.hint = String(hint);
+    const local = COMMANDS.find(x => x.local && x.name === name);
+    if (local) cmd.local = local.local;
+    out.set(name, cmd);
+  }
+  for (const c of COMMANDS) if (c.local && !out.has(c.name)) out.set(c.name, c);
+  return [...out.values()];
 }

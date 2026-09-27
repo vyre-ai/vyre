@@ -80,6 +80,8 @@ const liveEvents = [
 // The third session: an ADR 0030 thread (provider, model, auth, state, queue, interrupt).
 const NEW = "4b7e2a90-sdk-thread";
 let interruptMissing = false;
+/** Tools this box answers "no such tool" for (a box before the sessions update has none of them; this one has some). */
+const MISSING = new Set(["threads.unqueue"]);
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
   const input = JSON.parse(o.body);
@@ -87,6 +89,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   let data;
   if (input.thread === NEW || input.session === NEW) {
     if (tool === "threads.interrupt" && interruptMissing) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no tool threads.interrupt" } }) };
+    if (MISSING.has(tool)) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool here" } }) };
     if (tool === "threads.get") data = { thread: { id: NEW, name: "Q3 report and Estate intake", cwd: "/home/alex/work/harlow-legal", status: "idle", holder: null, agent: "kit" }, events: [], asks: [] };
     else if (tool === "recall.transcript") data = { session: { id: NEW, cwd: "/home/alex/work/harlow-legal" }, blocks: [], next: 0, first: 0 };
     else if (tool === "threads.asks") data = [];
@@ -285,17 +288,26 @@ test("thinking folds to its length, a run of tools is one row that counts up, th
   assert.equal(stopBtn().hidden, true, "no Stop once the turn is over");
 });
 
-test("queued rows sit above the composer; their buttons wait for the sessions update", async () => {
+// Changed on purpose (the composer like Claude Code, 27 Sep): the row reads "Queued for after",
+// "Send now" is "Steer now" (threads.steer), and each button is on until the box says it has no
+// such tool (core/caps.js), not off from the start.
+test("queued rows sit above the composer: Edit, Take back, Steer now; a box without the tool turns that button off", async () => {
   at("thread.queued", { uuid: "q1", text: "Then open a PR against main" });
   const row = $(box3, ".cv-queued-row");
   assert.ok(row);
-  assert.match(text(row), /^Queued\s*Then open a PR against main/);
-  for (const [cls, label] of [[".cv-q-edit", "Edit"], [".cv-q-take", "Take back"], [".cv-q-now", "Send now"]]) {
+  assert.match(text(row), /^Queued for after\s*Then open a PR against main/);
+  for (const [cls, label] of [[".cv-q-edit", "Edit"], [".cv-q-take", "Take back"], [".cv-q-now", "Steer now"]]) {
     const b = $(row, cls);
     assert.equal(text(b), label);
-    assert.equal(b.disabled, true);
-    assert.equal(b.getAttribute("title"), "Needs the sessions update");
+    assert.equal(b.disabled, false, "not known to be missing yet");
   }
+  await $(row, ".cv-q-take").click();
+  await wait();
+  assert.ok(calls.some(c => c.tool === "threads.unqueue" && c.input.uuid === "q1"));
+  const take = $(box3, ".cv-queued-row .cv-q-take");
+  assert.equal(take.disabled, true);
+  assert.equal(take.getAttribute("title"), "Needs the sessions update");
+  assert.equal($(box3, ".cv-queued-row .cv-q-now").disabled, false, "only that button");
   assert.doesNotMatch(text($(box3, ".thread-view")), /Then open a PR/, "waiting is not in the timeline");
   at("thread.sent", { uuid: "q1", text: "Then open a PR against main", surface: "deck" });
   assert.equal($(box3, ".cv-queued").hidden, true);
@@ -343,4 +355,63 @@ test("an inline ask: A allows, D denies, and one answered on another screen says
   assert.match(text(last), /Allowed once/);
   assert.match(text(last), /Answered from the Capsule · \d\d:\d\d/);
   stop3();
+});
+
+// ---- the composer like Claude Code: steer, queue, mode, rewind ----------------------------------
+
+test("typing while a turn runs steers it ('Steering', then 'Steered at step 2' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc rewinds", async () => {
+  const box4 = new El("div");
+  doc.body.append(box4);
+  const stop4 = mountSession(box4, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  const ta = $(box4, "textarea");
+  const key = (k, extra = {}) => { const e = Object.assign(/** @type {any} */ (new Event("keydown")), { key: k, target: ta, ...extra }); ta.dispatchEvent(e); return e; };
+  at("thread.sent", { text: "Rebuild the intake for the Estate branch", surface: "deck", uuid: "u-first" });
+  at("thread.tool", { call: "s1", name: "Read", status: "running", summary: "src/intake/general.ts" });
+  assert.match(ta.placeholder, /^Steer kit, or Alt\+Enter to queue for after$/);
+  ta.value = "Use Estate intake v2 instead";
+  assert.equal(key("Enter").defaultPrevented, true);
+  await wait();
+  const sent = calls.filter(c => c.tool === "threads.send").at(-1).input;
+  assert.equal(sent.mode, "steer");
+  assert.equal(sent.text, "Use Estate intake v2 instead");
+  assert.match(sent.uuid, /^[0-9a-f-]{36}$/);
+  assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/);
+  at("thread.tool", { call: "s1", status: "completed" });
+  at("thread.steered", { uuid: sent.uuid, turn: `${NEW}:9`, step: 2 });
+  assert.match(text($(box4, ".cv-steer")).trim(), /^Steered at step 2 · \d\d:\d\d$/);
+  const order = box4.querySelectorAll(".cv-row").map(n => n.className.split(" ").find(c => /^cv-(user|steer|tool)$/.test(c))).filter(Boolean);
+  assert.deepEqual(order, ["cv-user", "cv-tool", "cv-steer", "cv-user"], "the words sit where they joined, after the Read");
+
+  ta.value = "Then open a PR against main";
+  key("Enter", { altKey: true, code: "Enter" });
+  await wait();
+  assert.equal(calls.filter(c => c.tool === "threads.send").at(-1).input.mode, "queue");
+  assert.match(text($(box4, ".cv-queued-row")), /Then open a PR against main/);
+
+  assert.match(text($(box4, ".composer-mode")), /^Asks first/);
+  assert.equal(key("Tab", { shiftKey: true }).defaultPrevented, true);
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.mode").at(-1).input, { thread: NEW, mode: "acceptEdits" });
+  assert.match(text($(box4, ".composer-mode")), /^Accepts edits/);
+
+  at("thread.finished", { ok: true, duration_ms: 1000 });
+  await wait(20);
+  ta.value = "";
+  key("Escape"); key("Escape");
+  await wait();
+  const sheet = $(box4, ".cv-rewind");
+  assert.ok(sheet, "Esc Esc opens the rewind sheet");
+  assert.match(text(sheet), /Use Estate intake v2 instead/);
+  const one = Object.assign(/** @type {any} */ (new Event("keydown")), { key: "1", target: doc.body });
+  for (const f of keys) f(one);
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: sent.uuid, restore: "conversation" });
+  assert.equal(ta.value, "Use Estate intake v2 instead", "the words come back to edit");
+  assert.equal($(box4, ".cv-rewind"), null);
+  at("thread.rewound", { uuid: sent.uuid, restore: "conversation" });
+  assert.equal($$(box4, ".cv-user").length, 1, "the steer and what came after it are gone");
+  assert.equal($(box4, ".cv-steer"), null);
+  assert.match(text($(box4, ".thread-view")), /Rewound to before "Use Estate intake v2 instead"/);
+  stop4();
 });

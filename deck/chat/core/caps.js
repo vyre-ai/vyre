@@ -21,11 +21,12 @@ const MISSING_CODES = new Set(["no_such_tool", "unknown_tool", "http_404"]);
 
 /**
  * Did a call fail because the tool is not on this box? vyred says no_such_tool (HTTP 404). A
+ * box that did not answer (offline; api.js calls that "missing" too) is not a verdict. A
  * not_found counts only when it is about the tool: the same code also means "no such thread" or
  * "no such message", which must not switch a control off for good.
  * @param {any} err
  */
-export const isMissing = err => !!err && (err.missing === true || MISSING_CODES.has(String(err.code || ""))
+export const isMissing = err => !!err && err.code !== "offline" && (err.missing === true || MISSING_CODES.has(String(err.code || ""))
   || (err.code === "not_found" && /\btool\b/i.test(String(err.message || ""))));
 
 /**

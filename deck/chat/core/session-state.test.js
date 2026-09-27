@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints } from "./session-state.js";
+import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell } from "./session-state.js";
 
 const T = "th-harlow";
 /** @param {any} s */
@@ -441,4 +441,12 @@ test("background tasks: guessed from tool calls until thread.task comes, then th
   assert.deepEqual([s.tasks.get("sh_7").status, s.tasks.get("sh_7").title], ["completed", "npm run dev"]);
   applyBlocks(s, [{ seq: 5, kind: "tool", ts: 6, id: "b3", tool: "Bash", input: { command: "npm test", run_in_background: true }, output: "ID: bash_3", error: false }]);
   assert.deepEqual([...s.tasks.keys()], ["sh_7"], "tool calls no longer move them");
+});
+
+test("a ! command's answer is a row of its own, updated in place", () => {
+  const s = createSession(T);
+  assert.deepEqual(localShell(s, { id: "1", command: "git status --short", at: 5 }), ["sh:1"]);
+  localShell(s, { id: "1", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200, at: 5 });
+  assert.deepEqual(keys(s), ["sh:1"]);
+  assert.deepEqual(s.byKey.get("sh:1"), { key: "sh:1", kind: "shell", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200, at: 5 });
 });
