@@ -50,6 +50,14 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
    line says the phone is offline. Turn it off and tap Retry: the line goes and the screen fills.
 
 ## Done
+- /pair for `vyre phone add --tailscale-only` (views/pair.js, js/pair-steps.js pure parts,
+  css/views/pair-phone.css via app.js CSS_NAME): code + enrollPasskey, subscribePush, Home Screen
+  words, the five checks from events. push.seen gains `device`. Tests: deck/test/pair.test.js (5).
+- Person sessions, Deck side (e2e's contract, box side not on this branch; feature-detected):
+  js/person.js (signIn, needSignIn sheet, installPersonHandler, signInAfterEnroll, signOutHere),
+  api.js setPersonHandler + endPerson, Settings Security "Signed-in devices", sign-in after a
+  passkey is enrolled (phone-setup enrollPasskey, onboard/passkey), "confirmed N min ago" on the
+  cover line. Tests: deck/js/person.test.js (6).
 - 2e5d78a merge main into work/pwa (CHANGELOG kept both sides, world.js kept breach: off).
 - Shell (deck/index.html, manifest.webmanifest, css/deck.css, js/pwa.js): standalone manifest with
   id, maskable icons, shortcuts (Now, Chat, Find); Apple touch icon (full bleed, 180); launch
@@ -93,6 +101,21 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   queuesFor now also refuses an agent's tailnet node). If the user's phone still refused, his box
   runs code from before capsule-now's merge.
 
+- C. iOS pitfalls (2026-09-27): fixed shell (`position: fixed; inset: 0`, 100dvh after a 100vh
+  fallback, `html, body { overflow: hidden }` on the phone); the keyboard inset
+  (deck/js/keyboard.js: one passive visualViewport listener while a field has focus on a phone,
+  rAF-coalesced, `--kb` and `data-kb` on html, `deck:kb { kb, delta }`; Chat's composer and lease
+  line lift by transform, the transcript's padding follows and session.js scrolls along; sheets
+  stop at the keyboard; other pages get room); fields at least 16 px on the phone; safe-area
+  insets on the shell at every width (landscape phones and iPads are over 760), sheets sideways;
+  `touch-action: manipulation`, no callout or selection on chrome and rows, text selectable in
+  messages and code; `content-visibility: auto` on transcript rows older than the newest 40, the
+  Chat list and Find results; Now's row swipe writes once a frame and promotes the face only
+  while it moves. The Send sheet says "Send" while a presence session covers the draft.
+  SW cache vyre-deck-7. Tests in deck/test/pwa.test.js ("pwa ios: ...").
+- Row swipes are still pointer-driven transforms, not a scroll-snap row. The conversion is a
+  proposal in the report to the lead (it touches the swipe, commit, Undo and pager-lock logic).
+
 ## How to rerun the shots (the test box)
 - `rsync -a --delete --exclude node_modules --exclude .git ./ the test box:~/vyre-ci/pwa/`
 - Chrome (connectors' shared install): `/usr/local/bin/vyre-chrome --headless=new --remote-debugging-port=9422 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/pwa-chrome-prof about:blank`
@@ -101,22 +124,98 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   (`ONLY=<regex>` for some screens, `DESKTOP=1280x800,1440x900,2000x1100` adds desktop sizes,
   `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
-## Doing
-- Pushed work/pwa; integrator told the tip is ready. 1cd5346: Create your assistant offers a computer.
-- Waiting for the user to pair his Mac, then: check the phone PWA against his real box, read-only,
-  with the Mac's sessions showing (federation), and fix what looks off.
+## Doing (resumed after logout 3, 2026-09-27)
+- New scope from the lead: Direction A is the design of record (one app for web, iOS and Android,
+  app-design's docs/design/one-app/DIRECTION.md). On iPhone the default is the installed web app,
+  so web-app quality is the iPhone app. mobile leads the one-app code (ADR 0027); pwa owns the web
+  platform: service worker, offline cache, web push, badges, passkeys, the iOS pitfalls. The bar:
+  60 fps, tab switch under 100 ms, cold open under 1 s offline.
+- Merged main ef51363 (a3ec177). Fixed: the SW kept none of Now's phone modules (a910ae9).
+- A done (f925a73): core/push holds ask/draft/watch until 3 min after the last `push.seen`,
+  drops them on ask.answered or gate.released/rejected/revised/failed, lesson off by default,
+  planner rings always. ADR 0011 amended, reference regenerated.
+- B done (4f48768): the Deck keeps a presence session after a passkey on gate.approve and the
+  vault's sessionable tools (x-vyre-presence-keep), reuses it until it ends and says "Face ID
+  covers sends until h:mm"; push.seen from pwa.js (show, hide with keepalive, first input after
+  60 s); planner-ack shows a silent "Answered." under the tag then closes it (WebKit revokes a
+  subscription whose pushes show nothing); app badge = the Needs count in the installed app.
+- C done (d462fd6): fixed 100dvh shell, `--kb` keyboard inset (deck/js/keyboard.js), safe areas
+  at every width, touch-action/callout, content-visibility on long lists, Send reads "Send" while
+  covered. SW cache vyre-deck-7. Row swipes stay JS transforms (rAF, will-change only while
+  dragged); a scroll-snap row is a proposal for the lead (needs a real-iPhone spike).
+- Done since: c281be8 build-stamped sw.js (release lands on the next launch); a222fa4 passkey
+  card copy (lead); deck/sw.js ignores /app/ (for the one app's own worker).
+- Done since the queue: 49cefab tailnet findings 1-4 and 6 (5 skipped: no tool reads
+  network.origins); 1cf2662 merged main 9efbddc (249/249 targeted); 0c2ee51 push.subscribed,
+  push.test receipts + push.receipt -> push.delivered, push.seen standalone event (for `vyre
+  phone add`); 501b0d1 /app/ serving + /app/sw.js + manifest. Pushed work/pwa.
+- Since: c7f0582 merged main c8fb9aa (sent to the integrator for batch 3b); bf65f90 a sideways
+  phone keeps the phone layout (PHONE_QUERY in deck/js/dom.js, lead's decision); 0abb70d the
+  palette from generated deck/css/tokens.css (missing tokens listed for app-design); 39022ec the
+  person-session sheet + Signed-in devices in Settings (against e2e's contract; wire to e2e's
+  signIn/deck:person once 3b lands); 886a86e /pair for `vyre phone add --tailscale-only`, and
+  push.seen carries device. 313/313 targeted.
+- Lead decisions: keep JS row swipes until mobile's iPhone spike; no merging other teams'
+  branches, wait for main; pwa owns deck/sw.js (told chat and e2e).
+- Waiting (old line): the lead on e2e 8ad92a73 and app-design 99820a16 reaching main (items 2 and 3);
+  polish-cli on what /pair shows; mobile on precache.json.
+- QUEUE (from teammates, 2026-09-27; testbox: targeted runs only, uptime < 8, no worlds or
+  Chrome without asking the lead):
+  1. DONE (see the commit "fix(deck): VyreDrive per-share access..."). Skipped the "Hosted app"
+     row: no tool reads config network.origins (system.info does not carry it); it needs a
+     field on a read tool from tailnet or names. Was: tailnet's UI findings (work/tailnet 23c7cda, deck/views/settings.js): per-share access +
+     ro/rw switch (files.drive.access {name, mode} -> mount.step cmd), `unsafe` secrets warning
+     per share, `--tty` on every HUMAN_ONLY command hint, no Glass for guests (GUEST_SAFE =
+     threads.list), optional Network row "Hosted app" (network.origins), no Approve on an ask
+     whose thread has source "mac".
+  2. e2e person session (work/e2e 8ad92a73): 401 person_session_required -> "Sign in on this
+     device for 30 days" sheet then retry (replaces e2e's stopgap in api.js, signIn exported);
+     Settings list presence.person.sessions with Revoke (presence.person.revoke {id}); restyle
+     /person/signin; call signIn() after the first passkey in onboarding. presence.since on
+     items: "confirmed 12 min ago".
+  3. tokens: app-design's scripts/gen-tokens --css (work/app-design 99820a16) -> deck
+     tokens.css with --check; move the Deck palette to it; tell app-design the properties.
+  4. mobile one-app spike (ADR 0027 on work/mobile 999ce4f): pwa owns the /app/ route in
+     vyred, its SW (scope /app/, precache from apps/app/dist/precache.json), manifest, iOS shell,
+     keyboard inset, push reuse, IndexedDB cache (use resilience's core/resilience/web.js
+     cacheStore). Plan the push subscription move when /app/ becomes /.
+  5. phone add checks (polish-cli, relay): push.subscribed event, push.delivered receipt,
+     a Deck /pair screen. Proposal sent to polish-cli.
+  6. relay (work/relay): Settings Devices from relay.devices.list, the device.paired notice on
+     every surface ("Alex's iPhone was added, just now. Not you? Remove it"), device.moved.
+  7. vault board shapes (work/vault-next 50012ae7) when the Deck vault board is built.
+  8. resilience web.js (work/resilience 276f916): outbox for every send/answer, one quiet
+     Reconnecting pill, open offline from cache.
+  - Asked the lead to bring e2e, tailnet and app-design branches to main before 1 to 3.
+
+- Person sessions (e2e's contract) and the /pair screen for `vyre phone add --tailscale-only`:
+  see Done. Waiting on e2e's box side to try it for real.
 
 ## Next
-- SW version skew: the Deck's files come from the cache first; a new release lands on the second
-  launch. Consider registering sw.js with the build commit so a release swaps the cache at once.
-- Settings > Setup rows could rerun a step in place (polish-cli's suggestion) instead of naming
-  `vyre up`.
+- The push subscription when /app/ becomes /: a subscription belongs to the service worker
+  registration that made it, so the app's (scope /app/) and the Deck's (scope /) are two, and
+  core/push keeps each by its endpoint. When the app takes /, vyred serves the app's worker at
+  /sw.js with scope /, which replaces the Deck's registration in place: the browser keeps the
+  registration, so the Deck's subscription survives and now reaches the app's push handler (same
+  payload, and paths stop needing the /app prefix). The app then calls pushManager.getSubscription()
+  at launch and, if the /app/ registration still exists, unsubscribes it, unregisters it and tells
+  core/push to drop that endpoint, so one phone never rings twice. /app/* becomes a 301 to the same
+  path under / for a release, so an installed /app/ home-screen icon still opens. Nothing is
+  re-subscribed and the person is not asked for permission again.
+- SW version skew: a release lands on the second launch; register sw.js with the build commit.
+- Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
-- theme.colors: match docs' final shape (asked docs: "light" or "paper", shared validator).
+- theme.colors: match docs' final shape.
 - threads.unqueue once capsule-now ships it.
-- Real iPhone check by the user.
+- Real iPhone check by the user, against the DIRECTION.md bar. Especially the keyboard: open a
+  session, tap the composer, the transcript must not jump and the composer must sit on the keys;
+  the Send sheet's fields; Find's box.
+- A phone turned sideways (over 760 wide) gets the desktop layout; decide whether the phone
+  shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`).
 
 ## Needs from others
+- tailnet or names: a read of config `network.origins` (a field on system.info or names.status)
+  for the Settings > Network "Hosted app" row.
 - polish-cli answered: no --step; Settings says `vyre up` (and `vyre index` for history).
 - box: review the additive `onboard.status` detail.devices.peers and parsePeers (core/onboard).
   Also onboard.finish sends auth {vault: "anthropic-api-key"} for an API key, which agents reads as
@@ -130,6 +229,23 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- push.seen: optional `device` (string, at most 40), echoed in the push.seen event payload only
+  when sent. The Deck (js/pwa.js) sends localStorage "vyre.push.device" (polish-cli asked).
+- Deck route /pair (a normal route; the SW serves index.html for it like any other).
+- deck/js/api.js: `setPersonHandler(fn)`. call() hands `person_session_required` (never for
+  presence.person.*) to fn; fn resolving retries the call exactly once, rejecting fails it. No
+  handler: the error as before. js/person.js installs it (app.js). ON MERGE with e2e's stopgap
+  (silent signIn() and retry on 401 in api.js, exporting signIn, firing "deck:person"): this
+  handler replaces the stopgap's silent retry; keep e2e's signIn name, which person.js exports
+  with the same meaning (it fires "deck:person" too). api.js also exports `endPerson()`.
+- presence items: the Deck reads optional `presence.since` (ms) for "confirmed N min ago".
+- /app/ serves apps/app/dist (SPA), /app/sw.js and /app/manifest.webmanifest are made by vyred
+  from dist/precache.json (core/daemon/app.js, app-sw.js). /app is a 301 to /app/; a missing dist
+  is 404 `no_app`; /app/_expo/static/* is immutable, the rest no-cache; a missing /app/_expo/ file
+  is a 404, not the shell. The build must write dist/precache.json =
+  {"build": "<id>", "files": ["/app/index.html", ...every hashed asset]}.
+- deck/js/needs.js items may carry `source: "mac"`, `machine` (from threads.asks or threads.list);
+  such an ask or question has `options: []` and needs.answer refuses it.
 - memory.relevant: tailnet:<login> callers may read without a room (was refused).
 - system.info: adds owner { name } (onboard.person).
 - GET /theme.css served by vyred from config theme.colors.

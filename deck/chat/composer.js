@@ -20,12 +20,19 @@
 //   box); the model chip opens the model picker; the thinking chip turns thinking on or off.
 // - Up in an empty composer recalls the last message sent here (per thread, the last 100), or
 //   takes the newest queued message back to edit (threads.edit {thread, queued, text}). Down goes back.
-// - A pasted image is attached (thumbnails, at most 4, 5 MB each) and sent with the words, once
-//   the box takes images on threads.send (core/caps.js SEND_IMAGES; until then a paste says so).
+// - A pasted image is attached (thumbnails; threads.send's caps: at most 5, 5 MB each, png, jpeg,
+//   gif or webp) and sent with the words as images [{media_type, data}], once the box takes them
+//   (core/caps.js SEND_IMAGES, learnt from threads.tasks with the rest of sessions 034c71e5; a
+//   box that has not said yet is asked on the first paste, and an older one says so).
+// - "!" answers {code, output} (and thread.shell echoes it); a denied line (the security floor)
+//   is an error on its row. "#" answers {scope, file}: the note names the file.
 //
-// Tools are learnt through core/caps.js: what the contract does not offer yet (model, thinking,
-// commands, shell, memory) starts off, and the first "no such tool" from an older box switches
-// that control off too, with "Needs the sessions update" as its title; the words stay in the box. A paired Mac's session (opts.machine) keeps the plain send it had: threads.send
+// The model chip opens the model picker: the aliases (opus, sonnet, haiku) and every model
+// sessions.models.get names per purpose, "now" on this thread's; threads.model switches it (a
+// stopped thread when it next runs) and model.switched moves the chip.
+//
+// Tools are learnt through core/caps.js: the first "no such tool" from an older box (or its
+// threads.tasks answering so, for the tools that shipped with it) switches a control off, with "Needs the sessions update" as its title; the words stay in the box. A paired Mac's session (opts.machine) keeps the plain send it had: threads.send
 // {thread, text, surface, machine}, no chips, and the notes for an offline or slow Mac.
 //
 // A session busy in the user's terminal takes the message into the inbox queue instead: threads.send
@@ -38,6 +45,7 @@ import { icon } from "../js/icons.js";
 import {
   draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
   upAction, enterAction, createEsc, escape, nextMode, modeLabel, actionFor, addImage, removeImage, sendImages, newUuid, IMAGE_TYPES,
+  modelChoices, shortModel,
 } from "./core/composer-state.js";
 import { findCommand, rankCommands, applyCommand, normalizeCommands, sourceLabel } from "./core/commands.js";
 import { scorePath, compareScores } from "./core/match.js";
@@ -54,12 +62,6 @@ const HISTORY = historyStore();
 try { const raw = localStorage.getItem(HISTORY_KEY); if (raw) HISTORY.load(JSON.parse(raw)); } catch {}
 const saveHistory = () => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(HISTORY)); } catch {} };
 
-/** Models to offer when the box cannot list them (sessions.models). */
-const MODELS = Object.freeze([
-  { id: "opus", label: "Opus", description: "The most capable" },
-  { id: "sonnet", label: "Sonnet", description: "Fast and capable" },
-  { id: "haiku", label: "Haiku", description: "The fastest" },
-]);
 /** Where a "#" memory goes. */
 const SCOPES = Object.freeze([
   { id: "project", label: "This project", hint: "Only here" },
@@ -68,8 +70,8 @@ const SCOPES = Object.freeze([
 ]);
 /** How long the send button is held to queue. */
 const HOLD_MS = 450;
-/** The model's family name, never the vendor's: "claude-opus-4-5" reads "opus". @param {string|null|undefined} m */
-const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.toLowerCase() || String(m).replace(/^claude-/i, "")) : null);
+/** A fallback "/" list is asked again after this long (the session was not running: it had none). */
+const COMMANDS_RETRY_MS = 15_000;
 
 /**
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
@@ -100,8 +102,9 @@ export function mountComposer(opts) {
   const hist = HISTORY.get(thread);
   const esc = createEsc();
   const menu = listMenu();
-  /** The session's commands, once asked for. */
+  /** The session's commands, once asked for; `commandsAt` when, if they were the static fallback. */
   let commands = /** @type {import("./core/commands.js").Command[]|null} */ (null);
+  let commandsAt = 0;
   let fileTimer = /** @type {any} */ (null), fileSeq = 0;
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
@@ -118,8 +121,14 @@ export function mountComposer(opts) {
   const stopBtn = h("button", { class: "btn btn-ghost btn-sm composer-stop", type: "button", hidden: true, title: "Stop this turn (Esc)",
     onclick: () => opts.onStop?.() }, "Stop", h("span", { class: "kbd" }, "Esc"));
   const chips = h("div", { class: "composer-chips" });
-  const wrap = h("div", { class: "composer-wrap" }, menu.el,
-    h("div", { class: "composer-row" }, ta, stopBtn, send),
+  // Attach: the same path as a paste (a picked or dropped file).
+  const picker = /** @type {HTMLInputElement} */ (h("input", { type: "file", accept: IMAGE_TYPES.join(","), multiple: true, hidden: true,
+    onchange: () => { const fs = [...(picker.files || [])]; picker.value = ""; takeFiles(fs); } }));
+  const attachBtn = h("button", { class: "ibtn composer-attach", type: "button", "aria-label": "Attach images", title: "Attach images (PNG, JPEG, GIF, WebP)",
+    onclick: () => picker.click() }, icon("plus", 16));
+  const wrap = h("div", { class: "composer-wrap", ondragover: (/** @type {DragEvent} */ e) => { if (!machine) e.preventDefault(); },
+    ondrop: (/** @type {DragEvent} */ e) => { const fs = [...(e.dataTransfer?.files || [])]; if (!fs.length || machine) return; e.preventDefault(); takeFiles(fs); } }, menu.el,
+    h("div", { class: "composer-row" }, attachBtn, picker, ta, stopBtn, send),
   );
   /** Messages waiting in the inbox queue of a session busy in the terminal (the Mac's), by the id thread.queued gives. */
   const waiting = new Map();
@@ -149,6 +158,7 @@ export function mountComposer(opts) {
 
   let chipSig = "";
   function drawChips() {
+    drawAttach();
     const kind = draftKind(ta.value);
     ta.placeholder = machine ? "Message this session"
       : busy ? `Steer ${opts.name?.() || "the session"}, or Alt+Enter to queue for after` : "Message this session";
@@ -167,7 +177,7 @@ export function mountComposer(opts) {
     put(chips,
       chip("composer-model", "threads.model", "Switch the model", () => openModels(), shortModel(s.model) || "Model"),
       chip("composer-mode", "threads.mode", "Next mode (Shift+Tab)", () => cycleMode(), modeLabel(s.mode), h("span", { class: "kbd" }, "⇧Tab")),
-      chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking ? "Thinking on" : "Thinking off"),
+      chip("composer-thinking", "threads.thinking", "Thinking on or off (Alt+T)", () => toggleThinking(), s.thinking === true ? "Thinking on" : s.thinking === false ? "Thinking off" : "Thinking"),
       label && kind !== "command" ? h("span", { class: "composer-kind" }, label,
         kind === "shell" ? h("span", { class: "faint" }, " · runs in " + shortDir(opts.cwd?.() || "") + (off("threads.shell") ? " · " + NEEDS_UPDATE : "")) : null) : null,
       kind === "memory" ? h("span", { class: "composer-scopes", role: "radiogroup", "aria-label": "Save this to" },
@@ -198,24 +208,30 @@ export function mountComposer(opts) {
     if (!rich()) return;
     const s = /** @type {any} */ (S);
     if (off("threads.thinking")) { say(NEEDS_UPDATE); return; }
-    const want = !s.thinking;
+    // Not said yet (the box does not keep it on the record): on, if this session has thought.
+    const was = s.thinking;
+    const want = !(was ?? s.items.some((/** @type {any} */ it) => it.kind === "reasoning"));
     s.thinking = want;
     drawChips();
     const r = await CAPS.use("threads.thinking", () => attempt("threads.thinking", { thread, on: want }));
-    if (r.error) { s.thinking = !want; drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not change thinking: " + r.error.message); }
-    else patch(["@session"]);
+    if (r.error) { s.thinking = was; drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not change thinking: " + r.error.message); return; }
+    // {thread, thinking: true|false}, or {thinking: null, note} when the session is not running.
+    const d = /** @type {any} */ (r.data) || {};
+    if (d.thinking === null) { s.thinking = was; drawChips(); say(String(d.note || "Thinking switches on a running session.")); return; }
+    if (typeof d.thinking === "boolean") s.thinking = d.thinking;
+    patch(["@session"]);
   }
 
   async function openModels() {
     if (!rich()) return;
     if (off("threads.model")) { say(NEEDS_UPDATE); return; }
-    const r = await CAPS.use("sessions.models", () => attempt("sessions.models", {}));
-    const list = Array.isArray(r.data) && r.data.length ? r.data.map((/** @type {any} */ m) => typeof m === "string" ? { id: m, label: m } : m) : MODELS;
-    const cur = shortModel(/** @type {any} */ (S).model);
+    // No list of models on the box: the aliases, the per-purpose map, and this thread's own.
+    const r = await CAPS.use("sessions.models.get", () => attempt("sessions.models.get", {}));
+    const list = modelChoices({ current: /** @type {any} */ (S).model, purposes: /** @type {any} */ (r.data)?.purposes });
     menu.setKind("model");
-    menu.open(list.map((/** @type {any} */ m) => ({ key: String(m.id), value: m, render: () => [
+    menu.open(list.map(m => ({ key: m.id, value: m, render: () => [
       h("span", { class: "cv-menu-name" }, m.label || m.id), m.description ? h("span", { class: "cv-menu-desc" }, m.description) : null,
-      shortModel(m.id) === cur ? h("span", { class: "cv-menu-badge" }, "now") : null] })),
+      m.now ? h("span", { class: "cv-menu-badge" }, "now") : null] })),
     row => pickModel(row.value), "Switch the model for this session", keysLine(["↑↓", "move"], ["⏎", "switch"], ["Esc", "close"]));
   }
   async function pickModel(/** @type {any} */ m) {
@@ -226,16 +242,23 @@ export function mountComposer(opts) {
     patch(["@session"]); drawChips();
     const r = await CAPS.use("threads.model", () => attempt("threads.model", { thread, model: String(m.id) }));
     if (r.error) { s.model = was; patch(["@session"]); drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not switch the model: " + r.error.message); }
+    // A stopped thread takes it when it next runs: the box says so. model.switched follows either way.
+    else if (/** @type {any} */ (r.data)?.note) say(String(/** @type {any} */ (r.data).note));
     ta.focus();
   }
 
   // ---- "/" and "@" --------------------------------------------------------------------------
 
   async function loadCommands() {
-    if (commands) return commands;
-    if (machine) { commands = normalizeCommands(null); return commands; }
+    if (commands && (!commandsAt || Date.now() - commandsAt < COMMANDS_RETRY_MS)) return commands;
+    if (machine) { commands = normalizeCommands(null); commandsAt = 0; return commands; }
+    // {thread, commands: [{name, description, argumentHint}]}; empty while the thread is not
+    // running (the list comes with the session), so the static one stands in and is asked again.
     const r = await CAPS.use("threads.commands", () => attempt("threads.commands", { thread }));
-    commands = normalizeCommands(r.data);
+    const d = /** @type {any} */ (r.data);
+    const got = Array.isArray(d) ? d : Array.isArray(d?.commands) ? d.commands : null;
+    commands = normalizeCommands(got);
+    commandsAt = got && got.length ? 0 : (r.missing ? 0 : Date.now());
     return commands;
   }
 
@@ -311,9 +334,30 @@ export function mountComposer(opts) {
     const items = [...(e.clipboardData?.items || [])].filter(it => it.kind === "file" && IMAGE_TYPES.includes(it.type));
     if (!items.length || machine) return;
     e.preventDefault();
-    if (off(SEND_IMAGES)) { say("Images: " + NEEDS_UPDATE.toLowerCase() + "."); return; }
+    takeFiles(items.map(it => it.getAsFile()));
+  }
+  /** Pasted, picked or dropped files: the images among them, once the box says it takes them. @param {(File|null)[]} list */
+  function takeFiles(list) {
+    const files = list.filter(f => f && IMAGE_TYPES.includes(f.type)).map(f => ({ type: /** @type {File} */ (f).type, file: f }));
+    if (!files.length) { if (list.length) say("Only PNG, JPEG, GIF and WebP images can be attached."); return; }
+    imagesOk().then(ok => {
+      if (!ok) { drawAttach(); say("Images: " + NEEDS_UPDATE.toLowerCase() + "."); return; }
+      attach(files);
+    });
+  }
+  /** The attach button: on a Switchboard session whose box has not said no to images. */
+  function drawAttach() {
+    attachBtn.hidden = !rich() || CAPS.has(SEND_IMAGES) === false;
+  }
+  /** Does the box take images? Asked once (threads.tasks shipped with them) when not known yet. */
+  async function imagesOk() {
+    if (CAPS.has(SEND_IMAGES) === null && CAPS.has("threads.tasks") !== false) await CAPS.use("threads.tasks", () => attempt("threads.tasks", { thread }));
+    return CAPS.has(SEND_IMAGES) === true;
+  }
+  /** @param {{ type: string, file: File|null }[]} items */
+  function attach(items) {
     for (const it of items) {
-      const file = it.getAsFile();
+      const file = it.file;
       if (!file) continue;
       const rd = new FileReader();
       rd.onload = () => {
@@ -365,10 +409,10 @@ export function mountComposer(opts) {
     remember(hist, text); saveHistory();
     queueToggle = false;
     const drawn = !machine && !!mode && !!S;
-    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode, at: Date.now() }));
+    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode, at: Date.now(), ...(imgs.length ? { images: imgs.length } : {}) }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
-      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && !off(SEND_IMAGES) ? { images: sendImages(imgs) } : {}) };
+      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
     const r = await attempt("threads.send", input);
     sending = false;
     send.disabled = false;
@@ -418,9 +462,8 @@ export function mountComposer(opts) {
       say([h("span", null, d.note || "The session did not take the message."), " ", retry()]);
       return;
     }
-    // A box before the sessions update takes the words and drops what it does not know; it
-    // also does not echo the uuid, which is how its answer is told apart.
-    if (imgs.length && !machine && d.uuid === undefined) say("Sent without the images: " + NEEDS_UPDATE.toLowerCase() + ".");
+    // Images only go to a box that said it takes them (attach() asked); one that changed its mind sends none.
+    if (imgs.length && !machine && CAPS.has(SEND_IMAGES) !== true) say("Sent without the images: " + NEEDS_UPDATE.toLowerCase() + ".");
   }
 
   async function runShell(/** @type {string} */ command) {
@@ -437,9 +480,10 @@ export function mountComposer(opts) {
       if (r.missing) say(NEEDS_UPDATE);
       return;
     }
+    // {thread, code, output} (stdout, then stderr), and a note when the session is not running.
     const d = /** @type {any} */ (r.data) || {};
-    const output = typeof d.output === "string" ? d.output : [d.stdout, d.stderr].filter(x => typeof x === "string" && x).join("\n");
-    patch(localShell(S, { id, command, at: t0, output, exit: d.exit_code ?? d.code ?? d.exit ?? null, duration_ms: d.duration_ms ?? Date.now() - t0 }));
+    patch(localShell(S, { id, command, at: t0, output: String(d.output ?? ""), exit: typeof d.code === "number" ? d.code : null, duration_ms: Date.now() - t0 }));
+    say(d.note ? ["Shell · ", String(d.note)] : ["Shell · Claude sees the output with your next message"]);
   }
 
   async function saveMemory(/** @type {string} */ text) {
@@ -451,7 +495,9 @@ export function mountComposer(opts) {
     say(["Saving to memory · ", where.label]);
     const r = await CAPS.use("threads.remember", () => attempt("threads.remember", { thread, text, scope }));
     if (r.error) { if (!ta.value) setValue(was); say(r.missing ? NEEDS_UPDATE : "Could not save: " + r.error.message); return; }
-    say([h("span", { class: "lbl" }, "Saved to memory"), " · ", where.label, " ", h("span", { class: "faint" }, text)]);
+    // {thread, scope, file}: the CLAUDE.md it went into.
+    const file = String(/** @type {any} */ (r.data)?.file || "");
+    say([h("span", { class: "lbl" }, "Saved to memory"), " · ", where.label, " ", h("span", { class: "faint" }, file ? file.split(/[\\/]/).pop() + ": " + text : text)]);
   }
 
   /** A queued message back in the box: Enter saves the new words (threads.edit), Esc lets it be. */

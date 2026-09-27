@@ -1,68 +1,87 @@
 // @ts-check
-// The paced reveal: steady at the display rate, faster when behind, never more than maxLagMs
-// behind what arrived, whole on done. Time is plain numbers.
+// The paced reveal (after Paseo's text-reveal): ceil(backlog * dt / 150 ms) characters a frame, at
+// least one, at most one step per 60 Hz frame, a stall capped, whole on done. Time is plain numbers.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createPacer, PACE_MAX_LAG_MS } from "./pace.js";
+import { createPacer, revealStep, PACE_HORIZON_MS, PACE_FRAME_MS } from "./pace.js";
 
-test("reveals at the steady rate when text arrives slowly", () => {
-  const p = createPacer({ cps: 100, maxLagMs: 1000 });
+test("revealStep: proportional to the backlog, at least one, the whole backlog past the horizon", () => {
+  assert.equal(revealStep(0, 16), 0);
+  assert.equal(revealStep(300, 0), 0, "no time, no step");
+  assert.equal(revealStep(300, 15), 30);
+  assert.equal(revealStep(1, 16), 1);
+  assert.equal(revealStep(5, 1), 1, "the one-character floor");
+  assert.equal(revealStep(300, PACE_HORIZON_MS), 300);
+  assert.equal(revealStep(300, 10_000), 300);
+  assert.equal(revealStep(300, 15, 0), 300, "no horizon: everything");
+  assert.equal(revealStep(1000, 100), Math.ceil(1000 * 100 / 150));
+});
+
+test("a burst drains over about the horizon, faster when further behind", () => {
+  const p = createPacer();
   p.push(1000, 0);
   assert.equal(p.visible(0), 0);
-  // 100 cps would be 10 characters in 100 ms, but a 1000-character backlog drains over 1 s.
-  const a = p.visible(100);
-  assert.ok(a >= 10, `${a}`);
-  const slow = createPacer({ cps: 100, maxLagMs: 100_000 });
-  slow.push(1000, 0);
-  assert.equal(slow.visible(100), 10);
-  assert.equal(slow.visible(200), 20);
-  assert.equal(slow.visible(200), 20, "the same moment twice shows the same");
+  const first = p.visible(17);
+  assert.equal(first, Math.ceil(1000 * 17 / 150));
+  let t = 17, v = first, steps = [first];
+  while (v < 1000 && t < 5000) { t += 17; const n = p.visible(t); steps.push(n - v); v = n; }
+  assert.equal(v, 1000);
+  assert.ok(t <= 1500, `took ${t} ms`);
+  assert.ok(steps[0] > steps[steps.length - 1], "bigger steps while further behind");
 });
 
-test("never more than maxLagMs behind what had arrived", () => {
-  const p = createPacer({ cps: 10, maxLagMs: 250 });
-  p.push(500, 0);
-  for (let t = 16; t <= 250; t += 16) p.visible(t);
-  assert.equal(p.visible(250), 500);
-  p.push(900, 300);
-  assert.ok(p.visible(400) < 900);
-  assert.equal(p.visible(550), 900);
+test("at most one step per 60 Hz frame, even on a 120 Hz display", () => {
+  const p = createPacer();
+  p.push(10_000, 0);
+  const seen = [];
+  for (let t = 0; t <= 200; t += 1000 / 120) seen.push(p.visible(t));
+  const changes = seen.filter((v, i) => i && v !== seen[i - 1]).length;
+  assert.ok(changes <= Math.ceil(200 / PACE_FRAME_MS), `${changes} steps in 200 ms`);
+  assert.ok(changes >= 8, `${changes} steps in 200 ms`);
+  assert.equal(p.visible(200), p.visible(200), "the same moment twice shows the same");
 });
 
-test("a stalled clock does not stall the reveal past the bound", () => {
+test("a stalled clock is capped, then the backlog finishes", () => {
   const p = createPacer();
   p.push(40, 0);
   p.visible(0);
-  assert.equal(p.visible(10_000), 40);
+  assert.equal(p.visible(10_000), 40, "250 ms capped is past the horizon: everything");
+  const q = createPacer({ horizonMs: 1000 });
+  q.push(1000, 0);
+  assert.equal(q.visible(10_000), 250, "a stall counts as 250 ms, not 10 s");
 });
 
-test("never goes backwards while the text grows, and speeds up when behind", () => {
-  const p = createPacer({ cps: 50, maxLagMs: 250 });
+test("never goes backwards while the text grows, and keeps up with a fast model", () => {
+  const p = createPacer();
   let last = 0, len = 0;
-  const steps = [];
   for (let t = 0; t <= 2000; t += 16) {
     if (t % 160 === 0) { len += 40; p.push(len, t); }
     const v = p.visible(t);
     assert.ok(v >= last, `went back at ${t}`);
-    steps.push(v - last);
     last = v;
   }
-  // 40 characters every 160 ms is 250 cps, well past 50: it keeps up anyway.
-  assert.ok(len - last <= 40 * 2, `lag ${len - last}`);
+  assert.ok(len - last <= 40, `lag ${len - last}`);
 });
 
 test("done shows everything; a shorter target pulls back", () => {
-  const p = createPacer({ cps: 1 });
+  const p = createPacer();
   p.push(300, 0);
-  assert.ok(p.visible(50) < 300);
-  assert.equal(p.settled(50), false);
+  assert.ok(p.visible(20) < 300);
+  assert.equal(p.settled(20), false);
   p.done();
-  assert.equal(p.visible(50), 300);
-  assert.equal(p.settled(50), true);
-  const q = createPacer({ cps: 1000, maxLagMs: PACE_MAX_LAG_MS });
+  assert.equal(p.visible(20), 300);
+  assert.equal(p.settled(20), true);
+  const q = createPacer();
   q.push(100, 0);
   q.visible(1000);
+  assert.equal(q.visible(1000), 100);
   q.push(20, 1000);
   assert.equal(q.visible(1000), 20);
+});
+
+test("the earlier options still read: maxLagMs is the horizon, cps is ignored", () => {
+  const p = createPacer({ cps: 1, maxLagMs: 300 });
+  p.push(300, 0);
+  assert.equal(p.visible(20), Math.ceil(300 * 20 / 300));
 });

@@ -1,12 +1,13 @@
 // @ts-check
-// How fast the phone app switches tabs, measured the way a person feels it: from the tap to the
-// first frame that shows the tab's content (not a "Reading…" placeholder). Runs in a Chrome that
+// How fast the phone app switches pages, measured the way a person feels it: from the tap on a
+// page label (or the Capsule, for Find) to the first frame that shows the page's content (not a
+// "Reading…" placeholder). Runs in a Chrome that
 // is already running (CDP), as an iPhone at 390x844, with the CPU slowed 4x (a mid-range phone)
 // and 60 ms added to every request (the tailnet from a phone).
 //
 //   CDP=http://127.0.0.1:9422 node deck/test/pwa-perf.js <deck url> [--budget 100]
 //
-// Two rounds over the five tabs (the first tap on each, then a revisit), then Chat: open a session,
+// Two rounds over the three pages and Find (the first tap on each, then a revisit), then Chat: open a session,
 // back to the list, open it again. Exits 1 when any step takes longer than the budget (default
 // 100 ms), or opening a session the first time longer than 3x (it reads the session from the box).
 // Prints one JSON line per switch, then a summary. A test helper, not part of the product.
@@ -17,7 +18,7 @@ const args = process.argv.slice(2);
 const base = args.find(a => !a.startsWith("--")) || "http://127.0.0.1:4790";
 const budget = Number(args[args.indexOf("--budget") + 1]) || 100;
 const CDP = process.env.CDP || "http://127.0.0.1:9422";
-const TABS = ["now", "projects", "chat", "find", "agents"];
+const TABS = ["now", "chat", "find", "agents"];
 
 const tab = await openTab(CDP, { width: 390, height: 844, standalone: true });
 await tab.send("Network.enable");
@@ -30,10 +31,14 @@ await tab.send("Network.emulateNetworkConditions", { offline: false, latency: 60
 /** Tap a tab and time it to the first frame whose view has real content. */
 async function time(/** @type {string} */ name) {
   return tab.run(`
-    const view = document.getElementById("view");
-    const a = document.querySelector('.tabbar a[data-view="${name}"]');
+    // Find is the Capsule opened; the pages are the header's labels. From Find, Done goes back first.
+    const done = document.querySelector('.page[data-page="find"]:not(.away) .fd-done');
+    if (done && "${name}" !== "find") { done.click(); await new Promise(r => setTimeout(r, 500)); }
+    const a = "${name}" === "find" ? document.querySelector('.cap-open') : document.querySelector('.ph-tab[data-view="${name}"]');
+    // The pages beside the current one stay drawn in the pager, so only the page itself counts.
     const ready = () => {
-      const t = view.innerText.trim();
+      const page = document.querySelector('.page[data-page="${name}"]:not(.away)');
+      const t = page ? page.innerText.trim() : "";
       return t.length > 40 && !/^(Reading|Loading|Opening|Looking)/m.test(t.split("\\n").slice(0, 3).join("\\n"));
     };
     const t0 = performance.now();

@@ -10,3 +10,4 @@ site/_redirects
 __pycache__/
 docs-site/
 build.json
+app-out/

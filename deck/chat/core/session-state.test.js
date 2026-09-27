@@ -4,7 +4,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind } from "./session-state.js";
+import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind, filesNote, contextLabel,
+  splitShells, seedTasks } from "./session-state.js";
 
 const T = "th-harlow";
 /** @param {any} s */
@@ -555,8 +556,11 @@ test("mode, model and thinking: from thread.started and their own events", () =>
   assert.equal(s.mode, "plan");
   assert.deepEqual(ev(s, "thread.model", { model: "sonnet" }), ["@session"]);
   assert.equal(s.model, "sonnet");
-  assert.deepEqual(ev(s, "thread.thinking", { on: true }), ["@session"]);
+  // threads.thinking's event (sessions 034c71e5).
+  assert.deepEqual(ev(s, "thinking.switched", { on: true }), ["@session"]);
   assert.equal(s.thinking, true);
+  ev(s, "thinking.switched", { on: false });
+  assert.equal(s.thinking, false);
 });
 
 test("todos: the newest TodoWrite of the thread, announced as @todos", () => {
@@ -596,5 +600,200 @@ test("a ! command's answer is a row of its own, updated in place", () => {
   assert.deepEqual(localShell(s, { id: "1", command: "git status --short", at: 5 }), ["sh:1"]);
   localShell(s, { id: "1", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200, at: 5 });
   assert.deepEqual(keys(s), ["sh:1"]);
-  assert.deepEqual(s.byKey.get("sh:1"), { key: "sh:1", kind: "shell", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200, at: 5 });
+  assert.deepEqual(s.byKey.get("sh:1"), { key: "sh:1", kind: "shell", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200,
+    local: true, answered: true, at: 5 });
+});
+
+// ---- sessions 034c71e5: reasoning, images, ! shell, # memory, background tasks -------------------
+
+test("reasoning is keyed r:<message>:<block>, text m:<message>:<block>: the same message and block never collide", () => {
+  const s = createSession(T);
+  ev(s, "thread.sent", { text: "Why is the Estate intake slow?" });
+  // A flush sends the step's reasoning first, then its text; a test box may even give both one block.
+  ev(s, "thread.text", { message: "msg_t", block: 0, kind: "reasoning", delta: "The form re-renders " });
+  ev(s, "thread.text", { message: "msg_t", block: 0, delta: "Looking." });
+  ev(s, "thread.text", { message: "msg_t", block: 0, kind: "reasoning", delta: "on every key." });
+  ev(s, "thread.text", { message: "msg_t", block: 1, delta: " Found it." });
+  assert.deepEqual(keys(s).slice(1), ["r:msg_t:0", "m:msg_t:0", "m:msg_t:1"]);
+  assert.equal(s.byKey.get("r:msg_t:0").text, "The form re-renders on every key.");
+  assert.equal(s.byKey.get("m:msg_t:0").text, "Looking.");
+  // Whole blocks, as the assistant line gives them: thinking at 0, text at 1.
+  ev(s, "thread.text", { message: "msg_t", block: 0, kind: "reasoning", text: "The form re-renders on every key.", done: true });
+  ev(s, "thread.text", { message: "msg_t", block: 1, text: " Found it.", done: true });
+  assert.equal(s.byKey.get("r:msg_t:0").streaming, false);
+  assert.equal(s.byKey.get("m:msg_t:0").text, "Looking.", "the reasoning's done never lands on the text");
+  assert.ok(keys(s).every(k => !k.startsWith("r:") || s.byKey.get(k).kind === "reasoning"));
+  assert.ok(keys(s).every(k => !k.startsWith("m:") || s.byKey.get(k).kind === "text"));
+});
+
+test("thread.thinking (sessions db44749b) is the same reasoning row as thread.text kind reasoning, keyed r:, never m:", () => {
+  const s = createSession(T);
+  ev(s, "thread.sent", { text: "Check the Northwind invoice" });
+  assert.deepEqual(ev(s, "thread.thinking", { message: "msg_k", block: 0, delta: "Totals first, " }), ["r:msg_k:0"]);
+  ev(s, "thread.text", { message: "msg_k", block: 0, delta: "On it." });
+  ev(s, "thread.thinking", { message: "msg_k", block: 0, delta: "then tax." });
+  assert.deepEqual([s.byKey.get("r:msg_k:0").kind, s.byKey.get("r:msg_k:0").text, s.byKey.get("r:msg_k:0").streaming], ["reasoning", "Totals first, then tax.", true]);
+  ev(s, "thread.thinking", { message: "msg_k", block: 0, text: "Totals first, then tax.", done: true });
+  assert.equal(s.byKey.get("r:msg_k:0").streaming, false);
+  assert.equal(s.byKey.get("m:msg_k:0").text, "On it.", "the text is its own row");
+  // The older shape lands on the same row.
+  ev(s, "thread.text", { message: "msg_k", block: 0, kind: "reasoning", text: "Totals first, then tax.", done: true });
+  assert.deepEqual(keys(s).slice(1), ["r:msg_k:0", "m:msg_k:0"]);
+});
+
+test("images: the send draws its count, and thread.sent {images} gives it to the message", () => {
+  const s = createSession(T);
+  ev(s, "thread.sent", { text: "What is wrong in this screenshot?", uuid: "img-1", surface: "deck", images: 2 });
+  assert.equal(s.byKey.get("u:img-1").images, 2);
+  ev(s, "thread.state", { state: "running" });
+  localSend(s, { uuid: "img-2", text: "And this one", mode: "steer", images: 1 });
+  assert.equal(s.byKey.get("u:img-2").images, 1, "a steer's images (its echo does not count them)");
+});
+
+test("! shell: the row drawn on run takes thread.shell once; another screen's is a row of its own; the answer's whole output wins", () => {
+  const s = createSession(T);
+  localShell(s, { id: "a", command: "npm test", at: 1 });
+  // The event comes before the answer (the box emits, then answers).
+  assert.deepEqual(ev(s, "thread.shell", { command: "npm test", code: 1, output: "1 failing" }, { id: 40 }), ["sh:a"]);
+  assert.deepEqual([s.byKey.get("sh:a").exit, s.byKey.get("sh:a").output, s.byKey.get("sh:a").echoed], [1, "1 failing", true]);
+  localShell(s, { id: "a", command: "npm test", at: 1, output: "1 failing\n  estate intake: total", exit: 1, duration_ms: 900 });
+  assert.equal(s.byKey.get("sh:a").output, "1 failing\n  estate intake: total");
+  // The same command run again elsewhere: a row of its own, not the echoed one.
+  assert.deepEqual(ev(s, "thread.shell", { command: "npm test", code: 0, output: "ok" }, { id: 41 }), ["sh:e41"]);
+  assert.deepEqual(ev(s, "thread.shell", { command: "npm test", code: 0, output: "ok" }, { id: 41 }), [], "applied once");
+  // An answer first, then its event: the event does not overwrite the whole output.
+  localShell(s, { id: "b", command: "git log -1", at: 2 });
+  localShell(s, { id: "b", command: "git log -1", at: 2, output: "x".repeat(5000), exit: 0, duration_ms: 20 });
+  ev(s, "thread.shell", { command: "git log -1", code: 0, output: "x".repeat(4000) }, { id: 42 });
+  assert.equal(s.byKey.get("sh:b").output.length, 5000);
+  assert.deepEqual(keys(s), ["sh:a", "sh:e41", "sh:b"]);
+});
+
+test("! shell in the transcript: the next message's <bash-input> blocks split back into shell rows and the words", () => {
+  const sent = "<bash-input>git status --short</bash-input>\n<bash-stdout> M src/intake/estate.ts</bash-stdout><bash-stderr></bash-stderr>\n\nWhat changed?";
+  assert.deepEqual(splitShells(sent), { shells: [{ command: "git status --short", output: " M src/intake/estate.ts" }], text: "What changed?" });
+  assert.deepEqual(splitShells("plain words"), { shells: [], text: "plain words" });
+  const two = "<bash-input>a</bash-input>\n<bash-stdout>1</bash-stdout><bash-stderr>warn</bash-stderr>\n<bash-input>b</bash-input>\n<bash-stdout></bash-stdout><bash-stderr></bash-stderr>\n\nGo";
+  assert.deepEqual(splitShells(two).shells, [{ command: "a", output: "1\nwarn" }, { command: "b", output: "" }]);
+  // Live: the row run here and the message sent after it; the read swaps both in place.
+  const s = createSession(T);
+  localShell(s, { id: "g", command: "git status --short", at: 900, output: " M src/intake/estate.ts", exit: 0, duration_ms: 40 });
+  ev(s, "thread.sent", { text: "What changed?", uuid: "w1" }, { at: 1000 });
+  const out = applyBlocks(s, [{ seq: 4, kind: "user", ts: 1000, uuid: "w1", text: sent }]);
+  assert.deepEqual(keys(s), ["sh:g", "u:w1"], "nothing twice");
+  assert.ok(out.includes("sh:g"));
+  assert.equal(s.byKey.get("u:w1").text, "What changed?");
+  assert.equal(s.byKey.get("sh:g").exit, 0, "the live exit code stays");
+  // Opened fresh from the file: a shell row, then the words.
+  const f = createSession(T);
+  applyBlocks(f, [{ seq: 4, kind: "user", ts: 1000, uuid: "w1", text: sent }]);
+  assert.deepEqual(f.items.map(i => [i.key, i.kind]), [["sh:@4:0", "shell"], ["u:@4", "user"]]);
+  assert.deepEqual([f.byKey.get("sh:@4:0").command, f.byKey.get("sh:@4:0").exit], ["git status --short", null]);
+  assert.deepEqual(applyBlocks(f, [{ seq: 4, kind: "user", ts: 1000, uuid: "w1", text: sent }]), [], "read again: nothing moved");
+});
+
+test("# memory: thread.remembered is a notice naming the file", () => {
+  const s = createSession(T);
+  const out = ev(s, "thread.remembered", { scope: "project", file: "/home/alex/work/harlow-legal/CLAUDE.md" }, { id: 7 });
+  assert.deepEqual(out, ["n:7"]);
+  assert.equal(s.byKey.get("n:7").text, "Remembered in CLAUDE.md (this project)");
+  ev(s, "thread.remembered", { scope: "local", file: "/home/alex/work/harlow-legal/CLAUDE.local.md" }, { id: 8 });
+  assert.equal(s.byKey.get("n:8").text, "Remembered in CLAUDE.local.md (this folder, not shared)");
+});
+
+test("background tasks, the box's shapes: started, updated with only what changed, ended with a summary; threads.tasks seeds them", () => {
+  const s = createSession(T);
+  // task_started: kind, title, call, background.
+  ev(s, "thread.task", { id: "task_3", status: "running", kind: "shell", title: "npm run dev", call: "toolu_9", background: true }, { at: 10 });
+  // task_updated: the fields that changed, no kind.
+  ev(s, "thread.task", { id: "task_3", status: "running", title: "npm run dev -- --port 3001" });
+  assert.deepEqual(s.tasks.get("task_3"), { id: "task_3", kind: "shell", title: "npm run dev -- --port 3001", status: "running", at: 10, call: "toolu_9", background: true });
+  ev(s, "thread.task", { id: "task_4", status: "running", kind: "agent", title: "Check the menu prices", call: null, background: false }, { at: 11 });
+  ev(s, "thread.task", { id: "task_4", status: "completed", summary: "Two prices were out of date." });
+  assert.deepEqual([s.tasks.get("task_4").kind, s.tasks.get("task_4").status, s.tasks.get("task_4").summary], ["agent", "completed", "Two prices were out of date."]);
+  // task_notification with status "stopped" is killed on the box; an older one may still say stopped.
+  ev(s, "thread.task", { id: "task_3", status: "stopped", summary: "stopped by the user" });
+  assert.equal(s.tasks.get("task_3").status, "killed");
+  assert.equal(s.tasks.get("task_3").kind, "shell", "an update without kind keeps it");
+  ev(s, "thread.task", { id: "task_5", status: "failed", kind: "shell", title: "npm run e2e", error: "exit 1" });
+  assert.equal(s.tasks.get("task_5").error, "exit 1");
+
+  // threads.tasks on open: the box's list, and tool calls no longer guess.
+  const o = createSession(T);
+  applyBlocks(o, [{ seq: 1, kind: "tool", ts: 2, id: "b1", tool: "Bash", input: { command: "npm run dev", run_in_background: true }, output: "ID: bash_1", error: false }]);
+  assert.deepEqual([...o.tasks.keys()], ["bash_1"], "an older box: guessed");
+  assert.deepEqual(seedTasks(o, [{ id: "task_1", kind: "shell", title: "npm run dev", status: "running", call: "b1", background: true }]), ["@tasks"]);
+  assert.deepEqual([...o.tasks.keys()], ["task_1"]);
+  assert.deepEqual(seedTasks(createSession(T), []), ["@tasks"], "an empty list is the box's too");
+  assert.deepEqual(seedTasks(o, /** @type {any} */ (null)), []);
+});
+
+test("a code-only rewind puts the files back and drops nothing; answer and event are one notice; re-reads keep the branch", () => {
+  const s = createSession(T);
+  const blocks = [
+    { seq: 0, kind: "user", ts: 1000, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "text", ts: 2000, message: "msg_a", text: "It has three forms." },
+    { seq: 2, kind: "user", ts: 3000, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 3, kind: "tool", ts: 4000, id: "c1", tool: "Edit", input: { file_path: "src/intake/estate.ts", old_string: "a", new_string: "b" }, output: "ok", error: false },
+    { seq: 4, kind: "text", ts: 5000, message: "msg_b", text: "Done." },
+  ];
+  applyBlocks(s, blocks);
+  const before = keys(s);
+  const files = { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts", "README.md"] };
+  const out = ev(s, "thread.rewound", { uuid: "b", restore: "code", files, local: true }, { at: 10_000 });
+  assert.ok(!out.includes("@rewound"), "the composer keeps what it has");
+  assert.equal(s.rewound, null);
+  assert.deepEqual(keys(s).slice(0, before.length), before, "nothing leaves the view");
+  assert.equal(s.items.at(-1).text, "Restored 3 files");
+  assert.deepEqual(checkpoints(s).map(c => c.uuid), ["b", "a"], "both messages can still be gone back to");
+  assert.equal(s.meta.rewinds.length, 0, "no branch is abandoned");
+  // Its event: the same restore.
+  assert.deepEqual(ev(s, "thread.rewound", { uuid: "b", restore: "code", files }, { at: 10_050 }), []);
+  assert.equal(s.items.filter(i => i.kind === "notice").length, 1);
+  applyBlocks(s, blocks);
+  assert.deepEqual(keys(s).slice(0, before.length), before, "a re-read draws the same conversation");
+  // A second restore to the same message is its own.
+  ev(s, "thread.rewound", { uuid: "b", restore: "code", files: { restored: false, why: "no checkpoint" } }, { at: 20_000 });
+  assert.equal(s.items.at(-1).text, "Could not restore the files: no checkpoint");
+});
+
+test("a rewind of both: the conversation goes back as before, and the notice says what the files did", () => {
+  const s = createSession(T);
+  applyBlocks(s, [
+    { seq: 0, kind: "user", ts: 1000, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "user", ts: 3000, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 2, kind: "text", ts: 5000, message: "msg_b", text: "Done." },
+  ]);
+  const out = ev(s, "thread.rewound", { uuid: "b", at: "a", restore: "both", files: { restored: true, files_changed: ["src/intake/estate.ts"] } }, { at: 10_000 });
+  assert.ok(out.includes("@rewound"));
+  assert.equal(s.rewound?.text, "Rebuild the Estate intake");
+  assert.equal(s.items.at(-1).text, 'Rewound to before "Rebuild the Estate intake" · Restored 1 file');
+  assert.equal(s.items.filter(i => i.kind === "user").length, 1);
+});
+
+test("filesNote and contextLabel", () => {
+  assert.equal(filesNote(null), null);
+  assert.equal(filesNote({ restored: true }), "Restored the files");
+  assert.equal(filesNote({ restored: true, files_changed: [] }), "No files to restore");
+  assert.equal(filesNote({ restored: true, files_changed: ["a.ts", "b.ts"] }), "Restored 2 files");
+  assert.equal(filesNote({ restored: false }), "Could not restore the files");
+  assert.equal(contextLabel(null), null);
+  assert.equal(contextLabel({ context: { used: 1000, max: null } }), null, "no share, no meter");
+  assert.deepEqual(contextLabel({ context: { used: 124000, max: 200000, share: 0.62 } }), { text: "62% of context", title: "124,000 of 200,000 tokens", share: 0.62 });
+  assert.equal(contextLabel({ context: { used: 250000, max: 200000, share: 1.25 } })?.text, "100% of context");
+});
+
+test("thread.usage keeps the context; model.switched moves the model, and a scoped model.changed is not this thread's", () => {
+  const s = createSession(T);
+  ev(s, "thread.started", { provider: "claude", model: "opus" });
+  assert.deepEqual(ev(s, "thread.usage", { cost_usd: 0.01, total_cost_usd: 0.3, context: { used: 124000, max: 200000, share: 0.62 } }), ["@session"]);
+  assert.equal(contextLabel(s.usage)?.text, "62% of context");
+  ev(s, "thread.usage", { cost_usd: 0.01, total_cost_usd: 0.31 });
+  assert.equal(contextLabel(s.usage)?.text, "62% of context", "a usage without context keeps the last");
+  assert.deepEqual(ev(s, "model.switched", { model: "haiku", live: true }), ["@session"]);
+  assert.equal(s.model, "haiku");
+  assert.deepEqual(ev(s, "model.changed", { scope: "purpose:job", model: "sonnet" }), [], "sessions.models.set, a purpose's default");
+  assert.equal(s.model, "haiku");
+  assert.deepEqual(ev(s, "model.changed", { model: "sonnet" }), ["@session"], "an older box's thread model");
+  assert.equal(s.model, "sonnet");
 });

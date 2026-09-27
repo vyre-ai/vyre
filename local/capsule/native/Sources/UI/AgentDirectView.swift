@@ -47,9 +47,7 @@ struct DirectView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(m.role == .user ? (m.surface.map { "YOU · \($0.uppercased())" } ?? "YOU") : agent.uppercased())
                 .font(Theme.label).tracking(1.2).foregroundColor(m.role == .agent ? Theme.signal : Theme.ash)
-            ForEach(Array((m.tools ?? []).enumerated()), id: \.offset) { _, t in
-                Text("\(t.done ? (t.error ? "failed" : "done") : "running") · \(t.summary)").font(Theme.label).foregroundColor(Theme.ash).lineLimit(1)
-            }
+            if let tools = m.tools, !tools.isEmpty { ToolRows(tools: tools) }
             Text(DirectView.markdown(m.text + (m.role == .agent && m.done != true && m.error == nil ? " …" : "")))
                 .font(Theme.reply).foregroundColor(Theme.bone).textSelection(.enabled)
             if let e = m.error { Label("Failed. \(e)", systemImage: "xmark.circle").font(Theme.subtitle).foregroundColor(Theme.stone) }

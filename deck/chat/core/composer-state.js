@@ -20,6 +20,47 @@
 /** @typedef {"message"|"command"|"shell"|"memory"} DraftKind */
 /** @typedef {"steer"|"queue"} SendMode */
 
+// ---- models --------------------------------------------------------------------------------
+
+/** The aliases Claude Code takes, offered first. */
+export const MODEL_ALIASES = Object.freeze([
+  { id: "opus", label: "Opus", description: "The most capable" },
+  { id: "sonnet", label: "Sonnet", description: "Fast and capable" },
+  { id: "haiku", label: "Haiku", description: "The fastest" },
+]);
+
+/** The model's family name, never the vendor's: "claude-opus-4-5" reads "opus". @param {string|null|undefined} m */
+export const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.toLowerCase() || String(m).replace(/^claude-/i, "")) : null);
+
+/**
+ * The model picker's rows. The box has no list of models (no sessions.models): the aliases, then
+ * every other id it names, from sessions.models.get's per-purpose map ({purposes: {chat: {model},
+ * ...}}, "Used for chat, agent") and this thread's own (thread.started, the record). "now" marks
+ * the thread's model: the exact id, else its family's alias.
+ * @param {{ current?: string|null, purposes?: any, seen?: (string|null|undefined)[] }} o
+ * @returns {{ id: string, label: string, description?: string, now: boolean }[]}
+ */
+export function modelChoices(o = {}) {
+  /** @type {Map<string, { id: string, label: string, description?: string, now: boolean }>} */
+  const rows = new Map(MODEL_ALIASES.map(m => [m.id, { ...m, now: false }]));
+  /** @type {Map<string, string[]>} */
+  const uses = new Map();
+  const purposes = o.purposes && typeof o.purposes === "object" ? o.purposes : {};
+  for (const [purpose, v] of Object.entries(purposes)) {
+    const id = typeof v === "string" ? v : v && typeof v === "object" && typeof v.model === "string" ? v.model : null;
+    if (!id) continue;
+    (uses.get(id) || uses.set(id, []).get(id))?.push(purpose);
+  }
+  const ok = (/** @type {any} */ id) => typeof id === "string" && /^[A-Za-z0-9._:\[\]-]{1,80}$/.test(id);
+  for (const id of [...uses.keys(), o.current, ...(o.seen || [])]) if (ok(id) && !rows.has(/** @type {string} */ (id))) rows.set(/** @type {string} */ (id), { id: /** @type {string} */ (id), label: /** @type {string} */ (id), now: false });
+  for (const [id, ps] of uses) { const r = rows.get(id); if (r) r.description = "Used for " + ps.join(", "); }
+  const cur = o.current || null;
+  const exact = cur ? rows.get(cur) : undefined;
+  if (exact) exact.now = true;
+  else if (cur) { const fam = rows.get(/** @type {string} */ (shortModel(cur))); if (fam) fam.now = true; }
+  return [...rows.values()];
+}
+
 // ---- modes ---------------------------------------------------------------------------------
 
 /** Claude Code's permission modes, in its order (bypass only ever read, from a session started in it). */
@@ -354,8 +395,9 @@ export function actionFor(e, mac = false) {
 // ---- pasted images -------------------------------------------------------------------------
 
 export const IMAGE_TYPES = Object.freeze(["image/png", "image/jpeg", "image/gif", "image/webp"]);
-export const MAX_IMAGES = 4;
-/** The API's limit for one image, base64 decoded. */
+/** threads.send's own caps (core/switchboard IMAGES, sessions 034c71e5): at most 5, 5 MB each. */
+export const MAX_IMAGES = 5;
+/** The limit for one image, as the box measures it: its base64 length times 3/4. */
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 
 /** @typedef {{ media_type: string, data: string, name?: string, size: number }} Attachment */
@@ -378,7 +420,8 @@ export function addImage(list, img, caps = {}) {
   if (!img || !IMAGE_TYPES.includes(img.media_type)) return { list: [...list], error: "Only PNG, JPEG, GIF and WebP images can be attached." };
   if (list.length >= max) return { list: [...list], error: `At most ${max} images in one message.` };
   const size = typeof img.size === "number" ? img.size : b64Bytes(img.data);
-  if (size > maxBytes) return { list: [...list], error: `That image is over ${Math.round(maxBytes / 1024 / 1024)} MB.` };
+  // The box counts base64 length * 3/4, which rounds a file's bytes up to a multiple of 3.
+  if (3 * Math.ceil(size / 3) > maxBytes) return { list: [...list], error: `That image is over ${Math.round(maxBytes / 1024 / 1024)} MB.` };
   if (!img.data) return { list: [...list], error: "That image is empty." };
   return { list: [...list, { media_type: img.media_type, data: img.data, size, ...(img.name ? { name: img.name } : {}) }] };
 }

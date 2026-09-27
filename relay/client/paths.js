@@ -11,6 +11,11 @@
 // connection moves back when one answers. Event streams follow the move and resume from their
 // cursor, which belongs to the box, not the path. So the web app on an iPhone uses the tailnet
 // when Tailscale is on and the relay otherwise, and does not care which.
+//
+// With a paired relay path (it carries `device`, from pair()), the app tells the box which path
+// it is on and the round trip it measured, on the first request, on every switch and when it
+// comes back to the front (relay.devices.path). The relay report returns a one-time code; the
+// first direct report hands it back, so the box learns which tailnet node this device is.
 
 import { connect, defaultVisibility } from "./client.js";
 import { fromNative, lowerHeaders } from "./response.js";
@@ -24,7 +29,7 @@ const DIRECT_TIMEOUT = 1500;
  * @param {{ paths: Array<{ kind: "direct", base: string } | ({ kind: "relay" } & Record<string, any>)>,
  *   fetch?: typeof globalThis.fetch, WebSocket?: any, visibility?: import("./client.js").Visibility,
  *   connect?: typeof connect, directTimeout?: number, probeMs?: number, probePath?: string,
- *   onstate?: (s: { kind: string, index: number, state: string }) => void }} o
+ *   onstate?: (s: { kind: string, index: number, state: string }) => void, report?: boolean }} o
  */
 export function createPaths(o) {
   if (!o || !Array.isArray(o.paths) || !o.paths.length) throw new Error("createPaths needs at least one path");
@@ -45,6 +50,30 @@ export function createPaths(o) {
   const follows = new Set();
 
   const paths = o.paths.map((p, i) => p.kind === "direct" ? directPath(p, i) : relayPath(p, i));
+  const device = (o.paths.find(p => p.kind === "relay" && typeof p.device === "string") || {}).device || null;
+  const reporting = o.report !== false && Boolean(device);
+  /** The code from the last relay report, until a direct report spends it. */
+  let linkCode = null;
+  let reported = false;
+
+  /** Tell the box which path this is and how long a round trip takes. Never throws. */
+  async function report() {
+    if (!reporting || closed) return;
+    reported = true;
+    const p = paths[index];
+    try {
+      const t0 = Date.now();
+      const probe = await p.fetch(probePath, { method: "GET", headers: {} });
+      try { await probe.text(); } catch {}
+      const rtt = Date.now() - t0;
+      const direct = p.kind === "direct";
+      const body = { path: direct ? "direct" : "relay", rtt, ...(direct && linkCode ? { id: device, code: linkCode } : {}) };
+      const res = await p.fetch("/v1/tools/relay.devices.path", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": newKey() }, body: JSON.stringify(body) });
+      const r = await res.json().catch(() => null);
+      if (!direct && r && r.data && r.data.link) linkCode = r.data.link;
+      if (direct && res.status === 200) linkCode = null;
+    } catch {}
+  }
 
   function directPath(p, i) {
     const base = String(p.base).replace(/\/+$/, "");
@@ -138,6 +167,7 @@ export function createPaths(o) {
         const done = () => { live.delete(entry); outer?.removeEventListener?.("abort", onOuter); };
         try {
           const res = await p.fetch(path, { ...init, method, headers, signal: ac.signal });
+          if (!reported && reporting) report();
           return track(res, done);
         } catch (e) {
           done();
@@ -202,6 +232,7 @@ export function createPaths(o) {
     if (i < old && paths[old].kind === "relay") paths[old].close();
     try { api.onstate({ kind: paths[i].kind, index: i, state: why }); } catch {}
     schedule();
+    report();
   }
 
   async function probeBetter() {
@@ -217,7 +248,7 @@ export function createPaths(o) {
     if (index > 0 && !closed) prober = globalThis.setInterval(() => { probeBetter(); }, probeMs);
   }
 
-  const offVisible = visibility.on(() => { if (!visibility.hidden()) probeBetter(); });
+  const offVisible = visibility.on(() => { if (!visibility.hidden()) { probeBetter(); if (reported) report(); } });
 
   return api;
 }
