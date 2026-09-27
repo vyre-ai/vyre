@@ -12,6 +12,8 @@
 coverage
 test
 scripts
+# package.json's postinstall runs it during npm ci; it exits at once outside a global install.
+!scripts/postinstall.mjs
 # Design mockups and working notes: not read at runtime.
 docs/design/boards
 docs/work

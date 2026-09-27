@@ -15,7 +15,7 @@
 // is what lets any surface type into it later. The child's pid is known (spawnClaudeCodeProcess),
 // so the daemon's peer check and threads.pids see it as they see the runner's child.
 
-import { spawn } from "node:child_process";
+import { spawnSession, killGroup } from "./spawn.js";
 
 /** A push queue the SDK reads user messages from, for the life of the session. */
 function inbox() {
@@ -64,7 +64,8 @@ export function optionsFor(o) {
 /**
  * Start one session on the SDK. Same contract as runner.run.
  * @param {any} sdk the loaded SDK module (core/sessions/sdk.js load)
- * @param {Parameters<typeof optionsFor>[0] & { onMessage: (m: any) => void, onExit: (code: number|null, signal: string|null, stderr: string) => void }} o
+ * @param {Parameters<typeof optionsFor>[0] & { subreaper?: string|null, uid?: number, gid?: number,
+ *           onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void, onMessage: (m: any) => void, onExit: (code: number|null, signal: string|null, stderr: string) => void }} o
  */
 export function run(sdk, o) {
   const input = inbox();
@@ -95,7 +96,7 @@ export function run(sdk, o) {
     stderr: (/** @type {string} */ c) => { err = (err + c).slice(-2000); },
     // Own the spawn: the pid is Vyre's to know, and a stop takes the whole tree.
     spawnClaudeCodeProcess: (/** @type {any} */ sp) => {
-      const c = spawn(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
+      const c = spawnSession(sp.command, sp.args, { cwd: sp.cwd, env: sp.env, signal: sp.signal, subreaper: o.subreaper, uid: o.uid, gid: o.gid, onSpawn: o.onSpawn });
       child = c;
       c.on("exit", (cd, s) => { code = cd; sig = s; died = true; done(); });
       c.on("error", e => { err = e.message; died = true; done(); });
@@ -117,11 +118,7 @@ export function run(sdk, o) {
   })();
 
   /** Every process of this session: the SDK's child leads its own group. */
-  const kill = (/** @type {NodeJS.Signals} */ s) => {
-    const pid = child && child.pid;
-    if (!pid) return;
-    try { process.kill(process.platform === "win32" ? pid : -pid, s); } catch { try { child?.kill(s); } catch {} }
-  };
+  const kill = (/** @type {NodeJS.Signals} */ s) => killGroup(child, s);
 
   function stub() { return { pid: undefined, write: () => false, get alive() { return false; }, stop: () => Promise.resolve(undefined), interrupt: () => Promise.resolve(undefined) }; }
 
@@ -141,6 +138,8 @@ export function run(sdk, o) {
       return true;                                                         // initialize and the like: the SDK does its own
     },
     get alive() { return !exited; },
+    /** A permission mode a person chose (the Switchboard checks which). */
+    async setMode(/** @type {string} */ mode) { if (!exited) await q.setPermissionMode(mode); },
     /** Stop the current turn; the session stays. */
     async interrupt() { if (!exited) await q.interrupt().catch(() => {}); },
     /** End it: close the input (Claude Code finishes and exits), then TERM, then KILL, the whole tree. */

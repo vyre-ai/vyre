@@ -13,6 +13,8 @@
 //                 message (0: never)
 //   max_live      at most this many session processes at once (0: no cap; the box: 6)
 //   install       install the SDK on first use (true)
+//   subreaper     spawn sessions under `tini -s` (true: where it is installed; false; or a path)
+//   uid, gid      run sessions as this user (the box's session user; set by the box image)
 // VYRE_SESSIONS_DRIVER overrides `driver`, for a test run of the whole suite on either one.
 
 import fs from "node:fs";
@@ -24,7 +26,8 @@ export const CREDENTIALS = { "setup-token": "claude-setup-token", "api-key": "an
 
 /**
  * @param {any} config the loaded config (role, sessions)
- * @returns {{ driver: "sdk"|"cli", auth: "login"|"setup-token"|"api-key", claude: string, idle_minutes: number, max_live: number, install: boolean, dir: string|null }}
+ * @returns {{ driver: "sdk"|"cli", auth: "login"|"setup-token"|"api-key", claude: string, idle_minutes: number, max_live: number, install: boolean, dir: string|null,
+ *   subreaper: boolean|string, uid?: number, gid?: number }}
  */
 export function sessionsConfig(config) {
   const box = !config || config.role !== "local";
@@ -40,6 +43,9 @@ export function sessionsConfig(config) {
     max_live: num(s.max_live, box ? 6 : 0),
     install: s.install !== false,
     dir: typeof s.dir === "string" && s.dir ? s.dir : process.env.VYRE_SESSIONS_SDK_DIR || null,
+    // true or absent: tini where there is one (the box); false: none; a path: that one.
+    subreaper: s.subreaper === false ? false : typeof s.subreaper === "string" ? s.subreaper : true,
+    ...(typeof s.uid === "number" ? { uid: s.uid, ...(typeof s.gid === "number" ? { gid: s.gid } : {}) } : {}),
   };
 }
 

@@ -118,7 +118,8 @@ export function checkInput(schema, value, where = "input") {
  */
 export const callerKind = caller => {
   const c = String(caller);
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
+  // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
+  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**

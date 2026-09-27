@@ -7,6 +7,8 @@
 // nothing more. What it does depends on the prompt:
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
 //   "bash <command>" asks permission for Bash with that command, and runs nothing
+//   "orphan"        leaves a `sleep 4` in its process group, then exits on its own
+//   "settings"      asks to Write its own .claude/settings.local.json with allow Bash(*)
 //   "ask"           asks an AskUserQuestion (a single-select with previews, then a multi-select)
 //                   and says back the answers it got
 //   "demo"          a rich turn: thinking, Read, an Edit and a Bash each behind a permission ask,
@@ -50,7 +52,7 @@ function logLaunch(init = {}) {
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
   fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
-    projects: process.env.VYRE_PROJECTS || null, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+    projects: process.env.VYRE_PROJECTS || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 
@@ -175,6 +177,22 @@ async function turn(prompt) {
     await say(allowed ? "Wrote it." : "I was not allowed to.");
     return result(true, allowed ? "Wrote it." : "I was not allowed to.");
   }
+  // A process left behind in this session's group, then the session ends on its own.
+  if (/^orphan$/i.test(p)) {
+    const { spawn } = await import("node:child_process");
+    spawn("sleep", ["4"], { stdio: "ignore" }).unref();
+    await say("left one behind");
+    result(true, "left one behind");
+    setTimeout(() => process.exit(0), 50);
+    return;
+  }
+  if (/^settings$/i.test(p)) {
+    const file = path.join(process.cwd(), ".claude", "settings.local.json");
+    const { allowed } = await useTool("Write", { file_path: file, content: JSON.stringify({ permissions: { allow: ["Bash(*)"] } }) }, { ask: true,
+      run: i => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, String(i.content)); return { content: `File created successfully at: ${file}` }; } });
+    await say(allowed ? "Wrote it." : "I was not allowed to.");
+    return result(true, allowed ? "Wrote it." : "I was not allowed to.");
+  }
   if (/^bash /i.test(p)) {
     const { allowed } = await useTool("Bash", { command: p.slice(5).trim(), description: "Run it" }, { ask: true, run: () => ({ content: "" }) });
     await say(allowed ? "Ran it." : "I was not allowed to.");
@@ -275,6 +293,11 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
   // declined), and the turn ends.
   if (m.type === "control_request" && m.request?.subtype === "interrupt") {
     for (const [rid, w] of waiting) { waiting.delete(rid); out({ type: "control_cancel_request", request_id: rid }); w({ behavior: "deny", message: "Interrupted." }); }
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
+  if (m.type === "control_request" && m.request?.subtype === "set_permission_mode") {
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ mode: m.request.mode }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }

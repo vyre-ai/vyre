@@ -58,7 +58,7 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "agents.create", "agents.update", "gate.revise", "gate.reject",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release",
   // What every session is told (ADR 0030): a model never edits a system prompt, its own least of all.
-  "sessions.prompt.set", "sessions.prompt.revert"]);
+  "sessions.prompt.set", "sessions.prompt.revert", "threads.mode"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
 

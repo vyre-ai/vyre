@@ -51,16 +51,48 @@ export function claudeCommand(args) {
   return /^node(\d+)?$/.test(path.basename(first)) && path.basename(second) === "claude";
 }
 
+/** A shell's command line (`sh -c ...`, dash, bash): what a hook runs under when /bin/sh forks. @param {string} args */
+export function shellCommand(args) {
+  const [first = "", second = ""] = String(args).trim().split(/\s+/);
+  return /^(sh|dash|bash|zsh)$/.test(path.basename(first)) && second === "-c";
+}
+
+/** A process's command line and parent, or null. @param {number} pid */
+function proc(pid) {
+  try {
+    const line = execFileSync("ps", ["-o", "ppid=,args=", "-p", String(pid)], { encoding: "utf8" }).trim();
+    const m = /^(\d+)\s+(.*)$/s.exec(line);
+    return m ? { ppid: Number(m[1]), args: m[2] } : null;
+  } catch { return null; }
+}
+
 export class Sessions {
   /**
    * @param {import("node:sqlite").DatabaseSync} db
-   * @param {{ children: () => number[], isClaude?: (pid: number) => boolean, alive?: (pid: number) => boolean }} o
+   * @param {{ children: () => number[], isClaude?: (pid: number) => boolean, alive?: (pid: number) => boolean,
+   *           proc?: (pid: number) => { ppid: number, args: string }|null }} o
    */
   constructor(db, o) {
     this.db = db;
     this.children = o.children;
     this.isClaude = o.isClaude || isClaude;
     this.alive = o.alive || alive;
+    this.proc = o.proc || proc;
+  }
+
+  /**
+   * The claude process a hook runs under. On Linux /bin/sh is dash, which forks for the hook's
+   * `sh -c`, so the hook's parent is the shell and the shell's parent is claude: the shell is
+   * walked past, once. Anything else that is not claude is refused.
+   * @param {number} pid @returns {number|null}
+   */
+  claudeOf(pid) {
+    if (!this.alive(pid)) return null;
+    if (this.children().includes(pid) || this.isClaude(pid)) return pid;
+    const p = this.proc(pid);
+    if (!p || !shellCommand(p.args)) return null;
+    const up = p.ppid;
+    return this.alive(up) && (this.children().includes(up) || this.isClaude(up)) ? up : null;
   }
 
   /**
@@ -70,7 +102,9 @@ export class Sessions {
    */
   bind(session, pid) {
     if (!/^[A-Za-z0-9-]{8,80}$/.test(session)) throw new Error("not a session id");
-    if (!this.alive(pid) || !(this.children().includes(pid) || this.isClaude(pid))) throw new Error(`process ${pid} is not a running claude`);
+    const found = this.claudeOf(pid);
+    if (!found) throw new Error(`process ${pid} is not a running claude`);
+    pid = found;
     const had = /** @type {any} */ (this.db.prepare("SELECT pid FROM threads_binds WHERE session = ?").get(session));
     if (had && Number(had.pid) !== pid && this.alive(Number(had.pid))) throw new Error(`session ${session.slice(0, 8)} is bound to another running process`);
     const key = crypto.randomBytes(24).toString("base64url");
@@ -80,7 +114,7 @@ export class Sessions {
     for (const r of /** @type {any[]} */ (this.db.prepare("SELECT session, pid FROM threads_binds").all())) {
       if (!this.alive(Number(r.pid))) this.db.prepare("DELETE FROM threads_binds WHERE session = ?").run(r.session);
     }
-    return { session, key };
+    return { session, key, pid };
   }
 
   /** The process a session is bound to, or null. @param {string} session */

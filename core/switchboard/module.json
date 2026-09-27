@@ -5,11 +5,11 @@
   "requires": [],
   "does": {
     "tools": ["threads.start", "threads.send", "threads.list", "threads.get", "threads.lease", "threads.release",
-      "threads.asks", "threads.answer", "threads.interrupt", "threads.stop", "threads.launch", "threads.watch", "threads.unwatch",
+      "threads.asks", "threads.answer", "threads.interrupt", "threads.mode", "threads.stop", "threads.launch", "threads.watch", "threads.unwatch",
       "threads.claimed", "threads.contend", "threads.vouch", "threads.pids", "threads.bind", "threads.history", "threads.usage", "threads.notice", "threads.halt", "threads.inbox", "threads.replied"]
   },
   "watches": { "emits": ["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
-    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued"] },
+    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued", "mode.changed"] },
   "shows": { "cli": ["threads"] },
   "needs": { "vault": ["claude-setup-token", "anthropic-api-key"] },
   "teaches": {}

@@ -13,11 +13,19 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
-import { tempHome, present } from "../../test/helpers.js";
+import { tempHome, present, writeModule } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 import { installed } from "./sdk.js";
 import { optionsFor } from "./claude.js";
 import { sessionsConfig } from "./config.js";
 import { resume } from "../cli/commands/projects.js";
+import { safePermissions, MODES, MIGRATIONS } from "../switchboard/index.js";
+import { Sessions, shellCommand } from "../switchboard/sessions.js";
+import { callerKind, callerAllowed } from "../modules/index.js";
+import { open as openStore } from "../store/index.js";
+
+const TINI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-tini.js");
+fs.chmodSync(TINI, 0o755);
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -50,9 +58,18 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role, transcripts: [transcripts],
     sessions: { install: false, ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
+  // Internal tools answer only modules: a module that asks threads.pids for the test.
+  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.pids"] } }, `
+    export default { async start(ctx) {
+      ctx.tool("probe.pids", { input: { type: "object" }, run: async () => (await ctx.call("threads.pids", {})).data });
+      return { async stop() {} };
+    } };`);
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  const work = fs.mkdtempSync(path.join(root, "work-"));
+  // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
+  // Vyre's own state, as it does on a real machine.
+  const work = fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   for (const [name, value] of Object.entries(vault)) {
     assert.ok((await tool("vault.put", { name, kind: name === "anthropic-api-key" ? "api-key" : "secret", fields: { value } })).data);
@@ -93,6 +110,37 @@ test("sdk options: the same launch the CLI runner turns into flags", () => {
   assert.equal(r.sessionId, undefined);
   assert.equal(r.systemPrompt, "Only this.");
   assert.deepEqual([r.tools, r.strictMcpConfig, r.settingSources, r.extraArgs], [[], true, [], undefined]);
+});
+
+test("modes: an answer never hands back bypassPermissions, and a person picks only default, acceptEdits or plan", () => {
+  assert.deepEqual(MODES, ["default", "acceptEdits", "plan"]);
+  const offered = [{ type: "setMode", mode: "bypassPermissions", destination: "session" }, { type: "setMode", mode: "acceptEdits", destination: "session" },
+    { type: "addRules", rules: [{ toolName: "Bash", ruleContent: "npm test:*" }], behavior: "allow", destination: "localSettings" }, { type: "setMode", mode: "dontAsk" }, null];
+  assert.deepEqual(safePermissions(offered).map(x => x.mode || x.type), ["acceptEdits", "addRules"]);
+});
+
+test("bind: on Linux the hook's parent is dash's `sh -c`, and the claude above it is bound", t => {
+  const root = tempHome(t);
+  const db = openStore(path.join(root, "vyre.db"));
+  t.after(() => db.close());
+  db.exec(MIGRATIONS[1]);
+  const procs = { 300: { ppid: 200, args: "/bin/sh -c node /opt/vyre/harness/hooks/run.js brief" }, 200: { ppid: 1, args: "/usr/bin/claude" },
+    400: { ppid: 1, args: "/bin/sh -c sleep 5" }, 500: { ppid: 300, args: "node run.js" } };
+  const s = new Sessions(db, { children: () => [], alive: pid => Boolean(procs[pid]), isClaude: pid => procs[pid] && procs[pid].args === "/usr/bin/claude",
+    proc: pid => procs[pid] || null });
+  const b = s.bind("11111111-2222-3333-4444-555555555555", 300);
+  assert.equal(b.pid, 200, "the claude above the shell");
+  assert.equal(s.boundPid("11111111-2222-3333-4444-555555555555"), 200);
+  assert.throws(() => s.bind("22222222-2222-3333-4444-555555555555", 400), /not a running claude/, "a shell under no claude");
+  assert.throws(() => s.bind("33333333-2222-3333-4444-555555555555", 500), /not a running claude/, "only a shell is walked past");
+  assert.ok(shellCommand("/bin/sh -c x") && shellCommand("dash -c x") && !shellCommand("/bin/sh script.sh"));
+});
+
+test("callers: a Vyre-owned session's MCP caller is an mcp caller, like an agent's", () => {
+  assert.equal(callerKind("mcp:thread:0f3a-11"), "mcp");
+  assert.equal(callerKind("mcp:agent:juno"), "mcp");
+  assert.equal(callerAllowed(["cli", "mcp"], "mcp:thread:0f3a-11"), true);
+  assert.equal(callerAllowed(["cli", "deck"], "mcp:thread:0f3a-11"), false);
 });
 
 // ------------------------------------------------------------ on either driver
@@ -229,6 +277,49 @@ for (const driver of ["cli", "sdk"]) {
     const argv = JSON.parse(fs.readFileSync(calls, "utf8").trim());
     assert.deepEqual(argv.slice(0, 2), ["--resume", th.id]);
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.status, "stopped", "vyred let go of it first");
+  });
+
+  test(`${driver}: the floor refuses a session's write to its own permission settings before anyone is asked`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "settings", surface: "deck" })).data;
+    await w.finished(th.id);
+    assert.equal((await w.events(th.id)).filter(e => e.type === "ask.raised").length, 0, "nobody was asked");
+    assert.ok(!fs.existsSync(path.join(w.work, ".claude", "settings.local.json")), "nothing was written");
+    const said = (await w.events(th.id)).filter(e => e.type === "thread.text" && e.payload.done).map(e => e.payload.text);
+    assert.ok(said.some(x => /^Refused Write: Claude Code's permission and settings files are changed by the person/.test(x)), said.join(" | "));
+    assert.ok(said.includes("I was not allowed to."));
+  });
+
+  test(`${driver}: only a person changes a session's mode, and never to bypassPermissions`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const r = (await w.tool("threads.mode", { thread: th.id, mode: "acceptEdits" }, "deck")).data;
+    assert.deepEqual(r, { thread: th.id, mode: "acceptEdits" });
+    await until(() => w.launches().some(l => l.mode === "acceptEdits"), "the mode to reach Claude Code");
+    assert.ok((await w.events(th.id)).some(e => e.type === "mode.changed" && e.payload.mode === "acceptEdits"));
+    assert.ok((await w.tool("threads.mode", { thread: th.id, mode: "bypassPermissions" })).error, "bypass is not offered");
+    for (const caller of ["mcp", "mcp:agent:juno", "mcp:thread:abc", "harness"]) assert.equal((await w.tool("threads.mode", { thread: th.id, mode: "plan" }, caller)).error.code, "denied", caller);
+    await w.tool("threads.send", { thread: th.id, text: "forge cli threads.mode", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.match((await w.said(th.id)).at(-1), /^403 .*denied/, "from inside the session, even as the CLI");
+  });
+
+  test(`${driver}: sessions run under the subreaper, and their group is reported until the last process in it is gone`, { skip }, async t => {
+    const w = await boot(t, { driver, sessions: { subreaper: TINI } });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const launch = w.launches().find(l => l.argv);
+    const pids = (await w.tool("probe.pids", {})).data;
+    assert.ok(pids.pids.includes(launch.ppid), "the subreaper's pid is a session pid");
+    assert.ok(pids.pgids.includes(launch.ppid) && pids.sids.includes(launch.ppid), "its group and session are reported");
+    // A process left in the group outlives the session: the group is still reported.
+    await w.tool("threads.send", { thread: th.id, text: "orphan", surface: "deck" });
+    await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the session to end");
+    const after = (await w.tool("probe.pids", {})).data;
+    assert.ok(!after.pids.includes(launch.ppid), "the session itself is gone");
+    assert.ok(after.pgids.includes(launch.ppid), "its group is still reported while the orphan runs");
+    await until(async () => !(await w.tool("probe.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {

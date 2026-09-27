@@ -19,7 +19,7 @@
 //   --session-id <uuid> for a new thread, so its id is known before Claude Code says it;
 //   --resume <id> for an existing one; --plugin-dir <harness> so every thread loads Vyre.
 
-import { spawn } from "node:child_process";
+import { spawnSession, killGroup } from "../sessions/spawn.js";
 
 /**
  * The command line for a headless session. `system` is the composed system prompt (ADR 0030):
@@ -67,11 +67,13 @@ export function answerLine(requestId, decision, input, message, extra = {}) {
 
 /**
  * Start one session. Calls onMessage for every parsed stdout line and onExit once.
- * @param {{ bin: string, args: string[], cwd: string, env: Record<string, string|undefined>,
+ * @param {{ bin: string, args: string[], cwd: string, env: Record<string, string|undefined>, subreaper?: string|null, uid?: number, gid?: number,
+ *           onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void,
  *           onMessage: (m: any) => void, onExit: (code: number|null, signal: string|null, stderr: string) => void }} o
  */
 export function run(o) {
-  const child = spawn(o.bin, o.args, { cwd: o.cwd, env: /** @type {any} */ (o.env), stdio: ["pipe", "pipe", "pipe"] });
+  // Its own group and session, under the subreaper where there is one (core/sessions/spawn.js).
+  const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, onSpawn: o.onSpawn });
   let buf = "", err = "", exited = false;
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", chunk => {
@@ -111,8 +113,8 @@ export function run(o) {
         if (exited) return resolve(undefined);
         child.once("exit", () => resolve(undefined));
         try { child.stdin.end(); } catch {}
-        const term = setTimeout(() => { try { child.kill("SIGTERM"); } catch {} }, Math.min(500, grace));
-        const kill = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, grace);
+        const term = setTimeout(() => killGroup(child, "SIGTERM"), Math.min(500, grace));
+        const kill = setTimeout(() => killGroup(child, "SIGKILL"), grace);
         child.once("exit", () => { clearTimeout(term); clearTimeout(kill); });
       });
     },

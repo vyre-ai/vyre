@@ -20,6 +20,8 @@ import { translate, cut, clip, CAPS } from "./translate.js";
 import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { run as runOnSdk } from "../sessions/claude.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
+import { findSubreaper, groupAlive } from "../sessions/spawn.js";
+import { rules as floorRules } from "../harness/rules.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
@@ -90,6 +92,19 @@ export function projectRules(tool, suggestions) {
   return [{ type: "addRules", rules: rules.length ? rules : [{ toolName: tool }], behavior: "allow", destination: "localSettings" }];
 }
 
+
+/** The permission modes a person may put a session in. Never bypassPermissions (ADR 0030, "Security"). */
+export const MODES = ["default", "acceptEdits", "plan"];
+
+/**
+ * What an answer may hand back to Claude Code as updatedPermissions: rules and directories as
+ * offered, and a mode only among MODES. A suggestion to switch to bypassPermissions (or any mode
+ * Vyre does not offer) is dropped, whoever answers.
+ * @param {any[]|null|undefined} list
+ */
+export function safePermissions(list) {
+  return (list || []).filter(x => x && typeof x === "object" && (x.type !== "setMode" || MODES.includes(x.mode)));
+}
 
 /**
  * Learned skills (written by Learning): the account's folder for every thread, a project's for
@@ -180,7 +195,7 @@ export class Switchboard {
    *           call: (tool: string, input: any) => Promise<any>, root: string, log: (m: string) => void,
    *           prune?: (thread: string, before: number) => void, run?: typeof defaultRun, bin?: string,
    *           transcripts?: string[], naming?: (id: string, ours: number[]) => number[], isClaude?: (pid: number) => boolean,
-   *           sdk?: { module: any, bin: string|null }|null, idleMs?: number, maxLive?: number,
+   *           sdk?: { module: any, bin: string|null }|null, idleMs?: number, maxLive?: number, subreaper?: string|null, uid?: number, gid?: number,
    *           auth?: (o: { agent?: string|null }) => Promise<{ auth: string, env?: Record<string,string>, fallback?: any }|null> }} deps
    */
   constructor(deps) {
@@ -203,6 +218,8 @@ export class Switchboard {
     this.sdk = deps.sdk || null;
     /** @type {null | (() => Promise<{ module: any, bin: string|null }|null>)} loads it, on the first thread */
     this.loadSdk = null;
+    /** @type {Map<number, number>} every session's process group, pgid -> sid, kept until the whole group is gone */
+    this.groups = new Map();
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
     /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
@@ -225,8 +242,9 @@ export class Switchboard {
   recover() {
     const stale = this.db.prepare(`SELECT id FROM threads_runs WHERE status IN (${LIVE.map(() => "?").join(",")})`).all(...LIVE);
     for (const r of stale) {
-      this.db.prepare("UPDATE threads_runs SET status = 'stopped', stopped_reason = 'vyred restarted', pid = NULL WHERE id = ?").run(r.id);
-      for (const a of this.asks.open(String(r.id))) this.closeAsk(a, "cancelled", "vyred restarted");
+      // "restart" (ADR 0029 R7): a surface says the box restarted, and the next message resumes it.
+      this.db.prepare("UPDATE threads_runs SET status = 'stopped', stopped_reason = 'restart', pid = NULL WHERE id = ?").run(r.id);
+      for (const a of this.asks.open(String(r.id))) this.closeAsk(a, "cancelled", "restart");
     }
   }
 
@@ -421,7 +439,11 @@ export class Switchboard {
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null };
     this.live.set(id, state);
-    const on = { onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
+    // How the process is spawned (core/sessions/spawn.js): the subreaper, another uid, and its
+    // group recorded before it can run anything, for the peer check.
+    const how = { subreaper: this.deps.subreaper || null, ...(this.deps.uid != null ? { uid: this.deps.uid, gid: this.deps.gid } : {}),
+      onSpawn: g => { state.group = g; this.groups.set(g.pgid, g.sid); } };
+    const on = { ...how, onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
     // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
     // same stream reaches onMessage either way.
     const driver = this.sdk ? "sdk" : "cli";
@@ -459,6 +481,18 @@ export class Switchboard {
       if (e.type === "thread.tool" && e.payload.phase === "started") this.set(id, { status: "working" });
       const ev = this.emit(e.type, e.payload, id, project);
       if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
+    }
+    // The floor, before anyone is asked (ADR 0030, "Security"): a call it denies is refused here,
+    // not put to the person, whatever the session's own settings say. The Harness runs the same
+    // rules at PreToolUse for calls that never reach a question.
+    if (t.ask && t.ask.kind === "permission") {
+      let v = null;
+      try { v = floorRules({ tool: t.ask.tool, input: t.ask.input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined }); } catch {}
+      if (v && v.decision === "deny") {
+        st.proc.write(answerLine(t.ask.request_id, "deny", t.ask.input, `Vyre's security floor refused this: ${v.reason || "not allowed"}`));
+        this.emit("thread.text", { message: "vyre", text: `Refused ${t.ask.tool}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, project);
+        t.ask = null;
+      }
     }
     if (t.ask && t.ask.kind === "permission") {
       // The Changes row: an edit's line counts come from its input, now; a push's from git,
@@ -637,7 +671,17 @@ export class Switchboard {
   }
 
   /** Our children's pids: a session bound to one of these is ours, not open elsewhere. */
-  ours() { return [...this.live.values()].map(st => st.proc && st.proc.pid).filter(Boolean); }
+  ours() { return [...this.live.values()].map(st => (st.group && st.group.pid) || (st.proc && st.proc.pid)).filter(Boolean); }
+
+  /**
+   * Every session's process group and session id still in use, for the peer check: a process
+   * that detached from its session's tree (nohup, setsid, a double fork) still carries them, until
+   * the whole group is gone.
+   */
+  groupIds() {
+    for (const pgid of [...this.groups.keys()]) if (!groupAlive(pgid)) this.groups.delete(pgid);
+    return { pgids: [...this.groups.keys()], sids: [...new Set(this.groups.values())] };
+  }
 
   /**
    * Before resuming a thread that is not running here: is it open somewhere else (adopt.js)?
@@ -793,7 +837,7 @@ export class Switchboard {
         const sc = await this.projectScope(a.thread);
         if (!sc) throw new Error(`always in a project needs a thread in its project's folder; thread ${String(a.thread).slice(0, 8)} is not in one`);
         extra = { permissions: projectRules(a.tool, permissions) };
-      } else extra = { permissions };
+      } else extra = { permissions: safePermissions(permissions) };
     }
     // The answer may have waited on the project lookup: the ask can have closed meanwhile.
     if (this.asks.get(askId)?.state !== "open" || !this.live.has(a.thread)) return { ask: askId, answered: false, note: "it closed while being answered" };
@@ -847,6 +891,24 @@ export class Switchboard {
     }
     if (!Object.keys(sent).length) throw new Error("answer a question with answers: { [question]: answer }, or decline it with deny");
     return { sent: { answers: sent }, shown };
+  }
+
+  /**
+   * Put a thread in a permission mode (as Shift+Tab does in Claude Code): default, acceptEdits or
+   * plan. The person's own act (PERSON_ONLY); a model or an agent never changes a mode, and
+   * nothing reaches bypassPermissions.
+   * @param {string} id @param {string} mode
+   */
+  async mode(id, mode) {
+    if (!MODES.includes(mode)) throw Object.assign(new Error(`mode must be one of ${MODES.join(", ")}`), { code: "bad_input" });
+    const st = this.live.get(id);
+    if (!st) return { thread: id, mode: null, note: "not running; the mode applies to a running session" };
+    if (st.proc.setMode) await st.proc.setMode(mode);
+    else st.proc.write({ type: "control_request", request_id: `vyre-mode-${Date.now()}`, request: { subtype: "set_permission_mode", mode } });
+    st.mode = mode;
+    const rec = this.record(id);
+    this.emit("mode.changed", { mode }, id, rec ? rec.project : null);
+    return { thread: id, mode };
   }
 
   /** Stop the turn a thread is running; the thread stays and takes the next message. */
@@ -1028,6 +1090,8 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth,
+      subreaper: cfg.subreaper === false ? null : typeof cfg.subreaper === "string" ? cfg.subreaper : findSubreaper(),
+      ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
     sb.recover();
     // The Agent SDK driver (ADR 0030). It is loaded with the first thread, not at start (the
@@ -1184,6 +1248,14 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); });
 
+    tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking) or plan (read and plan only). Only a person's surface can; bypassPermissions is never offered.",
+      { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: MODES } } },
+      async (i, { caller, thread }) => {
+        if (thread && thread === i.thread) throw Object.assign(new Error("a session's mode is changed by the person, not from the session"), { code: "denied" });
+        return sb.mode(i.thread, i.mode);
+      },
+      ["cli", "local", "deck", "capsule"]);
+
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "stop sessions"); return sb.stop(i.thread); });
@@ -1243,7 +1315,7 @@ export default {
     ctx.tool("threads.pids", {
       description: "The processes Claude sessions run in: vyred's own thread children and every live bound session. vyred refuses a person-only call from under any of them.", internal: true,
       input: { type: "object", properties: {} },
-      run: async () => ({ pids: [...new Set([...sb.ours(), ...sb.sessions.pids()])] }),
+      run: async () => ({ pids: [...new Set([...sb.ours(), ...sb.sessions.pids()])], ...sb.groupIds() }),
     });
     // The SessionStart hook binds its session to the claude process it runs in (sessions.js).
     tool("threads.bind", "SessionStart: bind this session to its claude process, for a key the MCP server sends to say which session a call is from.",

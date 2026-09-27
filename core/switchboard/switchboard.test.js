@@ -14,6 +14,7 @@ import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
@@ -178,7 +179,10 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   }
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  const work = fs.mkdtempSync(path.join(root, "work-"));
+  // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
+  // Vyre's own state, as it does on a real machine.
+  const work = fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   for (const [name, value] of Object.entries(vault || {})) {
