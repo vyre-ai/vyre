@@ -71,6 +71,8 @@ const SCOPES = Object.freeze([
 /** The browser sizes a textarea to its text by itself (Chrome 123, Safari 26). */
 const FIELD_SIZING = typeof CSS !== "undefined" && typeof CSS.supports === "function" && CSS.supports("field-sizing", "content");
 const frame = typeof requestAnimationFrame === "function" ? (/** @type {() => void} */ f) => requestAnimationFrame(f) : (/** @type {() => void} */ f) => setTimeout(f, 16);
+/** A message with images is not queued: the box keeps only a queued message's words (sessions to fix). */
+const IMAGES_NO_QUEUE = "Images can't wait in the queue yet. Send them as a steer now (Enter), or after this turn.";
 /** How long the send button is held to queue. */
 const HOLD_MS = 450;
 /** A fallback "/" list is asked again after this long (the session was not running: it had none). */
@@ -403,6 +405,7 @@ export function mountComposer(opts) {
   /** Enter, the send button, or a hold on it. @param {{ button?: boolean, hold?: boolean, alt?: boolean, shift?: boolean }} how */
   function submit(how = {}) {
     const a = enterAction({ text: ta.value, running: busy && !machine, queueToggle, images: images.length, touch: touch(), ...how });
+    if (a.do === "refuse") { say(IMAGES_NO_QUEUE); return; }
     if (a.do !== "send" || sending) return;
     if (editing) { saveEdit(); return; }
     if (a.kind === "shell") { runShell(draftBody(ta.value)); return; }
@@ -463,6 +466,9 @@ export function mountComposer(opts) {
       // message. The answer names the row (queued_id, and the box's uuid; an older box only says
       // queued: true and thread.queued names it). A steer drawn on send was not one: it becomes the row.
       const id = d.queued_id ?? (d.queued === true ? null : d.queued);
+      // A session busy in a terminal queued it anyway: the box kept the words, not the images.
+      // They go back in the box, so they can be sent once the turn ends.
+      if (imgs.length && !images.length) { images = imgs; drawImages(); say("Queued without the images: a queued message keeps only its words. They are back in the box to send after this turn."); }
       if (drawn && mode === "steer") patch(dropLocal(/** @type {any} */ (S), uuid));
       if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
       if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));

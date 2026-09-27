@@ -112,7 +112,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 
 .gate-card, .ask-card { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-radius: var(--r-3); align-self: stretch; }
 .gate-card { background: var(--panel); border: 1px solid var(--rule); }
-.ask-card { background: var(--beacon-wash); border: 1px solid var(--beacon-rule); }
+.ask-card { background: var(--panel); border: 1px solid var(--rule); }
 .gate-row { display: flex; align-items: baseline; gap: 8px; }
 .gate-title, .ask-title { font-size: 15px; line-height: 20px; color: var(--text); flex-grow: 1; }
 .gate-badge { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; border-radius: var(--r-1);
@@ -433,19 +433,35 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
    multi-select with a check box, Other last with a text field. */
 .cv-ask:focus, .cv-q:focus { outline: none; }
 .cv-ask:focus-visible, .cv-q:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
-.cv-q.ask-card { padding: 0; gap: 0; border: 1px solid var(--rule-strong); border-radius: 10px; background: var(--panel); overflow: hidden; }
-.cv-q > .gate-row { padding: 14px 16px 4px; }
-.cv-q > .gate-actions, .cv-q > .chat-problem, .cv-q > .cv-q-review, .cv-q > .cv-q-done, .cv-q > .gate-resolved, .cv-q > .cv-note { margin: 0 16px 14px; }
-.cv-q > .gate-actions { margin-top: 12px; }
-.cv-q-step { font-family: var(--mono); font-size: 11px; color: var(--label); flex-shrink: 0; }
-.cv-q-q { display: flex; flex-direction: column; }
-.cv-q-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 0 16px 12px; }
-.cv-q-chip { font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--label); }
-.cv-q-text { font-size: 15px; line-height: 23px; font-weight: 500; color: var(--text); }
-.cv-q-body { display: flex; flex-direction: column; }
+/* The card never shrinks in the timeline (overflow: hidden would let it, clipping the last choices);
+   it grows to fit, up to about the view's height less the composer, and past that the choices
+   scroll inside it (a glow at the edge that has more) while the footer stays in sight. */
+.cv-q.ask-card { padding: 0; gap: 0; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); overflow: hidden;
+  flex-shrink: 0; max-height: max(320px, calc(100dvh - 300px)); }
+.cv-q > .cv-ask-head { padding: 0 16px; flex: none; }
+.cv-q > .chat-problem, .cv-q > .cv-q-review, .cv-q > .cv-q-done, .cv-q > .gate-resolved, .cv-q > .cv-note { margin: 0 16px 14px; flex: none; }
+.cv-q > .gate-actions { margin: 0; padding: 12px 16px; border-top: 1px solid var(--rule); flex: none; }
+.cv-q > .cv-q-review + .gate-actions { margin-top: -2px; }
+.cv-q > .gate-actions + .chat-problem { margin-top: -4px; }
+.cv-q > .cv-from { margin: -8px 16px 14px; }
+.cv-q-step, .cv-q-chip { font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 0; }
+.cv-q-step + .cv-q-chip::before { content: "· "; }
+.cv-q-q { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.cv-q-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding: 0 16px 12px; flex: none; }
+.cv-q-text { font-size: 15px; line-height: 22px; font-weight: 600; color: var(--text); }
+.cv-q-body { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.cv-q-body, .cv-q-list { scrollbar-width: thin; scrollbar-color: var(--rule-strong) transparent;
+  background: linear-gradient(var(--panel) 30%, transparent) top / 100% 32px no-repeat local,
+    linear-gradient(transparent, var(--panel) 70%) bottom / 100% 32px no-repeat local,
+    radial-gradient(farthest-side at 50% 0, color-mix(in srgb, var(--text) 16%, transparent), transparent) top / 100% 10px no-repeat scroll,
+    radial-gradient(farthest-side at 50% 100%, color-mix(in srgb, var(--text) 16%, transparent), transparent) bottom / 100% 10px no-repeat scroll,
+    var(--panel); }
+.cv-q-list { display: flex; flex-direction: column; min-height: 0; }
+.cv-q-body > * { flex: none; } /* stacked (narrow), the body scrolls; its parts never shrink into each other */
 @media (min-width: 900px) {
-  .cv-q-body.cv-q-has-preview { display: grid; grid-template-columns: minmax(240px, 2fr) 3fr; align-items: stretch; }
-  .cv-q-has-preview .cv-q-preview { border-top: 1px solid var(--rule); border-left: 1px solid var(--rule); }
+  .cv-q-body.cv-q-has-preview { display: grid; grid-template-columns: minmax(240px, 2fr) 3fr; grid-template-rows: minmax(0, 1fr); align-items: stretch; overflow: hidden; background: none; }
+  .cv-q-has-preview .cv-q-list { overflow-y: auto; overscroll-behavior: contain; }
+  .cv-q-has-preview .cv-q-preview { border-top: 1px solid var(--rule); border-left: 1px solid var(--rule); max-height: none; min-height: 0; }
 }
 .cv-q-opts { display: flex; flex-direction: column; }
 .cv-choice { display: flex; align-items: flex-start; gap: 12px; width: 100%; padding: 11px 16px; border: 0; border-top: 1px solid var(--rule);
@@ -453,19 +469,24 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-choice:hover { background: var(--hover); }
 .cv-choice.cv-focus { box-shadow: inset 2px 0 0 var(--focus); }
 .cv-choice-on, .cv-choice-on:hover { background: var(--signal-wash); }
-.cv-q-num { width: 14px; flex-shrink: 0; font-family: var(--mono); font-size: 11px; line-height: 20px; color: var(--label); }
-.cv-q-mark { margin-top: 2px; }
+.cv-q-opt.cv-choice { min-height: 40px; padding: 10px 16px; }
+/* The number key: a key chip (key-hint.md) on the right, desktop only. */
+.cv-q-num.kbd { margin-left: auto; align-self: center; flex-shrink: 0; justify-content: center; min-width: 20px; height: 20px; padding: 0 5px;
+  border-radius: 4px; font-size: 12px; line-height: 16px; color: var(--label); }
+.cv-choice-on .cv-q-num.kbd { color: var(--text-2); }
+.cv-q-mark { margin-top: 1px; }
+.cv-q-box.cv-chk-on { background: var(--text); border-color: var(--text); color: var(--bg); }
 .cv-chk { width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid var(--rule-strong); display: inline-flex; align-items: center;
   justify-content: center; flex: none; font-size: 10px; line-height: 1; }
 .cv-chk-on { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
 .cv-radio { width: 16px; height: 16px; border-radius: 8px; border: 1.5px solid var(--rule-strong); flex: none; position: relative; }
 .cv-radio-on { border-color: var(--focus); }
 .cv-radio-on::after { content: ""; position: absolute; inset: 3px; border-radius: 4px; background: var(--focus); }
-.cv-q-txt { display: flex; flex-direction: column; min-width: 0; }
-.cv-q-label { font-size: 14px; line-height: 20px; font-weight: 500; color: var(--text); }
+.cv-q-txt { display: flex; flex-direction: column; flex: 1 1 auto; min-width: 0; }
+.cv-q-label { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text); }
 .cv-q-desc { font-size: 13px; line-height: 18px; color: var(--text-2); margin-top: 2px; }
 .cv-q-other-wrap { display: flex; flex-direction: column; }
-.cv-q-other-wrap .cv-q-input { margin: 0 16px 11px 58px; }
+.cv-q-other-wrap .cv-q-input { margin: 0 16px 10px 44px; }
 .cv-q-preview { padding: 12px 14px; border-top: 1px solid var(--rule); background: var(--code-bg);
   font-family: var(--mono); font-size: 12.5px; line-height: 20px; max-height: 360px; overflow: auto; }
 .cv-q-preview p, .cv-q-preview ul, .cv-q-preview ol { margin: 0 0 8px; }
@@ -476,14 +497,41 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 
 /* Permission card: a beacon-wash block with a dot, no border and no stripe; what runs in a mono
    box, why in one line, then Allow once / Always in <project> / Deny. */
-.cv-ask.ask-card { border: 0; border-radius: 10px; background: var(--beacon-wash); }
-.cv-ask-top { align-items: center; }
-.cv-ask-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--beacon-dot); box-shadow: 0 0 0 3px var(--beacon-wash); flex-shrink: 0; }
-.cv-ask .ask-title { font-weight: 500; }
+.cv-ask.ask-card { padding: 0; gap: 8px; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); flex-shrink: 0; }
+.cv-ask > * { margin-left: 16px; margin-right: 16px; }
+.cv-ask > :last-child:not(.gate-actions):not(.cv-deny-row) { margin-bottom: 14px; }
+.cv-ask > .cv-ask-head { margin: 0 0 -8px; padding: 0 16px; }
+.cv-ask > .gate-actions, .cv-ask > .cv-deny-row { margin: 4px 0 0; padding: 12px 16px; border-top: 1px solid var(--rule); }
+.cv-ask > .chat-problem { margin-top: -4px; }
+/* The header both cards share (ask-item.js cardHead): 44 tall, the dot and the kind, "kit · 14:40" right. */
+.cv-ask-head { min-height: 44px; align-items: center; gap: 8px; }
+.cv-ask-dot { width: 8px; height: 8px; border-radius: 4px; background: var(--beacon-dot); flex-shrink: 0; }
+.cv-ask-kind { font-size: 12px; line-height: 16px; font-weight: 600; color: var(--beacon-ink); flex-shrink: 0; }
+.cv-ask-sp { flex: 1 1 auto; }
+.cv-ask-meta { font-size: 12px; line-height: 16px; color: var(--label); white-space: nowrap; flex-shrink: 0; }
+.cv-ask .ask-title { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text); }
 .cv-ask-what { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.cv-ask-what > .cv-cmd, .cv-ask-what > .cv-out, .cv-ask-what .cv-out-wrap > .cv-out { background: var(--bg); border: 1px solid var(--rule); }
-.cv-ask-what .cv-cmd code { font-size: 13px; }
-.cv-ask-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-ask-what > .cv-cmd, .cv-ask-what > .cv-out, .cv-ask-what .cv-out-wrap > .cv-out { background: var(--code-bg); border: 0; border-radius: 8px; padding: 8px 12px; }
+.cv-ask-what .cv-cmd code { font-size: 13px; line-height: 18px; color: var(--text); }
+.cv-ask-why { font-size: 13px; line-height: 18px; color: var(--text-2); overflow: hidden; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+/* Footer buttons in both cards: the key as plain text inside (button.md), disabled as label ink on
+   no fill (never opacity alone), and the pressed one busy with its spinner and verb. */
+.cv-ask-key { font-family: var(--sans); font-size: 12px; line-height: 16px; font-weight: 400; letter-spacing: 0; text-transform: none; color: var(--label); }
+.btn-primary .cv-ask-key { color: var(--primary-ink); }
+.ask-card .btn:disabled { opacity: 1; background: transparent; color: var(--label); }
+.ask-card .btn.cv-always:disabled { border-color: var(--rule); }
+.ask-card .btn-primary:disabled { background: var(--hover); border-color: var(--hover); color: var(--label); }
+.ask-card .btn-primary:disabled .cv-ask-key { color: var(--label); }
+.ask-card .btn.cv-ask-busy { color: var(--text); cursor: progress; }
+.ask-card .btn-primary.cv-ask-busy { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
+.cv-ask-spin { box-sizing: border-box; width: 14px; height: 14px; flex-shrink: 0; border-radius: 50%; border: 1.5px solid var(--rule-strong);
+  border-top-color: var(--text-2); animation: cv-ask-spin 0.9s linear infinite; }
+.btn-primary .cv-ask-spin { border-color: var(--primary-hover); border-top-color: var(--primary-ink); }
+@keyframes cv-ask-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .cv-ask-spin { animation: none; } }
+/* Key hints only 720 and wider, and not on a touch-only device (key-hint.md). A touch-only device
+   is "no hover and a coarse pointer": headless Chrome reports no hover either, but no coarse pointer. */
+@media (max-width: 719px), (any-hover: none) and (pointer: coarse) { .cv-ask-key, .cv-q-num.kbd { display: none; } }
 .cv-deny-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .cv-why, .cv-q-input { flex-grow: 1; min-width: 180px; height: 32px; padding: 0 10px; border: 1px solid var(--rule-strong); border-radius: 6px;
   background: var(--panel); color: var(--text); font: inherit; font-size: 14px; }
@@ -495,6 +543,16 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-choice { min-height: 44px; }
   .cv-q-other-wrap .cv-q-input { margin-left: 16px; }
   .cv-ask-why { white-space: normal; }
+  /* Phone: radius 10, read size, rows 44 (52 with a description), actions stacked: primary 54, the rest 44. */
+  .cv-q.ask-card, .cv-ask.ask-card { border-radius: 10px; }
+  .cv-ask .ask-title, .cv-q-text, .cv-q-label { font-size: 17px; line-height: 24px; }
+  .cv-q-opt.cv-choice { min-height: 44px; }
+  .cv-q-opt.cv-choice:has(.cv-q-desc) { min-height: 52px; }
+  .cv-q-mark { margin-top: 4px; }
+  .cv-q-has-preview .cv-q-preview { max-height: 240px; }
+  .ask-card .cv-ask-actions, .ask-card .cv-q-actions { flex-direction: column; align-items: stretch; }
+  .ask-card .cv-ask-actions .btn, .ask-card .cv-q-actions .btn { flex: none; width: 100%; height: 44px; border-radius: 10px; }
+  .ask-card .cv-ask-actions .btn-primary, .ask-card .cv-q-actions .btn-primary { height: 54px; border-radius: 12px; }
 }
 /* A Mac session's cards: where to answer, in place of the buttons. */
 .cv-elsewhere { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: var(--text-2); }

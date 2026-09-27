@@ -99,6 +99,17 @@ test("Up: edits the newest queued message in an empty composer, else recalls", (
   assert.equal(upAction({ text: "typing", firstLine: true, recalling: false, queued: 2 }), "none");
 });
 
+test("Enter: a message with images is never queued (the box keeps a queued message's words only)", () => {
+  const msg = "Use this photo of the shop front";
+  assert.deepEqual(enterAction({ text: msg, running: true, alt: true, images: 1 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: msg, running: true, queueToggle: true, images: 2 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: msg, running: true, button: true, hold: true, images: 1 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: "", running: true, alt: true, images: 1 }), { do: "refuse", why: "images-queue" }, "images alone");
+  assert.deepEqual(enterAction({ text: "/compact", running: true, images: 1 }), { do: "refuse", why: "images-queue" }, "a command waits, so it would queue");
+  assert.deepEqual(enterAction({ text: msg, running: true, images: 1 }), { do: "send", kind: "message", mode: "steer" }, "a steer takes them");
+  assert.deepEqual(enterAction({ text: msg, running: false, alt: true, images: 1 }), { do: "send", kind: "message", mode: null }, "idle: sent now");
+});
+
 test("Enter: idle sends; running steers by default and queues with Alt, the toggle or a hold", () => {
   const msg = "Keep the witness page as its own step";
   assert.deepEqual(enterAction({ text: msg, running: false }), { do: "send", kind: "message", mode: null });
