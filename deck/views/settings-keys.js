@@ -37,7 +37,10 @@ const OTHER = "__other";
 /** A group id the page already uses for a section of its own gets a prefix, so both can be linked. */
 export const domId = (/** @type {string} */ id, /** @type {Set<string>} */ taken) => (taken.has(id) ? "set-" + id : id);
 const safe = (/** @type {string} */ key) => "sk-" + String(key).replace(/[^A-Za-z0-9_-]/g, "-");
-const errText = (/** @type {any} */ e) => (e?.missing ? `The ${e.module} module is not running, so this cannot be changed here yet.` : String(e?.message || e));
+// The box's words for a proof it could not ask for, in the person's: where to add a passkey.
+const NO_PASSKEY = "This needs your passkey, and none is set up yet. Add one in Settings, Your devices, then try again.";
+const errText = (/** @type {any} */ e) => (e?.missing ? `The ${e.module} module is not running, so this cannot be changed here yet.`
+  : /no passkey is enrolled/.test(String(e?.message || "")) ? NO_PASSKEY : String(e?.message || e));
 const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) === JSON.stringify(b);
 
 /**

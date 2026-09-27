@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings says where to add a passkey
+
+- deck/views/settings-keys.js: a loosening change refused for want of a passkey now reads "This
+  needs your passkey, and none is set up yet. Add one in Settings, Your devices, then try again.",
+  not the box's tool name. Tests in deck/test/settings-keys.test.js and settings-browser.js.
+
 #### A secret setting's values reach only the person
 
 - core/settings: a declaration may say `secret: true` (sessions.env and sessions.hooks do).
