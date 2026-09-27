@@ -893,6 +893,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
 #### Tokens: one JSON, rendered for the Capsule, the app and the Deck
 
+- deck/css/tokens.css now carries the whole scale, not only colours: --size-*/--line-* for the
+  five type steps (the phone's larger read and title steps under 720 px), --space-0 to --space-9,
+  --control-*, --motion-* and --ease, next to the colour roles, --radius-*, --float and --popover.
+  Regenerated after merging main (the committed file predated the popover and radius tokens).
+
 - Theme overrides (ADR 0033 section 3): scripts/lib/theme.js deep-merges a partial tokens.json
   (the person's overrides/theme.json or a module's themes/<name>.json) over the shipped one, and
   refuses the whole file, naming each failure, when it touches status, layout, icon or a key the

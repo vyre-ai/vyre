@@ -34,8 +34,10 @@ test("tokens: the CSS uses the Deck's selectors and role names", () => {
   assert.match(c, /^:root \{/m);
   assert.match(c, /^:root\[data-theme="paper"\] \{/m);
   for (const name of ["--bg:", "--panel:", "--hover:", "--text-2:", "--label:", "--rule-strong:", "--primary-bg:", "--primary-ink:",
-    "--focus:", "--signal-wash:", "--code-bg:", "--beacon-ink:", "--beacon-dot:", "--beacon-badge-ink:", "--sans:", "--mono:", "--popover:", "--float:", "--radius-card:", "--radius-sheet:"])
+    "--focus:", "--signal-wash:", "--code-bg:", "--beacon-ink:", "--beacon-dot:", "--beacon-badge-ink:", "--sans:", "--mono:", "--popover:", "--float:", "--radius-card:", "--radius-sheet:",
+    "--size-base:", "--line-read:", "--space-4:", "--control-touch:", "--motion-panel:", "--ease:"])
     assert.ok(c.includes(name), name);
+  assert.match(c, /@media \(max-width: 719px\) \{\n  :root \{\n    --size-read: 17px; --line-read: 24px;/);
 });
 
 test("tokens: the TS file is what the app imports: tokens, Scheme, Colors, attention()", () => {
