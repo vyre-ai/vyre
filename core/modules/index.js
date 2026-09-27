@@ -47,6 +47,9 @@ export function validate(m) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
   for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+  // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
+  const providers = m.does && m.does.providers;
+  if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
   return out;
 }
 
@@ -119,7 +122,8 @@ export function checkInput(schema, value, where = "input") {
  */
 export const callerKind = caller => {
   const c = String(caller);
-  return c.startsWith("module:") ? "module" : c.replace(/[\s:]agent:.*$/s, "");
+  // "mcp:agent:<name>" and "mcp:thread:<id>" (a Vyre-owned session, ADR 0030) are both "mcp".
+  return c.startsWith("module:") ? "module" : c.replace(/[\s:](agent|thread):.*$/s, "");
 };
 
 /**
@@ -130,7 +134,8 @@ export const callerKind = caller => {
  * @param {string[]|null|undefined} callers
  */
 export const callerAllowed = (callers, caller) => !callers || callers.includes(callerKind(caller))
-  || (callers.includes("deck") && ownerOverTailnet(caller));
+  || (callers.includes("deck") && ownerDevice(caller))
+  || (callers.includes("tailnet") && ownerDevice(caller));
 
 /**
  * The box's owner on their own device at the box's address: the tailnet listener names only the
@@ -138,6 +143,14 @@ export const callerAllowed = (callers, caller) => !callers || callers.includes(c
  * agent's node `tailnet:agent:`. The owner's Deck and phone always arrive this way on a box.
  */
 export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(caller));
+
+/**
+ * The owner on one of their own devices, however it reached the box: over the tailnet
+ * (`tailnet:<owner>`), or a device paired through the relay (`device:<id>`, ADR 0026), which only
+ * the relay module's listener names. A person who may ask; presence still decides every
+ * human-only call. A guest, an agent's node and a socket label are never one.
+ */
+export const ownerDevice = caller => ownerOverTailnet(caller) || /^device:[a-z2-7]{16}$/.test(String(caller));
 
 export class Registry {
   /**
@@ -157,6 +170,8 @@ export class Registry {
     this.upgrades = new Map();
     /** @type {Map<string, (req: any, res: any, at: { caller: string, url: URL }) => any>} */
     this.routes = new Map();
+    /** @type {Map<string, { module: string, driver: any }>} session providers (ADR 0030), by name */
+    this.providers = new Map();
     /** A retried write runs once (ADR 0029, R2). */
     this.idempotency = deps && deps.db ? new Idempotency(deps.db) : null;
   }
@@ -303,6 +318,19 @@ export class Registry {
         const at = `/v1/${m.name}/${name}`;
         if (this.routes.has(at)) throw new Error(`route ${at} is already registered`);
         this.routes.set(at, fn);
+      },
+      // A session provider: a driver the Switchboard runs sessions on (core/sessions/provider.js).
+      // Declared under does.providers; it must pass core/sessions/conformance.js.
+      provider: (name, driver) => {
+        const mine = (m.does && m.does.providers) || [];
+        if (!mine.includes(name)) throw new Error(`${m.name} registered provider ${name}, which its manifest does not declare under does.providers`);
+        if (this.providers.has(name)) throw new Error(`provider ${name} is already registered`);
+        if (!driver || typeof driver.run !== "function") throw new Error(`provider ${name} needs a run function`);
+        this.providers.set(name, { module: m.name, driver });
+      },
+      providers: {
+        get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
+        list: () => [...this.providers.keys()],
       },
       tool: (name, def) => {
         if (!declared.has(name)) throw new Error(`${m.name} registered tool ${name}, which its manifest does not declare under does.tools`);

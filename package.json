@@ -13,7 +13,7 @@
   "scripts": {
     "postinstall": "node scripts/postinstall.mjs",
     "pretest": "node test/tmp-guard.mjs before",
-    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"local/*/lib/*.test.js\"",
+    "test": "node --test --test-reporter=spec \"core/**/*.test.js\" \"test/**/*.test.js\" \"deck/**/*.test.js\" \"modules/**/*.test.js\" \"local/*/*.test.js\" \"relay/**/*.test.js\"",
     "posttest": "node test/tmp-guard.mjs after",
     "perf-check": "node scripts/perf-check",
     "eval:memory": "node scripts/eval-memory.js",
@@ -21,6 +21,7 @@
     "docs:check": "node scripts/docs-check",
     "docs:build": "node scripts/build-docs",
     "docs:ref": "node scripts/gen-docs-reference",
+    "tokens": "node scripts/gen-tokens",
     "docs:shots": "node scripts/docs-shots",
     "stress-drive": "nice -n 10 node scripts/stress-drive"
   },
@@ -38,7 +39,7 @@
     "docs",
     "!docs/work",
     "!docs/proposals",
-    "!docs/design/boards",
+    "!docs/design",
     "!docs/**/*.png",
     "CHANGELOG.md",
     "LICENSE",
@@ -48,8 +49,8 @@
     "!**/fixtures/**",
     "!deck/test/**",
     "!**/node_modules/**",
-    "!local/capsule/dist/**",
-    "!local/capsule/bin/**",
+    "!local/capsule/native/.build/**",
+    "!local/capsule/native/Tests/**",
     "!**/.DS_Store",
     "!**/testing.js",
     "!**/testing/**"

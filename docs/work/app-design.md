@@ -36,6 +36,12 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Needs from others
 
+- integrator: when merging, take this branch's scripts/gen-tokens over work/mobile 622224a's, drop
+  capsule-pro's hand-written Swift add-on, then run `npm run tokens` and commit the three outputs
+  (apps/app/src/theme/tokens.ts, the Capsule's Tokens.generated.swift, deck/css/tokens.css).
+- capsule-pro: Theme.swift reads Tokens.monoSizes, not TypeScale.mono.
+- deck: switch deck.css to import deck/css/tokens.css when ready.
+
 - User (via lead): violet or teal; confirm the install defaults (iPhone: web app over Tailscale;
   Android: APK over adb); Planner in the desktop rail and the phone's Places sheet.
 - sessions: Session board aligned with ADR 0030 (work/sessions 3496b48): provider, model and auth
@@ -45,6 +51,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 - relay: the hosted app at app.vyre.run and the relay QR copy follow ADR 0026 as proposed.
 
 ## Changed contracts
+
+- New: scripts/gen-tokens and scripts/lib/tokens.js own the token exports (capsule-pro asked,
+  27 Sep). The Swift output's default path is local/capsule/native/Sources/UI/Tokens.generated.swift;
+  mono sizes are `monoSizes: [12, 13]` (the hand-written file had `mono: (12, 13)` as size and line).
 
 - docs/nav.json (docs team): design/one-app/README.md and DIRECTION.md added under Contributing;
   docs/index.json and docs/reference/index.md regenerated with npm run docs:ref.

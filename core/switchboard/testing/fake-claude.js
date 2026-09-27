@@ -7,6 +7,9 @@
 // nothing more. What it does depends on the prompt:
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
 //   "bash <command>" asks permission for Bash with that command, and runs nothing
+//   "fail"          a turn that ends in an error result
+//   "orphan"        leaves a `sleep 4` in its process group, then exits on its own
+//   "settings"      asks to Write its own .claude/settings.local.json with allow Bash(*)
 //   "ask"           asks an AskUserQuestion (a single-select with previews, then a multi-select)
 //                   and says back the answers it got
 //   "demo"          a rich turn: thinking, Read, an Edit and a Bash each behind a permission ask,
@@ -30,11 +33,31 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 
-const argv = process.argv.slice(2);
+// The CLI passes "--flag value"; the Agent SDK passes "--flag=value". The log and every check
+// below read one form: "--flag=value" is split in two.
+const argv = process.argv.slice(2).flatMap(a => (/^--[a-z-]+=/.test(a) ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]));
 const flag = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const session = flag("--session-id") || flag("--resume") || "no-session";
-const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription" : process.env.ANTHROPIC_API_KEY ? "api-key" : "ambient";
-if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv, auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null, projects: process.env.VYRE_PROJECTS || null }) + "\n");
+// An API key comes on fd 3 (CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR), never in the environment.
+const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription"
+  : process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR ? "api-key" : "ambient";
+/**
+ * One line per launch. Written at the initialize request, which both the runner and the Agent SDK
+ * send first, because the SDK sends there what the CLI takes as flags: those are added to argv as
+ * the flags they stand for, so a test reads one launch the same way from either driver.
+ */
+let logged = false;
+function logLaunch(init = {}) {
+  if (logged || !process.env.FAKE_CLAUDE_LOG) return;
+  logged = true;
+  const extra = [];
+  if (typeof init.appendSystemPrompt === "string") extra.push("--append-system-prompt", init.appendSystemPrompt);
+  if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
+  else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
+  fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
+    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+}
+setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 
 const out = o => process.stdout.write(JSON.stringify(o) + "\n");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -46,14 +69,22 @@ const MODEL = flag("--model") || "fake-model";
 // ------------------------------------------------------------ transcript lines, as Claude Code writes them
 
 const TX = process.env.FAKE_CLAUDE_TRANSCRIPTS;
-/** @type {string|null} */
-let parent = null;
+// A fork (--resume <from> --fork-session --session-id <new>) starts with the other session's
+// lines, under its own id, as Claude Code does. The original is not touched.
+if (TX && argv.includes("--fork-session")) {
+  const dir = path.join(TX, process.cwd().replace(/[^A-Za-z0-9]/g, "-"));
+  const from = path.join(dir, `${flag("--resume")}.jsonl`);
+  if (fs.existsSync(from)) fs.writeFileSync(path.join(dir, `${session}.jsonl`), fs.readFileSync(from, "utf8").split("\n").filter(Boolean)
+    .map(l => { try { return JSON.stringify({ ...JSON.parse(l), sessionId: session }); } catch { return l; } }).join("\n") + "\n");
+}
+/** @type {string|null} A rewind (--resume-session-at) continues from that entry: the next lines hang under it. */
+let parent = flag("--resume-session-at") || null;
 function tx(type, message, extra = {}) {
   if (!TX) return;
   const cwd = process.cwd();
   const dir = path.join(TX, cwd.replace(/[^A-Za-z0-9]/g, "-"));
   fs.mkdirSync(dir, { recursive: true });
-  const uuid = crypto.randomUUID();
+  const uuid = extra.uuid || crypto.randomUUID();
   fs.appendFileSync(path.join(dir, `${session}.jsonl`), JSON.stringify({ parentUuid: parent, isSidechain: false, userType: "external", cwd, sessionId: session,
     version: "2.1.283", gitBranch: "", entrypoint: "sdk-cli", type, message, uuid, timestamp: new Date().toISOString(), ...extra }) + "\n");
   parent = uuid;
@@ -65,15 +96,34 @@ const txAssistant = (id, block, stop = null) => tx("assistant", { id, type: "mes
 
 out({ type: "system", subtype: "hook_response", hook_name: "SessionStart:startup", output: "whatever the user's own hooks print" });
 
+/**
+ * Steered messages (priority "next") that arrived while a turn ran, not yet taken in. Claude Code
+ * folds them into the running turn at its next step: here, at the turn's next reply, which says
+ * so and carries the message's uuid (user_message_uuid), as Claude Code stamps it.
+ * @type {{ uuid: string|null, text: string }[]}
+ */
+let folds = [];
+/** The uuids of every message the current turn took in, for its result (user_message_uuids). */
+let took = [];
+let busy = false;
+
 async function say(text) {
   const id = `msg_${++n}`;
+  let stamp = null;
+  if (folds.length) {
+    const f = folds; folds = [];
+    text = `${text} (took in: ${f.map(x => x.text).join("; ")})`;
+    stamp = f.at(-1).uuid;
+    for (const x of f) if (x.uuid) took.push(x.uuid);
+  }
   txAssistant(id, { type: "text", text }, "end_turn");
   out({ type: "stream_event", event: { type: "message_start", message: { id, role: "assistant", content: [] } }, session_id: session, parent_tool_use_id: null });
   for (const piece of text.match(/.{1,6}/gs) || []) {
     out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: piece } }, session_id: session, parent_tool_use_id: null });
     await sleep(2);
   }
-  out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }] }, session_id: session, parent_tool_use_id: null });
+  out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }] }, session_id: session, parent_tool_use_id: null,
+    ...(stamp ? { user_message_uuid: stamp } : {}) });
 }
 
 async function think(text) {
@@ -142,18 +192,40 @@ const TODOS = [
   { content: "Ask kit to review the copy", status: "pending", activeForm: "Asking kit to review the copy" },
 ];
 
+// Claude Code's total_cost_usd is the running total of this process's turns, not the turn's own.
+let spent = 0;
 const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "success" : "error_during_execution", is_error: !ok, result: text,
-  total_cost_usd: cost, duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
-  usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 } });
+  total_cost_usd: (spent = Math.round((spent + cost) * 1e6) / 1e6), duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
+  usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 },
+  ...(took.length ? { user_message_uuids: took } : {}),
+  // An error result lists its errors, as Claude Code's does (the Agent SDK reads them).
+  ...(ok ? {} : { errors: [String(text)] }) });
 
-async function turn(prompt) {
+async function turn(prompt, uuid = null) {
   const p = String(prompt).trim();
-  tx("user", { role: "user", content: String(prompt) });
+  // A user line's uuid is the message's own when the host gave one, as Claude Code keeps it.
+  tx("user", { role: "user", content: String(prompt) }, uuid ? { uuid } : {});
   if (/^write /i.test(p)) {
     const file = path.resolve(p.slice(6).trim());
     const { allowed } = await useTool("Write", { file_path: file, content: "hi" }, { ask: true,
       suggestions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
       run: i => { fs.writeFileSync(file, String(i.content)); return { content: `File created successfully at: ${file}` }; } });
+    await say(allowed ? "Wrote it." : "I was not allowed to.");
+    return result(true, allowed ? "Wrote it." : "I was not allowed to.");
+  }
+  // A process left behind in this session's group, then the session ends on its own.
+  if (/^orphan$/i.test(p)) {
+    const { spawn } = await import("node:child_process");
+    spawn("sleep", ["4"], { stdio: "ignore" }).unref();
+    await say("left one behind");
+    result(true, "left one behind");
+    setTimeout(() => process.exit(0), 50);
+    return;
+  }
+  if (/^settings$/i.test(p)) {
+    const file = path.join(process.cwd(), ".claude", "settings.local.json");
+    const { allowed } = await useTool("Write", { file_path: file, content: JSON.stringify({ permissions: { allow: ["Bash(*)"] } }) }, { ask: true,
+      run: i => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, String(i.content)); return { content: `File created successfully at: ${file}` }; } });
     await say(allowed ? "Wrote it." : "I was not allowed to.");
     return result(true, allowed ? "Wrote it." : "I was not allowed to.");
   }
@@ -237,6 +309,7 @@ async function turn(prompt) {
   }
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
+  if (/^fail$/i.test(p)) { await say("Trying."); return result(false, "API Error: 500 the fake broke on purpose", 0); }
   if (/^lowlimit$/i.test(p)) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "seven_day", resetsAt: 1790000000, utilization: 0.27 } });
     await say("plenty left"); return result(true, "plenty left", 0);
@@ -253,7 +326,20 @@ async function turn(prompt) {
 let queue = Promise.resolve();
 readline.createInterface({ input: process.stdin }).on("line", line => {
   let m; try { m = JSON.parse(line); } catch { return; }
+  // Interrupt, as Claude Code does it: every open permission question is withdrawn (and reads as
+  // declined), and the turn ends.
+  if (m.type === "control_request" && m.request?.subtype === "interrupt") {
+    for (const [rid, w] of waiting) { waiting.delete(rid); out({ type: "control_cancel_request", request_id: rid }); w({ behavior: "deny", message: "Interrupted." }); }
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
+  if (m.type === "control_request" && m.request?.subtype === "set_permission_mode") {
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ mode: m.request.mode }) + "\n");
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
   if (m.type === "control_request" && m.request?.subtype === "initialize") {
+    logLaunch(m.request);
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     out({ type: "system", subtype: "init", session_id: session, cwd: process.cwd(), model: MODEL, tools: ["Read", "Edit", "Write", "Bash", "TodoWrite", "AskUserQuestion"] });
     return;
@@ -267,5 +353,15 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     }
     return;
   }
-  if (m.type === "user") { const text = m.message.content; queue = queue.then(() => turn(text)); }
+  if (m.type === "user") {
+    const text = m.message.content;
+    // Steered while a turn runs: taken in at the turn's next step. Else a turn of its own, in order.
+    if (m.priority === "next" && busy) { folds.push({ uuid: m.uuid || null, text: String(text) }); return; }
+    queue = queue.then(async () => {
+      busy = true; took = m.uuid ? [m.uuid] : [];
+      try { await turn(text, m.uuid || null); } finally { busy = false; }
+      // Steered words the turn never reached (an interrupt, a turn with no reply left) run next.
+      if (folds.length) { const f = folds; folds = []; queue = queue.then(async () => { busy = true; took = f.map(x => x.uuid).filter(Boolean); try { await turn(f.map(x => x.text).join("\n\n")); } finally { busy = false; } }); }
+    });
+  }
 }).on("close", () => { queue.then(() => process.exit(0)); });

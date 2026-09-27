@@ -62,7 +62,10 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   "agents.create", "agents.update",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
-  "learn.accept", "learn.retire", "learn.relax"]);
+  "learn.accept", "learn.retire", "learn.relax",
+  // What every session is told and runs on (ADR 0030): a model never edits a system prompt, a
+  // mode or a model, its own least of all.
+  "sessions.prompt.set", "sessions.prompt.revert", "threads.mode", "sessions.models.set"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 
