@@ -4,6 +4,38 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: the session view to Design A v1, and the defects from the 27 Sep shots
+
+- Paths read relative to the session's folder everywhere a tool row, a fold, an ask card or its
+  changed-file list names a file ("menu.md", not the whole temp path); the full path is in a title.
+  Commands drop the folder too ("cat menu.md").
+- Tool rows are one quiet borderless line: an icon (a spinner while running), a verb ("Edited",
+  "Ran", "Searching", never "Bash" or "TodoWrite"), the mono summary, the time on the right. No
+  "done" word; a failure reads "failed" with the crossed circle; a stopped call "stopped". A call
+  whose session waits on your answer reads "waiting on you" with no clock, in the row and its fold.
+- Times under a twentieth of a second show nothing ("0 ms done" is gone); under a second read
+  "0.2 s". A todo list shows no time.
+- The turn footer reads "18 s · 4.2k tokens · $0.04" in meta sans, and a turn still running has
+  none (it showed its time and tokens so far as if it had ended).
+- Steer marker: "steering · kit reads it at its next step", then "you steered here · after 3 steps
+  · 14:32", in --label. Thinking row shaped like a tool row, its body a 1 px --rule line. Prose 15/22.
+- Folds on the phone start at the left edge, so their summary is not cut.
+- The phone header is two rows: Back and the title (it was squeezed to nothing), then the chips,
+  Thinking and Raw (Raw ran off the screen).
+- Question card: never cut off; the options scroll inside a card taller than the view and the
+  Next and Decline row stays in sight. Ask and question cards on --panel with --rule, radius 12,
+  a shared header ("Permission" or "Question", "kit · 14:40"), Allow once on A, Deny on D,
+  "Always in <project>" an outline button, a busy verb per button ("Allowing", "Denying"), the
+  choice number as a key chip on the right.
+- Diff: no strike, removed lines on the neutral del wash in --text-2, the sign in --label, mono
+  12/20, capped at 20 lines then "Show all N lines", counts with the true minus sign. The old
+  beacon-coloured word diff is neutral. Status words beside their marks; checkboxes in --text;
+  avatars 24.
+- Terminal: fills the Chat view on the laptop and down to the key bar on the phone (the bar sits on
+  the tab bar, or on the keyboard), refits on resize; key bar two rows of seven with / | ~ - and
+  Enter; the watch line names who owns the size; mono 12/18; neutral dots, the failed mark.
+- deck/test/chat-shots.js: the shots in the sample world on a laptop and a phone (testbox).
+
 #### Chat: a message with images is not queued
 
 The box keeps only the words of a queued message, so its images were lost. Until sessions keeps

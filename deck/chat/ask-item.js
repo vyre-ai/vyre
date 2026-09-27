@@ -25,7 +25,7 @@ import { clock } from "../js/fmt.js";
 import { problemLine, macHeld, macLabel, macProblem } from "./presence.js";
 import { renderUnified } from "./lib/diff.js";
 import { outputEl, kvGrid } from "./blocks.js";
-import { langOf } from "./lib/blocks.js";
+import { langOf, shortPath } from "./lib/blocks.js";
 
 const WORDS = { allow: "Allowed once", always: "Always allowed", deny: "Denied", cancelled: "Withdrawn" };
 /** The verb a pressed button shows while its answer is on the way. */
@@ -100,9 +100,9 @@ function what(ask) {
     case "Bash":
       return [h("pre", { class: "cv-cmd" }, h("code", null, "$ " + String(d.command ?? ""))), d.description ? h("div", { class: "cv-note" }, String(d.description)) : null];
     case "Edit": case "MultiEdit":
-      return [h("div", { class: "cv-file" }, icon("file", 12), h("span", { class: "cv-file-path" }, String(d.file || ""))), renderUnified(d.old ?? "", d.new ?? "")];
+      return [h("div", { class: "cv-file" }, icon("file", 12), h("span", { class: "cv-file-path", title: String(d.file || "") }, shortPath(d.file, ask.cwd))), renderUnified(d.old ?? "", d.new ?? "")];
     case "Write":
-      return [h("div", { class: "cv-file" }, icon("file", 12), h("span", { class: "cv-file-path" }, String(d.file || "")), h("span", { class: "cv-file-note" }, "new file")),
+      return [h("div", { class: "cv-file" }, icon("file", 12), h("span", { class: "cv-file-path", title: String(d.file || "") }, shortPath(d.file, ask.cwd)), h("span", { class: "cv-file-note" }, "new file")),
         d.content != null ? outputEl(d.content, { lang: langOf(d.file), max: 16 }) : null];
     case "WebFetch":
       return h("div", { class: "cv-link" }, icon("search", 12), h("span", null, String(d.url || "")));
@@ -118,11 +118,11 @@ const MINUS = "\u2212";
 /**
  * The diff summary (detail.changes, detail.totals, detail.truncated from the switchboard): a
  * "Changed files +188 -133" row that opens to one row per file. Additions in the positive
- * colour, removals neutral, never red. Null when the ask carries no changes.
+ * colour, removals neutral, never red. Paths read relative to the session's folder (`cwd`). Null when the ask carries no changes.
  * @param {any} d the ask's detail
  * @param {{ open: boolean }} view whether the per-file rows show; kept across redraws
  */
-export function changesRow(d, view) {
+export function changesRow(d, view, cwd = null) {
   const rows = Array.isArray(d?.changes) ? d.changes : [];
   if (!rows.length) return null;
   const sum = (k) => rows.reduce((n, r) => n + (r.binary ? 0 : Number(r[k]) || 0), 0);
@@ -138,7 +138,7 @@ export function changesRow(d, view) {
       h("span", { class: "cv-ch-counts" }, ...counts(added, removed)));
     const list = view.open ? h("div", { class: "cv-ch-list" },
       ...rows.map(r => h("div", { class: "cv-ch-row" },
-        h("span", { class: "cv-ch-file", title: String(r.file || "") }, String(r.file || "")),
+        h("span", { class: "cv-ch-file", title: String(r.file || "") }, shortPath(r.file, cwd)),
         h("span", { class: "cv-ch-counts" }, ...(r.binary ? [h("span", { class: "cv-ch-bin" }, "binary")] : counts(Number(r.added) || 0, Number(r.removed) || 0))))),
       d.truncated && files > rows.length ? h("div", { class: "cv-ch-more" }, `and ${files - rows.length} more`) : null) : null;
     put(wrap, head, list);
@@ -196,7 +196,7 @@ export function askCard(ask) {
     if (ask.elsewhere) {
       put(el, title, h("div", { class: "cv-ask-what" }, what(ask)),
         ask.reason ? h("div", { class: "gate-note cv-ask-why" }, String(ask.reason)) : null,
-        changesRow(ask.detail, changesView),
+        changesRow(ask.detail, changesView, ask.cwd),
         h("div", { class: "cv-elsewhere" }, icon("laptop", 12), `Answer it on ${ask.elsewhere}`));
       return;
     }
@@ -209,7 +209,7 @@ export function askCard(ask) {
     put(el, title,
       h("div", { class: "cv-ask-what" }, what(ask)),
       ask.reason ? h("div", { class: "gate-note cv-ask-why" }, String(ask.reason)) : null,
-      changesRow(ask.detail, changesView),
+      changesRow(ask.detail, changesView, ask.cwd),
       state.denying ? h("div", { class: "cv-deny-row" }, whyInput,
         button("deny", "btn-ghost", "Deny", null, () => answer("deny")),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: !!state.busy, onclick: () => { state.denying = false; draw(); } }, "Back"))

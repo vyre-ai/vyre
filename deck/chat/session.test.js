@@ -222,7 +222,8 @@ test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn 
   const runs = $$(container, ".cv-run");
   assert.equal(runs.length, 2);
   assert.match(text(runs[0]), /^Read 1 file, searched 1 time/);
-  assert.match(text(runs[1]).trim(), /^Edited 1 file, ran 1 command, fetched 1 page, used 1 tool · [\d.]+ s$/);
+  assert.equal(text($(runs[1], ".cv-run-sum")), "Edited 1 file, ran 1 command, fetched 1 page, used 1 tool");
+  assert.match(text($(runs[1], ".cv-run-meta")), /^[\d.]+ s$/);
   assert.equal($$(container, ".cv-tool").length, 1, "the todo list, not folded");
   for (const r of runs) await $(r, ".cv-run-head").click();
   assert.equal($$(container, ".cv-run[data-open]").length, 2);
@@ -233,7 +234,8 @@ test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn 
   assert.equal($$(container, ".cv-tool[data-tool=Edit] .cv-dl-add").length, 1);
   assert.equal($$(container, ".cv-todo-completed").length, 1);
   assert.equal($$(container, ".cv-todo-in_progress").length, 1);
-  assert.match(text($(container, ".cv-turn")), /19 s · 18k in, 912 out/);
+  // The transcript has not closed the turn and the session runs: no footer until it ends (the live test closes it).
+  assert.deepEqual($$(container, ".cv-turn").map(text).filter(Boolean), [], "an open turn has no footer yet");
   // The composer (composer.js, not this view's) is left out: its hint names the terminal's commands.
   assert.doesNotMatch(everything($(container, ".session-head")) + everything($(container, ".thread-view")) + everything($(container, ".lease-bar")), /claude/i);
   assert.ok(calls.some(c => c.tool === "recall.transcript" && c.input.session === SID && c.input.limit === 400));
@@ -319,7 +321,7 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
   assert.equal(all.split("Two questions first.").length - 1, 1, "the reply once");
   assert.equal($$(box, ".cv-user").length, 1, "the message once");
   assert.equal($$(box, ".cv-tool").length, 1, "the tool once");
-  assert.match(text($(box, ".cv-tool")), /done/);
+  assert.ok($(box, ".cv-tool[data-state=done]"), "the tool is done");
   assert.equal($$(box, ".cv-turn").length, 1);
   assert.ok($(box, ".cv-q"), "the card stays");
   stop2();
@@ -361,15 +363,17 @@ test("thinking folds to its length, a run of tools is one row that counts up, th
   at("thread.tool", { call: "c2", name: "Bash", status: "running", summary: "npm run build" }, Date.now() - 42_000);
   const run = $(box3, ".cv-run");
   assert.ok(run, "two calls in a row fold into one row");
-  assert.match(text(run).trim(), /^Running npm run build · 0:4\d$/);
+  assert.equal(text($(run, ".cv-run-sum")), "Running npm run build");
+  assert.match(text($(run, ".cv-run-meta")), /^0:4\d$/);
   assert.equal($$(box3, ".cv-tool").length, 0, "closed: its cards are not built");
   at("thread.tool", { call: "c2", status: "completed" });
-  assert.match(text($(box3, ".cv-run")).trim(), /^Read 1 file, ran 1 command · \d+ s$/);
+  assert.equal(text($(box3, ".cv-run-sum")), "Read 1 file, ran 1 command");
+  assert.match(text($(box3, ".cv-run-meta")), /^\d+ s$/);
   await $(box3, ".cv-run-head").click();
   assert.equal($$(box3, ".cv-run .cv-tool").length, 2, "open: the calls as rows");
   at("thread.finished", { ok: true, duration_ms: 72_000, tokens: { input: 18_400, output: 900 } });
   await wait(20);
-  assert.match(text($$(box3, ".cv-turn").at(-1)), /^1 min 12 s · 18k in, 900 out$/);
+  assert.match(text($$(box3, ".cv-turn").at(-1)), /^1 min 12 s · 19k tokens$/);
   assert.equal(stopBtn().hidden, true, "no Stop once the turn is over");
 });
 
@@ -449,7 +453,7 @@ test("an inline ask: A allows, D denies, and one answered on another screen says
 
 // ---- the composer like Claude Code: steer, queue, mode, rewind ----------------------------------
 
-test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc rewinds this thread", async () => {
+test("typing while a turn runs steers it ('steering', then 'you steered here · after 1 step' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc rewinds this thread", async () => {
   const box4 = new El("div");
   doc.body.append(box4);
   const stop4 = mountSession(box4, { thread: NEW, project: null, onBack() {} });
@@ -466,16 +470,16 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   assert.equal(sent.mode, "steer");
   assert.equal(sent.text, "Use Estate intake v2 instead");
   assert.match(sent.uuid, /^[0-9a-f-]{36}$/);
-  assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/);
+  assert.match(text($(box4, ".cv-steer")).trim(), /^steering · \w+ reads it at its next step$/);
   // The box's own uuid, not the Deck's: the echo and the answer tie it to the words drawn on send.
   at("thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: "box-steer-1", via: "steer" });
   assert.equal($$(box4, ".cv-user").length, 2, "the echo is the same message");
-  assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/, "the echo is not the join");
+  assert.match(text($(box4, ".cv-steer")).trim(), /^steering · \w+ reads it at its next step$/, "the echo is not the join");
   at("thread.tool", { call: "s1", status: "completed" });
   // No step on the event: counted here, one call of this turn done.
   at("thread.steered", { uuid: "box-steer-1" });
   assert.equal($$(box4, ".cv-steer").length, 1);
-  assert.match(text($(box4, ".cv-steer")).trim(), /^Steered at step 1 · \d\d:\d\d$/);
+  assert.match(text($(box4, ".cv-steer")).trim(), /^you steered here · after 1 step · \d\d:\d\d$/);
   const order = box4.querySelectorAll(".cv-row").map(n => n.className.split(" ").find(c => /^cv-(user|steer|tool)$/.test(c))).filter(Boolean);
   assert.deepEqual(order, ["cv-user", "cv-tool", "cv-steer", "cv-user"], "the words sit where they joined, after the Read");
 
@@ -727,7 +731,7 @@ test("reopened while an Edit waits on Allow: the pending steer and the queued ro
   // The steer: its words and a "Steering" marker, since Claude has not taken them in yet.
   const steers = $$(box5, ".cv-steer");
   assert.equal(steers.length, 2, "the old steer (taken in) and the new one (pending)");
-  assert.match(text(steers.at(-1)).trim(), /^Steering · joins at the next step$/);
+  assert.match(text(steers.at(-1)).trim(), /^steering · \w+ reads it at its next step$/);
   assert.match(text($$(box5, ".cv-user").at(-1)), /use the rye price too/);
   assert.equal($$(box5, ".cv-user").filter(u => /read the menu first/.test(text(u))).length, 1, "the taken-in steer is the transcript's, once");
   // The queue: the row still waiting, not the one taken back.
@@ -740,7 +744,7 @@ test("reopened while an Edit waits on Allow: the pending steer and the queued ro
   const ev = (type, payload) => emit(type, payload, REOPEN);
   ev("ask.answered", { ask: "ask_e", decision: "allow", by: "deck" });
   ev("thread.steered", { uuid: "s-new", step: 1 });
-  assert.match(text($$(box5, ".cv-steer").at(-1)).trim(), /^Steered at step 1/);
+  assert.match(text($$(box5, ".cv-steer").at(-1)).trim(), /^you steered here · after 1 step/);
   ev("thread.finished", { ok: true });
   ev("thread.sent", { text: "then check the hours", surface: "deck", queued: 5, uuid: "q-new", via: "turn" });
   assert.equal($(box5, ".cv-queued").hidden, true);

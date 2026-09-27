@@ -173,6 +173,12 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .session-head, .lease-bar, .composer { padding-left: 16px; padding-right: 16px; }
   .thread-view { padding-left: 16px; padding-right: 16px; }
+  /* The phone's header is two rows: Back and the title (the title never squeezed to nothing), then
+     the chips and the Thinking and Raw buttons, wrapping rather than running off the edge. */
+  .session-head { flex-wrap: wrap; height: auto; min-height: 56px; padding-top: 4px; padding-bottom: 8px; column-gap: 10px; row-gap: 2px; }
+  .session-head > .cv-head-text { flex: 1 1 calc(100% - 64px); }
+  .session-head > :not(.session-back):not(.cv-head-text) { flex-shrink: 0; }
+  .session-head .cv-chip, .session-head .cv-context, .session-head .cv-state { font-size: 12px; }
   .composer-menu { left: 16px; right: 16px; }
 }
 
@@ -335,45 +341,54 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-head { display: flex; align-items: center; gap: 8px; padding: 10px 0 4px; min-height: 28px; }
 .cv-head .msg-av { margin-right: 4px; }
 .cv-text, .cv-think, .cv-tool, .cv-turn { margin-left: 44px; max-width: calc(100% - 44px); }
-.cv-text { padding: 2px 0 6px; font-size: 15px; line-height: 24px; }
+.cv-text { padding: 2px 0 6px; font-size: 15px; line-height: 22px; }
 .cv-text pre { margin: 0 0 10px; }
 .cv-user-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .cv-command .cv-user-text { font-family: var(--mono); font-size: 13px; color: var(--text-2); }
 .cv-notice { padding: 6px 0; }
 
 .cv-think { padding: 2px 0; }
-.cv-think-head { display: inline-flex; align-items: center; gap: 6px; padding: 2px 0; border: none; background: none; cursor: pointer;
-  font-family: var(--mono); font-size: 11px; color: var(--label); }
+.cv-think-head { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; padding: 0 4px; border: none; border-radius: 8px; background: none; cursor: pointer;
+  font-family: var(--sans, inherit); font-size: 13px; line-height: 18px; color: var(--text-2); }
 .cv-think-head:hover { color: var(--text-2); }
 .cv-think-head svg { transform: rotate(-90deg); transition: transform 180ms ease-out; }
 .cv-think-head[aria-expanded="true"] svg { transform: none; }
-.cv-think-body { margin: 4px 0 6px; padding: 8px 12px; border-left: 2px solid var(--rule-strong); color: var(--text-2);
-  font-size: 13px; line-height: 19px; white-space: pre-wrap; }
+.cv-think-body { margin: 4px 0 6px 7px; padding: 4px 0 4px 16px; border-left: 1px solid var(--rule); color: var(--label);
+  font-size: 13px; line-height: 18px; white-space: pre-wrap; }
 
-/* Tool card: a 38px header (chevron, verb in mono 500, target in mono, meta right in 11px mono),
-   the body mono 12.5/20 on --code-bg, expanding over 180 ms ease-out. */
-.cv-tool { margin-top: 4px; margin-bottom: 4px; border: 1px solid var(--rule); border-radius: 8px; background: var(--panel); overflow: hidden; }
-.cv-tool-head { display: flex; align-items: center; gap: 10px; width: 100%; height: 38px; padding: 0 12px; border: 0;
-  background: transparent; text-align: left; cursor: pointer; font-family: var(--mono); font-size: 12.5px; color: var(--text); }
+/* Tool row (tool-row.md): one quiet borderless 28 line, chevron, icon (a spinner while it runs),
+   the verb in base sans, the summary in mono 12, the meta right in meta sans. Opened, the detail
+   sits under it, indented to the summary, on --code-bg with a --rule top border. */
+.cv-tool { margin-top: 1px; margin-bottom: 1px; }
+.cv-tool-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 0 4px; border: 0; border-radius: 8px;
+  background: transparent; text-align: left; cursor: pointer; font-family: var(--sans, inherit); font-size: 13px; line-height: 18px; color: var(--text-2); }
 .cv-tool-head:hover { background: var(--hover); }
-.cv-tool-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.cv-chev { display: inline-flex; color: var(--label); transition: transform 180ms ease-out; flex-shrink: 0; }
+.cv-tool-head:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cv-chev { display: inline-flex; color: var(--label); transition: transform 120ms ease-out; flex-shrink: 0; }
 .cv-tool[data-open] .cv-chev { transform: rotate(90deg); }
-.cv-tool-name { font-weight: 500; flex-shrink: 0; }
-.cv-tool-title { flex-grow: 1; min-width: 0; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-tool-meta { display: inline-flex; gap: 8px; flex-shrink: 0; margin-left: auto; font-size: 11px; color: var(--label); white-space: nowrap; }
-.cv-tool-state { text-transform: lowercase; }
-.cv-tool-state.cv-running { color: var(--signal-ink-text, var(--signal)); }
-.cv-tool-state.cv-failed { color: var(--beacon-ink); }
-.cv-tool[data-state="failed"] { border-color: var(--beacon-rule); }
-.cv-tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 180ms ease-out; }
+.cv-tool-icon { display: inline-flex; width: 16px; justify-content: center; flex-shrink: 0; color: var(--label); }
+.cv-tool-icon:empty { display: none; }
+.cv-spin { width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid var(--rule-strong); border-top-color: var(--text-2);
+  animation: cv-ask-spin 800ms linear infinite; }
+.cv-tool-name { flex-shrink: 0; }
+.cv-tool-title { flex-grow: 1; min-width: 0; font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-tool-meta { display: inline-flex; gap: 8px; flex-shrink: 0; margin-left: auto; font-size: 12px; line-height: 16px; color: var(--label); white-space: nowrap; }
+.cv-tool-state.cv-waiting { color: var(--text-2); }
+/* Failed: the crossed circle in --text for the icon, the verb stays, meta "failed" (never violet, never a border). */
+.cv-tool[data-state="failed"] .cv-tool-icon { color: var(--text); }
+.cv-tool[data-state="failed"] .cv-tool-icon > svg { display: none; }
+.cv-tool[data-state="failed"] .cv-tool-icon::before { content: ""; width: 12px; height: 12px; background: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='6' cy='6' r='5.25'/%3E%3Cpath d='M4.25 4.25l3.5 3.5M7.75 4.25l-3.5 3.5'/%3E%3C/svg%3E") center / 12px 12px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round'%3E%3Ccircle cx='6' cy='6' r='5.25'/%3E%3Cpath d='M4.25 4.25l3.5 3.5M7.75 4.25l-3.5 3.5'/%3E%3C/svg%3E") center / 12px 12px no-repeat; }
+.cv-tool-state.cv-failed { color: var(--text); }
+.cv-tool-body { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 220ms ease-out; }
 .cv-tool[data-open] .cv-tool-body { grid-template-rows: 1fr; }
 .cv-tool-inner { min-height: 0; overflow: hidden; }
-.cv-tool[data-open] .cv-tool-inner { display: flex; flex-direction: column; gap: 8px; padding: 10px 0; border-top: 1px solid var(--rule);
-  background: var(--code-bg); font-family: var(--mono); font-size: 12.5px; line-height: 20px; }
-.cv-tool-inner > * { margin-left: 14px; margin-right: 14px; }
+.cv-tool[data-open] .cv-tool-inner { display: flex; flex-direction: column; gap: 8px; margin: 2px 0 6px 48px; padding: 8px 0; border-top: 1px solid var(--rule);
+  border-radius: 0 0 6px 6px; background: var(--code-bg); font-family: var(--mono); font-size: 12px; line-height: 18px; }
+.cv-tool-inner > * { margin-left: 12px; margin-right: 12px; }
 .cv-tool-inner > .cv-diff { margin-left: 0; margin-right: 0; }
-@media (prefers-reduced-motion: reduce) { .cv-tool-body, .cv-chev { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .cv-tool-body, .cv-chev { transition: none; } .cv-spin { animation: none; } }
 
 .cv-cmd, .cv-out, .cv-raw { margin: 0; padding: 10px 12px; border-radius: 6px; background: var(--code-bg); overflow-x: auto; }
 .cv-tool-inner .cv-cmd, .cv-tool-inner .cv-out { padding: 0; background: transparent; border-radius: 0; }
@@ -423,7 +438,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-todo-in_progress .cv-todo-text { color: var(--text); font-weight: 600; }
 .cv-todo-in_progress .cv-todo-box { border-color: var(--focus); background: var(--signal-wash); }
 
-.cv-turn { padding: 2px 0 8px; font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); }
+.cv-turn { padding: 2px 0 8px; font-family: var(--sans, inherit); font-size: 12px; line-height: 16px; color: var(--label); }
 .cv-turn:empty { display: none; }
 .cv-earlier { display: flex; justify-content: center; padding: 4px 0 8px; }
 .cv-earlier[hidden] { display: none; }
@@ -550,6 +565,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 
 @media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .cv-text, .cv-think, .cv-tool, .cv-turn { margin-left: 0; max-width: 100%; }
+  .cv-text { font-size: 17px; line-height: 24px; }
+  .cv-tool-head, .cv-run-head { min-height: 32px; }
+  .cv-tool[data-open] .cv-tool-inner { margin-left: 0; }
   .cv-q-review, .cv-q-done, .cv-kv { grid-template-columns: 1fr; }
   .cv-choice { min-height: 44px; }
   .cv-q-other-wrap .cv-q-input { margin-left: 16px; }
@@ -581,8 +599,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-ch-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 6px; }
 .cv-ch-label { flex: 1; min-width: 0; }
 .cv-ch-counts { display: inline-flex; gap: 6px; flex-shrink: 0; font-family: var(--mono); font-size: 12px; }
-.cv-ch-add { color: var(--signal-ink-text, var(--focus)); }
-.cv-ch-del, .cv-ch-bin { color: var(--label); }
+.cv-ch-add { color: var(--text-2); }
+.cv-ch-del { color: var(--text-2); }
+.cv-ch-bin { color: var(--label); }
 .cv-ch-list { display: flex; flex-direction: column; border-top: 1px solid var(--rule); padding: 4px 0; }
 .cv-ch-row { display: flex; align-items: center; gap: 10px; padding: 2px 10px 2px 28px; min-width: 0; }
 .cv-ch-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
@@ -596,21 +615,24 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-md-part { display: contents; }
 
 .cv-run { margin: 2px 0 2px 44px; max-width: calc(100% - 44px); }
-.cv-run-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 30px; padding: 0 4px; border: 0; border-radius: 6px;
-  background: none; cursor: pointer; text-align: left; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+.cv-run-head { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 28px; padding: 0 4px; border: 0; border-radius: 8px;
+  background: none; cursor: pointer; text-align: left; font-family: var(--sans, inherit); font-size: 13px; line-height: 18px; color: var(--text-2); }
 .cv-run-head:hover { background: var(--hover); }
 .cv-run-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .cv-run .cv-chev { display: inline-flex; color: var(--label); transition: transform 180ms ease-out; }
 .cv-run[data-open] > .cv-run-head .cv-chev { transform: rotate(90deg); }
 .cv-run-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-run-meta { flex-shrink: 0; color: var(--label); font-variant-numeric: tabular-nums; }
-.cv-run[data-state="running"] .cv-run-sum { color: var(--signal-ink-text, var(--signal)); }
-.cv-run[data-state="failed"] .cv-run-meta { color: var(--beacon-ink); }
-.cv-run-body { padding-left: 16px; border-left: 1px solid var(--rule); margin-left: 9px; }
+.cv-run-meta { flex-shrink: 0; margin-left: auto; font-size: 12px; color: var(--label); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cv-run[data-state="failed"] .cv-run-meta { color: var(--text); }
+.cv-run-body { padding-left: 12px; border-left: 1px solid var(--rule); margin-left: 9px; }
 .cv-run-body .cv-tool { margin-left: 0; max-width: 100%; }
 .cv-tool-time { font-variant-numeric: tabular-nums; }
-.cv-turn-err { color: var(--beacon-ink); }
+.cv-turn-err { color: var(--text); }
 @media (prefers-reduced-motion: reduce) { .cv-run .cv-chev { transition: none; } }
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+  .cv-run { margin-left: 0; max-width: 100%; }
+  .cv-run-body { padding-left: 8px; margin-left: 7px; }
+}
 
 .cv-chip { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
 .cv-context { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
@@ -678,10 +700,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-menu-badge { margin-left: auto; flex-shrink: 0; padding: 0 6px; border: 1px solid var(--rule); border-radius: var(--r-1);
   font-family: var(--mono); font-size: 10px; color: var(--label); }
 
-.cv-steer { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px 44px; font-size: 11px; color: var(--label); }
+.cv-steer { display: flex; align-items: center; gap: 10px; margin: 6px 0 2px 44px; font-size: 12px; line-height: 16px; color: var(--label); }
 .cv-steer .line { flex-grow: 1; height: 1px; background: var(--rule); }
-.cv-steer-lbl { font-family: var(--mono); white-space: nowrap; color: var(--signal-ink-text, var(--signal)); }
-.cv-steer-pending .cv-steer-lbl { color: var(--text-2); }
+.cv-steer-lbl { white-space: nowrap; color: var(--label); }
 .cv-steer-pending .line { background: var(--rule-strong); }
 
 .cv-shell { margin: 4px 0 4px 44px; max-width: calc(100% - 44px); border: 1px solid var(--rule); border-radius: var(--r-2); overflow: hidden; }
