@@ -47,13 +47,20 @@ mobile and the Capsule (through their owners).
   lines, applies git signing only with --git, allowed_signers).
 - Full vault + tools + CLI + extension + docs set on testbox: 507 pass, 0 fail, 14 skipped.
 
+- Step 10 passkeys: core/vault/webauthn.js (ES256, none attestation, synced flags), fill routes
+  passkeys / passkey.create / passkey.get (fill-passkey.js), extension passkey-page.js (MAIN
+  world) + passkey-bridge.js (confirm on trusted click, fallback to the browser), popup toggle.
+  NOT tried in a real browser yet (needs the Mac free + the lead's OK). Gaps: conditional
+  mediation, prf/largeBlob, Android/iOS providers.
+- Full set on testbox: 531 pass, 0 fail, 14 skipped.
+
 ## Doing
 
-- Step 10 passkeys (step 9 agent fill waits on computers.fill.begin/end).
+- Step 11 cards + addresses fill in the extension; then 12 emergency access, 13 Android service.
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
-9. vault.agent.fill (M, needs computers). 10. Passkeys (L).
+9. vault.agent.fill (M, needs computers).
 11. Cards + addresses (M). 12. Emergency access (M). 13. Autofill: extension, Android service,
    Glass, simulator-only iOS/macOS providers (L).
 

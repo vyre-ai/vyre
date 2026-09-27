@@ -14,6 +14,11 @@
 //   - Only the page's origin is sent to vyred, never its path, query or content.
 //   - inline.js (opt-in, or once per keyboard fill) may ask for names, a fill, a code or a save
 //     for its own page only; which page is the browser's word (sender), never the message's.
+//   - passkey-bridge.js (on by default once paired and allowed on pages) may ask for this site's
+//     passkey names, a new passkey or a sign-in, from any frame. The origin vyred signs for is
+//     the frame's, from the sender; a framed request says so (crossOrigin, topOrigin from the
+//     tab). When vyred cannot take it (not paired, not reachable), the answer is { fallback }
+//     and the browser's own authenticator does the job.
 
 /* global chrome, browser */
 
@@ -85,7 +90,7 @@ async function api(method, route, body, { session = false } = {}) {
   try { out = await res.json(); } catch { return { error: { code: "bad_response", message: "vyred answered with something that is not JSON" } }; }
   if (out && out.error) {
     if (out.error.code === "session_expired" || out.error.code === "session_required") await setSession(null);
-    if (out.error.code === "revoked" || out.error.code === "unauthorized") { await setSession(null); await ext.storage.local.remove(["device", "token", "deviceName"]); }
+    if (out.error.code === "revoked" || out.error.code === "unauthorized") { await setSession(null); await ext.storage.local.remove(["device", "token", "deviceName"]); await syncPasskeys(); }
   }
   return out;
 }
@@ -187,6 +192,114 @@ function pageOf(sender) {
   return o ? { id: sender.tab.id, origin: o } : null;
 }
 
+// ---- passkeys (passkey-page.js in the page's world, passkey-bridge.js beside it) ----------
+
+const PASSKEY_IDS = ["vyre-passkey-page", "vyre-passkey-bridge"];
+const PASSKEY_TYPES = ["passkey-list", "passkey-create", "passkey-get"];
+/** Answers that mean vyred cannot take a passkey request, so the browser's own authenticator should. */
+const FALLBACK_CODES = ["unreachable", "bad_url", "bad_response", "not_found", "revoked", "unauthorized"];
+
+/** Which of the two passkey scripts are registered now. @returns {Promise<string[]>} */
+async function passkeyIds() {
+  try { return (await ext.scripting.getRegisteredContentScripts({ ids: PASSKEY_IDS })).map(x => x.id).filter(id => PASSKEY_IDS.includes(id)); } catch { return []; }
+}
+const passkeysOn = async () => (await passkeyIds()).length === PASSKEY_IDS.length;
+
+/** The person's choice; on unless they turned it off. */
+async function passkeysWanted() { return (await ext.storage.local.get(["passkeys"])).passkeys !== false; }
+
+/** Firefox runs a registered script in the page's world from 128 on; before that, no passkeys. */
+async function mainWorldOk() {
+  const info = /** @type {any} */ (ext.runtime).getBrowserInfo;
+  if (typeof info !== "function") return true;
+  try { const b = await info.call(ext.runtime); return b.name !== "Firefox" || parseInt(String(b.version), 10) >= 128; } catch { return false; }
+}
+
+const passkeyScripts = (/** @type {boolean} */ fallbackKey) => [
+  // The page's world, every frame, before the page's own scripts. matchOriginAsFallback false:
+  // about:blank and data: frames are left to the browser.
+  { id: PASSKEY_IDS[0], matches: PAGES, js: ["passkey-page.js"], runAt: "document_start", allFrames: true, persistAcrossSessions: true,
+    world: "MAIN", ...(fallbackKey ? { matchOriginAsFallback: false } : {}) },
+  { id: PASSKEY_IDS[1], matches: PAGES, js: ["passkey-bridge.js"], runAt: "document_start", allFrames: true, persistAcrossSessions: true },
+];
+
+/**
+ * Register the passkey scripts when they should run (paired, wanted, allowed on pages, a browser
+ * that can run a script in the page's world) and unregister them otherwise. Never throws.
+ * @returns {Promise<{ passkeys: boolean, wanted: boolean, supported: boolean }>}
+ */
+async function syncPasskeys() {
+  const wanted = await passkeysWanted();
+  const supported = await mainWorldOk();
+  try {
+    const s = await settings();
+    const want = Boolean(s.token) && wanted && supported && (await ext.permissions.contains({ origins: PAGES }));
+    const present = await passkeyIds();
+    // Both or neither: a half-registered pair (a failed register) is cleared first.
+    if (present.length && (!want || present.length < PASSKEY_IDS.length)) await ext.scripting.unregisterContentScripts({ ids: present });
+    if (want && present.length < PASSKEY_IDS.length) {
+      // Chrome before 119 has no matchOriginAsFallback on registered scripts: try once without it.
+      try { await ext.scripting.registerContentScripts(passkeyScripts(true)); }
+      catch { await ext.scripting.registerContentScripts(passkeyScripts(false)); }
+    }
+  } catch { /* a browser that will not register them: passkeys stay the browser's own */ }
+  return { passkeys: await passkeysOn(), wanted, supported };
+}
+
+/** @param {unknown} u */
+function webOrigin(u) {
+  try { const x = new URL(String(u || "")); return x.protocol === "https:" || x.protocol === "http:" ? x.origin : null; } catch { return null; }
+}
+
+/**
+ * The frame a passkey request comes from, in the browser's words: its tab, its own origin (the
+ * one vyred signs for) and the tab's top origin. Any frame, unlike pageOf.
+ */
+function frameOf(sender) {
+  if (!sender.tab || typeof sender.tab.id !== "number" || typeof sender.frameId !== "number") return null;
+  const origin = webOrigin(sender.origin || sender.url);
+  if (!origin) return null;
+  const top = sender.frameId === 0 ? origin : webOrigin(sender.tab.url);
+  if (!top) return null;
+  return { id: sender.tab.id, origin, top, frameId: sender.frameId };
+}
+
+const b64uList = (/** @type {any} */ x) => (Array.isArray(x) ? x : []).map(c => c && c.id).filter(id => typeof id === "string");
+
+/** @param {any} msg @param {{ id: number, origin: string, top: string, frameId: number }} frame */
+async function passkey(msg, frame) {
+  const s = await settings();
+  if (!s.token || !(await passkeysWanted())) return { fallback: true };
+  const o = msg.options && typeof msg.options === "object" ? msg.options : {};
+  const create = msg.type === "passkey-create";
+  const rp = create ? o.rp && o.rp.id : o.rpId;
+  /** @type {Record<string, any>} */
+  const body = { url: frame.origin, ...(typeof rp === "string" && rp ? { rpId: rp } : {}) };
+  if (msg.type === "passkey-list") {
+    const r = await api("POST", "passkeys", body);
+    if (r.error) return FALLBACK_CODES.includes(r.error.code) ? { fallback: true } : r;
+    const allow = b64uList(o.allowCredentials);
+    const keys = (r.data.passkeys || []).filter(p => !allow.length || allow.includes(p.id));
+    return { data: { passkeys: keys.map(p => ({ id: p.id, name: p.name, description: p.description })) } };
+  }
+  // Framed by another origin: the clientData says so, and names the top.
+  const crossOrigin = frame.frameId !== 0 && frame.origin !== frame.top;
+  Object.assign(body, { challenge: o.challenge, crossOrigin, ...(crossOrigin ? { topOrigin: frame.top } : {}) });
+  if (create) {
+    const u = o.user && typeof o.user === "object" ? o.user : {};
+    Object.assign(body, {
+      user: { id: u.id, name: u.name, displayName: u.displayName },
+      algs: (Array.isArray(o.pubKeyCredParams) ? o.pubKeyCredParams : []).map(p => p && p.alg).filter(Number.isInteger),
+      exclude: b64uList(o.excludeCredentials),
+    });
+  } else {
+    Object.assign(body, { allow: b64uList(o.allowCredentials), ...(typeof msg.id === "string" ? { id: msg.id } : {}) });
+  }
+  const r = await api("POST", create ? "passkey.create" : "passkey.get", body, { session: true });
+  if (r.error && FALLBACK_CODES.includes(r.error.code)) return { fallback: true };
+  return r;
+}
+
 /** @param {any} msg @param {{ id: number, origin: string }} page */
 async function inline(msg, page) {
   switch (msg.type) {
@@ -255,6 +368,7 @@ async function route(msg) {
       const r = await api("POST", "pair", { code: String(msg.code || ""), name: String(msg.name || "browser").slice(0, 64) });
       if (r.error) return r;
       await ext.storage.local.set({ device: r.data.device, token: r.data.token, deviceName: r.data.name });
+      await syncPasskeys();
       return { data: { device: r.data.device, name: r.data.name } };
     }
     case "unlock": {
@@ -275,11 +389,20 @@ async function route(msg) {
     }
     case "fill": return fill(String(msg.name || ""));
     case "inline-state": return { data: { inline: await inlineOn() } };
-    case "inline-enable": return setInline(true);
+    case "inline-enable": { const r = await setInline(true); await syncPasskeys(); return r; }
     case "inline-disable": return setInline(false);
+    case "passkeys-state": return { data: await syncPasskeys() };
+    case "passkeys-enable": {
+      if (!(await ext.permissions.contains({ origins: PAGES }))) return { error: { code: "no_permission", message: "the browser did not allow passkeys on pages" } };
+      await ext.storage.local.set({ passkeys: true });
+      const r = await syncPasskeys();
+      return r.passkeys ? { data: r } : { error: { code: "unsupported", message: r.supported ? "the browser would not load the passkey scripts" : "passkeys need Firefox 128 or later" } };
+    }
+    case "passkeys-disable": await ext.storage.local.set({ passkeys: false }); return { data: await syncPasskeys() };
     case "forget": {
       await setSession(null);
       await ext.storage.local.remove(["device", "token", "deviceName"]);
+      await syncPasskeys();
       return { data: { forgotten: true } };
     }
     default: return { error: { code: "bad_message", message: "unknown request" } };
@@ -294,9 +417,25 @@ ext.runtime.onMessage.addListener((msg, sender, reply) => {
   // for the inline requests, each for the page the browser says it is on. inline.js acts only
   // on trusted clicks, and a page's own scripts cannot reach chrome.runtime at all.
   const fromPopup = sender.id === ext.runtime.id && !sender.tab && typeof sender.url === "string" && sender.url.startsWith(ext.runtime.getURL("popup.html"));
+  // Passkey requests come from a page's frame only, never the popup: the origin they sign for
+  // is the sender's, and the popup has none.
+  if (msg && PASSKEY_TYPES.includes(msg.type)) {
+    const frame = sender.id === ext.runtime.id && !fromPopup ? frameOf(sender) : null;
+    if (!frame) { reply({ error: { code: "refused", message: "passkey requests come from a page" } }); return false; }
+    passkey(msg, frame).then(reply, failed);
+    return true;
+  }
   if (fromPopup) { route(msg).then(reply, failed); return true; }
   const page = sender.id === ext.runtime.id ? pageOf(sender) : null;
   if (page && msg && INLINE_TYPES.includes(msg.type)) { inline(msg, page).then(reply, failed); return true; }
   reply({ error: { code: "refused", message: "not from the popup" } });
   return false;
 });
+
+// Registered scripts outlive the worker; bring them in line with pairing and page access on start
+// and whenever page access changes.
+syncPasskeys();
+for (const ev of ["onAdded", "onRemoved"]) {
+  const e = /** @type {any} */ (ext.permissions)[ev];
+  if (e && typeof e.addListener === "function") e.addListener(() => { syncPasskeys(); });
+}

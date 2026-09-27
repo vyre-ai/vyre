@@ -1,5 +1,6 @@
 // @ts-check
-// popup: settings, unlock and the list of logins for this page. It never holds a password:
+// popup: settings, unlock, the list of logins for this page and the two page toggles
+// (suggestions, passkeys). It never holds a password:
 // it asks the background worker to fill a login by name, and the worker hands the value
 // straight to the page. The passphrase typed here goes to the worker once and is not kept.
 
@@ -47,6 +48,10 @@ async function refresh() {
   show("logins");
   const inl = await ask({ type: "inline-state" });
   input("inline").checked = Boolean(inl.data && inl.data.inline);
+  const pk = await ask({ type: "passkeys-state" });
+  input("passkeys").checked = Boolean(pk.data && pk.data.passkeys);
+  input("passkeys").disabled = Boolean(pk.data && !pk.data.supported);
+  if (pk.data && !pk.data.supported) $("passkeys-row").title = "Passkeys need Firefox 128 or later.";
   await listLogins();
 }
 
@@ -113,8 +118,27 @@ input("inline").addEventListener("change", async () => {
     say("Suggestions are on. Reload open pages to see them.");
   } else {
     await ask({ type: "inline-disable" });
-    await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
+    // Passkeys share the page permission; it goes only when both are off.
+    if (!input("passkeys").checked) await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
     say("Suggestions are off.");
+  }
+});
+
+// Passkeys run on every page too (the page's own world and a prompt beside it), so they need
+// the same leave, asked for on this click. On by default: once page access is granted for
+// either toggle, passkeys come on unless turned off here.
+input("passkeys").addEventListener("change", async () => {
+  const box = input("passkeys");
+  say("");
+  if (box.checked) {
+    const granted = await chrome.permissions.request({ origins: ["https://*/*", "http://*/*"] });
+    const r = granted ? await ask({ type: "passkeys-enable" }) : { error: { message: "The browser did not allow passkeys on pages." } };
+    if (r.error) { box.checked = false; return say(r.error.message, true); }
+    say("Vyre answers passkey requests now. Reload open pages to use it.");
+  } else {
+    await ask({ type: "passkeys-disable" });
+    if (!input("inline").checked) await chrome.permissions.remove({ origins: ["https://*/*", "http://*/*"] });
+    say("Passkeys are the browser's own again.");
   }
 });
 

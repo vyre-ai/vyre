@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Passkeys in the browser extension: Vyre answers a site's passkey request, on the person's click
+
+- "Use Vyre for passkeys" (popup, on by default once paired and allowed on pages) registers two
+  scripts for every page and frame at document start: `passkey-page.js` in the page's own world
+  stands in for `navigator.credentials.create`/`.get` (publicKey only; conditional, silent and
+  anything unreadable go to the browser's own), and `passkey-bridge.js` draws the prompt in a
+  closed shadow root: "Save a passkey for harlow.test in Vyre?", "Sign in to harlow.test as
+  alex@harlow.test with Vyre?" or a picker, with Continue, Use another device (the browser's own
+  authenticator, original options) and Cancel (NotAllowedError). It acts only on trusted clicks.
+- background.js: `passkey-list`/`passkey-create`/`passkey-get` from content scripts only (the popup
+  is refused), for the frame's origin from the sender; a frame of another site sends crossOrigin
+  and the tab's topOrigin. Not paired or vyred unreachable answers `{ fallback: true }`. The
+  scripts follow pairing, page access and the toggle; Firefox needs 128 or later.
+- The page script's answer is a PublicKeyCredential on the page's own prototypes with
+  ArrayBuffer fields and toJSON(); vyred's errors become the DOMExceptions a browser throws.
+- build.mjs refuses a package that lacks a script the worker injects. Manifest 0.3.0.
+- Tests: modules/vault-extension/passkey.test.js (page script, bridge, worker against a real fill
+  listener, and one create and sign-in end to end, verified as a relying party would).
+
 #### Leaks and rotation: a sweep, rotation at the provider, and daily reminders in the planner
 
 - `vault.sweep {path, history?, shell?}` (CLI `vyre vault sweep [path] --history --shell`) compares

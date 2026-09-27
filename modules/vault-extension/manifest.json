@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Vyre Vault",
-  "version": "0.2.0",
-  "description": "Fill logins from your own Vyre Vault. Talks only to the vyred fill address you configure.",
+  "version": "0.3.0",
+  "description": "Fill logins and passkeys from your own Vyre Vault. Talks only to the vyred fill address you configure.",
   "minimum_chrome_version": "116",
   "action": {
     "default_title": "Vyre Vault",

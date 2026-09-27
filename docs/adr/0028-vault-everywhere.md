@@ -292,6 +292,26 @@ Developer team. The Capsule is ad-hoc signed today, and the Developer ID is abou
 Until then the iOS extension is built and tested in the simulator on GitHub Actions, and the
 macOS extension is built but not installed. Android has no such gate.
 
+### 7. Passkeys in vyred and the extension (built 27 Sep 2026)
+
+- core/vault/webauthn.js is the authenticator. It supports ES256 only, `attestation: "none"` with
+  the Vyre AAGUID 9700b56e-127f-445c-a7ca-560431cc2b48, and the flags UP, UV, BE and BS (a synced
+  passkey, so the counter stays 0). rpIdAllowed() refuses public suffixes, IP literals, http off
+  localhost, and any rpId the origin may not claim.
+- The fill listener gains `passkeys` (a device token, names only), `passkey.create` and
+  `passkey.get` (a device token plus a live session, the same window as a password fill). The
+  worker sends the frame's origin from the sender. A new passkey is a `passkey` item named after
+  the rpId and the account, with `details.rp` and `details.credential` listable. The private key
+  never leaves vyred: release, inject, reveal and copy all refuse it.
+- The extension (passkey-page.js in the MAIN world, passkey-bridge.js isolated) takes over only
+  `publicKey` create/get that Vyre can serve. It asks in a closed shadow root and acts only on
+  trusted clicks. It falls back to the browser's own authenticator when not paired, unreachable,
+  asked to, under conditional mediation, or when the parent's permissions policy forbids it.
+  Firefox 128 or later.
+- Still to come: conditional mediation (Vyre passkeys in the browser's autofill list), the
+  prf/largeBlob extensions, the Android Credential Manager provider, and the iOS/macOS providers
+  (simulator and CI only until there is an Apple Developer team).
+
 ## Order of work
 
 1. This ADR.

@@ -1,14 +1,14 @@
 # Vyre Vault extension
 
-A small MV3 extension that fills logins from your own Vyre Vault in Chrome, Arc, Edge, Brave and
+A small MV3 extension that fills logins and answers passkey requests from your own Vyre Vault in Chrome, Arc, Edge, Brave and
 Firefox, from one source. It talks to one address only, the vyred fill listener you configure,
 and it never reads or sends page content. The design and threat model are in
 `docs/adr/0010-vault-autofill.md`; the fill window and the per-browser plan are in
 `docs/adr/0028-vault-everywhere.md` (decisions 5 and 6).
 
 Browsers give extensions no access to their own autofill dropdown, so the extension cannot put
-Vyre logins in the list the browser shows under a field. The small inline chooser it draws (in a
-closed shadow root) is the one Vyre UI in browsers.
+Vyre logins or passkeys in the list the browser shows under a field. The small inline chooser and
+the passkey prompt it draws (in closed shadow roots) are the Vyre UI in browsers.
 
 ## Install
 
@@ -63,6 +63,43 @@ shorter, never longer.
   your click saves it, through `/v1/fill/save`: a new login gets this page's origin as its only
   host; an update keeps the replaced password in the item's sealed history (the last 5).
 
+## Passkeys
+
+With **Use Vyre for passkeys** on (the default once the browser is paired and the extension is
+allowed on pages), a site's passkey request can be answered by your vault instead of the
+browser's own authenticator. The private key never leaves vyred; only signatures do
+(`core/vault/fill-passkey.js`, `core/vault/webauthn.js`).
+
+- **What runs.** Two scripts, registered for every page and every frame at document start:
+  `passkey-page.js` in the page's own world stands in for `navigator.credentials.create` and
+  `.get`, and `passkey-bridge.js` beside it draws the prompt (a closed shadow root) and talks to
+  the worker. The page script turns the site's options into JSON (every byte field as
+  base64url), and turns vyred's answer back into a `PublicKeyCredential` the site's own code
+  accepts (`instanceof` passes, fields are ArrayBuffers, `toJSON()` gives the WebAuthn JSON).
+- **Create.** "Save a passkey for harlow.test in Vyre?" with the account name. **Continue**
+  makes the passkey in the vault (`/v1/fill/passkey.create`) as an item of kind `passkey`.
+- **Sign in.** The bridge first asks which Vyre passkeys this site has. None: the browser's own
+  authenticator answers and no prompt appears. One: "Sign in to harlow.test as alex@harlow.test
+  with Vyre?". Several: a list to pick from. **Continue** signs (`/v1/fill/passkey.get`).
+- **Only on a real click.** Every choice acts on a click whose event `isTrusted`. The origin
+  vyred signs for is the frame's, from the browser's sender, never from the page's message; an
+  rpId the origin may not claim is a SecurityError. A frame of another site gets a clientData
+  with `crossOrigin: true` and the tab's `topOrigin`, and only when the parent's permissions
+  policy allows passkeys in that frame (where the browser lets the script read it).
+- **Other ways out.** **Use another device** hands the request back to the browser's own
+  authenticator (Touch ID, a phone, a security key) with the site's original options. **Cancel**
+  answers NotAllowedError, as the browser's own dialog does. The same fallback happens without a
+  prompt when the browser is not paired, vyred does not answer, or the site asks for something
+  Vyre does not do (a cross-platform security key, no ES256).
+- **Locked.** A vault without a live fill window shows "Vyre is locked": unlock from the toolbar
+  button (Touch ID or passphrase), then **Try again**.
+- **Known gap: conditional mediation.** A `get()` with `mediation: "conditional"` (passkeys in
+  the username field's autofill list) always goes to the browser, so Vyre passkeys do not appear
+  in that list; the site's "Sign in with a passkey" button does reach Vyre. Silent and immediate
+  mediation go to the browser too.
+- **Firefox 128 or later.** Passkeys need a registered script in the page's world, which Firefox
+  has from 128. On older Firefox the toggle is off and greyed, and passkeys stay the browser's own.
+
 ## What it stores
 
 - `storage.local`: the vyred address, the device id and name, and the device token. The
@@ -71,6 +108,8 @@ shorter, never longer.
   proof that opened it (or sooner, see above), on **Lock**, or when the browser closes.
 - The worker's memory only: a login typed into a page, until you save or dismiss it, for two
   minutes at most.
+- `storage.local`: `passkeys: false` if you turned passkeys off. Passkeys themselves live in the
+  vault, never in the browser.
 
 ## Addresses
 

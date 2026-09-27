@@ -3361,6 +3361,7 @@ Add or replace an item. Values come from `vyre vault put`'s hidden prompt or a m
   - `description` string
   - `details` object
     - `count` integer
+    - `credential` string
     - `expires` integer or string
     - `filename` string
     - `issuer` string
@@ -3634,6 +3635,7 @@ Add or change an item by merging fields: only the fields given are replaced, `re
   - `description` string
   - `details` object
     - `count` integer
+    - `credential` string
     - `expires` integer or string
     - `filename` string
     - `issuer` string

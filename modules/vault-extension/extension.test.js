@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { open, migrate } from "../../core/store/index.js";
 import { Vault, MIGRATIONS } from "../../core/vault/vault.js";
 import { Fill, serveFill } from "../../core/vault/fill.js";
-import { build, forBrowser, packageFiles } from "./build.mjs";
+import { build, forBrowser, packageFiles, INJECTED } from "./build.mjs";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -214,9 +214,11 @@ test("build.mjs writes dist/chrome and dist/firefox with every file the manifest
     const dirs = build(out);
     for (const [target, d] of Object.entries(dirs)) {
       const m = JSON.parse(fs.readFileSync(path.join(d, "manifest.json"), "utf8"));
-      const named = [m.action.default_popup, ...(m.background.scripts || [m.background.service_worker]), "fill.js", "inline.js", "popup.js", "popup.css"];
+      const named = [m.action.default_popup, ...(m.background.scripts || [m.background.service_worker]), "fill.js", "inline.js", "passkey-page.js", "passkey-bridge.js", "popup.js", "popup.css"];
       for (const f of named) assert.ok(fs.existsSync(path.join(d, f)), `${target}: ${f}`);
       assert.ok(!fs.existsSync(path.join(d, "extension.test.js")), `${target}: no tests in the package`);
+      assert.ok(!fs.existsSync(path.join(d, "passkey.test.js")), `${target}: no tests in the package`);
+      for (const f of INJECTED) assert.equal(fs.readFileSync(path.join(d, f), "utf8"), fs.readFileSync(path.join(HERE, f), "utf8"), `${target}: ${f} as written`);
       assert.ok(!fs.existsSync(path.join(d, "build.mjs")), `${target}: no build script in the package`);
       assert.equal(fs.readFileSync(path.join(d, "background.js"), "utf8"), fs.readFileSync(path.join(HERE, "background.js"), "utf8"), "a plain copy");
     }

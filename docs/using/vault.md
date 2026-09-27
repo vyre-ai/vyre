@@ -336,6 +336,15 @@ extension loads in Firefox; see `modules/vault-extension/README.md`.
 `vyre vault devices` lists paired browsers; `vyre vault devices revoke <id>` ends one at once. The
 design is in [ADR 0010](../adr/0010-vault-autofill.md).
 
+### Passkeys
+
+With the extension paired, a site that offers a passkey asks Vyre first: "Save a passkey for
+harlow.test in Vyre?" when you make one, and "Sign in to harlow.test as alex with Vyre?" when you
+use one. Continue works inside your unlock window. **Use another device** hands the request to
+the browser's own authenticator (a phone, a security key, iCloud Keychain). Passkeys are items of
+kind `passkey`; their private keys stay in the vault and only sign, so nothing can show, copy or
+hand one out. The popup's "Use Vyre for passkeys" turns it off. Firefox needs version 128.
+
 Autofill on the phone is not built yet.
 
 ## Your personal vault, and getting it back

@@ -16,6 +16,14 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
+/**
+ * Scripts the manifest does not name but the worker injects or registers by file name: fill.js
+ * and inline.js (executeScript, registerContentScripts), passkey-page.js and passkey-bridge.js
+ * (registered for every page while passkeys are on). A package without one of them loads fine
+ * and then fails on a page, so the build refuses instead.
+ */
+export const INJECTED = ["fill.js", "inline.js", "passkey-page.js", "passkey-bridge.js"];
+
 /** The files a package carries. Tests, this script and dist/ stay behind. */
 export function packageFiles(dir = HERE) {
   return fs.readdirSync(dir).filter(f => /\.(js|html|css|png|svg|json|md)$/.test(f) && !/\.test\.js$/.test(f) && f !== "build.mjs").sort();
@@ -46,12 +54,15 @@ export function forBrowser(manifest, target) {
 /** Write <out>/chrome and <out>/firefox. @param {string} [out] @returns {{ chrome: string, firefox: string }} */
 export function build(out = path.join(HERE, "dist")) {
   const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "manifest.json"), "utf8"));
+  const files = packageFiles();
+  const missing = INJECTED.filter(f => !files.includes(f));
+  if (missing.length) throw new Error(`the package would lack ${missing.join(", ")}`);
   const dirs = { chrome: path.join(out, "chrome"), firefox: path.join(out, "firefox") };
   for (const target of /** @type {const} */ (["chrome", "firefox"])) {
     const d = dirs[target];
     fs.rmSync(d, { recursive: true, force: true });
     fs.mkdirSync(d, { recursive: true });
-    for (const f of packageFiles()) if (f !== "manifest.json") fs.copyFileSync(path.join(HERE, f), path.join(d, f));
+    for (const f of files) if (f !== "manifest.json") fs.copyFileSync(path.join(HERE, f), path.join(d, f));
     fs.writeFileSync(path.join(d, "manifest.json"), JSON.stringify(forBrowser(manifest, target), null, 2) + "\n");
   }
   return dirs;
