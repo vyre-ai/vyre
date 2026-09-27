@@ -27,6 +27,33 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   test/safe-git.test.js plants the traps, including a gpg.program, and fails if any file but
   lib/git-safe.js starts git (core/cli, the person's own terminal, aside).
 
+#### One shared agent-claim parser, instead of eight copies of the same regex
+
+- `agentClaim` (core/modules): the agent name a caller claims, under any transport shape
+  ("mcp:agent:kit", "harness:agent:kit", "cli agent:kit", "module:agent:kit", ...), or null.
+  computers, hands-desktop, sight, network, relay and planner each wrote their own copy of this
+  regex; two of them (computers' `resolve()` and `computers.list`'s self-only filter, and
+  hands-desktop's `resolveAgent`) matched only the narrower "mcp:agent:" shape, so a caller
+  vouched under another transport fell through to full trust - naming any agent's computer, or
+  seeing every agent's computer in a list, as if it were the CLI itself (e2e review, 2026-09-28).
+  All six now import the one parser; the two real gaps are closed with it. `agentClaim` never
+  returns `""` for a claim with no name (e2e review): every caller checks `if (agentClaim(...))`,
+  and an empty string is falsy, so a caller shaped "cli agent:" (no name) would have read as no
+  claim at all and been trusted fully instead of refused.
+
+#### Two cohesion audit fixes: a real caller check and a real pairing timestamp
+
+- `sight.watch` and `sight.frame` now check their own caller before forwarding to `computers.watch`
+  and `hands-desktop.screenshot`: those calls cross as `module:sight` (core/modules/index.js's call
+  wrapper), so neither `computers.js`'s ownSurface floor nor `hands-desktop`'s resolveAgent (which
+  restricts only the exact shape "mcp:agent:name", not a surface-prefixed claim like
+  "cli:agent:name") ever sees who really asked. `core/sight/index.js`'s `agentCaller` runs the same
+  claim check against `meta.caller` first, fails closed if it cannot reach `agents.list`, and still
+  exempts the assistant (found in e2e review).
+- `link.pending` rows carry `created`, the pairing request's real timestamp, alongside `expires`.
+  `waiting`'s `fromPending` uses it directly; it only falls back to the old expiry-minus-TTL guess
+  for a box that has not shipped the field yet.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at

@@ -181,6 +181,28 @@ export const callerKind = caller => {
 };
 
 /**
+ * The agent name a caller claims, in any transport shape: "mcp:agent:kit", "harness:agent:kit",
+ * "cli:agent:kit", "module:agent:kit", or just "agent:kit". Null when the caller makes no such
+ * claim. computers, hands-desktop and sight each used to write their own version of this regex;
+ * one of them (hands-desktop's resolveAgent) matched only the narrower "mcp:agent:" shape, so a
+ * claim shaped "cli:agent:kit" fell through to full trust instead of being checked at all (e2e
+ * review, 2026-09-28). One parser here, so a fix to it reaches every caller at once and a new
+ * module never re-derives it. This only says what the caller *claims*; the daemon's own socket
+ * layer is what actually refuses an unvouched claim (ADR 0031's agent-claim work).
+ *
+ * A claim with no name or an odd one ("cli agent:", "cli agent:???") still counts as a claim: it
+ * must never come back as "" or another value every caller's `if (claim)` treats as no claim at
+ * all, which would make an empty-named claim fully trusted instead of refused (e2e review,
+ * 2026-09-28: the daemon's own socket vouch fails such a claim today, but an in-process caller
+ * does not go through that layer, so this helper has to fail closed on its own).
+ */
+export const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]*)/;
+export const agentClaim = caller => {
+  const m = AGENT_CLAIM.exec(String(caller ?? ""));
+  return m ? m[1] || "(unnamed)" : null;
+};
+
+/**
  * May this caller use a tool with this callers list? On a box the Deck is served at the tailnet
  * address, where the names listener admits only the owner and labels the call "tailnet:<login>"
  * (ADR 0002). That is the owner's own Deck, so a tool open to "deck" is open to it; an agent's own

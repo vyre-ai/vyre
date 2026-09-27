@@ -58,6 +58,9 @@ days across two or three teams), L (a week or more, several teams).
 | 15 | One card set for asks, approvals and plans | app-design, chat, pwa, mobile, capsule-pro | M | proposed |
 | 16 | Event vocabulary and a live event catalog | platform, cohesion | S | proposed |
 | 17 | Shrink the boundaries allowlist | ci, owners of each edge | M | proposed |
+| 18 | Inline pictures in chat: an agent's screen at a step, or an image it made | chat (render, owns), sessions, cohesion (sight), glass | M | proposed, 0.1.1 |
+| 19 | A file lands in the right project, a session can join one later, Vyre Drive gets credit | projects (owns routing + layout), files, federation (Vyre Drive), memory-iq, chat, cohesion | L | proposed, 0.1.x |
+| 20 | The Chrome extension and the Capsule, one login experience | vault (owns), capsule-pro, cohesion | S | decided, 0.1.1 |
 
 ### 1. One screen service on both sides
 
@@ -206,6 +209,104 @@ records only, never tool or test text.
 - **Events:** a catalog tool from the manifests; one noun form (file versus files, computer versus
   computers) with aliases for a release; names built at run time documented.
 - **Boundaries:** 26 frozen edges; most are shared-library moves (tailscale, transport, auth).
+
+### 18. Inline pictures in chat
+
+**The user's ask:** now that chat runs through the Agent SDK, sometimes show a picture inline in
+the transcript, not just a row of text: what an agent's screen looked like at a step, or an image
+it made or a tool returned.
+
+**Two sources, two capture paths, one render path.**
+- **A step's screen.** `sight.frame {target, maxWidth}` (built, core/sight) already returns one
+  scaled JPEG keyed to the last step on that target, refreshed on `sight.stepped`, never a timer.
+  Glass calls it directly for its own reconnect-fallback still and resting-tile preview (agreed
+  with glass, 2026-09-28); a chat row can call the same tool for the same reason, keyed by the tool
+  call id sessions already carries.
+- **An image the agent made.** A Canva render, a saved screenshot, a generated image, whatever a
+  tool call returned or wrote. This is not sight's data: no live screen, no target, no step. It
+  needs its own small attachment convention (thread + call -> a file reference, or the tool's
+  result carrying an image block directly), owned by whoever already writes those files today.
+
+**Owners, decided by the lead 2026-09-28.** Chat owns rendering in every transcript (Deck, PWA,
+Expo, all from chat-core so it is built once). Sessions passes image blocks through from the
+Agent SDK's own message shape rather than chat re-deriving them. Cohesion's part stays `sight.frame`
+and `sight.stepped`, already built; cohesion does not render anything. Glass is a second consumer
+of `sight.frame`, not a second capture path: one still, two callers.
+
+**Open for 0.1.1, when sessions and chat relaunch.** Whether "an image the agent made" is a new
+small module or rides on an existing one (files, drive); how large an inline image gets before it
+is a link instead; whether a `sight.frame` call from chat needs its own rate limit alongside
+Glass's (both call the same tool, on different cadences).
+
+### 19. A file lands in the right project, and can join one later
+
+**The user's ask, three parts.** Every file sent to a session, by whatever door, lands in its
+project's files and the project folder keeps itself tidy. A session can start with no project and
+attach to one later: its workspace, transcript and files move, its memory joins the project. Where
+Vyre Drive did the moving, the UI says so.
+
+**Today.** Three doors, three destinations, none of them project-aware: Taildrop's
+inbox lands everything in one place (`/work/inbox`, core/files/drop.js); `chat`'s own upload path
+(paused, pre-relaunch); and `files.drive` (core/files/drive.js, Taildrive) shares a whole
+*configured* folder, not a per-session destination. `projects.move` (core/projects/move.js) is the
+nearest existing pattern for "move something into a project's home safely": dry run first, rename
+falls back to copy-then-remove across a Docker volume boundary (EXDEV), a symlink left at the old
+path so an open Claude Code session (which keys its transcript by folder) can still resume, one
+outcome record. Nothing today moves a single session, only every project home at once, on a box.
+
+**1. File router. Owner: projects and files (the lead's lean).** projects owns the rule (which
+project a file belongs to, from the same thread/project context `context.report` already carries)
+and the folder layout inside a project's files; files owns the actual write and the guard (no
+secret, no key, same rules Vyre Drive's sharing already applies to a shared folder). Every upload
+door - chat, the Deck, the phone, the Capsule, Taildrop's inbox (core/files/drop.js) - passes
+thread context in (from `context.now` or its own session id) and gets back where the file landed;
+none of them decide the destination themselves. The Taildrop inbox becomes the fallback only when
+no thread context comes with the file at all.
+
+**2. Attach a project later. Owner: projects (the move), memory-iq (the graph).** Shaped like
+`projects.move`, scoped to one session: dry run first, the workspace directory and any files it
+already has move into the project's home, a symlink left at the old path for resume, one outcome
+record naming what moved and what was skipped. `projects.attach {session, project, dryRun?}` is
+the likely tool shape; projects.move's EXDEV fallback and its "never run twice, check the record"
+caution both apply. Once moved, memory-iq re-scopes that session's context onto the project's own
+facts and entities, the same join a session started inside a project gets from the start - this is
+memory-iq's design to write, cohesion is not proposing memory internals here.
+
+**Attach is person-only (decided by the lead, 2026-09-28).** `dryRun` is not an option, it is the
+first step every time: a preview of what moves where, then one confirm, no Touch ID (a person
+setting, per the no-nag rule - approving a Touch ID dialog for this is not the pattern). An agent
+may suggest attaching a session to a project; it may never call the tool that does it.
+
+**3. Vyre Drive gets credit. Owner: federation (owns Vyre Drive and Mac-box file access).** Whatever
+tool or event the router (part 1) or the attach (part 2) uses to say "this file moved" needs to
+carry *how* alongside *where* - a share, a Taildrop (`files.received`, core/files/drop.js), a
+direct write - so a surface can say "saved to Harlow Legal / files via Vyre Drive" instead of
+staying silent about the mechanism. Federation decides the field's shape (likely
+`via: "drive"|"taildrop"|"upload"` on whatever event the router settles on); cohesion is not
+proposing UI copy.
+
+**Chat's part, spec'd for hand-over (chat is paused).** Chat's upload surfaces (Deck, PWA, Expo,
+Capsule) always send thread context with a file, never a bare upload; wherever chat shows a
+project's files it can now credit the Drive; the attach flow (part 2) needs a chat-facing entry
+point - "move this chat into a project" - but building it waits for chat's relaunch, per the lead.
+
+**Open, for federation and memory-iq to resolve.** The router's exact contract (call shape, which
+module a surface actually calls); what "the project's graph" means precisely for a session that
+already has its own memory before attaching. This spec sets direction and owners; it does not fix
+the tool names.
+
+### 20. The Chrome extension and the Capsule, one login experience
+
+Decided by the lead 2026-09-28: the extension ships in 0.1.1, and cohesion's part is making it and
+the Capsule feel like one product, not two front doors to the same passwords. One vault (the
+extension reads and fills through the same vault items and the same grants the Capsule already
+uses, never its own store); one grants model (a fill from the extension shows up in the same
+grant/audit log as a fill from the Capsule, no separate history); one "waiting on you" (an
+extension-side need_credential or a pending grant is a `waiting.list` row, cohesion item 8, the
+same as everything else); the same account-row look (item 3's Connections list is what both render
+from, so an account added in one shows up in the other with no separate "connect the extension"
+step). Vault owns the vault side; capsule-pro keeps the Capsule's own fill UI as the reference look
+the extension matches, not the other way around.
 
 ## One service, both sides
 
