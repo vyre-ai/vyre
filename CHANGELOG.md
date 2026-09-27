@@ -287,6 +287,40 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   waits 180 s; with `--json` a send's preview goes to stderr before the proof; an unknown flag
   or `--app` without a name exits 2. apps.setup also admits the owner's devices over the tailnet
   (the Registry's callerAllowed), never a guest.
+#### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
+
+- Aligned with ADR 0030 (Vyre-owned sessions): a call's Idempotency-Key reaches the tool as
+  `meta.idempotencyKey`, and `keyUuid()` maps any key to a stable uuid for the Agent SDK message
+  id. On stop, every live thread ends with `thread.stopped` reason `restart`.
+- term (R4): the shell runs under dtach when it is on the PATH (the box image now installs it), so
+  it outlives a vyred restart; the next vyred picks it up from run/term/terms.json. No dtach: a
+  plain pty, and term.open says durable: false. term.attach and the pty stream take
+  `from=<offset>`: the box counts every byte and replays exactly the bytes after it from a 1 MB
+  ring trimmed at line ends, with `{"t":"cut"}` and `{"t":"at"}` text frames; without `from`, the
+  old replay. A disconnect never ends a terminal; one with nobody attached is kept for
+  `term.keep_hours` (default 12). A vyred stop closes a durable socket with 1012.
+- core/resilience/web.js: the browser side of the reference client. A fetch transport for
+  follow() and a fetch caller for the outbox (relay base paths and bearer headers work),
+  IndexedDB stores for the outbox, the stream cursor and a per-view snapshot cache (falling back
+  to localStorage, then memory, so a private window never throws), and lifecycle() wiring hidden
+  pages, the back/forward cache and online/offline to the stream and the new outbox.kick().
+- vyred's event stream sends `retry: 2000` and an `id:` with the cursor as it opens and with every
+  heartbeat, so a client that drops before its first event resumes from there, not from "latest".
+  A filtered stream's cursor moves with every event. A cursor ahead of the box's log gets a
+  `stream.reset` event instead of a silent stall. Event ids are AUTOINCREMENT (a migration copies
+  the table), so a pruned tail never hands an id out twice.
+- Tool calls take an `Idempotency-Key` header. The registry keeps (caller, tool, key) with the
+  input's hash and the answer for 24 h: a repeat gets the first answer (`replayed: true`) without
+  running again, an overlapping repeat waits for the same run, and other input under the same key
+  is a 409 `idempotency_conflict`. A crash (`failed`) is not kept, so it can be retried.
+- On stop, vyred turns new tool calls away with a 503 `restarting` and lets the running ones
+  finish and answer (up to 5 s) before it closes connections.
+- `core/resilience/`: the reference client every surface can use or copy. `follow()` holds the
+  cursor, drops doubles, calls a stream silent for 45 s dead, tries each path (LAN, tailnet,
+  relay) before waiting 2 s to 60 s with jitter, probes better paths and moves back, and pauses
+  while hidden. `outbox()` keeps writes made offline and delivers them in order, once.
+- `test/chaos/`: vyred behind fault proxies (drop, partition, refuse, delay, cut mid-event, two
+  paths, restart), with a test per rule of ADR 0029.
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and

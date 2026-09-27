@@ -881,7 +881,9 @@ export class Switchboard {
     return null;
   }
 
+  /** vyred is stopping: every live thread ends with reason "restart" (ADR 0029 R7), so a surface says why. */
   async stopAll() {
+    for (const st of this.live.values()) if (!st.haltReason) st.haltReason = "restart";
     await Promise.all([...this.live.keys()].map(id => this.stop(id)));
     for (const job of [...this.prunes]) job.run();                     // no surface is left to catch up
   }

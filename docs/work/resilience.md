@@ -1,0 +1,72 @@
+# resilience
+
+Branch: work/resilience · Worktree: ../vyre-resilience · Owner session: resilience · ADR 0029
+
+Scope: the resilience contract (docs/adr/0029-resilience.md) for every surface, the shared
+pieces (SSE cursor fixes, idempotency layer, drain on stop, reference stream and outbox client
+in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes filed to owners.
+
+## Done
+- ADR 0029 drafted (R1..R8), aligned with ADR 0030 (sessions): the key reaches the tool, keyUuid
+  for the SDK message uuid, `thread.stopped` reason `restart` on stop.
+- Box side: SSE `retry:` and `id:` on open and on heartbeat, `stream.reset`, AUTOINCREMENT event
+  ids; Idempotency-Key in Registry.call (24 h table, 409 conflict, overlap waits, failed not
+  kept); drain on stop (503 `restarting`, 5 s); Switchboard stopAll ends threads with reason
+  `restart`; dtach in box/Dockerfile.
+- R4 terminal box side: core/term under dtach (re-adopted after a vyred restart), byte offsets,
+  1 MB ring cut at line ends, `from=`, cut/at frames, 1012 on stop, `term.keep_hours` (12).
+- Reference client: core/resilience/ stream, outbox (+ kick), backoff, sse, node.js transports,
+  web.js (fetch transport and caller, IndexedDB outbox, cursor and snapshot stores, lifecycle).
+- CLI `threads watch`, `connect --sign-in` and the live screen use the resilient client.
+- Chaos harness test/chaos/ (proxy, R1 R2 R3 R5 R7 tests, browser transport tests, web.test.js).
+- Tests on testbox (27 Sep): 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
+  (real dtach), daemon and modules tests.
+
+## Doing
+- Reporting to the lead; filing per-team fixes.
+
+## Next
+1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
+2. R6 local alarms contract with planner and mobile (dedupe key planner-<item>-<due>).
+3. `last_event` on threads.get, planner.list and Needs reads (R1), with their owners.
+4. A 30 min perf check of an idle durable terminal and of the stream client (scripts/perf-check).
+
+## Audit (27 Sep 2026)
+- R1: Deck, iOS, Android and the Mac link reconnect with since=latest if they drop before the
+  first event (gap). Deck never rebuilds a CLOSED EventSource. `vyre threads watch` and
+  `connect --sign-in` never reconnect. No client detects a stalled stream.
+- R2: no idempotency key anywhere; composer retry and Capsule retry double-send; OkHttp
+  retryOnConnectionFailure can double-POST; no outbox on any surface.
+- R3: mostly quiet already (Deck status line, CLI). Capsule shows a full OFFLINE banner and
+  clears its tool list on a blip; Deck remounts views on reconnect and loses drafts; phones
+  open with empty Now and Needs offline; iOS no jitter; no NWPathMonitor / wake handling.
+- R4: term idle grace 10 s; replay has no offset and client resets scrollback; ring cut at
+  arbitrary bytes; vyred restart kills every pty; typed keys dropped.
+- R5: every client stores one address; no failover; Mac link serve loop restarts only on the
+  60 s heartbeat; box loses questions handed to a dead held request.
+- R6: no local notifications on either phone; firing id exists only after firing, so no dedupe.
+- R7: stop() cuts in-flight calls (closeAllConnections) and SSE without draining.
+
+## Needs from others
+- lead/box: vyred is PID 1 in the box container, so dtach terminals survive a vyred restart but
+  not a container recreate (every deploy). Decide: a tiny init plus a restart loop inside the
+  container, or accept that deploys end terminals.
+- sessions (ADR 0030): threads.send passes `keyUuid(caller, meta.idempotencyKey)` as the SDK
+  message uuid and refuses a uuid it already queued or handed over; the driver's close on vyred
+  stop uses reason `restart` (the Switchboard's stopAll does it today); threads.answer and
+  gate.approve/reject return the earlier outcome on a repeat.
+- pwa + mobile: adopt core/resilience/web.js in the Deck and the Expo web target: outbox for
+  sends, answers, approvals, notes, todos; cursor persisted; open from snapshot cache; one quiet
+  Reconnecting pill after the first failed retry; never remount or drop drafts on reconnect.
+- relay + tailnet: CORS for app.vyre.run on vyred or the relay, allowing authorization,
+  idempotency-key, last-event-id and content-type (the web client needs it cross-origin).
+- chat: the browser terminal client on the new term contract (from=, cut/at frames, 1012
+  reattach, 4 KB key buffer, keep scrollback). docs: ADR 0024 still says 10 s idle.
+
+## Changed contracts
+- Registry.call: new meta `idempotencyKey` (from the Idempotency-Key header); tools receive it.
+- vyred HTTP: 409 `idempotency_conflict`; 503 `restarting` with retry-after during drain.
+- Switchboard stopAll: `thread.stopped` reason `restart` (was `stopped`).
+- term: `term.open`/`term.attach` add `durable`, `offset`, `oldest`; attach takes `from`; new
+  text frames `cut` and `at` only when `from` is given; close code 1012 on stop; config
+  `term.keep_hours`.

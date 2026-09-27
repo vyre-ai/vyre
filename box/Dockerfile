@@ -9,7 +9,7 @@ LABEL run.vyre="1" \
       org.opencontainers.image.source="https://github.com/vyre-ai/vyre"
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps \
+ && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach \
  && rm -rf /var/lib/apt/lists/*
 
 # The tailscale CLI only. tailscaled runs in the tailscale container; the CLI talks to it
