@@ -646,6 +646,22 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   (active teammates, subagents), a box-wide ceiling, a fair queue and a usage-aware pause. The
   user's decisions: an integrator teammate auto-merges green branches, teammates can be shared
   with other projects or assigned to the assistant, Balanced is the default preset.
+#### Apps: WhatsApp through its own window (ADR 0022, slice 4)
+
+- "whatsapp juno: running late" and the Capsule's @WhatsApp send through WhatsApp for Mac with
+  Vyre's hands (local/hands-mac), after the person's proof (apps.send, or their presence
+  session). WhatsApp is never raised and no key is pressed: the search field is set, the one chat
+  named exactly that is pressed, the open chat is checked by its name, the message field is set
+  (so a line break never sends early), and Send is pressed through hands.commit.
+- Two chats that could be it, or only near misses, are a question; a chat that opens as someone
+  else, or a field that will not take the words, stops before Send and clears the field. The open
+  chat is checked again before the words go in and right before Send, so a chat the person opens
+  in between never gets them. After
+  Send there is no retry: a send not seen to go says "check WhatsApp".
+- Names and roles are lists with config apps.whatsapp overrides, for the first real-Mac check.
+  apps.targets lists the chats on screen; a name off screen still goes to the search. "Which app?"
+  offers an app driven through its window only when it is installed, and one row per app.
+
 #### Gate: settle a send whose answer was lost; the hub says whether a call may have reached the server
 
 - `gate.settle {id, outcome: "sent", evidence}` marks an approved item whose send failed as sent,
