@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The package leaves Mac build outputs and gitignored files out
+
+- package.json "files" leaves out local/capsule/bin, every .build folder, *.app bundles and
+  DerivedData, so a dirty tree no longer packs the old helper binaries.
+- scripts/lib/pack-imports.mjs `ignoredShipped()`: the files in a pack that git ignores, except
+  build.json and apps/app/dist, which the pack makes on purpose. test/pack-imports.test.js and
+  scripts/release-check.sh fail on any (skipped outside a git checkout).
+
 #### Two cohesion audit fixes: a real caller check and a real pairing timestamp
 
 - `sight.watch` and `sight.frame` now check their own caller before forwarding to `computers.watch`
