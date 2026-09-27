@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: the Google OAuth test counts its retry from the expiry
+
+- core/google/module.test.js counted every calendar read, and the planner's calendar sync on
+  google.added now reads one more, so node was red on main. The test counts the 401 and the
+  retry from the moment the token expires.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and

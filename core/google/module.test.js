@@ -270,12 +270,14 @@ test("google: OAuth refreshes, retries once on an expired token, and reads merge
   assert.equal(refreshes(), 1);
 
   // Google stops taking the token: the module refreshes once and the call still answers.
+  // Counted from here: the planner's calendar sync on google.added reads events too.
+  const eventCalls = () => home.apiCalls().filter(c => c.path.includes("/events")).length;
+  const before = eventCalls();
   home.expireTokens();
   const again = (await v.model("google.calendar.next", { account: "home" })).data.events;
   assert.equal(again.length, 2);
   assert.equal(refreshes(), 2);
-  const statuses = home.apiCalls().filter(c => c.path.includes("/events")).length;
-  assert.equal(statuses, 3, "one call, one 401, one retry");
+  assert.equal(eventCalls() - before, 2, "one 401, one retry");
 
   // Writes need one account.
   assert.match((await v.model("google.mail.draft", { to: "dana@harlowlegal.com", subject: "s", body: "b" })).error.message, /say which account/);
