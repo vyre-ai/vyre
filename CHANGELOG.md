@@ -174,6 +174,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   runs in such a login. `core/presence/index.js` (`TERMINAL_WINDOWED`, `windowNotice`),
   `core/daemon/index.js` (atTerminal), `core/daemon/peer.js` (`loginOf`, `tmuxClients`),
   `core/vault/index.js` (the audit row), `docs/concepts/presence.md`, `docs/adr/0004-presence.md`.
+#### A vyred killed by a signal is started again in the box
+
+- core/daemon/loop.sh waited again on a vyred that died by a signal (SIGKILL, the OOM killer)
+  until the status changed. The image's /bin/sh (dash) answers the same 137 forever, so the loop
+  spun at a full core and vyred never came back while the container looked healthy. The same status
+  twice now ends the wait. Found by the box-image smoke on testbox; loop.test.js has the case.
 
 #### The box image builds again with the Agent SDK pin
 
