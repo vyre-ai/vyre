@@ -202,6 +202,43 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
    `threads.launch` to throw deterministically against the fake driver is not straightforward);
    verified by inspection that `finally` covers both the success and throw paths. 25/25 (team +
    boundaries) still green on testbox.
+8. **Step 4, slice A built** (2026-09-28, per the lead's split): the worktree lifecycle, the
+   integrator, merge-before-dispatch, queueing a merge. All deterministic, run by vyred itself
+   (`core/team/git.js`: no shell, no prompt, no network, a deadline — the same pattern
+   `core/switchboard/changes.js` uses for `git diff --numstat`; `git init` is never run on the
+   person's behalf).
+   - `team.add` with `isolation: "worktree"` refuses outright when the project's home is not a
+     git repo (`this project isn't a git repo; teammates will share the folder`, the lead's exact
+     wording) — no automatic fallback to folder isolation; the person retries with
+     `isolation: "folder"` if that is what they want. When it is a repo, the teammate's own
+     worktree and branch (`<repo>/../<repo>-<role>`, `team/<role>`) are made off the project's own
+     current branch (whatever it is, not a hardcoded "main"). The project's first
+     `isolation: worktree` teammate brings an `"integrator"` teammate along automatically (its own
+     worktree too), a reserved role name `team.add` now refuses to a person directly.
+   - Before every dispatch to a worktree-isolated teammate, vyred merges the project's own branch
+     into the teammate's, before a slot is even taken (a conflict has nothing to do with
+     concurrency): a conflict backs itself out at once (`merge --abort`) and fails the request
+     with the conflict in its result, leaving the worktree clean for the next attempt. The
+     teammate's session runs with the worktree as its `cwd`, never the project's own folder.
+   - When a request closes as `"done"` and its teammate's branch is ahead of the project's own,
+     vyred queues a merge request to the project's integrator ("`merge team/<role>
+     <from>..<to>, from request <id>`"), deduped against one already queued or running for that
+     branch. This is as far as slice A goes: the integrator's own turn (a real teammate) has
+     nothing yet to actually do the merge, resolve a conflict, run tests or fast-forward main —
+     that is slice B (`team.merge`), not built yet, sent separately for review.
+   - New tests (`core/team/team.test.js`, against real, local-only git repos it makes in a temp
+     home): the repo-check refusal; worktree + integrator creation; a second worktree teammate
+     not duplicating the integrator; a dispatch merging a later main commit in first and running
+     with the worktree as `cwd`; a real merge conflict failing cleanly and leaving the worktree
+     ready for the next attempt; a finished request with new commits queueing a merge (read by
+     polling for the request, not only while `"queued"`, since the integrator's own fake-driver
+     turn — nothing else to do, no `team.done` line of its own — dispatches and auto-fails almost
+     at once; the point of the test is that the request was made at all).
+   - 26/26 team tests, 31/31 with boundaries, green on testbox (repeat run for stability); 61/61
+     docs.
+9. Also from the lead: a project home is confirmed not guaranteed to be a repo — handled above.
+   Vault is adding a project column to grants; sharing (step 5) will not start until that lands,
+   which is unaffected by slice A (no sharing here).
 
 ## e2e review round 1 (2026-09-28, f8cbc882)
 

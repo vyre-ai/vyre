@@ -21,6 +21,8 @@ import { tempHome, present } from "../../test/helpers.js";
 import { neutralize, rotationContext } from "./index.js";
 import { open as openStore } from "../store/index.js";
 import { paths } from "../config/index.js";
+import { execFileSync } from "node:child_process";
+import { worktreePath, branchOf, repoRoot } from "./git.js";
 
 const FAKE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
 fs.chmodSync(FAKE, 0o755);
@@ -56,6 +58,25 @@ async function boot(t) {
   const raw = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   return { root, d, tool, raw, project, launches };
+}
+
+const GIT_ENV = { ...process.env, GIT_AUTHOR_NAME: "test", GIT_AUTHOR_EMAIL: "test@example.com", GIT_COMMITTER_NAME: "test", GIT_COMMITTER_EMAIL: "test@example.com" };
+const git = (dir, args) => execFileSync("git", args, { cwd: dir, env: GIT_ENV, stdio: "pipe" }).toString();
+
+/**
+ * A project whose home is a real, local-only git repo on "main", one commit in. `repo` is the
+ * repo root the way git.js itself resolves it (`git rev-parse --show-toplevel`), which can differ
+ * in literal spelling from `project.home` under a symlinked temp dir (macOS's /var, say) — team's
+ * own worktree paths are always built from this, so tests must use the same one to check them.
+ */
+async function bootGit(t) {
+  const b = await boot(t);
+  git(b.project.home, ["init", "-q", "-b", "main"]);
+  fs.writeFileSync(path.join(b.project.home, "README.md"), "Harlow Legal\n");
+  git(b.project.home, ["add", "."]);
+  git(b.project.home, ["commit", "-q", "-m", "first"]);
+  const repo = /** @type {string} */ (await repoRoot(b.project.home));
+  return { ...b, repo };
 }
 
 /**
@@ -396,4 +417,92 @@ test("compaction: a teammate's own SessionStart (source compact) gets its notes 
   }, "the re-injected notes and request");
   assert.match(posted.payload.text, /Scope: keep the form to one page/);
   assert.match(posted.payload.text, /Compaction just cleared your context/);
+});
+
+// --- step 4, slice A (2026-09-28): worktree lifecycle, the integrator, merge-before-dispatch ----
+
+test("isolation: worktree is refused when the project's home is not a git repo", async t => {
+  const { tool, project } = await boot(t); // boot(), not bootGit(): a plain folder, no `git init`
+  await assert.rejects(() => tool("team.add", { project: project.slug, role: "design", isolation: "worktree" }),
+    e => { assert.match(e.message, /isn't a git repo/); return true; });
+  const rows = await tool("team.list", { project: project.slug });
+  assert.equal(rows.length, 0); // never git init'd on the person's behalf, and nothing half-made
+});
+
+test("isolation: worktree makes the teammate's own worktree and branch, and brings an integrator along", async t => {
+  const { tool, project, repo } = await bootGit(t);
+  const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  assert.equal(tm.isolation, "worktree");
+  const dir = worktreePath(repo, "design");
+  assert.ok(fs.existsSync(dir), "design's worktree should exist");
+  assert.equal(git(dir, ["rev-parse", "--abbrev-ref", "HEAD"]).trim(), branchOf("design"));
+  const rows = await tool("team.list", { project: project.slug });
+  const integrator = rows.find(r => r.role === "integrator");
+  assert.ok(integrator, "an integrator should come along with the first worktree teammate");
+  assert.ok(fs.existsSync(worktreePath(repo, "integrator")));
+});
+
+test("a second worktree teammate does not get a second integrator", async t => {
+  const { tool, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  await tool("team.add", { project: project.slug, role: "backend", isolation: "worktree" });
+  const rows = await tool("team.list", { project: project.slug });
+  assert.equal(rows.filter(r => r.role === "integrator").length, 1);
+});
+
+test("a worktree teammate's dispatch merges main in first, and runs in its own worktree, not the project's", async t => {
+  const { tool, project, repo, launches } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  // Advance main after the teammate (and its worktree) already exist, the way real work would.
+  fs.writeFileSync(path.join(project.home, "CHANGES.md"), "a later change on main\n");
+  git(project.home, ["add", "."]);
+  git(project.home, ["commit", "-q", "-m", "later, on main"]);
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  const dir = worktreePath(repo, "design");
+  assert.ok(fs.existsSync(path.join(dir, "CHANGES.md")), "main's later commit should have been merged in before dispatch");
+  const launch = launches().find(l => l.cwd === dir);
+  assert.ok(launch, "the teammate's own session should run with its worktree as cwd, not the project's home");
+});
+
+test("a merge conflict fails the request cleanly, and leaves the worktree ready for the next one", async t => {
+  const { tool, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const dir = worktreePath(repo, "design");
+  // A conflicting change already sitting in the worktree's branch (as an earlier request's real
+  // work would leave it), and a different one on main: the next dispatch's merge collides.
+  fs.writeFileSync(path.join(dir, "README.md"), "changed by design\n");
+  git(dir, ["commit", "-q", "-am", "design's own change"]);
+  fs.writeFileSync(path.join(project.home, "README.md"), "changed by main\n");
+  git(project.home, ["commit", "-q", "-am", "main's own change"]);
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"should never run"}' });
+  assert.equal(ask.state, "failed");
+  assert.match(ask.result, /could not merge/);
+  assert.equal(git(dir, ["status", "--porcelain=v1"]).trim(), ""); // merge --abort left it clean
+  assert.ok(!fs.existsSync(path.join(dir, ".git", "MERGE_HEAD")));
+});
+
+test("a worktree teammate's request that finishes with new commits queues a merge to the integrator", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const dir = worktreePath(repo, "design");
+  // The real work a teammate's own turn would have committed via Bash; seeded directly here
+  // since scripting file edits through the fake driver's own tool-use protocol is a much heavier
+  // way to test the same thing (detecting and queueing new commits), which is what this covers.
+  fs.writeFileSync(path.join(dir, "form.md"), "a calmer form\n");
+  git(dir, ["add", "."]);
+  git(dir, ["commit", "-q", "-m", "calmer form"]);
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  // Read as it lands, not only while "queued": with nothing else to do, the integrator's own
+  // fake-driver turn dispatches almost at once and (having no "vyre team.done" line of its own)
+  // auto-fails just as fast — this test is only about the request having been made at all.
+  const merge = await until(async () => {
+    const db = openStore(paths(root).db);
+    const integrator = /** @type {any} */ (db.prepare("SELECT agent FROM team_teammates WHERE project = ? AND role = 'integrator'").get(project.slug));
+    const row = integrator && /** @type {any} */ (db.prepare("SELECT text FROM team_requests WHERE teammate = ? ORDER BY created_at DESC LIMIT 1").get(integrator.agent));
+    db.close();
+    return row && /^merge team\/design /.test(row.text) ? row : null;
+  }, "a merge request queued to the integrator");
+  assert.match(merge.text, new RegExp(`from request ${ask.request}`));
 });
