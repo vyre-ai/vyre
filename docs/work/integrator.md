@@ -137,7 +137,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   tmp-guard refuse on darwin unless VYRE_ALLOW_MAC_TESTS=1; capsule-mac sets it. Mac refuses, testbox 34/34.
 - HOTFIX first when it comes: work/glass-hotfix (vyred-only bearer on docker-api). After reviewer's
   sign-off: fast-forward main, targeted run, tell box-deploy to redeploy (backup first). Then merge into pre/rc.
-- Reviewer (security) now signs off shas. Cleared for 0.1.1: teammates 20d0f121 (supersedes b19f10c2),
+- Reviewer (security) now signs off shas. Cleared for 0.1.1: teammates 9d9e6688 (on 20d0f121, fixes its LOW; supersedes b19f10c2),
   memory-iq d0b916b9 + 7ee03df6 (together). HELD: windows cac517d4 (MEDIUM).
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
