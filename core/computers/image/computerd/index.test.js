@@ -28,7 +28,7 @@ async function freePort() {
 }
 
 /** computerd on a free port, with the fake Chrome, in a temp home. */
-async function computerd(t, env = {}) {
+async function computerd(t, env = {}, { freeze = false } = {}) {
   const dir = fs.mkdtempSync(path.join(SCRATCH, "computerd-cdp-"));
   const bin = path.join(dir, "fake-chromium");
   fs.writeFileSync(bin, `#!/bin/sh\nexec "${process.execPath}" "${path.join(HERE, "testing", "fake-chrome.js")}" "$@"\n`);
@@ -42,7 +42,8 @@ async function computerd(t, env = {}) {
       PATH: process.env.PATH, HOME: dir, COMPUTERD_TOKEN: TOKEN, COMPUTERD_PORT: String(port), COMPUTERD_FS_ROOT: dir,
       CHROME_BIN: bin, CHROME_PROFILE: profile, SCREEN: "1280x800", VNC_PASSWORD: "vnc-secret-not-for-chrome", ...env,
     },
-    stdio: ["ignore", "pipe", "pipe"],
+    // freeze: fd 9 is the freezer's pipe, as entrypoint.sh gives it (VYRE_FREEZE_FD=9).
+    stdio: freeze ? ["ignore", "pipe", "pipe", "ignore", "ignore", "ignore", "ignore", "ignore", "ignore", "pipe"] : ["ignore", "pipe", "pipe"],
   });
   let out = "";
   child.stdout.on("data", d => { out += d; });
@@ -191,7 +192,7 @@ test("computerd: the shield cuts agent sockets, refuses new ones with 423, and t
   assert.equal((await req(c.base, "POST", "/shield", { token: FILL, body: { on: true } })).status, 401);
 
   const up = await req(c.base, "POST", "/shield", { body: { on: true, reason: "sign-in", fill_token: FILL } });
-  assert.deepEqual(up.json, { shielded: true });
+  assert.deepEqual(up.json, { shielded: true, frozen: false }, "no freezer in this test");
   await agent.closedP;
   assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${TOKEN}`), 423);
   assert.equal((await req(c.base, "GET", "/cdp/json/version")).status, 423);
@@ -206,7 +207,7 @@ test("computerd: the shield cuts agent sockets, refuses new ones with 423, and t
   const at = await fill.call("Target.attachToTarget", { targetId: targetInfos[0].targetId, flatten: true });
   assert.ok((await fill.call("Test.echo", { n: 1 }, at.result.sessionId)).result);
 
-  assert.deepEqual((await req(c.base, "POST", "/shield", { body: { on: false } })).json, { shielded: false });
+  assert.deepEqual((await req(c.base, "POST", "/shield", { body: { on: false } })).json, { shielded: false, frozen: false });
   await fill.closedP;
   assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${FILL}`), 401, "the fill token is forgotten");
   assert.equal(await upgradeStatus(c.base, `${wsPath}?token=${TOKEN}`), 101, "and the agent is let back in");
@@ -236,4 +237,17 @@ test("computerd: Chrome exiting fails the call in flight, and Chrome is started 
   const b = await ws(`${json.webSocketDebuggerUrl}?token=${TOKEN}`);
   assert.ok((await b.call("Browser.getVersion")).result);
   b.sock.close();
+});
+
+test("computerd: the shield tells the freezer to stop the agent's processes, and to continue them when it comes down", async t => {
+  const c = await computerd(t, { VYRE_FREEZE_FD: "9" }, { freeze: true });
+  const pipe = /** @type {import("node:stream").Readable} */ (c.child.stdio[9]);
+  let got = "";
+  pipe.on("data", d => { got += d; });
+  const until = async text => { for (let i = 0; i < 100 && !got.includes(text); i++) await new Promise(r => setTimeout(r, 20)); };
+  assert.deepEqual((await req(c.base, "POST", "/shield", { body: { on: true } })).json, { shielded: true, frozen: true });
+  await until("stop\n");
+  assert.deepEqual((await req(c.base, "POST", "/shield", { body: { on: false } })).json, { shielded: false, frozen: true });
+  await until("cont\n");
+  assert.equal(got, "stop\ncont\n");
 });

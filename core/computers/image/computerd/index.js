@@ -98,6 +98,22 @@ const childEnv = (allow = CHILD_ENV_ALLOW) => Object.fromEntries(allow.filter(k 
 // Chrome inherited the entrypoint's whole environment, the VNC password and this token included.
 const CHROME_ENV_ALLOW = [...CHILD_ENV_ALLOW, "DBUS_SESSION_BUS_PID", "GTK_MODULES", "NO_AT_BRIDGE", "QT_ACCESSIBILITY", "XAUTHORITY", "TZ", "LANGUAGE", "USER"];
 
+// ---- the agent's processes stop while shielded ------------------------------------------------
+// While a person signs in or the Vault fills a login, every process the agent's uid runs is
+// stopped (SIGSTOP), so nothing it planted can screenshot the display, inject X input or grab the
+// keyboard focus the password is typed into; they continue (SIGCONT) when the shield comes down.
+// computerd (uid 1001) cannot signal uid 1000 itself. entrypoint.sh keeps a root freezer that
+// reads "stop" and "cont" lines from the pipe on fd VYRE_FREEZE_FD, and on EOF (computerd gone)
+// continues everything, so a crash never leaves the agent stopped.
+const FREEZE_FD = /^\d+$/.test(process.env.VYRE_FREEZE_FD || "") ? Number(process.env.VYRE_FREEZE_FD) : -1;
+
+/** @param {boolean} on @returns {boolean} whether the freezer was told */
+function freezeAgent(on) {
+  if (FREEZE_FD < 0) return false;
+  try { fs.writeSync(FREEZE_FD, on ? "stop\n" : "cont\n"); return true; }
+  catch (e) { console.error(`computerd: could not ${on ? "stop" : "continue"} the agent's processes: ${/** @type {any} */ (e).code || e}`); return false; }
+}
+
 /** Constant-time token comparison; hashing first hides the length too. */
 function sameToken(given, expected) {
   if (typeof given !== "string" || typeof expected !== "string" || !expected) return false;
@@ -411,6 +427,7 @@ const server = createServer(async (req, res) => {
         if (sameToken(ft, TOKEN)) return send(400, { error: { message: "fill_token must differ from computerd's own token" } });
       }
       shielded = on;
+      const frozen = freezeAgent(on);
       if (on) {
         mux.closeKind("agent");
         if (typeof ft === "string") {
@@ -422,7 +439,7 @@ const server = createServer(async (req, res) => {
         fillToken = "";
         mux.closeKind("fill");
       }
-      return send(200, { shielded });
+      return send(200, { shielded, frozen });
     }
     if (shielded && SHIELDED_ROUTES.has(`${req.method} ${pathname}`)) return send(423, { error: { code: "shielded", message: "a person is signing in on this computer" } });
 
