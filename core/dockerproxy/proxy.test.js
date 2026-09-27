@@ -98,12 +98,15 @@ async function engine(t) {
   return { socket, seen };
 }
 
-/** The proxy on a loopback port, and a client for it. */
-async function proxy(t, policy = stub) {
+const BEARER = "test-bearer-token";
+
+/** The proxy on a loopback port, and a client for it, authorized by default (the bearer's own
+ * tests pass a wrong or empty one, everything else needs never think about it). */
+async function proxy(t, policy = stub, bearer = BEARER) {
   const e = await engine(t);
   /** @type {any[]} */
   const logs = [];
-  const server = createProxy({ socket: e.socket, policy, config: CONFIG, log: x => logs.push(x) });
+  const server = createProxy({ socket: e.socket, policy, config: CONFIG, bearer, log: x => logs.push(x) });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
   t.after(() => server.close());
   const port = /** @type {import("node:net").AddressInfo} */ (server.address()).port;
@@ -115,7 +118,7 @@ async function proxy(t, policy = stub) {
   const call = (method, p, body, headers = {}) => new Promise((resolve, reject) => {
     const data = body === undefined ? null : Buffer.isBuffer(body) ? body : Buffer.from(typeof body === "string" ? body : JSON.stringify(body));
     /** @type {Record<string, any>} an empty value drops the header */
-    const h = { ...(data ? { "content-type": "application/json", "content-length": data.length } : {}), ...headers };
+    const h = { authorization: `Bearer ${bearer}`, ...(data ? { "content-type": "application/json", "content-length": data.length } : {}), ...headers };
     for (const k of Object.keys(h)) if (h[k] === "") delete h[k];
     const req = http.request({ host: "127.0.0.1", port, method, path: p, headers: h }, res => {
       let text = "";
@@ -341,4 +344,33 @@ test("dockerproxy: the only archive upload is a computer's .boot tar, to /var/li
   assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre&noOverwriteDirNonDir=1", good)).status, 403, "extra query");
   assert.equal(p.sent().filter(s => s.method === "PUT").length, 1, "only the good upload reached the Engine");
   assert.equal((await p.call("GET", "/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre")).status, 403, "never a read");
+  // The archive route is exactly as bound to the bearer as every other route -- this is HIGH 2's
+  // new route getting the same fix the rest of the proxy just did, not a separate exemption.
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good, { ...tarH, authorization: "" })).status, 401);
+});
+
+test("dockerproxy: createProxy needs a bearer -- there is no unauthenticated mode", async t => {
+  const e = await engine(t);
+  assert.throws(() => createProxy({ socket: e.socket, policy: stub, config: CONFIG }), /needs a bearer/);
+  assert.throws(() => createProxy({ socket: e.socket, policy: stub, config: CONFIG, bearer: "" }), /needs a bearer/);
+  assert.throws(() => createProxy({ socket: e.socket, policy: stub, config: CONFIG, bearer: "short" }), /needs a bearer/, "under 16 chars is refused too");
+});
+
+test("dockerproxy: every request needs Authorization: Bearer <token>, checked against the whole endpoint, not the shape", async t => {
+  const { call, seen } = await proxy(t);
+  // No header at all.
+  const none = await call("GET", "/v1.43/containers/json", undefined, { authorization: "" });
+  assert.equal(none.status, 401);
+  // The right token, wrong scheme, and a right-length-wrong-content token: none of them pass.
+  const noScheme = await call("GET", "/v1.43/containers/json", undefined, { authorization: BEARER });
+  assert.equal(noScheme.status, 401);
+  const wrong = await call("GET", "/v1.43/containers/json", undefined, { authorization: `Bearer ${"x".repeat(BEARER.length)}` });
+  assert.equal(wrong.status, 401);
+  const shorter = await call("GET", "/v1.43/containers/json", undefined, { authorization: "Bearer short" });
+  assert.equal(shorter.status, 401);
+  // None of the refused attempts ever reached the Engine.
+  assert.equal(seen.length, 0);
+  // The right one still works.
+  const ok = await call("GET", "/v1.43/containers/json");
+  assert.equal(ok.status, 200);
 });

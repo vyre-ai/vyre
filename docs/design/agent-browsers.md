@@ -1,10 +1,8 @@
 ---
 title: Agent browsers -- three levels, a reach ladder, one registry call
-summary: Replacing one-computer-per-agent with three configurable levels (none, a shared headless
-  browser with per-agent contexts, a small desktop pool), a ladder every agent's browse.task climbs
-  only on real failure, and Glass watching any of it live. User-approved direction, 28 Sep.
+summary: Replacing one-computer-per-agent with three levels (none, a shared headless browser with per-agent contexts, a small desktop pool), a browse.task reach ladder, and Glass watching any of it live. User-approved direction, 28 Sep.
 audience: builders
-owner: glass
+owner: glass-live
 status: draft
 ---
 
@@ -221,7 +219,7 @@ cold every run. Answering their two questions:
   (never typed values, secrets, cookies or query-string URLs) -- worth memory-iq and I agreeing on
   the exact landmark shape (a CSS selector? a role+name pair? both, with a preference order?)
   before either side builds against it.
-- **The module name is `browse`.** `browse.task` calls `memory.recipe {site}` before starting a
+- **The module name is `browse`.** `browse.task` calls `memory.recipe {site}` <!-- terms: ignore --> before starting a
   level-2 or level-3 run and uses it as a hint (never a decision, per memory-iq's own trust rule),
   and emits `browse.finished` when the run ends. `glass` stays the viewing/take-over surface; it
   never emits this event.
@@ -269,6 +267,6 @@ Every piece of this reuses what exists rather than building parallel machinery:
 | Rung 5-6: desktop borrow/queue, handoff-to-person | M | existing pool, a real queue |
 | Budgets, loop detection, stop-and-report | S | browse.task skeleton |
 | Trace per run (pending the sight question above) | M | resolved with cohesion |
-| `browse.finished` + `memory.recipe` integration | S | memory-iq's landmark-shape answer |
+| `browse.finished` + `memory.recipe` integration <!-- terms: ignore --> | S | memory-iq's landmark-shape answer |
 | The two settings ("Agent computers", "Glass viewing") in the settings hub | S | levels 2/3 built enough to gate |
 | Real memory/CPU numbers on testbox, settings copy written from them | S | level 2 built |

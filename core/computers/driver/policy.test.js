@@ -43,7 +43,7 @@ const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPre
 /** The real body docker.js sends for the box's own configured prefix, from a real driver call. */
 async function realBody(t, opts = {}) {
   const e = await capture(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers", ...opts });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers", ...opts });
   await d.create(SPEC);
   return e.body();
 }
@@ -195,7 +195,7 @@ test("policy: allowCreate needs the box's own network, image and labelPrefix, an
 
 test("policy: a create carrying the egress PAC passes unchanged, with no other field widened", async t => {
   const e = await capture(t);
-  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers" });
+  const d = new DockerDriver({ bearer: "test-bearer", url: `unix://${e.socket}`, labelPrefix: "run.vyre.computers", network: "vyre-computers" });
   const env = { ...SPEC.env, ...chromeEnv({ enabled: true, sites: ["bank.example.com", "*.harlow.example"] }) };
   await d.create({ ...SPEC, env });
   const body = e.body();
