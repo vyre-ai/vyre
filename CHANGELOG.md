@@ -24,6 +24,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Vyre IQ reads the answer, not only the question: a user turn it finds carries the assistant turn
   that followed (the open world's misses were mostly the right session's question turn, with the
   answer one turn later). Retrieval, no model: open recall@8 0.819 to 0.917, sealed 0.613 to 0.75.
+  memory.ask, re-recorded (sealed blind): open 0.867 to 0.878 (confident-wrong 1), sealed 0.72 to
+  0.80 (confident-wrong 7 to 5), about $0.0038 a question.
 - A project's IQ reads its attached sessions: `recall.search {sessions}` also keeps these sessions
   wherever they ran (from modules and the person's surfaces only; a model's `sessions` is dropped),
   and memory.retrieve and memory.ask scope a project by its folders plus its picked threads.
