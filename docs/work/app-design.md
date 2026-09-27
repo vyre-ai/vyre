@@ -51,7 +51,7 @@ Apple Developer account. Absorbs deck-design and phone-design.
 - relay (parked until after native-core, lead 27 Sep): relay.devices.trust asks no proof when
   trusted is false (reducing trust protects the person; e2e's rule that revoke needs no proof);
   its presence summary names the device ("Trust browser Chrome on alex's Pixel 8 fully") instead
-  of the id; and the proposed "Ask to trust" tool (e.g. relay.devices.ask_trust) that puts one
+  of the id; and the proposed "Ask to trust" tool (e.g. relay.devices.ask-trust) that puts one
   Device row in Needs on the person's trusted devices. The TrustBrowser board draws all three.
   Accepted and queued by relay (work/relay 5243964, docs/work/relay.md Next).
 
