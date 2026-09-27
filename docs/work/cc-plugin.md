@@ -83,28 +83,43 @@ Perf:
   node start and hook.js's imports; reading the file is well under 1 ms. The no-Vyre path is
   unchanged (about 20 ms).
 
+## Done: stand-ins replaced (28 Sep)
+
+- `749317f`, `1505f42` on main c48959b: `/vyre todo|remind|agenda` use the planner's merged shapes
+  (planner.add {text, kind?}, planner.list {kind: "todo"}, planner.agenda {from?}); a reminder is
+  `{text: "remind me <when> <what>"}` so parse.js reads the time. core/about reads `memory.me
+  {limit: 20}` and keeps the user's current facts at confidence 0.5+ for works_at, role, lives_in,
+  uses, prefers only. Real client names in tests replaced by the sample world.
+- End to end on the test box, a scratch tree of this branch + work/planner (8acf291) + work/memory-iq
+  (23d25ac): test/cc-plugin (the real planner through the copied plugin's MCP server: remind in
+  2 hours, todo, list, agenda, a no-time reminder refused), core/about, test/harness,
+  core/planner/planner, core/memory/personal/answer: 46/46. This branch alone (stand-in): 15/15.
+- SessionStart hook with about.md, vyred down, 30 runs on the Mac (load 2.6): 43 ms median, 47 ms
+  p95 net of the timer (bare node 21 ms). Imports are about 13 ms, 10 of them core/daemon/client.js.
+
 ## Doing
 
-- Nothing running. c4a30dd, 2d9a274, 61f0156 wait in the integrator's queue. Waiting on memory-iq and
-  planner to confirm contracts (see Needs); the planner test uses a stand-in module until then.
+- Nothing running. Waiting on memory-iq's answers (Needs) and the integrator's queue.
 
 ## Next
 
+- memory-iq answers: if a bare "mcp" caller may use memory.answer, add a test through the plugin;
+  if memory.remember lands, the command already calls it.
 - When vyre is on npm: set `ON_NPM = true` in `harness/lib/vyre.js`.
+- If the hook's p95 creeps past 50 ms: import core/daemon/client.js lazily in hook.js (harness
+  owner's file; ask first).
 
 ## Needs from others
 
-- memory-iq: confirm `memory.answer {question, room?, project_cwds?, agent?}` -> `{answer|null, facts[]}`,
-  `memory.profile {limit?}` -> `{facts: [{text, kind, weight}]}` (owner's durable facts, nothing
-  sensitive), `memory.remember {text, room?}` -> `{id, text}` (a person-taught fact). Until then
-  about.md has no profile lines and `/vyre remember` offers a lesson instead.
-- planner: confirm `planner.add {text, kind?: todo|reminder, at?, project?, thread?}` -> `{id, text, kind, at|null, project}`
-  and `planner.agenda {day?, days?}` -> `{items: [{id, text, kind, at|null, done, project|null}]}`; who delivers
-  a due reminder. Decision (27 Sep, the user, replacing the lead's first one), passed to planner to
-  enforce: agents add notes, reminders and todos with no permission and no visible limit; only a silent
-  runaway cap of about 200 an hour per agent. An item shows the agent's name only when it came from
-  someone other than the user's own assistant or session. The MCP server keeps planner tools visible
-  to agents (its DRIVES filter hides only threads.* and agents.*).
+- memory-iq (asked 28 Sep): (1) memory.answer refuses the user's own Claude Code session, caller
+  bare "mcp" (not in OWNER); Vyre's threads always call as mcp:agent:<name>, so a bare "mcp" is
+  the user's session. Allow it? (2) is the memory.me subset above right and its row shape stable?
+  (3) memory.remember {text}: wanted? Until then `/vyre remember` offers a lesson.
+- planner (settled 28 Sep): shapes adopted as merged; no {day, days} sugar needed. Told them a bare
+  "mcp" caller is the user's own session (no label, may edit what it added); mcp:agent:<name> is
+  an agent. Delivery of a due reminder: push + Capsule + Deck, not a Claude session. The agent
+  rule (free adds, silent ~200/hour cap, label only when not the user's or their assistant's) is
+  theirs to enforce; not yet in their code.
 - docs: parked text in work/docs docs/work/pending-cc-plugin.md, applied after c4a30dd/2d9a274 merge. Its
   "agents: 20 an hour, only a person edits" line is superseded: agents add freely (silent ~200/hour cap),
   labelled only when not the user's own assistant or session. Told docs.
