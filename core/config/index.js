@@ -92,7 +92,9 @@ export function privateSocketDir() {
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
- *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } } }} Config */
+ *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } },
+ *   projects?: { move?: "enabled" } }} Config
+ * projects.move "enabled" lets projects.move really move a box's homes (off until box-deploy validates it). */
 
 /**
  * The box's work folder: the vyre-work volume, which Taildrive shares. Tests point
@@ -111,7 +113,13 @@ export function oldProjectsDir() {
   return path.resolve(untilde(process.env.VYRE_OLD_PROJECTS_DIR || path.join(os.homedir(), "Vyre", "projects")));
 }
 
-/** The projects folder a box uses when config.json names none: inside the work folder, when there is one. */
+/** The record projects.move writes in the vyre home (core/projects/move.js RECORD). */
+export const MOVED_RECORD = "projects-moved.json";
+
+/**
+ * The projects folder a box uses when config.json names none: inside the work folder, when there
+ * is one and the box is new or its homes were moved (load() decides).
+ */
 export function boxProjectsDir() {
   return path.join(workDir(), "projects");
 }
@@ -161,10 +169,13 @@ export function load(root = home()) {
     hooks: { ...d.hooks, ...(user.hooks || {}) },
   };
   if (!["box", "local"].includes(c.role)) { problems.push(`role "${c.role}" is not box or local; using ${d.role}`); c.role = d.role; }
-  // On a box with a work folder, projects live there so Taildrive can share them. The role may
-  // come from config.json, so this is decided here rather than in defaults(). A projectsDir the
-  // user set always wins.
-  if (user.projectsDir === undefined && c.role === "box" && isDir(workDir())) c.projectsDir = boxProjectsDir();
+  // On a box with a work folder, projects live there so Taildrive can share them, but only where
+  // nothing has to move: a new box (no homes in ~/Vyre/projects), or one whose homes the owner
+  // already moved with projects.move (the record is there). An existing box keeps
+  // ~/Vyre/projects until then. The role may come from config.json, so this is decided here
+  // rather than in defaults(). A projectsDir the user set always wins.
+  if (user.projectsDir === undefined && c.role === "box" && isDir(workDir())
+    && (isEmpty(oldProjectsDir()) || fs.existsSync(path.join(root, MOVED_RECORD)))) c.projectsDir = boxProjectsDir();
   c.projectsDir = untilde(c.projectsDir);
   c.roots = (c.roots || []).map(untilde);
   c.transcripts = (c.transcripts || []).map(untilde);
@@ -172,6 +183,11 @@ export function load(root = home()) {
 }
 
 const isDir = (/** @type {string} */ p) => { try { return fs.statSync(p).isDirectory(); } catch { return false; } };
+/** A folder that is missing, or holds nothing. Anything unreadable counts as full, so nothing is decided on a guess. */
+const isEmpty = (/** @type {string} */ p) => {
+  try { return fs.readdirSync(p).length === 0; }
+  catch (e) { return /** @type {any} */ (e).code === "ENOENT"; }
+};
 
 /**
  * Merge a change into config.json and write it atomically at 0600. Only what the user or the
