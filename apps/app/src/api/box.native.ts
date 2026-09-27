@@ -51,7 +51,10 @@ const store = memoryStore();
 
 // The biometric key is enrolled at the native sign-in and proves HUMAN_ONLY calls (e2e, ADR 0032).
 // The prompt shows only for those, and only when no live presence session covers the call.
-const makePerson = () => nativePerson(base, () => connection.signIn(true), { onSignedIn: (ok) => ok && connection.signIn(false) });
+// The box pins presence sessions to the path (the tailnet node, or the relay device): one per path.
+let pathNow = () => "direct";
+const makePerson = () =>
+  nativePerson(base, () => connection.signIn(true), { onSignedIn: (ok) => ok && connection.signIn(false), path: () => pathNow() });
 
 const b = makeBox(async () => {
   paired = await loadPairing();
@@ -63,6 +66,7 @@ const b = makeBox(async () => {
     fetch: directFetch,
     visibility,
   });
+  pathNow = () => p.current;
   // A proof sent with x-vyre-presence-keep opens a presence session; the box names it in a header
   // the tool caller does not pass on, so it is read here.
   const o = over(async (path, init) => {

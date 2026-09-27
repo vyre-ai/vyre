@@ -17,6 +17,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - testIDs for ci's perf job (tab-now, tab-chats, tab-agents, now-row, now-row-swipe, transcript).
 - A placeholder icon (a lime dot on the dark background) so device builds are not blocked.
 - releases.sign (cli, local, module): signs the placed Android build now, for `vyre update`.
+- The phone keeps one presence session per path (the box pins each to the tailnet node or the
+  relay device), and relay pairing enrolls the biometric-bound key, so every proof over the relay
+  needs a fingerprint or face (e2e e5aaf881).
 
 #### One app: the relay path, pairing, the /app/ worker hooks; the box signs the Android APK
 

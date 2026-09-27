@@ -50,7 +50,9 @@ export function relayKeyStore() {
 
 export async function presenceKey(): Promise<{ public_key: string; alg: number } | undefined> {
   try {
-    const { x, y } = await Keys.ensureKey(Keys.PERSON);
+    // The biometric-bound key, so every presence proof over the relay needs a fingerprint or face
+    // (e2e: the pairing's presence key is vyre.human).
+    const { x, y } = await Keys.ensureKey(Keys.HUMAN, { biometric: true });
     return { public_key: spkiFromXY(x, y), alg: -7 };
   } catch {
     return undefined;

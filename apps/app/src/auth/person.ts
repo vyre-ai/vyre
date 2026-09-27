@@ -553,9 +553,15 @@ export function devicePresence(o: {
   failed?: (e: unknown) => void;
   /** The box says the key is not enrolled (removed in Settings). */
   lost?: () => void;
+  /**
+   * Which way the box is reached now ("direct", "relay"). The box pins a presence session to the
+   * path's identity (the tailnet node, or the relay device), so the phone keeps one per path.
+   */
+  path?: () => string;
 }): DevicePresence {
   const now = o.now ?? Date.now;
-  let current: Promise<PresenceSession | null> | null = null;
+  const pathOf = o.path ?? (() => "box");
+  let current: Promise<Record<string, PresenceSession>> | null = null;
   /** What the last attempt of each call carried. */
   const sent = new Map<string, "none" | "session" | "device" | "declined">();
   /** Calls the box said ask for presence, and items it said need their own proof, with until when. */
@@ -571,22 +577,36 @@ export function devicePresence(o: {
     m.delete(id);
     return false;
   };
+  const valid = (p: unknown): p is PresenceSession =>
+    !!p && typeof (p as PresenceSession).id === "string" && typeof (p as PresenceSession).secret === "string" && typeof (p as PresenceSession).expires === "number";
   const load = () =>
     (current ??= (o.store ? o.store.load() : Promise.resolve(null)).then((v) => {
-      if (!v) return null;
+      const out: Record<string, PresenceSession> = {};
+      if (!v) return out;
       try {
-        const p = JSON.parse(v) as PresenceSession;
-        return typeof p.id === "string" && typeof p.secret === "string" && typeof p.expires === "number" ? p : null;
-      } catch {
-        return null;
+        const j = JSON.parse(v) as Record<string, unknown>;
+        // An older single session (before sessions were kept per path) is dropped: one prompt.
+        if (!valid(j)) for (const [k, p] of Object.entries(j)) if (valid(p)) out[k] = p;
+      } catch {}
+      return out;
+    }, (): Record<string, PresenceSession> => ({})));
+  const save = async (p: PresenceSession | null, all = false) => {
+    // The new map is current at once, so a read right after a save (even an unawaited one) sees it.
+    const at = pathOf();
+    const next = load().then((was) => {
+      const m: Record<string, PresenceSession> = all ? {} : { ...was };
+      if (!all) {
+        if (p) m[at] = p;
+        else delete m[at];
       }
-    }, () => null));
-  const save = async (p: PresenceSession | null) => {
-    current = Promise.resolve(p);
-    await o.store?.save(p ? JSON.stringify(p) : null).catch(() => {});
+      return m;
+    });
+    current = next;
+    const m = await next;
+    await o.store?.save(Object.keys(m).length ? JSON.stringify(m) : null).catch(() => {});
   };
   const session = async () => {
-    const p = await load();
+    const p = (await load())[pathOf()];
     return p && p.expires - SESSION_MARGIN > now() ? p : null;
   };
 
@@ -665,6 +685,6 @@ export function devicePresence(o: {
       const p = parsePresenceSession(header);
       if (p && p.expires > now()) await save(p);
     },
-    forget: () => save(null),
+    forget: () => save(null, true),
   };
 }

@@ -317,3 +317,22 @@ test("client + person session: a presence refusal goes once more with the proof,
     globalThis.fetch = real;
   }
 });
+
+test("presence: one session per path (the box pins it to the tailnet node or the relay device)", { skip: !strip }, async () => {
+  let at = "direct";
+  const { p, clock, prompts } = await device({ path: () => at });
+  await p.keep(`session id=sessdirect0001 secret=${"d".repeat(43)} expires=${clock.t + 30 * 60_000}`);
+  assert.match((await p.headers("vault.reveal", '{"item":"a"}'))["x-vyre-presence"], /^session id=sessdirect0001 /);
+  at = "relay";
+  assert.equal(await p.session(), null, "the direct session does not ride the relay");
+  assert.match((await p.headers("vault.reveal", '{"item":"b"}'))["x-vyre-presence"] ?? "", /^$|^device /);
+  await p.keep(`session id=sessrelay00001 secret=${"r".repeat(43)} expires=${clock.t + 30 * 60_000}`);
+  at = "direct";
+  assert.equal((await p.session())?.id, "sessdirect0001", "each path keeps its own");
+  at = "relay";
+  assert.equal((await p.session())?.id, "sessrelay00001");
+  await p.forget();
+  at = "direct";
+  assert.equal(await p.session(), null, "signing out forgets every path");
+  assert.ok(prompts.length <= 1);
+});

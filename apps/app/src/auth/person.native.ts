@@ -148,7 +148,7 @@ export type NativePerson = PersonSession & { presence: DevicePresence };
 export function nativePerson(
   box: string,
   onSignIn?: () => void,
-  o: { human?: boolean; onSignedIn?: (ok: boolean) => void } = {},
+  o: { human?: boolean; onSignedIn?: (ok: boolean) => void; path?: () => string } = {},
 ): NativePerson {
   const origin = new URL(box).origin;
   const human = keySigner(Keys.HUMAN);
@@ -161,6 +161,7 @@ export function nativePerson(
     sign: (message, tool) => Keys.sign(Keys.HUMAN, message, { prompt: `Confirm ${tool} on your box` }),
     nonce: () => Keys.randomBytes(16),
     store: secureSlot(slotName("presence", origin)),
+    path: o.path,
     failed: (e) => {
       // The enrolled biometrics changed: the key is gone for good. A new one is made and enrolled
       // at the next sign-in; until then the box asks for its passkey.
