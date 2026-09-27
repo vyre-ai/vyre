@@ -373,6 +373,10 @@ Plan (to the lead before building):
 - cohesion 5ef364c3 (shared agentClaim, read): real gaps closed; MEDIUM regression: empty name ("cli agent:")
   returns "" -> falsy -> network/relay now trust it (they denied before). Asked: empty counts as a claim.
   TODO me: fold core/daemon's AGENT_CLAIM into agentClaim after 1ff45c03 lands.
+- federation sync 96cbf078 (box side, read): NOT signed off. HIGH policy: consent-off and unpair delete
+  (the user overruled: only person-chosen delete -> sync.deleted). MEDIUM: chunk ignores declared size
+  (disk fill), in-flight not counted, consent callers include module, whole-file read. LOW: safeDest's
+  swallowed symlink denial; HTTP-level tests.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
