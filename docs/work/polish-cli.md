@@ -73,18 +73,13 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- UNTESTED WORK ON THE BRANCH (testbox runs held by the lead until batch 4 reports): d7c7e4ad..HEAD.
-  The subagents ran their own files green (B: 150 tests, C: 91 + 15), but these are NOT yet run:
-  threads.js verbs/views/prompts (partial subagent, committed by me), d93d03f6 (prompt answer
-  modes, projects verbs, apps args, term.open message and its new test), the tip line
-  (core/cli/tip-line.test.js), docs/reference/cli-json.md with docs:ref. First run when allowed:
-  core/cli/view.test.js core/cli/tip-line.test.js core/cli/consistency.test.js test/cli.test.js
-  core/cli/commands/threads-sessions.test.js core/cli/commands/apps.test.js voice.test.js
-  statusline.test.js sessions.test.js needs.test.js box.test.js core/term/term.test.js
-  test/projects-cli.test.js test/docs-index.test.js test/docs-check.test.js test/docs-build.test.js,
-  then every core/cli/commands/*.test.js one file at a time, all with VYRE_CHECK_VIEWS=1 (a view
-  that does not fit platform's Render then fails the verb; core/cli/view.js renderProblems).
-- Batch 4 sha sent: 4bc5c14b. The next batch gets HEAD once the runs above pass.
+- Release-candidate sha to the integrator: the HEAD after the runs below (all with VYRE_CHECK_VIEWS=1,
+  load under 6, nice 15, --test-timeout): 189 (view, tip line, consistency, cli, threads-sessions,
+  apps, voice, statusline, sessions, needs, box, term, projects, sideview, docs) then 74/74 after
+  fixes; 218 (every other core/cli/commands test, vault-cli*, link-cli, peer, presence-cli, memory
+  correct, recall module, statusline) then 15/15 after fixes. Fixes from the runs: card states
+  outside CheckState (gate held, recall off, agent computer off), apps sample names, docs:ref.
+- Batch 4 had 4bc5c14b.
 
 ## Next
 
