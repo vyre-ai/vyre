@@ -12,8 +12,8 @@ This page sorts the Gaps sections of the [component specs](README.md) by team, s
 list to work from. The specs stay the source of truth: when you close an item, tick it in the spec
 Gaps list in the same commit, and this page follows.
 
-The Capsule redesign spec (capsule.md) is being written now. When it lands, capsule-pro's list
-gains its items.
+The Capsule redesign is [The Capsule, redesigned](capsule.md). Its Gaps list comes first for
+capsule-pro, ahead of the items below.
 
 How items are assigned:
 
@@ -521,6 +521,8 @@ the session panel, presence and the menu-bar item.
 
 ### Start here
 
+0. The redesign first: the answer card grows then scrolls, no empty headings, the footer states,
+   layered Esc, then Vyre IQ, voice and computer use ([The Capsule, redesigned](capsule.md), Gaps).
 1. Tokens, not hand typed values: `Theme.swift` maps tokens to old names and types its own sizes;
    read `Tokens.generated.swift` ([Capsule on the Mac](components/capsule-mac.md)).
 2. One button system: `AgentButton` uses `Tokens` primary colours, `Radius.button` and the five

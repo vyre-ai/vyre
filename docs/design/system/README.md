@@ -12,7 +12,7 @@ Design A v1, frozen 27 Sep 2026. This folder is the design system of record: the
 native-core), the app (mobile) and the Capsule (capsule-pro) build from it with no guessing.
 
 Where this folder and the canvas disagree, this folder wins. Where it is silent, the canvas
-(https://claude.ai/artifact/Ap7uKGmbiEs4wM44iSyi1X) is the reference, and the gap is a bug in this
+(https://claude.ai/artifact/CKLkX4pcZpsyiKYDEnXKWr) is the reference, and the gap is a bug in this
 folder: tell app-design. Where the code disagrees with this folder, the code is wrong, unless the
 spec says "(proposed)".
 
@@ -21,6 +21,8 @@ spec says "(proposed)".
   the Capsule.
 - [Copy](copy.md): voice, words we use and never use, formats.
 - [The render audit](audit.md): the check every board and every change to it passes.
+- [The Capsule, redesigned](capsule.md): the Design A Capsule, keyboard first, with Vyre IQ,
+  voice and computer use.
 - [Spec lists by team](teams.md): every open gap, sorted by the team that closes it.
 - The component specs below, one file each: anatomy, variants, sizes, states, keyboard and touch,
   motion, copy, accessibility, the implementing file on each surface, and its gaps.
