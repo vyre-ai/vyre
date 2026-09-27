@@ -10,6 +10,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   and desktop, states, the Capsule and the CLI, and device install with no Apple Developer
   account), tokens.json as the one token source, and a render audit that reads each board's size
   from the board. Design only; no code changes.
+- Direction A (inbox first) is the design of record (DIRECTION.md, decided 27 Sep): new boards
+  for plan approval and modes (ADR 0030), projects, memory and lessons, settings and first run;
+  the session board follows ADR 0030 (provider chip, Stop, queued words with take back and send
+  now); every key screen states how it meets the smoothness bar.
 
 #### Docs: the planner page
 

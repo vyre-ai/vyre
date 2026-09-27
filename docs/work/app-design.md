@@ -8,6 +8,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Done
 
+- Direction A (inbox first) decided by the user, 27 Sep. Full sheet published: Direction,
+  Smooth, Principles, System, Layout; key screens Needs, Session, Plan and modes, Agents, Planner,
+  Vault, Devices; places Onboarding, Projects, Memory, Settings; States, Install 1 and 2, Capsule
+  and CLI; every key screen in dark and paper, each with a "Smooth:" note. All pass the audit.
 - Design canvas "Vyre one app" (private, owned by the user):
   https://claude.ai/artifact/Ap7uKGmbiEs4wM44iSyi1X. 23 boards: Main (principles), System,
   Layout, then Needs you, Session, Agents and Glass, Planner, Vault, Devices, States,
@@ -21,13 +25,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Doing
 
-- Direction A approved (27 Sep). Building the full A sheet: new boards Plan and modes, Projects,
-  Onboarding and first run, Settings, Memory; a smoothness pass on every key screen; the States
-  crop fix. Violet stays.
+- Nothing in flight. The full direction A sheet is published (35 boards).
 
 ## Next
 
-1. Fix the States board's offline pill overlap on the "Now reopened offline" phone crop.
 2. Hand tokens.json to mobile (tokens.ts), deck (tokens.css) and capsule-pro (Theme.swift), with
    a generator and a test that fails off-system values.
 3. Propose `vyre phone add` (with `--android --usb|--wireless`) to polish-cli and tailnet.
