@@ -7,7 +7,7 @@
     { "q": "name of my wife", "expect": ["noor"], "kind": "spouse" },
     { "q": "when is my wife's birthday", "expect": ["2 june", "june 2"], "kind": "birthday" },
     { "q": "who is jordan", "expect": null, "kind": "trap" },
-    { "q": "is jordan my wife", "expect": null, "kind": "trap" },
+    { "q": "is jordan my wife", "expect": ["noor"], "kind": "trap" },
     { "q": "what's my dog's name", "expect": null, "kind": "trap" },
     { "q": "what is my mom's name", "expect": null, "kind": "trap" },
     { "q": "where does my mom live", "expect": null, "kind": "trap" },

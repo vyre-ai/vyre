@@ -262,7 +262,8 @@ function answerers(mem, scratch = SCRATCH) {
       const db = mem.ctx.store.db;
       const basis = (d?.facts || []).map(f => ({ rel: f.rel, methods: [...new Set(/** @type {any[]} */ (db.prepare(`SELECT c.method FROM memory_me_evidence v
         JOIN memory_me_claims c ON c.session = v.session AND c.seq = v.seq AND c.rel = ? WHERE v.fact = ?`).all(f.rel, String(f.id))).map(x => String(x.method)))] }));
-      return { answer: d?.answer ?? null, confidence: typeof d?.confidence === "number" ? d.confidence : null, ms: now() - t0, via: d?.via ?? null, basis };
+      return { answer: d?.answer ?? null, confidence: typeof d?.confidence === "number" ? d.confidence : null, ms: now() - t0, via: d?.via ?? null, basis,
+        kind: d?.kind ?? null, from: d?.from ?? 0, facts: d?.facts || [], sources: d?.sources || [] };
     };
   }
   return out;

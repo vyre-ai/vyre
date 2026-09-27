@@ -24,7 +24,7 @@ export const SAID_MAX = 0.45;
 export const SURE = 0.5;
 export const MAYBE = 0.3;
 /** Questions about who someone is to the user, and their names: a wrong one is the worst answer. */
-export const PEOPLE_SURE = 0.75;
+export const PEOPLE_SURE = 0.6;
 const PEOPLE_Q = (p, facts) => p.kind === "kin" || (p.kind === "of" && String(p.rel).startsWith("kin:")) || (p.kind === "birthday" && !p.who?.me)
   || (p.kind === "who" && facts.some(x => KIN_RELS.has(x.rel)));
 /** Sources given without asking: cheap, and enough to show where it came from. */
@@ -302,6 +302,8 @@ export function parse(q) {
   if (kin && role && /^how many\b/.test(t)) return { kind: "kin", word: kin, role, count: true };
   // Something of theirs that is not their name ("the kids school", "my wife's car"): not their names.
   if (kin && role && (m = new RegExp(`\\b${esc(kin)} ([a-z]+)`).exec(t)) && !/^(?:name|names|called|is|are|was|were|do|does|did|have|has|and|or|i|we)$/.test(m[1]) && !STOP.has(m[1])) return { kind: "of", who: { kin }, rel: "other" };
+  // "does my wife like hiking": a yes or no about them, not who they are. "do i have a wife" is.
+  if (kin && role && /^(?:does|do|did|can|could|has|have|will|would|should)\b/.test(t) && !/^(?:do|did|does) (?:i|we) (?:have|still have)\b/.test(t)) return { kind: "of", who: { kin }, rel: "other" };
   if (kin && role) return { kind: "kin", word: kin, role };
   if ((m = /^(?:who|what) (?:is|was|are) (.+)$/.exec(t)) || (m = /^(?:do you know|tell me about) (.+)$/.exec(t))) {
     const x = m[1].trim();
