@@ -704,28 +704,43 @@ const SCREENS = {
     const start = async (/** @type {string} */ plan) => {
       s.foot({ label: "Starting", disabled: true, run: () => {} });
       const r = await attempt("import.start", { plan, mode: sync ? "sync" : "once", pace });
-      if (r.error) { put(body, empty("Could not start the import. Try again.", r.error)); s.foot({ label: "Try again", run: () => start(plan) }); return; }
-      drawWatch();
+      if (r.error) {
+        // memory-iq's error codes: not_found (the plan expired or was already used), busy, and
+        // unavailable (no server to send to yet: the device still indexes its own local copy).
+        const msg = r.error.code === "not_found" ? "That plan expired. Go back and choose again."
+          : r.error.code === "busy" ? "An import is already running. Try again in a moment."
+          : r.error.code === "unavailable" ? null // not an error: shows its own local-only note below
+          : String(r.error.message);
+        if (msg) { put(body, empty(msg, r.error)); s.foot({ label: "Try again", run: () => drawChoose(sources) }); return; }
+      }
+      drawWatch(r.error?.code === "unavailable");
     };
 
-    const drawWatch = () => {
+    const drawWatch = (/** @type {boolean} */ localOnly) => {
       const list = h("ul", { class: "progress" });
       const ask = h("div");
-      put(body, h("p", { class: "lbl" }, "Reading your history"), list, ask);
+      put(body,
+        h("p", { class: "lbl" }, "Reading your history"),
+        localOnly ? h("p", { class: "small muted" }, "No server to send this to yet, so this device is indexing its own copy for now.") : null,
+        list, ask);
       s.foot({ label: "Continue", run: s.next });
       let asked = false;
       const poll = async () => {
         const r = await attempt("import.status");
         if (r.error) return;
         const st = r.data;
-        // Vyre IQ's own stages, in plain language (memory-iq): search makes a session findable;
-        // meaning makes it understood (personal facts keep reading in the background for days,
-        // so they never gate this checkmark); graph keeps growing after, with no total to reach.
+        // Vyre IQ's own stages, in plain language (memory-iq): upload gets it to the server
+        // (skipped when local-only); search makes it findable; meaning makes it understood
+        // (personal facts keep reading in the background for days, so they never gate this
+        // checkmark); graph keeps growing after, with no total to reach.
         const state = c => !c || !(c.total > 0) ? "todo" : c.done >= c.total ? "done" : "doing";
         const g = st.graph || {};
         const personalNote = st.personal && st.personal.total > st.personal.done
           ? `, still reading ${plural(st.personal.total - st.personal.done, "turn")} for personal facts` : "";
+        const up = st.upload;
+        const upNote = up?.quarantined ? `${plural(up.quarantined, "session")} set aside: they looked like they held a secret` : null;
         put(list,
+          up ? progressRow("Sending to your server", up.state === "done" ? "done" : up.state === "stopped" ? "failed" : "doing", upNote, undefined) : null,
           progressRow("Searchable now", state(st.search), null, undefined),
           progressRow("Understood", state(st.meaning), personalNote || null, undefined),
           progressRow("The graph growing", g.sessions > 0 ? "doing" : "todo",

@@ -74,8 +74,9 @@
     "folders": ["/Users/alex/Work/harlow-site", "/Users/alex/Work/northwind", "/Users/alex/Work/harlow-site-old"],
     "pace": { "turns": 1095, "usd": 0.33, "fast": { "hours": 1 }, "gentle": { "days": 2 } }
   },
-  "import.start": { "started": true },
+  "import.start": { "run": "run_sample", "sessions": 270, "mode": "once", "pace": "fast" },
   "import.status": {
+    "upload": { "done": 270, "total": 270, "failed": 0, "quarantined": 2, "state": "done", "mode": "once", "pace": "fast" },
     "search": { "done": 270, "total": 270 },
     "meaning": { "done": 180, "total": 270 },
     "graph": { "people": 6, "orgs": 2, "facts": 22, "sessions": 96 },
