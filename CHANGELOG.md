@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: each session talks to vyred on its own socket (ADR 0030 phase 3, option A)
+
+- The Switchboard opens a socket per live thread (core/daemon/threadsock.js, from e2e) and hands
+  it to the session as `VYRE_SOCKET`; it goes when the thread stops, stays across a fallback
+  respawn. Calls on it are that thread's (`mcp:thread:<id>`, `mcp:agent:<name>`), whatever they
+  claim, only from the session's own processes, and never a person-only or human-only tool.
+- `sessions.thread_socket`: `auto` (default: when the session runs through the spawner), `on`,
+  `off`; `VYRE_SESSIONS_THREAD_SOCKET` wins. Off the spawner the sockets live in the user's
+  private /tmp/vyre-<uid> folder; through it in /run/vyre-threads.
+- `sessions.spawner` is now on by default on a box (it is only used where a spawner runs: Linux,
+  its socket there); still off on a Mac.
+- core/daemon/client.js uses `VYRE_SOCKET` when no root or socket is given (`opts.socket` is new),
+  so the plugin's MCP server and hooks, and a `vyre` run from the session's Bash, go through the
+  session's socket. Neither the MCP server nor `ensureUp` starts a vyred from inside a session.
+  vyred's own `VYRE_SOCKET` is never handed down to a session without one.
+
 #### Sessions: the Capsule's quick answer is Vyre IQ
 
 - A Capsule question (`threads.start` purpose `capsule`) gets its own prompt, replacing Claude

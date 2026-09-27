@@ -27,9 +27,12 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 - Event names stay as chat's contract reads them (model.switched, thinking.switched,
   thread.thinking); sessions.models added.
 
+- Option A wired: per-thread socket (Switchboard.openSocket/closeSocket), VYRE_SOCKET in the
+  child env, client.js honours it, MCP server + ensureUp never start a vyred inside a session,
+  spawner default on for a box, sessions.thread_socket auto|on|off.
+
 ## Doing
-- Lead order (after LOGOUT 4): 2 Option A wiring (VYRE_SOCKET in spawnSession, client.js, MCP
-  server, hooks, then the spawner on; daemon side is e2e efb02b2c, merged in 8a2c5959).
+- Next in the lead's order: 3 "Doesn't ask".
 
 ## Next
 3. "Doesn't ask" (bypassPermissions): person-only, no Touch ID, per session (Shift+Tab) and a
@@ -66,6 +69,10 @@ optional deps; without them the tests silently run on the CLI).
 - fake-claude.js: launch log written at initialize (argv normalised, SDK init fields added as
   flags); interrupt support.
 - presence: PERSON_ONLY gains sessions.prompt.set, sessions.prompt.revert.
+- daemon/client.js: request opts.socket; VYRE_SOCKET used when no root or socket given.
+  cli/daemonctl ensureUp: inside a session (VYRE_SOCKET + VYRE_THREAD) only pings, never starts.
+- sessions config: spawner defaults "on" for role box; new thread_socket auto|on|off.
+- sessions.prompt scope "capsule"; sessions.prompt.compose/preview take purpose "capsule".
 - onboard: CREDENTIAL_READERS gains threads.
 - New module sessions: tools sessions.status, setup, prompt.get/set/history/revert/preview,
   internal prompt.compose; event prompt.changed.

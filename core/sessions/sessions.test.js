@@ -27,6 +27,7 @@ import crypto from "node:crypto";
 import { Sessions, shellCommand } from "../switchboard/sessions.js";
 import { callerKind, callerAllowed } from "../modules/index.js";
 import { open as openStore } from "../store/index.js";
+import { paths } from "../config/index.js";
 
 const TINI = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "testing", "fake-tini.js");
 fs.chmodSync(TINI, 0o755);
@@ -122,6 +123,17 @@ test("config: the approved defaults per machine, and overrides", () => {
     assert.equal(sessionsConfig({ role: "box", sessions: { auth: "nonsense", idle_minutes: -1 } }).auth, "setup-token");
     assert.equal(sessionsConfig({ role: "box" }).driver, "sdk", "the Agent SDK is the default");
     assert.equal(sessionsConfig({ role: "local", sessions: { driver: "cli" } }).driver, "cli");
+    // The spawner is on by default on a box (used only where one runs), off on a Mac; each
+    // session's own socket follows it unless set.
+    const sp = process.env.VYRE_SESSIONS_SPAWNER, ts = process.env.VYRE_SESSIONS_THREAD_SOCKET;
+    delete process.env.VYRE_SESSIONS_SPAWNER; delete process.env.VYRE_SESSIONS_THREAD_SOCKET;
+    try {
+      assert.deepEqual([sessionsConfig({ role: "box" }).spawner, sessionsConfig({ role: "local" }).spawner, sessionsConfig({ role: "box", sessions: { spawner: "off" } }).spawner], ["on", "off", "off"]);
+      assert.deepEqual([sessionsConfig({ role: "box" }).thread_socket, sessionsConfig({ role: "local", sessions: { thread_socket: "on" } }).thread_socket, sessionsConfig({ sessions: { thread_socket: "x" } }).thread_socket], ["auto", "on", "auto"]);
+    } finally {
+      if (sp !== undefined) process.env.VYRE_SESSIONS_SPAWNER = sp;
+      if (ts !== undefined) process.env.VYRE_SESSIONS_THREAD_SOCKET = ts;
+    }
   } finally { if (was !== undefined) process.env.VYRE_SESSIONS_DRIVER = was; }
 });
 
@@ -407,6 +419,38 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!after.pids.includes(launch.ppid), "the session itself is gone");
     assert.ok(after.pgids.includes(launch.ppid), "its group is still reported while the orphan runs");
     await until(async () => !(await w.tool("probe.pids", {})).data.pgids.includes(launch.ppid), "the group to end", 10_000);
+  });
+
+  test(`${driver}: a session has its own socket (option A): its calls are that thread's, never a person's, and it goes when the thread stops`, { skip }, async t => {
+    const whoami = { name: "whoami", manifest: { does: { tools: ["whoami.me"] } }, source: `
+      export default { async start(ctx) {
+        ctx.tool("whoami.me", { input: { type: "object" }, run: async (_, meta) => ({ caller: meta.caller, thread: meta.thread || null, agent: meta.agent || null }) });
+        return { async stop() {} };
+      } };` };
+    const w = await boot(t, { driver, sessions: { thread_socket: "on" }, modules: [whoami] });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "vyre-sock whoami.me {}", surface: "deck" })).data;
+    await w.finished(th.id);
+    const sock = w.launches().at(-1).socket;
+    assert.ok(sock && sock.endsWith(".sock"), "VYRE_SOCKET is the thread's own");
+    assert.notEqual(sock, paths(w.root).socket, "not vyred's own socket");
+    assert.equal(fs.statSync(sock).mode & 0o777, 0o660);
+    // It said "cli"; vyred bound it to the thread.
+    assert.deepEqual(JSON.parse((await w.said(th.id)).at(-1)).data, { caller: `mcp:thread:${th.id}`, thread: th.id, agent: null });
+    // A person's tool is refused on it, whatever the session says it is.
+    await w.tool("threads.send", { thread: th.id, text: "vyre-sock threads.answer {}", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal(JSON.parse((await w.said(th.id)).at(-1)).error.code, "denied");
+    // Stopped: the socket is gone; the next start gets a new one.
+    await w.tool("threads.stop", { thread: th.id });
+    await until(() => !fs.existsSync(sock), "the socket to go");
+    // Off: no socket, and vyred's own VYRE_SOCKET is never handed down.
+    const saved = process.env.VYRE_SOCKET;
+    process.env.VYRE_SOCKET = "/nowhere/vyred.sock";
+    t.after(() => { if (saved === undefined) delete process.env.VYRE_SOCKET; else process.env.VYRE_SOCKET = saved; });
+    const w2 = await boot(t, { driver, sessions: { thread_socket: "off" } });
+    const b = (await w2.tool("threads.start", { cwd: w2.work, prompt: "hello", surface: "deck" })).data;
+    await w2.finished(b.id);
+    assert.equal(w2.launches().at(-1).socket, null);
   });
 
   test(`${driver}: the Capsule's quick answer is Vyre IQ: the whole prompt, its facts numbered, thinking off, the version on the chip`, { skip }, async t => {

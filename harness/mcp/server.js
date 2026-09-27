@@ -56,7 +56,8 @@ const sessionKey = () => (AGENT ? null : readKey(paths(home()).sessions, process
 
 async function tools() {
   let r = await request("GET", "/v1/tools", undefined, { caller: CALLER });
-  if (r.error && r.error.code === "unreachable") { await ensureUp(); r = await request("GET", "/v1/tools", undefined, { caller: CALLER }); }
+  // A session's own socket (VYRE_SOCKET) is vyred's to open: never start a vyred from inside one.
+  if (r.error && r.error.code === "unreachable" && !process.env.VYRE_SOCKET) { await ensureUp(); r = await request("GET", "/v1/tools", undefined, { caller: CALLER }); }
   if (r.error) return [];
   const list = r.data.filter(offered);
   const own = list.map(t => ({ name: mcpName(t.name), description: t.description || t.name, inputSchema: { type: "object", ...(t.input || {}) } }));

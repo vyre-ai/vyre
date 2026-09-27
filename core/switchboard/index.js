@@ -21,7 +21,9 @@ import { translate, cut, clip, CAPS } from "./translate.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
-import { findSubreaper, groupAlive } from "../sessions/spawn.js";
+import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
+import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
+import { privateSocketDir } from "../config/index.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
@@ -251,6 +253,8 @@ export class Switchboard {
     this.loadSdk = null;
     /** @type {Map<number, number>} every session's process group, pgid -> sid, kept until the whole group is gone */
     this.groups = new Map();
+    /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
+    this.socks = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
     this.states = new Map();
     /** @type {Map<string, string[]>} `!` shell output waiting to go with a thread's next message */
@@ -415,6 +419,7 @@ export class Switchboard {
     o = { ...o, system: await this.systemPrompt(rec, o) };
     // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
     if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
+    await this.openSocket(id, rec);
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
@@ -474,6 +479,32 @@ export class Switchboard {
     if (!r || r.status !== "idle") return false;
     if (this.asks.open(id).length || this.leases.holder(id)) return false;
     return !this.db.prepare("SELECT 1 FROM threads_watches WHERE thread = ? LIMIT 1").get(id);
+  }
+
+  /**
+   * Open the thread's own socket to vyred (ADR 0030 phase 3, option A), when this machine gives
+   * sessions one (deps.threadSocket). One per live thread, kept across a fallback respawn, closed
+   * when the thread stops. Only the thread's own processes get in (threadsock.js).
+   */
+  async openSocket(id, rec) {
+    if (!this.deps.threadSocket || this.socks.has(id)) return;
+    try {
+      const sock = await this.deps.threadSocket({ thread: id, agent: rec.agent || null, pids: async () => {
+        const st = this.live.get(id);
+        const g = st && st.group;
+        return { pids: [st && st.proc && st.proc.pid, g && g.pid].filter(Boolean), pgids: g && g.pgid ? [g.pgid] : [], sids: g && g.sid ? [g.sid] : [] };
+      } });
+      if (sock) this.socks.set(id, sock);
+    } catch (e) {
+      this.deps.log(`threads: no socket for ${id.slice(0, 8)} (${/** @type {Error} */ (e).message}); its Vyre tools will not answer`);
+    }
+  }
+
+  closeSocket(id) {
+    const sock = this.socks.get(id);
+    if (!sock) return;
+    this.socks.delete(id);
+    sock.close().catch(() => {});
   }
 
   /** Close a live thread's process, saying why; its transcript stays and threads.send resumes it. */
@@ -552,6 +583,10 @@ export class Switchboard {
     // recall.search through MCP). "*" is the assistant's: every project.
     if (o.scope) { env.VYRE_PROJECTS = o.scope.projects === "*" ? "*" : o.scope.projects.join(","); env.VYRE_SCOPE_CWDS = JSON.stringify(o.scope.cwds || []); }
     else { delete env.VYRE_PROJECTS; delete env.VYRE_SCOPE_CWDS; }
+    // The session's own socket (option A): its plugin, hooks and any vyre it runs talk to vyred on
+    // it, as this thread, whatever they claim. Without one, VYRE_SOCKET is not inherited.
+    const sock = this.socks.get(id);
+    if (sock) env.VYRE_SOCKET = sock.path; else delete env.VYRE_SOCKET;
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
@@ -809,6 +844,7 @@ export class Switchboard {
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
+    this.closeSocket(id);
     const reason = st.haltReason || (st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`);
     this.set(id, { status: "stopped", pid: null, stopped_reason: reason });
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "thread stopped");
@@ -1500,6 +1536,7 @@ export class Switchboard {
   async stopAll() {
     for (const st of this.live.values()) if (!st.haltReason) st.haltReason = "restart";
     await Promise.all([...this.live.keys()].map(id => this.stop(id)));
+    for (const id of [...this.socks.keys()]) this.closeSocket(id);
     for (const job of [...this.prunes]) job.run();                     // no surface is left to catch up
   }
 }
@@ -1567,6 +1604,13 @@ export default {
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers,
+      // Each session's own socket (option A): always with "on", with the spawner under "auto".
+      // Through the spawner it goes in the box's shared folder; else a private one of this user's.
+      threadSocket: cfg.thread_socket === "off" ? null
+        : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
+          ? openThreadSocket({ handler: ctx.handler, log: ctx.log, ...o,
+            dir: usesSpawner() ? THREAD_SOCKETS : path.join(privateSocketDir(), `t-${crypto.createHash("sha256").update(String(root)).digest("hex").slice(0, 12)}`) })
+          : null,
       subreaper: cfg.subreaper === false ? null : typeof cfg.subreaper === "string" ? cfg.subreaper : findSubreaper(),
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });

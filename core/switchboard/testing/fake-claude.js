@@ -57,7 +57,7 @@ function logLaunch(init = {}) {
   if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
   else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
   fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
-    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+    projects: process.env.VYRE_PROJECTS || null, key_in_env: Boolean(process.env.ANTHROPIC_API_KEY), max_thinking: process.env.MAX_THINKING_TOKENS ?? null, socket: process.env.VYRE_SOCKET || null, pid: process.pid, ppid: process.ppid, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
 }
 setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 
@@ -339,6 +339,14 @@ async function turn(prompt, uuid = null) {
     });
     await say(String(r));
     return result(true, String(r));
+  }
+  // The plugin's own way in (the MCP server, the hooks): no root, so a session's VYRE_SOCKET is used.
+  const own = /^vyre-sock (\S+)\s*(.*)$/s.exec(p);
+  if (own) {
+    const { call } = await import("../../daemon/client.js");
+    const r = JSON.stringify(await call(own[1], own[2] ? JSON.parse(own[2]) : {}, { caller: "cli" }));
+    await say(r);
+    return result(true, r);
   }
   const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
   if (tool) {
