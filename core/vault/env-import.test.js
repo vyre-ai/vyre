@@ -118,7 +118,7 @@ test("vault.import of a folder: preview per file, the token covers every file, r
   const done = await run("vault.import", { file: proj, token: preview.token, rewrite: true });
   assert.deepEqual(done.added, ["harlow-intake.env", "harlow-intake-apps-web.env.local"]);
   assert.deepEqual(done.rewritten, [rootEnv, webEnv]);
-  assert.match(done.advice, /vyre vault run --env-file \.env/);
+  assert.match(done.advice, /vyre run -- <command>/);
   assert.equal(fs.statSync(rootEnv).mode & 0o777, 0o600);
   const after = fs.readFileSync(rootEnv, "utf8");
   for (const x of Object.values(a)) assert.ok(!after.includes(x));

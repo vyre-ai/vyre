@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre run -- <command>` reads a project's .env references
+
+- A top-level `vyre run` is `vyre vault run` with two differences. It adds the `--` when it is
+  missing. With no items and no `--env-file`, it reads ./.env when that file holds at least one
+  `vault://` reference, which is what `vyre vault import --rewrite` leaves behind. A plain .env
+  is left to the program. Test: core/cli/commands/run.test.js.
+
 #### Vault imports a project's .env files, typed, and can rewrite them to vault references
 
 - `vault.import.preview` and `vault.import` take a folder: every `.env`, `.env.*` and `*.env` under

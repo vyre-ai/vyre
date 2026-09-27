@@ -21,14 +21,17 @@ mobile and the Capsule (through their owners).
   env-set; only secrets move; folder scan; `rewrite` to vault:// refs; CLI `--rewrite` + per-file
   preview. Tests: detect.test.js, env-import.test.js. vault + CLI suites on testbox: 264 pass, 0 fail.
 
+- Step 2: `vyre run -- cmd` (core/cli/commands/run.js): reads ./.env refs when nothing is named.
+  No vault.env.resolve needed: sessions already reads claude-setup-token / anthropic-api-key through
+  a module grant (ctx.vault.fetch). Told sessions; asked whether owned sessions' Bash should resolve
+  project refs (my default: no).
+
 ## Doing
 
-- Step 2: `vyre run -- cmd` (top-level alias, picks up ./.env refs) + vault.env.resolve for the
-  sessions driver's auth token.
+- Step 3: typed credentials.
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
-2. `vyre run` + .env refs (S); agree the sessions driver's env shape with sessions (ADR 0030).
 3. Typed credentials (M): passkey, authenticator, pat (scope, expiry), oauth, cloud, db-url, cert,
    recovery-codes, wifi, licence, file, address, identity. Expiry -> planner todo.
 4. Import sources (L): LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass XML/CSV,

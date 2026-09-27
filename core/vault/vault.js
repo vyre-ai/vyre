@@ -234,7 +234,7 @@ function writeAtomic(file, text) {
 function importAdvice(p, envFiles, rewrite, rewritten, committed) {
   if (!envFiles) return `Delete ${p} now. It still holds every value in plain text, and nothing needs it again.`;
   const parts = [];
-  if (rewrite && rewritten.length) parts.push(`${rewritten.length === 1 ? "The file now holds" : `${rewritten.length} files now hold`} vault references. Run your app with vyre vault run --env-file .env -- <command>.`);
+  if (rewrite && rewritten.length) parts.push(`${rewritten.length === 1 ? "The file now holds" : `${rewritten.length} files now hold`} vault references. Run your app with vyre run -- <command> in its folder.`);
   else parts.push("The .env files still hold their values. Import again with rewrite to swap them for vault references, or delete them.");
   if (committed.length) parts.push(`${committed.length === 1 ? "One file is" : `${committed.length} files are`} committed to git, so the old values stay in its history: change them at the provider.`);
   return parts.join(" ");

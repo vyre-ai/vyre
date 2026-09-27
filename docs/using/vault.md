@@ -73,7 +73,7 @@ A project's `.env` files come in the same way, a file or a whole folder at once:
 ```
 vyre vault import ~/code/harlow-intake --preview   # every .env under it, typed, never a value
 vyre vault import ~/code/harlow-intake --rewrite   # store them, then swap the values for references
-vyre vault run --env-file .env -- npm start        # the program gets the same environment as before
+vyre run -- npm start                              # reads ./.env's references; same environment as before
 ```
 
 Each file becomes one env-set named after where it lives (`harlow-intake.env`,

@@ -52,6 +52,7 @@ In the order `vyre help` lists them.
 | [`vyre vault`](#vyre-vault) | credentials, sealed; shared by pass; used without being seen |
 | [`vyre watchers`](#vyre-watchers) | what the watchers are doing, and turning them on and off |
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
+| [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
@@ -356,6 +357,14 @@ MCP servers and Google accounts Vyre can reach for you.
 
 ```
 vyre connect list|add|remove|test
+```
+
+### vyre run
+
+Run a program with vault values in its environment; reads ./.env references.
+
+```
+vyre run [--env-file f] [<item...>] -- <command...>
 ```
 
 ### vyre hooks

@@ -124,7 +124,7 @@ Not defended, stated plainly:
   provider are words from a fixed list, never a slice of the value. The token covers every file's
   path and bytes. `vault.import {rewrite: true}` then replaces each stored variable's line with
   `KEY=vault://item/KEY`, only in files whose values are all in the vault, atomically, with no
-  backup. `vyre vault run --env-file` reads the result.
+  backup. `vyre run -- cmd` reads the result.
 - Surfaces: the CLI (`vyre vault import --preview`, `--rewrite`) and the Deck's import sheet (the
   pwa team's surface). Both call these tools.
 
