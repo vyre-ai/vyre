@@ -232,10 +232,11 @@ one thing.
 
 The Capsule reads the hub at launch and repaints live:
 
-- `GET /v1/appearance/theme` returns `{theme, tokens, css, version}` (ETag, 304 when unchanged).
+- `GET /v1/theme?device=<id>` returns `{theme, scheme, tokens, css, version, rev}` (the hub's rev as
+  the ETag, 304 when unchanged; ADR 0035).
   `appearance.resolve` over the socket gives the same.
-- Repaint on `appearance.changed {version, theme}`. "system" follows macOS; "dark" and "paper"
-  force one.
+- Repaint on `settings.changed` for any `appearance.*` key. The scheme "system" follows macOS;
+  "dark" and "paper" force one.
 - `Tokens.generated.swift` is the offline fallback only, used until the first answer from vyred
   and whenever the box is away.
 
@@ -280,7 +281,7 @@ Capsule (work/capsule-pro)
 - [ ] Computer use: the strip, the step rows, the menu bar ring and tooltip, "Stopped. n steps
   done.".
 - [ ] Layered Esc (stop, then clear, then hide), one thing per press.
-- [ ] Read `/v1/appearance/theme` and repaint on `appearance.changed`.
+- [ ] Read `/v1/theme?device=` and repaint on `settings.changed` for `appearance.*` keys.
 - [ ] Everything under Gaps in [Capsule on the Mac](components/capsule-mac.md).
 
 memory-iq

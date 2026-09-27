@@ -68,12 +68,26 @@ calls before it stores a value; the rules are `lib/theme`'s `applyOverride` and 
 
 Modules never override the global tokens; a module theme is only something the person can pick.
 
-Surfaces read the result for their own device with `appearance.resolve { device }`, or over HTTP:
-`GET /v1/appearance/theme?device=<id>` (JSON: preset, scheme, the whole merged tokens.json, the
-CSS, a version and the hub's `rev`), and `format: "css"` (`?format=css`) for the custom properties
-alone, which vyred serves as `/theme.css?device=` and `/v1/theme?device=`. The ETag is the hub's
-`rev`. resolve checks the merged tokens again on every read: a stored value that no longer passes
-paints the preset instead and is named under `problems`, so a bad value never paints. A surface
+Surfaces read the result for their own device from the two routes ADR 0035 names, which vyred
+serves by calling `appearance.resolve { device }`: `GET /v1/theme?device=<id>` (JSON: preset,
+scheme, the whole merged tokens.json, the CSS, a version and the hub's `rev`) and
+`GET /theme.css?device=<id>` (the custom properties alone, `format: "css"`). The ETag is the hub's
+`rev`. Build against those two paths only. `GET /v1/appearance/theme` is the module's own route,
+kept as an interim alias until vyred serves the two, then removed. resolve checks the merged tokens
+again on every read: a stored value that no longer passes paints the preset instead and is named under `problems`, so a bad value never paints. A surface
 repaints on `settings.changed` for any `appearance.*` key, the contract; `appearance.changed` is a
 convenience. The old `appearance.theme` values `system`, `dark` and `paper` read as `vyre` with
 that scheme for one release, and `config.theme.colors` folds in under the preset for one release.
+
+## Retired names
+
+These Deck names have no role in Design A. Replace them; never give them a token.
+
+| Old name | Use instead |
+|---|---|
+| `--recall`, `--recall-ink` (memory's gold: `.dot.recall`, icons, "From memory") | `--text-2` for the icon or dot; a memory source is a source chip (1 px `--rule-strong`), never gold |
+| `--recall-wash` (the "From memory" card fill) | no fill, or `--hover` where the card needs a ground |
+| `--beacon-wash` (the violet `.needs-pill`) | no fill: the needs count is text in `--beacon-ink` (top-bar.md), or the count badge |
+| `--beacon-rule` (violet rules on Needs rows) | `--rule` |
+
+Violet stays only for "needs you": the dot, the label and the count. Gold is gone from the system.
