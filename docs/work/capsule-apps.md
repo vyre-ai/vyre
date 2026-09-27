@@ -191,6 +191,12 @@ outbound sends. So apps.act never asks; apps.send and gate.approve do, riding th
 - lead/user: import of the Vyre Clock shortcuts once (one click each), checked on the real Mac.
 
 ## Changed contracts
+- core/gate/index.js (owner: gate/security): previewOf also reads an MCP call's words from
+  content.arguments (text, payload, message, body, content), so gate.approve's presence line is
+  not blank for hub-held calls. core/mcp/hub.js (owner: connectors): TO_KEYS gains
+  conversation_id. Both from the Slack slice's review; tested in local/apps/slack.test.js.
+- apps: an adapter action may be `gated` (apps.act runs it, the Gate holds it, apps.send refuses
+  it with code gated); apps.route marks such routes `gated: true`; adapters may have ready(env).
 - Native Capsule (owner capsule-pro), on work/capsule-apps-native: Kit `CapsuleExtension.boxChanged()`
   (default no-op); CapsuleModel `extensionBoxChanged` called from the text and target didSets;
   ExtensionHost forwards it to every extension; Panel ignores a repeated Return (isARepeat).

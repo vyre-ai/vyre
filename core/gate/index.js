@@ -31,7 +31,9 @@ const byModel = caller => /^mcp(?:$|[\s:])/.test(String(caller || ""));
 // discard blind. gate.get's own shape, not a made-up one: `to`, `draft`, `final`.
 const destOf = (edited, it) => [].concat((edited && edited.to) ?? it.to).filter(Boolean).join(", ") || "(no destination)";
 const mergedContent = (edited, it) => ({ ...(it.final || it.draft), ...(edited || {}) });
-const previewOf = c => String((c && (c.subject || c.body || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
+// An MCP call held by the hub keeps its words in `arguments` (a Slack post's text or payload).
+const wordsOf = a => (a && typeof a === "object" ? a.text || a.payload || a.message || a.body || a.content : "") || "";
+const previewOf = c => String((c && (c.subject || c.body || wordsOf(c.arguments) || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
 
 /**
  * The kinds that act as the user in the outside world: sending or posting, paying, and deleting

@@ -69,7 +69,7 @@ const WRITE_STEMS = ["send", "delete", "remove", "publish", "transfer", "destroy
 const DELETE_WORDS = ["delete", "remove", "destroy", "drop", "erase", "purge", "trash", "archive", "unlink", "wipe", "clear"];
 const PAY_WORDS = ["pay", "payment", "charge", "transfer", "refund", "purchase", "buy", "order", "checkout", "spend", "invoice", "subscribe"];
 /** Where an outward call is going: the first of these arguments, else the server's name. */
-export const TO_KEYS = ["to", "channel", "channel_id", "chat_id", "recipient", "email", "address", "url"];
+export const TO_KEYS = ["to", "channel", "channel_id", "conversation_id", "chat_id", "recipient", "email", "address", "url"];
 
 /** A tool name as lowercase words: "sendMessage", "send_message" and "send-message" all read the same. */
 export function words(name) {

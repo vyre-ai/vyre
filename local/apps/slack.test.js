@@ -115,6 +115,10 @@ test("slack: words to a held message, nothing sent until the person approves, th
   assert.equal(held.said, "Slack → #general: the ovens are in · waiting for your approval");
   assert.deepEqual(lines(), [], "a held message reached Slack before approval");
 
+  // What the person proves against names the channel and the words, not a blank.
+  const def = /** @type {any} */ (d.registry).tools.get("gate.approve");
+  assert.equal(await def.presence.summary({ id: held.held.id }), 'Send send via mcp:slack to C0001GENERAL: "the ovens are in"');
+
   const out = await capsule("gate.approve", { id: held.held.id });
   assert.equal(out.data && out.data.state, "sent", JSON.stringify(out));
   assert.deepEqual(lines(), [`call slack_post_message ${JSON.stringify({ channel_id: "C0001GENERAL", text: "the ovens are in" })}`]);

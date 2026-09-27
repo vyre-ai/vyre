@@ -18,6 +18,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   official server (slack_post_message) and others (conversations_add_message) both work.
 - Refused before anything is sent: a post tool the hub would run unapproved, a channel or person
   Slack does not have, and an answer that comes back without `held`.
+- The Gate's presence line for an MCP call held by the hub now shows its words (the post's text
+  or payload in `arguments`), where it showed a blank, and the hub reads `conversation_id` as
+  where a call goes, so the line names the channel and an edited destination is honoured.
 - apps.targets for Slack lists live channels (#name) and real people (no bots, no deactivated
   accounts). "Which app?" offers Slack as an app Vyre sends through only when a Slack server is
   in the hub.
