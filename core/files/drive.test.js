@@ -1,8 +1,8 @@
 // @ts-check
-// Taildrive inside a real Registry, against a fake tailscale: the box's status with and without
-// the drive:share attribute, share and unshare and who may do them, the files guard on a share's
-// folder, the audit of who else the policy lets in, and the Mac's URL, mount, open and path
-// mapping through seams, so nothing is ever mounted or opened.
+// VyreDrive (Taildrive underneath) inside a real Registry, against a fake tailscale: the box's
+// status with and without the drive:share attribute, share and unshare and who may do them, the
+// files guard on a share's folder, the audit of who else the policy lets in, and the Mac's URL,
+// mount, open and path mapping through seams, so nothing is ever mounted or opened.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -15,7 +15,8 @@ import { Events } from "../events/index.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { SCRATCH } from "../../test/scratch.mjs";
-import { seams, parseDriveList, driveCap, driveUrl, shareMap } from "./drive.js";
+import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
+import { seams, parseDriveList, driveCap, driveUrl, shareMap, shareSpecs, mountStep, gitConfigCredential } from "./drive.js";
 
 const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const MAC_ID = "nMAC1CNTRL", PHONE_ID = "nPHONE1CNTRL", BOX_ID = "nBOX1CNTRL";
@@ -74,7 +75,7 @@ process.stderr.write("unexpected"); process.exit(2);
 }
 
 /** A registry with the files module, and on the Mac a fake link module (status and remote). */
-async function registry(t, { role, cfg = {}, link = undefined, seam = undefined, peers = [] }) {
+async function registry(t, { role, cfg = {}, link = undefined, seam = undefined, peers = [], presence = undefined }) {
   const root = tmp(t, "vyre-home-");
   const p = config.ensure(root);
   if (seam) { seams.set(root, seam); t.after(() => seams.delete(root)); }
@@ -100,7 +101,7 @@ async function registry(t, { role, cfg = {}, link = undefined, seam = undefined,
     for (const [i, id] of peers.entries()) db.prepare("INSERT INTO link_peers VALUES (?, ?, ?, ?, ?, ?, ?, NULL)").run(`p${i}`, "alex-mac", "alex@example.com", "alex-mac.tail0000.ts.net", id, `k${i}`, 1);
   }
   const events = new Events(db);
-  const reg = new Registry({ db, events, config: { role, ...cfg }, paths: p, log: () => {} });
+  const reg = new Registry({ db, events, config: { role, ...cfg }, paths: p, log: () => {}, ...(presence ? { presence } : {}) });
   await reg.start(found, { role });
   t.after(async () => { await reg.stop(); db.close(); });
   assert.equal(reg.modules.get("files").state, "running", reg.modules.get("files").error);
@@ -169,6 +170,22 @@ test("drive: default shares come from projectsDir, the files roots and glass.roo
   { projects: "/work", notes: "/work/notes" });
 });
 
+test("drive: a share is a path or { path, access }; a path alone is read-only, as configs before per-share access say", () => {
+  const cfg = { projectsDir: "/work/projects", glass: { roots: ["/work/glass"] },
+    files: { drive: { shares: { notes: "/work/notes", site: { path: "/work/site", access: "rw" }, "glass-files": { access: "rw" }, odd: { path: "/work/odd", access: "yes" }, empty: {} } } } };
+  assert.deepEqual(shareSpecs(cfg, ["/work"]), {
+    projects: { path: "/work/projects", access: "ro" },
+    "glass-files": { path: "/work/glass", access: "rw" },
+    notes: { path: "/work/notes", access: "ro" },
+    site: { path: "/work/site", access: "rw" },
+    odd: { path: "/work/odd", access: "ro" },
+  });
+  assert.deepEqual(shareMap(cfg, ["/work"]), { projects: "/work/projects", "glass-files": "/work/glass", notes: "/work/notes", site: "/work/site", odd: "/work/odd" });
+  // The old global files.drive.access is the default for a share that does not say.
+  assert.deepEqual(shareSpecs({ files: { drive: { access: "rw", shares: { notes: "/work/notes", site: { path: "/work/site", access: "ro" } } } } }, ["/work"]),
+    { projects: { path: "/work", access: "rw" }, notes: { path: "/work/notes", access: "rw" }, site: { path: "/work/site", access: "ro" } });
+});
+
 // ---- the box -----------------------------------------------------------------------------
 
 test("drive: without drive:share the box says why and how to fix it, and never runs drive list", async t => {
@@ -180,7 +197,7 @@ test("drive: without drive:share the box says why and how to fix it, and never r
   assert.match(s.why, /drive:share/);
   assert.match(s.fix, /drive:share.*drive:access.*tailscale\.com\/cap\/drive/);
   assert.equal(s.access, "ro");
-  assert.deepEqual(s.shares, [{ name: "projects", path: path.join(work, "projects"), shared: false }]);
+  assert.deepEqual(s.shares, [{ name: "projects", path: path.join(work, "projects"), access: "ro", shared: false }]);
   assert.ok(!ts.calls().some(c => c[0] === "drive"));
   const e = await no(reg, "files.drive.share", { name: "projects" }, "cli", "drive_off");
   assert.match(e.detail.fix, /drive:share/);
@@ -201,7 +218,7 @@ test("drive: with drive:share, status lists what is shared; share runs drive sha
   assert.equal(r.path, path.join(real, "glass"));
   assert.deepEqual(ts.calls().find(c => c[0] === "drive" && c[1] === "share"), ["drive", "share", "glass-files", path.join(real, "glass")]);
   // The paired Mac holds the capability and is not a finding; the phone holds none; the offline laptop is not asked.
-  assert.deepEqual(r.audit, { ok: true, findings: [], checked: 2 });
+  assert.deepEqual(r.audit, { ok: true, findings: [], unsafe: [], checked: 2 });
   assert.ok(!ts.calls().some(c => c[0] === "whois" && c[2] === "100.64.0.9"));
   assert.equal(events.since(0, { type: "drive.exposed" }).length, 0);
 
@@ -273,6 +290,175 @@ test("drive: a folder holding Vyre's own home is never shared", async t => {
   await no(reg, "files.drive.share", { name: "top" }, "cli", "not_available");
 });
 
+test("drive: status gives each share its access, and the top-level access is rw when any share is", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: LIST, whois: {} });
+  const { work, real } = boxWorld(t);
+  const { reg } = await registry(t, { role: "box",
+    cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work], drive: { shares: { site: { path: path.join(work, "glass"), access: "rw" } } } } } });
+  const s = await ok(reg, "files.drive.status");
+  assert.equal(s.access, "rw");
+  assert.deepEqual(s.shares.map(x => [x.name, x.access]), [["projects", "ro"], ["site", "rw"]]);
+  assert.equal((await ok(reg, "files.drive.share", { name: "site" })).access, "rw");
+  const p = await ok(reg, "files.drive.share", { name: "projects" });
+  assert.equal(p.access, "ro");
+  assert.equal(p.path, path.join(real, "projects"));
+});
+
+test("drive: files.drive.access is the owner's, saves the share's access, and says when the mount must change", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: {} });
+  const { work } = boxWorld(t);
+  const prev = process.env.VYRE_DRIVE_ACCESS;
+  t.after(() => { if (prev === undefined) delete process.env.VYRE_DRIVE_ACCESS; else process.env.VYRE_DRIVE_ACCESS = prev; });
+  const { reg, root } = await registry(t, { role: "box", peers: [MAC_ID],
+    cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work], drive: { shares: { notes: path.join(work, "glass") } } } } });
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "mcp"]) await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, caller, "denied");
+  await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, "local", "denied", { agent: "kit" });
+  await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, "tailnet:alex@example.com", "denied", { peer: { stableId: PHONE_ID } });
+  await no(reg, "files.drive.access", { name: "nothing", mode: "rw" }, "cli", "unknown_share");
+  assert.equal((await ok(reg, "files.drive.status")).access, "ro");
+
+  // The mount is read-only and a share turns rw: the step to rw.
+  process.env.VYRE_DRIVE_ACCESS = "ro";
+  const a = await ok(reg, "files.drive.access", { name: "projects", mode: "rw" });
+  assert.deepEqual(a, { name: "projects", access: "rw", mount: { want: "rw", now: "ro", change: true, step: mountStep("rw") } });
+  assert.equal(a.mount.step, "Set VYRE_DRIVE_ACCESS=rw in /srv/vyre/.env, then run docker compose up -d");
+  // A default share keeps its default path: only the access is written.
+  assert.deepEqual(config.load(root).files.drive.shares, { notes: path.join(work, "glass"), projects: { access: "rw" } });
+  assert.deepEqual((await ok(reg, "files.drive.status")).shares.map(x => [x.name, x.access]), [["projects", "rw"], ["notes", "ro"]]);
+
+  // A string share becomes { path, access }, from the paired Mac this time; the mount already allows rw.
+  process.env.VYRE_DRIVE_ACCESS = "rw";
+  const b = await ok(reg, "files.drive.access", { name: "notes", mode: "rw" }, "tailnet:alex@example.com", { peer: { stableId: MAC_ID } });
+  assert.deepEqual(b.mount, { want: "rw", now: "rw", change: false });
+  assert.deepEqual(config.load(root).files.drive.shares.notes, { path: path.join(work, "glass"), access: "rw" });
+
+  // No share rw any more while the mount is rw: the step back to ro.
+  await ok(reg, "files.drive.access", { name: "notes", mode: "ro" }, "capsule");
+  const c = await ok(reg, "files.drive.access", { name: "projects", mode: "ro" });
+  assert.deepEqual(c.mount, { want: "ro", now: "rw", change: true, step: "Set VYRE_DRIVE_ACCESS=ro in /srv/vyre/.env, then run docker compose up -d" });
+  // vyred cannot see the mount: it says so and still gives the step.
+  delete process.env.VYRE_DRIVE_ACCESS;
+  assert.deepEqual((await ok(reg, "files.drive.access", { name: "projects", mode: "ro" })).mount, { want: "ro", now: "unknown", change: true, step: mountStep("ro") });
+});
+
+test("drive: files.drive.access is the owner's own action: no proof, while share still asks for one; agents and guests are refused", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: {} });
+  const { work } = boxWorld(t);
+  assert.ok(PERSON_ONLY.has("files.drive.access") && !HUMAN_ONLY.has("files.drive.access"));
+  assert.ok(HUMAN_ONLY.has("files.drive.share") && HUMAN_ONLY.has("files.drive.unshare"));
+  // A verifier that asks on every floor tool and never passes: whatever succeeds needed no proof.
+  const presence = /** @type {any} */ ({
+    required: (tool, def) => HUMAN_ONLY.has(tool) || Boolean(def && def.presence),
+    verify: async () => ({ ok: false, message: "needs a person", methods: ["test"] }),
+    challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
+  });
+  const { reg } = await registry(t, { role: "box", peers: [MAC_ID], presence, cfg: { projectsDir: path.join(work, "projects"), files: { roots: [work] } } });
+  assert.equal((await ok(reg, "files.drive.access", { name: "projects", mode: "rw" })).access, "rw");
+  assert.equal((await ok(reg, "files.drive.access", { name: "projects", mode: "ro" }, "tailnet:alex@example.com", { peer: { stableId: MAC_ID } })).access, "ro");
+  await no(reg, "files.drive.share", { name: "projects" }, "cli", "presence_required");
+  for (const caller of ["mcp:agent:kit", "harness:agent:kit", "mcp", "tailnet-guest:sam@harlow.example"]) await no(reg, "files.drive.access", { name: "projects", mode: "rw" }, caller, "denied");
+});
+
+test("drive: a folder with a .env or a key anywhere inside is never shared, and says what it found", async t => {
+  const ts = fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: {} });
+  const { work } = boxWorld(t);
+  const env = path.join(work, "harlow"), key = path.join(work, "northwind"), fine = path.join(work, "kit");
+  fs.mkdirSync(path.join(env, "app", "config"), { recursive: true });
+  fs.writeFileSync(path.join(env, "app", "config", ".env.local"), "TOKEN=x\n");
+  fs.writeFileSync(path.join(env, "README.md"), "hi\n");
+  // A key by its first line, whatever it is called, and one by its name.
+  fs.mkdirSync(path.join(key, "deploy"), { recursive: true });
+  fs.writeFileSync(path.join(key, "deploy", "juno"), `-----BEGIN OPENSSH ${"PRIVATE"} KEY-----\nabc\n`);
+  fs.writeFileSync(path.join(key, "server.pem"), "x\n");
+  // A git checkout is not a secret: .git is hidden from Vyre's tools, not refused as a share.
+  fs.mkdirSync(path.join(fine, ".git", "objects"), { recursive: true });
+  fs.writeFileSync(path.join(fine, ".git", "HEAD"), "ref: refs/heads/main\n");
+  fs.writeFileSync(path.join(fine, "index.js"), "1\n");
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work], drive: { shares: { harlow: env, northwind: key, kit: fine } } } } });
+  const e = await no(reg, "files.drive.share", { name: "harlow" }, "cli", "unsafe_share");
+  assert.deepEqual(e.detail.found, [path.join("app", "config", ".env.local")]);
+  const k = await no(reg, "files.drive.share", { name: "northwind" }, "cli", "unsafe_share");
+  assert.deepEqual(k.detail.found, [path.join("deploy", "juno"), "server.pem"]);
+  assert.ok(!ts.calls().some(c => c[0] === "drive" && c[1] === "share"));
+  assert.equal((await ok(reg, "files.drive.share", { name: "kit" })).shared, "kit");
+});
+
+test("drive: the scan lists at most 10 findings, and refuses a tree too big to check", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: {} });
+  const { work } = boxWorld(t);
+  const many = path.join(work, "many"), big = path.join(work, "big");
+  for (let i = 0; i < 12; i++) { fs.mkdirSync(path.join(many, `p${String(i).padStart(2, "0")}`), { recursive: true }); fs.writeFileSync(path.join(many, `p${String(i).padStart(2, "0")}`, ".env"), "x\n"); }
+  fs.mkdirSync(big);
+  for (let i = 0; i < 20_001; i++) fs.writeFileSync(path.join(big, `f${i}`), "");
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work], drive: { shares: { many, big } } } } });
+  const m = await no(reg, "files.drive.share", { name: "many" }, "cli", "unsafe_share");
+  assert.equal(m.detail.found.length, 10);
+  const b = await no(reg, "files.drive.share", { name: "big" }, "cli", "unsafe_share");
+  assert.equal(b.detail.tooBig, true);
+  assert.match(b.message, /too many to check/);
+});
+
+test("drive: the scan skips dependency and build folders and .git/objects, and reads .git/config for a credential", async t => {
+  fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: {} });
+  const { work } = boxWorld(t);
+  const site = path.join(work, "site"), clean = path.join(work, "clean"), linked = path.join(work, "linked");
+  // Secrets inside skipped folders are not looked at; one in src is.
+  for (const d of ["node_modules/pkg", "dist", ".next", "target", "venv", ".venv", "src", ".git/objects/ab", ".git/hooks"]) fs.mkdirSync(path.join(site, d), { recursive: true });
+  for (const d of ["node_modules/pkg", "dist", ".next", "target", "venv", ".venv", ".git/objects/ab"]) fs.writeFileSync(path.join(site, d, ".env"), "TOKEN=x\n");
+  fs.writeFileSync(path.join(site, "src", ".env"), "TOKEN=x\n");
+  fs.writeFileSync(path.join(site, ".git", "hooks", ".env"), "TOKEN=x\n");
+  fs.writeFileSync(path.join(site, ".git", "config"), '[remote "origin"]\n\turl = https://x-access-token:abc@github.com/northwind/site\n');
+  // A clean checkout: no findings, and a folder named objects outside .git is walked.
+  for (const d of [".git/objects/ab", "objects", "node_modules/pkg"]) fs.mkdirSync(path.join(clean, d), { recursive: true });
+  fs.writeFileSync(path.join(clean, ".git", "config"), '[remote "origin"]\n\turl = https://github.com/northwind/site\n[remote "box"]\n\turl = ssh://git@github.com/northwind/site\n');
+  fs.writeFileSync(path.join(clean, ".git", "objects", "ab", "cd"), "x\n");
+  fs.writeFileSync(path.join(clean, "node_modules", "pkg", "index.js"), "1\n");
+  fs.writeFileSync(path.join(clean, "index.js"), "1\n");
+  // A link named node_modules is not skipped: it is checked as a link, here to an .ssh folder.
+  fs.mkdirSync(path.join(linked, "src"), { recursive: true });
+  const ssh = path.join(path.dirname(work), "juno", ".ssh");
+  fs.mkdirSync(ssh, { recursive: true });
+  fs.writeFileSync(path.join(ssh, "id_ed25519"), "x\n");
+  fs.symlinkSync(ssh, path.join(linked, "node_modules"));
+  const { reg } = await registry(t, { role: "box", cfg: { files: { roots: [work], drive: { shares: { site, clean, linked } } } } });
+  const e = await no(reg, "files.drive.share", { name: "site" }, "cli", "unsafe_share");
+  assert.deepEqual(e.detail.found, [path.join(".git", "config"), path.join(".git", "hooks", ".env"), path.join("src", ".env")]);
+  assert.equal((await ok(reg, "files.drive.share", { name: "clean" })).shared, "clean");
+  const l = await no(reg, "files.drive.share", { name: "linked" }, "cli", "unsafe_share");
+  assert.deepEqual(l.detail.found, ["node_modules"]);
+  // An extraheader with Authorization is a credential too.
+  fs.appendFileSync(path.join(clean, ".git", "config"), '[http]\n\textraheader = AUTHORIZATION: basic eHg=\n');
+  assert.deepEqual((await no(reg, "files.drive.share", { name: "clean" }, "cli", "unsafe_share")).detail.found, [path.join(".git", "config")]);
+});
+
+test("drive: gitConfigCredential finds a user or token before the host, and an Authorization extraheader", () => {
+  for (const c of ["url = https://x-access-token:abc@github.com/northwind/site", "url = https://abc@github.com/northwind/site",
+    "url = ssh://kit:pw@example.com/x", "\textraheader = Authorization: Bearer abc"]) assert.equal(gitConfigCredential(c), true, c);
+  for (const c of ["url = https://github.com/northwind/site", "url = ssh://git@github.com/northwind/site", "url = git@github.com:northwind/site.git",
+    "[user]\n\temail = alex@example.com", "\textraheader = X-Trace: 1"]) assert.equal(gitConfigCredential(c), false, c);
+});
+
+test("drive: the audit scans every shared folder again and reports one with a secret in it", async t => {
+  const ts = fakeTailscale(t, { status: statusJson({ selfCaps: { "drive:share": null } }), list: "", whois: { "100.64.0.7": whoisJson(MAC_ID, "alex-mac", DRIVE_RW) } });
+  const { work, real } = boxWorld(t);
+  const site = path.join(work, "site");
+  fs.mkdirSync(site);
+  fs.writeFileSync(path.join(site, "index.html"), "hi\n");
+  const { reg, events } = await registry(t, { role: "box", peers: [MAC_ID], cfg: { files: { roots: [work], drive: { shares: { site, notes: path.join(work, "glass") } } } } });
+  assert.equal((await ok(reg, "files.drive.share", { name: "site" })).audit.ok, true);
+  // A secret lands in the folder after it was shared. notes is offered but not shared: not scanned.
+  fs.writeFileSync(path.join(site, ".env"), "TOKEN=x\n");
+  fs.writeFileSync(path.join(work, "glass", ".env"), "TOKEN=x\n");
+  ts.set({ list: `name    path${" ".repeat(real.length)}    as\n----    ${"-".repeat(real.length + 4)}    ----\nsite    ${path.join(real, "site")}    vyre\n` });
+  const a = await ok(reg, "files.drive.audit", {}, "mcp");
+  assert.equal(a.ok, false);
+  assert.deepEqual(a.findings, []);
+  assert.deepEqual(a.unsafe, [{ share: "site", found: [".env"] }]);
+  const ev = events.since(0, { type: "drive.exposed" });
+  assert.equal(ev.length, 1);
+  assert.deepEqual(ev[0].payload.unsafe, [{ share: "site", found: [".env"] }]);
+});
+
 // ---- the Mac -----------------------------------------------------------------------------
 
 /** The Mac, with a fake link to a box that shares projects, and seams that record instead of mounting. */
@@ -295,6 +481,7 @@ async function mac(t, { boxShares = [{ name: "projects", path: "/work", shared: 
       remote.push([tool, input]);
       if (tool === "files.drive.status") return { data: { enabled: true, access, shares: boxShares, list: [] } };
       if (tool === "files.drive.share") return { data: { shared: input.name } };
+      if (tool === "files.drive.access") return { data: { name: input.name, access: input.mode } };
       return { error: { code: "no_such_tool", message: tool } };
     },
   };
@@ -359,6 +546,19 @@ test("drive: a read-write box mounts read-write; mount, open and share are refus
   }
   assert.ok(!m.remote.some(([tool]) => tool === "files.drive.share"));
   assert.deepEqual(await ok(m.reg, "files.drive.share", { name: "projects" }), { shared: "projects" });
+});
+
+test("drive: the Mac mounts each share by its own access, and a box without per-share access by the top-level one", async t => {
+  const m = await mac(t, { access: "rw", boxShares: [{ name: "projects", path: "/work", access: "ro", shared: true }, { name: "site", path: "/work/site", access: "rw", shared: true }] });
+  assert.equal((await ok(m.reg, "files.drive.mount", { share: "projects" })).readonly, true);
+  assert.equal((await ok(m.reg, "files.drive.mount", { share: "site" })).readonly, false);
+  assert.deepEqual(m.did.map(d => [path.basename(d[2]), d[3].readonly]), [["projects", true], ["site", false]]);
+  const old = await mac(t, { access: "ro" });
+  assert.equal((await ok(old.reg, "files.drive.mount", { share: "projects" })).readonly, true);
+  // files.drive.access on the Mac forwards to the box, and never for an agent.
+  await no(m.reg, "files.drive.access", { name: "site", mode: "ro" }, "mcp:agent:kit", "denied");
+  assert.deepEqual(await ok(m.reg, "files.drive.access", { name: "site", mode: "ro" }), { name: "site", access: "ro" });
+  assert.deepEqual(m.remote.filter(([tool]) => tool === "files.drive.access"), [["files.drive.access", { name: "site", mode: "ro" }]]);
 });
 
 test("drive: without a seam, mount and open refuse under tests instead of touching the Mac", async t => {

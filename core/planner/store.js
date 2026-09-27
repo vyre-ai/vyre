@@ -43,6 +43,18 @@ export const MIGRATIONS = [
 export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event"];
 export const STATES = ["open", "done", "cancelled"];
 
+/**
+ * The one name for a ring of an item at a moment: `planner-<item>-<due>`, due in epoch seconds. The
+ * box's push uses it as its tag and each device as its local notification's id, so a ring heard
+ * twice shows once (ADR 0029, R6).
+ */
+export const ringKey = (item, due) => `planner-${item}-${Math.floor(Number(due) / 1000)}`;
+/** A ring key read back into { item, due (ms) }, or null. */
+export const readKey = key => {
+  const m = /^planner-(.+)-(\d{1,12})$/.exec(String(key ?? ""));
+  return m ? { item: m[1], due: Number(m[2]) * 1000 } : null;
+};
+
 /** Short random ids: i_ for items, f_ for firings. */
 export const newId = prefix => `${prefix}_${crypto.randomBytes(6).toString("base64url")}`;
 
@@ -58,7 +70,7 @@ export function shape(r) {
     source: r.source ?? null, added_by: r.source_name ?? null, where: r.where_ ?? null,
   };
 }
-export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,
+export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, key: ringKey(f.item, f.due), due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,
   fired_at: f.fired_at, next_ring: f.next_ring ?? null, acked_at: f.acked_at ?? null, action: f.action ?? null, by: f.by ?? null, until: f.until ?? null });
 
 function safeJSON(s, fallback) { try { return s == null ? fallback : JSON.parse(String(s)); } catch { return fallback; } }
@@ -82,6 +94,8 @@ export function store(db) {
     item: id => db.prepare("SELECT * FROM planner_items WHERE id = ?").get(String(id)),
     /** @returns {any} */
     firing: id => db.prepare("SELECT * FROM planner_firings WHERE id = ?").get(String(id)),
+    /** The newest firing of an item for one due moment, whatever its state. @returns {any} */
+    firingAt: (item, due) => db.prepare("SELECT * FROM planner_firings WHERE item = ? AND due = ? ORDER BY fired_at DESC LIMIT 1").get(String(item), Number(due)),
     insert(row) {
       const cols = ["id", ...COLUMNS.filter(k => row[k] !== undefined)];
       db.prepare(`INSERT INTO planner_items (${cols.join(", ")}) VALUES (${cols.map(() => "?").join(", ")})`).run(...cols.map(k => cell(k, row[k])));

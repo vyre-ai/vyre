@@ -17,7 +17,7 @@ export const THEME_COLORS = {
     "ash": "#8C877D", "stone": "#B3AEA4", "bone": "#F1EEE6",
     "signal": "#C6F36B", "signal-hover": "#D4F88A", "signal-ink": "#0E0D0C", "signal-wash": "rgba(198,243,107,0.12)",
     "recall": "#EBC76B", "recall-wash": "rgba(235,199,107,0.10)",
-    "beacon": "#FF7A59", "beacon-wash": "rgba(255,122,89,0.12)", "beacon-rule": "rgba(255,122,89,0.28)",
+    "beacon": "#B8A4FF", "beacon-wash": "rgba(184,164,255,0.12)", "beacon-rule": "rgba(184,164,255,0.28)", "beacon-badge-ink": "#0E0D0C",
     "code-bg": "rgba(14,13,12,0.45)",
   },
   light: {
@@ -26,7 +26,7 @@ export const THEME_COLORS = {
     "primary-bg": "#141311", "primary-hover": "#4A463F", "primary-ink": "#F4F1EA",
     "focus": "#46700C", "signal-wash": "rgba(70,112,12,0.10)",
     "recall-ink": "#7E5B0C", "recall-wash": "rgba(126,91,12,0.08)", "recall": "#7E5B0C",
-    "beacon-ink": "#C2411F", "beacon-dot": "#E5532F", "beacon-wash": "rgba(229,83,47,0.10)", "beacon-rule": "rgba(229,83,47,0.28)",
+    "beacon-ink": "#5B3FC4", "beacon-dot": "#5B3FC4", "beacon-wash": "rgba(91,63,196,0.08)", "beacon-rule": "rgba(91,63,196,0.28)", "beacon-badge-ink": "#F4F1EA",
     "code-bg": "rgba(20,19,17,0.06)",
   },
 };
@@ -50,6 +50,7 @@ export const THEME_USE = {
     "beacon": "Needs you. Held tool calls, approvals, the menu-bar dot. Nothing else.",
     "beacon-wash": "Background behind a held item.",
     "beacon-rule": "The border of a held item.",
+    "beacon-badge-ink": "The count on a beacon dot badge.",
     "code-bg": "Behind code and command output.",
   },
   light: {
@@ -73,6 +74,7 @@ export const THEME_USE = {
     "beacon-dot": "Beacon on paper, for the dot graphic.",
     "beacon-wash": "Background behind a held item.",
     "beacon-rule": "The border of a held item.",
+    "beacon-badge-ink": "The count on a beacon dot badge.",
     "code-bg": "Behind code and command output.",
   },
 };
