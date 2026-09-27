@@ -302,7 +302,7 @@ test("sight.frame: one small JPEG of an agent's screen with its last step; never
     ctx.tool("hands-desktop.screenshot", { run: async i => ({ image: Buffer.from(JSON.stringify(i)).toString("base64"), mime: i.format === "jpeg" ? "image/jpeg" : "image/png" }) });
     return {};
   } };`;
-  const { reg, events } = await world(t, [["hands-desktop", ["hands-desktop.screenshot"], ["desktop.acted"], shotSrc]]);
+  const { reg, events } = await world(t, [["hands-desktop", ["hands-desktop.screenshot"], ["desktop.acted"], shotSrc], FAKES.agents]);
   events.emit("hands-desktop", "desktop.acted", { agent: "kit", action: "press", summary: "Open", ok: true });
   const f = data(await reg.call("sight.frame", { target: "agent:kit", maxWidth: 320 }, "deck"));
   assert.equal(f.mime, "image/jpeg");
@@ -313,4 +313,23 @@ test("sight.frame: one small JPEG of an agent's screen with its last step; never
   assert.equal((await reg.call("sight.frame", { target: "agent:kit" }, "mcp")).error?.code, "denied");
   const none = await world(t, []);
   assert.equal(data(await none.reg.call("sight.frame", { target: "agent:kit" }, "cli")).image, null);
+});
+
+test("sight.frame refuses a surface-prefixed agent claim, not only \"mcp:agent:\"", async t => {
+  // hands-desktop.screenshot's own resolveAgent restricts only "mcp:agent:<name>" (its own
+  // docstring); a caller shaped "cli:agent:kit" falls through to its trusted-caller branch there
+  // and could name any agent's computer. sight.frame's own agentCaller check must catch this
+  // shape itself, the same as sight.watch, since it is what stands between such a caller and a
+  // proxied "module:sight" forward.
+  const shotSrc = `export default { async start(ctx) {
+    ctx.tool("hands-desktop.screenshot", { run: async i => ({ image: Buffer.from("x").toString("base64"), mime: "image/jpeg" }) });
+    return {};
+  } };`;
+  const { reg } = await world(t, [["hands-desktop", ["hands-desktop.screenshot"], ["desktop.acted"], shotSrc], FAKES.agents]);
+  const r = await reg.call("sight.frame", { target: "agent:kit" }, "cli:agent:kit");
+  assert.equal(r.error?.code, "denied");
+  assert.match(r.error?.message, /"kit" is an agent/);
+  // The assistant still reaches it under the same shape.
+  const ok = data(await reg.call("sight.frame", { target: "agent:kit" }, "cli:agent:vyre"));
+  assert.equal(ok.mime, "image/jpeg");
 });

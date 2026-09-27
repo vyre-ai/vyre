@@ -6,11 +6,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Two cohesion audit fixes: a real caller check and a real pairing timestamp
 
-- `sight.watch` now checks its own caller before forwarding to `computers.watch`: that call
-  crosses as `module:sight` (core/modules/index.js's call wrapper), so `computers.js`'s ownSurface
-  floor (which refuses an ordinary agent claiming a person's screen) could never see who really
-  asked. `core/sight/index.js`'s `agentCaller` runs the same check against `meta.caller` first,
-  fails closed if it cannot reach `agents.list`, and still exempts the assistant.
+- `sight.watch` and `sight.frame` now check their own caller before forwarding to `computers.watch`
+  and `hands-desktop.screenshot`: those calls cross as `module:sight` (core/modules/index.js's call
+  wrapper), so neither `computers.js`'s ownSurface floor nor `hands-desktop`'s resolveAgent (which
+  restricts only the exact shape "mcp:agent:name", not a surface-prefixed claim like
+  "cli:agent:name") ever sees who really asked. `core/sight/index.js`'s `agentCaller` runs the same
+  claim check against `meta.caller` first, fails closed if it cannot reach `agents.list`, and still
+  exempts the assistant (found in e2e review).
 - `link.pending` rows carry `created`, the pairing request's real timestamp, alongside `expires`.
   `waiting`'s `fromPending` uses it directly; it only falls back to the old expiry-minus-TTL guess
   for a box that has not shipped the field yet.

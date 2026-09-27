@@ -299,9 +299,11 @@ export default {
         target: { type: "string" }, maxWidth: { type: "integer", minimum: 160, maximum: 1280 },
       } },
       callers: CALLERS,
-      run: async i => {
+      run: async (i, meta) => {
         const t = parseTarget(i.target);
         if (t.kind === "mac") throw fail("local_only", "this Mac's pixels never leave this Mac");
+        const claimant = await agentCaller(ctx, meta);
+        if (claimant) throw fail("denied", `"${claimant}" is an agent, not a person's screen; sight.frame opens a screen for a person, not for an agent to watch itself`);
         const maxWidth = Number.isInteger(i.maxWidth) ? i.maxWidth : 480;
         const r = await ctx.call("hands-desktop.screenshot", { agent: t.agent, format: "jpeg", maxWidth });
         if (r && r.error && r.error.code === "no_such_tool") return { target: i.target, image: null, why: "this machine runs no agent computers" };
