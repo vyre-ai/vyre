@@ -21,10 +21,10 @@ RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION} \
 
 # The Claude Agent SDK that Vyre-owned sessions run on (ADR 0030), with the Claude Code it bundles
 # (its platform optional package, about 230 MB, so no --omit=optional). The version is the one
-# pinned in core/sessions/sdk.js; bumping it there rebuilds this layer. Installed here rather than
+# pinned in core/sessions/sdk-pin.js (it imports nothing); bumping it there rebuilds this layer. Installed here rather than
 # on first use so a box never downloads it at runtime. VYRE_SESSIONS_SDK_DIR (below) points
 # sdkDir() at it. Each session is spawned as `tini -s -- claude ...` (/usr/bin/tini, above).
-COPY core/sessions/sdk.js /tmp/vyre-sdk.mjs
+COPY core/sessions/sdk-pin.js /tmp/vyre-sdk.mjs
 RUN mkdir -p /opt/vyre-sessions-sdk \
  && cd /opt/vyre-sessions-sdk \
  && VERSION=$(node --input-type=module -e "import('/tmp/vyre-sdk.mjs').then(m => process.stdout.write(m.PACKAGE + '@' + m.VERSION))") \

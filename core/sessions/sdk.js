@@ -16,9 +16,9 @@ import { spawn } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { isRealHome } from "../config/dialogs.js";
 
-export const PACKAGE = "@anthropic-ai/claude-agent-sdk";
-/** Pinned: the SDK is pre-1.0 and changes weekly. A bump runs the switchboard suite on the SDK first. */
-export const VERSION = "0.3.283";
+import { PACKAGE, VERSION } from "./sdk-pin.js";
+
+export { PACKAGE, VERSION };
 /** Roughly what the install downloads, said to the person before it starts. */
 export const DOWNLOAD_MB = { sdk: 25, bundled: 230 };
 
