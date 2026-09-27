@@ -985,8 +985,9 @@ export default {
       internal: true,
       description: "Set the first read's pace for an import: fast (bigger batches, within the plan's normal limits) or gentle (the default).",
       input: { type: "object", required: ["pace"], properties: { pace: { type: "string", enum: ["fast", "gentle"] } } },
-      run: async ({ pace }, { caller } = {}) => {
-        if (caller !== "module:import") throw denied("the pace is set by the import the person started");
+      run: async ({ pace }, { caller, firstParty: shipped } = {}) => {
+        // Vyre's own import module only: a home module could take the name "import" (e2e).
+        if (caller !== "module:import" || shipped !== true) throw denied("the pace is set by the import the person started");
         ctx.store.db.prepare("INSERT INTO memory_meta (k, v) VALUES ('read_pace', ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").run(pace === "fast" ? "fast" : "gentle");
         return { pace: pace === "fast" ? "fast" : "gentle" };
       },

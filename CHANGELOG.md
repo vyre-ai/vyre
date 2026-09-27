@@ -57,7 +57,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   action (never an agent or a device nobody signed in on). It records their consent with the
   server through federation's `sync.consent` (with the plan's hash), sets the first read's pace
   (`memory.pace`: fast reads batches of 50 a minute instead of 20, within the plan's normal limits;
-  never a paid allowance), and sends the plan's sessions through federation's `sync.send`, 25 at a
+  never a paid allowance; only Vyre's own import module may set it, as the loader vouches: a
+  module's calls now carry `firstParty` in their meta), and sends the plan's sessions through federation's `sync.send`, 25 at a
   time, in Claude Code's own layout; `import.status` and `import.progress` gain the upload stage
   (sent, failed, quarantined). `import.stop` and `import.cancel` stop and delete nothing; deleting
   everything a device sent stays the person's own previewed action (`sync.delete`).

@@ -221,9 +221,10 @@ test("pace: only the import the person started sets the first read's pace; never
   const { call, db } = await module_(t);
   assert.equal((await call("memory.pace", { pace: "fast" }, "deck")).code, "denied");
   assert.equal((await call("memory.pace", { pace: "fast" }, "mcp")).code, "denied");
-  assert.deepEqual((await call("memory.pace", { pace: "fast" }, "module:import")).data, { pace: "fast" });
+  assert.equal((await call("memory.pace", { pace: "fast" }, "module:import")).code, "denied", "a home module named import");
+  assert.deepEqual((await call("memory.pace", { pace: "fast" }, "module:import", { firstParty: true })).data, { pace: "fast" });
   assert.equal(db.prepare("SELECT v FROM memory_meta WHERE k = 'read_pace'").get().v, "fast");
   const read = (await call("memory.stats", {}, "cli")).data.personal.model;
   assert.equal(read.backfill_cap_usd, 2, "fast adds no money");
-  assert.deepEqual((await call("memory.pace", { pace: "gentle" }, "module:import")).data, { pace: "gentle" });
+  assert.deepEqual((await call("memory.pace", { pace: "gentle" }, "module:import", { firstParty: true })).data, { pace: "gentle" });
 });
