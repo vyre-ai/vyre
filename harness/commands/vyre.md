@@ -32,7 +32,7 @@ The user ran `/vyre $ARGUMENTS`.
   error because there is no time, ask for one.
   Never say a reminder is set unless `planner_add` returned it.
 - `agenda`: call `planner_agenda` with `{}` (today). Show its `entries` first, one line each with
-  the local time of `at` in its `tz`, then the `todos` due that day. Nothing on: say so in one line.
+  the local time of `at` in its `tz`, then the `todos` (due by then, overdue ones too). Nothing on: say so in one line.
   `agenda tomorrow` (or another day) passes `{"from": "YYYY-MM-DD"}` for that day.
 - `remember <fact>`: a fact about the user or their work, for every future session. Call
   `memory_remember` with `{"text": "<fact>"}` and say in one line that it is remembered. If
