@@ -152,7 +152,21 @@ const emit = (type, payload, thread = SID) => { for (const f of FakeES.last.l.ge
 const wait = (ms = 10) => new Promise(r => setTimeout(r, ms));
 /** Until a condition holds (boot reads over fetch), at most `ms`. */
 async function until(fn, ms = 5000) { const t = Date.now(); while (!fn()) { if (Date.now() - t > ms) throw new Error("timed out"); await wait(5); } }
-const scrollTo = y => { timeline.scrollTop = y; timeline.dispatchEvent(new Event("scroll")); };
+/** The reader scrolls: a wheel turned up first when the view goes up (only the reader's own intent detaches it). */
+const scrollTo = y => {
+  if (y < timeline.scrollTop) timeline.dispatchEvent(Object.assign(new Event("wheel"), { deltaY: -120 }));
+  timeline.scrollTop = y;
+  timeline.dispatchEvent(new Event("scroll"));
+};
+// Frames here are timers (no requestAnimationFrame): a reply's reveal takes one, the stick that
+// follows it another, and a loaded machine can push both past any fixed wait. So the stick tests
+// wait for what they look at, not for a time.
+/** The streaming reply shows `s` (its reveal is paced over frames). */
+const drawn = s => until(() => { const live = $(container, ".cv-live"); return !!live && text(live).includes(s); }).catch(() => {});
+/** At the bottom once the stick frame has run; the assertion after it says whether it did. */
+const bottom = () => until(() => timeline.scrollTop + VIEW === timeline.scrollHeight, 2000).catch(() => {});
+/** A few frames' worth of timers: enough for a stick frame that was asked for to have run. */
+const frames = async () => { for (let i = 0; i < 4; i++) await wait(20); };
 const mountedRows = () => timeline.children.filter(c => !has(c, "cv-spacer") && has(c, "cv-row") || has(c, "day-rule")).length;
 
 const { mountSession } = await import("./session.js");
@@ -230,9 +244,39 @@ test("detached: a streaming reply at the tail does not move what is read", async
   assert.equal($(container, ".jump-latest").hidden, false, "the pill says there is more below");
 });
 
-test("Jump to latest mounts the tail and sticks again", async () => {
+test("stuck: content that moves the view up without the reader (a clamp, a shrink) does not detach", async () => {
   await $(container, ".jump-latest").click();
   await wait(40);
+  // A scroll event that moves up with no wheel, key, touch or scrollbar behind it.
+  timeline.scrollTop = timeline.scrollTop - 300;
+  timeline.dispatchEvent(new Event("scroll"));
+  emit("thread.text", { message: "msg_x", delta: "Still following. " });
+  await drawn("Still following.");
+  await bottom();
+  assert.equal(timeline.scrollTop + VIEW, timeline.scrollHeight, "back at the bottom");
+  assert.equal($(container, ".jump-latest").hidden, true);
+  // An upward wheel does detach; scrolling back to the bottom sticks again.
+  scrollTo(timeline.scrollTop - 400);
+  emit("thread.text", { message: "msg_x", delta: "More while reading above. " });
+  await drawn("More while reading above.");
+  // A stick frame, had there been one, would have run by now.
+  await frames();
+  assert.ok(timeline.scrollTop + VIEW < timeline.scrollHeight - 100, "the reader stays where they went");
+  scrollTo(timeline.scrollHeight);
+  emit("thread.text", { message: "msg_x", delta: "Back at the tail. " });
+  await drawn("Back at the tail.");
+  await bottom();
+  assert.equal(timeline.scrollTop + VIEW, timeline.scrollHeight, "stuck again");
+  // Leave it detached for the next test, as the one before left it.
+  scrollTo(timeline.scrollHeight / 2);
+  emit("thread.text", { message: "msg_x", delta: "And more. " });
+  await drawn("And more.");
+  await frames();
+});
+
+test("Jump to latest mounts the tail and sticks again", async () => {
+  await $(container, ".jump-latest").click();
+  await bottom();
   assert.equal(timeline.scrollTop + VIEW, timeline.scrollHeight);
   assert.ok($(container, ".cv-live"), "the streaming reply is mounted");
   assert.ok(mountedRows() < 150);
@@ -245,6 +289,9 @@ test("stuck to the bottom, a streaming update touches only the tail row", async 
   touched = [];
   const t = performance.now();
   for (let i = 0; i < 20; i++) { emit("thread.text", { message: "msg_x", delta: `Line ${i} of the reply. ` }); await wait(20); }
+  // No ResizeObserver here: the stick is the frame a growing reply asks for, one frame after it
+  // grew, and the paced reveal may still be draining: it settles at the bottom.
+  await until(() => timeline.scrollTop + VIEW === timeline.scrollHeight, 2000);
   perf.streamMs = Math.round(performance.now() - t);
   const inTimeline = touched.filter(n => n === timeline || rowOf(n));
   const outside = inTimeline.filter(n => rowOf(n) !== live);

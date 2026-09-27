@@ -25,23 +25,38 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - ctx.events.latestId() for modules (planner.upcoming's last_event).
 - CLI write() with idempotency keys (threads send/answer, screen send); sse.js split-CRLF fix;
   strict-tsc JSDoc. c8f5654 is on main (15e82dd, with the integrator's term save() fix).
+- R5 relay chaos (test/chaos/relay.test.js): 4 pass + 2 todo (relay redial bugs, filed with
+  relay), twice on testbox; web.js over() fixed for relay bodies.
+- R6 chaos test and web.js over() (relay paths); 39/39 on testbox after main 9efbddc merge.
 - Tests on testbox (27 Sep, after main 15e82dd): 145 targeted pass, 0 fail. Earlier: 189 pass, 0 fail. Earlier: 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
   (real dtach), daemon and modules tests.
 
 ## Doing
-- Waiting on planner 3c75e47 for the R6 chaos test; helping pwa and mobile adopt web.js.
+- Paused (lead, native-core refocus). ab4fdc4d is in batch 3b. Resume on the lead's word.
 
 ## Next
-1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
-2. R6 chaos test, once work/planner 3c75e47 is on main (not yet at b1dbb49). Planner's spec:
-   key = planner-<item>-<Math.floor(due/1000)>; planner.upcoming omits moments answered or
-   ringing and returns last_event; done/snooze/dismiss {key} on an unrung moment records it
-   answered, the box never rings it, planner.acked carries unrung:true; a repeat of the key
-   returns {already:true}; the push tag and planner-ack tag equal the key. Test: a device takes
-   upcoming, goes offline (proxy partition), answers from its outbox by key, comes back; the box
-   never rings it, one planner.acked, and a retried answer is {already:true}.
-3. `last_event` on threads.get, planner.list and Needs reads (R1), with their owners.
-4. A 30 min perf check of an idle durable terminal and of the stream client (scripts/perf-check).
+1. Relay fixed the redial bugs in work/relay fe94ed13 (batch 3b; relay ran this file with the
+   todos removed: 54/54). Once fe94ed13 is on main, merge main and flip the two `todo` tests in test/chaos/relay.test.js
+   ("kit redials within its backoff...", "the box's relay link comes back after an outage
+   longer than its first retry") to real tests and run the file twice on testbox.
+2. Idle durable terminal perf check: one dtach terminal open and idle for 30 min on testbox
+   (scripts/perf-check, nice 15, load under 8): RSS and CPU of vyred, the dtach master and the
+   shell; plus the stream client idle (heartbeats only). Put the numbers here.
+3. `last_event` on reads (R1): threads.get and the Needs read (sessions, pwa) return
+   `ctx.events.latestId()` as `last_event`, as planner.list/upcoming already do; add a chaos test
+   (read, then follow from last_event, nothing missed) once they land.
+4. pwa and mobile adopting web.js (outbox, cursor, cache, lifecycle; over(createPaths().fetch)
+   for the phone): chaos tests against their clients when they ask.
+5. mobile asks (work/mobile 3dd724c5, src/state/answers.ts; not urgent): outbox.js
+   `cancel(key)`: drop an entry not yet handed to the transport and return true; false if it
+   is in flight or done. Optional `add(tool, input, { holdMs })`: persisted at once, delivered
+   after holdMs unless cancelled, so a 4 s Undo on the approve swipe can put the answer in the
+   outbox the moment it commits (a killed app still sends it). Keep lifecycle's flush on hide
+   delivering held entries early only if mobile wants that; ask.
+6. Done: e2e's start-up SIGTERM (main.js handlers before load) and loop.sh exit-code fixes,
+   tested (main.test.js fails on the old main.js). One init confirmed by e2e (work/e2e c8e00e7b).
+7. After batch 3 deploys: confirm on the live box that PID 1 is tini (ci smoke asserts it) and
+   that a vyred restart keeps an open terminal.
 
 ## Audit (27 Sep 2026)
 - R1: Deck, iOS, Android and the Mac link reconnect with since=latest if they drop before the
@@ -60,6 +75,11 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - R7: stop() cuts in-flight calls (closeAllConnections) and SSE without draining.
 
 ## Needs from others
+- relay: on Node 22 a refused WebSocket fires only `error`, never `close`. relay/client/client.js
+  openChannel (ws.onerror no-op, ~line 111) waits the full 15 s handshake instead of backing off;
+  core/relay/link.js (~93, ~107) schedules retries only from onclose, so a retry landing during a
+  relay outage never retries again: the box stays off the relay until vyred restarts. Todo tests
+  in test/chaos/relay.test.js.
 - integrator: box/Dockerfile's apt line is `procps dtach tini` here and `procps tini` on
   work/sessions: the union is right. Build the box image once in CI (ENTRYPOINT tini, CMD loop.sh).
 - chat: show `term.closed` reason `box updated` / `terminal_closed` as "The box was updated and
@@ -81,10 +101,12 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - vyred HTTP: 409 `idempotency_conflict`; 503 `restarting` with retry-after during drain.
 - Switchboard stopAll: `thread.stopped` reason `restart` (was `stopped`).
 - Module ctx: `ctx.events.latestId()`.
+- box composes: `init: true` dropped on vyre, docker-api, egress (lead approved; e2e does theirs).
 - daemon client: new `write()`; CLI threads send/answer and the screen's send use it (polish-cli).
 - term: `term.closed` reason `box updated` at start for lost terminals; `term.attach` error code
   `terminal_closed`; terms.json gains `gone`.
 - box image: ENTRYPOINT tini, CMD core/daemon/loop.sh.
+- term: size ownership frames `take` (client) and `size` with `owner` (box), agreed with chat.
 - term: `term.open`/`term.attach` add `durable`, `offset`, `oldest`; attach takes `from`; new
   text frames `cut` and `at` only when `from` is given; close code 1012 on stop; config
   `term.keep_hours`.

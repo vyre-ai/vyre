@@ -18,7 +18,7 @@
 @keyframes mp-pulse { 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .mp-sheet[aria-busy="true"] .mp-head .dot { animation: none; } }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .mp-back { align-items: flex-end; padding: 0; }
   .mp-sheet { max-width: none; border-radius: var(--r-4) var(--r-4) 0 0; border-bottom: none; padding: 8px 16px calc(20px + env(safe-area-inset-bottom)); }
   .mp-grip { display: block; width: 36px; height: 4px; margin: 0 auto 16px; border-radius: 2px; background: var(--rule-strong); }

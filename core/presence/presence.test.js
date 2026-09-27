@@ -44,7 +44,7 @@ test("presence: the floor's list holds every human-only tool", () => {
   assert.ok(HUMAN_ONLY.size >= 10);
   // The owner's own actions ask no proof (no nagging), but stay off a model's shell (PERSON_ONLY).
   for (const t of ["threads.answer", "term.open", "gate.revise", "gate.reject", "agents.create", "agents.update", "computers.takeover",
-    "files.drive.access", "learn.accept", "learn.retire", "learn.relax"]) assert.ok(!HUMAN_ONLY.has(t) && PERSON_ONLY.has(t), t);
+    "files.drive.access", "learn.accept", "learn.retire", "learn.relax", "projects.move", "presence.person.revoke"]) assert.ok(!HUMAN_ONLY.has(t) && PERSON_ONLY.has(t), t);
   assert.ok(!HUMAN_ONLY.has("memory.correct"));
 });
 
@@ -336,10 +336,10 @@ test("presence: a session covers vault reveal, approve and grant for the Deck an
   const s = p.openSession({ method: "touchid" });
   const proof = { method: "session", id: s.session, secret: s.secret };
   for (const tool of ["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant"]) {
-    for (const caller of ["deck", "capsule", "tailnet:alex@example.com"]) {
+    for (const caller of ["deck", "capsule", "tailnet:alex@example.com", "device:abcdefghijklmnop"]) {
       assert.ok((await p.verify({ tool, input: { name: "mail-token" }, caller, proof, def })).ok, `${tool} from ${caller}`);
     }
-    for (const caller of ["cli", "local", "mcp", "mcp:agent:kit", "deck agent:kit", "tailnet:agent:kit", "harness"]) {
+    for (const caller of ["cli", "local", "mcp", "mcp:agent:kit", "deck agent:kit", "tailnet:agent:kit", "harness", "device:notarelaydeviceid", "device:abcdefghijklmnop agent:kit"]) {
       assert.equal((await p.verify({ tool, input: { name: "mail-token" }, caller, proof, def })).ok, false, `${tool} from ${caller}`);
     }
   }
@@ -509,4 +509,38 @@ test("presence: a tool can ask only for some inputs, and counts as asking when l
   assert.equal(p.required("agents.update", def), true, "no input: listing tools");
   assert.equal(p.required("vault.reveal", {}, { name: "northwind-mail" }), true, "on the floor's list whatever the input");
   assert.equal(p.required("agents.create", {}, { name: "kit" }), false, "making an agent is a person's, with no passkey");
+});
+
+test("presence: a passkey a relayed browser enrolled proves only for that device, from its app's origin", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const seen = [];
+  const p = new Presence({ db, platform: "linux", touchid: null, who: async () => [],
+    webauthn: { verifyAssertion: async a => { seen.push(a.origins || null); return { ok: true, signCount: 0 }; } } });
+  const spkiOf = () => crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  p.enroll({ kind: "passkey", name: "alex-mac", public_key: spkiOf(), alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: "boxcredential1" });
+  p.enroll({ kind: "passkey", name: "alex-phone web", public_key: spkiOf(), alg: -7, rp_id: "app.vyre.run", credential_id: "webcredential1",
+    device: "abcdefghijklmnop", origin: "https://app.vyre.run" });
+  const PHONE = { kind: "device", stableId: "abcdefghijklmnop" }, OTHER = { kind: "device", stableId: "qrstuvwxyz234567" };
+  const tool = "vault.reveal", input = { name: "northwind-mail" };
+  const proveWith = async (peer, cred, verifyPeer = peer) => {
+    const c = await p.challenge({ tool, input, method: "passkey", peer });
+    if (c.error) return c;
+    const v = await p.verify({ tool, input, caller: "deck", peer: verifyPeer, proof: { method: "passkey", id: c.challenge, cred, ad: "x", cd: "x", sig: "x" }, def: {} });
+    return { offered: c.webauthn.allowCredentials.map(x => x.id), rpId: c.webauthn.rpId, ok: v.ok };
+  };
+  // The Deck is offered only the box's passkey, and the phone's web passkey does not prove there.
+  assert.deepEqual(await proveWith(null, "boxcredential1"), { offered: ["boxcredential1"], rpId: "vyre.tail0000.ts.net", ok: true });
+  assert.equal((await proveWith(null, "webcredential1")).ok, false);
+  // The relayed browser is offered only its own, checked against app.vyre.run's origin.
+  assert.deepEqual(await proveWith(PHONE, "webcredential1"), { offered: ["webcredential1"], rpId: "app.vyre.run", ok: true });
+  assert.deepEqual(seen[seen.length - 1], ["https://app.vyre.run"]);
+  assert.equal((await proveWith(PHONE, "boxcredential1")).ok, false, "not the box's passkey from a relayed device");
+  // Another device: no passkey offered; and a challenge made for the phone does not prove from it.
+  assert.match((await proveWith(OTHER, "webcredential1")).error.message, /no passkey is enrolled for this device/);
+  assert.equal((await proveWith(PHONE, "webcredential1", OTHER)).ok, false);
+  // Removing the key removes its binding.
+  assert.equal(p.remove("webcredential1"), true);
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM presence_key_devices").get().n, 0);
 });

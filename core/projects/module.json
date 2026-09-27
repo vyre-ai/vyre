@@ -6,7 +6,7 @@
   "does": {
     "tools": [
       "projects.list", "projects.create", "projects.add-threads", "projects.remove-threads",
-      "projects.catalog", "projects.of", "projects.threads", "projects.context"
+      "projects.catalog", "projects.of", "projects.threads", "projects.context", "projects.move"
     ]
   },
   "watches": { "emits": ["project.created", "project.changed", "thread.picked", "thread.unpicked", "projects.moved"] },
