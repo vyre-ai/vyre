@@ -181,7 +181,8 @@ export function mountSession(container, opts) {
     onQueue: (n, name) => { mac.queued = n; mac.name = name; if (isMac(where)) drawHead(); },
     onOffline: m => { mac.offline = m; drawHead(); },
     onStop: () => stopTurn(),
-    session: S, patch: keys => patch(keys),
+    // A message drawn on send (its row key u:<uuid>) brings the reader down to it, as thread.sent does.
+    session: S, patch: keys => { const sent = !!booted && keys.some(k => k.startsWith("u:")); patch(keys); if (sent) toBottom(); },
     cwd: () => record.current?.cwd || recorded.session?.cwd || null,
     name: () => agentName(),
     onRewind: () => openRewind(),
@@ -548,6 +549,9 @@ export function mountSession(container, opts) {
   /** A running call while the session waits on the person: its ask is open, so it is not working. */
   const waitingOn = it => it.status === "running" && S.state === "waiting";
 
+  /** Is there a message of the person's after this item (from the tail, so a last turn costs little)? */
+  const saidAfter = it => { for (let i = S.items.length - 1; i >= 0; i--) { const x = S.items[i]; if (x === it) return false; if (x.kind === "user") return true; } return false; };
+
   /** An item as the block the renderers and the raw view know. */
   function asBlock(it) {
     const at = it.at;
@@ -558,8 +562,9 @@ export function mountSession(container, opts) {
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
         error: it.status === "failed" || (!!it.error && it.status !== "running"), duration_ms: it.duration_ms ?? null, ts: at, patch: it.patch,
         done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it) };
-      // A turn the transcript has not closed is still going only while the session is busy.
-      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: !!it.open && busy(),
+      // A turn the transcript has not closed is still going only while the session is busy and
+      // nothing was said after it (a message sent now closes the one before, even unread yet).
+      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: !!it.open && busy() && !saidAfter(it),
         canceled: it.canceled, byMe: byMe.has(it.key), error: it.error || (it.ok === false && !it.canceled ? (it.reason || "error") : null) };
       default: return null;
     }

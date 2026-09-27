@@ -411,8 +411,10 @@ export function mountComposer(opts) {
     put(note); note.classList.remove("soft");
     remember(hist, text); saveHistory();
     queueToggle = false;
-    const drawn = !machine && !!mode && !!S;
-    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode, at: Date.now(), ...(imgs.length ? { images: imgs.length } : {}) }));
+    // Drawn at once (a steer, a queued row, or a plain send's words), except a / command, which the
+    // transcript shows its own way.
+    const drawn = !machine && !!S && (!!mode || !text.startsWith("/"));
+    if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode: mode || "send", at: Date.now(), ...(imgs.length ? { images: imgs.length } : {}) }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
       : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && CAPS.has(SEND_IMAGES) === true ? { images: sendImages(imgs) } : {}) };
@@ -451,7 +453,7 @@ export function mountComposer(opts) {
       // A session busy in a terminal queued it anyway: the box kept the words, not the images.
       // They go back in the box, so they can be sent once the turn ends.
       if (imgs.length && !images.length) { images = imgs; drawImages(); say("Queued without the images: a queued message keeps only its words. They are back in the box to send after this turn."); }
-      if (drawn && mode === "steer") patch(dropLocal(/** @type {any} */ (S), uuid));
+      if (drawn && mode !== "queue") patch(dropLocal(/** @type {any} */ (S), uuid));
       if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
       if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
       if (id != null && !machine) return;

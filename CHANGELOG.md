@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: a sent message shows at once
+
+A plain send (the session idle) waited for the box before its words appeared (116 ms in the
+native bar's budget 9). It is drawn on Enter now, like a steer, and the box's echo adopts the same
+row by its words; a failed send takes it away, a / command still waits for the transcript. The
+turn before it keeps its footer (a message after a turn closes it). Budget 9: 16 ms, no flicker,
+no reorder.
+
 #### Chat: the session view to Design A v1, and the defects from the 27 Sep shots
 
 - Paths read relative to the session's folder everywhere a tool row, a fold, an ask card or its
