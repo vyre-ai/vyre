@@ -86,6 +86,10 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Pending page changes (apply when the code reaches main)
 
+- USER DECISION: Taildrive is "VyreDrive" in all user-facing text, described as "built on
+  Tailscale's Taildrive" with a link to Tailscale's Taildrive docs. Apply when tailnet's rename
+  lands: using/tailscale.md, get-started/tailscale.md, then regenerate reference (tools, index).
+  ADR 0014 keeps its wording (a record).
 - USER STANDING RULE, Vyre must not nag: fewer prompts. Touch ID only for pairing a device, vault
   secrets, and sending, posting or paying outside; one Touch ID lasts about 30 minutes. Pages
   change only when that code lands (presence.md, vault.md, memory.md, learning.md, glass.md,
