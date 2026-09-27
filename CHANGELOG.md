@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A module writes its own settings (settings.write)
+
+- core/settings: settings.write, internal and for modules only (ADR 0033, approved by the lead). A
+  module may set or clear only its own "<module>." keys, only keys kept in Vyre's settings table,
+  and never a key that asks for a confirm or loosens security. It has its own write path, so it
+  never calls a tool store (which runs as the person) or touches config.json or Claude Code's
+  files. settings.changed carries `by: "module:<name>"` for these writes. Reviewed by e2e before it
+  lands.
+
 #### One way to change every setting: core/settings and vyre config
 
 - Modules declare their own settings in module.json ("settings": key, group, label, type, levels,
