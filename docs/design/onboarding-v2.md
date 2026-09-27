@@ -91,6 +91,20 @@ have been. `secrets`, `computers` and `drive` were added as their own new entrie
 `history` and `devices`. Reconciling the two numberings (splitting or merging screens to match
 this table 1:1) is a `Next`, not done yet.
 
+### Step 2: Pair this device with the server
+
+Built: the existing `tailscale` screen now has an "Advanced: your tailnet policy" collapsible,
+shown once signed in, with the merged policy snippet (Taildrive, Taildrop, SSH, egress when on)
+from tailnet's `onboard.tailscale {action: "policy"}` (work/tailnet ecd89c0c), replacing the four
+separate placeholder snippets in `docs/adr/0014-tailnet.md`: pretty-printed JSON, a Copy button,
+tailnet's own notes. `ready: false` shows tailnet's `why` instead. A person who onboarded before
+this shipped would want the same panel in Settings > Network; not built there yet.
+
+The existing-server detection (this step becoming "Add this device to your Vyre server" when one
+is found) still waits on tailnet's proposed names.discover tool (peer scan + an unauthenticated
+`/v1/whoami` probe on each online peer), not yet built (design agreed): tailnet is on another
+0.1.1 item first.
+
 ### Step 4: Import your sessions
 
 Full spec: `docs/design/import.md` on `work/memory-iq` (8702ab66). Built (`deck/onboard/onboard.js`
@@ -165,8 +179,8 @@ open/close handling are a reasonable starting point for capsule-pro's real, sign
 - glass-live: `docs/design/agent-browsers.md` (not written yet), and the real server-size numbers
   for step 7, once e2e measures them.
 - mobile: confirm step 9 is fine as a stub for 0.1.1.
-- federation: step 8's drafted options, once the lead brings the user's decisions back; step 2's
-  existing-server detection contract.
+- federation: step 8's drafted options, once the lead brings the user's decisions back.
+- tailnet: the proposed names.discover tool for step 2's existing-server detection (design agreed, not built).
 - windows: confirm `docs/using/windows.md` covers what step 2 needs to point a fresh Windows PC
   at for install, once that guide exists.
 - launch: reconcile the client `STEPS` array (9 entries) with this doc's numbering (10 steps,

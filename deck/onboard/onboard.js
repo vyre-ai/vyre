@@ -410,6 +410,29 @@ const SCREENS = {
     const panel = h("div", { class: "ob-panel" }, h("div", { class: "found" }, h("span", { class: "faint" }, "Looking for Tailscale")));
     col.append(panel);
     s.foot(null);
+
+    // The merged policy snippet (tailnet, ecd89c0c): one JSON object for Taildrive, Taildrop,
+    // egress (when on) and the SSH rule, replacing the four separate placeholders in ADR 0014.
+    // Fetched once, only after signing in; a person who onboarded before this shipped finds the
+    // same panel later in Settings > Network (not yet built).
+    let policyDrawn = false;
+    const drawPolicy = async () => {
+      if (policyDrawn) return;
+      policyDrawn = true;
+      const box = h("div", null, h("span", { class: "faint" }, "Reading your tailnet policy…"));
+      panel.append(h("details", { class: "ob-collapse" }, h("summary", null, "Advanced: your tailnet policy"), box));
+      const r = await attempt("onboard.tailscale", { action: "policy" });
+      if (r.error || !r.data.ready) { put(box, h("p", { class: "small muted" }, r.data?.why || "Not ready yet. Reload this page to try again.")); return; }
+      const text = JSON.stringify(r.data.policy, null, 2);
+      const copyBtn = h("button", { type: "button", class: "btn btn-line btn-sm", onclick: async () => {
+        try { await navigator.clipboard.writeText(text); put(copyBtn, "Copied"); later(() => put(copyBtn, "Copy"), 1500); } catch {}
+      } }, "Copy");
+      put(box,
+        h("p", { class: "small muted" }, "Paste this into your tailnet's access policy (the admin console's Access Controls tab) to turn on Taildrive, Taildrop, egress and SSH between your devices."),
+        h("pre", { class: "code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "8px 0" } }, text),
+        copyBtn,
+        r.data.notes?.length ? h("ul", { class: "small muted", style: { marginTop: "8px" } }, r.data.notes.map(n => h("li", null, n))) : null);
+    };
     const show = (/** @type {any} */ t) => {
       if (!t.installed) {
         put(panel,
@@ -437,7 +460,7 @@ const SCREENS = {
         t.loginUrl && !signed ? h("p", { class: "notice" }, "The sign-in page did not open? ",
           h("a", { class: "link", href: t.loginUrl, target: "_blank", rel: "noopener" }, "Open it here")) : null,
         null);
-      if (signed) s.foot({ label: "Continue", run: s.next });
+      if (signed) { s.foot({ label: "Continue", run: s.next }); drawPolicy(); }
       else if (opened) s.foot({ label: "Waiting for Tailscale", disabled: true, run: () => {} });
       else s.foot({ label: "Connect", run: connect });
     };
