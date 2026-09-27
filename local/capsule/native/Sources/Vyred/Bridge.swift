@@ -41,7 +41,6 @@ public enum Bridge {
     }
 
     /// The words a quick question is sent with: the user's own, then how to answer.
-    public static let quickAppend = "Answer briefly, in markdown. You have no tools here; if the question needs the user's files or accounts, say so in one line."
 
     /// The tool a destination needs.
     static func needs(_ d: VyreDestination) -> String? {

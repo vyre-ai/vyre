@@ -24,15 +24,16 @@ const MODES = new Set(["append", "replace"]);
 const NAME = /^[A-Za-z0-9._-]{1,64}$/;
 
 /**
- * A checked scope: "assistant", "agent:<name>" or "project:<slug>". Throws on anything else.
+ * A checked scope: "assistant", "agent:<name>", "project:<slug>" or "capsule" (the Capsule's
+ * quick answer, Vyre IQ: iq-prompt.js). Throws on anything else.
  * @param {unknown} s
  * @returns {string}
  */
 export function scopeOf(s) {
   const v = String(s ?? "");
-  if (v === "assistant") return v;
+  if (v === "assistant" || v === "capsule") return v;
   const m = /^(agent|project):(.*)$/.exec(v);
-  if (!m) throw new Error(`prompt scope must be "assistant", "agent:<name>" or "project:<slug>", not ${JSON.stringify(v.slice(0, 80))}`);
+  if (!m) throw new Error(`prompt scope must be "assistant", "agent:<name>", "project:<slug>" or "capsule", not ${JSON.stringify(v.slice(0, 80))}`);
   if (!NAME.test(m[2])) throw new Error(`the ${m[1]} ${m[1] === "agent" ? "name" : "slug"} in a prompt scope must be 1-64 letters, digits, dots, dashes or underscores`);
   return v;
 }

@@ -11,7 +11,7 @@
 //                        (js/need-sheet.js), and real buttons carry the same actions.
 //   Working              running sessions with their step count and latest step; when nothing
 //                        runs, the two most recent sessions stand in.
-//   From memory          one block: what memory learned today (memory.facts), in --recall-wash.
+//   From memory          one block: what memory learned today (memory.facts), on --hover.
 //
 // The no-nag rule: approving or denying an ask, answering, Later and discarding prove nothing;
 // only Send (in the sheet) asks for Face ID. Undo is honest: a deny or a discard waits out its
@@ -23,12 +23,14 @@
 
 import { h, put, link, go } from "./dom.js";
 import { attempt, on } from "./api.js";
+import { mountGlassMini } from "./glass-mini.js";
 import * as needs from "./needs.js";
 import { initial, base, since } from "./fmt.js";
 import { passkeyState, pushState, setupCard } from "./phone-setup.js";
 import { firstPasskeyCard } from "./first-passkey.js";
 import { standalone } from "./pwa.js";
 import { openSheet } from "./sheet.js";
+import { showToast, UNDO_MS } from "./toast.js";
 import { openNeedSheet, glyph, problem } from "./need-sheet.js";
 import { titleOf, secondLine, thirdLine, ago, ariaLabel, presenceWord, swipeActions, swipeCommit, release, toastFor, deferred, snoozes,
   SWIPE_HINT, ACTION_W } from "./need-rows.js";
@@ -39,7 +41,6 @@ const local = (() => { try { return window.localStorage; } catch { return null; 
 const getLocal = (/** @type {string} */ k) => { try { return local?.getItem(k) ?? null; } catch { return null; } };
 const setLocal = (/** @type {string} */ k, /** @type {string} */ v) => { try { local?.setItem(k, v); } catch {} };
 const SWIPED_KEY = "vyre.needs.swiped";
-const UNDO_MS = 4000;
 const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** first-passkey.js's card is styled in pair.css, which pair.js loads only when it draws. */
@@ -58,10 +59,10 @@ export function phoneNow(ctx) {
   const needsSec = h("section", { class: "np-sec np-needs", "aria-labelledby": "np-needs-h" });
   const workSec = h("section", { class: "np-sec", "aria-labelledby": "np-work-h" });
   const memSec = h("section", { class: "np-sec np-mem-sec" });
-  const toastText = h("span", { class: "np-toast-t" });
-  const toastUndo = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "np-toast-undo" }, "Undo"));
-  const toast = h("div", { class: "np-toast", role: "status", "aria-live": "polite", hidden: true }, toastText, toastUndo);
-  put(ctx.root, h("div", { class: "now np" }, remind, needsSec, workSec, memSec, toast));
+  // What each agent's computer is doing now (sight, glass-mini.md), above Working; hidden while none runs.
+  const glassMini = h("div", { class: "gm np-gm", hidden: true });
+  ctx.cleanup(mountGlassMini(glassMini, { attempt, on, width: () => 640 }));
+  put(ctx.root, h("div", { class: "now np" }, remind, needsSec, glassMini, workSec, memSec));
 
   // ---- the setup reminder -----------------------------------------------------------------
 
@@ -108,7 +109,7 @@ export function phoneNow(ctx) {
     pairs = Array.isArray(r.data) ? r.data.map((/** @type {any} */ p) => ({ kind: "pair", id: "pair:" + p.id, at: Number(p.expires || Date.now()) - 600_000, pair: p })) : [];
     drawNeeds();
   };
-  loadPairs();
+  const firstPairs = loadPairs();
   ctx.cleanup(on("link.pair-requested", loadPairs));
   ctx.cleanup(on("link.paired", loadPairs));
 
@@ -118,7 +119,7 @@ export function phoneNow(ctx) {
   const failed = new Map();
   /** Deferred calls behind an Undo toast. */
   const waiting = new Set();
-  /** @type {Map<string, { el: HTMLElement, update: (n: any) => void }>} */
+  /** @type {Map<string, { el: HTMLElement, update: (n: any) => void, still: boolean }>} */
   const rows = new Map();
   let dragging = false, redraw = false;
 
@@ -156,12 +157,33 @@ export function phoneNow(ctx) {
     /** @type {Element | null} */ let prev = null;
     for (const n of list) {
       let r = rows.get(n.id);
+      // A Mac's ask whose answers the box turned out not to forward (need-rows.js elsewhere): its
+      // row loses the swipe and the buttons, so it is drawn again.
+      if (r && r.still !== !swipeActions(n)[0]) { r.el.remove(); r = undefined; }
       if (!r) { r = row(n); rows.set(n.id, r); } else r.update(n);
       const at = prev ? prev.nextElementSibling : card.firstElementChild;
       if (r.el !== at) card.insertBefore(r.el, at);
       prev = r.el;
     }
-    if (wanted) { const n = list.find(x => x.id === wanted || x.id === "pair:" + wanted); if (n) { wanted = null; sheetFor(n); } }
+    serveWanted();
+  }
+
+  /** Has the box answered the first needs.load and link.pending? Then a wanted id not in the list is gone. */
+  let boxed = false;
+  /**
+   * The item a push asked for (wantSheet): its sheet once the list has it. After the first load,
+   * an ask raised on this page and not answered opens from what the event said (needs.find);
+   * anything else was answered or has gone, and the toast says so rather than nothing.
+   */
+  function serveWanted() {
+    if (!wanted) return;
+    const id = wanted;
+    const n = visible().find(x => x.id === id || x.id === "pair:" + id);
+    if (n) { wanted = null; sheetFor(n); return; }
+    if (!boxed) return;
+    wanted = null;
+    const heard = needs.find(id);
+    if (heard) sheetFor(heard); else say("This ask was answered or has gone.", null);
   }
 
   /** Height to 0 over 180 ms, rows below move up; then gone. */
@@ -176,24 +198,18 @@ export function phoneNow(ctx) {
 
   // ---- the toast --------------------------------------------------------------------------
 
-  let toastTimer = 0;
-  /** @type {(() => void) | null} */ let undoFn = null;
+  // The Deck's one toast (js/toast.js): one at a time, 4 s, Undo only while Undo can still work.
+  /** @type {import("./toast.js").Toast | null} */ let mine = null;
   function say(/** @type {string} */ text, /** @type {(() => void) | null} */ undo) {
-    clearTimeout(toastTimer);
-    put(toastText, text);
-    undoFn = undo;
-    toastUndo.hidden = !undo;
-    toast.hidden = false;
-    toastTimer = window.setTimeout(() => { toast.hidden = true; undoFn = null; }, UNDO_MS);
+    mine = showToast({ text, undo, ms: UNDO_MS });
   }
-  toastUndo.addEventListener("click", () => { const f = undoFn; undoFn = null; toast.hidden = true; clearTimeout(toastTimer); f?.(); });
 
   /** Send every call still waiting on its toast: the page is being left, or hidden. */
   const flushAll = () => { for (const d of [...waiting]) d.flush(); };
-  const onHide = () => { if (document.hidden) flushAll(); };
+  const onHide = () => { if (document.hidden) { flushAll(); mine?.close(); } };
   document.addEventListener("visibilitychange", onHide);
   window.addEventListener("pagehide", flushAll);
-  ctx.cleanup(() => { flushAll(); document.removeEventListener("visibilitychange", onHide); window.removeEventListener("pagehide", flushAll); });
+  ctx.cleanup(() => { flushAll(); mine?.close(); document.removeEventListener("visibilitychange", onHide); window.removeEventListener("pagehide", flushAll); });
 
   // ---- committing -------------------------------------------------------------------------
 
@@ -254,7 +270,7 @@ export function phoneNow(ctx) {
 
   function row(/** @type {any} */ n) {
     const [rightL, leftL] = swipeActions(n);
-    // A Mac session's ask (no swipe actions): a plain row that opens its sheet, no approve anywhere.
+    // A Mac session's ask the box cannot forward (no swipe actions): a plain row that opens its sheet.
     const still = !rightL;
     const el = h("div", { class: "np-row", ...(still ? {} : { "data-swipe": "" }), "data-kind": n.kind });
     const revR = h("button", { type: "button", class: "np-rev np-rev-r", tabindex: "-1", "aria-hidden": "true" },
@@ -268,7 +284,7 @@ export function phoneNow(ctx) {
     const main = h("button", { type: "button", class: "np-main" },
       tile, h("span", { class: "np-lines" }, h("span", { class: "np-l1" }, t1, time), t2, t3, err), h("span", { class: "np-chev", "aria-hidden": "true" }, glyph("right", 16)));
     const face = h("div", { class: "np-face" }, main);
-    const kb = (/** @type {string} */ label, /** @type {() => void} */ fn) => h("button", { type: "button", class: "np-kb-b", onclick: fn }, label);
+    const kb = (/** @type {string} */ label, /** @type {() => void} */ fn) => h("button", { type: "button", class: "button button-secondary button-touch np-kb-b", onclick: fn }, label);
     const kbd = h("div", { class: "np-kb" });
     el.append(...(still ? [] : [revR, revL]), face, kbd);
 
@@ -350,15 +366,20 @@ export function phoneNow(ctx) {
     });
     revR.addEventListener("click", () => { rest = 0; place(0, true); commit(cur, "right"); });
     revL.addEventListener("click", () => { rest = 0; place(0, true); commit(cur, "left"); });
-    return { el, update };
+    return { el, update, still };
   }
 
   ctx.cleanup(needs.watch(() => { loaded = true; drawNeeds(); }));
   drawNeeds();
-  needs.load().finally(() => { loaded = true; if (ctx.alive()) drawNeeds(); });
-  const onWant = () => drawNeeds();
+  const first = needs.load().finally(() => { loaded = true; if (ctx.alive()) drawNeeds(); });
+  Promise.allSettled([first, firstPairs]).then(() => { boxed = true; if (ctx.alive()) serveWanted(); });
+  const onWant = () => { drawNeeds(); serveWanted(); };
   window.addEventListener("vyre:want-need", onWant);
   ctx.cleanup(() => window.removeEventListener("vyre:want-need", onWant));
+  // The box turned out not to forward answers to the Mac: its rows lose their swipe (needs.js).
+  const onMacAnswers = () => drawNeeds();
+  window.addEventListener("deck:mac-answers", onMacAnswers);
+  ctx.cleanup(() => window.removeEventListener("deck:mac-answers", onMacAnswers));
   // The fallback: a minute, and never while hidden. The times on the rows move with it.
   const tick = window.setInterval(() => { if (!document.hidden && ctx.shown?.() !== false) { needs.load(); drawWorking(); } }, 60_000);
   ctx.cleanup(() => clearInterval(tick));

@@ -7,6 +7,10 @@
 // `vyre vault put`. After an add that names an item, this asks the vault to grant it to the module
 // (which wants a person here, so it goes through the presence helper), then tests the connection
 // and says what came back: the server's tool count, or the Google scopes that were refused.
+//
+// --json (before any `--`) prints one value instead: list is { mcp, google }; add is { added,
+// grants, test }; test is the test's own reply; remove is the tool's reply; help is { verbs }.
+// `--sign-in` is a conversation with a browser and a terminal, so it refuses --json and --view.
 
 import { follow as followStream } from "../../resilience/stream.js";
 import { open } from "../../resilience/node.js";
@@ -18,8 +22,9 @@ import { dialogsAllowed } from "../../config/dialogs.js";
 import { callAsPerson } from "../presence.js";
 import { flags } from "../../vault/cli-io.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
+import { json, emit, fail as kitFail, failTool, usage } from "../kit.js";
 
-const USAGE = "vyre connect list|add|remove|test";
+const USAGE = "vyre connect list|add|remove|rm|test|help";
 const HELP = [
   ["list", "MCP servers and Google accounts, with state, tools, auth and scope"],
   ["add mcp <name> [--project p]... [--agent a]... [--auth bearer|env|oauth|service-account] [--item <vault item>] [--env VAR=item]... [--var VAR=value]... [--header Name:Value]... -- <command> [args...]", "a stdio server; --var is a plain setting, never a secret"],
@@ -30,13 +35,25 @@ const HELP = [
   ["test [mcp|google] <name>", "try it now"],
 ];
 
+/** Every verb run() handles, for `vyre commands --json`. */
+export const VERBS = [
+  { verb: "list", summary: "MCP servers and Google accounts, with state, tools, auth and scope", usage: "[--json]", read: true },
+  { verb: "add", summary: "connect an MCP server (a command after --, or --url) or a Google account; values stay in the vault",
+    usage: "mcp|google <name> [--url <url>] [--sse] [--auth bearer|env|oauth|service-account] [--item <item>] [--env <VAR=item>] [--var <VAR=value>] [--header <Name:Value>] [--project <p>] [--agent <a>] [--email <address>] [--dwd] [--sign-in] [--client <item>] [command...] [--json]",
+    person: true },
+  { verb: "remove", aliases: ["rm"], summary: "disconnect it; its vault items stay", usage: "[mcp|google] <name> [--json]" },
+  { verb: "test", summary: "try a connection now", usage: "[mcp|google] <name> [--json]" },
+  { verb: "help", summary: "every form of vyre connect, with what it does", usage: "[--json]", read: true },
+];
+
 const unreachable = r => r.error && ["unreachable", "timeout"].includes(r.error.code);
 const fail = r => {
+  if (json()) return failTool(r.error, r.error.code === "no_such_tool" ? "is the module running? vyre modules" : undefined);
   if (r.error.code === "no_such_tool") out(beacon(`  this vyred has no ${String(r.error.message || "").replace(/^no tool /, "") || "such tool"} ${dim("· is the module running? vyre modules")}`));
   else out(unreachable(r) ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
   return 1;
 };
-const oops = msg => { out(beacon(`  ${msg}`)); return 1; };
+const oops = msg => { if (json()) return kitFail(msg, { code: "bad_input" }); out(beacon(`  ${msg}`)); return 1; };
 const STATE = { running: signal, starting: dim, stopped: dim, failed: beacon, connected: signal };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -60,6 +77,7 @@ async function list() {
   if (m.error && m.error.code !== "no_such_tool") return fail(m);
   if (g.error && g.error.code !== "no_such_tool") return fail(g);
   const servers = m.error ? [] : m.data, accounts = g.error ? [] : g.data;
+  if (json()) return emit({ mcp: servers, google: accounts });
   if (!servers.length && !accounts.length) { out(`  nothing connected yet ${dim("· vyre connect add mcp <name> -- <command>, or vyre connect add google <name> --sign-in")}`); return 0; }
   out("");
   for (const s of servers) {
@@ -80,17 +98,38 @@ async function list() {
 
 // ------------------------------------------------------------ add
 
-/** Grant each item to the module, as the person here. Returns false when one could not be. */
+/**
+ * Grant each item to the module, as the person here. `ok` is false when one could not be; `grants`
+ * says how each went, for --json (which prints nothing here).
+ * @returns {Promise<{ ok: boolean, grants: any[] }>}
+ */
 async function grant(items, module) {
   let ok = true;
+  const grants = [];
   for (const name of items) {
     const r = await callAsPerson("vault.grant", { name, module });
-    if (r.error) { fail(r); ok = false; continue; }
+    if (r.error) {
+      ok = false;
+      grants.push({ item: name, module, error: { code: r.error.code, message: r.error.message } });
+      if (!json()) fail(r);
+      continue;
+    }
     const g = r.data.grant;
+    grants.push({ item: name, module, status: g.status, ...(g.id ? { id: g.id } : {}) });
+    if (json()) { if (g.status === "pending") ok = false; continue; }
     if (g.status === "pending") { out(`  ${beacon("waiting for approval")} ${bold(name)} to ${module} ${dim(`· vyre vault approve ${g.id}`)}`); ok = false; }
     else out(`  ${signal("granted")} ${bold(name)} to ${module}`);
   }
-  return ok;
+  return { ok, grants };
+}
+
+/**
+ * The end of an add or a test: under --json one value (the report, with the test's reply), else
+ * the test's lines. @param {"mcp"|"google"} kind @param {any} t @param {string} name @param {any} [report]
+ */
+function tested(kind, t, name, report) {
+  if (json()) { emit(report ? { ...report, test: t } : t); return t && t.ok ? 0 : 1; }
+  return kind === "mcp" ? mcpTested(t, name) : googleTested(t);
 }
 
 /** @param {any} t mcp.test's reply data @param {string} name */
@@ -161,14 +200,15 @@ async function addMcp(name, args) {
 
   const r = await call("mcp.add", input, { timeout: 60_000 });
   if (r.error) return fail(r);
-  const s = r.data;
-  out(`  ${signal("added")} ${bold(s.name)} ${dim(`· mcp ${s.transport} · ${scopeText(s.scope)}`)}`);
+  const { test: first, ...s } = r.data;
+  if (!json()) out(`  ${signal("added")} ${bold(s.name)} ${dim(`· mcp ${s.transport} · ${scopeText(s.scope)}`)}`);
   const items = itemsOf(s);
-  if (!items.length) return mcpTested(s.test, s.name);
-  if (!(await grant(items, "mcp"))) { out(dim(`  vyre connect test ${s.name} once it is granted`)); return 1; }
+  if (!items.length) return tested("mcp", first, s.name, { added: s, grants: [] });
+  const g = await grant(items, "mcp");
+  if (!g.ok) return notGranted({ added: s, grants: g.grants }, s.name);
   const t = await call("mcp.test", { name: s.name }, { timeout: 60_000 });
   if (t.error) return fail(t);
-  return mcpTested(t.data, s.name);
+  return tested("mcp", t.data, s.name, { added: s, grants: g.grants });
 }
 
 async function addGoogle(name, args) {
@@ -178,6 +218,7 @@ async function addGoogle(name, args) {
   if (f["sign-in"]) {
     const clash = ["email", "item", "dwd"].filter(k => f[k]);
     if (clash.length) return oops(`--sign-in finds the address itself; leave out ${clash.map(k => "--" + k).join(" and ")}`);
+    if (json()) return usage("vyre connect add google --sign-in is a conversation with a browser; run it in a terminal, without --json or --view", `vyre connect add google ${name} --sign-in`);
     return signIn(name, f.client || CLIENT_ITEM, f.base);
   }
   if (f.client) return oops("--client goes with --sign-in");
@@ -187,11 +228,19 @@ async function addGoogle(name, args) {
   // --base points the account at a loopback fake; the module refuses anything else. For tests.
   const r = await call("google.add", { name, email: f.email, auth, ...(f.base ? { base: f.base } : {}) });
   if (r.error) return fail(r);
-  out(`  ${signal("added")} ${bold(r.data.name)} ${dim(`· google ${r.data.email} · ${auth.type}`)}`);
-  if (!(await grant([f.item], "google"))) { out(dim(`  vyre connect test ${name} once it is granted`)); return 1; }
+  if (!json()) out(`  ${signal("added")} ${bold(r.data.name)} ${dim(`· google ${r.data.email} · ${auth.type}`)}`);
+  const g = await grant([f.item], "google");
+  if (!g.ok) return notGranted({ added: r.data, grants: g.grants }, name);
   const t = await call("google.test", { name }, { timeout: 60_000 });
   if (t.error) return fail(t);
-  return googleTested(t.data);
+  return tested("google", t.data, name, { added: r.data, grants: g.grants });
+}
+
+/** Added, but an item is not granted yet: say how to finish. Exit 1. */
+function notGranted(report, name) {
+  if (json()) { emit({ ...report, test: null, next: `vyre connect test ${name} once it is granted` }); return 1; }
+  out(dim(`  vyre connect test ${name} once it is granted`));
+  return 1;
 }
 
 // ------------------------------------------------------------ sign in with Google
@@ -248,7 +297,7 @@ async function signIn(name, client, base) {
     out(`  ${CLIENT_PUT.replace(CLIENT_ITEM, client)}`);
     return 1;
   }
-  if (!(await grant([client], "google"))) { out(dim(`  run this again once ${client} is granted`)); return 1; }
+  if (!(await grant([client], "google")).ok) { out(dim(`  run this again once ${client} is granted`)); return 1; }
 
   /** @type {(v: { ok: true, email: string } | { ok: false, error: string, cancelled?: boolean }) => void} */
   let settle = () => {};
@@ -337,7 +386,7 @@ async function kindOf(name) {
 async function target(rest, verb) {
   let [kind, name] = rest;
   if (kind !== "mcp" && kind !== "google") { name = kind; kind = undefined; }
-  if (!name || rest.length > (kind ? 2 : 1)) return { code: oops(`vyre connect ${verb} [mcp|google] <name>`) };
+  if (!name || rest.length > (kind ? 2 : 1)) return { code: usage(`vyre connect ${verb} needs one name`, `vyre connect ${verb} [mcp|google] <name> · vyre connect list shows them`) };
   if (!kind) {
     const k = await kindOf(name);
     if (k.error) return { code: fail(k.error) };
@@ -353,6 +402,7 @@ async function remove(rest) {
   const r = await call(`${t.kind}.remove`, { name: t.name });
   if (r.error) return fail(r);
   const gone = t.kind === "mcp" ? r.data.removed : r.data.removed === true;
+  if (json()) { emit({ kind: t.kind, name: t.name, ...r.data }); return gone ? 0 : 1; }
   out(gone ? `  ${signal("removed")} ${bold(t.name)} ${dim("· its vault items stay; vyre vault revoke <item> " + t.kind + " takes the grant back")}` : dim(`  no ${t.kind} connection named ${t.name}`));
   return gone ? 0 : 1;
 }
@@ -362,10 +412,13 @@ async function test(rest) {
   if (t.code !== undefined) return t.code;
   const r = await call(`${t.kind}.test`, { name: t.name }, { timeout: 60_000 });
   if (r.error) return fail(r);
-  return t.kind === "mcp" ? mcpTested(r.data, t.name) : googleTested(r.data);
+  return tested(/** @type {"mcp"|"google"} */ (t.kind), r.data, t.name);
 }
 
 function help() {
+  if (json()) return emit({ verbs: HELP.map(([u, summary]) => ({ usage: `vyre connect ${u}`, summary })) },
+    { kind: "table", title: "vyre connect", columns: [{ key: "usage", label: "Command" }, { key: "summary", label: "What it does" }],
+      rows: HELP.map(([u, summary]) => ({ usage: `vyre connect ${u}`, summary })) });
   out("");
   for (const [u, s] of HELP) out(`  vyre connect ${u}\n      ${dim(s)}`);
   out(dim("\n  Values go in the vault first: vyre vault put <item>. A connection names items, never values.\n"));
@@ -373,21 +426,25 @@ function help() {
 }
 
 export default {
-  name: "connect", order: 41, usage: USAGE,
+  name: "connect", order: 41, usage: USAGE + " [--json]",
   summary: "MCP servers and Google accounts Vyre can reach for you",
+  verbs: VERBS,
+  // `vyre help connect` prints every form, the same as `vyre connect help`.
+  help: () => { out(`\n  ${bold(USAGE + " [--json]")}\n  MCP servers and Google accounts Vyre can reach for you`); return help(); },
   /** @param {string[]} args */
   async run(args) {
-    const [verb, ...rest] = args;
+    // --json is ours only before a `--`; after it, it is the server command's own argument.
+    const at = args.indexOf("--");
+    const [verb, ...rest] = at < 0 ? args.filter(a => a !== "--json") : [...args.slice(0, at).filter(a => a !== "--json"), ...args.slice(at)];
     if (!verb || verb === "list") return list();
     if (verb === "help" || verb === "--help") return help();
     if (verb === "add") {
       const [kind, name, ...more] = rest;
-      if ((kind !== "mcp" && kind !== "google") || !name || name.startsWith("-")) return oops("vyre connect add mcp|google <name> ... · vyre connect help");
+      if ((kind !== "mcp" && kind !== "google") || !name || name.startsWith("-")) return usage("vyre connect add mcp|google <name> ...", "vyre connect help");
       return kind === "mcp" ? addMcp(name, more) : addGoogle(name, more);
     }
     if (verb === "remove" || verb === "rm") return remove(rest);
     if (verb === "test") return test(rest);
-    out(`  vyre connect ${verb}: not a verb ${dim("· list, add, remove, test")}`);
-    return 1;
+    return usage(`vyre connect ${verb}: not a verb`, "list, add, remove, test, help · vyre help connect");
   },
 };

@@ -1,0 +1,128 @@
+# A Vyre release (ADR 0033, section 4). A tag vX.Y.Z publishes a GitHub Release on the stable
+# channel; vX.Y.Z-beta.N and vX.Y.Z-rc.N publish a prerelease on beta. The assets are what
+# scripts/build-site.sh makes for the box (install-box.sh, compose.yml, compose.build.yml,
+# vyre.env.example, vyre, Dockerfile, dockerignore, vyre.tgz, VERSION), the unsigned Android APK
+# (as android-<version>-<sha7>.apk) and android.json from app.yml's run on the same commit when there is one, and release.json
+# { version, channel, commit, date, min_from, notes }. SHA256SUMS covers them all, and each gets
+# a build provenance attestation (keyless: the workflow's OIDC identity, no key and no secret).
+# notes is this version's CHANGELOG section ("## X.Y.Z" or "## X.Y.Z-beta.N"; an rc without its own
+# section takes "## X.Y.Z"), also the release
+# body. Nothing is published until the repo variable VYRE_RELEASES is "go". min_from is "0.1.0" unless release/min_from says otherwise. The tag must match
+# package.json's version. Clients read the Releases API: stable is the newest non-prerelease,
+# beta the newest of any. Run by hand with a tag to build and check everything without publishing.
+name: release
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-rc.[0-9]+"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The tag to build (vX.Y.Z, vX.Y.Z-beta.N or vX.Y.Z-rc.N); a dry run, nothing is published"
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write      # the release
+      id-token: write      # the attestation's keyless identity
+      attestations: write
+      actions: read        # app.yml's Android artifact
+    env:
+      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+      # DRY RUN until the lead says go: publishing also needs the repo variable VYRE_RELEASES=go
+      # (unset today). Until then every run, a tag push included, uploads its assets as a workflow
+      # artifact and publishes nothing.
+      PUBLISH: ${{ github.event_name == 'push' && vars.VYRE_RELEASES == 'go' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # A tag push builds the tag; a dry run builds the branch it was dispatched on, so a release
+          # candidate is checked before anything is tagged.
+          ref: ${{ github.ref }}
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Version, channel and notes
+        run: |
+          case "$TAG" in
+            v*-beta.*|v*-rc.*) channel=beta ;;
+            v*) channel=stable ;;
+            *) echo "not a release tag: $TAG"; exit 1 ;;
+          esac
+          version=${TAG#v}
+          pkg=$(node -p 'require("./package.json").version')
+          [ "$pkg" = "$version" ] || { echo "the tag says $version but package.json says $pkg: bump it first"; exit 1; }
+          mkdir -p dist
+          # This version's CHANGELOG section: from its "## <version>" heading to the next "## ". A
+          # release candidate (X.Y.Z-rc.N) without its own section takes the X.Y.Z one it previews.
+          node -e '
+            const [v] = process.argv.slice(1), lines = require("fs").readFileSync("CHANGELOG.md", "utf8").split("\n");
+            const find = want => lines.findIndex(l => l.startsWith("## ") && l.replace(/^##\s+v?/, "").split(/\s/)[0] === want);
+            let at = find(v);
+            if (at < 0 && /-rc\.\d+$/.test(v)) at = find(v.replace(/-rc\.\d+$/, ""));
+            if (at < 0) { console.error(`CHANGELOG.md has no "## ${v}" section`); process.exit(1); }
+            let end = lines.findIndex((l, i) => i > at && l.startsWith("## "));
+            if (end < 0) end = lines.length;
+            process.stdout.write(lines.slice(at + 1, end).join("\n").trim() + "\n");' "$version" > dist/notes.md
+          min_from=$( [ -f release/min_from ] && tr -d ' \n' < release/min_from || echo 0.1.0 )
+          echo "VERSION=$version" >> "$GITHUB_ENV"; echo "CHANNEL=$channel" >> "$GITHUB_ENV"; echo "MIN_FROM=$min_from" >> "$GITHUB_ENV"
+          echo "$TAG: version $version, channel $channel, min_from $min_from" | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Box files and vyre.tgz, as build-site.sh makes them
+        run: |
+          sh scripts/build-site.sh
+          for f in install-box.sh compose.yml compose.build.yml vyre.env.example vyre Dockerfile dockerignore vyre.tgz VERSION; do
+            [ -f "site/box/$f" ] || { echo "build-site made no $f"; exit 1; }
+            cp "site/box/$f" dist/
+          done
+          [ "$(cat dist/VERSION)" = "$VERSION" ]
+      - name: The Android app from app.yml on this commit, when there is one
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(git rev-parse HEAD)
+          id=$(gh run list -R "$GITHUB_REPOSITORY" --workflow app.yml --commit "$sha" --status success -L 1 --json databaseId --jq '.[0].databaseId' || true)
+          if [ -n "$id" ] && gh run download "$id" -R "$GITHUB_REPOSITORY" -n "app-android-$sha" -D "$RUNNER_TEMP/android" 2>/dev/null; then
+            # Released as android-<version>-<sha7>.apk (ADR 0033), the name vyre update looks for;
+            # android.json's file follows. Same bytes, so its sha256 still holds.
+            apk="android-$VERSION-$(echo "$sha" | cut -c1-7).apk"
+            cp "$(ls "$RUNNER_TEMP"/android/vyre-*.apk | head -1)" "dist/$apk"
+            node -e 'const fs = require("fs"), [src, dst, file] = process.argv.slice(1); const j = JSON.parse(fs.readFileSync(src, "utf8")); j.file = file; fs.writeFileSync(dst, JSON.stringify(j, null, 2) + "\n")' \
+              "$RUNNER_TEMP/android/android.json" dist/android.json "$apk"
+            echo "Android: from app.yml run $id" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Android: no green app.yml run on $sha, released without the APK" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: release.json and SHA256SUMS
+        run: |
+          node -e '
+            const fs = require("fs"), [version, channel, commit, min_from] = process.argv.slice(1);
+            fs.writeFileSync("dist/release.json", JSON.stringify({ version, channel, commit, date: new Date().toISOString(), min_from,
+              notes: fs.readFileSync("dist/notes.md", "utf8") }, null, 2) + "\n");' "$VERSION" "$CHANNEL" "$(git rev-parse HEAD)" "$MIN_FROM"
+          (cd dist && find . -maxdepth 1 -type f ! -name SHA256SUMS ! -name notes.md | sed 's|^\./||' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS)
+          cat dist/SHA256SUMS | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/attest-build-provenance@v2
+        if: env.PUBLISH == 'true'
+        with:
+          subject-path: "dist/*"
+      - name: Publish
+        if: env.PUBLISH == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""; [ "$CHANNEL" = beta ] && pre="--prerelease"
+          assets=$(find dist -maxdepth 1 -type f ! -name notes.md | LC_ALL=C sort)
+          # shellcheck disable=SC2086
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --verify-tag --title "Vyre $VERSION" --notes-file dist/notes.md $pre $assets
+      - uses: actions/upload-artifact@v4
+        if: env.PUBLISH != 'true'
+        with:
+          name: release-dry-run-${{ env.TAG }}
+          path: dist/
+          retention-days: 7

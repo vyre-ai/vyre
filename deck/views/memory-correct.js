@@ -70,7 +70,7 @@ export function correctForm(f, o) {
 }
 
 /**
- * What a correction left: the old fact muted and closed, then the new one in gold, sourced to the
+ * What a correction left: the old fact muted and closed, then the new one in --text-2, sourced to the
  * user, with Undo. For "ended" and "wrong" there is no new fact.
  * @param {any} f the fact as it was
  * @param {{ action: string, object: string|null, id: any }} c

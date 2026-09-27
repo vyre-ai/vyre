@@ -51,10 +51,19 @@ What it gates on:
 |---|---|
 | CPU, p95 of the samples | under 0.5% |
 | CPU, sustained: the highest mean over any 5 consecutive samples (7.5 s) | under 1% |
-| RSS, mean and max | under 150 MB |
+| Heap used after a full GC at the end of the idle window (`scripts/lib/gc-hook.mjs`, on every Node) | under 50 MB |
+| RSS, settled: the highest of the last 8 samples, once they sit within 3 MB (the window runs on to 120 s until they do), on the Node the box ships | under 150 MB |
+| RSS, startup peak: the highest in the first 30 s from spawn, indexing included, on the Node the box ships | under 200 MB |
 | Fastest recurring timer (a `setInterval`, or a `setTimeout` seen 3 or more times) | 60 s or slower |
 
-Mean and max CPU are printed but do not gate. The output also prints the host's load average,
+Mean and max CPU, mean and max RSS, and RSS after the GC are printed but do not gate. After the
+startup indexing pass V8 keeps its heap (about 160 MB on the synthetic corpus) for some 20 s before
+it gives it back and settles near 90 MB, so the idle budget reads the settled size and the startup
+peak has its own budget. That holds on Node 22, the Node in `box/Dockerfile`. Node 24 does not give
+the heap back while idle: the same commit settles at 186 to 260 MB with 74 to 111 MB of heap in
+use that a GC would free, and only about 20 MB live. So the RSS budgets gate on the Node major the
+box image ships and print as informational on any other, and the heap after a forced GC gates
+everywhere, so a real leak still fails on every Node. The output also prints the host's load average,
 so you can tell contention from a regression.
 
 > [!WHY] Why p95 and a sustained window, not the maximum?

@@ -1,8 +1,8 @@
 /* A Mac asking to pair (js/pair.js): Beacon, because it waits on the person. */
 .pair-list:empty { display: none; }
 .pair-list { display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px; }
-.pair-card { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: var(--r-3); background: var(--beacon-wash);
-  border: 1px solid var(--beacon-rule); }
+.pair-card { display: flex; flex-direction: column; gap: 8px; padding: 16px; border-radius: var(--radius-card, 12px);
+  border: 1px solid var(--rule); }
 .pair-card.paired { background: var(--signal-wash); border-color: var(--rule-strong); }
 .pair-card.denied { background: var(--panel); border-color: var(--rule); }
 .pair-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -16,16 +16,16 @@
 .pair-note:empty { display: none; }
 .pair-note { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; color: var(--text-2); }
 .pair-err { color: var(--beacon-ink); }
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .pair-form { grid-template-columns: 1fr; gap: 8px; }
   .pair-code { font-size: 20px; }
   .pair-actions .btn { flex: 1 1 0; }
 }
 
 /* No passkey on the box yet (js/first-passkey.js). Loaded with the pairing styles, since Now uses both. */
-.first-passkey { display: flex; flex-direction: column; gap: 8px; padding: 16px; margin-bottom: 24px; border-radius: var(--r-3);
-  background: var(--beacon-wash); border: 1px solid var(--beacon-rule); }
+.first-passkey { display: flex; flex-direction: column; gap: 8px; padding: 16px; margin-bottom: 24px; border-radius: var(--radius-card, 12px);
+  border: 1px solid var(--rule); }
 .first-passkey .lbl { display: inline-flex; align-items: center; gap: 6px; }
 .fp-cmds { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
-.fp-cmds > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--r-2); background: var(--code-bg); }
+.fp-cmds > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-field, 8px); background: var(--code-bg); }
 .fp-cmds code { font-size: 14px; color: var(--text); }

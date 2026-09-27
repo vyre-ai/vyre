@@ -2,13 +2,12 @@
 # what ADR 0029 promises of the container: tini is PID 1 (run plain and through box/compose.yml), vyred answers /v1/health on its socket,
 # killing vyred once brings it back through core/daemon/loop.sh with the container still up, and
 # `docker stop` reaches vyred as a SIGTERM so it drains and the container exits 0 well inside the
-# stop timeout. Every push to main runs it; other branches run it when a push touches the image's
-# inputs. Deploys that touch box/ wait for it. Layers are cached in the Actions cache.
+# stop timeout. Every push to main runs it; other branches run it when a push touches any file in
+# the image (the npm pack, plus box/, the web app's source and the build files). Deploys that touch box/ wait for it. Layers are cached in the Actions cache.
 name: box-image
 on:
   push:
   pull_request:
-    paths: ["box/**", "core/daemon/**", "package.json", "package-lock.json", ".dockerignore", ".github/workflows/box-image.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -21,18 +20,27 @@ jobs:
     outputs:
       run: ${{ steps.check.outputs.run }}
     steps:
+      # The image is built from the npm pack of the repo (see "Pack like a deploy"), so every file
+      # in the pack is an input: a push that changes any of them builds. A fixed path list here
+      # once skipped a real break (core/sessions/sdk.js changed; the image no longer built).
+      - uses: actions/checkout@v4
       - id: check
         env:
           GH_TOKEN: ${{ github.token }}
           BEFORE: ${{ github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
         run: |
-          if [ "${{ github.event_name }}" != "push" ] || [ "${{ github.ref }}" = "refs/heads/main" ]; then echo run=true >> "$GITHUB_OUTPUT"; exit 0; fi
-          case "$BEFORE" in ""|0000000000000000000000000000000000000000) echo run=true >> "$GITHUB_OUTPUT"; exit 0;; esac
-          files=$(gh api "repos/${{ github.repository }}/compare/$BEFORE...${{ github.sha }}" --paginate --jq '.files[].filename') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
-          if echo "$files" | grep -qE '^(box/|core/daemon/|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)'; then
-            echo run=true >> "$GITHUB_OUTPUT"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] || [ "${{ github.ref }}" = "refs/heads/main" ]; then echo run=true >> "$GITHUB_OUTPUT"; exit 0; fi
+          from=$BEFORE; [ "${{ github.event_name }}" = "pull_request" ] && from=$BASE
+          case "$from" in ""|0000000000000000000000000000000000000000) echo run=true >> "$GITHUB_OUTPUT"; exit 0;; esac
+          files=$(gh api "repos/${{ github.repository }}/compare/$from...${{ github.sha }}" --paginate --jq '.files[] | .filename, (.previous_filename // empty)') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
+          packed=$(npm pack --dry-run --json --ignore-scripts 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s)[0].files)console.log(f.path)})') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
+          [ -n "$packed" ] || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
+          hit=$( { echo "$files" | grep -xF -f <(echo "$packed"); echo "$files" | grep -E '^(box/|apps/app/|scripts/build-app\.sh$|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)' || true; } | head -5)
+          if [ -n "$hit" ]; then
+            echo "image inputs changed:"; echo "$hit"; echo run=true >> "$GITHUB_OUTPUT"
           else
-            echo "no image input changed: skipping"; echo run=false >> "$GITHUB_OUTPUT"
+            echo "no file in the image changed: skipping"; echo run=false >> "$GITHUB_OUTPUT"
           fi
 
   build-smoke:
@@ -51,8 +59,12 @@ jobs:
       - name: Pack like a deploy
         run: |
           mkdir -p "$RUNNER_TEMP/src"
+          sh scripts/build-app.sh
           tgz=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
           tar -xzf "$RUNNER_TEMP/$tgz" -C "$RUNNER_TEMP/src" --strip-components=1
+          # Growth on record: release-check.sh fails an install over 20 MB.
+          npm i -g --prefix "$RUNNER_TEMP/prefix" --no-audit --no-fund "$RUNNER_TEMP/$tgz" >/dev/null
+          echo "vyre.tgz $(du -k "$RUNNER_TEMP/$tgz" | cut -f1) KB; installed $(du -sk "$RUNNER_TEMP/prefix" | cut -f1) KB of the 20480 KB cap; apps/app/dist $( [ -d apps/app/dist ] && du -sk apps/app/dist | cut -f1 || echo 0) KB" | tee -a "$GITHUB_STEP_SUMMARY"
           echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
       - name: Build box/Dockerfile
         uses: docker/build-push-action@v6
@@ -83,6 +95,40 @@ jobs:
           sh "$RUNNER_TEMP/health.sh" 60
 
       # The two checks below need ADR 0029's tini and loop.sh (resilience); an older image skips them.
+      # The web app a deploy ships (scripts/build-app.sh). A 404 no_app on /app/ means the pack
+      # step was missed.
+      - name: GET /app/ serves the web app with its precache list
+        if: hashFiles('apps/app/package.json') != ''
+        run: |
+          docker exec "$C" node -e '
+            const http = require("node:http");
+            const fs = require("node:fs");
+            import("/opt/vyre/core/config/index.js").then(async c => {
+              const socketPath = c.paths(c.home()).socket;
+              const get = p => new Promise((ok, no) => http.get({ socketPath, path: p, headers: { "x-vyre-caller": "cli" } }, r => {
+                let b = ""; r.setEncoding("utf8"); r.on("data", d => b += d); r.on("end", () => ok({ status: r.statusCode, type: String(r.headers["content-type"] || ""), location: r.headers.location, body: b })); }).on("error", no));
+              const fail = m => { console.error("FAIL " + m); process.exit(1); };
+              const pre = JSON.parse(fs.readFileSync("/opt/vyre/apps/app/dist/precache.json", "utf8"));
+              const bare = await get("/app");
+              if (bare.status !== 301 || bare.location !== "/app/") fail(`/app is ${bare.status} to ${bare.location}`);
+              const page = await get("/app/");
+              if (page.status !== 200 || !/text\/html/.test(page.type)) fail(`/app/ is ${page.status} ${page.type} ${page.body.slice(0, 120)}`);
+              const entry = (/\/app\/_expo\/static\/js\/web\/entry-[^"]+\.js/.exec(page.body) || [])[0];
+              if (!entry) fail("/app/ names no entry-<hash>.js");
+              const js = await get(entry);
+              if (js.status !== 200 || !/javascript/.test(js.type)) fail(`${entry} is ${js.status} ${js.type}`);
+              const spa = await get("/app/now");
+              if (spa.status !== 200 || !/text\/html/.test(spa.type)) fail(`/app/now is ${spa.status}`);
+              const sw = await get("/app/sw.js");
+              const list = JSON.parse((/const PRECACHE = (\[.*?\]);/.exec(sw.body) || [])[1] || "[]");
+              if (sw.status !== 200 || !sw.body.includes(JSON.stringify(pre.build)) || list.length < 2 || !list.includes(entry)) fail(`/app/sw.js is ${sw.status}, ${list.length} precached, build ${pre.build}`);
+              // The worker installs only when every precached file answers: one 404 and /app/ never works offline.
+              for (const f of list) { const r = await get(f); if (r.status !== 200) fail(`precached ${f} is ${r.status}`); }
+              const man = await get("/app/manifest.webmanifest");
+              if (man.status !== 200 || !/manifest\+json/.test(man.type) || JSON.parse(man.body).start_url !== "/app/") fail(`/app/manifest.webmanifest is ${man.status} ${man.type}`);
+              console.log(`/app/ 200 (${page.body.length} bytes), ${entry} ${js.body.length} bytes, /app/now 200, /app/sw.js build ${pre.build} with ${list.length} precached (all 200), manifest start_url /app/`);
+            }).catch(e => { console.error(e); process.exit(1); });' | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: tini is PID 1
         if: hashFiles('core/daemon/loop.sh') != ''
         run: |

@@ -14,14 +14,15 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
-import { findSubreaper, groupAlive } from "../sessions/spawn.js";
+import { claudeHome, transcriptFolders, privateSocketDir } from "../config/index.js";
+import { findSubreaper, groupAlive, usesSpawner } from "../sessions/spawn.js";
+import { openThreadSocket, DIR as THREAD_SOCKETS } from "../daemon/threadsock.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
 import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
@@ -34,7 +35,6 @@ import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const require_home = () => os.homedir();
 
 /** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
 const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
@@ -97,7 +97,17 @@ export const MIGRATIONS = [
   // What a queued item is: a person's message, or a teammate's result (ADR 0031), which waits for
   // the turn to end and never steers.
   `ALTER TABLE threads_inbox ADD COLUMN kind TEXT;`,
+  // A queued message's pasted images (JSON), handed over with its words; and steered messages not
+  // folded in yet, so a stop or a restart does not lose them: they run first when it comes back.
+  `ALTER TABLE threads_inbox ADD COLUMN images TEXT;
+   CREATE TABLE threads_steers (uuid TEXT PRIMARY KEY, thread TEXT NOT NULL, text TEXT NOT NULL, images TEXT, at INTEGER NOT NULL);
+   CREATE INDEX threads_steers_thread ON threads_steers (thread);`,
 ];
+
+/** Images kept as JSON (a queued or steered message's), or null. @param {any} v */
+const imagesJson = v => (Array.isArray(v) && v.length ? JSON.stringify(v) : null);
+/** @param {any} v @returns {{ media_type: string, data: string }[]|null} */
+const imagesFrom = v => { try { const a = v ? JSON.parse(String(v)) : null; return Array.isArray(a) && a.length ? a : null; } catch { return null; } };
 
 /**
  * An "always in <project>" rule, as Claude Code takes it in updatedPermissions. Claude Code's own
@@ -114,8 +124,20 @@ export function projectRules(tool, suggestions) {
 }
 
 
-/** The permission modes a person may put a session in. Never bypassPermissions (ADR 0030, "Security"). */
+/** The permission modes an answer may hand back (safePermissions). Never bypassPermissions (ADR 0030, "Security"). */
 export const MODES = ["default", "acceptEdits", "plan"];
+
+/**
+ * "Doesn't ask" (bypassPermissions): the person's own choice, per session (threads.mode, Shift+Tab)
+ * or as a project's default (sessions.mode.set). No Touch ID (the user's decision), but only a
+ * person's surface sets it, an answer never does (MODES), and only in a session with Vyre's
+ * plugin loaded, so the security floor still runs at PreToolUse; the Gate is vyred's and holds
+ * whatever the mode.
+ */
+export const BYPASS = "bypassPermissions";
+/** The modes a person may put a session in. */
+export const PERSON_MODES = [...MODES, BYPASS];
+export const MODE_LABELS = { default: "Ask", acceptEdits: "Edits without asking", plan: "Plan", [BYPASS]: "Doesn't ask" };
 
 /**
  * What an answer may hand back to Claude Code as updatedPermissions: rules and directories as
@@ -156,7 +178,13 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort", "quick"];
+
+/** Reasoning effort, as /effort takes it (the Agent SDK's EffortLevel). */
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const effortOf = (/** @type {any} */ v) => { if (v == null || v === "") return null; if (!EFFORTS.includes(String(v))) throw Object.assign(new Error(`effort must be one of ${EFFORTS.join(", ")}`), { code: "bad_input" }); return String(v); };
+/** The saved launch options of a thread (threads_runs.opts). */
+const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse(String(r.opts)) : {}; } catch { return {}; } };
 
 /** The kind of session a launch is, when the caller does not say: it picks the model (sessions.models). */
 export function purposeOf(o, project) {
@@ -251,6 +279,11 @@ export class Switchboard {
     this.loadSdk = null;
     /** @type {Map<number, number>} every session's process group, pgid -> sid, kept until the whole group is gone */
     this.groups = new Map();
+    /** Spare quick sessions being started (threads.quick), which a stop waits for; and whether vyred is stopping. */
+    this.starting = new Set();
+    this.closing = false;
+    /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
+    this.socks = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
     this.states = new Map();
     /** @type {Map<string, string[]>} `!` shell output waiting to go with a thread's next message */
@@ -294,6 +327,8 @@ export class Switchboard {
     // Every event of a turn says which turn (ADR 0030): a surface follows one turn's events.
     const st = this.live.get(thread);
     if (st && st.turn && payload && payload.turn === undefined && /^(thread|ask)\./.test(type) && type !== "thread.stopped") payload = { ...payload, turn: st.turn };
+    // The server's clock on every piece of text (ms epoch), for a surface's words-per-second meter.
+    if ((type === "thread.text" || type === "thread.thinking") && payload && payload.t === undefined) payload = { ...payload, t: Date.now() };
     const ev = this.emitRaw(type, payload, thread, project);
     if (WATCHED[type]) this.fire(type, thread, payload, project);
     return ev;
@@ -316,7 +351,7 @@ export class Switchboard {
     if (!r) return null;
     const holder = this.leases.holder(id);
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default",
+      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -364,6 +399,7 @@ export class Switchboard {
    */
   async launch(o) {
     let id, rec;
+    if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
     if (o.resume) {
       rec = this.must(o.resume);
@@ -396,9 +432,18 @@ export class Switchboard {
         VALUES (?,?,?,?,?,?, 'starting', ?,?,?,?)`).run(id, o.name || null, w.cwd, w.project, o.agent || null, o.agent_kind || null,
         o.model || null, o.auth || "ambient", now, now);
       this.db.prepare("UPDATE threads_runs SET provider = ?, purpose = ? WHERE id = ?").run(o.provider, o.purpose, id);
+      // A project's default mode (sessions.mode.set), for a new session a person starts there.
+      if (w.project && !o.agent && !o.lean) {
+        const m = await this.deps.call("sessions.mode.resolve", { project: w.project }).catch(() => null);
+        if (m && m.data && PERSON_MODES.includes(String(m.data.mode))) this.db.prepare("UPDATE threads_runs SET mode = ? WHERE id = ?").run(String(m.data.mode), id);
+      }
       // A fork's running total starts at its source's, as Claude Code continues it.
       if (o.forkFrom) this.db.prepare("UPDATE threads_runs SET cost_total = (SELECT cost_total FROM threads_runs WHERE id = ?) WHERE id = ?").run(o.forkFrom, id);
       const kept = Object.fromEntries(KEPT.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
+      // A quick answer keeps its facts, so a follow-up after an idle close is answered from them too.
+      if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
+      // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
+      if (o.surface) kept.origin = String(o.surface).slice(0, 80);
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
@@ -411,15 +456,20 @@ export class Switchboard {
       if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
     }
     o = { ...o, system: await this.systemPrompt(rec, o) };
+    // A quick answer thinks not at all, so the same words get the same answer (no temperature knob).
+    if (o.purpose === "capsule" && !o.agent) o = { ...o, env: { ...(o.env || {}), MAX_THINKING_TOKENS: "0" } };
+    await this.openSocket(id, rec);
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
-    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}),
-      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose };
+    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
+      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, effort: fresh.effort, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
     this.emit("thread.started", payload, id, rec.project);
     // The surface that started it gets the keyboard. A prompt given at launch by a module (an
     // agent asked something) is typed without taking the lease, so no surface is locked out.
     if (o.surface) this.lease(id, o.surface);
+    // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
+    if (o.resume) this.restoreSteers(id);
     if (o.prompt) {
       if (o.surface) await this.send(id, o.prompt, o.surface);
       else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
@@ -433,6 +483,12 @@ export class Switchboard {
    * text alone, as before.
    */
   async systemPrompt(rec, o) {
+    // The Capsule's quick answer is Vyre IQ (core/sessions/iq-prompt.js): the whole prompt, with
+    // the launch's append read as its facts, versioned. Without the sessions module, as before.
+    if (o.purpose === "capsule" && !o.agent) {
+      const r = await this.deps.call("sessions.prompt.compose", { purpose: "capsule", ...(o.append ? { append: String(o.append) } : {}) }).catch(() => null);
+      if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text, version: r.data.version || null };
+    }
     // A job (no settings, no plugin: Learning's distillation) is told only what its launch says.
     if (o.settings === false) return o.append ? { mode: "append", text: String(o.append) } : null;
     const kind = o.agent_kind || (rec.agent ? this.kindOf(rec.agent) : null);
@@ -466,6 +522,48 @@ export class Switchboard {
     return !this.db.prepare("SELECT 1 FROM threads_watches WHERE thread = ? LIMIT 1").get(id);
   }
 
+  /**
+   * The floor at PreToolUse, in process, while a thread is in "Doesn't ask" (the Agent SDK's hooks).
+   * In any other mode it answers nothing: the floor runs before the question instead (onMessage).
+   * @returns {any} a PreToolUse hook's answer
+   */
+  bypassFloor(id, input) {
+    const st = this.live.get(id);
+    if (!st || st.mode !== BYPASS || !input) return {};
+    const rec = this.record(id);
+    let v = null;
+    try { v = floorRules({ tool: String(input.tool_name || ""), input: input.tool_input || {}, cwd: rec ? rec.cwd : undefined, home: this.deps.root || undefined }); } catch {}
+    if (!v || v.decision !== "deny") return {};
+    this.emit("thread.text", { message: "vyre", text: `Refused ${input.tool_name}: ${cut(v.reason || "the security floor does not allow it", 300)}`, done: true, notice: true }, id, rec ? rec.project : null);
+    return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: `Vyre's security floor refused this: ${v.reason || "not allowed"}` } };
+  }
+
+  /**
+   * Open the thread's own socket to vyred (ADR 0030 phase 3, option A), when this machine gives
+   * sessions one (deps.threadSocket). One per live thread, kept across a fallback respawn, closed
+   * when the thread stops. Only the thread's own processes get in (threadsock.js).
+   */
+  async openSocket(id, rec) {
+    if (!this.deps.threadSocket || this.socks.has(id)) return;
+    try {
+      const sock = await this.deps.threadSocket({ thread: id, agent: rec.agent || null, pids: async () => {
+        const st = this.live.get(id);
+        const g = st && st.group;
+        return { pids: [st && st.proc && st.proc.pid, g && g.pid].filter(Boolean), pgids: g && g.pgid ? [g.pgid] : [], sids: g && g.sid ? [g.sid] : [] };
+      } });
+      if (sock) this.socks.set(id, sock);
+    } catch (e) {
+      this.deps.log(`threads: no socket for ${id.slice(0, 8)} (${/** @type {Error} */ (e).message}); its Vyre tools will not answer`);
+    }
+  }
+
+  closeSocket(id) {
+    const sock = this.socks.get(id);
+    if (!sock) return;
+    this.socks.delete(id);
+    sock.close().catch(() => {});
+  }
+
   /** Close a live thread's process, saying why; its transcript stays and threads.send resumes it. */
   async close(id, st, reason) {
     st.haltReason = reason;
@@ -484,11 +582,13 @@ export class Switchboard {
     const st = this.live.get(id);
     const rec = this.record(id);
     const key = String(toolUseID || (input && input.tool_use_id) || crypto.randomUUID());
-    const r = await this.deps.call("sessions.slots", { action: "take", kind: "subagent", project: (rec && rec.project) || "_none", owner: id, key, timeout_ms: 10 * 60_000 });
+    const r = await this.deps.call("sessions.slots", { action: "take", kind: "subagent", project: (rec && rec.project) || "_none", owner: id, key, timeout_ms: 10 * 60_000, auth: (rec && rec.auth) || "ambient" });
     if (r && r.error) {
       if (r.error.code === "no_such_tool") return {};
       return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny",
-        permissionDecisionReason: `No subagent slot came free (${r.error.message}). Carry on without it, or try again later.` } };
+        permissionDecisionReason: r.error.code === "usage_paused"
+          ? `Subagents are ${r.error.message} Carry on without one.`
+          : `No subagent slot came free (${r.error.message}). Carry on without it, or try again later.` } };
     }
     if (st && this.live.get(id) === st) { st.subSlots = st.subSlots || new Set(); st.subSlots.add(key); }
     else this.deps.call("sessions.slots", { action: "release", owner: id, key }).catch(() => {});
@@ -542,14 +642,28 @@ export class Switchboard {
     // recall.search through MCP). "*" is the assistant's: every project.
     if (o.scope) { env.VYRE_PROJECTS = o.scope.projects === "*" ? "*" : o.scope.projects.join(","); env.VYRE_SCOPE_CWDS = JSON.stringify(o.scope.cwds || []); }
     else { delete env.VYRE_PROJECTS; delete env.VYRE_SCOPE_CWDS; }
+    // The session's own socket (option A): its plugin, hooks and any vyre it runs talk to vyred on
+    // it, as this thread, whatever they claim. Without one, VYRE_SOCKET is not inherited.
+    const sock = this.socks.get(id);
+    if (sock) env.VYRE_SOCKET = sock.path; else delete env.VYRE_SOCKET;
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
     // In-process hooks (the Agent SDK only): a subagent waits for a concurrency slot (sessions.slots).
-    const hooks = { PreToolUse: [{ matcher: "Agent|Task", hooks: [async (/** @type {any} */ input, /** @type {any} */ toolUseID) => this.subagentSlot(id, input, toolUseID)] }] };
-    const lo = { id, hooks, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    // "Doesn't ask": nothing reaches a question, so the floor also runs here, in process, on every
+    // call (the plugin's PreToolUse hook runs it too; this one needs no vyred round trip).
+    const hooks = { PreToolUse: [{ matcher: "Agent|Task", hooks: [async (/** @type {any} */ input, /** @type {any} */ toolUseID) => this.subagentSlot(id, input, toolUseID)] },
+      { hooks: [async (/** @type {any} */ input) => this.bypassFloor(id, input)] }] };
+    // The mode a person put the thread in carries over a resume; "Doesn't ask" only with the plugin.
+    const withPlugin = o.plugin !== false && Boolean(pluginDir());
+    const mode = PERSON_MODES.includes(String(rec.mode)) && rec.mode !== "default" && (rec.mode !== BYPASS || withPlugin) ? rec.mode : null;
+    // "Doesn't ask" asked of a session without the plugin: it starts asking instead, and says so.
+    if (rec.mode === BYPASS && !withPlugin) this.db.prepare("UPDATE threads_runs SET mode = 'default' WHERE id = ?").run(id);
+    // A warm quick session (threads.quick) writes no transcript: nothing to resume, and nothing
+    // for Recall to find its prompt (another question's passages) in.
+    const lo = { id, hooks, mode, skippable: withPlugin, effort: o.effort || null, ephemeral: Boolean(o.quick), resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
-    const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
+    const state = { launch: o, key, withPlugin, mode: mode || "default", message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
       // yet taken in, and each message's blocks so far (for message:block keys).
       turn: null, turnNo: Number(rec.turns) || 0, steers: new Map(), ord: new Map(), pendingBlock: 0, interrupting: false };
@@ -586,7 +700,7 @@ export class Switchboard {
     }
     // Steered messages Claude Code took in at a step.
     // step: how many tool calls the turn had finished when Claude took the words in.
-    for (const u of t.folded || []) if (st.steers.delete(u)) this.emit("thread.steered", { uuid: u, step: st.steps || 0 }, id, project);
+    for (const u of t.folded || []) if (st.steers.delete(u)) { this.db.prepare("DELETE FROM threads_steers WHERE uuid = ?").run(u); this.emit("thread.steered", { uuid: u, step: st.steps || 0 }, id, project); }
     if (t.reasoning) {
       if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
       st.rpending = (st.rpending || "") + t.reasoning;
@@ -605,6 +719,7 @@ export class Switchboard {
     }
     for (const e of t.events) {
       if (e.type === "thread.text") this.flush(id, st);                // the whole text lands after its last delta
+      if (e.type === "thread.text" && e.payload.done && !e.payload.kind && !e.payload.notice) st.lastText = String(e.payload.text || "");
       if (e.type === "thread.finished") {
         this.flush(id, st);
         // The turn's own cost from the running total: a total below the last one is a new count
@@ -644,6 +759,7 @@ export class Switchboard {
       const ev = this.emit(e.type, e.payload, id, project);
       if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
       if (e.type === "thread.finished") this.turnEnded(id, st, project);
+      if (e.type === "thread.finished" && st.answered) { const a = st.answered; st.answered = null; a({ text: st.lastText || "", ok: Boolean(e.payload.ok), cost_usd: Number(e.payload.cost_usd) || 0 }); }
     }
     // The floor, before anyone is asked (ADR 0030, "Security"): a call it denies is refused here,
     // not put to the person, whatever the session's own settings say. The Harness runs the same
@@ -712,6 +828,9 @@ export class Switchboard {
   limit(id, st, l, project) {
     this.db.prepare("UPDATE threads_runs SET last_limit = ? WHERE id = ?").run(JSON.stringify({ ...l, at: Date.now() }), id);
     this.emit("thread.limit", l, id, project);
+    // The plan's usage per credential, where the usage pause is decided (sessions.usage.*).
+    const rec = this.record(id);
+    this.deps.call("sessions.usage.report", { auth: (rec && rec.auth) || "ambient", ...l }).catch(() => {});
     if (l.status === "allowed") { st.limitStatus = l.status; return; }
     const loud = l.status === "rejected" || (typeof l.utilization === "number" && l.utilization >= LIMIT_NOTICE_AT);
     if (!loud || st.limitStatus === l.status) return;
@@ -797,6 +916,7 @@ export class Switchboard {
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
+    this.closeSocket(id);
     const reason = st.haltReason || (st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`);
     this.set(id, { status: "stopped", pid: null, stopped_reason: reason });
     for (const a of this.asks.open(id)) this.closeAsk(a, "cancelled", "thread stopped");
@@ -808,11 +928,11 @@ export class Switchboard {
    * @param {any} a @param {string} decision @param {string|null} by @param {Record<string, string>|null} [answers] what was chosen, as shown
    * @param {string|null} [scope] "project" for an "always in <project>"
    */
-  closeAsk(a, decision, by, answers = null, scope = null) {
+  closeAsk(a, decision, by, answers = null, scope = null, device = null) {
     this.suggestions.delete(a.id);
     if (!this.asks.close(a.id, decision, by)) return false;
     const rec = this.record(a.thread);
-    this.emit("ask.answered", { ask: a.id, decision, by: by || null, tool: a.tool, summary: a.summary || null, ...(answers ? { answers } : {}), ...(scope ? { scope } : {}) },
+    this.emit("ask.answered", { ask: a.id, decision, by: by || null, ...(device ? { device } : {}), tool: a.tool, summary: a.summary || null, ...(answers ? { answers } : {}), ...(scope ? { scope } : {}) },
       a.thread, rec ? rec.project : null);
     return true;
   }
@@ -830,6 +950,7 @@ export class Switchboard {
     st.lastPrompt = text;
     if (steer) {
       st.steers.set(uuid, String(text));
+      this.db.prepare("INSERT OR REPLACE INTO threads_steers (uuid, thread, text, images, at) VALUES (?,?,?,?,?)").run(uuid, id, String(text), imagesJson(images), Date.now());
       st.proc.write(userLine(text, id, { uuid, priority: "next", ...(images ? { images } : {}) }));
       return { uuid, turn: st.turn };
     }
@@ -859,20 +980,36 @@ export class Switchboard {
     if (st.steers.size) {
       const [[uuid, text], ...rest] = [...st.steers.entries()];
       st.steers.clear();
+      this.db.prepare("DELETE FROM threads_steers WHERE thread = ?").run(id);
       st.turn = `${id}:${++st.turnNo}`;
       st.ord.clear();
       this.set(id, { status: "working" });
       this.emit("thread.turn", { turn: st.turn, uuid, text: cut([text, ...rest.map(r => r[1])].join("\n\n"), 2000), steered: true }, id, project);
       return;
     }
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return;
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}) }, id, project);
-    this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID() });
+    const images = taken.flatMap(r => imagesFrom(r.images) || []);
+    this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null });
+  }
+
+  /**
+   * Steered words a stopped process never took in (st.steers lived only in its memory): after a
+   * resume they run first, as one turn, with their images. Emits thread.sent via "restored".
+   */
+  restoreSteers(id) {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT uuid, text, images FROM threads_steers WHERE thread = ? ORDER BY at").all(id));
+    if (!rows.length || !this.live.has(id)) return;
+    this.db.prepare("DELETE FROM threads_steers WHERE thread = ?").run(id);
+    const rec = this.record(id);
+    for (const r of rows) this.emit("thread.sent", { text: cut(r.text, 2000), surface: null, uuid: r.uuid, via: "restored" }, id, rec ? rec.project : null);
+    const images = rows.flatMap(r => imagesFrom(r.images) || []);
+    this.write(id, rows.map(r => r.text).join("\n\n"), { uuid: rows[0].uuid, images: images.length ? images : null });
   }
 
   /**
@@ -964,7 +1101,7 @@ export class Switchboard {
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
-    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind });
+    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images });
     if (busy) {
       const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
@@ -1005,11 +1142,13 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, images = /** @type {any} */ (null) } = {}) {
     const rec = this.must(id);
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind) VALUES (?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null);
+    // A session open elsewhere takes queued words through its hooks, which carry text only.
+    if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images) VALUES (?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images));
     const queued = Number(r.lastInsertRowid);
-    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}) }, id, rec.project);
+    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}), ...(images && images.length ? { images: images.length } : {}) }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
     // A session Vyre runs is never called a terminal (it is working, and the words go in after).
     if (owned) return { sent: false, queued: true, queued_id: queued, uuid, thread: id, name, busy: "working",
@@ -1060,12 +1199,12 @@ export class Switchboard {
     const rec = this.must(id);
     const st = this.live.get(id);
     if (!st) return { sent: false, note: "This session is not running here; its words are handed over when its terminal's turn ends." };
-    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
+    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
     if (!row || !this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'now' WHERE id = ? AND delivered_at IS NULL").run(Date.now(), row.id).changes) {
       return { sent: false, note: "That message was already handed over, or was never queued here." };
     }
     const uuid = row.uuid || crypto.randomUUID();
-    const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn) });
+    const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn), images: imagesFrom(row.images) });
     this.emit("thread.sent", { text: cut(row.text, 2000), surface: row.surface, queued: Number(row.id), uuid, via: "now" }, id, rec.project);
     return { sent: true, thread: id, queued: Number(row.id), uuid, turn: w.turn };
   }
@@ -1126,7 +1265,7 @@ export class Switchboard {
    * @param {string} askId @param {"allow"|"deny"|"always"} decision @param {string} by @param {string} [message]
    * @param {Record<string, string|string[]>} [answers] @param {"project"} [scope]
    */
-  async answer(askId, decision, by, message, answers, scope) {
+  async answer(askId, decision, by, message, answers, scope, device = null) {
     const a = this.asks.get(askId);
     if (!a) throw new Error(`no ask ${askId}`);
     // The same answer again (a retry after a lost response, a forward from the box) is the earlier
@@ -1153,7 +1292,7 @@ export class Switchboard {
     if (this.asks.get(askId)?.state !== "open" || !this.live.has(a.thread)) return { ask: askId, answered: false, note: "it closed while being answered" };
     st.proc.write(answerLine(a.request_id, decision, input, message, extra));
     st.inputs && st.inputs.delete(askId);
-    this.closeAsk(a, decision, by, shown, decision === "always" && scope === "project" ? "project" : null);
+    this.closeAsk(a, decision, by, shown, decision === "always" && scope === "project" ? "project" : null, device);
     if (this.asks.open(a.thread).length === 0) this.set(a.thread, { status: "working" });
     return { ask: askId, answered: true, decision };
   }
@@ -1210,15 +1349,18 @@ export class Switchboard {
    * @param {string} id @param {string} mode
    */
   async mode(id, mode) {
-    if (!MODES.includes(mode)) throw Object.assign(new Error(`mode must be one of ${MODES.join(", ")}`), { code: "bad_input" });
+    if (!PERSON_MODES.includes(mode)) throw Object.assign(new Error(`mode must be one of ${PERSON_MODES.join(", ")}`), { code: "bad_input" });
     const st = this.live.get(id);
     if (!st) return { thread: id, mode: null, note: "not running; the mode applies to a running session" };
+    if (mode === BYPASS && !st.withPlugin) {
+      throw Object.assign(new Error("Doesn't ask needs Vyre's plugin in the session, so the security floor still runs; this one started without it"), { code: "refused" });
+    }
     if (st.proc.setMode) await st.proc.setMode(mode);
     else st.proc.write({ type: "control_request", request_id: `vyre-mode-${Date.now()}`, request: { subtype: "set_permission_mode", mode } });
     st.mode = mode;
     this.db.prepare("UPDATE threads_runs SET mode = ? WHERE id = ?").run(mode, id);
     const rec = this.record(id);
-    this.emit("mode.changed", { mode }, id, rec ? rec.project : null);
+    this.emit("mode.changed", { mode, label: MODE_LABELS[mode] }, id, rec ? rec.project : null);
     return { thread: id, mode };
   }
 
@@ -1277,6 +1419,76 @@ export class Switchboard {
     return { thread: id, model: String(model), ...(st ? {} : { note: "applies when the thread next runs" }) };
   }
 
+  /**
+   * Set a thread's reasoning effort, as /effort does: a running thread at once (the SDK's flag
+   * settings), a stopped one when it next runs. Kept with the thread's launch, so a resume keeps it.
+   * @param {string} id @param {string|null} effort null goes back to the model's default
+   */
+  async switchEffort(id, effort) {
+    const e = effortOf(effort);
+    const rec = this.must(id);
+    const st = this.live.get(id);
+    if (st && st.proc.control) await st.proc.control("apply_flag_settings", { settings: { effortLevel: e } });
+    const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+    const kept = optsOf(row);
+    if (e) kept.effort = e; else delete kept.effort;
+    this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
+    if (st) st.launch = { ...st.launch, effort: e || undefined };
+    this.emit("effort.switched", { effort: e, live: Boolean(st) }, id, rec.project);
+    return { thread: id, effort: e, ...(st ? {} : { note: "applies when the thread next runs" }) };
+  }
+
+  /**
+   * One question to a purpose's warm session (Vyre IQ's "memory", ADR 0034's latency target): a
+   * lean session (no plugin, no tools, none of the user's settings) already started and waiting,
+   * so the answer does not pay Claude Code's start. Each question gets a fresh one, never one that
+   * heard another question: the one used is closed when it answers, and a new spare starts behind
+   * it. Nothing is started before the first question (light by default); a spare nobody uses
+   * closes after sessions.idle_minutes, as every idle session does. The system text is fixed per
+   * spare, so the question's own material goes in `prompt`.
+   * @param {{ purpose: string, system?: string|null, prompt: string, model?: string|null, timeoutMs?: number }} o
+   * @returns {Promise<{ text: string, ok: boolean, cost_usd: number, warm: boolean, ms: number, thread: string }>}
+   */
+  async quick({ purpose, system = null, prompt, model = null, timeoutMs = 60_000 }) {
+    const t0 = Date.now();
+    const key = `${purpose}\u0000${model || ""}\u0000${crypto.createHash("sha256").update(String(system || "")).digest("hex")}`;
+    this.spares = this.spares || new Map();
+    let id = this.spares.get(key);
+    this.spares.delete(key);
+    const warm = Boolean(id && this.live.has(id) && !this.live.get(id).turn);
+    if (!warm) id = (await this.spare(purpose, system, model)).id;
+    const st = this.live.get(id);
+    if (!st) throw new Error(`the ${purpose} session did not start`);
+    const answer = new Promise((resolve, reject) => {
+      st.answered = resolve;
+      const t = setTimeout(() => { st.answered = null; reject(Object.assign(new Error(`no answer within ${timeoutMs} ms`), { code: "timeout" })); }, timeoutMs);
+      t.unref?.();
+    });
+    this.write(id, String(prompt));
+    // The next question's session starts now, while this one answers.
+    if (!this.closing) {
+      const next = this.spare(purpose, system, model)
+        .then(r => { if (this.closing || this.spares.has(key)) return this.stop(r.id).catch(() => {}); this.spares.set(key, r.id); })
+        .catch(e => this.deps.log(`threads: no spare ${purpose} session (${e.message})`))
+        .finally(() => this.starting.delete(next));
+      this.starting.add(next);
+    }
+    try {
+      const r = /** @type {any} */ (await answer);
+      return { ...r, warm, ms: Date.now() - t0, thread: id };
+    } finally {
+      st.done = true; st.stopping = true;
+      setImmediate(() => st.proc.stop());
+    }
+  }
+
+  /** A lean session for a purpose, started and left waiting for its question. */
+  async spare(purpose, system, model) {
+    const cwd = path.join(this.deps.root || os.tmpdir(), "quick", purpose.replace(/[^a-z0-9-]/gi, "_"));
+    fs.mkdirSync(cwd, { recursive: true });
+    return this.launch({ cwd, lean: true, quick: true, purpose, name: `Vyre ${purpose}`, ...(system ? { append: String(system) } : {}), ...(model ? { model } : {}) });
+  }
+
   /** A running thread's background tasks (shell commands and subagents), newest last. */
   tasks(id) {
     this.must(id);
@@ -1330,7 +1542,7 @@ export class Switchboard {
    */
   remember(id, text, scope = "project") {
     const rec = this.must(id);
-    const file = scope === "user" ? path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require_home(), ".claude"), "CLAUDE.md")
+    const file = scope === "user" ? path.join(claudeHome(this.deps.root), "CLAUDE.md")
       : path.join(rec.cwd, scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md");
     const line = String(text).replace(/\s+/g, " ").trim();
     if (!line) throw Object.assign(new Error("nothing to remember"), { code: "bad_input" });
@@ -1379,7 +1591,9 @@ export class Switchboard {
       : this.db.prepare(`SELECT id FROM threads_runs ${all ? "" : `WHERE status IN (${LIVE.map(() => "?").join(",")}) OR last_at > ?`} ORDER BY last_at DESC LIMIT 200`)
         .all(...(all ? [] : [...LIVE, Date.now() - 86_400_000]));
     const live = this.sessions.live(this.ours());
-    return rows.map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }));
+    // Warm sessions (quick) are Vyre's own plumbing: listed only with all.
+    const quick = all ? new Set() : new Set(/** @type {any[]} */ (this.db.prepare("SELECT id, opts FROM threads_runs WHERE opts LIKE '%\"quick\":true%'").all()).map(r => String(r.id)));
+    return rows.filter(r => !quick.has(String(r.id))).map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }));
   }
 
   /** A thread with its recent events, its open asks and who holds it. What a surface opening it needs. */
@@ -1486,8 +1700,12 @@ export class Switchboard {
 
   /** vyred is stopping: every live thread ends with reason "restart" (ADR 0029 R7), so a surface says why. */
   async stopAll() {
+    // No new spare starts, and one being started is waited for, so it is stopped with the rest.
+    this.closing = true;
+    await Promise.all([...this.starting]);
     for (const st of this.live.values()) if (!st.haltReason) st.haltReason = "restart";
     await Promise.all([...this.live.keys()].map(id => this.stop(id)));
+    for (const id of [...this.socks.keys()]) this.closeSocket(id);
     for (const job of [...this.prunes]) job.run();                     // no surface is left to catch up
   }
 }
@@ -1551,10 +1769,17 @@ export default {
     };
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
-      transcripts: (ctx.config && ctx.config.transcripts) || [],
+      transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers,
+      // Each session's own socket (option A): always with "on", with the spawner under "auto".
+      // Through the spawner it goes in the box's shared folder; else a private one of this user's.
+      threadSocket: cfg.thread_socket === "off" ? null
+        : async (/** @type {any} */ o) => cfg.thread_socket === "on" || usesSpawner()
+          ? openThreadSocket({ handler: ctx.handler, log: ctx.log, ...o,
+            dir: usesSpawner() ? THREAD_SOCKETS : path.join(privateSocketDir(), `t-${crypto.createHash("sha256").update(String(root)).digest("hex").slice(0, 12)}`) })
+          : null,
       subreaper: cfg.subreaper === false ? null : typeof cfg.subreaper === "string" ? cfg.subreaper : findSubreaper(),
       ...(typeof cfg.uid === "number" ? { uid: cfg.uid, gid: typeof cfg.gid === "number" ? cfg.gid : cfg.uid } : {}),
     });
@@ -1600,6 +1825,7 @@ export default {
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
+        effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
       async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
 
@@ -1636,7 +1862,9 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
-          description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` } } },
+          description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
+        model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
+        effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       async (i, { caller, idempotencyKey }) => {
         guard(caller, "type into sessions");
@@ -1645,6 +1873,10 @@ export default {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
+        if ((i.model || i.effort) && !queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches a session's model or effort"), { code: "denied" });
+        const had = (i.model || i.effort) ? sb.record(i.thread) : null;
+        if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
+        if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
         return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images),
           ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
@@ -1699,7 +1931,10 @@ export default {
         // A call vyred traced to a session never answers that session's own ask, whoever it says it is.
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
-        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope);
+        // device: which of the person's devices answered, when the call says (a paired device over
+        // the relay, the owner's tailnet node), not only the surface it claims.
+        const device = /^(device|tailnet):./.test(String(caller || "")) ? String(caller) : null;
+        return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope, device);
       },
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
@@ -1707,7 +1942,7 @@ export default {
       // No presence proof: answering is the owner's own action on their own screen, and Vyre does
       // not nag (ADR 0024, "No nagging"). The allowlist keeps models, agents and guests out, and the
       // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
-      ["cli", "local", "module", "deck", "capsule"]);
+      ["cli", "local", "module", "deck", "capsule", "tailnet"]);
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
@@ -1770,6 +2005,14 @@ export default {
         return sb.switchModel(i.thread, i.model);
       });
 
+    tool("threads.effort", "Set a thread's reasoning effort, as /effort does in Claude Code: low, medium, high, xhigh or max (the model's own limits apply); none goes back to the model's default. A running thread changes at once; a stopped one when it next runs.",
+      { type: "object", required: ["thread"], properties: { thread: str, effort: { type: "string", enum: EFFORTS } } },
+      async (i, { caller }) => {
+        guard(caller, "set effort");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface sets a session's effort"), { code: "denied" });
+        return sb.switchEffort(i.thread, i.effort ?? null);
+      });
+
     tool("threads.commands", "The slash commands a running thread offers (Claude Code's own, the user's and the project's, and plugins'), for a composer's / menu. Send one as a message, e.g. \"/compact\".",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
@@ -1812,8 +2055,8 @@ export default {
       { type: "object", required: ["thread"], properties: { thread: str, prompt: str, name: str, surface: str } },
       async (i, { caller }) => { guard(caller, "fork sessions"); return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) }); });
 
-    tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking) or plan (read and plan only). Only a person's surface can; bypassPermissions is never offered.",
-      { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: MODES } } },
+    tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking), plan (read and plan only) or bypassPermissions (\"Doesn't ask\": no questions; Vyre's security floor and the Gate still hold, and only in a session with Vyre's plugin). Only a person's surface can; no answer ever sets it.",
+      { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: PERSON_MODES } } },
       async (i, { caller, thread }) => {
         if (thread && thread === i.thread) throw Object.assign(new Error("a session's mode is changed by the person, not from the session"), { code: "denied" });
         return sb.mode(i.thread, i.mode);
@@ -1833,10 +2076,19 @@ export default {
     });
     // For other modules only (agents): start or resume with an agent's credentials, scope and
     // instructions. Internal, so no surface or model can hand a thread an environment.
+    ctx.tool("threads.quick", {
+      description: "One question to a purpose's warm session (a lean one already started, so no start-up wait): memory (Vyre IQ), planner, helper and the like. A fresh session per question; the system text is fixed per spare, the question's material goes in prompt. Returns { text, ok, cost_usd, warm, ms, thread }.", internal: true,
+      input: { type: "object", required: ["purpose", "prompt"], properties: { purpose: { type: "string", enum: ["memory", "planner", "learn", "helper", "job"] }, prompt: str, system: str, model: str, timeout_ms: { type: "integer", minimum: 1000, maximum: 600000 } } },
+      run: async i => sb.quick({ purpose: i.purpose, prompt: i.prompt, system: i.system || null, model: i.model || null, timeoutMs: i.timeout_ms || 60_000 }),
+    });
+
     ctx.tool("threads.launch", {
       description: "Start or resume a thread for an agent, with its credentials set only in that child.", internal: true,
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
+        // The agent's thinking effort (agents.effort), one of sessions.effort's values.
+        effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"] },
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, purpose: str, provider: str, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" },
+        effort: { type: "string", enum: EFFORTS },
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
         plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },

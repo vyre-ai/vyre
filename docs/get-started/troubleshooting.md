@@ -165,7 +165,7 @@ The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tail
 
 ### The pairing code expired
 
-The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre up` again for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
+The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
 
 ### "The Mac that is asking cannot approve itself."
 

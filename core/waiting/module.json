@@ -1,0 +1,12 @@
+{
+  "name": "waiting",
+  "version": "0.1.0",
+  "description": "One list of what waits on the user: session asks, held drafts, ringing reminders and pairing requests.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["waiting.list", "waiting.count"] },
+  "watches": { "emits": ["waiting.changed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

@@ -99,6 +99,17 @@ test("Up: edits the newest queued message in an empty composer, else recalls", (
   assert.equal(upAction({ text: "typing", firstLine: true, recalling: false, queued: 2 }), "none");
 });
 
+test("Enter: a message with images is never queued (the box keeps a queued message's words only)", () => {
+  const msg = "Use this photo of the shop front";
+  assert.deepEqual(enterAction({ text: msg, running: true, alt: true, images: 1 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: msg, running: true, queueToggle: true, images: 2 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: msg, running: true, button: true, hold: true, images: 1 }), { do: "refuse", why: "images-queue" });
+  assert.deepEqual(enterAction({ text: "", running: true, alt: true, images: 1 }), { do: "refuse", why: "images-queue" }, "images alone");
+  assert.deepEqual(enterAction({ text: "/compact", running: true, images: 1 }), { do: "refuse", why: "images-queue" }, "a command waits, so it would queue");
+  assert.deepEqual(enterAction({ text: msg, running: true, images: 1 }), { do: "send", kind: "message", mode: "steer" }, "a steer takes them");
+  assert.deepEqual(enterAction({ text: msg, running: false, alt: true, images: 1 }), { do: "send", kind: "message", mode: null }, "idle: sent now");
+});
+
 test("Enter: idle sends; running steers by default and queues with Alt, the toggle or a hold", () => {
   const msg = "Keep the witness page as its own step";
   assert.deepEqual(enterAction({ text: msg, running: false }), { do: "send", kind: "message", mode: null });
@@ -205,18 +216,21 @@ test("uuids are v4 shaped, with or without crypto", () => {
   try { assert.match(newUuid(), re); } finally { if (c) Object.defineProperty(globalThis, "crypto", c); }
 });
 
-test("the model picker: the aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
-  const plain = modelChoices({ current: "opus" });
+test("the model picker: the box's aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
+  // The box's list (sessions.models.get aliases); the Deck keeps none of its own.
+  const aliases = [{ id: "opus", label: "Opus", description: "The most capable" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }, { id: "<b>", label: "x" }];
+  const plain = modelChoices({ current: "opus", aliases });
   assert.deepEqual(plain.map(m => [m.id, m.now]), [["opus", true], ["sonnet", false], ["haiku", false]]);
   const got = modelChoices({
-    current: "claude-sonnet-4-5",
+    current: "claude-sonnet-4-5", aliases,
     purposes: { chat: { model: "opus", from: "config:chat" }, agent: { model: "opus", from: "config:agent" }, job: { model: "claude-haiku-4-5", from: "purpose:job" } },
   });
   assert.deepEqual(got.map(m => m.id), ["opus", "sonnet", "haiku", "claude-haiku-4-5", "claude-sonnet-4-5"]);
   assert.equal(got[0].description, "Used for chat, agent");
   assert.equal(got[3].description, "Used for job");
   assert.deepEqual(got.filter(m => m.now).map(m => m.id), ["claude-sonnet-4-5"], "the exact id wins over its family");
-  assert.deepEqual(modelChoices({ current: "claude-opus-4-5[1m]" }).filter(m => m.now).map(m => m.id), ["claude-opus-4-5[1m]"]);
-  assert.deepEqual(modelChoices({ current: null, purposes: { chat: { model: "<b>x</b>" } } }).map(m => m.id), ["opus", "sonnet", "haiku"], "only what a model id can be");
+  assert.deepEqual(modelChoices({ current: "claude-opus-4-5[1m]", aliases }).filter(m => m.now).map(m => m.id), ["claude-opus-4-5[1m]"]);
+  assert.deepEqual(modelChoices({ current: null, aliases, purposes: { chat: { model: "<b>x</b>" } } }).map(m => m.id), ["opus", "sonnet", "haiku"], "only what a model id can be");
+  assert.deepEqual(modelChoices({ current: "opus" }).map(m => m.id), ["opus"], "an older box with no aliases: the thread's own model still shows");
   assert.equal(shortModel("claude-opus-4-5"), "opus");
 });

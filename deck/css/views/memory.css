@@ -1,4 +1,4 @@
-/* Memory. Board: DeckMemory. Gold (Recall) marks the facts; Signal only the selected node's ring. */
+/* Memory. Board: DeckMemory. Facts are --text-2 (no gold); Signal only the selected node's ring. */
 
 .mem { height: 100%; display: flex; min-height: 0; }
 .mem-col { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
@@ -9,12 +9,12 @@
 .mem-head { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 32px; border-bottom: 1px solid var(--rule); }
 /* Memory and Lessons: two tabs set as the page's title. */
 .mem-tabs { display: flex; align-items: center; gap: 4px; margin-left: -8px; }
-.mem-tab { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border: none; border-radius: var(--r-2);
+.mem-tab { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border: none; border-radius: var(--radius-button, 8px);
   background: none; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; color: var(--label); cursor: pointer; }
 .mem-tab:hover { color: var(--text-2); }
 .mem-tab[aria-selected="true"] { color: var(--text); }
-.mem-beacon { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-  background: var(--beacon-wash); color: var(--beacon-ink); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0; }
+.mem-beacon { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 9px;
+  border: 1px solid var(--rule); color: var(--beacon-ink); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0; }
 .mem-controls { display: flex; align-items: center; gap: 12px; }
 .mem-controls[hidden] { display: none; }
 .mem-counts { white-space: nowrap; }
@@ -26,7 +26,7 @@
 .mem-today { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border: 1px solid var(--rule-strong);
   border-radius: 15px; background: transparent; color: var(--text-2); font-size: 13px; cursor: pointer; white-space: nowrap; }
 .mem-today:hover { background: var(--hover); }
-.mem-today[aria-pressed="true"] { border-color: var(--recall); background: var(--recall-wash); color: var(--recall-ink); }
+.mem-today[aria-pressed="true"] { border-color: var(--rule-strong); background: var(--hover); color: var(--text); }
 .mem-pick { position: relative; display: inline-flex; align-items: center; color: var(--text-2); }
 .mem-pick svg { position: absolute; right: 10px; pointer-events: none; }
 .mem-select { appearance: none; -webkit-appearance: none; height: 30px; padding: 0 30px 0 12px; border: 1px solid var(--rule-strong);
@@ -47,18 +47,18 @@
 .mm-room-name { font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 1.76px; fill: var(--label); }
 .mm-room-count { font-family: var(--mono); font-size: 11px; fill: var(--label); }
 .mm-edge { stroke: var(--rule-strong); stroke-width: 1; }
-.mm-edge.today { stroke: var(--recall); stroke-width: 1.5; }
+.mm-edge.today { stroke: var(--text-2); stroke-width: 1.5; }
 .mm-edge.thread { stroke: var(--rule); }
 .mm-edge.across { fill: none; stroke-dasharray: 4 4; }
 .mm-edge.closed { stroke-dasharray: 2 4; opacity: 0.6; }
-.mm-factdot.closed .mm-fact { fill: none; stroke: var(--recall); stroke-width: 1.2; }
+.mm-factdot.closed .mm-fact { fill: none; stroke: var(--text-2); stroke-width: 1.2; }
 .mm-node.muted { opacity: 0.45; }
 .mm-person.pinned { stroke: var(--text); stroke-width: 2; }
 .mm-room.quiet { stroke-dasharray: 3 5; }
-.mm-fact { fill: var(--recall); }
+.mm-fact { fill: var(--text-2); }
 .mm-person { fill: var(--panel); stroke: var(--text-2); stroke-width: 1.5; }
 .mm-thing { fill: var(--bg); stroke: var(--label); stroke-width: 1.2; }
-.mm-ring { fill: none; stroke: var(--signal); stroke-width: 2; }
+.mm-ring { fill: none; stroke: var(--focus); stroke-width: 2; }
 :root[data-theme="paper"] .mm-ring { stroke: var(--focus); }
 .mm-initials { font-family: var(--mono); font-size: 11px; font-weight: 500; fill: var(--text); }
 .mm-person-text { font-size: 13px; fill: var(--text); }
@@ -77,7 +77,7 @@
 .mem-trunc { margin: 0; }
 .mem-legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--label); }
 .mem-leg { display: inline-flex; align-items: center; gap: 8px; }
-.mem-zoom { display: flex; gap: 2px; padding: 2px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-2); flex-shrink: 0; }
+.mem-zoom { display: flex; gap: 2px; padding: 2px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); flex-shrink: 0; }
 .mem-zoom .btn { height: 32px; }
 
 /* List */
@@ -104,16 +104,16 @@
 .mem-row-cx, .mem-row-done { padding: 12px 8px; border-bottom: 1px solid var(--rule); cursor: default; }
 .mem-row-cx:hover, .mem-row-done:hover { background: transparent; }
 
-/* Gold is for what came from memory: a fact's source thread, and the user's own correction. */
-.recall-link { color: var(--recall-ink); text-decoration-color: color-mix(in srgb, var(--recall) 40%, transparent); }
+/* What came from memory, in --text-2: a fact's source thread, and the user's own correction. */
+.recall-link { color: var(--text-2); text-decoration-color: color-mix(in srgb, var(--text-2) 40%, transparent); }
 .recall-link:hover { text-decoration-color: currentColor; }
-.mem-gold { color: var(--recall-ink); }
+.mem-gold { color: var(--text-2); }
 
 /* Correct: the object becomes a field in its own sentence. */
 .mem-cx { display: flex; flex-direction: column; gap: 10px; }
 .mem-cx-text { display: flex; align-items: baseline; gap: 12px; margin: 0; font-size: 14px; line-height: 22px; color: var(--text); }
 .mem-cx-text .dot { transform: translateY(-1px); }
-.mem-cx-in { display: inline-block; width: auto; max-width: 100%; font-size: inherit; line-height: inherit; color: var(--recall-ink);
+.mem-cx-in { display: inline-block; width: auto; max-width: 100%; font-size: inherit; line-height: inherit; color: var(--text-2);
   border-bottom-color: var(--rule-strong); }
 .mem-cx-act { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding-left: 20px; }
 .mem-cx-kbd { height: 18px; margin-left: 4px; border-color: var(--rule); }
@@ -126,7 +126,7 @@
 .mem-cx-meta { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--label); }
 .mem-dot-closed { border: 1px solid var(--label); background: transparent; }
 .mem-cx-undo { padding-left: 20px; font-size: 13px; }
-.mem-side-cx:not(:empty) { margin-top: 14px; padding: 12px; border: 1px solid var(--rule); border-radius: var(--r-2); }
+.mem-side-cx:not(:empty) { margin-top: 14px; padding: 12px; border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); }
 .mem-side-cx .mem-cx-undo, .mem-side-cx .mem-cx-act { padding-left: 20px; }
 
 /* Detail panel */
@@ -156,7 +156,7 @@
 .mem-turn-top svg { flex-shrink: 0; }
 .mem-turn-name { font-size: 14px; line-height: 20px; color: var(--text); }
 .mem-turn-when { margin-left: auto; font-size: 12px; color: var(--label); flex-shrink: 0; }
-.mem-quote { margin: 0; padding: 8px 12px; border-radius: var(--r-1); font-size: 13px; line-height: 19px; color: var(--text); overflow-wrap: anywhere; }
+.mem-quote { margin: 0; padding: 8px 12px; border-radius: var(--radius-chip, 4px); font-size: 13px; line-height: 19px; color: var(--text); overflow-wrap: anywhere; }
 .mem-who { display: block; margin-top: 4px; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--text-2); }
 .mem-gone { margin-top: 10px; }
 .mem-fact-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 0; border: none; border-bottom: 1px solid var(--rule);
@@ -172,7 +172,7 @@
 }
 
 /* Phone: the list only; the panel is a full-screen sheet with a way back. */
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .mem-head { height: auto; flex-wrap: wrap; gap: 10px 12px; padding: 14px 16px 12px; }
   .mem-tab { font-size: 26px; line-height: 32px; letter-spacing: -0.02em; height: 40px; }
   .mem-tabs { order: 1; }

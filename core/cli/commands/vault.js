@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre vault` — the Vault from the terminal (docs/adr/0001-vault-crypto.md).
+// `vyre vault`: the Vault from the terminal (docs/adr/0001-vault-crypto.md).
 //
 // The terminal is the one place a person types a value, so this file is built around keeping
 // that value off every screen and out of every history. Values are never taken on the command
@@ -13,6 +13,7 @@
 // can sit in front of any command without changing that command's output.
 
 import { callAsPerson } from "../presence.js";
+import { personIO } from "./presence.js";
 import path from "node:path";
 import { spawn } from "node:child_process";
 import { dialogsAllowed } from "../../config/dialogs.js";
@@ -20,6 +21,8 @@ import { finished } from "node:stream/promises";
 import os from "node:os";
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
+import { emit, viewing, nextFor, EXIT } from "../kit.js";
+import { derive, prompt } from "../view.js";
 import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
 import { inspect } from "../../vault/backup.js";
@@ -29,13 +32,33 @@ import { templateRefs, render, parseEnvFile, parseRef } from "../../vault/refs.j
 // line on stdout and nothing else there. Exit codes: 0 ok, 1 error, 3 presence refused or
 // required, 4 the vault is locked. `run` keeps its child's output and exit code, and never
 // prints the values it injected, in either mode.
+//
+// --view: the same line as a frame (core/cli/view.js), drawn by the verb's view in VIEWS: the
+// items as a table, one item as a card, the recovery kit's address as a qr frame. Nothing is read
+// from a terminal: a value, passphrase or password comes piped in with --stdin, and without it
+// the verb is a prompt frame naming that flag, exit 2. The live code (totp) is one frame.
 let JSON_MODE = false;
+/** --stdin: under --view, the secret this verb needs comes piped in. */
+let STDIN = false;
+/** The words that ran this verb, for a prompt frame to run again with --stdin. */
+let AGAIN = /** @type {string[]} */ (["vault"]);
 /** The last reply from vyred, and whether --json has already printed a line for this command. */
 let last = /** @type {any} */ (null);
 let printed = false;
 const say = (/** @type {string} */ s) => { if (!JSON_MODE) out(s); };
 const hint = (/** @type {string} */ s) => { if (!JSON_MODE) process.stderr.write(s); };
-const jsonLine = obj => { if (!printed) { process.stdout.write(JSON.stringify(obj) + "\n"); printed = true; } };
+const jsonLine = obj => { if (!printed) { emit(obj, viewing() ? viewOf(obj) : undefined); printed = true; } };
+
+/**
+ * Under --view with no --stdin: a prompt frame for the secret, naming the flag that pipes it in,
+ * and exit 2. Null when the verb may go on and read it.
+ * @param {string} label what to type
+ */
+function secretGate(label) {
+  if (!viewing() || STDIN) return null;
+  jsonLine({ prompt: "secret", label });
+  return EXIT.USAGE;
+}
 
 /**
  * Every call to vyred goes through here, so --json can print the reply the command acted on. A
@@ -43,7 +66,7 @@ const jsonLine = obj => { if (!printed) { process.stdout.write(JSON.stringify(ob
  * terminal, as `vyre learn` does; a tool that does not answers the first call as before.
  */
 async function tool(name, input = {}, opts) {
-  const r = await callAsPerson(name, input, { timeout: opts && opts.timeout });
+  const r = await callAsPerson(name, input, { timeout: opts && opts.timeout, io: personIO() });
   last = r;
   return r;
 }
@@ -137,12 +160,12 @@ const missingSurface = (r, verb) => r.error && r.error.code === "no_such_tool" &
 
 async function get(args) {
   let f;
-  try { f = flags(args, { string: ["field"], boolean: ["reveal", "copy", "otp"] }); } catch (e) { return oops(e.message); }
+  try { f = flags(args, { string: ["field"], boolean: ["reveal", "copy", "otp", "once"] }); } catch (e) { return oops(e.message); }
   const name = f._[0];
-  if (!name || f._.length > 1) return oops("vyre vault get <item> [--reveal | --copy | --otp] [--field f]");
+  if (!name || f._.length > 1) return oops("vyre vault get <item> [--reveal | --copy | --otp [--once]] [--field f]");
   if ([f.reveal, f.copy, f.otp].filter(Boolean).length > 1) return oops("choose one of --reveal, --copy and --otp");
   const field = f.field ? { field: f.field } : {};
-  if (f.otp) return totp([name]);
+  if (f.otp) return totp(f.once ? [name, "--once"] : [name]);
   if (f.reveal) {
     const r = await tool("vault.reveal", { name, ...field });
     if (r.error) return missingSurface(r, "reveal") ?? fail(r);
@@ -195,6 +218,8 @@ async function edit(args) {
   if (drop.length) input.removeHosts = drop;
   if (f["remove-field"].length) input.removeFields = f["remove-field"];
   if (f.field.length) {
+    const gate = secretGate(`The new ${f.field[0]} for ${name}`);
+    if (gate !== null) return gate;
     if (!process.stdin.isTTY && f.field.length > 1) return oops("with piped input, replace one --field at a time");
     /** @type {Record<string, string>} */
     const fields = {};
@@ -357,7 +382,11 @@ async function put(args) {
   const name = f._[0];
   const kind = f.kind || "secret";
   if (!KINDS.includes(kind)) return oops(`--kind is one of ${KINDS.join(", ")}`);
-  const tty = !!process.stdin.isTTY;
+  const tty = !viewing() && !!process.stdin.isTTY;
+  if (kind !== "env-set" || f.field.length) {
+    const gate = secretGate(kind === "login" ? `The password for ${name}` : kind === "note" ? `The note ${name}` : kind === "card" ? `The card ${name}` : `The value of ${name}`);
+    if (gate !== null) return gate;
+  }
 
   /** @type {Record<string, string>} */
   const fields = {};
@@ -509,7 +538,8 @@ async function run(args) {
   printed = true;
   const { env, values } = got;
   const [bin, ...rest] = got.cmd;
-  const child = spawn(bin, rest, { env: { ...process.env, ...env }, stdio: ["inherit", "pipe", "pipe"] });
+  // Under --view the child gets no stdin either: a surface runs it and there is no one to type.
+  const child = spawn(bin, rest, { env: { ...process.env, ...env }, stdio: [viewing() ? "ignore" : "inherit", "pipe", "pipe"] });
   const so = new Scrubber(values), se = new Scrubber(values);
   child.stdout.pipe(so).pipe(process.stdout, { end: false });
   child.stderr.pipe(se).pipe(process.stderr, { end: false });
@@ -533,13 +563,155 @@ async function run(args) {
 
 // ------------------------------------------------------------ for people
 
+// ------------------------------------------------------------ one-time codes
+
+/** The live view stops on its own after this, so a forgotten terminal does not ask for codes all day. */
+export const TOTP_LIVE_MS = 5 * 60_000;
+const BAR = 20;
+
+/** Digits grouped as the Deck shows them: 123 456, 1234 5678. Anything else as it came. */
+export function groupCode(code) {
+  const c = String(code ?? "");
+  if (/^\d{6}$/.test(c)) return c.slice(0, 3) + " " + c.slice(3);
+  if (/^\d{8}$/.test(c)) return c.slice(0, 4) + " " + c.slice(4);
+  return c;
+}
+
+/**
+ * When the code vault.totp just returned stops being valid, on the local clock. The tool's
+ * `remaining` is whole seconds, so `fetchedAt + remaining` is up to a second past the real end;
+ * TOTP periods start on multiples of `period` since the epoch, so snap to the nearest one.
+ * @param {number} fetchedAt @param {number} remaining @param {number} period
+ */
+export function periodEnd(fetchedAt, remaining, period) {
+  const p = Math.max(1, Number(period) || 30) * 1000;
+  return Math.round((fetchedAt + Math.max(0, Number(remaining) || 0) * 1000) / p) * p;
+}
+
+/**
+ * One frame of the live code: the grouped code, a text bar of the seconds left, and the count.
+ * Pure, so the countdown is tested without a terminal or a clock.
+ * @param {{ now: number, endsAt: number, period: number, code: string, next?: string, paint?: boolean }} f
+ * @returns {{ line: string, left: number }}
+ */
+export function totpFrame({ now, endsAt, period, code, next, paint = true }) {
+  const p = Math.max(1, Number(period) || 30);
+  const left = Math.max(0, Math.min(p, Math.ceil((endsAt - now) / 1000)));
+  const full = Math.round((left / p) * BAR);
+  const low = left <= 5;
+  const c = (/** @type {(s: string) => string} */ fn, /** @type {string} */ s) => (paint ? fn(s) : s);
+  const bar = c(low ? beacon : signal, "█".repeat(full)) + c(dim, "░".repeat(BAR - full));
+  const line = `  ${c(bold, c(low ? beacon : signal, groupCode(code)))}  ${bar} ${c(dim, `${String(left).padStart(2)}s`)}` +
+    (next ? c(dim, `  next ${groupCode(next)}`) : "");
+  return { line, left };
+}
+
+/**
+ * @typedef {{ now(): number, write(s: string): void, every(ms: number, fn: () => void): () => void,
+ *   keys(onQuit: () => void, onEnter?: () => void): () => void }} LiveIO
+ */
+
+/** The terminal for the live code: a one-second timer, q, Esc or Ctrl-C to quit, Enter for another. */
+const liveIO = /** @type {LiveIO} */ ({
+  now: () => Date.now(),
+  write: s => { process.stdout.write(s); },
+  every: (ms, fn) => { const t = setInterval(fn, ms); return () => clearInterval(t); },
+  keys: (onQuit, onEnter) => {
+    const stdin = process.stdin;
+    const onSig = () => onQuit();
+    process.on("SIGINT", onSig);
+    if (!stdin.isTTY) return () => { process.removeListener("SIGINT", onSig); };
+    const onData = (/** @type {Buffer} */ b) => { const k = b.toString("utf8"); if (k === "q" || k === "Q" || k === "\x1b" || k === "\x03") onQuit(); else if ((k === "\r" || k === "\n") && onEnter) onEnter(); };
+    stdin.setRawMode(true);
+    stdin.on("data", onData);
+    stdin.resume();
+    return () => {
+      stdin.removeListener("data", onData);
+      try { stdin.setRawMode(false); } catch {}
+      stdin.pause();
+      process.removeListener("SIGINT", onSig);
+    };
+  },
+});
+
+/**
+ * The live code: redrawn in place each second from the local clock. When the period ends the code
+ * is gone and the next one waits for Enter, since from a terminal every code asks for its own
+ * proof (ADR 0004, the CLI's window covers no codes). With `auto`, one vault.totp call when a
+ * period rolls over instead (never one a second). Resolves with the exit code when the person
+ * quits, the time runs out, or a fetch fails.
+ * @param {{ code: string, period: number, remaining: number, next?: string }} first
+ * @param {{ fetch: () => Promise<any>, io?: LiveIO, maxMs?: number, paint?: boolean, name?: string, auto?: boolean }} o
+ */
+export function liveTotp(first, { fetch, io = liveIO, maxMs = TOTP_LIVE_MS, paint = true, name = "<name>", auto = false }) {
+  const started = io.now();
+  let cur = first;
+  let endsAt = periodEnd(started, cur.remaining, cur.period);
+  let fetching = false, done = false, want = auto;
+  /** @type {() => void} */ let stopTick = () => {};
+  /** @type {() => void} */ let stopKeys = () => {};
+  const clear = "\r\x1b[2K";
+  const draw = () => io.write(clear + totpFrame({ now: io.now(), endsAt, period: cur.period, code: cur.code, next: cur.next, paint }).line);
+  return new Promise(resolve => {
+    const finish = (/** @type {number} */ code, /** @type {string} */ why = "") => {
+      if (done) return;
+      done = true;
+      stopTick(); stopKeys();
+      io.write((why ? clear + why : "") + "\x1b[?25h\n");
+      resolve(code);
+    };
+    const tick = async () => {
+      if (done || fetching) return;
+      const now = io.now();
+      if (now - started >= maxMs) return finish(0, dim(`  stopped after ${Math.round(maxMs / 60_000)} minutes · vyre vault totp ${name} for more`));
+      if (now >= endsAt && !want) {
+        io.write(clear + (paint ? dim : String)(`  expired · Enter for a new code (asks again) · q quits`));
+        return;
+      }
+      if (now >= endsAt) {
+        fetching = true;
+        want = auto;
+        io.write(clear);
+        // The terminal back in its normal mode meanwhile: if this call asks for the terminal code,
+        // the person types it at a line prompt, not into our key reader.
+        stopKeys();
+        const r = await fetch();
+        fetching = false;
+        if (!done) stopKeys = io.keys(() => finish(0), onEnter);
+        if (done) return;
+        if (r.error) { last = r; return finish(exitFor(r), beacon(`  ${r.error.code}: `) + String(r.error.message || "")); }
+        const prev = endsAt;
+        cur = r.data;
+        endsAt = periodEnd(io.now(), cur.remaining, cur.period);
+        // vyred's clock a little behind ours: keep to one call a period rather than asking again next second.
+        if (endsAt <= prev) endsAt = prev + Math.max(1, Number(cur.period) || 30) * 1000;
+      }
+      draw();
+    };
+    const onEnter = () => { if (!done && !fetching && io.now() >= endsAt) { want = true; tick(); } };
+    io.write("\x1b[?25l");
+    draw();
+    stopTick = io.every(1000, () => { tick(); });
+    stopKeys = io.keys(() => finish(0), onEnter);
+  });
+}
+
 async function totp(args) {
-  const name = args[0];
-  if (!name || args.length > 1) return oops("vyre vault totp <name>");
+  let f;
+  try { f = flags(args, { boolean: ["once"] }); } catch (e) { return oops(e.message); }
+  const name = f._[0];
+  if (!name || f._.length > 1) return oops("vyre vault totp <name> [--once]");
   const r = await tool("vault.totp", { name });
   if (r.error) return fail(r);
-  say(`  ${bold(signal(r.data.display || r.data.code))}  ${dim(`${r.data.remaining}s left`)}`);
-  return 0;
+  if (JSON_MODE) return 0;
+  const d = r.data;
+  // Piped: the code alone on stdout, for $(...), and the seconds on stderr.
+  if (!process.stdout.isTTY) { process.stdout.write(`${d.code}\n`); hint(`  ${d.remaining}s left\n`); return 0; }
+  if (f.once) {
+    say(totpFrame({ now: Date.now(), endsAt: periodEnd(Date.now(), d.remaining, d.period), period: d.period, code: d.code, next: d.next }).line);
+    return 0;
+  }
+  return liveTotp(d, { name, fetch: () => tool("vault.totp", { name }) });
 }
 
 async function generate(args) {
@@ -595,6 +767,103 @@ async function audit(args) {
     const res = e.ok ? signal("ok") : beacon("refused") + (e.why ? dim(" " + e.why) : "");
     say(`  ${dim(when)}  ${e.action.padEnd(14)} ${bold(e.name || "")} ${dim("by " + e.who)}  ${res}`);
   }
+  return 0;
+}
+
+// ------------------------------------------------------------ Watchtower, breaches, history
+
+/** The Deck's Watchtower words (deck/vault/model.js REASON), in the order it lists them. */
+const REASONS = [
+  ["weak", "weak", "easy to guess · vyre vault generate <name> makes a strong one"],
+  ["reused", "reused", "the same value is in more than one item"],
+  ["rotate", "rotate", "a copy left this box · replace the value to clear it"],
+  ["old", "old", "not changed for more than a year"],
+  ["2fa-available", "two-factor available", "the site offers one-time codes · vyre vault edit <item> --field totp"],
+  ["unprotected", "not yet protected", "still opened without your password · vyre vault account create"],
+];
+
+/** `health`: Watchtower. Names and reason codes from vyred, never a value. */
+async function health(args) {
+  if (args.length) return oops("vyre vault health");
+  const r = await tool("vault.health");
+  if (r.error) return fail(r);
+  const { items = [], counts = {}, checked = 0 } = r.data || {};
+  say("");
+  say(`  ${bold("Watchtower")} ${dim(`· ${plural(checked, "item")} checked`)}`);
+  say("  " + REASONS.map(([k, label]) => (counts[k] ? beacon(`${counts[k]} ${label}`) : dim(`0 ${label}`))).join(dim(" · ")));
+  if (!items.length) { say(`\n  ${signal("nothing to fix")}\n`); return 0; }
+  for (const [k, label, why] of REASONS) {
+    const rows = items.filter(i => (i.reasons || []).includes(k));
+    if (!rows.length) continue;
+    say(`\n  ${bold(label)} ${dim(`· ${why}`)}`);
+    if (k === "reused") {
+      const groups = new Map();
+      for (const i of rows) { const g = i.group || i.name; if (!groups.has(g)) groups.set(g, []); groups.get(g).push(i.name); }
+      for (const names of groups.values()) say(`    ${names.map(n => bold(n)).join(dim(", "))} ${dim("· same value")}`);
+    } else for (const i of rows) say(`    ${bold(i.name)}  ${dim(i.kind)}`);
+  }
+  say("");
+  return 0;
+}
+
+/** `breach`: every login's password against known breaches, by k-anonymity. Opt-in, and a network call. */
+async function breach(args) {
+  if (args.length) return oops("vyre vault breach checks every login at once (only the first 5 characters of each password's SHA-1 leave); it takes no item");
+  const r = await tool("vault.breach.check", {}, { timeout: 120_000 });
+  if (r.error) {
+    if (!JSON_MODE && /breach check is off/.test(String(r.error.message))) {
+      last = r;
+      out(beacon("  the breach check is off ") + dim('· set "vault": { "breach": "ask" } in config.json, then vyre restart; every check still asks you first'));
+      return 1;
+    }
+    return fail(r);
+  }
+  const { breached = [], checked = 0 } = r.data || {};
+  if (!breached.length) { say(`  ${signal("none found")} ${dim(`· none of ${plural(checked, "password")} appears in a known breach`)}`); return 0; }
+  say(`  ${beacon(`${breached.length} of ${plural(checked, "password")}`)} appear in known breaches ${dim("· replace them: vyre vault edit <item> --field password")}`);
+  for (const n of breached) say(`    ${bold(n)}`);
+  return 0;
+}
+
+/** `history <item> [--field f]`: versions, who and which fields changed. Never a value. */
+async function history(args) {
+  let f;
+  try { f = flags(args, { string: ["field"] }); } catch (e) { return oops(e.message); }
+  if (f._.length !== 1) return oops("vyre vault history <item> [--field f]");
+  const r = await tool("vault.history", { name: f._[0], ...(f.field ? { field: f.field } : {}) });
+  if (r.error) return fail(r);
+  const entries = r.data.entries || [];
+  if (!entries.length) { say(dim(f.field ? `  no version of ${f._[0]} changed ${f.field}` : `  no versions of ${f._[0]} kept yet`)); return 0; }
+  say("");
+  for (const e of entries) {
+    const when = new Date(e.at).toISOString().replace("T", " ").slice(0, 16);
+    const tag = e.current ? signal("current") : e.readable ? dim("kept   ") : dim("gone   ");
+    say(`  ${bold(("v" + e.version).padEnd(5))} ${tag}  ${dim(when)}  ${(e.changed || []).join(", ") || dim("no fields")}  ${dim("by " + e.by)}`);
+  }
+  const back = entries.find(e => !e.current && e.readable);
+  if (back) say(dim(`\n  vyre vault revert ${f._[0]} <version> puts one back, as a new version`));
+  say("");
+  return 0;
+}
+
+/** `revert <item> <version>`: an older version's fields back, as a new version. */
+async function revert(args) {
+  const [name, v, ...more] = args;
+  const version = Number(v);
+  if (!name || v === undefined || more.length) return oops("vyre vault revert <item> <version> · vyre vault history <item> lists the versions");
+  if (!Number.isInteger(version) || version < 1) return oops(`${v} is not a version · vyre vault history ${name} lists them`);
+  const r = await tool("vault.revert", { name, version });
+  if (r.error) return fail(r);
+  say(`  ${signal("reverted")} ${bold(r.data.name)} ${dim(`· version ${r.data.from} is back, as version ${r.data.version}`)}`);
+  return 0;
+}
+
+/** `clear-clipboard`: take a copied value off the clipboard now, if it is still there. */
+async function clearClipboard(args) {
+  if (args.length) return oops("vyre vault clear-clipboard");
+  const r = await tool("vault.clipboard.clear");
+  if (r.error) return fail(r);
+  say(`  ${signal("cleared")} ${dim("· anything the vault copied is off the clipboard")}`);
   return 0;
 }
 
@@ -798,7 +1067,7 @@ async function kit() {
   say(`  ${r.data.url}`);
   say(dim("  print it, write your password on it by hand, keep it somewhere safe"));
   // Opened for a person at a terminal only; a script or a test gets the address and nothing else.
-  if (process.platform === "darwin" && process.stdout.isTTY && !process.env.VYRE_NO_OPEN && dialogsAllowed()) spawn("open", [r.data.url], { stdio: "ignore", detached: true }).unref();
+  if (process.platform === "darwin" && process.stdout.isTTY && !viewing() && !process.env.VYRE_NO_OPEN && dialogsAllowed()) spawn("open", [r.data.url], { stdio: "ignore", detached: true }).unref();
   return 0;
 }
 
@@ -957,6 +1226,8 @@ async function devices(args) {
 }
 
 async function unlockPassphrase() {
+  const gate = secretGate("The unlock passphrase for browser autofill");
+  if (gate !== null) return gate;
   let passphrase;
   try { passphrase = await newPassphrase("unlock passphrase for browser autofill"); } catch (e) { return oops(e.message); }
   const r = await tool("vault.unlock-passphrase", { passphrase });
@@ -968,6 +1239,8 @@ async function unlockPassphrase() {
 
 async function backupCmd(args) {
   if (args.length !== 1) return oops("vyre vault backup <file>");
+  const gate = secretGate("A passphrase for the backup (12 characters or more)");
+  if (gate !== null) return gate;
   let passphrase;
   try { passphrase = await newPassphrase("backup passphrase (12 characters or more)"); } catch (e) { return oops(e.message); }
   const r = await tool("vault.backup", { file: path.resolve(args[0]), passphrase }, { timeout: 60_000 });
@@ -985,6 +1258,8 @@ async function restoreCmd(args) {
   let info;
   try { info = inspect(fs.readFileSync(file, "utf8").trim()); } catch (e) { return oops(`${file} is not a Vyre backup: ${e.message}`); }
   say(dim(`  backup from ${day(info.at)} · ${plural(info.items, "item")}`));
+  const gate = secretGate("The backup's passphrase");
+  if (gate !== null) return gate;
   let passphrase;
   try { passphrase = await hiddenPrompt("backup passphrase: "); } catch { return oops("cancelled"); }
   const r = await tool("vault.restore", { file, passphrase, mode: f.replace ? "replace" : "merge" }, { timeout: 60_000 });
@@ -998,6 +1273,8 @@ async function restoreCmd(args) {
 // ------------------------------------------------------------ lock
 
 async function unlock() {
+  const gate = secretGate("The vault's passphrase");
+  if (gate !== null) return gate;
   let passphrase;
   try { passphrase = await hiddenPrompt("passphrase: "); } catch { return oops("cancelled"); }
   const r = await tool("vault.unlock", { passphrase });
@@ -1040,6 +1317,8 @@ async function onePassword(q) {
 async function account(args) {
   const [verb, ...rest] = args;
   if (verb === "create") {
+    const gate = secretGate("A new vault password (12 or more characters)");
+    if (gate !== null) return gate;
     let password;
     try { password = await newPassword(); } catch (e) { return oops(e.message); }
     const r = await tool("vault.account.create", { password });
@@ -1058,6 +1337,8 @@ async function account(args) {
     let input;
     if (f.touchid) input = { method: "touchid" };
     else {
+      const gate = secretGate("The vault password");
+      if (gate !== null) return gate;
       try { input = { password: await onePassword("vault password: ") }; } catch { return oops("cancelled"); }
     }
     const r = await tool("vault.account.unlock", input);
@@ -1073,6 +1354,8 @@ async function account(args) {
     return 0;
   }
   if (verb === "enroll-touchid") {
+    const gate = secretGate("The vault password");
+    if (gate !== null) return gate;
     let password;
     try { password = await onePassword("vault password: "); } catch { return oops("cancelled"); }
     const r = await tool("vault.account.enroll-touchid", { password });
@@ -1105,7 +1388,7 @@ async function migrateKey() {
 
 const HELP = [
   ["list [filter] [--kind k] [--host h]", "names, kinds and grants; never values"],
-  ["get <item> [--reveal | --copy | --otp] [--field f]", "metadata; or the value, the clipboard, the code"],
+  ["get <item> [--reveal | --copy | --otp [--once]] [--field f]", "metadata; or the value, the clipboard, the code"],
   ["read vault://<item>/<field>", "one value on stdout; vault://<item>/otp is the current code"],
   ["add <name> ...", "the same as put"],
   ["edit <item> [--rename n] [--description d] [--url u] [--host +h|-h] [--field F] [--remove-field F]", "change in place; --field prompts for the new value"],
@@ -1122,7 +1405,11 @@ const HELP = [
   ["pending", "grants and passes an agent asked for"],
   ["approve <id>", "allow one of them"],
   ["run [--env-file f] <item...> -- <command...>", "items as VAR=name.field, or KEY=vault://item/field lines; output scrubbed"],
-  ["totp <name>", "the current code"],
+  ["totp <name> [--once]", "the code, live: redrawn each second, the next one fetched as a period ends; q to stop"],
+  ["health", "Watchtower: weak, reused, old and to-rotate items, by name"],
+  ["breach", "check every login's password against known breaches (opt-in: vault.breach \"ask\")"],
+  ["history <item> [--field f] | revert <item> <version>", "an item's versions, and putting one back"],
+  ["clear-clipboard", "take what the vault copied off the clipboard now"],
   ["generate [--length n] [--words n] [--no-symbols] [name]", "a password; stored when named"],
   ["import <file> [--format f]", ".env, 1Password, Bitwarden, Chrome, Safari"],
   ["audit [name] [--limit n]", "who used what, and when"],
@@ -1146,6 +1433,7 @@ const HELP = [
   ["unlock-passphrase", "what an extension asks for before it fills"],
   ["backup <file> | restore <file> [--replace]", "the whole vault, sealed to a passphrase of its own"],
   ["--json", "on any command: the tool's {data} or {error} as one line; exit 3 presence, 4 locked"],
+  ["--view --stdin", "for the Capsule, chat and the phone: frames; a secret comes piped in with --stdin, else exit 2"],
 ];
 
 function help() {
@@ -1167,13 +1455,148 @@ async function share(args) {
   return pass(["create", ...rest]);
 }
 
-const SUBS = {
-  list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, "migrate-key": migrateKey, help,
+// ------------------------------------------------------------ views (--view)
+
+/** The verb and its first word, for VIEWS: "ssh keys", "pass list", or the verb alone. */
+let SUB = "list";
+
+const table = (title, rows, columns, empty) => ({ kind: "table", title, rows, empty: empty || "Nothing here yet",
+  columns: columns.map(([key, label]) => ({ key, label })) });
+const when = ms => (ms ? new Date(ms).toISOString().replace("T", " ").slice(0, 16) : "");
+const joined = a => (Array.isArray(a) ? a.join(", ") : a || "");
+
+/** How to draw a verb's data when the derived view is poor. Each gets the tool's data (inside {data}). */
+const VIEWS = {
+  list: d => table(d.locked ? "Vault (locked: vyre vault unlock)" : "Vault", (d.items || []).map(it => ({ name: it.name, kind: it.kind, description: it.description || "",
+    fields: joined(it.fields), hosts: joined(it.hosts), grants: (it.grants || []).map(grantText).join(", ") })),
+  [["name", "Item"], ["kind", "Kind"], ["description", "Description"], ["fields", "Fields"], ["hosts", "Hosts"], ["grants", "Granted to"]], "The vault is empty"),
+  get: d => d.item ? { kind: "card", title: d.item.name, state: d.item.rotate || d.item.stale ? "failed" : undefined, fields: [
+    { label: "Kind", value: String(d.item.kind) }, ...(d.item.description ? [{ label: "Description", value: d.item.description }] : []),
+    ...(d.item.fields?.length ? [{ label: "Fields", value: joined(d.item.fields) }] : []), ...(d.item.url ? [{ label: "Url", value: d.item.url }] : []),
+    ...(d.item.hosts?.length ? [{ label: "Hosts", value: joined(d.item.hosts) }] : []), ...(d.item.grants?.length ? [{ label: "Granted to", value: d.item.grants.map(grantText).join(", ") }] : []),
+    ...(d.item.updated ? [{ label: "Updated", value: day(d.item.updated) }] : [])] } : derive(d),
+  pending: d => table("Waiting for approval · vyre vault approve <id>", [
+    ...(d.grants || []).map(g => ({ id: g.id, what: `grant ${g.name} to ${grantText(g)}` })),
+    ...(d.passes || []).map(p => ({ id: p.id, what: `${p.mode || "relayed"} pass for ${p.holder}: ${joined(p.items)}` })),
+    ...(d.people || []).map(p => ({ id: p.id, what: `trust the card for ${p.name} (${p.fingerprint || "unreadable"})` })),
+    ...(d.accepts || []).map(a => ({ id: a.id, what: `accept a ${a.mode || ""} pass from ${a.owner}: ${joined(a.items)}` }))],
+  [["id", "Id"], ["what", "Waiting"]], "Nothing waiting for approval"),
+  audit: d => table("Audit", (d.entries || []).map(e => ({ at: when(e.at), action: e.action, name: e.name || "", who: e.who, result: e.ok ? "ok" : `refused${e.why ? " " + e.why : ""}` })),
+    [["at", "When"], ["action", "Action"], ["name", "Item"], ["who", "By"], ["result", "Result"]], "No audit entries yet"),
+  health: d => table(`Watchtower · ${d.checked || 0} checked`, (d.items || []).map(i => ({ name: i.name, kind: i.kind, reasons: joined(i.reasons) })),
+    [["name", "Item"], ["kind", "Kind"], ["reasons", "Why"]], "Nothing to fix"),
+  breach: d => table(`Breaches · ${d.checked || 0} passwords checked`, (d.breached || []).map(name => ({ name })), [["name", "In a known breach"]], "None found"),
+  history: d => table("Versions", (d.entries || []).map(e => ({ version: `v${e.version}`, state: e.current ? "current" : e.readable ? "kept" : "gone", at: when(e.at), changed: joined(e.changed), by: e.by })),
+    [["version", "Version"], ["state", "State"], ["at", "When"], ["changed", "Changed"], ["by", "By"]], "No versions kept yet"),
+  people: d => table("People", (d.people || []).map(p => ({ name: p.name, fingerprint: p.fingerprint, state: p.blocked ? (p.changed ? "key changed" : "unverified v1 card") : p.verified ? "verified" : "pinned" })),
+    [["name", "Name"], ["fingerprint", "Fingerprint"], ["state", "State"]], "No one yet"),
+  "people list": d => VIEWS.people(d),
+  "vaults list": d => table("Shared vaults", (d.vaults || []).map(v => ({ name: v.name, role: v.role, members: (v.members || []).length, items: (v.items || []).length, conflicts: v.conflicts || 0 })),
+    [["name", "Vault"], ["role", "Your role"], ["members", "Members"], ["items", "Items"], ["conflicts", "Conflicts"]], "No shared vaults"),
+  vaults: d => VIEWS["vaults list"](d),
+  "device list": d => table("Devices with this vault", d.devices || [], [["name", "Device"], ["role", "Role"], ["fingerprint", "Fingerprint"]], "This vault is on one device"),
+  device: d => d.devices ? VIEWS["device list"](d) : derive(d),
+  "pass list": d => table("Passes", [...(d.passes || []).map(p => ({ id: p.id, way: "given", who: p.holder, items: joined(p.items), mode: p.mode || "", status: p.status || "" })),
+    ...(d.held || []).map(h => ({ id: h.id, way: "held", who: h.owner, items: joined(h.items), mode: h.mode || "", status: "" }))],
+  [["id", "Id"], ["way", "Given or held"], ["who", "Holder or owner"], ["items", "Items"], ["mode", "Mode"], ["status", "Status"]], "No passes given or held"),
+  pass: d => (d.passes || d.held ? VIEWS["pass list"](d) : derive(d)),
+  devices: d => d.devices ? table("Browser extensions", d.devices.map(x => ({ id: x.id, name: x.name, state: x.revoked ? "revoked" : x.sessions ? "unlocked" : "locked", seen: x.lastSeen ? day(x.lastSeen) : "" })),
+    [["name", "Extension"], ["id", "Id"], ["state", "State"], ["seen", "Last seen"]], "No paired devices") : derive(d),
+  ssh: d => d.keys ? table(d.socket ? `SSH keys · agent ${d.socket}` : "SSH keys · the agent is off", d.keys.map(k => ({ name: k.name, type: k.type || "", fingerprint: k.fingerprint || k.problem || "" })),
+    [["name", "Key"], ["type", "Type"], ["fingerprint", "Fingerprint"]], "No ssh keys") : derive(d),
+  "ssh keys": d => VIEWS.ssh(d),
+  "ssh approvals": d => d.leases || d.waiting ? table("SSH approvals", [...(d.leases || []).map(l => ({ id: "", what: `${l.name} for ${l.host}`, until: when(l.expires) })),
+    ...(d.waiting || []).map(w => ({ id: w.id, what: w.summary, until: "waiting: vyre vault ssh approve " + w.id }))], [["what", "Lease"], ["until", "Until"], ["id", "Id"]], "No ssh approvals") : derive(d),
+  "account status": d => ({ kind: "card", title: "Personal vault", state: d.account ? (d.unlocked ? "ok" : "wait") : "wait", fields: d.account
+    ? [{ label: "Account", value: String(d.acct || "") }, { label: "Personal", value: d.unlocked ? "unlocked" : "locked" }, { label: "Touch ID", value: d.touchid ? "on" : "off" }]
+    : [{ label: "No account password yet", value: "vyre vault account create" }] }),
+  account: d => (d && "account" in d && "unlocked" in d ? VIEWS["account status"](d) : derive(d)),
+  card: d => ({ kind: "card", title: String(d.name || "Your card"), fields: [...(d.fingerprint ? [{ label: "Fingerprint", value: d.fingerprint }] : []),
+    { label: "Relay", value: d.relay || "no relay address yet" }, { label: "Card", value: String(d.card || "") }] }),
+  fingerprint: d => ({ kind: "card", title: "Fingerprints", fields: [{ label: "Yours", value: String(d.fingerprint) },
+    ...(d.person ? [{ label: `${d.person.name}${d.person.verified ? ", verified" : ""}`, value: String(d.person.fingerprint) }, { label: "Read these to each other", value: joined(d.words).replace(/, /g, " ") }] : [])] }),
+  totp: d => ({ kind: "card", title: "One-time code", state: "ok", fields: [{ label: "Code", value: groupCode(d.code) }, { label: "Left", value: `${d.remaining} s` },
+    ...(d.next ? [{ label: "Next", value: groupCode(d.next) }] : [])] }),
+  kit: d => ({ kind: "qr", text: String(d.url), caption: `Your recovery kit: open it once on this machine, before ${new Date(d.expires).toISOString().slice(11, 16)} UTC. Print it and write your password on it by hand.` }),
+  pair: d => ({ kind: "card", title: "Pair a browser extension", state: "wait", fields: [{ label: "Pairing code", value: String(d.display || d.code) },
+    { label: "Fill address", value: d.fill || "this vyred has no fill listener yet (vault.fill in config.json)" }, { label: "Where", value: "the Vyre extension's settings; single use, for 5 minutes" }] }),
 };
 
+/** The view of the one line vault prints: its {data}, {error} or a prompt for a secret. @param {any} obj */
+function viewOf(obj) {
+  if (obj && obj.prompt) {
+    return prompt({ name: "secret", label: String(obj.label), secret: true,
+      args: [...AGAIN.filter(a => a !== "--stdin"), "--stdin"], answer: "stdin" });
+  }
+  if (obj && obj.error) {
+    const next = nextFor(obj.error);
+    return { kind: "error", code: String(obj.error.code || "failed"), message: String(obj.error.message || obj.error.code), ...(next ? { next } : {}) };
+  }
+  const d = obj ? obj.data : null;
+  if (d === null || d === undefined) return { kind: "text", lines: [] };
+  const v = VIEWS[/** @type {keyof typeof VIEWS} */ (SUB)] || VIEWS[/** @type {keyof typeof VIEWS} */ (SUB.split(" ")[0])];
+  try { return v ? v(d) : derive(d); } catch { return derive(d); }
+}
+
+const SUBS = {
+  list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, health, breach, history, revert, "clear-clipboard": clearClipboard, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, "migrate-key": migrateKey, help,
+};
+
+/** Every verb run() handles, for `vyre commands` (core/cli/verbs.js); an alias shares its verb's row. */
+const VERBS = [
+  { verb: "list", aliases: ["ls"], summary: "names, kinds and grants; never values", usage: "[filter] [--kind k] [--host h]", read: true },
+  { verb: "get", summary: "an item's metadata; or the value, the clipboard, the code", usage: "<item> [--reveal] [--copy] [--otp] [--once] [--field f]", read: true },
+  { verb: "read", summary: "one value on stdout; vault://<item>/otp is the current code", usage: "<ref> [--no-newline]", person: true },
+  { verb: "put", aliases: ["add"], summary: "store a value, typed without echo (or piped in with --stdin)", usage: "<name> [--kind k] [--description d] [--url u] [--host h] [--username u] [--totp] [--field f] [--allow-body] [--stdin]", person: true },
+  { verb: "edit", summary: "change an item in place; --field asks for the new value", usage: "<item> [--rename n] [--description d] [--url u] [--host h] [--field f] [--remove-field f] [--stdin]", person: true },
+  { verb: "delete", aliases: ["rm"], summary: "remove an item and its grants", usage: "<name>", person: true },
+  { verb: "inject", summary: "fill {{ vault://item/field }} in a template (-i and -o work too)", usage: "[--in template] [--out file] [--force] [--reveal]", person: true },
+  { verb: "share", summary: "the same as pass create", usage: "<item...> [--with person] [--sealed] [--card c] [--host h] [--expires e] [--note n]", person: true },
+  { verb: "ssh", summary: "keys for the vault's ssh agent, and its signing leases", usage: "[keys|generate|add|approvals|approve|agent-line] [name] [--type t] [--comment c] [--file f] [--revoke] [--host h]" },
+  { verb: "git-credential", summary: "git's credential helper (reads git's request on stdin)", usage: "<get|store|erase>" },
+  { verb: "pair", summary: "a pairing code for a browser extension that autofills logins", usage: "[--name n]", person: true },
+  { verb: "devices", summary: "paired browser extensions; revoke or unlock one", usage: "[revoke|unlock] [id]", read: true },
+  { verb: "unlock-passphrase", summary: "what an extension asks for before it fills", usage: "[--stdin]", person: true },
+  { verb: "backup", summary: "the whole vault, sealed to a passphrase of its own", usage: "<file> [--stdin]", person: true },
+  { verb: "restore", summary: "put a vault backup back", usage: "<file> [--replace] [--stdin]", person: true },
+  { verb: "relay", summary: "use an item relayed to you; the value is added on its owner's box", usage: "<item> <url> [--method m] [--header h] [--data d] [--owner o]", person: true },
+  { verb: "grant", summary: "let a module use an item", usage: "<name> <module> [--watcher w]", person: true },
+  { verb: "revoke", summary: "take a grant back", usage: "<name> <module> [--watcher w]" },
+  { verb: "pending", summary: "grants and passes an agent asked for", usage: "", read: true },
+  { verb: "approve", summary: "allow one of them", usage: "<id>", person: true },
+  { verb: "run", summary: "run a command with items in its environment, its output scrubbed (the command goes after --)", usage: "[--env-file f] [item...]", person: true },
+  { verb: "totp", summary: "the one-time code, live", usage: "<name> [--once]", person: true, live: true },
+  { verb: "health", summary: "Watchtower: weak, reused, old and to-rotate items, by name", usage: "", read: true },
+  { verb: "breach", summary: "check every login's password against known breaches", usage: "" },
+  { verb: "history", summary: "an item's versions", usage: "<item> [--field f]", read: true },
+  { verb: "revert", summary: "put an older version back, as a new one", usage: "<item> <version>", person: true },
+  { verb: "clear-clipboard", summary: "take what the vault copied off the clipboard now", usage: "" },
+  { verb: "generate", summary: "a password; stored when named", usage: "[name] [--length n] [--words n] [--no-symbols] [--description d]" },
+  { verb: "import", summary: ".env, 1Password, Bitwarden, Chrome, Safari", usage: "<file> [--format f]", person: true },
+  { verb: "audit", summary: "who used what, and when", usage: "[name] [--limit n]", read: true },
+  { verb: "card", summary: "this Vyre's card, to share", usage: "", read: true },
+  { verb: "people", summary: "who you share with; add a card or verify a changed key", usage: "[list|add|verify] [card] [--name n]" },
+  { verb: "fingerprint", summary: "yours, and the safety words you and they should both see", usage: "[person]", read: true },
+  { verb: "kit", summary: "a recovery kit: a one-time page on this machine", usage: "", person: true },
+  { verb: "vaults", summary: "vaults shared with a team", usage: "[list|create|rotate|sync] [vault]" },
+  { verb: "members", summary: "who is in a shared vault", usage: "<invite|accept|role|remove> [args...] [--role r]", person: true },
+  { verb: "move", summary: "move an item into a shared vault", usage: "<item> <vault>", person: true },
+  { verb: "device", summary: "your other devices: a Mac, or a box that stores and runs agents", usage: "[join|approve|list|sync] [code] [--role r] [--approval a]" },
+  { verb: "pass", summary: "share without handing over", usage: "[create|list|revoke|accept] [args...] [--sealed] [--card c] [--host h] [--method m] [--path p] [--expires e] [--note n]" },
+  { verb: "offboard", summary: "revoke everything a person holds, list what to rotate", usage: "<person>", person: true },
+  { verb: "unlock", summary: "unlock the passphrase keystore", usage: "[--stdin]", person: true },
+  { verb: "lock", summary: "lock it", usage: "" },
+  { verb: "account", summary: "the password (and Touch ID) for your personal vault", usage: "[create|unlock|lock|enroll-touchid|status] [--touchid] [--stdin]" },
+  { verb: "migrate-key", summary: "after an update: move the keychain key to this build", usage: "", person: true },
+  { verb: "help", summary: "the vault's own list of commands", usage: "", read: true },
+];
+
+/** The words run() dispatches on, verbs and aliases, for the test that holds VERBS to them. */
+export const HANDLED = Object.freeze(Object.keys(SUBS));
+
 export default {
-  name: "vault", order: 40, usage: "vyre vault <command>", summary: "credentials, sealed; shared by pass; used without being seen",
+  name: "vault", order: 40, usage: `vyre vault [${VERBS.map(v => v.verb).join("|")}] [--json]`, verbs: VERBS, summary: "credentials, sealed; shared by pass; used without being seen",
   // `vyre help vault` and `vyre vault <sub> --help` show the vault's own list of commands.
   help: () => help(),
   /** @param {string[]} argv */
@@ -1182,9 +1605,14 @@ export default {
     const at = argv.indexOf("--");
     const mine = at < 0 ? argv : argv.slice(0, at);
     JSON_MODE = mine.includes("--json");
+    STDIN = mine.includes("--stdin");
     last = null; printed = false;
-    const args = JSON_MODE ? [...mine.filter(a => a !== "--json"), ...(at < 0 ? [] : argv.slice(at))] : argv;
+    AGAIN = ["vault", ...mine.filter(a => a !== "--json")];
+    const own = mine.filter(a => a !== "--json" && a !== "--stdin");
+    const args = JSON_MODE || STDIN ? [...own, ...(at < 0 ? [] : argv.slice(at))] : argv;
     const [sub, ...rest] = args;
+    const base = sub === undefined ? "list" : ({ ls: "list", add: "put", rm: "delete" })[sub] || sub;
+    SUB = rest[0] && !rest[0].startsWith("-") ? `${base} ${rest[0]}` : base;
     let code;
     if (sub === undefined) code = await list([]);
     else if (sub === "--help" || sub === "-h") code = help();

@@ -4,14 +4,15 @@
 // Needs you: drafts held at the Gate and open asks from sessions (js/needs.js), in Beacon.
 // Working: running threads from the switchboard (threads.list). When nothing runs, the most
 // recent sessions from the catalogue stand in, so Now is never an empty page.
-// Learned today: memory.facts last seen today, in Recall gold, each with its source thread.
+// Learned today: memory.facts last seen today, on --hover, each with its source thread.
 //
 // On the box, Working and the recent sessions take in the paired Mac's too, with a machine chip
 // and no Watch (a Mac thread is read here, never driven: js/machine.js). A paired Mac that is away
 // shows as one quiet chip in Working's head, from link.macs, read each time Working redraws.
 
 import { h, put, link, head, empty, isPhone } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { attempt, on } from "../js/api.js";
+import { mountGlassMini } from "../js/glass-mini.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
@@ -23,7 +24,7 @@ import { things, count, clock, today, since, when, startOfToday, base, initial, 
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
 import { phoneNow } from "../js/now-phone.js";
-import { sessionHref, elsewhere } from "../js/need-rows.js";
+import { sessionHref, elsewhere, fromMac } from "../js/need-rows.js";
 
 /** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
 const phone = () => isPhone();
@@ -37,6 +38,9 @@ export default async function now(ctx) {
   const assistant = h("div", { class: "now-assistant" });
   const needsBox = h("section", { class: "now-needs", "aria-labelledby": "needs-h" });
   const working = h("section", { class: "now-sec", "aria-labelledby": "working-h" });
+  // What each agent's computer is doing now (sight, glass-mini.md): hidden while none runs.
+  const glassMini = h("div", { class: "gm", hidden: true });
+  ctx.cleanup(mountGlassMini(glassMini, { attempt, on }));
   const learned = h("section", { class: "now-sec", "aria-labelledby": "learned-h" });
   const recentProjects = h("section", { class: "now-sec", "aria-labelledby": "recent-h" });
 
@@ -56,7 +60,7 @@ export default async function now(ctx) {
       pairing.el,
       setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
-      needsBox, working, learned, recentProjects)));
+      needsBox, glassMini, working, learned, recentProjects)));
 
   // The assistant, present: who it is and what it is doing, the first live thing Now says after
   // onboarding hands off here.
@@ -77,10 +81,10 @@ export default async function now(ctx) {
   // Offline read of the last Now state: only counts, a name and a timestamp, never a held item's
   // words or destination (the service worker already refuses to cache /v1/ for the same reason).
   const SNAP_KEY = "vyre.now.snapshot";
-  const saveSnapshot = () => { try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(), needs: needs.current().length, running })); } catch {} };
+  const saveSnapshot = () => { try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(), needs: needs.count(), running })); } catch {} };
   const loadSnapshot = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch { return null; } };
   const say = () => {
-    const n = needs.current().length;
+    const n = needs.count();
     put(title, n ? `${things(n)} need${n === 1 ? "s" : ""} you.` : "Nothing needs you.");
     const r = running ? `${count(running)} thread${running === 1 ? " is" : "s are"} running on ${running === 1 ? "its" : "their"} own.` : "Nothing is running.";
     put(sub, n ? `${r} Nothing else is waiting on you.` : r);
@@ -197,7 +201,8 @@ export default async function now(ctx) {
 
 /** One held item: a draft at the Gate, or a question from a session. */
 function needCard(n) {
-  const where = [n.projectName, n.threadName].filter(Boolean).join(" · ");
+  // A Mac session's: "on <mac>", where its answer runs.
+  const where = [n.projectName, n.threadName, fromMac(n) ? `on ${n.machine || "your Mac"}` : null].filter(Boolean).join(" · ");
   const threadHref = n.thread ? (n.project ? `/projects/${encodeURIComponent(n.project)}/${encodeURIComponent(n.thread)}` : `/threads/${encodeURIComponent(n.thread)}`) : null;
   const status = h("div", { class: "small muted", role: "status" });
   const buttons = h("div", { class: "need-actions" });
@@ -211,12 +216,13 @@ function needCard(n) {
     try { await needs.answer(n, opt, f && f.changed() ? f.edited() : null); }
     catch (e) {
       put(status, problem(e));
-      for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
+      // The box cannot forward answers to this Mac (needs.js): the line says where; the list redraws the card.
+      if (!(/** @type {any} */ (e)?.elsewhere)) for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
   // A question has choices, drawn where it was asked: the session's card answers it.
   const qHref = n.kind === "question" ? sessionHref(n) : null;
-  // A Mac session's ask or question is answered on that Mac: no buttons here.
+  // A Mac session's ask or question on a box that cannot forward the answer: no buttons here.
   const mac = elsewhere(n);
   if (mac) put(buttons, h("span", { class: "small muted" }, `Answer it on ${mac}`), h("div", { style: { flexGrow: "1" } }),
     threadHref ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);

@@ -31,7 +31,7 @@ export const MIGRATIONS = [
 const SERVICES = ["fcm.googleapis.com", "updates.push.services.mozilla.com", "push.apple.com", "notify.windows.com"];
 const KEY_ITEM = "push-vapid";
 const KINDS = ["ask", "draft", "watch", "lesson", "planner"];
-const PEOPLE = ["cli", "local", "deck", "capsule"];
+const PEOPLE = ["cli", "local", "deck", "capsule", "tailnet"];
 /** Kinds on until switched off. A lesson is not "needs you", so it is off until switched on. */
 const DEFAULT_KINDS = { ask: true, draft: true, watch: true, lesson: false, planner: true };
 /** The kinds that wait while a screen is in use. */
