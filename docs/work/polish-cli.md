@@ -73,10 +73,12 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- LOGOUT 4 save. Nothing in flight. 704d325e is in batch 3b; 7d2f9c32 (chat parity: threads
-  model/thinking/commands/shell !/remember #/tasks/kill-task, send --image, rewind list and
-  --restore) goes in batch 4. Tested 29/29 on work/polish-cli, 18/18 on a throwaway merge of
-  sessions db44749b.
+- After LOGOUT 4: merged main 7880dfa6 (presence lists take the union: agents.resume and
+  projects.move). My 3b work (704d325e and before) was NOT in 3b, so it rides batch 4 with the
+  chat parity verbs. Parity verbs run live against main's sessions tools (the test now requires
+  them). `vyre relay pair` uses core/cli/qr.js; phone tests post push receipts. Targeted runs on
+  testbox: 158/160 then 17/17 phone, 18/18 threads-sessions, 99/99 consistency+docs+presence.
+- Compile phase: a verb-by-verb test and help audit of core/cli/commands/*.
 
 ## Next
 
@@ -86,7 +88,8 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 3. Module command dispatcher (ADR 0033 P4) when platform sends its P1 sha: GET /v1/modules rows
    `commands`, input schemas and presence from GET /v1/tools; review platform's module.js/update.js.
 4. The 30-minute stress check at nice -n 19 when the lead says testbox is quiet (after a deploy).
-5. Sessions: the queue drops images (reported); switch the CLI's refusal off when fixed.
+5. Sessions: the queue drops images (still true on main 7880dfa6: queue() takes no images);
+   switch the CLI's refusal off when fixed.
 - After 3a (sessions) lands: merge main, resolve modules/index.js, presence (PERSON_ONLY union),
   switchboard.test; targeted run; send the integrator the sha (batch 3b).
 - Modularity: core/cli/qr.js -> deck/vendor/qrcode.js is an OK'd allowlist entry (lead: a
@@ -96,8 +99,6 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - threads.queue {thread} when sessions ships it (asked).
 - Session verbs follow-ups when work/sessions lands: threads.send `mode`, queued_id, a queue read,
   the unqueue/edit/send_now/rewind tools, thread.turn/state/usage payloads (7 gaps sent to sessions).
-- If work/relay reaches main after us: point `vyre relay pair` (core/cli/commands/relay.js) at
-  terminal(qr(url)) from core/cli/qr.js and drop terminalQr and its test.
 - pwa's push.subscribed / push.delivered / push.seen {standalone}: wire them into phone.js checks.
 - Session verbs: start, send, send-now, queue edit/drop, stop/interrupt, take back, open in
   terminal, watch, all with --json, once sessions answers.

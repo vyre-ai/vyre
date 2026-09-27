@@ -32,7 +32,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - New `vyre sessions`: the driver and sign-in, `setup` for the Agent SDK, `models` per purpose or
   project, and `prompt` show, set (text, file or $EDITOR, `--replace`), history, revert, preview.
 - One QR encoder: `core/cli/qr.js` draws the vendored qrcode-generator (the Deck's, all 40
-  versions), so a relay pair URL with a long box name fits.
+  versions), so a relay pair URL with a long box name fits. `vyre relay pair` draws with it too
+  (its own copy is gone), and in a pipe or without colour it prints the address to open instead.
+- `vyre phone add` counts "Test notification arrived" once the phone posts back the test's
+  receipt (push.receipt), now that the push module sends one.
 
 #### Every Deck feature has a CLI verb: needs, gate, phone, live one-time codes, planner edits
 
