@@ -24,7 +24,7 @@ import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/conf
 import { findSubreaper, groupAlive } from "../sessions/spawn.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
-import { load as loadSdk, install as installSdk, installed as sdkInstalled } from "../sessions/sdk.js";
+import { load as loadSdk, install as installSdk, installed as sdkInstalled, autoInstallAllowed, abortInstalls } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
@@ -1572,8 +1572,9 @@ export default {
         if (!module) { failed = true; ctx.log(`threads: the Claude Agent SDK in ${dir} did not load; threads run on the CLI`); return null; }
         return { module, bin: claudeBin(dir, cfg) };
       };
-      // Never from a test run (node --test marks its children): a test brings its own SDK or none.
-      if (!sdkInstalled(dir, { bundled }) && cfg.install && !process.env.NODE_TEST_CONTEXT) {
+      // Never from a test run or a temp or dev home (autoInstallAllowed): a test brings its own SDK
+      // or none, and an npm left running after vyred stops keeps writing into that home.
+      if (!sdkInstalled(dir, { bundled }) && cfg.install && autoInstallAllowed(root)) {
         ctx.log(`threads: installing the Claude Agent SDK into ${dir}; threads run on the CLI until it is ready`);
         installSdk(dir, { bundled }).then(r => { if (r.why) ctx.log(`threads: ${r.why}`); }).catch(() => {});
       }
@@ -1899,6 +1900,7 @@ export default {
       async i => sb.sessions.bind(i.session, i.pid), ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
-    return { async stop() { await sb.stopAll(); } };
+    // An SDK install still running ends with vyred, and cleans up after itself (sdk.js).
+    return { async stop() { await abortInstalls(); await sb.stopAll(); } };
   },
 };
