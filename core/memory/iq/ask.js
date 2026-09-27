@@ -14,6 +14,7 @@
 // replies without calling a model. Claude Code has no temperature setting; the cache is how.
 
 import crypto from "node:crypto";
+import { userWords, devTalk } from "../personal/trust.js";
 
 export const VERSION = 2;
 /** Told as an answer from here up; under it IQ abstains with what it knows. */
@@ -34,6 +35,9 @@ export const SYSTEM = [
   "answer is one short sentence that uses the passages' own words for names, files, numbers and dates. cite lists the passages it stands on.",
   "If the passages do not answer the question, set abstain true and answer null, and put what they do say that bears on it in known.",
 ].join("\n");
+
+/** An answer that says who or what someone is to the user. */
+const TO_USER = /\byour (?:wife|husband|partner|spouse|girlfriend|boyfriend|fiance|fiancee|mom|mum|mother|dad|father|son|daughter|kid|child|brother|sister|friend|dog|cat|pet)\b/i;
 
 /** A passage's header as the model sees it: project folder, session name, date. */
 const header = p => [p.cwd ? String(p.cwd).split("/").filter(Boolean).pop() : "unknown", String(p.name || p.session), p.ts ? new Date(p.ts).toISOString().slice(0, 10) : "unknown"];
@@ -101,11 +105,13 @@ export function checkAsk(reply, passages) {
  * @param {{ db: import("node:sqlite").DatabaseSync, answer: (i: any) => Promise<any>, retrieve: (i: any) => Promise<any>,
  *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number }>)|null,
  *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void },
- *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null }} deps
+ *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null, personalQ?: (q: string) => boolean, trusted?: (session: string) => boolean }} deps
+ *   personalQ: the question is about the user's own life; then only the user's own words, from
+ *   sessions source trust keeps, may ground the answer (never Claude's turns or a reply).
  *   fixes: the person's corrections (iq/fix.js); every answer gets an answer_id they can correct.
  *   runner: null means only kept replies are used (the evaluation's replay, or no model at all).
  */
-export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null }) {
+export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null, personalQ = () => false, trusted = () => true }) {
   const get = db.prepare("SELECT reply FROM memory_iq_asks WHERE hash = ?");
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
 
@@ -146,7 +152,11 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     // 2. The passages.
     stage("searching");
     const forgotten = fixes ? fixes.forgotten() : new Set();
-    const passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
+    let passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
+    // Source trust (ADR 0034): a question about the user's life is answered only from their own
+    // words in sessions trust keeps. Claude's turns, a reply, injected blocks and dev talk never count.
+    if (personalQ(q)) passages = passages.filter(p => p.role === "user" && trusted(p.session) && !devTalk(String(p.text)))
+      .map(p => ({ ...p, reply: undefined, text: userWords(String(p.text)) })).filter(p => p.text.trim());
     if (!passages.length) return done({ via: "retrieval" });
     // 3. The answer, kept by the prompt's hash.
     const prompt = askPrompt(q, passages);
@@ -166,7 +176,15 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     if (text == null) return done({ via: "retrieval", known: [], why: runner ? "the model did not answer" : "no model" });
     // 4. Code checks what it said.
     stage("checking");
-    const c = checkAsk(parseAsk(text), passages);
+    let c = checkAsk(parseAsk(text), passages);
+    // Who someone is to the user ("your wife Jordan") is a personal fact, whatever the question:
+    // it stands only on the user's own words in a session trust keeps, never on Claude's.
+    if (!c.abstained && TO_USER.test(String(c.answer))) {
+      const own = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).filter(p => p.role === "user" && trusted(p.session) && !devTalk(String(p.text)))
+        .map(p => ({ ...p, reply: undefined, text: userWords(String(p.text)) }));
+      const again = own.length ? checkAsk({ ...parseAsk(text), cite: own.map((_, i) => i + 1) }, own) : { abstained: true };
+      if (again.abstained) c = { abstained: true, known: c.known || [], why: "who someone is to you stands only on your own words" };
+    }
     if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why });
     const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).flatMap(p => [{ session: p.session, seq: p.seq, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null },
       ...(p.reply ? [{ session: p.session, seq: p.reply.seq, name: p.name, quote: String(p.reply.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }] : [])]);

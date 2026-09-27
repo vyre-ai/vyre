@@ -53,15 +53,22 @@ export function heard(turn, c, now = Date.now()) {
   const said = norm(userWords(String(turn.text || "")));
   if (!said.trim()) return { ok: false, why: "that turn has no words of the person's" };
   const words = tokens(said);
-  const has = w => said.includes(norm(w));
+  // Whole words only ("son" is not in "person"), and a phrase as its words in order.
+  const line = ` ${words.join(" ")} `;
+  const has = w => { const t = tokens(w); return t.length > 0 && line.includes(` ${t.join(" ")} `); };
   // (a) The turn names what is corrected: at least one word of its subject, relation or question.
+  // Nothing to name (a label of only short or function words) is not named.
   const about = c.about.filter(Boolean);
-  if (about.length && !about.some(has)) return { ok: false, why: "that turn does not name what is corrected" };
+  if (!about.length || !about.some(has)) return { ok: false, why: "that turn does not name what is corrected" };
   if (c.value != null && String(c.value).trim()) {
     const need = valueWords(String(c.value));
     if (!need.length) return { ok: false, why: "the correction has no words to check" };
     const missing = need.filter(w => !has(w));
     if (missing.length) return { ok: false, why: `not in what the person said: ${missing.slice(0, 3).join(", ")}` };
+    // "is my wife Juno?" asks; it does not say.
+    const first = tokens(need[0])[0];
+    const sentence = said.split(/(?<=[.!?\n])/).find(x => tokens(x).includes(first)) || "";
+    if (/\?\s*$/.test(sentence)) return { ok: false, why: "the person asked it, they did not say it" };
     return { ok: true };
   }
   // wrong, forget, ended: a "no" next to the old value's words, not anywhere in the turn.

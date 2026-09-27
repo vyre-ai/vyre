@@ -18,6 +18,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Corrections (memory.correct, uncorrect, merge, split, and IQ answer fixes) follow one rule: the
   person's own surfaces, or their phone or paired device with a person session (a passkey,
   ADR 0032). A device without one gets `person_session_required`; agents are always refused.
+- Source trust holds in Vyre IQ's answers: a question about the user's own life (a relative, their
+  car, home, diet, birthday) is answered only from their own words in sessions trust keeps, never
+  from Claude's turns, a reply, an injected block or dev talk; and any answer that says who someone
+  is to the user ("your wife Jordan") must stand on those words too, or IQ abstains. The trust
+  world through memory.ask (`eval-iq --world trust`): accuracy 1, confident-wrong 0, the "Jordan"
+  trap refused.
 - Sessions start knowing the project: `memory.today {room | project_cwds, session?}` gives the
   project's last session and what memory learned about it this week (at most 300 characters, no
   model, no personal facts), and the session brief adds it under "Lately in this project".
