@@ -122,6 +122,15 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
+## Doing (28 Sep, later)
+- Sealed IQ 0.62 -> 0.80 (confident-wrong 6 -> 5), open 0.778 -> 0.878, from two failure classes
+  found on the open world only (eval-iq --explain): the check refused answers grounded in the
+  passage header (034a4397), and retrieval found the question turn with the answer one turn later
+  (398f6156, passages carry the reply). Replies re-recorded (both asks files).
+- Agent corrections hardened per e2e (e1851941), waiting for re-review. threads.said is the
+  switchboard's to build.
+- Project graphs (398f6156) and memory.today in the brief (df22ca0c) built.
+
 ## Doing (28 Sep)
 - Merged main (e79eb5c6). Open-world v2 re-record finished: all 90 replies kept in
   test/eval/asks/open.json (ce980557). v2 open: accuracy 0.778, confident-wrong 1, abstained 0.411,
