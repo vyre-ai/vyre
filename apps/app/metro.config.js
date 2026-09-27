@@ -1,9 +1,11 @@
-// Metro for the one app (ADR 0027). Expo's defaults, plus three folders of shared code from the
+// Metro for the one app (ADR 0027). Expo's defaults, plus four folders of shared code from the
 // repo, so the app runs the same code as the Deck with one copy of each:
 //   - `@vyre/resilience/<file>` is ../../core/resilience/<file>: the box's stream and outbox (ADR 0029).
 //   - `@vyre/chat-core/<file>` is ../../deck/chat/core/<file>: chat's session core (the transcript
 //     model, pacing, windowing, the composer's rules, tool detail), imported as it is (ADR 0027, section 2).
 //   - `@vyre/relay-client/<file>` is ../../relay/client/<file>: pairing and the relay path (ADR 0026).
+//   - `@vyre/perf/<file>` is ../../lib/perf/<file>: the DOM-free frame meter and its BAR, shared with
+//     the Deck's native-bar harness.
 // Only those folders are watched, not the whole repo. tsconfig.json has the same paths.
 
 import { createRequire } from "node:module";
@@ -18,10 +20,13 @@ const ALIASES = [
   { prefix: "@vyre/resilience/", dir: path.resolve(here, "../../core/resilience") },
   { prefix: "@vyre/chat-core/", dir: path.resolve(here, "../../deck/chat/core") },
   { prefix: "@vyre/relay-client/", dir: path.resolve(here, "../../relay/client") },
+  { prefix: "@vyre/perf/", dir: path.resolve(here, "../../lib/perf") },
 ];
 
 const config = getDefaultConfig(here);
 config.watchFolders = [...(config.watchFolders ?? []), ...ALIASES.map((a) => a.dir)];
+// The web build's fonts are woff2 (src/theme/fonts.web.ts); the native builds embed the ttf files.
+if (!config.resolver.assetExts.includes("woff2")) config.resolver.assetExts.push("woff2");
 
 const upstream = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, name, platform) => {

@@ -7,7 +7,8 @@
     "paths": {
       "@vyre/resilience/*": ["../../core/resilience/*"],
       "@vyre/chat-core/*": ["../../deck/chat/core/*"],
-      "@vyre/relay-client/*": ["./src/types/relay-client/*"]
+      "@vyre/relay-client/*": ["./src/types/relay-client/*"],
+      "@vyre/perf/*": ["../../lib/perf/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"]

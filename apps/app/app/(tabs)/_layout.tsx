@@ -4,13 +4,15 @@ import { tabPressed } from "../../src/perf/tabs";
 import { useNeedsCount } from "../../src/state/needs";
 import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
+import { type } from "../../src/theme/type";
+import { StatusMark } from "../../src/ui/StatusMark";
 
+/** A tab's label, with the needs-you dot before it while something waits (status-mark spec: tabs). */
 function TabLabel({ text, tint, attention }: { text: string; tint: string; attention?: boolean }) {
-  const { color } = useTheme();
   return (
     <View style={styles.label}>
-      <Text style={[styles.text, { color: tint }]}>{text}</Text>
-      {attention ? <View accessibilityLabel="needs you" style={[styles.dot, { backgroundColor: color.beacon }]} /> : null}
+      {attention ? <StatusMark status="needsYou" /> : null}
+      <Text style={[type.metaStrong, { color: tint }]}>{text}</Text>
     </View>
   );
 }
@@ -45,6 +47,4 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   label: { flexDirection: "row", alignItems: "center", gap: tokens.space[2] },
-  text: { fontSize: tokens.type.phone.meta[0], lineHeight: tokens.type.phone.meta[1], fontWeight: tokens.font.weight.strong },
-  dot: { width: 6, height: 6, borderRadius: tokens.radius.full },
 });

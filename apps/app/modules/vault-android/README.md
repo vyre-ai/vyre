@@ -1,8 +1,10 @@
 # vault-android: Vyre autofill on Android
 
-An Expo local module that makes Vyre an Android autofill service (ADR 0028, decision 6). It
-fills logins, one-time codes, cards and addresses into apps and browsers from vyred's fill
-listener (core/vault/fill.js), and offers to save a login someone types.
+An Expo local module that makes Vyre an Android autofill service and, on Android 14 and later, a
+Credential Manager provider (ADR 0028, decision 6). It fills logins, one-time codes, cards and
+addresses into apps and browsers from vyred's fill listener (core/vault/fill.js), offers to save
+a login someone types, and signs in and registers with passwords and passkeys through the
+system's Credential Manager sheet.
 
 Android only. The web and iOS builds never import it.
 
@@ -15,6 +17,8 @@ modules/vault-android/
   android/build.gradle           namespace sh.vyre.autofill
   android/src/main/AndroidManifest.xml
   android/src/main/res/xml/vyre_autofill.xml          service metadata, compatibility packages
+  android/src/main/res/xml/vyre_credential_provider.xml  capabilities: passwords, passkeys
+  android/src/main/res/raw/vyre_privileged_browsers.json Google's privileged-browser allowlist
   android/src/main/res/layout/vyre_autofill_item.xml  one suggestion: a name, never a value
   android/src/main/res/values/vyre_autofill.xml       label, translucent theme
   android/src/main/java/sh/vyre/autofill/
@@ -24,9 +28,15 @@ modules/vault-android/
     VaultStore.kt            encrypted prefs, the in-memory session, the device key
     Datasets.kt              locked suggestions, inline chips, the filled Dataset
     VyreAutofillService.kt   onFillRequest, onSaveRequest
-    VyreAuthActivity.kt      biometric unlock, fetch, hand back the Dataset
+    UnlockingActivity.kt     the device-key unlock both activities share
+    VyreAuthActivity.kt      autofill: unlock, fetch, hand back the Dataset
+    CredentialCore.kt        pure Kotlin: caller origins, rpId and asset-link checks, WebAuthn JSON
+    CredentialAccess.kt      the caller, the allowlist, assetlinks.json, the sheet's entries
+    VyreCredentialService.kt Credential Manager: begin get, begin create
+    VyreCredentialActivity.kt  unlock and list, password, passkey assert, create
     VyreAutofillModule.kt    the Expo module
-  android/src/test/java/sh/vyre/autofill/AutofillCoreTest.kt   plain JVM JUnit
+  android/src/test/java/sh/vyre/autofill/AutofillCoreTest.kt     plain JVM JUnit
+  android/src/test/java/sh/vyre/autofill/CredentialCoreTest.kt   plain JVM JUnit
 ```
 
 ## The JS API
@@ -81,6 +91,27 @@ the service calls `POST save { url, username, password }`. Without one (Android 
 holds the login in memory under a random id for two minutes, and the auth activity unlocks and
 then saves. Only the id travels in the Intent.
 
+**Credential Manager, sign in (Android 14 and later).** onBeginGetCredentialRequest needs
+vyred's `identities`, and `identities` needs a live fill window. Without one, the sheet shows a
+single "Unlock Vyre" action; VyreCredentialActivity unlocks with the device key, calls
+`identities` and hands the entries back (setBeginGetCredentialResponse). With one, the service
+lists them directly within 1.5 seconds. A login is an entry when the caller's exact web origin is
+one of its sites or the caller is listed in its apps as `android:<package>@<sha256>`. A passkey is
+an entry when its rp is the request's rpId (and in allowCredentials, when the request lists any).
+Picking an entry:
+
+- a password calls `fill { name, url }` and returns a PasswordCredential;
+- a passkey works out the caller's origin, checks the rpId (below), builds clientDataJSON
+  (`webauthn.get`, the request's challenge, the origin, and `androidPackageName` for an app),
+  calls `passkey.assert { rpId, clientDataHash, credential }` with the platform's clientDataHash
+  when it gave one and the SHA-256 of our clientDataJSON otherwise, and returns a
+  PublicKeyCredential in the WebAuthn toJSON() shape.
+
+**Credential Manager, create.** One "Vyre" entry. A password goes to `save { url, username,
+password }` (vyred's save takes web origins only, so an app gets vyred's refusal). A passkey is
+checked the same way, then `passkey.register { rpId, clientDataHash, user, algs, exclude }`, and
+the registration comes back in the toJSON() shape with `credProps.rk`.
+
 **What never happens.** Nothing logs. No value goes into an Intent extra except the final
 Dataset handed to the framework. Suggestions show names only.
 
@@ -96,6 +127,14 @@ Dataset handed to the framework. Suggestions show names only.
   `PackageManager.getPackageInfo(GET_SIGNING_CERTIFICATES)`. An app with more than one signer
   gets no origin. A browser never falls back to its package.
 - vyred matches exact origins only. There is no suffix or wildcard match.
+- In Credential Manager, a browser is taken at its word about the page's origin only when it is on
+  Google's allowlist (`CallingAppInfo.getOrigin` with res/raw/vyre_privileged_browsers.json, from
+  https://www.gstatic.com/gpm-passkeys-privileged-apps/apps.json). Anything else is the app it
+  is, with the WebAuthn origin `android:apk-key-hash:<base64url sha256 of its certificate>`.
+- A passkey's rpId must be the web origin's host or a parent of it. For an app, the rpId's
+  `https://<rpId>/.well-known/assetlinks.json` must name the app's package and certificate with
+  `delegate_permission/common.get_login_creds` or `common.handle_all_urls`; a site that cannot
+  be read (3 seconds, no redirects) gives no passkey.
 
 ## How mobile includes it
 
@@ -106,27 +145,41 @@ Dataset handed to the framework. Suggestions show names only.
 2. Import it only from native code, as `src/auth/person.native.ts` imports vyre-signer:
    `import * as Autofill from "../../modules/vault-android";`
 3. `npx expo prebuild --platform android` (or the next EAS build). The library manifest merges
-   the service, the auth activity and the INTERNET and USE_BIOMETRIC permissions into the app.
+   both services, both activities and the INTERNET and USE_BIOMETRIC permissions into the app.
+   The app's compileSdk must be 34 or later (androidx.credentials 1.3.0).
 4. `res/xml/vyre_autofill.xml` names `sh.vyre.app.MainActivity` as the settings activity. If
    app.json's android.package changes, change it there too.
 5. The unit tests run with the app's Gradle:
    `cd apps/app/android && ./gradlew :vault-android:testDebugUnitTest` (the project name is the
    folder name Expo autolinking gives it).
-6. A screen in the app: server address, pairing code, a name, then `pair`, then
-   `openSettings()` until `isEnabled()` is true.
+6. A screen in the app: server address, pairing code (`vyre vault pair --phone`), a name, then
+   `pair`, then `openSettings()` until `isEnabled()` is true. On Android 14 the person also turns
+   Vyre on under Settings, Passwords and accounts, for Credential Manager; the module does not open
+   that screen yet.
+7. Refresh res/raw/vyre_privileged_browsers.json from Google's URL above now and then.
 
-## Not done yet
+## Done, and not yet
 
-- **Pairing needs a phone code.** Run `vyre vault pair --phone` (it asks for Touch ID): only a
-  phone code accepts a device key, and only a pair request with a key may come without an
-  extension Origin. A browser code with a key is refused.
+Done:
+
+- **Phone pairing.** `vyre vault pair --phone` makes a code that accepts a device key, and a pair
+  request with a key may come without an extension Origin. A browser code with a key is refused.
 - **Native apps** match on `android://<package>@<sha256>` for match, fill and otp: a login must
-  list `android:<package>@<sha256>` in its `apps`. save, card.fill and address.fill stay web-only.
+  list `android:<package>@<sha256>` in its `apps`.
+- **Credential Manager** (CredentialProviderService, Android 14 and later): passwords and passkeys,
+  sign in and create, as above.
+
+Not yet:
+
+- save, card.fill and address.fill stay web-only in vyred, so an app cannot save a login or take
+  a card or an address.
 - **Reaching vyred.** The fill listener binds loopback and refuses a Host it does not know. The
   phone reaches it through `tailscale serve` (https) with that name in the listener's `names`.
-- **CredentialProviderService** for passwords and passkeys in Credential Manager (Android 14 and
-  later). Passkeys (`passkeys`, `passkey.get`) are not wired here.
+- **Credential Manager polish:** a Vyre icon on entries, last-used times, the passkey error names
+  (InvalidStateError for an excluded credential comes back as an unknown error with vyred's
+  message), and a button in the app that opens the Credential Manager setting.
 - **Inline suggestions polish:** icons, pinned "Vyre" chip, and a chip for an unpaired phone.
 - **Tests on a real device.** Nothing in this folder has run on a phone or an emulator: Chrome
-  native autofill, Firefox, Samsung Internet, compatibility mode, StrongBox fallback, and the
-  2.8 second budget on a slow network all need a device.
+  native autofill, Firefox, Samsung Internet, compatibility mode, StrongBox fallback, the 2.8
+  second budget on a slow network, and every Credential Manager path (in particular whether
+  Chrome takes the provider's clientDataJSON placeholder when it gave the hash) all need a device.

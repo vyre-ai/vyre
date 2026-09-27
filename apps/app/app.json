@@ -31,7 +31,18 @@
     "plugins": [
       "expo-router",
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-font",
+        {
+          "fonts": [
+            "./assets/fonts/instrument-sans/InstrumentSans-Regular.ttf",
+            "./assets/fonts/instrument-sans/InstrumentSans-SemiBold.ttf",
+            "./assets/fonts/jetbrains-mono/JetBrainsMono-Regular.ttf"
+          ]
+        }
+      ],
+      "expo-asset"
     ],
     "experiments": {
       "baseUrl": "/app",

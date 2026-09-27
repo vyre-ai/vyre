@@ -10,7 +10,8 @@ import { isDenied, readVault, type VaultItem } from "./devices-model";
 // The vault's names (vault.list: names, kinds, sites, field names, never a value), and the two
 // ways a value leaves it here, both through vault.reveal: Reveal shows it on this device, hidden
 // again after the box's concealAfter; Copy writes it to this device's clipboard without showing
-// it, cleared after 30 s where that can be done (clip-model.ts). Copy never goes to the Mac: the
+// it, cleared after 30 s where that can be done (clip-model.ts), and asks with purpose "copy" so the
+// audit says "copy on <device>". Copy never goes to the Mac: the
 // app does not call vault.copy. Both go through the one client, so the person session and
 // presence are handled there: the phone proves with its biometric key once, and one proof
 // covers 30 minutes. Never queued: a secret is asked for now. A value is never logged or stored.
@@ -71,7 +72,7 @@ const clip = makeClip(board, { set: (f, ms) => setTimeout(f, ms), clear: (id) =>
  */
 export function copy(name: string, field: string): Promise<Outcome> {
   const out: { refusal?: Outcome } = {};
-  const pending = call<{ value: string }>("vault.reveal", { name, field }).then((r) => {
+  const pending = call<{ value: string }>("vault.reveal", { name, field, purpose: "copy" }).then((r) => {
     if (r.error) {
       out.refusal = refused(r.error);
       return null;

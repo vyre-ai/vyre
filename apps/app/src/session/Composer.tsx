@@ -245,6 +245,7 @@ export const Composer = memo(function Composer({
             typedAt.current = typeof ts === "number" && ts > 0 && ts <= perf.now() ? ts : perf.now();
           }}
           onChangeText={(t) => {
+            const w0 = perf.on ? perf.now() : 0;
             caret.current = t.length;
             setTextState(t);
             store.setDraft(t);
@@ -253,6 +254,8 @@ export const Composer = memo(function Composer({
             const t0 = typedAt.current;
             typedAt.current = null;
             if (t0 !== null) nextPaint((tp) => perf.record("keystroke", tp - t0));
+            // chat.keystroke: this handler's synchronous work; the render it asks for lands in "keystroke".
+            if (perf.on) perf.record("keystroke.work", perf.now() - w0);
           }}
           onSelectionChange={(e: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
             caret.current = e.nativeEvent.selection.end;

@@ -9,6 +9,7 @@ import { age, canCommit, type Decision, type Need } from "../../src/state/needs-
 import { useHidden, useNeeds, useNeedsFrom, useRefused } from "../../src/state/needs";
 import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
+import { type } from "../../src/theme/type";
 import { List } from "../../src/ui/List";
 import { NotifyBar } from "../../src/ui/NotifyBar";
 import { Row, ROW_HEIGHT } from "../../src/ui/Row";
@@ -121,9 +122,9 @@ export default function Now() {
 
   const header = (
     <View style={styles.section}>
-      <StatusMark status="needsYou" />
-      <Text style={[styles.sectionText, { color: color.text }]}>Needs you</Text>
-      <Text style={[styles.count, { color: color.label }]}>{list.length ? `${list.length} · oldest first` : ""}</Text>
+      {list.length ? <StatusMark status="needsYou" hidden /> : null}
+      <Text style={[type.readStrong, { color: color.text }]}>Needs you</Text>
+      <Text style={[type.meta, styles.count, { color: color.label }]}>{list.length ? `${list.length} · oldest first` : ""}</Text>
     </View>
   );
   return (
@@ -139,14 +140,13 @@ export default function Now() {
           keyOf={(n) => n.id}
           rowHeight={ROW_HEIGHT}
           render={(n) => <NeedRow n={n} now={now} reason={refused.get(n.id) ?? null} open={open} />}
-          footer={<Text style={[styles.hint, { color: color.label }]}>Swipe right to approve, left to deny.</Text>}
+          footer={<Text style={[type.meta, styles.hint, { color: color.label }]}>Swipe right to approve, left to deny.</Text>}
         />
       )}
     </Screen>
   );
 }
 
-const phone = tokens.type.phone;
 const styles = StyleSheet.create({
   section: {
     flexDirection: "row",
@@ -156,7 +156,6 @@ const styles = StyleSheet.create({
     paddingTop: tokens.space[4],
     paddingBottom: tokens.space[3],
   },
-  sectionText: { fontSize: phone.read[0], lineHeight: phone.read[1], fontWeight: tokens.font.weight.strong },
-  count: { marginLeft: "auto", fontSize: phone.meta[0], lineHeight: phone.meta[1] },
-  hint: { fontSize: phone.meta[0], lineHeight: phone.meta[1], paddingHorizontal: tokens.layout.gutterPhone, paddingVertical: tokens.space[4] },
+  count: { marginLeft: "auto" },
+  hint: { paddingHorizontal: tokens.layout.gutterPhone, paddingVertical: tokens.space[4] },
 });

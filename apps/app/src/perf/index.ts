@@ -3,9 +3,9 @@
 // Screens mark through `perf`, which does nothing unless the meter is on (?perf=1 on the web), so
 // the marks cost one boolean test when it is off. `afterPaint` runs a function in the next frame,
 // which is when the change a screen just made is on screen.
-import { createMeter } from "../../perf/meter.js";
+import { createMeter } from "@vyre/perf/meter.js";
 
-export { BAR, createMeter, percentile } from "../../perf/meter.js";
+export { BAR, createMeter, percentile } from "@vyre/perf/meter.js";
 export type Meter = ReturnType<typeof createMeter>;
 
 export const meter: Meter = createMeter();

@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createPacer } from "../../../../deck/chat/core/pace.js";
-import { cv } from "../../perf/meter.js";
+import { cv } from "../../../../lib/perf/meter.js";
 import { createReveal } from "./reveal.js";
 
 const F = 1000 / 60;
