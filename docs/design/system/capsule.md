@@ -159,8 +159,9 @@ This is the fix for the clipped answer the person reported on 27 Sep.
 - Spoken replies (Settings, Voice, "Read answers aloud"): the answer to a spoken question is read
   aloud. The card's header shows "Speaking" with a small speaker icon; Esc, or a new question,
   stops it.
-- First use, no speech key: one row in the body, "Voice needs a speech key", meta "Run vyre voice
-  key deepgram in a terminal", ⏎ copies the command. No dialog.
+- First use, no speech key: the [credential sheet](components/credential-sheet.md)'s inline row,
+  "Connect Deepgram to talk", meta "Voice needs a speech key · Kept in your vault on the box"; ⏎
+  opens the secure field in place. No dialog.
 - First use, no microphone grant: one row, "Vyre needs the microphone to hear you", ⏎ "Allow
   microphone". The reason shows before macOS asks, and macOS asks only after ⏎.
 

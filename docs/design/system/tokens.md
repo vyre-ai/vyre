@@ -21,6 +21,11 @@ runs it (the design workflow).
 
 The generator writes a surface only when its folder exists in the tree.
 
+**Generated, never hand written.** Every token file a surface ships is generated from the hub's
+tokens: at build time from `lib/theme/tokens.json` through `gen-tokens`, and at run time from
+`appearance.resolve` or `/v1/theme`. A hand-written token file, or a copy of token values in a
+surface's own file, fails the design check (cohesion, ADR 0036).
+
 ## The values
 
 - **Colour roles**, dark and paper: bg, panel, hover, rule, ruleStrong, text, text2, label,

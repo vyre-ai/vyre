@@ -19,6 +19,10 @@ resolves the other. Drawn on "Needs you, phone and desktop", "System" (the five 
 | App | `apps/app/src/session/Rows.tsx` AskCard (work/mobile) | partial |
 | Capsule | `local/capsule/native/Sources/UI/AgentDeskView.swift` HeldCardView (work/capsule-pro) | partial |
 
+Built once: this card is built once in chat-core for the web (the Deck and the PWA) and Expo (the
+app), from this spec, and the Capsule mirrors the same spec in Swift. No surface draws its own
+version (cohesion, ADR 0036).
+
 ## Anatomy
 
 A neutral card: `--panel`, 1 px `--rule`, radius `--radius-card` (12; phone `--radius-card-phone`

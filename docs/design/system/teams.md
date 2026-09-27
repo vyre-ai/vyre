@@ -51,6 +51,10 @@ Glass, the shared CSS in `deck/css/deck.css` and the icons.
 
 ### All open items
 
+Account picker row, `deck/js/need-sheet.js` ([account picker row](components/account-row.md))
+
+- [ ] The phone draft sheet has no From row; the picker opens as a sheet with 56 rows.
+
 Agenda, `deck/views/planner.js`, `deck/css/views/planner.css` ([agenda](components/agenda.md))
 
 - [ ] No hour grid, event blocks or now line; the agenda is rows.
@@ -96,6 +100,14 @@ Command bar, `deck/views/find.js`, `deck/css/views/find.css`, `deck/js/capsule.j
 - [ ] Phone switch is at 760 px (`PHONE_QUERY`), not 720.
 - [ ] Vault codes never show in Find; the Layout board places codes in Find on the phone.
 
+Command result card, `deck/views/find.js` ([command result card](components/result-card.md))
+
+- [ ] ⌘K Run results open a terminal line; draw the card under the Run row.
+
+Credential sheet, `deck/js/sheet.js` ([credential sheet](components/credential-sheet.md))
+
+- [ ] Nothing built: the sheet on any `needs_credential` answer, from `vault.need` and `vault.connect`; the centred card and the phone sheet. <!-- terms: ignore -->
+
 Device row, `deck/views/vault-places.js`, `deck/css/views/vault.css`, `deck/js/health.js` ([device row](components/device-row.md))
 
 - [ ] Devices lists only vault autofill browsers (`vault.devices`), not the relay devices from `relay.devices.list`; no path, holds or trust columns.
@@ -122,6 +134,10 @@ Glass frame, `deck/glass/` ([glass frame](components/glass-frame.md))
 - [ ] Copy says "Someone has control from <surface>", not "Your phone has control".
 - [ ] Error rows and messages tint violet (`.gl-msg-err`, `.gl-tr-err`, `.gl-danger`).
 - [ ] Accent reads the raw `--signal` variable instead of `--focus`.
+
+Glass mini-view, Now ([Glass mini-view](components/glass-mini.md))
+
+- [ ] Nothing built: the card on Now under the acting agent's row. Shared with chat (the thread header, the Step link).
 
 Icon button, `deck/css/deck.css` ([icon button](components/icon-button.md))
 
@@ -168,6 +184,11 @@ Authenticator code, `deck/views/vault-item.js`, `deck/css/views/vault.css` ([otp
 - [ ] Codes come from the box each period, not computed on the device, so offline shows nothing.
 - [ ] Copy is an icon button with the tooltip "This vyred has no vault.copy yet" when missing.
 - [ ] No phone Codes list with tap-to-copy rows.
+
+Needs row, waiting, `deck/js/needs.js` ([needs row](components/needs-row.md))
+
+- [ ] `deck/js/needs.js` merges its own sources; draw from `waiting.list`, count from `waiting.count` and `waiting.changed`, answer through `answer.tool`; add the Pairing row.
+- [ ] Push resolves by row `id`, so one answer clears every device.
 
 Phone shell, `deck/js/app.js`, `deck/css/deck.css`, `deck/js/capsule.js`, `deck/js/sheet.js` ([phone shell](components/phone-shell.md))
 
@@ -229,6 +250,10 @@ Tabs, `deck/css/deck.css`, `deck/glass/index.js`, `deck/css/views/memory.css` ([
 - [ ] `.seg` draws a `--rule` border, 26 tabs and `--hover` for the selected fill; use the `--hover` container and the `--panel` selected tab.
 - [ ] `.mem-tab` in Memory is a third tab style (34 tall, text only); fold into these two.
 
+Tip, `deck/js/tips.js` ([tip](components/tip.md))
+
+- [ ] Nothing built: the footer chip, the empty state line, the What's new card on `tips.updated`. Shared with chat (the composer hint line).
+
 Toast, `deck/js/now-phone.js`, `deck/css/views/now.css`, `deck/css/views/vault.css` ([toast](components/toast.md))
 
 - [ ] Two toasts: `.np-toast` on Now and `.vt-toast` in the vault; make one shared toast.
@@ -274,6 +299,10 @@ native-core).
 
 ### All open items
 
+Account picker row, `deck/chat/gate-item.js` ([account picker row](components/account-row.md))
+
+- [ ] The draft card has no From row and no account picker; add it, from `vault.connections.list {capability: "send_mail", surface: "chat"}`.
+
 Ask card, `deck/chat/ask-item.js` ([ask card](components/ask-card.md))
 
 - [ ] `.cv-ask.ask-card` fills `--beacon-wash` (a violet wash); spec: `--panel` with `--rule`.
@@ -293,6 +322,10 @@ Card, `deck/chat/chat.css` ([card](components/card.md))
 
 - [ ] No shared card class: `.gate-card` and `.cv-tool` define their own radius and padding; use the one `.card` with `--radius-card`. Shared with pwa.
 
+Command result card, `deck/chat/core/tool-detail.js` ([command result card](components/result-card.md))
+
+- [ ] Slash commands print terminal text in a tool row; ask with `render: true` and draw the card.
+
 Composer, `deck/chat/composer.js`, `deck/chat/core/composer-state.js`, `deck/chat/tray.js`, `deck/chat/pickers.js` ([composer](components/composer.md))
 
 - [ ] No Attach, vault chip or Dictate; placeholder "Steer kit, or Alt+Enter to queue for after".
@@ -300,6 +333,10 @@ Composer, `deck/chat/composer.js`, `deck/chat/core/composer-state.js`, `deck/cha
 - [ ] Rewind offers three restores; spec: one list, the "Also undo file changes" checkbox, the hold.
 - [ ] Todos pinned above the composer on the desktop; spec: side panel.
 - [ ] Stop is ghost; spec: secondary.
+
+Credential sheet ([credential sheet](components/credential-sheet.md))
+
+- [ ] A tool row or send that answers `needs_credential` opens the sheet instead of printing the error.
 
 Diff, `deck/chat/core/line-diff.js`, `deck/chat/lib/diff.js`, `deck/chat/chat.css` ([diff](components/diff.md))
 
@@ -317,6 +354,10 @@ Draft card, `deck/chat/gate-item.js` ([draft card](components/draft-card.md))
 Form controls, `deck/chat/chat.css` ([form controls](components/form-controls.md))
 
 - [ ] Two checkboxes: `.cv-chk` on is lime, the design is `--text`.
+
+Glass mini-view ([Glass mini-view](components/glass-mini.md))
+
+- [ ] Nothing built: the thread header frame and the tool row's Step link. Shared with pwa.
 
 List row, `deck/chat/chat.css` ([list row](components/list-row.md))
 
@@ -356,12 +397,22 @@ Status mark, `deck/chat/chat.css` ([status mark](components/status-mark.md))
 
 - [ ] Failed state words use `--beacon-ink` in `chat.css` (`.cv-state-*`).
 
+Suggestions, `deck/chat/pickers.js`, `deck/chat/composer.js` ([suggestions](components/suggestions.md))
+
+- [ ] The / and @ pickers read their own command and file lists; call `suggest.query` per keystroke and draw its lanes and groups. Shared with native-core.
+- [ ] No agents, projects, threads or people after @; no Words lane; no ghost text.
+- [ ] No `suggest.picked` on accept.
+
 Terminal, `deck/chat/term.js`, `deck/chat/term.css`, `deck/chat/lib/term-link.js` ([terminal](components/terminal.md))
 
 - [ ] Key bar is one row of nine (Esc Tab Ctrl Alt ← ↑ ↓ → Paste); spec: two rows of seven with / | ~ - and Enter.
 - [ ] Watch line reads "Watching at 120x40 · Take size"; spec: names the owner device.
 - [ ] Connecting dot uses the gold `--recall`; error and blocked dots use `--beacon-dot`; spec: `--label` and the failed mark.
 - [ ] xterm font 13 with line height 1.2; spec: mono 12/18.
+
+Tip ([tip](components/tip.md))
+
+- [ ] Nothing built: the composer's hint line. Shared with pwa.
 
 Tool row, `deck/chat/core/grouping.js`, `deck/chat/core/tool-detail.js`, `deck/chat/chat.css` ([tool row](components/tool-row.md))
 
@@ -403,6 +454,10 @@ composer with chat.
 
 ### All open items
 
+Account picker row ([account picker row](components/account-row.md))
+
+- [ ] Settings, Vault, Connections: draw these rows with a More menu (label, default, revoke).
+
 Banner ([banner](components/banner.md))
 
 - [ ] No restart banner on the Settings page.
@@ -410,6 +465,10 @@ Banner ([banner](components/banner.md))
 Chip, `deck/views/settings-keys.js` ([chip](components/chip.md))
 
 - [ ] Source labels include "Default" and "Not set"; show no chip for a default value, and add the "Claude Code file" chip.
+
+Credential sheet ([credential sheet](components/credential-sheet.md))
+
+- [ ] Onboarding's Claude step and Settings, Vault, Connections open this sheet.
 
 Settings row, `deck/views/settings-keys.js`, `deck/css/views/settings-keys.css` ([settings row](components/settings-row.md))
 
@@ -420,6 +479,10 @@ Settings row, `deck/views/settings-keys.js`, `deck/css/views/settings-keys.css` 
 - [ ] No "Saved", no reserved slot (meta and note lines grow the row), no restart banner.
 - [ ] The key id is printed under every label in mono; show it only in search results.
 - [ ] Refusals print the raw error; use "Not saved" with the failed mark.
+
+Suggestions, the composer ([suggestions](components/suggestions.md))
+
+- [ ] The chat-core composer calls `suggest.query` per keystroke, with ghost text and `suggest.picked`. Shared with chat.
 
 ### Done when
 
@@ -449,6 +512,7 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 
 ### All open items
 
+- [ ] Account picker row, `app/need/[id].tsx`: nothing built; the From row and the picker sheet. ([account picker row](components/account-row.md))
 - [ ] Agenda: no planner. ([agenda](components/agenda.md))
 - [ ] Ask card, `src/session/Rows.tsx`: border turns `--beacon` while open; spec: neutral border. ([ask card](components/ask-card.md))
 - [ ] Ask card, `src/session/Rows.tsx`: Allow once and Deny only; no Always in the project, no reason, no busy state. ([ask card](components/ask-card.md))
@@ -458,7 +522,9 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 - [ ] Card, `src/session/Rows.tsx`, `src/vault/views.tsx`: AskCard and TrustCard are inline styles; extract one Card with header and footer slots. ([card](components/card.md))
 - [ ] Chip, `app/devices.tsx`: the devices badge is bordered with radius chip; no filter chips, no source chip. ([chip](components/chip.md))
 - [ ] Command bar: no Find, no command bar, no Capsule. ([command bar](components/command-bar.md))
+- [ ] Command result card: nothing built; the three views in the chat-core transcript, rows only. ([command result card](components/result-card.md))
 - [ ] Composer, `src/session/Composer.tsx`: text only; no chips, attach, prefixes, queued row, pills or rewind; input 16 not 17. ([composer](components/composer.md))
+- [ ] Credential sheet: nothing built; the bottom sheet with Paste and Face ID on Connect. ([credential sheet](components/credential-sheet.md))
 - [ ] Device row, `app/devices.tsx`: no holds line, no More, no Rename or Remove hold, no Update ready. ([device row](components/device-row.md))
 - [ ] Device row: trust note reads "Presence follows"; name the proof ("Face ID follows"). ([device row](components/device-row.md))
 - [ ] Device row: trust tags draw as outline chips; use the tag (fill `--hover`, no border). ([device row](components/device-row.md))
@@ -468,6 +534,7 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 - [ ] Draft card: no presence line; no "Send with Face ID" state; sends from the Deck or the Capsule "for now". ([draft card](components/draft-card.md))
 - [ ] Form controls, `src/session/Composer.tsx`: only the composer's text input exists (16 px); build the other eight at touch sizes. ([form controls](components/form-controls.md))
 - [ ] Glass frame: no Glass view. ([glass frame](components/glass-frame.md))
+- [ ] Glass mini-view: nothing built; the card from `sight.frame` stills, the pill when collapsed. ([Glass mini-view](components/glass-mini.md))
 - [ ] Icon button: no icon button; screens use `Pressable` with text. Build `IconButton` with 44 default and the icon component. ([icon button](components/icon-button.md))
 - [ ] Icons: no icon component; build one `Icon` from the table with react-native-svg. ([icons](components/icons.md))
 - [ ] Key hint: no key hints; add them for iPad and web builds with a hardware keyboard. ([key hint](components/key-hint.md))
@@ -477,6 +544,7 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 - [ ] Mode chip, `app/session/[id].tsx`: the mode is a text line under the composer and the header chip is "agent · provider · model · project"; build both chips and the mode sheet. ([mode chip](components/mode-chip.md))
 - [ ] Needs row, `app/(tabs)/index.tsx`: kind line is "agent · project"; only gate and ask kinds; no decided state. ([needs row](components/needs-row.md))
 - [ ] Needs row, `src/ui/SwipeRow.*.tsx`: commit at 40% of the row width, not 100 or a fling; reveal has no icon or Face ID glyph. ([needs row](components/needs-row.md))
+- [ ] Needs row, waiting: read `waiting.list` and `waiting.count`; the Now label badge and the app icon badge from the one count; the Pairing row with its code field. ([needs row](components/needs-row.md))
 - [ ] Needs row: rows sit on `--bg` full width, not in a `--panel` card. ([needs row](components/needs-row.md))
 - [ ] Authenticator code: no vault codes. ([otp](components/otp.md))
 - [ ] Phone shell, `app/(tabs)/_layout.tsx`: a bottom tab bar (Now, Chats, Agents) instead of the header labels and page swipe. ([phone shell](components/phone-shell.md))
@@ -493,8 +561,10 @@ Owns the app (`apps/app`, Expo) on the phone and tablet.
 - [ ] States, `src/ui/Screen.tsx`: `Empty` only; no skeleton, no offline pill (`useConnection` is unused), no decided state. ([states](components/states.md))
 - [ ] Status mark, `src/ui/StatusMark.tsx`: no badge, count or status word; done uses a 1 px border (1.5); the failed mark is a slashed circle, not the cross; no elapsed time on running. ([status mark](components/status-mark.md))
 - [ ] Stepper and checks, `app/pair.tsx`: pairing shows a status line only; no steps, checks or QR. ([stepper and checks](components/stepper-checks.md))
+- [ ] Suggestions, `src/session/Composer.tsx`: nothing built; take the chat-core list with 44 rows, 4 at most. ([suggestions](components/suggestions.md))
 - [ ] Tabs: no tabs; build `Tabs` with the segmented and strip forms. ([tabs](components/tabs.md))
 - [ ] Terminal: not built. ([terminal](components/terminal.md))
+- [ ] Tip: nothing built; the Places sheet line and empty screen lines. ([tip](components/tip.md))
 - [ ] Toast, `src/ui/UndoToast.tsx`: Undo text is `--focus` (lime); use `--text`, 600. ([toast](components/toast.md))
 - [ ] Toast, `src/ui/UndoToast.tsx`: floating only; no in-place variant; no ⌘Z on the web build. ([toast](components/toast.md))
 - [ ] Tool row, `src/session/Rows.tsx` RunRow: no icon, no elapsed timer, no detail; "Hide"/"Show" text instead of a chevron. ([tool row](components/tool-row.md))
@@ -540,6 +610,7 @@ the session panel, presence and the menu-bar item.
 
 ### All open items
 
+- [ ] Account picker row, `UI/CapsuleView.swift`: no "Send from" group; read `vault.connections.list {capability, surface: "capsule"}`, with the states, the Sign in fix and Connect another. ([account picker row](components/account-row.md))
 - [ ] Agenda, `Host/Planner.swift`: the banner says "Missed: Timer"; no ring count. ([agenda](components/agenda.md))
 - [ ] Ask card, `UI/AgentDeskView.swift` HeldCardView: buttons read "Allow" and "Deny"; no "Always in <project>", no reason line. ([ask card](components/ask-card.md))
 - [ ] Ask card: label "HELD FOR YOU" in mono caps, tracked; spec: "Permission", sentence case. ([ask card](components/ask-card.md))
@@ -557,11 +628,14 @@ the session panel, presence and the menu-bar item.
 - [ ] Capsule on the Mac: `Tokens.generated.swift` has no shadow tokens, so `--float` cannot come from it yet. ([Capsule on the Mac](components/capsule-mac.md))
 - [ ] Card, `UI/AgentDeskView.swift` HeldCardView: hand-typed sizes and a caps mono label; use `Tokens.Radius.card` and the 12/600 sentence-case label. ([card](components/card.md))
 - [ ] Chip, `UI/CapsuleView.swift`, `Extensions/sight/SessionPanel.swift`: chips are capsule-shaped with gold icons (`Theme.recall`); use the tag and filter shapes and neutral ink. ([chip](components/chip.md))
+- [ ] Command result card: nothing built; the card under the input for a run command, 5 rows, ⌘O to the Deck. ([command result card](components/result-card.md))
 - [ ] Composer, `UI/CapsuleView.swift`, `Extensions/sight/SessionPanel.swift`: plain field; no steer, queue, Stop, modes or prefixes. ([composer](components/composer.md))
+- [ ] Credential sheet: nothing built; the inline row and secure field, "Connect Deepgram to talk" in place of the copied terminal command. ([credential sheet](components/credential-sheet.md))
 - [ ] Diff: not built. ([diff](components/diff.md))
 - [ ] Draft card, HeldCardView: field keys in caps, tracked; label "HELD FOR YOU"; spec: sentence case. ([draft card](components/draft-card.md))
 - [ ] Draft card: no scheduled send; no presence line under Send. ([draft card](components/draft-card.md))
 - [ ] Form controls, `UI/CapsuleView.swift`, `UI/AgentDeskView.swift`: system `TextField` and `TextEditor` styling; no toggles, segments or steppers. ([form controls](components/form-controls.md))
+- [ ] Glass mini-view: nothing built; the step pill for an agent's computer, ⌘O to Glass. ([Glass mini-view](components/glass-mini.md))
 - [ ] Icon button, `Extensions/sight/SessionPanel.swift`, `UI/CapsuleView.swift`: close and mic buttons are SF Symbols at 11 to 13 pt with no hover fill or focus ring; draw the set's icons in a 28 square with `Tokens` colours. ([icon button](components/icon-button.md))
 - [ ] Icons: SF Symbols everywhere (xmark, chevron.down, sparkle.magnifyingglass, mic.fill); draw the set as SwiftUI `Shape`s from the same path data. ([icons](components/icons.md))
 - [ ] Key hint, `UI/CapsuleView.swift` `KeyCap`: SF Rounded 10.5 semibold in `Theme.stone`, 17 square, filled `Theme.raised`; use JetBrains Mono 12, 20 tall, no fill, `Tokens` label ink. ([key hint](components/key-hint.md))
@@ -570,6 +644,7 @@ the session panel, presence and the menu-bar item.
 - [ ] List, `UI/AgentDeskView.swift` WaitingList: caps at 9 rows (`Theme.maxRows`) with no count or more. ([list](components/list.md))
 - [ ] Mode chip: none; the session panel needs the provider chip at least. ([mode chip](components/mode-chip.md))
 - [ ] Needs row, `UI/AgentDeskView.swift` WaitingRow: two lines, no kind line, a 7 dot for the tile, 40 tall; header "WAITING ON YOU" in caps. ([needs row](components/needs-row.md))
+- [ ] Needs row, waiting: the list and the "Needs you · n" header from `waiting.list`; the menu-bar dot from `waiting.changed`; answer through `answer.tool`. ([needs row](components/needs-row.md))
 - [ ] Needs row: selected row has a 2 px violet left bar (violet as a border); use the `--hover` fill only. ([needs row](components/needs-row.md))
 - [ ] Pill, `UI/AgentDeskView.swift` OfflineBanner: a 30 tall line with "OFFLINE" in caps and "vyred is not running on this Mac. Start it with vyre up."; use the pill words, sentence case, no caps label. ([pill](components/pill.md))
 - [ ] Plan card: not built (proposed: the Needs row with Start building on `⌘⏎`, the card opening in Chat). ([plan card](components/plan-card.md))
@@ -578,6 +653,8 @@ the session panel, presence and the menu-bar item.
 - [ ] Question card: not built. ([question card](components/question-card.md))
 - [ ] States, OfflineBanner: reads "OFFLINE" in caps; no queued count; no skeleton. ([states](components/states.md))
 - [ ] Status mark, WaitingRow, `UI/CapsuleView.swift`, `Host/MenuBarItem.swift`: waiting dot uses `Theme.attention` at 7 px; tool rows use SF Symbols; Pulse is a lime 7 px dot, not the ring; no badge; relayed health is not neutral. ([status mark](components/status-mark.md))
+- [ ] Suggestions, `UI/CapsuleView.swift`: the @ target ranks its own agents and sessions; draw `suggest.query` rows under the local rows, never moving a drawn row; ghost text; `suggest.picked`. ([suggestions](components/suggestions.md))
+- [ ] Tip: nothing built; the line under the empty input, ⌘. to dismiss. ([tip](components/tip.md))
 - [ ] Toast: no toast; add the floating variant under the Capsule's list for answers given there. ([toast](components/toast.md))
 - [ ] Tool row, `UI/CapsuleView.swift` ToolRows: SF Symbols instead of the stroke set; no folding, no detail. ([tool row](components/tool-row.md))
 - [ ] Turn, `UI/CapsuleView.swift`, `UI/AgentDirectView.swift`, `Extensions/sight/SessionPanel.swift`: three renderers; one turn view. ([turn](components/turn.md))
@@ -599,14 +676,43 @@ Capsule as not used (it opens the terminal in the Deck); that is not an item to 
 
 These fix the boards, `icons.txt` or the tokens, not a surface.
 
+- [ ] Account picker row: monochrome provider glyphs (google, microsoft, mail, slack) and a mail icon in `icons.txt`; the AccountRow board. ([account picker row](components/account-row.md))
 - [ ] Chip: the boards draw tags with radius 5; the token is `--radius-chip` (4). ([chip](components/chip.md))
+- [ ] Command result card: the ResultCard board (table, text, card, error). ([command result card](components/result-card.md))
+- [ ] Credential sheet: the CredentialSheet board (key, file, sign-in, the Capsule row). ([credential sheet](components/credential-sheet.md))
 - [ ] Form controls: the stepper is drawn twice (a `--hover` fill in Settings, a `--rule-strong` outline in Project settings); the spec takes the fill. ([form controls](components/form-controls.md))
+- [ ] Glass mini-view: the GlassMini board. ([Glass mini-view](components/glass-mini.md))
 - [ ] Icons: add minus and unlock to `icons.txt`; the Vault board draws the faceid frame without its face, which is not in the set. ([icons](components/icons.md))
 - [ ] Key hint: the "Settings · account and project scopes" board draws ↵; use ⏎. ([key hint](components/key-hint.md))
 - [ ] Mode chip: the composer chip radius 6 is not a token; add one or use `--radius-button`. ([mode chip](components/mode-chip.md))
+- [ ] Suggestions: the Suggestions board (the three lanes, ghost text, the Capsule groups). ([suggestions](components/suggestions.md))
 - [ ] Tabs: the teammate phone strip is drawn 40 tall; the spec makes it 44. ([tabs](components/tabs.md))
+- [ ] Tip: the `tip` (lightbulb) icon in `icons.txt`; the TipLine board. ([tip](components/tip.md))
 
 Done when `npm run design:audit` passes on every changed board and each item is ticked in its spec.
+
+## Other teams
+
+Items in the specs that belong to teams outside the surfaces. The specs stay the source of truth.
+
+cohesion
+- [ ] Suggestions: the @ lane in chat asks file sources too (the composer's file list as an offered source). ([suggestions](components/suggestions.md))
+- [ ] Needs row: merge the kinds waiting does not have yet (Sign-in grant, New teammate, Merge failed, Stuck, Usage, Device, Plan), each from its owner's tool. ([needs row](components/needs-row.md))
+
+memory-iq
+- [ ] Suggestions: offer the entity source (people, places and aliases from memory already loaded) with `suggest.offer`, never a model call. ([suggestions](components/suggestions.md))
+
+vault
+- [ ] Account picker row: a default per capability (proposed `vault.connections.update {id, default}`) and a last used time on each row. ([account picker row](components/account-row.md))
+- [ ] Credential sheet: `vault.need` returns `purpose` in plain words and the provider's key page for Open. ([credential sheet](components/credential-sheet.md)) <!-- terms: ignore -->
+
+platform
+- [ ] Command result card: the result shape on the commands field (`view`, `title`, `rows`, `text`, `actions`) and `render: true` on the call. ([command result card](components/result-card.md))
+
+polish-cli
+- [ ] Command result card: `--view` frames for the seven commands without JSON output (capsule, connect, hooks, mcp, sideview, voice, send). ([command result card](components/result-card.md))
+- [ ] Needs row: `vyre needs` and the status line count from `waiting.count`. ([needs row](components/needs-row.md)) <!-- terms: ignore -->
+- [ ] Suggestions: later, the same lanes and order under the prompt; Tab accepts. ([suggestions](components/suggestions.md))
 
 ## Not assigned
 
