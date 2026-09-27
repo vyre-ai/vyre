@@ -109,6 +109,12 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
   marked "(pending)") and docs/using/first-hour.md (the 20-minute first run). releases/ joins
   HISTORY in terms.js. When batch 4 lands, drop the "(pending)" marks that no longer apply and
   update the first hour's Known gap callouts.
+- Lead routing (0.1.0): ci owns the version and the "## 0.1.0" CHANGELOG section (the RC's last
+  commit); platform owns `vyre module *` (RC or 0.1.1). The RC batch after 4 holds vault
+  5d7cbd07, connectors 8be461a9, memory-iq 1a76d383 and app-design-hub 9a6abbcf. WHEN THE RC BATCH IS
+  ON MAIN: first-hour step 8 changes colours through Settings, Appearance (the hub,
+  appearance.tokens); remove every "(pending)" in releases/0.1.0.md that landed; update the
+  first hour's Known gap callouts (IQ in the Capsule, vault needs, do, the hub).
 - Rule reminder from the lead: one Chrome on testbox at a time, and no shots while the integrator's
   suite runs.
 
