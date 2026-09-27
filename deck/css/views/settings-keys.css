@@ -1,0 +1,50 @@
+/* Settings, the registry's keys (deck/views/settings-keys.js). Built from settings.css's rows and
+   TOKENS.md; no colour of its own. Loaded by the section itself. */
+
+.sk-top { display: flex; flex-direction: column; gap: 6px; padding-top: 48px; }
+.sk-intro { max-width: 620px; }
+.sk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px 0; border-bottom: 1px solid var(--rule);
+  position: sticky; top: 0; z-index: 2; background: var(--bg); }
+.sk-bar .seg { flex-shrink: 0; }
+.sk-find { flex: 1 1 200px; min-width: 0; width: auto; height: 32px; font-size: 13px; }
+.sk-status:not(:empty) { padding-top: 8px; }
+.sk-sec { padding-top: 32px; }
+.sk-none { padding-top: 16px; }
+
+.sk-row { align-items: start; scroll-margin-top: 72px; border-radius: var(--r-1); transition: background 400ms, box-shadow 400ms; }
+.sk-k { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sk-label { color: var(--text); }
+.sk-help { max-width: 320px; }
+.sk-key { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); overflow-wrap: anywhere; }
+.sk-v { gap: 6px; }
+.sk-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; min-height: 32px; }
+.sk-ctl .seg { margin-top: 0; }
+.sk-input { height: 32px; max-width: 320px; font-size: 13px; }
+.sk-num { width: 120px; }
+.sk-model { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.sk-other { width: 220px; }
+.sk-meta:not(:empty) { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.sk-meta .btn-sm { height: 24px; padding: 0 6px; }
+.sk-note:not(:empty) { display: flex; flex-direction: column; gap: 2px; }
+.sk-dim .sk-k, .sk-dim .sk-ctl { opacity: 0.5; }
+.sk-hi { background: var(--signal-wash); box-shadow: 0 0 0 8px var(--signal-wash); }
+
+.sk-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
+.sk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sk-chip { max-width: 100%; }
+.sk-chip .mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.sk-x { border: none; background: transparent; color: var(--label); cursor: pointer; width: 20px; height: 20px; padding: 0; border-radius: var(--r-1);
+  font-size: 14px; line-height: 20px; }
+.sk-x:hover { color: var(--text); background: var(--hover); }
+.sk-add-row { display: flex; gap: 8px; align-items: center; max-width: 100%; }
+.sk-obj { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
+.sk-json { font-family: var(--mono); font-size: 12px; line-height: 18px; width: 100%; }
+
+@media (max-width: 760px) {
+  .sk-top { padding-top: 40px; }
+  .sk-bar { position: static; }
+  .sk-input, .sk-other, .sk-find { max-width: 100%; width: 100%; }
+  .sk-num { width: 120px; }
+  .sk-help { max-width: none; }
+  .sk-ctl .seg { max-width: 100%; overflow-x: auto; }
+}

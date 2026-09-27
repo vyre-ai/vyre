@@ -19,6 +19,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - core/modules: settings may pass a person's change on to another module's tool as that person
   (CALL_AS), so person-only tools stay person-only.
 - docs/design/settings-inventory.md and docs/design/native-bar.md.
+- Deck Settings draws every key in the registry, one section per group under "Sessions and
+  Claude": switches, segments, selects, numbers, text, a model picker with Other, chip lists and
+  JSON for objects, with Show advanced and a find box (deck/views/settings-keys.js).
+- A Level switch (Account or Project, with a project picker) says where a change is written; each
+  row says where its value comes from, whether a Claude Code file holds it, and when it applies.
+  Keys that can't be set at that level, or whose module is off, are dimmed with the reason.
+- Settings save as you go and show before the box answers; a refused change goes back and says
+  why on its row. settings.changed refreshes only its row, so another device's change shows live.
+- /settings#<group> and ?key=<key> open a group or one highlighted setting; below 1180 px a select
+  replaces the hidden section rail.
 
 #### The answer eval runs without the Electron Capsule
 
