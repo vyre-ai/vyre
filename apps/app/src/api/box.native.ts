@@ -29,6 +29,15 @@ export function configure(o: { base?: string; paths?: string[] }): void {
   if (o.paths) paths = o.paths;
 }
 
+/** The box's host name: what its stores on this device are keyed by ("" before configure). */
+export function boxName(): string {
+  try {
+    return base ? new URL(base).host : "";
+  } catch {
+    return "";
+  }
+}
+
 const store = memoryStore();
 
 // human: false until the box verifies the biometric key (e2e, ADR 0032): a prompt the box ignores

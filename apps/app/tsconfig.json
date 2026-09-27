@@ -5,7 +5,8 @@
     "allowJs": true,
     "allowImportingTsExtensions": true,
     "paths": {
-      "@vyre/resilience/*": ["../../core/resilience/*"]
+      "@vyre/resilience/*": ["../../core/resilience/*"],
+      "@vyre/chat-core/*": ["../../deck/chat/core/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"]

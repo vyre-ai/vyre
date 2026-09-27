@@ -43,6 +43,7 @@
     "!docs/**/*.png",
     "CHANGELOG.md",
     "LICENSE",
+    "NOTICE",
     "README.md",
     "!**/*.test.js",
     "!**/fixtures/**",

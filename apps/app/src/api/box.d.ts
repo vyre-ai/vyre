@@ -3,6 +3,8 @@ import type { BoxEvent, Client, Result } from "./client";
 
 /** The box's address and its paths in order (LAN, tailnet, relay). The web defaults to the page's origin. */
 export function configure(o: { base?: string; paths?: string[] }): void;
+/** The box's host name, which keys its stores on this device. */
+export function boxName(): string;
 /** Start following the box (once) and resolve the client. */
 export function connect(): Promise<Client>;
 /** Every event from the box; onReset hears a stream.reset (reload the view). Returns the unsubscribe. */
