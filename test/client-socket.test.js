@@ -9,6 +9,7 @@ import http from "node:http";
 import path from "node:path";
 import { call } from "../core/daemon/client.js";
 import { ensureUp } from "../core/cli/daemonctl.js";
+import { callAsPerson } from "../core/cli/presence.js";
 import { tempHome } from "./helpers.js";
 import { SCRATCH } from "./scratch.mjs";
 
@@ -47,4 +48,10 @@ test("ensureUp: inside a session it never starts a vyred, it only checks the ses
   assert.equal(r.ok, false);
   assert.match(String(r.error), /session's socket/);
   assert.ok(!fs.existsSync(path.join(root, "vyred.pid")), "no vyred was started");
+});
+
+test("vyre call inside a session: callAsPerson leaves the root to the client, so VYRE_SOCKET is used", async t => {
+  const own = await fake(t, "thread");
+  env(t, { VYRE_SOCKET: own });
+  assert.equal((await callAsPerson("system.echo", {})).data.at, "thread");
 });

@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: `vyre call` inside a session, and a shorter tool list
+
+- Fixed: `vyre call` from a session's Bash said vyred was not running: callAsPerson pinned the
+  home's root, so the client never used the session's own socket (VYRE_SOCKET).
+- The plugin's MCP server no longer offers a session the person's own tools (PERSON_ONLY and
+  HUMAN_ONLY), which vyred refuses from any session: less of the model's context spent on them.
+- Tests: the SDK suites set claude "installed" (they run the fake claude), so CI's SDK install
+  without the bundled binary runs them on the SDK again.
+
 #### Sessions: the server's time on text
 
 - `thread.text` and `thread.thinking` carry `t` (ms since the epoch, vyred's clock), for mobile's

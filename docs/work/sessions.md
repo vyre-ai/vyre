@@ -46,6 +46,11 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 - Lead's list done through 7. Compile phase next: the promised items below, then docs + polish.
 
 ## Next
+- After 0.1.0 (the lead): the 5 cross-imports among core/sessions, core/switchboard,
+  core/transcripts, core/spawner and core/harness (frozen in test/boundaries allowlist) are mine to
+  remove: merge sessions and switchboard into one module, or talk over ctx.call.
+- vault: threads record origin (the Capsule) for vault's surface mapping; Claude sign-in as a
+  vault need (needs.credentials on threads, onboard.claude callable by module:vault).
 - Promised (after the queue): settings.resolve at start (effort, mode, max_turns, budget_usd,
   checkpoints, fast); server `t` on thread.text; threads.effort + settings.changed level
   session (ADR 0035); thread.status event; context.now in enrich/capsule; brief adds planner

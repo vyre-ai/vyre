@@ -18,6 +18,7 @@ import { ensureUp } from "../../core/cli/daemonctl.js";
 import { VERSION } from "../../core/daemon/index.js";
 import { home, paths } from "../../core/config/index.js";
 import { readKey } from "../../core/switchboard/sessions.js";
+import { PERSON_ONLY, HUMAN_ONLY } from "../../core/presence/index.js";
 
 const PROTOCOL = "2025-06-18";
 /**
@@ -37,7 +38,10 @@ const mcpName = t => t.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
 const AGENT = process.env.VYRE_AGENT || "";
 const CALLER = AGENT ? `mcp:agent:${AGENT}` : "mcp";
 const DRIVES = /^(threads|agents)\./;
-const offered = t => !t.name.startsWith("harness.") && !(AGENT && process.env.VYRE_AGENT_KIND !== "assistant" && DRIVES.test(t.name));
+// Nor the person's own tools (answering, approving, presence, a session's mode): vyred refuses
+// them from any session, so listing them only spends the model's context.
+const offered = t => !t.name.startsWith("harness.") && !PERSON_ONLY.has(t.name) && !HUMAN_ONLY.has(t.name)
+  && !(AGENT && process.env.VYRE_AGENT_KIND !== "assistant" && DRIVES.test(t.name));
 /** @param {string} tool @param {any} input */
 function scoped(tool, input) {
   const projects = process.env.VYRE_PROJECTS;
