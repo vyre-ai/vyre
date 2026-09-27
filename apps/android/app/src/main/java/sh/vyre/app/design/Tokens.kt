@@ -24,8 +24,8 @@ object Hex {
     val signalWash = Color(0x1FC6F36B)
     val recall = Color(0xFFEBC76B)
     val recallWash = Color(0x1AEBC76B)
-    val beacon = Color(0xFFFF7A59)
-    val beaconWash = Color(0x1FFF7A59)
+    /** Attention ("needs you"), violet since 27 Sep 2026. The one place it is set: every beacon role derives from it. */
+    val attention = Color(0xFFB8A4FF)
 
     val paper = Color(0xFFF4F1EA)
     val paperRaised = Color(0xFFFBFAF6)
@@ -36,8 +36,7 @@ object Hex {
     val ink3 = Color(0xFF6B665D)
     val signalDeep = Color(0xFF46700C)
     val recallDeep = Color(0xFF7E5B0C)
-    val beaconDeep = Color(0xFFC2411F)
-    val beaconDot = Color(0xFFE5532F)
+    val attentionPaper = Color(0xFF5B3FC4)
 }
 
 /**
@@ -96,8 +95,8 @@ val DarkColors = VyreColors(
     dark = true, bg = Color(0xFF0E0D0C), panel = Color(0xFF161513), hover = Color(0xFF1E1C1A),
     rule = Color(0xFF2B2926), ruleStrong = Color(0xFF3A3733), text = Color(0xFFF1EEE6), text2 = Color(0xFFB3AEA4),
     label = Color(0xFF8C877D), primaryBg = Color(0xFFC6F36B), primaryInk = Color(0xFF0E0D0C), focus = Color(0xFFC6F36B),
-    signalWash = Color(0x1FC6F36B), match = Color(0x33C6F36B), beaconInk = Color(0xFFFF7A59), beaconDot = Color(0xFFFF7A59),
-    beaconWash = Color(0x1FFF7A59), recall = Color(0xFFEBC76B), recallWash = Color(0x1AEBC76B), delWash = Color(0x248C877D),
+    signalWash = Color(0x1FC6F36B), match = Color(0x33C6F36B), beaconInk = Hex.attention, beaconDot = Hex.attention,
+    beaconWash = Hex.attention.copy(alpha = 0.12f), recall = Color(0xFFEBC76B), recallWash = Color(0x1AEBC76B), delWash = Color(0x248C877D),
     codeBg = Color(0x8C0E0D0C), markWire = Color(0xFFF1EEE6), markDot = Color(0xFFC6F36B), scrim = Color(0x9E000000),
 )
 
@@ -105,8 +104,8 @@ val PaperColors = VyreColors(
     dark = false, bg = Color(0xFFF4F1EA), panel = Color(0xFFFBFAF6), hover = Color(0x0B141311),
     rule = Color(0xFFDCD7CC), ruleStrong = Color(0xFFC9C3B7), text = Color(0xFF141311), text2 = Color(0xFF4A463F),
     label = Color(0xFF6B665D), primaryBg = Color(0xFF141311), primaryInk = Color(0xFFF4F1EA), focus = Color(0xFF46700C),
-    signalWash = Color(0x1A46700C), match = Color(0x2946700C), beaconInk = Color(0xFFC2411F), beaconDot = Color(0xFFE5532F),
-    beaconWash = Color(0x17E5532F), recall = Color(0xFF7E5B0C), recallWash = Color(0x147E5B0C), delWash = Color(0x1A6B665D),
+    signalWash = Color(0x1A46700C), match = Color(0x2946700C), beaconInk = Hex.attentionPaper, beaconDot = Hex.attentionPaper,
+    beaconWash = Hex.attentionPaper.copy(alpha = 0.08f), recall = Color(0xFF7E5B0C), recallWash = Color(0x147E5B0C), delWash = Color(0x1A6B665D),
     codeBg = Color(0x0A141311), markWire = Color(0xFF141311), markDot = Color(0xFF141311), scrim = Color(0x57141311),
 )
 

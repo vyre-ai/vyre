@@ -15,7 +15,10 @@ enum Tone {
     static let boneDark = UIColor(hex: 0xF1EEE6)
     static let signalDark = UIColor(hex: 0xC6F36B)
     static let recallDark = UIColor(hex: 0xEBC76B)
-    static let beaconDark = UIColor(hex: 0xFF7A59)
+    /// Attention ("needs you"), violet since 27 Sep 2026. The one place it is set: every beacon
+    /// role below derives from this pair, so a different pick is a two-line change.
+    static let attentionDark: UInt32 = 0xB8A4FF
+    static let attentionPaper: UInt32 = 0x5B3FC4
 
     static let paper = UIColor(hex: 0xF4F1EA)
     static let paperRaised = UIColor(hex: 0xFBFAF6)
@@ -26,8 +29,6 @@ enum Tone {
     static let ink3 = UIColor(hex: 0x6B665D)
     static let signalDeep = UIColor(hex: 0x46700C)
     static let recallDeep = UIColor(hex: 0x7E5B0C)
-    static let beaconDeep = UIColor(hex: 0xC2411F)
-    static let beaconDotPaper = UIColor(hex: 0xE5532F)
 
     static func pair(_ dark: UIColor, _ light: UIColor) -> Color {
         Color(UIColor { $0.userInterfaceStyle == .light ? light : dark })
@@ -63,12 +64,12 @@ extension Color {
     static let signalWash = Tone.pair(UIColor(hex: 0xC6F36B, alpha: 0.12), UIColor(hex: 0x46700C, alpha: 0.10))
     /// `--match` (phone): search match highlight, the Open session flash.
     static let match = Tone.pair(UIColor(hex: 0xC6F36B, alpha: 0.20), UIColor(hex: 0x46700C, alpha: 0.16))
-    /// `--beacon-ink`: needs you. Held items, asks, the badge. Nothing else.
-    static let beaconInk = Tone.pair(Tone.beaconDark, Tone.beaconDeep)
-    /// `--beacon-dot`.
-    static let beaconDot = Tone.pair(Tone.beaconDark, Tone.beaconDotPaper)
-    /// `--beacon-wash`: behind a held item.
-    static let beaconWash = Tone.pair(UIColor(hex: 0xFF7A59, alpha: 0.12), UIColor(hex: 0xE5532F, alpha: 0.09))
+    /// `--beacon-ink`: needs you, as a label. Nothing else.
+    static let beaconInk = Tone.pair(UIColor(hex: Tone.attentionDark), UIColor(hex: Tone.attentionPaper))
+    /// `--beacon-dot`: needs you, as a dot or a badge.
+    static let beaconDot = beaconInk
+    /// `--beacon-wash`: not used on the phone (held, ask and question cards are neutral).
+    static let beaconWash = Tone.pair(UIColor(hex: Tone.attentionDark, alpha: 0.12), UIColor(hex: Tone.attentionPaper, alpha: 0.08))
     /// `--recall`: came from memory; no model was used.
     static let recall = Tone.pair(Tone.recallDark, Tone.recallDeep)
     /// `--recall-wash`: behind a recalled block.
