@@ -69,7 +69,7 @@ function offlineLine(/** @type {HTMLElement} */ deck) {
   const since = { at: 0 };
   const retry = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: check }, "Retry");
   const text = h("span", { class: "reach-text" });
-  const bar = h("div", { class: "reach", role: "status", hidden: true }, h("span", { class: "dot beacon" }), text, retry);
+  const bar = h("div", { class: "reach", role: "status", hidden: true }, h("span", { class: "dot" }), text, retry);
   const head = deck.querySelector(".ph-head");
   if (head) head.after(bar); else deck.prepend(bar);
   const draw = (/** @type {boolean} */ ok) => {
@@ -78,8 +78,8 @@ function offlineLine(/** @type {HTMLElement} */ deck) {
       return;
     }
     if (bar.hidden) since.at = Date.now();
-    put(text, navigator.onLine === false ? "This phone is offline." : "Your box is not answering.",
-      " ", h("span", { class: "faint" }, `Showing what this phone kept, since ${when(since.at)}.`));
+    put(text, navigator.onLine === false ? "This phone is offline." : "Can't reach your box.",
+      " ", `Showing what it said at ${when(since.at)}.`);
     bar.hidden = false;
   };
   async function check() {

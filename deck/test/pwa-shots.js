@@ -34,7 +34,7 @@ if (process.env.PHONES === "0") DEVICES.splice(0, 2);
 // shell must show there (docs/design/phone.md section 3): "page" (the header with Now, Chats and
 // Agents, and the Capsule), "pushed" (no Capsule; the header only as a back row, or not at all when
 // the view draws its own back) or "find" (the Capsule opened: neither).
-/** @type {{ name: string, path: string, script?: string, wait?: number, theme?: string, drag?: boolean, swipe?: boolean, offline?: boolean, last?: string, expect?: string, stub?: Record<string, any>, noShell?: boolean, shell?: string }[]} */
+/** @type {{ name: string, path: string, script?: string, wait?: number, theme?: string, drag?: boolean, swipe?: boolean, reduce?: boolean, edge?: boolean, offline?: boolean, last?: string, expect?: string, stub?: Record<string, any>, noShell?: boolean, shell?: string }[]} */
 const SCREENS = [
   { name: "now", path: "/now" },
   { name: "now-paper", path: "/now", theme: "paper" },
@@ -46,6 +46,10 @@ const SCREENS = [
   { name: "agents-new", path: "/agents", script: `await click('.ph-plus'); await wait(600); if (!document.querySelector('.page:not(.away) #ag-new:not([hidden])')) throw new Error('the + did not open New agent');` },
   // A swipe left on Now lands on Chats, and the address follows.
   { name: "swipe-to-chats", path: "/now", swipe: true, expect: "/chat" },
+  // Under Reduce Motion the pager does not slide; the same flick crossfades to Chats.
+  { name: "swipe-reduced", path: "/now", swipe: true, reduce: true, expect: "/chat" },
+  // The edge swipe back on a pushed screen (opened cold, so Back lands on Now).
+  { name: "edge-back", path: "/agents/kit", edge: true, expect: "/now" },
   // A tap on a label jumps there.
   { name: "label-to-agents", path: "/now", script: `await click('.ph-tab[data-view=agents]'); await wait(900);`, expect: "/agents" },
   // The Capsule, tapped: Find as a full-height sheet.
@@ -64,7 +68,8 @@ const SCREENS = [
       const ta = document.querySelector('.composer textarea'); ta.value = 'hello from the phone'; ta.dispatchEvent(new Event('input'));
       document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); for (let i = 0; i < 80 && !document.body.innerText.includes('echo: hello from the phone'); i++) await wait(100);
       if (!document.body.innerText.includes('hello from the phone')) throw new Error('the sent line is not in the session');` },
-  { name: "chat-ask", path: "/chat", shell: "pushed", script: `await click('.chat-recent a.thread-row'); await wait(2500);
+  // Another session than chat-send's, which the fake claude may still hold.
+  { name: "chat-ask", path: "/chat", shell: "pushed", script: `await click('.chat-recent a.thread-row:nth-of-type(3)'); await wait(2500);
       const ta = document.querySelector('.composer textarea'); ta.value = 'write notes.txt'; ta.dispatchEvent(new Event('input'));
       document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); await waitFor('.ask-card', 10000).catch(() => null);
       if (!document.querySelector('.ask-card')) throw new Error('no ask card for the permission question');` },
@@ -123,6 +128,7 @@ for (const dev of DEVICES) {
       // Let the first page finish routing, or its own remember("/now") lands after this.
       if (s.last) await new Promise(r => setTimeout(r, 1500));
       if (s.last) await tab.run(`localStorage.setItem("vyre.last", JSON.stringify({ path: ${JSON.stringify(s.last)}, at: Date.now() })); sessionStorage.clear();`);
+      if (s.reduce) await tab.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
       await tab.go(base + s.path, s.wait || 2200);
       if (s.script) await tab.run(s.script);
       if (s.offline) {
@@ -135,6 +141,14 @@ for (const dev of DEVICES) {
         const y = Math.round(dev.height / 2);
         await tab.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: dev.width - 40, y }] });
         for (let i = 1; i <= 10; i++) await tab.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: dev.width - 40 - i * 30, y }] });
+        await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+        await new Promise(r => setTimeout(r, 1200));
+      }
+      if (s.edge) {
+        // A finger from the left edge across most of the screen.
+        const y = Math.round(dev.height / 2);
+        await tab.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: 6, y }] });
+        for (let i = 1; i <= 10; i++) await tab.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: 6 + i * 26, y }] });
         await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
         await new Promise(r => setTimeout(r, 1200));
       }
