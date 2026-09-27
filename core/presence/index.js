@@ -29,8 +29,9 @@ export const HUMAN_ONLY = new Set([
   "vault.backup", "vault.restore", "vault.delete", "vault.device.code", "vault.device.unlock",
   "vault.unlock-passphrase", "vault.reveal", "vault.copy", "vault.resolve", "vault.render",
   "vault.session.open", "vault.export", "vault.kit",
-  // What Claude is told in every later session: accepting, weakening and removing lessons and skills.
-  "learn.accept", "learn.retire", "learn.relax", "learn.skill-install",
+  // What Claude is told in every later session: installing a skill. Accepting, relaxing and
+  // retiring a lesson are the user's own (PERSON_ONLY): they ask nothing.
+  "learn.skill-install",
   // A new machine joined to this one.
   "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
@@ -38,7 +39,8 @@ export const HUMAN_ONLY = new Set([
   "presence.person.start",
   // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
   // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
-  // and the sites that leave through the owner's Mac.
+  // and the sites that leave through the owner's Mac. Switching a share the owner already made
+  // between read-only and read-write is the owner's own (PERSON_ONLY below).
   "files.drive.share", "files.drive.unshare",
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
@@ -49,25 +51,34 @@ export const HUMAN_ONLY = new Set([
  * The person's own actions that ask no proof, because the owner does them on their own screens and
  * Vyre does not nag (ADR 0024, user rule 27 Sep): answering a session's ask, opening a terminal,
  * making and changing agents, changing or discarding a held draft (gate.revise, gate.reject send
- * nothing), and the owner's hands on an agent's computer (taking the keyboard pauses the agent,
- * handing it back returns what it had). None sends, pays, pairs or releases a secret. The tools'
- * caller checks keep models, agents and guests out (computers ownSurface, glass surfaceOf, the
- * allowlists), the harness floor refuses a model's shell that names one of these, as it does the
- * list above, and vyred refuses a socket call to one from any process under a `claude` or a
+ * nothing), the owner's hands on an agent's computer (taking the keyboard pauses the agent,
+ * handing it back returns what it had), the user's own lessons, and switching one of the box's
+ * VyreDrive shares between read-only and read-write (files.drive.access: the share already exists
+ * and reaches no one new). None sends, pays, pairs or releases a secret. The tools' caller checks
+ * keep models, agents and guests out (computers ownSurface, glass surfaceOf, drive's owner check,
+ * the allowlists), the harness floor refuses a model's shell that names one of these, as it does
+ * the list above, and vyred refuses a socket call to one from any process under a `claude` or a
  * thread's process (core/daemon/peer.js).
  */
-export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach",
-  "agents.create", "agents.update", "gate.revise", "gate.reject",
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "presence.person.revoke"]);
+export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
+  "agents.create", "agents.update",
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access",
+  // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
+  "learn.accept", "learn.retire", "learn.relax",
+  // Signing a browser or app out (core/presence/person.js).
+  "presence.person.revoke"]);
 
-export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
+export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 
 /**
  * Tools a short session may prove, after one strong proof: the Deck revealing or copying items
  * one after another. The floor fixes this list; a tool must also say yes for the input at hand
  * (`presence.session(input)`), so an item that asks every time never rides a session.
  */
-export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", "gate.approve"]);
+export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", "vault.approve", "vault.grant", "gate.approve",
+  // A person's messages from the Capsule (ADR 0022): each send is still previewed and confirmed
+  // there, and the session secret lives only in the surface that opened it.
+  "apps.send"]);
 
 /**
  * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
@@ -75,6 +86,24 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
  * sending, posting, paying or deleting outside (the no-nag rule).
  */
 export const NARROWABLE = new Set(["gate.approve"]);
+
+/**
+ * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet)
+ * and the Capsule. The CLI rides its own window instead, bound to the login terminal vyred saw
+ * (`terminal`, see Presence.verify): the CLI is a first-class surface, and a secret on disk is
+ * something a model could read.
+ * TODO(e2e): the tailnet owner counts by node identity today, which a script on the paired Mac can
+ * borrow. When e2e's Deck web-session rule lands (docs/work/e2e.md, the HTTP listener audit), a
+ * tailnet caller must also carry that web session.
+ */
+const vaultSessionCaller = caller => {
+  const c = String(caller || "");
+  if (/(?:^|[\s:])agent:/.test(c)) return false;
+  return c.startsWith("tailnet:") || c === "deck" || c === "capsule";
+};
+
+/** How long one proof covers a terminal's SESSIONABLE calls: as long as a session. */
+const TERMINAL_WINDOW = 30 * 60_000;
 
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (
@@ -104,6 +133,21 @@ export const MIGRATIONS = [`
     last_used INTEGER NOT NULL,
     expires INTEGER NOT NULL
   );
+`, `
+  CREATE TABLE presence_keys_v3 (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK (kind IN ('capsule', 'passkey', 'device')),
+    name TEXT NOT NULL,
+    public_key TEXT NOT NULL,
+    alg INTEGER,
+    rp_id TEXT,
+    sign_count INTEGER NOT NULL DEFAULT 0,
+    created INTEGER NOT NULL,
+    last_used INTEGER
+  );
+  INSERT INTO presence_keys_v3 SELECT id, kind, name, public_key, alg, rp_id, sign_count, created, last_used FROM presence_keys;
+  DROP TABLE presence_keys;
+  ALTER TABLE presence_keys_v3 RENAME TO presence_keys;
 `, `
   CREATE TABLE presence_people (
     id TEXT PRIMARY KEY,
@@ -135,7 +179,7 @@ const CODE_TTL = 10 * 60_000;
 const SESSION_MAX = 30 * 60_000;
 const SESSION_IDLE = SESSION_MAX;
 /** The proofs strong enough to open a session: hardware or a key the model cannot read. */
-const SESSION_FROM = new Set(["touchid", "capsule", "passkey"]);
+const SESSION_FROM = new Set(["touchid", "capsule", "device", "passkey"]);
 const MAX_OPEN = 64;
 // No 0/O, 1/I/L: a code is read off a screen and typed by hand.
 const ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
@@ -188,6 +232,17 @@ const normal = code => String(code || "").toUpperCase().replace(/[\s-]/g, "");
 /** The tailnet node a request came from, when a listener established one. */
 const peerId = peer => (peer && (peer.stableId || peer.node) ? String(peer.stableId || peer.node) : null);
 const spki = b64 => crypto.createPublicKey({ key: Buffer.from(String(b64), "base64url"), format: "der", type: "spki" });
+/** A signing key's id is its fingerprint, so one key cannot be enrolled twice. */
+const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from(String(b64), "base64url")).digest("base64url").slice(0, 22);
+/**
+ * The keys that sign a call themselves, the same message and rules for each: the Capsule's
+ * Ed25519 key, and a phone's P-256 key held in its Secure Enclave or StrongBox (ADR 0018).
+ * `check` is crypto.verify's algorithm and key for that kind.
+ */
+const SIGNERS = {
+  capsule: { label: "Capsule", check: pub => [null, spki(pub)] },
+  device: { label: "device", check: pub => ["sha256", { key: spki(pub), dsaEncoding: /** @type {const} */ ("der") }] },
+};
 
 /** Load one of the helper modules lazily. Another file may not exist yet; a failed import is "unavailable". */
 async function lazy(spec, name) {
@@ -248,6 +303,9 @@ export class Presence {
     this.nonces = new Map();
     this.dialogOpen = false;
     this.coolUntil = 0;
+    /** Login terminal -> when its window ends. In memory only: a restart asks again. */
+    /** @type {Map<string, number>} */
+    this.terminals = new Map();
   }
 
   async touchid() {
@@ -316,6 +374,7 @@ export class Presence {
     if (this.ttyAllowed() && !this.noTtyWrites) out.push("tty");
     const kinds = new Set(this.db.prepare("SELECT DISTINCT kind FROM presence_keys").all().map(r => String(r.kind)));
     if (kinds.has("capsule")) out.push("capsule");
+    if (kinds.has("device")) out.push("device");
     if (kinds.has("passkey")) out.push("passkey");
     return out;
   }
@@ -324,6 +383,7 @@ export class Presence {
     const now = this.now();
     for (const [id, c] of this.challenges) if (c.expires <= now) this.challenges.delete(id);
     for (const [n, until] of this.nonces) if (until <= now) this.nonces.delete(n);
+    for (const [t, until] of this.terminals) if (until <= now) this.terminals.delete(t);
   }
 
   /**
@@ -382,19 +442,32 @@ export class Presence {
   /**
    * Check a proof for one call. Returns { ok: true, method } or a refusal that lists the methods
    * the client could use instead.
-   * @param {{ tool: string, input: any, caller: string, proof: any, def?: any }} a
+   * @param {{ tool: string, input: any, caller: string, proof: any, def?: any, peer?: any, terminal?: string|null }} a terminal: the login terminal vyred saw the caller in
    */
-  async verify({ tool, input, caller, proof, def, peer = null }) {
+  async verify({ tool, input, caller, proof, def, peer = null, terminal = null }) {
     const method = proof && typeof proof.method === "string" ? proof.method : null;
     // A call with no proof is how a client learns what to offer, so only a failed proof is an event.
     const refuse = async message => {
       if (method) this.emit("presence.refused", { tool, method, caller });
       return { ok: /** @type {false} */ (false), code: "presence_required", message, methods: await this.methods() };
     };
-    if (!method) return refuse(`${tool} needs a person to prove they are here`);
     this.prune();
+    // The CLI's window: after one strong proof from a login terminal, the same terminal's reveals,
+    // grants and sends ask nothing for 30 minutes. vyred names the terminal from the kernel's word
+    // on who connected (core/daemon/index.js atTerminal), never from anything the caller sends.
+    const windowed = typeof terminal === "string" && terminal && SESSIONABLE.has(tool) && /^(cli|local)$/.test(String(caller))
+      && (def && def.presence && typeof def.presence.session === "function" ? (await Promise.resolve(def.presence.session(input)).catch(() => false)) === true : false);
+    if (windowed && (this.terminals.get(terminal) || 0) > this.now()) {
+      this.emit("presence.proved", { tool, method: "session", caller });
+      return { ok: /** @type {true} */ (true), method: "session", keyId: null };
+    }
+    if (!method) return refuse(`${tool} needs a person to prove they are here`);
     const hash = inputHash(input);
-    const proved = (keyId = null) => { this.emit("presence.proved", { tool, method, caller }); return { ok: /** @type {true} */ (true), method, keyId }; };
+    const proved = (keyId = null) => {
+      if (windowed && SESSION_FROM.has(method)) this.terminals.set(/** @type {string} */ (terminal), this.now() + TERMINAL_WINDOW);
+      this.emit("presence.proved", { tool, method, caller });
+      return { ok: /** @type {true} */ (true), method, keyId };
+    };
 
     if (method === "touchid") {
       if (this.platform !== "darwin") return refuse("Touch ID is only on a Mac");
@@ -433,19 +506,22 @@ export class Presence {
       return proved();
     }
 
-    if (method === "capsule") {
+    if (method === "capsule" || method === "device") {
+      const { label, check } = SIGNERS[method];
       const { key, ts, nonce, sig } = proof;
-      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key FROM presence_keys WHERE id = ? AND kind = 'capsule'").get(String(key || "")));
-      if (!row) return refuse("that Capsule key is not enrolled");
-      if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse("the Capsule signature is too old or from the future");
-      if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse("the Capsule nonce is missing or malformed");
-      if (this.nonces.has(nonce)) return refuse("that Capsule nonce was already used");
+      const row = /** @type {any} */ (this.db.prepare("SELECT id, public_key FROM presence_keys WHERE id = ? AND kind = ?").get(String(key || ""), method));
+      if (!row) return refuse(`that ${label} key is not enrolled`);
+      if (!/^\d{1,16}$/.test(String(ts || "")) || Math.abs(this.now() - Number(ts)) > CAPSULE_SKEW) return refuse(`the ${label} signature is too old or from the future`);
+      if (!/^[A-Za-z0-9_-]{8,128}$/.test(String(nonce || ""))) return refuse(`the ${label} nonce is missing or malformed`);
+      // One set for both kinds: a nonce is spent whichever key signed with it.
+      if (this.nonces.has(nonce)) return refuse(`that ${label} nonce was already used`);
       let good = false;
       try {
         const msg = Buffer.from(`vyre-presence-v1\n${tool}\n${hash}\n${ts}\n${nonce}`);
-        good = crypto.verify(null, msg, spki(row.public_key), Buffer.from(String(sig || ""), "base64url"));
+        const [alg, pub] = check(row.public_key);
+        good = crypto.verify(alg, msg, pub, Buffer.from(String(sig || ""), "base64url"));
       } catch {}
-      if (!good) return refuse("the Capsule signature does not check out");
+      if (!good) return refuse(`the ${label} signature does not check out`);
       this.nonces.set(nonce, this.now() + 2 * CAPSULE_SKEW + 1000);
       this.db.prepare("UPDATE presence_keys SET last_used = ? WHERE id = ?").run(this.now(), row.id);
       return proved(row.id);
@@ -476,6 +552,7 @@ export class Presence {
 
     if (method === "session") {
       if (!SESSIONABLE.has(tool)) return refuse(`${tool} needs its own proof, not a session`);
+      if (tool.startsWith("vault.") && !vaultSessionCaller(caller)) return refuse(`${tool} asks for its own proof from here; a session serves the Deck and the Capsule, and a terminal has its own window`);
       const ok = def && def.presence && typeof def.presence.session === "function" ? await Promise.resolve(def.presence.session(input)).catch(() => false) : false;
       if (ok !== true) return refuse("this item needs its own proof every time");
       const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_sessions WHERE id = ?").get(String(proof.id || "")));
@@ -488,7 +565,7 @@ export class Presence {
     }
 
     if (method === "code") {
-      if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey");
+      if (tool !== "presence.enroll") return refuse("a one-time code only enrolls a passkey or a device key");
       // On the box, Claude's sessions share vyred's socket and can ask onboarding for a fresh code.
       // So the code counts only from the owner's own device over the tailnet, where they cannot be.
       if (this.role === "box") {
@@ -510,7 +587,7 @@ export class Presence {
    * @param {{ method?: string, keyId?: string|null, peer?: any }} proved how the opening call was proved
    */
   openSession({ method, keyId = null, peer = null } = {}) {
-    if (!method || !SESSION_FROM.has(method)) throw new Error("a session opens only after Touch ID, the Capsule or a passkey");
+    if (!method || !SESSION_FROM.has(method)) throw new Error("a session opens only after Touch ID, the Capsule, a device key or a passkey");
     const now = this.now();
     this.db.prepare("DELETE FROM presence_sessions WHERE expires <= ? OR last_used <= ?").run(now, now - SESSION_IDLE);
     const id = b64url(12), secret = b64url(32);
@@ -540,19 +617,24 @@ export class Presence {
   }
 
   /**
-   * Enroll a Capsule key (Ed25519) or a passkey. Public keys only, as base64url SPKI DER.
+   * Enroll a Capsule key (Ed25519), a phone's device key (P-256) or a passkey. Public keys only, as base64url SPKI DER.
    * @param {{ kind: string, name?: string, public_key: string, alg?: number, rp_id?: string, credential_id?: string }} k
    */
   enroll({ kind, name, public_key, alg, rp_id, credential_id }) {
-    if (kind !== "capsule" && kind !== "passkey") throw new Error("kind must be capsule or passkey");
+    if (kind !== "capsule" && kind !== "passkey" && kind !== "device") throw new Error("kind must be capsule, passkey or device");
     let key;
     try { key = spki(public_key); } catch { throw new Error("public_key must be a base64url SPKI DER public key"); }
     let id;
     if (kind === "capsule") {
       if (key.asymmetricKeyType !== "ed25519") throw new Error("a Capsule key must be Ed25519");
       alg = -8; rp_id = undefined;
-      // The id is the key's fingerprint, so one key cannot be enrolled twice.
-      id = crypto.createHash("sha256").update(Buffer.from(public_key, "base64url")).digest("base64url").slice(0, 22);
+      id = fingerprint(public_key);
+    } else if (kind === "device") {
+      // What a phone's hardware can hold: ES256 on P-256, nothing else (ADR 0018).
+      if (key.asymmetricKeyType !== "ec" || /** @type {any} */ (key.asymmetricKeyDetails || {}).namedCurve !== "prime256v1") throw new Error("a device key must be an EC P-256 key");
+      if (alg !== -7) throw new Error("a device key's alg must be -7 (ES256)");
+      rp_id = undefined;
+      id = fingerprint(public_key);
     } else {
       if (!/^[A-Za-z0-9_-]{8,1024}$/.test(String(credential_id || ""))) throw new Error("a passkey needs its credential_id in base64url");
       if (!rp_id || !/^[a-z0-9.-]+$/i.test(rp_id)) throw new Error("a passkey needs the rp_id it was made for");

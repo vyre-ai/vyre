@@ -33,7 +33,7 @@ const lenient = {
   challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
 };
 
-async function box(t, { guests = { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list", "glass.close", "glass.take"] } } },
+async function box(t, { guests = { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list", "glass.close", "glass.take", "glass.open"] } } },
   agentOf = async id => (id === "nKIT" ? "kit" : null) } = {}) {
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
@@ -62,7 +62,8 @@ test("guests: a listed guest calls its tools and nothing else, and learns nothin
   const { d, send, call } = await box(t);
   assert.equal((await call(SAM_IP, "threads.list")).status, 200);
   assert.deepEqual((await call(SAM_IP, "glass.close", { session: "none" })).data, { closed: false });
-  // Not safe, even though config lists it: glass.take is never a guest's. Not listed: 404 as well.
+  // Not safe, even though config lists them: glass.take is never a guest's, and neither is glass.open
+  // (tailnet streams are the owner's alone). Not listed: 404 as well.
   for (const tool of ["glass.take", "glass.open", "names.status", "gate.approve", "link.pair.approve", "presence.enroll", "vault.reveal",
     "network.guests.add", "network.guests.list", "no.such"]) {
     const r = await call(SAM_IP, tool, {});
@@ -151,7 +152,7 @@ test("network.guests: add, remove and enable need presence and the owner; agents
   const got = [];
   d.events.on("guest.*", e => got.push([e.type, e.payload]));
   const proof = { method: "test" };
-  assert.equal((await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["glass.open"] }, "cli")).error.code, "presence_required");
+  assert.equal((await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list"] }, "cli")).error.code, "presence_required");
   for (const [caller, meta] of [["mcp:agent:kit", { agent: "kit", thread: "t" }], ["tailnet:agent:kit", { agent: "kit" }], ["tailnet-guest:sam@harlow.example", {}], ["anonymous", {}]]) {
     for (const [tool, input] of [["network.guests.add", { login: "sam@harlow.example", tools: [] }], ["network.guests.remove", { login: "sam@harlow.example" }], ["network.guests.enable", { on: true }]]) {
       const r = await d.registry.call(tool, input, caller, { ...meta, proof });
@@ -159,22 +160,22 @@ test("network.guests: add, remove and enable need presence and the owner; agents
     }
   }
   const bad = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["glass.take"] }, "cli", { proof });
-  assert.match(bad.error.message, /glass.close, glass.open, threads.list; not glass.take/);
+  assert.match(bad.error.message, /glass.close, threads.list; not glass.take/);
   assert.equal((await d.registry.call("network.guests.add", { login: "alex@example.com", tools: [] }, "cli", { proof })).error.code, "bad_input");
-  const added = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list", "glass.open"] }, "tailnet:alex@example.com", { proof, person: { id: "s1", kind: "cookie" } });
-  assert.deepEqual(added.data.people, [{ login: "sam@harlow.example", tools: ["glass.open", "threads.list"], allowed: [] }], "listed, but guests are off");
+  const added = await d.registry.call("network.guests.add", { login: "sam@harlow.example", tools: ["threads.list", "glass.close"] }, "tailnet:alex@example.com", { proof, person: { id: "s1", kind: "cookie" } });
+  assert.deepEqual(added.data.people, [{ login: "sam@harlow.example", tools: ["glass.close", "threads.list"], allowed: [] }], "listed, but guests are off");
   const on = await d.registry.call("network.guests.enable", { on: true }, "cli", { proof });
-  assert.deepEqual([on.data.enabled, on.data.people[0].allowed], [true, ["glass.open", "threads.list"]]);
+  assert.deepEqual([on.data.enabled, on.data.people[0].allowed], [true, ["glass.close", "threads.list"]]);
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(d.paths.root, "config.json"), "utf8")).network.guests,
-    { enabled: true, people: { "sam@harlow.example": { tools: ["glass.open", "threads.list"] } } });
+    { enabled: true, people: { "sam@harlow.example": { tools: ["glass.close", "threads.list"] } } });
   const gone = await d.registry.call("network.guests.remove", { login: "SAM@harlow.example" }, "cli", { proof });
   assert.deepEqual(gone.data.people, []);
-  assert.deepEqual(got, [["guest.added", { login: "sam@harlow.example", tools: ["glass.open", "threads.list"] }], ["guest.removed", { login: "sam@harlow.example" }]]);
+  assert.deepEqual(got, [["guest.added", { login: "sam@harlow.example", tools: ["glass.close", "threads.list"] }], ["guest.removed", { login: "sam@harlow.example" }]]);
   assert.equal((await d.registry.call("network.guests.list", {}, "tailnet-guest:sam@harlow.example")).error.code, "denied");
 });
 
 test("network.guests.check: asks a fake tailscale who each online person is and what the listener would do", async t => {
-  const { d } = await box(t, { guests: { enabled: true, people: { "sam@harlow.example": { tools: ["glass.open"] } } } });
+  const { d } = await box(t, { guests: { enabled: true, people: { "sam@harlow.example": { tools: ["glass.close"] } } } });
   const dir = fs.mkdtempSync(path.join(d.paths.root, "ts-"));
   const bin = path.join(dir, "tailscale");
   const status = { BackendState: "Running", Self: { ID: "nBOX", TailscaleIPs: ["100.101.1.1"], UserID: 1 },
@@ -205,9 +206,9 @@ process.stderr.write("no"); process.exit(1);
   const r = (await d.registry.call("network.guests.check", {}, "cli")).data;
   assert.equal(r.enabled, true);
   assert.deepEqual(r.peers, [
-    { login: "sam@harlow.example", node: "sams-laptop", stableId: "nSAM", served: true, listed: true, granted: [], tools: ["glass.open"], why: "guest" },
+    { login: "sam@harlow.example", node: "sams-laptop", stableId: "nSAM", served: true, listed: true, granted: [], tools: ["glass.close"], why: "guest" },
     { login: "pat@northwind.example", node: "pats-mac", stableId: "nPAT", served: true, listed: false, granted: ["threads.list", "glass.*"],
-      tools: ["glass.close", "glass.open", "threads.list"], why: "guest" },
+      tools: ["glass.close", "threads.list"], why: "guest" },
   ]);
   const calls = fs.readFileSync(path.join(dir, "calls"), "utf8").trim().split("\n");
   assert.deepEqual(calls, ["status --json", `whois --json ${SAM_IP}`, `whois --json ${PAT_IP}`], "offline, tagged and owner nodes are never asked about");

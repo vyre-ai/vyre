@@ -227,6 +227,8 @@ More in [On your phone](../using/mobile.md).
 The page says **Vyre is ready.**, your assistant says hello, and three rows tick for your Mac,
 your phone and your history. **Open Vyre** takes you to the Deck at your address.
 
+![The last screen of the setup: Vyre is ready, with your Mac, your phone and your history ticked or still to do, and Open Vyre.](shots/onboarding-ready.png)
+
 If you skipped the Claude Code step, no assistant was made. Now and Agents in the Deck then show
 **Create your assistant**: give it a name, tick **Give it its own computer, from the pool** if you
 want it to browse and use apps you can watch in Glass, and press **Create**.

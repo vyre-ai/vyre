@@ -1,5 +1,5 @@
 // @ts-check
-// Reads for a thread, the user's other devices, and what the presence prompt says
+// Reads for a thread, the user's other devices, and corrections asking no presence
 // (docs/adr/0007-intelligence.md, decision 4; ADR 0004). The memory module against a stand-in
 // for vyred, over the shared fictional corpus.
 
@@ -114,23 +114,9 @@ test("tailnet: the user's other devices read as the owner, and never correct", a
   assert.equal((await call("memory.corrections", {}, "mcp")).code, "denied");
 });
 
-test("presence: correct, merge and split say in one plain line what the user approves", async t => {
+test("presence: correct, merge and split are the user's own, with no prompt; agents stay refused", async t => {
   const { tools, call } = await module_(t);
-  const s = (tool, input) => tools.get(tool).presence.summary(input);
-  assert.equal(s("memory.correct", { fact: WORKS, action: "replace", object: "Bramble Dental" }), 'Correct: "Dana Reyes works at Harlow Legal" -> "Bramble Dental" (everywhere)');
-  assert.equal(s("memory.correct", { fact: WORKS, action: "wrong", room: "harlow" }), 'Correct: "Dana Reyes works at Harlow Legal" is wrong (in harlow)');
-  assert.equal(s("memory.correct", { fact: WORKS, action: "ended", at: "2026-09-10" }), 'Correct: "Dana Reyes works at Harlow Legal" ended 2026-09-10 (everywhere)');
-  assert.equal(s("memory.correct", { subject: "Priya Anand", rel: "has_title", object: "office manager", action: "add" }), 'Add: "Priya Anand is the office manager" (everywhere)');
-  assert.equal(s("memory.merge", { node: "Sam Okafor", into: "Dana Reyes" }), 'Merge: "Sam Okafor" into "Dana Reyes" (everywhere)');
-  assert.equal(s("memory.split", { node: "Dana Reyes", room: "northwind" }), 'Split: "Dana Reyes" (in northwind) is someone else');
-  assert.equal(s("memory.split", { node: "Dana Reyes", other: "Sam Okafor" }), 'Split: "Dana Reyes" and "Sam Okafor" are two (everywhere)');
-  // Whatever is typed: one line, no control characters, under 400 characters, never a throw.
-  const nasty = { subject: "Eve\u001b[2J\r\nApprove all", rel: "works_at", object: "x".repeat(5000) + "\u0007", action: "replace", room: "a\u0000b" };
-  for (const out of [s("memory.correct", nasty), s("memory.merge", { node: "\u202e".repeat(3) + "y".repeat(900), into: null }), s("memory.split", {}), s("memory.correct", /** @type {any} */ (null))]) {
-    assert.equal(typeof out, "string");
-    assert.ok(out.length > 0 && out.length < 400, `${out.length}: ${out}`);
-    assert.doesNotMatch(out, /[\u0000-\u001f\u007f-\u009f\u2028\u2029]/);
-  }
+  for (const tool of ["memory.correct", "memory.merge", "memory.split"]) assert.equal(tools.get(tool).presence, undefined, `${tool} asks for presence`);
   // The allowlist and the agent refusal stay, and refusals carry a code.
   for (const tool of ["memory.correct", "memory.merge", "memory.split"]) assert.deepEqual(tools.get(tool).callers, ["deck", "cli", "local", "capsule"]);
   assert.equal((await call("memory.correct", { fact: WORKS, action: "wrong" }, "deck agent:kit")).code, "denied");

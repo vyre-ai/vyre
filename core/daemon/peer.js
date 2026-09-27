@@ -137,3 +137,24 @@ export function insideClaude(pid, { threads = [], look = processTable(), self = 
   if (row && row.ppid <= 1 && row.pgid && row.pgid !== top.pid) return { inside: false, unknown: true };
   return { inside: false };
 }
+
+/**
+ * The terminal a process runs in, as `who` names it ("ttys003", "pts/3"), or null for none. The
+ * kernel's word, like the pid: a double-forked or setsid'd process has none, whatever it says.
+ * @param {number} pid @returns {string|null}
+ */
+export function controllingTty(pid) {
+  try {
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      const nr = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[4]);
+      if (!nr) return null;
+      const major = (nr >> 8) & 0xfff, minor = (nr & 0xff) | ((nr >> 12) & 0xfff00);
+      if (major >= 136 && major <= 143) return `pts/${minor + (major - 136) * 256}`;
+      if (major === 4 && minor < 64) return `tty${minor}`;
+      return null;
+    }
+    const out = execFileSync("ps", ["-o", "tty=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim();
+    return !out || out === "??" || out === "?" ? null : out.startsWith("tty") || out.startsWith("pts") ? out : `tty${out}`;
+  } catch { return null; }
+}

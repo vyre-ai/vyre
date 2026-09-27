@@ -19,34 +19,39 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
+| [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
-| [`computers`](#computers) | `core/computers` | `box` | 21 | 14 | cli, deck |
-| [`files`](#files) | `core/files` | `box`, `local` | 16 | 3 | capsule, cli, deck |
+| [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
-| [`hands`](#hands) | `local/hands-mac` | `local` | 2 | 1 | none |
+| [`hands`](#hands) | `local/hands-mac` | `local` | 5 | 3 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 14 | 4 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 18 | 5 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
-| [`planner`](#planner) | `core/planner` | `box`, `local` | 14 | 5 | capsule, cli, deck |
+| [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 11 | 6 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
+| [`relay`](#relay) | `core/relay` | `box` | 9 | 4 | capsule, cli, deck |
+| [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
+| [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 23 | 13 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 25 | 14 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
+| [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
 
 ## about
@@ -69,6 +74,17 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`
+
+## apps
+
+Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders and the weather. Actions that send as the person go through apps.send, with a proof per call.
+
+- Folder: `local/apps`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [6](tools.md#apps)
+- Emits: [2 events](events.md#apps)
+- Shows on: no surface
 
 ## capsule
 
@@ -95,8 +111,8 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Folder: `core/computers`, version 0.1.0
 - Runs on: `box`
 - Requires: none
-- Tools: [21](tools.md#computers), 5 of them only for other modules
-- Emits: [14 events](events.md#computers)
+- Tools: [23](tools.md#computers), 5 of them only for other modules
+- Emits: [15 events](events.md#computers)
 - Shows on: cli, deck
 - Streams: `glass`
 - Needs vault: `tailscale-agent-authkey`
@@ -108,7 +124,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [16](tools.md#files)
+- Tools: [17](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 
@@ -144,13 +160,13 @@ Find, look at and bring over files on this machine and the box, inside the folde
 
 ## hands
 
-Computer use on macOS through the accessibility tree: observe an app, act on one control, and verify by observing again.
+Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key.
 
-- Folder: `local/hands-mac`, version 0.1.0
+- Folder: `local/hands-mac`, version 0.2.0
 - Runs on: `local`
 - Requires: none
-- Tools: [2](tools.md#hands)
-- Emits: [1 events](events.md#hands)
+- Tools: [5](tools.md#hands)
+- Emits: [3 events](events.md#hands)
 - Shows on: no surface
 
 ## hands-desktop
@@ -219,8 +235,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#memory), 1 of them only for other modules
-- Emits: [4 events](events.md#memory)
+- Tools: [18](tools.md#memory), 1 of them only for other modules
+- Emits: [5 events](events.md#memory)
 - Shows on: capsule, cli, deck
 
 ## names
@@ -260,8 +276,8 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/planner`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#planner)
-- Emits: [5 events](events.md#planner)
+- Tools: [15](tools.md#planner)
+- Emits: [6 events](events.md#planner)
 - Shows on: capsule, cli, deck
 
 ## presence
@@ -279,7 +295,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [8](tools.md#projects)
-- Emits: [4 events](events.md#projects)
+- Emits: [5 events](events.md#projects)
 - Shows on: cli
 
 ## push
@@ -300,6 +316,39 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Tools: [10](tools.md#recall)
 - Emits: [3 events](events.md#recall)
 - Shows on: cli
+
+## relay
+
+A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
+
+- Folder: `core/relay`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [9](tools.md#relay)
+- Emits: [4 events](events.md#relay)
+- Shows on: capsule, cli, deck
+
+## screen
+
+Screen context on macOS: the front app, window, focused control, URL and visible text, kept current by accessibility notifications, redacted in secure fields and blind in the floor's places. On demand screenshots.
+
+- Folder: `local/screen-mac`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [2](tools.md#screen)
+- Emits: no events
+- Shows on: no surface
+
+## sideview
+
+The side view on macOS: a session on the left and Chrome (or Glass on the box) filling the rest, tiled through the accessibility API in one call, and put back on close.
+
+- Folder: `local/sideview`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [3](tools.md#sideview)
+- Emits: no events
+- Shows on: no surface
 
 ## statusline
 
@@ -336,8 +385,8 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [23](tools.md#threads), 11 of them only for other modules
-- Emits: [13 events](events.md#threads)
+- Tools: [25](tools.md#threads), 12 of them only for other modules
+- Emits: [14 events](events.md#threads)
 - Shows on: cli
 
 ## vault
@@ -348,6 +397,19 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Tools: [80](tools.md#vault), 1 of them only for other modules
 - Emits: [31 events](events.md#vault)
 - Shows on: capsule, cli, deck
+
+## voice
+
+Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.
+
+- Folder: `local/voice`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [3](tools.md#voice)
+- Emits: no events
+- Shows on: capsule
+- Streams: `listen`
+- Needs vault: `voice-deepgram-key`, `voice-openai-key`, `voice-elevenlabs-key`
 
 ## watchers
 

@@ -45,37 +45,32 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   796bdcb phone-design, 246af82 docs, f3b5e36 SPEC 5.2 ctx.call. Full suite at f3b5e36 on the
   test box: 1917 tests, 0 fail, exit 0.
 
-## Doing (2026-09-27, after Logout 2)
+## Done after Logout 3 (2026-09-27)
 
-- main (local, not pushed) = 42460e5: d3ed622 + docs d5659d9 (c48959b) + site hygiene b8d98f0
-  (no Capsule zip in build-site/release, site/_redirects untracked, clean dirty stamp,
-  release-check asserts both redirects, no zip, /start as committed, no node_modules, size cap
-  16 MB since the docs make the install 11 MB). release-check --skip-tests passes on the test box.
-- fd633bd (local main): docs screenshots out of the npm package (`!docs/**/*.png`), install 8.9 MB,
-  cap back at 10 MB, release-check asserts no docs png. Lead's call.
-- e2e 61692fd merged on main (e6922da) + docs:ref regenerated for the agents callers. ci's 5 node
-  failures at d3ed622: home/floor/rooms fail at d3ed622 and pass after the e2e merge (the agents
-  presence broke their fixtures); docs-check/index pass after docs:ref. FULL suite running on the
-  test box (~/vyre-ci/integrator-full.log). Then push, sha to lead, box-deploy, e2e.
-- Trial merge of chat 65ce976 (brings federation 2379a0c) on pre/chat 9bd1cf4: only CHANGELOG
-  conflicted (kept both); its 21 test files + presence-bypass: 245/245 on the test box.
-- pre/chat 61cc14d also has cc-plugin ddf4653 and planner 8acf291 (ADR table: 0024 chat, 0025
-  planner, kept both). One failure: test/cc-plugin.test.js "a stand-in planner's tools..." (the
-  real planner.add refuses the stand-in's input, bad_input). Asked the lead who fixes it.
+- Full suite at ef51363 on the test box: 2085 tests, 2047 pass, 1 fail (google OAuth, real: the
+  planner's calendar mirror reads a window on google.added). e671d35 fixes the count (test only);
+  e671d35 = deploy candidate. 123e70f6 switchboard realpath (Mac /var vs /private/var).
+- b1dbb49b cc-plugin a081ad15 alone (SECURITY: vault Read when vyred says denied): cc-plugin +
+  harness 33/33, learn + about 117/117.
+
+## Doing
+
+- Batch on pre/queue (../vyre-integrator): planner ee8c92e+3c75e47, cc-plugin 745e646+284e1875,
+  phone-design 50d88d0, polish-cli 998c2a1, tailnet cd12475+23c7cda, deck-design 36d5a5b,
+  capsule-apps aedaeef+a20b2aa, memory-iq 6f2c57c, glass-live 67b85c0, e2e d2c7a22,
+  mobile-presence eb6fe6f, app-design 0f8cdff, plus fixes: term.js violet fallback, deck.md front
+  matter + nav, phone.md terms ignores, apps test off-list tool vault.put, upgrade assistant test
+  (agents.create is PERSON_ONLY). Targeted 946: green after the fixes. Full suite waits on load < 4,
+  then land on main merge by merge, push each, then hand the suite slot to sessions (SDK driver).
+- capsule-pro a272a2a staged on pre/capsule: builds on CI; local/voice/talk.test.js fails there
+  ("no stream left open"). Held until green.
 
 ## Next
 
-- Trial pre/next: main + chat 65ce976 + tailnet 7e09cb1 (owner-only streams), CHANGELOG only;
-  names/service, onboard, federation-send, term, glass: 64/64. Merge both after the deploy push, then glass-live 71503ab (dcb03ce + main 61692fd resolved; no-passkey take-over).
-- cc-plugin tip 171be2b (planner test rewritten in 749317f; 48/48 with planner+memory-iq): merge planner first, and its planner test uses the real module.
-- Coming later: relay team (ADR 0026), one Expo app (ADR 0027, mobile).
-- cc-plugin owns the stand-in planner test (rewriting against the real planner.add); planner makes
-  "6pm" parse. Merge cc-plugin and planner once those land.
-
-- After the deploy push: chat (redo the pre/chat merge on the new main), cc-plugin 9ce2f18,
-  planner e4fbc70, docs tip, capsule-pro when asked. Not mobile until its coral tokens are swapped.
-- Route to capsule-pro: `vyre capsule install` still fetches Vyre-mac.zip, which the site no
-  longer serves; scripts/build-mac-zip.sh can go with it.
+- sessions 0bae485 after its security blockers; relay, vault, resilience as they report ready.
+- mobile only after its coral is gone. perf-check RSS baseline of main at low load (lead asked).
+- Registry: callerKind("mcp:thread:<id>") not stripped (planner found it; sessions owns) before the
+  SDK default flip.
 
 ## Needs from others
 

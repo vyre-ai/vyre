@@ -9,7 +9,7 @@ LABEL run.vyre="1" \
       org.opencontainers.image.source="https://github.com/vyre-ai/vyre"
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps tini \
+ && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach tini \
  && rm -rf /var/lib/apt/lists/*
 
 # The tailscale CLI only. tailscaled runs in the tailscale container; the CLI talks to it
@@ -52,5 +52,10 @@ ENV VYRE_HOME=/home/vyre/.vyre \
 USER vyre
 WORKDIR /home/vyre
 
-# As root (compose), this is the spawner, which runs vyred as vyre; as vyre, vyred itself.
+# tini is the init (PID 1: it reaps, and it keeps the dtach terminals once vyred is gone). As
+# root (compose), the spawner comes next (core/spawner, ADR 0032): it runs the loop, which
+# restarts vyred, as uid vyre, and starts Vyre-owned sessions as vyre-agent. As vyre (a plain
+# docker run), the spawner runs the loop itself. A vyred restart keeps every terminal (ADR 0029,
+# R4); a deploy recreates the container, and its terminals end; the Deck says so (term.closed).
+ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["node", "/opt/vyre/core/spawner/main.js"]

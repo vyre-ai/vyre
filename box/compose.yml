@@ -66,16 +66,17 @@ services:
     volumes:
       - tailscale-state:/var/lib/tailscale
       - tailscale-sock:/var/run/tailscale
-      # Taildrive (core/files/drive.js). tailscaled serves a shared folder itself, from this
-      # container, so the folder must be here at the same path as in the vyre service, or the
-      # share points at nothing. Only /work: the projects share and Glass's box folders
+      # VyreDrive (built on Tailscale's Taildrive; core/files/drive.js). tailscaled serves a
+      # shared folder itself, from this container, so the folder must be here at the same path
+      # as in the vyre service, or the share points at nothing. Only /work: the projects share and Glass's box folders
       # (glass.roots) are chosen inside it. vyre-home is never mounted here, since it holds the
       # vault and Claude's sign-in, and a share serves every file under its folder.
       #
       # Read-only unless VYRE_DRIVE_ACCESS=rw in /srv/vyre/.env: this container runs as root with
       # NET_ADMIN, and read-only keeps it from ever changing a project (ADR 0009's rule, read-only
-      # where possible). Set rw only to edit box files from the Mac's Finder, and set vyred's
-      # files.drive.access to the same value so the Mac mounts to match. Recreate after a change.
+      # where possible). Each share is read-only on its own too; the mount needs rw only while some
+      # share is rw (the files.drive.access tool). That tool answers the step when the two differ:
+      # set VYRE_DRIVE_ACCESS=rw (or back to ro) in /srv/vyre/.env, then run docker compose up -d.
       - vyre-work:/work:${VYRE_DRIVE_ACCESS:-ro}
     ports:
       # The onboarding page, on host loopback only. Reach it with
@@ -120,6 +121,9 @@ services:
       - VYRE_ONBOARD_HOST=vyred
       # Onboarding's Connect runs `tailscale up`; these keep the preferences the entrypoint set.
       - VYRE_TAILSCALE_UP_FLAGS=--accept-dns=false --hostname=${VYRE_TS_HOSTNAME:-vyre}
+      # The tailscale service's /work mount mode, so files.drive.access can say whether the
+      # .env step is needed.
+      - VYRE_DRIVE_ACCESS=${VYRE_DRIVE_ACCESS:-ro}
     env_file:
       # CLOUDFLARE_VYRE_TOKEN and similar. See vyre.env.example.
       - path: ./vyre.env

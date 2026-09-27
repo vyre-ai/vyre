@@ -178,7 +178,8 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   }
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  const work = fs.mkdtempSync(path.join(root, "work-"));
+  // realpath: on the Mac the temp dir sits under /var, which vyred and fake claude see as /private/var.
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(root, "work-")));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   for (const [name, value] of Object.entries(vault || {})) {
@@ -365,6 +366,9 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   t.after(() => again.stop());
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");
+  // ADR 0029 R7: the stop said why, so a surface shows "the box restarted", not a spinner.
+  const stopped = again.events.since(0, { type: "thread.stopped", limit: 10 }).filter(e => e.thread === id);
+  assert.deepEqual(stopped.map(e => e.payload.reason), ["restart"]);
 });
 
 test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {
@@ -587,6 +591,47 @@ test("queued for a terminal session: the Stop hook hands it over, Claude answers
   assert.deepEqual((await tool("harness.stop", { session: busy.id, text: "Bumped and tested." }, "harness")).data, { ok: true });
   await until(() => of(s.got, busy.id, "thread.text").some(e => e.payload.text === "Bumped and tested."), "the second reply");
   assert.equal(launches().filter(l => l.argv.includes(busy.id)).length, 0, "no process was started for it");
+});
+
+test("threads.unqueue: a person takes back words not yet handed over; handed-over words stay; a model cannot", async t => {
+  const { work, tool, transcripts } = await boot(t);
+  const busy = terminalSession(transcripts, work, { ageMs: 1000 });
+  const a = (await tool("threads.send", { thread: busy.id, text: "first", surface: "capsule" }, "capsule")).data;
+  const b = (await tool("threads.send", { thread: busy.id, text: "second", surface: "capsule" }, "capsule")).data;
+  assert.ok(Number.isInteger(a.queued_id) && b.queued_id > a.queued_id, JSON.stringify(b));
+  assert.match((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "mcp")).error.message, /only a person's surface/);
+  assert.deepEqual((await tool("threads.unqueue", { thread: busy.id, queued: a.queued_id }, "capsule")).data, { unqueued: [a.queued_id] });
+  // Only "second" is handed over at the Stop.
+  const stop = (await tool("harness.stop", { session: busy.id, text: "Done.", stop_hook_active: false }, "harness")).data;
+  assert.equal(stop.reason, "Message from the user via the Capsule: second");
+  const late = (await tool("threads.unqueue", { thread: busy.id, queued: b.queued_id }, "capsule")).data;
+  assert.deepEqual(late.unqueued, []);
+  assert.match(late.note, /already handed over/);
+  // All of a thread's at once.
+  await tool("threads.send", { thread: busy.id, text: "third", surface: "deck" }, "deck");
+  await tool("threads.send", { thread: busy.id, text: "fourth", surface: "deck" }, "deck");
+  assert.equal((await tool("threads.unqueue", { thread: busy.id }, "deck")).data.unqueued.length, 2);
+  assert.match((await tool("threads.unqueue", { thread: busy.id }, "deck")).data.note, /Nothing is waiting/);
+});
+
+test("threads.list: live is true for a session bound to a running claude that is not ours, and false once it exits", async t => {
+  const { work, tool, transcripts, root } = await boot(t);
+  const term = terminalSession(transcripts, work);
+  const bin = path.join(root, "bin");
+  fs.mkdirSync(bin);
+  fs.symlinkSync(process.execPath, path.join(bin, "claude"));
+  const { spawn } = await import("node:child_process");
+  const proc = spawn(path.join(bin, "claude"), ["-e", "setTimeout(() => {}, 60000)"], { stdio: "ignore" });
+  t.after(() => proc.kill());
+  await new Promise(r => setTimeout(r, 200));
+  assert.ok((await tool("threads.bind", { session: term.id, pid: proc.pid }, "harness")).data.key);
+  // Queued for a person, which adopts its record, so threads.list has a row for it.
+  assert.equal((await tool("threads.send", { thread: term.id, text: "hi", surface: "capsule" }, "capsule")).data.queued, true);
+  const row = () => tool("threads.list", {}, "capsule").then(r => r.data.find(x => x.id === term.id));
+  assert.equal((await row()).live, true);
+  assert.deepEqual((await tool("threads.live", {}, "capsule")).error ? "internal" : "open", "internal", "threads.live is for modules only");
+  proc.kill();
+  await until(async () => (await row()).live === false, "live false after the terminal exits");
 });
 
 test("agents.history: each question with its answer and thread, newest last, pageable, and only for the assistant or a person", async t => {

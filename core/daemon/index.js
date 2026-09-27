@@ -15,16 +15,27 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover, ownerOverTailnet } from "../modules/index.js";
+import { Registry, discover, ownerDevice } from "../modules/index.js";
 import { build } from "./build.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude } from "./peer.js";
-import { PersonSessions, COOKIE, MAX as PERSON_MAX } from "../presence/person.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, parse as parsePresence } from "../presence/index.js";
+import { peerPid, insideClaude, controllingTty } from "./peer.js";
+import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
+// The SSE heartbeat. Clients call a stream dead after three missed beats (ADR 0029, R1); the
+// chaos tests shorten it.
+const HEARTBEAT_MS = Number(process.env.VYRE_SSE_HEARTBEAT_MS) || 15_000;
+// How long stop() waits for running tool calls.
+const DRAIN_MS = 5_000;
+
+/** A client's Idempotency-Key, when it looks like one (8 to 128 url-safe characters). */
+function idemKey(req) {
+  const k = String(req.headers["idempotency-key"] || "");
+  return /^[A-Za-z0-9_.:-]{8,128}$/.test(k) ? k : undefined;
+}
 export const REPO = path.resolve(HERE, "..", "..");
 export const VERSION = JSON.parse(fs.readFileSync(path.join(REPO, "package.json"), "utf8")).version;
 
@@ -35,7 +46,8 @@ export function moduleRoots(root) {
 
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
- * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any }} [opts]
+ * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
+ *   person?: (socket: import("node:net").Socket) => Promise<string|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -55,6 +67,9 @@ export async function start(opts = {}) {
  * @param {Parameters<typeof start>[0] & {}} opts @param {string} root @param {any} p @param {() => void} release
  */
 async function startLocked(opts, root, p, release) {
+  // Which build this process runs, read now: after an upgrade in place, build.json on disk is the
+  // new one, and a vyred that read it later would claim the new commit while running old code.
+  build();
   const cfg = config.load(root);
   const logFile = path.join(p.logs, new Date().toISOString().slice(0, 10) + ".log");
   const log = opts.log || ((msg, extra) => {
@@ -73,12 +88,17 @@ async function startLocked(opts, root, p, release) {
   const started = Date.now();
   /** Open event streams, closed on stop so server.close() is not held open by them. */
   const streams = new Set();
+  // Tool calls running now, so stop() lets them finish before it closes (ADR 0029, R7), and
+  // whether it has begun to: a call that arrives then is told to come back, not half-run.
+  /** @type {Set<Promise<any>>} */
+  const inflight = new Set();
+  const drain = { on: false };
   /** @type {any} */
   let registry;
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, people }, { ...policy, caller, ...(peer ? { peer } : {}) })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
@@ -110,7 +130,8 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, socket: true }).catch(e => {
+  const terminalOf = opts.person || (sock => atTerminal(sock, registry, presence));
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
   server.on("upgrade", (req, socket, head) => upgrade(req, socket, head, socketCaller(req)));
@@ -122,6 +143,10 @@ async function startLocked(opts, root, p, release) {
   let stopped = false;
   const stop = async () => {
     if (stopped) return; stopped = true;
+    // Stop taking calls, and give the ones running up to DRAIN_MS to finish: a write cut off
+    // mid-way looks to its client like a failure it will retry (ADR 0029, R7).
+    drain.on = true;
+    if (inflight.size) await Promise.race([Promise.allSettled([...inflight]), new Promise(r => setTimeout(r, DRAIN_MS).unref())]);
     for (const end of streams) end();
     for (const s of upgraded) s.destroy();
     // A module's own stream (the link's box events) is not in `streams` or `upgraded`; close
@@ -153,7 +178,8 @@ async function rawBody(req) {
 }
 
 async function body(req) {
-  const raw = await rawBody(req);
+  // The router may have read it already, to check a person session's signature over it.
+  const raw = req.vyreRaw !== undefined ? req.vyreRaw : await rawBody(req);
   if (!raw) return {};
   try { return JSON.parse(raw); } catch { throw new Error("request body is not JSON"); }
 }
@@ -166,7 +192,7 @@ async function body(req) {
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
 
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|onboard$|hook$)/;
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|device:|onboard$|hook$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,
@@ -193,12 +219,33 @@ async function fromClaude(socket, registry) {
   const pid = await peerPid(socket);
   if (!pid) return "vyred cannot tell which process is calling, so this is refused";
   const r = await registry.call("threads.pids", {}, "module:vyred");
-  const who = insideClaude(pid, { threads: (r.data && r.data.pids) || [] });
+  // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
+  // keeps a group listed until its last process is gone, so an orphan is still caught).
+  const d = r.data || {};
+  const who = insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
   if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
   return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, people = null, socket = false }, /** @type {Policy} */ policy = {}) {
+/**
+ * The login terminal the person on the socket is typing in ("ttys003"), or null. Null from under a
+ * `claude` or a thread (fromClaude), and null without a login terminal `who` lists: a double-forked
+ * or setsid'd process has none, and `script`, tmux or expect ptys are not logins. The kernel says
+ * which process connected and which terminal it runs in, so no label or file can fake it. This is
+ * what lets one proof serve the CLI for 30 minutes, as a session serves the Deck (the no-nag rule;
+ * the CLI is a first-class surface).
+ * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
+ * @returns {Promise<string|null>}
+ */
+async function atTerminal(socket, registry, presence) {
+  if (await fromClaude(socket, registry)) return null;
+  const pid = await peerPid(socket);
+  const tty = pid ? controllingTty(pid) : null;
+  if (!tty || !presence || typeof presence.who !== "function") return null;
+  return (await presence.who()).includes(tty) ? tty : null;
+}
+
+async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -234,6 +281,34 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // The tailnet peer a network listener established (node, stableId, login) rides here too.
   /** @type {{ thread?: string, agent?: string, peer?: any, person?: { id: string, kind: string } }} */
   const via = policy.peer ? { peer: policy.peer } : {};
+  // The person, not only their device (core/presence/person.js, ADR 0032). A node signed in as the
+  // owner over the tailnet, and a paired device over the relay (`device:<id>`), are the owner's
+  // devices; the person is a browser or app holding a person session made on that one device
+  // (pinned to its tailnet node or relay device id). A signed session covers its body, so the
+  // body is read here once and kept for body().
+  const device = Boolean(policy.caller && ownerDevice(policy.caller));
+  const nodeId = device && policy.peer ? (policy.peer.stableId || policy.peer.node || null) : null;
+  const crossOrigin = Boolean(policy.peer && /** @type {any} */ (policy.peer).origin);
+  /** @type {{ id: string, kind: string } | null} */
+  let person = null;
+  if (device && people && carried(req.headers)) {
+    let raw = "";
+    if (req.method !== "GET" && req.method !== "HEAD") {
+      try { raw = await rawBody(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
+      /** @type {any} */ (req).vyreRaw = raw;
+    }
+    const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
+    if (c && c.ok) person = { id: c.id, kind: c.kind };
+    // A bad bearer is refused outright; a lapsed cookie is only a device, and the tool decides.
+    else if (c && String(req.headers.authorization || "").startsWith("Vyre ")) return send(res, 401, { error: { code: "person_session_required", message: c.why } });
+  }
+  // From another origin (the hosted app), nothing at all without a person session: no tool, no
+  // tool list, no events, no modules. Only that the box is there, and the token trade.
+  if (crossOrigin && !person) {
+    if (req.method === "GET" && url.pathname === "/v1/health") return send(res, 200, { data: { reachable: true } });
+    if (!(req.method === "POST" && url.pathname === "/v1/person/token")) return send(res, 401, { error: { code: "person_session_required", message: "sign in to this box from the app first" } });
+  }
+  if (person) via.person = person;
   // A listener's own identity (policy.caller) is established by the listener, not claimed. The
   // one exception is an agent's own tailnet node (`tailnet:agent:<name>`): whois strengthens the
   // agent's key and never replaces it, so that caller must carry the key of that same agent too.
@@ -274,11 +349,6 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
-  // The person over the tailnet (core/presence/person.js). A node signed in as the owner is only
-  // the owner's device; the person is a browser or app holding a person session made on it.
-  const device = Boolean(policy.caller && ownerOverTailnet(policy.caller));
-  const nodeId = device && policy.peer ? (policy.peer.stableId || policy.peer.node || null) : null;
-  const crossOrigin = Boolean(policy.peer && /** @type {any} */ (policy.peer).origin);
   if (device && req.method === "POST" && url.pathname === "/v1/person/token") {
     // The hosted app trades the sign-in page's one-time code, its PKCE verifier and the public
     // half of its key for a bearer session. The one call from another origin that needs none.
@@ -289,29 +359,14 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     return send(res, r.error ? (r.error.code === "bad_input" ? 400 : 403) : 200, r);
   }
   if (device && req.method === "POST" && url.pathname === "/v1/person/end") {
-    let raw = "";
-    try { raw = await rawBody(req); } catch {}
-    const c = people && people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
-    if (c && c.ok) { people.revoke(c.id); events.emit("presence", "presence.signed-out", { id: c.id }); }
+    if (person) { people.revoke(person.id); events.emit("presence", "presence.signed-out", { id: person.id }); }
     res.setHeader("set-cookie", `${COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`);
-    return send(res, 200, { data: { ended: Boolean(c && c.ok) } });
+    return send(res, 200, { data: { ended: Boolean(person) } });
   }
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const raw = await rawBody(req);
-    let input;
-    try { input = raw ? JSON.parse(raw) : {}; } catch { throw new Error("request body is not JSON"); }
-    /** @type {{ id: string, kind: string } | null} */
-    let person = null;
-    if (device && people) {
-      const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
-      if (c && c.ok) person = { id: c.id, kind: c.kind };
-      // A bad bearer is refused outright; a lapsed cookie is only a device, and the tool decides.
-      else if (c && String(req.headers.authorization || "").startsWith("Vyre ")) return send(res, 401, { error: { code: "person_session_required", message: c.why } });
-    }
-    // From another origin (the hosted app), nothing without a person session.
-    if (crossOrigin && !person) return send(res, 401, { error: { code: "person_session_required", message: "sign in to this box from the app first" } });
-    if (person) via.person = person;
+    if (drain.on) { res.setHeader("retry-after", "2"); return send(res, 503, { error: { code: "restarting", message: "vyred is restarting; try again in a moment" } }); }
+    const input = await body(req);
     // A person's action on the socket: a person-only tool, one that needs presence for this input,
     // or any call carrying a presence proof or session.
     const def = registry.tools.get(name);
@@ -324,8 +379,17 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       const why = await fromClaude(req.socket, registry);
       if (why) return send(res, 403, { error: { code: "denied", message: why } });
     }
-    const result = await registry.call(name, input, caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]),
-      keep: req.headers["x-vyre-presence-keep"] === "1" });
+    // Held in `inflight` until the answer has left, not just until the tool returns: stop()
+    // closes every connection once these settle.
+    // (A module's own listener may hand over a response that is not a stream; nothing to wait on.)
+    const done = typeof res.once === "function" ? new Promise(r => { res.once("finish", r); res.once("close", r); }) : Promise.resolve();
+    inflight.add(done);
+    done.then(() => inflight.delete(done));
+    const proof = parsePresence(req.headers["x-vyre-presence"]);
+    // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
+    const terminal = socket && terminalOf && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await terminalOf(req.socket) : null;
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}),
+      keep: req.headers["x-vyre-presence-keep"] === "1", idempotencyKey: idemKey(req) });
     // A new person session for the Deck goes in the cookie, never in the body a script could read.
     if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
       res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);
@@ -337,7 +401,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       delete result.session;
       res.setHeader("x-vyre-presence-session", `session id=${s.session} secret=${s.secret} expires=${s.expires}`);
     }
-    const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
+    const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400
+      : result.error.code === "idempotency_conflict" ? 409 : 500;
     return send(res, status, result);
   }
   // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey
@@ -403,14 +468,29 @@ function stream(req, res, url, events, streams) {
   res.write(": open\n\n");
   const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
   let cursor = lastId;
+  // A cursor past the newest id cannot be replayed (the log was reset, or the surface followed
+  // another box). Say so, and follow from now: the surface reloads through tools (ADR 0029, R1).
+  const can = events.resumable(cursor);
+  if (!can.ok) {
+    cursor = can.from;
+    // Shaped like an event, so a client that does not know `reset` still parses it; one that does
+    // sets its cursor to `id` (lower than its own) and reloads.
+    write({ id: cursor, at: Date.now(), type: "stream.reset", source: "vyred", project: null, thread: null, payload: { from: cursor, reason: "cursor_ahead" } });
+  }
+  // Reconnect after 2 s, and hold the cursor from the first byte: an `id:` with no data sets the
+  // browser's Last-Event-ID without firing an event, so a stream that drops before its first
+  // event still resumes from here instead of from "latest" (ADR 0029, R1).
+  res.write(`retry: 2000\nid: ${cursor}\n\n`);
   // Backlog in pages, then live. Anything emitted while paging is caught by the cursor check.
   for (;;) {
     const page = events.since(cursor, { limit: 500 });
     for (const e of page) { cursor = e.id; if (match(e)) write(e); }
     if (page.length < 500) break;
   }
-  const off = events.on(type, e => { if (e.id > cursor) { cursor = e.id; write(e); } });
-  const beat = setInterval(() => res.write(": beat\n\n"), 15_000);
+  // Every event moves the cursor, matched or not, so a filtered stream resumes near the head.
+  const off = events.on("*", e => { if (e.id > cursor) { cursor = e.id; if (match(e)) write(e); } });
+  // The heartbeat carries the cursor too; a client that hears nothing for 45 s reconnects.
+  const beat = setInterval(() => res.write(`id: ${cursor}\n: beat\n\n`), HEARTBEAT_MS);
   const end = () => { off(); clearInterval(beat); streams.delete(end); res.end(); };
   streams.add(end);
   req.on("close", end);

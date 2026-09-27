@@ -1,6 +1,7 @@
 // @ts-check
 // client — how anything on this machine talks to vyred: the CLI, the Harness hooks, the Capsule.
 
+import crypto from "node:crypto";
 import http from "node:http";
 import * as config from "../config/index.js";
 
@@ -38,3 +39,26 @@ export function request(method, path, payload, { root = config.home(), caller = 
 }
 
 export const call = (tool, input = {}, opts) => request("POST", "/v1/tools/" + encodeURIComponent(tool), input, opts);
+
+/** Answers that mean "not now", not "no": the same write is tried again with the same key. */
+const LATER = new Set(["unreachable", "timeout", "restarting"]);
+
+/**
+ * A call that changes something, made once (docs/adr/0029-resilience.md, R2). It carries an
+ * Idempotency-Key, and if vyred is unreachable, too slow or restarting it tries again with the
+ * same key for up to `patience` ms, so a vyred restart mid-send delivers the words once instead
+ * of failing or sending them twice. One call of write() is one intent: a second send is a new
+ * write() and gets a new key.
+ * @param {string} tool @param {any} [input]
+ * @param {Parameters<typeof request>[3] & { key?: string, patience?: number }} [opts]
+ */
+export async function write(tool, input = {}, { key = crypto.randomUUID(), patience = 20_000, headers = {}, ...opts } = {}) {
+  const t0 = Date.now();
+  let pause = 250;
+  for (;;) {
+    const r = await call(tool, input, { ...opts, headers: { ...headers, "idempotency-key": key } });
+    if (!r.error || !LATER.has(r.error.code) || Date.now() - t0 + pause > patience) return r;
+    await new Promise(res => setTimeout(res, pause));
+    pause = Math.min(pause * 2, 2_000);
+  }
+}

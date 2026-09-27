@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vyre one app, the system</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>
+body{margin:0}
+.sw { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto; align-items: center; gap: 12px; height: 34px; border-top: 1px solid var(--rule); }
+.sw i { width: 36px; height: 22px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--rule-strong); }
+.ts { display: grid; grid-template-columns: 84px 84px minmax(0, 1fr) 220px; align-items: baseline; gap: 16px; padding: 10px 0; border-top: 1px solid var(--rule); }
+.kv { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; padding: 8px 0; border-top: 1px solid var(--rule); align-items: center; }
+</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2200px; height: 1200px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">System · one tokens.json, three exports</span>
+      <h1 class="t28 w6">Plain values in one file become tokens.ts for the app, tokens.css for the Deck and Theme.swift for the Capsule.</h1>
+      <p class="t15 t2">The Deck's reduced system, unchanged in value: Instrument Sans and JetBrains Mono, five sizes, two weights, eight neutrals, lime for action, violet for attention. From Paseo: a generated status model, three control heights and five buttons with one job each.</p>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: 1.3fr 1fr 1fr; gap: 24px; align-items: start;">
+
+    <section class="card col" style="padding: 20px 24px; gap: 14px;" aria-label="Colour">
+      <div class="row"><h2 class="t20 w6">Colour</h2><span class="t12 t3" style="margin-left: auto;">every pair passes AA</span></div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;"><div class="vy t-dark" style="flex-direction: column; border-radius: 10px; padding: 8px 14px; border: 1px solid var(--rule); background: var(--panel);"><span class="lbl" style="padding: 6px 0;">Dark</span><div class="sw"><i style="background: var(--bg);"></i><span class="trunc">bg <span class="t12 t3">Page ground</span></span><span class="mono t12 t3">#0E0D0C</span></div><div class="sw"><i style="background: var(--panel);"></i><span class="trunc">panel <span class="t12 t3">Cards, sheets, Capsule</span></span><span class="mono t12 t3">#161513</span></div><div class="sw"><i style="background: var(--hover);"></i><span class="trunc">hover <span class="t12 t3">Hover, pressed, secondary fill</span></span><span class="mono t12 t3">#1E1C1A</span></div><div class="sw"><i style="background: var(--rule);"></i><span class="trunc">rule <span class="t12 t3">Hairlines</span></span><span class="mono t12 t3">#2B2926</span></div><div class="sw"><i style="background: var(--rule-strong);"></i><span class="trunc">rule-strong <span class="t12 t3">Card, field and outline borders</span></span><span class="mono t12 t3">#3A3733</span></div><div class="sw"><i style="background: var(--text);"></i><span class="trunc">text <span class="t12 t3">Primary text</span></span><span class="mono t12 t3">#F1EEE6</span></div><div class="sw"><i style="background: var(--text-2);"></i><span class="trunc">text-2 <span class="t12 t3">Secondary text</span></span><span class="mono t12 t3">#B3AEA4</span></div><div class="sw"><i style="background: var(--label);"></i><span class="trunc">label <span class="t12 t3">Meta, labels; the smallest text colour</span></span><span class="mono t12 t3">#8C877D</span></div><div class="sw"><i style="background: var(--primary-bg);"></i><span class="trunc">primary-bg <span class="t12 t3">Primary button, running, focus</span></span><span class="mono t12 t3">#C6F36B</span></div><div class="sw"><i style="background: var(--beacon-dot);"></i><span class="trunc">beacon-dot <span class="t12 t3">Needs you: dot, label, badge only</span></span><span class="mono t12 t3">#B8A4FF</span></div><div class="sw"><i style="background: var(--signal-wash);"></i><span class="trunc">signal-wash <span class="t12 t3">Selected row, added lines</span></span><span class="mono t12 t3">lime 12%</span></div><div class="sw"><i style="background: var(--del-wash);"></i><span class="trunc">del-wash <span class="t12 t3">Removed lines (neutral)</span></span><span class="mono t12 t3">ash 14%</span></div><div class="sw"><i style="background: var(--code-bg);"></i><span class="trunc">code-bg <span class="t12 t3">Code, terminal</span></span><span class="mono t12 t3">#121110</span></div></div><div class="vy t-light" style="flex-direction: column; border-radius: 10px; padding: 8px 14px; border: 1px solid var(--rule); background: var(--panel);"><span class="lbl" style="padding: 6px 0;">Paper</span><div class="sw"><i style="background: var(--bg);"></i><span class="trunc">bg <span class="t12 t3">Page ground</span></span><span class="mono t12 t3">#F4F1EA</span></div><div class="sw"><i style="background: var(--panel);"></i><span class="trunc">panel <span class="t12 t3">Cards, sheets, Capsule</span></span><span class="mono t12 t3">#FBFAF6</span></div><div class="sw"><i style="background: var(--hover);"></i><span class="trunc">hover <span class="t12 t3">Hover, pressed, secondary fill</span></span><span class="mono t12 t3">#EEEAE2</span></div><div class="sw"><i style="background: var(--rule);"></i><span class="trunc">rule <span class="t12 t3">Hairlines</span></span><span class="mono t12 t3">#DCD7CC</span></div><div class="sw"><i style="background: var(--rule-strong);"></i><span class="trunc">rule-strong <span class="t12 t3">Card, field and outline borders</span></span><span class="mono t12 t3">#C9C3B7</span></div><div class="sw"><i style="background: var(--text);"></i><span class="trunc">text <span class="t12 t3">Primary text</span></span><span class="mono t12 t3">#141311</span></div><div class="sw"><i style="background: var(--text-2);"></i><span class="trunc">text-2 <span class="t12 t3">Secondary text</span></span><span class="mono t12 t3">#4A463F</span></div><div class="sw"><i style="background: var(--label);"></i><span class="trunc">label <span class="t12 t3">Meta, labels; the smallest text colour</span></span><span class="mono t12 t3">#6B665D</span></div><div class="sw"><i style="background: var(--primary-bg);"></i><span class="trunc">primary-bg <span class="t12 t3">Primary button, running, focus</span></span><span class="mono t12 t3">#141311</span></div><div class="sw"><i style="background: var(--beacon-dot);"></i><span class="trunc">beacon-dot <span class="t12 t3">Needs you: dot, label, badge only</span></span><span class="mono t12 t3">#5B3FC4</span></div><div class="sw"><i style="background: var(--signal-wash);"></i><span class="trunc">signal-wash <span class="t12 t3">Selected row, added lines</span></span><span class="mono t12 t3">moss 10%</span></div><div class="sw"><i style="background: var(--del-wash);"></i><span class="trunc">del-wash <span class="t12 t3">Removed lines (neutral)</span></span><span class="mono t12 t3">ash 10%</span></div><div class="sw"><i style="background: var(--code-bg);"></i><span class="trunc">code-bg <span class="t12 t3">Code, terminal</span></span><span class="mono t12 t3">#F0EDE5</span></div></div></div>
+      <p class="t12 t2">No red, coral, gold, honey or any other hue. A failure is a fact (text plus the crossed-circle glyph); a destructive action is slowed by words and a hold, never by colour. Teal replaces violet in one line per theme if chosen: <span class="mono">#5FD4C4</span> dark, <span class="mono">#0B6E66</span> paper.</p>
+    </section>
+
+    <div class="col" style="gap: 24px;">
+      <section class="card col" style="padding: 20px 24px;" aria-label="Type">
+        <div class="row" style="padding-bottom: 8px;"><h2 class="t20 w6">Type</h2><span class="t12 t3" style="margin-left: auto;">desktop · phone</span></div>
+        <div class="ts"><span class="mono t12 t3">28 / 34</span><span class="mono t12 t3">28 / 34</span><span class="t28 w6 trunc">Hi, alex</span><span class="t12 t2">First-run and sheet heroes. Rare.</span></div>
+        <div class="ts"><span class="mono t12 t3">20 / 26</span><span class="mono t12 t3">22 / 28</span><span class="t20 w6 trunc">Harlow Legal</span><span class="t12 t2">Page and detail titles</span></div>
+        <div class="ts"><span class="mono t12 t3">15 / 22</span><span class="mono t12 t3">17 / 24</span><span class="t15 trunc">Found it. The Estate branch skips a field.</span><span class="t12 t2">Messages, prose, phone rows and buttons</span></div>
+        <div class="ts"><span class="mono t12 t3">13 / 18</span><span class="mono t12 t3">13 / 18</span><span class="trunc">Allow once · kit · Harlow Legal</span><span class="t12 t2">Desktop default: rows, buttons, fields</span></div>
+        <div class="ts"><span class="mono t12 t3">12 / 16</span><span class="mono t12 t3">12 / 16</span><span class="t12 trunc">Needs you · 12m · ⌘K</span><span class="t12 t2">Labels, meta, counts, keys</span></div>
+        <div class="ts"><span class="mono t12 t3">mono</span><span class="mono t12 t3">12, 13</span><span class="mono trunc">git push origin q3-report</span><span class="t12 t2">Commands, code, paths, IDs, codes</span></div>
+        <p class="t12 t2" style="padding-top: 10px; border-top: 1px solid var(--rule);">400 to read, 600 for names, titles, labels and buttons. Sentence case, no caps. The app follows Dynamic Type and Android font scale from these defaults; rows wrap, never clip.</p>
+      </section>
+      <section class="card col" style="padding: 20px 24px; gap: 12px;" aria-label="Buttons">
+        <div class="row"><h2 class="t20 w6">Five buttons</h2><span class="t12 t3" style="margin-left: auto;">one primary per surface</span></div>
+        <div class="vy t-dark" style="flex-direction: column; gap: 12px; border-radius: 10px; padding: 16px; border: 1px solid var(--rule); background: var(--panel);">
+<span class="lbl">Dark</span>
+<div class="row" style="gap: 8px; flex-wrap: wrap;"><button class="btn btn-p" type="button">Allow once<span class="k">A</span></button><button class="btn btn-s" type="button">Snooze 5 min</button><button class="btn" type="button">Always in Harlow Legal</button><button class="btn btn-g" type="button">Deny<span class="k">D</span></button><button class="btn btn-h" type="button"><span class="fillbar" style="width: 40%;"></span><span>Delete 214 files</span></button></div>
+<div class="row" style="gap: 8px; flex-wrap: wrap;"><button class="btn btn-p" type="button" disabled>Send</button><button class="btn btn-p btn-busy" type="button"><span class="spin" style="box-shadow: inset 0 0 0 1.5px var(--primary-hover); border-top-color: var(--primary-ink);"></span>Allowing</button><button class="btn btn-sm" type="button">Small 28</button><button class="btn btn-p ph-btn" type="button">Touch 44</button></div>
+</div><div class="vy t-light" style="flex-direction: column; gap: 12px; border-radius: 10px; padding: 16px; border: 1px solid var(--rule); background: var(--panel);">
+<span class="lbl">Paper</span>
+<div class="row" style="gap: 8px; flex-wrap: wrap;"><button class="btn btn-p" type="button">Allow once<span class="k">A</span></button><button class="btn btn-s" type="button">Snooze 5 min</button><button class="btn" type="button">Always in Harlow Legal</button><button class="btn btn-g" type="button">Deny<span class="k">D</span></button><button class="btn btn-h" type="button"><span class="fillbar" style="width: 40%;"></span><span>Delete 214 files</span></button></div>
+<div class="row" style="gap: 8px; flex-wrap: wrap;"><button class="btn btn-p" type="button" disabled>Send</button><button class="btn btn-p btn-busy" type="button"><span class="spin" style="box-shadow: inset 0 0 0 1.5px var(--primary-hover); border-top-color: var(--primary-ink);"></span>Allowing</button><button class="btn btn-sm" type="button">Small 28</button><button class="btn btn-p ph-btn" type="button">Touch 44</button></div>
+</div>
+        <div class="col t12 t2" style="gap: 4px;"><span><span class="w6" style="color: var(--text);">Primary</span> the one action. <span class="w6" style="color: var(--text);">Secondary</span> a quiet fill for a common second choice. <span class="w6" style="color: var(--text);">Outline</span> a real alternative. <span class="w6" style="color: var(--text);">Ghost</span> Cancel, Deny, Discard, Details. <span class="w6" style="color: var(--text);">Hold</span> destructive: the label names the count, a 0.6 s hold fills it.</span><span>Working keeps its width with a spinner and a verb. Disabled is label ink on a quiet fill, never opacity alone. Heights 28, 32, and 44 or 54 on touch.</span></div>
+      </section>
+    </div>
+
+    <div class="col" style="gap: 24px;">
+      <section class="card col" style="padding: 20px 24px; gap: 4px;" aria-label="Status">
+        <div class="row" style="padding-bottom: 8px;"><h2 class="t20 w6">Status, one model</h2><span class="t12 t3" style="margin-left: auto;">most urgent wins</span></div>
+        <div class="kv"><span class="row" style="gap: 8px;"><span class="dot dot-need"></span>needs you</span><span class="t2">Violet dot. Rows, tabs, favicon, app badge, the Capsule's mark, the CLI.</span></div>
+        <div class="kv"><span class="row" style="gap: 8px;"><svg class="ic ic-12 t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg>failed</span><span class="t2">Crossed circle in text colour. Never pushes; waits in the list.</span></div>
+        <div class="kv"><span class="row" style="gap: 8px;"><span class="ring"></span>running</span><span class="t2">Lime ring with an elapsed time, so quiet work never looks stalled.</span></div>
+        <div class="kv"><span class="row" style="gap: 8px;"><span class="dot dot-unread"></span>unread</span><span class="t2">A text-colour dot. Clears on open, reply or send.</span></div>
+        <div class="kv"><span class="row" style="gap: 8px;"><span class="dot dot-done"></span>done</span><span class="t2">Hollow dot. The row goes quiet.</span></div>
+        <p class="t12 t2" style="padding-top: 8px;">Devices and hosts never get a colour: they are named ("alex's iPhone"), so a colour can only ever mean status.</p>
+      </section>
+      <section class="card col" style="padding: 20px 24px; gap: 4px;" aria-label="Space, shape, motion">
+        <div class="row" style="padding-bottom: 8px;"><h2 class="t20 w6">Space, shape, motion, icons</h2></div>
+        <div class="kv"><span class="t3">Space</span><span class="row" style="gap: 6px; align-items: flex-end;"><i style="width: 4px; height: 4px; background: var(--text-2);"></i><i style="width: 8px; height: 8px; background: var(--text-2);"></i><i style="width: 12px; height: 12px; background: var(--text-2);"></i><i style="width: 16px; height: 16px; background: var(--text-2);"></i><i style="width: 24px; height: 24px; background: var(--text-2);"></i><i style="width: 32px; height: 32px; background: var(--text-2);"></i><span class="mono t12 t3" style="margin-left: 8px;">4 8 12 16 24 32 48 64</span></span></div>
+        <div class="kv"><span class="t3">Radius</span><span class="t2">chip 4 · field and button 8 (touch 10) · card 12 (phone 10) · sheet 14 · round</span></div>
+        <div class="kv"><span class="t3">Controls</span><span class="t2">28 · 32 · 44 · 54 · touch targets 44 minimum</span></div>
+        <div class="kv"><span class="t3">Motion</span><span class="t2">tap 120 · panel 220 · sheet 280 · text reveal 150 · hold 600 · undo 4 s · ease 0.25, 0.1, 0.25, 1. Only feedback moves; reduced motion stops the shine and spin.</span></div>
+        <div class="kv"><span class="t3">Icons</span><span class="row" style="gap: 12px; color: var(--text-2);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"></rect><path d="M4.5 6l2 2-2 2M8.5 10.5h3"></path></svg><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path><path d="M5.5 6v1M10.5 6v1M8 6v3h-.8M6 10.8c1.2.9 2.8.9 4 0"></path></svg><span class="t12 t3">16 grid · 1.5 stroke · 12 16 20</span></span></div>
+      </section>
+      <section class="card col" style="padding: 20px 24px; gap: 12px;" aria-label="Export">
+        <div class="row"><h2 class="t20 w6">One file, three exports</h2><span class="mono t12 t3" style="margin-left: auto;">docs/design/one-app/tokens.json</span></div>
+        <div class="code" style="white-space: pre; font-size: 12px; line-height: 18px;">"dark":  { "bg": "#0E0D0C", "text": "#F1EEE6", "beacon": "#B8A4FF" }
+"type":  { "phone": { "read": [17, 24], "title": [22, 28] } }
+"status":{ "order": ["needsYou","failed","running","unread","done"] }</div>
+        <div class="row t12 t2" style="gap: 8px; flex-wrap: wrap;"><span class="tag">tokens.ts · Expo iOS, Android, web</span><span class="tag">tokens.css · the Deck</span><span class="tag">Theme.swift · the Capsule</span><span class="tag">style.js · the CLI</span></div>
+        <p class="t12 t2">A test fails the build if any file uses a colour, size or weight that is not in tokens.json, and if any pair falls under AA.</p>
+      </section>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2200,"height":1200}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

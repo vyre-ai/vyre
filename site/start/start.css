@@ -39,9 +39,9 @@
 .term-cap { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--rule); }
 
 /* the "What is not finished" callout */
-.callout { background: var(--beacon-wash); border: 1px solid rgba(255, 122, 89, 0.35); border-radius: var(--r-3); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
-.callout .need { border-top-color: rgba(255, 122, 89, 0.25); }
-.callout .need li { border-bottom-color: rgba(255, 122, 89, 0.25); color: var(--stone); }
+.callout { background: var(--beacon-wash); border: 1px solid rgba(184, 164, 255, 0.35); border-radius: var(--r-3); padding: 22px 24px; display: flex; flex-direction: column; gap: 14px; }
+.callout .need { border-top-color: rgba(184, 164, 255, 0.25); }
+.callout .need li { border-bottom-color: rgba(184, 164, 255, 0.25); color: var(--stone); }
 .callout .need li::before { background: var(--beacon); }
 
 .start-foot { border-top: 1px solid var(--rule); padding-top: 28px; display: flex; gap: 12px; flex-wrap: wrap; }
