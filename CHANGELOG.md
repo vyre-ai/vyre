@@ -43,7 +43,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `core/cli/qr.js`) and a one-time passkey code. `vyre phone list` (relay devices too),
   `remove <id>` and `test [id]`.
 - `vyre phone add --android --usb` (or `--wireless`) installs the native app: it downloads the APK
-  the box serves at /apps/android/, checks its size and sha256 against /apps/android.json, installs
+  the box serves at /v1/releases/android?file=, checks its size and sha256 against /v1/releases/android, installs
   it with adb and opens it on a relay pairing offer (vyre://pair). A mismatch installs nothing.
 - The live checks follow push.subscribed, push.delivered and push.seen: "Test notification arrived"
   passes when the phone posts back the test's receipt, and "Opened as an app" when an installed app

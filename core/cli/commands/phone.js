@@ -30,8 +30,8 @@
 // The relay tools (ADR 0026) are found by trying them: a box without the relay module answers
 // no_such_tool, and everything here works without them.
 //
-// The native Android app: the box serves <box>/apps/android.json (version, sha, sha256, size,
-// minSdk, file) and the APK beside it under /apps/android/. CI builds and signs it; the box and
+// The native Android app: the box's releases module serves <box>/v1/releases/android (version,
+// sha, sha256, size, minSdk, file) and the APK at <box>/v1/releases/android?file=<file>. CI builds and signs it; the box and
 // this command never re-sign. --usb and --wireless download it over the tailnet, check its size
 // and sha256, install it with adb and open it on the pairing offer.
 
@@ -242,7 +242,7 @@ export async function add(flags, deps = {}) {
   // The native Android app, when the box serves one: one manifest fetch, no retries.
   const served = flags.iphone ? null : appManifest((deps.base || address).replace(/\/$/, ""), deps.fetch || globalThis.fetch);
   const [d0, k0, r0, am] = await Promise.all([t.tool("push.devices"), t.tool("presence.keys"), t.tool("relay.devices.list"), served]);
-  const app = am && am.manifest ? { version: am.manifest.version, url: `${address}/apps/android/${apkName(am.manifest)}` } : null;
+  const app = am && am.manifest ? { version: am.manifest.version, url: `${address}/v1/releases/android?file=${encodeURIComponent(apkName(am.manifest))}` } : null;
   if (d0.error) return failTool(d0.error);
   if (k0.error) return failTool(k0.error);
   const before = { devices: list(d0), keys: list(k0), relay: relayDevices(r0) };
@@ -486,7 +486,7 @@ export function adbDevices(text) {
 export const apkName = (/** @type {AppManifest} */ m) => m.file || `vyre-${m.version}-${String(m.sha).slice(0, 7)}.apk`;
 
 /**
- * The Android app the box serves: GET <box>/apps/android.json. One fetch, no retries.
+ * The Android app the box serves: GET <box>/v1/releases/android. One fetch, no retries.
  * { manifest } when it serves one; { missing } for a 404, a box without the route, or a manifest
  * that is not whole; { error } when the box did not answer at all.
  * @param {string} base @param {typeof fetch} [f]
@@ -494,7 +494,7 @@ export const apkName = (/** @type {AppManifest} */ m) => m.file || `vyre-${m.ver
  */
 export async function appManifest(base, f = globalThis.fetch) {
   let r;
-  try { r = await f(`${base}/apps/android.json`, { cache: "no-store", signal: AbortSignal.timeout(8000) }); }
+  try { r = await f(`${base}/v1/releases/android`, { cache: "no-store", signal: AbortSignal.timeout(8000) }); }
   catch (e) { return { error: String(e && e.message || e) }; }
   if (!r.ok) return { missing: true };
   /** @type {any} */ let m;
@@ -509,7 +509,7 @@ export async function appManifest(base, f = globalThis.fetch) {
  * { file, dir } when both match the manifest; { mismatch: "size"|"sha256" } (the file already
  * deleted) when not; { missing } when the box does not serve it.
  * @param {string} url @param {AppManifest} m @param {typeof fetch} f
- * @returns {Promise<{ file?: string, dir?: string, mismatch?: "size"|"sha256", missing?: boolean, error?: string }>}
+ * @returns {Promise<{ file?: string, dir?: string, mismatch?: "size"|"sha256"|"box", missing?: boolean, error?: string }>}
  */
 async function download(url, m, f) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-apk-"));
@@ -520,6 +520,8 @@ async function download(url, m, f) {
   const hash = crypto.createHash("sha256");
   try {
     const r = await f(url, { cache: "no-store", signal: AbortSignal.timeout(5 * 60_000) });
+    // 409: the box's own copy does not match CI's android.json, so it refuses to serve it.
+    if (r.status === 409) { drop(); return { mismatch: "box" }; }
     if (!r.ok || !r.body) { drop(); return { missing: true }; }
     // Stop reading past the promised size: a bigger file is already the wrong one.
     const count = new Transform({ transform(chunk, _, cb) {
@@ -582,9 +584,10 @@ export async function android(flags, deps = {}) {
     return fail(`${model} runs Android API level ${sdk}, and Vyre ${m.version} needs ${m.minSdk} or newer`, { code: "too_old", next: "vyre phone add for the web app, which works in Chrome" });
   }
 
-  const dl = await download(`${base}/apps/android/${apkName(m)}`, m, f);
+  const dl = await download(`${base}/v1/releases/android?file=${encodeURIComponent(apkName(m))}`, m, f);
   if (dl.missing) return noApk();
   if (dl.error) return fail(`the download from ${hostOf(base)} stopped: ${dl.error}`, { code: "download_failed", next: "vyre phone add --android --" + how + " again" });
+  if (dl.mismatch === "box") return fail("the box's copy of the app does not match what CI built, so it will not serve it; nothing was installed", { code: "release_mismatch", next: "vyre update fetches the release again" });
   if (dl.mismatch) return fail(`the APK's ${dl.mismatch} is not what the box says: the download was not what the box says it built; nothing was installed`, { code: "mismatch", next: "vyre phone add --android --" + how + " again; if it repeats, the box's app build needs a look" });
 
   const result = { phone: { serial: phone.serial, model: phone.model, via: how }, version: m.version, sha: m.sha || null, installed: false, opened: false, paired: /** @type {boolean|null} */ (null) };

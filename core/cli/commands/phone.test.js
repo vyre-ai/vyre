@@ -286,13 +286,14 @@ const APK = Buffer.from("PK\u0003\u0004 a pretend Vyre APK for the tests ".repea
 const SHA = "abcdef1234567890";
 const good = () => ({ version: "0.14.2", versionCode: 1402, sha: SHA, sha256: crypto.createHash("sha256").update(APK).digest("hex"), size: APK.length, minSdk: 26, built: "2026-09-27T00:00:00Z" });
 
-/** The box's /apps route on 127.0.0.1: android.json (or a 404) and the APK beside it. */
-async function appServer(t, manifest) {
+/** The releases module's route on 127.0.0.1: the manifest (or a 404) and the APK by ?file=. */
+async function appServer(t, manifest, { refuse = false } = {}) {
   const hits = [];
   const server = http.createServer((req, res) => {
     hits.push(req.url);
-    if (req.url === "/apps/android.json" && manifest.value) { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); return res.end(JSON.stringify(manifest.value)); }
-    if (req.url === `/apps/android/vyre-0.14.2-${SHA.slice(0, 7)}.apk`) { res.writeHead(200, { "content-type": "application/vnd.android.package-archive" }); return res.end(APK); }
+    if (refuse && String(req.url).includes("?file=")) { res.writeHead(409, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: { code: "release_mismatch" } })); }
+    if (req.url === "/v1/releases/android" && manifest.value) { res.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" }); return res.end(JSON.stringify(manifest.value)); }
+    if (req.url === `/v1/releases/android?file=vyre-0.14.2-${SHA.slice(0, 7)}.apk`) { res.writeHead(200, { "content-type": "application/vnd.android.package-archive" }); return res.end(APK); }
     res.writeHead(404); res.end();
   });
   await new Promise(r => server.listen(0, "127.0.0.1", () => r(undefined)));
@@ -396,6 +397,13 @@ test("phone add --android --usb: a sha256 or size that does not match is refused
   assert.match(lines.join("\n"), /the APK's size is not what the box says/, "a bigger file stops at the promised size");
   assert.deepEqual(fs.readdirSync(adb.tmp), []);
   assert.ok(!adb.argv().some(a => a.includes("install")), "never installed");
+  // The box refuses its own copy (409 release_mismatch): said plainly, nothing installed.
+  const refusing = await appServer(t, { value: good() }, { refuse: true });
+  lines.length = 0;
+  assert.equal(await android({}, { base: refusing.base, target: fakeTarget() }), 1);
+  assert.match(lines.join("\n"), /the box's copy of the app does not match what CI built/);
+  assert.deepEqual(fs.readdirSync(adb.tmp), []);
+  assert.ok(!adb.argv().some(a => a.includes("install")), "never installed");
 });
 
 test("phone add --android: no manifest is no_apk, a phone too old is refused, adb missing is one hint; never a real adb", async t => {
@@ -448,7 +456,7 @@ test("phone add --json: a box that serves the Android app adds its address; the 
   t.after(() => setJson(false));
   assert.equal(await add({ android: true }, { io, base: srv.base }), 0);
   const v = JSON.parse(lines.at(-1));
-  assert.deepEqual(v.app, { version: "0.14.2", url: `${BOX}/apps/android/vyre-0.14.2-abcdef1.apk` });
+  assert.deepEqual(v.app, { version: "0.14.2", url: `${BOX}/v1/releases/android?file=vyre-0.14.2-abcdef1.apk` });
   assert.deepEqual(await appManifest(srv.base), { manifest: good() });
   const bad = /** @type {any} */ (async () => ({ ok: true, json: async () => ({ version: "1", sha256: "x", size: 1, sha: "abcdef1" }) }));
   assert.deepEqual(await appManifest(srv.base, bad), { missing: true }, "a sha256 that is not one");
