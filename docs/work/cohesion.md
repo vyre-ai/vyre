@@ -17,11 +17,13 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 - docs-check OWNERS gains "cohesion" (scripts/lib/docs/check.js, docs team's file).
 
 ## Doing
-- Handed d314850b (glue + drift test, main 53cd1326 merged) to the integrator. Targeted run 125/125.
-  Perf on testbox, load under 6: baseline RSS mean 105.1 / max 152.4 MB; with the four modules
-  111.0 / 155.3 MB; CPU 0.00% both; no timer under 60 s. The max already fails on main (ci is
-  moving the gate to heapUsed after GC; lead: don't block). Cost of the glue: about 6 MB mean.
-- Next: chrome.open query strip (privacy, first), then thread/call/app on acted events; e2e reviews.
+- Integrator has f5cd36f7 (glue + drift test; targeted 125/125). Perf, load under 6: baseline RSS
+  mean 105.1 / max 152.4 MB; with glue 111.0 / 155.3 MB; CPU 0.00%; no timer under 60 s. Lead:
+  don't block on RSS (ci moving the gate to heapUsed).
+- c362505b (not pushed yet): PRIVACY fix, chrome.acted no longer stores URL queries (scrub());
+  thread/call/app on chrome.acted, desktop.acted, hands.acted; context.report fills device from
+  device:<id>. testbox: 46 pass, 10 skipped (Chrome e2e: no Chrome on testbox). Waiting on e2e's
+  review and a Chrome run (Mac or CI), then hand to the integrator.
 
 ## Next
 2. Owner replies: record below. Send owners the built contracts and their exact asks.
@@ -45,10 +47,8 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 
 ## Needs from others
 - platform (accepted, P1): meta.call from X-Vyre-Call-Id; registry.status() use counts {calls, lastUsed}; commands.list; events.catalog.
-- hands-desktop (modules/hands-desktop/index.js:151): `app` and `call` on desktop.acted.
-- hands-chrome (modules/hands-chrome/index.js:68,121,125,147): thread/call on chrome.acted; chrome.open's
-  summary carries the full URL with its query into the event store; click fallback stringifies the selector.
-- hands-mac (local/hands-mac/hands.js:359, index.js:70): agent/thread/call/summary/why on hands.acted.
+- DONE by cohesion (lead's call, owners stopped): acted-event fields and the chrome query strip, c362505b.
+- mobile: wants sight.frame (a still JPEG per step) for the relay? Needs a resize in computerd.
 - computers: `sight.watch` calls computers.watch as module:sight, so ownSurface (core/computers/index.js:154)
   can't see the real caller; sight keeps agents out, but surface is not checked against the caller.
 - switchboard: threads.asks drops `project` in shape() (core/switchboard/asks.js:92); a Bash ask's
