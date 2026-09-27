@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyred knows the box's Taildrive mount mode
+
+- The vyre service gets `VYRE_DRIVE_ACCESS` (default `ro`), the same value the tailscale service
+  mounts /work with, so `files.drive.access` says whether the .env step is needed instead of
+  "unknown" (box/compose.yml).
+
 #### Taildrive shares carry their own access, and a share refuses folders with secrets inside
 
 - `files.drive.shares` entries are a path or `{ path, access }`, access `"ro"` (default) or

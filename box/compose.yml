@@ -113,6 +113,9 @@ services:
       - VYRE_ONBOARD_HOST=vyred
       # Onboarding's Connect runs `tailscale up`; these keep the preferences the entrypoint set.
       - VYRE_TAILSCALE_UP_FLAGS=--accept-dns=false --hostname=${VYRE_TS_HOSTNAME:-vyre}
+      # The tailscale service's /work mount mode, so files.drive.access can say whether the
+      # .env step is needed.
+      - VYRE_DRIVE_ACCESS=${VYRE_DRIVE_ACCESS:-ro}
     env_file:
       # CLOUDFLARE_VYRE_TOKEN and similar. See vyre.env.example.
       - path: ./vyre.env

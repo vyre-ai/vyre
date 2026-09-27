@@ -197,16 +197,18 @@ only read-only checks on the test box.
 
 ## Needs from others
 
-- chat: builds the Mac-session composer on work/chat against work/federation 2379a0c. It is
-  waiting on the WebSocket upgrade handler for the terminal and Glass.
-- integrator: merge work/tailnet bd833dc and work/federation 2379a0c.
+- chat (via the lead): merge work/tailnet (owner-only streams) and work/federation-transcript
+  6731af9 (rich Mac transcripts; then boot a Mac session from `recall.transcript { source: "mac" }`
+  in deck/chat/session.js).
+- integrator: merge work/tailnet (this branch's tip) and work/federation 5c247ce.
 - e2e: re-run the egress checks on headscale (the list under "Verify on first real run").
-- capsule-now: review of the queue flow for sends from the box.
-- lead: vyred never sees `VYRE_DRIVE_ACCESS` (compose sets it only for the tailscale service),
-  so `files.drive.access` answers `now: "unknown"` on a real box and always gives the step.
-  Passing `VYRE_DRIVE_ACCESS=${VYRE_DRIVE_ACCESS:-ro}` into the vyre service's environment would
-  let it tell. Left out: this task was comment-only for compose.
-- integrator: work/tailnet ea158df (Taildrive per-share access and the secrets scan).
+- lead, decision: the share scan walks node_modules and .git and stops at 20,000 entries, so
+  sharing `projects` (/work) with a few repos in it is refused as too big to check. Options: skip
+  node_modules (and .git objects, keeping .git/config) in the scan, or raise the cap. Recommend
+  skipping node_modules and .git/objects.
+- lead, decision: guests may be given glass.open (GUEST_SAFE), but tailnet streams are now the
+  owner's alone, so that ticket cannot be used. Drop glass.open from GUEST_SAFE, or let guests
+  through for Glass only.
 
 - vault: see the tailnet entry in docs/work/vault.md "Needs from others".
 - computers: review the Pacer (`glass.js`), the pool's egress remake and agent-node join, the
