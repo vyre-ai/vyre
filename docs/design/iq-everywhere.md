@@ -175,7 +175,7 @@ test it.
 | 7 | Deck Find and Memory view IQ card | deck, app-design | M | high | spec sent (0.1.1) |
 | 8 | Phone Find IQ card | mobile | M | medium | spec sent (0.1.1) |
 | 9 | Chat renders "(from <session>)" as a link | chat | S | medium | spec sent (0.1.1) |
-| 10 | Teammates' brief: memory_ask for project history | teammates | S | low | spec sent (0.1.1) |
+| 10 | Teammates' brief: memory_ask for project history | teammates | S | low | built (work/teammates 7eb7ffb8; reaches teammates with core/team step 3) |
 
 ## What makes IQ smarter, whatever the surface
 
