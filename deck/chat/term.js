@@ -3,32 +3,53 @@
 // (term.open, no passkey: it is the owner's own screen); mountTerminal draws it with xterm.js over
 // /v1/streams/term/pty.
 //
-// Rules this file keeps:
+// The contract is core/term/index.js's header (ADR 0029 R4). Rules this file keeps:
 //  - xterm's script and stylesheet load only when a terminal opens, never with Chat;
-//  - a hidden tab keeps its socket (closing it would end the terminal 10 s later); reconnects
-//    after a drop wait for the tab to be visible, with a fresh ticket from term.attach, backing
-//    off 1, 2, 4 ... 30 s;
+//  - a hidden tab keeps its socket, so the screen stays current. A closed socket never ends the
+//    terminal: the box keeps it with nobody attached for term.keep_hours (12 h by default).
+//    Reconnects after a drop wait for the tab to be visible, with a fresh ticket from
+//    term.attach, backing off 1, 2, 4 ... 30 s;
 //  - a path to the box that carries tool calls but not WebSockets (lib/term-link.js: two stream-less
 //    sockets in a row, each on a fresh ticket) shows a "needs the box link" state with Try again,
 //    and no reconnect loop;
-//  - the screen keeps its own scrollback across drops (ADR 0029 R4): it counts the bytes it has
-//    drawn and reattaches with from=<offset>, so the box sends only what it missed. Only when
-//    that offset has left the box's 1 MB ring ("cut") is the screen reset and redrawn from the
-//    ring, under a marker;
+//  - the screen keeps its own scrollback and never resets it on a reattach. It counts the bytes
+//    it has drawn and reattaches with from=<offset> (on term.attach and on the URL), so the box
+//    sends only what it missed, then {"t":"at"} with its count, which the screen adopts. When
+//    those bytes have left the box's 1 MB ring ({"t":"cut"}), a dim line says so and the replay
+//    follows from the oldest line kept;
 //  - keys typed while away are held (up to 4 KB) and sent once the box has caught the screen up;
-//    the screen dims meanwhile. A vyred restart (close 1012) is a reconnect like any other;
-//  - one screen owns the terminal's size. Another watches at the owner's size, with Take size;
+//    the screen dims meanwhile;
+//  - closes: 1000 is a real end (the box's reason says which); 1012 "restarting" is vyred
+//    stopping with the shell alive, so the screen reattaches at once; anything else is a drop;
+//  - after a box update the shell is gone: term.closed {reason: "box updated"} on the event
+//    stream, and term.attach answers terminal_closed for a day. One line says so, with a button
+//    that opens a new terminal in the same folder;
+//  - the size: the box has no owner for it, the last size any socket sends wins. This screen
+//    sends its own on every fit and each time it catches up; there is no Take size;
 //  - on a phone a key bar gives Esc, Tab, Ctrl, Alt, arrows and Paste;
 //  - no timers but the reconnect wait. Every string from the box is a text node (deck/js/dom.js).
 
-import { h, put } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { h, put, go } from "../js/dom.js";
+import { attempt, on } from "../js/api.js";
 import { surfaceId } from "../glass/util.js";
-import { linkVerdict, holdKeys, withFrom, withMods, arrow, sizeRole } from "./lib/term-link.js";
+import { linkVerdict, holdKeys, withFrom, withMods, arrow, step, reopened, onClose, onAttachError, remember } from "./lib/term-link.js";
 
 /** Tickets term.open already issued, so the first mount needs no second round trip. One use, 30 s. */
 /** @type {Map<string, { path: string, cwd: string, until: number }>} */
 const fresh = new Map();
+
+const OPENED = "vyre.terms";
+
+/** The terminals this browser opened (lib/term-link.js remember). Never throws. @returns {import("./lib/term-link.js").Opened[]} */
+function opened() {
+  try { const v = JSON.parse(localStorage.getItem(OPENED) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; }
+}
+/** @param {import("./lib/term-link.js").Opened} entry */
+function keep(entry) {
+  try { localStorage.setItem(OPENED, JSON.stringify(remember(opened(), entry))); } catch {}
+}
+/** @param {string} term */
+const openedAs = term => opened().find(r => r.term === term) || null;
 
 /** A rough size before xterm has measured anything; the first fit corrects it. */
 function guessSize() {
@@ -45,6 +66,7 @@ export function termError(err) {
     not_available: "That folder is outside the folders the box shares, or it holds keys.",
     too_many: "Eight terminals are already open. Close one first.",
     not_found: "That terminal has ended.",
+    terminal_closed: "The box was updated and this terminal was closed.",
     offline: "vyred did not answer. The box may be asleep or out of reach.",
   };
   return words[err.code] || String(err.message || err);
@@ -61,6 +83,7 @@ export async function openTerminal(cwd) {
   const r = await attempt("term.open", input);
   if (r.error) return { error: r.error };
   fresh.set(r.data.term, { path: r.data.path, cwd: r.data.cwd, until: Date.now() + 25_000 });
+  keep({ term: r.data.term, surface, cwd: String(r.data.cwd || cwd || "") });
   return { term: r.data.term };
 }
 
@@ -103,7 +126,11 @@ const monoFont = () => getComputedStyle(document.documentElement).getPropertyVal
  * @returns {() => void}
  */
 export function mountTerminal(container, { term, onBack }) {
-  const surface = surfaceId();
+  // The surface it was opened from: the same browser in a narrower window is still that screen.
+  const mine = openedAs(term);
+  const surface = mine?.surface || surfaceId();
+  /** Its folder, for a new terminal there after a box update. */
+  let cwd = mine?.cwd || "";
   let dead = false, ended = false;
   let backoff = 1, retry = 0;
   /** How each socket since the last live stream ended: lib/term-link.js decides from these. */
@@ -114,25 +141,21 @@ export function mountTerminal(container, { term, onBack }) {
   /** @type {ResizeObserver|null} */ let ro = null;
   /** @type {MutationObserver|null} */ let mo = null;
   let frame = 0;
-  /** The box's count of bytes this screen has drawn; a reattach asks for what follows. */
-  let offset = 0;
-  /** Has anything been drawn (so a cut needs a reset)? */
-  let drawn = false;
-  /** Is the box done replaying to this socket, so keys go straight through? */
-  let caughtUp = false;
+  /**
+   * The box's count of bytes this screen has drawn (a reattach asks for what follows), whether
+   * anything is drawn, and whether the box is done replaying to this socket, so keys go straight
+   * through. lib/term-link.js step() moves it.
+   * @type {import("./lib/term-link.js").Track}
+   */
+  let track = { offset: 0, drawn: false, caughtUp: false };
   /** Keys typed while away. */
   let queue = "";
-  /** "own": this screen sets the size. "watch": it draws at another screen's size. */
-  let role = /** @type {"own"|"watch"} */ ("own");
-  /** True while this code resizes xterm to the owner's size, so that resize is not sent back. */
-  let remoteSize = false;
   const mods = { ctrl: false, alt: false };
 
   const dot = h("span", { class: "dot term-dot", "aria-hidden": "true" });
   const word = h("span", { class: "term-word" }, "Connecting");
   const where = h("span", { class: "term-where mono" }, "");
   const back = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => onBack?.() }, "Back");
-  const take = h("button", { type: "button", class: "btn btn-sm term-take", hidden: true, title: "Size the terminal to this screen", onclick: () => takeSize() }, "Take size");
   const closeBtn = h("button", { type: "button", class: "btn btn-sm", onclick: () => closeIt() }, "Close");
   const note = h("div", { class: "term-note", role: "status", "aria-live": "polite", hidden: true });
   const screen = h("div", { class: "term-screen" });
@@ -151,26 +174,28 @@ export function mountTerminal(container, { term, onBack }) {
     key("Paste", () => paste()));
 
   const root = h("section", { class: "term", "aria-label": "Terminal" },
-    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), take, closeBtn),
+    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), closeBtn),
     note, screen, keys);
   put(container, root);
 
-  /** @param {"connecting"|"live"|"waiting"|"ended"|"error"|"blocked"} state @param {string} [msg] @param {any} [action] */
+  /** @param {"connecting"|"live"|"waiting"|"ended"|"error"|"blocked"|"gone"} state @param {string} [msg] @param {any} [action] */
   function status(state, msg = "", action = null) {
     root.dataset.state = state;
-    word.textContent = { connecting: "Connecting", live: "Live", waiting: "Reconnecting", ended: "Ended", error: "Not connected", blocked: "No live link" }[state];
+    word.textContent = { connecting: "Connecting", live: "Live", waiting: "Reconnecting", ended: "Ended", error: "Not connected", blocked: "No live link", gone: "Closed" }[state];
     if (msg || action) { put(note, h("span", null, msg), action ? [" ", action] : null); note.hidden = false; }
     else { put(note); note.hidden = true; }
     // Dim what is drawn while the box catches this screen up.
-    if (state === "live" || state === "ended" || !drawn) delete root.dataset.catching; else root.dataset.catching = "";
+    if (state === "live" || state === "ended" || state === "gone" || !track.drawn) delete root.dataset.catching; else root.dataset.catching = "";
   }
 
-  const setWhere = cwd => {
-    if (!cwd) return;
-    const parts = String(cwd).split("/").filter(Boolean);
+  const setWhere = dir => {
+    if (!dir) return;
+    cwd = String(dir);
+    const parts = cwd.split("/").filter(Boolean);
     where.textContent = parts.length ? parts[parts.length - 1] : "/";
-    where.setAttribute("title", String(cwd));
+    where.setAttribute("title", cwd);
   };
+  setWhere(cwd);
 
   const send = obj => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
 
@@ -188,7 +213,7 @@ export function mountTerminal(container, { term, onBack }) {
       ctrlKey.setAttribute("aria-pressed", "false"); altKey.setAttribute("aria-pressed", "false");
     }
     if (ended) return;
-    if (ws && ws.readyState === 1 && caughtUp) { send({ t: "in", d }); return; }
+    if (ws && ws.readyState === 1 && track.caughtUp) { send({ t: "in", d }); return; }
     const r = holdKeys(queue, d);
     queue = r.queue;
     if (r.dropped && root.dataset.state !== "live") status(/** @type {any} */ (root.dataset.state), "Some keys were not kept: the terminal holds 4 KB of typing while it is away.");
@@ -201,43 +226,18 @@ export function mountTerminal(container, { term, onBack }) {
     } catch { if (!dead && root.dataset.state === "live") status("live", "Paste needs permission to read the clipboard."); }
   }
 
-  /** Fit this screen and send its size, which makes it the size's owner. */
+  /** Fit this screen and send its size: the box sizes the shell to the last screen that sent one. */
   function fitAndSend() {
     if (!xt) return;
     try { fit.fit(); } catch {}
     send({ t: "size", cols: xt.cols, rows: xt.rows });
   }
 
-  function takeSize() {
-    role = "own";
-    take.hidden = true;
-    fitAndSend();
-  }
-
-  /** The box says who owns the size now. @param {any} m */
-  function sizeFrom(m) {
-    if (!xt) return;
-    role = sizeRole(m.owner);
-    if (role === "watch") {
-      take.hidden = false;
-      const cols = Number(m.cols), rows = Number(m.rows);
-      if (cols > 0 && rows > 0 && (cols !== xt.cols || rows !== xt.rows)) {
-        remoteSize = true;
-        try { xt.resize(cols, rows); } catch {}
-        remoteSize = false;
-      }
-    } else {
-      take.hidden = true;
-      // Nobody owns it: this screen takes it.
-      if (m.owner === "none") fitAndSend();
-    }
-  }
-
   async function ticket() {
     const f = fresh.get(term);
     fresh.delete(term);
     if (f && f.until > Date.now()) return { data: f };
-    return attempt("term.attach", { term, surface, from: offset });
+    return attempt("term.attach", { term, surface, from: track.offset });
   }
 
   async function connect() {
@@ -254,8 +254,8 @@ export function mountTerminal(container, { term, onBack }) {
       xt.open(screen);
       xt.onData(d => input(d));
       xt.onBinary(d => input(d));
-      xt.onResize(s => { if (!remoteSize && role === "own") send({ t: "size", cols: s.cols, rows: s.rows }); });
-      ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { if (role === "own") { try { fit.fit(); } catch {} } }); });
+      xt.onResize(s => send({ t: "size", cols: s.cols, rows: s.rows }));
+      ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { try { fit.fit(); } catch {} }); });
       ro.observe(screen);
       // The Deck switches light and dark on <html data-theme>; follow it.
       mo = new MutationObserver(() => { if (xt) xt.options.theme = theme(); });
@@ -265,12 +265,15 @@ export function mountTerminal(container, { term, onBack }) {
     const r = await ticket();
     if (dead) return;
     if (r.error) {
-      if (r.error.code === "not_found") { finish("That terminal has ended."); return; }
-      if (r.error.code === "offline") { later("The box did not answer."); return; }
+      const verdict = onAttachError(r.error);
+      if (verdict === "gone") { gone(); return; }
+      if (verdict === "ended") { finish("That terminal has ended."); return; }
+      if (verdict === "retry") { later(r.error.code === "offline" ? "The box did not answer." : "The box is restarting."); return; }
       status("error", termError(r.error)); return;
     }
     setWhere(r.data.cwd);
-    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + withFrom(r.data.path, offset);
+    // The URL's from wins over the one given to term.attach; 0 for a new terminal.
+    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + withFrom(r.data.path, track.offset);
     let sock;
     try { sock = new WebSocket(url); }
     catch {
@@ -280,7 +283,7 @@ export function mountTerminal(container, { term, onBack }) {
     }
     sock.binaryType = "arraybuffer";
     ws = sock;
-    caughtUp = false;
+    track = reopened(track);
     const seen = { opened: false, data: false, code: 0 };
     sock.onopen = () => {
       if (ws !== sock) return;
@@ -292,42 +295,35 @@ export function mountTerminal(container, { term, onBack }) {
       if (!seen.data) { seen.data = true; backoff = 1; attempts = []; }
       if (typeof e.data !== "string") {
         const b = new Uint8Array(e.data);
-        offset += b.byteLength;
-        if (b.byteLength) drawn = true;
+        track = step(track, b.byteLength).state;
         xt.write(b);
         return;
       }
       let m;
       try { m = JSON.parse(e.data); } catch { return; }
-      if (m.t === "cut") {
-        // What this screen last drew has left the box's ring: redraw from the oldest kept line.
-        if (drawn) xt.reset();
-        xt.write("\x1b[2m[older output was not kept]\x1b[0m\r\n");
-        offset = Number(m.from) || 0;
-      } else if (m.t === "at") {
-        offset = Number(m.offset) || offset;
-        if (!caughtUp) {
-          caughtUp = true;
-          status("live");
-          if ("owner" in m) sizeFrom(m);
-          if (queue) { const q = queue; queue = ""; send({ t: "in", d: q }); }
-          xt.focus();
-        }
-      } else if (m.t === "size") sizeFrom(m);
+      const r = step(track, m);
+      track = r.state;
+      // Bytes this screen missed have left the box's ring: say so under what it already drew,
+      // then the replay from the oldest line kept follows.
+      if (r.mark) xt.write(`${r.state.drawn ? "\r\n" : ""}\x1b[2m${r.mark}\x1b[0m\r\n`);
+      if (r.live) {
+        status("live");
+        fitAndSend();
+        if (queue) { const q = queue; queue = ""; send({ t: "in", d: q }); }
+        xt.focus();
+      }
     };
     sock.onclose = e => {
       if (ws !== sock) return;
       ws = null;
-      caughtUp = false;
-      if (dead) return;
+      track = reopened(track);
+      if (dead || ended) return;
       seen.code = e.code;
-      // The box closes with 1000 and a reason when the terminal itself ended.
-      if (e.code === 1000 && /^(exited|closed|detached|stopped)$/.test(e.reason)) {
-        finish(e.reason === "exited" ? "The shell exited." : e.reason === "closed" ? "The terminal was closed." : "The terminal ended.");
-        return;
-      }
-      // vyred is restarting: the shell lives on; come straight back.
-      if (e.code === 1012) { backoff = 1; later("The box is restarting."); return; }
+      const c = onClose(e.code, e.reason);
+      // 1000: the terminal itself ended, and the reason says how.
+      if (c.act === "end") { finish(c.why); return; }
+      // 1012 "restarting": vyred is stopping and the shell lives on; reattach from here, at once.
+      if (c.act === "reattach") { backoff = 1; attempts = []; later("The box is restarting.", true); return; }
       if (!seen.data) {
         attempts.push({ ...seen });
         if (linkVerdict(attempts) === "blocked") { blocked(); return; }
@@ -343,12 +339,18 @@ export function mountTerminal(container, { term, onBack }) {
       h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: () => { attempts = []; backoff = 1; connect(); } }, "Try again"));
   }
 
-  /** Reconnect with a fresh ticket, backing off, only while the tab is visible. */
-  function later(reason) {
+  /**
+   * Reconnect with a fresh ticket, backing off, only while the tab is visible. `soon`: the first
+   * try goes at once (a vyred restart), then the usual backoff.
+   * @param {string} reason @param {boolean} [soon]
+   */
+  function later(reason, soon = false) {
     if (dead || ended) return;
-    status("waiting", `${reason} Trying again in ${backoff} s.${queue ? " Your typing is held and goes through when it is back." : ""}`);
+    const held = queue ? " Your typing is held and goes through when it is back." : "";
+    status("waiting", soon ? `${reason} Reconnecting.${held}` : `${reason} Trying again in ${backoff} s.${held}`);
     clearTimeout(retry);
     if (document.visibilityState !== "visible") return;
+    if (soon) { retry = window.setTimeout(connect, 0); return; }
     retry = window.setTimeout(connect, backoff * 1000);
     backoff = Math.min(30, backoff * 2);
   }
@@ -361,10 +363,28 @@ export function mountTerminal(container, { term, onBack }) {
     queue = "";
     clearTimeout(retry);
     closeBtn.disabled = true;
-    take.hidden = true;
     status("ended", msg);
     if (xt) xt.options.cursorBlink = false;
   }
+
+  /** A box update took the shell. One line, and a new terminal in the same folder when this screen knows it. */
+  function gone() {
+    if (dead) return;
+    finish("");
+    const s = ws; ws = null;
+    try { s?.close(1000); } catch {}
+    const again = cwd ? h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: async () => {
+      again.disabled = true;
+      const r = await openTerminal(cwd);
+      if (dead) return;
+      if ("error" in r) { again.disabled = false; status("gone", termError(r.error), again); return; }
+      go("/chat?term=" + encodeURIComponent(r.term));
+    } }, "Open a new terminal here") : null;
+    status("gone", "The box was updated and this terminal was closed.", again);
+  }
+
+  // After a deploy the box says so on the event log, for every screen that had the terminal.
+  const unhear = on("term.closed", ev => { if (ev?.payload?.term === term && ev.payload.reason === "box updated") gone(); });
 
   async function closeIt() {
     closeBtn.disabled = true;
@@ -381,6 +401,7 @@ export function mountTerminal(container, { term, onBack }) {
     clearTimeout(retry);
     cancelAnimationFrame(frame);
     document.removeEventListener("visibilitychange", onVisible);
+    try { unhear(); } catch {}
     ro?.disconnect(); mo?.disconnect();
     const s = ws; ws = null;
     try { s?.close(1000); } catch {}
