@@ -77,6 +77,11 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
     ./bin/vyre voice               # Enter to talk, Enter to stop, Ctrl-C to quit
 
 ## Needs from others
+- LANDED on work/sessions b8b1a0a7 (not main yet), final shapes, which differ from the agreed ones above:
+  thread.tool {id (= call), call, tool, name, phase started|done, status running|completed|failed
+  (no canceled), block, summary, destination, turn}; thread.state {state starting|running|waiting|
+  idle|stopped} once per change (no failed, no turn); thread.turn {turn "<thread>:<n>", uuid, text};
+  also thread.usage and thread.steered. threads.get unchanged; its events list carries these too.
 - sessions (ADR 0030), agreed shapes, not landed yet (after the SDK default flip; sessions sends
   the commit): thread.tool {id (= call), call, name, status running|completed|failed|canceled,
   summary, turn}, running once then one final status; thread.state {state starting|idle|running|
