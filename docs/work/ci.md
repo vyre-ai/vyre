@@ -75,26 +75,21 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing (LOGOUT 4, 2026-09-27 ~18:10)
-- b4 verify c8eee9c3 (has work/ci 1b1c8573 + ci-boundaries de5651bf): box-image, app, capsule-mac,
-  sessions-sdk GREEN. node RED on perf-check only: "RSS (settled, last 8) 190.2 MB" on Node 24
-  (tests passed). Real signal, not the harness: RSS settled ~190 MB with the b4 merges (was ~85 MB
-  on c8fb9aae). Next: bisect the b4 merges for the idle RSS jump (GitHub runners; testbox only if
-  load < 8), report to lead + that owner. Do NOT raise the budget.
-- work/ci-boundaries de5651bf node RED (not read yet): check the run (36319211841).
-- Release dry run GREEN (work/ci-release ec456318, run 36320674327, v0.0.1 dry run). Send
-  platform the artifact list (release-dry-run-v0.0.1). release.yml publishes only with repo var
-  VYRE_RELEASES=go (unset; the lead's/user's call). APK attached as android-<v>-<sha7>.apk.
-- App perf job: work/ci c8661ad7 (waits for transcript, chat-row, approve swipe via
-  now-row-swipe scrollTo 0). Proof on work/ci-app 1c37c92b (mobile b5947faa) FAILED: read run
-  36320966093. Earlier proof failed with exit 216 on npx/tsc in all app jobs (not reproducible on
-  testbox; b4's app run is green, so likely the proof branch). JS signer check wired to
-  core/apps/sign-apk.mjs.
-- Batch 3: work/ci-pid1 0f804c11 merged with resilience (ab4fdc4d). box-image on the 3b
-  candidate: not yet run; do it on the next integrator ask.
-- Boundaries follow-ups: integrator has de5651bf (lib/ rule). First cleanup (lib/tailnet) comes
-  from platform after native-core; each step shrinks ALLOW + boundaries.md.
-- TESTBOX: open, but GitHub runners first; `uptime` before anything, wait if load > 8.
+## Doing (RESUME 5, 2026-09-27)
+- box-image RED on main 7880dfa6 (run 36324075479): the Dockerfile imported a lone /tmp copy of
+  core/sessions/sdk.js, which now imports ../config/dialogs.js (e2e 8aed4887). Fix on
+  work/ci-sdkver 1d7405e4 (read PACKAGE/VERSION with sed; guard in test/box-init.test.js), box-image
+  run 36324429260. Green sha goes to box-deploy + lead as the deploy candidate.
+- Idle-RSS bisect: throwaway branch work/ci-rss-bisect 20f68f09 (only rss-bisect.yml; one runner per
+  first-parent merge c8fb9aae..c8eee9c3, Node 24), run 36324514448. Read each job's RESULT line.
+  Budget stays 150.
+- App perf proof (run 36320966093) failure READ: work/mobile tracks a `node_modules` symlink
+  (ce5f6374), dangling on runners, so every npx exits 216. Told mobile to `git rm --cached`. Guard:
+  test/hygiene.test.js (work/ci 3c26ea2d). Re-run the proof after mobile's fix.
+- ci-boundaries de5651bf node RED (run 36319211841) READ: Node 24 docs-check "owner ci is not a known
+  team" (fixed on the b4 merge by 5c55ab51) and Node 22 the 30-min journey-4 hang (fixed by e2e
+  8aed4887). Nothing left on the branch.
+- work/ci merged main 7880dfa6 (fd1c5f70).
 
 ## Next
 - Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,
