@@ -43,7 +43,10 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .session-back { display: none; }
 @media (max-width: 760px), (max-height: 500px) and (pointer: coarse) { .session-back { display: inline-flex; } }
 
-.thread-view { flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 16px 20px 24px; }
+.thread-view { flex-grow: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 16px 20px 24px;
+  /* The scrollbar's room is kept from the start: a session that grows past one screen does not
+     narrow every row (and shift them) when the bar appears. */
+  scrollbar-gutter: stable; }
 /* The timeline's frame, so the "Jump to latest" pill can sit over its bottom edge. */
 .thread-wrap { position: relative; flex-grow: 1; min-height: 0; display: flex; flex-direction: column; }
 .jump-latest { position: absolute; left: 50%; bottom: 12px; transform: translateX(-50%); display: inline-flex; align-items: center; gap: 6px;
@@ -216,9 +219,6 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   :root[data-kb] .chat-session > :is(.lease-bar, .composer) { transform: translateY(calc(-1 * var(--kb-lift))); }
   :root[data-kb] .chat-session .thread-view { padding-bottom: calc(24px + var(--kb-lift)); }
   :root[data-kb] .chat-session .jump-latest { bottom: calc(12px + var(--kb-lift)); }
-  /* A long session: the rows well above the last 40 skip layout and paint until they near the
-     screen, and keep the size they last had. The newest 40 always draw, so the bottom is exact. */
-  .cv-timeline > :nth-last-child(n+41) { content-visibility: auto; contain-intrinsic-size: auto 96px; }
   .rows > .thread-row { content-visibility: auto; contain-intrinsic-size: auto 72px; }
 
   /* Thumb targets: 44px for Back and Send, 56px session rows, the whole row one link. */
@@ -520,8 +520,10 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-ch-more { padding: 2px 10px 2px 28px; font-size: 12px; color: var(--label); }
 
 /* session view, native chat (session.js over core/session-state.js) */
-/* Rows off screen skip layout and paint; the growing reply is exempt, so its height is always true. */
-.cv-timeline > .cv-row:not(.cv-live) { content-visibility: auto; contain-intrinsic-size: auto 44px; }
+/* No content-visibility on the rows: a row that first leaves the screen before it was ever drawn
+   with it (the reply that just stopped streaming, scrolled past) has no remembered size, drops to
+   the placeholder, and the view above it collapses and jumps. Long sessions are windowed instead
+   (window-view.js), so what is mounted is always few rows at their real heights. */
 .cv-md-part { display: contents; }
 
 .cv-run { margin: 2px 0 2px 44px; max-width: calc(100% - 44px); }
@@ -563,9 +565,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 
 /* Windowed rows (window-view.js): above 100 rows only those near the viewport are mounted, and the
    view keeps its own reading position, so the browser's anchoring stays out of it and every
-   mounted row lays out (a measured height is a real one, not content-visibility's placeholder). */
+   mounted row lays out at its real height. */
 .cv-timeline.cv-windowed { overflow-anchor: none; }
-.cv-timeline.cv-windowed > .cv-row:not(.cv-live) { content-visibility: visible; contain-intrinsic-size: none; }
 .cv-spacer { flex-shrink: 0; pointer-events: none; }
 
 /* The composer like Claude Code (composer.js, pickers.js, tray.js): the chips under the box, the

@@ -372,6 +372,30 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   transcripts, and in-page measures for keystrokes, first token, pacing, layout shift, scroll,
   open, reconnect, send, Esc and idle timers, plus a pty terminal comparison. First numbers in
   docs/design/native-bar.md.
+#### Chat: reading back up a session no longer snaps to the bottom when a reply ends
+
+- The timeline's rows had `content-visibility: auto`. The reply that just stopped streaming had
+  never been drawn under it, so once scrolled past it fell to the 44 px placeholder, the content
+  above the reader collapsed, the view clamped to the top, took that for "back at the bottom"
+  and followed the rest of the turn down (3,400 px in the native bar's budget 5). The rule is gone
+  (long sessions are windowed); budget 5 now passes: 0 px moved, CLS 0.
+- The timeline keeps its scrollbar's room from the start (`scrollbar-gutter: stable`), so the
+  rows do not narrow and shift when a session grows past one screen.
+- The phone keyboard's lift read an undefined `following` and threw; it reads the stick now.
+
+#### Chat: a session reopened while an ask is open keeps its steer and its queued row
+
+A steer or a queued message sent while an Edit waited on Allow vanished from the view on reopen.
+The box kept both (threads.get has thread.sent via steer and thread.queued; the words reach
+Claude after the answer, on the cli and sdk drivers alike); the view read only thread.finished
+and gates from threads.get's events once the transcript had blocks, and the transcript holds
+neither.
+- session-state.js: pendingEvents(events) picks the rows still queued (no thread.unqueued, no
+  thread.sent naming them) and the steers not taken in (no thread.steered, no turn end since).
+- session.js: on open, those are applied after the transcript's blocks, so the "Steering" marker
+  and the queued row come back with their ids.
+- core/switchboard test: steer and queue while an ask is open, both kept and delivered.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or

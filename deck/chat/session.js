@@ -70,7 +70,7 @@ import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
 import { textItemRow } from "./live-text.js";
-import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks } from "./core/session-state.js";
+import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
 import { todoPin, tasksTray } from "./tray.js";
@@ -275,6 +275,8 @@ export function mountSession(container, opts) {
         if (typeof e.id === "number") S.meta.lastId = Math.max(S.meta.lastId, e.id);
       }
       applyCosts(done);
+      // The queue and steers not taken in yet: the transcript holds neither, only the events do.
+      for (const e of pendingEvents(data.events)) applyStateEvent(S, e);
       for (const a of data.asks) upsertAsk(a);
     }
     booted = true;
@@ -1374,7 +1376,7 @@ export function mountSession(container, opts) {
   const onKb = () => {
     if (!timeline.isConnected) return;
     const p = padNow();
-    if (following) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
+    if (stick.stuck) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
     pad = p;
   };
   container.addEventListener("focusin", onFocus);
