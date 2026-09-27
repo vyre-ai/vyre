@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Devices, trusting a browser for the vault</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2700px; height: 1260px; gap: 28px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 2200px;">
+      <span class="lbl">Devices · trusting a browser for the vault</span>
+      <h1 class="t28 w6">A browser paired over the relay sees your vault's names, and you trust it from your Mac with one tap.</h1>
+      <p class="t15 t2">Until you trust it, it can't show, copy or fill a secret, pair devices or change trust. The vault says so where the secret would be, and the ask lands in Needs you on your trusted devices.</p>
+    </div>
+  </div>
+
+  <div class="row" style="gap: 40px; align-items: flex-start;">
+
+    <div class="col" style="gap: 28px; width: 2144px; flex: none;">
+
+      <div class="row" style="gap: 28px; align-items: flex-start;">
+
+        <div class="cap" style="gap: 10px;">
+          <span class="cap-t">1a · Phone · Chrome on alex's Pixel 8 · the list still shows</span>
+          <div class="phone" style="height: 520px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+            <div style="height: 14px; flex: none;"></div>
+            <div class="row" style="height: 40px; flex: none; padding: 0 12px;"><div class="row grow" style="height: 32px; border-radius: 16px; background: var(--panel); border: 1px solid var(--rule); padding: 0 12px; gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg><span class="t13 t2 trunc">app.vyre.run</span></div></div>
+            <div class="ph-nav" style="position: relative;">
+              <span class="t17 w6" style="position: absolute; left: 0; right: 0; text-align: center;">Vault</span>
+            </div>
+            <div class="ph-body">
+              <div class="ph-card">
+                <div class="ph-row" style="align-items: center;">
+                  <svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg>
+                  <div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 w6 trunc">Names only on this browser</span><span class="t13 t2">Trust it from your Mac or phone to use secrets here.</span></div>
+                </div>
+              </div>
+              <div class="ph-card">
+                <div class="ph-row" style="align-items: center;"><span class="av av-32">N</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 trunc">Northwind orders</span><span class="t13 t2 trunc">Login · app.northwind.test</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+                <div class="ph-row" style="align-items: center;"><span class="av av-32">H</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 trunc">Harlow Legal Google</span><span class="t13 t2 trunc">Code · accounts.harlow.test</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+                <div class="ph-row" style="align-items: center;"><span class="av av-32">N</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 trunc">Northwind payments admin</span><span class="t13 t2 trunc">Login · pay.northwind.test</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+                <div class="ph-row" style="align-items: center;"><span class="av av-32">H</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t17 trunc">Harlow intake API key</span><span class="t13 t2 trunc">API key · intake.harlow.test</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+              </div>
+              <span class="t12 t3">214 items · names, kinds and sites sync here</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="cap" style="gap: 10px;">
+          <span class="cap-t">1b · Phone · an item opened, untrusted</span>
+          <div class="phone" style="height: 520px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+            <div style="height: 14px; flex: none;"></div>
+            <div class="row" style="height: 40px; flex: none; padding: 0 12px;"><div class="row grow" style="height: 32px; border-radius: 16px; background: var(--panel); border: 1px solid var(--rule); padding: 0 12px; gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg><span class="t13 t2 trunc">app.vyre.run</span></div></div>
+            <div class="ph-nav" style="position: relative;">
+              <a class="row" href="#" style="gap: 2px; height: 44px; padding-right: 8px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg><span class="t17">Vault</span></a>
+              <span class="t17 w6" style="position: absolute; left: 0; right: 0; text-align: center; pointer-events: none;">Northwind orders</span>
+            </div>
+            <div class="ph-body">
+              <div class="ph-card">
+                <div class="ph-row" style="align-items: center; padding: 10px 14px;"><span class="t13 t2" style="width: 84px; flex: none;">Username</span><span class="mono t13 t2 grow trunc">••••••••••</span></div>
+                <div class="ph-row" style="align-items: center; padding: 10px 14px;"><span class="t13 t2" style="width: 84px; flex: none;">Password</span><span class="mono t13 t2 grow trunc">••••••••••••••</span></div>
+                <div class="ph-row" style="align-items: center; padding: 10px 14px;"><span class="t13 t2" style="width: 84px; flex: none;">Site</span><span class="t13 grow trunc">app.northwind.test</span></div>
+              </div>
+              <div class="ph-card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+                <span class="t17 w6">Trust this browser to use the vault here</span>
+                <span class="t13 t2">This browser was paired through the relay. It can see your vault's names, but it can't show, copy or fill a secret until you trust it from your Mac or phone.</span>
+                <div class="row" style="gap: 8px; margin-top: 6px;">
+                  <button class="btn btn-p ph-btn-lg grow" type="button">Ask to trust</button>
+                  <button class="btn btn-g ph-btn" type="button">How</button>
+                </div>
+                <span class="t13 t2">On your Mac: Devices, Chrome on alex's Pixel 8, Trust</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="cap" style="gap: 10px;">
+          <span class="cap-t">2 · Desktop · Firefox on Harlow office PC · just after Ask to trust</span>
+          <div class="win" style="width: 700px; height: 520px;">
+            <div class="win-bar"><i></i><i></i><i></i><span class="u">app.vyre.run</span></div>
+            <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+              <nav class="rail" aria-label="Vyre" style="padding-top: 8px;"><a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg></a><a class="rb" href="#" style="height: 40px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now</a><a class="rb" href="#" style="height: 40px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a><a class="rb" href="#" style="height: 40px;"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a><a class="rb" href="#" style="height: 40px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a><a class="rb" href="#" style="height: 40px;"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a><a class="rb" href="#" style="height: 40px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a><a class="rb rb-on" href="#" aria-current="page" style="height: 40px;"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a></nav>
+              <main class="main">
+                <header class="row" style="height: 44px; flex: none; padding: 0 16px; border-bottom: 1px solid var(--rule); gap: 10px;"><h1 class="t15 w6">Vault</h1><span class="grow"></span><span class="st"><span class="dot"></span>Names only · relay</span></header>
+                <div class="ld" style="grid-template-columns: 220px minmax(0, 1fr);">
+                  <div class="ld-l">
+                    <div class="lrow lrow-on"><span class="av av-32">N</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="w6 trunc">Northwind orders</span><span class="t12 t3 trunc">Login · app.northwind.test</span></div></div>
+                    <div class="lrow"><span class="av av-32">H</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="trunc">Harlow Legal Google</span><span class="t12 t3 trunc">Code · accounts.harlow.test</span></div></div>
+                    <div class="lrow"><span class="av av-32">N</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="trunc">Northwind payments admin</span><span class="t12 t3 trunc">Login · pay.northwind.test</span></div></div>
+                    <div class="lrow"><span class="av av-32">H</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="trunc">Harlow intake API key</span><span class="t12 t3 trunc">API key · intake.harlow.test</span></div></div>
+                    <div class="lrow"><span class="av av-32">H</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="trunc">Harlow Wi-Fi</span><span class="t12 t3 trunc">Note</span></div></div>
+                  </div>
+                  <div class="ld-d" style="padding: 16px 20px; gap: 12px;">
+                    <div class="col" style="gap: 2px;"><h2 class="t20 w6 trunc">Northwind orders</h2><span class="t12 t2">Login · app.northwind.test</span></div>
+                    <div class="card" style="padding: 2px 14px;">
+                      <div class="df" style="border-top: 0; grid-template-columns: 72px minmax(0, 1fr);"><span class="t12 t3">Username</span><span class="mono t2 trunc">••••••••••</span></div>
+                      <div class="df" style="grid-template-columns: 72px minmax(0, 1fr);"><span class="t12 t3">Password</span><span class="mono t2 trunc">••••••••••••••</span></div>
+                    </div>
+                    <section class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 8px;" aria-label="Trust this browser">
+                      <span class="t15 w6">Trust this browser to use the vault here</span>
+                      <span class="t13 t2">This browser was paired through the relay. It can see your vault's names, but it can't show, copy or fill a secret until you trust it from your Mac or phone.</span>
+                      <div class="row" style="gap: 8px; margin-top: 4px;">
+                        <button class="btn btn-p" type="button" disabled="disabled"><span class="spin"></span>Asked · waiting for your Mac</button>
+                        <button class="btn btn-g" type="button">How</button>
+                      </div>
+                      <span class="t12 t2">On your Mac: Devices, Firefox on Harlow office PC, Trust</span>
+                    </section>
+                  </div>
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+
+        <div class="cap" style="gap: 10px;">
+          <span class="cap-t">5 · Phone · the same item, a moment after Trust</span>
+          <div class="phone" style="height: 520px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+            <div style="height: 14px; flex: none;"></div>
+            <div class="row" style="height: 40px; flex: none; padding: 0 12px;"><div class="row grow" style="height: 32px; border-radius: 16px; background: var(--panel); border: 1px solid var(--rule); padding: 0 12px; gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg><span class="t13 t2 trunc">app.vyre.run</span></div></div>
+            <div class="ph-nav" style="position: relative;">
+              <a class="row" href="#" style="gap: 2px; height: 44px; padding-right: 8px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg><span class="t17">Vault</span></a>
+              <span class="t17 w6" style="position: absolute; left: 0; right: 0; text-align: center; pointer-events: none;">Northwind orders</span>
+            </div>
+            <div class="ph-body">
+              <div class="ph-card">
+                <div class="ph-row" style="align-items: center; padding: 10px 14px;"><span class="t13 t2" style="width: 84px; flex: none;">Username</span><span class="t13 grow trunc">orders@northwind.test</span></div>
+                <div class="ph-row" style="align-items: center; padding: 10px 14px;"><span class="t13 t2" style="width: 84px; flex: none;">Password</span><span class="mono t13 t2 grow trunc">••••••••••••••</span></div>
+                <div class="ph-row" style="align-items: center; padding: 10px 14px;"><span class="t13 t2" style="width: 84px; flex: none;">Site</span><span class="t13 grow trunc">app.northwind.test</span></div>
+              </div>
+              <div class="row" style="gap: 8px;">
+                <button class="btn btn-p ph-btn grow" type="button"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg>Reveal</button>
+                <button class="btn ph-btn grow" type="button"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg>Copy</button>
+              </div>
+              <span class="t13 t2">Reveal and Copy ask this phone's fingerprint once; one proof covers 30 min.</span>
+              <span class="t12 t3 row" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>Trusted from alex's MacBook Pro · 14:22</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="row" style="gap: 28px; align-items: flex-start;">
+
+        <div class="cap" style="gap: 10px;">
+          <span class="cap-t">3 · Mac · Now · the ask lands in Needs you</span>
+          <div class="win" style="width: 700px; height: 400px;">
+            <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+            <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+              <main class="main">
+                <header class="row" style="height: 44px; flex: none; padding: 0 16px; border-bottom: 1px solid var(--rule); gap: 10px;"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg><h1 class="t15 w6">Now</h1><span class="grow"></span><span class="st"><span class="dot dot-run"></span>direct 12 ms</span></header>
+                <div class="ld" style="grid-template-columns: 300px minmax(0, 1fr);">
+                  <div class="ld-l">
+                    <div class="grp"><span class="dot dot-need"></span><span style="color: var(--beacon-ink);">Needs you</span><span class="t3" style="margin-left: auto; font-weight: 400;">2</span></div>
+                    <div class="lrow lrow-on">
+                      <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span>
+                      <div class="col grow" style="gap: 2px; min-width: 0;"><div class="row" style="gap: 8px;"><span class="w6 trunc grow">Trust Chrome on alex's Pixel 8?</span><span class="t12 t3">now</span></div><span class="t2 trunc">Asked from that browser</span><span class="t12 t3">Device · over the relay</span></div>
+                    </div>
+                    <div class="lrow">
+                      <span class="av av-32">k</span>
+                      <div class="col grow" style="gap: 2px; min-width: 0;"><div class="row" style="gap: 8px;"><span class="w6 trunc grow">Push q3-report</span><span class="t12 t3">9m</span></div><span class="mono t2 trunc t12">git push origin q3-report</span><span class="t12 t3">Ask · kit · Harlow Legal</span></div>
+                    </div>
+                  </div>
+                  <div class="ld-d" style="padding: 16px 20px; gap: 12px;">
+                    <div class="col" style="gap: 2px;"><h2 class="t15 w6 trunc">Trust Chrome on alex's Pixel 8?</h2><span class="t12 t2">Asked from that browser · paired over the relay 2 h ago · build known</span></div>
+                    <section class="card" aria-label="Trust a browser">
+                      <div style="padding: 4px 14px 6px;">
+                        <div class="df" style="border-top: 0; grid-template-columns: 64px minmax(0, 1fr);"><span class="t12 t3">Kind</span><span>Device · browser from app.vyre.run</span></div>
+                        <div class="df" style="grid-template-columns: 64px minmax(0, 1fr);"><span class="t12 t3">Gets</span><span>Vault secrets, adding devices, trust</span></div>
+                        <div class="df" style="grid-template-columns: 64px minmax(0, 1fr);"><span class="t12 t3">Expires</span><span>After 30 days unused</span></div>
+                      </div>
+                      <div class="card-f">
+                        <button class="btn btn-p" type="button">Trust<span class="k">A</span></button>
+                        <button class="btn btn-g" type="button">Not now<span class="k">D</span></button>
+                      </div>
+                    </section>
+                    <div class="col" style="gap: 2px;"><span class="t12 t2 row" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path><path d="M5.5 6v1M10.5 6v1M8 6v3h-.8M6 10.8c1.2.9 2.8.9 4 0"></path></svg>Trust asks Touch ID once, like pairing</span><span class="t12 t3 trunc" style="padding-left: 18px;">"Trust browser Chrome on alex's Pixel 8 fully"</span></div>
+                  </div>
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+
+        <div class="cap" style="gap: 10px;">
+          <span class="cap-t">4 · Mac · Devices · a browser row in three states</span>
+          <div class="win" style="width: 820px; height: 400px;">
+            <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+            <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+              <main class="main">
+                <header class="row" style="height: 44px; flex: none; padding: 0 16px; border-bottom: 1px solid var(--rule); gap: 10px;"><h1 class="t15 w6">Devices</h1><span class="t12 t3">Browsers from app.vyre.run</span><span class="grow"></span><span class="t12 t3">3</span></header>
+                <div class="col" style="padding: 12px 16px; min-height: 0;">
+                  <div class="list">
+                    <div class="li" style="align-items: flex-start; padding: 10px 16px; cursor: default; flex-wrap: wrap;">
+                      <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span>
+                      <div class="col grow" style="gap: 2px; min-width: 0;">
+                        <div class="row" style="gap: 8px;"><span class="w6 trunc">Chrome on alex's Pixel 8</span><span class="tag">Untrusted</span></div>
+                        <span class="t2 trunc">Browser · over the relay · limited: no vault secrets, can't add devices</span>
+                        <span class="t12 t3 trunc">Paired 2 h ago · build known · Expires after 30 days unused</span>
+                      </div>
+                      <div class="row" style="gap: 8px; flex: none;">
+                        <button class="btn btn-s btn-sm" type="button">Trust this browser</button>
+                        <span class="t12 t3" style="width: 92px;">Touch ID follows</span>
+                      </div>
+                    </div>
+                    <div class="li" style="align-items: flex-start; padding: 10px 16px; cursor: default;">
+                      <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span>
+                      <div class="col grow" style="gap: 2px; min-width: 0;">
+                        <div class="row" style="gap: 8px;"><span class="w6 trunc">Firefox on Harlow office PC</span><span class="tag">Trusted</span></div>
+                        <span class="t2 trunc">Trusted · full powers of your app</span>
+                        <span class="t12 t3 trunc">Trusted from alex's MacBook Pro 3 Sep · build known · Expires after 30 days unused</span>
+                      </div>
+                      <div class="row" style="gap: 8px; flex: none;">
+                        <button class="btn btn-g btn-sm" type="button">Stop trusting</button>
+                        <span class="t12 t3" style="width: 92px;">Touch ID</span>
+                      </div>
+                    </div>
+                    <div class="li" style="align-items: flex-start; padding: 10px 16px; cursor: default;">
+                      <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span>
+                      <div class="col grow" style="gap: 2px; min-width: 0;">
+                        <div class="row" style="gap: 8px;"><span class="w6 trunc">Safari on alex's iPhone</span><span class="tag">Unknown build</span></div>
+                        <span class="t2">This browser runs a build Vyre doesn't recognise. Don't trust it unless you just updated.</span>
+                        <span class="t12 t3 trunc">Release <span class="mono">0.14.4</span> · not in this box's releases · Expires after 30 days unused</span>
+                      </div>
+                      <div class="row" style="gap: 8px; flex: none;">
+                        <button class="btn btn-sm" type="button">Trust this browser</button>
+                        <span class="t12 t3" style="width: 92px;">Touch ID follows</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+
+        <div class="cap" style="gap: 10px;">
+          <span class="cap-t">6 · Mac · Devices · paired again</span>
+          <div class="win" style="width: 520px; height: 400px;">
+            <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+            <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+              <main class="main">
+                <header class="row" style="height: 44px; flex: none; padding: 0 16px; border-bottom: 1px solid var(--rule); gap: 10px;"><h1 class="t15 w6">Devices</h1><span class="grow"></span><span class="t12 t3">Browsers</span></header>
+                <div class="col" style="padding: 12px 16px; gap: 12px; min-height: 0;">
+                  <div class="list">
+                    <div class="li" style="align-items: flex-start; padding: 10px 16px; cursor: default; flex-wrap: wrap;">
+                      <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span>
+                      <div class="col grow" style="gap: 2px; min-width: 0;">
+                        <div class="row" style="gap: 8px;"><span class="w6 trunc">Chrome on alex's Pixel 8</span><span class="tag">Untrusted</span></div>
+                        <span class="t2 trunc">Paired again 1 min ago · limited again</span>
+                        <span class="t12 t3 trunc">Was trusted from alex's MacBook Pro 14:22</span>
+                      </div>
+                      <div class="row" style="flex: 1 0 100%; gap: 8px; padding: 10px 0 0 44px;">
+                        <button class="btn btn-s btn-sm" type="button">Trust this browser</button>
+                        <span class="t12 t3">Touch ID follows</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="col" style="gap: 4px;">
+                    <span class="t15 w6">Trust resets when a browser is paired again.</span>
+                    <span class="t13 t2">A new pairing could be a new person with the same QR, so the browser starts limited until you say otherwise. Its old trust is not carried over.</span>
+                  </div>
+                </div>
+              </main>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <div class="anno" style="width: 388px;">
+      <span class="lbl">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>A browser paired from app.vyre.run is a device of kind web. Until you trust it, it can't pair devices, change trust, enroll or remove presence keys, or take a secret out (reveal, copy, render, resolve, release, export, fill, open a vault session). Everything else works, including the vault list.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>The card sits where Reveal and Copy would be, so the reason shows at the moment you need the secret. Names, kinds and sites stay readable.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Ask to trust is a PROPOSED tool, not built yet (e.g. <span class="mono">relay.devices.ask_trust</span>): it puts one Device row in Needs you on your trusted devices. A second tap doesn't add a second row.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Trust calls <span class="mono">relay.devices.trust {id, trusted}</span>. It needs presence both ways: Trust and Stop trusting each ask Touch ID once. Today the summary prints the device id ("Trust browser &lt;id&gt; fully"); showing the name needs a one-line change.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>An untrusted browser can't call trust on itself, so you trust it from the Mac's Deck or Capsule, or from a trusted phone.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Build known means the release and its manifest hash match a release this box ships with. Unknown keeps Trust, as an outline button, never primary. It catches mistakes, not a determined attacker.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>A browser expires after <span class="mono">relay.web_expiry_days</span> unused (default 30), counted from its last visit. Pairing again sets trust back to limited.</span></div>
+      <div class="anno-i"><span class="anno-n">8</span><span>Smooth: after Ask to trust, the button reads "Asked · waiting for your Mac" in place. When trust lands, the box closes the browser's channel ("trust changed"); the app reconnects quietly and the card turns into Reveal and Copy. No reload, no layout jump.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2700,"height":1260}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

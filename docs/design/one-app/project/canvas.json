@@ -346,6 +346,20 @@
       "w": 2700,
       "h": 1180,
       "title": "Settings: account and project scopes \u00b7 paper"
+    },
+    "TrustBrowser.dc.html": {
+      "x": 15660,
+      "y": 9720,
+      "w": 2700,
+      "h": 1260,
+      "title": "Devices: trusting a browser for the vault"
+    },
+    "TrustBrowser-paper.dc.html": {
+      "x": 15660,
+      "y": 12170,
+      "w": 2700,
+      "h": 1260,
+      "title": "Devices: trusting a browser for the vault \u00b7 paper"
     }
   },
   "createdOnFiles": {
@@ -474,12 +488,14 @@
     "Capsule.dc.html",
     "Takeover.dc.html",
     "Presence.dc.html",
+    "TrustBrowser.dc.html",
     "States-paper.dc.html",
     "InstallLaptop-paper.dc.html",
     "InstallPhones-paper.dc.html",
     "Capsule-paper.dc.html",
     "Takeover-paper.dc.html",
     "Presence-paper.dc.html",
+    "TrustBrowser-paper.dc.html",
     "Teammates.dc.html",
     "TeammatesNeeds.dc.html",
     "Limits.dc.html",
