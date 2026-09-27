@@ -73,6 +73,12 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
   Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
+- From mobile (apps/app on work/mobile 24e2091a wires relay/client), for when relay resumes:
+  (1) README: say createPaths takes `fetch` (RN needs expo/fetch to stream); (2) a `randomBytes`
+  option for paths.js newKey() (Hermes has no getRandomValues); (3) a start-on-the-relay mode:
+  `prefer` path plus a background probe that moves up to direct, so a phone's first request does
+  not wait 1.5 s; (4) make relay/client strict-tsc clean (85 errors, 9 files) so the app drops its
+  hand-written declarations.
 0. (e2e c8e00e7 has the contract; relay.device.presence added in this commit for the native path.
    Web: e2e a33ad94 has it. WAITS until after the native-core milestone (lead). Then, in admit()
    for a web pairing whose hello carries a passkey: ctx.call("presence.enroll", { kind: "passkey",
