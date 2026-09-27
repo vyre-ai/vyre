@@ -6,26 +6,31 @@
 // best first. connector is a real API; intents is an App Intent through a shortcut; script is the
 // app's AppleScript dictionary; ax is the app's own UI through the hands module, the fallback for
 // any app with nothing better (a later slice). Each action says whether it sends, posts, pays or
-// deletes as the person (`sends`): those run only through apps.send, one proof per call.
+// deletes as the person (`sends`): those run only through apps.send, one proof per call, unless
+// the action is also `gated`: then apps.act runs it, the Gate holds what it sends, and the
+// person's approval there is the proof (Slack through the MCP hub).
 
 import clock from "./clock.js";
 import notes from "./notes.js";
 import reminders from "./reminders.js";
 import weather from "./weather.js";
 import planner from "./planner.js";
+import slack from "./slack.js";
+import whatsapp from "./whatsapp.js";
 
 /**
  * @typedef {import("../env.js").Env} Env
- * @typedef {{ title: string, input: any, sends: boolean,
+ * @typedef {{ title: string, input: any, sends: boolean, gated?: boolean,
  *   preview?: (args: any, env: Env) => string | Promise<string>,
  *   run: (args: any, env: Env) => Promise<{ said: string, [k: string]: any }> }} Action
  * @typedef {{ id: string, app: string, bundleIds: string[], tier: "connector" | "intents" | "script" | "ax",
  *   actions: Record<string, Action>,
- *   targets?: (q: string, env: Env) => Promise<Array<{ id: string, title: string, kind: string, subtitle?: string }>> }} Adapter
+ *   targets?: (q: string, env: Env) => Promise<Array<{ id: string, title: string, kind: string, subtitle?: string }>>,
+ *   ready?: (env: Env) => Promise<boolean>, partialTargets?: boolean }} Adapter
  */
 
 /** @type {Adapter[]} */
-export const BUILTIN = [planner, clock, notes, reminders, weather];
+export const BUILTIN = [planner, clock, notes, reminders, weather, slack, whatsapp];
 
 /**
  * The adapters in force: config's own first (so a person or a test can stand in for a built-in),

@@ -66,19 +66,72 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Doing
 
-- Screenshot retake (stale after main's Deck changes). The 403 not_owner blocker is fixed in the
-  tooling (0039172, 8036a21): identity.js refuses anything outside 100.64/10 before whois, so the
-  preload (VYRE_SHOTS_PEER=127.0.0.2=100.64.0.2) makes pairFrom's socket read as 100.64.0.2, the
-  fake whois answers for 100.64.0.2, and after pairing the onboarding carries on at
-  http://alex-box.tail0000.ts.net/onboard (the owner reaching the box closes the loopback door, as
-  on a real box). The four pairing shots retook cleanly. A full run is going on the test box
-  (~/vyre-ci/docs-s, log ~/vyre-ci/docs-s-run.log).
-  Resume: if the run finished, copy back `docs/**/shots/*.png` and `docs/shots.json` from
-  ~/vyre-ci/docs-s, place new shots on pages, regen reference/index from a clean git archive, run
-  the docs tests, redeploy preview (`--branch preview`), send the head to the integrator.
-- Glass boot-failure text applied (c006e55 on main).
-- a93dbcb: agents need no passkey (e6922da on main): using/agents.md, concepts/presence.md (the
-  list now matches HUMAN_ONLY, plus presence.when).
+VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead first.
+- DONE d960197d on work/docs (merged main 7880dfa6 at 9305e4b9):
+  - core/tips: check.js has the tip rules; pick.js has the selection rules (off, busy, gap 30 min
+    per surface, spread 2 min, cap 6 per 24 h, then current module, never-used, update, idle; at
+    most 2 showings). index.js has tips.next/seen/used/dismiss/whatsnew/list/reset and the
+    tips.updated event. Versions are tracked with ran: and seen: meta, and a third-party module
+    uses its own version. Hub settings tips.enabled and tips.gap_minutes, with a config.tips
+    fallback.
+  - The loader has ctx.declaredTips() (core/modules/index.js, the inRepo helper).
+  - 306 tips in 32 manifests. The surface tips (deck, chat, phone, cli, claude-code, modules, box)
+    are in core/tips/module.json with about set and ids prefixed by surface. 48 pending tips are
+    in docs/work/tips-pending.json, keyed by module and branch: capsule-pro, platform (update,
+    module new/check), native-core (settings), teammates (team), vault-next, memory-iq, mobile,
+    polish-cli.
+  - `vyre tips [module|new|reset]`. Pages using/tips.md and build/tips.md are in nav. CHANGELOG
+    updated.
+  - Tests on testbox: core/tips 30/30, test/tips-content 6/6, plus modules, cli, docs-build and
+    hygiene: 133 pass, 0 fail. docs-check is clean except 263 stale shots (the queued retake).
+- The drafts and generator scripts are in the session scratchpad (they may be gone). The
+  manifests are now the source of truth.
+
+## Done after tips (27 Sep 2026)
+
+- Welcome tip (lead): context.first on a surface's first open gives one never-used discovery tip,
+  once per surface (meta welcomed:<surface>, cleared by tips.reset). 1ecf0e94.
+- Merged main 53cd1326. Shots retaken on it: 45 files, and phone-held's wait fixed (a phone opens
+  the held item as a sheet, .nsh-title). docs-check is clean, and the docs tests pass 67/67.
+- Fixed using/capsule.md (Ask about your screen section), using/cli.md (vyre help <command>)
+  and using/connectors.md (Google --sign-in).
+
+## Next (queued before tips)
+
+- Shots retake on current main (docs-check shows 263 stale). Run `uptime` on the test box first
+  and wait while the load is over 8. Then rsync to ~/vyre-ci/docs-s and run `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools
+  CHROME=/usr/local/bin/vyre-chrome nice -n 15 node scripts/docs-shots [--only a,b]`, and copy back the
+  PNGs and docs/shots.json. Include pwa 3b's screens (see Still open).
+- Chat's terminal page, when chat f964f8a/b85ab3f land (Pending below).
+
+## Still open (tips)
+
+- Surface wiring asked of app-design (look), capsule-pro, pwa, chat, mobile, polish-cli (the
+  dim tip line after a command) and native-core (the tips group in GROUPS).
+- platform: the teaches.tips schema in packages/module-sdk/manifest.schema.json. Also whether
+  ctx.declaredTips stays in my diff or they take it. And `vyre update` should call
+  tips.whatsnew {since} after the changelog.
+- As each branch lands on main, move its tips out of tips-pending.json into the manifest, then
+  run test/tips-content.
+- Docs bugs the tip drafting found: using/cli.md:210 (`vyre help <cmd>` shows that command's
+  help, polish-cli); using/capsule.md:203 says screen asks aren't built, but they are
+  (capsule-pro); using/connectors.md:128 lists Google sign-in as coming, but `vyre connect add
+  google --sign-in` exists (connectors).
+- No CLI test for core/cli/commands/tips.js yet (it's thin; the tools are tested).
+
+## Still open
+
+- USER: the yes on the preview before production docs.vyre.run and the custom domain.
+- chat f964f8a, b85ab3f (Deck terminal offsets): rewrite using/chat.md's terminal section when it
+  lands on main (see Pending below).
+- pwa a222fa4 (batch 3b): the first-passkey card now reads "Your passkey confirms messages you send
+  out, payments, deletions, vault secrets and new devices. One tap covers 30 minutes." When 3b is
+  on main: full shots retake (deck-now, deck-new-box, plus tokens.css palette changes: paper
+  hover, code background, paper shadow; Settings VyreDrive rows; the new /pair screen, which
+  may want a new shot on using/tailscale.md; the Reconnecting pill replacing the offline line),
+  and check deck.md and troubleshooting for the old offline line.
+- New decisions to reflect as their code lands: ADR 0030 Agent SDK sessions, one-app, relay and
+  the hosted app, vault v2, CLI and phone first-class (Pending below).
 
 ## Next
 
@@ -86,11 +139,51 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Pending page changes (apply when the code reaches main)
 
+- chat f964f8a, b85ab3f (Deck terminal offsets), HOLD until merged: using/chat.md "Open a terminal
+  on the box" changes: reattaches from its offset with its own scrollback (a cut shows a dim
+  "older output was not kept" line); holds up to 4 KB of keys typed while the link is down and
+  sends them once caught up; after a deploy "The box was updated and this terminal was closed."
+  with a button for a new terminal in the same folder; the last screen to send a size wins;
+  phones get a key bar (Esc, Tab, Ctrl, Alt, arrows, Paste). Drop "Keys typed while the link is
+  down are not sent" and the 64 KB replay line. Retake any terminal shot.
+
+- DONE (f623b257 merge, applied) glass-live 67b85c0 (idle hand-back): glass.md gets "idle" as a fourth way a
+  take-over ends (after Hand back, the 90 s lease, the lease moving); config
+  `computers.handbackIdleMin` 0/2/5/15, default 5, set in Settings, Network, Glass hand-back;
+  owner-only `computers.handback.status` / `computers.handback.set {minutes}`; events
+  `computer.idle-warning {agent, surface, at}` 10 s before (`at: null` = input came in time),
+  `computer.handed-back` with why `idle` and `idle_ms`; thread line "Handed back to <agent> after
+  <n> min idle"; a pong keeps the lease but is not input. Regenerate reference.
+- DONE (applied; chat.md has a new terminal section) resilience c8f5654 (ADR 0029 R4): a terminal with no viewer is kept for
+  `term.keep_hours` (12 h default), runs under dtach and survives a vyred restart, a deploy ends
+  it (term.closed reason "box updated"), term.attach takes from=<offset>. ADR 0024 line 47 ("ends
+  10 seconds after its last viewer leaves"): add a dated note pointing at ADR 0029 rather than
+  rewrite the record; update using/chat.md's terminal section and troubleshooting if it mentions it.
+
+- NEW USER DECISIONS (logout 3), apply as each lands on main:
+  - ADR 0030: Agent SDK sessions are the default for every Vyre-started session (Chat, agents,
+    Capsule, phone, planner/learn jobs); terminal `claude` stays plain; auth Mac=login,
+    box=setup-token, API key fallback; 10 min idle, cap 6; editable system prompt per
+    assistant/agent/project; "Open in terminal" stays; per-purpose model map. Pages: using/chat,
+    using/agents, concepts/box-and-mac, claude-code, a new concepts/sessions page, ADR in nav.
+  - The one-app design (Direction A): one Expo app for web/iOS/Android, hosted at app.vyre.run
+    (ADR 0027). using/mobile, using/deck.
+  - Relay (ADR 0026) and the hosted app; vault v2 (ADR 0028); resilience (ADR 0029).
+  - The CLI and the phone are first-class: every feature gets a CLI verb and a phone path.
+- Applied 2026-09-27 (after main ef51363): glass-live (no passkey for take-over, hand-back,
+  Sign in privately; older-box snag), cc-plugin /vyre todo/remind/agenda/remember/lesson,
+  no-nag at the Gate (deck.md, chat.md, presence.md: send/spend/delete ask, one proof = 30 min,
+  answers/edits/discard ask nothing).
+
+- USER DECISION: Taildrive is "VyreDrive" in all user-facing text, described as "built on
+  Tailscale's Taildrive" with a link to Tailscale's Taildrive docs. Apply when tailnet's rename
+  lands: using/tailscale.md, get-started/tailscale.md, then regenerate reference (tools, index).
+  ADR 0014 keeps its wording (a record).
 - USER STANDING RULE, Vyre must not nag: fewer prompts. Touch ID only for pairing a device, vault
   secrets, and sending, posting or paying outside; one Touch ID lasts about 30 minutes. Pages
   change only when that code lands (presence.md, vault.md, memory.md, learning.md, glass.md,
   deck.md, troubleshooting, first-day, install, concepts/floor.md all describe presence prompts).
-- glass-live dcb03ce (take-over, hand-back and Sign in privately ask for no passkey): when it
+- DONE glass-live dcb03ce: when it
   merges, glass.md step 2 (no passkey needed for Glass), Take over, hand-back, and Sign in
   privately (just Sign in privately, then Start); concepts/presence.md moves computers.takeover
   and computers.giveback to the new PERSON_ONLY list (no proof; agents, tailnet guests and

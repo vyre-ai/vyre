@@ -19,34 +19,50 @@
 //   --session-id <uuid> for a new thread, so its id is known before Claude Code says it;
 //   --resume <id> for an existing one; --plugin-dir <harness> so every thread loads Vyre.
 
-import { spawn } from "node:child_process";
+import { spawnSession, killGroup } from "../sessions/spawn.js";
 
 /**
- * The command line for a headless session.
+ * The command line for a headless session. `system` is the composed system prompt (ADR 0030):
+ * appended to Claude Code's own, or replacing it; without it, `append` is appended as before.
  * `tools: "none"` is `--tools ""` (no built-in tools) and `--strict-mcp-config` with no config
  * (no MCP servers). `settings: false` is `--setting-sources ""`: none of the user's settings,
  * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
- * @param {{ id: string, resume?: boolean, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
- *           append?: string|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
+ * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
+ *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
     "--permission-prompts", "host", "--permission-prompt-tool", "stdio"];
-  a.push(...(o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
+  // A fork continues another session's conversation as a new one, with the id given here.
+  a.push(...(o.forkFrom ? ["--resume", o.forkFrom, "--fork-session", "--session-id", o.id] : o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
+  // A rewind: resume only up to this entry, as Claude Code's double Esc does (the flag the SDK passes).
+  if (o.resumeAt && (o.resume || o.forkFrom)) a.push("--resume-session-at", o.resumeAt);
   for (const dir of [o.plugin, ...(o.plugins || [])]) if (dir) a.push("--plugin-dir", dir);
   if (o.tools === "none") a.push("--tools", "", "--strict-mcp-config");
   if (o.settings === false) a.push("--setting-sources", "");
   if (o.model) a.push("--model", o.model);
+  if (o.mode) a.push("--permission-mode", o.mode);
   if (o.name && !o.resume) a.push("-n", o.name);
-  if (o.append) a.push("--append-system-prompt", o.append);
+  if (o.system && o.system.text) a.push(o.system.mode === "replace" ? "--system-prompt" : "--append-system-prompt", o.system.text);
+  else if (o.append) a.push("--append-system-prompt", o.append);
   if (typeof o.budgetUsd === "number" && o.budgetUsd > 0) a.push("--max-budget-usd", o.budgetUsd.toFixed(2));
   return a;
 }
 
-/** A user turn, as stream-json input. */
-export const userLine = (text, session) => ({ type: "user", message: { role: "user", content: String(text) }, parent_tool_use_id: null, session_id: session });
+/**
+ * A user turn, as stream-json input. `uuid` is the message's own id (the transcript line's, and
+ * the key Claude Code echoes back); `priority: "next"` steers it into a running turn at the next
+ * step, as a message typed while Claude Code works does.
+ * @param {string} text @param {string} session @param {{ uuid?: string, priority?: "next"|"now"|"later", images?: { media_type: string, data: string }[] }} [o]
+ */
+export const userLine = (text, session, o = {}) => ({ type: "user", parent_tool_use_id: null, session_id: session,
+  // Pasted images go first, as image blocks, then the words.
+  message: { role: "user", content: o.images && o.images.length
+    ? [...o.images.map(i => ({ type: "image", source: { type: "base64", media_type: i.media_type, data: i.data } })), { type: "text", text: String(text) }]
+    : String(text) },
+  ...(o.uuid ? { uuid: o.uuid } : {}), ...(o.priority ? { priority: o.priority } : {}) });
 
 /**
  * The answer to a can_use_tool request, as the Agent SDK sends it. Allowing passes the input back
@@ -65,12 +81,16 @@ export function answerLine(requestId, decision, input, message, extra = {}) {
 
 /**
  * Start one session. Calls onMessage for every parsed stdout line and onExit once.
- * @param {{ bin: string, args: string[], cwd: string, env: Record<string, string|undefined>,
+ * @param {{ bin: string, args: string[], cwd: string, env: Record<string, string|undefined>, subreaper?: string|null, uid?: number, gid?: number,
+ *           onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void,
  *           onMessage: (m: any) => void, onExit: (code: number|null, signal: string|null, stderr: string) => void }} o
  */
 export function run(o) {
-  const child = spawn(o.bin, o.args, { cwd: o.cwd, env: /** @type {any} */ (o.env), stdio: ["pipe", "pipe", "pipe"] });
-  let buf = "", err = "", exited = false;
+  // Its own group and session, under the subreaper where there is one (core/sessions/spawn.js).
+  const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, onSpawn: o.onSpawn });
+  let buf = "", err = "", exited = false, n = 0;
+  /** @type {Map<string, { resolve: (r: any) => void, reject: (e: Error) => void }>} control requests Vyre sent, waiting for their answer */
+  const asked = new Map();
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", chunk => {
     buf += chunk;
@@ -80,6 +100,12 @@ export function run(o) {
       if (!line.trim()) continue;
       let m;
       try { m = JSON.parse(line); } catch { continue; }       // a stray non-JSON line is not a session event
+      // The answer to a control request Vyre sent (control()) goes back to it, not to the session.
+      if (m && m.type === "control_response" && m.response && asked.has(m.response.request_id)) {
+        const a = asked.get(m.response.request_id); asked.delete(m.response.request_id);
+        if (m.response.subtype === "error") a.reject(new Error(String(m.response.error || "Claude Code refused it"))); else a.resolve(m.response.response || {});
+        continue;
+      }
       try { o.onMessage(m); } catch {}
     }
   });
@@ -98,17 +124,33 @@ export function run(o) {
   write({ type: "control_request", request_id: "vyre-init", request: { subtype: "initialize" } });
 
   return {
-    pid: child.pid,
+    // A getter: through the box's spawner the pid is known a moment after the call.
+    get pid() { return child.pid; },
     write,
     get alive() { return !exited; },
+    /**
+     * A control request (set_model, rewind_files, stop_task and the like), answered by Claude Code.
+     * @param {string} subtype @param {Record<string, any>} [fields]
+     */
+    control(subtype, fields = {}) {
+      if (exited) return Promise.reject(new Error("the session has ended"));
+      const rid = `vyre-ctl-${++n}`;
+      return new Promise((resolve, reject) => {
+        asked.set(rid, { resolve, reject });
+        write({ type: "control_request", request_id: rid, request: { subtype, ...fields } });
+        setTimeout(() => { if (asked.delete(rid)) reject(new Error(`Claude Code did not answer ${subtype}`)); }, 15_000).unref?.();
+      });
+    },
+    /** Stop the current turn (as Escape does); the session stays. */
+    interrupt() { write({ type: "control_request", request_id: `vyre-int-${Date.now()}`, request: { subtype: "interrupt" } }); return Promise.resolve(); },
     /** End it: close stdin (Claude Code finishes and exits), then TERM, then KILL. */
     stop(grace = 3000) {
       return new Promise(resolve => {
         if (exited) return resolve(undefined);
         child.once("exit", () => resolve(undefined));
         try { child.stdin.end(); } catch {}
-        const term = setTimeout(() => { try { child.kill("SIGTERM"); } catch {} }, Math.min(500, grace));
-        const kill = setTimeout(() => { try { child.kill("SIGKILL"); } catch {} }, grace);
+        const term = setTimeout(() => killGroup(child, "SIGTERM"), Math.min(500, grace));
+        const kill = setTimeout(() => killGroup(child, "SIGKILL"), grace);
         child.once("exit", () => { clearTimeout(term); clearTimeout(kill); });
       });
     },

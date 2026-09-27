@@ -78,15 +78,16 @@ When an agent wants to send something, the Gate holds it and Now lists it in the
 
 ![A held email opened in the Deck: who it goes to, the subject and body you can edit, and Send or Discard](shots/deck-held.png)
 
-Send, Discard, Allow and Deny are a person's actions, so the Deck sends each one with a passkey
-proof: the browser asks for Touch ID, Face ID or your security key first (see
-[Add a passkey](#add-a-passkey)). If the send fails, the item goes back to held with the error
-shown above the fields ("Held again: ...").
+Send, Discard, Allow and Deny are a person's actions: agents and Claude's sessions can't press
+them. Only sending, posting, paying or deleting asks you to prove you are there. The first Send
+asks for Touch ID, Face ID or your security key (see [Add a passkey](#add-a-passkey)), and that
+one proof covers the next 30 minutes on this device. Editing and Discard ask for nothing. If the
+send fails, the item goes back to held with the error shown above the fields ("Held again: ...").
 
 ## Answer a permission question
 
 A session that wants to use a tool it has no permission for raises an ask. Now lists it; open it
-and choose Allow or Deny. Your answer carries a passkey proof, as a send does.
+and choose Allow or Deny. Answering asks for no passkey.
 
 ## Follow and type into a thread
 
@@ -126,6 +127,8 @@ onboarding at that step. `vyre index` does the history step from a terminal.
 
 ![Settings in the Deck: the six setup steps, each marked To do or Done with a Finish or Open button, then your name and address](shots/deck-settings.png)
 
+![Settings, Your devices: the iPhone alex-iphone, offline in Tailscale with how to turn it back on, and the Mac alex-mbp online, with Add a device.](shots/settings-devices.png)
+
 Beside each step is the command that does the same from a terminal: `vyre up` (it picks up at
 the first step not finished) or, for history, `vyre index`.
 
@@ -156,8 +159,9 @@ Reload the Deck to see the change. The token names and their defaults are in
 
 ## Add a passkey
 
-A passkey proves a person is at the device, for a Gate approval, an answer to a permission
-question, approving a new Mac, or a Glass take-over ([ADR 0004](../adr/0004-presence.md)).
+A passkey proves a person is at the device, for approving a send, a payment or a deletion at the
+Gate, approving a new Mac, or showing a vault value ([ADR 0004](../adr/0004-presence.md)). One
+proof lasts 30 minutes on that device.
 
 Your first passkey comes from a one-time link that the box hands only to its own terminal. Until
 you have one, Now shows **Make your first passkey** with the two commands that print the link:

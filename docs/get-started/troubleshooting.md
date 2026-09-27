@@ -165,7 +165,7 @@ The Mac and the box are on different Tailscale accounts. Sign the Mac in to Tail
 
 ### The pairing code expired
 
-The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre up` again for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
+The code `vyre up` prints lasts 10 minutes; after that `vyre link` says "the pairing code expired; start again". Run `vyre link pair <address>` for a fresh one. On the box, `vyre link approve <code>` needs your passkey, which only the Deck can give, so it says to approve in the Deck.
 
 ### "The Mac that is asking cannot approve itself."
 
@@ -186,32 +186,21 @@ The Deck on the box lists the paired Mac's sessions while the Mac is awake and o
 
 ## The Capsule
 
-### macOS says it cannot check the app for malicious software
+### "The Capsule is built with Apple's Command Line Tools, which are not installed"
 
-The app is not signed with a Developer ID yet. Right-click `Vyre.app`, choose **Open**, then **Open** again. If the dialog offers only **Done**, open System Settings, then Privacy & Security, and choose **Open Anyway**.
+`vyre capsule` builds the Capsule on this Mac. Run `xcode-select --install`, then `vyre capsule install`.
 
 ### Permissions you grant do not stick
 
-Open `Vyre.app` from `~/Applications` (where `vyre capsule install` puts it) or `/Applications`. Opened from Downloads, macOS runs it from a temporary copy. A Capsule you build yourself is signed ad hoc, so macOS may ask again after each build.
+A Capsule signed ad hoc is a new identity to macOS after each rebuild (an npm update that changes its source rebuilds it). `vyre capsule` offers once to make a local signing identity ("Vyre Local") in your login keychain; with it, grants survive rebuilds. Without it, turn Vyre off and on again under Input Monitoring after an update.
 
 ### Control twice does nothing
 
-Click the Capsule's icon in the menu bar. A line starting `Double-Control is off:` says why:
-
-- **the helper is not built (vyre capsule build)**: run `vyre capsule build` (it needs the Xcode command line tools).
-- anything else: grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` so it opens wired to this Mac's `vyred`.
+Click the Capsule's icon in the menu bar. A line starting `Double-Control is off:` says why. Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` so it opens wired to this Mac's `vyred`. Option-Space opens it meanwhile; it needs no permission.
 
 ### "the Capsule is not installed: vyre capsule install"
 
-`vyre up` looked for `Vyre.app` and a local build and found neither. Run `vyre capsule install`.
-
-### "Electron is not installed for the Capsule."
-
-`vyre capsule` found no installed `Vyre.app` and nothing to run from source. Run `vyre capsule install` for the packaged app, or `vyre capsule build` to install Electron into the package and build the helpers.
-
-### "The packaged app is older than its source"
-
-You built `Vyre.app` with `vyre capsule build --app`, then the source changed (an npm update, say). `vyre capsule` runs the source instead and says so. Run `vyre capsule build --app` to package it again.
+`vyre up` found no Capsule source to build on this Mac, or `vyre doctor` found no built app in `~/.vyre/capsule`. Run `vyre capsule install`.
 
 ## Everyday
 

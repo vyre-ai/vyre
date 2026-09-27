@@ -53,24 +53,38 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - b1dbb49b cc-plugin a081ad15 alone (SECURITY: vault Read when vyred says denied): cc-plugin +
   harness 33/33, learn + about 117/117.
 
-## Doing
+## Done (2026-09-27, after Logout 3)
 
-- Batch on pre/queue (../vyre-integrator): planner ee8c92e+3c75e47, cc-plugin 745e646+284e1875,
-  phone-design 50d88d0, polish-cli 998c2a1, tailnet cd12475+23c7cda, deck-design 36d5a5b,
-  capsule-apps aedaeef+a20b2aa, memory-iq 6f2c57c, glass-live 67b85c0, e2e d2c7a22,
-  mobile-presence eb6fe6f, app-design 0f8cdff, plus fixes: term.js violet fallback, deck.md front
-  matter + nav, phone.md terms ignores, apps test off-list tool vault.put, upgrade assistant test
-  (agents.create is PERSON_ONLY). Targeted 946: green after the fixes. Full suite waits on load < 4,
-  then land on main merge by merge, push each, then hand the suite slot to sessions (SDK driver).
-- capsule-pro a272a2a staged on pre/capsule: builds on CI; local/voice/talk.test.js fails there
-  ("no stream left open"). Held until green.
+- main e671d35 (google test), 123e70f6 (switchboard realpath), b1dbb49b (cc-plugin vault Read fix),
+  15e82dd7 (batch 1 + term save fix), 78b0752a/9efbddc0 (docs/design out of the package, cap 12 MB),
+  c8fb9aae (batch 2: relay, native Capsule, resilience, tokens, docs; eval said.js),
+  fb1ed1d1 (3a: sessions 4311fca5 with the SDK default, chat fb0694d, chat contract 6182766).
 
-## Next
+## Done: batch 4 landed (2026-09-27 18:50 UTC)
 
-- sessions 0bae485 after its security blockers; relay, vault, resilience as they report ready.
-- mobile only after its coral is gone. perf-check RSS baseline of main at low load (lead asked).
-- Registry: callerKind("mcp:thread:<id>") not stripped (planner found it; sessions owns) before the
-  SDK default flip.
+- main = bc751624 (pushed), fast-forward from 53cd1326. Contents: docs 393b7c97 (tips), capsule-now,
+  capsule-agent + capsule-pro 170dac3b, app-design be98d494 (specs), capsule-apps e99b09d,
+  teammates, platform a1c3fbfc + b4fix 97686e1b, memory-iq 0f0c17a2, e2e 4e5a27f7, e2e-noclaude
+  88c90d56, polish-cli 4bc5c14b, tailnet a7365a99, mobile 8bc3b5b1 + 48f84c63, native-core 3ae4fc93,
+  settings-write 70242656, chat 0f5402c6, pwa 2a577ede, cohesion f5cd36f7, sessions 51eaa964 +
+  e9d734c7, ci d4cb2610, ci-boundaries de5651bf (last).
+- Integrator fixes: f67144f3 bare tailnet caller, 91f34bae module-sdk schema/types, d49d535e
+  chat CSS on the 719 query and radius roles, cdd4b768 + 72e1a2dc drift freeze with owners,
+  f7226849 settings claudeHome, de3c1e9e five edges frozen, 63d943f5 theme test via roles,
+  daemon.test close, bc751624 waiting leaves the planner to the box on a Mac.
+- Checks: full suite at f7226849 3482 tests (fails since fixed or known flakes); targeted rerun at
+  bc751624 on the test box, all green: daemon, federation-reads, waiting, theme, deck-contract,
+  chat contract, cohesion-drift, boundaries, module-sdk, docs-*, hygiene, system, sessions,
+  journey, temp-home guard.
+- Debts after 0.1.0: the five sessions/switchboard edges (sessions); drift copies (mobile x2,
+  native-core, capsule-pro).
+
+## Next: batch 5 queue
+
+- native-core ac34c322 hub step 1 (after e2e review), app-design b756d128 (core/appearance),
+  platform 7398763b, mobile 503414d4, pwa 34195805, sessions db4af9c3 (501ca3fc held for e2e's
+  split check), vault-9a f4272358 (+9b with connectors f71009d9 once on_behalf HIGH is fixed),
+  memory-iq later WIP, chat tip after 0f5402c6, federation after 0.1.0.
 
 ## Needs from others
 

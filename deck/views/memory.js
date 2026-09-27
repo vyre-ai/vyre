@@ -14,15 +14,16 @@
 //
 // Address: /memory?tab=lessons | ?project=<slug>&view=list&about=<fact or node id>&around=<node id>
 
-import { h, put, link, go, empty } from "../js/dom.js";
+import { h, put, link, go, empty, isPhone } from "../js/dom.js";
 import { attempt, call } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when, clock, startOfToday, plural } from "../js/fmt.js";
 import { floor, legendMark } from "./memory-map.js";
 import { graphCursor, projectsFrom, turnHref, relWords, pct, roomInput } from "./memory-data.js";
 import { correctForm, corrected, errWords } from "./memory-correct.js";
+import { indexHistoryInline } from "../js/empty-actions.js";
 
-const phone = () => window.matchMedia("(max-width: 760px)").matches;
+const phone = () => isPhone();
 const typing = el => !!el && typeof el.closest === "function" && el.closest("input, textarea, select, [contenteditable]") !== null;
 const seenAt = f => f.seen || f.since || 0;
 /** "3 weeks ago" from an age in words; nothing for "today", which the date already says. */
@@ -230,9 +231,9 @@ export default async function memory(ctx) {
         h("button", { type: "button", class: "btn btn-ghost mem-show-all", onclick: () => todayChip.click() }, "Show all facts"));
     }
     if (st.project) return h("div", { class: "empty mem-empty" }, h("p", null, `Memory holds nothing about ${projectName(st.project)} yet.`),
-      h("p", { class: "small faint" }, "It learns from this project's threads as they are indexed."));
+      h("p", { class: "small faint" }, "It learns from this project's threads as they are indexed."), indexHistoryInline());
     return h("div", { class: "empty mem-empty" }, h("p", null, "Memory holds no facts yet."),
-      h("p", { class: "small faint" }, "It learns people, organisations and what links them from your threads as they are indexed."));
+      h("p", { class: "small faint" }, "It learns people, organisations and what links them from your threads as they are indexed."), indexHistoryInline());
   }
 
   // List ---------------------------------------------------------------------------------------

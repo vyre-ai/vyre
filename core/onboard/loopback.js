@@ -28,8 +28,9 @@ export const TOOLS = new Set(["onboard.status", "onboard.you", "onboard.name", "
   "onboard.skip", "onboard.finish", "onboard.passkey", "projects.catalog", "projects.create", "projects.list", "recall.status"]);
 
 const onboardPath = p => p === "/onboard" || p.startsWith("/onboard/");
-/** The Deck's shared files the onboarding page loads: static, the same for everyone. */
-const assetPath = p => /^\/(css|js|vendor)\/[\w./-]+$/.test(p) && !p.includes("..") || p === "/icon.svg";
+/** The Deck's shared files the onboarding page loads, theme and fonts included: static, the same for everyone. */
+const assetPath = p => /^\/(css|js|vendor|fonts)\/[\w./-]+$/.test(p) && !p.includes("..") || p === "/icon.svg" || p === "/theme.css"
+  || /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.test(p);   // the client js/api.js imports (ADR 0029)
 const TAILNET4 = /^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./;
 
 /**

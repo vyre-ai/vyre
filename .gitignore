@@ -8,6 +8,8 @@ site/box/
 site/install.sh
 site/_redirects
 __pycache__/
-box/Vyre-mac.sha256
 docs-site/
 build.json
+# Old Electron-era helper builds (hotkey, local, vyre-launcher); never committed.
+local/capsule/bin/
+app-out/

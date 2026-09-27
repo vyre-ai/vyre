@@ -23,31 +23,43 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
+| [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
-| [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
+| [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
-| [`hands`](#hands) | `local/hands-mac` | `local` | 2 | 1 | none |
+| [`hands`](#hands) | `local/hands-mac` | `local` | 5 | 3 | none |
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 19 | 12 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
-| [`memory`](#memory) | `core/memory` | `box`, `local` | 18 | 5 | capsule, cli, deck |
+| [`memory`](#memory) | `core/memory` | `box`, `local` | 20 | 6 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 7 | 4 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 5 | cli |
-| [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 11 | 6 | capsule, cli, deck |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 9 | 5 | cli |
+| [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
+| [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
+| [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
+| [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 16 | 5 | cli |
+| [`settings`](#settings) | `core/settings` | `box`, `local` | 6 | 1 | cli, deck |
+| [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
+| [`sight`](#sight) | `core/sight` | `box`, `local` | 4 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
+| [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 23 | 13 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 40 | 26 | cli |
+| [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
+| [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
+| [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
 
 ## about
@@ -66,14 +78,15 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [10](tools.md#agents), 1 of them only for other modules
+- Tools: [10](tools.md#agents)
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## apps
 
-Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders and the weather. Actions that send as the person go through apps.send, with a proof per call.
+Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders, the weather, Slack and WhatsApp. Actions that send as the person go through apps.send, with a proof per call (WhatsApp, through the hands), or are held at the Gate for the person to approve (Slack).
 
 - Folder: `local/apps`, version 0.1.0
 - Runs on: `local`
@@ -81,6 +94,7 @@ Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and a
 - Tools: [6](tools.md#apps)
 - Emits: [2 events](events.md#apps)
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## capsule
 
@@ -92,6 +106,7 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Tools: [3](tools.md#capsule)
 - Emits: [2 events](events.md#capsule)
 - Shows on: capsule, cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## chrome
 
@@ -101,6 +116,7 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Tools: [5](tools.md#chrome)
 - Emits: [1 events](events.md#chrome)
 - Shows on: cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`
 
 ## computers
 
@@ -113,6 +129,17 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Streams: `glass`
 - Needs vault: `tailscale-agent-authkey`
 
+## context
+
+Where the user is now: the project, folder, thread, app, window and page each surface last reported, merged into one answer (ADR 0036, part 2).
+
+- Folder: `core/context`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [2](tools.md#context)
+- Emits: [1 events](events.md#context)
+- Shows on: cli
+
 ## files
 
 Find, look at and bring over files on this machine and the box, inside the folders the user chose and never anywhere secret.
@@ -123,17 +150,19 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Tools: [17](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## gate
 
 - Folder: `core/gate`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [9](tools.md#gate), 2 of them only for other modules
-- Emits: [5 events](events.md#gate)
+- Tools: [10](tools.md#gate), 2 of them only for other modules
+- Emits: [6 events](events.md#gate)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-sender`
 - Teaches memory: `draft.edited`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## glass
 
@@ -143,6 +172,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Tools: [13](tools.md#glass)
 - Emits: [8 events](events.md#glass)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## google
 
@@ -153,17 +183,19 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Emits: [7 events](events.md#google)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-connection`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## hands
 
-Computer use on macOS through the accessibility tree: observe an app, act on one control, and verify by observing again.
+Computer use on macOS through the accessibility tree: observe an app, act on one control and verify by observing again, inside the floor, with a visible indicator and a stop key.
 
-- Folder: `local/hands-mac`, version 0.1.0
+- Folder: `local/hands-mac`, version 0.2.0
 - Runs on: `local`
 - Requires: none
-- Tools: [2](tools.md#hands)
-- Emits: [1 events](events.md#hands)
+- Tools: [5](tools.md#hands)
+- Emits: [3 events](events.md#hands)
 - Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## hands-desktop
 
@@ -173,6 +205,7 @@ Computer use on macOS through the accessibility tree: observe an app, act on one
 - Tools: [4](tools.md#hands-desktop)
 - Emits: [1 events](events.md#hands-desktop)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`
 
 ## harness
 
@@ -194,6 +227,7 @@ Inbound webhooks from the public internet through Tailscale Funnel: one route at
 - Emits: [3 events](events.md#hooks)
 - Shows on: capsule, cli, deck
 - Needs vault: `per-route`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## learn
 
@@ -204,6 +238,7 @@ Inbound webhooks from the public internet through Tailscale Funnel: one route at
 - Emits: [13 events](events.md#learn)
 - Shows on: capsule, cli, deck
 - Teaches memory: `preference`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## link
 
@@ -212,9 +247,10 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [19](tools.md#link), 2 of them only for other modules
-- Emits: [12 events](events.md#link)
+- Tools: [21](tools.md#link), 2 of them only for other modules
+- Emits: [14 events](events.md#link)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## mcp
 
@@ -225,15 +261,17 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Emits: [9 events](events.md#mcp)
 - Shows on: cli, deck
 - Needs vault: `per-connection`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## memory
 
 - Folder: `core/memory`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#memory), 1 of them only for other modules
-- Emits: [5 events](events.md#memory)
+- Tools: [20](tools.md#memory), 1 of them only for other modules
+- Emits: [6 events](events.md#memory)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## names
 
@@ -244,6 +282,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Emits: [6 events](events.md#names)
 - Shows on: cli
 - Needs vault: `cloudflare-vyre-token`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## network
 
@@ -255,6 +294,7 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Tools: [5](tools.md#network)
 - Emits: [2 events](events.md#network)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## onboard
 
@@ -275,32 +315,35 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Tools: [15](tools.md#planner)
 - Emits: [6 events](events.md#planner)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## presence
 
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [7](tools.md#presence), 1 of them only for other modules
-- Emits: [4 events](events.md#presence)
+- Tools: [11](tools.md#presence), 1 of them only for other modules
+- Emits: [6 events](events.md#presence)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## projects
 
 - Folder: `core/projects`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [8](tools.md#projects)
+- Tools: [9](tools.md#projects)
 - Emits: [5 events](events.md#projects)
 - Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## push
 
 - Folder: `core/push`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [6](tools.md#push)
-- Emits: no events
+- Tools: [8](tools.md#push)
+- Emits: [3 events](events.md#push)
 - Shows on: capsule, cli, deck
 - Needs vault: `push-vapid`
 
@@ -312,6 +355,89 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Tools: [10](tools.md#recall)
 - Emits: [3 events](events.md#recall)
 - Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## relay
+
+A second way to reach the box besides Tailscale: the box dials out to a relay, and devices paired by QR code reach it over an end-to-end encrypted channel.
+
+- Folder: `core/relay`, version 0.1.0
+- Runs on: `box`
+- Requires: none
+- Tools: [13](tools.md#relay), 1 of them only for other modules
+- Emits: [5 events](events.md#relay)
+- Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## releases
+
+The Android app from the box: CI's unsigned APK, signed with the owner's own key, served to the owner's devices at /apps/.
+
+- Folder: `core/apps`, version 0.1.0
+- Runs on: `box`
+- Requires: `vault`
+- Tools: [2](tools.md#releases)
+- Emits: no events
+- Shows on: cli
+- Needs vault: `android-release-key`
+
+## screen
+
+Screen context on macOS: the front app, window, focused control, URL and visible text, kept current by accessibility notifications, redacted in secure fields and blind in the floor's places. On demand screenshots.
+
+- Folder: `local/screen-mac`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [2](tools.md#screen)
+- Emits: no events
+- Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## sessions
+
+How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.
+
+- Folder: `core/sessions`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [16](tools.md#sessions), 3 of them only for other modules
+- Emits: [5 events](events.md#sessions)
+- Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## settings
+
+One way to read and change every setting, at account or project level, wherever it is kept.
+
+- Folder: `core/settings`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [6](tools.md#settings), 2 of them only for other modules
+- Emits: [1 events](events.md#settings)
+- Shows on: cli, deck
+
+## sideview
+
+The side view on macOS: a session on the left and Chrome (or Glass on the box) filling the rest, tiled through the accessibility API in one call, and put back on close.
+
+- Folder: `local/sideview`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [3](tools.md#sideview)
+- Emits: no events
+- Shows on: no surface
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## sight
+
+One screen service for the user's Mac and every agent's computer: what is on it, what was just done on it, and the frame stream where one may leave the machine.
+
+- Folder: `core/sight`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#sight)
+- Emits: [1 events](events.md#sight)
+- Shows on: no surface
 
 ## statusline
 
@@ -321,6 +447,18 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [1](tools.md#statusline)
+- Emits: no events
+- Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## suggest
+
+Predictive text for every surface: names after @, commands after /, entities, accounts and times as the user types.
+
+- Folder: `core/suggest`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#suggest), 1 of them only for other modules
 - Emits: no events
 - Shows on: cli
 
@@ -342,15 +480,30 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Emits: [2 events](events.md#term)
 - Shows on: no surface
 - Streams: `pty`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## threads
 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [23](tools.md#threads), 11 of them only for other modules
-- Emits: [13 events](events.md#threads)
+- Tools: [40](tools.md#threads), 13 of them only for other modules
+- Emits: [26 events](events.md#threads)
 - Shows on: cli
+- Needs vault: `claude-setup-token`, `anthropic-api-key`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## tips
+
+One short tip at a time about the part of Vyre you are using, the parts you have not tried, and what an update brought. Each module ships its own tips; this one chooses, never nags, and turns off in Settings.
+
+- Folder: `core/tips`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [7](tools.md#tips)
+- Emits: [1 events](events.md#tips)
+- Shows on: cli
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
 ## vault
 
@@ -360,6 +513,32 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Tools: [80](tools.md#vault), 1 of them only for other modules
 - Emits: [31 events](events.md#vault)
 - Shows on: capsule, cli, deck
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## voice
+
+Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.
+
+- Folder: `local/voice`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [3](tools.md#voice)
+- Emits: no events
+- Shows on: capsule
+- Streams: `listen`
+- Needs vault: `voice-deepgram-key`, `voice-openai-key`, `voice-elevenlabs-key`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## waiting
+
+One list of what waits on the user: session asks, held drafts, ringing reminders and pairing requests.
+
+- Folder: `core/waiting`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [2](tools.md#waiting)
+- Emits: [1 events](events.md#waiting)
+- Shows on: cli
 
 ## watchers
 
@@ -371,3 +550,4 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Shows on: capsule, cli, deck
 - Needs vault: `per-watcher`
 - Teaches memory: `watcher.item`
+- Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`

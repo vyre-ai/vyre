@@ -54,6 +54,24 @@ them, one per fix.
    line is not sent to a model (the quote under it is). No model runs for any of this. Reference:
    `lib/said.js` `rankSaid`, `yourAnswer`.
 
+8. **Esc takes back queued words.** On a reply queued for a terminal-busy session with no reply
+   text yet: not handed over, Esc calls `threads.unqueue {thread, queued: queued_id, surface}`;
+   a non-empty `unqueued` finishes the reply as "taken back" with the note "Taken back. <name>
+   never got it."; an empty one means it was handed over meanwhile: mark it delivered and say
+   "Too late: <name> already has it. Its reply shows here when its turn ends." Handed over: Esc
+   stops following only ("Stopped following. <name> already has your message; its reply lands
+   in its thread."), never threads.stop. Reference: `bridge.js` `unqueue`.
+
+9. **A queued reply follows its own turn, live.** While queued, the thread's `thread.text`,
+   `thread.tool` and `thread.finished` belong to the turn it is busy with: ignore them. The
+   reply is handed over at the `thread.sent` whose `queued` equals its `queued_id` (any
+   `queued` when the id is unknown); remember that event's `turn` if it has one. From then on,
+   fold the pieces as they stream (caret on) and finish at the next `thread.finished`; with a
+   turn known, drop events that name a different `turn`. Terminal sessions still answer in one
+   piece at their Stop (`threads.replied`); owned sessions (ADR 0030) stream. The status line
+   after hand-over: "Handed to <name>. Its reply shows here as it comes." Reference:
+   `state.js` `applyReply`, `State.swift` `applyReply`.
+
 ## Done
 - f5bd7b9 fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
 - cf4531e fix(capsule): memory in quick prompts, quotes as quotes, notices as status, question line.
@@ -63,35 +81,65 @@ them, one per fix.
   `VYRE_CAPSULE_STAY=1`. `present()` in lib/present.js is shared by main.js and the check script;
   unit tests in present.test.js. Default behaviour is unchanged.
 - 9c9514a fix(capsule): the memory box ranks for the question (lib/said.js), rule 7.
+- 8c888cb feat(threads): `live` on threads.list and projects.catalog rows; threads.unqueue.
+- On work/capsule-agent: 3ce1433 the native Capsule calls capsule.report on hotkey state change
+  (HotkeyReport, retried on reconnect); a132faf waiting on you is violet #B8A4FF (Theme.attention)
+  in the native and Electron Capsules; 7526089 a compile fix for a stray `askItem` line that is
+  also on work/capsule-pro's tip.
+- Esc on a queued reply takes it back in the Electron Capsule (rule 8); the native one is on
+  work/capsule-agent.
+- Tailnet has my answers to its Mac-send design (sent 2026-09-27).
 
 ## Doing
-- Full-screen fix: waiting for the lead's word that the user has stepped away, then run
-  `VYRE_FULLSCREEN_OK=1 ELECTRON_BIN=<main tree>/local/capsule/node_modules/electron/dist/Electron.app/Contents/MacOS/Electron <team-dir>/buildlock.sh capsule-now node scripts/capsule-spaces/run.js`.
-  It prints, per variant (default, stay, stay-then-steal): stayedOnFullScreenSpace, panelKey,
-  frontApp. If "stay" stays and is key, check typing by hand over the full-screen window and over a
-  normal app; if both work, make it the default (drop the flag). If typing over a normal app fails
-  with "stay", keep activation for normal apps and use "stay" only when a full-screen app is in
-  front (that needs the hotkey helper to report it, which means a rebuild and a permission re-grant:
-  ask the lead first).
+- Nothing in flight. Stopped 2026-09-27 on the lead's word: the user is refocusing on the native
+  core. Final shas: work/capsule-now 8eece58+ (Electron rule 9, main merged), work/capsule-agent
+  42e8da0 (native rule 9, main merged). Merge capsule-now before capsule-agent.
+- sessions built rules 1 to 9 on work/sessions b8b1a0a7, then d12171cc (batch 3a): thread.steered {uuid, turn, step}; an idle send emits thread.turn {turn, uuid} (result stays {sent:true, thread}); send-now returns {sent, queued, uuid, turn}; one threads.unqueue (main's folded in). `threads.send-now {thread, queued}`
+  (dash, not underscore), owned-session note "<name> is working on something..." with
+  busy:"working", `turn` on every turn event, thread.unqueued gains uuid and reason. When
+  sessions merges, keep ONE threads.unqueue (theirs supersedes the switchboard copy here).
 
-## Next
-- Esc on a queued reply only stops following; the message still goes. A `threads.unqueue` for an
-  undelivered message would let Esc withdraw it.
-- The reply arrives whole at the turn's end (the Stop hook's `last_assistant_message`), not
-  streamed: streaming from the transcript would need a file watch or polling faster than 60 s.
-- A queued message for a session that is later resumed headless is delivered at that child's Stop.
-- `threads.unqueue` (withdraw an undelivered message; the phone wants it too) and streaming the
-  reply live.
+## Next (open requests, in order)
+- threads.unqueue on the phone (mobile's, rule 8 is the spec).
+- Cmd-Enter on a queued reply calls `threads.send-now {thread, queued: queued_id}` (sessions
+  b8b1a0a7). {sent:false, note} for a terminal-busy session: show the note, stay queued. Then a
+  live test against an owned session on the fake. Keep the no-`turn` fallback for terminal
+  sessions (threads.replied carries no turn).
+- Terminal sessions could stream too, from recall.watch on the transcript (on main via chat
+  46e68bc); only if the user wants it, since it reads the transcript while the Capsule is open.
+- The DM view (applyDm) has the same busy-turn mix-up for queued words: port rule 9 there.
+- tailnet (answers sent 2026-09-27): sending to Mac sessions from the box. My answers:
+  1 yes: a separate WRITE allowlist (threads.send, later threads.unqueue), person callers only, and
+    `as: "person"` checked on the Mac.
+  2 yes, with an explicit caller kind "link" in guard() and surfaceOf() instead of relying on the
+    `/^(mcp|harness)/` regex. The queued note names the Mac ("<name> is busy in your terminal on
+    alex-mac. ...").
+  3 Events: thread.queued, thread.sent{queued, via}, thread.text (done), thread.finished. For a
+    queued message the stop signal is the thread.finished that follows its thread.sent{queued}, not
+    the first thread.finished (which may be the turn it interrupted). Keep the 30-minute cap.
+  4 Always queue when anything on the Mac holds the lease; never take it from the Capsule.
+  Misses: the Stop hook hand-over (harness.stop -> threads.inbox / threads.replied) runs on the Mac
+  unchanged; an idle terminal session only gets the words on its next prompt (no nudge).
+  threads.unqueue now exists (below); the link WRITE allowlist is tailnet's to extend.
+- Watched-thread reports on the empty native Capsule (Electron listed up to 4).
+
+## Standing rule (user, 2026-09-27)
+- Vyre does not nag: the user runs on bypass permissions. No prompts and no Touch ID for the
+  person's own actions. Touch ID only for pairing a new device, vault secrets, and sending, posting
+  or paying outside; one Touch ID lasts about 30 minutes per device.
 
 ## Needs from others
-- capsule-pro: carry rules 1 to 6 into the Swift Capsule.
-- lead: confirm typing over normal apps, then the stay-by-default patch (scratch
-  `stay-default.patch`, not committed) goes in.
-- lead: say when the Mac is free for the full-screen check (it takes over the display for ~15 s).
-- switchboard: a new migration (`threads_inbox`) was appended to `MIGRATIONS`; if work/switchboard
-  also appends one, order them at merge.
+- capsule-pro: rules 1 to 7 are carried by the native Capsule (merged). A popover row for
+  "Waiting on you · N".
+- lead: the trust decision on presence from the box (tailnet item 5).
+- switchboard: the threads_inbox migration was appended to MIGRATIONS; order it at merge if needed.
 
 ## Changed contracts
+- `threads.list` rows and `projects.catalog` sessions gain `live` (boolean). New internal tool
+  `threads.live {}` -> `{sessions}`.
+- New tool `threads.unqueue {thread, queued?, surface?}` -> `{unqueued: [ids], note?}`, person
+  callers only (queuesFor). New event `thread.unqueued {queued, surface}`. `threads.send`'s queued
+  result gains `queued_id`.
 - `threads.send`: new result `{sent:false, queued:true, open_elsewhere:true, thread, name, note}`
   for a person's caller when the session is open elsewhere. Callers `mcp*` and `harness*` still get
   the old refusal.
@@ -106,6 +154,9 @@ them, one per fix.
   results carry `memo` and each source `kind` ("fact" or "quote") and `role`.
 
 ## Tests
+- 2026-09-27 Esc/unqueue: capsule bridge + state 47/47 on the test box.
+- 2026-09-27 on the test box: switchboard, projects, federation-reads, link-federation, harness
+  77/77; switchboard-cli, capsule bridge, onboard, deck machine, guests 70/70.
 - local/capsule/lib/bridge.test.js 29/29, state.test.js 14/14, core/switchboard 26/26,
   core/harness 19/19, test/harness.test.js 13/13, core/cli switchboard-cli 11/11, present 3/3.
 - Memory ranking (on the test box): bridge 31/31, said 4/4, state 14/14, present 3/3, hygiene 1/1.

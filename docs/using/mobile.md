@@ -46,6 +46,8 @@ Now then shows **Set up this phone**, three steps with what is left:
 
 The tab bar at the bottom has Now, Projects, Chat, Find and Agents.
 
+![Find on a phone with harlow typed: ask juno first, then the Harlow sessions, and the projects that match.](shots/phone-find.png)
+
 - **Now**: what needs you and what is running.
 - **Approve or edit a held draft**: tap it in Now. It opens full screen; tap a field to edit it,
   then Send or Discard.

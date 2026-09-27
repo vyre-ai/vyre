@@ -24,6 +24,10 @@ Object.assign(globalThis, {
   addEventListener: () => {}, removeEventListener: () => {},
   localStorage: { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) },
 });
+/** Where go() sent the page (a rewind stays on the same thread: nothing goes here). */
+const went = [];
+Object.defineProperty(globalThis, "history", { value: { state: null, pushState: (_s, _t, url) => went.push(url), replaceState: () => {} },
+  configurable: true, writable: true });
 
 // What the fake lacks and the view uses: siblings, insertBefore, replaceWith, after.
 const E = /** @type {any} */ (globalThis).Element.prototype;
@@ -39,12 +43,10 @@ E.insertBefore = function (n, ref) { if (!ref) { this.append(n); return n; } n.r
 E.replaceWith = function (n) { const p = this.parentNode; if (!p) return; p.insertBefore(n, this); this.remove(); };
 E.after = function (n) { this.parentNode.insertBefore(n, this.nextSibling); };
 
-/** The event stream: one fake EventSource, fed by hand. */
+/** The event stream, fed by hand: api.js hear() hands an event to the listeners as the stream does. */
 let evId = 0;
-class FakeES { constructor() { FakeES.last = this; this.l = new Map(); this.readyState = 1; } addEventListener(t, f) { (this.l.get(t) || this.l.set(t, []).get(t)).push(f); } }
-/** @type {any} */ (FakeES).OPEN = 1;
-Object.assign(globalThis, { EventSource: FakeES });
-const emit = (type, payload, thread = SID) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread, at: Date.now(), payload }) }); };
+const { hear, heardResume } = await import("../js/api.js");
+const emit = (type, payload, thread = SID) => hear(/** @type {any} */ ({ id: ++evId, type, thread, at: Date.now(), payload }));
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/session-blocks.json", import.meta.url), "utf8"));
 const SID = fx.session.id;
@@ -77,11 +79,107 @@ const liveEvents = [
   { id: 2, type: "thread.text", thread: LIVE, at: T0 + 1000, payload: { message: "msg_q", text: "Two questions first.", done: true } },
   { id: 3, type: "thread.tool", thread: LIVE, at: T0 + 2000, payload: { id: "toolu_q", tool: "AskUserQuestion", phase: "started", summary: "2 questions" } },
 ];
+// The third session: an ADR 0030 thread (provider, model, auth, state, queue, interrupt).
+const NEW = "4b7e2a90-sdk-thread";
+/** What threads.tasks answers for it (sessions 034c71e5). */
+let newTasks = /** @type {any[]} */ ([]);
+let interruptMissing = false;
+/** Tools this box answers "no such tool" for (a box before the sessions update has none of them; this one has some). */
+const MISSING = new Set(["threads.unqueue"]);
+// The fourth session: one the stream drops and resumes (ADR 0029 R1). What the box holds is
+// changed by the test between reads.
+const RES = "5e6f7a8b-resume-thread";
+const res = {
+  events: /** @type {any[]} */ ([{ id: 10, type: "thread.finished", thread: RES, at: T0 + 2000, payload: { ok: true } }]),
+  blocks: /** @type {any[]} */ ([
+    { seq: 0, kind: "user", ts: T0, text: "Open the Northwind Bakery order form" },
+    { seq: 1, kind: "text", ts: T0 + 1000, message: "msg_r0", text: "It is open." },
+    { seq: 1, kind: "turn", ts: T0, duration_ms: 2000, tokens: { input: 300, output: 20 }, model: "sample-model" },
+  ]),
+  next: 2,
+  asks: /** @type {any[]} */ ([]),
+};
+// The fifth session: reopened while an Edit waits on Allow, after the person steered a message
+// and queued another (the screenshot run's shape: threads.get holds both, the transcript neither).
+const REOPEN = "6a7b8c9d-reopen-thread";
+const reopen = {
+  thread: { id: REOPEN, name: "Northwind specials", cwd: "/home/alex/work/northwind", status: "waiting", holder: "deck", agent: null },
+  events: [
+    { id: 1, type: "thread.sent", thread: REOPEN, at: T0, payload: { text: "demo", surface: "deck", uuid: "u-demo" } },
+    { id: 2, type: "thread.turn", thread: REOPEN, at: T0, payload: { turn: `${REOPEN}:1`, uuid: "u-demo", text: "demo" } },
+    // An earlier steer Claude took in, and a queued row taken back: neither is pending now.
+    { id: 3, type: "thread.sent", thread: REOPEN, at: T0 + 100, payload: { text: "read the menu first", surface: "deck", uuid: "s-old", via: "steer" } },
+    { id: 4, type: "thread.steered", thread: REOPEN, at: T0 + 200, payload: { uuid: "s-old", step: 0 } },
+    { id: 5, type: "thread.queued", thread: REOPEN, at: T0 + 300, payload: { queued: 3, uuid: "q-old", text: "never mind", surface: "deck" } },
+    { id: 6, type: "thread.unqueued", thread: REOPEN, at: T0 + 400, payload: { queued: 3, uuid: "q-old", reason: "taken" } },
+    { id: 7, type: "thread.tool", thread: REOPEN, at: T0 + 1000, payload: { call: "toolu_e", id: "toolu_e", tool: "Edit", name: "Edit", phase: "started", status: "running", summary: "Edit menu.md" } },
+    { id: 8, type: "ask.raised", thread: REOPEN, at: T0 + 1100, payload: { ask: "ask_e", kind: "permission", tool: "Edit", summary: "menu.md", tool_use_id: "toolu_e" } },
+    { id: 9, type: "thread.state", thread: REOPEN, at: T0 + 1100, payload: { state: "waiting" } },
+    { id: 10, type: "thread.sent", thread: REOPEN, at: T0 + 2000, payload: { text: "use the rye price too", surface: "deck", uuid: "s-new", via: "steer" } },
+    { id: 11, type: "thread.queued", thread: REOPEN, at: T0 + 3000, payload: { queued: 5, uuid: "q-new", text: "then check the hours", surface: "deck" } },
+  ],
+  asks: [{ id: "ask_e", thread: REOPEN, kind: "permission", tool: "Edit", summary: "menu.md", destination: "/home/alex/work/northwind/menu.md", always: true,
+    anchor: { tool_use_id: "toolu_e", event: 8 }, detail: { file: "/home/alex/work/northwind/menu.md", old: "- Summer berry tart, 5.00", new: "- Pumpkin loaf, 5.50" } }],
+  blocks: [
+    { seq: 0, kind: "user", ts: T0, text: "demo" },
+    { seq: 1, kind: "user", ts: T0 + 100, text: "read the menu first", steered: true },
+    { seq: 2, kind: "tool", ts: T0 + 1000, id: "toolu_e", tool: "Edit", input: { file_path: "/home/alex/work/northwind/menu.md", old_string: "- Summer berry tart, 5.00", new_string: "- Pumpkin loaf, 5.50" } },
+    { seq: 2, kind: "turn", ts: T0, open: true },
+  ],
+};
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
   const input = JSON.parse(o.body);
   calls.push({ tool, input });
   let data;
+  // sessions.models.get names no thread: the per-purpose map.
+  if (tool === "sessions.models.get") return { status: 200, statusText: "", json: async () => ({ data: {
+    purposes: { chat: { model: "opus", from: "config:chat" }, job: { model: "claude-haiku-4-5", from: "config:job" } }, projects: {} } }) };
+  if (input.thread === RES || input.session === RES) {
+    if (tool === "threads.get") data = { thread: { id: RES, name: "Northwind order form", cwd: "/home/alex/work/northwind", status: "idle", holder: null, agent: null },
+      events: res.events.filter(e => e.id > (input.since ?? 0)), asks: res.asks };
+    else if (tool === "recall.transcript") {
+      const from = input.from ?? 0;
+      data = { session: { id: RES, cwd: "/home/alex/work/northwind" }, blocks: res.blocks.filter(b => b.seq >= from), next: res.next, first: 0 };
+    } else if (tool === "threads.asks") data = res.asks;
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
+  if (input.thread === REOPEN || input.session === REOPEN) {
+    if (tool === "threads.get") data = { thread: reopen.thread, events: reopen.events.filter(e => e.id > (input.since ?? 0)), asks: reopen.asks };
+    else if (tool === "recall.transcript") data = { session: { id: REOPEN, cwd: reopen.thread.cwd }, blocks: reopen.blocks.filter(b => b.seq >= (input.from ?? 0)), next: 3, first: 0 };
+    else if (tool === "threads.asks") data = reopen.asks;
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
+  if (input.thread === NEW || input.session === NEW) {
+    if (tool === "threads.interrupt" && interruptMissing) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no tool threads.interrupt" } }) };
+    if (MISSING.has(tool)) return { status: 404, statusText: "", json: async () => ({ error: { code: "no_such_tool", message: "no such tool here" } }) };
+    if (tool === "threads.get") data = { thread: { id: NEW, name: "Q3 report and Estate intake", cwd: "/home/alex/work/harlow-legal", status: "idle", holder: null, agent: "kit" }, events: [], asks: [] };
+    else if (tool === "recall.transcript") data = { session: { id: NEW, cwd: "/home/alex/work/harlow-legal" }, blocks: [], next: 0, first: 0 };
+    else if (tool === "threads.asks") data = [];
+    else if (tool === "threads.answer") data = { answered: true };
+    // core/switchboard's answers (work/sessions): the box mints the uuid. A steer {sent, steered,
+    // thread, uuid, turn}; a queued message {sent: false, queued: true, queued_id, uuid, thread, busy}.
+    else if (tool === "threads.send") data = input.mode === "queue"
+      ? { sent: false, queued: true, queued_id: 41, uuid: "box-q41", thread: NEW, name: "Q3 report", busy: "working", note: "Q3 report is working on something." }
+      : input.mode === "steer" ? { sent: true, steered: true, thread: NEW, uuid: "box-steer-1", turn: `${NEW}:9` } : { sent: true, thread: NEW };
+    else if (tool === "threads.rewind") data = input.restore === "code"
+      ? { rewound: true, thread: NEW, uuid: input.uuid, restore: "code", files: { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts"] } }
+      : { rewound: true, thread: NEW, uuid: input.uuid, text: "Use Estate intake v2 instead",
+        ...(input.restore ? { restore: input.restore, files: { restored: true, files_changed: ["src/intake/estate.ts"] } } : {}) };
+    else if (tool === "threads.commands") data = { thread: NEW, commands: [{ name: "compact", description: "Clear history but keep a summary", argumentHint: "<instructions>" }] };
+    else if (tool === "threads.model") data = { thread: NEW, model: input.model };
+    else if (tool === "threads.mode") data = { thread: NEW, mode: input.mode };
+    // Sessions 034c71e5's answers.
+    else if (tool === "threads.tasks") data = { thread: NEW, tasks: newTasks };
+    else if (tool === "threads.kill-task") data = { thread: NEW, task: input.task, killed: true };
+    else if (tool === "threads.thinking") data = { thread: NEW, thinking: input.on };
+    else if (tool === "threads.shell") data = { thread: NEW, code: 1, output: "1 failing\n  estate intake: total" };
+    else if (tool === "threads.remember") data = { thread: NEW, scope: input.scope, file: `/home/alex/work/harlow-legal/${input.scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md"}` };
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
   if (input.thread === LIVE || input.session === LIVE) {
     if (tool === "threads.get") data = { thread: { id: LIVE, name: null, cwd: fx.session.cwd, status: "running", holder: null, agent: null }, events: liveEvents, asks: [fx.asks[0]] };
     else if (tool === "recall.transcript") {
@@ -113,10 +211,20 @@ test("chips: the owner's initial for you, the Vyre mark for replies", () => {
   assert.ok($(container, ".cv-head .cv-av-vyre svg"));
 });
 
-test("open: blocks as rows, one Vyre header per run, tool cards, the turn footer, never claude", () => {
+test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn footer, never claude", async () => {
   assert.equal($$(container, ".cv-user").length, 1);
   assert.equal($$(container, ".cv-head").length, 1);
   assert.match(text($(container, ".cv-head")), /Vyre/);
+  // Changed on purpose (the chat view, 27 Sep): runs of tool calls fold into one quiet row each,
+  // the todo list stays out (it is the thing to read), and a fold's cards are built when it opens.
+  const runs = $$(container, ".cv-run");
+  assert.equal(runs.length, 2);
+  assert.match(text(runs[0]), /^Read 1 file, searched 1 time/);
+  assert.equal(text($(runs[1], ".cv-run-sum")), "Edited 1 file, ran 1 command, fetched 1 page, used 1 tool");
+  assert.match(text($(runs[1], ".cv-run-meta")), /^[\d.]+ s$/);
+  assert.equal($$(container, ".cv-tool").length, 1, "the todo list, not folded");
+  for (const r of runs) await $(r, ".cv-run-head").click();
+  assert.equal($$(container, ".cv-run[data-open]").length, 2);
   assert.equal($$(container, ".cv-tool").length, 7);
   assert.equal($$(container, ".cv-think").length, 1);
   assert.match(text($(container, ".cv-tool[data-tool=Bash]")), /\$ npm test -- src\/order/);
@@ -124,7 +232,8 @@ test("open: blocks as rows, one Vyre header per run, tool cards, the turn footer
   assert.equal($$(container, ".cv-tool[data-tool=Edit] .cv-dl-add").length, 1);
   assert.equal($$(container, ".cv-todo-completed").length, 1);
   assert.equal($$(container, ".cv-todo-in_progress").length, 1);
-  assert.match(text($(container, ".cv-turn")), /19 s · 18k in, 912 out/);
+  // The transcript has not closed the turn and the session runs: no footer until it ends (the live test closes it).
+  assert.deepEqual($$(container, ".cv-turn").map(text).filter(Boolean), [], "an open turn has no footer yet");
   // The composer (composer.js, not this view's) is left out: its hint names the terminal's commands.
   assert.doesNotMatch(everything($(container, ".session-head")) + everything($(container, ".thread-view")) + everything($(container, ".lease-bar")), /claude/i);
   assert.ok(calls.some(c => c.tool === "recall.transcript" && c.input.session === SID && c.input.limit === 400));
@@ -210,8 +319,463 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
   assert.equal(all.split("Two questions first.").length - 1, 1, "the reply once");
   assert.equal($$(box, ".cv-user").length, 1, "the message once");
   assert.equal($$(box, ".cv-tool").length, 1, "the tool once");
-  assert.match(text($(box, ".cv-tool")), /done/);
+  assert.ok($(box, ".cv-tool[data-state=done]"), "the tool is done");
   assert.equal($$(box, ".cv-turn").length, 1);
   assert.ok($(box, ".cv-q"), "the card stays");
   stop2();
+});
+
+// ---- an ADR 0030 session: chip, state word, fold rows, queue, Stop, asks answered elsewhere ----
+
+// Mounted in the first test below, so the tests above see only their own key listeners.
+const box3 = new El("div");
+doc.body.append(box3);
+let stop3 = () => {};
+const at = (type, payload, when) => hear(/** @type {any} */ ({ id: ++evId, type, thread: NEW, at: when ?? Date.now(), payload }));
+const press3 = k => { const e = /** @type {any} */ (new Event("keydown")); e.key = k; e.target = doc.body; for (const f of keys) f(e); return e; };
+const stopBtn = () => $(box3, ".composer-stop");
+
+test("the header chip names provider, model and auth, and the state word follows the session", async () => {
+  stop3 = mountSession(box3, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  assert.equal($(box3, ".cv-chip"), null, "nothing known, no chip");
+  assert.match(text($(box3, ".cv-state")), /^idle$/);
+  assert.equal(stopBtn().hidden, true, "no Stop while idle");
+  at("thread.started", { provider: "claude", model: "claude-opus-4-5", auth: "subscription" });
+  assert.equal(text($(box3, ".cv-chip")), "Claude · opus · subscription");
+  assert.match(text($(box3, ".cv-state")), /^starting$/);
+  at("thread.stopped", { reason: "idle" });
+  assert.match(text($(box3, ".cv-state")), /^idle$/);
+  assert.match(text($(box3, ".lease-bar")), /Resumes on your next message/);
+});
+
+test("thinking folds to its length, a run of tools is one row that counts up, the turn ends with time and tokens", async () => {
+  const t0 = Date.now() - 60_000;
+  at("thread.sent", { text: "Rebuild the intake for the Estate branch", surface: "deck" }, t0);
+  assert.equal(stopBtn().hidden, false, "Stop while a turn runs");
+  at("thread.text", { kind: "reasoning", message: "m1", text: "Weighing the two forms", done: true }, t0 + 1000);
+  at("thread.text", { message: "m1", text: "Using Estate intake v2.", done: true }, t0 + 9000);
+  assert.equal(text($(box3, ".cv-think-head")), "Thinking · 8 s");
+  at("thread.tool", { call: "c1", name: "Read", status: "running", summary: "src/intake/schema.ts" }, t0 + 10_000);
+  at("thread.tool", { call: "c1", status: "completed" }, t0 + 10_400);
+  at("thread.tool", { call: "c2", name: "Bash", status: "running", summary: "npm run build" }, Date.now() - 42_000);
+  const run = $(box3, ".cv-run");
+  assert.ok(run, "two calls in a row fold into one row");
+  assert.equal(text($(run, ".cv-run-sum")), "Running npm run build");
+  assert.match(text($(run, ".cv-run-meta")), /^0:4\d$/);
+  assert.equal($$(box3, ".cv-tool").length, 0, "closed: its cards are not built");
+  at("thread.tool", { call: "c2", status: "completed" });
+  assert.equal(text($(box3, ".cv-run-sum")), "Read 1 file, ran 1 command");
+  assert.match(text($(box3, ".cv-run-meta")), /^\d+ s$/);
+  await $(box3, ".cv-run-head").click();
+  assert.equal($$(box3, ".cv-run .cv-tool").length, 2, "open: the calls as rows");
+  at("thread.finished", { ok: true, duration_ms: 72_000, tokens: { input: 18_400, output: 900 } });
+  await wait(20);
+  assert.match(text($$(box3, ".cv-turn").at(-1)), /^1 min 12 s · 19k tokens$/);
+  assert.equal(stopBtn().hidden, true, "no Stop once the turn is over");
+});
+
+// Changed on purpose (the composer like Claude Code, 27 Sep): the row reads "Queued for after",
+// "Send now" is "Steer now" (threads.send-now in the sessions contract), and each button is on until
+// the box says it has no such tool (core/caps.js), not off from the start. Rows are named by the
+// box's row id (`queued`): a row without one yet has its buttons off.
+test("queued rows sit above the composer: Edit, Take back, Steer now by row id; a box without the tool turns that button off", async () => {
+  at("thread.queued", { uuid: "q0", text: "Summarise the Northwind order" });
+  assert.equal($(box3, ".cv-queued-row .cv-q-take").disabled, true, "no row id yet");
+  at("thread.unqueued", { uuid: "q0", reason: "taken" });
+  at("thread.queued", { queued: 7, uuid: "q1", text: "Then open a PR against main", surface: "deck" });
+  const row = $(box3, ".cv-queued-row");
+  assert.ok(row);
+  assert.match(text(row), /^Queued for after\s*Then open a PR against main/);
+  for (const [cls, label] of [[".cv-q-edit", "Edit"], [".cv-q-take", "Take back"], [".cv-q-now", "Steer now"]]) {
+    const b = $(row, cls);
+    assert.equal(text(b), label);
+    assert.equal(b.disabled, false, "not known to be missing yet");
+  }
+  await $(row, ".cv-q-take").click();
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.unqueue").at(-1).input, { thread: NEW, queued: 7 });
+  const take = $(box3, ".cv-queued-row .cv-q-take");
+  assert.equal(take.disabled, true);
+  assert.equal(take.getAttribute("title"), "Needs the sessions update");
+  assert.equal($(box3, ".cv-queued-row .cv-q-now").disabled, false, "only that button");
+  assert.doesNotMatch(text($(box3, ".thread-view")), /Then open a PR/, "waiting is not in the timeline");
+  // Handed over at the turn's end: the row id and uuid, the words are the row's.
+  at("thread.sent", { queued: 7, uuid: "q1", via: "turn" });
+  assert.equal($(box3, ".cv-queued").hidden, true);
+  assert.match(text($$(box3, ".cv-user").at(-1)), /Then open a PR against main/);
+});
+
+test("Stop interrupts the turn, which reads 'Stopped by you'; without threads.interrupt, Esc falls back to threads.stop", async () => {
+  assert.equal(stopBtn().hidden, false);
+  await stopBtn().click();
+  await wait();
+  assert.ok(calls.some(c => c.tool === "threads.interrupt" && c.input.thread === NEW));
+  at("thread.finished", { ok: false, canceled: true, reason: "interrupt" });
+  await wait(20);
+  assert.match(text($$(box3, ".cv-turn").at(-1)), /^Stopped by you/);
+  interruptMissing = true;
+  at("thread.sent", { text: "One more thing", surface: "deck" });
+  assert.equal(press3("Escape").defaultPrevented, true);
+  await wait();
+  assert.ok(calls.some(c => c.tool === "threads.stop" && c.input.thread === NEW), "threads.stop when the Switchboard has no interrupt");
+  at("thread.stopped", { reason: "stop" });
+  await wait(20);
+  assert.match(text($$(box3, ".cv-turn").at(-1)), /^Stopped by you/);
+  assert.match(text($(box3, ".cv-state")), /^stopped$/);
+});
+
+test("an inline ask: A allows, D denies, and one answered on another screen says where", async () => {
+  at("ask.raised", { ask: "ask_n1", kind: "permission", tool: "Bash", summary: "git push origin q3-report" });
+  await wait();
+  const cards = () => $$(box3, ".cv-ask");
+  assert.equal(cards().length, 1);
+  assert.equal(press3("a").defaultPrevented, true);
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.answer").at(-1).input, { ask: "ask_n1", decision: "allow", surface: "deck" });
+  at("ask.answered", { ask: "ask_n1", decision: "allow", by: "deck" });
+  assert.doesNotMatch(text(cards()[0]), /Answered from/, "answered here: nothing about another screen");
+  at("ask.raised", { ask: "ask_n2", kind: "permission", tool: "Bash", summary: "npm publish" });
+  await wait();
+  press3("d");
+  await wait();
+  assert.equal(calls.filter(c => c.tool === "threads.answer").at(-1).input.decision, "deny");
+  at("ask.raised", { ask: "ask_n3", kind: "permission", tool: "Bash", summary: "rm -rf dist" });
+  await wait();
+  at("ask.answered", { ask: "ask_n3", decision: "allow", by: "capsule" });
+  const last = cards().at(-1);
+  assert.match(text(last), /Allowed once/);
+  assert.match(text(last), /Answered from the Capsule · \d\d:\d\d/);
+  stop3();
+});
+
+// ---- the composer like Claude Code: steer, queue, mode, rewind ----------------------------------
+
+test("typing while a turn runs steers it ('steering', then 'you steered here · after 1 step' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc rewinds this thread", async () => {
+  const box4 = new El("div");
+  doc.body.append(box4);
+  const stop4 = mountSession(box4, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  const ta = $(box4, "textarea");
+  const key = (k, extra = {}) => { const e = Object.assign(/** @type {any} */ (new Event("keydown")), { key: k, target: ta, ...extra }); ta.dispatchEvent(e); return e; };
+  at("thread.sent", { text: "Rebuild the intake for the Estate branch", surface: "deck", uuid: "u-first" });
+  at("thread.tool", { call: "s1", name: "Read", status: "running", summary: "src/intake/general.ts" });
+  assert.match(ta.placeholder, /^Steer kit, or Alt\+Enter to queue for after$/);
+  ta.value = "Use Estate intake v2 instead";
+  assert.equal(key("Enter").defaultPrevented, true);
+  await wait();
+  const sent = calls.filter(c => c.tool === "threads.send").at(-1).input;
+  assert.equal(sent.mode, "steer");
+  assert.equal(sent.text, "Use Estate intake v2 instead");
+  assert.match(sent.uuid, /^[0-9a-f-]{36}$/);
+  assert.match(text($(box4, ".cv-steer")).trim(), /^steering · \w+ reads it at its next step$/);
+  // The box's own uuid, not the Deck's: the echo and the answer tie it to the words drawn on send.
+  at("thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: "box-steer-1", via: "steer" });
+  assert.equal($$(box4, ".cv-user").length, 2, "the echo is the same message");
+  assert.match(text($(box4, ".cv-steer")).trim(), /^steering · \w+ reads it at its next step$/, "the echo is not the join");
+  at("thread.tool", { call: "s1", status: "completed" });
+  // No step on the event: counted here, one call of this turn done.
+  at("thread.steered", { uuid: "box-steer-1" });
+  assert.equal($$(box4, ".cv-steer").length, 1);
+  assert.match(text($(box4, ".cv-steer")).trim(), /^you steered here · after 1 step · \d\d:\d\d$/);
+  const order = box4.querySelectorAll(".cv-row").map(n => n.className.split(" ").find(c => /^cv-(user|steer|tool)$/.test(c))).filter(Boolean);
+  assert.deepEqual(order, ["cv-user", "cv-tool", "cv-steer", "cv-user"], "the words sit where they joined, after the Read");
+
+  ta.value = "Then open a PR against main";
+  key("Enter", { altKey: true, code: "Enter" });
+  await wait();
+  assert.equal(calls.filter(c => c.tool === "threads.send").at(-1).input.mode, "queue");
+  assert.match(text($(box4, ".cv-queued-row")), /Then open a PR against main/);
+  assert.equal($(box4, ".cv-queued-row .cv-q-edit").disabled, false, "the answer named the row (queued_id: 41)");
+  assert.equal($$(box4, ".cv-queued-row").length, 1);
+  at("thread.queued", { queued: 41, uuid: "box-q41", text: "Then open a PR against main", surface: "deck" });
+  assert.equal($$(box4, ".cv-queued-row").length, 1, "the event is the same row");
+
+  assert.match(text($(box4, ".composer-mode")), /^Asks first/);
+  assert.equal(key("Tab", { shiftKey: true }).defaultPrevented, true);
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.mode").at(-1).input, { thread: NEW, mode: "acceptEdits" });
+  assert.match(text($(box4, ".composer-mode")), /^Accepts edits/);
+
+  at("thread.finished", { ok: true, duration_ms: 1000 });
+  await wait(20);
+  ta.value = "";
+  key("Escape"); key("Escape");
+  await wait();
+  const sheet = $(box4, ".cv-rewind");
+  assert.ok(sheet, "Esc Esc opens the rewind sheet");
+  assert.match(text(sheet), /Use Estate intake v2 instead/);
+  await wait();
+  // Claude Code's three choices; the box answered threads.commands, so it can put files back.
+  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"]);
+  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => b.disabled), [false, false, false]);
+  assert.equal(text($(box4, ".cv-rw-opt[aria-checked=true]")), "Restore code and conversation", "both is the default");
+  press3("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "box-steer-1", restore: "both" }, "the box's uuid for the message");
+  assert.deepEqual(went, [], "the same thread: nothing opens");
+  assert.equal($(box4, ".cv-rewind"), null);
+  assert.equal($$(box4, ".cv-user").length, 1, "the message and everything after it are gone");
+  assert.equal($$(box4, ".cv-steer").length, 0);
+  assert.equal(ta.value, "Use Estate intake v2 instead", "the words come back to edit");
+  assert.match(text($(box4, ".thread-view")), /Rewound to before "Use Estate intake v2 instead" · Restored 1 file/);
+  at("thread.rewound", { uuid: "box-steer-1", at: "u-first", restore: "both", files: { restored: true, files_changed: ["src/intake/estate.ts"] } });
+  await wait();
+  assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Rewound/.test(text(n))).length, 1, "its event is the same rewind");
+
+  // Code only: the files go back; the conversation, the view and the composer stay.
+  ta.value = "";
+  key("Escape"); key("Escape");
+  await wait();
+  press3("ArrowLeft");
+  assert.equal(text($(box4, ".cv-rw-opt[aria-checked=true]")), "Restore code");
+  const users = $$(box4, ".cv-user").length;
+  ta.value = "keep this draft";
+  press3("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "u-first", restore: "code" });
+  assert.equal($(box4, ".cv-rewind"), null);
+  assert.equal($$(box4, ".cv-user").length, users, "nothing leaves the view");
+  assert.equal(ta.value, "keep this draft", "the composer keeps its words");
+  assert.match(text($(box4, ".thread-view")), /Restored 2 files/);
+  at("thread.rewound", { uuid: "u-first", restore: "code", files: { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts"] } });
+  await wait();
+  assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Restored 2 files/.test(text(n))).length, 1, "its event is the same restore");
+
+  // The context meter, only once the box says the share; the model chip follows model.switched.
+  assert.equal($(box4, ".cv-context"), null);
+  at("thread.usage", { cost_usd: 0.01, total_cost_usd: 0.2, context: { used: 124000, max: 200000, share: 0.62 } });
+  await wait();
+  assert.equal(text($(box4, ".cv-context")), "62% of context");
+  at("model.switched", { model: "haiku", live: true });
+  await wait();
+  assert.match(text($(box4, ".composer-model")), /haiku/);
+  await $(box4, ".composer-model").click();
+  await wait();
+  assert.ok(calls.some(c => c.tool === "sessions.models.get"), "the picker reads the per-purpose map");
+  assert.match(text($(box4, ".composer-menu")), /claude-haiku-4-5/);
+  assert.match(text($(box4, ".composer-menu")), /Used for job/);
+  ta.value = "";
+  stop4();
+});
+
+// ---- the stream drops and comes back, or is reset (ADR 0029 R1) ---------------------------------
+
+test("a reconnect or a stream reset re-reads threads.get, threads.asks and the transcript: nothing missing, nothing twice", async () => {
+  const box5 = new El("div");
+  doc.body.append(box5);
+  const stop5 = mountSession(box5, { thread: RES, project: null, onBack() {} });
+  await wait(30);
+  assert.match(text($(box5, ".thread-view")), /It is open\./);
+  // The stream's first open is not a resume, so only the comebacks are told (api.js heardResume).
+  const fireOpen = () => heardResume("reconnect");
+  const before = calls.length;
+  // While the stream was down: a message, a queued row and an ask, and their transcript.
+  res.events.push(
+    { id: 11, type: "thread.sent", thread: RES, at: T0 + 3000, payload: { text: "Check the Harlow Legal invoice", surface: "deck" } },
+    { id: 12, type: "thread.queued", thread: RES, at: T0 + 3500, payload: { queued: 9, uuid: "q9", text: "Then email juno", surface: "deck" } });
+  res.asks = [{ id: "ask_r1", thread: RES, kind: "permission", tool: "Bash", summary: "npm test", at: T0 + 4000 }];
+  res.blocks.push(
+    { seq: 2, kind: "user", ts: T0 + 3000, text: "Check the Harlow Legal invoice" },
+    { seq: 3, kind: "text", ts: T0 + 4000, message: "msg_r1", text: "The invoice totals match." });
+  res.next = 4;
+  fireOpen(); // the stream is back
+  await wait(40);
+  const since = calls.slice(before);
+  assert.deepEqual(since.find(c => c.tool === "threads.get")?.input, { thread: RES, since: 10, limit: 500 }, "events since the last one applied");
+  assert.ok(since.some(c => c.tool === "recall.transcript" && c.input.from === 2), "the transcript from next");
+  assert.ok(since.some(c => c.tool === "threads.asks" && c.input.thread === RES));
+  const view = () => text($(box5, ".thread-view"));
+  assert.equal(view().split("Check the Harlow Legal invoice").length - 1, 1, "the missed message, once");
+  assert.equal(view().split("The invoice totals match.").length - 1, 1, "its reply, once");
+  assert.match(text($(box5, ".cv-queued")), /Then email juno/);
+  assert.equal($$(box5, ".cv-ask").length, 1, "the missed ask");
+  // Again: the same reads change nothing.
+  fireOpen();
+  await wait(40);
+  assert.equal(view().split("Check the Harlow Legal invoice").length - 1, 1);
+  assert.equal(view().split("The invoice totals match.").length - 1, 1);
+  assert.equal($$(box5, ".cv-queued-row").length, 1);
+  assert.equal($$(box5, ".cv-ask").length, 1);
+  // The box's log was reset: ids start again at 2, below everything seen.
+  res.events = [{ id: 3, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 10, uuid: "q10", text: "And ping kit", surface: "deck" } }];
+  const b2 = calls.length;
+  heardResume("reset", 2);
+  await wait(40);
+  assert.deepEqual(calls.slice(b2).find(c => c.tool === "threads.get")?.input, { thread: RES, since: 2, limit: 500 }, "from vyred's id");
+  assert.match(text($(box5, ".cv-queued")), /And ping kit/, "an event after the reset is applied, though its id is low");
+  // A live event with a low id after the reset is heard too (api.js lowered its cursor).
+  hear(/** @type {any} */ ({ id: 4, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 11, uuid: "q11", text: "Last one for Northwind Bakery", surface: "deck" } }));
+  await wait();
+  assert.match(text($(box5, ".cv-queued")), /Last one for Northwind Bakery/);
+  stop5();
+});
+
+// ---- sessions 034c71e5: background tasks, thinking, ! shell, # memory, images ---------------------
+
+test("the box's background tasks, thinking, ! and # and pasted images, on their real shapes; an older box keeps them off", async () => {
+  const { CAPS, SEND_IMAGES } = await import("./core/caps.js");
+  newTasks = [{ id: "task_1", kind: "shell", title: "npm run dev", status: "running", call: null, background: true }];
+  const box6 = new El("div");
+  doc.body.append(box6);
+  const stop6 = mountSession(box6, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  assert.ok(calls.some(c => c.tool === "threads.tasks" && c.input.thread === NEW), "the tray starts from threads.tasks");
+  assert.equal(CAPS.has(SEND_IMAGES), true, "its answer says images too");
+  assert.match(text($(box6, ".cv-tasks")), /1 running/);
+  assert.match(text($(box6, ".cv-task")), /npm run dev/);
+  // thread.task: a subagent starts and finishes with a summary.
+  at("thread.task", { id: "task_2", status: "running", kind: "agent", title: "Check the menu prices", call: null, background: false });
+  assert.match(text($(box6, ".cv-tasks")), /2 running/);
+  at("thread.task", { id: "task_2", status: "completed", summary: "Two prices were out of date." });
+  assert.match(text($(box6, ".cv-tasks")), /Two prices were out of date\./);
+  // Stop: threads.kill-task {thread, task}, then the box says killed.
+  await $(box6, ".cv-task-stop").click();
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.kill-task").at(-1).input, { thread: NEW, task: "task_1" });
+  at("thread.task", { id: "task_1", status: "killed", summary: "stopped by the user" });
+  assert.match(text($(box6, ".cv-tasks")), /none running/);
+  assert.match(text($(box6, ".cv-tasks")), /stopped/);
+
+  // Thinking: the chip calls threads.thinking {thread, on}; thinking.switched moves it.
+  const chip = () => $(box6, ".composer-thinking");
+  assert.equal(chip().disabled, false);
+  assert.equal(text(chip()), "Thinking", "not said yet");
+  await chip().click();
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.thinking").at(-1).input, { thread: NEW, on: true });
+  assert.equal(text(chip()), "Thinking on");
+  at("thinking.switched", { on: false });
+  await wait();
+  assert.equal(text(chip()), "Thinking off");
+  // A reasoning delta and a text delta of one message are two rows.
+  at("thread.thinking", { message: "msg_th", block: 0, delta: "The total rounds twice." });
+  at("thread.text", { message: "msg_th", block: 1, delta: "Found the rounding." });
+  await wait(40);
+  // Two rows: the thought (folded, its words in its body) and the reply.
+  assert.equal($$(box6, ".cv-think").length, 1);
+  assert.equal($(box6, ".cv-think-body").textContent, "The total rounds twice.");
+  assert.equal($$(box6, ".cv-text").length, 1);
+  at("thread.finished", { ok: true, duration_ms: 1000 });
+  await wait(20);
+
+  // ! shell: threads.shell {thread, command}; the answer's {code, output} fills the row; its event is the same row.
+  const ta = $(box6, "textarea");
+  const key = (k, extra = {}) => { const e = Object.assign(/** @type {any} */ (new Event("keydown")), { key: k, target: ta, ...extra }); ta.dispatchEvent(e); return e; };
+  ta.value = "!npm test";
+  key("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.shell").at(-1).input, { thread: NEW, command: "npm test" });
+  at("thread.shell", { command: "npm test", code: 1, output: "1 failing" });
+  await wait();
+  assert.equal($$(box6, ".cv-shell").length, 1, "the echo is the same row");
+  assert.match(text($(box6, ".cv-shell")), /npm test/);
+  assert.match(text($(box6, ".cv-shell")), /exit 1/);
+  assert.match(text($(box6, ".cv-shell")), /estate intake: total/, "the answer's whole output");
+  assert.equal($(box6, ".cv-shell").getAttribute("data-state"), "failed");
+
+  // # memory: threads.remember {thread, text, scope}; thread.remembered is a notice.
+  ta.value = "#Prices have two decimals.";
+  key("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.remember").at(-1).input, { thread: NEW, text: "Prices have two decimals.", scope: "project" });
+  assert.match(text($(box6, ".composer-note")), /Saved to memory.*CLAUDE\.md/);
+  at("thread.remembered", { scope: "project", file: "/home/alex/work/harlow-legal/CLAUDE.md" });
+  await wait();
+  assert.match(text($(box6, ".thread-view")), /Remembered in CLAUDE\.md \(this project\)/);
+
+  // A pasted image goes with the words as {media_type, data}; thread.sent counts it on the message.
+  /** @type {any} */ (globalThis).FileReader = class { readAsDataURL(f) { this.result = `data:${f.type};base64,${f.b64}`; setTimeout(() => this.onload?.(), 0); } };
+  const png = { type: "image/png", name: "Screenshot 14:36", size: 8, b64: "iVBORw0KGgo=" };
+  const paste = Object.assign(/** @type {any} */ (new Event("paste")), { clipboardData: { items: [{ kind: "file", type: "image/png", getAsFile: () => png }] } });
+  ta.dispatchEvent(paste);
+  await wait(20);
+  assert.equal($$(box6, ".composer-thumb").length, 1);
+  ta.value = "What is wrong on this invoice?";
+  key("Enter");
+  await wait();
+  const sent = calls.filter(c => c.tool === "threads.send").at(-1).input;
+  assert.deepEqual(sent.images, [{ media_type: "image/png", data: "iVBORw0KGgo=" }]);
+  assert.equal($$(box6, ".composer-thumb").length, 0);
+  at("thread.sent", { text: "What is wrong on this invoice?", surface: "deck", uuid: "box-img-1", images: 1 });
+  await wait();
+  assert.match(text($$(box6, ".cv-user").at(-1)), /1 image/);
+
+  // An older box (threads.tasks: no such tool): images, !, #, thinking and Stop are off.
+  at("thread.task", { id: "task_3", status: "running", kind: "shell", title: "npm run e2e", call: null, background: true });
+  CAPS.set("threads.tasks", false);
+  await wait();
+  assert.equal(chip().disabled, true);
+  assert.equal(chip().getAttribute("title"), "Needs the sessions update");
+  assert.equal($(box6, ".composer-attach").hidden, true);
+  assert.equal($(box6, ".cv-task-stop").disabled, true);
+  const before = calls.filter(c => c.tool === "threads.shell").length;
+  ta.value = "!ls";
+  key("Enter");
+  await wait();
+  assert.equal(calls.filter(c => c.tool === "threads.shell").length, before, "never called");
+  ta.value = "";
+  stop6();
+});
+
+test("the composer grows with its text once a frame, and a key on a line that fits sets no height", async () => {
+  const box7 = new El("div");
+  doc.body.append(box7);
+  const stop7 = mountSession(box7, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  const ta = /** @type {any} */ ($(box7, "textarea"));
+  const type = (/** @type {string} */ v) => { ta.value = v; ta.dispatchEvent(new Event("input")); };
+  let reads = 0, sh = 32;
+  Object.defineProperty(ta, "scrollHeight", { configurable: true, get: () => { reads++; return sh; } });
+  Object.defineProperty(ta, "clientHeight", { configurable: true, get: () => Number.parseInt(ta.style.height, 10) || 32 });
+  ta.style.height = "";
+  for (const v of ["H", "Ha", "Har", "Harl"]) type(v);
+  await wait(30);
+  assert.equal(ta.style.height, "", "a line that fits sets no height");
+  assert.equal(reads, 1, "four keys in one frame measure once");
+  sh = 72;
+  type("Harlow Legal\nNorthwind Bakery\njuno");
+  await wait(30);
+  assert.equal(ta.style.height, "72px", "more lines grow the box");
+  sh = 400;
+  type("x".repeat(2000));
+  await wait(30);
+  assert.equal(ta.style.height, "200px", "never past 200 px, then it scrolls");
+  sh = 32;
+  type("");
+  await wait(30);
+  assert.equal(ta.style.height, "32px", "shorter text shrinks it back");
+  stop7();
+});
+
+test("reopened while an Edit waits on Allow: the pending steer and the queued row come back from threads.get; the state word is waiting", async () => {
+  const box5 = new El("div");
+  doc.body.append(box5);
+  const stop5 = mountSession(box5, { thread: REOPEN, project: null, onBack() {} });
+  await wait(30);
+  assert.match(text($(box5, ".cv-state")), /^waiting$/, "an open ask: waiting on you");
+  assert.ok($(box5, ".cv-ask"), "the ask is still there");
+  // The steer: its words and a "Steering" marker, since Claude has not taken them in yet.
+  const steers = $$(box5, ".cv-steer");
+  assert.equal(steers.length, 2, "the old steer (taken in) and the new one (pending)");
+  assert.match(text(steers.at(-1)).trim(), /^steering · \w+ reads it at its next step$/);
+  assert.match(text($$(box5, ".cv-user").at(-1)), /use the rye price too/);
+  assert.equal($$(box5, ".cv-user").filter(u => /read the menu first/.test(text(u))).length, 1, "the taken-in steer is the transcript's, once");
+  // The queue: the row still waiting, not the one taken back.
+  assert.equal($(box5, ".cv-queued").hidden, false);
+  const rows = $$(box5, ".cv-queued-row");
+  assert.equal(rows.length, 1);
+  assert.match(text(rows[0]), /then check the hours/);
+  assert.equal($(rows[0], ".cv-q-edit").disabled, false, "the row has its id (5)");
+  // The answer, then Claude takes the steer in and hands the queued words over: each once.
+  const ev = (type, payload) => emit(type, payload, REOPEN);
+  ev("ask.answered", { ask: "ask_e", decision: "allow", by: "deck" });
+  ev("thread.steered", { uuid: "s-new", step: 1 });
+  assert.match(text($$(box5, ".cv-steer").at(-1)).trim(), /^you steered here · after 1 step/);
+  ev("thread.finished", { ok: true });
+  ev("thread.sent", { text: "then check the hours", surface: "deck", queued: 5, uuid: "q-new", via: "turn" });
+  assert.equal($(box5, ".cv-queued").hidden, true);
+  assert.equal($$(box5, ".cv-user").filter(u => /use the rye price too/.test(text(u))).length, 1);
+  assert.equal($$(box5, ".cv-user").filter(u => /then check the hours/.test(text(u))).length, 1);
+  stop5();
 });

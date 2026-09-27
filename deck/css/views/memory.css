@@ -9,7 +9,7 @@
 .mem-head { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 20px 0 32px; border-bottom: 1px solid var(--rule); }
 /* Memory and Lessons: two tabs set as the page's title. */
 .mem-tabs { display: flex; align-items: center; gap: 4px; margin-left: -8px; }
-.mem-tab { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border: none; border-radius: var(--r-2);
+.mem-tab { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border: none; border-radius: var(--radius-button, 8px);
   background: none; font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; color: var(--label); cursor: pointer; }
 .mem-tab:hover { color: var(--text-2); }
 .mem-tab[aria-selected="true"] { color: var(--text); }
@@ -58,7 +58,7 @@
 .mm-fact { fill: var(--recall); }
 .mm-person { fill: var(--panel); stroke: var(--text-2); stroke-width: 1.5; }
 .mm-thing { fill: var(--bg); stroke: var(--label); stroke-width: 1.2; }
-.mm-ring { fill: none; stroke: var(--signal); stroke-width: 2; }
+.mm-ring { fill: none; stroke: var(--focus); stroke-width: 2; }
 :root[data-theme="paper"] .mm-ring { stroke: var(--focus); }
 .mm-initials { font-family: var(--mono); font-size: 11px; font-weight: 500; fill: var(--text); }
 .mm-person-text { font-size: 13px; fill: var(--text); }
@@ -77,7 +77,7 @@
 .mem-trunc { margin: 0; }
 .mem-legend { display: flex; flex-wrap: wrap; gap: 8px 24px; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--label); }
 .mem-leg { display: inline-flex; align-items: center; gap: 8px; }
-.mem-zoom { display: flex; gap: 2px; padding: 2px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-2); flex-shrink: 0; }
+.mem-zoom { display: flex; gap: 2px; padding: 2px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); flex-shrink: 0; }
 .mem-zoom .btn { height: 32px; }
 
 /* List */
@@ -126,7 +126,7 @@
 .mem-cx-meta { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--label); }
 .mem-dot-closed { border: 1px solid var(--label); background: transparent; }
 .mem-cx-undo { padding-left: 20px; font-size: 13px; }
-.mem-side-cx:not(:empty) { margin-top: 14px; padding: 12px; border: 1px solid var(--rule); border-radius: var(--r-2); }
+.mem-side-cx:not(:empty) { margin-top: 14px; padding: 12px; border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); }
 .mem-side-cx .mem-cx-undo, .mem-side-cx .mem-cx-act { padding-left: 20px; }
 
 /* Detail panel */
@@ -156,7 +156,7 @@
 .mem-turn-top svg { flex-shrink: 0; }
 .mem-turn-name { font-size: 14px; line-height: 20px; color: var(--text); }
 .mem-turn-when { margin-left: auto; font-size: 12px; color: var(--label); flex-shrink: 0; }
-.mem-quote { margin: 0; padding: 8px 12px; border-radius: var(--r-1); font-size: 13px; line-height: 19px; color: var(--text); overflow-wrap: anywhere; }
+.mem-quote { margin: 0; padding: 8px 12px; border-radius: var(--radius-chip, 4px); font-size: 13px; line-height: 19px; color: var(--text); overflow-wrap: anywhere; }
 .mem-who { display: block; margin-top: 4px; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--text-2); }
 .mem-gone { margin-top: 10px; }
 .mem-fact-btn { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 8px 0; border: none; border-bottom: 1px solid var(--rule);
@@ -172,7 +172,7 @@
 }
 
 /* Phone: the list only; the panel is a full-screen sheet with a way back. */
-@media (max-width: 760px) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .mem-head { height: auto; flex-wrap: wrap; gap: 10px 12px; padding: 14px 16px 12px; }
   .mem-tab { font-size: 26px; line-height: 32px; letter-spacing: -0.02em; height: 40px; }
   .mem-tabs { order: 1; }

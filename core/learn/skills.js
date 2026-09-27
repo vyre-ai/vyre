@@ -409,7 +409,8 @@ export function pluginDirs(home, { project, agent } = {}) {
  * Skills from repeated procedures, over the learn module's database (SKILL_MIGRATIONS applied).
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {{ now?: () => number, emit?: (name: string, payload: any, opts?: any) => void, claudeDir?: string }} [opts]
- *   claudeDir is the user's own Claude Code folder, never written to (default ~/.claude).
+ *   claudeDir is the home's Claude Code folder (claudeHome), never written to; the account's own
+ *   ~/.claude is refused as well, whatever claudeDir says.
  */
 export function createSkills(db, { now = () => Date.now(), emit = () => {}, claudeDir = path.join(os.homedir(), ".claude") } = {}) {
   const put = db.prepare(`INSERT INTO learn_procs (hash, shape, project, session, seq, at, clean) VALUES (?,?,?,?,?,?,0)
@@ -432,8 +433,9 @@ export function createSkills(db, { now = () => Date.now(), emit = () => {}, clau
   /** Never ~/.claude, never the Harness's own skills, never outside root. */
   const guard = (file, root) => {
     const f = real(file), r = real(root);
-    const claude = real(claudeDir);
-    if (inside(claude, f) || inside(path.resolve(claudeDir), path.resolve(file))) throw new Error(`refusing to write under ${claudeDir}: the user's own Claude Code setup is not Vyre's to change`);
+    for (const dir of new Set([claudeDir, path.join(os.homedir(), ".claude")])) {
+      if (inside(real(dir), f) || inside(path.resolve(dir), path.resolve(file))) throw new Error(`refusing to write under ${dir}: the user's own Claude Code setup is not Vyre's to change`);
+    }
     if (inside(real(HARNESS), f)) throw new Error("refusing to write into the Harness's own skills");
     if (!inside(r, f) || f === r) throw new Error(`refusing a path outside ${root}`);
   };

@@ -104,7 +104,12 @@ export function memoryLine(p) {
   const usd = x => `$${Number(x).toFixed(2)}`;
   if (m && typeof m === "object") {
     if (m.on === false) line += ", model pass off";
-    else if (Number.isFinite(Number(m.today_usd)) && Number.isFinite(Number(m.cap_usd))) line += `, model pass ${usd(m.today_usd)} of ${usd(m.cap_usd)} today`;
+    else if (Number.isFinite(Number(m.today_usd)) && Number.isFinite(Number(m.cap_usd))) {
+      line += `, model pass ${usd(m.today_usd)} of ${usd(m.cap_usd)} today`;
+      // The one-time read of the history that was there before, while it lasts.
+      if (Number(m.backfill_usd) > 0 && Number.isFinite(Number(m.backfill_cap_usd))) line += `, backfill ${usd(m.backfill_usd)} of ${usd(m.backfill_cap_usd)}`;
+      if (Number(m.waiting_turns) > 0) line += `, ${m.waiting_turns} turns to read`;
+    }
   }
   return line;
 }
