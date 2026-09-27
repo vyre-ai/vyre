@@ -88,11 +88,14 @@ export function checkSchema(schema, value, where = "manifest", root = schema) {
 }
 
 /**
- * Check a manifest: the schema, then the rules that need the module's name.
+ * Check a manifest: the schema, then the rules that need the module's name. A module from outside
+ * Vyre (firstParty false, the default) is held to more: its settings can't be kept anywhere that
+ * reaches past its own rows, because a person's change to a setting carries the person's authority.
  * @param {any} m
+ * @param {{ firstParty?: boolean }} [opts]
  * @returns {string[]}
  */
-export function checkManifest(m) {
+export function checkManifest(m, { firstParty = false } = {}) {
   const out = checkSchema(SCHEMA, m);
   if (!TYPES.object(m) || typeof m.name !== "string") return out;
   const own = (/** @type {string} */ t) => t.startsWith(m.name + ".");
@@ -117,6 +120,14 @@ export function checkManifest(m) {
     if (seen.has(s.key)) out.push(`setting ${s.key} is declared twice`);
     seen.add(s.key);
     if (s.store && s.store.config !== undefined && Array.isArray(s.levels) && s.levels.includes("project")) out.push(`setting ${s.key}: a config.json setting is account only`);
+    if (firstParty || !TYPES.object(s.store)) continue;
+    if (s.store.claude !== undefined) out.push(`setting ${s.key}: only Vyre's own modules may keep a setting in Claude Code's files`);
+    if (typeof s.store.config === "string" && !own(s.store.config)) out.push(`setting ${s.key}: a config.json path must start with "${m.name}."`);
+    const t = TYPES.object(s.store.tool) ? s.store.tool : {};
+    for (const side of ["get", "set"]) {
+      const name = TYPES.object(t[side]) ? t[side].tool : undefined;
+      if (typeof name === "string" && !tools.includes(name)) out.push(`setting ${s.key}: store.tool.${side} must be one of this module's own tools`);
+    }
   }
   // A replacement registers the original's tools, so it carries the original's name; replaces
   // says so out loud, since a duplicate name without it is refused.

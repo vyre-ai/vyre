@@ -41,7 +41,7 @@ const full = () => ({
     { key: "bakery.opens", group: "bakery", label: "Opening hour", type: "int", min: 0, max: 23, default: 7, levels: ["account", "project"], apply: "live" },
     { key: "bakery.fax", label: "Fax orders", type: "bool", levels: ["account"], apply: "live", security: "loosens", loosens: "outbound fax", confirm: { values: [true] }, store: { config: "bakery.fax" } },
     { key: "bakery.oven", label: "Oven", type: "string", levels: ["project"], apply: "session", confirm: true, store: { tool: { get: { tool: "bakery.orders", input: { project: "$project" }, read: "oven" }, set: { tool: "bakery.order", input: { oven: "$value" } } } } },
-    { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session", store: { claude: "model" } },
+    { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session" },
   ],
   needs: { vault: ["bakery-api-key"], tools: ["planner.*", "memory.answer"], network: ["api.example.com", "*.example.org:8443"], slots: ["now"] },
   teaches: { memory: ["order.habit"], prompt: [{ level: "project", file: "prompt/bakery.md" }] },
@@ -51,7 +51,7 @@ const full = () => ({
 test("module sdk: every manifest in the repo passes the module API 1 schema", () => {
   const found = manifests();
   assert.ok(found.length >= 30, `found ${found.length} manifests`);
-  const problems = found.flatMap(({ file, m }) => checkManifest(m).map(p => `${file}: ${p}`));
+  const problems = found.flatMap(({ file, m }) => checkManifest(m, { firstParty: true }).map(p => `${file}: ${p}`));
   assert.deepEqual(problems, []);
 });
 
@@ -91,6 +91,10 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   has(bad(m => { m.settings[1].store = { config: "a", claude: "b" }; }), /store/);
   has(bad(m => { m.settings[2].store.tool.set = {}; }), /set\.tool is required/);
   has(bad(m => { m.settings[0].security = "tightens"; }), /security must be one of loosens/);
+  has(bad(m => { m.settings[3].store = { claude: "permissions.allow" }; }), /only Vyre's own modules may keep a setting in Claude Code's files/);
+  has(bad(m => { m.settings[1].store = { config: "gate.approvers" }; }), /a config\.json path must start with "bakery\."/);
+  has(bad(m => { m.settings[2].store.tool.set.tool = "threads.answer"; }), /store\.tool\.set must be one of this module's own tools/);
+  assert.deepEqual(checkManifest({ ...full(), settings: [{ key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session", store: { claude: "model" } }] }, { firstParty: true }), []);
   has(bad(m => { m.settings[0].apply = "never"; }), /apply must be one of live, session, restart/);
   has(bad(m => { m.replaces = "memory"; }), /a replacement takes the name of the module it replaces/);
   has(bad(m => { m.teaches.prompt[0].file = "/etc/passwd"; }), /must be a relative path to a \.md file/);
