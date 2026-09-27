@@ -30,6 +30,9 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - ADR 0035 accepted (native-core b95cc4dc) with my five notes answered. Schema matched in 8c74d585 (choicesFrom, session needs tool store). validateDecls patch sent to native-core (scratchpad validateDecls-adr0035.patch; they apply + test). Waiting: their hub store step 1 sha (rev-returning write) to rebase settings.write.
 - settings.write 70242656: e2e ok, handed to the integrator (merge after native-core 3ae4fc93).
 
+- Cohesion ADR 0036 asks accepted for P1: meta.call from header X-Vyre-Call-Id (per-thread socket + MCP only, ^[A-Za-z0-9_-]{1,128}$, linking only, never for decisions); registry.status() rows gain use {calls, lastUsed} for person/agent callers only (not module:), in memory, flushed to a kernel table at most once a minute and at stop. Glue module 4 is `waiting`.
+- P1 split: the settings-free part (call id, use counts, commands.list, events.catalog, status fields commands/connections/suggest/notices) can start on work/platform now; ctx.settings waits for native-core on main.
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
