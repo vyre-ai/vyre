@@ -55,9 +55,11 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
   carrying the whole Capsule codebase, not the Capsule's own footprint.
 
 ## Doing
-- Nothing in flight (2026-09-27). Last: the real-vyred perf check (see Done).
+- Stopped (2026-09-27, lead's wrap-up: the user is refocusing on the native core). On main: 876975b
+  (terminal tabs on recall.watch, via capsule-pro batch 2) and hands (ec72d08: hands.find, observe
+  match, needs_front). This branch past main holds docs only (perf numbers, ADR 0030 shapes).
 
-## Next
+## Next (when resumed)
 1. Vyre-owned sessions (ADR 0030): the panel's assistant and thread tabs already follow `thread.*`
    through threads.get + VyState.applyDm, so they pick up SDK sessions with no new call. When
    sessions lands `thread.turn`, `thread.state` and `thread.tool` {call, status}, check that
