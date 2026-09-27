@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Session, phone and desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2656px; height: 1120px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1500px;">
+      <span class="lbl">Key screen 2 · Chat</span>
+      <h1 class="t28 w6">A session reads like a conversation, and the terminal is one tap away.</h1>
+      <p class="t15 t2">Vyre runs every session through the Agent SDK with a provider router, so it can draw the work instead of dumping it: prose for replies, one quiet row per tool call, a diff only when you open it. Asks and questions sit inline at the tail and in Needs at the same time; answer either one.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <div class="cap">
+      <span class="cap-t">Desktop, 1280 wide · sessions, transcript, plan and computer</span>
+      <div class="win" style="width: 1280px; height: 800px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+        <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <nav class="rail" aria-label="Vyre">
+            <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">2</span></a>
+            <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+            <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+              <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+            </div>
+          </nav>
+          <main class="main">
+            <header class="top" style="grid-template-columns: minmax(0, 1fr) 300px minmax(0, 1fr);">
+              <div class="top-l"><h1 class="t15 w6 trunc">Q3 report and Estate intake</h1></div>
+              <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow trunc">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+              <div class="top-r"><div class="seg" role="tablist"><button class="on" type="button">Session</button><button type="button">Terminal</button><button type="button">Files</button></div></div>
+            </header>
+            <div style="display: grid; grid-template-columns: 300px minmax(0, 1fr) 300px; flex: 1 1 auto; min-height: 0;">
+
+              <div class="ld-l">
+                <div class="grp"><span class="dot dot-need"></span><span style="color: var(--beacon-ink);">Needs you</span><span class="t3" style="margin-left: auto; font-weight: 400;">2</span></div>
+                <div class="lrow lrow-on">
+                  <span class="av av-32">k</span>
+                  <div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="w6 trunc grow">Q3 report and Estate intake</span><span class="t12 t3">1m</span></div><span class="t2 trunc">Wants to run git push</span><span class="t12 t3 trunc">kit · Harlow Legal · Claude</span></div>
+                </div>
+                <div class="lrow">
+                  <span class="av av-32">j</span>
+                  <div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="w6 trunc grow">Northwind orders sign-in</span><span class="t12 t3">3m</span></div><span class="t2 trunc">Asks to sign in to app.northwind.test</span><span class="t12 t3 trunc">juno · Northwind Bakery · Codex</span></div>
+                </div>
+                <div class="grp" style="margin-top: 8px;"><span class="ring"></span>Working<span class="t3" style="margin-left: auto; font-weight: 400;">2</span></div>
+                <div class="lrow">
+                  <span class="av av-32">j</span>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Summarising the Northwind inbox</span><span class="t12 t3 trunc">juno · 3m · Codex</span></div>
+                </div>
+                <div class="lrow">
+                  <span class="av av-32">k</span>
+                  <div class="col grow" style="gap: 2px;"><span class="trunc">Harlow site footer links</span><span class="t12 t3 trunc">kit · 6m · Running npm run lint</span></div>
+                </div>
+                <div class="grp" style="margin-top: 8px;"><span class="dot dot-done"></span>Recent</div>
+                <div class="lrow" style="border-bottom: 0; align-items: center;"><span class="dot dot-unread"></span><span class="trunc grow">Q2 billing export</span><span class="t12 t3">Yesterday</span></div>
+                <div class="lrow" style="border-bottom: 0; align-items: center;"><span class="dot dot-done"></span><span class="trunc grow">Northwind menu update</span><span class="t12 t3">Mon</span></div>
+                <div class="lrow" style="border-bottom: 0; align-items: center;"><span class="dot dot-done"></span><span class="trunc grow">Clean up old drafts</span><span class="t12 t3">Sun</span></div>
+                <div class="row" style="margin-top: auto; padding: 12px 16px; border-top: 1px solid var(--rule);"><button class="btn btn-s" type="button" style="width: 100%;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>New session<span class="k">N</span></button></div>
+              </div>
+
+              <div class="col" style="min-width: 0; min-height: 0;">
+                <div class="row" style="height: 48px; flex: none; padding: 0 24px; gap: 10px; border-bottom: 1px solid var(--rule);">
+                  <span class="chip" style="height: 24px; cursor: default;"><span class="dot dot-run" style="width: 6px; height: 6px;"></span>Claude · opus</span>
+                  <span class="t13 w6">Harlow Legal</span>
+                  <span class="mono t12 t3 trunc grow">~/work/harlow-legal</span>
+                  <span class="t12 t3">q3-report</span>
+                </div>
+                <div class="col" data-scrolls="" style="flex: 1 1 auto; min-height: 0; overflow: hidden; justify-content: flex-end; gap: 10px; padding: 8px 24px 10px;">
+
+                  <section class="card" aria-label="Question, answered" style="flex: none;">
+                    <div class="card-h" style="height: 36px;"><svg class="ic t3" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="t13 t2 trunc grow">Which intake form should the Estate branch use?</span></div>
+                    <div class="choice choice-on" style="padding: 8px 16px; cursor: default; border-radius: 0 0 12px 12px; align-items: center;"><span class="radio radio-on"></span><span class="w6 grow">Estate intake v2</span><span class="t12 t2">Answered from alex's iPhone · 6m</span></div>
+                  </section>
+
+                  <div class="msg" style="flex: none;">
+                    <span class="av">k</span>
+                    <div class="col grow" style="gap: 6px; min-width: 0;">
+                      <div class="row" style="gap: 8px; height: 24px;"><span class="w6">kit</span><span class="t12 t3">14:31</span></div>
+                      <p class="prose">Using Estate intake v2. Probate fields now get their own step.</p>
+                      <div class="trow"><svg class="ic chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg><span>Edited 3 files, ran 2 commands</span><span class="t12 t3" style="margin-left: auto;">12 s</span></div>
+                      <div class="tool">
+                        <div class="tool-h" style="height: 32px;"><svg class="ic chev chev-open" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg><span class="t13 t2">Edited</span><span class="mono t12 trunc grow">src/intake/estate.ts</span><span class="t12 t2">+12 −4</span></div>
+                        <div class="tool-b diff">
+                                                    <div class="dl dl-del"><span class="n">42</span><span>-</span><span>    general.fields,</span></div>
+                          <div class="dl dl-add"><span class="n">42</span><span>+</span><span>    general.fields.filter(notProbate),</span></div>
+                          <div class="dl dl-add"><span class="n">43</span><span>+</span><span>    step("Probate", probate.fields),</span></div>
+                        </div>
+                      </div>
+                      <div class="trow"><svg class="ic" viewBox="0 0 16 16"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5"></rect><path d="M4.5 6l2 2-2 2M8.5 10.5h3"></path></svg><span>Ran</span><span class="mono trunc">npm test  · 41 passed</span></div>
+                      <span class="t12 t3">1m 12s · 18.4k tokens</span>
+                    </div>
+                  </div>
+
+                  <section class="card" aria-label="Permission" style="flex: none;">
+                    <div class="card-h" style="height: 40px;"><span class="dot dot-need"></span><span class="lbl bea">Permission</span><span class="t12 t3" style="margin-left: auto;">kit · 14:32</span></div>
+                    <div class="col" style="padding: 0 16px 14px; gap: 10px;">
+                      <div class="code">git push origin q3-report</div>
+                      <p class="t13 t2">Tests pass. This sends 4 commits to the Harlow Legal remote.</p>
+                      <div class="row" style="gap: 8px;"><button class="btn btn-p" type="button">Allow once<span class="k">A</span></button><button class="btn" type="button">Always in Harlow Legal</button><button class="btn btn-g" type="button" style="margin-left: auto;">Deny<span class="k">D</span></button></div>
+                    </div>
+                  </section>
+                </div>
+                <div class="col" style="flex: none; padding: 0 24px 16px; gap: 8px;">
+                  <div class="queued"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg><span>Queued · sends when kit finishes</span><span class="t2 trunc grow">"Then open a PR against main"</span></div>
+                  <div class="composer">
+                    <div class="composer-in trunc" style="min-height: 40px;">Reply to kit, @ to mention, / for commands</div>
+                    <div class="composer-bar">
+                      <button class="cchip" type="button" aria-label="Attach"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
+                      <button class="cchip" type="button">Claude · opus<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+                      <button class="cchip" type="button">Asks first<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+                      <span class="tag" style="gap: 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>vault: northwind orders</span>
+                      <span class="grow"></span>
+                      <button class="ibtn ibtn-sm" type="button" aria-label="Dictate"><svg class="ic" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button>
+                      <button class="ibtn ibtn-sm" type="button" aria-label="Send" style="background: var(--hover); color: var(--text);"><svg class="ic" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <aside class="side" style="width: 300px; padding: 16px; gap: 12px;">
+                <div class="row" style="gap: 8px;"><span class="lbl grow">Plan</span><span class="t12 t3">3 of 5</span></div>
+                <div class="col" style="gap: 8px;">
+                  <div class="row" style="gap: 10px;"><span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 t2 trunc">Pick the intake form</span></div>
+                  <div class="row" style="gap: 10px;"><span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 t2 trunc">Move probate fields to a step</span></div>
+                  <div class="row" style="gap: 10px;"><span class="chk chk-on"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13 t2 trunc">Update schema and tests</span></div>
+                  <div class="row" style="gap: 10px;"><span style="width: 16px; display: inline-flex; justify-content: center; flex: none;"><span class="dot dot-need"></span></span><span class="t13 w6 trunc grow">Push q3-report</span><span class="t12 bea">waiting</span></div>
+                  <div class="row" style="gap: 10px;"><span class="chk"></span><span class="t13 trunc">Open a PR against main</span></div>
+                </div>
+                <div class="hr"></div>
+                <div class="row" style="gap: 8px;"><span class="lbl grow">Changed files</span><span class="t12 t2">+188 −133</span></div>
+                <div class="col" style="gap: 6px;">
+                  <div class="row" style="gap: 8px;"><span class="mono t12 trunc grow">src/intake/estate.ts</span><span class="t12 t2">+96 −41</span></div>
+                  <div class="row" style="gap: 8px;"><span class="mono t12 trunc grow">src/intake/schema.ts</span><span class="t12 t2">+54 −62</span></div>
+                  <div class="row" style="gap: 8px;"><span class="mono t12 trunc grow">src/forms/steps.tsx</span><span class="t12 t2">+38 −30</span></div>
+                </div>
+                <div class="hr"></div>
+                <div class="row" style="gap: 8px;"><span class="lbl grow">Computer</span><span class="st"><span class="dot dot-run"></span>running</span></div>
+                <div class="glass" style="height: 160px; flex: none;">
+                  <div class="glass-bar"><span class="gl-line" style="width: 120px; height: 6px;"></span></div>
+                  <div class="col" style="padding: 12px; gap: 8px;">
+                    <span class="gl-line" style="width: 60%;"></span>
+                    <span class="gl-line" style="width: 40%; height: 6px;"></span>
+                    <div class="row" style="gap: 8px;"><span class="gl-block" style="height: 22px; flex: 1;"></span><span class="gl-block" style="height: 22px; flex: 1;"></span></div>
+                    <span class="gl-block" style="height: 22px;"></span>
+                    <span class="gl-block" style="height: 18px; width: 72px; background: var(--rule-strong);"></span>
+                  </div>
+                  <span class="cursor-ai" style="left: 150px; top: 98px;"></span>
+                  <span class="live" style="position: absolute; right: 8px; bottom: 8px;"><span class="dot dot-run" style="width: 6px; height: 6px;"></span>LIVE</span>
+                </div>
+                <div class="row" style="gap: 8px;"><span class="t12 t3 grow trunc">Harlow Legal intake · staging</span><button class="btn btn-g btn-sm" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg>Watch</button></div>
+              </aside>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Phone A · Session, a live question at the tail</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav">
+          <button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button>
+          <div class="col grow" style="min-width: 0; align-items: center;"><span class="t17 w6 trunc">Q3 report and Estate intake</span><span class="t12 t3 trunc">kit · Claude · opus · Harlow Legal</span></div>
+          <button class="ibtn" type="button" aria-label="More" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.8"></circle><circle cx="8" cy="8" r="0.8"></circle><circle cx="12.5" cy="8" r="0.8"></circle></svg></button>
+        </div>
+        <div style="padding: 4px 16px 8px; flex: none;">
+          <div class="seg" role="tablist" style="display: flex; width: 100%;"><button class="on" type="button" style="flex: 1; height: 40px;">Session</button><button type="button" style="flex: 1; height: 40px;">Terminal</button><button type="button" style="flex: 1; height: 40px;">Files</button></div>
+        </div>
+        <div class="col" data-scrolls="" style="flex: 1 1 auto; min-height: 0; overflow: hidden; justify-content: flex-end; gap: 10px; padding: 0 16px 10px;">
+          <div class="turn-you t17" style="flex: none;">Rebuild the intake for the Estate branch, then push q3-report.</div>
+          <div class="row" style="gap: 8px; flex: none;"><span class="av">k</span><span class="w6 t13">kit</span><span class="t12 t3">14:24</span></div>
+          <div class="col" style="flex: none;">
+            <div class="trow" style="height: 32px;"><svg class="ic chev" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg><span>Thinking · 8 s</span></div>
+            <div class="trow" style="height: 32px;"><svg class="ic" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg><span>Read</span><span class="mono trunc">src/intake/schema.ts</span></div>
+            <div class="trow" style="height: 32px;"><span class="spin"></span><span>Running</span><span class="mono trunc">npm run build</span><span class="t12 t2" style="margin-left: auto;">0:42</span></div>
+          </div>
+          <section class="ph-card" aria-label="Question" style="flex: none;">
+            <div class="card-h" style="height: 40px; padding: 0 14px;"><span class="dot dot-need"></span><span class="lbl bea">Question</span><span class="t12 t3" style="margin-left: auto;">kit · now</span></div>
+            <p class="t17 w6" style="padding: 0 14px 10px;">Which intake form should the Estate branch use?</p>
+            <div class="choice choice-on" style="padding: 10px 14px; min-height: 48px;"><span class="radio radio-on" style="margin-top: 4px;"></span><span class="t17 grow">Estate intake v2</span></div>
+            <div class="choice" style="padding: 10px 14px; min-height: 48px;"><span class="radio" style="margin-top: 4px;"></span><span class="t17 grow">Harlow general intake</span></div>
+            <div class="choice" style="padding: 8px 14px; align-items: center; cursor: default;"><span class="radio"></span><span class="inp inp-ph" style="height: 44px; font-size: 17px; line-height: 24px;">Other</span></div>
+            <div class="row" style="padding: 10px 14px 14px; gap: 10px; border-top: 1px solid var(--rule);"><button class="btn btn-p ph-btn" type="button" style="flex: 1;">Submit</button><span class="t12 t3" style="width: 150px;">Also in Needs. Answer here or there.</span></div>
+          </section>
+        </div>
+        <div style="padding: 0 12px 38px; flex: none;">
+          <div class="composer">
+            <div class="composer-in t17 trunc" style="min-height: 44px;">Reply to kit, @ to mention, / for commands</div>
+            <div class="composer-bar" style="padding: 0 4px 4px;">
+              <button class="ibtn" type="button" aria-label="Attach" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
+              <button class="cchip" type="button" style="height: 44px;">opus<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+              <button class="cchip" type="button" style="height: 44px;">Asks first<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+              <span class="grow"></span>
+              <button class="ibtn" type="button" aria-label="Dictate" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button>
+              <button class="ibtn" type="button" aria-label="Send" style="width: 44px; height: 44px; border-radius: 22px; background: var(--hover); color: var(--text);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
+            </div>
+          </div>
+        </div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Phone B · Terminal, the key bar docked</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav">
+          <button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button>
+          <span class="t17 w6 grow trunc">kit · Terminal</span>
+          <span class="st" style="padding-right: 12px;"><span class="dot dot-run"></span>direct</span>
+        </div>
+        <div class="row" style="flex: none; gap: 8px; min-height: 44px; padding: 6px 16px; border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule);">
+          <svg class="ic t3" viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg>
+          <span class="t12 t2 grow">This phone is watching. Size is owned by alex's MacBook Pro</span>
+          <button class="btn btn-sm" type="button" style="height: 32px;">Take size</button>
+        </div>
+        <div class="term" style="flex: 1 1 auto; min-height: 0; padding: 12px 14px;"><span class="d">kit@the-box</span> <span class="s">~/work/harlow-legal</span> <span class="d">(q3-report)</span>
+<span class="g">$</span> npm test
+
+<span class="d">&gt; harlow-intake@2.4.0 test</span>
+<span class="d">&gt; vitest run</span>
+
+ <span class="g">✓</span> src/intake/schema.test.ts <span class="d">(12)</span>
+ <span class="g">✓</span> src/intake/estate.test.ts <span class="d">(9)</span>
+ <span class="g">✓</span> src/intake/general.test.ts <span class="d">(14)</span>
+ <span class="g">✓</span> src/forms/render.test.ts <span class="d">(6)</span>
+
+ <span class="s">Test Files</span>  4 passed <span class="d">(4)</span>
+      <span class="s">Tests</span>  <span class="g">41 passing</span>
+   <span class="s">Duration</span>  3.84s
+
+<span class="d">kit@the-box</span> <span class="s">~/work/harlow-legal</span> <span class="d">(q3-report)</span>
+<span class="g">$</span> git status --short
+ M src/intake/estate.ts
+ M src/intake/schema.ts
+ M src/forms/steps.tsx
+
+<span class="d">kit@the-box</span> <span class="s">~/work/harlow-legal</span> <span class="d">(q3-report)</span>
+<span class="g">$</span> git log --oneline -3
+<span class="s">a41c9e2</span> Estate intake: probate step
+<span class="s">7d03b18</span> Schema: split probate fields
+<span class="s">c92f4aa</span> Tests for the Estate branch
+
+<span class="d">kit@the-box</span> <span class="s">~/work/harlow-legal</span> <span class="d">(q3-report)</span>
+<span class="g">$</span> <span class="caret"></span></div>
+        <div class="keybar" style="flex: none; padding: 8px 8px 8px;">
+          <span class="key">Esc</span><span class="key">Tab</span><span class="key key-on">Ctrl</span><span class="key">Alt</span><span class="key">↑</span><span class="key">↓</span><span class="key">Paste</span>
+          <span class="key">/</span><span class="key">|</span><span class="key">~</span><span class="key">-</span><span class="key">←</span><span class="key">→</span><span class="key">Enter</span>
+        </div>
+        <div class="safe-b" style="background: var(--panel);"></div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <div class="anno">
+      <span class="lbl">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>Vyre owns the session through the Agent SDK. The chip says which provider the router picked (Claude · opus or Codex) and switches it for the next turn. Project and folder sit beside it, the folder in mono.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>Beautified, not hidden: every tool call is one quiet row with a verb and a mono summary. Runs fold into one line; a diff opens in place, additions on the lime wash, deletions on a neutral wash. Never red.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Quiet work never looks stalled: a running row counts up (Running npm run build · 0:42), thinking collapses to its length, and each turn ends with its time and tokens.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Asks and questions live inline at the tail and in Needs at once. Answer either one and the other resolves: the desktop shows the question answered from alex's iPhone.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>One composer everywhere: attach, model, mode (Asks first), vault chips, mic, send. Typing while kit works queues the message; it sends when the turn ends.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Terminal is the same session's pty. One device owns the size; others watch at that size until they tap Take size. The key bar carries what a phone keyboard lacks.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2656,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

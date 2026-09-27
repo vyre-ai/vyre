@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vault, phone and desktop</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2660px; height: 1120px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1400px;">
+      <span class="lbl">Key screen 5 · Vault</span>
+      <h1 class="t28 w6">The vault holds typed secrets, fills them through each system's own autofill, and shows who used what.</h1>
+      <p class="t15 t2">One Face ID or Touch ID opens a 30-minute window that does not stretch with use and closes when the device locks. Agents sign in only through a grant: one agent, one login, one site, with an end date. Every use lands in the log.</p>
+    </div>
+  </div>
+
+  <div class="frames">
+
+    <div class="cap">
+      <span class="cap-t">Desktop, 1280 wide · a login with its codes, grants and log</span>
+      <div class="win" style="width: 1280px; height: 800px;">
+        <div class="win-bar"><i></i><i></i><i></i><span class="u">vyre.harlow.ts.net</span></div>
+        <div class="vy dB {{theme}}" style="flex: 1 1 auto; min-height: 0;">
+          <nav class="rail" aria-label="Vyre">
+            <a class="home" href="#" aria-label="Vyre home"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle cx="20.5" cy="5.5" r="2.3" style="fill: var(--beacon-dot);"></circle></svg></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 8h3l2-5 3 10 2-5h3"></path></svg>Now<span class="badge">5</span></a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2.5 3.5h11v7h-6l-3 2.5v-2.5h-2z"></path></svg>Chat</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.5"></circle><path d="M3 13.5c.8-2.6 2.7-4 5-4s4.2 1.4 5 4"></path></svg>Agents</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M1.5 4.5v8h13v-6.5h-6.5l-1.5-1.5z"></path></svg>Projects</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="11" rx="1.5"></rect><path d="M2 6.5h12M5.5 1.5v3M10.5 1.5v3"></path></svg>Planner</a>
+            <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 2l6 3-6 3-6-3z"></path><path d="M2 8l6 3 6-3"></path><path d="M2 11l6 3 6-3"></path></svg>Memory</a>
+            <a class="rb rb-on" href="#" aria-current="page"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>Vault</a>
+            <div style="margin-top: auto; display: flex; flex-direction: column; align-items: center; gap: 2px;">
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg>Devices</a>
+              <a class="rb" href="#"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M2 4.5h7M12 4.5h2M2 11.5h2M7 11.5h7"></path><circle cx="10.5" cy="4.5" r="1.5"></circle><circle cx="5.5" cy="11.5" r="1.5"></circle></svg>Settings</a>
+              <span class="av av-32 av-me" style="margin-top: 6px;">a</span>
+            </div>
+          </nav>
+          <main class="main">
+            <header class="top" style="grid-template-columns: minmax(0, 1fr) 360px minmax(0, 1fr);">
+              <div class="top-l"><h1 class="t15 w6">Vault</h1><span class="t12 t3">231 items</span></div>
+              <div class="cmd"><svg class="ic" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="grow">Jump to anything, or ask juno</span><span class="kbd">⌘K</span></div>
+              <div class="top-r"><span class="lock-pill"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path><path d="M5.5 6v1M10.5 6v1M8 6v3h-.8M6 10.8c1.2.9 2.8.9 4 0"></path></svg>Unlocked · 24 min left</span><button class="btn" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M8 2v8M4.5 6.5L8 10l3.5-3.5M2.5 13.5h11"></path></svg>Import</button><button class="btn btn-p" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>New item</button></div>
+            </header>
+            <div class="ld">
+              <div class="ld-l">
+                <div class="col" style="gap: 10px; padding: 12px 16px 8px;">
+                  <div class="inp"><svg class="ic t3" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.5"></circle><path d="M10.5 10.5l3.5 3.5"></path></svg><span class="inp-ph">Search the vault</span></div>
+                  <div class="row" style="gap: 6px; flex-wrap: wrap;"><span class="chip chip-on">All</span><span class="chip">Logins</span><span class="chip">Codes</span><span class="chip">Keys</span><span class="chip">Cards</span></div>
+                </div>
+                <div class="banner" style="margin: 4px 12px 8px; align-items: flex-start;">
+                  <svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><rect x="2" y="2" width="12" height="12" rx="2"></rect><path d="M5 8l2 2 4-4"></path></svg>
+                  <div class="col grow" style="gap: 0;"><span class="trunc">12 passwords are reused</span><span class="t12 t2 trunc">A todo is waiting in Planner</span></div>
+                </div>
+                <div class="grp">Logins<span class="t3" style="margin-left: auto; font-weight: 400;">162</span></div>
+                <div class="lrow lrow-on" style="align-items: center;">
+                  <span class="av av-32">N</span>
+                  <div class="col grow" style="gap: 0;"><span class="w6 trunc">Northwind orders</span><span class="t12 t3 trunc">orders@northwind.test · code</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <span class="av av-32">H</span>
+                  <div class="col grow" style="gap: 0;"><span class="trunc">Harlow Legal Google</span><span class="t12 t3 trunc">alex@harlow.test · passkey · code</span></div>
+                </div>
+                <div class="lrow" style="align-items: center;">
+                  <span class="av av-32">G</span>
+                  <div class="col grow" style="gap: 0;"><span class="trunc">GitHub alex</span><span class="t12 t3 trunc">alex · code</span></div>
+                </div>
+                <div class="grp">API keys<span class="t3" style="margin-left: auto; font-weight: 400;">4</span></div>
+                <div class="lrow" style="align-items: center;">
+                  <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><circle cx="5" cy="11" r="2.5"></circle><path d="M6.8 9.2l6.2-6.2M11 5l2 2M9.5 6.5l1.5 1.5"></path></svg></span>
+                  <div class="col grow" style="gap: 0;"><span class="trunc">Northwind payments</span><span class="t12 t3 trunc">Test key · Northwind Bakery</span></div>
+                </div>
+                <div class="grp">SSH keys and .env files<span class="t3" style="margin-left: auto; font-weight: 400;">6</span></div>
+                <div class="lrow" style="align-items: center;">
+                  <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg></span>
+                  <div class="col grow" style="gap: 0;"><span class="mono t12 trunc">harlow-intake/.env</span><span class="t12 t3 trunc">.env file · 9 values</span></div>
+                </div>
+                <div class="lrow" style="align-items: center; border-bottom: 0;">
+                  <span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path></svg></span>
+                  <div class="col grow" style="gap: 0;"><span class="trunc">the box</span><span class="t12 t3 trunc">SSH key · ed25519</span></div>
+                </div>
+              </div>
+
+              <div class="ld-d" style="padding: 20px 28px; gap: 16px;">
+                <div class="row" style="gap: 12px;">
+                  <span class="av av-40">N</span>
+                  <div class="col grow" style="gap: 2px;"><h2 class="t20 w6">Northwind orders</h2><span class="t12 t2">Login · Northwind Bakery · changed 3 Sep</span></div>
+                  <button class="btn btn-g" type="button">Edit</button>
+                </div>
+
+                <div style="display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; min-height: 0;">
+                  <div class="col" style="gap: 16px; min-width: 0;">
+                    <section class="card" aria-label="Login">
+                      <div style="padding: 4px 16px 0;">
+                        <div class="df" style="border-top: 0; align-items: center;"><span class="t12 t3">Username</span><span class="df-v row" style="gap: 8px;"><span class="grow trunc">orders@northwind.test</span><button class="ibtn ibtn-sm" type="button" aria-label="Copy username"><svg class="ic" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg></button></span></div>
+                        <div class="df" style="align-items: center;"><span class="t12 t3">Password</span><span class="df-v row" style="gap: 8px;"><span class="mono grow trunc">••••••••••••••</span><button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg>Reveal</button><button class="btn btn-sm" type="button"><svg class="ic" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg>Copy</button></span></div>
+                        <div class="df" style="align-items: center;"><span class="t12 t3">Site</span><span class="df-v row" style="gap: 8px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg><span class="trunc">https://app.northwind.test</span></span></div>
+                      </div>
+                      <div class="row" style="gap: 16px; padding: 14px 16px 16px; border-top: 1px solid var(--rule);">
+                        <div class="col grow" style="gap: 2px;">
+                          <span class="lbl">Authenticator</span>
+                          <span class="t28 w6 otp">482 913</span>
+                          <span class="t12 t3 otp">next 031 775</span>
+                        </div>
+                        <div class="col" style="align-items: center; gap: 4px;">
+                          <svg class="cd" viewBox="0 0 22 22" style="width: 32px; height: 32px;"><circle class="trk" cx="11" cy="11" r="9"></circle><circle class="arc" cx="11" cy="11" r="9" stroke-dasharray="33.9 56.5" transform="rotate(-90 11 11)"></circle></svg>
+                          <span class="t12 t2">18 s</span>
+                        </div>
+                        <button class="btn" type="button"><svg class="ic" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg>Copy code</button>
+                      </div>
+                      <div class="card-f"><svg class="ic t2" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="t2">Password copied · clears in 30 s</span><span class="t12 t3" style="margin-left: auto;">Face ID confirmed 6 min ago</span></div>
+                    </section>
+
+                    <section class="card" aria-label="Grants">
+                      <div class="card-h"><span class="lbl">Agent grants</span><span class="t12 t3" style="margin-left: auto;">One agent, one login, one site</span></div>
+                      <div class="row" style="gap: 12px; padding: 10px 16px; border-top: 1px solid var(--rule);">
+                        <span class="av av-32">k</span>
+                        <div class="col grow" style="gap: 2px;"><span class="trunc">kit signs in to app.northwind.test as harlow-drive</span><span class="t12 t3 trunc">until 1 Oct · used 14 times · last 2h ago</span></div>
+                        <button class="btn btn-sm" type="button">Revoke</button>
+                      </div>
+                      <div class="row" style="gap: 12px; padding: 10px 16px; border-top: 1px solid var(--rule);">
+                        <span class="av av-32">j</span>
+                        <div class="col grow" style="gap: 2px;"><span class="trunc">juno signs in to app.northwind.test as orders-bot</span><span class="t12 t3 trunc">until 1 Oct · used 3 times · last yesterday</span></div>
+                        <button class="btn btn-sm" type="button">Revoke</button>
+                      </div>
+                    </section>
+                  </div>
+
+                  <div class="col" style="gap: 16px; min-width: 0;">
+                    <section class="list" aria-label="Used by">
+                      <div class="list-h"><span class="lbl">Used by</span><span class="t12 t3" style="margin-left: auto;">last 7 days</span></div>
+                      <div class="li" style="align-items: flex-start; padding: 8px 16px;"><div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="trunc grow">kit · capsule</span><span class="t12 t3">2h ago</span></div><span class="t12 t3 trunc">app.northwind.test · signed in</span></div></div>
+                      <div class="li" style="align-items: flex-start; padding: 8px 16px;"><div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="trunc grow">alex's MacBook Pro · chrome</span><span class="t12 t3">09:12</span></div><span class="t12 t3 trunc">app.northwind.test · filled</span></div></div>
+                      <div class="li" style="align-items: flex-start; padding: 8px 16px;"><div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="trunc grow">alex's Pixel 8 · android</span><span class="t12 t3">Sat</span></div><span class="t12 t3 trunc">code copied</span></div></div>
+                      <div class="li" style="align-items: flex-start; padding: 8px 16px;"><div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="trunc grow">kit · computer</span><span class="t12 t3">Fri</span></div><span class="t12 t2 row" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg>app.northwind.test · refused, grant ended</span></div></div>
+                    </section>
+
+                    <section class="card" aria-label="Chrome autofill">
+                      <div class="card-h"><span class="lbl">In Chrome</span><span class="t12 t3" style="margin-left: auto;">the one picker Vyre draws</span></div>
+                      <div class="col" style="gap: 6px; padding: 0 16px 16px;">
+                        <span class="t12 t2">Email</span>
+                        <div class="inp inp-focus"><span class="inp-ph">you@company</span></div>
+                        <div class="sheet" style="margin-top: 2px; padding: 4px;">
+                          <div class="row" style="gap: 10px; padding: 6px 8px; border-radius: 6px; background: var(--hover);">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg>
+                            <div class="col grow" style="gap: 0;"><span class="trunc">Northwind orders</span><span class="t12 t2 trunc">orders@northwind.test</span></div>
+                            <span class="kbd">⏎</span>
+                          </div>
+                        </div>
+                      </div>
+                    </section>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Phone, 390 wide · authenticator codes</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav" style="position: relative;">
+          <a class="row" href="#" style="gap: 2px; height: 44px; padding-right: 8px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg><span class="t17">Vault</span></a>
+          <span class="t17 w6" style="position: absolute; left: 0; right: 0; text-align: center; pointer-events: none;">Codes</span>
+        </div>
+        <div class="ph-body">
+          <div class="row" style="justify-content: space-between;"><span class="lock-pill"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M2 5V3.5A1.5 1.5 0 0 1 3.5 2H5M11 2h1.5A1.5 1.5 0 0 1 14 3.5V5M14 11v1.5a1.5 1.5 0 0 1-1.5 1.5H11M5 14H3.5A1.5 1.5 0 0 1 2 12.5V11"></path><path d="M5.5 6v1M10.5 6v1M8 6v3h-.8M6 10.8c1.2.9 2.8.9 4 0"></path></svg>Unlocked · 24 min left</span><span class="t12 t3">Tap a code to copy</span></div>
+          <div class="ph-card">
+            <div class="ph-row" style="align-items: center;">
+              <span class="av av-32">H</span>
+              <div class="col grow" style="gap: 0; min-width: 0;"><span class="t13 t2 trunc">Harlow Legal Google</span><span class="t28 w6 otp">207 448</span><span class="t12 t3 otp">next 915 062</span></div>
+              <div class="col" style="align-items: center; gap: 2px;"><svg class="cd" viewBox="0 0 22 22" style="width: 28px; height: 28px;"><circle class="trk" cx="11" cy="11" r="9"></circle><circle class="arc" cx="11" cy="11" r="9" stroke-dasharray="33.9 56.5" transform="rotate(-90 11 11)"></circle></svg><span class="t12 t2">18 s</span></div>
+            </div>
+            <div class="ph-row" style="align-items: center; background: var(--signal-wash);">
+              <span class="av av-32">N</span>
+              <div class="col grow" style="gap: 0; min-width: 0;"><span class="t13 t2 trunc">Northwind orders</span><span class="t28 w6 otp">482 913</span><span class="t12 t2 row" style="gap: 6px;"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg>Copied · clears in 30 s</span></div>
+              <div class="col" style="align-items: center; gap: 2px;"><svg class="cd" viewBox="0 0 22 22" style="width: 28px; height: 28px;"><circle class="trk" cx="11" cy="11" r="9"></circle><circle class="arc" cx="11" cy="11" r="9" stroke-dasharray="33.9 56.5" transform="rotate(-90 11 11)"></circle></svg><span class="t12 t2">18 s</span></div>
+            </div>
+            <div class="ph-row" style="align-items: center;">
+              <span class="av av-32">G</span>
+              <div class="col grow" style="gap: 0; min-width: 0;"><span class="t13 t2 trunc">GitHub alex</span><span class="t28 w6 otp">660 381</span><span class="t12 t3 otp">next 274 590</span></div>
+              <div class="col" style="align-items: center; gap: 2px;"><svg class="cd" viewBox="0 0 22 22" style="width: 28px; height: 28px;"><circle class="trk" cx="11" cy="11" r="9"></circle><circle class="arc" cx="11" cy="11" r="9" stroke-dasharray="7.5 56.5" transform="rotate(-90 11 11)"></circle></svg><span class="t12 t2">4 s</span></div>
+            </div>
+            <div class="ph-row" style="align-items: center;">
+              <span class="av av-32">N</span>
+              <div class="col grow" style="gap: 0; min-width: 0;"><span class="t13 t2 trunc">Northwind payments admin</span><span class="t28 w6 otp">318 027</span><span class="t12 t3 otp">next 845 116</span></div>
+              <div class="col" style="align-items: center; gap: 2px;"><svg class="cd" viewBox="0 0 22 22" style="width: 28px; height: 28px;"><circle class="trk" cx="11" cy="11" r="9"></circle><circle class="arc" cx="11" cy="11" r="9" stroke-dasharray="33.9 56.5" transform="rotate(-90 11 11)"></circle></svg><span class="t12 t2">18 s</span></div>
+            </div>
+          </div>
+          <button class="btn btn-s ph-btn" type="button"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="2" y="2" width="4.5" height="4.5" rx="0.5"></rect><rect x="9.5" y="2" width="4.5" height="4.5" rx="0.5"></rect><rect x="2" y="9.5" width="4.5" height="4.5" rx="0.5"></rect><path d="M9.5 9.5h2v2M14 9.5v4.5h-4.5"></path></svg>Scan a Google Authenticator export</button>
+          <span class="t12 t3">System autofill on iPhone and Mac needs the $99 Apple Developer account. Until then, copy from here. On Android, autofill works through the APK.</span>
+        </div>
+        <div class="capsule"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="ph">Ask juno, find, or run</span><button class="mic" type="button" aria-label="Hold to talk"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button></div>
+        <div class="home-ind"></div>
+      </div>
+    </div>
+
+    <div class="cap">
+      <span class="cap-t">Phone, 390 wide · import preview</span>
+      <div class="phone">
+        <div class="island"></div>
+        <div class="safe-t"></div>
+        <div class="ph-nav" style="position: relative;">
+          <span class="t17 w6" style="position: absolute; left: 0; right: 0; text-align: center;">Vault</span>
+        </div>
+        <div class="ph-body">
+          <div class="ph-card"><div class="ph-row"><span class="t17">Harlow Legal Google</span></div><div class="ph-row"><span class="t17">Northwind orders</span></div></div>
+        </div>
+        <div class="ph-scrim"></div>
+        <div class="ph-sheet" style="top: 128px;">
+          <div class="grab"></div>
+          <div class="col" style="gap: 4px; padding: 16px 20px 12px;">
+            <span class="t22 w6">Import from 1Password</span>
+            <span class="t13 t2">214 items read. Nothing is saved until you press Import.</span>
+          </div>
+          <div class="col" style="padding: 0 20px; gap: 0;">
+            <div class="row" style="gap: 12px; min-height: 48px; border-top: 1px solid var(--rule);"><span class="t17 grow">Add</span><span class="t12 t3">3 renamed</span><span class="t17 w6">188</span></div>
+            <div class="row" style="gap: 12px; min-height: 48px; border-top: 1px solid var(--rule);"><span class="t17 grow">Same as the vault</span><span class="t17 w6">19</span></div>
+            <div class="row" style="gap: 12px; min-height: 48px; border-top: 1px solid var(--rule);"><span class="t17 grow">Conflicts</span><span class="t12 t3">skipped · review</span><span class="t17 w6">4</span></div>
+            <div class="col" style="gap: 2px; padding: 12px 0; border-top: 1px solid var(--rule);"><div class="row" style="gap: 12px;"><span class="t17 grow">Skipped</span><span class="t17 w6">3</span></div><span class="t12 t3">2 files over 10 MB · 1 unsupported kind: Document</span></div>
+            <div class="row" style="gap: 6px; flex-wrap: wrap; padding: 12px 0; border-top: 1px solid var(--rule);"><span class="tag">162 logins</span><span class="tag">11 codes</span><span class="tag">9 notes</span><span class="tag">3 cards</span><span class="tag">2 API keys</span><span class="tag">1 SSH key</span></div>
+          </div>
+          <div class="col" style="gap: 10px; padding: 12px 20px 0;">
+            <button class="btn btn-p ph-btn-lg" type="button">Import 188 items</button>
+            <button class="btn btn-g ph-btn" type="button">Cancel</button>
+            <span class="t13 t2" style="text-align: center;">Next: delete the export file now. It holds every password in plain text.</span>
+          </div>
+          <span class="t12 t3" style="text-align: center; padding: 10px 20px 0;">Also reads Bitwarden, Chrome, Safari, Apple Passwords and .env files.</span>
+        </div>
+        <div class="home-ind" style="z-index: 8;"></div>
+      </div>
+    </div>
+
+    <div class="anno">
+      <span class="lbl">How it works</span>
+      <div class="anno-i"><span class="anno-n">1</span><span>Typed kinds: Login, Passkey, Authenticator, API key, SSH key, Card, Note, .env file. The list groups by kind; chips filter.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>The lock pill is the whole unlock model: one Face ID or Touch ID opens 30 min, use does not extend it, and locking the device closes it. Locked, it reads "Locked · Face ID to open".</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Reveal shows the value in a sheet that hides itself after a few seconds. Copy uses an expiring clipboard and says when it clears.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Codes show the current value large and the next one small, so a code about to roll over is never a guess. The ring counts down the 30 s window.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Autofill goes through each system's own autofill. Chrome gets the only picker Vyre draws. The log names the surface: ios, android, mac, chrome, capsule or computer.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Import previews before it writes: add, same, conflicts (skipped by default), renamed and skipped with reasons. Codes come in from a Google Authenticator export QR. Reused passwords become one Planner todo.</span></div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2660,"height":1120}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

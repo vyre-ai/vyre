@@ -9,13 +9,13 @@ OUT=${OUT:-${TMPDIR:-/tmp}/app-render}
 mkdir -p "$OUT"
 rsync -a --delete --exclude render "$HERE/" "testbox:$DEST/"
 rsync -a "$HERE/../render/" "testbox:$DEST/"
-ssh testbox "cd $DEST && rm -rf png && mkdir -p png && nice -n 15 sh run-all.sh $*"
+ssh -o BatchMode=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 testbox "cd $DEST && rm -rf png && mkdir -p png && nice -n 15 sh run-all.sh $*"
 rsync -a --delete "testbox:$DEST/png/" "$OUT/"
 # The headless window is taller than the board; crop each PNG to the board's own size.
 for p in "$OUT"/*.png; do
   [ -f "$HERE/$(basename "$p" .png).dc.html" ] || continue
   b=$(basename "$p" .png)
-  h=$(node "$HERE/../render/size.js" "$HERE/$b.dc.html" | cut -d, -f2)
+  h=$(node "$HERE/../render/size.cjs" "$HERE/$b.dc.html" | cut -d, -f2)
   python3 "$HERE/../render/crop.py" "$p" "$h"
 done
 cat "$OUT/summary.txt"

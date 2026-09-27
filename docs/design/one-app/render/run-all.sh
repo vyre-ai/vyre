@@ -4,7 +4,7 @@ CHROME=${CHROME:-/usr/local/bin/vyre-chrome}
 BOARDS=${*:-$(ls *.dc.html | sed 's/\.dc\.html$//')}
 : > png/summary.txt
 for b in $BOARDS; do
-  size=$(node size.js "$b.dc.html")
+  size=$(node size.cjs "$b.dc.html")
   h=${size#*,}; w=${size%,*}; size="$w,$((h+200))"
   flags="--headless=new --no-sandbox --disable-gpu --hide-scrollbars --allow-file-access-from-files --force-device-scale-factor=1 --virtual-time-budget=8000 --window-size=$size"
   "$CHROME" $flags --screenshot="png/$b.png" "file://$PWD/$b.dc.html" >/dev/null 2>&1
