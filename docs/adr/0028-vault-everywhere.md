@@ -393,22 +393,27 @@ accepts these items as it accepts `needs.vault` names.
 **9b. A connection is a provider, an account, an auth kind, capabilities and surfaces.** Table
 `vault_connections(id, source, ref, provider, account, auth, label, capabilities, surfaces,
 added, updated, mac)`, MACed like the grant rows, unique on `(source, ref)`. A row whose MAC
-fails is granted to no surface. Ids are `cn_` and base64url, stable across upserts. Two kinds of
-row:
+fails is granted to no surface. Ids are `cn_` and base64url, stable across upserts. Rows come
+in two ways, and both stay:
 
 - `vault`: an item made by `vault.connect` or put with a catalog provider (API keys, PATs, IMAP
   and SMTP logins, Apps Script web-app tokens). The vault writes these itself and resyncs them on
   `vault.connected` and on its own put and delete events. Nothing polls.
-- A module's own rows. Modules register their connections; the vault never reads their tables or
-  lists. `vault.connections.register {ref, provider, account, auth, label?, capabilities? | tools?,
+- `google` and `mcp`, read by the vault through their own read-only tools (`google.accounts`;
+  `mcp.servers` with the cached `mcp.tools`), never their tables, and resynced on their events
+  (`google.added`, `google.removed`, `google.connected`, `mcp.added`, `mcp.updated`,
+  `mcp.removed`, `mcp.refreshed`) and on first read after start. `ref` is the account name or
+  the server name. A row leaves when its account or server does; a module that is not running is
+  an empty source.
+- A module's own rows. `vault.connections.register {ref, provider, account, auth, label?, capabilities? | tools?,
   items?, use?}` (module callers only) upserts on `(source, ref)`, where `source` is the calling
   module's name from its caller label, never from the input, and returns `{id}`. `auth` is one of
   `oauth`, `service-account`, `api-key`, `password`, `bearer`, `none`. With `tools` and no
   `capabilities`, capabilities come from the tool names by a small pattern table (`gmail_send`
   sends mail; `search_threads` reads mail on a mail server; `list_events` is calendar).
-  `vault.connections.unregister {ref}` removes one of the caller's own rows. The google module
-  registers one row per account, the mcp hub one per server (two Gmail servers are two rows), and
-  the mail module one per IMAP and SMTP login.
+  `vault.connections.unregister {ref}` removes one of the caller's own rows. A registered row is
+  the module's: a sync of the same source neither changes nor removes it. Two Gmail servers are
+  two rows either way.
 - `items` names the vault items a row signs in with. A row whose items are not all there and
   granted to its module has state `needs_credential`, with `needs: [{module, need}]` from that
   module's manifest. An item a module row claims is not listed again as a vault row.
@@ -429,7 +434,8 @@ the change survives every resync and re-register. `use` is a map from capability
   also `use`, that one entry. A module must pass `surface`, or `caller` (the caller it acts for).
   So "send an email" in the Capsule offers every account that can send, and Claude in a chat
   thread sees the same list. Never a value, a token or a field name that holds one.
-  `vault.connections.get {id}` is one row, on the same terms.
+  `vault.connections.get {id}` is one row, on the same terms; a module may read any row by id
+  (mail.release does, after the Gate approved), with no values.
 - `vault.connections.grant {id, surface}` (presence), `vault.connections.revoke {id, surface}`
   (no presence: taking access away never needs it), `vault.connections.sync` (people).
 - `vault.connections.allowed {id} | {source, ref}, caller` (modules only) returns
@@ -447,9 +453,11 @@ the change survives every resync and re-register. `use` is a map from capability
 **9c. IMAP and SMTP.** The connectors team owns a module `mail` (core/mail, under ADR 0016) with
 `mail.test`, `mail.search`, `mail.read`, `mail.send` and `mail.release` over IMAP4rev1 and SMTP
 (TLS or STARTTLS, AUTH PLAIN or LOGIN), with no new dependency. A login is an `env-set` item of
-provider `imap-smtp` granted to `mail`, declared as the need `{id: "account", kind: "env-set",
-provider: "imap-smtp", multiple: true}`. Each login is a registered connection, and the mail tools
-take `account`, a connection id; they ask `vault.connections.allowed` first. `mail.send` offers
+provider `imap-smtp` granted to `mail`, declared as the need `{id: "imap", kind: "env-set",
+provider: "imap-smtp", multiple: true}`, and an Apps Script web app as `{id: "apps-script", kind:
+"env-set", provider: "google-apps-script", multiple: true}`. The mail module registers nothing:
+each login is a vault row. The mail tools take `account`, a connection id of any source whose
+capabilities include mail; they ask `vault.connections.allowed` first. `mail.send` offers
 `mail:<account>` to the Gate and releases through `mail.release`, as google does. Tests run
 against fake IMAP and SMTP servers only.
 

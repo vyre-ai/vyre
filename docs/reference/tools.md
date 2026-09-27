@@ -3759,7 +3759,7 @@ Take a surface's use of a connection away. Needs no one: taking access away is a
 
 ### `vault.connections.sync`
 
-Resync the vault's own connections (items with a catalog provider) now. It happens on its own on every put, delete and connect.
+Resync now: the vault's own items with a catalog provider, google.accounts, and mcp.servers with their cached tools. It happens on its own on each source's events.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`

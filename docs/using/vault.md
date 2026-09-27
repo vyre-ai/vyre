@@ -275,7 +275,7 @@ the grant and it waits for you) or `expired`. Claude can never connect a key: th
 comes from your own screen.
 
 Some modules take several accounts of one kind, such as mail: give each a label, `vyre vault
-connect <module> account --label northwind`, and each is its own item (`<module>-northwind`).
+connect mail imap --label northwind`, and each is its own item (`mail-northwind`).
 
 ## Vault, Connections
 
@@ -311,6 +311,9 @@ or change what it can do (`vault.connections.update`), and that survives every r
 connection whose key is missing or not granted to its module shows `needs credential` and the
 `vyre vault connect` that fixes it. A row someone changed behind the vault's back fails its check
 and is granted to nothing until you grant it again.
+
+Your Google accounts and MCP servers appear on their own: the vault reads them each time one is
+added, changed or removed.
 
 > **For module authors.** Register each account with `vault.connections.register {ref, provider,
 > account, auth, label?, capabilities? or tools?, items?, use?}`; the source is your module's

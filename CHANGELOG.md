@@ -7,7 +7,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 #### Vault, Connections: every account and key, granted per surface (ADR 0028, decision 9b)
 
 - A new table, `vault_connections`, MACed like the grant rows: the vault's own items with a
-  catalog provider (resynced on `vault.connected`, put and delete), and rows modules register with
+  catalog provider (resynced on `vault.connected`, put and delete), the rows of `google.accounts`
+  and `mcp.servers` (read through those tools on their events and on first read), and rows modules register with
   `vault.connections.register` (source = the calling module, id `cn_...` stable across upserts;
   capabilities given, or read from tool names by a small pattern table). `unregister` removes a
   module's own row. A row whose items are missing or not granted has state `needs_credential`.
