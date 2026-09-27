@@ -6,6 +6,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- The box image runs tini as init and `core/daemon/loop.sh` under it: vyred is restarted inside
+  the container (2 s; five exits in a minute leave it to Docker), so a vyred restart keeps the
+  dtach terminals. A deploy still ends them, and now says so: `term.closed` reason `box updated`,
+  and `term.attach` answers `terminal_closed` for a day instead of `not_found`.
+- Modules get `ctx.events.latestId()`, the cursor a read returns as `last_event` (R1).
 - Aligned with ADR 0030 (Vyre-owned sessions): a call's Idempotency-Key reaches the tool as
   `meta.idempotencyKey`, and `keyUuid()` maps any key to a stable uuid for the Agent SDK message
   id. On stop, every live thread ends with `thread.stopped` reason `restart`.
