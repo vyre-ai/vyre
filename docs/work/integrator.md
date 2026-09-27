@@ -61,6 +61,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   after them: 1129 tests, only the drift allowlist failed, now 2/2.
 - Launch: 342e02f5 merged (b662d5da, same tree as d61fd341; the lead said keep it). Follow-up 57eebd9f
   merged (violet fills gone).
+- capsule-pro 0a7d7f53 Design A merged (supersedes a127335d and streamfix 686520d1).
 
 ## Done after Logout 3 (2026-09-27)
 
