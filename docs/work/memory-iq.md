@@ -47,6 +47,22 @@ Attributes: `name` (me|name|lit:Alex, kin:spouse|name|lit:Jordan), `birthday`, `
 `from`, `works_at`, `role`, `owns` (vehicles and other things), `drives`, `client`, `uses`,
 `prefers`.
 
+### The reader (27 Sep; lead-approved budget)
+
+- Every user turn with a personal signal (reader.js signal(): first person plus a life word or
+  "im in X") waits in memory_me_queue, keyed by the hash of the text and VERSION. The fast model
+  (config.models.memory, then .background, then config.memory.model.model, then haiku) reads 20
+  at a time through `claude -p` (no tools, MCP, settings or session kept), newest first.
+- Budget: config.memory.model {on, dailyUsd 0.25, backfillUsd 2 (one-time pool), batch 20, gapMs
+  >= 60 s}. It runs on events only, never while a user thread works. Spend is what the runner
+  reports. The usage line is memory.read and `vyre status`.
+- Check (checkRead): the quote must be in ownText(turn), and the subject and object must be
+  said there. Relations are the vocabulary of model.js plus sold (-> ended:owns) and color (a
+  vehicle's). method "model", at most 0.8. Kept in memory_me_reads by hash, so it is applied
+  again with no call.
+- Eval: test/eval/reads/<world>.json replays the reads. `--record` records them with `claude -p`
+  (testbox), and the sealed world is recorded without anyone reading the file.
+
 ### Round 1 additions (27 Sep, the contract both halves build against)
 
 - Relations: `diet` (me|diet|lit:vegetarian; single-valued), `breed` (a pet|breed|lit:beagle;
@@ -102,18 +118,19 @@ facts are not a project's.
   pasted email). The held-out world is the real number.
 
 ## Doing
-- Round 1 (27 Sep). Done: the bare-mcp and mcp:thread gate (6f2c57c, f9c8636, pushed). Also a
-  sealed fresh world (efe2da6), eval --facts (25ea1113), and the answer side (b1334227). On the
-  answer side, blind went from 0.571 to 0.633 with 0 confident wrong, and gold and heldout stay 1.0.
-- Extraction round 1 is WIP at 37c10f86 and untested. Its subagent was interrupted by the user.
-  Run extract/store/model tests on testbox and review before building on it.
-- Scores, round 0: gold 1.0, heldout 1.0 (tuned on, so no longer held out), blind 0.571, and
-  fresh (sealed) 0.24. Only fresh measures generalisation.
+- The reader (4a361881, WIP, untested because of the testbox freeze). Next on testbox:
+  reader.test.js, the personal suite, daemon.test.js, docs:ref (new tool memory.read) and a
+  single `claude -p` smoke call. Then record reads for personal/heldout/blind/fresh, score all
+  four and report fresh and the cost per 1,000 turns to main.
+- Extraction round 1 is WIP at 37c10f86, untested, its subagent interrupted by the user. Review it
+  with the same test run.
 
 ## Next
-- Finish and review extraction round 1, then score blind and fresh and report to main.
-- Waiting on main: the model-pass budget and recording eval fixtures with haiku (see Needs).
-- CI step for `npm run eval:answer`, ADR 0023, and contract notes for capsule-pro, pwa and mobile.
+- Model-backed answering with evidence (asked by the lead): too slow for memory.answer's 150 ms
+  bar, so a separate `deep` path the Capsule can call when there's no fact. Design it after the
+  numbers.
+- CI step for `npm run eval:answer` (replay only), ADR 0023, and contract notes for capsule-pro,
+  pwa and mobile.
 
 ## Needs from others
 - main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
