@@ -85,7 +85,7 @@ test("relay: the first device pairs during onboarding and reaches the box's rout
 
   const list = await p.call("relay.devices.list");
   assert.equal(list.status, 200, JSON.stringify(list));
-  assert.deepEqual(list.data.devices.map(x => [x.id, x.name, x.online]), [[p.reply.device, "alex's phone", true]]);
+  assert.deepEqual(list.data.devices.map(x => [x.id, x.name, x.online, x.path]), [[p.reply.device, "alex's phone", true, "relay"]]);
 
   const events = (await d.registry.call("relay.status", {}, "cli")).data;
   assert.equal(events.devices, 1);

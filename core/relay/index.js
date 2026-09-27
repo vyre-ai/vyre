@@ -188,6 +188,8 @@ export default {
     // ---- tools ----
 
     const view = d => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key), online: (live.get(d.id)?.size || 0) > 0,
+      // The relay sees only its own path; a phone reaching the box over the tailnet shows as null here.
+      path: (live.get(d.id)?.size || 0) > 0 ? "relay" : null,
       ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
         expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY } : {}) });
 
