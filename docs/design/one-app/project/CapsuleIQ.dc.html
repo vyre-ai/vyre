@@ -115,7 +115,7 @@
           </div>
         </div>
       </div>
-      <span class="note">(proposed) The source fields (session title · project · when, and the turn a chip opens at) wait on memory-iq to confirm them.</span>
+      <span class="note">Each chip is a source from <span class="mono">iq.ask</span> (ADR 0034): <span class="mono">name</span> · project · when (from <span class="mono">ts</span>); <span class="mono">session</span> and <span class="mono">seq</span> pick the turn it opens at, and <span class="mono">quote</span> is its tooltip.</span>
     </div>
 
     <!-- (c) Follow-up thread, Think deeper -->
@@ -203,7 +203,7 @@
           </div>
         </div>
       </div>
-      <span class="note">(proposed) "Not sure" rests on a confidence field memory-iq has not confirmed.</span>
+      <span class="note">"Not sure" shows when <span class="mono">iq.ask</span> returns <span class="mono">abstained</span>, or a low <span class="mono">confidence</span> (ADR 0034). Under it, what it is sure of, then the sources.</span>
     </div>
 
     <!-- (e) Nothing found -->
@@ -246,7 +246,7 @@
         <div class="anno-i"><span class="anno-n">3</span><span>After an answer the field reads "Ask a follow-up": ⏎ continues the thread, ⌘⏎ re-asks on the deeper model with thinking, ⌘O opens the thread in Vyre (Chat).</span></div>
         <div class="anno-i"><span class="anno-n">4</span><span>Esc clears back to plain search; a second Esc hides the panel. The thread is kept in Vyre.</span></div>
         <div class="anno-i"><span class="anno-n">5</span><span>Sources: up to 3 chips, then "+2 more". A chip or ⌘1..⌘3 opens that session in Vyre at the turn the answer came from. A memory chip opens the fact in Memory.</span></div>
-        <div class="anno-i"><span class="anno-n">6</span><span>(proposed) until memory-iq confirms: the confidence field behind "Not sure" and every source field (session title, project, when, turn).</span></div>
+        <div class="anno-i"><span class="anno-n">6</span><span>The fields, confirmed in ADR 0034: each source carries <span class="mono">session</span>, <span class="mono">seq</span>, <span class="mono">name</span>, <span class="mono">quote</span> and <span class="mono">ts</span>, and the answer carries <span class="mono">confidence</span> and <span class="mono">abstained</span>, which set "Not sure".</span></div>
         <div class="anno-i"><span class="anno-n">7</span><span>Honest states: "Not sure" shows what it found and makes no guess. Nothing found says so and offers ⌘⏎ Think deeper.</span></div>
         <div class="anno-i"><span class="anno-n">8</span><span>Smooth: the answer streams paced to the display, so the prose never reflows in bursts. The card grows downward and the input never moves. The local results collapse to one line once, on the first words, and never jump again.</span></div>
       </div>
