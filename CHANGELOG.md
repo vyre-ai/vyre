@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vyre Drive step: the decided design, previewed honestly
+
+- deck/onboard/onboard.js's `drive` step is no longer a bare "Coming soon" line: it now shows the
+  decided plan (docs/design/drive-onboarding.md, federation) as an inert preview — a sample folder
+  picker (Desktop, Documents, a project folder), "Files on demand" as the default with "Server
+  only" as a disabled alternative, a note on per-folder agent access, and a disabled receive-files
+  toggle. Nothing here is a working form yet (no onboard.* tool for any of it is allowlisted in
+  core/onboard/loopback.js): the "need" card says so and names the "watch it appear on your other
+  device" moment as the payoff once devices are paired, phone and Capsule both land, rather than
+  staging it as a live demo.
+
 #### Three more onboarding steps: secrets and Vyre Drive stubbed, Agent computers built
 
 - deck/onboard/onboard.js's client STEPS array grows from 6 to 9: `secrets` and `drive` are stubs
