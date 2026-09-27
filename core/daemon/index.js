@@ -19,7 +19,7 @@ import { Registry, discover } from "../modules/index.js";
 import { build } from "./build.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, SESSIONABLE, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, controllingTty } from "./peer.js";
+import { peerPid, insideClaude, loginOf, tmuxClients } from "./peer.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 
@@ -194,21 +194,36 @@ async function fromClaude(socket, registry) {
 }
 
 /**
- * The login terminal the person on the socket is typing in ("ttys003"), or null. Null from under a
- * `claude` or a thread (fromClaude), and null without a login terminal `who` lists: a double-forked
- * or setsid'd process has none, and `script`, tmux or expect ptys are not logins. The kernel says
- * which process connected and which terminal it runs in, so no label or file can fake it. This is
- * what lets one proof serve the CLI for 30 minutes, as a session serves the Deck (the no-nag rule;
- * the CLI is a first-class surface).
+ * The login the person on the socket is typing in, as a key ("ttys003#812@<start>"), or null. Null
+ * from under a `claude` or a thread (fromClaude), and null without a login terminal `who` lists: a
+ * double-forked or setsid'd process has none, and `script` or expect ptys are not logins. The key
+ * names the login's leader and its start time, so a new login that reuses the tty number starts
+ * with nothing. A tmux pane counts when every client attached to its session runs in such a login
+ * with no claude above it (tmux attached from a login shell); the key is then those logins. The
+ * kernel says which process connected and which terminal it runs in, so no label or file can fake
+ * it. This is what lets one proof serve the CLI for 30 minutes, as a session serves the Deck (the
+ * no-nag rule; the CLI is a first-class surface).
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
  * @returns {Promise<string|null>}
  */
 async function atTerminal(socket, registry, presence) {
   if (await fromClaude(socket, registry)) return null;
   const pid = await peerPid(socket);
-  const tty = pid ? controllingTty(pid) : null;
-  if (!tty || !presence || typeof presence.who !== "function") return null;
-  return (await presence.who()).includes(tty) ? tty : null;
+  if (!pid || !presence || typeof presence.who !== "function") return null;
+  const logins = await presence.who();
+  const login = loginOf(pid);
+  if (login && logins.includes(login.tty)) return login.key;
+  const clients = tmuxClients(pid);
+  if (!clients || !clients.length) return null;
+  const r = await registry.call("threads.pids", {}, "module:vyred");
+  const threads = (r.data && r.data.pids) || [];
+  const keys = [];
+  for (const c of clients) {
+    const l = insideClaude(c, { threads }).inside ? null : loginOf(c);
+    if (!l || !logins.includes(l.tty)) return null;
+    keys.push(l.key);
+  }
+  return "tmux:" + [...new Set(keys)].sort().join("+");
 }
 
 async function route(req, res, { registry, events, cfg, started, streams, root, socket = false, person = null }, /** @type {Policy} */ policy = {}) {

@@ -9,7 +9,7 @@ import path from "node:path";
 import { spawn } from "node:child_process";
 import { tempHome } from "./helpers.js";
 import { start } from "../core/daemon/index.js";
-import { ancestry, insideClaude, controllingTty } from "../core/daemon/peer.js";
+import { ancestry, insideClaude, controllingTty, loginOf, tmuxClients } from "../core/daemon/peer.js";
 
 const tree = {
   // vyred (500) under the test runner (400); a terminal zsh (200) and a claude (300) elsewhere.
@@ -92,4 +92,53 @@ test("peer: a detached process has no controlling terminal, whatever it says", a
   await new Promise(r => setTimeout(r, 200));
   try { assert.equal(controllingTty(/** @type {number} */ (child.pid)), null); }
   finally { child.kill(); }
+});
+
+// A Mac's processes with their terminals: Terminal.app (100, no tty) runs login (110) on ttys003,
+// which runs the login shell (120) and the vyre it started (130). Later the tab closes and a new
+// one gets ttys003 again (210 -> 220 -> 230).
+const logins = {
+  100: { ppid: 1, tty: null, started: "Sun Sep 27 08:00:00 2026", args: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal" },
+  110: { ppid: 100, tty: "ttys003", started: "Sun Sep 27 09:00:00 2026", args: "login -pf alex" },
+  120: { ppid: 110, tty: "ttys003", started: "Sun Sep 27 09:00:01 2026", args: "-zsh" },
+  130: { ppid: 120, tty: "ttys003", started: "Sun Sep 27 09:05:00 2026", args: "node vyre vault get bank" },
+  210: { ppid: 100, tty: "ttys003", started: "Sun Sep 27 09:20:00 2026", args: "login -pf alex" },
+  220: { ppid: 210, tty: "ttys003", started: "Sun Sep 27 09:20:01 2026", args: "-zsh" },
+  230: { ppid: 220, tty: "ttys003", started: "Sun Sep 27 09:21:00 2026", args: "node vyre vault get bank" },
+  // A detached process has no terminal.
+  300: { ppid: 1, tty: null, started: "Sun Sep 27 09:00:00 2026", args: "node vyre" },
+  // tmux: the server (400, no tty) runs a pane shell (410) on its own pty, and vyre in it (420).
+  // Client 500 runs `tmux attach` from the ttys003 login; 600 is a client under a claude.
+  400: { ppid: 1, tty: null, started: "Sun Sep 27 08:30:00 2026", args: "tmux new -s work" },
+  410: { ppid: 400, tty: "ttys009", started: "Sun Sep 27 08:30:00 2026", args: "-zsh" },
+  420: { ppid: 410, tty: "ttys009", started: "Sun Sep 27 09:06:00 2026", args: "node vyre vault get bank" },
+  500: { ppid: 120, tty: "ttys003", started: "Sun Sep 27 09:02:00 2026", args: "tmux attach -t work" },
+};
+const lookLogin = pid => logins[pid] || null;
+
+test("peer: a login is its tty plus its leader and start, so a new login on a reused tty is another login", () => {
+  const first = loginOf(130, lookLogin), again = loginOf(230, lookLogin);
+  assert.equal(first?.tty, "ttys003");
+  assert.equal(first?.leader, 110, "the topmost process on the same terminal");
+  assert.equal(again?.tty, "ttys003");
+  assert.notEqual(first?.key, again?.key);
+  assert.equal(loginOf(120, lookLogin)?.key, first?.key, "the same login from its shell");
+  assert.equal(loginOf(300, lookLogin), null, "no terminal, no login");
+});
+
+test("peer: a tmux pane's clients are found from its own ancestry and the server it names", () => {
+  const env = pid => (pid === 410 ? { TMUX: "/tmp/tmux-501/default,400,0" } : {});
+  const calls = [];
+  const tmux = (socket, args) => {
+    calls.push([socket, args[0]]);
+    return args[0] === "list-panes" ? "410 $0\n777 $1\n" : "500 $0\n900 $1\n";
+  };
+  assert.deepEqual(tmuxClients(420, { look: lookLogin, env, tmux }), [500], "only the clients of the pane's session");
+  assert.deepEqual(calls.map(c => c[0]), ["/tmp/tmux-501/default", "/tmp/tmux-501/default"]);
+  assert.equal(tmuxClients(130, { look: lookLogin, env, tmux }), null, "not in tmux");
+  // An environment naming another server is not believed.
+  assert.equal(tmuxClients(420, { look: lookLogin, env: () => ({ TMUX: "/tmp/evil,999,0" }), tmux }), null);
+  // No client attached (a detached session a script made): nobody.
+  assert.deepEqual(tmuxClients(420, { look: lookLogin, env, tmux: (s, a) => (a[0] === "list-panes" ? "410 $0\n" : "") }), []);
+  assert.equal(loginOf(500, lookLogin)?.key, loginOf(130, lookLogin)?.key, "the client runs in the ttys003 login");
 });

@@ -123,3 +123,97 @@ export function controllingTty(pid) {
     return !out || out === "??" || out === "?" ? null : out.startsWith("tty") || out.startsWith("pts") ? out : `tty${out}`;
   } catch { return null; }
 }
+
+/**
+ * One process with its terminal and start time: what binds a window to one login, not to a tty
+ * number the next login may reuse. /proc on Linux (start in clock ticks since boot), ps elsewhere.
+ * @param {number} pid @returns {{ ppid: number, tty: string|null, started: string, args: string } | null}
+ */
+export function procInfo(pid) {
+  try {
+    if (process.platform === "linux") {
+      const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+      const f = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      const args = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean).join(" ");
+      return { ppid: Number(f[1]), tty: controllingTty(pid), started: f[19], args };
+    }
+    // lstart is five words ("Sun Sep 27 10:28:26 2026"), then the command line.
+    const out = execFileSync("ps", ["-o", "ppid=,tty=,lstart=,args=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim();
+    const m = /^(\d+)\s+(\S+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.*)$/s.exec(out);
+    if (!m) return null;
+    const t = m[2];
+    const tty = t === "??" || t === "?" ? null : t.startsWith("tty") || t.startsWith("pts") ? t : `tty${t}`;
+    return { ppid: Number(m[1]), tty, started: m[3], args: m[4] };
+  } catch { return null; }
+}
+
+/**
+ * The login a process runs in: its terminal, and the topmost ancestor on that same terminal (the
+ * login shell, or `login` on a Mac) with its start time. A new tab or ssh login that gets the same
+ * tty number has a new leader, so a window keyed on this never passes to it.
+ * @param {number} pid @param {typeof procInfo} [look]
+ * @returns {{ tty: string, leader: number, started: string, key: string } | null}
+ */
+export function loginOf(pid, look = procInfo) {
+  const me = look(pid);
+  if (!me || !me.tty) return null;
+  let leader = pid, started = me.started;
+  for (let cur = me.ppid, n = 0; cur > 1 && n < 64; n++) {
+    const p = look(cur);
+    if (!p || p.tty !== me.tty) break;
+    leader = cur; started = p.started;
+    if (p.ppid === cur) break;
+    cur = p.ppid;
+  }
+  return { tty: me.tty, leader, started, key: `${me.tty}#${leader}@${started}` };
+}
+
+const TMUX = /^(?:\S*\/)?tmux(?::\s|\s|$)/;
+
+/**
+ * For a process in a tmux pane: the pids of the tmux clients attached to that pane's session, or
+ * null when it is not in tmux or the server cannot be asked. The pane's own terminal is tmux's pty,
+ * which no login lists; the person is wherever the clients run. The server is found in the
+ * process's own ancestry (tmux's server is the pane shell's parent), never from its environment.
+ * @param {number} pid
+ * @param {{ look?: typeof procInfo, env?: (pid: number) => Record<string, string>, tmux?: (socket: string, args: string[]) => string }} [o]
+ * @returns {number[] | null}
+ */
+export function tmuxClients(pid, { look = procInfo, env = environ, tmux = runTmux } = {}) {
+  // Up to the tmux server: the pane's shell is its child.
+  let pane = null, server = null;
+  for (let cur = pid, n = 0; cur > 1 && n < 64; n++) {
+    const p = look(cur);
+    if (!p) return null;
+    const parent = look(p.ppid);
+    if (parent && TMUX.test(parent.args) && !parent.tty) { pane = cur; server = p.ppid; break; }
+    if (p.ppid === cur) return null;
+    cur = p.ppid;
+  }
+  if (!pane || !server) return null;
+  // TMUX=<socket>,<server pid>,<session>; trusted only when it names the server found above.
+  const [socket, spid] = String(env(pane).TMUX || "").split(",");
+  if (!socket || Number(spid) !== server) return null;
+  try {
+    const session = tmux(socket, ["list-panes", "-a", "-F", "#{pane_pid} #{session_id}"])
+      .split("\n").map(l => l.trim().split(" ")).find(([p]) => Number(p) === pane)?.[1];
+    if (!session) return null;
+    return tmux(socket, ["list-clients", "-F", "#{client_pid} #{session_id}"])
+      .split("\n").map(l => l.trim().split(" ")).filter(([, s]) => s === session).map(([p]) => Number(p)).filter(Boolean);
+  } catch { return null; }
+}
+
+/** A process's environment at its start: /proc on Linux, `ps eww` on a Mac (same user only). */
+function environ(pid) {
+  try {
+    const raw = process.platform === "linux"
+      ? fs.readFileSync(`/proc/${pid}/environ`, "utf8").split("\0")
+      : execFileSync("ps", ["eww", "-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).split(/\s+/);
+    return Object.fromEntries(raw.filter(s => /^[A-Z_][A-Z0-9_]*=/.test(s)).map(s => [s.slice(0, s.indexOf("=")), s.slice(s.indexOf("=") + 1)]));
+  } catch { return {}; }
+}
+
+/** @param {string} socket @param {string[]} args */
+function runTmux(socket, args) {
+  return execFileSync(process.env.VYRE_TMUX_BIN || "tmux", ["-S", socket, ...args], { encoding: "utf8", timeout: 2000 });
+}

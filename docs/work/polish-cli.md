@@ -61,8 +61,9 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   terminal covers that terminal's SESSIONABLE calls (vault reveal/copy/totp/approve/grant,
   gate.approve) for 30 minutes. No secret on disk: vyred keys the window on the terminal the kernel
   names (socket peer pid -> controlling tty -> listed by `who`), after e2e's ancestry check, so
-  anything under claude, detached, or in a tmux/script pty never rides it. Known gap: a new login
-  that reuses a tty number within 30 minutes inherits it (still a person; claude children refused).
+  anything under claude, detached, or in a script pty never rides it. Bound to the login (tty +
+  leader pid + start), so a reused tty starts fresh; a tmux pane rides it when every attached
+  client is in such a login with no claude above (core/daemon/peer.js loginOf, tmuxClients).
 - Verb parity: `vyre needs`, `vyre gate` (drafts), full `threads answer`, live `vault totp`
   countdown + vault health/breach/history/revert/clear-clipboard, `vyre phone add|list|remove|test`
   (dependency-free QR in core/cli/qr.js), planner edit/rm/ringing/dismiss, agents

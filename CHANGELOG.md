@@ -38,8 +38,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   covers that terminal's vault.reveal, vault.copy, vault.totp, vault.approve and vault.grant for
   30 minutes, for items that do not ask every time. Nothing is written to disk: vyred keeps the
   terminal in memory, named from the kernel (the socket peer's pid, its controlling terminal, and
-  `who`'s login list), gated on the peer ancestry check, so a process under `claude`, a detached
-  process, or a tmux/script pty never rides it. A terminal code proves one call and opens no
+  `who`'s login list) and bound to that login's leader and start time, so a new login that
+  reuses the tty number starts with nothing. It is gated on the peer ancestry check, so a process
+  under `claude`, a detached process or a script pty never rides it; a tmux pane rides it only
+  when every client attached to its session runs in such a login with no claude above it. A terminal code proves one call and opens no
   window. `core/presence/index.js` (`terminal` in verify), `core/daemon/index.js` (atTerminal),
   `core/daemon/peer.js` (`controllingTty`), `core/modules/index.js`, `docs/concepts/presence.md`,
   tests in `core/presence/presence.test.js`, `test/presence-cli.test.js`, `test/peer.test.js`.
