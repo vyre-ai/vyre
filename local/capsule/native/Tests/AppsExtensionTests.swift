@@ -281,12 +281,18 @@ let appsExtensionSuite = Suite("apps extension") { t in
             }
             return (r, l)
         }
-        let (lost, l1) = run(held: ["id": "g7", "at": 1790503200000], approve: ["id": "g7", "state": "failed", "error": "closed"], sent: true)
+        let (lost, l1) = run(held: ["id": "g7", "at": 1790503200000], approve: ["id": "g7", "state": "failed", "error": "closed", "reached": "maybe"], sent: true)
         t.eq(lost, .said("It went out: Slack → #general: shipped"))
-        let check = l1.calls("apps.act").last
+        t.eq(l1.calls("gate.settle").first?["id"] as? String, "g7", "what went out is settled as sent at the Gate")
+        t.eq(l1.calls("gate.settle").first?["outcome"] as? String, "sent")
+        let check = l1.calls("apps.act").filter { ($0["action"] as? String) == "sent" }.last
         t.eq((check?["args"] as? [String: Any])?["since"] as? Double, 1790503200000, "only posts since it was held count")
         let (gone, _) = run(held: ["id": "g7"], approve: ["id": "g7", "state": "failed", "error": "closed"], sent: false)
         t.eq(gone, .failed("Slack did not answer, so it may not have gone. It waits at the Gate: press Enter to try again."))
+        t.eq(l1.calls("gate.settle").count, 1)
+        let (never, l4) = run(held: ["id": "g7"], approve: ["id": "g7", "state": "failed", "error": "could not start", "reached": "no"], sent: true)
+        t.eq(never, .failed("Slack could not be reached, so nothing went. It waits at the Gate: press Enter to try again."))
+        t.eq(l4.calls("apps.act").filter { ($0["action"] as? String) == "sent" }.count, 0, "reached no: nothing to look for")
         // The same item again after a failed approval: checked first, and not approved when it went out.
         let (tried, l3) = run(held: ["id": "g7", "tried": true], approve: ["id": "g7", "state": "sent"], sent: true)
         t.eq(tried, .said("It went out already: Slack → #general: shipped"))
