@@ -585,6 +585,8 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   way, and CI replays them. Questions have their own daily cap (config.memory.model.askDailyUsd, $0.50, about 150 questions).
   At the cap memory.ask returns limited: true and the message "Vyre IQ's daily limit is reached,
   change it in Settings", for the surface to show.
+- A fact a module teaches about the user (`subject: {kind: "me"}`, a learned preference) lands on
+  the user's own node, not on a stray "the user", and reads "you prefer pnpm".
 - `memory.retrieve {question}`: Recall's searches for the question and for the names memory and
   the graph know in it, fused by rank, with time words and a small recency prior. The Capsule's
   ask threads are never read. scripts/eval-iq.js measures it (recall@8 and ablations) and

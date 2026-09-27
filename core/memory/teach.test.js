@@ -173,3 +173,15 @@ test("teach: through ctx.memory.teach in a real vyred, and never from outside a 
   assert.match(spoof.error.message, /arrived as module:other/);
   assert.ok(fs.existsSync(d.paths.db));
 });
+
+test("teach: a preference about the user lands on the user's own node", async t => {
+  const { db, curator, graph } = world(t);
+  await curator.curate();
+  curator.teach("learn", "preference", { subject: { kind: "me" }, rel: "prefers", object: { name: "pnpm" }, key: "lesson:7" });
+  await curator.curate();
+  const edge = db.prepare("SELECT src, rel FROM memory_edges WHERE rel = 'prefers'").get();
+  assert.equal(edge?.src, "me:you");
+  assert.equal(db.prepare("SELECT COUNT(*) AS n FROM memory_nodes WHERE label = 'the user'").get().n, 0);
+  // The main list ranks by sessions; the user's own view has it, in the user's grammar.
+  assert.ok(graph.facts({ about: "me:you" }).facts.some(f => f.rel === "prefers" && f.text === "you prefer pnpm"), "the preference is a fact about the user");
+});
