@@ -190,10 +190,6 @@ covers about 30 minutes per device (the presence session). The preview plus Ente
 outbound sends. So apps.act never asks; apps.send and gate.approve do, riding the session.
 
 ## Needs from others
-- gate (security): a way to settle a held item as "sent" after a lost answer was confirmed in the
-  app (today the Capsule says "It went out" but the item stays held with its error, so the Deck
-  still shows it). And connectors: a hub error that says whether a call may have reached the
-  server (closed mid-call) or never did (could not start), so surfaces check only when needed.
 - capsule-pro: merge the Kit branch once handed over; add host.prove(tool:input:summary:) and
   the host-minted presence session (secret in memory only, dropped on lock/sleep/restart).
 - capsule-pro: the native host must be on main before the Swift half runs in the app (slice 2).
@@ -202,6 +198,10 @@ outbound sends. So apps.act never asks; apps.send and gate.approve do, riding th
 - lead/user: import of the Vyre Clock shortcuts once (one click each), checked on the real Mac.
 
 ## Changed contracts
+- core/gate (owner gate-chat): gate.settle {id, outcome "sent", evidence} and gate.settled; a
+  failed approval says reached. core/mcp/hub.js (owner connectors): errors carry detail.reached.
+  Both noted in docs/work/gate-chat.md and docs/work/connectors.md. The Capsule (native 95aad5f)
+  settles what it found in Slack and skips the check when reached is "no".
 - core/gate/index.js (owner: gate/security): previewOf also reads an MCP call's words from
   content.arguments (text, payload, message, body, content), so gate.approve's presence line is
   not blank for hub-held calls. core/mcp/hub.js (owner: connectors): TO_KEYS gains

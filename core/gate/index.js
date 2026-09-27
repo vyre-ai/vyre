@@ -168,6 +168,19 @@ export default {
       run: (input, { caller }) => { const c = person(caller); return gate.reject({ ...input, by: input.by || c }); },
     });
 
+    ctx.tool("gate.settle", {
+      description: "An approved item whose send failed with its answer lost, found to have gone out after all (the app shows the words): mark it sent with the evidence, so it is never sent twice. Only outcome \"sent\", only for an item that was approved and failed. A person, or the module that offered the item's sender.",
+      input: obj({ id: str, outcome: { type: "string", enum: ["sent"] }, evidence: { type: "object" }, by: str }, ["id", "outcome"]),
+      callers: ["cli", "local", "module", "deck", "capsule"],
+      run: (input, { caller }) => {
+        const c = String(caller || "");
+        // The item's own surface: the module whose sender holds it (mcp for a hub call). Any other
+        // module, and every model or guest, goes through the same rule as approving.
+        const own = c.startsWith("module:") && gate.row(input.id).sender_module === c.slice(7) ? c : person(caller);
+        return gate.settle({ ...input, by: input.by || own });
+      },
+    });
+
     ctx.tool("gate.offer", {
       internal: true,
       description: "A module offers a sender of its own: `name` in its namespace (<module>, <module>:<x> or <module>-<x>), and `tool`, one of its own internal tools, which the Gate calls with { id, to, content } once the user approves. Offer again at every start; it replaces the last.",
