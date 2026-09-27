@@ -24,8 +24,10 @@
 // google.connect.cancel, vault.list, vault.grant, projects.list, agents.list.
 
 import { h, put, empty } from "../js/dom.js";
+import { icon } from "../js/icons.js";
 import { attempt as apiAttempt } from "../js/api.js";
 import { withPresence } from "./memory-presence.js";
+import { showToast } from "../js/toast.js";
 import { since } from "../js/fmt.js";
 import { statusMark, statusOf } from "../js/status-mark.js";
 
@@ -46,7 +48,8 @@ const MODE_WORDS = [["read", "Read"], ["write", "Held"], ["off", "Off"]];
 const STATE_WORDS = { stopped: "stopped", starting: "starting", running: "running", failed: "failed" };
 /** The events that change what this section shows. mcp.called is left out: it only moves lastUsed. */
 export const EVENTS = ["mcp.added", "mcp.updated", "mcp.removed", "mcp.started", "mcp.stopped", "mcp.failed", "mcp.refreshed",
-  "google.added", "google.removed", "google.connected", "google.connect-failed", "vault.granted"];
+  "google.added", "google.removed", "google.connected", "google.connect-failed", "vault.granted",
+  "vault.connection-added", "vault.connection-removed", "vault.connection-changed"];
 
 const str = v => (typeof v === "string" ? v : "");
 const strs = v => (Array.isArray(v) ? v.filter(x => typeof x === "string") : []);
@@ -186,6 +189,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   const st = {
     servers: /** @type {ReturnType<typeof pickServers>} */ ([]), serverErr: /** @type {any} */ (null),
     accounts: /** @type {ReturnType<typeof pickAccounts>} */ ([]), accountErr: /** @type {any} */ (null),
+    connections: /** @type {ReturnType<typeof pickConnections>} */ ([]), connectionsErr: /** @type {any} */ (null),
     items: /** @type {ReturnType<typeof pickItems>} */ ([]),
     projects: /** @type {{ slug: string, name: string }[]} */ ([]), agents: /** @type {string[]} */ ([]),
     /** What Test found, kept across redraws so a refresh does not close it. */
@@ -198,18 +202,21 @@ export async function drawConnections(el, ctx, deps = {}) {
   };
 
   const top = h("div");
+  const cardsBox = h("div", { class: "cn-cards" });
   const mcpBox = h("div", { class: "cn-group" });
   const googleBox = h("div", { class: "cn-group" });
   const formBox = h("div");
-  put(el, top, mcpBox, googleBox, formBox);
+  put(el, top, cardsBox, mcpBox, googleBox, formBox);
 
   async function load() {
-    const [s, g] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts")]);
+    const [s, g, c] = await Promise.all([attempt("mcp.servers"), attempt("google.accounts"), attempt("vault.connections.list")]);
     if (!ctx.alive()) return;
     st.serverErr = s.error || null;
     st.servers = s.error ? [] : pickServers(s.data);
     st.accountErr = g.error || null;
     st.accounts = g.error ? [] : pickAccounts(g.data);
+    st.connectionsErr = c.error || null;
+    st.connections = c.error ? [] : pickConnections(c.data);
     draw();
   }
 
@@ -224,6 +231,7 @@ export async function drawConnections(el, ctx, deps = {}) {
   }
 
   function draw() {
+    drawCards();
     const both = st.serverErr?.missing && st.accountErr?.missing;
     if (both) {
       put(top, h("div", { class: "empty cn-empty" }, "No connectors are running on this machine.",
@@ -235,6 +243,96 @@ export async function drawConnections(el, ctx, deps = {}) {
       "MCP servers and Google accounts Vyre can use. Each one names a vault item; the value stays sealed in the vault and never comes to this page."));
     drawServers();
     drawAccounts();
+  }
+
+  // ---- Connections cards (vault.connections.list) --------------------------------------------
+  //
+  // One card per connection, whatever the source (Google, mail, Apps Script, an MCP server), same
+  // shape (app-design's Connections board, db3dbbfa; mcp-native gap 2). Two accounts of one MCP
+  // server are already two vault_connections rows, so already two cards, each its own grants.
+  // "Wrong account?" and a problem row's fix action are not wired yet (need a real reconnect flow
+  // per provider from app-design/vault); the toggle chips and "Connect another account" are real.
+
+  // Icon names from deck/js/icons.js's fixed set (no new artwork here): "login" for an OAuth
+  // sign-in account (no globe glyph exists), "mail" for a mail login or Apps Script, "terminal"
+  // for an MCP server, "key" for anything else the catalog names.
+  const GROUP_ICON = { google: "login", mail: "mail", mcp: "terminal", other: "key" };
+  /** Surface name to the chip's label and icon, in the order the board draws them. */
+  const SURFACE_META = { capsule: { label: "Capsule", icon: "ask" }, chat: { label: "Chat", icon: "chat" },
+    agents: { label: "Agents", icon: "agents" }, phone: { label: "Phone", icon: "phone" } };
+
+  function drawCards() {
+    if (st.connectionsErr) {
+      // A missing vault module: say nothing extra here, the group below already explains a
+      // missing mcp/google module, and vault.connections.list not existing yet on this box is
+      // not a fault to alarm over (older Vyre; the two groups below still work standalone).
+      put(cardsBox);
+      return;
+    }
+    if (!st.connections.length) { put(cardsBox); return; }
+    put(cardsBox, h("h3", { class: "set-h3" }, "Connections"),
+      h("div", { class: "cn-card-list" }, st.connections.map(connectionCard)),
+      h("div", { class: "cn-card cn-add", tabindex: "0", role: "button", onclick: () => chooseAdd() },
+        h("span", { class: "cn-avatar" }, icon("plus", 16)),
+        h("div", { class: "cn-add-t" }, h("span", { class: "cn-name" }, "Connect another account"),
+          h("span", { class: "small muted" }, "Google, a mail login, or any MCP server"))));
+  }
+
+  /** The existing add flow: MCP server or Google account (mail's own Deck row is not built yet). */
+  function chooseAdd() {
+    openForm(st.servers.length <= st.accounts.length ? "mcp" : "google");
+  }
+
+  function connectionCard(c) {
+    if (!c.ready) {
+      return h("div", { class: "cn-card cn-card-problem", "data-connection": c.id },
+        h("span", { class: "cn-avatar" }, icon(GROUP_ICON[c.group] || GROUP_ICON.other, 16)),
+        h("div", { class: "cn-card-t" }, h("span", { class: "cn-name" }, c.label),
+          h("span", { class: "small muted" }, c.needs.length ? "Needs sign-in" : "Needs a fix")),
+        h("button", { type: "button", class: "btn btn-sm" }, "Sign in"));
+    }
+    return h("div", { class: "cn-card", "data-connection": c.id },
+      h("div", { class: "cn-card-head" },
+        h("span", { class: "cn-avatar" }, icon(GROUP_ICON[c.group] || GROUP_ICON.other, 16)),
+        h("div", { class: "cn-card-t" }, h("span", { class: "cn-name" }, c.label),
+          h("span", { class: "small muted" }, c.providerWord)),
+        h("span", { class: "small muted cn-last" }, c.lastUsed ? `Last used ${since(c.lastUsed)} ago` : "")),
+      h("div", { class: "cn-chips" },
+        h("span", { class: "small muted cn-granted-l" }, "Granted to"),
+        ...SURFACE_NAMES.map(s => chip(c, s))),
+      h("div", { class: "cn-card-f" },
+        h("span", { class: "cn-steplink", role: "button", tabindex: "0", onclick: () => chooseAdd() }, "Wrong account?"),
+        h("span", { class: "small muted cn-connected" }, c.connected ? `Connected ${since(c.connected)} ago` : "")));
+  }
+
+  function chip(c, surface) {
+    const on = c.surfaces.includes(surface);
+    const { icon: iconName } = SURFACE_META[surface];
+    return h("button", { type: "button", class: "chip" + (on ? " cn-chip-on" : ""), "aria-pressed": on ? "true" : "false",
+      onclick: () => toggleSurface(c, surface, !on) }, icon(iconName, 12), SURFACE_META[surface].label);
+  }
+
+  /**
+   * Grant or revoke one surface, optimistic (cohesion's docs/design/interaction.md): flip the chip
+   * and redraw before the call settles, then a toast either confirms with Undo (call the opposite
+   * action again) or, on error, reverts the chip and says why. `c` is the object inside
+   * st.connections, mutated in place so a later redraw from the same state stays consistent.
+   * @param {ReturnType<typeof pickConnections>[number]} c @param {string} surface @param {boolean} next
+   */
+  async function toggleSurface(c, surface, next) {
+    const before = c.surfaces;
+    c.surfaces = next ? [...new Set([...before, surface])] : before.filter(s => s !== surface);
+    drawCards();
+    const label = SURFACE_META[surface].label;
+    const r = await attempt(next ? "vault.connections.grant" : "vault.connections.revoke", { id: c.id, surface });
+    if (!ctx.alive()) return;
+    if (r.error) {
+      c.surfaces = before;
+      drawCards();
+      showToast({ text: `Could not change ${label} for ${c.label}: ${errText(r.error)}` });
+      return;
+    }
+    showToast({ text: `${label} ${next ? "granted" : "revoked"} for ${c.label}`, undo: () => toggleSurface(c, surface, !next) });
   }
 
   // ---- MCP servers ----

@@ -4,16 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Connections: one card's fields, from the vault, whatever the source (mcp-native gap 2)
+#### Connections: cards wired into the Settings page, from the vault (mcp-native gap 2)
 
-- `deck/views/connections.js` gains `pickConnections()`: vault's `vault.connections.list` (not yet
-  on main, work/vault-next) to one card's fields per connection (provider word and icon group,
-  account, label, ready/needs, granted surfaces, which capability it defaults for, last used,
-  connected), matching app-design's Connections board (db3dbbfa). Named fields only, like every
-  other picker here. Not wired into `drawConnections` yet (still reads `mcp.servers` and
-  `google.accounts` directly): that swap, and the actual card markup, wait on vault.connections
-  landing on main and on app-design's real `.card`/`.chip` CSS (docs/design/system/components/
-  card.md and chip.md are both draft/partial; Connections has no row there yet).
+- `drawConnections` now calls `vault.connections.list` and draws one card per connection above the
+  existing MCP-server/Google-account groups (which stay, for Test/Restart/Remove; the card list
+  does not replace them yet). Grant chips (Capsule, Chat, Agents, Phone) are optimistic (cohesion's
+  interaction rule): the chip flips before `vault.connections.grant`/`.revoke` resolves, a toast
+  then confirms with Undo, or on error the chip reverts and the toast says why. A problem row
+  (`state !== "ready"`) draws simplified, a "Sign in" button in place of chips (not wired to a real
+  per-provider reconnect flow yet, that needs app-design/vault). "Connect another account" reuses
+  the existing MCP/Google add forms. Icons from `deck/js/icons.js`'s existing set (login, mail,
+  terminal, key, chat, agents, phone, ask for Capsule), no new artwork. CSS in
+  `deck/css/views/connections.css`, built from `--panel`/`--rule`/`--radius-card`/`--chip` tokens
+  directly since `docs/design/system/components/card.md` and `chip.md` have no Connections
+  implementation yet (the lead's call: don't wait on them, app-design reviews the result).
+- `pickConnections()`: vault's `vault.connections.list` to one card's fields per connection
+  (provider word and icon group, account, label, ready/needs, granted surfaces, which capability it
+  defaults for, last used, connected). Named fields only, like every other picker here.
 - Open question raised with app-design and vault: the board's chips are Chat, Planner, Agents; the
   real `SURFACE_NAMES` vault grants are capsule, chat, agents, phone. No Planner today. Filed under
   Needs from others rather than guessed at.
