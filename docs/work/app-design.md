@@ -21,9 +21,9 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Doing
 
-- Waiting on the user's direction pick (lead asked for direction first, 27 Sep). Brief:
-  docs/design/one-app/DIRECTION.md; boards Directions and Smooth lead the canvas. The other boards
-  are sketches of direction A and get redone once the user decides.
+- Direction A approved (27 Sep). Building the full A sheet: new boards Plan and modes, Projects,
+  Onboarding and first run, Settings, Memory; a smoothness pass on every key screen; the States
+  crop fix. Violet stays.
 
 ## Next
 

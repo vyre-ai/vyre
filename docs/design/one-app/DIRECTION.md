@@ -3,13 +3,13 @@ title: Vyre one app, the direction
 summary: Three directions for one app on every device, the recommendation, the smoothness bar and the install path, for the user to decide before the full sheet.
 audience: builders
 owner: app-design
-status: proposal
+status: decided
 ---
 
 # Vyre one app: the direction
 
-For the user to decide. The boards on the canvas already sketch the recommended direction (A);
-after the decision they are redone to it in full.
+Decided 27 Sep 2026: the user chose A (inbox first) as the design of record. Violet stays the
+working attention colour until the user says otherwise.
 
 ## The problem Paseo does not have
 
