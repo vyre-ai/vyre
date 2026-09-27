@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The box image builds again with the Agent SDK pin
+
+- box/Dockerfile read the SDK version by importing core/sessions/sdk.js on its own, and 8aed4887
+  gave that file an import (config/dialogs.js), so the image build stopped at the SDK layer. The
+  pin now lives in core/sessions/sdk-pin.js, which imports nothing; sdk.js re-exports it, and a
+  test copies the file the Dockerfile names on its own and imports it.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or

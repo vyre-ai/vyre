@@ -46,3 +46,17 @@ while true; do date >> "${cache}/npm.log"; sleep 0.1; done
   await new Promise(r2 => setTimeout(r2, 500));
   assert.deepEqual([size("npm.log"), size("child.log")], before, "nothing writes after the stop, npm's own children included");
 });
+
+test("sdk: the box image reads the pin from one file copied alone, as box/Dockerfile does", async t => {
+  const here = path.dirname(new URL(import.meta.url).pathname);
+  const docker = fs.readFileSync(path.join(here, "../../box/Dockerfile"), "utf8");
+  const copy = docker.match(/^COPY (core\/sessions\/\S+) \/tmp\/vyre-sdk\.mjs$/m);
+  assert.ok(copy, "box/Dockerfile copies the pin to /tmp/vyre-sdk.mjs");
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-sdk-pin-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const alone = path.join(dir, "vyre-sdk.mjs");
+  fs.copyFileSync(path.join(here, "../..", copy[1]), alone);
+  const pin = await import(alone);
+  const sdk = await import("./sdk.js");
+  assert.equal(`${pin.PACKAGE}@${pin.VERSION}`, `${sdk.PACKAGE}@${sdk.VERSION}`);
+});
