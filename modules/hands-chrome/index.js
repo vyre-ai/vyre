@@ -52,6 +52,22 @@ async function resolveAgent(input, caller, call) {
 }
 
 /** @type {{ start(ctx: any): Promise<any> }} */
+/**
+ * A string with every URL in it cut to origin and path: no query, fragment or credentials. Cut to
+ * one line of at most 200 characters.
+ * @param {unknown} text
+ */
+export function scrub(text) {
+  const one = String(text ?? "").replace(/\s+/g, " ").trim();
+  const cut = one.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, u => {
+    try { const x = new URL(u); return `${x.protocol}//${x.host}${x.pathname}`; } catch { return u.split(/[?#]/)[0]; }
+  });
+  return cut.length > 200 ? cut.slice(0, 199) + "\u2026" : cut;
+}
+
+/** What a selector asked for, in words: its role and name, never the raw object. @param {any} sel */
+const selectorSummary = sel => [sel && sel.role, sel && sel.name].filter(Boolean).map(String).join(" ") || "a control";
+
 export default {
   async start(ctx) {
     const pool = new CdpPool({
@@ -65,8 +81,18 @@ export default {
       if (agent) pool.drop(String(agent)).catch(err => ctx.log(`dropping ${agent}'s Chrome: ${err.message}`));
     });
 
-    const act_ = (agent, action, ok, why, extra = {}) => {
-      ctx.events.emit("chrome.acted", { agent, action, ok, ...(why ? { why } : {}), ...extra });
+    // Every event is stored and readable by every module, so what an action says about itself
+    // is scrubbed first: a URL keeps its origin and path, never its query or fragment, where
+    // sign-in links and tokens live. The thread and the tool call it came from (vyred's meta)
+    // let a view tie the step to the chat row that asked for it.
+    const act_ = (meta, agent, action, ok, why, extra = {}) => {
+      const where = {
+        ...(meta && meta.thread ? { thread: String(meta.thread) } : {}),
+        ...(meta && meta.call ? { call: String(meta.call) } : {}),
+      };
+      const said = { ...extra, ...(extra.summary !== undefined ? { summary: scrub(extra.summary) } : {}) };
+      ctx.events.emit("chrome.acted", { agent, action, ok, app: "Chrome", ...where, ...(why ? { why: scrub(why) } : {}), ...said },
+        where.thread ? { thread: where.thread } : {});
     };
 
     /** Connect (or reuse) the agent's CDP session and its page. */
@@ -97,18 +123,18 @@ export default {
     const tool = (name, description, input, run) => ctx.tool(name, { description, input, run });
 
     tool("chrome.snapshot", "Every actionable control on the agent's current page: role, name, whether it is enabled, and where it sits. No page text beyond a length.",
-      obj({ agent: str }), async (i, { caller }) => {
-        const agent = await resolveAgent(i, caller, ctx.call);
+      obj({ agent: str }), async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
         await mayAct(agent, "chrome.snapshot");
         const { cdp, sessionId } = await session(agent);
         const snap = await perceive(cdp, sessionId);
-        act_(agent, "snapshot", true, undefined, { summary: `${snap.controls.length} controls on ${snap.title || snap.url}` });
+        act_(meta, agent, "snapshot", true, undefined, { summary: `${snap.controls.length} controls on ${snap.title || snap.url}` });
         return { title: snap.title, url: snap.url, controls: snap.controls, named: snap.named, nameless: snap.nameless };
       });
 
     tool("chrome.open", "Navigate the agent's Chrome to a URL.", obj({ agent: str, url: str }, ["url"]),
-      async (i, { caller }) => {
-        const agent = await resolveAgent(i, caller, ctx.call);
+      async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
         await mayAct(agent, "chrome.open");
         const url = String(i.url);
         if (!/^https?:\/\//.test(url)) throw new Error(`"${url}" is not an http(s) URL`);
@@ -118,17 +144,17 @@ export default {
           await cdp.send("Page.navigate", { url }, sessionId);
           await loaded;
         } catch (e) {
-          act_(agent, "open", false, /** @type {Error} */ (e).message, { summary: url });
+          act_(meta, agent, "open", false, /** @type {Error} */ (e).message, { summary: url });
           throw e;
         }
         const snap = await perceive(cdp, sessionId);
-        act_(agent, "open", true, undefined, { summary: url });
+        act_(meta, agent, "open", true, undefined, { summary: url });
         return { ok: true, title: snap.title, url: snap.url };
       });
 
     tool("chrome.click", "Click a control, chosen by role/name/identifier against a fresh look at the page. Refuses a control that looks consequential (send, pay, delete, submit, ...): take over in Glass for those.",
-      obj({ agent: str, selector: SELECTOR }, ["selector"]), async (i, { caller }) => {
-        const agent = await resolveAgent(i, caller, ctx.call);
+      obj({ agent: str, selector: SELECTOR }, ["selector"]), async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
         await mayAct(agent, "chrome.click");
         const { cdp, sessionId } = await session(agent);
         const r = await act.once({
@@ -144,30 +170,30 @@ export default {
             await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: c.x, y: c.y, button: "left", clickCount: 1 }, sessionId);
           },
         });
-        act_(agent, "click", r.ok, r.ok ? undefined : r.why, { summary: r.control ? (r.control.name || r.control.role) : JSON.stringify(i.selector) });
+        act_(meta, agent, "click", r.ok, r.ok ? undefined : r.why, { summary: r.control ? (r.control.name || r.control.role) : selectorSummary(i.selector) });
         return r;
       });
 
     tool("chrome.type", "Type text into a text field, chosen by role/name/identifier against a fresh look at the page.",
-      obj({ agent: str, selector: SELECTOR, text: str }, ["selector", "text"]), async (i, { caller }) => {
-        const agent = await resolveAgent(i, caller, ctx.call);
+      obj({ agent: str, selector: SELECTOR, text: str }, ["selector", "text"]), async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
         await mayAct(agent, "chrome.type");
         const { cdp, sessionId } = await session(agent);
         const snap = await perceive(cdp, sessionId);
         const bound = selector.resolve(i.selector, snap.controls);
         if (!bound.control) {
-          act_(agent, "type", false, `nothing matches ${JSON.stringify(i.selector)}`, { summary: JSON.stringify(i.selector) });
+          act_(meta, agent, "type", false, `nothing matches ${selectorSummary(i.selector)}`, { summary: selectorSummary(i.selector) });
           return { ok: false, why: bound.why === "tied" ? "more than one control matches" : `nothing matches ${JSON.stringify(i.selector)}` };
         }
         const ctl = bound.control;
         if (ctl.enabled === false) {
-          act_(agent, "type", false, `${ctl.name || ctl.role} is disabled`, { summary: ctl.name || ctl.role });
+          act_(meta, agent, "type", false, `${ctl.name || ctl.role} is disabled`, { summary: ctl.name || ctl.role });
           return { ok: false, why: `${ctl.name || ctl.role} is disabled right now` };
         }
         const check = await ctx.call("computers.may-act", { agent, tool: "chrome.type" });
         if (check.error || !check.data.ok) {
           const why = (check.data && check.data.why) || (check.error && check.error.message) || "cannot act right now";
-          act_(agent, "type", false, why, { summary: ctl.name || ctl.role });
+          act_(meta, agent, "type", false, why, { summary: ctl.name || ctl.role });
           return { ok: false, why };
         }
         const cx = ctl.frame ? Math.round(ctl.frame.x + ctl.frame.w / 2) : 0;
@@ -175,17 +201,17 @@ export default {
         await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: cx, y: cy, button: "left", clickCount: 1 }, sessionId);
         await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: cx, y: cy, button: "left", clickCount: 1 }, sessionId);
         await cdp.send("Input.insertText", { text: String(i.text) }, sessionId);
-        act_(agent, "type", true, undefined, { summary: ctl.name || ctl.role });
+        act_(meta, agent, "type", true, undefined, { summary: ctl.name || ctl.role });
         return { ok: true, control: ctl };
       });
 
     tool("chrome.screenshot", "A PNG of the agent's current page, base64-encoded.", obj({ agent: str }),
-      async (i, { caller }) => {
-        const agent = await resolveAgent(i, caller, ctx.call);
+      async (i, meta) => {
+        const agent = await resolveAgent(i, meta.caller, ctx.call);
         await mayAct(agent, "chrome.screenshot");
         const { cdp, sessionId } = await session(agent);
         const r = await cdp.send("Page.captureScreenshot", { format: "png" }, sessionId);
-        act_(agent, "screenshot", true, undefined, { summary: "captured" });
+        act_(meta, agent, "screenshot", true, undefined, { summary: "captured" });
         return { image: r.data, mime: "image/png" };
       });
 

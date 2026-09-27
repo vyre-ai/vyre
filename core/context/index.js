@@ -178,9 +178,12 @@ export default {
         url: { type: ["string", "null"], description: "The page open in a browser. Its query and fragment are dropped." },
       } },
       callers: CALLERS,
-      run: async input => {
+      run: async (input, meta) => {
         if (stopped) throw fail("stopped", "context is stopping");
-        const { surface, device, fields } = clean(input || {});
+        const { surface, device: said, fields } = clean(input || {});
+        // A device paired through the relay is named by its caller; a report need not repeat it.
+        const paired = /^device:([a-z2-7]{16})$/.exec(String(meta && meta.caller));
+        const device = said || (paired ? paired[1] : null);
         const key = keyOf(surface, device);
         let rec = surfaces.get(key);
         const at = now();

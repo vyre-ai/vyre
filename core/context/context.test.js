@@ -216,3 +216,13 @@ test("stop: a pending trailing event is dropped and no timer keeps the process a
   await wait(INTERVAL + 30);
   assert.equal(seen.length, before, "the trailing event never came");
 });
+
+test("report: a device paired through the relay is named by its caller when the report leaves it out", async t => {
+  const { call } = await world(t);
+  const id = "abcdefghijklmnop";
+  const r = await call("context.report", { surface: "phone", thread: "t1" }, `device:${id}`);
+  assert.equal(r.data.device, id);
+  assert.equal((await call("context.now")).data.device, id);
+  const said = await call("context.report", { surface: "phone", device: "alex-phone" }, `device:${id}`);
+  assert.equal(said.data.device, "alex-phone", "a device the report names wins");
+});

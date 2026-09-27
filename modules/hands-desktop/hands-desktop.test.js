@@ -206,6 +206,17 @@ test("hands-desktop: act presses a uniquely-named control and verifies the windo
   assert.equal(events[1].payload.agent, "kit");
   assert.equal(events[1].payload.ok, true);
   assert.equal(events[1].thread, s.kitThread);
+  assert.equal(events[1].payload.thread, s.kitThread);
+  assert.ok(!JSON.stringify(events[1].payload).includes("report.txt"), "never the value typed");
+
+  // The thread vyred verified and the tool call id reach the event, for Glass to link the step.
+  const viaMeta = await s.d.registry.call("hands-desktop.act", { agent: "kit", name: "Filename", role: "entry", action: "set-text", value: "b.txt", app: "gedit" },
+    "mcp:agent:kit", { thread: s.kitThread, call: "toolu_09" });
+  assert.equal(viaMeta.error, undefined, JSON.stringify(viaMeta));
+  const last = s.desktopEvents().at(-1);
+  assert.equal(last.payload.call, "toolu_09");
+  assert.equal(last.payload.thread, s.kitThread);
+  assert.equal(last.payload.app, "gedit");
 });
 
 test("hands-desktop: a consequential control is refused before any click reaches computerd", async t => {

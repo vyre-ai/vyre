@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### An agent's browser steps no longer store query strings, and every step says where it came from
+
+- Privacy: `chrome.acted` put the full URL of `chrome.open`, query and fragment included, into
+  the event store, which every module reads; sign-in links and tokens live there. Every
+  chrome.acted summary and reason now keeps a URL's origin and path only, and a click or type that
+  matched nothing names the selector's role and name instead of its raw JSON.
+- `chrome.acted`, `desktop.acted` and `hands.acted` carry the `thread` vyred verified and the
+  tool `call` id (from the call's meta, once platform passes it), scoped to that thread, so Glass
+  and chat can tie a step to the row that asked for it (ADR 0036). `chrome.acted` and
+  `desktop.acted` also name the `app`; `hands.acted` names the `agent` and says `why` when a step
+  was not verified.
+- `context.report` from a device paired through the relay takes the device from its caller when
+  the report leaves it out.
+
 #### One system: sight, context, suggest and waiting (ADR 0036)
 
 - `sight.*`: one screen service on both sides. `sight.now {target: "mac" | "agent:<name>"}` gives

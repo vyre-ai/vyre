@@ -136,7 +136,8 @@ export default {
         action: { type: "string", enum: ["press", "focus", "set-text"] },
         value: str,
       }, ["agent", "name"]),
-      async (i, { caller }) => {
+      async (i, meta) => {
+        const { caller } = meta;
         const agent = await resolveAgent(i, caller);
         await mayRead(agent, "hands-desktop.act");
         const client = await clientFor(agent, i.thread);
@@ -148,9 +149,15 @@ export default {
           decide: decideFor({ name: i.name, role: i.role }),
           click: clickWith(client, agent)(actionName, i.value),
         });
+        // The thread vyred verified wins over one the input names; the call links the step to
+        // the chat row that asked for it (ADR 0036). One line each, never a value typed.
+        const thread = meta.thread ? String(meta.thread) : i.thread ? String(i.thread) : null;
+        const line = (/** @type {unknown} */ x) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
         ctx.events.emit("desktop.acted",
-          { agent, action: actionName, summary: i.name, ok: result.ok, ...(result.ok ? {} : { why: result.why }) },
-          i.thread ? { thread: i.thread } : {});
+          { agent, action: actionName, summary: line(i.name), ok: result.ok, ...(i.app ? { app: line(i.app) } : {}),
+            ...(thread ? { thread } : {}), ...(meta.call ? { call: String(meta.call) } : {}),
+            ...(result.ok ? {} : { why: line(result.why) }) },
+          thread ? { thread } : {});
         return result;
       });
 
