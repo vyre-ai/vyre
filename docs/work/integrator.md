@@ -60,24 +60,21 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   c8fb9aae (batch 2: relay, native Capsule, resilience, tokens, docs; eval said.js),
   fb1ed1d1 (3a: sessions 4311fca5 with the SDK default, chat fb0694d, chat contract 6182766).
 
-## Doing (2026-09-27 16:10 UTC)
+## Doing (2026-09-27 16:30 UTC)
 
-- main = 53cd1326 (deployed on the live box). The lead pushed 65cbc02a and 53cd1326 during the
-  deploy; main is the integrator's again. fad9ae50 (my loop fix) dropped: ci's 53cd1326 is the same.
-- BATCH 4 staged: pre/batch4b ce725a7c on main 53cd1326: docs 3ddc281d, capsule-now 28246cd0,
-  capsule-agent 42e8da05, app-design be98d494, capsule-apps e99b09d, teammates b5934a4f, platform
-  a1c3fbfc, memory-iq 5985f489, e2e 4e5a27f7, polish-cli 5ac697c8, tailnet a7365a99, mobile
-  2f1ccfff, native-core 3ae4fc93, settings-write 70242656, e2e-noclaude 399ca89f, chat 553017a1,
-  docs fdf8489f, ci faae7da7 + df6c8e82, ci-boundaries de5651bf LAST. Fixes: f67144f3 (bare
-  "tailnet" never a caller), manifests keep tips + settings, --popover in tokens.css only,
-  polish-cli's lost CHANGELOG entry back.
-- boundaries.test: 5 new edges, all from 3a/3b sessions (sessions->transcripts, ->switchboard,
-  ->spawner; switchboard->sessions, ->harness). Waiting on the lead: freeze or fix.
-- Full suite queued on the test box (~/vyre-ci/int-b4-run.sh waits for load < 8; log
-  ~/vyre-ci/int-b4b.log, ends with END).
-- Waiting: memory-iq confirms the model.js removal; capsule-pro and pwa ready shas (not in this
-  batch); federation parked until after 0.1.0.
-- Next: suite green (bar boundaries) -> the lead's edge call -> land on main, push, report.
+- BATCH 4 on main 53cd1326: pre/batch4b 91f34bae, pushed as work/integrator-b4c. As listed
+  before, plus docs f89e0fad, memory-iq 0f0c17a2 (model.js removal confirmed), sessions 51eaa964,
+  chat 5d91f833, edges frozen (de3c1e9e, the lead's wording), 91f34bae (module-sdk schema/types
+  for secret, labels, tip topics, declaredTips; docs-check knows ci; mobile.md quoting).
+- Full suite on the test box at 91f34bae: 3384 tests, 3292 pass, 8 fail, 81 skipped. Routed:
+  native-core (settings.js:97 reads <home>/.claude/settings.json in a temp home; settings-keys.css
+  bare 760px), chat (pwa.test ios content-visibility + keyboard follow asserts; term.js 760px),
+  mobile (apps/test/world.test.js person_session_required), platform (system.test.js box/vyre
+  update curls). Known: journey --json todo; memory p95 5.03 ms (load flake).
+- Each owner branches off 91f34bae and sends a sha; merge them, targeted rerun, then land on main.
+- Out of this batch: capsule-pro 1f0c408f (capsule-mac pending; CapsuleModelTests:176 red is
+  theirs), pwa (no sha), cohesion f5cd36f7 (awaiting the lead), federation (after 0.1.0),
+  sessions 501ca3fc (held for e2e).
 
 ## Needs from others
 
