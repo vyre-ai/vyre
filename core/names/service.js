@@ -250,6 +250,9 @@ export function names(deps) {
     socket.on("error", () => {});
     const who = await identify(String(req.socket.remoteAddress || ""));
     if (!who.ok) { ctx.log(`names: refused a stream from ${who.node || "an address"}: ${who.why}`); return refuse(403, "Forbidden"); }
+    // A stream is the owner's alone (the terminal, Glass's screen): a guest and an agent's node
+    // get none, whatever tools they hold, as a tool that reaches the terminal would refuse them.
+    if (who.kind !== "owner") { ctx.log(`names: refused a stream from ${who.node || "a node"}: streams are the owner's (${who.kind})`); return refuse(403, "Forbidden"); }
     const host = String(req.headers.host || "").toLowerCase();
     const mine = [certName(), ...selfIps].filter(Boolean).map(h => String(h).toLowerCase());
     if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) return refuse(421, "Misdirected Request");

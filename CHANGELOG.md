@@ -63,6 +63,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a running Chrome (CDP); each asserts its chip or note, no sideways scroll and no page errors.
 - `pair()` in test/link-harness.js takes `boxName`, `macHost`, `heartbeat`, `boxConfig`, and
   `macTranscripts` as a list of sessions, and needs only `name` and `after` from its context.
+#### Streams over the tailnet are the owner's alone
+
+- The tailnet listener hands a WebSocket (`/v1/streams/...`: the terminal, Glass's screen) to
+  vyred's stream router only for the owner. A guest and an agent's node are refused with 403,
+  whatever tools they hold (`core/names/service.js`). The onboarding loopback now takes upgrades
+  itself: a Host that is not a loopback name gets 421, no session gets 403, and past both it
+  still opens no stream (`core/onboard/loopback.js`). Tests: owner allowed, guest and agent node
+  refused (`core/names/service.test.js`), wrong Host and no session on loopback
+  (`test/onboard.test.js`).
+
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
 - npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
