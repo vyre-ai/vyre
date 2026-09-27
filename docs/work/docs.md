@@ -66,22 +66,18 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Doing
 
-- Screenshot retake. The 403 not_owner is fixed in the tooling (0039172, 8036a21; e2e agrees):
-  identity.js refuses anything outside 100.64/10 before whois, so the preload's
-  VYRE_SHOTS_PEER=127.0.0.2=100.64.0.2 makes pairFrom's socket read as 100.64.0.2 (fake whois
-  answers there), and after pairing the onboarding continues at http://alex-box.tail0000.ts.net/
-  onboard (owner.seen closes the loopback door, as on a real box). The four pairing shots retook
-  cleanly (checked by eye). The full run was stopped at the user's logout, at onboarding-claude:
-  41 PNGs written in ~/vyre-ci/docs-s on the test box, one failure (glass-files light: the
-  "Work" entry never showed), and docs/shots.json NOT written (it is written only at the end), so
-  nothing was copied back.
-  Resume: `uptime` on the test box first, wait while load > 8. Merge main, rsync to
+- Screenshot retake DONE on main ef51363 (6dc29f1): 52 files; glass-files passed (last run's miss
+  was load timing). Six new shots placed (settings-devices, settings-connections, deck-pair,
+  deck-new-box, phone-find, onboarding-ready). Found and fixed: the onboarding loopback link 403'd
+  `/theme.css` and `/fonts/*` (core/onboard/loopback.js assetPath, 331f719d, test in
+  test/onboard.test.js), so the first steps rendered unstyled; onboarding shots retaken after it.
+  deck/test/world.js: alex's folder is plainly `alex` (no temp name in shown paths).
+- Reference and index regenerated from a clean archive (e0537194). Docs tests on testbox: 79 run.
+- Then: redeploy the preview (`--branch preview`), head to the integrator.
+- Retake settings-connections after tailnet's VyreDrive rename (it says Taildrive).
+- Shots commands: `uptime` on the test box first (wait while load > 8), rsync to
   ~/vyre-ci/docs-s, `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools CHROME=/usr/local/bin/vyre-chrome
-  nice -n 15 node scripts/docs-shots` (one Chrome), look into glass-files, copy back
-  docs/**/shots/*.png + docs/shots.json, place new shots on pages, regen reference/index from a
-  clean git archive, run docs tests, redeploy preview (`--branch preview`), head to integrator.
-- Applied this session: agents need no passkey (a93dbcb, e6922da on main); presence.md lists every
-  HUMAN_ONLY tool; Glass boot-failure text with Retry (2217bef, c006e55 on main).
+  nice -n 15 node scripts/docs-shots [--only a,b]`, copy back the shots PNGs and docs/shots.json.
 
 ## Next
 
