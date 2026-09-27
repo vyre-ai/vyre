@@ -3,12 +3,12 @@ title: "ADR 0035: The settings hub"
 summary: One hub on the box holds every setting, session option and design token, at account, project, device and session level. It is one file a person can edit by hand, and every surface (the Deck, the phone, the hosted app, the Capsule) reads it live and repaints on settings.changed.
 audience: builders, agents
 owner: native-core
-status: draft
+status: stable
 ---
 
 # ADR 0035: The settings hub
 
-Status: draft, 27 Sep 2026 · Workstream: native-core ·
+Status: accepted, 27 Sep 2026 (the lead) · Workstream: native-core ·
 Builds on the settings registry (core/settings, core/config/settings.js), ADR 0033 section 3 and
 decision 6 (one hub; the theme and prompt layers are hub values), ADR 0032 (the person and the
 device), ADR 0030 (sessions) and ADR 0029 (resilience).
@@ -59,7 +59,12 @@ disagree.
 
 The device id is the one ADR 0032 already gives each device: the tailnet node for the Deck and the
 phone over the tailnet, `device:<id>` for a relay-paired device, and `mac:<host>` for the Capsule.
-A surface never invents one.
+A surface never invents one: when `device` is left out, the hub uses the caller's own device, and
+`settings.snapshot` says which one it resolved (`device` in its answer).
+
+The checker enforces the levels: `session` only on a key kept in a module's own tools (store
+`tool`, since the thread's chips live with sessions), and `device` never on a key with `confirm`
+or `security`.
 
 ### 2. The hub file
 
@@ -71,7 +76,7 @@ Every Vyre-owned value (account, project and device level) lives in one file:
   "rev": 42,
   "account": { "sessions.effort": "high", "appearance.theme": "vyre" },
   "projects": { "northwind": { "sessions.model": "sonnet" } },
-  "devices": { "tailnet:alex-phone": { "appearance.theme": "vyre/paper" } }
+  "devices": { "tailnet:alex-phone": { "appearance.scheme": "paper" } }
 }
 ```
 
@@ -87,7 +92,11 @@ Every Vyre-owned value (account, project and device level) lives in one file:
 - A module's tool store stays with that module (sessions' models, push's kinds). The hub reads it
   and writes it through the module's own tools, as it does now.
 
-Writes are atomic (a temp file, then rename), keep the file's key order, and add 1 to `rev`. vyred
+Writes are atomic (a temp file, then rename), keep the file's key order, and add 1 to `rev`. The
+store's one write function returns the new `rev`, and every writer (settings.set, platform's
+`settings.write`, a hand edit) goes through it, so the event's `rev` is never computed twice.
+`hub.json` is in `vyre backup` (core/names/backup.js), so the rollback of a failed `vyre update`
+restores the values the old code knew. vyred
 watches the file with `fs.watch` (no polling; a missed event is caught on the next read, which
 checks the file's mtime). When a person saves a change by hand, vyred reads the file, checks each
 changed key the way `settings.set` does, stores the good ones, and emits `settings.changed` for
@@ -107,8 +116,11 @@ Bash on `hub.json` (a protected path, like the vault's files), so a model can't 
 Following ADR 0033 section 3, the first-party `theme` module (platform, phase 4) declares two
 keys, at account and device level:
 
-- `appearance.theme`: the preset, `vyre`, `vyre/paper` or `<module>/<name>`. Its choices come from
-  the presets installed (`choices: { tool: "theme.presets" }`).
+- `appearance.theme`: the preset, `vyre` or `<module>/<name>`. A preset carries both schemes
+  (`color.dark` and `color.paper`). Its choices come from the presets installed
+  (`choicesFrom: { tool: "theme.presets" }`).
+- `appearance.scheme`: `system` (the default: follow the OS), `dark` or `paper`. Usually set per
+  device.
 - `appearance.tokens`: the person's own changes, a partial `tokens.json`, deep-merged over the
   preset. It's checked by app-design's `check` (`check: { tool: "theme.check" }`): AA contrast, a
   3:1 focus ring, the attention role kept, sizes of 12 or more, 44 px targets and fonts that aren't
@@ -117,7 +129,9 @@ keys, at account and device level:
 The theme module serves the result for each device:
 
 - `GET /theme.css?device=<id>`: custom properties for the Deck, the hosted app and module frames.
-- `GET /v1/theme?device=<id>`: the resolved tokens as JSON for the Capsule (Swift) and the phone.
+- `GET /v1/theme?device=<id>`: the resolved tokens as JSON for the Capsule (Swift) and the phone,
+  in the shape of a whole `tokens.json` (both schemes, never a partial), plus `scheme` and `rev`.
+  The app may read this on every platform, the web included.
 
 Both carry the hub's `rev` as an ETag. `config.theme.colors` is read through `fromLegacy` for one
 release, then dropped. The theme module never applies a preset or changes a token by itself.
@@ -127,8 +141,13 @@ release, then dropped. The theme module never applies a preset or changes a toke
 - `check: { tool }` on a declaration: the hub calls that tool, as the settings module, with the
   proposed value before storing it. It returns `{ ok }` or `{ ok: false, message }`. The type check
   still runs first.
-- `choices: { tool }`: the key's choices are asked of that tool when the schema is read (theme
-  presets, installed models, projects), instead of being a fixed `enum`.
+- `choicesFrom: { tool }`: the key's choices are asked of that tool when the schema is read (theme
+  presets, installed models, projects), instead of being a fixed `enum`. (`choices` stays the
+  fixed list of numbers it is today.)
+
+Each call has a 500 ms deadline. `check` never passes by default: if its module is off or it runs
+out of time, the change is refused ("theme.check is not running", "theme.check took too long").
+`choicesFrom` falls back to the key's `enum`, or to no choices, and the row says so.
 
 Both name only the declaring module's own tools, under the store limits ADR 0033 set.
 
@@ -145,7 +164,10 @@ One read and one event, for every surface:
   surface.
 - `settings.changed { key, level, project?, device?, session?, apply, rev }` is emitted on every
   change, whatever made it: the Deck, `vyre config`, a hand edit, a module's own `settings.write`,
-  or sessions changing a chip. It never carries the value. A surface that cares about the key reads
+  or sessions changing a chip. It never carries the resolved value, which depends on who reads it,
+  and never a secret one; for a key that isn't secret it may carry `value`, the new value at the
+  level that changed. `settings.snapshot` returns each level per key, so a surface resolves it
+  locally with no second round trip. A surface that cares about the key reads
   it again (`settings.get`, or the theme endpoints for `appearance.*`).
 - On reconnect a surface compares its last `rev` with `settings.snapshot`'s and reads again if it
   differs, so a change made while it was away is never missed (ADR 0029).
@@ -203,5 +225,5 @@ user's files.
 
 1. Whether the hub file keeps `//` comments (JSON5). Proposed: no, plain JSON, and `vyre config
    edit` opens it with the schema beside it.
-2. Whether device-level values follow a device to a new box after a restore. Proposed: yes, since
-   they're in `hub.json`, which the backup holds.
+2. Decided: device-level values follow a device to a new box after a restore, since they're in
+   `hub.json`, which the backup holds.
