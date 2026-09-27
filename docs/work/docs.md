@@ -66,19 +66,18 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Doing
 
-- Screenshot retake (180 stale after main's Deck changes). Stopped mid-run at session end, while
-  capturing onboarding-devices; tooling committed as WIP (scripts/docs-shots, shots.js with the
-  new shots: Settings > Connections, Your devices, Appearance, onboarding step 6 and Create your
-  assistant, the Now pairing card, Find in the phone tab bar). No new PNGs copied back yet.
-  Retaken on the test box but not copied back (temp folders are gone, so redo them):
-  settings-connections, settings-devices, phone-now (Find tab, Set up this phone), phone-find.
-  Blocked: the sample world's Mac pairing request is refused with 403 not_owner, which stops
-  onboarding-devices, onboarding-ready, deck-new-box (Create your assistant) and deck-pair. Fix
-  that in scripts/docs-shots first (the fake tailscale's whois login must be the box owner).
-  sharp left package.json: run with DOCS_SHOTS_SHARP=<a folder with sharp installed> on the test box.
-  Resume: on the test box, rsync to ~/vyre-ci/docs-s, `npm run docs:shots` (CHROME=/usr/local/bin/
-  vyre-chrome), copy back PNGs + docs/shots.json, place new shots on pages, regen reference/index
-  from a clean git archive, run docs tests, redeploy preview (`--branch preview`), send the lead.
+- Screenshot retake (stale after main's Deck changes). The 403 not_owner blocker is fixed in the
+  tooling (0039172, 8036a21): identity.js refuses anything outside 100.64/10 before whois, so the
+  preload (VYRE_SHOTS_PEER=127.0.0.2=100.64.0.2) makes pairFrom's socket read as 100.64.0.2, the
+  fake whois answers for 100.64.0.2, and after pairing the onboarding carries on at
+  http://alex-box.tail0000.ts.net/onboard (the owner reaching the box closes the loopback door, as
+  on a real box). The four pairing shots retook cleanly. A full run is going on the test box
+  (~/vyre-ci/docs-s, log ~/vyre-ci/docs-s-run.log).
+  Resume: if the run finished, copy back docs/**/shots/*.png and docs/shots.json from
+  ~/vyre-ci/docs-s, place new shots on pages, regen reference/index from a clean git archive, run
+  the docs tests, redeploy preview (`--branch preview`), send the head to the integrator.
+- a93dbcb: agents need no passkey (e6922da on main): using/agents.md, concepts/presence.md (the
+  list now matches HUMAN_ONLY, plus presence.when).
 
 ## Next
 
