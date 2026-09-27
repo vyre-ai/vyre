@@ -85,9 +85,19 @@ mobile and the Capsule (through their owners).
   9b: vault.connect returns {item, module, need, provider, granted, grant} and emits
   vault.connected {module, need, item, provider}. Targeted set on testbox: 584 pass, 0 fail.
 
+- Merge main 7880dfa6 (8272853d): fill.js keeps both keys, browser proof keys (JWK, e2e) and phone
+  unlock keys (SPKI string). 394 pass on the vault + docs set.
+- ADR 0028 decision 9, Connections (a92f30df). 9a built (37132a25): core/vault/providers.js, needs.credentials in
+  manifests (kernel validate + fetch courtesy), ctx.modules.list(), vault.need, vault.connect, `vyre vault needs|connect`,
+  `vyre voice key` now calls vault.connect, voice declares a "speech" group. 584 pass, 0 fail.
+- core/mail was built (6a0c0760) then reverted (7cb60736): connectors owns core/mail (lead). Offered to them to cherry-pick.
+
 ## Doing
 
-- PAUSED for the native-core refocus (lead, 27 Sep). Branch is green on its targeted set.
+- 9b connections (subagent): vault_connections table (MACed), vault-source rows, modules REGISTER theirs
+  (vault.connections.register/unregister), list/get/grant/revoke/update/sync/allowed, events
+  vault.connection-added/-removed/-changed, needs_credential error {code, message, detail:{module, need, account?}},
+  multiple: true needs. Contract sent to connectors and cohesion (27 Sep).
 
 ## Next (in order, when resumed)
 
@@ -111,6 +121,12 @@ mobile and the Capsule (through their owners).
    min, cleared on lock (approved).
 
 ## Needs from others
+
+- capsule-pro: replace "Run: vyre voice key" (SightExtension.swift:400-402) with an inline secure field that calls
+  vault.connect {module:"voice", need}; an account chooser from vault.connections.list {capability}.
+- native-core: the "Vault, Connections" entry in the settings hub (list, grant per surface, connect sheet).
+- sessions: does a thread record that it came from the Capsule? (surface resolution for mcp:thread callers)
+- connectors: google.connect wants a `client` item; what should vault.connect's oauth `next.input` carry?
 
 - mobile: include modules/vault-android (sent 27 Sep), run its gradle unit tests + a device check;
   an app group / keychain access group for an iOS VyreAutofill extension target.
