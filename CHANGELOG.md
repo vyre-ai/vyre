@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Every CLI verb has a test (compile phase), and four small fixes they found
+
+- New tests for vault ls/pending/approve/revoke/share/move/kit/migrate-key, presence keys/remove,
+  backup and restore, name, owner, uninstall --system (dry run), box update, every relay verb,
+  link pair/approve/deny/unpair/signin/signout, watchers, hooks on/off/list, learn skills
+  retire/dismiss, memory mute, timer and remind rm, connect rm, projects move, sessions setup.
+- `vyre owner --json` no longer sets the owner to "--json", and without vyred it exits 5 with
+  the next step (it exited 0). `vyre restore` refusals name the next step.
+- `vyre hooks` and `vyre connect` usage slips exit 2 with a next step (they exited 1).
+  `vyre memory mute` says "muted" (it said "mutened").
+
 #### The terminal matches the Deck composer: model, thinking, !, #, images, rewind, tasks
 
 - `vyre threads model | thinking | commands | shell | remember [--scope project|user|local] |
