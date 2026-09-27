@@ -95,10 +95,7 @@ Put a credential in the vault once, and never paste it into a session again. Cla
 vyre vault put harlow-stripe --kind api-key --description "Harlow Legal billing key"
 ```
 
-It prompts for the value without echoing it. Putting a value is a human-only action: you prove you are there with Touch ID on the Mac or a passkey in the Deck.
-
-> [!GAP]
-> `vyre vault put` does not ask for that proof yet, so it stops with code 3. Add the item in the Deck instead. See [known gaps](../known-gaps.md#the-vault-cli-never-proves-presence).
+It prompts for the value without echoing it. Putting a value is a human-only action, so the command asks you to prove you are there: Touch ID on the Mac, or the code vyred writes to your terminal. In the Deck, it is your passkey.
 
 To use it from a script outside Vyre, let the vault hand it to that one process:
 

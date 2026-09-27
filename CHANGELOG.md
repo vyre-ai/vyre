@@ -4,7 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Making an agent, or changing what it can reach or spend, needs a person
+#### A box built from vyre.tgz ships the files in it, not stale ones
+
+- npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
+  and mtime match what it synced before, so an image built from a new vyre.tgz could keep old
+  files. The installer's unpack and `vyre update`'s refresh now touch the unpacked tree before
+  the build (`scripts/install-box.sh`, `box/vyre`). The test tarball is packed with 1985 mtimes,
+  as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
+  Found by box-deploy.
+
+#### Making or changing an agent needs a person
 
 - `agents.create` is on the floor's human-only list. `agents.update` takes only a person's
   surfaces (no model, the assistant included), and asks for presence when it touches credentials
@@ -314,8 +323,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The Deck's computer panel reads what `computers.get` returns (it was drawn from fixture fields
   no tool had: name, host, disk, network, rules). Glass's title state follows the computer as
   watching thaws it.
+- Glass says why a computer did not start. The relay closes the stream with 4001 and a short
+  reason ("kit's computer stopped as soon as it started (exit code 3)"), and Glass shows "kit's
+  computer did not start" with that reason, what to try (Restart computer on kit's page, then
+  Retry), a Retry button and a link to kit's page. It no longer retries a broken computer on its
+  own. Other checkout failures close with 1011 and Glass tries again as before.
 - `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
   required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
+#### link.health answers the owner and modules only
+
+- On the box, `link.health` refuses a guest from another tailnet, an agent's own node, an agent
+  at the box, MCP and any tailnet login that is not the box's owner. The Deck, the terminal and
+  modules such as Glass ask as before.
+
 #### Glass egress: fail closed, keys that survive restarts
 
 - The egress sidecar no longer sends a listed site out from the box when the Mac stops offering

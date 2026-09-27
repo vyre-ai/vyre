@@ -66,6 +66,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
 | `VYRE_APPS_DIR` | Where `vyre capsule install` puts the app. Default `~/Applications`. | `core/cli/commands/capsule-install.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
+| `VYRE_BOX_PAIR_WAIT_MS` | Not described yet. | `core/cli/commands/box.js` |
 | `VYRE_BOX_POLL_MS` | How often `vyre box` checks on an install in progress. Default 5000. | `core/cli/commands/box.js` |
 | `VYRE_BOX_PROBE_MS` | How long `vyre box` waits for the box's address to answer. Default two minutes. | `core/cli/commands/box.js` |
 | `VYRE_BOX_WAIT_MS` | How long `vyre box` waits for an install to finish. Default 65 minutes. | `core/cli/commands/box.js` |

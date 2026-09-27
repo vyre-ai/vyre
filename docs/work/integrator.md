@@ -41,14 +41,18 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   d962b04 federation, 12dc0c9 glass-live, d51dd69 ci, d6bb815 node 24 isClaude fix,
   8be1c52 polish-cli, 3d0295f connectors, 7b54493 onboard.finish api-key auth.
 
+- Later: 86bcf0a polish-cli (CLI presence), 205387e e2e, dee1028 pwa, 22443e3 tailnet,
+  796bdcb phone-design, 246af82 docs, f3b5e36 SPEC 5.2 ctx.call. Full suite at f3b5e36 on the
+  test box: 1917 tests, 0 fail, exit 0.
+
 ## Doing
 
-- Waiting on docs for a head (tip is a wip with uncommitted edits).
+- Nothing queued. Every approved branch is in main and pushed.
 
 ## Next
 
-- Merge work/docs; then SPEC 5.2 ctx.projects note (spec moves to docs/architecture/spec.md).
-- After every merge: push main (plain), tell the lead the sha.
+- Merge each team's tip when it says ready; push main after each merge and tell the lead the sha.
+- The live box's stale "probe" computers row is box-deploy's (a /srv/vyre action).
 
 ## Needs from others
 
