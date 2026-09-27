@@ -50,6 +50,7 @@ Make an agent: a name, its projects ("*" for all), its credentials (Vault items 
     - `fallback` string
     - `vault` string
   - `computer` boolean
+  - `effort` one of "low", "medium", "high", "xhigh", "max"
   - `instructions` string
   - `kind` "assistant" or "agent"
   - `model` string
@@ -109,7 +110,7 @@ An agent's threads, newest first.
 
 ### `agents.update`
 
-Change an agent (name it by name or agent): its projects, credentials, instructions, skills, computer or model. Takes effect on its next thread.
+Change an agent (name it by name or agent): its projects, credentials, instructions, skills, computer, model or effort. Takes effect on its next thread.
 
 - Input:
   - `agent` string
@@ -118,6 +119,7 @@ Change an agent (name it by name or agent): its projects, credentials, instructi
     - `fallback` string
     - `vault` string
   - `computer` boolean
+  - `effort` one of "low", "medium", "high", "xhigh", "max"
   - `instructions` string
   - `kind` "assistant" or "agent"
   - `model` string
@@ -3327,6 +3329,7 @@ Start or resume a thread for an agent, with its credentials set only in that chi
   - `auth` string
   - `budget_usd` number
   - `cwd` string
+  - `effort` one of "low", "medium", "high", "xhigh", "max"
   - `env` object
   - `fallback` object
   - `lean` boolean

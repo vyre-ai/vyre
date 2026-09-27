@@ -55,6 +55,8 @@ Answer app-design: check docs/design/system specs (work/app-design c4f9bb23) pat
   per-agent settings level; talk to whoever owns core/agents.
 
 ## Changed contracts
+- core/agents: agents.create/update take effort; agents.list returns it (native-core owns core/agents now).
+- core/switchboard threads.launch: + effort input (sessions applies it to the SDK session).
 - core/modules/index.js CALL_AS: settings may call as cli/local/deck/capsule.
 - scripts/lib/docs/check.js OWNERS: + native-core.
 

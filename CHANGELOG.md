@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### An agent's Effort is kept
+
+- core/agents: agents.create and agents.update take effort (low, medium, high, xhigh, max; a new
+  effort column), agents.list shows it, and the agent's threads are launched with it. The Deck's
+  Effort buttons on an agent's page saved nothing before. Test in core/agents/effort.test.js.
+- core/switchboard threads.launch accepts effort. Applying it to the SDK session is sessions' work.
+
 #### The composer no longer lays out the page on every key
 
 - deck/chat/composer.js: the message box sizes itself with CSS field-sizing where the browser has
