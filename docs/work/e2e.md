@@ -252,6 +252,10 @@ Plan (to the lead before building):
   for PERSON callers + probe test. Their priority test races (subagent-slow never matches a
   wrapped prompt); my fix's +15 ms per cli socket call (perl peer-pid; 5.4 vs 20.5 ms/call on
   testbox, cached per keep-alive connection) exposes it.
+- rc.2 follow-up (lead): work/e2e-surfaces c7dfcd26 (on 1941f2cf, worktree ../vyre-e2e-label).
+  SURFACE_LABELS in core/modules (cli, local, deck, capsule, mobile); vyred downgrades ANY non-model
+  label (not mcp/harness/anonymous) from under a claude. 132/132 on testbox. TODO when rc.1 is on
+  main: `git rebase main` (1941f2cf drops out), rerun peer, send the sha to the integrator.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
