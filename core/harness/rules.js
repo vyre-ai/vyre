@@ -199,6 +199,17 @@ function shellRoutes(command, { vyreHome, cwd, userHome, agent = null }) {
     if (!literal || w.some(dynamic)) return ask1("This talks to a unix socket Vyre cannot identify from the command.");
   }
 
+  // A command that writes, to a file that is a hard link to something kept from sessions (a
+  // settings file, or Vyre's state): a hard link has no path to follow, so the inode decides.
+  if (shellWrites(flat, w)) {
+    for (const x of w) {
+      if (x.startsWith("-") || x.includes("$") || /[*?[]/.test(x)) continue;
+      for (const p of physical(base, x.replace(/^[a-z]+=/, ""))) {
+        if (hardLinked(p, { vyreHome, cwd, userHome, agent })) return { decision: "deny", rule: 8, reason: "That file is a hard link to one Vyre keeps from sessions. " + INTERNALS };
+      }
+    }
+  }
+
   // Vyre's internals: by file name anywhere (except as the pattern a grep searches for), by path,
   // and by a glob that could reach them.
   for (let i = 0; i < w.length; i++) {
@@ -207,6 +218,13 @@ function shellRoutes(command, { vyreHome, cwd, userHome, agent = null }) {
     if (INTERNAL_FILE.test(x) && !(before && GREPS.has(path.basename(before)))) return { decision: "deny", rule: 8, reason: INTERNALS };
     if (x.includes("$")) continue;
     const abs = path.resolve(base, x);
+    // A path word as the kernel walks it (a symlink, or `..` after one), when that differs.
+    if (!/[*?[]/.test(x) && (x.includes("/") || x.startsWith("."))) {
+      for (const p of physical(base, x).slice(1)) {
+        const at = place(p, vyreHome, agent);
+        if (at === "internal" || INTERNAL_FILE.test(p)) return { decision: "deny", rule: 8, reason: INTERNALS };
+      }
+    }
     if (/[*?[]/.test(x)) {
       if (!globReaches(abs, vyreHome)) continue;
       const parts = abs.split("/").filter(Boolean), depth = vyreHome.split("/").filter(Boolean).length;
@@ -231,11 +249,14 @@ function toolRoutes(tool, input, { vyreHome, cwd, agent = null }) {
   const base = cwd || os.homedir();
   for (const k of ["file_path", "path", "notebook_path"]) {
     if (typeof input[k] !== "string") continue;
-    const p = path.resolve(base, untilde(input[k]));
-    if (INTERNAL_FILE.test(p)) return { decision: "deny", rule: 8, reason: INTERNALS };
-    const at = place(p, vyreHome, agent);
-    if (at === "internal") return { decision: "deny", rule: 8, reason: INTERNALS };
-    if (at === "modules" && writes) return { decision: "ask", rule: 8, reason: "A module runs inside vyred. Vyre asks before anything changes one." };
+    // As named and as the kernel walks it: a symlink, or `..` after one, may land elsewhere.
+    for (const p of physical(base, untilde(input[k]))) {
+      if (INTERNAL_FILE.test(p)) return { decision: "deny", rule: 8, reason: INTERNALS };
+      const at = place(p, vyreHome, agent);
+      if (at === "internal") return { decision: "deny", rule: 8, reason: INTERNALS };
+      if (at === "modules" && writes) return { decision: "ask", rule: 8, reason: "A module runs inside vyred. Vyre asks before anything changes one." };
+      if (writes && hardLinked(p, { vyreHome, cwd, agent })) return { decision: "deny", rule: 8, reason: "That file is a hard link to one Vyre keeps from sessions. " + INTERNALS };
+    }
   }
   const glob = tool === "Glob" ? input.pattern : tool === "Grep" ? input.glob : null;
   if (typeof glob === "string") {
@@ -270,11 +291,59 @@ function ccFile(p) {
   return Boolean(dir) && /^settings.*\.json$/.test(b) && within(p, path.resolve(/** @type {string} */ (dir)));
 }
 
+/**
+ * A path as written and as the kernel will walk it. `path.resolve` folds `a/link/..` into `a`, but
+ * the kernel follows the link first and then goes up from where it landed; so the real path is
+ * taken from the raw string (realpath(3)), and for a file that is not there yet, from its folder.
+ * @param {string} base @param {string} v the path as named (relative to base, or absolute)
+ */
+function physical(base, v) {
+  const raw = path.isAbsolute(v) ? v : base + path.sep + v;
+  const out = [path.resolve(raw)];
+  try { out.push(fs.realpathSync.native(raw)); }
+  catch { try { out.push(path.join(fs.realpathSync.native(path.dirname(raw)), path.basename(raw))); } catch {} }
+  return [...new Set(out)];
+}
+
 /** The path and, when it differs, the file a symlink on the way points at. */
-function realToo(p) {
-  const out = [p];
-  try { out.push(fs.realpathSync(p)); } catch { try { out.push(path.join(fs.realpathSync(path.dirname(p)), path.basename(p))); } catch {} }
-  return out;
+const realToo = p => physical("/", p);
+
+/**
+ * Is this existing file a hard link to something the floor keeps from sessions: one of Claude
+ * Code's settings files, or anything in VYRE_HOME outside the places a model may work? A hard
+ * link has no path to follow, so the inode is compared; only files with more than one link are.
+ * @param {string} p @param {{ vyreHome: string, cwd?: string, userHome?: string, agent?: string|null }} o
+ */
+function hardLinked(p, { vyreHome, cwd, userHome, agent = null }) {
+  let st;
+  try { st = fs.statSync(p); } catch { return false; }
+  if (!st.isFile() || st.nlink < 2) return false;
+  const same = f => { try { const t = fs.statSync(f); return t.dev === st.dev && t.ino === st.ino; } catch { return false; } };
+  const home = userHome || os.homedir();
+  const named = [path.join(home, ".claude.json"), path.join(home, ".claude", "settings.json"), path.join(home, ".claude", "settings.local.json")];
+  for (let d = path.resolve(cwd || home); ; d = path.dirname(d)) {
+    named.push(path.join(d, ".claude", "settings.json"), path.join(d, ".claude", "settings.local.json"), path.join(d, ".mcp.json"));
+    if (d === path.dirname(d)) break;
+  }
+  const cfg = process.env.CLAUDE_CONFIG_DIR;
+  if (cfg) { try { for (const n of fs.readdirSync(cfg)) if (/^settings.*\.json$/.test(n)) named.push(path.join(cfg, n)); } catch {} }
+  if (named.some(same)) return true;
+  // VYRE_HOME, but for the folders a model may work in.
+  let seen = 0;
+  const walk = (dir, depth) => {
+    if (depth > 8 || seen > 20000) return false;
+    let names;
+    try { names = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+    for (const e of names) {
+      seen++;
+      const f = path.join(dir, e.name);
+      const at = place(f, vyreHome, agent);
+      if (at === "watchers" || at === "modules" || at === "own") continue;
+      if (e.isDirectory() ? walk(f, depth + 1) : e.isFile() && same(f)) return true;
+    }
+    return false;
+  };
+  return walk(vyreHome, 0);
 }
 
 /** A file tool that writes one of Claude Code's settings files: the path it names, or null. */
@@ -284,8 +353,7 @@ function toolSettings(tool, input, { cwd, userHome }) {
   for (const k of ["file_path", "notebook_path", "path"]) {
     const v = input[k];
     if (typeof v !== "string") continue;
-    const p = path.resolve(cwd || home, v === "~" || v.startsWith("~/") ? path.join(home, v.slice(1)) : v);
-    if (realToo(p).some(ccFile)) return v;
+    if (physical(cwd || home, v === "~" || v.startsWith("~/") ? path.join(home, v.slice(1)) : v).some(ccFile)) return v;
   }
   return null;
 }
@@ -301,15 +369,20 @@ function shellSettings(command, { cwd, userHome }) {
   const w = words(flat);
   const base = cwd || userHome || os.homedir();
   const named = flat.match(CC_NAMED)?.[0].replace(/^[\s\/=:,(\[{]/, "")
-    || w.map(x => x.replace(/^[a-z]+=/, "")).find(x => !x.startsWith("-") && realToo(path.resolve(base, x)).some(ccFile))
+    || w.map(x => x.replace(/^[a-z]+=/, "")).find(x => !x.startsWith("-") && physical(base, x).some(ccFile))
     || (/\.claude\b/.test(flat) && w.find(x => /(^|\/)settings[^/]*\.json$|\.claude\/[^\s]*[*?[]/.test(x)))
     || (/CLAUDE_CONFIG_DIR/.test(flat) && /settings/.test(flat) ? "$CLAUDE_CONFIG_DIR" : null);
   if (!named) return null;
   // Redirects to nowhere or to another descriptor write nothing that matters.
+  return shellWrites(flat, w) ? named : null;
+}
+
+/** Does this command write, move, link or remove files: a redirect, an in-place edit, a writer? */
+function shellWrites(flat, w) {
   const redirect = />/.test(flat.replace(/\d*>>?\s*\/dev\/null|\d*>&\s*\d+|&>\s*\/dev\/null/g, ""));
   const inPlace = /\bsed\b[^|;&]*\s-[a-zA-Z]*i|\b(sed|perl)\b[^|;&]*\s--in-place\b|\bperl\b[^|;&]*\s-[a-zA-Z]*[ie]/.test(flat);
   const writer = w.some(x => CC_WRITERS.has(path.basename(x))) || /\bdd\b[^|;&]*\bof=/.test(flat);
-  return redirect || inPlace || writer ? named : null;
+  return redirect || inPlace || writer;
 }
 
 /** Callers that are the person at one of Vyre's own surfaces, when they name no agent. The
