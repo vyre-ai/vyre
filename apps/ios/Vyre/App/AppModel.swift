@@ -73,9 +73,14 @@ final class AppModel {
     var page: Page = .now {
         didSet { UserDefaults.standard.set(page.rawValue, forKey: "page") }
     }
-    /// The pushed screens over the pages (a chat, a held item, an agent).
+    /// The pushed screens over the pages (a chat, an agent).
     var path: [Dest] = []
     var sheet: Sheet?
+    /// The detail sheet over everything (phone.md section 5): a Needs you row, or "Details" on a
+    /// chat's approval card.
+    var detail: DetailRef?
+    /// Where the next pushed session scrolls to, once (Open session).
+    var anchor: Anchor?
     /// What the Settings and Find sheets have pushed inside themselves.
     var settingsPath: [Dest] = []
     var findPath: [Dest] = []
@@ -94,7 +99,7 @@ final class AppModel {
     var inFront = true
     /// The owner's name from `system.info`'s `owner.name`, when the box carries it.
     private(set) var ownerName: String?
-    /// The assistant's name: the `agents.list` entry of kind "assistant", else `system.info`'s.
+    /// The assistant's name: `system.info`'s `assistant.name`, else the `agents.list` entry of kind "assistant".
     private(set) var assistantName: String?
 
     /// Who answers in a transcript when no agent is named: the assistant, never the model.
@@ -186,7 +191,8 @@ final class AppModel {
         let info = try? await call("system.info")
         ownerName = info?["owner"]["name"].string.flatMap { $0.isEmpty ? nil : $0 }
         let listed = (try? await call("agents.list"))?.list.first { $0["kind"].string == "assistant" }?["name"].string
-        assistantName = listed ?? info?["assistant"]["name"].string ?? info?["assistant"].string
+        // The label is system.info's assistant.name (null means "Vyre"), else agents.list's assistant.
+        assistantName = info?["assistant"]["name"].string ?? listed ?? info?["assistant"].string
     }
 
     /// Left the screen: close the stream within a second and end any presence session.
@@ -222,6 +228,31 @@ final class AppModel {
         }
     }
 
+    /// `VyreClient.present` (Face ID only when the box needs it and no session is live) with the
+    /// offline banner kept up to date.
+    @discardableResult
+    func present(_ calls: [SignedCall], reason: String, required: Bool = false) async throws -> [JSON] {
+        guard let client else { throw VyreError.offline("Not signed in.") }
+        do {
+            let out = try await client.present(calls, reason: reason, required: required)
+            online = true
+            return out
+        } catch let e as VyreError {
+            if case .offline = e { online = false }
+            throw e
+        }
+    }
+
+    /// Open the session an item came from, at the moment it was raised (phone.md section 5):
+    /// the sheet closes first, then Chat pushes the session, which scrolls to the anchor.
+    func openSession(_ anchor: Anchor) {
+        guard let thread = anchor.thread, !thread.isEmpty else { return }
+        detail = nil
+        sheet = nil
+        self.anchor = anchor
+        path = [.thread(thread)]
+    }
+
     /// Follow a link: a push's path, `vyre://`, a DEBUG launch argument or a tap inside the app.
     func open(_ route: Route) {
         self.route = route
@@ -235,8 +266,7 @@ final class AppModel {
         case .needs(let id):
             sheet = nil
             page = .now
-            if needs.held.contains(where: { $0.id == id }) { path = [.held(id)] }
-            else if needs.asks.contains(where: { $0.id == id }) { path = [.ask(id)] }
+            if let item = needs.item(raw: id) { path = []; detail = DetailRef(id: item.id) }
             else if needs.loaded { path = []; gone = "That item is no longer waiting. It was answered somewhere else." }
             else { return }
         case .thread(let id):

@@ -71,12 +71,36 @@ enum Proof: Sendable, Equatable {
     case session(reason: String)
     /// A one-time enrollment code, only for presence.enroll.
     case code(String)
+    /// The presence session when one is live on this phone, else nothing: never Face ID.
+    case sessionIfOpen
+    /// A header signed earlier, in a batch after one Face ID (`VyreClient.present`).
+    case header(String)
+}
+
+/// One call to be signed in a batch.
+struct SignedCall: Sendable, Equatable {
+    let tool: String
+    let input: JSON
 }
 
 /// Makes the `x-vyre-presence` header for one call. The device key implements it.
 protocol PresenceSigner: Sendable {
     func deviceHeader(tool: String, input: JSON, reason: String) async throws -> String
+    /// Several calls signed after one Face ID: one person's action (a revise and its send), and
+    /// the presence session that spares the next ones.
+    func deviceHeaders(_ calls: [SignedCall], reason: String) async throws -> [String]
     func sessionHeader() async -> String?
+    /// `presence.session.open` answered: keep it (about 30 minutes, 5 idle) in memory.
+    func opened(_ session: JSON) async
+}
+
+extension PresenceSigner {
+    func deviceHeaders(_ calls: [SignedCall], reason: String) async throws -> [String] {
+        var out: [String] = []
+        for c in calls { out.append(try await deviceHeader(tool: c.tool, input: c.input, reason: reason)) }
+        return out
+    }
+    func opened(_ session: JSON) async {}
 }
 
 /// The box's address: a host name (and optional port) the app talks to over HTTPS. Plain HTTP only
@@ -165,10 +189,47 @@ final class VyreClient: Sendable {
         }
     }
 
+    /// A person's action that may need presence (phone.md section 5, and the owner's rule that
+    /// Vyre must not nag): Face ID only when the box needs it and no presence session is live on
+    /// this phone. `required` is the item's `presence.required && !presence.covered`; when the box
+    /// did not say, it is false and the box's own answer decides. Without Face ID the calls go
+    /// with the live session, or plainly. When the box asks (or `required` and no session), one
+    /// Face ID signs every call still to go and `presence.session.open`, so later actions within
+    /// about 30 minutes skip it. Calls run in order; the first failure is thrown.
+    @discardableResult
+    func present(_ calls: [SignedCall], reason: String, required: Bool = false) async throws -> [JSON] {
+        var out: [JSON] = []
+        let live = await signer?.sessionHeader() != nil
+        if !required || live || signer == nil {
+            while out.count < calls.count {
+                let c = calls[out.count]
+                do {
+                    out.append(try await call(c.tool, c.input, proof: .sessionIfOpen))
+                } catch VyreError.presenceRequired where signer != nil {
+                    break
+                }
+            }
+            if out.count == calls.count { return out }
+        }
+        guard let signer else { throw VyreError.presenceRequired(message: "This phone has no key yet. Sign in first.", methods: []) }
+        let rest = Array(calls[out.count...])
+        let headers = try await signer.deviceHeaders(rest + [VyreClient.openSession], reason: reason)
+        for (i, c) in rest.enumerated() { out.append(try await call(c.tool, c.input, proof: .header(headers[i]))) }
+        // Best effort: a box that will not open one only means the next action asks again.
+        if let s = try? await call(VyreClient.openSession.tool, VyreClient.openSession.input, proof: .header(headers[rest.count])) {
+            await signer.opened(s)
+        }
+        return out
+    }
+
+    static let openSession = SignedCall(tool: "presence.session.open", input: [:])
+
     private func presenceHeader(tool: String, input: JSON, proof: Proof) async throws -> String? {
         switch proof {
         case .none: return nil
         case .code(let code): return "code code=\(code)"
+        case .header(let h): return h
+        case .sessionIfOpen: return await signer?.sessionHeader()
         case .device(let reason):
             guard let signer else { throw VyreError.presenceRequired(message: "This phone has no key yet. Sign in first.", methods: []) }
             return try await signer.deviceHeader(tool: tool, input: input, reason: reason)

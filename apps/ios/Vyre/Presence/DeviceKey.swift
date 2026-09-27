@@ -110,9 +110,16 @@ final class DeviceKey: Sendable {
 
     /// A DER ECDSA signature over `message`. On hardware this shows Face ID with `reason`.
     func sign(_ message: Data, reason: String) async throws -> Data {
+        try await signAll([message], reason: reason)[0]
+    }
+
+    /// Signatures over several messages after one Face ID: the evaluated context unlocks the key
+    /// for each of them.
+    func signAll(_ messages: [Data], reason: String) async throws -> [Data] {
         switch backing {
         case .software(let raw):
-            return try P256.Signing.PrivateKey(rawRepresentation: raw).signature(for: message).derRepresentation
+            let key = try P256.Signing.PrivateKey(rawRepresentation: raw)
+            return try messages.map { try key.signature(for: $0).derRepresentation }
         case .enclave(let blob):
             let ctx = LAContext()
             ctx.localizedReason = reason
@@ -128,7 +135,7 @@ final class DeviceKey: Sendable {
                 throw VyreError.cancelled
             }
             let key = try SecureEnclave.P256.Signing.PrivateKey(dataRepresentation: blob, authenticationContext: ctx)
-            return try key.signature(for: message).derRepresentation
+            return try messages.map { try key.signature(for: $0).derRepresentation }
         }
     }
 
@@ -140,6 +147,15 @@ final class DeviceKey: Sendable {
         let sig = try await sign(msg, reason: reason)
         return "device key=\(id) ts=\(ts) nonce=\(nonce) sig=\(sig.base64URL)"
     }
+
+    /// Headers for several calls, all signed after one Face ID.
+    func headers(_ calls: [SignedCall], reason: String, now: Date = Date()) async throws -> [String] {
+        let ts = Int64((now.timeIntervalSince1970 * 1000).rounded())
+        let nonces = calls.map { _ in DeviceKey.nonce() }
+        let messages = zip(calls, nonces).map { c, n in DeviceKey.message(tool: c.tool, hash: Canonical.inputHash(c.input), ts: ts, nonce: n) }
+        let sigs = try await signAll(messages, reason: reason)
+        return zip(nonces, sigs).map { n, sig in "device key=\(id) ts=\(ts) nonce=\(n) sig=\(sig.base64URL)" }
+    }
 }
 
 enum DeviceKeyError: Error, LocalizedError {
@@ -150,7 +166,19 @@ enum DeviceKeyError: Error, LocalizedError {
 /// A `presence.session.open` session: several vault reveals in a row after one device proof.
 /// Held in memory only, closed when the app leaves the screen.
 actor PresenceSessions {
-    struct Open: Sendable { let id: String; let secret: String; let expires: Date; let idle: TimeInterval; var used: Date }
+    struct Open: Sendable {
+        let id: String; let secret: String; let expires: Date; let idle: TimeInterval; var used: Date
+
+        /// From `presence.session.open`: `{session, secret, expires, idle}` (ms).
+        init(id: String, secret: String, expires: Date, idle: TimeInterval, used: Date) {
+            self.id = id; self.secret = secret; self.expires = expires; self.idle = idle; self.used = used
+        }
+        init?(_ out: JSON, now: Date = Date()) {
+            guard let id = out["session"].string, let secret = out["secret"].string else { return nil }
+            self.init(id: id, secret: secret, expires: out["expires"].date ?? now.addingTimeInterval(1800),
+                      idle: (out["idle"].double ?? 300_000) / 1000, used: now)
+        }
+    }
     private var open: Open?
 
     func set(_ o: Open?) { open = o }
@@ -173,8 +201,16 @@ struct DevicePresence: PresenceSigner {
         try await key.header(tool: tool, input: input, reason: reason)
     }
 
+    func deviceHeaders(_ calls: [SignedCall], reason: String) async throws -> [String] {
+        try await key.headers(calls, reason: reason)
+    }
+
     func sessionHeader() async -> String? {
         guard let s = await sessions.current() else { return nil }
         return "session id=\(s.id) secret=\(s.secret)"
+    }
+
+    func opened(_ session: JSON) async {
+        if let o = PresenceSessions.Open(session) { await sessions.set(o) }
     }
 }

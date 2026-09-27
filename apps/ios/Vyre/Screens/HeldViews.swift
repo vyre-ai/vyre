@@ -75,10 +75,7 @@ struct HeldBody: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach($draft.fields) { $f in InPlaceField(field: $f, compact: compact) }
             if let err = draft.error ?? problem {
-                Text(draft.error != nil ? "Held again: \(err)" : err)
-                    .vyre(.small).foregroundStyle(Color.beaconInk)
-                    .padding(.vertical, Space.m)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                FailedLine(text: draft.error != nil ? "Held again: \(err)" : err).padding(.vertical, Space.m)
             }
             HStack(spacing: Space.s) {
                 Button { Task { await approve() } } label: {
@@ -125,43 +122,6 @@ struct HeldBody: View {
     }
 }
 
-/// The full-screen held item, reached from Now: the board's PhoneDraft.
-struct HeldDetailView: View {
-    @Environment(AppModel.self) private var app
-    @Environment(\.dismiss) private var dismiss
-    let draft: HeldDraft
-
-    var body: some View {
-        PullScroll {
-            VStack(alignment: .leading, spacing: Space.l) {
-                VStack(alignment: .leading, spacing: Space.s) {
-                    Text(draft.title).vyre(.h2).foregroundStyle(Color.text)
-                    Text(subtitle).vyre(.small).foregroundStyle(Color.text2)
-                }
-                HeldBody(draft: draft) { dismiss() }
-            }
-            .padding(.horizontal, Space.gutter)
-            .padding(.bottom, Space.xl)
-        }
-        .vyreGround()
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .principal) { EmptyView() }
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: Space.s) { Dot(color: .beaconInk); Engraved("Held at the Gate", color: .beaconInk) }
-            }
-        }
-        .vyreNavBar()
-    }
-
-    private var subtitle: String {
-        let who = draft.agent ?? "An agent"
-        let when = age(draft.at)
-        let what = draft.kind == "send" ? "It waits here until you send it." : "It waits here until you approve it."
-        return "\(who) wrote this \(when.isEmpty ? "just now" : when + " ago"). \(what)"
-    }
-}
-
 /// A permission ask as a card: what it wants to run, where, and Allow / Deny.
 struct AskCard: View {
     @Environment(AppModel.self) private var app
@@ -185,20 +145,21 @@ struct AskCard: View {
                 Text(d).vyre(.codeSmall).foregroundStyle(Color.text2)
             }
             if let r = ask.reason, !r.isEmpty { Text(r).vyre(.small).foregroundStyle(Color.text2) }
-            if let problem { Text(problem).vyre(.small).foregroundStyle(Color.beaconInk) }
+            if let problem { FailedLine(text: problem) }
             HStack(spacing: Space.s) {
                 Button("Allow") { Task { await answer(true) } }.buttonStyle(.vyre(.primary, fill: true)).disabled(busy)
                 Button("Deny") { Task { await answer(false) } }.buttonStyle(.secondary).disabled(busy)
             }
         }
         .padding(Space.gutter)
-        .background(Color.beaconWash, in: RoundedRectangle(cornerRadius: Radius.panel))
+        .background(Color.panel, in: RoundedRectangle(cornerRadius: 12))
+        .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.ruleStrong, lineWidth: 1) }
     }
 
     private func answer(_ allow: Bool) async {
         busy = true
         defer { busy = false }
-        do { try await app.needs.answer(ask, allow: allow) }
+        do { try await app.needs.answer(ask, allow ? .allow : .deny) }
         catch let e as VyreError where e == .cancelled {}
         catch { problem = (error as? LocalizedError)?.errorDescription ?? "\(error)" }
     }

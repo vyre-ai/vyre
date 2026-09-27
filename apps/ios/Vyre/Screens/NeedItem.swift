@@ -1,56 +1,91 @@
 import Foundation
 import LocalAuthentication
 
-/// One row of Now's "Needs you": a held draft or a permission ask, read the same way
+/// One row of Now's "Needs you": a held draft, a permission ask or a question, read the same way
 /// (phone.md section 4). Pure, so its words are tested.
 enum NeedItem: Identifiable, Equatable {
     case held(HeldDraft)
     case ask(AskItem)
+    case question(AskItem)
+
+    /// A threads.asks item as its row: a question or a permission.
+    static func of(_ a: AskItem) -> NeedItem { a.isQuestion ? .question(a) : .ask(a) }
 
     var id: String {
         switch self {
         case .held(let d): "h-" + d.id
         case .ask(let a): "a-" + a.id
+        case .question(let a): "q-" + a.id
         }
     }
     var at: Double {
         switch self {
         case .held(let d): d.at
-        case .ask(let a): a.at
+        case .ask(let a), .question(let a): a.at
         }
     }
     var agent: String? {
         switch self {
         case .held(let d): d.agent
-        case .ask(let a): a.agent
+        case .ask(let a), .question(let a): a.agent
         }
     }
     var project: String? {
         switch self {
         case .held(let d): d.project
-        case .ask(let a): a.project
+        case .ask(let a), .question(let a): a.project
         }
     }
-    var isDraft: Bool { if case .held = self { return true }; return false }
-
-    /// The swipe-right verb: "Send" for a draft that sends, else "Approve".
-    var approveVerb: String {
-        if case .held(let d) = self { return d.kind == "send" ? "Send" : "Approve" }
-        return "Approve"
+    var anchor: Anchor {
+        switch self {
+        case .held(let d): d.anchor
+        case .ask(let a), .question(let a): a.anchor
+        }
     }
-    /// The swipe-left verb: "Discard" for a draft, "Deny" for an ask.
-    var denyVerb: String { isDraft ? "Discard" : "Deny" }
+    var presence: PresenceHint? {
+        switch self {
+        case .held(let d): d.presence
+        case .ask(let a), .question(let a): a.presence
+        }
+    }
+    /// Show the Face ID glyph and "with Face ID": only when the box says a proof is needed and no
+    /// session covers it. Never guessed from the tool.
+    var faceID: Bool { presence?.faceID ?? false }
+    var isDraft: Bool { if case .held = self { return true }; return false }
+    var isQuestion: Bool { if case .question = self { return true }; return false }
+
+    /// The swipe-right verb: "Send" for a draft that sends, "Answer" for a question, else "Approve".
+    var approveVerb: String {
+        switch self {
+        case .held(let d): d.kind == "send" ? "Send" : "Approve"
+        case .question: "Answer"
+        case .ask: "Approve"
+        }
+    }
+    /// The swipe-left verb: "Discard" for a draft, "Later" for a question, "Deny" for an ask.
+    var denyVerb: String {
+        switch self {
+        case .held: "Discard"
+        case .question: "Later"
+        case .ask: "Deny"
+        }
+    }
+    /// Swiping right commits at once only for an ask. A draft first shows its final words (the
+    /// sheet), and a question has no one-swipe answer.
+    var swipeOpensSheet: Bool { !(self.isAsk) }
+    var isAsk: Bool { if case .ask = self { return true }; return false }
 
     /// Line 1. An ask is its action ("Push q3-report"); a draft is the verb and the person
-    /// ("Send email to Dana").
+    /// ("Send email to Dana"); a question is "<agent> has a question".
     var title: String {
         switch self {
         case .held(let d): NeedItem.draftTitle(d)
         case .ask(let a): NeedItem.askTitle(tool: a.tool, summary: a.summary, destination: a.destination)
+        case .question(let a): "\(a.agent ?? "Vyre") has a question"
         }
     }
 
-    /// Line 2: the command for an ask (mono), the subject for a draft.
+    /// Line 2: the command for an ask (mono), the subject for a draft, the question.
     var line2: String {
         switch self {
         case .held(let d):
@@ -58,9 +93,10 @@ enum NeedItem: Identifiable, Equatable {
             let body = d.fields.first { $0.key == "body" }?.value.split(separator: "\n").first.map(String.init)
             return subject ?? body ?? d.summary
         case .ask(let a): return a.summary
+        case .question(let a): return a.questions.first?.question ?? a.summary
         }
     }
-    var line2IsCommand: Bool { if case .ask = self { return true }; return false }
+    var line2IsCommand: Bool { isAsk }
 
     /// Line 3: "<agent> · <project>".
     var line3: String { [agent, project].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ") }
@@ -71,7 +107,7 @@ enum NeedItem: Identifiable, Equatable {
         let who = [agent, project].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: ", ")
         let what = title.prefix(1).lowercased() + title.dropFirst()
         let when = age(at, now: now)
-        return [who.isEmpty ? nil : who, "wants to \(what)", line2, when.isEmpty ? nil : (when == "now" ? "just now" : "\(when) ago")]
+        return [who.isEmpty ? nil : who, isQuestion ? "asks" : "wants to \(what)", line2, when.isEmpty ? nil : (when == "now" ? "just now" : "\(when) ago")]
             .compactMap { $0 }.joined(separator: ", ") + "."
     }
 

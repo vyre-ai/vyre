@@ -143,6 +143,11 @@ struct ThreadView: View {
     @State private var note: String?
     @State private var sending = false
     @State private var retryText: String?
+    /// Open session's target, flashing `--match` for 1.2 s.
+    @State private var flash: Transcript.Target?
+    @State private var flashOn = false
+    /// New items scroll the view to the end, unless Open session put it somewhere else.
+    @State private var following = true
     @FocusState private var focused: Bool
 
     static let surface = "ios"
@@ -156,7 +161,15 @@ struct ThreadView: View {
                         if !loaded && problem == nil { LoadState(loading: true, problem: nil, empty: nil) }
                         if let problem { FailedLine(text: problem) }
                         if loaded && transcript.entries.isEmpty { EmptyLine(text: recorded ? "This session has no turns to show." : "Nothing said yet.") }
-                        ForEach(transcript.entries) { entry in row(entry) }
+                        ForEach(transcript.entries) { entry in
+                            row(entry)
+                                .background {
+                                    if flash?.entry == entry.id {
+                                        RoundedRectangle(cornerRadius: Radius.card).fill(Color.match).opacity(flashOn ? 1 : 0).padding(-Space.xs)
+                                    }
+                                }
+                                .id(entry.id)
+                        }
                         if transcript.working {
                             HStack(spacing: Space.s) { Dot(color: .focus); Engraved("Working", color: .focus) }
                         }
@@ -166,8 +179,14 @@ struct ThreadView: View {
                     .padding(.bottom, Space.m)
                 }
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: transcript) { _, _ in withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("end", anchor: .bottom) } }
-                .onChange(of: loaded) { _, _ in proxy.scrollTo("end", anchor: .bottom) }
+                .onChange(of: transcript) { _, _ in
+                    guard following else { return }
+                    withAnimation(.easeOut(duration: 0.15)) { proxy.scrollTo("end", anchor: .bottom) }
+                }
+                .onChange(of: loaded) { _, _ in
+                    if !land(proxy) { proxy.scrollTo("end", anchor: .bottom) }
+                }
+                .onChange(of: app.anchor) { _, a in if loaded, a?.thread == id { _ = land(proxy) } }
             }
             composer
         }
@@ -205,6 +224,24 @@ struct ThreadView: View {
     }
 
     private var title: String { record["name"].string ?? (recorded ? "Recorded session" : "Session") }
+
+    /// Open session (phone.md section 5): centre the anchored item and flash it once. False when
+    /// there is no anchor for this thread, or the loaded transcript lacks it (the end is shown).
+    private func land(_ proxy: ScrollViewProxy) -> Bool {
+        guard let a = app.anchor, a.thread == id else { return false }
+        app.anchor = nil
+        guard let target = transcript.resolve(a) else { return false }
+        following = false
+        proxy.scrollTo(target.entry, anchor: .center)
+        flash = target
+        flashOn = true
+        withAnimation(.easeOut(duration: 1.2)) { flashOn = false }
+        Task {
+            try? await Task.sleep(for: .seconds(1.3))
+            flash = nil
+        }
+        return true
+    }
 
     private var head: some View {
         VStack(alignment: .leading, spacing: Space.xs) {
@@ -275,7 +312,8 @@ struct ThreadView: View {
                     HeldBody(draft: d, compact: true)
                 }
                 .padding(Space.gutter)
-                .background(Color.beaconWash, in: RoundedRectangle(cornerRadius: Radius.panel))
+                .background(Color.panel, in: RoundedRectangle(cornerRadius: 12))
+                .overlay { RoundedRectangle(cornerRadius: 12).strokeBorder(Color.ruleStrong, lineWidth: 1) }
                 .id("held-\(d.id)-\(d.error ?? "")")
             } else {
                 Engraved("A draft was held here. It is no longer waiting.")
@@ -438,6 +476,7 @@ struct ThreadView: View {
         defer { sending = false }
         note = nil
         retryText = nil
+        following = true
         do {
             let out = try await app.call("threads.send", ["thread": .string(id), "text": .string(t), "surface": .string(ThreadView.surface)])
             if out["sent"].bool == true {

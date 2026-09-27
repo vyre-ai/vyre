@@ -35,7 +35,23 @@ struct Transcript: Equatable, Sendable {
         }
     }
 
+    /// Where each event landed: its id and time, and the entry (and tool line) it drew. What Open
+    /// session resolves an anchor against.
+    struct Mark: Equatable, Sendable {
+        let event: Int
+        let at: Double
+        let entry: String
+        let line: String?
+    }
+
+    /// What Open session scrolls to and flashes: an entry, and a tool line inside it.
+    struct Target: Equatable, Sendable {
+        let entry: String
+        var line: String?
+    }
+
     private(set) var entries: [Entry] = []
+    private(set) var marks: [Mark] = []
     private(set) var lastId = 0
     /// Texts this phone sent and has already drawn, waiting for their `thread.sent` echo.
     private(set) var pending: [String] = []
@@ -53,6 +69,33 @@ struct Transcript: Equatable, Sendable {
             if e.id <= lastId { return }
             lastId = e.id
         }
+        let before = entries
+        draw(e)
+        // The entry this event drew or grew: the one that changed, else the last.
+        guard e.id > 0 || e.at > 0 else { return }
+        var entry: String?
+        if entries.count > before.count { entry = entries.last?.id }
+        else if let i = entries.indices.first(where: { $0 < before.count && entries[$0] != before[$0] }) { entry = entries[i].id }
+        if let entry {
+            let line = e.type == "thread.tool" ? e["id"].string : nil
+            marks.append(Mark(event: e.id, at: e.at, entry: entry, line: line))
+        }
+    }
+
+    /// The anchor contract (phone.md section 15): the tool call when there is one, else the event,
+    /// else the first item at or after `at`. Nil when the loaded part of the transcript lacks it.
+    func resolve(_ a: Anchor) -> Target? {
+        if let t = a.toolUseId {
+            for entry in entries {
+                if case .tools(let k, let lines) = entry, lines.contains(where: { $0.id == t }) { return Target(entry: k, line: t) }
+            }
+        }
+        if let ev = a.event, let m = marks.first(where: { $0.event == ev }) { return Target(entry: m.entry, line: m.line) }
+        if let at = a.at, let m = marks.first(where: { $0.at >= at }) { return Target(entry: m.entry, line: m.line) }
+        return nil
+    }
+
+    private mutating func draw(_ e: VyreEvent) {
         let key = "e\(e.id)"
         switch e.type {
         case "thread.sent":

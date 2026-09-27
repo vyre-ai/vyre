@@ -1,23 +1,20 @@
 import SwiftUI
 
-/// Now (phone.md section 4): the one-row setup reminder, "Needs you" as one card of rows that
-/// swipe to approve (with Face ID) or deny, "Working", and "From memory". A tap on a row opens it.
-/// Needs, Working and memory come from events; nothing polls.
+/// Now (phone.md section 4): the one-row setup reminder, "Needs you" as one card of rows (held
+/// drafts, permission asks and questions), "Working", and "From memory". A tap on a row opens the
+/// detail sheet. Swiping right approves an ask at once; a draft first opens the sheet with its
+/// final words, and a question opens its sheet. Swiping left denies, discards or puts off, with
+/// Undo. Needs, Working and memory come from events; nothing polls.
 struct NowView: View {
     @Environment(AppModel.self) private var app
     @State private var steps: [String: Step] = [:]
     @State private var facts: [JSON] = []
-    @State private var failed: [String: String] = [:]
-    /// Rows denied or discarded, waiting out their 4 s of Undo.
-    @State private var pending: [String: Task<Void, Never>] = [:]
-    @State private var toast: Toast?
     @State private var busy: Set<String> = []
     @State private var token: UUID?
     @State private var tick = Date()
     @AppStorage("now.swiped") private var swiped = false
 
     struct Step: Equatable { var latest: String; var count: Int }
-    struct Toast: Equatable { let id: String; let text: String }
 
     var body: some View {
         List {
@@ -62,7 +59,7 @@ struct NowView: View {
         }
         .onAppear { listen() }
         .onChange(of: app.needs.count) { old, new in
-            if new > old && app.page == .now && app.inFront && app.path.isEmpty && app.sheet == nil { Haptics.warning() }
+            if new > old && app.page == .now && app.inFront && app.path.isEmpty && app.sheet == nil && app.detail == nil { Haptics.warning() }
         }
     }
 
@@ -78,8 +75,8 @@ struct NowView: View {
 
     private var items: [NeedItem] {
         let held = app.needs.held.map(NeedItem.held)
-        let asks = app.needs.asks.map(NeedItem.ask)
-        return (held + asks).filter { pending[$0.id] == nil }.sorted { $0.at < $1.at }
+        let asks = app.needs.asks.map(NeedItem.of)
+        return (held + asks).filter { !app.needs.hidden.contains($0.id) }.sorted { $0.at < $1.at }
     }
 
     @ViewBuilder
@@ -93,24 +90,26 @@ struct NowView: View {
                     .listRowInsets(EdgeInsets())
             }
             ForEach(rows) { item in
-                NeedRow(item: item, failure: failed[item.id], busy: busy.contains(item.id)) { open(item) }
+                NeedRow(item: item, failure: app.needs.failed[item.id], busy: busy.contains(item.id)) { open(item) }
                     .listRowBackground(Color.panel)
                     .listRowInsets(EdgeInsets())
                     .listRowSeparatorTint(Color.rule)
                     .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        Button { Task { await approve(item) } } label: { Label(item.approveVerb, systemImage: Biometry.glyph) }
-                            .tint(Color.primaryBg)
+                        Button { swipeRight(item) } label: {
+                            Label(item.approveVerb, systemImage: item.faceID ? Biometry.glyph : item.isDraft ? "arrow.up" : item.isQuestion ? "text.bubble" : "checkmark")
+                        }
+                        .tint(Color.primaryBg)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button { deny(item) } label: { Label(item.denyVerb, systemImage: "xmark") }
+                        Button { swipeLeft(item) } label: { Label(item.denyVerb, systemImage: item.isQuestion ? "clock" : "xmark") }
                             .tint(Color.hover)
                     }
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel(item.spoken())
                     .accessibilityAddTraits(.isButton)
                     .accessibilityAction { open(item) }
-                    .accessibilityAction(named: item.approveVerb) { Task { await approve(item) } }
-                    .accessibilityAction(named: item.denyVerb) { deny(item) }
+                    .accessibilityAction(named: item.approveVerb) { swipeRight(item) }
+                    .accessibilityAction(named: item.denyVerb) { swipeLeft(item) }
                     .accessibilityAction(named: "Open") { open(item) }
             }
         } header: {
@@ -119,7 +118,7 @@ struct NowView: View {
                 .listRowInsets(EdgeInsets())
         } footer: {
             if !rows.isEmpty && !swiped {
-                Text("Swipe right to approve with \(Biometry.name), left to deny.")
+                Text(rows.contains(where: \.faceID) ? "Swipe right to approve with \(Biometry.name), left to deny." : "Swipe right to approve, left to deny.")
                     .vyre(.small).foregroundStyle(Color.label)
                     .listRowInsets(EdgeInsets(top: Space.s, leading: 0, bottom: 0, trailing: 0))
             }
@@ -127,72 +126,44 @@ struct NowView: View {
     }
 
     private func open(_ item: NeedItem) {
-        switch item {
-        case .held(let d): app.path.append(.held(d.id))
-        case .ask(let a): app.path.append(.ask(a.id))
-        }
+        app.detail = DetailRef(id: item.id)
     }
 
-    /// Swipe right: the device-key proof, whose Face ID sheet shows the item's own words (floor
-    /// rule 1), then the box sends or allows. A failure springs the row back with the reason.
-    private func approve(_ item: NeedItem) async {
-        guard !busy.contains(item.id) else { return }
+    /// Swipe right. An ask is approved at once (Face ID only if the box needs it and no session
+    /// covers it). A draft that goes out first shows its final words: the sheet opens on it, and
+    /// Send is there. A question has no one-swipe answer: its sheet opens.
+    private func swipeRight(_ item: NeedItem) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         swiped = true
+        guard case .ask(let a) = item else { open(item); return }
+        guard !busy.contains(item.id) else { return }
         busy.insert(item.id)
-        defer { busy.remove(item.id) }
-        failed[item.id] = nil
-        do {
-            switch item {
-            case .held(let d):
-                if let err = try await app.needs.approve(d) { failed[item.id] = err; Haptics.warning() }
-            case .ask(let a):
-                try await app.needs.answer(a, allow: true)
-            }
-        } catch where isCancel(error) {
-        } catch {
-            failed[item.id] = describe(error)
-        }
-    }
-
-    /// Swipe left: the row leaves at once with 4 s of Undo; then the box is told (with the
-    /// device-key proof it asks for: `gate.reject` and `threads.answer` are the person's own).
-    private func deny(_ item: NeedItem) {
-        guard pending[item.id] == nil else { return }
-        swiped = true
-        Haptics.warning()
-        failed[item.id] = nil
-        toast = Toast(id: item.id, text: item.isDraft ? "Discarded." : "Denied.")
-        pending[item.id] = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(4))
-            guard !Task.isCancelled else { return }
-            if toast?.id == item.id { toast = nil }
+        app.needs.failed[item.id] = nil
+        Task {
+            defer { busy.remove(item.id) }
             do {
-                switch item {
-                case .held(let d): try await app.needs.discard(d)
-                case .ask(let a): try await app.needs.answer(a, allow: false)
-                }
+                try await app.needs.answer(a, .allow)
             } catch where isCancel(error) {
             } catch {
-                failed[item.id] = describe(error)
+                app.needs.failed[item.id] = describe(error)
+                Haptics.warning()
             }
-            pending[item.id] = nil
         }
     }
 
-    private func undo(_ id: String) {
-        pending[id]?.cancel()
-        pending[id] = nil
-        toast = nil
+    /// Swipe left: Deny, Discard or Later, with 4 s of Undo (NeedsStore.dismiss).
+    private func swipeLeft(_ item: NeedItem) {
+        swiped = true
+        app.needs.dismiss(item)
     }
 
     @ViewBuilder
     private var toastView: some View {
-        if let t = toast {
+        if let t = app.needs.toast {
             HStack {
                 Text(t.text).vyre(.secondary).foregroundStyle(Color.text)
                 Spacer()
-                Button("Undo") { undo(t.id) }.buttonStyle(.quiet)
+                Button("Undo") { app.needs.undo(t.id) }.buttonStyle(.quiet)
             }
             .padding(.leading, Space.gutter)
             .frame(minHeight: 48)
@@ -323,13 +294,7 @@ struct NeedRow: View {
                         .foregroundStyle(Color.text2)
                         .lineLimit(1).truncationMode(.tail)
                     if !item.line3.isEmpty { Text(item.line3).vyre(.small).foregroundStyle(Color.label).lineLimit(1) }
-                    if let failure {
-                        HStack(alignment: .firstTextBaseline, spacing: 6) {
-                            Text("failed").vyre(.small, weight: 600).foregroundStyle(Color.label)
-                            Text(failure).vyre(.small).foregroundStyle(Color.text).lineLimit(3)
-                        }
-                        .padding(.top, 2)
-                    }
+                    if let failure { FailedLine(text: failure).padding(.top, 2) }
                 }
                 Image(systemName: "chevron.right").font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.label)
                     .padding(.top, 3)
@@ -386,37 +351,5 @@ struct WorkingRow: View {
         guard let started = t["started"].double else { return age(t["last"].double) }
         let s = max(0, Int(now.timeIntervalSince1970 - started / 1000))
         return s >= 3600 ? String(format: "%d:%02d:%02d", s / 3600, s / 60 % 60, s % 60) : String(format: "%02d:%02d", s / 60, s % 60)
-    }
-}
-
-/// What a pushed screen shows when its item went away.
-struct GoneView: View {
-    let text: String
-    var body: some View {
-        VStack(alignment: .leading) { EmptyLine(text: text); Spacer() }
-            .padding(.horizontal, Space.gutter)
-            .vyreGround()
-            .vyreNavBar()
-    }
-}
-
-/// A permission ask on its own screen, with the way into its session. The detail sheet (phone.md
-/// section 5) replaces this in step 3.
-struct AskDetailView: View {
-    @Environment(AppModel.self) private var app
-    let ask: AskItem
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: Space.l) {
-                AskCard(ask: ask)
-                Button { app.open(.thread(ask.thread)) } label: { Label("Open session", systemImage: "chevron.right") }
-                    .buttonStyle(.secondary)
-            }
-            .padding(.horizontal, Space.gutter)
-        }
-        .vyreGround()
-        .navigationBarTitleDisplayMode(.inline)
-        .vyreNavBar()
     }
 }

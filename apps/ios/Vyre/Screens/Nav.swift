@@ -3,9 +3,6 @@ import SwiftUI
 /// Every screen a tab can push, in one list, so any tab reaches any page (a Find result opens a
 /// file, a fact or an agent; Now's avatar opens Settings, and Settings the Vault).
 enum Dest: Hashable {
-    case held(String)
-    /// A permission ask, until the detail sheet (step 3) replaces it.
-    case ask(String)
     case project(slug: String, name: String)
     case thread(String)
     case agent(String)
@@ -31,12 +28,6 @@ struct DestView: View {
 
     var body: some View {
         switch dest {
-        case .held(let id):
-            if let d = app.needs.held.first(where: { $0.id == id }) { HeldDetailView(draft: d) }
-            else { GoneView(text: "This is no longer held. It was sent, discarded, or answered somewhere else.") }
-        case .ask(let id):
-            if let a = app.needs.asks.first(where: { $0.id == id }) { AskDetailView(ask: a) }
-            else { GoneView(text: "This was answered somewhere else.") }
         case .project(let slug, let name): ProjectView(slug: slug, name: name)
         case .thread(let id): ThreadView(id: id)
         case .agent(let name): AgentDetailView(name: name)

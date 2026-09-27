@@ -8,25 +8,29 @@ struct Hairline: View {
     }
 }
 
-enum ButtonKind { case primary, secondary, quiet, beacon }
+/// The three kinds of button (phone.md section 2): primary (one per view), secondary, ghost.
+/// `quiet` is the ghost. There is no red and no destructive kind.
+enum ButtonKind { case primary, secondary, quiet }
 
-/// Buttons (phone.md section 2): sentence-case sans 15/600, 44 tall at radius 10; `large` is the
-/// 54 tall primary at radius 12 with 17 pt text. One primary per view. Secondary is the outline
-/// button (`--rule-strong` border).
+/// Buttons (phone.md section 2): sentence-case sans 15/600, 44 tall at radius 10; `medium` is 46
+/// tall at radius 12 (the sheet's secondary pair); `large` is the 54 tall primary at radius 12 with
+/// 17 pt text. Secondary is `--text` on `--hover` with a `--rule-strong` border; the ghost is full
+/// `--text`, never `--text-2`.
 struct VyreButtonStyle: ButtonStyle {
     var kind: ButtonKind = .secondary
     var fill = false
     var large = false
+    var medium = false
     @Environment(\.isEnabled) private var enabled
 
     func makeBody(configuration: Configuration) -> some View {
-        let radius: CGFloat = large ? 12 : Radius.card
+        let radius: CGFloat = large || medium ? 12 : Radius.card
         configuration.label
             .vyre(large ? .buttonLarge : .button)
             .lineLimit(1)
             .minimumScaleFactor(0.8)
-            .padding(.horizontal, Space.gutter)
-            .frame(minHeight: large ? 54 : Space.target)
+            .padding(.horizontal, kind == .quiet ? Space.s : Space.gutter)
+            .frame(minHeight: large ? 54 : medium ? 46 : Space.target)
             .frame(maxWidth: fill || large ? .infinity : nil)
             .foregroundStyle(foreground)
             .background(background.opacity(configuration.isPressed ? 0.85 : 1), in: RoundedRectangle(cornerRadius: radius))
@@ -41,15 +45,13 @@ struct VyreButtonStyle: ButtonStyle {
         switch kind {
         case .primary: .primaryInk
         case .secondary, .quiet: .text
-        case .beacon: .beaconInk
         }
     }
     private var background: Color {
         switch kind {
         case .primary: .primaryBg
-        case .secondary: .clear
+        case .secondary: .hover
         case .quiet: .clear
-        case .beacon: .beaconWash
         }
     }
 }
@@ -58,7 +60,9 @@ extension ButtonStyle where Self == VyreButtonStyle {
     static var primary: VyreButtonStyle { VyreButtonStyle(kind: .primary) }
     static var secondary: VyreButtonStyle { VyreButtonStyle(kind: .secondary) }
     static var quiet: VyreButtonStyle { VyreButtonStyle(kind: .quiet) }
-    static func vyre(_ kind: ButtonKind, fill: Bool = false, large: Bool = false) -> VyreButtonStyle { VyreButtonStyle(kind: kind, fill: fill, large: large) }
+    static func vyre(_ kind: ButtonKind, fill: Bool = false, large: Bool = false, medium: Bool = false) -> VyreButtonStyle {
+        VyreButtonStyle(kind: kind, fill: fill, large: large, medium: medium)
+    }
 }
 
 /// The small round dot beside a label: Beacon for needs you, Signal for working, ash for idle.
@@ -99,15 +103,19 @@ extension View {
     }
 }
 
-/// "Something failed" as a quiet line: Bone text with an Ash `failed` label (errors are not coral).
+/// "Something failed" as a fact, not an alarm (phone.md section 11): a crossed circle, a `failed`
+/// label and the reason in `--text`. Never red.
 struct FailedLine: View {
     let text: String
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: Space.s) {
-            Engraved("failed")
-            Text(text).vyre(.small).foregroundStyle(Color.text)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Image(systemName: "xmark.circle").font(.system(size: 13, weight: .regular)).foregroundStyle(Color.text)
+                .accessibilityHidden(true)
+            Text("failed").vyre(.small, weight: 600).foregroundStyle(Color.label)
+            Text(text).vyre(.small).foregroundStyle(Color.text).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
     }
 }
 

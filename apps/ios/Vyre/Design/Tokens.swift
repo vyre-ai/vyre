@@ -74,10 +74,12 @@ extension Color {
     static let recall = Tone.pair(Tone.recallDark, Tone.recallDeep)
     /// `--recall-wash`: behind a recalled block.
     static let recallWash = Tone.pair(UIColor(hex: 0xEBC76B, alpha: 0.10), UIColor(hex: 0x7E5B0C, alpha: 0.08))
-    /// `--del-wash`: deleted diff lines, with `--label` text.
+    /// `--del-wash`: deleted diff lines, with `--text-2` text (`--label` is 4.49:1 there).
     static let delWash = Tone.pair(UIColor(hex: 0x8C877D, alpha: 0.14), UIColor(hex: 0x6B665D, alpha: 0.10))
     /// `--code-bg`: command blocks, the live console.
     static let codeBg = Tone.pair(UIColor(hex: 0x0E0D0C, alpha: 0.55), UIColor(hex: 0x141311, alpha: 0.04))
+    /// A command block in a sheet or card: `--code-bg` on dark, `--bg` on paper (phone.md sections 5, 6).
+    static let blockBg = Tone.pair(UIColor(hex: 0x0E0D0C, alpha: 0.55), Tone.paper)
     /// `--mark-wire` / `--mark-dot`.
     static let markWire = Tone.pair(Tone.boneDark, Tone.ink)
     static let markDot = Tone.pair(Tone.signalDark, Tone.ink)
