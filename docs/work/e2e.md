@@ -348,6 +348,15 @@ Plan (to the lead before building):
 - glass-live 14f1824c SIGNED OFF (read with a sonnet helper, key lines verified). MEDIUM latent: cdpmux
   target discovery isn't per-session in Chrome; safe only because agent and fill never connect at
   once. LOW: shield in memory, a restart unshields.
+- MAC HANG NAMED + FIXED (rc.2 blocker): peer check spawns perl with vyred's socket as fd 3; on macOS
+  libuv clears O_NONBLOCK for the child and the flag is shared -> vyred's socket blocks; a large write
+  (tool list, a stream) stalls vyred, deadlocks in-process. Proved: nb.mjs BLOCKING on Mac, nonblock on
+  Linux. Fix work/e2e-peerfix a8eee5dc (off pre/rc 1190db28): perl restores O_NONBLOCK first; an
+  unreadable peer (where peers are readable) fails closed. Mac detached 56/56 in 10 s (hung before);
+  the new test fails on old code; testbox 223/223. Sent to the integrator. Worktree ../vyre-e2e-peerfix.
+- launch journey.test at 359e3428: green on testbox (7/0/1 skip/1 todo); not real.
+- Reviewer (second, Opus) owns: windows, teammates 20d0f121, memory-iq d0b916b9. I keep federation
+  transport, vault designs, import. glass 14f1824c already signed off by me.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
