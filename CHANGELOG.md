@@ -4,7 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Sessions: rewind, as a double Esc does
+#### Sessions: rewind, as a double Esc does; a smoke for the bundled Claude Code
+
+- scripts/sessions-smoke.mjs: with `VYRE_SESSIONS_SDK_DIR` pointing at the pinned SDK installed
+  with its bundled binary, starts that Claude Code through the driver with no credentials and no
+  turn, and reports the spawn, init time and idle RSS and CPU (for CI's sdk-real job). On testbox:
+  spawned in 219 ms, 189 MB.
 
 - `threads.rewind {thread, uuid}` (a person's surface only): the session goes back to just before
   that user message and carries on from there in the same thread and transcript (the CLI's
