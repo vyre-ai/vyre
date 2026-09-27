@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ADR 0038 terminology: `vyre projects` says "server", not "box"
+
+- core/cli/commands/projects.js: the `vyre projects` command summary and the `move` verb's
+  summary both said "on a box"; both now say "on a server" (ADR 0038). docs/reference/cli.md
+  regenerated to match.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at

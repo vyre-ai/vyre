@@ -314,12 +314,12 @@ async function moveHomes(args) {
 
 export default [
   {
-    name: "projects", order: 20, usage: "vyre projects [list|move [--dry-run]] [--json]", summary: "every project; on a box, move moves the homes to /work/projects",
+    name: "projects", order: 20, usage: "vyre projects [list|move [--dry-run]] [--json]", summary: "every project; on a server, move moves the homes to /work/projects",
     verbs: [
       // --json: projects.list's rows [{ slug, name, home, threads, ... }]
       { verb: "list", summary: "every project", usage: "", read: true },
       // --json: { moved: [slug], skipped: [{ slug, why }], from, to, rewrites?, next?, done? }
-      { verb: "move", summary: "on a box, move the project homes to /work/projects", usage: "[--dry-run]" },
+      { verb: "move", summary: "on a server, move the project homes to /work/projects", usage: "[--dry-run]" },
     ],
     async run(args) {
       if (args[0] === "list") args = args.slice(1);
