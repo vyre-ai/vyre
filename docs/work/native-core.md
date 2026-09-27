@@ -52,10 +52,7 @@ NOT stamped yet (ask sessions for field `t`, ms epoch).
 Answer app-design: check docs/design/system specs (work/app-design c4f9bb23) paths.
 
 ## Known follow-ups
-- Before 0.1.0 (e2e MEDIUMs, 27 Sep): (1) firstParty(dir) = under the repo's core/, local/ or
-  modules/, never under config.home() (a dev home inside a checkout); (2) confirm for sessions.env
-  and sessions.plugins, and for sessions.deny/ask when an entry is dropped (reset included);
-  (3) asPerson(): map tailnet:<login> to "deck" explicitly, throw on anything else.
+- DONE: e2e's three MEDIUMs (firstParty, drops/env/plugins confirm, asPerson).
 - Merge e2e's claudeHome switch (work/e2e-noclaude 32dc0956) once it is on main: settings'
   claudeDir becomes conf().claude_dir || claudeHome(ctx.paths.root).
 - Screenshots of Settings in one world (needs a Chrome run on testbox).

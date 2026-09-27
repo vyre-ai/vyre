@@ -47,6 +47,17 @@ export function validateDecls(module, list, { firstParty = false, tools = [] } =
     seen.add(k);
     if (!TYPES.includes(d.type)) out.push(`setting ${k}: type must be one of ${TYPES.join(", ")}`);
     if (!Array.isArray(d.levels) || !d.levels.length || d.levels.some(l => !LEVELS.includes(l))) out.push(`setting ${k}: levels must be account and/or project`);
+    // ADR 0035: a device's value changes how a surface looks, never what Claude may do, and a
+    // session value is a thread's chip, which only a module's own tool store keeps.
+    if (Array.isArray(d.levels) && d.levels.includes("device") && (d.confirm !== undefined || d.security !== undefined)) out.push(`setting ${k}: a setting with confirm or security may not be set per device`);
+    if (Array.isArray(d.levels) && d.levels.includes("session") && !(d.store && typeof d.store === "object" && d.store.tool !== undefined)) out.push(`setting ${k}: the session level needs a store in this module's own tools`);
+    // check and choicesFrom name one of the module's own tools, first-party or not.
+    for (const f of ["check", "choicesFrom"]) {
+      if (d[f] === undefined) continue;
+      const t = d[f] && typeof d[f] === "object" ? d[f].tool : undefined;
+      if (typeof t !== "string" || !t.startsWith(module + ".") || (tools.length && !tools.includes(t))) out.push(`setting ${k}: ${f}.tool must be one of ${module}'s own tools`);
+    }
+    if (d.choices !== undefined && !(Array.isArray(d.choices) && d.choices.every(n => typeof n === "number"))) out.push(`setting ${k}: choices is a list of numbers; a tool goes in choicesFrom`);
     if (!APPLY.includes(d.apply)) out.push(`setting ${k}: apply must be live, session or restart`);
     if (typeof d.label !== "string" || !d.label) out.push(`setting ${k}: needs a label`);
     if (d.secret !== undefined && typeof d.secret !== "boolean") out.push(`setting ${k}: secret is true or false`);
@@ -156,8 +167,18 @@ export function coerce(d, v) {
   return bad("unknown type");
 }
 
-/** Does changing this key to this value need an explicit confirm? @param {any} d @param {any} v */
-export function needsConfirm(d, v) {
+/**
+ * Does changing this key to this value need an explicit confirm? `before` is the level's value
+ * now, for a list whose confirm is { drops: true }: taking an entry out (a reset takes them all)
+ * lets Claude do more, so it asks. v undefined is a reset, which asks only for drops.
+ * @param {any} d @param {any} v @param {any} [before]
+ */
+export function needsConfirm(d, v, before) {
+  if (d.confirm && d.confirm.drops && Array.isArray(before)) {
+    const next = (Array.isArray(v) ? v : []).map(x => JSON.stringify(x));
+    if (before.some(x => !next.includes(JSON.stringify(x)))) return true;
+  }
+  if (v === undefined) return false;
   if (d.security === "loosens" || d.confirm === true) return true;
   return Boolean(d.confirm && Array.isArray(d.confirm.values) && d.confirm.values.includes(v));
 }

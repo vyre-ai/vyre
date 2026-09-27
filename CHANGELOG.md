@@ -11,8 +11,43 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   and never a key that asks for a confirm or loosens security. It has its own write path, so it
   never calls a tool store (which runs as the person) or touches config.json or Claude Code's
   files. settings.changed carries `by: "module:<name>"` for these writes. What it returns for a
-  secret key is masked (maskFor), the same as settings.get for anyone but the person. Reviewed by e2e before it
+  secret key is masked (maskFor), the same as settings.get for anyone but the person. Its
+  settings.changed carries the hub's new rev, and the value only for a key that isn't secret. Reviewed by e2e before it
   lands.
+
+#### Three loosening paths closed before 0.1.0 (e2e review, MEDIUM)
+
+- core/modules firstParty: a module is Vyre's own only when its folder sits directly in the repo's
+  core/, local/ or modules/, and never inside the home, so a dev home kept in a checkout
+  (VYRE_HOME=<repo>/.dev) gets no first-party rights for its modules.
+- sessions.env and sessions.plugins ask first (confirm: true). sessions.deny and sessions.ask ask
+  first when an entry is taken off, a reset included (confirm: { drops: true }); settings.reset
+  takes confirm. The Deck sends it after the row's Confirm.
+- core/settings asPerson: cli, local, deck and capsule pass as themselves, the owner's device as
+  the Deck, and anything else is refused rather than passing as the Deck.
+
+#### The settings hub file (ADR 0035, step 1)
+
+- core/settings/hub.js and core/settings: `<home>/hub.json` holds Vyre's own settings at account
+  and project level, made at first start from what is in effect and rewritten atomically on every
+  change. Every change adds 1 to the hub's rev (settings_meta); settings.changed carries it, plus
+  the new value for a key that isn't secret (null for a reset), and `by: "hub.json"` for a hand
+  edit.
+- A person's edit to hub.json is read live (a file watch, and a size or mtime check on each read,
+  no polling), checked like settings.set: a plain change applies; a bad value is kept out and named
+  on its row; one that needs a confirm or a proof waits as `pending` until the person sets it. A
+  file that isn't JSON is named in settings.schema's `hub`, and moved to hub.json.bad on the next
+  change. Sessions can't read or write it (the harness keeps it with Vyre's internals).
+- core/names/backup.js: hub.json is in `vyre backup` and restore.
+- core/config/settings.js validateDecls (platform's patch): device never with confirm or security,
+  session only with a tool store, check and choicesFrom name the module's own tools, choices is a
+  list of numbers. settings GROUPS gains "tips".
+
+#### Settings says where to add a passkey
+
+- deck/views/settings-keys.js: a loosening change refused for want of a passkey now reads "This
+  needs your passkey, and none is set up yet. Add one in Settings, Your devices, then try again.",
+  not the box's tool name. Tests in deck/test/settings-keys.test.js and settings-browser.js.
 
 #### A secret setting's values reach only the person
 
@@ -119,6 +154,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   transcripts, and in-page measures for keystrokes, first token, pacing, layout shift, scroll,
   open, reconnect, send, Esc and idle timers, plus a pty terminal comparison. First numbers in
   docs/design/native-bar.md.
+#### A vyred killed by a signal is started again in the box
+
+- core/daemon/loop.sh waited again on a vyred that died by a signal (SIGKILL, the OOM killer)
+  until the status changed. The image's /bin/sh (dash) answers the same 137 forever, so the loop
+  spun at a full core and vyred never came back while the container looked healthy. The same status
+  twice now ends the wait. Found by the box-image smoke on testbox; loop.test.js has the case.
+
+#### The box image builds again with the Agent SDK pin
+
+- box/Dockerfile read the SDK version by importing core/sessions/sdk.js on its own, and 8aed4887
+  gave that file an import (config/dialogs.js), so the image build stopped at the SDK layer. The
+  pin now lives in core/sessions/sdk-pin.js, which imports nothing; sdk.js re-exports it, and a
+  test copies the file the Dockerfile names on its own and imports it.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or

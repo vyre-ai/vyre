@@ -12,14 +12,18 @@
 // caller to pass confirm: true after showing the person what changes. Agents may read settings,
 // and settings.resolve hands a starting session its Vyre-owned values.
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { coerce, read, write, whereIs, needsConfirm } from "../config/settings.js";
+import { readHub, writeHub, hubPath, digest, levelOf } from "./hub.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const MIGRATIONS = [
   `CREATE TABLE settings_values (scope TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, by TEXT, at INTEGER,
      PRIMARY KEY (scope, key))`,
+  // The hub's revision (ADR 0035): one more on every change, whoever made it.
+  `CREATE TABLE settings_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
 ];
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const str = { type: "string" };
@@ -28,7 +32,7 @@ const str = { type: "string" };
 // unknown group goes last under its own name.
 export const GROUPS = [
   ["models", "Models and thinking"], ["permissions", "Permissions"], ["sessions", "Sessions"], ["teammates", "Teammates"],
-  ["notifications", "Notifications"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
+  ["notifications", "Notifications"], ["tips", "Tips"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
   ["tools", "Tools"], ["devices", "Devices"],
 ];
 
@@ -58,10 +62,21 @@ export const isPerson = (caller, meta) => {
   return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
 };
 
+/**
+ * What settings.changed may say of the new value (ADR 0035): the value at the level that changed,
+ * or null for a reset, and nothing at all for a secret key. Events reach agents.
+ * @param {any} d @param {any} value
+ */
+export const said = (d, value) => (d && d.secret ? {} : { value: value === undefined ? null : value });
+
 /** The label another module sees when this one passes a person's change on. @param {string} caller */
-const asPerson = caller => {
-  const k = String(caller).replace(/[\s:]agent:.*$/s, "");
-  return PEOPLE.includes(k) ? k : "deck"; // the owner's own Deck over the tailnet is "tailnet:<login>"
+export const asPerson = caller => {
+  const c = String(caller);
+  if (PEOPLE.includes(c)) return c;
+  // The owner's own Deck over the tailnet or the relay (it has a person session, or the registry
+  // would have refused the call) is the Deck. Nothing else is a person, and never passes as one.
+  if (/^tailnet:(?!agent:)[^\s:]+$/.test(c) || /^device:[a-z2-7]{16}$/.test(c)) return "deck";
+  throw Object.assign(new Error(`${c} is not a person's surface`), { code: "denied" });
 };
 
 /** What a caller may see about one key, without its value. @param {any} d */
@@ -97,6 +112,120 @@ export default {
       },
     };
 
+    // ---- the hub file (ADR 0035) ------------------------------------------------------------------
+    // settings_values holds what is in effect; hub.json mirrors it for the person to edit. A hand
+    // edit is checked like settings.set: plain changes apply, a bad value is kept out and named on
+    // its row, and one that needs a confirm or a proof waits for the person (pending).
+    const root = ctx.paths.root;
+    const meta = (/** @type {string} */ k) => /** @type {any} */ (ctx.store.db.prepare("SELECT v FROM settings_meta WHERE k = ?").get(k))?.v;
+    const setMeta = (/** @type {string} */ k, /** @type {string} */ v) => ctx.store.db.prepare("INSERT INTO settings_meta (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v").run(k, v);
+    const rev = () => Number(meta("rev") || 0);
+    /** @type {Map<string, string>} */ const hubProblems = new Map();
+    /** @type {Map<string, { value: any }>} */ const pending = new Map();
+    const pkey = (/** @type {string} */ key, /** @type {string|null} */ project) => `${project ? "project:" + project : "account"}\t${key}`;
+    const pendingOf = (/** @type {any} */ d, /** @type {string|null} */ project, /** @type {(v: any) => any} */ show) => {
+      const out = {};
+      for (const [lv, target] of /** @type {const} */ ([["account", null], ["project", project]])) {
+        const p = target === undefined || (lv === "project" && !target) ? null : pending.get(pkey(d.key, target));
+        if (p) Object.assign(out, { pending: { level: lv, ...(target ? { project: target } : {}), value: p.value === undefined ? null : show(p.value), from: "hub.json" } });
+      }
+      return out;
+    };
+    let seen = { digest: "", mtime: 0, size: -1 };
+    const noteFile = () => { try { const st = fs.statSync(hubPath(root)); seen = { ...seen, mtime: st.mtimeMs, size: st.size }; } catch {} };
+    /** Every Vyre-owned value in effect, as a hub. */
+    const fromTable = () => {
+      const h = { account: /** @type {Record<string, any>} */ ({}), projects: /** @type {Record<string, Record<string, any>>} */ ({}) };
+      for (const r of /** @type {any[]} */ (ctx.store.db.prepare("SELECT scope, key, value FROM settings_values ORDER BY scope, key").all())) {
+        const v = JSON.parse(String(r.value));
+        if (r.scope === "account") h.account[r.key] = v;
+        else if (String(r.scope).startsWith("project:")) (h.projects[String(r.scope).slice(8)] ||= {})[r.key] = v;
+      }
+      return h;
+    };
+    /**
+     * The one write of the hub: `change` edits it, rev goes up by one, and the new rev comes back
+     * for the event. A file that isn't JSON is moved aside to hub.json.bad and rebuilt from what
+     * is in effect, so the person's text is kept and nothing they didn't touch is lost.
+     * @param {(h: import("./hub.js").Hub) => void} [change]
+     */
+    const commit = (change = () => {}) => {
+      const next = rev() + 1;
+      let broken = false;
+      try { readHub(root); } catch { broken = true; }
+      if (broken) {
+        try { fs.renameSync(hubPath(root), hubPath(root) + ".bad"); } catch {}
+        const t = fromTable();
+        const w = writeHub(root, h => { h.account = t.account; h.projects = t.projects; }, { rev: next });
+        seen.digest = w.digest;
+      } else {
+        const w = writeHub(root, change, { rev: next });
+        seen.digest = w.digest;
+      }
+      hubProblems.delete("hub.json");
+      setMeta("rev", String(next));
+      noteFile();
+      return next;
+    };
+    /** A value that lives in the hub file changed through settings.set or reset: mirror it. */
+    const mirror = (/** @type {any} */ d, /** @type {"account"|"project"} */ lv, /** @type {string|null} */ target, /** @type {any} */ value) => {
+      pending.delete(pkey(d.key, target));
+      return commit(d.store ? undefined : h => { const bag = levelOf(h, lv, target); if (value === undefined) delete bag[d.key]; else bag[d.key] = value; });
+    };
+    /** Read a person's edit of hub.json and apply, hold or refuse each change in it. */
+    const reconcile = async () => {
+      let text = "";
+      try { text = fs.readFileSync(hubPath(root), "utf8"); } catch { return; }
+      noteFile();
+      if (digest(text) === seen.digest) return;
+      seen.digest = digest(text);
+      let h;
+      try { h = readHub(root); } catch (e) { hubProblems.set("hub.json", /** @type {Error} */ (e).message); ctx.log(/** @type {Error} */ (e).message); return; }
+      if (!h) return;
+      const all = decls();
+      const byKey = new Map(all.map(d => [d.key, d]));
+      const known = new Set();
+      hubProblems.clear();
+      /** @type {[string, "account"|"project", string|null, Record<string, any>][]} */
+      const places = [["account", "account", null, h.account], ...Object.entries(h.projects).map(([p, bag]) => /** @type {any} */ (["project:" + p, "project", p, bag]))];
+      let changed = 0;
+      for (const [, lv, target, bag] of places) {
+        if (target !== null && !SLUG.test(target)) { hubProblems.set("hub.json", `hub.json: ${target} is not a project's slug`); continue; }
+        for (const k of Object.keys(bag)) {
+          const d = byKey.get(k);
+          if (!d) hubProblems.set(k, `hub.json: no setting ${k}`);
+          else if (d.store) hubProblems.set(k, `hub.json doesn't hold ${k}; it is kept in ${await whereIs(env, d, lv, target)}`);
+        }
+        for (const d of all) {
+          if (d.store || !d.levels.includes(lv)) continue;
+          const raw = bag[d.key];
+          const now = (await level(d, lv, target)).value;
+          let value;
+          try { value = raw === undefined ? undefined : coerce(d, raw); }
+          catch (e) { hubProblems.set(d.key, `hub.json: ${d.key}: ${/** @type {Error} */ (e).message}; ${JSON.stringify(now ?? d.default ?? null)} still applies`); continue; }
+          if (JSON.stringify(value) === JSON.stringify(now)) { pending.delete(pkey(d.key, target)); continue; }
+          known.add(pkey(d.key, target));
+          const held = (value === undefined && d.security === "loosens") || needsConfirm(d, value, now);
+          if (held) { pending.set(pkey(d.key, target), { value }); ctx.log(`hub.json asks to ${value === undefined ? "reset" : "change"} ${d.key}; it waits for the person`); continue; }
+          pending.delete(pkey(d.key, target));
+          await write(env, d, lv, target, value, "local", "hub.json");
+          const r = rev() + 1;
+          setMeta("rev", String(r));
+          changed++;
+          ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, rev: r, by: "hub.json", ...said(d, value) });
+          ctx.log(`${d.key} ${value === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} from hub.json`);
+        }
+      }
+      // A pending ask the file no longer makes goes too.
+      for (const k of [...pending.keys()]) if (!known.has(k)) pending.delete(k);
+      return changed;
+    };
+    /** A missed file event is caught on the next read: the file's size or mtime moved. */
+    const fresh = async () => {
+      let st;
+      try { st = fs.statSync(hubPath(root)); } catch { return; }
+      if (st.mtimeMs !== seen.mtime || st.size !== seen.size) await reconcile();
+    };
     /** @param {string} key */
     const declOf = key => {
       const d = decls().find(x => x.key === key);
@@ -132,9 +261,27 @@ export default {
         ...describe(d), value, source,
         ...(a.value !== undefined ? { account: show(a.value) } : {}), ...(p.value !== undefined ? { project: show(p.value) } : {}),
         available: err !== "unavailable",
-        ...(err && err !== "unavailable" ? { problem: a.message || p.message } : {}),
+        ...(err && err !== "unavailable" ? { problem: a.message || p.message } : hubProblems.has(d.key) ? { problem: hubProblems.get(d.key) } : {}),
+        ...pendingOf(d, project, show),
       };
     };
+
+    // First start: the file is made from what is in effect. Later starts read the person's edits
+    // made while vyred was off.
+    if (!fs.existsSync(hubPath(root))) commit(h => { const t = fromTable(); h.account = t.account; h.projects = t.projects; });
+    else await reconcile();
+    let timer = /** @type {any} */ (null);
+    /** @type {fs.FSWatcher|null} */ let watcher = null;
+    try {
+      watcher = fs.watch(root, (_ev, name) => {
+        if (name !== "hub.json") return;
+        clearTimeout(timer);
+        timer = setTimeout(() => { reconcile().catch(e => ctx.log(`hub.json: ${/** @type {Error} */ (e).message}`)); }, 120);
+        timer.unref?.();
+      });
+      watcher.on("error", () => {});
+    } catch {}
+
 
     ctx.tool("settings.schema", {
       description: "Every setting the running modules declare: key, owning module, group, label, type and choices, the levels it may be set at (account, project), when a change applies (live, next session, restart), whether Claude Code's own files hold it (owner C), and whether changing it loosens security (a proof) or needs a confirm.",
@@ -144,7 +291,9 @@ export default {
         const known = new Map(GROUPS);
         const used = [...new Set(keys.map(k => k.group))];
         const groups = [...GROUPS.filter(([id]) => used.includes(id)), ...used.filter(g => !known.has(g)).map(g => [g, g])];
-        return { groups: groups.map(([id, label]) => ({ id, label })), keys };
+        await fresh();
+        return { groups: groups.map(([id, label]) => ({ id, label })), keys,
+          hub: { file: hubPath(root), rev: rev(), ...(hubProblems.has("hub.json") ? { problem: hubProblems.get("hub.json") } : {}) } };
       },
     });
 
@@ -154,6 +303,7 @@ export default {
       run: async (i, meta) => {
         const project = slugOf(i.project);
         const clear = isPerson(meta && meta.caller, meta);
+        await fresh();
         if (i.key) return effective(declOf(i.key), project, clear);
         const list = decls().filter(d => !i.group || (d.group || d.module) === i.group);
         return { project, settings: await Promise.all(list.map(d => effective(d, project, clear))) };
@@ -175,12 +325,13 @@ export default {
       const before = await level(d, lv, target);
       // What would change, for the person to see first. Nothing is written.
       if (i.preview) return { key: d.key, level: lv, ...(target ? { project: target } : {}), where, before: before.value, after: value,
-        ...(needsConfirm(d, value) ? { confirm: d.loosens || `This lets Claude do more without asking: ${d.label}.` } : {}) };
-      if (raw !== undefined && needsConfirm(d, value) && i.confirm !== true) {
+        ...(needsConfirm(d, value, before.value) ? { confirm: d.loosens || `This lets Claude do more without asking: ${d.label}.` } : {}) };
+      if (needsConfirm(d, value, before.value) && i.confirm !== true) {
         throw Object.assign(new Error(`${d.loosens || `This lets Claude do more without asking: ${d.label}.`} Show the person and send confirm: true.`), { code: "confirm_required" });
       }
       await write(env, d, lv, target, value, asPerson(caller), String(caller));
-      ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply });
+      const r = mirror(d, lv, target, value);
+      ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, rev: r, ...said(d, value) });
       ctx.log(`${d.key} ${raw === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${caller} (${where})`);
       return effective(d, project);
     };
@@ -203,8 +354,8 @@ export default {
     });
 
     ctx.tool("settings.reset", {
-      description: "Remove a setting's value at one level, so the level below (account, then default) applies again.",
-      input: { type: "object", required: ["key"], properties: { key: str, level: { type: "string", enum: ["account", "project"] }, project: str, preview: { type: "boolean" } } },
+      description: "Remove a setting's value at one level, so the level below (account, then default) applies again. Removing entries from a list that keeps Claude asking or refusing (sessions.deny, sessions.ask) needs confirm: true.",
+      input: { type: "object", required: ["key"], properties: { key: str, level: { type: "string", enum: ["account", "project"] }, project: str, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
       callers: PEOPLE, presence,
       run: async (i, { caller }) => change(i, caller, undefined),
     });
@@ -237,7 +388,10 @@ export default {
         const value = i.value === undefined || i.value === null ? undefined : coerce(d, i.value);
         const target = lv === "project" ? project : null;
         await write(env, d, lv, target, value, who, who);
-        ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, by: who });
+        // The same record and event as a person's change: the hub's new rev, and the value only
+        // for a key that isn't secret.
+        const rev = mirror(d, lv, target, value);
+        ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, rev, ...said(d, value), by: who });
         ctx.log(`${d.key} ${value === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${who}`);
         return effective(d, project, false);
       },
@@ -249,11 +403,12 @@ export default {
       input: { type: "object", properties: { project: str } },
       run: async i => {
         const project = slugOf(i.project);
+        await fresh();
         const rows = await Promise.all(decls().filter(d => !(d.store && d.store.claude)).map(d => effective(d, project)));
         return Object.fromEntries(rows.filter(r => r.value !== undefined).map(r => [r.key, r.value]));
       },
     });
 
-    return { async stop() {} };
+    return { async stop() { clearTimeout(timer); watcher?.close(); } };
   },
 };
