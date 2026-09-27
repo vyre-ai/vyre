@@ -271,6 +271,9 @@ Plan (to the lead before building):
   packages/module-sdk/manifest.js, not in package.json files (platform a79d58f1). Deploy held;
   rerun on the fixed tgz. cohesion 4b9c0c0d SIGNED OFF (sight.watch + sight.frame guarded).
   Slip: started one sight run at load 7.3 (rule: under 6); check uptime first.
+- rc.1 hotfix a3a844e4: GATE PASS 22/0/2 (theme on now; skips phone enrol, mail). Built on testbox:
+  clone at the sha, build-app.sh, build-site.sh -> ~/vyre-ci/e2e-rc1h/site/box/vyre.tgz. box-deploy
+  cleared to redeploy.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
