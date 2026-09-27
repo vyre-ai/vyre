@@ -181,6 +181,8 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   `threadRow`'s `where`, unchanged). Test: session.test.js's kit/NEW thread now carries `project`
   in its threads.get fixture and asserts the chip text. testbox: deck/chat + deck/test 480/481 (1
   skip, pre-existing), 0 fail; session.test.js 16/16. Sent to reviewer-2 (no auth/presence touched).
+  SIGNED OFF by reviewer-2 (306/306 on deck/chat's own suite, targeted). Pushed work/chat for the
+  integrator: 378c7f54.
 
 ## Doing (28 Sep, restart after cohesion's hand-over)
 
