@@ -11,9 +11,13 @@
 //             the module returns it) and `x-vyre-presence-keep: 1`; the session the box answers
 //             with (`x-vyre-presence-session`, read in box.native.ts) covers the SESSIONABLE calls
 //             after it for 30 minutes with no prompt (person.ts devicePresence)
-//   token     per box, in expo-secure-store (Keychain, Keystore-wrapped prefs)
-//   hop       the system's authentication browser (expo-web-browser openAuthSessionAsync); the
-//             box returns to vyre://person/signin?code=..., which is traded at once, with no Origin
+//   token     per box and per path ("direct", "relay"; the box pins a token to the tailnet node
+//             or the relay device), in expo-secure-store (Keychain, Keystore-wrapped prefs): one
+//             slot holding a JSON map. A single token from before becomes the direct one.
+//   hop       direct: the system's authentication browser (expo-web-browser openAuthSessionAsync);
+//             the box returns to vyre://person/signin?code=..., which is traded at once, with no
+//             Origin. relay: no browser; presence.person.start signed by vyre.human (one prompt,
+//             person.ts devicePersonStart), which the relay pairing enrolled
 //
 // The request proof is P1363 (derToP1363 converts the module's DER); the presence proof is DER.
 
@@ -22,11 +26,13 @@ import * as WebBrowser from "expo-web-browser";
 import * as Keys from "../../modules/vyre-signer";
 import {
   derToP1363,
+  devicePersonStart,
   devicePresence,
   fromB64url,
   jwkFromXY,
   keyIdFromXY,
   memorySlot,
+  pathSignIn,
   personSession,
   pkce,
   toolOf,
@@ -137,30 +143,57 @@ export async function finishSignIn(box: string, person: PersonSession): Promise<
   return r.ok;
 }
 
+/** The box path a request goes over now (box.native.ts: the paths layer's fetch). */
+export type Send = (path: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number; json(): Promise<unknown> }>;
+
 /** The person session with the phone's presence on it (box.native.ts hands it the session header). */
-export type NativePerson = PersonSession & { presence: DevicePresence };
+export type NativePerson = PersonSession & {
+  presence: DevicePresence;
+  /**
+   * Sign in on the current path: the browser hop on the direct one, the device flow on the relay.
+   * `force` (the person asked) goes even inside the quiet times. True once a token is stored.
+   */
+  signIn(o?: { force?: boolean }): Promise<boolean>;
+};
 
 /**
- * The person session for `box` on this phone. `onSignIn` hears every request for one; the hop
+ * The person session for `box` on this phone. `onSignIn` hears every request for one; the sign-in
  * runs from here too, and `onSignedIn` hears when it stored a token.
+ * @param box the box's direct address, or the relay's route URL on a relay-only phone
  * @param o.human enroll the biometric key at sign-in and prove HUMAN_ONLY calls with it (default true)
+ * @param o.path which way the box is reached now ("direct", "relay"): tokens and presence sessions are kept per path
+ * @param o.send a fetch of a box path over the current path, for the relay sign-in and sign-out
+ * @param o.name what this box's stores are keyed by (default the origin's host)
  */
 export function nativePerson(
   box: string,
   onSignIn?: () => void,
-  o: { human?: boolean; onSignedIn?: (ok: boolean) => void; path?: () => string } = {},
+  o: { human?: boolean; onSignedIn?: (ok: boolean) => void; path?: () => string; send?: Send; name?: string } = {},
 ): NativePerson {
   const origin = new URL(box).origin;
+  const name = o.name || origin;
+  const pathNow = o.path ?? (() => "direct");
   const human = keySigner(Keys.HUMAN);
   const useHuman = o.human !== false;
   /** The biometric key's presence key id on this box. */
-  const humanKey = secureSlot(slotName("human", origin));
+  const humanKey = secureSlot(slotName("human", name));
+  /** Over the relay the key is the one pairing enrolled: its id is its fingerprint. */
+  const humanId = async (): Promise<string | null> => {
+    const kept = await humanKey.load();
+    if (kept || pathNow() !== "relay") return kept;
+    try {
+      const { x, y } = await Keys.ensureKey(Keys.HUMAN, { biometric: true });
+      return keyIdFromXY(x, y);
+    } catch {
+      return null;
+    }
+  };
 
   const presence = devicePresence({
-    keyId: () => humanKey.load(),
+    keyId: humanId,
     sign: (message, tool) => Keys.sign(Keys.HUMAN, message, { prompt: `Confirm ${tool} on your box` }),
     nonce: () => Keys.randomBytes(16),
-    store: secureSlot(slotName("presence", origin)),
+    store: secureSlot(slotName("presence", name)),
     path: o.path,
     failed: (e) => {
       // The enrolled biometrics changed: the key is gone for good. A new one is made and enrolled
@@ -183,9 +216,13 @@ export function nativePerson(
     return fetch(input, init);
   };
 
+  let run: (opts?: { force?: boolean }) => Promise<boolean> = async () => false;
   const session: PersonSession = personSession({
-    box: origin,
-    stores: { token: secureSlot(slotName("token", origin)) },
+    // A relay route URL keeps its route, so a request's proof never signs the transport's prefix.
+    box: new URL(box).pathname.length > 1 ? box.replace(/\/+$/, "") : origin,
+    stores: { token: secureSlot(slotName("token", name)) },
+    ...(o.path ? { path: o.path } : {}),
+    ...(o.send ? { send: o.send } : {}),
     signer: keySigner(Keys.PERSON),
     nonce,
     fetch: doFetch,
@@ -220,15 +257,34 @@ export function nativePerson(
     },
     signIn: () => {
       onSignIn?.();
-      void (async () => {
-        if (!(await startSignIn(origin))) return;
-        o.onSignedIn?.(await finishSignIn(origin, session));
-      })().catch(() => o.onSignedIn?.(false));
+      void run().catch(() => o.onSignedIn?.(false));
     },
+  });
+  run = pathSignIn({
+    path: pathNow,
+    async direct(force) {
+      if (!(await startSignIn(origin, { force }))) return false;
+      const ok = await finishSignIn(origin, session);
+      o.onSignedIn?.(ok);
+      return ok;
+    },
+    relay: () =>
+      o.send
+        ? devicePersonStart({
+            signer: keySigner(Keys.PERSON),
+            keyId: humanId,
+            sign: (message) => Keys.sign(Keys.HUMAN, message, { prompt: "Sign in to your box" }),
+            nonce,
+            send: o.send as Send,
+          })
+        : Promise.resolve({ ok: false as const, code: "unreachable", message: "no relay to sign in over" }),
+    session,
+    onSignedIn: o.onSignedIn,
   });
   return {
     ...session,
     presence,
+    signIn: (opts) => run(opts),
     async end() {
       await presence.forget();
       await session.end();

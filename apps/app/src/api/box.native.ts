@@ -6,7 +6,9 @@
 // in the background and resumes it in front, as the page lifecycle does on the web.
 // The person session is src/auth/person.native.ts: the key in the Keystore or the Secure
 // Enclave (modules/vyre-signer), the token in the secure store, sign-in through the system's
-// authentication browser. It needs the box's direct address, so a relay-only phone goes without.
+// authentication browser on the direct path, the biometric key's device sign-in on the relay
+// (no browser). It exists once the phone is paired or has the box's direct address, and keeps a
+// token per path, since the box pins each to the tailnet node or the relay device.
 // HUMAN_ONLY calls carry the biometric key's presence proof; the presence session the box answers
 // with (x-vyre-presence-session, on any path) is kept from here, so the next sessionable call goes
 // with it and no prompt.
@@ -15,7 +17,7 @@ import { AppState } from "react-native";
 import { over } from "@vyre/resilience/web.js";
 import { memoryStore } from "@vyre/resilience/outbox.js";
 import { createPaths } from "@vyre/relay-client/paths.js";
-import { finishSignIn, nativePerson, startSignIn, type NativePerson } from "../auth/person.native";
+import { nativePerson, type NativePerson, type Send } from "../auth/person.native";
 import { connection } from "../state/connection";
 import { relayBase, type Pairing } from "./pairing";
 import { about, directFetch, loadPairing, relayCrypto, relayKeyStore, visibility } from "./relay";
@@ -52,14 +54,32 @@ const store = memoryStore();
 // The biometric key is enrolled at the native sign-in and proves HUMAN_ONLY calls (e2e, ADR 0032).
 // The prompt shows only for those, and only when no live presence session covers the call.
 // The box pins presence sessions to the path (the tailnet node, or the relay device): one per path.
-let pathNow = () => "direct";
-const makePerson = () =>
-  nativePerson(base, () => connection.signIn(true), { onSignedIn: (ok) => ok && connection.signIn(false), path: () => pathNow() });
+let pathNow = () => (base ? "direct" : "relay");
+/** A box path over whichever path answers (set at connect); the relay sign-in and sign-out go through it. */
+let transport: Send | null = null;
+const makePerson = (at: string) =>
+  nativePerson(at, () => connection.signIn(true), {
+    onSignedIn: (ok) => ok && connection.signIn(false),
+    path: () => pathNow(),
+    send: (path, init) => (transport ? transport(path, init) : Promise.reject(new Error("not connected to the box"))),
+    name: boxName(),
+  });
+/** Where the person session was made for, so a new pairing makes a new one. */
+let personAt = "";
+/** The person session: at the direct address when there is one, else at the relay's route. */
+const ensurePerson = (): NativePerson | null => {
+  const at = base || (paired ? relayBase(paired) : "");
+  if (at && (!person || personAt !== at)) {
+    person = makePerson(at);
+    personAt = at;
+  }
+  return at ? person : null;
+};
 
 const b = makeBox(async () => {
   paired = await loadPairing();
   if (!base && !paired) throw new Error("pair with the box, or configure({ base }) with its address, first");
-  if (base) person ??= makePerson();
+  ensurePerson();
   const direct = (paths?.length ? paths : base ? [base] : []).map((p) => ({ kind: "direct" as const, base: p }));
   const p = createPaths({
     paths: [...direct, ...(paired ? [{ kind: "relay" as const, ...paired, about, keyStore: relayKeyStore(), crypto: relayCrypto() }] : [])],
@@ -67,6 +87,7 @@ const b = makeBox(async () => {
     visibility,
   });
   pathNow = () => p.current;
+  transport = (path, init) => p.fetch(path, init);
   // A proof sent with x-vyre-presence-keep opens a presence session; the box names it in a header
   // the tool caller does not pass on, so it is read here.
   const o = over(async (path, init) => {
@@ -84,7 +105,7 @@ const b = makeBox(async () => {
     open: o.open,
     caller: (_base, co) => o.caller(co),
     outboxStore: store,
-    auth: base ? person : null,
+    auth: person,
     cursor: { load: () => cursor, save: (n: number) => void (cursor = n) },
     lifecycle(c) {
       const sub = AppState.addEventListener("change", (s) => {
@@ -108,13 +129,15 @@ export async function beacon(tool: string, input: Record<string, unknown>): Prom
   await b.call(tool, input).catch(() => {});
 }
 
-/** Sign in as the person: the box's passkey page in the system's authentication browser. */
+/**
+ * Sign in as the person on the current path: the box's passkey page in the system's authentication
+ * browser on the direct one, one biometric prompt on the relay.
+ */
 export async function signIn(): Promise<void> {
-  if (!base) throw new Error("configure({ base }) with the box's address first");
-  const origin = new URL(base).origin;
-  person ??= makePerson();
-  await startSignIn(origin, { force: true });
-  if (await finishSignIn(origin, person)) connection.signIn(false);
+  if (!base && !paired) paired = await loadPairing();
+  const s = ensurePerson();
+  if (!s) throw new Error("pair with the box, or configure({ base }) with its address, first");
+  await s.signIn({ force: true });
 }
 
 /** End the person session on the box. */

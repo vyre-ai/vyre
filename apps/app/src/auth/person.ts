@@ -385,12 +385,35 @@ export type PersonSession = {
   required(): void;
   /** Trade the sign-in page's code and our verifier for a token. */
   exchange(code: string, verifier: string): Promise<{ ok: true } | { ok: false; code: string; message: string }>;
-  /** Sign out: end the session on the box and forget the token. */
+  /**
+   * Keep a token the box answered some other way (the phone's device sign-in over the relay) for
+   * `path`, the current one when left out.
+   */
+  adopt(token: string, path?: string): Promise<boolean>;
+  /** Sign out: end the session on the box and forget the token (every path's). */
   end(): Promise<void>;
+  /** A token is kept for the current path. */
   signedIn(): Promise<boolean>;
 };
 
 const TOKEN = /^[A-Za-z0-9_-]{8,64}\.[A-Za-z0-9_-]{16,128}$/;
+
+/**
+ * The token slot's text as one token per path. A single token from before tokens were kept per
+ * path was made by the PKCE hop, which only the direct path runs, so it becomes the direct one.
+ */
+export function readTokens(v: string | null | undefined): Record<string, string> {
+  if (!v) return {};
+  if (TOKEN.test(v)) return { direct: v };
+  const out: Record<string, string> = {};
+  try {
+    const j = JSON.parse(v) as unknown;
+    if (j && typeof j === "object" && !Array.isArray(j)) {
+      for (const [k, t] of Object.entries(j as Record<string, unknown>)) if (typeof t === "string" && TOKEN.test(t)) out[k] = t;
+    }
+  } catch {}
+  return out;
+}
 
 /**
  * The person session for one box at another origin.
@@ -403,6 +426,10 @@ const TOKEN = /^[A-Za-z0-9_-]{8,64}\.[A-Za-z0-9_-]{16,128}$/;
  * @param o.trade fields added to the /v1/person/token body, e.g. the phone's biometric public key
  * @param o.signTrade sign the trade itself with the key it registers (the native app's code)
  * @param o.traded hears the trade's `data` once a token is stored (the phone keeps `human.key`)
+ * @param o.path which way the box is reached now ("direct", "relay"): the box pins a token to the
+ *   path's identity (the tailnet node, or the relay device), so the store then keeps one per path,
+ *   as a JSON map in the one slot
+ * @param o.send a fetch of a box path over the current path (the phone's relay), for sign-out
  */
 export function personSession(o: {
   box: string;
@@ -417,6 +444,8 @@ export function personSession(o: {
   traded?: (data: Record<string, unknown>) => Promise<void> | void;
   fetch?: typeof fetch;
   now?: () => number;
+  path?: () => string;
+  send?: (path: string, init: { method: string; headers: Record<string, string>; body?: string }) => Promise<{ status: number }>;
 }): PersonSession {
   const box = o.box.replace(/\/+$/, "");
   const doFetch = o.fetch ?? ((...a: Parameters<typeof fetch>) => globalThis.fetch(...a));
@@ -438,10 +467,31 @@ export function personSession(o: {
       keyP = null;
       throw e;
     }));
-  const currentToken = () => (token ??= o.stores.token.load().then((t) => (t && TOKEN.test(t) ? t : null)));
-  const setToken = async (t: string | null) => {
-    token = Promise.resolve(t);
-    await o.stores.token.save(t);
+  const currentToken = o.path
+    ? async () => (await tokens())[(o.path as () => string)()] ?? null
+    : () => (token ??= o.stores.token.load().then((t) => (t && TOKEN.test(t) ? t : null)));
+  let all: Promise<Record<string, string>> | null = null;
+  const tokens = () => (all ??= o.stores.token.load().then(readTokens, (): Record<string, string> => ({})));
+  /** Keep (or drop, null) the token for `at`, the current path by default; `every` drops them all. */
+  const setToken = async (t: string | null, at?: string, every = false) => {
+    if (!o.path) {
+      token = Promise.resolve(t);
+      await o.stores.token.save(t);
+      return;
+    }
+    const where = at ?? o.path();
+    // The new map is current at once, so a read right after a save (even an unawaited one) sees it.
+    const next = tokens().then((was) => {
+      const m: Record<string, string> = every ? {} : { ...was };
+      if (!every) {
+        if (t) m[where] = t;
+        else delete m[where];
+      }
+      return m;
+    });
+    all = next;
+    const m = await next;
+    await o.stores.token.save(Object.keys(m).length ? JSON.stringify(m) : null);
   };
 
   async function headers(method: string, url: string, body: string, proved = false): Promise<Record<string, string>> {
@@ -488,16 +538,23 @@ export function personSession(o: {
       const b = (await res.json().catch(() => null)) as { data?: { token?: string } & Record<string, unknown>; error?: { code: string; message: string } } | null;
       const t = b?.data?.token;
       if (!t || !TOKEN.test(t)) return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `the box answered ${res.status}` };
-      await setToken(t);
+      // The trade goes straight to the box's address, so its token is the direct path's.
+      await setToken(t, o.path ? "direct" : undefined);
       if (o.traded && b?.data) await Promise.resolve(o.traded(b.data)).catch(() => {});
       return { ok: true };
+    },
+    async adopt(t, at) {
+      if (!TOKEN.test(t)) return false;
+      await setToken(t, at);
+      return true;
     },
     async end() {
       const url = `${box}/v1/person/end`;
       const h = await headers("POST", url, "");
-      await setToken(null);
+      await setToken(null, undefined, true);
       if (!h.authorization) return;
-      await doFetch(url, { method: "POST", headers: h, cache: "no-store" }).catch(() => {});
+      if (o.send) await o.send("/v1/person/end", { method: "POST", headers: h }).catch(() => {});
+      else await doFetch(url, { method: "POST", headers: h, cache: "no-store" }).catch(() => {});
     },
     signedIn: async () => Boolean(await currentToken()),
   };
@@ -686,5 +743,118 @@ export function devicePresence(o: {
       if (p && p.expires > now()) await save(p);
     },
     forget: () => save(null, true),
+  };
+}
+
+/** The tool a phone calls over the relay to sign in with its enrolled biometric key. */
+export const PERSON_START = "presence.person.start";
+
+export type StartResult = { ok: true; token: string; expires?: number } | { ok: false; code: string; message: string };
+
+/**
+ * Sign in over the relay, with no browser: the box knows the phone there as its relay device, and
+ * the biometric key (vyre.human) was enrolled at pairing. One call,
+ *   POST /v1/tools/presence.person.start   {key: <the person key's public JWK>}
+ *   x-vyre-presence: device key=<id> ts=<ms> nonce=<b64url> sig=<b64url DER>
+ * over `vyre-presence-v1\npresence.person.start\n<inputHash of {key}>\n<ts>\n<nonce>`, signed by
+ * the biometric key (one prompt). The box answers {kind: "bearer", id, token, expires}; the token
+ * then rides as `authorization: Vyre <token>` with x-vyre-proof, as on the tailnet, pinned to the
+ * relay device. A closed prompt answers code "declined" and sends nothing.
+ */
+export async function devicePersonStart(o: {
+  /** The person key (vyre.person): its public JWK is what the token is bound to. */
+  signer: Pick<Signer, "publicJwk">;
+  /** The biometric key's presence key id (keyIdFromXY), or null when there is none. */
+  keyId: () => Promise<string | null>;
+  /** DER signature as base64url over the message, by the biometric key (the platform prompts). */
+  sign: (message: string) => Promise<string>;
+  nonce: () => string;
+  now?: () => number;
+  /** A fetch of a box path over the relay. */
+  send: (path: string, init: { method: string; headers: Record<string, string>; body: string }) => Promise<{ status: number; json(): Promise<unknown> }>;
+}): Promise<StartResult> {
+  let key: PublicJwk;
+  let id: string | null;
+  try {
+    key = await o.signer.publicJwk();
+    id = await o.keyId();
+  } catch (e) {
+    return { ok: false, code: "no_key", message: e instanceof Error ? e.message : "the phone's key is out of reach" };
+  }
+  if (!id) return { ok: false, code: "no_key", message: "this phone has no biometric key enrolled on the box; pair it again" };
+  const input = { key };
+  const body = JSON.stringify(input);
+  const ts = (o.now ?? Date.now)();
+  const nonce = o.nonce();
+  let sig: string;
+  try {
+    sig = await o.sign(presenceMessage(PERSON_START, await inputHash(input), ts, nonce));
+  } catch (e) {
+    return { ok: false, code: "declined", message: e instanceof Error ? e.message : "the prompt was closed" };
+  }
+  let res: { status: number; json(): Promise<unknown> };
+  try {
+    res = await o.send(`/v1/tools/${PERSON_START}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-vyre-presence": `device key=${id} ts=${ts} nonce=${nonce} sig=${sig}` },
+      body,
+    });
+  } catch (e) {
+    return { ok: false, code: "unreachable", message: e instanceof Error ? e.message : "the box is out of reach" };
+  }
+  const b = (await res.json().catch(() => null)) as { data?: Record<string, unknown>; error?: { code: string; message: string } } | null;
+  const d = (b && typeof b === "object" && b.data && typeof b.data === "object" ? b.data : b) as Record<string, unknown> | null;
+  const t = typeof d?.token === "string" ? d.token : "";
+  // The token is `<id>.<secret>`; an answer that splits the two is joined here.
+  const token = TOKEN.test(t) ? t : typeof d?.id === "string" && TOKEN.test(`${d.id}.${t}`) ? `${d.id}.${t}` : "";
+  if (!token || (d?.kind !== undefined && d.kind !== "bearer")) {
+    return { ok: false, code: b?.error?.code ?? "bad_response", message: b?.error?.message ?? `the box answered ${res.status}` };
+  }
+  return { ok: true, token, ...(typeof d?.expires === "number" ? { expires: d.expires } : {}) };
+}
+
+/** After a failed relay sign-in (not a closed prompt), it is not started again on its own for this long. */
+const RELAY_QUIET_MS = 30_000;
+
+/**
+ * Which sign-in runs, by path: the direct path keeps the PKCE hop through the browser, the relay
+ * signs in with the device flow above. The relay one prompts only when asked (a 401
+ * person_session_required, or signIn()) and no token is live for the relay; several asks at once
+ * share one prompt; a closed prompt is not shown again on its own for DECLINED_MS, a failed one
+ * for 30 s. A forced sign-in (the person asked for it) goes regardless.
+ */
+export function pathSignIn(o: {
+  path: () => string;
+  /** Today's PKCE hop; resolves true once a token is stored. */
+  direct: (force: boolean) => Promise<boolean>;
+  relay: () => Promise<StartResult>;
+  session: Pick<PersonSession, "adopt" | "signedIn">;
+  onSignedIn?: (ok: boolean) => void;
+  now?: () => number;
+}): (opts?: { force?: boolean }) => Promise<boolean> {
+  const now = o.now ?? Date.now;
+  let running: Promise<boolean> | null = null;
+  let quiet: { until: number } | null = null;
+  return async ({ force = false } = {}) => {
+    if (o.path() !== "relay") return o.direct(force);
+    if (running) return running;
+    if (!force && quiet && now() < quiet.until) return false;
+    running = (async () => {
+      if (!force && (await o.session.signedIn())) return true;
+      const r = await o.relay();
+      const ok = r.ok && (await o.session.adopt(r.token, "relay"));
+      quiet = ok ? null : { until: now() + (!r.ok && r.code === "declined" ? DECLINED_MS : RELAY_QUIET_MS) };
+      o.onSignedIn?.(ok);
+      return ok;
+    })()
+      .catch(() => {
+        quiet = { until: now() + RELAY_QUIET_MS };
+        o.onSignedIn?.(false);
+        return false;
+      })
+      .finally(() => {
+        running = null;
+      });
+    return running;
   };
 }

@@ -20,6 +20,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The phone keeps one presence session per path (the box pins each to the tailnet node or the
   relay device), and relay pairing enrolls the biometric-bound key, so every proof over the relay
   needs a fingerprint or face (e2e e5aaf881).
+- The person session is kept per path too. Over the relay the phone signs in with its paired
+  device key (presence.person.start with a device proof, one biometric prompt, no browser); on the
+  tailnet it keeps the PKCE sign-in. A relay-only phone now has a person session.
 
 #### One app: the relay path, pairing, the /app/ worker hooks; the box signs the Android APK
 
