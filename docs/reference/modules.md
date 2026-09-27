@@ -42,10 +42,11 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
+| [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 8 | 1 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 23 | 13 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 24 | 13 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
 
@@ -301,6 +302,17 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Emits: [3 events](events.md#recall)
 - Shows on: cli
 
+## sessions
+
+How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.
+
+- Folder: `core/sessions`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [8](tools.md#sessions), 1 of them only for other modules
+- Emits: [1 events](events.md#sessions)
+- Shows on: cli
+
 ## statusline
 
 One short line for Claude Code's status line: what needs the user, the box, the assistant.
@@ -336,9 +348,10 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [23](tools.md#threads), 11 of them only for other modules
+- Tools: [24](tools.md#threads), 11 of them only for other modules
 - Emits: [13 events](events.md#threads)
 - Shows on: cli
+- Needs vault: `claude-setup-token`, `anthropic-api-key`
 
 ## vault
 

@@ -8,7 +8,7 @@ status: draft
 
 # ADR 0030: Vyre-owned sessions and the provider router
 
-Status: proposed, 27 Sep 2026 · Workstream: sessions · Related: ADR 0004 (presence),
+Status: accepted, 27 Sep 2026 (steps 1 to 3 built) · Workstream: sessions · Related: ADR 0004 (presence),
 ADR 0020 (the plugin), ADR 0021 (the box reads the Mac), ADR 0024 (chat), ADR 0026 (relay),
 ADR 0029 (resilience) · Spec: principles 1 and 3, sections 7.8, 8, 10 and 11
 
@@ -283,7 +283,13 @@ So an idle owned session is not free. Rules:
   send. Resume costs about a second of start-up. The API's prompt cache lasts 5 minutes, so
   keeping the process longer saves nothing on tokens.
 - **A cap.** At most `sessions.max_live` (default 6 on the box) processes at once; beyond it the
-  oldest idle one closes first, and a new turn waits rather than exceed it.
+  oldest idle one closes first, and when every one is busy a new session is refused (`busy`)
+  until one finishes.
+- **The SDK is not an npm dependency** (as with the search model in `core/recall/embed.js`):
+  it is installed on first use into `<VYRE_HOME>/sessions-sdk`, pinned, with its bundled Claude
+  Code only where `sessions.claude` is `bundled`, and loaded with the first session rather than at
+  start, since the import alone is about 40 MB. Until it is installed, sessions run on the CLI
+  runner, which speaks the same protocol.
 - **A warm spare** (`prewarm()`) is optional and off by default: it costs one idle process to
   save about a second on the first turn.
 - One process per session is the right unit: a crash, a limit fallback or an interrupt affects
@@ -324,7 +330,7 @@ step 6.
 
 1. **sessions** (new `core/sessions`): the router, the Claude driver, the fake-claude test path
    (the SDK pointed at `core/switchboard/testing/fake-claude.js` with
-   `pathToClaudeCodeExecutable`). Add the SDK as a dependency, pinned.
+   `pathToClaudeCodeExecutable`). The SDK installs on first use, pinned (section 7).
 2. **switchboard**: `launch`, `send`, `write`, `answer`, `stop`, `halt`, `fallback` and `recover`
    go through a `Session`; `runner.js` and most of `translate.js` retire; idle close and the cap;
    `threads.pids` includes driver pids; new events `thread.turn`, `thread.usage`,

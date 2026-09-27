@@ -3,41 +3,55 @@
 Branch: work/sessions · Worktree: ../vyre-sessions · ADR 0030 (Vyre-owned sessions and the provider router)
 
 ## Scope
-Phase 1: understand how sessions run today, study Paseo's provider layer, write ADR 0030, and a
-small proof on testbox. No big rewrite until the lead and the user have read the ADR.
+ADR 0030. User said GO (27 Sep): the Agent SDK becomes the default for every session Vyre starts.
+Steps 1 to 3 behind `sessions.driver`; flip the default as soon as the full suite is green on it;
+then retire the CLI runner. Approved defaults: auth box setup-token / Mac login / api-key
+fallback; bundled Claude Code on the box, installed on the Mac; idle 10 min; cap 6 on the box;
+Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 
 ## Done
-- ADR 0030 draft (docs/adr/0030-sessions.md), in the nav.
-- Proof (scripts/sessions-proof/): real SDK 0.3.283 driving fake-claude via
-  pathToClaudeCodeExecutable; all 6 steps pass (stream, canUseTool ask answered, floor deny,
-  question, queued message, resume in a new query with --resume=<id>, transcript grows in place).
-- Perf on testbox: real bundled Claude Code idle = 187 MB / ~1% of a core for 30 s, then
-  178 MB / 0.13%; host (Node + SDK + 1 session) 66 to 83 MB, 0.4% after a turn, 0 settled.
+- ADR 0030 + proof (3496b48).
+- Steps 1 to 3 (759dec8, dfeda64 and the docs commit after): core/sessions (claude.js driver with
+  the runner's contract, sdk.js install-on-first-use, config.js, prompts.js, module `sessions`),
+  switchboard wiring (driver pick, lazy SDK load, box credential, composed system prompt, idle
+  close, cap, threads.interrupt, `driver` on records), vyre resume hand-over, docs/using/sessions.md.
+- Tests: core/sessions/sessions.test.js 32/32 on both drivers; switchboard 47/47 on sdk; agents,
+  learn, computers, harness, presence, daemon, federation, onboard, peer, projects-cli 267/267
+  on both.
 
-## How to rerun the proof
-- rsync the worktree to testbox:~/vyre-ci/sessions/, then in scripts/sessions-proof:
-  `ln -sfn ~/vyre-ci/sessions-proof/node_modules node_modules` (SDK installed in
-  ~/vyre-ci/sessions-proof), `SCRATCH=~/vyre-ci/sessions-scratch OUT=~/vyre-ci/sessions-scratch nice -n 15 node proof.mjs`;
-  `MODE=real-idle IDLE_WAIT_MS=120000` for the real binary (no credentials, no API call).
-
-## Findings worth keeping
-- The SDK spawns Claude Code with `--permission-prompt-tool stdio`, `--setting-sources=user,project,local`,
-  `--session-id=<id>` / `--resume=<id>` (equals form), no `-p`. The append, hooks and SDK MCP go
-  in the initialize control request.
-- The SDK bundles a 231 MB native claude (linux-x64 optional dep).
-- No public API to take back a queued SDK message (Paseo casts an undocumented cancelAsyncMessage),
-  so the ADR keeps the queue in Vyre.
+## How to run the SDK tests
+- testbox has the pinned SDK in ~/vyre-ci/sessions-proof. `VYRE_SESSIONS_SDK_DIR=$HOME/vyre-ci/sessions-proof`
+  enables the sdk cases; `VYRE_SESSIONS_DRIVER=sdk` runs any suite on the SDK driver.
 
 ## Doing
-- Waiting for the lead's and user's read of ADR 0030 (open questions in the ADR).
+- Waiting on a full-suite slot with VYRE_SESSIONS_DRIVER=sdk (integrator), then the default flip.
 
-## Next (after sign-off)
-- Migration step 1: core/sessions router + Claude driver behind `sessions.driver`, tests on the fake.
+## Next
+1. Flip `sessions.driver` default to `sdk` (config.js one line) once the full suite is green on it.
+2. Retire runner.js as a fallback only (keep for the "not installed yet" window).
+3. Phase 3: in-process hooks and MCP for owned sessions (caller set by the driver), floor in canUseTool.
+4. New events from the ADR (thread.turn, thread.usage, thread.state, tool status by call id), queue
+   take-back/edit, "send now".
+5. Codex driver, then ACP.
 
 ## Needs from others
-- user (via lead): the 4 open questions in ADR 0030 (auth default, bundled vs installed binary,
-  idle policy, Mac-owned sessions).
+- integrator: one full-suite run with `VYRE_SESSIONS_DRIVER=sdk VYRE_SESSIONS_SDK_DIR=<dir with SDK 0.3.283>`.
+- box: pre-install the SDK with its bundled binary in the image (`npm i --omit=dev
+  @anthropic-ai/claude-agent-sdk@0.3.283` into <VYRE_HOME>/sessions-sdk, or set
+  `sessions.dir`), so the first session on a fresh box does not wait on a 255 MB download.
+- existing boxes: the vault's claude-setup-token and anthropic-api-key must be granted to module
+  `threads` (`vyre vault grant claude-setup-token threads`); new onboarding does it.
+- chat, capsule-pro, mobile: `thread.stopped` reason `idle` is resumable (show "idle", not an
+  error); `threads.interrupt`; `busy` refusal on start; sessions.prompt.* for a settings screen.
 
 ## Changed contracts
-- core/switchboard/testing/fake-claude.js (switchboard's test double): also reads `--flag=value`.
-  No behaviour change for the CLI form.
+- threads: new tool `threads.interrupt`; records carry `driver`; `thread.stopped` reason `idle`;
+  `threads.start`/`launch` can refuse with code `busy` (sessions.max_live); manifest needs.vault
+  claude-setup-token, anthropic-api-key.
+- runner.js: argsFor takes `system` ({mode, text}); run() returns `interrupt()`.
+- fake-claude.js: launch log written at initialize (argv normalised, SDK init fields added as
+  flags); interrupt support.
+- presence: PERSON_ONLY gains sessions.prompt.set, sessions.prompt.revert.
+- onboard: CREDENTIAL_READERS gains threads.
+- New module sessions: tools sessions.status, setup, prompt.get/set/history/revert/preview,
+  internal prompt.compose; event prompt.changed.
