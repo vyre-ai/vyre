@@ -301,6 +301,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (the Registry's callerAllowed), never a guest.
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- The CLI's writes run once: `write()` in core/daemon/client.js sends an Idempotency-Key per
+  intent and retries with it for up to 20 s while vyred is unreachable or restarting, so
+  `vyre threads send`, `threads answer` and the live screen's send ride out a restart.
+- core/resilience/sse.js holds a chunk's trailing `\r` until the next chunk, so a CRLF split
+  across chunks no longer ends a frame early and drops its event (found by mobile).
+- core/resilience passes strict tsc (JSDoc types only).
 - The box image runs tini as init and `core/daemon/loop.sh` under it: vyred is restarted inside
   the container (2 s; five exits in a minute leave it to Docker), so a vyred restart keeps the
   dtach terminals. A deploy still ends them, and now says so: `term.closed` reason `box updated`,

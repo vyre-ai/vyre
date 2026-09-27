@@ -43,7 +43,7 @@ export async function outbox({ store, call, onChange, newKey = () => globalThis.
   const waiters = new Map();
 
   const persist = () => store.save(pending);
-  const tell = extra => onChange?.({ pending: pending.map(e => ({ ...e })), ...extra });
+  const tell = (/** @type {{ done?: { entry: Entry, data: any }, refused?: { entry: Entry, error: any } }} */ extra = {}) => onChange?.({ pending: pending.map(e => ({ ...e })), ...extra });
 
   async function drain() {
     clearTimeout(wait); wait = null;
