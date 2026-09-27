@@ -265,8 +265,8 @@ run check.sh + thread.sh.
 
 SPLIT VALIDATED on sessions db4af9c3 (callAsPerson ed2715ae) + main 53cd1326: check.sh 30/30,
 thread.sh 8/8; cleared to the integrator. MCP list 258 -> 239 (asked sessions to check the filter).
-connectors b0171ad2: code OK (firstParty from one rule, on_behalf refused otherwise); sign-off on
-green tests. memory-iq merged 88c90d56 (2dd6e83a).
+connectors SIGNED OFF at 84f630c9 (226/226 + docs 50/50); firstParty dup with native-core at merge.
+memory-iq merged 88c90d56 (2dd6e83a).
 
 Split with sessions 501ca3fc (lead, 27 Sep): image from 501ca3fc merged with main 53cd1326.
 check.sh 30/30. New scripts/e2e-split/thread.sh (vyred starts a session through the spawner, CLI
