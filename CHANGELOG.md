@@ -48,6 +48,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   sessions (`recall.forget`), then says how much went (`memory.forgot`). `memory.device {machine}`
   is the preview, in counts. Only federation's own module may say `sync.deleted`: memory ignores it from any
   other, and core/modules reserves the `sync.*` events for the first-party `sync` module (core/sync). import.scan never offers the synced folder as this device's own.
+- Caps in plan terms, never dollars, wherever a person sees them: the Settings entry is "How much
+  of your Claude plan memory may use each day" (a little, a small share, more; `memory.plan_share`,
+  replacing the dollar figure), `vyre status` says "reading 40% of today's plan share", and IQ at
+  its cap says it "has used today's share of your Claude plan". The usage figures stay internal
+  (and never bill: the reads run on the person's Claude login).
 - Import, sending: `import.start {plan, mode: once|sync, pace: fast|gentle}` is the person's own
   action (never an agent or a device nobody signed in on). It records their consent with the
   server through federation's `sync.consent` (with the plan's hash), sets the first read's pace

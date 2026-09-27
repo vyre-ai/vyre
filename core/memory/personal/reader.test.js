@@ -232,3 +232,11 @@ test("reader: model calls run on the Claude login, never API dollars, unless bil
   assert.equal((await ask(undefined)).text, "login");
   assert.equal((await ask("api")).text, "key");
 });
+
+test("reader: the person's plan share sets the daily cap; an explicit figure in config still wins", async t => {
+  const cap = async config => (await world(t, { turns: ["hi"], config })).reader.status().cap_usd;
+  assert.equal(await cap({}), READER.dailyUsd, "medium by default");
+  assert.equal(await cap({ memory: { model: { share: "small" } } }), 0.1);
+  assert.equal(await cap({ memory: { model: { share: "large" } } }), 1);
+  assert.equal(await cap({ memory: { model: { share: "large", dailyUsd: 0.3 } } }), 0.3);
+});

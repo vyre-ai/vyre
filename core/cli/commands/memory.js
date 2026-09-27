@@ -144,7 +144,7 @@ async function ask(args) {
   if (r.error) return fail(r);
   const d = r.data;
   if (json()) { emit(d); return d.answer ? 0 : 1; }
-  if (d.limited) { out(dim(`  ${d.message || "Vyre IQ's daily limit is reached"}`)); return 1; }
+  if (d.limited) { out(dim(`  ${d.message || "Vyre IQ has used today's share of your Claude plan"}`)); return 1; }
   if (!d.answer) {
     out(dim("  not sure yet"));
     if (d.known?.length) { out(dim("  what memory does know:")); for (const k of d.known) out(`    ${k}`); }

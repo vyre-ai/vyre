@@ -426,7 +426,10 @@ export function createReader(deps) {
     // within the same plan limits: never extra paid usage, never faster than once a minute.
     let fast = false;
     try { fast = /** @type {any} */ (db.prepare("SELECT v FROM memory_meta WHERE k = 'read_pace'").get())?.v === "fast"; } catch { /* no memory_meta yet */ }
-    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, READER.dailyUsd), backfillUsd: num(m.backfillUsd, READER.backfillUsd),
+    // The person's setting is a share of their plan (memory.plan_share); the usage figure behind it
+    // stays internal. An explicit memory.model.dailyUsd in config still wins, for advanced use.
+    const share = { small: 0.1, medium: READER.dailyUsd, large: 1 }[String(m.share || "medium")] ?? READER.dailyUsd;
+    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, share), backfillUsd: num(m.backfillUsd, READER.backfillUsd),
       batch: fast ? 50 : Math.max(1, Math.min(50, num(m.batch, READER.batch))), gapMs: Math.max(60_000, num(m.gapMs, READER.gapMs)),
       passes: Math.max(1, Math.min(3, num(m.passes, READER.passes))) };
   };
