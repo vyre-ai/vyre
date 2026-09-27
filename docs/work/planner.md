@@ -97,9 +97,10 @@ the contract in ADR 0025.
 1. Answers from resilience, sessions, pwa, capsule-pro, mobile (sent 2026-09-27, session 4).
 2. If sessions wants it: a planner rules text for the session's append prompt, and the in-process
    MCP tool list (planner.add/list/agenda/done/snooze/dismiss/upcoming; never settings).
-3. CLI prints the parser's `reason` on ambiguous words (if the user wants it).
-4. Email/SMS fallback (later, needs the user's go and the Gate).
-5. Known limit: a planner-ack push goes out only for firings pushed since vyred started (and every
+3. (done) Fallback dropped (379fea4c); tested after the freeze: 82 of 82 targeted, docs 61 of 61.
+4. CLI prints the parser's `reason` on ambiguous words (if the user wants it).
+5. Email/SMS fallback (later, needs the user's go and the Gate).
+6. Known limit: a planner-ack push goes out only for firings pushed since vyred started (and every
    unrung answer).
 
 ## Contracts owed

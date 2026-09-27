@@ -84,7 +84,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - planner.schedule event: the rings moved with no item changed (a zone or lead change, a calendar
   sync that changed the copy).
 - last_event (ADR 0029, R1) on planner.agenda and planner.upcoming, and on planner.list and
-  planner.ringing with `cursor: true`.
+  planner.ringing with `cursor: true`. It is ctx.events.latestId(), the cursor vyred's stream uses.
 - A Vyre-owned session's thread (`mcp:thread:<id>`, ADR 0030) counts as the assistant, as an
   unnamed terminal session does.
 - Tests: core/planner/planner.test.js, calendar.test.js, core/push/push.test.js.
