@@ -17,6 +17,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - scripts/gen-tokens (`npm run tokens`, `--check`): writes apps/app/src/theme/tokens.ts from
   docs/design/one-app/tokens.json, with `attention(scheme, alt)` so violet or teal stays one key.
   Coral is gone from the app's tokens. Test in apps/app/src/theme/tokens.test.js.
+- apps/app: the Expo 54 scaffold (expo-router, React Native Web, Reanimated 4.1, Gesture
+  Handler, zustand), its own package.json and lockfile outside the root workspace (Expo is the
+  app's stack, ADR 0027; the box's `npm ci` never installs it). Three mounted tabs (Now, Chats,
+  Agents) on the generated tokens, a fixed full-screen web shell, a typed box client
+  (`call`, an SSE reader with Last-Event-ID resume), and `?perf=1` feeding the meter
+  (`window.__vyrePerf`). The web export is served under /app (2.0 MB, 476 KB gzipped JS).
+- The meter gains `pause()`: a hidden page is a break, not dropped frames.
 - deck/test/world.js keeps its exported pieces (for apps/test/world.js) with main's alex folder
   beside the home, CHAT_DEMO and the WebSocket pass-through.
 

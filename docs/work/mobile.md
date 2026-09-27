@@ -30,6 +30,10 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   /app/ route) and ci (app.yml: own lockfile in apps/app, plain prebuild+gradle, no EAS; a
   headless Chrome perf job reading window.__vyrePerf.report() as a regression guard).
 
+- apps/app scaffold: expo export -p web OK (2.0 MB, JS 476 KB gz), tsc clean, 29 app tests.
+  Native fetch cannot stream: the spike needs a native SSE transport. No idempotency header on
+  the box yet (ADR 0029 owns it; resilience).
+
 ## One app: Doing
 - Plan the one-week spike with pwa (Now, a session, the approve swipe) and scaffold apps/app.
 

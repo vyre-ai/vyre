@@ -18,7 +18,7 @@ const LONG_TASK_MS = 50;
  */
 
 /** The acceptance criteria. A check passes when every one of its tests holds. @type {readonly Bar[]} */
-export const BAR = Object.freeze([
+export const BAR = Object.freeze(/** @type {Bar[]} */ ([
   { id: "scroll", text: "dropped frames under 1% over 10 s, fps at least 58", windowMs: 10000, tests: [
     { source: "frames", stat: "droppedPct", op: "<", limit: 1 },
     { source: "frames", stat: "fps", op: ">=", limit: 58 },
@@ -31,7 +31,7 @@ export const BAR = Object.freeze([
   { id: "streamGap", text: "p95 stream gap under 50 ms", tests: [{ source: "gaps", name: "stream", stat: "p95", op: "<", limit: 50 }] },
   { id: "longTasks", text: "no long task over 50 ms while streaming", tests: [{ source: "longTasks", stat: "over50", op: "==", limit: 0 }] },
   { id: "terminalEcho", text: "p95 term.echo under 50 ms", tests: [{ source: "metrics", name: "term.echo", stat: "p95", op: "<", limit: 50 }] },
-].map(b => Object.freeze(b)));
+]).map(b => Object.freeze(b)));
 
 /**
  * Nearest-rank percentile of an ascending array. p is 0 to 100. Null when empty.
@@ -94,24 +94,30 @@ export function createMeter({ refreshHz = 60, now = () => performance.now() } = 
     if (count < FRAME_CAP) count++;
   }
 
+  /** A break (the page hidden, the app backgrounded): the next frame starts a new run, so the gap is not counted as dropped frames. */
+  function pause() {
+    if (count && Number.isNaN(ring[(head - 1 + FRAME_CAP) % FRAME_CAP])) return;
+    frame(NaN);
+  }
+
   /** @param {number} [ms] @returns {FrameStats} */
   function window(ms = 10000) {
     const from = now() - ms;
     /** @type {number[]} */ const intervals = [];
-    let frames = 0, dropped = 0, first = NaN, prev = NaN;
+    let frames = 0, dropped = 0, span = 0, prev = NaN;
     for (let k = 0; k < count; k++) {
       const t = ring[(head - count + k + FRAME_CAP) % FRAME_CAP];
+      if (Number.isNaN(t)) { prev = NaN; continue; }
       if (t < from) continue;
       frames++;
-      if (frames === 1) first = t;
-      else {
+      if (!Number.isNaN(prev)) {
         const iv = t - prev;
         intervals.push(iv);
+        span += iv;
         dropped += droppedIn(iv);
       }
       prev = t;
     }
-    const span = prev - first;
     const expected = intervals.length + dropped;
     intervals.sort((a, b) => a - b);
     return {
@@ -197,5 +203,5 @@ export function createMeter({ refreshHz = 60, now = () => performance.now() } = 
     longTasks = [];
   }
 
-  return { frame, window, mark, measure, record, gap, longTask, report, reset };
+  return { frame, pause, window, mark, measure, record, gap, longTask, report, reset };
 }

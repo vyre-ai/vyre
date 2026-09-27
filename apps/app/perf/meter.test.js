@@ -183,3 +183,16 @@ test("reset clears everything", () => {
   assert.deepEqual(r.gaps, {});
   assert.deepEqual(r.longTasks, { n: 0, over50: 0 });
 });
+
+test("meter: a pause (page hidden) is not counted as dropped frames", () => {
+  let clock = 0;
+  const m = createMeter({ now: () => clock });
+  for (let i = 0; i < 60; i++) m.frame(clock = i * (1000 / 60));
+  m.pause();
+  m.pause();
+  for (let i = 0; i < 60; i++) m.frame(clock = 5000 + i * (1000 / 60));
+  const w = m.window(10000);
+  assert.equal(w.dropped, 0);
+  assert.equal(w.frames, 120);
+  assert.ok(w.fps > 59 && w.fps < 61, String(w.fps));
+});

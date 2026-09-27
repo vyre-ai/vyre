@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Vyre",
+    "slug": "vyre",
+    "scheme": "vyre",
+    "version": "0.0.1",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "sh.vyre.app",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "sh.vyre.app",
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "output": "single",
+      "bundler": "metro",
+      "name": "Vyre",
+      "shortName": "Vyre",
+      "backgroundColor": "#0E0D0C",
+      "themeColor": "#0E0D0C"
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "baseUrl": "/app",
+      "typedRoutes": false
+    }
+  }
+}
