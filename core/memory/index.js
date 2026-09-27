@@ -17,7 +17,7 @@ import { Personal } from "./personal/store.js";
 import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
 import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
-import { asker } from "./iq/ask.js";
+import { asker, ASK_DAILY_USD } from "./iq/ask.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -446,7 +446,7 @@ export default {
     });
     // Vyre IQ's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
     // the retrieved passages, checked by code. Questions have their own daily cap
-    // (config.memory.model.askDailyUsd, $0.10) in memory's budget table.
+    // (config.memory.model.askDailyUsd, $0.50, about 150 questions) in memory's budget table.
     const askDay = () => `ask:${new Date().toISOString().slice(0, 10)}`;
     const askSpent = () => Number(/** @type {any} */ (ctx.store.db.prepare("SELECT usd FROM memory_me_budget WHERE day = ?").get(askDay()))?.usd || 0);
     // The answer step runs on sessions' always-warm lean session (threads.quick, purpose memory):
@@ -459,12 +459,12 @@ export default {
     });
     const ask = asker({ db: ctx.store.db, answer, retrieve, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
-        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : 0.1) + 1e-9,
+        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : ASK_DAILY_USD) + 1e-9,
         charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
           ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
       } });
     ctx.tool("memory.ask", {
-      description: "Vyre IQ: answer a question from everything memory holds, with its sources, or abstain. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it.",
+      description: "Vyre IQ: answer a question from everything memory holds, with its sources, or abstain. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it. At the day's cap (config.memory.model.askDailyUsd, $0.50) limited is true and message says so: show it, never nothing.",
       input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
         context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
       run: async (input, { caller } = {}) => {

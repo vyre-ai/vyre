@@ -75,7 +75,10 @@ test("ask: no passages, no model, a spent budget or a made-up answer all abstain
   assert.equal((await noModel({ question: "what port does staging use" })).abstained, true);
   let calls = 0;
   const broke = asker({ db: d, answer: async () => ({}), retrieve: async () => ({ passages: P }), runner: async () => { calls++; return { text: "{}", usd: 0 }; }, budget: { allow: () => false, charge: () => {} } });
-  assert.equal((await broke({ question: "what port does staging use" })).abstained, true);
+  const capped = await broke({ question: "what port does staging use" });
+  assert.equal(capped.abstained, true);
+  assert.equal(capped.limited, true);
+  assert.equal(capped.message, "Vyre IQ's daily limit is reached, change it in Settings");
   assert.equal(calls, 0);
   const liar = asker({ db: d, answer: async () => ({}), retrieve: async () => ({ passages: P }),
     runner: async () => ({ text: JSON.stringify({ answer: "Staging runs on port 9000.", cite: [1], confidence: 0.9 }), usd: 0.001 }) });

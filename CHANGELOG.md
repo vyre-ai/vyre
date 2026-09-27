@@ -325,7 +325,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   number, path and quoted word against what it cites, and a failed check abstains. Returns
   { answer, confidence, abstained, known, sources, via, latency_ms, cost_usd }. Replies are kept by
   the prompt's hash (memory_iq_asks): the same question over the same passages answers the same
-  way, and CI replays them. Questions have their own daily cap (config.memory.model.askDailyUsd, $0.10).
+  way, and CI replays them. Questions have their own daily cap (config.memory.model.askDailyUsd, $0.50, about 150 questions).
+  At the cap memory.ask returns limited: true and the message "Vyre IQ's daily limit is reached,
+  change it in Settings", for the surface to show.
 - `memory.retrieve {question}`: Recall's searches for the question and for the names memory and
   the graph know in it, fused by rank, with time words and a small recency prior. The Capsule's
   ask threads are never read. scripts/eval-iq.js measures it (recall@8 and ablations) and
