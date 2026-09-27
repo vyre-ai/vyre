@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A phone opens a fill window with its device key
+
+- The fill listener pairs a device with an optional P-256 public key (`pair {code, key}`), kept
+  in a new MACed table vault_device_keys. `POST challenge` gives a one-time, 60-second challenge;
+  `POST unlock {signature}` checks the key's signature over `vyre:fill-unlock:v1:<challenge>` and
+  opens the usual 30-minute window. The phone signs after its own biometric prompt (StrongBox or
+  the Secure Enclave), so the signature is the person's presence. Failures count toward the
+  unlock lockout. Test: core/vault/fill-devicekey.test.js.
+
 #### Every vault feature has a CLI verb
 
 - `vyre vault health [--breach]`, `remind`, `history <name>`, `revert <name> <version>`,

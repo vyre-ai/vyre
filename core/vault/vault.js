@@ -33,7 +33,7 @@ import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { REMIND_MIGRATION } from "./remind.js";
 import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "./kinds.js";
 import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfiles.js";
-import { FILL_MIGRATION } from "./fill.js";
+import { FILL_MIGRATION, FILL_KEY_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
 import { Share, SHARE_MIGRATIONS } from "./share.js";
@@ -99,6 +99,8 @@ export const MIGRATIONS = [
   REMIND_MIGRATION,
   // ADR 0028, decision 8: emergency access, a sealed ticket in escrow behind a waiting period.
   EMERGENCY_MIGRATION,
+  // ADR 0028, decision 5: a phone's device key opens a fill window.
+  FILL_KEY_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -117,6 +119,8 @@ export const MACED = {
   vault_agent_grants: AGENT_GRANT_MACED,
   vault_passes: ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "methods", "paths", "expires", "status", "issued", "revoked"],
   vault_devices: ["id", "name", "token_hash", "revoked"],
+  // A phone's device key, which opens a fill window (fill.js).
+  vault_device_keys: ["device", "key"],
   vault_history: ["id", "item", "ver", "name", "vault", "at", "by", "changed", "fh"],
   // The ssh agent's record of each key's public half (what a signing prompt names), and the
   // marks that say a login must be rotated. Keyed by item name, made by tools/cli.js.
@@ -126,7 +130,7 @@ export const MACED = {
   vault_emergency: EMERGENCY_MACED,
 };
 /** The key column of each MACed table, where it is not `id`. */
-const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name" };
+const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name", vault_device_keys: "device" };
 /** Tables MACed after the v2 upgrade: their rows from before are signed once, then checked. */
 const LATE_MACED = ["vault_ssh_keys", "vault_marks"];
 

@@ -42,6 +42,16 @@ export const FILL_MIGRATION = `CREATE TABLE vault_devices (
      code_hash TEXT PRIMARY KEY, name TEXT, expires INTEGER NOT NULL, used INTEGER
    );`;
 
+/**
+ * A phone's device key (ADR 0028, decision 5): a P-256 key the phone keeps in StrongBox or the
+ * Secure Enclave behind its biometric prompt. Paired with the device, it opens a fill window by
+ * signing a one-time challenge, the phone's version of Touch ID through the Capsule. Its own
+ * table, MACed, so a module that writes vyre.db cannot swap in a key of its own.
+ */
+export const FILL_KEY_MIGRATION = `CREATE TABLE vault_device_keys (device TEXT PRIMARY KEY, key TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);`;
+const CHALLENGE_TTL_MS = 60_000;
+const unlockMessage = nonce => Buffer.from(`vyre:fill-unlock:v1:${nonce}`, "utf8");
+
 /** No 0/O, 1/I/L: a code read off a terminal and typed into a popup should not be misread. */
 const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const CODE_LEN = 8;
@@ -59,6 +69,15 @@ const EXTENSION_ORIGIN = /^(chrome-extension|moz-extension):\/\/[A-Za-z0-9-]{1,6
 const DEVICE_NAME = /[^A-Za-z0-9 ._@()'-]/g;
 
 const sha = v => crypto.createHash("sha256").update(String(v)).digest("hex");
+/** A P-256 SPKI public key, base64url, as it will be stored; null for anything else. @param {unknown} k */
+function deviceKey(k) {
+  if (typeof k !== "string" || !/^[A-Za-z0-9_-]{40,400}$/.test(k)) return null;
+  try {
+    const pub = crypto.createPublicKey({ key: Buffer.from(k, "base64url"), format: "der", type: "spki" });
+    if (pub.asymmetricKeyType !== "ec" || /** @type {any} */ (pub.asymmetricKeyDetails).namedCurve !== "prime256v1") return null;
+    return /** @type {Buffer} */ (pub.export({ format: "der", type: "spki" })).toString("base64url");
+  } catch { return null; }
+}
 const newToken = () => crypto.randomBytes(32).toString("base64url");
 const newId = p => p + crypto.randomBytes(9).toString("base64url");
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
@@ -125,6 +144,8 @@ export class Fill {
     this.pairFails = [];
     /** Session tokens opened by unlockDevice, waiting for that device's next status call. Memory only. */
     this.pickup = new Map();
+    /** One open challenge per device, for a device-key unlock. Memory only, 60 seconds, single use. */
+    this.challenges = new Map();
   }
 
   // ---- registry tools (FILL_TOOLS) ------------------------------------------------------
@@ -228,7 +249,8 @@ export class Fill {
     try { if (await this.vault.keys.exists()) await this.vault.key(); } catch {}
     switch (route) {
       case "POST pair": return this.pair(b);
-      case "POST unlock": return this.unlock(b, h);
+      case "POST unlock": return b && typeof b.signature === "string" ? this.unlockKey(b, h) : this.unlock(b, h);
+      case "POST challenge": return this.challenge(h);
       case "POST lock": return this.lockRoute(h);
       case "POST match": return this.matchRoute(b, h);
       case "POST fill": return this.fill(b, h);
@@ -265,8 +287,15 @@ export class Fill {
     const name = row.name || this.deviceName(b.name || "browser");
     const token = newToken();
     const id = newId("d_");
+    // A phone pairs with its device key; a browser has none and unlocks another way.
+    let key = null;
+    if (b.key !== undefined) {
+      key = deviceKey(b.key);
+      if (!key) return fail(400, "bad_input", "the device key is not a P-256 public key");
+    }
     this.db.prepare("INSERT INTO vault_devices (id, name, token_hash, created, last_seen, revoked) VALUES (?,?,?,?,?,NULL)").run(id, name, sha(token), t, t);
     this.vault.sign("vault_devices", id);
+    if (key) { this.db.prepare("INSERT OR REPLACE INTO vault_device_keys (device, key, at) VALUES (?,?,?)").run(id, key, t); this.vault.sign("vault_device_keys", id); }
     this.vault.audit("pair", null, `device:${id}:${name}`, true, null);
     this.vault.emit("vault.device-paired", { device: id, name });
     return ok({ device: id, name, token });
@@ -310,6 +339,56 @@ export class Fill {
     const s = this.openSession(d);
     this.vault.audit("unlock", null, who, true, how);
     return ok({ session: s.token, expires: s.expires });
+  }
+
+  /** A one-time challenge for a device-key unlock. @param {Record<string, string>} h @returns {Reply} */
+  challenge(h) {
+    const d = this.device(h);
+    if ("status" in d) return d;
+    if (!this.keyOf(d.id)) return fail(409, "no_key", "this device has no device key; unlock with the passphrase");
+    const nonce = crypto.randomBytes(32).toString("base64url");
+    this.challenges.set(d.id, { nonce, expires: this.now() + CHALLENGE_TTL_MS });
+    return ok({ challenge: nonce, message: `vyre:fill-unlock:v1:${nonce}`, expires: this.now() + CHALLENGE_TTL_MS });
+  }
+
+  /**
+   * Open a fill window with the device key's signature over the challenge. The phone asks for the
+   * signature through its biometric prompt, so a signature is a person's presence.
+   * @param {any} b @param {Record<string, string>} h @returns {Reply}
+   */
+  unlockKey(b, h) {
+    const d = this.device(h);
+    if ("status" in d) return d;
+    const who = this.who(d);
+    const t = this.now();
+    const recent = (this.fails.get(d.id) || []).filter(x => x > t - FAIL_WINDOW_MS);
+    this.fails.set(d.id, recent);
+    if (recent.length >= MAX_UNLOCK_FAILS) { this.vault.audit("unlock", null, who, false, "locked out"); return fail(429, "locked_out", "too many failed unlocks from this device; wait 15 minutes"); }
+    const c = this.challenges.get(d.id);
+    this.challenges.delete(d.id);
+    const key = this.keyOf(d.id);
+    let good = false;
+    if (c && c.expires > t && key && /^[A-Za-z0-9_-]{16,200}$/.test(b.signature)) {
+      try {
+        const pub = crypto.createPublicKey({ key: Buffer.from(key, "base64url"), format: "der", type: "spki" });
+        good = crypto.verify("sha256", unlockMessage(c.nonce), { key: pub, dsaEncoding: "der" }, Buffer.from(b.signature, "base64url"));
+      } catch { good = false; }
+    }
+    if (!good) {
+      recent.push(t);
+      this.vault.audit("unlock", null, who, false, c ? "bad device signature" : "no challenge");
+      return fail(401, "bad_signature", c ? "the device key's signature did not check" : "ask for a challenge first");
+    }
+    this.fails.delete(d.id);
+    const s = this.openSession(d);
+    this.vault.audit("unlock", null, who, true, "device key");
+    return ok({ session: s.token, expires: s.expires });
+  }
+
+  /** The device key of a device, checked against its MAC, or null. @param {string} id */
+  keyOf(id) {
+    const r = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_device_keys WHERE device = ?").get(id));
+    return r && this.vault.rowOk("vault_device_keys", r) ? String(r.key) : null;
   }
 
   /** @param {Record<string, string>} h @returns {Reply} */
@@ -473,7 +552,7 @@ export class Fill {
 
 // ---- the listener -----------------------------------------------------------------------
 
-const ROUTES = { pair: "POST", unlock: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST",
+const ROUTES = { pair: "POST", unlock: "POST", challenge: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST",
   passkeys: "POST", "passkey.create": "POST", "passkey.get": "POST", cards: "POST", "card.fill": "POST", "address.fill": "POST" };
 
 class HttpError extends Error {
