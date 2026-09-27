@@ -5,7 +5,7 @@
 //
 // The app is built into the Vyre home (<home>/capsule/Vyre.app), never into the npm package,
 // which may be read-only and is replaced on every update. A stamp beside it records the hash of the
-// source it was built from, the same guard `vyre capsule` keeps for the Electron package.
+// source it was built from, so an edit to the source is never silently ignored by a stale build.
 //
 // Signing: with a code-signing identity named "Vyre Local" in the keychain, the app is signed
 // with it, so macOS keeps Input Monitoring and Accessibility grants across rebuilds. Without one

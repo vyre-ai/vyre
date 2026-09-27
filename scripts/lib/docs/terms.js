@@ -50,7 +50,7 @@ export const CONCEPTS = [
   { name: "assistant", page: "using/agents.md#talk-to-the-assistant-or-an-agent", match: /\bassistant\b/i, code: "core/agents/index.js" },
   { name: "box", page: "concepts/box-and-mac.md", match: /\bbox(es)?\b/i },
   { name: "brief", page: "using/projects-and-threads.md#see-a-project-and-its-brief", match: /\bbriefs?\b/i, code: "core/harness/index.js" },
-  { name: "Capsule", page: "using/capsule.md", match: /\bCapsule\b/, code: "local/capsule/app/capsule.html" },
+  { name: "Capsule", page: "using/capsule.md", match: /\bCapsule\b/, code: "local/capsule/index.js" },
   { name: "Chat", page: "using/chat.md", match: /\bChat\b/, code: "deck/chat/index.js" },
   { name: "computer", page: "using/agents.md#give-an-agent-a-computer", match: /\bcomputers?\b/i, code: "core/computers/index.js" },
   { name: "connector", page: "using/connectors.md", match: /\bconnectors?\b/i },

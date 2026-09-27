@@ -19,10 +19,6 @@
 //   - the onboarding: a second vyred in a fresh box home, fake tailscale (signs in when Connect
 //     is pressed, issues a self-signed certificate) and fake claude, walked through its six steps
 //     in one browser tab, the way a person would.
-//   - the Capsule: its own page (local/capsule/app/capsule.html) in Chrome, with the Electron
-//     preload replaced by a stub whose reads (snapshot, @ completion, recall, results, a hold)
-//     go to the real Bridge class against the Deck world's vyred. Everything that would act
-//     (send, answer, copy, pick) answers "not here" instead.
 // Every vyred and vyre it runs is loaded with scripts/lib/docs/shots-host.js, so the machine is
 // alex-box and the account is alex. Paths under the temp home are shown as /home/alex.
 //
@@ -249,74 +245,6 @@ async function onboardWorld() {
   return { home, bins, url: link.data.url, call: (tool, input) => call(tool, input, { root: home, caller: "cli" }) };
 }
 
-// ---- the Capsule's page, with a stub for its preload ------------------------------------------
-
-const MIME = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".woff2": "font/woff2", ".svg": "image/svg+xml", ".png": "image/png" };
-let capsuleSrv = null;
-async function capsule() {
-  if (capsuleSrv) return capsuleSrv;
-  const w = await deck();
-  const { client } = await import("../local/capsule/lib/vyred.js");
-  const { Bridge } = await import("../local/capsule/lib/bridge.js");
-  const { Launcher } = await import("../local/capsule/lib/launcher.js");
-  const { socketPath } = await import("../core/config/index.js");
-  const vy = client(socketPath(w.home));
-  const bridge = new Bridge(vy, { home: w.home });
-  const r = await bridge.refresh();
-  if (!r.up) throw new Error("the Capsule's bridge cannot reach the Deck world: " + r.why);
-  // This Mac's own results (apps, files, contacts) are empty here: the shots show Vyre's.
-  const launcher = new Launcher({ apps: /** @type {any} */ ({ list: async () => [], search: () => [] }), files: async () => [], helper: null, providers: null, vyred: null });
-  const cat = () => (bridge.up ? bridge.catalog : null);
-  const no = async () => ({ error: "not in a screenshot" });
-  /** @type {Record<string, (...a: any[]) => any>} */
-  const api = {
-    snapshot: () => ({ ...bridge.snapshot(), hotkey: { ok: true, message: "ready" }, watching: [], reports: [] }),
-    mention: (t, c) => bridge.mention(String(t || ""), Number(c) || 0),
-    destinations: (t, x) => bridge.destinations(t || null, String(x || "")),
-    recall: t => bridge.recall(String(t || "")),
-    source: ref => bridge.source(ref),
-    held: id => bridge.held(String(id || "")),
-    quick: t => launcher.quick(String(t || ""), cat()),
-    full: t => launcher.full(String(t || ""), cat()),
-    icons: () => ({}),
-    actions: () => null,
-    send: no, answer: no, act: no, pick: no, copy: no, watch: no, unwatch: no, cancel: no, reportRead: no, dmOpen: no, dmClose: no,
-  };
-  const APP = path.join(REPO, "local", "capsule", "app");
-  const srv = http.createServer(async (req, res) => {
-    const u = new URL(req.url || "/", "http://x");
-    if (req.method === "POST" && u.pathname.startsWith("/__bridge/")) {
-      let body = "";
-      for await (const c of req) body += c;
-      const fn = api[u.pathname.slice(10)];
-      let out;
-      try { out = fn ? await fn(...JSON.parse(body || "[]")) : null; } catch (e) { out = { error: /** @type {Error} */ (e).message }; }
-      res.writeHead(200, { "content-type": "application/json" });
-      return res.end(JSON.stringify(out ?? null));
-    }
-    const f = path.join(APP, path.normalize(decodeURIComponent(u.pathname)).replace(/^([/\\])+/, ""));
-    if (!f.startsWith(APP + path.sep) || !fs.existsSync(f) || !fs.statSync(f).isFile()) { res.writeHead(404); return res.end(); }
-    res.writeHead(200, { "content-type": MIME[path.extname(f)] || "application/octet-stream" });
-    fs.createReadStream(f).pipe(res);
-  });
-  await new Promise(r => srv.listen(0, "127.0.0.1", () => r(undefined)));
-  stops.push(() => new Promise(r => { srv.closeAllConnections(); srv.close(() => r(undefined)); }));
-  capsuleSrv = { base: `http://127.0.0.1:${/** @type {any} */ (srv.address()).port}` };
-  return capsuleSrv;
-}
-
-// The stub the Capsule page gets instead of preload.cjs: the same names, over fetch.
-const CAPSULE_STUB = `(() => {
-  const call = name => (...a) => fetch("/__bridge/" + name, { method: "POST", body: JSON.stringify(a) }).then(r => r.json());
-  const noop = () => {};
-  const on = {};
-  const api = { size: noop, dismiss: noop, pin: noop, timing: noop, paintPing: noop };
-  for (const n of ["onState", "onOpen", "onMore", "onReport"]) api[n] = fn => { on[n] = fn; };
-  const snap = call("snapshot");
-  api.snapshot = () => snap().then(s => { setTimeout(() => { window.__capReady = true; }, 300); return s; });
-  window.vyre = new Proxy(api, { get: (t, k) => (k in t ? t[k] : call(String(k))) });
-})();`;
-
 // ---- taking one shot ----------------------------------------------------------------------------
 
 let sharp = null;
@@ -413,7 +341,7 @@ try {
     if (missing.length) log(`docs-shots: skipping ${s.name}: ${missing.join(", ")} is not in this checkout`);
     return !missing.length;
   });
-  const needDeck = ready.some(s => s.world === "deck" || s.world === "capsule");
+  const needDeck = ready.some(s => s.world === "deck");
   const w = needDeck ? await deck() : null;
   const port = await proxy();
   const browser = await launch({ bin: CHROME, dir: WORK, args: [`--host-resolver-rules=MAP ${HOST} 127.0.0.1:${port}`,
@@ -434,23 +362,6 @@ try {
         await page.send("Page.addScriptToEvaluateOnNewDocument", { source: theme === "light"
           ? `try { localStorage.setItem("vyre.theme", "paper"); } catch {}` : `try { localStorage.removeItem("vyre.theme"); } catch {}` });
         await save(shot, theme, await capture(page, shot, { navigate: base + shot.url, homes }));
-        report(shot, page);
-      } catch (e) { log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1; }
-      finally { await page.close(); }
-    }
-  }
-
-  // The Capsule.
-  const caps = ready.filter(s => s.world === "capsule");
-  if (caps.length) {
-    const c = await capsule();
-    for (const shot of caps) {
-      log(`${shot.name}`);
-      const page = await browser.page();
-      try {
-        await page.send("Emulation.setDefaultBackgroundColorOverride", { color: { r: 0, g: 0, b: 0, a: 0 } });
-        await page.send("Page.addScriptToEvaluateOnNewDocument", { source: CAPSULE_STUB });
-        await save(shot, "dark", await capture(page, shot, { navigate: c.base + shot.url, homes }));
         report(shot, page);
       } catch (e) { log(`  ${shot.name}: FAILED: ${/** @type {Error} */ (e).message}`); process.exitCode = 1; }
       finally { await page.close(); }
