@@ -60,6 +60,7 @@ days across two or three teams), L (a week or more, several teams).
 | 17 | Shrink the boundaries allowlist | ci, owners of each edge | M | proposed |
 | 18 | Inline pictures in chat: an agent's screen at a step, or an image it made | chat (render, owns), sessions, cohesion (sight), glass | M | proposed, 0.1.1 |
 | 19 | A file lands in the right project, a session can join one later, Vyre Drive gets credit | projects (owns routing + layout), files, federation (Vyre Drive), memory-iq, chat, cohesion | L | proposed, 0.1.x |
+| 20 | The Chrome extension and the Capsule, one login experience | vault (owns), capsule-pro, cohesion | S | decided, 0.1.1 |
 
 ### 1. One screen service on both sides
 
@@ -293,6 +294,19 @@ point - "move this chat into a project" - but building it waits for chat's relau
 module a surface actually calls); what "the project's graph" means precisely for a session that
 already has its own memory before attaching. This spec sets direction and owners; it does not fix
 the tool names.
+
+### 20. The Chrome extension and the Capsule, one login experience
+
+Decided by the lead 2026-09-28: the extension ships in 0.1.1, and cohesion's part is making it and
+the Capsule feel like one product, not two front doors to the same passwords. One vault (the
+extension reads and fills through the same vault items and the same grants the Capsule already
+uses, never its own store); one grants model (a fill from the extension shows up in the same
+grant/audit log as a fill from the Capsule, no separate history); one "waiting on you" (an
+extension-side need_credential or a pending grant is a `waiting.list` row, cohesion item 8, the
+same as everything else); the same account-row look (item 3's Connections list is what both render
+from, so an account added in one shows up in the other with no separate "connect the extension"
+step). Vault owns the vault side; capsule-pro keeps the Capsule's own fill UI as the reference look
+the extension matches, not the other way around.
 
 ## One service, both sides
 
