@@ -123,8 +123,22 @@ export default {
 
     ctx.tool("mcp.call", {
       description: "Call a tool on an MCP server: { server, tool, arguments } or { name: \"<server>__<tool>\", arguments }. A read runs and returns the server's result. Anything else is held at the Gate and returns { held, message }: nothing reaches the server until the user approves it, so do not try it another way.",
-      input: obj({ server: str, tool: str, name: str, arguments: { type: "object" } }),
-      run: (input, meta) => hub.call(input, who(meta)),
+      input: obj({ server: str, tool: str, name: str, arguments: { type: "object" },
+        hold: { type: "boolean", description: "modules only: hold this call at the Gate even if the tool reads" },
+        on_behalf: obj({ thread: str, agent: str }) }),
+      run: (input, meta) => {
+        // A module (mail) calls for a chat or an agent that vyred verified for it: the held item is
+        // filed under that thread and agent. From anyone else both fields are dropped, never trusted.
+        const mod = String(meta.caller || "").startsWith("module:");
+        const { hold, on_behalf, ...rest } = input;
+        const w = who(meta);
+        if (mod && on_behalf && typeof on_behalf === "object") {
+          if (typeof on_behalf.thread === "string" && on_behalf.thread) w.thread = on_behalf.thread;
+          if (typeof on_behalf.agent === "string" && on_behalf.agent) w.agent = on_behalf.agent;
+          w.person = true;
+        }
+        return hub.call({ ...rest, ...(mod && hold === true ? { hold: true } : {}) }, w);
+      },
     });
 
     ctx.tool("mcp.release", {

@@ -79,9 +79,14 @@ export default {
     for (const a of accounts.all()) await offer(a);
 
     /** Hold something at the Gate, filed under the model's own thread when vyred verified one. */
+    // A module (mail) passes the chat or agent vyred verified for it as `on_behalf`; from anyone
+    // else that field is ignored, so a model cannot file its send under another thread.
     const hold = async (acct, to, content, input, meta) => {
+      const mod = String(meta?.caller || "").startsWith("module:");
+      const b = mod && input.on_behalf && typeof input.on_behalf === "object" ? input.on_behalf : {};
+      const thread = named(b.thread) || (meta && meta.thread) || undefined;
       const r = await ctx.call("gate.request", { kind: "send", via: `google:${acct.name}`, to, content,
-        ...(named(input.why) ? { why: input.why } : {}), ...(meta && meta.thread ? { thread: meta.thread } : {}) });
+        ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(named(b.agent) ? { agent: b.agent } : {}) });
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
       return r.data.id;
     };
@@ -368,7 +373,7 @@ export default {
 
     ctx.tool("google.mail.send", {
       description: "Send an email as the user. It is always held at the Gate until the user approves it (and may edit it); returns { held, message }. Nothing is sent from here.",
-      input: obj({ ...mailInput, why: str }, ["to", "subject", "body"]),
+      input: obj({ ...mailInput, why: str, on_behalf: obj({ thread: str, agent: str }) }, ["to", "subject", "body"]),
       run: safe(async (input, meta) => {
         const acct = forWrite(accounts.all(), named(input.account));
         const { to, c } = mailContent(input);

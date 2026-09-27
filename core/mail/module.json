@@ -1,0 +1,23 @@
+{
+  "name": "mail",
+  "version": "0.1.0",
+  "roles": ["box", "local"],
+  "requires": ["vault", "gate"],
+  "does": {
+    "tools": [
+      "mail.accounts", "mail.add", "mail.update", "mail.remove", "mail.test",
+      "mail.send", "mail.search", "mail.read", "mail.find", "mail.compose", "mail.release"
+    ]
+  },
+  "watches": { "emits": ["mail.added", "mail.updated", "mail.removed", "mail.held", "mail.sent", "mail.needs-credential"] },
+  "shows": {
+    "deck": ["settings:connections"],
+    "capsule": {
+      "results:mail.find": { "title": "Mail" },
+      "action:mail.compose": { "title": "Write it" }
+    },
+    "cli": ["connect"]
+  },
+  "needs": { "vault": ["per-connection"] },
+  "teaches": {}
+}
