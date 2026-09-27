@@ -41,8 +41,12 @@ async function world(t, { turns, config = {}, threads = [], usd = 0.002, answers
 
 test("reader: which turns are sent", () => {
   for (const x of ["my wife dani just got off three night shifts, shes a nurse", "walked biscuit (our beagle) in the rain again", "tableplus is open on my other monitor",
-    "sold the outback today, kinda sad", "im in portland not seattle lol", "been vegetarian like 10 years and the options near here suck", "ma is flying in from tucson to see the new place"]) assert.ok(signal(x), x);
-  for (const x of ["fix the failing test in src/cart/total.ts", "commit that", "", "ok", "Run the tests again, the snapshot looks flaky.", "```js\nconst my = wife;\n```"]) assert.ok(!signal(x), x);
+    "sold the outback today, kinda sad", "im in portland not seattle lol", "been vegetarian like 10 years and the options near here suck", "ma is flying in from tucson to see the new place",
+    "wife's bday is the 14th, any gift ideas"]) assert.equal(signal(x), 2, x);
+  // Everything else of a few words is read too, after the personal turns, and only its start.
+  for (const x of ["fix the failing test in src/cart/total.ts", "Run the tests again, the snapshot looks flaky."]) assert.equal(signal(x), 1, x);
+  assert.equal(signal("priya asked if the bakery app is slow", new Set(["priya"])), 2, "a name memory knows");
+  for (const x of ["commit that", "", "ok", "```js\nconst my = wife;\n```"]) assert.equal(signal(x), 0, x);
   assert.equal(turnHash("my wife is a nurse"), turnHash("my wife is a nurse"));
   assert.notEqual(turnHash("my wife is a nurse"), turnHash("my wife is a doctor"));
 });
@@ -67,14 +71,22 @@ test("reader: a fact must quote the user's own words, and name what it says", ()
   // The pasted email's wife is Marcus's: its words are not the user's.
   assert.equal(ok({ subj: "me", rel: "spouse", obj: "name:Helen", q: "my wife Helen", conf: 0.9 }), "not the user's words");
   assert.equal(ok({ subj: "kin:spouse", rel: "role", obj: "lit:doctor", q: "shes a nurse", conf: 0.9 }), "object not in the turn");
-  assert.equal(ok({ subj: "kin:mother", rel: "role", obj: "lit:nurse", q: "shes a nurse", conf: 0.9 }), "subject not in the turn");
+  // A role the turn does not say, in a turn about family: the model saw the batch, so it stands, lower.
+  assert.equal(checkRead({ subj: "kin:mother", rel: "role", obj: "lit:nurse", q: "shes a nurse", conf: 0.9 }, own).claims?.[0].conf, 0.6);
+  assert.equal(checkRead({ subj: "kin:mother", rel: "role", obj: "lit:nurse", q: "fix the build", conf: 0.9 }, ownOf("fix the build before lunch")).error, "subject not in the turn", "no family in the turn");
+  assert.equal(checkRead({ subj: "kin:mother", rel: "role", obj: "lit:nurse", q: "the nurse app", conf: 0.9 }, ownOf("the nurse app needs a login page")).error, "subject not in the turn");
+  assert.equal(checkRead({ subj: "kin:spouse", rel: "role", obj: "lit:worked a double", q: "worked a double", conf: 0.9 }, ownOf("the wife worked a double")).error, "not an occupation");
+  assert.equal(checkRead({ subj: "kin:spouse", rel: "birthday", obj: "lit:14th", q: "bday is the 14th", conf: 0.9 }, ownOf("wife's bday is the 14th")).error, "no month");
   assert.equal(ok({ subj: "me", rel: "role", obj: "lit:nurse", q: "shes a nurse", conf: 0.3 }), "too unsure");
-  assert.equal(ok({ subj: "me", rel: "hobby", obj: "lit:x", q: "shes a nurse" }), "unknown relation");
+  assert.equal(ok({ subj: "me", rel: "shoe_size", obj: "lit:x", q: "shes a nurse" }), "unknown relation");
   const car = ownOf("BOUGHT THE TRUCK. blue ford maverick hybrid. and sold the outback to a kid");
   const c = f => checkRead(f, car).claims?.map(x => `${x.subj}|${x.rel}|${x.obj}`) || checkRead(f, car).error;
   assert.deepEqual(c({ subj: "me", rel: "owns", obj: "vehicle:Ford Maverick Hybrid", q: "blue ford maverick hybrid", conf: 0.9 }), ["me|owns|vehicle:Ford Maverick"]);
   assert.deepEqual(c({ subj: "vehicle:ford maverick", rel: "color", obj: "lit:Blue", q: "blue ford maverick", conf: 0.9 }), ["vehicle:Ford Maverick|color|lit:blue"]);
   assert.deepEqual(c({ subj: "me", rel: "sold", obj: "vehicle:outback", q: "sold the outback", conf: 0.9 }), ["me|ended:owns|vehicle:Subaru Outback"]);
+  const move = ownOf("boxes everywhere, the move from portland is friday. i grew up in denver");
+  assert.equal(checkRead({ subj: "me", rel: "from", obj: "place:Portland", q: "the move from portland", conf: 0.9 }, move).error, "not where they are from");
+  assert.deepEqual(checkRead({ subj: "me", rel: "from", obj: "place:denver", q: "i grew up in denver", conf: 0.9 }, move).claims?.map(x => x.obj), ["place:Denver"]);
   const pet = ownOf("walked biscuit (our beagle) in the rain");
   assert.deepEqual(checkRead({ subj: "name:biscuit", rel: "breed", obj: "lit:Beagle", q: "biscuit (our beagle)", conf: 0.9 }, pet).claims?.map(x => x.obj), ["lit:beagle"]);
   assert.equal(checkRead({ subj: "me", rel: "breed", obj: "lit:beagle", q: "our beagle", conf: 0.9 }, pet).error, "a breed is a pet's");
@@ -85,12 +97,12 @@ test("reader: reads land as model claims, once per text, and survive a full re-r
     turns: ["my wife dani just got off nights, shes a nurse", "fix the flaky snapshot test", "my wife dani just got off nights, shes a nurse"],
     answers: { "shes a nurse": [{ subj: "kin:spouse", rel: "role", obj: "lit:nurse", q: "shes a nurse", conf: 0.9 }, { subj: "me", rel: "spouse", obj: "name:Dani", q: "my wife dani", conf: 0.9 }] },
   });
-  assert.equal(w.reader.status().waiting_turns, 1, "two turns, one text");
+  assert.equal(w.reader.status().waiting_turns, 2, "three turns, two texts");
   const r = await w.reader.drain();
-  assert.equal(r.runs, 1); assert.equal(r.read, 1);
+  assert.equal(r.runs, 1); assert.equal(r.read, 2);
   assert.equal(w.sent.length, 1);
   assert.equal(w.sent[0].model, "haiku");
-  assert.doesNotMatch(w.sent[0].prompt, /flaky snapshot/, "a turn with no personal signal is not sent");
+  assert.ok(w.sent[0].prompt.indexOf("shes a nurse") < w.sent[0].prompt.indexOf("flaky snapshot"), "the personal turn goes first");
   assert.deepEqual(w.fact("kin:spouse", "role"), ["nurse"]);
   assert.deepEqual(w.fact("kin:spouse", "name"), ["Dani"]);
   const m = /** @type {any} */ (w.db.prepare("SELECT method, COUNT(*) n FROM memory_me_claims WHERE rel = 'role' GROUP BY method").all());
@@ -102,8 +114,8 @@ test("reader: reads land as model claims, once per text, and survive a full re-r
   assert.equal((await w.reader.drain()).runs, 0);
   assert.equal(w.sent.length, 1);
   const s = w.reader.status();
-  assert.equal(s.read_turns, 1);
-  assert.equal(s.usd_per_1000_turns, 2);
+  assert.equal(s.read_turns, 2);
+  assert.equal(s.usd_per_1000_turns, 1);
   assert.equal(s.waiting_turns, 0);
 });
 

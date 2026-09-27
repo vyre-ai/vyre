@@ -32,9 +32,9 @@ export const LOWER = 0.45;
 export const SINGULAR = new Set(["spouse", "partner", "mother", "father"]);
 
 /** Relations where one value holds at a time: a new value competes with the old one. */
-export const SINGLE_VALUED = new Set(["name", "birthday", "lives_in", "from", "works_at", "role", "drives", "color", "breed", "diet", "spouse", "partner", "mother", "father"]);
+export const SINGLE_VALUED = new Set(["name", "birthday", "lives_in", "from", "works_at", "role", "drives", "color", "breed", "age", "diet", "spouse", "partner", "mother", "father"]);
 /** Of those, the ones that change over a life: the newest value is favoured, not just tie-broken. */
-export const TIME_VARYING = new Set(["lives_in", "works_at", "role", "drives", "diet"]);
+export const TIME_VARYING = new Set(["lives_in", "works_at", "role", "drives", "diet", "age"]);
 
 /** word -> [role, gender]. Gender only steers she/he; null matches either. */
 export const KIN = /** @type {Record<string, [string, "f"|"m"|null]>} */ ({
@@ -1114,3 +1114,6 @@ export function canonVehicle(label) {
 
 /** The user's own words in a turn: no code, no quoted, pasted or dictated text (what the rules read). */
 export const ownText = (/** @type {string} */ text) => readable(String(text || ""), "user").join(" ");
+
+/** Every make and model's first word, lower case: a turn with one may be about the user's car. */
+export const CAR_NAMES = new Set([...MAKES, ...Object.keys(MODELS)].map(m => m.toLowerCase().split(/\s+/)[0]));

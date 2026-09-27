@@ -8,6 +8,7 @@
 
 import { extractPersonal, CONF, KIN, SINGULAR, SINGLE_VALUED, TIME_VARYING, relOfRole } from "./extract.js";
 import { signal, turnHash } from "./reader.js";
+import { ordinary } from "./words.js";
 import { MIGRATIONS } from "../schema.js";
 import { migrate } from "../../store/index.js";
 
@@ -103,8 +104,10 @@ export class Personal {
     const addClaim = db.prepare(`INSERT INTO memory_me_claims (session, seq, ts, subj, rel, obj, conf, method) VALUES (?,?,?,?,?,?,?,?)
       ON CONFLICT DO UPDATE SET ts = excluded.ts, conf = max(conf, excluded.conf), method = excluded.method`);
     const addCue = db.prepare("INSERT OR IGNORE INTO memory_me_cues (session, seq, ts, text) VALUES (?,?,?,?)");
+    // Names memory knows (people, pets): a turn that mentions one is read too.
+    const known = this.known();
     // A user turn with a personal signal waits for the reader (./reader.js), keyed by its text.
-    const enqueue = db.prepare("INSERT INTO memory_me_queue (session, seq, ts, hash) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET ts = excluded.ts, hash = excluded.hash");
+    const enqueue = db.prepare("INSERT INTO memory_me_queue (session, seq, ts, hash, pri) VALUES (?,?,?,?,?) ON CONFLICT DO UPDATE SET ts = excluded.ts, hash = excluded.hash, pri = excluded.pri");
     const done = db.prepare("INSERT INTO memory_me_cursor (session, upto, at, focus) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET upto = excluded.upto, at = excluded.at, focus = excluded.focus");
     let turns = 0, claims = 0, more = false;
     // One transaction per batch, not per session: a commit per session was most of a first
@@ -124,7 +127,8 @@ export class Personal {
           focus = r.focus;
           for (const c of r.claims) { addClaim.run(session, seq, ts, c.subj, c.rel, c.obj, c.conf, c.method); claims++; }
           for (const q of r.cues) addCue.run(session, seq, ts, q);
-          if (String(t.role) === "user" && signal(String(t.text))) enqueue.run(session, seq, ts, turnHash(String(t.text)));
+          const pri = String(t.role) === "user" ? signal(String(t.text), known) : 0;
+          if (pri) enqueue.run(session, seq, ts, turnHash(String(t.text)), pri);
         }
         const upto = all ? /** @type {number} */ (recall.get(session)) : take[take.length - 1].seq + 1;
         done.run(session, upto, this.now(), focus ? JSON.stringify(focus) : null);
@@ -134,6 +138,32 @@ export class Personal {
     });
     if (claims) this.dirty = true;
     return { turns, claims, more };
+  }
+
+  /** Names memory knows for people and pets, one lower-case word each, no kin or ordinary words. */
+  known() {
+    return new Set(/** @type {any[]} */ (this.db.prepare(`SELECT DISTINCT lower(a.alias) w FROM memory_me_aliases a JOIN memory_me_entities e ON e.id = a.entity
+      WHERE e.kind IN ('person', 'pet') AND a.alias NOT LIKE '% %' AND length(a.alias) >= 3`).all()).map(r => String(r.w)).filter(w => /^[a-z][a-z-]+$/.test(w) && !KIN[w] && !ordinary(w)));
+  }
+
+  /**
+   * A name memory just learned: the user turns that mention it move to the front of the reader's
+   * queue ("biscuit's crate fits" was read before Biscuit was known). Returns the turns queued.
+   * @param {Iterable<string>} names
+   */
+  requeue(names) {
+    if (!this.hasRecall()) return 0;
+    const find = this.db.prepare("SELECT session, seq, ts, text FROM recall_turns WHERE role = 'user' AND lower(text) LIKE ? LIMIT 2000");
+    const put = this.db.prepare("INSERT INTO memory_me_queue (session, seq, ts, hash, pri) VALUES (?,?,?,?,2) ON CONFLICT DO UPDATE SET pri = 2");
+    let n = 0;
+    this.tx(() => {
+      for (const name of names) for (const r of /** @type {any[]} */ (find.all(`%${name}%`))) {
+        const text = String(r.text);
+        if (!new RegExp(`\\b${name}\\b`, "i").test(text) || signal(text, new Set([name])) !== 2) continue;
+        n += Number(put.run(String(r.session), Number(r.seq), Number(r.ts) || 0, turnHash(text)).changes);
+      }
+    });
+    return n;
   }
 
   /**

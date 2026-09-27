@@ -8,6 +8,7 @@
 //   node scripts/eval-answer.js --record  read the world's turns with the fast model (`claude -p`) into
 //            test/eval/reads/<world>.json; by default the reads are replayed from there, no model
 //   node scripts/eval-answer.js --no-model  the rules alone
+//   node scripts/eval-answer.js --claims <text>  also list the claims that name it (not for fresh)
 //   node scripts/eval-answer.js --facts  also list the personal facts the world left (not for fresh)
 //   node scripts/eval-answer.js --keyword  without the dense index (keyword recall only)
 //   node scripts/eval-answer.js --world heldout  the held-out world (test/fixtures/personal-heldout.js
@@ -288,7 +289,8 @@ export async function runEval(opts = {}) {
     await mem.call("memory.curate", { full: true });
     let recorded = null;
     if (mode === "record") {
-      recorded = (await mem.call("memory.read", { now: true, max_runs: 1000 })).ran;
+      const got = await mem.call("memory.read", { now: true, max_runs: 1000 });
+      recorded = { ...got.ran, ...(got.ran.waiting ? { why: got.status.last?.result ?? null } : {}) };
       const reads = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT hash, facts FROM memory_me_reads WHERE v = ? ORDER BY hash").all(VERSION)).map(r => [String(r.hash), JSON.parse(String(r.facts))]));
       fs.mkdirSync(path.dirname(readsFile), { recursive: true });
       fs.writeFileSync(readsFile, JSON.stringify({ version: VERSION, model: modelFor({}), reads }, null, 1) + "\n");
@@ -308,7 +310,10 @@ export async function runEval(opts = {}) {
       curate_ms: round(curateMs),
     };
     // --facts: the personal facts the world left, for working on the rules (never on the sealed world).
-    if (opts.facts) world.facts = /** @type {any[]} */ (db.prepare("SELECT subj, rel, obj, obj_label, confidence, current, sessions FROM memory_me_facts ORDER BY subj, rel, confidence DESC").all());
+    if (opts.facts) world.facts = /** @type {any[]} */ (db.prepare(`SELECT subj, rel, obj, obj_label, confidence, current, sessions,
+      (SELECT group_concat(DISTINCT c.method) FROM memory_me_claims c WHERE c.rel = f.rel AND c.obj = f.obj) methods FROM memory_me_facts f ORDER BY subj, rel, confidence DESC`).all());
+    // --claims <text>: every claim whose subject or object has that text, with where it came from.
+    if (opts.claims) world.claims = /** @type {any[]} */ (db.prepare("SELECT session, seq, subj, rel, obj, conf, method FROM memory_me_claims WHERE subj LIKE ? OR obj LIKE ? ORDER BY ts").all(`%${opts.claims}%`, `%${opts.claims}%`));
     const all = answerers(mem, opts.scratch || SCRATCH);
     /** @type {Record<string, any>} */
     const results = {};
@@ -335,7 +340,7 @@ function print(r) {
   const out = [];
   out.push(`eval-answer: ${w.sessions} sessions, ${w.turns} turns, ${w.vectors} vectors (${w.embedder}); ${w.questions} questions, ${w.unknowns} with no answer`);
   out.push(`  embedded in ${Math.round(w.embed_ms)} ms, curated in ${Math.round(w.curate_ms)} ms`);
-  out.push(`  reader: ${w.model}, ${w.unread_turns} turns with no read${w.recorded ? `; recorded ${w.recorded.read} turns in ${w.recorded.runs} runs for $${w.recorded.usd}${w.recorded.read ? ` ($${Math.round(w.recorded.usd / w.recorded.read * 1e6) / 1e3} per 1,000 turns)` : ""}${w.recorded.waiting ? `, stopped: ${w.recorded.waiting}` : ""}` : ""}`);
+  out.push(`  reader: ${w.model}, ${w.unread_turns} turns with no read${w.recorded ? `; recorded ${w.recorded.read} turns in ${w.recorded.runs} runs for $${w.recorded.usd}${w.recorded.read ? ` ($${Math.round(w.recorded.usd / w.recorded.read * 1e6) / 1e3} per 1,000 turns)` : ""}${w.recorded.waiting ? `, stopped: ${w.recorded.waiting}${w.recorded.why ? ` (${w.recorded.why})` : ""}` : ""}` : ""}`);
   for (const [name, a] of Object.entries(r.answerers)) {
     out.push("");
     if (!a.supported) { out.push(`${name}: unsupported (${a.reason})`); continue; }
@@ -372,8 +377,15 @@ async function main(argv) {
   const world = wi >= 0 ? argv[wi + 1] : "personal";
   if (argv.includes("--facts") && world === "fresh") throw new Error("the fresh world is sealed: no --facts");
   const model = argv.includes("--record") ? "record" : argv.includes("--no-model") ? "off" : "replay";
-  const r = await runEval({ world, vectors: !argv.includes("--keyword"), facts: argv.includes("--facts"), model });
-  if (r.world.facts) for (const f of r.world.facts) process.stdout.write(`  ${f.current ? " " : "x"} ${f.subj} ${f.rel} ${f.obj_label || f.obj} @${round(f.confidence)} (${f.sessions})\n`);
+  const ai = argv.indexOf("--ask");
+  if (ai >= 0 && world === "fresh") throw new Error("the fresh world is sealed: no --ask");
+  const ci = argv.indexOf("--claims");
+  if (ci >= 0 && world === "fresh") throw new Error("the fresh world is sealed: no --claims");
+  const r = await runEval({ world, vectors: !argv.includes("--keyword"), facts: argv.includes("--facts"), model, claims: ci >= 0 ? argv[ci + 1] : null,
+    ...(ai >= 0 ? { gold: { questions: [{ q: argv[ai + 1], expect: null }] }, full: true } : {}) });
+  if (ai >= 0) { process.stdout.write(JSON.stringify(r.answerers.answer.answers[0], null, 1) + "\n"); return; }
+  if (r.world.claims) for (const c of r.world.claims) process.stdout.write(`  ${c.subj} ${c.rel} ${c.obj} @${round(c.conf)} ${c.method} ${String(c.session).slice(-4)}:${c.seq}\n`);
+  if (r.world.facts) for (const f of r.world.facts) process.stdout.write(`  ${f.current ? " " : "x"} ${f.subj} ${f.rel} ${f.obj_label || f.obj} @${round(f.confidence)} (${f.sessions}) ${f.methods || ""}\n`);
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 2) + "\n"); else print(r);
   // CI runs this: a memory.answer under the bar fails the build.
   const bad = barFailures(r.answerers.answer);

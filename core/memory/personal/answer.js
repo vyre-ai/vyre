@@ -37,7 +37,8 @@ const STOP = new Set(`a an the i i'm me my mine myself we our us you your is are
 
 /** Words the rules read. A typo within one edit of one of these is read as it ("wfie" is "wife"). Short
  * common words ("name", "live") are left out: one edit turns too many ordinary words into them. */
-const VOCAB = new Set([...Object.keys(KIN), "birthday", "bday", "vehicle", "drive", "company", "employer", "client", "clients", "contact",
+// "mama" is one letter from Maya, Mara and Mika: names win.
+const VOCAB = new Set([...Object.keys(KIN).filter(w => w !== "mama" && w !== "ma"), "birthday", "bday", "vehicle", "drive", "company", "employer", "client", "clients", "contact",
   "editor", "prefer", "colour", "before", "where", "which"]);
 
 /** Damerau-Levenshtein distance, stopping early past 1: all a typo check needs. */
@@ -114,6 +115,10 @@ const OF = /** @type {[RegExp, string][]} */ ([
   ["what colou?r is S", "color"],
   [`is S (?:an? )?(?:${DIETS})`, "diet"],
   ["what (?:is )?S diet", "diet"],
+  ["how old (?:is|are) S(?: now)?", "age"],
+  ["what age is S(?: now)?", "age"],
+  ["(?:what (?:is|are) )?S (?:hobby|hobbies)", "hobby"],
+  ["what does S do for fun", "hobby"],
 ].map(([s, rel]) => [new RegExp(`^${s.replace("S", SUBJ)}$`), rel]));
 const PRONOUN = new Set("he she they him her them his hers theirs someone anyone everyone somebody nobody".split(" "));
 
@@ -175,7 +180,7 @@ for (const a of ["email", "mail", "email app", "mail app", "mail client"]) CATEG
  * @typedef {{ kind: "kin", word: string, role: string }
  *   | { kind: "birthday", who: Who }
  *   | { kind: "born" }
- *   | { kind: "car", before: string|null, color: boolean }
+ *   | { kind: "car", before: string|null, color: boolean, qual?: string|null }
  *   | { kind: "lives", before: string|null }
  *   | { kind: "work" }
  *   | { kind: "job" }
@@ -187,7 +192,7 @@ for (const a of ["email", "mail", "email app", "mail app", "mail client"]) CATEG
  *   | { kind: "myname" }
  *   | { kind: "who", name: string }
  *   | { kind: "attr", noun: string }
- *   | { kind: "of", who: { kin?: string, name?: string }, rel: string, cat?: string|null }
+ *   | { kind: "of", who: { kin?: string, name?: string, me?: boolean }, rel: string, cat?: string|null }
  *   | { kind: "carFate", car: string }
  *   | { kind: "diet", asked: string|null }} Parsed
  * @typedef {{ kin?: string, name?: string, me?: boolean }} Who
@@ -213,6 +218,7 @@ export function parse(q) {
   // A "db client" or "email client" is software, not a customer.
   if (/\bclients?\b/.test(t) && !kin && !/\b(?:db|database|sql|email|mail|git|ftp|api|http|rest) clients?\b/.test(t)) return { kind: "clients" };
   if (/\b(?:birthday|bday)\b/.test(t) || /\bwhen (?:is|was) .*\bborn\b/.test(t)) return { kind: "birthday", who: whoOf(t, kin) };
+  if (!kin && /^(?:what (?:are|is) my (?:hobby|hobbies)|my (?:hobby|hobbies)|what do i do for fun|what do i (?:like|love|enjoy) doing|what do i do in my (?:free|spare) time)$/.test(t)) return { kind: "of", who: { me: true }, rel: "hobby" };
   // Someone else's attribute before any of the user's own: "where does my mom live" is not where the user lives.
   const of = ofQuestion(t);
   if (of) return of;
@@ -237,7 +243,11 @@ export function parse(q) {
   }
   // A move is a place lived: "where did we move to" is now, "where did we move from" before.
   if ((m = /^(?:where|which (?:city|town|country|place)) did (?:i|we) (?:move|relocate)(?: to)?( from)?(?: again)?$/.exec(t))) return { kind: "lives", before: m[1] ? "then" : null };
-  if (CAR_RE.test(t)) return { kind: "car", before, color: /\bcolou?r\b/.test(t) };
+  // "what electric car do i drive": a kind of car memory cannot check is asked of the car's own words.
+  if (CAR_RE.test(t)) {
+    const qual = /\b(electric|ev|hybrid|diesel|petrol|gas|sports?|convertible|classic|vintage|work)\b/.exec(t)?.[1];
+    return { kind: "car", before, color: /\bcolou?r\b/.test(t), ...(qual ? { qual } : {}) };
+  }
   // A job question before a place: "what do i do for a living" is not where the user lives.
   if (/\bwhat do i do\b(?! for (?:fun|lunch|dinner))|\bfor a living\b|\bwhat (?:is|was) my (?:job|role|occupation|profession|line of work|job title)\b|\bmy (?:job|occupation|profession|line of work)$|\bwhat do i work as\b|\bwork do i do\b/.test(t)) return { kind: "job" };
   if (/\b(?:live|lived|living|based|reside)\b/.test(t) && /\b(?:i|we|my)\b/.test(t)) return { kind: "lives", before };
@@ -286,7 +296,7 @@ const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 const ROLE_WORD = /** @type {Record<string, string>} */ ({ spouse: "spouse", partner: "partner", mother: "mother", father: "father", child: "child", son: "son", daughter: "daughter", brother: "brother", sister: "sister", pet: "pet", friend: "friend", colleague: "colleague" });
 const PEOPLE = new Set(Object.keys(ROLE_WORD));
 /** Pet names for relatives, in their plain form. */
-const FORMAL = /** @type {Record<string, string>} */ ({ hubby: "husband", wifey: "wife", missus: "wife", mummy: "mum", mommy: "mom", daddy: "dad" });
+const FORMAL = /** @type {Record<string, string>} */ ({ hubby: "husband", wifey: "wife", missus: "wife", mummy: "mum", mommy: "mom", ma: "mom", mama: "mom", daddy: "dad" });
 const KIN_LABEL = new Set([...Object.keys(KIN), ...Object.keys(ROLE_WORD)]);
 const esc = s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const hasWord = (text, w) => new RegExp(`(^|[^a-z0-9])${esc(w)}($|[^a-z0-9])`, "i").test(text);
@@ -386,6 +396,7 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
    * @param {{ kin?: string, name?: string }} who
    */
   const subjectOf = who => {
+    if (who.me) return { id: "me", label: "You" };
     if (who.kin) {
       const word = who.kin, role = roleOf(word);
       if (!role) return null;
@@ -458,6 +469,7 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
         const cur = current(owns);
         const f = d && cur.some(o => o.obj === d.obj) ? cur.find(o => o.obj === d.obj) : cur[0] || d;
         if (!f) return null;
+        if (p.qual && !hasWord(f.object, p.qual)) return null;
         const c = carText(f);
         if (p.color) {
           if (!c.col) return null;
@@ -499,7 +511,9 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
         return fromFacts(`Your contact${names.length > 1 ? "s" : ""} at ${org.label} ${names.length > 1 ? "are" : "is"} ${list(names)}.`, people);
       }
       case "clients": {
-        const fs = current(personal.lookup({ subj: "me", rel: "client" }));
+        // The user's own company is never their client.
+        const own = new Set(current(personal.lookup({ subj: "me", rel: "works_at" })).map(f => f.obj));
+        const fs = current(personal.lookup({ subj: "me", rel: "client" })).filter(f => !own.has(f.obj));
         const names = fs.map(f => f.object);
         // The graph's clients too ("Northwind Bakery is your client"), once each.
         for (const g of graphClients()) if (!names.some(n => n.toLowerCase() === g.label.toLowerCase())) names.push(g.label);
@@ -572,6 +586,11 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
           case "breed": { const f = one("breed"); return f ? fromFacts(`${S} is ${art(f.object)}.`, [f]) : null; }
           case "color": { const f = one("color"); return f ? fromFacts(`${S} is ${f.object}.`, [f]) : null; }
           case "diet": { const f = one("diet"); return f ? fromFacts(`${S} is ${f.object}.`, [f]) : null; }
+          case "age": { const f = one("age"); return f ? fromFacts(`${S} is ${f.object}.`, [f]) : null; }
+          case "hobby": {
+            const fs = current(personal.lookup({ subj: s.id, rel: "hobby" }));
+            return fs.length ? fromFacts(`${S} ${s.id === "me" ? "enjoy" : "enjoys"} ${list(fs.map(f => f.object))}.`, fs) : null;
+          }
           case "car": {
             const d = one("drives");
             const f = d || current(personal.lookup({ subj: s.id, rel: "owns" })).find(x => x.obj.startsWith("vehicle:"));
@@ -744,7 +763,7 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
       case "who": return p.name;
       case "contact": return "contact";
       // Someone else's attribute takes only a line that states it: "my wife's job is ...".
-      case "of": return `${p.who.kin || p.who.name} ${OF_NOUN[p.rel] || p.rel}`;
+      case "of": return `${p.who.me ? "" : p.who.kin || p.who.name} ${OF_NOUN[p.rel] || p.rel}`.trim();
       case "carFate": return p.car;
       case "diet": return "diet";
       default: return null;

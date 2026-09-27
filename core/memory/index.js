@@ -34,6 +34,11 @@ export default {
     // Personal facts (docs/work/memory-iq.md): read after each curator pass, in batches that yield.
     const personal = new Personal(ctx.store.db, { log: ctx.log });
     /** Read every unread turn for personal facts, then derive if anything changed. */
+    /** Names memory knew after the last pass: new ones send their older turns to the reader. */
+    // Kept in memory_meta so a restart does not scan for every name again.
+    const metaGet = ctx.store.db.prepare("SELECT v FROM memory_meta WHERE k = 'me_known'");
+    const metaSet = ctx.store.db.prepare("INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('me_known', ?)");
+    let knownNames = new Set((() => { try { return JSON.parse(String(/** @type {any} */ (metaGet.get())?.v ?? "[]")); } catch { return []; } })());
     const personalPass = async ({ full = false } = {}) => {
       let turns = 0, claims = 0;
       while (!stopping) {
@@ -44,6 +49,12 @@ export default {
         await new Promise(r => setImmediate(r));
       }
       const d = stopping ? { changed: false } : personal.derive();
+      // A name just learned: the turns that mention it are read by the model too.
+      if (!stopping) {
+        const now = personal.known(), fresh = [...now].filter(w => !knownNames.has(w));
+        knownNames = now;
+        if (fresh.length) { personal.requeue(fresh); metaSet.run(JSON.stringify([...now])); }
+      }
       // New user turns may wait for the reader: kept reads apply at once, the rest in a batch.
       if (turns && !stopping) { model.applyKept(); void model.pump(); }
       return { turns, claims, changed: d.changed };

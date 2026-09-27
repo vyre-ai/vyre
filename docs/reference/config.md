@@ -73,7 +73,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_CAPSULE_LOG` | Writes the Capsule's log to stdout from a packaged build. | `local/capsule/app/main.js` |
 | `VYRE_CAPSULE_STAY` | Not described yet. | `local/capsule/app/main.js` |
 | `VYRE_CAPSULE_TRACE_WAKE` | Times each wake of the Capsule. | `local/capsule/app/main.js` |
-| `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
+| `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
 | `VYRE_CLOUDFLARE_API` | The Cloudflare API base URL, in place of the real one. | `core/names/index.js` |
 | `VYRE_COMPUTERS_CAP_ADD` | Extra Linux capabilities for agent computers, comma separated. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |

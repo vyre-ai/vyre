@@ -20,12 +20,12 @@
 
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
-import { relOfRole, canonVehicle, ownText } from "./extract.js";
+import { relOfRole, canonVehicle, ownText, CAR_NAMES } from "./extract.js";
 import { OBJ, KIN_RELS, DIETS, ANYONE, NAME } from "./model.js";
 
 /** Bump when the prompt changes what a read means: old reads are then read again. */
-export const VERSION = 1;
-export const READER = { batch: 20, gapMs: 60_000, dailyUsd: 0.25, backfillUsd: 2, maxConf: 0.8, model: "haiku", maxChars: 1500, perTurn: 12, timeoutMs: 120_000,
+export const VERSION = 4;
+export const READER = { batch: 20, gapMs: 60_000, dailyUsd: 0.25, backfillUsd: 2, maxConf: 0.8, model: "haiku", maxChars: 1500, weakChars: 400, perTurn: 12, timeoutMs: 120_000,
   // Haiku's list price per million tokens: for the estimate a run is checked against before it starts.
   usdPerMIn: 1, usdPerMOut: 5 };
 const BUSY = ["starting", "working", "waiting"];
@@ -33,7 +33,7 @@ const BUSY = ["starting", "working", "waiting"];
 // ------------------------------------------------------------------ which turns
 
 /** A turn someone might say something about their life in: first person, and a life word. */
-const PERSONAL = /\b(?:i|i'm|im|i've|ive|i'd|my|our|we|we're|me|us|mine)\b|\b(?:hubby|wifey|missus|the (?:wife|husband|kids|missus|dog|cat)|ma|mum|mom|dad)\b/i;
+const PERSONAL = /\b(?:i|i'm|im|i've|ive|i'd|my|our|we|we're|me|us|mine)\b|\b(?:hubby|wifey|missus|the (?:wife|husband|kids|missus|dog|cat)|ma|mum|mom|dad)\b|(?:^|[.!?]\s+)(?:(?:just|finally|so|also|and)\s+)*(?:sold|bought|moved|picked|walked|been|got|made|took|drove|started|quit|adopted|married|finished|booked|flying|visiting)\b/im;
 const LIFE = new RegExp("\\b(?:" + [
   "wife|husband|spouse|hubby|wifey|missus|partner|girlfriend|boyfriend|fianc\\w*|married|wedding|anniversary",
   "mom|mum|mother|ma|mama|dad|father|papa|parents?|sister|brother|sibling|son|daughter|kids?|child|children|baby|twins|grand\\w+|aunt|uncle|cousin|in-laws?",
@@ -50,18 +50,33 @@ const LIFE = new RegExp("\\b(?:" + [
 /** "im in portland", "we're from leeds", "i'm based in austin", "im in neovim all day": where or what, said of oneself. */
 const WHERE = /\b(?:i'?m|im|i am|we'?re|we are)\s+(?:now\s+|still\s+|currently\s+)?(?:in|at|from|based|living|staying)\b/i;
 
-/** The text of a turn worth sending, or null: no code, bounded, and with a personal signal. */
-export function readable(text) {
+/** Words that say enough on their own, with no "I": a relative, a pet, a birthday, a move, a car's name. */
+const STRONG = /\b(?:wife|husband|hubby|wifey|missus|spouse|partner|girlfriend|boyfriend|fianc\w*|mom|mum|mother|mama|dad|father|sister|brother|son|daughter|kids?|children|toddler|baby|dog|cat|puppy|kitten|birthday|bday|anniversary|married|wedding|moved|moving|vegetarian|vegan|truck|car)\b/i;
+const WORD = /[a-z][a-z0-9-]+/g;
+
+/**
+ * The text of a turn to send and how soon, or null. Every user turn of a few words or more is
+ * read in the end: the model leaves a turn with nothing personal out at the cost of its input
+ * alone. A turn with a personal signal (a relative, a pet, a car, a move, "i" with a life word, a
+ * name memory knows) goes first and whole (maxChars); the rest wait behind it and send only
+ * their start (weakChars), where people put the aside before the request.
+ * known: names memory already knows (a relative's, a pet's, a friend's), lower case.
+ * @param {string} text @param {Set<string>|null} [known]
+ * @returns {{ text: string, pri: 1|2 }|null}
+ */
+export function readable(text, known = null) {
   let t = String(text || "").replace(/```[\s\S]*?(?:```|$)/g, " ").replace(/\s+\n/g, "\n").trim();
-  if (t.length < 8) return null;
-  if (!PERSONAL.test(t) || !(LIFE.test(t) || WHERE.test(t))) return null;
-  if (t.length > READER.maxChars) t = t.slice(0, READER.maxChars).replace(/\s+\S*$/, "") + " ...";
-  return t;
+  if (t.length < 12 || (t.match(/[A-Za-z]{2,}/g) || []).length < 3) return null;
+  const mentions = () => { for (const w of t.toLowerCase().match(WORD) || []) if (CAR_NAMES.has(w) || (known && known.has(w))) return true; return false; };
+  const pri = STRONG.test(t) || (PERSONAL.test(t) && (LIFE.test(t) || WHERE.test(t))) || mentions() ? 2 : 1;
+  const max = pri === 2 ? READER.maxChars : READER.weakChars;
+  if (t.length > max) t = t.slice(0, max).replace(/\s+\S*$/, "") + " ...";
+  return { text: t, pri };
 }
-/** Does this user turn go to the model at all? */
-export const signal = text => readable(text) !== null;
+/** How soon a user turn is read: 2 first, 1 after, 0 never. */
+export const signal = (text, known = null) => readable(text, known)?.pri ?? 0;
 /** The key a read is kept under: the words sent and the prompt's version. */
-export const turnHash = text => crypto.createHash("sha256").update(`${VERSION}\u0000${readable(text) ?? ""}`).digest("hex").slice(0, 32);
+export const turnHash = text => crypto.createHash("sha256").update(`${VERSION}\u0000${readable(text)?.text ?? ""}`).digest("hex").slice(0, 32);
 
 // ------------------------------------------------------------------ the prompt
 
@@ -77,16 +92,20 @@ export const SYSTEM = [
   "  me -> spouse|partner|mother|father|sister|brother|son|daughter|child -> kin:<same role>; me pet kin:dog|kin:cat; me friend name:<Name>",
   "  kin:<role> or name:<Name> -> name -> lit:<Name>   (my wife dani: me spouse kin:spouse, and kin:spouse name lit:Dani)",
   "  anyone -> lives_in | from -> place:<Name>;  works_at -> org:<Name>;  role -> lit:<occupation>;  birthday -> lit:<day Month>;  diet -> lit:vegetarian|vegan|pescatarian|keto|halal|kosher|gluten-free",
-  "  a pet -> breed -> lit:<breed>",
+  "  role is an occupation noun (nurse, teacher, app developer), never an activity;",
+  "  a pet -> breed -> lit:<breed>;  anyone -> age -> lit:<years, a number>;  anyone -> hobby -> lit:<activity>",
   "  me -> owns | drives | sold -> vehicle:<Make Model>;  vehicle:<Make Model> -> color -> lit:<colour>;  me -> owns -> lit:<thing>",
   "  me -> client -> org:<Name>;  me -> uses -> tool:<Name>;  me -> prefers -> lit:<short phrase>",
   "",
   "Rules:",
   "- Only what the USER states as true of their own life. Not: text they pasted or quoted (emails, messages, group chats, tickets, lines starting with >), copy or stories they ask you to write, demo, seed or test data and personas, hypotheticals (if we ever, would, might), questions, comparisons they ask for, or other people's families, homes, pets and cars.",
   "- Another person's relative is not the user's: 'theo's wife mara' gives nothing about the user's wife. 'my buddy theo' gives me friend name:Theo, and theo's car is not the user's.",
+  "- Use kin:<role> as a subject only in a turn that says the role; a turn that calls them only by name uses name:<Name>. The user's relationship to someone (me spouse, me son) only when the turn says it.",
   "- A relative is the subject of their own facts: 'my mom lives in tucson' is kin:mother lives_in place:Tucson, never me lives_in. 'the wife is a nurse' is kin:spouse role lit:nurse.",
   "- 'the wife', 'hubby', 'ma', 'the kids', 'our dog' are the user's own. A pronoun (she, he) is whoever the turn just named.",
   "- Where the user lives: only once they live there ('made it to denver', 'our new place in denver', 'now that we live in denver'). A planned move is conf 0.5. A trip, a visit or flying somewhere is not where they live. A correction ('im in portland not seattle') is.",
+  "- Work: the user's own company or LLC is me works_at org. A business the user builds or fixes things for, or bills, is me client org. A named person at it ('marcus from harlow legal', 'priya at northwind') is name:<Name> works_at org:<Name>.",
+  "- Tools: an app or program the user works in ('im in neovim', 'tableplus is open') is me uses tool:<Name>.",
   "- Selling, trading in or giving up a vehicle is sold. A new vehicle bought is owns, and its colour is a color fact.",
   "- Names as the user means them, capitalised (dani -> Dani). The q words must be copied from the turn exactly, however they are spelled.",
   "- conf: 0.9 said outright, 0.7 clearly implied, 0.5 a guess worth keeping. Nothing lower.",
@@ -102,7 +121,7 @@ export function readerPrompt(turns) {
   return turns.map((x, i) => [
     `<turn t="${i}">`,
     x.before ? `(the assistant had just said: ${fence(x.before).replace(/\s+/g, " ").slice(-300)})` : null,
-    fence(/** @type {string} */ (readable(x.text))),
+    fence(readable(x.text)?.text ?? ""),
     "</turn>",
   ].filter(Boolean).join("\n")).join("\n\n");
 }
@@ -123,7 +142,8 @@ export function parseReads(text) {
 
 // ------------------------------------------------------------------ checking a fact
 
-const norm = s => String(s || "").toLowerCase().replace(/[‘’ʼ`´]/g, "'").replace(/[“”]/g, '"').replace(/[^\p{L}\p{N}'@.+#-]+/gu, " ").trim();
+const norm = s => String(s || "").toLowerCase().replace(/[‘’ʼ`´]/g, "'").replace(/[“”]/g, '"').replace(/[^\p{L}\p{N}'@.+#-]+/gu, " ")
+  .split(" ").map(w => w.replace(/^['.@#+-]+|['.-]+$/g, "")).filter(Boolean).join(" ");
 const words = s => norm(s).split(" ").filter(Boolean);
 /** Every word of the value is in the text (any case): the model may not invent it. */
 const said = (value, own) => { const w = words(value); return w.length > 0 && w.every(x => own.words.has(x)); };
@@ -133,11 +153,23 @@ const cap1 = w => w.charAt(0).toUpperCase() + w.slice(1);
 const title = s => s.split(/\s+/).map(w => (/^[a-z]/.test(w) ? cap1(w) : w)).join(" ");
 /** The words that name each role, as people type them. */
 const ROLE_SAID = /** @type {Record<string, RegExp>} */ ({
-  spouse: /\b(?:wife|husband|spouse|hubby|wifey|missus|married)\b/, partner: /\b(?:partner|girlfriend|boyfriend|fianc\w*|other half|better half|gf|bf)\b/,
-  mother: /\b(?:mother|mom|mum|mama|mummy|mommy|ma)\b/, father: /\b(?:father|dad|daddy|papa|pops)\b/, sister: /\b(?:sister|sis)s?\b/, brother: /\b(?:brother|bro)s?\b/,
-  son: /\bsons?\b/, daughter: /\bdaughters?\b/, child: /\b(?:kids?|child|children|little one|toddler|baby)\b/,
-  dog: /\b(?:dogs?|pupp(?:y|ies)|pup)\b/, cat: /\b(?:cats?|kittens?|kitty)\b/, friend: /\b(?:friends?|buddy|buddies|pals?|bestie|mate)\b/,
+  spouse: /\b(?:wife|husband|spouse|hubby|hubs|wifey|missus|mrs|married)\b/, partner: /\b(?:partner|girlfriend|boyfriend|fianc\w*|other half|better half|significant other|gf|bf)\b/,
+  mother: /\b(?:mother|mom|mum|mama|mummy|mommy|ma|mam)\b/, father: /\b(?:father|dad|daddy|papa|pops|pa)\b/, sister: /\b(?:sister|sis)s?\b/, brother: /\b(?:brother|bro)s?\b/,
+  son: /\b(?:sons?|boys?|lad)\b/, daughter: /\b(?:daughters?|girls?|lass)\b/,
+  child: /\b(?:kids?|kiddos?|child|children|little ones?|wee ones?|toddler|baby|twins?|eldest|youngest|oldest|middle one)\b/,
+  dog: /\b(?:dogs?|pupp(?:y|ies)|pup|doggo)\b/, cat: /\b(?:cats?|kittens?|kitty)\b/, friend: /\b(?:friends?|buddy|buddies|pals?|bestie|mate)\b/,
 });
+/** Family said some other way: the model's role stands, held a little lower. */
+const FAMILY = /\b(?:wife|husband|hubby|hubs|missus|partner|other half|mom|mum|mother|ma|dad|father|sister|brother|son|daughter|kids?|kiddos?|child|children|boys?|girls?|twins?|eldest|youngest|oldest|little ones?|family|dog|cat|pup|puppy|kitten|pets?)\b/;
+/** The role said in the turn: full confidence; family said some other way: FAMILY_CONF; else null. */
+const roleConf = (role, own, conf) => {
+  if (!ROLE_SAID[role]) return null;
+  if (ROLE_SAID[role].test(own.text)) return conf;
+  // The model saw the whole batch, so it may know who "mia" is from another turn: its role
+  // stands, a little lower, as long as the turn is about family at all.
+  if (role === "friend") return null;
+  return FAMILY.test(own.text) ? Math.min(conf, 0.6) : null;
+};
 
 /**
  * One fact the model gave for one turn: the claims it becomes, or why not.
@@ -163,7 +195,7 @@ export function checkRead(f, own) {
   // a colour) a vehicle the turn names.
   let subj = null;
   if (f.subj === "me") subj = "me";
-  else if (sk === "kin" && ROLE_SAID[sv] && ROLE_SAID[sv].test(own.text)) subj = `kin:${sv}`;
+  else if (sk === "kin" && roleConf(sv, own, conf) != null) { conf = /** @type {number} */ (roleConf(sv, own, conf)); subj = `kin:${sv}`; }
   else if (sk === "name" && NAME.test(title(sv)) && said(sv, own)) subj = `name:${title(sv)}`;
   else if (sk === "vehicle" && rel === "color") { const v = canonVehicle(sv); if (v && words(sv).some(w => own.words.has(w))) subj = `vehicle:${v}`; }
   if (!subj) return { error: "subject not in the turn" };
@@ -190,13 +222,20 @@ export function checkRead(f, own) {
       return ok === "kin" && ov === "friend" ? { claims: [{ subj, rel, obj: "kin:friend", conf }] } : { error: "object of the wrong kind" };
     }
     const role = rel === "pet" ? (ok === "kin" && (ov === "dog" || ov === "cat") ? ov : null) : rel;
-    if (!role || !ROLE_SAID[role] || !ROLE_SAID[role].test(own.text)) return { error: "role not in the turn" };
+    if (!role || roleConf(role, own, conf) == null) return { error: "role not in the turn" };
+    conf = /** @type {number} */ (roleConf(role, own, conf));
     if (ok === "kin") return ov === role || (rel === "pet" && ov === role) ? { claims: [{ subj, rel, obj: `kin:${role}`, conf }] } : { error: "role mismatch" };
     if (ok === "name" && NAME.test(title(ov)) && said(ov, own)) return { claims: [{ subj, rel, obj: `kin:${role}`, conf }, { subj: `kin:${role}`, rel: "name", obj: `lit:${title(ov)}`, conf }] };
     return { error: "object not in the turn" };
   }
+  // Where someone is from is where they began, never where they moved from or flew in from.
+  if (rel === "from" && !/\b(?:grew up|born|raised|originally|hometown|home town|native|(?:i'?m|im|we'?re|am|is|are|she'?s|he'?s) from|comes? from)\b/.test(q)) return { error: "not where they are from" };
   if (rel === "breed" && !(subj === "kin:dog" || subj === "kin:cat" || subj.startsWith("name:"))) return { error: "a breed is a pet's" };
   if (rel === "diet" && !DIETS.has(ov.toLowerCase())) return { error: "not a diet" };
+  // A role is an occupation ("nurse"), never something done ("worked a double").
+  if (rel === "role" && /^(?:\w+ed|got|went|did|does|do|is|was|has|had|on|off|in|at|doing|working)\b|\b(?:shift|shifts|double|overtime)\b/i.test(ov)) return { error: "not an occupation" };
+  // A birthday names its month ("the 14th" alone would compete with "14 March" as a rival value).
+  if (rel === "birthday" && !/\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b|\d{1,2}[/.-]\d{1,2}/i.test(ov)) return { error: "no month" };
   if (rel === "name" && !NAME.test(title(ov))) return { error: "not a name" };
   // A vehicle may be named by its model alone ("the outback"): one of its words is enough.
   const objSaid = ok === "vehicle" ? words(ov).some(w => own.words.has(w)) : rel === "diet" && /\b(?:meat)\b/.test(own.text) ? true : said(ov, own);
@@ -237,7 +276,9 @@ export function claudeOnce(o = {}) {
   return ({ system, prompt, model, maxUsd }) => new Promise((resolve, reject) => {
     const args = ["-p", "--model", model, "--output-format", "json", "--tools", "", "--strict-mcp-config", "--setting-sources", "",
       "--no-session-persistence", "--disable-slash-commands", "--system-prompt", system, "--max-budget-usd", String(Math.max(0.01, maxUsd))];
-    const p = spawn(o.bin || process.env.VYRE_CLAUDE_BIN || "claude", args, { cwd: o.cwd || process.cwd(), env: o.env || process.env, stdio: ["pipe", "pipe", "pipe"] });
+    // No extended thinking: on this job it spent 21k tokens and three minutes a batch for the same reads.
+    const env = { ...(o.env || process.env), MAX_THINKING_TOKENS: "0" };
+    const p = spawn(o.bin || process.env.VYRE_CLAUDE_BIN || "claude", args, { cwd: o.cwd || process.cwd(), env, stdio: ["pipe", "pipe", "pipe"] });
     let out = "", err = "";
     const timer = setTimeout(() => { p.kill("SIGKILL"); reject(new Error("the model did not answer in time")); }, READER.timeoutMs);
     p.stdout.on("data", d => { out += d; });
@@ -303,9 +344,9 @@ export function createReader(deps) {
     return n;
   };
 
-  /** Turns with no kept read, newest first, one per distinct text. */
+  /** Turns with no kept read, personal ones first, newest first, one per distinct text. */
   const unread = limit => /** @type {any[]} */ (db.prepare(`SELECT q.session, q.seq, q.ts, q.hash FROM memory_me_queue q
-    WHERE NOT EXISTS (SELECT 1 FROM memory_me_reads r WHERE r.hash = q.hash) GROUP BY q.hash ORDER BY MAX(q.ts) DESC LIMIT ?`).all(limit));
+    WHERE NOT EXISTS (SELECT 1 FROM memory_me_reads r WHERE r.hash = q.hash) GROUP BY q.hash ORDER BY MAX(q.pri) DESC, MAX(q.ts) DESC LIMIT ?`).all(limit));
   const unreadCount = () => Number(/** @type {any} */ (db.prepare(`SELECT COUNT(DISTINCT hash) n FROM memory_me_queue q
     WHERE NOT EXISTS (SELECT 1 FROM memory_me_reads r WHERE r.hash = q.hash)`).get()).n);
 
@@ -363,7 +404,7 @@ export function createReader(deps) {
     /** @type {any[][]} */
     const byTurn = turns.map(() => []);
     for (const x of a.value) if (x && Number.isInteger(x.t) && x.t >= 0 && x.t < turns.length && Array.isArray(x.facts)) byTurn[x.t].push(...x.facts.slice(0, READER.perTurn));
-    const keep = db.prepare("INSERT OR REPLACE INTO memory_me_reads (hash, v, at, facts, usd) VALUES (?,?,?,?,?)");
+    const keep = db.prepare("INSERT OR IGNORE INTO memory_me_reads (hash, v, at, facts, usd) VALUES (?,?,?,?,?)");
     personal.tx(() => turns.forEach((x, i) => keep.run(x.hash, VERSION, now(), JSON.stringify(byTurn[i]), usd / turns.length)));
     const claims = applyKept();
     db.prepare("UPDATE memory_me_model SET status = 'done', finished = ?, facts = ?, result = ? WHERE id = ?")
@@ -380,12 +421,16 @@ export function createReader(deps) {
     timer.unref?.();
   };
 
+  /** One batch at a time, whoever asks: two at once would read the same turns twice. */
+  let flight = Promise.resolve();
+  const single = fn => { const p = flight.then(fn, fn); flight = p.catch(() => {}); return p; };
+
   const api = {
     /** Start a batch if every limit allows. On events only. Never throws. */
     async pump() {
       if (running || stopped) return { waiting: "busy" };
       running = true;
-      try { const r = await once(); if (r.read || r.waiting === "a minute apart" || r.waiting === "a thread is working") schedule(); return r; }
+      try { const r = await single(() => once()); if (r.read || r.waiting === "a minute apart" || r.waiting === "a thread is working") schedule(); return r; }
       catch (e) { log("memory reader: " + /** @type {Error} */ (e).message); return { waiting: "error" }; }
       finally { running = false; }
     },
@@ -396,7 +441,7 @@ export function createReader(deps) {
     async drain({ maxRuns = 1000 } = {}) {
       let runs = 0, read = 0, claims = 0, usd = 0, why = null;
       while (runs < maxRuns && !stopped) {
-        const r = await once({ force: true });
+        const r = await single(() => once({ force: true }));
         if (!r.read) { why = r.waiting || null; break; }
         runs++; read += r.read; claims += r.claims || 0; usd += r.usd || 0;
       }

@@ -6,9 +6,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Memory reads your turns with the fast model, once each
 
-- The reader (core/memory/personal/reader.js) sends every user turn with a personal signal to the
-  fast model (config.models.memory, then config.models.background, then haiku) in batches of 20.
-  It never sends code blocks. It runs on events only, a minute apart at the least, never while a
+- The reader (core/memory/personal/reader.js) sends every user turn of a few words to the fast
+  model (config.models.memory, then config.models.background, then haiku) in batches of 20, with
+  thinking off. It never sends code blocks. Turns with a personal signal go first and whole: a
+  relative, a pet, a car, a move, "i" with a life word, or a name memory already knows. The
+  rest follow with only their first 400 characters. A newly learned name moves its turns forward. It runs on events only, a minute apart at the least, never while a
   user thread is working, and under a daily cap (config.memory.model.dailyUsd, $0.25). A one-time
   backfill allowance (backfillUsd, $2) covers the history that was already there. Spend is what
   the model reports.
@@ -18,6 +20,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - What the model said about a text is kept by the text's hash (memory_me_reads). A re-read, a
   rewritten transcript or the same words elsewhere never pay twice. The old cue pass through the
   Switchboard is gone.
+- New relations `age` and `hobby` (anyone's), with questions "how old is sam" and "what do i do
+  for fun". A model birthday must name its month, a role must be an occupation, and "from" must
+  say where someone began.
 - New tool `memory.read {now?}` gives the usage line: today's spend, the backfill, turns waiting
   and cost per 1,000 turns. With `now: true` it reads at once, within the caps. `vyre status`
   shows the backfill and the turns still to read.

@@ -1,0 +1,1040 @@
+{
+ "version": 4,
+ "model": "haiku",
+ "reads": {
+  "01ba48678770e53fb193899b53fd8787": [
+   {
+    "subj": "kin:cat",
+    "rel": "name",
+    "obj": "lit:Pepper",
+    "q": "our cat pepper is at the vet this morning",
+    "conf": 0.9
+   }
+  ],
+  "038175d9b48eeddeef431cf0f57705fd": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Bristol",
+    "q": "it's pouring in bristol again",
+    "conf": 0.9
+   }
+  ],
+  "03d6c0189fd11a9d003e1c4925b99a4a": [],
+  "040a4cf7924c72ca15144fbf7c63e2da": [],
+  "04b31dccf5d672a2dd47181937b7b82e": [],
+  "05f5600a157751825a675ddb747cc637": [],
+  "0612e171f35077ac93e1c985cf3f4207": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "whats my husband's name?",
+    "conf": 0.7
+   }
+  ],
+  "0693f709da188c63131d51129281ec77": [
+   {
+    "subj": "name:Bea",
+    "rel": "partner",
+    "obj": "name:Tom",
+    "q": "bea's partner tom",
+    "conf": 0.7
+   },
+   {
+    "subj": "name:Tom",
+    "rel": "works_at",
+    "obj": "org:Northwind Bakery",
+    "q": "tom runs the other northwind shop",
+    "conf": 0.9
+   }
+  ],
+  "074596fd2b1f6d7e6951900c80dae272": [],
+  "0773c396aa111d55feb4a8f133572973": [],
+  "089c337dadb6acf319951af87a6f0181": [],
+  "09b8566dad7393619b9b05cc441a5524": [
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:cat",
+    "q": "pepper hates the new house",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:cat",
+    "rel": "name",
+    "obj": "lit:Pepper",
+    "q": "pepper hates the new house",
+    "conf": 0.9
+   }
+  ],
+  "0b88f4095690c876eec47b11d43a5419": [
+   {
+    "subj": "name:Bea",
+    "rel": "works_at",
+    "obj": "org:Northwind Bakery",
+    "q": "bea at northwind bakery",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind Bakery",
+    "q": "bea at northwind bakery wants the new menu pdf",
+    "conf": 0.9
+   }
+  ],
+  "0cc5066fba5c914ed47021e2f494f8c0": [],
+  "0d94a31aa528af0c984a90317bd2b4b9": [
+   {
+    "subj": "me",
+    "rel": "role",
+    "obj": "lit:freelance designer",
+    "q": "im a freelance designer",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Figma",
+    "q": "mostly figma",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "hobby",
+    "obj": "lit:front end",
+    "q": "i do a bit of front end",
+    "conf": 0.7
+   }
+  ],
+  "0d96b79ce35cd072b8050a4acfafd5a5": [],
+  "0e0cff7f564d3ce215255ff7234aee11": [],
+  "0e8ee1ec4d60a05c29eac0ced9464acb": [],
+  "0ed11618d316a9e5ca3e28cfd47882f0": [],
+  "1105354842d0fd57a9f00e5ea3db906f": [],
+  "1183c18bbc5e479a3376d1806880d326": [],
+  "118e4bdce00bcef175d844ffac503417": [],
+  "11a670fcaf2aa48cebc24ac896344e1e": [],
+  "11cff3717d277c667d8b83d3caeab1e0": [],
+  "13c86a6be6ec9d869e0abded648b25de": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "harlow legal's wills service",
+    "conf": 0.9
+   }
+  ],
+  "13ce2e4289104238c8db9f35b46cdb19": [],
+  "13f6771f98d7b63531c2f3fe059f498c": [],
+  "144f82d2384b90e2f22d522d9d1db2ed": [],
+  "15c48b1c2a89f64b8e553c9012a4197b": [],
+  "15e34082c172f4256aff9b11b194d803": [],
+  "188b13521974585f6fdbdeda59cb4389": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "lit:UK VAT registration",
+    "q": "uk, vat registered no",
+    "conf": 0.9
+   }
+  ],
+  "18bc40d9cbad8224f6ee22a9e2db224b": [],
+  "1a87b064520cbbef93ec37258f3e3a3f": [],
+  "1a8d11ec004461b29352f668673a8a18": [],
+  "1bcedca83769366a4ad09ffdfb6a7602": [],
+  "1ca1a1ec02d42fd4f9fcd4d97341a452": [],
+  "1cffc0ba12783b4eb5004d6172acb3a8": [],
+  "1f3e638c738080b5f511cd7dd2585b81": [],
+  "2091e39aeaac754250d5277c1d5b8280": [],
+  "21dd22b354443aac4dba624d298271ac": [],
+  "221edf43c5fd7ad8265e0cdf6066d8d7": [],
+  "222019a468593e72911fcc4e9f49198d": [],
+  "22a1a7e535f82c91897e4c4e45e73c1e": [],
+  "23940cf490bde8c2a4367d1e55184972": [],
+  "23fe54ce30c737a4d341da3c0794ce6d": [],
+  "240ec3b3300cece17e1e034545d5ecf7": [],
+  "2531911943a2be250eb6b6e44af5da48": [],
+  "264074b8c166c98906b76198abd7b805": [],
+  "2673be754db055acfa726ee3d0a7632a": [],
+  "274865f8f6efd56c687c943e2d612d62": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "harlow legal want another round on the homepage",
+    "conf": 0.9
+   }
+  ],
+  "278a15e296a1cd36a614f61bedcffa16": [],
+  "283135b8098761499317d14f4fd81c4b": [],
+  "2850dac4cbfd25bdf9c267e0fae5cd41": [
+   {
+    "subj": "me",
+    "rel": "partner",
+    "obj": "kin:partner"
+   },
+   {
+    "subj": "kin:partner",
+    "rel": "name",
+    "obj": "lit:Robin",
+    "q": "robin's job is moving up there",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:partner",
+    "rel": "lives_in",
+    "obj": "place:Leeds",
+    "q": "we're viewing houses in leeds",
+    "conf": 0.5
+   }
+  ],
+  "2902947045e71ab74c94f17229948eb6": [],
+  "295ec03883023c81ed5cbaec1c4a1ef9": [
+   {
+    "subj": "me",
+    "rel": "partner",
+    "obj": "kin:partner",
+    "q": "my husband",
+    "conf": 0.9
+   }
+  ],
+  "2d7e1aa28bfa502443b3b5590c8e0ea6": [
+   {
+    "subj": "me",
+    "rel": "friend",
+    "obj": "name:Football parents",
+    "q": "whatsapp to the football parents",
+    "conf": 0.5
+   }
+  ],
+  "2e8525452165d585730bb10e962ac779": [],
+  "2ea74f0a59c92ddc9ad401dfc260bdfe": [],
+  "3087d0cc76a423c5bccd826298aaaae6": [],
+  "31561787df621379f052f9571e4e0833": [],
+  "3295bd970c9455982279d51ce7268ace": [],
+  "3575e84e18cd4a5ef4e9b3675d8476c0": [],
+  "35cbe2ee26f7057efc3c25a7a925b457": [],
+  "36307b7ce581cf74e55c465e3bda416c": [],
+  "36e6c2394c6c005dacd1367f95fa801f": [],
+  "37f7fde608275e17d4fb1b19f5a671b4": [],
+  "3815f11fc500fed0def87adbec93008d": [],
+  "39ea70492854e2b907ba48e1526d5217": [
+   {
+    "subj": "name:Theo",
+    "rel": "age",
+    "obj": "lit:9",
+    "q": "any ideas to make the move easier for a 9 year old",
+    "conf": 0.9
+   },
+   {
+    "subj": "name:Theo",
+    "rel": "from",
+    "obj": "place:Bristol",
+    "q": "theo was born in bristol",
+    "conf": 0.9
+   }
+  ],
+  "3b488067c1b8cc40567e6922484e1bab": [],
+  "3c9cc3c9dacf91b4c5450953f109c090": [],
+  "3d5371e664041505679dea70b10f1469": [
+   {
+    "subj": "kin:partner",
+    "rel": "name",
+    "obj": "lit:Robin",
+    "q": "robin and i can split the days",
+    "conf": 0.9
+   }
+  ],
+  "3d8156562f370d6b66c2c0366e67bd8e": [],
+  "3d96fc16ac10b7984cfed3d8452a722e": [],
+  "3dabc010f307f866b9a08d3fc64adb79": [
+   {
+    "subj": "kin:partner",
+    "rel": "name",
+    "obj": "lit:Robin",
+    "q": "robin and i had a debate",
+    "conf": 0.9
+   }
+  ],
+  "3dd2b9551415e20764b41e9fa47ef0a9": [],
+  "3f0929a84c202565c11cafe7ac9bc48c": [],
+  "3f54087d11c4ce455e9b7ff4b22ae59e": [],
+  "3f9e626945b5eab3e648ca7a2a2ce0e6": [],
+  "3fb8bee6b571ca037627801b4fbfa00e": [],
+  "405f89c694778bcf457a25da1eae3531": [],
+  "40c0f8568d23739f271e69eeedf8c7d8": [],
+  "40f3aedc6a3cee826ad85406a32e01b3": [],
+  "414c3b109e5aac1c305832945b7816b7": [],
+  "4305c88bb2e6b53a0653b3f031b369fd": [],
+  "431c648c8f2432afd034c26f6bd9fac5": [],
+  "434d0346207cf4954c4089de6e883093": [],
+  "4681c6ca22c2086c8fa77d300495526b": [],
+  "468dfc145158d4f103261e46b86431b1": [],
+  "46e50c42d86e1d65f0bbc94412d716ee": [],
+  "47e41d77154669f587a7d471a69e2f1f": [],
+  "47f53f2a0aac4874c0d6091130aeeaa2": [],
+  "4838e0c1451680501d771eed1200a70b": [
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Isla",
+    "q": "isla's our youngest",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:daughter",
+    "rel": "age_order",
+    "obj": "lit:youngest",
+    "q": "isla's our youngest",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:daughter",
+    "rel": "hobby",
+    "obj": "lit:design",
+    "q": "she's decided she's a designer too",
+    "conf": 0.7
+   }
+  ],
+  "48b94da277294c38e1fd5d7a17bd32a1": [],
+  "495c097a14111560f4e3965bc94be8de": [],
+  "49deb37edf44a915f1e27544e0dac058": [],
+  "4a2153db7c63304c161f3267c49996ce": [],
+  "4a88ba8ada75aed8d83f2933933791a5": [],
+  "4aa2efca9c2b1b4bf326e02848725bab": [],
+  "4ad0c71067b22de15c07a509629a91a9": [],
+  "4ae8614b39b8af8d9b447752a70be6ac": [],
+  "4ca754b91c494033f3abd491f43c039b": [],
+  "4ebbd113ee9fe5246ab32cfda2e779b4": [
+   {
+    "subj": "me",
+    "rel": "drives",
+    "obj": "vehicle:Honda",
+    "q": "the honda is making that grinding noise again",
+    "conf": 0.9
+   }
+  ],
+  "4f576f0b3d8d23dbb89e3cc9009cc2f6": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "harlow legal want another round on the homepage",
+    "conf": 0.9
+   }
+  ],
+  "4fbff2f490f2076ed5598e7a2ff9a4aa": [],
+  "50557fba4440894e422692e5f0450699": [],
+  "50677d4acff4df8d6675fe6b1334fa4c": [],
+  "50f62917d328890f5da5e0692f6c82a2": [],
+  "51a7fdf55745e718dda6b081d0718e2b": [],
+  "5289849984a55355381bd8fe8fe8beac": [],
+  "52b16fb91f456fa14d001d4423099727": [],
+  "52fcec316d0c68742f5689871edfc613": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Leeds",
+    "q": "the new place in leeds",
+    "conf": 0.9
+   }
+  ],
+  "5352f3959f1662abbc6588f333959008": [],
+  "53eb591da19314f9ea229c1cfd966a90": [
+   {
+    "subj": "kin:partner",
+    "rel": "name",
+    "obj": "lit:Robin",
+    "q": "my partner robin says",
+    "conf": 0.9
+   }
+  ],
+  "56aa5f6cbefcfbcd8528fe6ca95e1565": [
+   {
+    "subj": "kin:child",
+    "rel": "age",
+    "obj": "lit:9",
+    "q": "the kids start at the new school on monday",
+    "conf": 0.5
+   },
+   {
+    "subj": "kin:child",
+    "rel": "age",
+    "obj": "lit:6",
+    "q": "the kids start at the new school on monday",
+    "conf": 0.5
+   }
+  ],
+  "56fad0d4fff6e5cd5384f1ed57978823": [
+   {
+    "subj": "name:Theo",
+    "rel": "hobby",
+    "obj": "lit:football",
+    "q": "loading theo's football kit",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "drives",
+    "obj": "vehicle:Mazda",
+    "q": "loading theo's football kit into the mazda",
+    "conf": 0.9
+   }
+  ],
+  "573b14db829f08fe8baf4624b26c11ca": [],
+  "5798a380d988dabb52a6b84466fece64": [
+   {
+    "subj": "me",
+    "rel": "friend",
+    "obj": "name:Robin",
+    "q": "robin and i are off to york",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "travels_to",
+    "obj": "place:York",
+    "q": "robin and i are off to york for the weekend",
+    "conf": 0.7
+   }
+  ],
+  "57b261040e83de36a931c696c996863a": [],
+  "58e21c238632d373a1d68c9590680324": [],
+  "59b32bb4016ba8cc40b57afcba07f0e7": [
+   {
+    "subj": "me",
+    "rel": "partner",
+    "obj": "kin:partner",
+    "q": "my husband",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:partner",
+    "rel": "birthday",
+    "obj": "lit:2 June",
+    "q": "his birthday's the 2nd of june",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:partner",
+    "rel": "hobby",
+    "obj": "lit:cycling",
+    "q": "he likes cycling",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:partner",
+    "rel": "hobby",
+    "obj": "lit:old maps",
+    "q": "he likes cycling and old maps",
+    "conf": 0.9
+   }
+  ],
+  "5ba985c65fabf355938a1e02424e6312": [],
+  "5cfe169f0570ccc3dbb955a5da22739a": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Leeds",
+    "q": "still getting used to leeds",
+    "conf": 0.9
+   }
+  ],
+  "5d74891f7f1bb354b78d8e656c20c469": [],
+  "5dd591e74304999c76e52bddfe3c747d": [],
+  "5e0e6b7c29a27c352661958f66a6a5cb": [],
+  "5ea7e5f5e3470683b163014c682b5b90": [],
+  "5fa664ef9bf1fc5c91b6c6de322680c5": [],
+  "60cd591d25665102a6bbaf9224105c52": [],
+  "61be5fe5b36530cc413e201f6d7de636": [],
+  "624434f17bd0b0ef0ac260c2f627d49c": [
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:cat",
+    "q": "my daughter isla drew pepper all over my sketchbook",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:cat",
+    "rel": "name",
+    "obj": "lit:Pepper",
+    "q": "my daughter isla drew pepper all over my sketchbook",
+    "conf": 0.9
+   }
+  ],
+  "624bc83b1fc87a9b7aaf248b2643acfa": [],
+  "645767a2b9cb162a05d91f3b195fb667": [],
+  "653e4647065768ad2afc514d9e24f74e": [
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Isla",
+    "q": "isla's got a temperature",
+    "conf": 0.9
+   }
+  ],
+  "653ef7f50636829d32a2338cc01d9b21": [],
+  "65fe18b692c3b0bbb6ad735094d6d761": [],
+  "66bcea035ec6aca26b28f8fb0ae47718": [],
+  "68e750a1cb4ef6a532c4a1a0f30789b8": [],
+  "695b54b13863d9238401156fe2fc409b": [],
+  "69b060305bef738f959ed86e97bb7487": [],
+  "6a12a92c83e2ba0bc237ab761d305963": [],
+  "6a3022910db2cee07e332d16ea9d53c2": [],
+  "6a3ed708bd040806468dd22ae3cf24cb": [],
+  "6aa001f742157f2836f2f67d022e2bf0": [],
+  "6b115b5bbc47a4c922f7d598f56b1717": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Leeds",
+    "q": "found a nice co-working spot in leeds city centre",
+    "conf": 0.7
+   }
+  ],
+  "6b953c45deb3bd52d32ca6baeeb05e47": [],
+  "6c742575433f0cb6044c487eafc8ae27": [],
+  "6d83bfeba5b7a3992480f56c35c1389e": [],
+  "6dea0cfc3af3392ddf05121f1d96a8d4": [],
+  "6e2d9198d7ebf94fe2c000e6b7295bf1": [
+   {
+    "subj": "me",
+    "rel": "father",
+    "obj": "kin:father",
+    "q": "graham (my dad) wants me to make him a website",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:father",
+    "rel": "name",
+    "obj": "lit:Graham",
+    "q": "graham (my dad)",
+    "conf": 0.9
+   }
+  ],
+  "6f88673556ff8aee7f6ec27ddfc7522b": [
+   {
+    "subj": "me",
+    "rel": "sold",
+    "obj": "vehicle:Civic"
+   },
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Mazda CX-5"
+   },
+   {
+    "subj": "vehicle:Mazda CX-5",
+    "rel": "color",
+    "obj": "lit:red",
+    "q": "red mazda cx-5",
+    "conf": 0.9
+   }
+  ],
+  "701045b53be37d6dd741cc34eabdbe60": [],
+  "7072ab0569b4569334fcc1359d0af126": [],
+  "716d6d5ff01d5d6d89d44539c8e34a94": [],
+  "720242e09d83381b3fa308c2d71454e2": [],
+  "730db9e24adebaa5307dccf76972ce43": [],
+  "736e748953619eacba8dce5e63bf6583": [],
+  "7380e261ce85c23d46423d904b3cad83": [],
+  "743bf1d33a8f563464dc9ef0347aab12": [],
+  "75100c5c60df7718de8ec1bd649aefce": [],
+  "756cc05f6f1904f0a92affdb3b62b521": [],
+  "759feb88408d847267d04f536196c4ef": [],
+  "75ca040a58bf36ce59f275646270f56e": [
+   {
+    "subj": "name:Theo",
+    "rel": "hobby",
+    "obj": "lit:football",
+    "q": "theo has football at 5",
+    "conf": 0.9
+   }
+  ],
+  "7614812bd2607385d174983118da09c5": [],
+  "76254c1c6984a48f181e91202acd4174": [
+   {
+    "subj": "me",
+    "rel": "daughter",
+    "obj": "kin:daughter",
+    "q": "write a note to the school, isla will be off for a dentist appointment",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Isla",
+    "q": "isla will be off for a dentist appointment",
+    "conf": 0.9
+   }
+  ],
+  "764e89b4bd39d8a3f95def6bce5cdb97": [],
+  "7651dae6a18e9ef736f5852c72171bec": [],
+  "76b478578e333815ca0bf5568cd166a4": [],
+  "76ddf1fb5256f973276fd2aa62f09688": [
+   {
+    "subj": "me",
+    "rel": "partner",
+    "obj": "kin:partner",
+    "q": "it's robin's birthday today so logging off early, the kids made a cake",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:partner",
+    "rel": "name",
+    "obj": "lit:Robin",
+    "q": "it's robin's birthday today",
+    "conf": 0.9
+   }
+  ],
+  "76f777ee2cfe5d162157d6be355136e6": [
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:cat",
+    "q": "if we got a dog what breed is ok with kids and a cat",
+    "conf": 0.7
+   }
+  ],
+  "777bcf4b7bffc0aa331596f4615256a6": [],
+  "783cf3ceb1909c90f31a158f09683856": [],
+  "794a8bdac5065db371f7033edc6e4a1b": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Bristol",
+    "q": "the move from bristol is friday",
+    "conf": 0.7
+   }
+  ],
+  "79740a05c680b1a3492dab610f8a8fd3": [],
+  "799963acf0227e218ff70a2a6b2267f4": [],
+  "7a19c8e728d2f3444848d229f91162d4": [],
+  "7a39f67d20e5662957a9eba9b2439094": [],
+  "7c7af9b67bc74c65aeca2f3f44c140ea": [],
+  "7c85f3ac05b3936e4ea8d6f967a45c3d": [],
+  "7cc12a82cb248c4ace49c8bd33763984": [],
+  "7ce1e5b5e52a10cdd4b3013c3d96df91": [],
+  "7dd107aa311b002347932485edb473ec": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Obsidian",
+    "q": "i keep all my notes in obsidian",
+    "conf": 0.9
+   }
+  ],
+  "7f32f8f875949ed0e1f1f500320e5551": [],
+  "821d800647ffd21430d69448bd9601a1": [],
+  "83e4550367b1eebf0ecb0b1df4454a01": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "hubby's cooking tonight",
+    "conf": 0.7
+   }
+  ],
+  "83fd31330f87d70b1522ae77f2380380": [],
+  "840a03b2a4ec97e96f778bcaca9ac414": [],
+  "84a7f564a7133aabaa2a36397c608349": [],
+  "85a462a0893c2ed89d55f99e1f2b7d9e": [
+   {
+    "subj": "vehicle:Mazda",
+    "rel": "color",
+    "obj": "lit:unknown",
+    "q": "the mazda needs its first service already??",
+    "conf": 0.5
+   },
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Mazda",
+    "q": "the mazda needs its first service already?? only had it a few months",
+    "conf": 0.9
+   }
+  ],
+  "864142750820035d75f58eca10ee5ba0": [],
+  "86685cac6fd22722e14917424fbfed55": [],
+  "8856192adb5725123812021a2c947ab0": [],
+  "89d59e80456efdfa76f24bb325ff2356": [],
+  "8d061ab322de3030c8936154bafd1622": [],
+  "8df068989ede088d4a094662dbd5ed27": [],
+  "8df38c08f9ab56d184efece219376372": [],
+  "8e1d13ff37699cb7d459bf91e99b7e08": [],
+  "8fda21239b3e44403cd7ddf5bb1dc5d4": [],
+  "8fe85704299e549f8185215f7463d7ba": [
+   {
+    "subj": "me",
+    "rel": "friend",
+    "obj": "name:Sophie",
+    "q": "my friend sophie's",
+    "conf": 0.9
+   },
+   {
+    "subj": "name:Sophie",
+    "rel": "partner",
+    "obj": "name:Dev",
+    "q": "my friend sophie's husband dev",
+    "conf": 0.9
+   },
+   {
+    "subj": "name:Dev",
+    "rel": "owns",
+    "obj": "vehicle:Tesla",
+    "q": "he's got a tesla",
+    "conf": 0.9
+   }
+  ],
+  "90655d2fcde4f7672c1cf0100f578c5c": [],
+  "90a2d620f480f8f88b71b65768784948": [],
+  "9119ecd06e88103a9441850cba913087": [],
+  "91d751423fe3d4e027ac42f2b9fd3160": [],
+  "9225e82399bb49e205bed1103d7d2d1a": [],
+  "936178b5b90fc418291dfc5930921beb": [],
+  "937d2aaf9bb3d95811b56855b182f0f7": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "todays northwind orders changes",
+    "conf": 0.9
+   }
+  ],
+  "95da1e61b45ea1555fffd1f59bf4fbc9": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "lit:budget spreadsheet, household, monthly",
+    "q": "budget spreadsheet, household, monthly",
+    "conf": 0.5
+   }
+  ],
+  "962d1a70ab05e65ff6de9151a50613fc": [],
+  "98bd33a742ee3a0cca089ee39fc1f377": [],
+  "9b1bb68b408fd9d6674a8055a23ee2c0": [],
+  "9d0b25ccfb5ec328586ff43dd95ef73d": [],
+  "9e5985b25a829b2e4e98f511f4d7ff02": [],
+  "9e62d306aa84ba3d8c93dfff8b236b21": [],
+  "9f1d9b7e41f9cf7d6a9be7c4ca23e370": [],
+  "9f224286b60162772b900417d25a28ad": [],
+  "a04dde9aec6f29f1f607bc99ac01eb82": [],
+  "a204580d95870b9f4a7e62aaf60bc2bc": [
+   {
+    "subj": "kin:son",
+    "rel": "name",
+    "obj": "lit:Robin",
+    "q": "robin locked himself out",
+    "conf": 0.9
+   }
+  ],
+  "a23d5ea22cc0511ec779de898b3ce340": [],
+  "a261395cc9c77e87dd4802d8be121977": [
+   {
+    "subj": "me",
+    "rel": "friend",
+    "obj": "name:Theo",
+    "q": "school run with theo",
+    "conf": 0.7
+   }
+  ],
+  "a30a59b72aee59bcf23afd8e5984de6e": [],
+  "a3424513d868db140cb51893eaad16af": [],
+  "a3d550920ff1f0dce84630d524d174d5": [],
+  "a461eba0841037d85e96bbea5f13c22c": [],
+  "a4ea9b71cbf206caac868d6aaa650c7c": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Civic"
+   },
+   {
+    "subj": "vehicle:Civic",
+    "rel": "color",
+    "obj": "lit:grey",
+    "q": "our grey civic",
+    "conf": 0.9
+   }
+  ],
+  "a527b13c622da8159f7483ce27412550": [
+   {
+    "subj": "me",
+    "rel": "son",
+    "obj": "kin:son",
+    "q": "make me a spreadsheet for the school holidays so robin and i can split the days",
+    "conf": 0.7
+   },
+   {
+    "subj": "kin:son",
+    "rel": "name",
+    "obj": "lit:Theo",
+    "q": "theo has football at 5",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:partner",
+    "rel": "name",
+    "obj": "lit:Robin",
+    "q": "robin and i can split the days",
+    "conf": 0.9
+   }
+  ],
+  "a61d27b7ff5338ebe33d6a9368c4203e": [],
+  "a6a3d21b909d715e90ddffdffc4507f3": [],
+  "aa76d62f499a8b9fa59eae873c76dec8": [],
+  "aac0b52ee4da27eaf3b983f3b0d52e56": [],
+  "ab5e2724c8fe9944e3d04f3bfe6bb8af": [],
+  "ac61c5c39063e65da52ac3819a1e3bff": [],
+  "ac68006f1e35b4f8b7490fc552bf619d": [],
+  "ac87f346922a77b0e2b159a63053ac1e": [],
+  "ace7935231a90f35f3ccc118e6c3a094": [],
+  "b0b670f903965956e285dfaeaa258004": [],
+  "b182c6fd23cd0659abf09daba988ac3d": [],
+  "b1dc45d651db5221100d9f9dab0bb09e": [
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "kin:daughter"
+   },
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Isla",
+    "q": "isla's got a temperature",
+    "conf": 0.9
+   }
+  ],
+  "b24d3fd053704b33bc3c8e8272bf5414": [],
+  "b5aa662887a77b6f3bfaf7f4cf00d7da": [],
+  "b5f929dd194bfa373b43151a3b937037": [],
+  "b63a4466144ba31c04938be1310ab742": [
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "kin:child",
+    "q": "plan a rainy day for two kids, 9 and 6",
+    "conf": 0.7
+   }
+  ],
+  "b7f7d1d04736a614bba9c9322446c4ad": [],
+  "b82d1e7aa22b66bbc8d730a73bfd4d59": [],
+  "b8a94da97689dcba5785a7b48d2545cb": [],
+  "b900be9cfa5102e9c986e2e1e060712f": [],
+  "b9e635b011e0e13e3c7f7bccaef923d6": [],
+  "ba8d7e76741dc737ffc31aa9332716a1": [],
+  "bd12ec6d52e34d3910996c3bc253ddac": [],
+  "bde1300e555d964d4e9b1b639272903a": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "the harlow site",
+    "conf": 0.9
+   }
+  ],
+  "be5cd4dd6a7b304553c53fe64bf13df9": [],
+  "be892311b0ea47480ec965af7aa5d6e5": [],
+  "bf75584b23597e635152a66a730e9952": [],
+  "c04362b11987ea55dc7752e579b58b69": [],
+  "c10a8bff2c3d502c2a8ec0a2ee3de814": [],
+  "c2ac8c3daa16ee140c397ec6748c9ca8": [],
+  "c2b2211daa39749aeae74f7e213ad5a3": [],
+  "c42e81909f05f4f54ad02d4724a5ac51": [],
+  "c769cba17ea1005acc12dd52f98bff1c": [],
+  "c892011f40b01768345562cb20dc7c9c": [],
+  "c94714e474b869435d1a3c1bc137c2a5": [],
+  "ca0bf95b1fce449b8b2b8c09dc9674e1": [],
+  "cc1b5176e31515d6e7137b2521a7240f": [],
+  "cc39ba16ee5399f221e3063f4d5fea55": [],
+  "cc6aa03d96aea0b49e03eb6cd6c90ca4": [],
+  "cd1ae8d3926540cde92b6595f885f107": [],
+  "ce3790d3a3ff4ae740b6dacf72b6a302": [],
+  "ce7a35cce5bb0d913572de7ee5135ea9": [],
+  "cfe9c8c8eba4eb6f9f7a78903460a61e": [
+   {
+    "subj": "name:Owen",
+    "rel": "works_at",
+    "obj": "org:Harlow Legal",
+    "q": "owen from harlow legal",
+    "conf": 0.9
+   }
+  ],
+  "d0d7185a6e76bdf445cef15b6c884718": [],
+  "d161d8932659305cdca0e74da9c27886": [],
+  "d1842917e49c9b5f263fe168ba8af6df": [],
+  "d19a7538301576a197bbea69a889cd9c": [],
+  "d28545ca4130fcc23fcabb6dcbde35b7": [],
+  "d2bb66fcbecb69e4da9c815b82041a6a": [
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:cat",
+    "q": "how do i get cat hair off a wool coat",
+    "conf": 0.7
+   }
+  ],
+  "d3f59ca8bb814fc5d1d2223c482f4256": [
+   {
+    "subj": "me",
+    "rel": "father",
+    "obj": "kin:father"
+   },
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "kin:son"
+   },
+   {
+    "subj": "kin:son",
+    "rel": "name",
+    "obj": "lit:Theo",
+    "q": "theo",
+    "conf": 0.9
+   }
+  ],
+  "d47cfa686284bc1573ac04c5f84c13cf": [],
+  "d4caf4c21f56c964b4dcb55b740554a5": [],
+  "d53a7d29a3cd25a94280d294cb92a60f": [],
+  "d7d605872964760656ad5f07ea15c7b7": [],
+  "d7e0c56fcbf069d2c05409c53f1b391e": [],
+  "d93d619d33ce0ae8ff94bf91530239c0": [],
+  "d9555ab7f8251c66ba1393a1de05db48": [],
+  "da16d77f0a8c6bb6f238d0a9f93ee4eb": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "my two clients right now are harlow legal",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind Bakery",
+    "q": "my two clients right now are harlow legal and northwind bakery",
+    "conf": 0.9
+   }
+  ],
+  "db4a75ea40c6b2fb80438af832dad235": [],
+  "dbc183a5c6802e6e5d6455a477178420": [],
+  "ddb3939783d8314b9ad094470f0f5e4c": [
+   {
+    "subj": "me",
+    "rel": "drives",
+    "obj": "vehicle:Honda CX-5",
+    "q": "parked the cx5 at the station",
+    "conf": 0.9
+   }
+  ],
+  "df6e14352352036211f8cb4292ae73ce": [],
+  "df903a8d573e4ebcb784e3a571157a55": [],
+  "e060a6a4d9293606e87bbdf8435f56c2": [],
+  "e0f74afaeec1f1837c058f728b50d0ad": [],
+  "e14094096167850ccb45409f57ea914b": [],
+  "e16384cf7ba00b282293e4c02e5e97d9": [],
+  "e1bde41d3f5fb44cfe6c4751fc4cab00": [],
+  "e30a2c5e78d268edb4376b317ea586a8": [
+   {
+    "subj": "me",
+    "rel": "sold",
+    "obj": "vehicle:Honda",
+    "q": "sold the honda",
+    "conf": 0.9
+   }
+  ],
+  "e35d3fe2d385a99c2e3e08afa6b29959": [
+   {
+    "subj": "kin:son",
+    "rel": "age",
+    "obj": "lit:9",
+    "q": "theo (he's 9)",
+    "conf": 0.9
+   }
+  ],
+  "e5ea2bbcf3da2983153a6098cfbf280e": [],
+  "e8432ed21fc4841e9bd180ce51e76265": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "write a changelog entry for todays harlow site changes",
+    "conf": 0.9
+   }
+  ],
+  "e8a79e71cbff06decf294fa4ec2575af": [],
+  "e93de94252c3bc413723349527d63b51": [],
+  "eb842950d1318164814c7e9b8545938e": [],
+  "ec25bc65fa50da3bb213235554ab3c00": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "lit:Apple Pencil",
+    "q": "my son theo snapped my apple pencil",
+    "conf": 0.9
+   }
+  ],
+  "ef275bff64b0935c1341dd3fce7de1a1": [],
+  "efef37b6caf12148d5774fd4a7879945": [],
+  "f02a7925ccf21872af8bedb6a82a02a1": [],
+  "f071f933675993898b4f9913085aad89": [],
+  "f13e73c52407c5583a831208969ae87a": [],
+  "f1f66b7c4d93d85fd21a32d86bc27296": [],
+  "f316d807c67b21f31f929495812d7669": [],
+  "f3795e94e9c2eb41022bb3d2abf7abd6": [],
+  "f37e24c898d1e1d0562943a79c361e76": [],
+  "f59f6cc4cf2c56f6f73d99d15b33af4e": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "can you check the northwind orders for broken links",
+    "conf": 0.9
+   }
+  ],
+  "f6f09067b0da755aa49a1b02aedd9319": [],
+  "f7f901a977e358a0e2541b50d351cd83": [],
+  "f807a2d76d883a881617db516ebc9744": [],
+  "f824e5b1e26fda8dac28bd8bb16caaf8": [],
+  "f9449d126080cff9b2b2aba203d2ce67": [],
+  "f9548cbc31f0bb530d518261dddca20d": [],
+  "f9d338c703713e45ca3376e33edb31bd": [
+   {
+    "subj": "kin:son",
+    "rel": "name",
+    "obj": "lit:Robin",
+    "q": "robin's bday is 2 june",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:son",
+    "rel": "birthday",
+    "obj": "lit:2 June",
+    "q": "robin's bday is 2 june",
+    "conf": 0.9
+   }
+  ],
+  "fbdb3455a9483d6ad754f13a4534a2ec": [],
+  "fcf40070e9ca84fe3bf0b7ff895d9aaf": [],
+  "fdd9c50bca2cfcd955051bea397499c2": [],
+  "fdeb351cf2e99061d8285919a86c1d34": [],
+  "ffde762eaacd9ce918fb15d42bd3c1d0": [
+   {
+    "subj": "kin:father",
+    "rel": "name",
+    "obj": "lit:Graham",
+    "q": "dad (Graham)",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "offline",
+    "obj": "lit:Thursday and Friday",
+    "q": "i'll be offline thurs/fri",
+    "conf": 0.7
+   }
+  ]
+ }
+}

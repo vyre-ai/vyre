@@ -1,0 +1,633 @@
+{
+ "version": 4,
+ "model": "haiku",
+ "reads": {
+  "005216211095d6baaf8b80f0ee5dcd17": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:neovim",
+    "q": "im in neovim",
+    "conf": 0.9
+   }
+  ],
+  "02b692f5a7a206e066fe8f8dc3826648": [],
+  "05d26189aca88b27edecd4da4724a5dd": [],
+  "06c84ec4694fb9ef5f559981ecb90590": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "stripe webhook for Northwind refunds is 400ing",
+    "conf": 0.9
+   }
+  ],
+  "07d93b35bebe1b01e19a0c3e7dcd6310": [],
+  "0f5a9cc6e4f39a0a8c91ddf1acf9e5b2": [
+   {
+    "subj": "kin:spouse",
+    "rel": "birthday",
+    "obj": "lit:14 March",
+    "q": "dani's birthday is march 14",
+    "conf": 0.9
+   }
+  ],
+  "112bca8a543b04ac0ebd3cac3d7f95dd": [
+   {
+    "subj": "name:Priya",
+    "rel": "works_at",
+    "obj": "org:Northwind",
+    "q": "Priya asked for a loyalty stamp card",
+    "conf": 0.7
+   }
+  ],
+  "124438727c2c3cd3ebacd8386fdceeb9": [],
+  "12ecf613d48e5536fbdca71578ee2912": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Denver",
+    "q": "denver is so dry my lips are cracking",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "Stripe webhook for Northwind refunds",
+    "conf": 0.9
+   }
+  ],
+  "185bc6603ab70e0942e88af8eb67a5ea": [
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Dani",
+    "q": "dani had the weekend off",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Maverick",
+    "q": "we took the maverick up into the mountains",
+    "conf": 0.9
+   }
+  ],
+  "1a20b03e4278315750cc2a8c94ebdc5c": [],
+  "1a3f6097cadefa3a01d8c46d20e9209c": [
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Luna",
+    "q": "my kid luna",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:daughter",
+    "rel": "age",
+    "obj": "lit:4",
+    "q": "my kid luna just turned 4",
+    "conf": 0.9
+   }
+  ],
+  "1baed6f7e4404107cc4de22f0ae51a71": [
+   {
+    "subj": "kin:mother",
+    "rel": "lives_in",
+    "obj": "place:Tucson",
+    "q": "ma is flying in from tucson",
+    "conf": 0.9
+   }
+  ],
+  "2012da60899dcd2e4a6237d3da4915c1": [],
+  "23ffe1bd1a8c46901e0fef358e836df8": [],
+  "27a1c46f951d319abd59952976a86550": [],
+  "2b3ae6ee67256df4fa1826046158507a": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "harlow Legal intake form needs a conflict check before it saves the lead",
+    "conf": 0.9
+   }
+  ],
+  "2e0abd164f92b02da00a8cae05a84085": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "wife's bday",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "birthday",
+    "obj": "lit:14th",
+    "q": "wife's bday is the 14th",
+    "conf": 0.9
+   }
+  ],
+  "2e1094d70d577893db3881c06e700620": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "the Northwind ordering app",
+    "conf": 0.9
+   }
+  ],
+  "2e6110fa21386ab9ae8fb88d206ff398": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "tool": "TablePlus",
+    "q": "tableplus is open on my other monitor",
+    "conf": 0.9
+   }
+  ],
+  "2f39cd3ac1388a814d2d3533bd05cb4e": [
+   {
+    "subj": "kin:mother",
+    "rel": "name",
+    "obj": "lit:Rosa",
+    "q": "my mom rosa",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:mother",
+    "rel": "lives_in",
+    "obj": "place:Tucson",
+    "q": "my mom rosa keeps calling from tucson",
+    "conf": 0.9
+   }
+  ],
+  "30b5e4e79422139c2fbe40be40421d59": [],
+  "320b63a3ddb61d941e7f840bad43cbd6": [],
+  "341a934b8fbd0f432d6f1a39a3ff47a2": [],
+  "355cb58f697d853fea7938cf160aa9e7": [],
+  "39038a7478ccd41c54a135f187693fce": [
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Tinfoil Studio",
+    "q": "update the Tinfoil Studio site case studies",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "update the Tinfoil Studio site case studies with the Northwind app",
+    "conf": 0.9
+   }
+  ],
+  "3a90f795b2ca8ecb6ddebee1187e6443": [],
+  "40d5a8635b3132ad36b339a5c3c71183": [],
+  "4156e76930331e8bcac2697a213dcb49": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "Harlow Legal intake form",
+    "conf": 0.9
+   }
+  ],
+  "449de5f53fe432d4e676dad4499b8e55": [],
+  "4a2153db7c63304c161f3267c49996ce": [],
+  "4c17de96be1d8d371d613567ae922b58": [
+   {
+    "subj": "name:Marcus",
+    "rel": "works_at",
+    "obj": "org:Harlow Legal",
+    "q": "Marcus wants a weekly email of new intakes",
+    "conf": 0.5
+   }
+  ],
+  "52825f6a9cd0713dfef1c2b36e814166": [],
+  "53e6ce9e75e48ea6b8e875b7bc673b07": [],
+  "54ac4055e06b881b8a5f210f55936935": [],
+  "587bef2e33aca64b556a81a3d42abc3f": [],
+  "5be1f8cb8847875356e90b3ce6e0cc08": [
+   {
+    "subj": "me",
+    "rel": "diet",
+    "obj": "lit:vegetarian",
+    "q": "been vegetarian like 10 years",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:tmux",
+    "q": "my tmux status bar broke",
+    "conf": 0.9
+   }
+  ],
+  "5c0f4628fd4e2c59088c41fa57a39051": [
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Tinfoil Studio",
+    "q": "Tinfoil Studio on the invoice footer, thats my llc",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "marcus Bell",
+    "conf": 0.5
+   }
+  ],
+  "604322fb1872d91ba272ffad230fd8ef": [],
+  "6127d238466863ed60a8fdef512bd93e": [],
+  "633b20af77ddd092e98afa73cbdd04d2": [],
+  "6d453ebfd6defbf73b508229118b8ef8": [
+   {
+    "subj": "me",
+    "rel": "friend",
+    "obj": "name:Priya",
+    "q": "priya asked if denver has good bakeries",
+    "conf": 0.9
+   }
+  ],
+  "739ec2c11eaa6714d5053e0057de4fce": [],
+  "75154b651fc711251032f9ee6d0729b3": [],
+  "758e393a5467d8361d278233becd1408": [],
+  "760b85f7f20300d9911761cd9f452a00": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Portland",
+    "q": "Got it, Portland",
+    "conf": 0.9
+   }
+  ],
+  "76cfaaec98e8f4bd9bb7b4908321943e": [],
+  "777f671edac30b0951b7b645a5df7202": [],
+  "79351aed1542e524c427b663ce4d9fa0": [],
+  "7f5404b34bcd8ae0a3b0564d0ef5feb6": [],
+  "7f8a0998f92a8f106f0f7bc78eb9298e": [],
+  "80c4409d92039978f49846dce8c188d3": [
+   {
+    "subj": "kin:spouse",
+    "rel": "role",
+    "obj": "lit:worked a double",
+    "q": "the wife worked a double",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "kin:daughter"
+   },
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Luna",
+    "q": "on luna duty",
+    "conf": 0.9
+   }
+  ],
+  "92b8720df9ab5413d992c40bab78449b": [],
+  "92cda42a649dfc0f433d3f96b338c7f4": [],
+  "93ec61db63bc171bdf0a0d472669a61f": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "harlow Legal intake form needs a conflict check beofre it saves the lead",
+    "conf": 0.9
+   }
+  ],
+  "940cf8b1c2031ee0da7e3b52b518dcc1": [],
+  "95aefdc7f76210e3a06bf3f4069fe9ea": [],
+  "98c59bc7570054e9e08207f12ce4d2c3": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Denver",
+    "q": "made it to denver",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Truck",
+    "q": "the truck survived the drive",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Luna",
+    "q": "luna and biscuit in the back seat",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:dog"
+   },
+   {
+    "subj": "kin:dog",
+    "rel": "name",
+    "obj": "lit:Biscuit",
+    "q": "luna and biscuit in the back seat",
+    "conf": 0.9
+   }
+  ],
+  "9eacedc5feab901bb9230be55cc463c4": [],
+  "9fbe439a15d469133c59708555ea81b2": [],
+  "a1d6555f1371f947eb397c6b7171e328": [
+   {
+    "subj": "kin:dog",
+    "rel": "name",
+    "obj": "lit:Biscuit",
+    "q": "walked biscuit (our beagle)",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:dog",
+    "rel": "breed",
+    "obj": "lit:beagle",
+    "q": "biscuit (our beagle)",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Portland",
+    "q": "portland in feb is brutal",
+    "conf": 0.9
+   }
+  ],
+  "a367eb382d82189caa0c5c7e36deb47f": [],
+  "a4b2ee93879db94e6bbfe5b011ccd099": [],
+  "a586e69c4fafd04d7f97a5f1a1277777": [
+   {
+    "subj": "me",
+    "rel": "sold",
+    "obj": "vehicle:Subaru Outback",
+    "q": "sold the outback today",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:dog",
+    "q": "that car brought luna home from the hospital",
+    "conf": 0.7
+   },
+   {
+    "subj": "kin:dog",
+    "rel": "name",
+    "obj": "lit:Luna",
+    "q": "luna home from the hospital",
+    "conf": 0.9
+   }
+  ],
+  "a5bcecc75f938ba169d9e5459ef7f4c1": [],
+  "a872002e5ad20349504cd2d06857bf56": [],
+  "ad0f34fa27f5da6a1c72a304024e5ab5": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Portland",
+    "q": "im in portland not seattle",
+    "conf": 0.9
+   }
+  ],
+  "ad8beaf3ac9ece85835261c6e305275f": [],
+  "afff5ac276653eb09e0acfc501578e4a": [
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Dani",
+    "q": "my wife dani",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "role",
+    "obj": "lit:nurse",
+    "q": "shes a nurse",
+    "conf": 0.9
+   }
+  ],
+  "b18a5d97d38041bb53c6486278a1c8c0": [],
+  "b37fa7f23b28bb39f98702c9be25dab4": [],
+  "b673e67573c3e1b79de39ab176445c64": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Maverick",
+    "q": "the maverick fits biscuit's crate",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:dog",
+    "rel": "name",
+    "obj": "lit:Biscuit",
+    "q": "the maverick fits biscuit's crate",
+    "conf": 0.9
+   }
+  ],
+  "b68b393d8e0fc726116e8d99cdf05501": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "lit:site",
+    "q": "The contact form on my site",
+    "conf": 0.7
+   }
+  ],
+  "b71410248575c8a5c6609e6e67b8ad5f": [],
+  "b7e880df7d816e85f1ff48f9e29fbd0a": [
+   {
+    "subj": "name:Marcus",
+    "rel": "works_at",
+    "obj": "org:Harlow",
+    "q": "Marcus asked for it",
+    "conf": 0.7
+   }
+  ],
+  "ba5bd353b2be423df79cee94dea34318": [
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:dog",
+    "q": "biscuit's crate barely fits in the outback",
+    "conf": 0.7
+   },
+   {
+    "subj": "kin:dog",
+    "rel": "name",
+    "obj": "lit:Biscuit",
+    "q": "biscuit's crate",
+    "conf": 0.9
+   }
+  ],
+  "bd0afde635813a492394fcd812f976f5": [
+   {
+    "subj": "name:Marcus",
+    "rel": "works_at",
+    "obj": "org:Harlow Legal",
+    "q": "Marcus watns a weekly email of new intakes every monday",
+    "conf": 0.7
+   }
+  ],
+  "be7f39fcc91047d5a602217c447baccb": [],
+  "be927eb1aea024892730b73e364cb620": [],
+  "c0d86f27bc934c861e9a53ec707ea00f": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Ford Maverick",
+    "q": "BOUGHT THE TRUCK. blue ford maverick hybrid",
+    "conf": 0.9
+   },
+   {
+    "subj": "vehicle:Ford Maverick",
+    "rel": "color",
+    "obj": "lit:blue",
+    "q": "blue ford maverick hybrid",
+    "conf": 0.9
+   }
+  ],
+  "c1a3eed27a70ba0a197cd1b4930fbd8c": [],
+  "c6de05bae4eeadfdfc61417e217f7152": [],
+  "c99af9a4962938f2d879f3d628032a05": [],
+  "ca273effffa4dff917c5df02e9413fb3": [],
+  "caee8adb5fa9d24181f5f444686d9e62": [
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "kin:child",
+    "q": "daycare called, luna has a fever",
+    "conf": 0.7
+   },
+   {
+    "subj": "kin:child",
+    "rel": "name",
+    "obj": "lit:Luna",
+    "q": "luna has a fever",
+    "conf": 0.9
+   }
+  ],
+  "cb9c8cb2259e764dbbddcbf1a0b83695": [],
+  "cbf1309e3d0f400dde73a937e082dbb5": [
+   {
+    "subj": "name:Marcus",
+    "rel": "works_at",
+    "obj": "org:Harlow Legal",
+    "q": "marcus wants a weekly email of new intakes every monday",
+    "conf": 0.9
+   }
+  ],
+  "ce4f8453eb72d72818ec4ddc3594cf10": [],
+  "d180f68a62538d441c6deac2aaf6d0f7": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Denver",
+    "q": "now that we live in denver",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "from",
+    "obj": "place:Portland",
+    "q": "flying back to portland next week",
+    "conf": 0.9
+   }
+  ],
+  "d328e0fa8c7785b602921a6980116d7e": [],
+  "d4bda859a378d27cc1fff822378cebc4": [],
+  "d720f5c82ff2744ad003c03d937ef96d": [],
+  "d78f42149d87e5b44e0c57c169f160d9": [],
+  "d7a46dba4c00abc6cb79498e589e628f": [],
+  "dcdba5dabc0c4f1560995069352d58dc": [],
+  "df91401327a4d419963b17682b6db647": [
+   {
+    "subj": "name:Priya Shah",
+    "rel": "works_at",
+    "obj": "org:Northwind",
+    "q": "priya Shah wants the menu screen",
+    "conf": 0.7
+   }
+  ],
+  "e0505e7195ba047da949eb1644b02861": [
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Tinfoil Studio",
+    "q": "im the whole company",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "role",
+    "obj": "lit:freelance app developer",
+    "q": "been a freelance app developer about 3 years now",
+    "conf": 0.9
+   }
+  ],
+  "e17ea61ba56bd8015c4d2a015ca1ff24": [],
+  "e19eada8cd3921d9f6a6ca6cefb12ee8": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "dani wants to call it Mochi",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Dani",
+    "q": "dani",
+    "conf": 0.9
+   }
+  ],
+  "e71b3fce86e7a04f3ca75b720d39fecd": [
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Luna",
+    "q": "my daughter luna",
+    "conf": 0.9
+   }
+  ],
+  "e79d375bbf447771eb3f4fe7b1af2558": [],
+  "e7df204f4ae2d8093263a83bfb5df00c": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "harlow wants the cleint portal in Spanish too",
+    "conf": 0.9
+   }
+  ],
+  "e9291506731ad4fa15d47245aab501a3": [],
+  "eb41d96148b5271f6ae098fdd05b1117": [
+   {
+    "subj": "name:Priya",
+    "rel": "works_at",
+    "obj": "org:Northwind",
+    "q": "priya aksed for a loyalty stamp card",
+    "conf": 0.7
+   }
+  ],
+  "fa9c2751b96cb29522468a46546cdf0e": [
+   {
+    "subj": "name:Marcus Bell",
+    "rel": "works_at",
+    "obj": "org:Harlow Legal",
+    "q": "marcus Bell wants uploaded documents virus scanned",
+    "conf": 0.7
+   }
+  ]
+ }
+}

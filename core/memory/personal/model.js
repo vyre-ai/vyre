@@ -15,11 +15,11 @@ export const KIN_RELS = new Set(["spouse", "partner", "mother", "father", "siste
 /** Diets the model may name: the same values the rules keep. */
 export const DIETS = new Set(["vegetarian", "vegan", "pescatarian", "plant-based", "keto", "paleo", "gluten-free", "halal", "kosher"]);
 /** Relations whose subject may be anyone the user talks about; the rest are the user's own. */
-export const ANYONE = new Set(["name", "lives_in", "from", "works_at", "role", "birthday", "diet", "breed", "owns", "drives"]);
+export const ANYONE = new Set(["name", "lives_in", "from", "works_at", "role", "birthday", "diet", "breed", "owns", "drives", "age", "hobby"]);
 /** Relation -> the reference kinds its object may be. */
 export const OBJ = /** @type {Record<string, string[]>} */ ({
   name: ["lit"], lives_in: ["place"], from: ["place"], works_at: ["org"], client: ["org"], role: ["lit"],
-  drives: ["vehicle"], owns: ["vehicle", "lit"], uses: ["tool"], prefers: ["lit"], birthday: ["lit"], diet: ["lit"], breed: ["lit"],
+  drives: ["vehicle"], owns: ["vehicle", "lit"], uses: ["tool"], prefers: ["lit"], birthday: ["lit"], diet: ["lit"], breed: ["lit"], age: ["lit"], hobby: ["lit"],
   ...Object.fromEntries([...KIN_RELS].map(r => [r, ["kin", "name"]])),
 });
 export const RELS = Object.keys(OBJ);

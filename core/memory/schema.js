@@ -215,7 +215,7 @@ export const MIGRATIONS = [
   `CREATE TABLE memory_me_told (id INTEGER PRIMARY KEY, ts INTEGER NOT NULL, text TEXT NOT NULL, room TEXT, who TEXT);`,
   // The reader (personal/reader.js): user turns waiting for the fast model, and what it said about
   // each text, kept by hash so no turn is paid for twice.
-  `CREATE TABLE memory_me_queue (session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0, hash TEXT NOT NULL, PRIMARY KEY (session, seq)) WITHOUT ROWID;
+  `CREATE TABLE memory_me_queue (session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0, hash TEXT NOT NULL, pri INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (session, seq)) WITHOUT ROWID;
   CREATE INDEX memory_me_queue_hash ON memory_me_queue (hash);
   CREATE TABLE memory_me_reads (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, facts TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
 ];
