@@ -127,6 +127,8 @@ onboarding at that step. `vyre index` does the history step from a terminal.
 
 ![Settings in the Deck: the six setup steps, each marked To do or Done with a Finish or Open button, then your name and address](shots/deck-settings.png)
 
+![Settings, Your devices: the iPhone alex-iphone, offline in Tailscale with how to turn it back on, and the Mac alex-mbp online, with Add a device.](shots/settings-devices.png)
+
 Beside each step is the command that does the same from a terminal: `vyre up` (it picks up at
 the first step not finished) or, for history, `vyre index`.
 

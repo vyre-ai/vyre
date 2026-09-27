@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Onboarding: the first steps load the theme and fonts
+
+- core/onboard/loopback.js serves `/theme.css` and `/fonts/*` on the loopback onboarding link,
+  before any session, like the other static Deck files. Without them the steps before pairing
+  rendered in the browser's own font with the default colours. test/onboard.test.js checks all three.
+
+#### Docs: new screenshots, no passkey in Glass, the /vyre planner verbs
+
+- Screenshots retaken on main; six new ones placed (Settings devices and connections, the pairing
+  card, a fresh box's Now, Find on a phone, the onboarding's last screen).
+- using/glass.md: take-over, hand-back and Sign in privately ask for no passkey. using/deck.md,
+  using/chat.md, concepts/presence.md: only a send, payment or deletion asks, and one proof covers
+  30 minutes. using/claude-code.md: `/vyre todo`, `remind`, `agenda`, `remember`, `lesson`.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
