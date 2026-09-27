@@ -2203,10 +2203,10 @@ Whether the device a call came from (its tailnet peer; none for this machine) ha
 
 ### `presence.enroll`
 
-Enroll a Capsule key (Ed25519) or a passkey, by its public key as base64url SPKI DER. Needs presence.
+Enroll a Capsule key (Ed25519), a phone's device key (P-256, alg -7) or a passkey, by its public key as base64url SPKI DER. Needs presence.
 
 - Input:
-  - `kind` "capsule" or "passkey", required
+  - `kind` one of "capsule", "passkey", "device", required
   - `public_key` string, required
   - `alg` integer
   - `credential_id` string
@@ -2217,14 +2217,14 @@ Enroll a Capsule key (Ed25519) or a passkey, by its public key as base64url SPKI
 
 ### `presence.keys`
 
-The Capsule keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.
+The Capsule keys, device keys and passkeys enrolled for proving presence: id, kind, name, when enrolled and last used. Never the keys themselves.
 
 - Input: none
 - Callers: any caller
 
 ### `presence.remove`
 
-Remove an enrolled Capsule key or passkey by id. Needs presence.
+Remove an enrolled Capsule key, device key or passkey by id. Needs presence.
 
 - Input:
   - `id` string, required
@@ -2241,7 +2241,7 @@ End a presence session now.
 
 ### `presence.session.open`
 
-After one strong proof (Touch ID, the Capsule or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.
+After one strong proof (Touch ID, the Capsule, a device key or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.
 
 - Input: none
 - Callers: any caller
