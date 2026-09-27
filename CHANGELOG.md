@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### rc.2 freezes: six helper imports and two Capsule model names, owed for 0.1.1
+
+- test/boundaries.test.js freezes the edges vault and connectors added (the lead's OK): core/cli to
+  core/vault/kinds.js and ssh/setup.js (vault), and core/google, core/mcp and core/mail to
+  core/connectors/behalf.js, message.js and auth.js (connectors). Debt: move them to a shared lib/
+  in 0.1.1 (lib/vault-kinds, lib/connectors).
+- test/cohesion-drift.test.js: CapsuleModel.swift may hold 2 model names and IQAsk.swift 1, for
+  the Capsule's IQ fast path (debt: capsule-pro, after 0.1.0).
+
 #### rc.2: Capsule questions are Vyre IQ (memory.ask)
 
 - A quick question (after the pause, or ⏎) goes to memory.ask, not a lean model session with the
