@@ -25,6 +25,7 @@ import http from "node:http";
 import { canonical, same } from "./crypto.js";
 import { totp } from "./totp.js";
 import { otpRoute, saveRoute } from "./fill-save.js";
+import * as passkeys from "./fill-passkey.js";
 
 export const FILL_MIGRATION = `CREATE TABLE vault_devices (
      id TEXT PRIMARY KEY, name TEXT NOT NULL, token_hash TEXT NOT NULL UNIQUE,
@@ -233,6 +234,9 @@ export class Fill {
       case "GET status": return this.status(h);
       case "POST otp": return otpRoute(this, b, h);
       case "POST save": return saveRoute(this, b, h);
+      case "POST passkeys": return passkeys.listRoute(this, b, h);
+      case "POST passkey.create": return passkeys.createRoute(this, b, h);
+      case "POST passkey.get": return passkeys.getRoute(this, b, h);
       default: return fail(404, "not_found", `no route ${route}`);
     }
   }
@@ -465,7 +469,8 @@ export class Fill {
 
 // ---- the listener -----------------------------------------------------------------------
 
-const ROUTES = { pair: "POST", unlock: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST" };
+const ROUTES = { pair: "POST", unlock: "POST", lock: "POST", match: "POST", fill: "POST", status: "GET", otp: "POST", save: "POST",
+  passkeys: "POST", "passkey.create": "POST", "passkey.get": "POST" };
 
 class HttpError extends Error {
   /** @param {number} status @param {string} code @param {string} message */
@@ -528,7 +533,7 @@ export async function serveFill({ host = "127.0.0.1", port = 0, fill, names = []
         if (req.headers["access-control-request-private-network"]) cors["access-control-allow-private-network"] = "true";
       }
       const path = new URL(req.url || "/", "http://fill").pathname;
-      const m = /^\/v1\/fill\/([a-z]+)$/.exec(path);
+      const m = /^\/v1\/fill\/([a-z]+(?:\.[a-z]+)?)$/.exec(path);
       const name = m ? m[1] : "";
       if (!Object.hasOwn(ROUTES, name)) return reply(404, { error: { code: "not_found", message: `${req.method} ${path}` } });
       if (req.method === "OPTIONS") { res.writeHead(204, { ...cors, "content-length": "0" }); return res.end(); }

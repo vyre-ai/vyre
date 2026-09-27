@@ -87,11 +87,13 @@ const DETAIL = {
   filename: v => (typeof v === "string" && v.length <= 200 ? printable(v).replace(/[\\/]/g, "_") : undefined),
   count: v => (Number.isInteger(v) && v >= 0 && v < 10000 ? v : undefined),
   rp: v => (typeof v === "string" && /^[a-z0-9.-]{1,253}$/i.test(v) ? v.toLowerCase() : undefined),
+  // A passkey's credential id: public (every sign-in sends it), and what a site asks for by.
+  credential: v => (typeof v === "string" && /^[A-Za-z0-9_-]{1,1400}$/.test(v) ? v : undefined),
 };
 /** The JSON schema tools declare for `details`. `expires` also takes "90d" or a date. */
 export const DETAILS = { type: "object", properties: {
   expires: { type: ["integer", "string"] }, scope: { type: "array", items: { type: "string" } }, provider: { type: "string" },
-  issuer: { type: "string" }, ssid: { type: "string" }, product: { type: "string" }, filename: { type: "string" }, count: { type: "integer" }, rp: { type: "string" },
+  issuer: { type: "string" }, ssid: { type: "string" }, product: { type: "string" }, filename: { type: "string" }, count: { type: "integer" }, rp: { type: "string" }, credential: { type: "string" },
 } };
 const printable = s => s.replace(/[^\x20-\x7e -￿]/g, "").trim();
 
