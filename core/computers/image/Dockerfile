@@ -4,12 +4,17 @@
 # Chrome has no debugging port at all: computerd starts it with --remote-debugging-pipe and
 # serves CDP only through its own authenticated /cdp route (docs/adr/0012-cdp-proxy.md).
 #
-# Two users (entrypoint.sh): vyre (1001) runs Xvnc, computerd and Chrome; agent (1000) runs the
-# desktop the agent works in. The container starts as root only to switch between them.
+# Three users (entrypoint.sh): vyre (1001) runs Xvnc, the session bus and computerd; browser
+# (1002) runs Chrome only, so a Chrome exploit lands in a uid with no access to /var/lib/vyre's
+# secrets (.boot, the VNC password) or to vyre's own X cookie -- see docs/design/agent-browsers.md
+# ("Chrome gets its own uid") and computerd/index.js's launchChrome for how computerd (still vyre)
+# spawns it there. agent (1000) runs the desktop the agent works in. The container starts as root
+# only to switch between them.
 #
-# UNVALIDATED: built by inspection, never `docker build`'d (no Linux Docker host in this session).
-# See docs/work/computers.md's "Needs from others" and the report to the lead for what to check
-# once the box is up.
+# UNVALIDATED: the uid split (browser, 1002) is written by inspection, never `docker build`'d or
+# run against a live box in this session. See docs/work/glass-live.md's "Next" for the throwaway-
+# stack check this needs before it ships (isolation.test.js's own uid checks, plus a browser-specific
+# one: Chrome cannot open .boot, the VNC password, or vyre's own X cookie).
 
 FROM debian:bookworm-slim
 
@@ -59,33 +64,59 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get purge -y --auto-remove curl gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Two fixed users, so a rebuild never changes ownership of an existing volume underneath them:
+# Three fixed users, so a rebuild never changes ownership of an existing volume underneath them:
 #   agent (1000): the agent's desktop; its home volume mounts at /home/agent.
-#   vyre (1001, also in the agent's group): Xvnc, computerd and Chrome; its own volume mounts at
-#     /var/lib/vyre (the Chrome profile, the VNC password), 0700, which the agent cannot open.
+#   vyre (1001, also in the agent's group): Xvnc, the session bus and computerd; its own volume
+#     mounts at /var/lib/vyre (the VNC password, the boot secrets, its own X cookie), 0711 --
+#     traversable (so browser can reach the one subdirectory it owns) but not listable or
+#     readable by anyone else; every file and subdirectory vyre itself owns under it stays 0700/
+#     0600, which even the traverse bit does not open.
+#   browser (1002, its own group vyre-bus shared with vyre only): Chrome, and nothing else. Its
+#     profile and downloads live under /var/lib/vyre/browser, a subdirectory of vyre's volume that
+#     browser owns outright (0750, group agent, so the real agent can read what Chrome downloads
+#     the same way it always could) -- vyre cannot re-chown an existing volume's directories at
+#     runtime (no CAP_CHOWN), so this subtree is pre-made here, at build time, with its final
+#     ownership already on it: a fresh volume copies it as-is on first mount (see the Dockerfile's
+#     own note below), and an old volume from before this split keeps its old vyre-owned
+#     `chromium/` folder untouched -- entrypoint.sh migrates out of it once, the same way it
+#     already migrates out of the agent's original `.chromium/` (glass-live's Rollout note).
+#   vyre-bus (a group, not a login): membership, not a uid, is what lets browser reach vyre's own
+#     D-Bus session bus for AT-SPI (chgrp'd there by vyre itself at start, since an owner may hand
+#     a file to any group they already belong to without CAP_CHOWN) while /var/lib/vyre's secrets
+#     stay behind file modes group membership can never open.
 # A new named volume copies the image's folder, owner and mode included, on first mount.
 RUN groupadd -g 1000 agent \
     && useradd -m -u 1000 -g 1000 -s /bin/bash -d /home/agent agent \
     && groupadd -g 1001 vyre \
-    && useradd -M -u 1001 -g 1001 -G agent -s /usr/sbin/nologin -d /var/lib/vyre vyre \
+    && groupadd -g 1003 vyre-bus \
+    && useradd -M -u 1001 -g 1001 -G agent,vyre-bus -s /usr/sbin/nologin -d /var/lib/vyre vyre \
+    && groupadd -g 1002 browser \
+    && useradd -M -u 1002 -g 1002 -G vyre-bus -s /usr/sbin/nologin -d /var/lib/vyre/browser browser \
     && mkdir -p /home/agent/.fluxbox /home/agent/Downloads /var/lib/vyre /opt/computerd \
     && chown -R agent:agent /home/agent \
     && chmod 2775 /home/agent /home/agent/Downloads \
-    && chown vyre:vyre /var/lib/vyre && chmod 0700 /var/lib/vyre
+    && chown vyre:vyre /var/lib/vyre && chmod 0711 /var/lib/vyre \
+    && mkdir -p /var/lib/vyre/browser/chromium /var/lib/vyre/browser/downloads \
+    && chown browser:agent /var/lib/vyre/browser && chmod 0750 /var/lib/vyre/browser \
+    && chown browser:browser /var/lib/vyre/browser/chromium && chmod 0700 /var/lib/vyre/browser/chromium \
+    && chown browser:agent /var/lib/vyre/browser/downloads && chmod 2750 /var/lib/vyre/browser/downloads
 
 # Chromium's own password saving is off by policy: the Vault is the only store (ADR 0005, decision 3).
 # No extensions of any kind: one would run in the same page as a password the Vault fills.
 # DevTools stay allowed: DeveloperToolsAvailability 2 also refuses CDP attach ("Not allowed"), which
 # is how the agent's hands and the Vault fill work; the agent already has CDP through its hands.
-# Chrome runs as vyre (1001), so no page may open file:// (the Chrome profile, the VNC password),
-# chrome:// or devtools:// (the browser's own pages) or an extension's, however the navigation
-# starts; computerd refuses the same at the CDP call (cdpmux.js). Downloads go to the agent's own
-# folder only, and the new tab is blank (chrome://newtab is blocked with the rest).
+# Chrome runs as browser (1002), its own uid: no page may open file:// (browser's own profile,
+# vyre's secrets and X cookie -- a different uid either way, and unreadable to browser even by
+# path), chrome:// or devtools:// (the browser's own pages) or an extension's, however the
+# navigation starts; computerd refuses the same at the CDP call (cdpmux.js), which is the real
+# enforcement for downloads too (cdpmux.js's `this.downloads`, not this static policy) -- kept
+# here in sync so a Chrome that ever ignored the CDP check still lands in the same folder, not a
+# guess. The new tab is blank (chrome://newtab is blocked with the rest).
 RUN mkdir -p /etc/chromium/policies/managed \
     && printf '%s\n' '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false,' \
        ' "ExtensionInstallBlocklist": ["*"],' \
        ' "URLBlocklist": ["file://*", "chrome://*", "devtools://*", "chrome-extension://*", "chrome-untrusted://*", "view-source:*"],' \
-       ' "DownloadDirectory": "/home/agent/Downloads", "PromptForDownloadLocation": false,' \
+       ' "DownloadDirectory": "/var/lib/vyre/browser/downloads", "PromptForDownloadLocation": false,' \
        ' "NewTabPageLocation": "about:blank", "HomepageLocation": "about:blank", "HomepageIsNewTabPage": false}' \
        > /etc/chromium/policies/managed/vyre.json \
     && python3 -c 'import json; json.load(open("/etc/chromium/policies/managed/vyre.json"))'

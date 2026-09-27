@@ -129,10 +129,10 @@ export class CdpMux {
   constructor(o = {}) {
     this.log = o.log || (() => {});
     // Not under /home/agent (e2e review MEDIUM 3): the agent owns its home outright and could
-    // rename Downloads there for a symlink into /var/lib/vyre, which Chrome (vyre's own uid)
-    // would then follow. /var/lib/vyre/downloads is vyre-owned, mode 2750 (entrypoint.sh) --
-    // Chrome writes into it as vyre, the agent can list and read but never rename or replace it.
-    this.downloads = o.downloads || "/var/lib/vyre/downloads";
+    // rename Downloads there for a symlink into browser's own profile home, which Chrome would
+    // then follow. /var/lib/vyre/browser/downloads is browser-owned, mode 2750 (entrypoint.sh) --
+    // Chrome writes into it as browser, the agent can list and read but never rename or replace it.
+    this.downloads = o.downloads || "/var/lib/vyre/browser/downloads";
     this.nextId = 0;
     this.nextClient = 0;
     /** @type {Map<number, Pending>} */

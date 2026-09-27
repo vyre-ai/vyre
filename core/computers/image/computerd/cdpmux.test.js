@@ -374,7 +374,7 @@ test("cdpmux: the agent may not dump cookies, open file:// or chrome:// pages, o
   assert.equal((await dl({ behavior: "deny", downloadPath: "/tmp" })).error.code, -32000);
   assert.equal((await agent.call("Page.setDownloadBehavior", { behavior: "allow", downloadPath: "/home/agent" }, sid)).error.code, -32000);
   assert.equal((await dl({ behavior: "allow", downloadPath: "/home/agent/Downloads" })).error.code, -32000, "not under /home/agent any more (MEDIUM 3)");
-  for (const p of [{ behavior: "allow", downloadPath: "/var/lib/vyre/downloads" }, { behavior: "allowAndName", downloadPath: "/var/lib/vyre/downloads/" }, { behavior: "deny" }]) {
+  for (const p of [{ behavior: "allow", downloadPath: "/var/lib/vyre/browser/downloads" }, { behavior: "allowAndName", downloadPath: "/var/lib/vyre/browser/downloads/" }, { behavior: "deny" }]) {
     const r = await dl(p);
     assert.notEqual(r.error && r.error.code, -32000, JSON.stringify(p));
   }

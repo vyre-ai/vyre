@@ -253,7 +253,59 @@ Every piece of this reuses what exists rather than building parallel machinery:
    pixels, not DOM)? Worth resolving with cohesion before building, not guessing here.
 4. **Landmark shape** for both the trace and memory-iq's recipes -- selector, role+name, or both.
 
-## Build list (once this design is approved)
+## Slice 1, built (28 Sep): Chrome gets its own uid
+
+Ahead of the rest of this doc, and independent of the reach ladder or the shared-browser level:
+today's single-agent-per-container Chrome ran as the same uid as computerd, Xvnc and the AT-SPI
+bus (vyre, 1001) -- meaning a Chrome exploit landed in a process that could read `/var/lib/vyre`'s
+secrets (`.boot`, the VNC password) and vyre's own trusted X cookie by path. Chrome now runs as a
+fourth uid, `browser` (1002), with nothing of vyre's reachable to it:
+- `core/computers/image/Dockerfile`: `browser` (1002) and a `vyre-bus` group (1003, vyre and
+  browser both members). `/var/lib/vyre` moves from 0700 to 0711 (traversable, not listable or
+  readable by anyone but vyre) so browser can reach the one subdirectory it owns:
+  `/var/lib/vyre/browser` (0750, group agent), pre-made at build time with its final ownership
+  already on it -- `chromium/` (0700 browser:browser, the profile) and `downloads/` (2750
+  browser:agent, so the real agent can still read what Chrome downloads).
+- `entrypoint.sh`: an `as_browser()` helper; browser gets its own untrusted X cookie (never the
+  agent's, never vyre's trusted one); vyre chgrp's its own D-Bus session-bus socket directory to
+  `vyre-bus` (an owner may hand a file to any group it belongs to, no CAP_CHOWN needed) so browser
+  can still reach AT-SPI; a second one-time migration (vyre's old `chromium/` to browser's new
+  one, the same shape as the existing agent-to-vyre migration, since vyre cannot chown an
+  existing volume's directory to browser without CAP_CHOWN either); computerd's own setpriv call
+  keeps CAP_SETUID/CAP_SETGID in its ambient set (everything else it starts still gets none) --
+  the one thing it needs beyond running as vyre, to hand Chrome a different uid than its own.
+- `computerd/index.js`: `CHROME_UID`/`CHROME_GID` (spawn's own `uid`/`gid` options -- omitted
+  entirely, falling back to today's behaviour, when either is unset: a fake-binary test or a
+  hand-run computerd never needs this), `CHROME_HOME`/`CHROME_XAUTHORITY` so Chrome's environment
+  never carries vyre's HOME or vyre's trusted cookie.
+- `cdpmux.js`: the downloads default moves to `/var/lib/vyre/browser/downloads`.
+- `core/computers/image/isolation.test.js`: Chrome's uid check now expects 1002, not 1001; a new
+  test (`docker exec -u 1002:1002`) confirms browser cannot read `.boot`, the VNC password, or
+  vyre's own X cookie, and can reach its own profile.
+- Targeted tests (testbox, 502 across two runs): 494 pass, 0 fail, 22 skipped (Mac-only Chrome
+  binary, and isolation.test.js's live-container checks, which need a real computer container and
+  are not run in this pass -- see Next).
+
+**Not yet true**: "other agents' profiles" from the task brief doesn't apply to slice 1's own
+architecture, since today's model is still one whole container per agent (no sharing within a
+container to isolate). That guarantee is level 2's own job (per-agent `BrowserContext`s inside one
+shared Chrome process, above) and should be checked again once that's built.
+
+**Next**:
+1. A throwaway-stack build and run (this repo's own precedent for computers-image work: written
+   by inspection first, checked live once a stack exists) -- `docker build`, `isolation.test.js`
+   with `VYRE_COMPUTER_CONTAINER` set, specifically: Chrome's uid, the two new isolation checks
+   above, and that AT-SPI/`chrome.snapshot` still works (the vyre-bus group access is the one
+   mechanism here never exercised by a unit test, only reasoned about).
+2. computerd's own residual: its process keeps CAP_SETUID/CAP_SETGID in its ambient set for its
+   whole life, not just the moment it spawns Chrome (Node has no built-in way to drop a
+   capability from a running process, and re-exec would lose the live Chrome pipe fds). Bounded by
+   the container's own capability set (nothing but SETUID/SETGID exists to gain, and DAC_OVERRIDE
+   is not among them, so even a compromised computerd cannot bypass file permissions to read
+   vyre's own secrets some other uid it might switch to) but worth the reviewer's own read.
+3. Send the reviewer and e2e the head sha with what's above; not merged anywhere yet.
+
+## Build list (once the rest of this design is approved)
 
 | Item | Size | Depends on |
 |---|---|---|
