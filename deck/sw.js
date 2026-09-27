@@ -3,17 +3,17 @@
 // reach. Tool calls are the network's, always, but for the two offline reads below.
 //
 // The one changed invariant (2026-09-27, gate-chat's ask for Chat's offline read, narrowed and
-// approved by the lead — see docs/work/deck.md): threads.get and projects.list, and only those
-// two, may be read back when the network is down. Every other /v1/ call — every write
+// approved by the lead, see docs/work/deck.md): threads.get and projects.list, and only those
+// two, may be read back when the network is down. Every other /v1/ call (every write
 // (approve/revise/reject/send/lease/answer among them), every vault.* or gate.* read, anything a
-// model wrote as a secret — is still never cached, exactly as before. threads.get is only ever
+// model wrote as a secret) is still never cached, exactly as before. threads.get is only ever
 // called for a thread someone actually opened (deck/views/projects.js, deck/chat/session.js),
 // never a background poll, so caching it is already scoped to "sessions the user opened" without
 // extra bookkeeping. The cache is capped by count and age (offlineTool below) and can be wiped
-// with postMessage({type: "vyre:clear-offline"}) — there is no sign-out in Vyre yet, but this is
+// with postMessage({type: "vyre:clear-offline"}). There is no sign-out in Vyre yet, but this is
 // ready for whatever that turns out to be.
 
-const CACHE = "vyre-deck-5";
+const CACHE = "vyre-deck-6";
 const OFFLINE_CACHE = "vyre-deck-offline-1";
 const OFFLINE_TOOLS = new Set(["threads.get", "projects.list"]);
 const OFFLINE_MAX = 20;                    // distinct calls kept, oldest evicted first
@@ -25,7 +25,7 @@ const OFFLINE_MAX_AGE_MS = 7 * 86_400_000; // a week
 // there too. deck/test/sw.test.js checks every path here exists.
 const SHELL = ["/", "/manifest.webmanifest", "/icon.svg", "/icon-192.png", "/apple-touch-icon.png", "/favicon.svg",
   "/css/deck.css", "/fonts/instrument-sans-latin.woff2", "/fonts/jetbrains-mono-latin.woff2", "/js/app.js", "/js/api.js", "/js/dom.js", "/js/icons.js", "/js/fmt.js", "/js/needs.js", "/js/editable.js",
-  "/js/pwa.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js", "/js/agent-create.js", "/js/empty-actions.js",
+  "/js/pwa.js", "/glass/util.js", "/js/health.js", "/js/machine.js", "/js/phone-setup.js", "/css/views/phone-setup.css", "/js/pair.js", "/css/pair.css", "/js/commands.js", "/js/first-passkey.js", "/js/assistant-setup.js", "/js/agent-create.js", "/js/empty-actions.js",
   "/js/now-phone.js", "/js/sheet.js", "/css/sheet.css", "/js/need-sheet.js", "/js/need-rows.js", "/js/capsule.js",
   "/views/now.js", "/css/views/now.css", "/views/projects.js", "/css/views/projects.css", "/views/chat.js", "/css/views/chat.css",
   "/views/find.js", "/css/views/find.css", "/views/agents.js", "/css/views/agents.css", "/views/needs.js", "/css/views/needs.css",
@@ -90,24 +90,34 @@ async function offlineTool(req, name) {
 }
 
 // Push: the payload is encrypted (aes128gcm) and already decrypted by the browser by the time
-// this runs. It is only ever {kind, title, path, tag, at} — never a held item's words or an
+// this runs. It is only ever {kind, title, path, tag, at}, never a held item's words or an
 // ask's details, by design (core/push). Everything past the title is fetched after the tap, the
 // same as every other surface.
 const BODY = { ask: "Waiting on your answer.", draft: "Held at the Gate.", watch: "Finished.", lesson: "A lesson needs you.", test: "A test notification." };
 self.addEventListener("push", e => {
   let d = {};
   try { d = e.data?.json() || {}; } catch {}
-  // A planner ring answered elsewhere: close its notification here, and show nothing.
+  // A planner ring answered elsewhere: close its notification here. A push that shows nothing is
+  // penalised (WebKit drops the subscription after a few, Chrome warns), so it shows a silent one
+  // under the same tag, which replaces the ring, and then closes every one with that tag.
   if (d.kind === "planner-ack") {
-    e.waitUntil(self.registration.getNotifications({ tag: String(d.tag || "") }).then(ns => ns.forEach(n => n.close())));
+    const tag = String(d.tag || "");
+    e.waitUntil((async () => {
+      await self.registration.showNotification("Vyre", { body: "Answered.", tag, silent: true, data: { path: "/now" }, icon: "/icon-192.png", badge: "/icon-192.png" });
+      for (const n of await self.registration.getNotifications({ tag })) n.close();
+    })());
     return;
   }
   const title = d.title || "Vyre";
   // body is there only for a planner item the user chose to label on the lock screen (push.settings planner_label).
-  e.waitUntil(self.registration.showNotification(title, {
+  // Shown even when the app is open and focused: iOS requires every push to show one.
+  const shown = self.registration.showNotification(title, {
     body: d.body || BODY[d.kind] || "", tag: d.tag || d.kind || "vyre", data: { path: d.path || "/now" },
     icon: "/icon-192.png", badge: "/icon-192.png",
-  }));
+  });
+  // Something waits on the person: a dot on the app's icon (the app sets the count when it opens).
+  const dot = d.kind === "ask" || d.kind === "draft" ? Promise.resolve().then(() => self.navigator?.setAppBadge?.()).catch(() => {}) : null;
+  e.waitUntil(Promise.all([shown, dot]));
 });
 
 self.addEventListener("notificationclick", e => {

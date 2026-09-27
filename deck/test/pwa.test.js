@@ -157,19 +157,57 @@ test("pwa shell: light by default: passive gesture listeners, no interval, nothi
   }
 });
 
-test("pwa: a planner-ack push closes that ring's notification and shows none; a labelled ring shows its body", async () => {
+test("pwa: a planner-ack push shows a silent notification under the ring's tag, then closes every one; a labelled ring shows its body", async () => {
   const vm = await import("node:vm");
-  const on = {}, shown = [], closed = [];
-  const open = [{ tag: "planner-f_1", close: () => closed.push("planner-f_1") }];
+  const on = {}, shown = [], closed = [], badges = [];
+  const open = [{ tag: "planner-f_1", close: () => closed.push("ring") }];
   const self = { addEventListener: (type, fn) => { on[type] = fn; },
-    registration: { showNotification: async (title, o) => { shown.push({ title, ...o }); },
+    navigator: { setAppBadge: async (...a) => { badges.push(a); } },
+    registration: { showNotification: async (title, o) => { shown.push({ title, ...o }); if (o.tag === "planner-f_1") open.push({ tag: o.tag, close: () => closed.push("ack") }); },
       getNotifications: async ({ tag }) => open.filter(n => n.tag === tag) } };
   vm.runInNewContext(read("sw.js"), { self, URL, Response, caches: {}, fetch: () => {}, console });
-  const push = async d => { const waits = []; on.push({ data: { json: () => d }, waitUntil: p => waits.push(p) }); await Promise.all(waits); };
+  const push = async d => { const waits = []; on.push({ data: { json: () => d }, waitUntil: p => waits.push(p) }); assert.equal(waits.length, 1, "one waitUntil"); await Promise.all(waits); };
   await push({ kind: "planner-ack", tag: "planner-f_1", at: 1 });
-  assert.deepEqual([shown.length, closed], [0, ["planner-f_1"]]);
+  // Shown once (WebKit drops a subscription whose pushes show nothing), then closed with the ring.
+  assert.equal(shown.length, 1);
+  assert.deepEqual([shown[0].title, shown[0].body, shown[0].tag, shown[0].silent, shown[0].data.path], ["Vyre", "Answered.", "planner-f_1", true, "/now"]);
+  assert.deepEqual(closed.sort(), ["ack", "ring"]);
+  assert.equal(badges.length, 0, "an answered ring puts no dot on the icon");
   await push({ kind: "planner", title: "Reminder", path: "/planner/f_2", tag: "planner-f_2", body: "Call kit", at: 1 });
-  assert.deepEqual([shown[0].title, shown[0].body, shown[0].tag], ["Reminder", "Call kit", "planner-f_2"]);
+  assert.deepEqual([shown[1].title, shown[1].body, shown[1].tag], ["Reminder", "Call kit", "planner-f_2"]);
+  assert.equal(badges.length, 0, "a planner ring puts no dot on the icon");
   await push({ kind: "ask", title: "A session is waiting for your answer", path: "/needs/a", tag: "ask-a", at: 1 });
-  assert.equal(shown[1].body, "Waiting on your answer.");
+  assert.equal(shown[2].body, "Waiting on your answer.");
+  await push({ kind: "draft", title: "Held at the Gate", path: "/needs/g", tag: "draft-g", at: 1 });
+  assert.equal(shown[3].body, "Held at the Gate.");
+  assert.deepEqual(badges, [[], []], "an ask and a draft each set a dot, with no number");
+  await push({ kind: "watch", title: "Done", path: "/now", tag: "watch-w", at: 1 });
+  assert.equal(badges.length, 2);
+  assert.match(read("sw.js"), /const CACHE = "vyre-deck-6";/);
+});
+
+test("pwa: a push still shows when a browser has no app badge", async () => {
+  const vm = await import("node:vm");
+  const on = {}, shown = [];
+  const self = { addEventListener: (type, fn) => { on[type] = fn; },
+    registration: { showNotification: async (title, o) => { shown.push({ title, ...o }); }, getNotifications: async () => [] } };
+  vm.runInNewContext(read("sw.js"), { self, URL, Response, caches: {}, fetch: () => {}, console });
+  const waits = [];
+  on.push({ data: { json: () => ({ kind: "ask", title: "A session is waiting for your answer", tag: "ask-b" }) }, waitUntil: p => waits.push(p) });
+  await Promise.all(waits);
+  assert.equal(shown.length, 1);
+  // And one whose setAppBadge throws.
+  self.navigator = { setAppBadge: () => { throw new Error("no"); } };
+  on.push({ data: { json: () => ({ kind: "draft", tag: "draft-c" }) }, waitUntil: p => waits.push(p) });
+  await Promise.all(waits);
+  assert.equal(shown.length, 2);
+});
+
+test("pwa: push.seen is reported at launch, on visibility changes and on input after a quiet minute, with no timer", () => {
+  const src = read("js/pwa.js");
+  assert.match(src, /call\("push\.seen", \{ surface: surfaceId\(\), visible \}, \{ keepalive: !visible \}\)\.catch\(\(\) => \{\}\)/);
+  assert.match(src, /SEEN_EVERY = 60_000/);
+  assert.match(src, /addEventListener\("pointerdown", touched, \{ passive: true, capture: true \}\)/);
+  assert.match(src, /addEventListener\("keydown", touched, \{ passive: true, capture: true \}\)/);
+  assert.doesNotMatch(src, /setInterval|setTimeout/);
 });

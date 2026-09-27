@@ -53,11 +53,14 @@ export function setHeader(name, value) { if (value) headers[name] = value; else 
  * Call a tool. Resolves to its data; rejects with an ApiError.
  * @param {string} name e.g. "projects.list"
  * @param {Record<string, any>} [input]
- * @param {{ presence?: boolean | "asked" }} [opts] presence: true proves a person is here with a
- *   passkey first (ADR 0004), for what goes outside as the person (sending a held draft) and the
- *   vault. The proof is bound to this exact tool and input. "asked" is the owner's own action
- *   (answers, approvals, agents): it goes without a proof, and asks for the passkey only if this
- *   box still says presence_required (the no-nag rule; a box from before it needs one).
+ * @param {{ presence?: boolean | "asked", keepalive?: boolean }} [opts] presence: true proves a
+ *   person is here with a passkey first (ADR 0004), for what goes outside as the person (sending a
+ *   held draft) and the vault. The proof is bound to this exact tool and input. "asked" is the
+ *   owner's own action (answers, approvals, agents): it goes without a proof, and asks for the
+ *   passkey only if this box still says presence_required (the no-nag rule; a box from before it
+ *   needs one). For a SESSIONABLE tool a live presence session on this device goes instead of the
+ *   passkey, and a passkey proof opens one (below). keepalive: the request outlives the page (a
+ *   report sent as the app goes to the background).
  */
 export async function call(name, input = {}, opts = {}) {
   if (opts.presence === "asked") {
@@ -66,13 +69,29 @@ export async function call(name, input = {}, opts = {}) {
       return call(name, input, { presence: true });
     }
   }
-  let presence;
-  if (opts.presence) presence = await presenceProof(name, input); // throws ApiError on refusal or a cancelled passkey
+  if (!opts.presence) return post(name, input, {}, opts.keepalive);
+  const sessionable = SESSIONABLE.has(name);
+  const s = sessionable ? liveSession() : null;
+  if (s) {
+    try { return await post(name, input, { "x-vyre-presence": `session id=${s.id} secret=${s.secret}` }); } catch (e) {
+      // The session ended on the box, or this item asks for its own proof every time: forget it
+      // and ask for the passkey, as if there had been none.
+      if (/** @type {any} */ (e)?.code !== "presence_required") throw e;
+      setSession(null);
+    }
+  }
+  const proof = await presenceProof(name, input); // throws ApiError on refusal or a cancelled passkey
+  return post(name, input, { "x-vyre-presence": proof, ...(sessionable ? { "x-vyre-presence-keep": "1" } : {}) });
+}
+
+/** One POST to a tool, with any presence headers; resolves to the data or rejects with an ApiError.
+ * @param {string} name @param {Record<string, any>} input @param {Record<string, string>} extra @param {boolean} [keepalive] */
+async function post(name, input, extra, keepalive) {
   let res, body;
   try {
     res = await fetch("/v1/tools/" + encodeURIComponent(name), {
-      method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...(presence ? { "x-vyre-presence": presence } : {}), ...headers },
-      body: JSON.stringify(input),
+      method: "POST", headers: { "content-type": "application/json", "x-vyre-caller": "deck", ...extra, ...headers },
+      body: JSON.stringify(input), ...(keepalive ? { keepalive: true } : {}),
     });
     body = await res.json().catch(() => null);
   } catch {
@@ -81,10 +100,77 @@ export async function call(name, input = {}, opts = {}) {
   }
   // The service worker answers a read it kept with offline: true; the box itself was not reached.
   reach(!body?.offline);
-  if (body && "data" in body && !body.error) return body.data;
+  if (body && "data" in body && !body.error) {
+    if (extra["x-vyre-presence-keep"]) keepSession(res.headers?.get?.("x-vyre-presence-session"));
+    return body.data;
+  }
   const err = new ApiError(body?.error?.code || "http_" + res.status, body?.error?.message || res.statusText, name, body?.error);
   if (err.missing || res.status === 404) return fallback(name, input, err);
   throw err;
+}
+
+// ---- the presence session: one passkey covers the next sends on this device ------------------
+// After a passkey proof for one of these tools the box opens a session bound to this device (30
+// minutes) and says so in x-vyre-presence-session: "session id=<id> secret=<secret>
+// expires=<ms>". The next call to one of them sends "session id=<id> secret=<secret>" as
+// x-vyre-presence instead of asking for the passkey. Kept in memory and in localStorage, so a
+// relaunched phone app is still covered; dropped once expired. core/presence/index.js SESSIONABLE.
+
+/** Tools a presence session may prove (core/presence/index.js SESSIONABLE). */
+export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", "gate.approve"]);
+const SESSION_KEY = "vyre.presence.session";
+const SESSION_MAX = 30 * 60_000;
+const local = (() => { try { return window.localStorage; } catch { return null; } })();
+/** @type {{ id: string, secret: string, expires: number } | null} */
+let held = (() => {
+  try {
+    const s = JSON.parse(local?.getItem(SESSION_KEY) || "null");
+    if (s && typeof s.id === "string" && typeof s.secret === "string" && Number(s.expires) > Date.now()) return { id: s.id, secret: s.secret, expires: Number(s.expires) };
+    local?.removeItem(SESSION_KEY);
+  } catch {}
+  return null;
+})();
+
+function liveSession() {
+  if (held && held.expires <= Date.now()) setSession(null);
+  return held;
+}
+
+/** @param {{ id: string, secret: string, expires: number } | null} s */
+function setSession(s) {
+  const before = held?.expires || 0;
+  held = s;
+  try { if (s) local?.setItem(SESSION_KEY, JSON.stringify(s)); else local?.removeItem(SESSION_KEY); } catch {}
+  if ((s?.expires || 0) !== before && typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:presence", { detail: s?.expires || 0 }));
+}
+
+/** Read the box's x-vyre-presence-session header, in the form core/presence parse() takes.
+ * @param {string | null | undefined} header */
+function keepSession(header) {
+  const m = /^session((?:\s+[a-z][a-z0-9_]*=\S*)+)\s*$/.exec(String(header || "").trim());
+  if (!m) return;
+  const f = Object.fromEntries([...m[1].matchAll(/([a-z][a-z0-9_]*)=(\S*)/g)].map(x => [x[1], x[2]]));
+  const expires = Number(f.expires);
+  if (!f.id || !f.secret || !Number.isFinite(expires)) return;
+  // The box's clock and the phone's may differ; never trust more than a session can last.
+  const until = Math.min(expires, Date.now() + SESSION_MAX);
+  if (until > Date.now()) setSession({ id: f.id, secret: f.secret, expires: until });
+}
+
+/** Until when a presence session on this device covers sends and vault reads: ms, or 0 for none.
+ * `deck:presence` on window says when this changes. */
+export function presenceCovered() { return liveSession()?.expires || 0; }
+
+/**
+ * Until when one item is covered, from what the box says about it (`presence: {required,
+ * covered}`, gate.held and gate.get) and the session this device holds: ms, or 0. The box wins
+ * where it says: not required, or not covered, is 0. The time is always this device's own,
+ * since the box says only yes or no, and without the secret here the next send asks anyway.
+ * @param {{ required?: boolean, covered?: boolean } | null | undefined} p
+ */
+export function coveredUntil(p) {
+  if (p && (p.required === false || p.covered === false)) return 0;
+  return presenceCovered();
 }
 
 // ---- presence (ADR 0004): proving a person is here with a passkey, for a human-only call -----
@@ -102,7 +188,7 @@ export const canProve = () => typeof window !== "undefined" && !!/** @type {any}
 
 /**
  * A tool call authenticated by a one-time enrollment code (`vyre presence code`, typed on the
- * box), for `presence.enroll` when adding a first passkey — the normal passkey proof isn't
+ * box), for `presence.enroll` when adding a first passkey: the normal passkey proof isn't
  * available yet, so a code stands in for it once. Resolves to the data; throws an ApiError.
  * @param {string} name @param {Record<string, any>} input @param {string} code
  */

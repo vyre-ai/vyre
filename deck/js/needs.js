@@ -21,7 +21,8 @@ import { attempt, call } from "./api.js";
  * @typedef {{ id: string, kind: "draft"|"ask"|"question", at: number, agent: string|null, project: string|null, projectName: string|null,
  *   thread: string|null, threadName: string|null, title: string, why: string, command?: string,
  *   gate?: Held, rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[],
- *   tool?: string, detail?: any, questions?: any[], destination?: string|null, anchor?: any, always_project?: string|null }} Need
+ *   tool?: string, detail?: any, questions?: any[], destination?: string|null, anchor?: any, always_project?: string|null,
+ *   presence?: { required?: boolean, covered?: boolean } | null }} Need
  */
 
 /** @type {Need[]} */
@@ -54,6 +55,8 @@ export async function load() {
     const who = full.data?.toName || to.join(", ");
     const verb = d.kind === "send" ? `wrote to ${who}` : d.kind === "spend" ? `wants to spend through ${d.via}` : `wants to delete through ${d.via}`;
     out.push({ id: d.id, kind: "draft", at: d.at, ...n, thread: d.thread || null, anchor: d.anchor || null,
+      // What answering takes, as the box says it (gate.held, gate.get): {required, covered}.
+      presence: d.presence || full.data?.presence || null,
       title: `${n.agent || "An agent"} ${verb}. It is held at the Gate.`, why: d.why || "",
       // full.data?.error is the item's own stored error (a previous Send was approved and the
       // sender failed); full.error is a failure to read the item at all (gate.get itself refused).
@@ -64,7 +67,7 @@ export async function load() {
   for (const id of got.keys()) if (!(held.data || []).some(d => d.id === id)) got.delete(id);
   for (const a of asks.data || []) {
     const n = names({ ...a, threadName: a.threadName || a.thread_name });
-    const base = { id: a.id, at: a.at, ...n, thread: a.thread || null, anchor: a.anchor || null, tool: a.tool || "",
+    const base = { id: a.id, at: a.at, ...n, thread: a.thread || null, anchor: a.anchor || null, tool: a.tool || "", presence: a.presence || null,
       why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "" };
     if (a.kind === "question") {
       out.push({ ...base, kind: "question", title: `${n.agent || "A session"} has a question`, questions: Array.isArray(a.questions) ? a.questions : [],
@@ -79,7 +82,7 @@ export async function load() {
   }
   out.sort((x, y) => x.at - y.at);
   cache = out;
-  for (const fn of listeners) fn(cache);
+  tell();
   return { items: out, errors: { gate: held.error || null, threads: asks.error || null } };
 }
 
@@ -110,7 +113,30 @@ export async function answer(n, opt, edited) {
   }
   cache = cache.filter(x => x.id !== n.id);
   got.delete(n.id);
+  tell();
+}
+
+/** Every watcher hears the list, and the installed app's icon shows the count. */
+function tell() {
+  badge(cache.length);
   for (const fn of listeners) fn(cache);
+}
+
+let badged = -1;
+/**
+ * The count on the home-screen icon, only in the installed app (a browser tab has no icon of its
+ * own), only when it changes, and quietly nothing where the browser has no badge.
+ * @param {number} n
+ */
+export function badge(n) {
+  if (n === badged) return;
+  const nav = /** @type {any} */ (typeof navigator !== "undefined" ? navigator : null);
+  if (!nav || typeof nav.setAppBadge !== "function") return;
+  let installed = false;
+  try { installed = nav.standalone === true || (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches); } catch {}
+  if (!installed) return;
+  badged = n;
+  try { const p = n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge?.(); p?.catch?.(() => {}); } catch {}
 }
 
 /**

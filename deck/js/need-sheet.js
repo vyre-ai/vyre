@@ -18,7 +18,8 @@ import { openSheet, closeGlyph } from "./sheet.js";
 import * as needs from "./needs.js";
 import { form, gateFields } from "./editable.js";
 import { pairCard } from "./pair.js";
-import { initial } from "./fmt.js";
+import { initial, clock } from "./fmt.js";
+import { coveredUntil } from "./api.js";
 import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questionAnswers, pushTarget } from "./need-rows.js";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -81,7 +82,7 @@ export function openNeedSheet(n, o) {
           h("span", { class: "nsh-held-l" }, h("span", { class: "nsh-dot", "aria-hidden": "true" }), n.kind === "pair" ? minutesLeft(n.pair?.expires) : heldFor(n.at)),
           href ? h("a", { class: "nsh-open", href, onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); close(); go(href); } }, "Open session", glyph("right", 16)) : null));
       const ctl = { close, actions, body };
-      if (n.kind === "draft") draftBody(n, o, ctl);
+      if (n.kind === "draft") draftBody(n, o, ctl, offs);
       else if (n.kind === "question") questionBody(n, o, ctl);
       else if (n.kind === "pair") pairBody(n, o, ctl);
       else askBody(n, o, ctl, offs);
@@ -159,8 +160,20 @@ function askBody(n, o, { close, actions, body }, offs) {
 /** "Harlow Legal" for the project an Always rule is written to, when the ask is in it. */
 const projectName = (/** @type {any} */ n, /** @type {string} */ slug) => (n.project === slug && n.projectName) || slug;
 
-/** @param {any} n @param {Opts} o @param {{ close: () => void, actions: HTMLElement, body: HTMLElement }} c */
-function draftBody(n, o, { close, actions, body }) {
+/**
+ * The quiet line under Send while a presence session covers this device: "Face ID covers sends
+ * until 14:32", or nothing. The box's word on the item wins (js/api.js coveredUntil).
+ * @param {any} presence the item's {required, covered} @param {string} word presenceWord() @param {number} [now]
+ */
+export function coverLine(presence, word, now = Date.now()) {
+  const until = coveredUntil(presence);
+  if (!until || until <= now) return "";
+  const who = /^(passkey|fingerprint)$/.test(word) ? `Your ${word}` : word;
+  return `${who} covers sends until ${clock(until)}`;
+}
+
+/** @param {any} n @param {Opts} o @param {{ close: () => void, actions: HTMLElement, body: HTMLElement }} c @param {(() => void)[]} offs */
+function draftBody(n, o, { close, actions, body }, offs) {
   const g = n.gate || { kind: "send", to: [], draft: null, sources: [] };
   const status = statusLine();
   const primary = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "sb sb-primary sb-full" }));
@@ -184,7 +197,12 @@ function draftBody(n, o, { close, actions, body }) {
     const edited = f && f.changed() ? f.edited() : null;
     send(n, actions, status, () => needs.answer(n, { label: "Send", decision: "approve" }, edited), () => { close(); o.onDone?.("send", n); });
   });
-  put(actions, primary, h("button", { type: "button", class: "sb sb-full", onclick: () => { close(); o.onLater?.("discard", n); } }, "Discard"), status);
+  const cover = h("p", { class: "nsh-note nsh-cover" });
+  const drawCover = () => { const t = coverLine(n.presence, o.word); cover.hidden = !t; put(cover, t); };
+  drawCover();
+  window.addEventListener("deck:presence", drawCover);
+  offs.push(() => window.removeEventListener("deck:presence", drawCover));
+  put(actions, primary, cover, h("button", { type: "button", class: "sb sb-full", onclick: () => { close(); o.onLater?.("discard", n); } }, "Discard"), status);
 }
 
 /** @param {any} n @param {Opts} o @param {{ close: () => void, actions: HTMLElement, body: HTMLElement }} c */

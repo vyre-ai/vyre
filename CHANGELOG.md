@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The phone app: one passkey covers the next sends, the icon shows what waits, and it says when it is looked at
+
+- Presence session on the Deck (`deck/js/api.js`): a passkey proof for a sessionable tool
+  (`gate.approve`, `vault.reveal`, `vault.copy`, `vault.totp`) sends `x-vyre-presence-keep: 1`
+  and keeps the box's `x-vyre-presence-session` in memory and in localStorage
+  (`vyre.presence.session`, dropped when expired, never trusted past 30 minutes). The next such
+  call sends `x-vyre-presence: session id=<id> secret=<secret>` and asks for no passkey; a
+  `presence_required` refusal forgets it and asks for the passkey. New exports
+  `presenceCovered()`, `coveredUntil(presence)` and the `deck:presence` window event; `call()`
+  takes `keepalive`.
+- The Send sheet on the phone and the held card in Chat say "Face ID covers sends until 14:32"
+  (the device's own word) while covered, and nothing otherwise. The item's `presence: {required,
+  covered}` from the box wins; `needs.js` now carries it on each item.
+- `push.seen { surface, visible }` from the Deck (`deck/js/pwa.js`): at launch when visible, on
+  every visibility change (hidden goes with `keepalive`), and on the first tap or key after a
+  minute without a report. Passive listeners, no timer; a box without the tool is ignored.
+- The service worker (`vyre-deck-6`) shows a silent "Answered." notification for a `planner-ack`
+  push and then closes every notification with that tag, since WebKit drops a subscription whose
+  pushes show nothing. An `ask` or `draft` push also puts a dot on the app icon.
+- The installed app's icon carries the Needs count (`setAppBadge`, cleared at zero), only in
+  standalone mode, feature-detected.
+
 #### Push is for "needs you" only, and waits while you are at a screen
 
 - New tool `push.seen` (`surface`, `visible`): surfaces call it when shown, when hidden, and on

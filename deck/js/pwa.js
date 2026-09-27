@@ -6,9 +6,14 @@
 //   start({ view, deck })  once, before the first route
 //   reopen()               once, at launch: the path to reopen (the shell decides), or null
 //   remember(path)         on every route, so a cold launch from the home screen reopens it
+//
+// start() also tells the box when someone is looking at this app (push.seen), so a push that
+// would only repeat what is on screen can be held back by the box. It reports at launch, on each
+// visibility change, and on the first tap or key after a minute without a report. No timer.
 
 import { h, put, go } from "./dom.js";
-import { attempt, reachable } from "./api.js";
+import { attempt, call, reachable } from "./api.js";
+import { surfaceId } from "../glass/util.js";
 import { icon } from "./icons.js";
 import { when } from "./fmt.js";
 
@@ -40,6 +45,30 @@ export function start({ view, deck }) {
   new MutationObserver(themeColor).observe(root, { attributes: true, attributeFilter: ["data-theme"] });
   offlineLine(deck);
   pullToFind(view);
+  seenReports();
+}
+
+const SEEN_EVERY = 60_000;
+let seenAt = 0;
+/**
+ * One push.seen report. A box without the tool (no_such_tool), or one out of reach, is fine:
+ * this is a hint, never something to show.
+ * @param {boolean} visible
+ */
+function seen(visible) {
+  seenAt = Date.now();
+  // Hidden: the page may be going away, so the request is sent to outlive it.
+  call("push.seen", { surface: surfaceId(), visible }, { keepalive: !visible }).catch(() => {});
+}
+
+/** Launch, visibility changes, and input after a quiet minute. Listeners only, all passive. */
+function seenReports() {
+  const visible = () => document.visibilityState === "visible";
+  if (visible()) seen(true);
+  document.addEventListener("visibilitychange", () => seen(visible()));
+  const touched = () => { if (visible() && Date.now() - seenAt >= SEEN_EVERY) seen(true); };
+  window.addEventListener("pointerdown", touched, { passive: true, capture: true });
+  window.addEventListener("keydown", touched, { passive: true, capture: true });
 }
 
 /** The status bar follows the theme: Graphite in dark, Paper's ground in paper. */

@@ -1,15 +1,16 @@
 // @ts-check
 // A held Gate item, inline: exactly what Send will send, editable in place, never behind a
-// separate Edit surface (docs/work/gate-chat.md's pivot note — this carries the Mattermost-era
+// separate Edit surface (docs/work/gate-chat.md's pivot note; this carries the Mattermost-era
 // rule forward). Shape matched to the Capsule's (capsule teammate, 2026-09-27): a HELD FOR YOU
-// badge, a To/Subject grid, a hairline, the body — everything contenteditable plaintext-only with
+// badge, a To/Subject grid, a hairline, the body, everything contenteditable plaintext-only with
 // a Signal underline on focus, SEND primary with a keycap, DISCARD a ghost button, no Edit button.
 // Edits stay on the card until Send, which passes them as gate.approve's `edited` (only the fields
 // that changed). They are not saved one keystroke at a time through gate.revise: gate.revise,
 // gate.approve and gate.reject are all on the floor's human-only list (core/presence/index.js,
 // ADR 0004), so each would ask for a passkey. Send and Discard carry that proof. Once resolved
 // (sent/rejected), the card loses every control and just says what happened; a failed send or a
-// refused proof says why and leaves the buttons.
+// refused proof says why and leaves the buttons. While a presence session covers this device
+// (js/api.js), one quiet line under the buttons says until when, and Send asks for no passkey.
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
@@ -17,6 +18,8 @@ import { icon } from "../js/icons.js";
 import { when } from "../js/fmt.js";
 import { renderDiff } from "./lib/diff.js";
 import { problemLine } from "./presence.js";
+import { presenceWord } from "../js/need-rows.js";
+import { coverLine } from "../js/need-sheet.js";
 
 // "to" and "subject" get the grid + mono treatment (email-shaped); anything else short goes in
 // the same grid in field order; "body" (or the one remaining long field) sits under the hairline.
@@ -106,8 +109,15 @@ export function gateCard(held) {
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: discard }, "Discard"),
         state.busy ? h("span", { class: "code" }, "…") : null,
       ),
+      cover(it),
       state.problem ? problemLine(state.problem) : null,
     );
+  }
+
+  /** "Touch ID covers sends until 14:32" while this device's presence session covers Send, else nothing. */
+  function cover(/** @type {any} */ it) {
+    const t = coverLine(it.presence, presenceWord(navigator.userAgent, navigator.maxTouchPoints || 0));
+    return t ? h("div", { class: "gate-note gate-cover" }, t) : null;
   }
 
   function editableProps(key) {
@@ -129,6 +139,14 @@ export function gateCard(held) {
   function longField(key) {
     return h("div", { class: "gate-body", ...editableProps(key) }, fieldValue(key));
   }
+
+  // A presence session opened or ended (a Send elsewhere, or this one): redraw the cover line.
+  let shown = false;
+  const onPresence = () => {
+    if (el.isConnected) { shown = true; draw(); }
+    else if (shown) window.removeEventListener("deck:presence", onPresence);
+  };
+  window.addEventListener("deck:presence", onPresence);
 
   el.refresh = load;
   load();
