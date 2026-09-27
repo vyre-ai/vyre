@@ -169,6 +169,19 @@ Later the same day (lead and e2e answers):
   179 tests, 178 pass. The one failure was my hosted-app test asserting e2e's 401, which lives on
   work/e2e; it now asserts only the listener's part (guests 9 of 9).
 
+- Final state (27 Sep, stop point): work/tailnet a7365a99 (main merged at e785f124, system.info
+  answers network.origins for pwa's Hosted app row; test box 154 of 154). work/federation
+  334270d1 on top of 06441c6f: Mac-owned asks answered from the box, an owner device needs the
+  person session, gated asks need a fresh proof, the Mac rechecks (test box 252 of 252). Both
+  pushed and queued for merge batch 4 (after 3a). The Mac-owned session default stays HELD until
+  e2e's person session is live on the box. Follow-ups sent, each pointing at
+  docs/work/federation.md "Needs from others": chat (Deck buttons in place of "Answer it on
+  <mac>"), pwa (push for a Mac ask opens /needs/<ask>, which the box cannot load), sessions
+  (review the switchboard hunks; threads.asks on the box does not list open Mac asks). Side
+  effect for sessions: on a box /v1/tools lists threads.answer with presence: true.
+- Next for whoever resumes: box-deploy's validation of `projects.move` on a copy; the "Verify on
+  first real run" list below; the egress authenticating front (Next 4).
+
 Waiting: e2e (merges work/tailnet and tests the app flow end to end), relay (origin list, and whether the
 hosted app ever reaches the box through the relay), sessions (threads.answer contract for
 Mac-owned sessions, below).
