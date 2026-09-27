@@ -229,6 +229,31 @@ On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an ol
 `vyre down && npm rm -g vyre` removes it and leaves `~/.vyre`. On the server alone, box's
 `vyre update` and `install.sh --uninstall` stand as written in [Install on a server](../get-started/install.md).
 
+## Amendment: session sync to the box (28 Sep 2026, 0.2)
+
+The user asked for the Mac's Claude Code sessions to build the box's memory, so the box can answer
+from them while the Mac sleeps. Step 3's "the Mac's sessions stay on the Mac" becomes the default,
+not a rule:
+
+1. **Consent, per device.** One switch per Mac in the settings hub (ADR 0035), off by default:
+   "Build memory on your box from this Mac's Claude Code sessions." Only a person turns it on
+   (a person session, as for other person-only settings); no agent, module or remote device can.
+   Onboarding may offer it, never pre-ticked.
+2. **What moves.** Session files (JSONL), over the tailnet (encrypted in transit), into
+   `<home>/synced/<machine>/` on the box, labelled `source: "mac-sync"`. Never Vyre's own folders,
+   `<home>/quick`, or folders the person excludes; those never leave the Mac.
+3. **Dedupe and load.** One file per session id, replaced whole when it changes. Batches only while
+   the Mac is idle, never more often than every 60 s.
+4. **What is built where.** The box's Recall, graph and personal facts read the synced copies under
+   the same source-trust rules (by the session's own folder, not the synced path). Only the box
+   runs the model reader for a synced Mac, so no turn is paid for twice. The Mac keeps its own
+   index for offline search.
+5. **Turning it off** deletes that Mac's synced files and everything derived from them on the box,
+   and says how much went.
+6. **Review.** e2e reviews the security of the transport, the switch and the delete before it
+   ships. Federation owns the transport and memory-iq the indexing
+   (docs/design/iq-everywhere.md, "Host to server").
+
 ## Consequences
 
 - One user-only step is unavoidable in v0.1: turning on HTTPS in the tailnet's admin console.
@@ -239,8 +264,8 @@ On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an ol
   for a sudo password works, because the install runs with `-t`.
 - `vyre box add` holds an SSH connection for as long as onboarding takes. That is a foreground
   command the person is watching, so it is outside the idle budgets; nothing polls once it ends.
-- The Mac's history does not move to the box. The box reads it through the link while the Mac is
-  online.
+- The Mac's history does not move to the box unless the person turns on session sync for that Mac
+  (amendment below). Otherwise the box reads it through the link while the Mac is online.
 
 ## Who builds what
 

@@ -178,36 +178,69 @@ Cohesion writes the product spec. This is what IQ needs from it and what it cost
 
 ## Host to server: the Mac's sessions build the box's graph
 
-Federation owns the transport. This is the contract memory-iq proposes. It reverses ADR 0008's
-"a Mac transcript is never stored on the box", so it needs an amendment and the user's yes.
+Federation owns the transport (its plan: "3. Session sync") and memory-iq the indexing. Agreed with
+federation on 28 Sep. ADR 0008 is amended (approved by the user: a per-device switch, off by
+default, in the settings hub, turned on by a person); e2e reviews the security. It is 0.2 work.
 
-- **Consent.** Off until the user turns it on for one Mac, in onboarding or Settings: "Build
-  memory on your box from this Mac's Claude Code sessions." A person-only setting (presence proof).
-  Folders can be left out (`memory.personal.skipCwds` and a sync exclude list); Vyre's own folders
-  and `<home>/quick` are never sent. Turning it off deletes that Mac's turns and everything derived
-  from them on the box, by machine tag, and says how much was deleted.
-- **What moves.** Turns, not raw transcripts: `{ machine, session, seq, role, ts, cwd, name, text }`
-  as the Mac's Recall indexes them, with the vault's scrub applied on the Mac first (keys, tokens,
-  passwords never leave). Also the Mac's kept model reads (`memory_me_reads`, by text hash), so a
-  turn the Mac already read is not paid for again on the box.
-- **Dedupe.** The key is `(session, seq)`; the machine is a label, not part of the identity, so the
-  same session copied to two Macs is stored once. Uploads are idempotent upserts from a per-session
-  cursor the box acknowledges. A rewritten (compacted) session is sent with `rewritten: true` and
-  replaces the old rows, which fires `session.indexed { rewritten }` as today.
-- **What is indexed where.** The Mac keeps its own Recall for offline search. The box indexes
-  everything it receives: Recall's keywords and embeddings (local model, CPU), the graph (rules,
-  no model), and personal facts (the model reader). The model reader runs on one machine only:
-  on the box when sync is on, so nothing is read twice. Mac surfaces ask the box's `memory.ask`
-  over the link, and the Mac's own when the box is offline.
-- **Load.** The Mac uploads in batches of at most 500 turns, no faster than every 60 s, only
-  while idle, and never while a thread of the user's is working.
-- **Cost.** Transport and storage: text only, tens of MB for a year of sessions. Embeddings and the
-  graph: box CPU, no money. The model reader: a one-time backfill of about $1.50 to $2.60 in
-  reported usage, then at most $0.25 a day (config.memory.model). It runs through the Claude
-  Code login on the box, so the box needs one; with none, reading waits and nothing else breaks.
-- **Size.** Federation: M to L (upload channel, cursor, consent and delete). memory-iq: M (ingest
-  with machine labels, reader location, reads import, delete by machine, eval on a two-machine
-  fixture). Recall: S (accept pushed turns). An ADR amendment for 0008.
+- **Consent.** One switch per Mac in the settings hub (ADR 0035), off by default, turned on only by
+  a person. Vyre's own folders, `<home>/quick` and folders the person excludes never leave the Mac.
+  Turning it off deletes `<home>/synced/<machine>/` on the box; `sync.revoked { machine }` then
+  drops that machine's Recall rows and everything derived from them, and says how much went.
+- **What moves.** Raw session files (JSONL), encrypted in transit over the tailnet, into
+  `<home>/synced/<machine>/` in the Mac's own projects layout. The file's own folder (cwd) is kept
+  as it was: source trust keys off it, never off the synced path.
+- **Labels.** A synced session is `source: "mac-sync"` with its machine; the live federated read
+  stays `source: "mac"` (ADR 0021). When both exist for one session id, the catalogue shows the
+  live one; IQ and the graph always read the resident copy.
+- **Dedupe.** One file per session id, replaced whole when it changes. A shrunk or compacted file
+  is a rewrite: Recall sees fewer turns and memory reads that session again, as today.
+- **What is indexed where.** Recall on the box adds the synced root to its transcript folders:
+  keywords and embeddings (box CPU), the graph (rules) and personal facts (the model reader) all
+  build there. When a Mac syncs, that Mac's own model reader turns off (it reads the hub setting),
+  so no turn is paid for twice; the Mac keeps its own index for offline search, and its surfaces ask
+  the box's `memory.ask`, falling back to the Mac's own.
+- **Load.** Batches only while the Mac is idle, never more often than every 60 s.
+- **Cost.** Transport and storage: text, tens of MB for a year of sessions. Embeddings and the graph:
+  box CPU, no money. The model reader: a one-time backfill of about $1.50 to $2.60 in reported
+  usage, then at most $0.25 a day, on the box's Claude login (never API dollars since ec097430).
+  With no login on the box, reading waits and nothing else breaks.
+- **Size.** Federation L (the long pole: upload service, consent, delete). memory-iq M (synced root
+  in Recall, labels, delete by machine, reader location, a two-machine eval fixture).
+
+## Correct IQ where it appears
+
+The user: "Make it so IQ can be updated where it appears, so you can update it and it remembers
+that for the future and improves." Built on work/memory-iq (95b2b891).
+
+- **One tool, extended.** `memory.correct { answer: <answer_id>, action, object? }`. Every
+  `memory.ask` reply, a "not sure" too, carries `answer_id` (the same answer to the same question
+  has the same id). Owner surfaces only (Deck, CLI, Capsule, local), no Touch ID (the no-nag rule);
+  agents never. The phone waits for e2e's review of tailnet writes (0.1.1).
+  - `replace` with `object` (the right answer, the person's words): the same question gets it at
+    once (`via: "corrected"`, source "your correction"), no model call. For a personal answer the
+    text is also told to memory (`memory.remember`, highest trust), so "who is my wife" has it too.
+  - `wrong`: that answer is never given to that question again; IQ says "You said ... is wrong."
+    and tries again when memory learns something new.
+  - `forget`: the personal facts behind it stop counting, and the turns it cited never ground an
+    answer again.
+  - `memory.uncorrect { fix }` undoes any of them, told note included.
+- **It remembers.** A correction is the person's own words: it outranks every other source, keeps
+  its history, and takes effect on the next ask (the correction is read before any kept reply).
+- **It improves.** The fixes are the person's local log, in their own vyred's database, never in the
+  repo or an eval: `memory.corrections { answers: true }` and `memory.stats().iq` give "you
+  corrected 3 answers this week" by kind of question (people, who, date, file, decision, bug,
+  config, personal). eval-iq `--fix` applies a person's correction to every wrong answer on the
+  synthetic worlds and asks again: open 20 of 20 now right, sealed 38 of 38, none regressed.
+- **The card.** Under the answer, one quiet line: "Wrong?" opens three choices in place: "That's
+  wrong", "Forget this", and a field prefilled with the answer to edit into the right one. A "not
+  sure" card offers only the field ("Know it? Tell me"). After a fix the card shows the corrected
+  answer at once with "Undo". Nothing is sent without the person pressing Enter.
+- **Specs for the paused owners.**
+  - chat (Deck chat and the PWA through chat-core): the same three choices on an IQ card inside a
+    conversation, calling `memory.correct { answer }`; "Undo" calls `memory.uncorrect { fix }`.
+  - pwa: nothing of its own beyond chat-core's card.
+  - mobile: Find's card gets the same line and choices once tailnet corrections are reviewed
+    (0.1.1); until then the phone shows "Correct this on your Mac".
 
 ## Ranked
 
@@ -227,7 +260,8 @@ test it.
 | 9 | Chat renders "(from <session>)" as a link | chat | S | medium | spec sent (0.1.1) |
 | 10 | Teammates' brief: memory_ask for project history | teammates | S | low | built (work/teammates 7eb7ffb8; reaches teammates with core/team step 3) |
 | 11 | Project graphs: IQ reads a project's picked sessions, not only its folders | memory-iq, recall | S | high | proposed (0.1.1) |
-| 12 | Mac sessions build the box's graph (consent, dedupe, one reader) | federation, memory-iq, recall | M-L | highest for a box user | contract proposed |
+| 12 | Mac sessions build the box's graph (consent, dedupe, one reader) | federation, memory-iq | L+M | highest for a box user | contract agreed; ADR 0008 amended; 0.2 |
+| 13 | Correct IQ where it appears, remembered | memory-iq; card: capsule-pro, app-design, chat, mobile | S+M | high | tool, CLI and eval built; card specs sent |
 
 ## What makes IQ smarter, whatever the surface
 
