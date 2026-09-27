@@ -188,6 +188,11 @@ How each surface follows it:
 Nothing polls. A hidden surface doesn't re-read until it's shown again, and then compares `rev`
 once.
 
+**Device values are not private.** Any caller may read any device's resolved appearance
+(`?device=` on the theme routes, `device` on `settings.get`). That's fine for how a surface looks.
+A device-level key that ever holds something private must be `secret: true` (masked for anyone but
+the person) or not be a device-level key at all.
+
 **The known limit.** On a Mac, any program running as the person can edit `hub.json`, as it can edit
 `config.json` or the store today, and so change a plain setting (a model, a limit, which asks
 notify). The harness keeps sessions from touching it, and on the box the agents' uid can't reach the

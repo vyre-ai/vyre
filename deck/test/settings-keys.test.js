@@ -21,8 +21,8 @@ const SCHEMA = {
   groups: [{ id: "models", label: "Models and thinking" }, { id: "permissions", label: "Permissions" }, { id: "sessions", label: "Sessions" },
     { id: "vault", label: "Vault" }, { id: "tools", label: "Tools" }, { id: "notifications", label: "Notifications" }, { id: "empty", label: "Nothing here" }],
   keys: [
-    { key: "sessions.model", module: "sessions", group: "models", label: "Model for chat", type: "model", levels: ["account"], apply: "session", owner: "V", default: "opus" },
-    { key: "sessions.model_fallback", module: "sessions", group: "models", label: "Fallback model", type: "model", levels: ["account", "project"], apply: "session", owner: "V" },
+    { key: "sessions.model", module: "sessions", group: "models", label: "Model for chat", type: "model", enum: ["opus", "sonnet", "haiku"], labels: { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }, levels: ["account"], apply: "session", owner: "V", default: "opus" },
+    { key: "sessions.model_fallback", module: "sessions", group: "models", label: "Fallback model", type: "model", enum: ["opus", "sonnet", "haiku"], labels: { opus: "Opus", sonnet: "Sonnet", haiku: "Haiku" }, levels: ["account", "project"], apply: "session", owner: "V" },
     { key: "sessions.effort", module: "sessions", group: "models", label: "Thinking effort", help: "How hard Claude thinks.", type: "enum", enum: ["low", "medium", "high", "xhigh", "max"],
       levels: ["account", "project"], apply: "session", owner: "V" },
     { key: "chat.thinking", module: "chat", group: "models", label: "Show thinking", type: "enum", enum: ["folded", "open", "hidden"], default: "folded", levels: ["account"], apply: "live", owner: "V" },

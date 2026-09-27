@@ -31,7 +31,6 @@ import { attempt as apiAttempt } from "../js/api.js";
 /** When a change takes effect, as the row's description line says. Live says nothing. */
 export const APPLY = { live: "", session: "Next session", restart: "After restart" };
 const SOURCE = { project: "Project", account: "Account" };
-export const MODELS = ["opus", "sonnet", "haiku"];
 const OTHER = "__other";
 
 /** A group id the page already uses for a section of its own gets a prefix, so both can be linked. */
@@ -564,7 +563,8 @@ function model(def, k) {
   let cur = /** @type {any} */ (undefined);
   const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select", id: k.id },
     h("option", { value: "" }, def.default !== undefined ? `Default (${def.default})` : "Not set"),
-    MODELS.map(m => h("option", { value: m }, m[0].toUpperCase() + m.slice(1))),
+    // The box's aliases (sessions.models.get, through the schema's choices); none are kept here.
+    (def.enum || []).map(m => h("option", { value: m }, (def.labels && def.labels[m]) || m)),
     h("option", { value: OTHER }, "Other…")));
   const other = /** @type {HTMLInputElement} */ (h("input", { type: "text", class: "input sk-input sk-other", hidden: true,
     "aria-label": `${def.label}, model id`, placeholder: "A model id", autocomplete: "off", spellcheck: "false" }));
@@ -586,7 +586,7 @@ function model(def, k) {
     el: h("div", { class: "sk-model" }, sel, other), labelable: true,
     set: v => {
       cur = v;
-      const alias = v == null || v === "" ? "" : MODELS.includes(String(v)) ? String(v) : OTHER;
+      const alias = v == null || v === "" ? "" : (def.enum || []).includes(String(v)) ? String(v) : OTHER;
       sel.value = alias;
       other.hidden = alias !== OTHER;
       other.value = alias === OTHER ? String(v) : "";

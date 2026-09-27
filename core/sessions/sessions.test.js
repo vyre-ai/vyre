@@ -564,6 +564,8 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(e.model, "haiku", "an explicit model wins");
     const map = (await w.tool("sessions.models.get", {})).data;
     assert.deepEqual([map.purposes.chat.model, map.purposes.memory.model, map.purposes.capsule.model, map.projects["harlow-legal"]], ["opus", "haiku", "claude-haiku-4-5", "sonnet"]);
+    // The box's one list of aliases, for every surface's model picker (test/cohesion-drift.test.js).
+    assert.deepEqual(map.aliases.map((/** @type {any} */ m) => m.id), ["opus", "sonnet", "haiku"]);
   });
 
   test(`${driver}: a session a terminal started, by an older Claude Code, is resumed through Vyre on the first message, once in the list`, { skip }, async t => {

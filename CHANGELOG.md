@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The composer's suggestions come from suggest, its models from the box
+
+- deck/chat/core/suggest.js (shared with the app): suggest.query's input, the rows chat shows, a
+  pick applied at the caret, and suggest.picked's input. deck/chat/composer.js: @ lists agents,
+  projects, threads and people from suggest above the folder's files; Tab on a word asks suggest
+  and completes it (one match goes straight in). Nothing opens by itself while typing.
+- core/sessions: sessions.models.get returns `aliases`, the box's one list of model aliases; the
+  composer's model picker reads it, and Settings' model rows take it as their choices
+  (choicesFrom), so neither keeps a list of its own (test/cohesion-drift.test.js).
+
+#### The native bar measures a Deck that streams over fetch
+
+- deck/test/native-bar: page.js tees /v1/events/stream fetches for the events, opens and drops,
+  and keeps the Deck's deck:stream states; budget 8 cuts a fetch stream at the proxy and names the
+  states in its detail. docs/design/native-bar.md: budget 8 on work/pwa 15d02055.
+
 #### The palette drops the retired recall and beacon-wash colours
 
 - core/config/theme.js: recall, recall-wash, recall-ink, beacon-wash and beacon-rule are gone from
