@@ -402,6 +402,12 @@ Plan (to the lead before building):
   root-owned volume -> vyred EACCES -> computers module fails. With `mkdir+chown 1000:1000+chmod 700`
   in the Dockerfile: lifecycle ok via bearer, vyre-agent 401 + can't read, bearer in no Env/inspect.
   Also: docker-api loops until vyred first ensures the bearer. Sent to lead, reviewer, integrator.
+- glass-hotfix: I committed the Dockerfile fix as 0f17b106 (lead's ask; box-init guard; 84/84). Sent to
+  reviewer + integrator; glass told to carry it into glass-live.
+- safe-git + stderr: pre/rc 1c632637, 9eb2ee32, 9efb1851; main 2f43126d, a26793cd. With reviewer.
+- connectors 9ca2c50a SIGNED OFF (claudeJson kernel rule; names only). LOW: CLAUDE_CONFIG_DIR, root missing.
+- memory-iq import f03fc7c2 SIGNED OFF for 0.1.1 (notes: tailnet branch dead; pace needs firstParty).
+  federation amended: sync.consent/send accept first-party modules + people.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
