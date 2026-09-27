@@ -83,7 +83,9 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   a next: line. Native-core does #3 only (settings.set enforcing "loosens" with presence).
 - platform (ADR 0033): does.commands [{verb, tool, summary, args?}] is in their manifest schema
   (work/platform 2e6997dd). I write the P4 dispatcher in core/cli/index.js (unknown command ->
-  a module's does.commands -> the tool, args from its input schema). I review their module.js (P1)
+  a module's does.commands -> the tool, args from its input schema). Source: GET /v1/modules rows
+  gain `commands` (running modules only); input types and presence from GET /v1/tools (what
+  `vyre tools` reads). Waits for platform's P1 sha. I review their module.js (P1)
   and update.js (P2): `vyre modules` becomes an alias; plain --rollback asks nothing,
   --rollback --restore-data asks a typed confirm (or --yes with --json).
   Lead's rules: set/reset are person-only with no Touch ID, except keys marked security:"loosens"
