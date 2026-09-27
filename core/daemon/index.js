@@ -16,7 +16,7 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover, ownerDevice } from "../modules/index.js";
+import { Registry, discover, ownerDevice, callerKind } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
@@ -136,7 +136,10 @@ async function startLocked(opts, root, p, release) {
   const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, socket: true, terminalOf }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
-  server.on("upgrade", (req, socket, head) => upgrade(req, socket, head, socketCaller(req)));
+  server.on("upgrade", async (req, socket, head) => {
+    try { upgrade(req, socket, head, (await asTaken(socketCaller(req), /** @type {any} */ (socket), registry)).caller); }
+    catch { socket.destroy(); }
+  });
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(p.socket, () => resolve(undefined)); });
   fs.chmodSync(p.socket, 0o600);
   fs.writeFileSync(p.pid, String(process.pid));
@@ -218,16 +221,48 @@ const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
  * @param {import("node:net").Socket} socket @param {any} registry
  */
 async function fromClaude(socket, registry) {
+  const who = await above(socket, registry);
+  if (who.nopid) return "vyred cannot tell which process is calling, so this is refused";
+  if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
+  return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
+}
+
+/**
+ * What runs above the process on this socket: a `claude` or one of vyred's threads (inside), an
+ * ancestry vyred cannot read to the top (unknown), or no pid at all (nopid).
+ * @param {import("node:net").Socket} socket @param {any} registry
+ * @returns {Promise<{ inside: boolean, unknown?: boolean, nopid?: boolean }>}
+ */
+async function above(socket, registry) {
   const pid = await peerPid(socket);
-  if (!pid) return "vyred cannot tell which process is calling, so this is refused";
+  if (!pid) return { inside: false, nopid: true };
   const r = await registry.call("threads.pids", {}, "module:vyred");
   // The processes vyred runs threads in, their process groups and sessions (core/sessions/spawn.js
   // keeps a group listed until its last process is gone, so an orphan is still caught).
   const d = r.data || {};
-  const who = insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
-  if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
-  return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
+  return insideClaude(pid, { threads: [...(d.pids || []), ...(d.pgids || []), ...(d.sids || [])] });
 }
+
+/** The labels of a person's own surfaces, which tools trust as the person (their callers lists and checks). */
+const PERSON_LABELS = new Set(["cli", "local", "deck", "capsule"]);
+
+/**
+ * A socket caller as vyred takes it. A person's label from a process under a `claude` or a thread
+ * is that model's shell, so it is the session's own label ("mcp", or "mcp:thread:<id>" when the
+ * call proved its session), for every tool: a label is only a claim (docs/work/e2e.md, the team
+ * review). An ancestry vyred cannot read (a `docker exec` on the box has parent 0) keeps its label
+ * here; the person's own actions still refuse it (fromClaude). Asked once per connection.
+ * @param {string} caller @param {import("node:net").Socket} socket @param {any} registry @param {string} [thread]
+ * @returns {Promise<{ caller: string, model: boolean }>}
+ */
+async function asTaken(caller, socket, registry, thread) {
+  if (!PERSON_LABELS.has(callerKind(caller))) return { caller, model: false };
+  let v = taken.get(socket);
+  if (!v) { v = above(socket, registry).then(w => w.inside); taken.set(socket, v); }
+  return await v ? { caller: thread ? `mcp:thread:${thread}` : "mcp", model: true } : { caller, model: false };
+}
+/** @type {WeakMap<object, Promise<boolean>>} */
+const taken = new WeakMap();
 
 /**
  * The login the person on the socket is typing in, as a key ("ttys003#812@<start>"), or null. Null
@@ -268,7 +303,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
   // webhook route sets, and "tailnet:*" and "onboard" are identities only a listener establishes
   // (ADR 0002). None of them may be claimed over the socket; such a claim, or none, is "anonymous".
-  const caller = policy.caller || socketCaller(req);
+  let caller = policy.caller || socketCaller(req);
   for (const [k, v] of Object.entries(policy.headers || {})) res.setHeader(k, v);
   // A guest from another tailnet (ADR 0014 part 8) reaches only its own tools: the ones the owner
   // listed or the policy granted it, and of those only GUEST_SAFE (core/names/guests.js). Every
@@ -358,6 +393,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller says it is in session ${session.slice(0, 8)}, and vyred has no running session bound with this key` } });
     via.thread = v.data.thread;
   }
+  // A person's label from a model's shell is the session's own, whatever the tool (asTaken).
+  const shell = socket && !policy.caller ? await asTaken(caller, req.socket, registry, via.thread) : { caller, model: false };
+  caller = shell.caller;
   if (req.method === "GET" && url.pathname === "/v1/health") {
     const mods = registry.status();
     // last_event lets a surface follow the stream from now: `since=0` would replay the whole
@@ -418,7 +456,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const personal = PERSON_ONLY.has(name) || name === "link.signin" || Boolean(req.headers["x-vyre-presence"])
       || Boolean(inner && (PERSON_ONLY.has(inner) || HUMAN_ONLY.has(inner)))
       || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
-    if (socket && personal && !MODEL_LABEL.test(caller)) {
+    if (socket && personal && (shell.model || !MODEL_LABEL.test(caller))) {
       const why = await fromClaude(req.socket, registry);
       if (why) return send(res, 403, { error: { code: "denied", message: why } });
     }
