@@ -25,6 +25,20 @@ function reject(socket, status, reason) {
   try { socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`); } catch {}
 }
 
+/**
+ * Send a WebSocket close frame with a code and a short reason (at most 123 bytes, cut at a
+ * character), so the browser learns why rather than seeing a dropped connection.
+ * @param {import("node:net").Socket} socket @param {number} code @param {string} reason
+ */
+export function closeWith(socket, code, reason) {
+  let r = Buffer.from(String(reason || ""), "utf8");
+  if (r.length > 123) r = Buffer.from(r.subarray(0, 123).toString("utf8").replace(/\uFFFD+$/, ""), "utf8");
+  const payload = Buffer.alloc(2 + r.length);
+  payload.writeUInt16BE(code, 0);
+  r.copy(payload, 2);
+  try { socket.write(encodeFrame(payload, 0x8)); } catch {}
+}
+
 /** Never let a password or token ride an error message up to a log line. */
 function scrub(msg, ...secrets) {
   let s = String(msg == null ? "an error" : msg);
@@ -144,13 +158,14 @@ export class Glass {
     let xvnc = null;
     /** @type {Pacer|null} */
     let pacer = null;
-    const closeAll = (/** @type {string} */ why) => {
+    /** @param {string} why @param {boolean} [flush] end the socket after what is written (a close frame), rather than drop it */
+    const closeAll = (why, flush = false) => {
       if (closed) return;
       closed = true;
       if (pinger) { clearInterval(pinger); pinger = null; }
       if (pacer) { pacer.close(); pacer = null; }
       if (viewerHeld) { viewerHeld = false; try { this.pool.viewer(agent, -1); } catch {} }
-      try { socket.destroy(); } catch {}
+      try { if (flush) socket.end(); else socket.destroy(); } catch {}
       if (xvnc) try { xvnc.destroy(); } catch {}
       if (why) this.log(`glass: ${agent}/${surface} ended (${scrub(why)})`);
     };
@@ -182,12 +197,19 @@ export class Glass {
 
     // The computer has to be running before Xvnc can be dialled; this checkout is what "an open
     // Glass viewer holds the screen" means (pool.viewer), and it lasts until this connection ends.
+    // 4001 says the computer is not running. With a reason, it did not boot, and Glass shows the
+    // reason and stops retrying; without one, it may yet start, and Glass tries again.
     try { await this.pool.viewer(agent, 1); viewerHeld = true; }
-    catch (e) { closeAll(/** @type {Error} */ (e).message); return; }
+    catch (e) {
+      const err = /** @type {any} */ (e);
+      closeWith(socket, err && err.boot ? 4001 : 1011, err && err.boot ? String(err.short || err.message) : "");
+      closeAll(err && err.message, true);
+      return;
+    }
     if (closed) return;
 
     const vnc = this.pool.vnc(agent);
-    if (!vnc) { closeAll(`${agent}'s computer is not running`); return; }
+    if (!vnc) { closeWith(socket, 4001, ""); closeAll(`${agent}'s computer is not running`, true); return; }
 
     xvnc = net.connect(vnc.port, vnc.host);
     this.sockets.add(xvnc);

@@ -87,17 +87,18 @@ export function mountSession(container, opts) {
 
   async function boot() {
     // Not known to be the Switchboard's or not: ask both at once, and use the transcript only when
-    // the Switchboard has no record. One round trip instead of two from a phone.
-    const skip = opts.recorded || isMac(where);
-    const mac = isMac(where) ? { source: "mac" } : {};
+    // the Switchboard has no record. One round trip instead of two from a phone. A Mac's session
+    // is only ever a transcript, which the box asks the Mac for.
+    const mac = isMac(where);
+    const skip = opts.recorded || mac;
     let from = skip && (opts.turns || 0) > WINDOW ? opts.turns - WINDOW : 0;
-    const readT = () => attempt("recall.thread", { session: thread, from, limit: 400, ...mac });
+    const readT = () => attempt("recall.thread", { session: thread, from, limit: 400, ...(mac ? { source: "mac" } : {}) });
     const pre = skip || !opts.known ? readT() : null;
     const r = skip ? { error: null } : await attempt("threads.get", { thread, since: 0, limit: 500 });
     if (skip || r.error) {
       let t = await (pre || readT());
       // The list's count and the transcript's numbering disagree: read it from the start.
-      if (!t.error && from > 0 && !t.data.turns.length) { t = await attempt("recall.thread", { session: thread, limit: 400, ...mac }); from = 0; }
+      if (!t.error && from > 0 && !t.data.turns.length) { t = await attempt("recall.thread", { session: thread, limit: 400, ...(mac ? { source: "mac" } : {}) }); from = 0; }
       if (t.error) { timeline.replaceChildren(empty("Could not open this session.", t.error.missing ? t.error : r.error)); drawHead(); return; }
       recorded.on = true;
       recorded.session = t.data.session;

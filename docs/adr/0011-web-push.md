@@ -1,4 +1,12 @@
-# ADR 0011 · Web Push for the moments the user is needed
+---
+title: ADR 0011: Web Push for the moments the user is needed
+summary: The Deck uses Web Push so a phone learns when a session asks permission, the Gate holds something, a thread finishes or a lesson is proposed, without the Deck open.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0011: Web Push for the moments the user is needed
 
 Status: accepted, 26 Sep 2026 · Workstream: switchboard (module `push`, `core/push`) · Spec: sections 2, 9
 
