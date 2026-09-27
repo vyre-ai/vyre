@@ -201,25 +201,41 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
 });
 
-test("bypass: making or changing an agent (its credentials and budget) needs a person", async t => {
+test("bypass: making or changing an agent is a person's, with no passkey; the assistant changes only words and model", async t => {
   const b = await box(t);
-  const make = { name: "kit", kind: "agent", auth: { vault: "claude-setup-token", budget_usd: 5 } };
-  // An agent, through its MCP server, is refused whatever it claims.
-  for (const caller of ["mcp", "mcp:agent:juno"]) {
-    const r = await raw(b.socket, "/v1/tools/agents.create", make, { "x-vyre-caller": caller });
-    assert.equal(r.status, 403, caller);
+  const refused = async (tool, input, caller) => {
+    const r = await raw(b.socket, `/v1/tools/${tool}`, input, { "x-vyre-caller": caller });
+    assert.equal(r.status, 403, `${tool} ${caller}: ${JSON.stringify(r.body)}`);
+    assert.notEqual(r.body.error.code, "presence_required", `${tool} ${caller} is refused, never asked`);
+  };
+  const allowed = async (tool, input, caller) => {
+    const r = await raw(b.socket, `/v1/tools/${tool}`, input, { "x-vyre-caller": caller });
+    assert.equal(r.status, 200, `${tool} ${caller}: ${JSON.stringify(r.body)}`);
+    return r.body.data;
+  };
+  // A person's surfaces make agents without a proof, "Give it its own computer" and credentials included.
+  await allowed("agents.create", { name: "juno", kind: "assistant" }, "cli");
+  await allowed("agents.create", { name: "kit", auth: { vault: "claude-setup-token", budget_usd: 5 }, computer: true }, "deck");
+  await allowed("agents.create", { name: "scout", projects: [] }, "capsule");
+  // No model makes one, the assistant included, and no bare MCP session or guest.
+  const make = { name: "ledger", auth: { vault: "claude-setup-token", budget_usd: 5 } };
+  for (const caller of ["mcp", "mcp:agent:juno", "mcp:agent:kit", "tailnet-guest:sam@example.com"]) await refused("agents.create", make, caller);
+  assert.ok(!(await call("agents.list", {}, { root: b.root, caller: "cli" })).data.some(a => a.name === "ledger"), "nothing was made");
+  // A person changes anything, with no proof: credentials and budget, projects, skills, its computer.
+  for (const change of [{ auth: { vault: "claude-setup-token", budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: false }]) {
+    await allowed("agents.update", { name: "kit", ...change }, "deck");
+    await allowed("agents.update", { agent: "kit", ...change }, "cli");
   }
-  // A person's surface without a proof is refused for want of one.
-  for (const caller of ["cli", "deck", "capsule"]) {
-    const r = await raw(b.socket, "/v1/tools/agents.create", make, { "x-vyre-caller": caller });
-    assert.equal(r.status, 403, caller);
-    assert.equal(r.body.error.code, "presence_required", caller);
+  // The assistant changes an agent's words and model, and nothing it can reach or spend. vyred
+  // names an agent caller only from inside its running thread, so this is that call as it arrives.
+  const words = { name: "kit", instructions: "Drafts replies for Northwind Bakery.", model: "claude-sonnet-5" };
+  const asJuno = input => b.d.registry.call("agents.update", input, "mcp:agent:juno", { agent: "juno" });
+  const mine = await asJuno(words);
+  assert.equal(mine.data?.instructions, words.instructions, JSON.stringify(mine));
+  for (const change of [{ auth: { budget_usd: 500 } }, { projects: "*" }, { skills: ["deploy"] }, { computer: true }]) {
+    assert.equal((await asJuno({ ...words, ...change })).error?.code, "denied", Object.keys(change)[0]);
   }
-  assert.deepEqual((await call("agents.list", {}, { root: b.root, caller: "cli" })).data, [], "nothing was made");
-  // With a proof, it is made, and changing its budget asks again.
-  assert.ok((await b.person("agents.create", make)).data, "a person may make one");
-  const raise = { name: "kit", auth: { vault: "claude-setup-token", budget_usd: 500 } };
-  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "cli" })).body.error.code, "presence_required");
-  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "mcp:agent:kit" })).status, 403);
-  assert.ok((await b.person("agents.update", raise)).data, "a person may change it");
+  assert.equal((await b.d.registry.call("agents.update", words, "mcp:agent:kit", { agent: "kit" })).error?.code, "denied", "kit is not the assistant");
+  // Any other agent, a bare MCP session and a guest change nothing, not even words.
+  for (const caller of ["mcp", "mcp:agent:kit", "mcp:agent:scout", "tailnet-guest:sam@example.com"]) await refused("agents.update", words, caller);
 });
