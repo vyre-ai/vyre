@@ -76,6 +76,11 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - Testbox HOLD (sessions' full suite). Untested since eecfb59c: 8c7bcdb1 (threads fork,
   threads.send-now, /pair QR, push.seen device). Queued: threads-sessions, switchboard-cli, phone.
 - `vyre config`: native-core commits its draft (lead's preference), I take it over; waiting on the sha.
+  Lead's rules: set/reset are person-only with no Touch ID, except keys marked security:"loosens"
+  (permission allow/bypass, the Gate, vault lock, presence length, new devices): a fresh proof plus
+  a typed confirm line. --project defaults to the current directory's project.
+- Chat parity (lead): `vyre threads` covers the whole composer: send/steer/queue, interrupt, mode,
+  model (per session), rewind, fork, answer. Asked sessions for the model/rewind tool names.
 
 ## Next
 
