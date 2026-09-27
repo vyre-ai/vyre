@@ -30,7 +30,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 ## Next
 
 - ADR 0033 theme overrides: validation built (scripts/lib/theme.js, `gen-tokens --validate`).
-  Still to do in P4: the board for module UI slots. Rules already sent 27 Sep: Now card =
+  Still to do in P4: the board for module UI slots.
+  Also in P4 (agreed with platform): move the runtime half (applyOverride, check, css, fromLegacy,
+  rgba, load) and tokens.json to lib/theme/, add "lib" to package.json files (main excludes
+  docs/design, so tokens.json does not ship today), repoint SOURCE; outputs byte-identical. Rules already sent 27 Sep: Now card =
   the Needs row, tool card = the tool row plus a template, iframes get theme.css + tokens.json and a
   theme message, a "Modules" rail section (3 pinned), one Settings group per module, and tokens a
   theme may never override (attention role, status model, focus ring, 12 px text, 44 targets, AA).
