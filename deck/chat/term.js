@@ -21,7 +21,7 @@
 //    the screen dims meanwhile;
 //  - closes: 1000 is a real end (the box's reason says which); 1012 "restarting" is vyred
 //    stopping with the shell alive, so the screen reattaches at once; anything else is a drop;
-//  - after a box update the shell is gone: term.closed {reason: "box updated"} on the event
+//  - after a server update the shell is gone: term.closed {reason: "server updated"} on the event
 //    stream, and term.attach answers terminal_closed for a day. One line says so, with a button
 //    that opens a new terminal in the same folder;
 //  - the size: one screen owns it (the first to attach, or the last to Take size) and only its
@@ -71,11 +71,11 @@ export function termError(err) {
   if (!err) return "";
   if (err.missing && err.code !== "offline") return "Terminals are not available on this machine yet (the term module is not running).";
   const words = {
-    not_available: "That folder is outside the folders the box shares, or it holds keys.",
+    not_available: "That folder is outside the folders the server shares, or it holds keys.",
     too_many: "Eight terminals are already open. Close one first.",
     not_found: "That terminal has ended.",
-    terminal_closed: "The box was updated and this terminal was closed.",
-    offline: "vyred did not answer. The box may be asleep or out of reach.",
+    terminal_closed: "The server was updated and this terminal was closed.",
+    offline: "vyred did not answer. The server may be asleep or out of reach.",
   };
   return words[err.code] || String(err.message || err);
 }
@@ -383,7 +383,7 @@ export function mountTerminal(container, { term, onBack }) {
       const verdict = onAttachError(r.error);
       if (verdict === "gone") { gone(); return; }
       if (verdict === "ended") { finish("That terminal has ended."); return; }
-      if (verdict === "retry") { later(r.error.code === "offline" ? "The box did not answer." : "The box is restarting."); return; }
+      if (verdict === "retry") { later(r.error.code === "offline" ? "The server did not answer." : "The server is restarting."); return; }
       status("error", termError(r.error)); return;
     }
     setWhere(r.data.cwd);
@@ -440,7 +440,7 @@ export function mountTerminal(container, { term, onBack }) {
       // 1000: the terminal itself ended, and the reason says how.
       if (c.act === "end") { finish(c.why); return; }
       // 1012 "restarting": vyred is stopping and the shell lives on; reattach from here, at once.
-      if (c.act === "reattach") { backoff = 1; attempts = []; later("The box is restarting.", true); return; }
+      if (c.act === "reattach") { backoff = 1; attempts = []; later("The server is restarting.", true); return; }
       if (!seen.data) {
         attempts.push({ ...seen });
         if (linkVerdict(attempts) === "blocked") { blocked(); return; }
@@ -449,10 +449,10 @@ export function mountTerminal(container, { term, onBack }) {
     };
   }
 
-  /** This path to the box does not carry live streams: say so and wait for a tap, never loop. */
+  /** This path to the server does not carry live streams: say so and wait for a tap, never loop. */
   function blocked() {
     clearTimeout(retry);
-    status("blocked", "The terminal needs the box link. Your Deck reaches the box through a path that does not carry live streams yet.",
+    status("blocked", "The terminal needs the server link. Your Deck reaches the server through a path that does not carry live streams yet.",
       h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: () => { attempts = []; backoff = 1; connect(); } }, "Try again"));
   }
 
@@ -484,7 +484,7 @@ export function mountTerminal(container, { term, onBack }) {
     if (xt) xt.options.cursorBlink = false;
   }
 
-  /** A box update took the shell. One line, and a new terminal in the same folder when this screen knows it. */
+  /** A server update took the shell. One line, and a new terminal in the same folder when this screen knows it. */
   function gone() {
     if (dead) return;
     finish("");
@@ -497,11 +497,11 @@ export function mountTerminal(container, { term, onBack }) {
       if ("error" in r) { again.disabled = false; status("gone", termError(r.error), again); return; }
       go("/chat?term=" + encodeURIComponent(r.term));
     } }, "Open a new terminal here") : null;
-    status("gone", "The box was updated and this terminal was closed.", again);
+    status("gone", "The server was updated and this terminal was closed.", again);
   }
 
-  // After a deploy the box says so on the event log, for every screen that had the terminal.
-  const unhear = on("term.closed", ev => { if (ev?.payload?.term === term && ev.payload.reason === "box updated") gone(); });
+  // After a deploy the server says so on the event log, for every screen that had the terminal.
+  const unhear = on("term.closed", ev => { if (ev?.payload?.term === term && ev.payload.reason === "server updated") gone(); });
 
   async function closeIt() {
     closeBtn.disabled = true;

@@ -131,7 +131,7 @@ export function rewindSheet(o) {
     put(opts, RESTORES.map(r => {
       const no = r.code && !codeOk();
       return h("button", { type: "button", role: "radio", class: "btn btn-ghost btn-sm cv-rw-opt cv-rw-" + r.id + (r.id === cur ? " on" : ""),
-        "aria-checked": String(r.id === cur), disabled: no || busy, title: no ? (o.codeOk?.() === false ? NEEDS_UPDATE : "Checking whether this box can put files back") : r.title,
+        "aria-checked": String(r.id === cur), disabled: no || busy, title: no ? (o.codeOk?.() === false ? NEEDS_UPDATE : "Checking whether this server can put files back") : r.title,
         onclick: () => { picked = r.id; draw(); } }, r.label);
     }));
     put(acts,
