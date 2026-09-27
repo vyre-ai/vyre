@@ -19,7 +19,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `appearance.changed` | `theme`, `version` |
+| `appearance.changed` | `scheme`, `theme`, `version` |
 
 ## apps
 

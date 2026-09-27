@@ -42,12 +42,19 @@ The generator writes a surface only when its folder exists in the tree.
 
 ## Themes
 
-A person's theme (the hub value `appearance.tokens`, served by the appearance module) or a
-module's `themes/<name>.json` is a partial tokens.json merged over the shipped one (ADR 0033). It may change colour roles, fonts, type, space,
-radius, control, motion, shadow and popover. It may not change status, layout, icons or add keys.
+Themes are hub values (ADR 0035, section 3), declared and served by the appearance module:
+
+- `appearance.theme` is the preset: `vyre` (the shipped tokens) or `<module>/<name>`. A preset
+  carries both schemes. Its choices come from `appearance.presets`.
+- `appearance.scheme` is `system` (follow the device), `dark` or `paper`, usually set per device.
+- `appearance.tokens` is the person's own changes, a partial tokens.json merged over the preset.
+
+A module's `themes/<name>.json` (a preset) and `appearance.tokens` are both partial tokens.json
+files merged over the shipped one (ADR 0033). They may change colour roles, fonts, type, space,
+radius, control, motion, shadow and popover. They may not change status, layout, icons or add keys.
 The merged result must keep every rule below, or the whole file is refused and each failure is
-named (`node scripts/gen-tokens --validate <file>`, or the `appearance.check` tool; the rules are
-`lib/theme`'s `applyOverride` and `check`):
+named (`node scripts/gen-tokens --validate <file>`, or the `appearance.check` tool, which the hub
+calls before it stores a value; the rules are `lib/theme`'s `applyOverride` and `check`):
 
 - every text and ground pair the surfaces draw at AA (washes composited over their ground);
 - the focus ring at 3:1 on bg and panel;
@@ -55,3 +62,13 @@ named (`node scripts/gen-tokens --validate <file>`, or the `appearance.check` to
 - no text under 12, no touch target under 44, no empty font family.
 
 Modules never override the global tokens; a module theme is only something the person can pick.
+
+Surfaces read the result for their own device with `appearance.resolve { device }`, or over HTTP:
+`GET /v1/appearance/theme?device=<id>` (JSON: preset, scheme, the whole merged tokens.json, the
+CSS, a version and the hub's `rev`), and `format: "css"` (`?format=css`) for the custom properties
+alone, which vyred serves as `/theme.css?device=` and `/v1/theme?device=`. The ETag is the hub's
+`rev`. resolve checks the merged tokens again on every read: a stored value that no longer passes
+paints the preset instead and is named under `problems`, so a bad value never paints. A surface
+repaints on `settings.changed` for any `appearance.*` key, the contract; `appearance.changed` is a
+convenience. The old `appearance.theme` values `system`, `dark` and `paper` read as `vyre` with
+that scheme for one release, and `config.theme.colors` folds in under the preset for one release.

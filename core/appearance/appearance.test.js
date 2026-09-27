@@ -1,7 +1,8 @@
 // @ts-check
-// appearance in a real vyred in a temp home: the two settings it declares, the check every write
-// of appearance.tokens goes through, what surfaces read (appearance.resolve, GET
-// /v1/appearance/theme), the legacy colours, and a daemon that is fine without it.
+// appearance in a real vyred in a temp home: the three settings it declares (ADR 0035), the check
+// the hub and every write of appearance.tokens go through, the presets, what surfaces read
+// (appearance.resolve, its css format, GET /v1/appearance/theme), the fallback when a stored value
+// breaks a rule, the old theme values and colours, and a daemon that is fine without it.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -19,6 +20,18 @@ import * as theme from "../../lib/theme/index.js";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "module.json"), "utf8"));
 const SHIPPED = theme.version(theme.tokens());
+
+/** native-core's settings registry, where it has landed on this branch, else null. */
+async function registry() {
+  try { return await import("../config/settings.js"); } catch { return null; }
+}
+/** Does the registry accept the device level yet (ADR 0035, build step 2)? */
+async function deviceLevel() {
+  const s = await registry();
+  if (!s) return false;
+  const d = { key: "x.y", group: "x", label: "Y", type: "string", levels: ["account", "device"], apply: "live" };
+  return s.validateDecls("x", [d]).length === 0;
+}
 
 /** A vyred in a temp home with only what these tests need running. @param {any} t */
 async function world(t, { disable = /** @type {string[]} */ ([]), theme: legacy = /** @type {any} */ (undefined) } = {}) {
@@ -46,17 +59,20 @@ function get(root, p, headers = {}) {
   });
 }
 
-test("appearance: the manifest and its two settings are valid", async () => {
+test("appearance: the manifest and its three settings are valid", async () => {
   assert.deepEqual(validate(manifest), []);
-  const [th, tk] = manifest.settings;
-  assert.deepEqual([th.key, th.group, th.type, th.enum, th.default, th.levels, th.apply, th.label], ["appearance.theme", "appearance", "enum", ["system", "dark", "paper"], "system", ["account"], "live", "Theme"]);
+  const [th, sc, tk] = manifest.settings;
+  assert.deepEqual([th.key, th.group, th.type, th.default, th.levels, th.apply, th.label], ["appearance.theme", "appearance", "string", "vyre", ["account"], "live", "Theme"]);
+  assert.deepEqual([th.choicesFrom.tool, th.check.tool], ["appearance.presets", "appearance.check"]);
+  assert.deepEqual([sc.key, sc.type, sc.enum, sc.default, sc.levels], ["appearance.scheme", "enum", ["system", "dark", "paper"], "system", ["account"]]);
   assert.deepEqual([tk.key, tk.group, tk.type, tk.default, tk.levels, tk.apply, tk.label, tk.advanced], ["appearance.tokens", "appearance", "object", {}, ["account"], "live", "Design tokens", true]);
-  assert.equal(tk.help, "A partial tokens file merged over Vyre's own. Checked before it is saved.");
+  assert.equal(tk.check.tool, "appearance.check");
+  for (const d of [th, tk]) assert.ok(manifest.does.tools.includes(d.check.tool));
   for (const side of ["get", "set"]) assert.ok(manifest.does.tools.includes(tk.store.tool[side].tool), side);
   // The hub's own checker, where the settings module has landed (native-core), holds it to the
-  // stricter rules of a module from outside Vyre too: its store names only its own tools.
-  let settings = null;
-  try { settings = await import("../config/settings.js"); } catch {}
+  // stricter rules of a module from outside Vyre too: its stores, check and choicesFrom name only
+  // its own tools.
+  const settings = await registry();
   if (settings) {
     assert.deepEqual(settings.validateDecls("appearance", manifest.settings, { firstParty: false, tools: manifest.does.tools }), []);
     assert.deepEqual(validate(manifest, { firstParty: true }), []);
@@ -88,10 +104,37 @@ test("appearance: check accepts a good override and names each broken rule", asy
   assert.equal(r.data.ok, false);
 });
 
+test("appearance: check answers the hub's call, { key, value }, with ok or a message naming the failing pair", async t => {
+  const { c } = await world(t);
+  let r = await c("appearance.check", { key: "appearance.tokens", value: { radius: { card: 16 } } });
+  assert.equal(r.data.ok, true);
+  assert.equal(r.data.message, undefined);
+  r = await c("appearance.check", { key: "appearance.tokens", value: { color: { paper: { text2: "#B8B2A8" } } } });
+  assert.equal(r.data.ok, false);
+  assert.match(r.data.message, /^paper: text2 on bg is \d\.\d\d:1, needs 4\.5:1/);
+  assert.ok(r.data.problems.length >= 1);
+  r = await c("appearance.check", { key: "appearance.tokens", value: [1] });
+  assert.deepEqual([r.data.ok, r.data.message], [false, "appearance.tokens is an object shaped like a partial tokens.json"]);
+  // The preset key: only an installed preset; an old value says where it went.
+  assert.equal((await c("appearance.check", { key: "appearance.theme", value: "vyre" })).data.ok, true);
+  r = await c("appearance.check", { key: "appearance.theme", value: "kit/ocean" });
+  assert.deepEqual([r.data.ok, r.data.message], [false, "appearance.theme: no preset kit/ocean; appearance.presets lists the installed ones"]);
+  r = await c("appearance.check", { key: "appearance.theme", value: "paper" });
+  assert.match(r.data.message, /paper is a scheme now; set appearance\.scheme to paper/);
+  r = await c("appearance.check", { key: "sessions.model", value: "opus" });
+  assert.equal(r.data.ok, false);
+});
+
+test("appearance: presets lists Vyre's own", async t => {
+  const { c } = await world(t);
+  const r = await c("appearance.presets");
+  assert.deepEqual(r.data, { presets: [{ id: "vyre", label: "Vyre", schemes: ["dark", "paper"] }] });
+});
+
 test("appearance: a bad override is refused whole and stores nothing; a good one changes resolve", async t => {
   const { c, root } = await world(t);
   let r = await c("appearance.resolve");
-  assert.equal(r.data.theme, "system");
+  assert.deepEqual([r.data.theme, r.data.scheme], ["vyre", "system"]);
   assert.equal(r.data.version, SHIPPED);
   assert.deepEqual(r.data.tokens, theme.tokens());
   assert.match(r.data.css, /^:root \{/m);
@@ -114,7 +157,7 @@ test("appearance: a bad override is refused whole and stores nothing; a good one
   assert.notEqual(r.data.version, SHIPPED);
   assert.match(r.data.css, /--radius-card: 16px;/);
   const ev = (await request("GET", `/v1/events?since=${since}&type=appearance.changed`, undefined, { root })).data;
-  assert.deepEqual(ev.map((/** @type {any} */ e) => e.payload), [{ version: r.data.version, theme: "system" }]);
+  assert.deepEqual(ev.map((/** @type {any} */ e) => e.payload), [{ version: r.data.version, theme: "vyre", scheme: "system" }]);
 
   // null removes it, and the shipped tokens are back.
   await c("appearance.tokens.set", { value: null });
@@ -133,7 +176,7 @@ test("appearance: through the hub, settings.set checks the tokens and settings.r
   if (!hub) return t.skip("the settings module (native-core) is not on this branch");
   let r = await c("settings.schema");
   const keys = r.data.keys.filter((/** @type {any} */ k) => k.group === "appearance").map((/** @type {any} */ k) => k.key);
-  assert.deepEqual(keys, ["appearance.theme", "appearance.tokens"]);
+  assert.deepEqual(keys, ["appearance.theme", "appearance.scheme", "appearance.tokens"]);
 
   r = await c("settings.set", { key: "appearance.tokens", value: { color: { dark: { beacon: "#C6F36B" } } } });
   assert.ok(r.error, "refused");
@@ -149,29 +192,103 @@ test("appearance: through the hub, settings.set checks the tokens and settings.r
   assert.notEqual(after.version, SHIPPED);
 
   const since = Number((await request("GET", "/v1/health", undefined, { root })).data.last_event);
-  r = await c("settings.set", { key: "appearance.theme", value: "paper" });
+  r = await c("settings.set", { key: "appearance.scheme", value: "paper" });
   assert.ok(!r.error, JSON.stringify(r.error));
-  assert.equal((await c("appearance.resolve")).data.theme, "paper");
+  assert.equal((await c("appearance.resolve")).data.scheme, "paper");
   // settings.changed is emitted before appearance hears of it; give the listener a turn.
   await new Promise(res => setTimeout(res, 50));
   const ev = (await request("GET", `/v1/events?since=${since}&type=appearance.changed`, undefined, { root })).data;
-  assert.deepEqual(ev.map((/** @type {any} */ e) => e.payload), [{ version: after.version, theme: "paper" }]);
+  assert.deepEqual(ev.map((/** @type {any} */ e) => e.payload), [{ version: after.version, theme: "vyre", scheme: "paper" }], "one event for one change");
 
   r = await c("settings.reset", { key: "appearance.tokens" });
   assert.ok(!r.error, JSON.stringify(r.error));
   assert.equal((await c("appearance.resolve")).data.version, SHIPPED);
-  assert.equal((await c("settings.set", { key: "appearance.theme", value: "neon" })).error.code, "bad_input");
+  assert.equal((await c("settings.set", { key: "appearance.scheme", value: "neon" })).error.code, "bad_input");
+});
+
+test("appearance: an old theme value (system, dark, paper) reads as the vyre preset and that scheme", async t => {
+  const { c, hub } = await world(t);
+  if (!hub) return t.skip("the settings module (native-core) is not on this branch");
+  const r = await c("settings.set", { key: "appearance.theme", value: "dark" });
+  if (r.error) return t.skip(`the hub refuses the old value now (check runs): ${r.error.message}`);
+  let x = (await c("appearance.resolve")).data;
+  assert.deepEqual([x.theme, x.scheme, x.problems], ["vyre", "dark", undefined]);
+  // A scheme the person set wins over the one the old value implied.
+  await c("settings.set", { key: "appearance.scheme", value: "paper" });
+  x = (await c("appearance.resolve")).data;
+  assert.deepEqual([x.theme, x.scheme], ["vyre", "paper"]);
+  await c("settings.set", { key: "appearance.theme", value: "system" });
+  await c("settings.reset", { key: "appearance.scheme" });
+  x = (await c("appearance.resolve")).data;
+  assert.deepEqual([x.theme, x.scheme], ["vyre", "system"]);
+});
+
+test("appearance: a stored value that breaks a rule never paints; resolve falls back to the preset and names it", async t => {
+  const { c, root, hub } = await world(t);
+  await c("appearance.tokens.set", { value: { radius: { card: 16 } } });
+  // A value saved under older rules, or by hand: written past the check, straight into the table.
+  const { DatabaseSync } = await import("node:sqlite");
+  const db = new DatabaseSync(config.paths(root).db);
+  db.prepare("UPDATE appearance_tokens SET value = ? WHERE scope = 'account'").run(JSON.stringify({ radius: { card: 16 }, control: { touch: 30 } }));
+  db.close();
+  let r = (await c("appearance.resolve")).data;
+  assert.equal(r.version, SHIPPED, "the preset's tokens, whole");
+  assert.equal(r.tokens.radius.card, theme.tokens().radius.card, "not half applied");
+  assert.deepEqual(r.problems, ["control.touch: 30 is under the 44 pt touch target"]);
+  assert.doesNotMatch(r.css, /--control-touch: 30px/);
+
+  // A preset that isn't installed paints vyre and says so.
+  if (!hub) return;
+  const s = await c("settings.set", { key: "appearance.theme", value: "kit/ocean" });
+  if (s.error) { assert.match(s.error.message, /no preset kit\/ocean/); return; }
+  r = (await c("appearance.resolve")).data;
+  assert.equal(r.theme, "vyre");
+  assert.ok(r.problems.includes('appearance.theme: no preset "kit/ocean"; painting vyre'), r.problems.join("; "));
+});
+
+test("appearance: a device's value beats the account's", async t => {
+  if (!(await deviceLevel())) return t.skip("the settings registry does not accept the device level yet (ADR 0035, native-core build step 2)");
+  // Once it does, the declarations should say so too.
+  for (const d of manifest.settings) assert.deepEqual(d.levels, ["account", "device"], `${d.key}: add "device" to its levels (ADR 0035)`);
+  const { c, hub } = await world(t);
+  if (!hub) return t.skip("the settings module is not running");
+  if ((await c("settings.snapshot")).error) return t.skip("settings.snapshot is not there yet (ADR 0035, section 5)");
+  await c("settings.set", { key: "appearance.scheme", value: "dark" });
+  const r = await c("settings.set", { key: "appearance.scheme", value: "paper", level: "device", device: "tailnet:phone" });
+  assert.ok(!r.error, JSON.stringify(r.error));
+  const phone = (await c("appearance.resolve", { device: "tailnet:phone" })).data;
+  const mac = (await c("appearance.resolve", { device: "mac:studio" })).data;
+  assert.deepEqual([phone.scheme, mac.scheme], ["paper", "dark"]);
+  assert.equal(typeof phone.rev, "number");
+});
+
+test("appearance: format css is only the custom properties, for /theme.css", async t => {
+  const { c, root } = await world(t);
+  await c("appearance.tokens.set", { value: { radius: { card: 16 } } });
+  const full = (await c("appearance.resolve")).data;
+  const css = (await c("appearance.resolve", { format: "css" })).data;
+  assert.equal(typeof css, "string");
+  assert.equal(css, full.css);
+  assert.match(css, /--radius-card: 16px;/);
+  const r = /** @type {any} */ (await get(root, "/v1/appearance/theme?format=css&device=mac:studio"));
+  assert.equal(r.status, 200);
+  assert.match(r.headers["content-type"], /^text\/css/);
+  assert.equal(r.body, css);
+  assert.equal((await c("appearance.resolve", { format: "svg" })).error.code, "bad_input");
 });
 
 test("appearance: GET /v1/appearance/theme is resolve over HTTP, with the version as its ETag", async t => {
   const { c, root } = await world(t);
   const r = /** @type {any} */ (await get(root, "/v1/appearance/theme"));
   assert.equal(r.status, 200);
-  assert.deepEqual(JSON.parse(r.body).data, (await c("appearance.resolve")).data);
-  assert.equal(r.headers.etag, `"${SHIPPED}-system"`);
+  const data = (await c("appearance.resolve")).data;
+  assert.deepEqual(JSON.parse(r.body).data, data);
+  assert.equal(r.headers.etag, data.rev !== undefined ? `"${data.rev}"` : `"${SHIPPED}-vyre-system"`);
   const again = /** @type {any} */ (await get(root, "/v1/appearance/theme", { "if-none-match": r.headers.etag }));
   assert.equal(again.status, 304);
-  await c("appearance.tokens.set", { value: { radius: { card: 16 } } });
+  // With the hub's rev as the ETag, only a change through the hub moves it.
+  if (data.rev !== undefined) await c("settings.set", { key: "appearance.tokens", value: { radius: { card: 16 } } });
+  else await c("appearance.tokens.set", { value: { radius: { card: 16 } } });
   const changed = /** @type {any} */ (await get(root, "/v1/appearance/theme", { "if-none-match": r.headers.etag }));
   assert.equal(changed.status, 200, "a change is a new version");
 });

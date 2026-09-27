@@ -19,7 +19,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
-| [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 4 | 1 | cli |
+| [`appearance`](#appearance) | `core/appearance` | `box`, `local` | 5 | 1 | cli |
 | [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
@@ -79,12 +79,12 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 
 ## appearance
 
-The theme and the design tokens as settings, checked before they are saved and served to every surface.
+The theme preset, the scheme and the design tokens as hub settings (ADR 0035), checked before they are saved and resolved per device for every surface.
 
-- Folder: `core/appearance`, version 0.1.0
+- Folder: `core/appearance`, version 0.2.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [4](tools.md#appearance)
+- Tools: [5](tools.md#appearance)
 - Emits: [1 events](events.md#appearance)
 - Shows on: cli
 
