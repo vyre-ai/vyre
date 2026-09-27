@@ -99,6 +99,8 @@ Then: push work/capsule-pro, capsule-mac CI green, hand the sha to the integrato
 memory.answer -> memory.ask when memory-iq's lands on main (not there at 19:30 UTC).
 
 The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
+- 2026-09-27 19:5x UTC: updated to 0a7d7f53 (trial HEAD 75c8a86), relaunched with VYRE_NO_DIALOGS=1
+  (the lead: no OS dialogs), vyred with the fake tailscale.
 - runs from a separate local checkout ../vyre-capsule-pro-trial (detached; my branch plus
   sessions 51eaa964's Vyre IQ prompt; never pushed). Update it with
   `git -C ../vyre-capsule-pro-trial merge --no-edit <sha>`, rebuild there, relaunch.
