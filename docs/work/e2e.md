@@ -363,6 +363,9 @@ Plan (to the lead before building):
 - glass 14f1824c: reviewer's HIGH 1 (DOM.setFileInputFiles / drag files read .boot via Chrome as
   uid 1001) is valid; I missed it. My sign-off withdrawn for rc.2; reviewer owns glass now.
 - Queue: connectors 21beb66b (0.1.1 batch 1) review; later: agent-browser sizing on testbox.
+- connectors 21beb66b SIGNED OFF for 0.1.1 batch 1 (read: kernel merge firstParty after ...meta; lib move
+  pure renames; discover.js read-only). Before wiring discover: strip env/header values (names only),
+  userHome via a claudeJson(root) kernel rule, cwd from the verified project.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
