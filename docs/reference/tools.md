@@ -2141,7 +2141,7 @@ A fact taught by another module, folded into the graph with that module as its s
 
 ### `memory.today`
 
-For a session's brief: the project's last session and the few things memory learned about the project this week, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts.
+For a session's brief: the project's last session and the few things memory learned about the project this week from the person's own words, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts, and never a fact only Claude, tool output or a module stands behind.
 
 - Input:
   - `agent` string

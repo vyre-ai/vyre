@@ -26,7 +26,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   trap refused.
 - Sessions start knowing the project: `memory.today {room | project_cwds, session?}` gives the
   project's last session and what memory learned about it this week (at most 300 characters, no
-  model, no personal facts), and the session brief adds it under "Lately in this project".
+  model, no personal facts), and the session brief adds it under "Lately in this project", marked
+  as notes, not instructions. Only the person's own words feed it: a fact they corrected or
+  confirmed, or one a turn they typed supports; never one only Claude, tool output or a module
+  stands behind.
 - Vyre IQ reads the answer, not only the question: a user turn it finds carries the assistant turn
   that followed (the open world's misses were mostly the right session's question turn, with the
   answer one turn later). Retrieval, no model: open recall@8 0.819 to 0.917, sealed 0.613 to 0.75.

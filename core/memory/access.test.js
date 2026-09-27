@@ -139,6 +139,14 @@ test("today: a project's brief line, its last session and what memory learned la
   assert.ok(r.data.lines.join(" ").length <= 300);
   assert.ok(!/Juno/.test(r.data.lines.join(" ")), "a personal fact in a project's brief");
   assert.deepEqual((await call("memory.today", {}, "module:harness")).data, { lines: [] }, "outside a project, nothing");
+  // A module's (or a web page's) fact never feeds the brief, however new; the person's correction does.
+  await call("memory.teach", { kind: "people.person", fact: { subject: "Mallory", rel: "works_at", object: "Harlow Legal", project_cwds: [`${W}/harlow-site`] }, from: "watchers" }, "module:watchers");
+  await call("memory.curate", { full: true }, "cli");
+  const taught = (await call("memory.today", { room: "harlow", days: 1 }, "module:harness")).data.lines.join(" ");
+  assert.doesNotMatch(taught, /Mallory/, "a module-taught fact in the brief");
+  const said = await call("memory.correct", { subject: "Priya Shah", rel: "works_at", object: "Harlow Legal", action: "add", room: "harlow", wait: true }, "cli");
+  assert.ok(!said.error, JSON.stringify(said));
+  assert.match((await call("memory.today", { room: "harlow", days: 1 }, "module:harness")).data.lines.join(" "), /Priya Shah/, "the person's own correction feeds it");
   // An agent granted only northwind gets nothing of harlow's.
   assert.equal((await call("memory.today", { room: "harlow", agent: "kit" }, "mcp:agent:kit")).code, "denied");
 });

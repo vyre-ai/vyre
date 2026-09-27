@@ -821,7 +821,7 @@ export default {
     // session and what memory learned about it this week, in at most 300 characters. No model and no
     // personal facts: a project's room only, for its brief.
     ctx.tool("memory.today", {
-      description: "For a session's brief: the project's last session and the few things memory learned about the project this week, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts.",
+      description: "For a session's brief: the project's last session and the few things memory learned about the project this week from the person's own words, as short lines (at most 300 characters in all). { lines: string[] }. Empty outside a project. No personal facts, and never a fact only Claude, tool output or a module stands behind.",
       input: { type: "object", properties: { project_cwds: cwds, ...roomField, session: { type: "string", description: "the session starting, left out" }, days: { type: "integer", minimum: 1, maximum: 30 }, ...agentField } },
       run: async (input, { caller } = {}) => {
         const room = roomOf(input);
@@ -838,8 +838,15 @@ export default {
           const last = /** @type {any} */ (ctx.store.db.prepare(`SELECT name, title, ended FROM recall_sessions WHERE id IN (${ids.map(() => "?").join(",")}) AND human = 1 AND parent IS NULL ORDER BY ended DESC LIMIT 1`).get(...ids));
           if (last && last.ended) lines.push(`Last session here: ${plain(last.name || last.title || "untitled", 60)}, ${ago(Number(last.ended), t)} ago.`);
         }
+        // A brief goes into every session's context, so only the person's own words may feed it
+        // (e2e, 28 Sep): a fact they corrected or confirmed, or one a turn they typed supports, in a
+        // session a person started. Never one only Claude's words, tool output or a module taught.
+        const byUser = (() => { try { return ctx.store.db.prepare(`SELECT 1 FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id
+          JOIN recall_turns t ON t.session = v.session AND t.seq = v.seq JOIN recall_sessions s ON s.id = t.session
+          WHERE e.src = ? AND e.rel = ? AND e.dst = ? AND t.role = 'user' AND s.human = 1 AND s.parent IS NULL LIMIT 1`); } catch { return null; } })();
+        const own = f => ["user", "confirmed"].includes(String(f.origin)) || (String(f.origin || "extract") === "extract" && Boolean(byUser?.get(f.subject?.id, f.rel, f.object?.id)));
         const learned = graph.facts({ project_cwds, room: sc.room ?? undefined, limit: 80 }).facts
-          .filter(f => f.rel !== "mentioned_in" && !f.stale && Number(f.seen) >= since)
+          .filter(f => f.rel !== "mentioned_in" && !f.stale && Number(f.seen) >= since && own(f))
           .sort((a, b) => Number(b.seen) - Number(a.seen) || (a.id < b.id ? -1 : 1));
         for (const f of learned.slice(0, 3)) lines.push(`${plain(f.text, 90)} (${f.seen_age} ago).`);
         const out = [];
