@@ -6,7 +6,7 @@
 # { version, channel, commit, date, min_from, notes }. SHA256SUMS covers them all, and each gets
 # a build provenance attestation (keyless: the workflow's OIDC identity, no key and no secret).
 # notes is this version's CHANGELOG section ("## X.Y.Z" or "## X.Y.Z-beta.N"), also the release
-# body. min_from is "0.1.0" unless release/min_from says otherwise. The tag must match
+# body. Nothing is published until the repo variable VYRE_RELEASES is "go". min_from is "0.1.0" unless release/min_from says otherwise. The tag must match
 # package.json's version. Clients read the Releases API: stable is the newest non-prerelease,
 # beta the newest of any. Run by hand with a tag to build and check everything without publishing.
 name: release
@@ -34,7 +34,10 @@ jobs:
       actions: read        # app.yml's Android artifact
     env:
       TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-      PUBLISH: ${{ github.event_name == 'push' }}
+      # DRY RUN until the lead says go: publishing also needs the repo variable VYRE_RELEASES=go
+      # (unset today). Until then every run, a tag push included, uploads its assets as a workflow
+      # artifact and publishes nothing.
+      PUBLISH: ${{ github.event_name == 'push' && vars.VYRE_RELEASES == 'go' }}
     steps:
       - uses: actions/checkout@v4
         with:

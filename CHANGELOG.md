@@ -12,8 +12,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   release.json { version, channel, commit, date, min_from, notes } and SHA256SUMS over all of
   them, each with a keyless build provenance attestation (no key, no secret). The notes are the
   CHANGELOG's "## X.Y.Z" section; min_from is 0.1.0 unless release/min_from says otherwise; the
-  tag must equal package.json's version. Dispatched with a tag, it builds and checks everything
-  and publishes nothing.
+  tag must equal package.json's version. It is a DRY RUN until the repo variable VYRE_RELEASES is
+  "go" (unset): every run, a tag push included, uploads the assets as a workflow artifact and
+  publishes nothing. Dispatched with a tag, it builds and checks the same way.
 
 #### CI: the box image is built and booted
 
