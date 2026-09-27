@@ -32,7 +32,7 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   (real dtach), daemon and modules tests.
 
 ## Doing
-- Waiting on relay (R5 relay chaos) and chat (term extras: held keys, Take size, key bar).
+- Waiting on relay (redial fixes, paused by the lead) and chat (Take size client on the new frames).
 
 ## Next
 1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
@@ -94,6 +94,7 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - term: `term.closed` reason `box updated` at start for lost terminals; `term.attach` error code
   `terminal_closed`; terms.json gains `gone`.
 - box image: ENTRYPOINT tini, CMD core/daemon/loop.sh.
+- term: size ownership frames `take` (client) and `size` with `owner` (box), agreed with chat.
 - term: `term.open`/`term.attach` add `durable`, `offset`, `oldest`; attach takes `from`; new
   text frames `cut` and `at` only when `from` is given; close code 1012 on stop; config
   `term.keep_hours`.

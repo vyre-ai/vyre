@@ -475,3 +475,44 @@ test("term: a terminal the box lost while vyred was down (a deploy) answers term
   assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "terminal_closed");
   assert.equal(again.events.since(0, { type: "term.closed", limit: 10 }).length, 1);
 });
+
+test("term: one socket owns the size; take moves it, and the oldest left takes over at its own size", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
+  const { reg, work, handle } = await registry(t);
+  const port = await server(t, reg);
+  const o = await ok(reg, "term.open", { cwd: work, surface: DECK, cols: 100, rows: 30 });
+  const pty = () => handle.terms.get(o.term).pty;
+  const sizeOf = (c, pred) => c.untilMsg(m => m.t === "size" && pred(m));
+  const laptop = await connect(port, o.path + "&from=0");
+  await sizeOf(laptop, m => m.owner === true && m.cols === 100);
+  laptop.send({ t: "size", cols: 120, rows: 40 });
+  await sizeOf(laptop, m => m.owner === true && m.cols === 120 && m.rows === 40);
+  assert.deepEqual([pty().cols, pty().rows], [120, 40]);
+
+  const re = await ok(reg, "term.attach", { term: o.term, surface: DECK, from: 0 });
+  const phone = await connect(port, re.path);
+  await sizeOf(phone, m => m.owner === false && m.cols === 120);
+  // A size from a socket that does not own it is kept, not applied.
+  phone.send({ t: "size", cols: 50, rows: 20 });
+  await wait(200);
+  assert.deepEqual([pty().cols, pty().rows], [120, 40]);
+
+  // An old client (no from=) never gets text frames and does not change who owns the size.
+  const old = await connect(port, (await ok(reg, "term.attach", { term: o.term, surface: DECK })).path);
+  await wait(200);
+  assert.deepEqual(old.msgs, []);
+
+  // Take size: the phone owns it at the size it asked for; the laptop is told it does not.
+  laptop.msgs.length = 0;
+  phone.send({ t: "take" });
+  await sizeOf(phone, m => m.owner === true && m.cols === 50 && m.rows === 20);
+  await sizeOf(laptop, m => m.owner === false && m.cols === 50);
+  assert.deepEqual([pty().cols, pty().rows], [50, 20]);
+
+  // The phone leaves: the laptop, the oldest still here, owns it again at its own size.
+  laptop.msgs.length = 0;
+  phone.sock.destroy();
+  await sizeOf(laptop, m => m.owner === true && m.cols === 120 && m.rows === 40);
+  assert.deepEqual([pty().cols, pty().rows], [120, 40]);
+  assert.deepEqual(old.msgs, [], "the old client still got no text frames");
+  laptop.sock.destroy(); old.sock.destroy();
+});

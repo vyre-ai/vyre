@@ -703,6 +703,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (the Registry's callerAllowed), never a guest.
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- term: one socket owns a terminal's size (the first to attach). `{"t":"take"}` moves it; size
+  frames from other sockets are kept, not applied; when the owner leaves, the oldest socket left
+  takes over at the size it last asked for. Sockets on the offset protocol hear
+  `{"t":"size","cols","rows","owner"}`; clients without from= still get no text frames.
 - test/chaos/relay.test.js runs R1, R2 and R5 over the real Node relay and a real vyred: a stream
   survives a dropped device socket and a relay restart, an outbox write whose answer the relay
   lost lands once, and createPaths moves a stream from direct to the relay and back with nothing
