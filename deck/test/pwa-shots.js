@@ -104,16 +104,16 @@ const SCREENS = [
       const r = f.getBoundingClientRect(), y = r.top + r.height / 2, x = r.right - 40;
       const ev = (t, dx) => f.dispatchEvent(new PointerEvent(t, { pointerId: 9, clientX: x + dx, clientY: y, button: 0, bubbles: true, pointerType: "touch" }));
       ev("pointerdown", 0); await wait(30); ev("pointermove", -20); await wait(30); ev("pointermove", -130); await wait(30); ev("pointerup", -130); await wait(400);
-      if (!/Denied/.test(document.querySelector('.np-toast')?.textContent || "")) throw new Error("no Denied toast");
+      if (!/Denied/.test(document.querySelector('.toast')?.textContent || "")) throw new Error("no Denied toast");
       if (row.isConnected && row.offsetHeight > 2) throw new Error("the denied row did not collapse");
       if (sent.length) throw new Error("the deny went before its toast ended");
-      document.querySelector('.np-toast-undo').click(); await wait(4600);
+      document.querySelector('.toast-undo').click(); await wait(4600);
       if (sent.length) throw new Error("Undo did not stop the deny: " + JSON.stringify(sent));
       const back = document.querySelector('.np-row[data-kind=ask] .np-kb-b'); if (!back) throw new Error("the row did not come back after Undo");
       back.click(); await wait(1500);
       const a = sent.find(x => x.t === "threads.answer"); if (!a) throw new Error("the approve was not sent");
       if (a.proof) throw new Error("the approve asked for a presence proof");
-      if (!/Approved/.test(document.querySelector('.np-toast')?.textContent || "")) throw new Error("no Approved toast");` },
+      if (!/Approved/.test(document.querySelector('.toast')?.textContent || "")) throw new Error("no Approved toast");` },
   // Onboarding's history and devices steps (the phone shell is not part of onboarding).
   { name: "onboard-history", path: "/onboard#history", wait: 3000, noShell: true },
   { name: "onboard-devices", path: "/onboard#devices", wait: 3000, noShell: true },

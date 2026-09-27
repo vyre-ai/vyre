@@ -29,6 +29,7 @@ import { passkeyState, pushState, setupCard } from "./phone-setup.js";
 import { firstPasskeyCard } from "./first-passkey.js";
 import { standalone } from "./pwa.js";
 import { openSheet } from "./sheet.js";
+import { showToast, UNDO_MS } from "./toast.js";
 import { openNeedSheet, glyph, problem } from "./need-sheet.js";
 import { titleOf, secondLine, thirdLine, ago, ariaLabel, presenceWord, swipeActions, swipeCommit, release, toastFor, deferred, snoozes,
   SWIPE_HINT, ACTION_W } from "./need-rows.js";
@@ -39,7 +40,6 @@ const local = (() => { try { return window.localStorage; } catch { return null; 
 const getLocal = (/** @type {string} */ k) => { try { return local?.getItem(k) ?? null; } catch { return null; } };
 const setLocal = (/** @type {string} */ k, /** @type {string} */ v) => { try { local?.setItem(k, v); } catch {} };
 const SWIPED_KEY = "vyre.needs.swiped";
-const UNDO_MS = 4000;
 const reduced = () => typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /** first-passkey.js's card is styled in pair.css, which pair.js loads only when it draws. */
@@ -58,10 +58,7 @@ export function phoneNow(ctx) {
   const needsSec = h("section", { class: "np-sec np-needs", "aria-labelledby": "np-needs-h" });
   const workSec = h("section", { class: "np-sec", "aria-labelledby": "np-work-h" });
   const memSec = h("section", { class: "np-sec np-mem-sec" });
-  const toastText = h("span", { class: "np-toast-t" });
-  const toastUndo = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "np-toast-undo" }, "Undo"));
-  const toast = h("div", { class: "np-toast", role: "status", "aria-live": "polite", hidden: true }, toastText, toastUndo);
-  put(ctx.root, h("div", { class: "now np" }, remind, needsSec, workSec, memSec, toast));
+  put(ctx.root, h("div", { class: "now np" }, remind, needsSec, workSec, memSec));
 
   // ---- the setup reminder -----------------------------------------------------------------
 
@@ -197,24 +194,18 @@ export function phoneNow(ctx) {
 
   // ---- the toast --------------------------------------------------------------------------
 
-  let toastTimer = 0;
-  /** @type {(() => void) | null} */ let undoFn = null;
+  // The Deck's one toast (js/toast.js): one at a time, 4 s, Undo only while Undo can still work.
+  /** @type {import("./toast.js").Toast | null} */ let mine = null;
   function say(/** @type {string} */ text, /** @type {(() => void) | null} */ undo) {
-    clearTimeout(toastTimer);
-    put(toastText, text);
-    undoFn = undo;
-    toastUndo.hidden = !undo;
-    toast.hidden = false;
-    toastTimer = window.setTimeout(() => { toast.hidden = true; undoFn = null; }, UNDO_MS);
+    mine = showToast({ text, undo, ms: UNDO_MS });
   }
-  toastUndo.addEventListener("click", () => { const f = undoFn; undoFn = null; toast.hidden = true; clearTimeout(toastTimer); f?.(); });
 
   /** Send every call still waiting on its toast: the page is being left, or hidden. */
   const flushAll = () => { for (const d of [...waiting]) d.flush(); };
-  const onHide = () => { if (document.hidden) flushAll(); };
+  const onHide = () => { if (document.hidden) { flushAll(); mine?.close(); } };
   document.addEventListener("visibilitychange", onHide);
   window.addEventListener("pagehide", flushAll);
-  ctx.cleanup(() => { flushAll(); document.removeEventListener("visibilitychange", onHide); window.removeEventListener("pagehide", flushAll); });
+  ctx.cleanup(() => { flushAll(); mine?.close(); document.removeEventListener("visibilitychange", onHide); window.removeEventListener("pagehide", flushAll); });
 
   // ---- committing -------------------------------------------------------------------------
 

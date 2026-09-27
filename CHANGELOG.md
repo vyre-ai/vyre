@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One toast in the Deck (Design A v1)
+
+- deck/js/toast.js is the Deck's one toast (styles deck/css/toast.css): 4 s, role status and
+  aria-live polite, never takes focus, one at a time (a new one replaces the old), Undo as a
+  ghost button (44 on touch, 28 on the desktop), Cmd+Z / Ctrl+Z for Undo while it is up, hover
+  pauses and leaving restarts at 2 s, floating (bottom centre at max 480, or 24 above the Capsule
+  on the phone, `--float` shadow) or in place in a row's slot. Now's Undo toast on the phone and
+  the vault's copy toast (its Clear now, countdown and draining bar) both use it; `.np-toast` and
+  `.vt-toast` are gone.
+
 #### Status marks: one model on the Deck (Design A v1)
 
 - deck/js/status-mark.js draws the five status marks (needs you 8 solid attention dot, failed 12

@@ -183,3 +183,93 @@ test("status-mark: failed and relayed never take the attention colour or amber; 
   assert.match(read("index.html"), /href="\/css\/buttons.css">\n\s*<link rel="stylesheet" href="\/css\/marks.css">/);
   assert.match(read("sw.js"), /"\/css\/marks.css", "\/js\/status-mark.js"/);
 });
+
+// ---- the toast -------------------------------------------------------------------------------
+
+test("toast: one module; Now and the vault use it and draw none of their own", () => {
+  const files = [];
+  const walk = (/** @type {string} */ d) => {
+    for (const e of fs.readdirSync(path.join(DECK, d), { withFileTypes: true })) {
+      const rel = path.posix.join(d, e.name);
+      if (e.isDirectory()) { if (!/^(test|vendor|node_modules|fonts)$/.test(e.name)) walk(rel); }
+      else if (/\.(js|css)$/.test(e.name) && !/\.test\.js$/.test(e.name)) files.push(rel);
+    }
+  };
+  walk(".");
+  const drawers = files.filter(f => f !== "js/toast.js" && /class: "(?:[^"]*\s)?(?:np-|vt-)?toast["\s]/.test(read(f)));
+  assert.deepEqual(drawers, [], "only js/toast.js builds a toast element");
+  const styled = files.filter(f => f.endsWith(".css") && f !== "css/toast.css" && /^\.[\w-]*toast[\w-]*\s*\{[^}]*position: fixed/m.test(read(f)));
+  assert.deepEqual(styled, [], "only css/toast.css positions a toast");
+  assert.match(read("js/now-phone.js"), /^import \{ showToast, UNDO_MS \} from "\.\/toast\.js";/m);
+  assert.match(read("vault/ui.js"), /^import \{ showToast \} from "\.\.\/js\/toast\.js";/m);
+  assert.match(read("index.html"), /href="\/css\/marks.css">\n\s*<link rel="stylesheet" href="\/css\/toast.css">/);
+  assert.match(read("sw.js"), /"\/css\/toast.css", "\/js\/toast.js"/);
+});
+
+test("toast: 4 s, polite, one at a time; Undo and Cmd+Z undo, and hover pauses", async () => {
+  const dom = await import("./fake-dom.js");
+  const doc = dom.install();
+  /** @type {Map<string, Function>} */ const keys = new Map();
+  doc.addEventListener = (/** @type {string} */ t, /** @type {Function} */ f) => keys.set(t, f);
+  doc.removeEventListener = (/** @type {string} */ t) => keys.delete(t);
+  const { showToast, currentToast, UNDO_MS, RESUME_MS } = await import("../js/toast.js");
+  assert.equal(UNDO_MS, 4000);
+  assert.equal(RESUME_MS, 2000);
+  const { mock } = await import("node:test");
+  mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"] });
+  try {
+    let undone = 0, why = "";
+    const t = showToast({ text: "Denied", undo: () => { undone++; }, onClose: w => { why = w; } });
+    assert.equal(t.el.getAttribute("role"), "status");
+    assert.equal(t.el.getAttribute("aria-live"), "polite");
+    assert.equal(t.el.parentNode, doc.body);
+    assert.equal(t.el.querySelector(".toast-undo")?.className, "button button-ghost button-xs toast-undo", "Undo is a ghost button, never primary");
+    await /** @type {any} */ (t.el.querySelector(".toast-undo")).click();
+    assert.equal(undone, 1);
+    assert.equal(why, "undo");
+    assert.equal(currentToast(), null);
+
+    // A new toast replaces the old; Cmd+Z undoes the one that is up.
+    const a = showToast({ text: "Discarded", undo: () => { undone++; } });
+    const b = showToast({ text: "Hidden here for an hour", undo: () => { undone += 10; } });
+    assert.equal(a.open, false);
+    assert.equal(a.el.parentNode, null);
+    keys.get("keydown")?.({ key: "z", metaKey: true, preventDefault() {} });
+    assert.equal(undone, 11);
+    assert.equal(b.open, false);
+    assert.equal(keys.has("keydown"), false, "the shortcut goes with the toast");
+
+    // It closes itself after 4 s; hover pauses it, and leaving restarts it at 2 s.
+    const c = showToast({ text: "Approved" });
+    mock.timers.tick(1000);
+    c.el.dispatchEvent(new Event("pointerenter"));
+    mock.timers.tick(10_000);
+    assert.equal(c.open, true, "paused under the pointer");
+    c.el.dispatchEvent(new Event("pointerleave"));
+    mock.timers.tick(1999);
+    assert.equal(c.open, true);
+    mock.timers.tick(1);
+    assert.equal(c.open, false);
+
+    // In place: it takes the row's slot.
+    const slot = doc.createElement("div");
+    const d = showToast({ text: "Removed npm run lint", undo: () => {}, slot });
+    assert.equal(d.el.parentNode, slot);
+    assert.match(d.el.className, /toast-inplace/);
+    assert.ok(d.el.querySelector(".toast-check"));
+    mock.timers.tick(UNDO_MS);
+    assert.equal(d.open, false);
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test("toast: the look follows the spec (float shadow, 480 max, 44 tall, 24 above the Capsule)", () => {
+  const css = read("css/toast.css");
+  decl(css, ".toast-float", /max-width: min\(480px, calc\(100vw - 32px\)\); min-height: var\(--control-touch, 44px\)/);
+  decl(css, ".toast-float", /border-radius: var\(--radius-card, 12px\); box-shadow: var\(--float\)/);
+  decl(css, ".toast-float", /animation: toast-in var\(--motion-panel, 220ms\)/);
+  decl(css, ".toast-float", /bottom: calc\(var\(--cap-bottom, 12px\) \+ var\(--cap-h, 56px\) \+ 24px\)/);
+  decl(css, ".toast-inplace", /height: var\(--control-touch, 44px\); gap: 10px; padding: 0 14px; background: var\(--hover\); border-top: 1px solid var\(--rule\)/);
+  assert.doesNotMatch(noComments(css), /--light-top|--primary|--beacon|--focus/);
+});

@@ -158,12 +158,7 @@
 .np-skel-row { height: 78px; background: var(--hover); opacity: 0.6; }
 .np-skel-row + .np-skel-row { border-top: 1px solid var(--rule); }
 
-/* The Undo toast: above the Capsule. */
-.np-toast { position: fixed; left: 16px; right: 16px; bottom: calc(env(safe-area-inset-bottom, 0px) + 56px + 24px); z-index: 900;
-  display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 0 6px 0 16px;
-  background: var(--panel); color: var(--text); border: 1px solid var(--rule-strong); border-radius: 12px; box-shadow: var(--light-top); }
-.np-toast-t { font-size: 15px; line-height: 20px; }
-.np-toast-undo { min-height: 44px; padding: 0 12px; border: 0; background: none; color: var(--text); font-family: var(--sans); font-size: 15px; font-weight: 600; cursor: pointer; }
+/* The Undo toast is the Deck's one toast (js/toast.js, css/toast.css). */
 
 /* Working. */
 .np-wrow { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; text-decoration: none; color: var(--text); }

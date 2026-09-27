@@ -1,0 +1,45 @@
+/* The one toast (Design A v1: docs/design/system/components/toast.md), built by js/toast.js.
+   Two placements, one look: floating (bottom centre on the desktop, above the Capsule on the
+   phone) and in place (in a collapsed row's slot). Undo is a ghost button, never lime. */
+
+.toast { display: flex; align-items: center; box-sizing: border-box; color: var(--text);
+  font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); }
+.toast-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toast .toast-undo, .toast .toast-act { flex-shrink: 0; color: var(--text); font-weight: 600; }
+.toast-left { flex-shrink: 0; padding-right: 8px; font-size: var(--size-meta, 12px); line-height: var(--line-meta, 16px);
+  color: var(--label); font-variant-numeric: tabular-nums; }
+.toast-x { flex-shrink: 0; }
+
+/* Floating: fixed, bottom centre at max 480 on the desktop. */
+.toast-float { position: fixed; z-index: 900; left: 50%; bottom: 24px; transform: translateX(-50%);
+  width: max-content; max-width: min(480px, calc(100vw - 32px)); min-height: var(--control-touch, 44px);
+  gap: 8px; padding: 0 6px 0 16px; overflow: hidden;
+  background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); box-shadow: var(--float);
+  animation: toast-in var(--motion-panel, 220ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1)); }
+.toast-float.toast-out { opacity: 0; transition: opacity var(--motion-tap, 120ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1)); }
+@keyframes toast-in { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+/* In place: the row's slot, 44 tall, a check, the words, Undo. */
+.toast-inplace { height: var(--control-touch, 44px); gap: 10px; padding: 0 14px; background: var(--hover); border-top: 1px solid var(--rule); }
+.toast-check { flex-shrink: 0; position: relative; width: 16px; height: 16px; }
+.toast-check::before { content: ""; position: absolute; left: 3px; top: 3px; width: 9px; height: 5px;
+  border-left: 1.5px solid var(--text-2); border-bottom: 1.5px solid var(--text-2); transform: rotate(-45deg); }
+
+/* The vault's copy toast: a 1 px bar draining to when the clipboard clears. */
+.toast-bar { position: absolute; left: 0; bottom: 0; height: 1px; width: 100%; background: var(--text-2);
+  transform-origin: left; animation: toast-drain linear forwards; }
+@keyframes toast-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+/* On the phone: 16 from the sides and 24 above the Capsule, in the read size. Undo is 44. */
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+  .toast-float { left: 16px; right: 16px; width: auto; max-width: none; transform: none;
+    bottom: calc(var(--cap-bottom, 12px) + var(--cap-h, 56px) + 24px);
+    font-size: var(--size-read, 17px); line-height: var(--line-read, 24px); animation-name: toast-rise; }
+}
+@keyframes toast-rise { from { opacity: 0; transform: translateY(8px); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .toast-float { animation-name: toast-fade; }
+  .toast-bar { animation: none; }
+}
+@keyframes toast-fade { from { opacity: 0; } }

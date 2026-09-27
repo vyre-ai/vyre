@@ -254,6 +254,9 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 | Status mark | no running ring, crossed circle or hollow done dot in `deck.css` (css/marks.css, js/status-mark.js) | marks |
 | Status mark | relayed health dots used gold: now `--label` solid, and unknown is `--label` hollow | marks |
 | Status mark | rail count was violet mono text: the Now count is the 18 badge (99+, "3 need you") | marks |
+| Toast | two toasts (`.np-toast` on Now, `.vt-toast` in the vault): one js/toast.js + css/toast.css | toast |
+| Toast | no in-place variant: `showToast({ slot })` draws it (Now's rows still use the floating one) | toast |
+| Toast | shadow `--light-top` and words 15/20: now `--float`, base 13/18, phone read 17/24 | toast |
 
 ## Needs from others
 - tailnet or names: a read of config `network.origins` (a field on system.info or names.status)

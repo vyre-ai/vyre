@@ -183,18 +183,9 @@
 .vt-off-out:empty { display: none; }
 .vt-off-out { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--rule); }
 
-/* The copy toast, with its 1px bar draining to when the clipboard clears. */
-.vt-toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 70; display: flex; align-items: center; gap: 10px;
-  max-width: calc(100vw - 32px); padding: 10px 8px 11px 16px; background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--r-3);
-  box-shadow: var(--popover); font-size: 13px; line-height: 18px; overflow: hidden; }
-.vt-toast-text { color: var(--text); }
+/* The copy toast is the Deck's one toast (js/toast.js, css/toast.css); only its clock is here. */
 .vt-toast-left { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.vt-toast-btn { border: none; background: none; padding: 0 4px; color: var(--text); text-decoration: underline; text-decoration-color: var(--rule-strong);
-  text-underline-offset: 3px; cursor: pointer; font-size: 13px; }
-.vt-toast-x { width: 26px; height: 26px; }
-.vt-toast-bar { position: absolute; left: 0; bottom: 0; height: 1px; width: 100%; background: var(--text-2); transform-origin: left; animation: vt-drain linear forwards; }
-@keyframes vt-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
-@media (prefers-reduced-motion: reduce) { .vt-toast-bar { animation: none; } .vt-ring-arc { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .vt-ring-arc { transition: none; } }
 
 /* Watchtower */
 .vt-wt-sum { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border-top: 1px solid var(--rule); border-bottom: 1px solid var(--rule); margin-bottom: 8px; }
@@ -303,6 +294,5 @@
   .vt-backdrop { align-items: flex-end; padding: 0; }
   .vt-sheet, .vt-sheet.wide { width: 100%; max-height: 92dvh; border-radius: var(--r-3) var(--r-3) 0 0; padding: 16px 16px 28px; }
   .vt-two { grid-template-columns: 1fr; }
-  .vt-toast { bottom: 92px; }
   .vt-wait-row { flex-direction: column; align-items: stretch; gap: 8px; padding: 10px 0; }
 }
