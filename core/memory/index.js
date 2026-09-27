@@ -177,7 +177,15 @@ export default {
       try {
         const delRead = db.prepare("DELETE FROM memory_me_reads WHERE hash = ?");
         for (const h of hashes) delRead.run(h);
-        const inAnswers = db.prepare("DELETE FROM memory_iq_answers WHERE turns LIKE ? AND id NOT IN (SELECT answer FROM memory_iq_fixes)");
+        // Corrections of answers that stood on this device's turns go too, with what they changed
+        // (e2e: the machine on every derived row, fixes included).
+        const fixesOf = db.prepare("SELECT id, told FROM memory_iq_fixes WHERE turns LIKE ?");
+        for (const id of ids) for (const f of /** @type {any[]} */ (fixesOf.all(`%"${id}:%`))) {
+          db.prepare("DELETE FROM memory_me_denied WHERE fix = ?").run(f.id);
+          if (f.told != null) { db.prepare("DELETE FROM memory_me_claims WHERE session = ?").run(`told:${f.told}`); db.prepare("DELETE FROM memory_me_told WHERE id = ?").run(f.told); }
+          db.prepare("DELETE FROM memory_iq_fixes WHERE id = ?").run(f.id);
+        }
+        const inAnswers = db.prepare("DELETE FROM memory_iq_answers WHERE turns LIKE ?");
         for (const id of ids) inAnswers.run(`%"${id}:%`);
         db.prepare("DELETE FROM memory_iq_heard WHERE thread IN (SELECT value FROM json_each(?))").run(JSON.stringify(ids));
         db.prepare("DELETE FROM memory_iq_suggested WHERE thread IN (SELECT value FROM json_each(?))").run(JSON.stringify(ids));
