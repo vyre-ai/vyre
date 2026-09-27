@@ -1786,6 +1786,17 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - Permission cards: A allows once, D denies. An ask answered on another screen says so
   ("Answered from the Capsule · 14:31").
 - deck/sw.js SHELL keeps the new modules. Tests in deck/chat/session.test.js and core tests.
+#### Boundaries: parts import only the kernel, or a frozen exception
+
+- test/boundaries.test.js scans every runtime file under core/, local/ and modules/ for relative
+  imports (static, dynamic, require) into another part. The kernel (core/config, store, events,
+  modules, presence, daemon) is open to all. Today's 26 other edges are frozen in an allowlist,
+  down to the files imported; a new edge or a new file behind one fails, and so does an entry
+  nothing uses any more (the list only shrinks). Tests, testing/ and fixtures are out of scope.
+- lib/<name> (ADR 0033) is shared pure code: any part may import it; a lib may import only the
+  kernel and other libs, and no lib edge can be frozen.
+- docs/architecture/boundaries.md: the rule, and each frozen edge with why it exists and what it
+  becomes (17 lib, 8 ctx.call, 1 surface). In the nav; reference regenerated.
 
 #### The answer eval runs without the Electron Capsule
 
