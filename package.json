@@ -33,6 +33,7 @@
     "core",
     "harness",
     "lib",
+    "packages/module-sdk",
     "local",
     "deck",
     "modules",
