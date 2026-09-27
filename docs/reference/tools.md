@@ -4501,7 +4501,7 @@ With vault.relay.grants, whether the tailnet policy grants each pass holder vyre
 
 ### `vault.health`
 
-Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, unprotected, expired or expiring. Names and reason codes only.
+Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, missing a passkey the site offers, unprotected, expired or expiring. Names and reason codes only.
 
 - Input: none
 - Callers: any caller
