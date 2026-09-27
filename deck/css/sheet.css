@@ -70,6 +70,34 @@ html.sheet-open, html.sheet-open body { background: #000; }
   html.sheet-open #deck { transform: none; border-radius: 0; }
 }
 
+/* ---- the Places sheet (js/places.js), from the phone's avatar ------------------------------------
+   Fits its content. Head row 12 16 8: avatar 34, the name 17/600, the address 12 --label. A 3 column
+   grid of tiles (gap 8, padding 8 16): 1 px --rule, radius 10, padding 12, icon 20 over the label 13,
+   centred, 44 at least. The hint under it, 12 --label. */
+
+.sheet.sheet-places { top: auto; max-height: calc(100% - env(safe-area-inset-top, 0px) - 10px); }
+.sheet-places .sheet-head { padding: 12px 16px 8px; }
+.sheet-places .sheet-body { padding: 8px 16px max(16px, env(safe-area-inset-bottom, 0px)); }
+.plc-who { display: flex; align-items: center; gap: 12px; min-height: 44px; }
+.plc-avatar { width: 34px; height: 34px; border-radius: 17px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+  background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text); font-size: 15px; line-height: 20px; font-weight: 600; }
+.plc-id { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.plc-name { font-size: 17px; line-height: 22px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plc-where { font-size: 12px; line-height: 16px; color: var(--label); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plc-who .sheet-close { margin: 0 -10px 0 0; }
+.plc-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.plc-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 12px;
+  border: 1px solid var(--rule); border-radius: 10px; color: var(--text); text-decoration: none; text-align: center;
+  -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  transition: background-color var(--motion-tap, 120ms) var(--ease, cubic-bezier(0.25, 0.1, 0.25, 1)); }
+.plc-tile svg { flex-shrink: 0; }
+.plc-label { font-size: 13px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.plc-tile:active, .plc-tile.holding { background: var(--hover); }
+.plc-tile[data-kept] { border-color: var(--rule-strong); background: var(--hover); }
+.plc-tile[data-kept] .plc-label { font-weight: 600; }
+.plc-hint { margin: 12px 0 0; font-size: 12px; line-height: 16px; color: var(--label); }
+@media (prefers-reduced-motion: reduce) { .plc-tile { transition: none; } }
+
 /* ---- button rows ---------------------------------------------------------------------------- */
 
 /* .sb, .sb-primary and .sb-full are aliases in css/buttons.css (secondary 44, primary 54, full width). */

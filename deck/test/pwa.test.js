@@ -94,7 +94,9 @@ test("pwa shell: three pages, Now Chats Agents, in pager order, and nothing else
   const pages = [...m[1].matchAll(/href: "([^"]+)", label: "([^"]+)"/g)].map(x => [x[1], x[2]]);
   assert.deepEqual(pages, [["/now", "Now"], ["/chat", "Chats"], ["/agents", "Agents"]]);
   // A swipe swaps the address in place; pages are not history.
-  assert.match(app, /history\.replaceState\(history\.state, "", PAGER\[i\]\.href\)/);
+  assert.match(app, /history\.replaceState\(history\.state, "", strip\[i\]\.href\)/);
+  // The pager's pages are the three, then the place kept from the Places sheet, if any.
+  assert.match(app, /const strip = \[\.\.\.PAGER\];/);
   // Rows that swipe on their own are left alone by the pager.
   assert.match(app, /\[data-swipe\]/);
   assert.match(phoneCss(), /\[data-swipe\] \{ touch-action: pan-y; \}/);
@@ -147,7 +149,7 @@ test("pwa shell: dictated words go into Find and are never sent on their own", (
   assert.match(cap, /if \(words\) o\.open\(words\)/);
   assert.doesNotMatch(cap, /agents\.ask|threads\.send|requestSubmit|\.submit\(/);
   assert.match(app, /go\("\/find\?q=" \+ encodeURIComponent\(words\)\)/);
-  assert.doesNotMatch(app.slice(app.indexOf("function openFind"), app.indexOf("function openSettings")), /requestSubmit|Enter|\.submit\(/);
+  assert.doesNotMatch(app.slice(app.indexOf("function openFind"), app.indexOf("function openPlaces")), /requestSubmit|Enter|\.submit\(/);
 });
 
 test("pwa shell: light by default: passive gesture listeners, no interval, nothing polls", () => {

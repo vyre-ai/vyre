@@ -262,6 +262,9 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 | Rail | brand in the top bar (`.brand`, 216 wide): now the home mark at the top of the rail, its dot `--beacon-dot` while anything needs you | 861a6d40 |
 | Rail | no Cmd+1 to Cmd+9 place keys: now in rail order, Ctrl off a Mac, never while typing | 861a6d40 |
 | Toast | shadow `--light-top` and words 15/20: now `--float`, base 13/18, phone read 17/24 | 82685182 |
+| Phone shell | the avatar opened a Settings sheet: now the Places sheet (head row, six tiles, hint), a dialog named "Places"; the avatar is "Places and account" | PLACES |
+| Phone shell | no pin-a-fourth-page: a held tile (600 ms, or Shift+F10 / the context menu key) joins the pager after Agents and the header, one at most, per device | PLACES |
+| Phone shell | the header labels could shrink: they never shrink and scroll sideways when four do not fit | PLACES |
 
 Not closed here: the phone tab bar badge (this branch has no tab bar, the phone shell uses page
 labels); `.needs-pill` is still a violet wash (the spec gives no replacement); `.dot.recall` is

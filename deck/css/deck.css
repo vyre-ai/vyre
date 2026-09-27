@@ -260,7 +260,8 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   /* The header replaces each view's own phone heading. */
   .phone-head { display: none; }
 
-  /* Header: the mark, Now Chats Agents in Page type, the avatar (or "+" on Agents). It never collapses. */
+  /* Header: the mark, Now Chats Agents (and a kept fourth place) in Page type, the avatar (or "+"
+     on Agents). It never collapses; labels that overflow scroll sideways and never shrink. */
   .ph-head { display: flex; align-items: center; gap: 12px; height: 48px; flex-shrink: 0; padding: 0 12px 0 16px; background: var(--bg); position: relative; z-index: 3; }
   .ph-mark { display: inline-flex; flex-shrink: 0; }
   .ph-mark circle { fill: var(--mark-dot) !important; }
@@ -268,7 +269,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .ph-tabs { display: flex; align-items: center; gap: 16px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .ph-tabs::-webkit-scrollbar { display: none; }
   .ph-tab { display: inline-flex; align-items: center; min-height: 44px; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em;
-    color: var(--label); text-decoration: none; white-space: nowrap; transition: color 160ms ease-out; -webkit-touch-callout: none; user-select: none; }
+    color: var(--label); text-decoration: none; white-space: nowrap; flex-shrink: 0; transition: color 160ms ease-out; -webkit-touch-callout: none; user-select: none; }
   .ph-tab[aria-current="page"] { color: var(--text); }
   .ph-grow { flex-grow: 1; }
   .ph-avatar, .ph-plus { width: 44px; height: 44px; margin-right: -5px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
@@ -336,8 +337,6 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .pull.ready { color: var(--text); }
   .reach { min-height: 44px; font-size: 15px; line-height: 20px; }
   .reach .btn { padding: 0 8px; }
-  /* Settings, from the avatar, inside a sheet: the sheet's title stands in for the page's. */
-  .ph-settings .set-top h1 { display: none; }
 }
 @keyframes ph-push { from { transform: translateX(100%); } }
 @keyframes ph-pop { to { transform: translateX(100%); } }

@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The phone's avatar opens the Places sheet, and a held place becomes a fourth page (Design A v1)
+
+- Under 720 px the header's avatar ("Places and account") opens the Places sheet in the Deck's one
+  sheet (js/sheet.js), a dialog named "Places" that fits its content: a head row (the avatar 34,
+  the owner's name 17/600 from system.info, the box's address at 12 `--label`, with the path and
+  its measured latency from link.health when it knows them, "vyre.harlow.ts.net · direct 12 ms"),
+  a 3 column grid of six tiles (Projects, Planner, Memory, Vault, Devices, Settings; the rail's
+  places and routes, js/places.js), and the hint "Hold a place to keep it as a fourth page."
+- A tap on a tile closes the sheet and opens the place pushed. Holding a tile 600 ms
+  (`--motion-hold`), or the context menu key or Shift+F10 on a focused one, keeps it as a fourth
+  page after Agents, or lets it go: its label joins the header and its page joins the pager. One
+  kept place at most (a new one replaces the old), kept per device in localStorage "vyre.pin".
+  Tiles are links whose description says "Hold to keep as a page" or "Kept as a page".
+- The header's labels scroll sideways when four do not fit, and never shrink; the current one
+  scrolls into sight.
+- Settings is the Settings tile: the Settings sheet (openSettings, `.ph-settings`) is gone, since
+  nothing else opened it.
+- deck/test/places.test.js covers the tiles, order, routes, the hold and its keyboard path, the
+  one-pin rule and storage; pwa-shots.js has places-sheet and places-kept screens, and
+  settings-sheet now reaches Settings through its tile.
+
 #### The Deck's rail is the 72 px icon rail (Design A v1)
 
 - From 720 px up the rail is a 72 px column (deck/js/rail.js, css/deck.css `.rail`): the home
