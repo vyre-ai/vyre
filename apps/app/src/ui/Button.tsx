@@ -227,7 +227,8 @@ export function Spinner({ track, arc, still }: { track: string; arc: string; sti
 }
 
 const ease = `cubic-bezier(${tokens.motion.ease.join(",")})`;
-const transition = (reduced: boolean) =>
+/** Fill, border and ink over motion.tap on the web; instant under reduced motion. */
+export const transition = (reduced: boolean) =>
   reduced ? null : { transitionProperty: "background-color, border-color, color", transitionDuration: `${tokens.motion.tap}ms`, transitionTimingFunction: ease };
 
 /** The keyboard focus ring (below) on any pressable, on the web; nothing on native. */

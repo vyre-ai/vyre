@@ -14,6 +14,8 @@ import { useTheme, type Palette } from "../theme/theme";
 import { tokens } from "../theme/tokens";
 import { face, type } from "../theme/type";
 import { Button } from "../ui/Button";
+import { Card, CardCode } from "../ui/Card";
+import { Icon } from "../ui/Icon";
 import { StatusMark } from "../ui/StatusMark";
 import { sameRow, type TranscriptRow } from "./model";
 import type { SessionStore } from "./store";
@@ -135,28 +137,51 @@ function ItemBody({ it, color, store }: { it: Item; color: Palette; store: Sessi
   }
 }
 
+/** "14:40", the ask's own clock time. */
+const hm = (at: number | undefined) => {
+  if (!at) return "";
+  const d = new Date(at);
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+};
+
+// The ask card spec: a neutral Card; the attention is only the dot and the label. Answered, the
+// dot and the buttons leave and a neutral glyph names the outcome (Withdrawn stays in `label`). Who
+// answered is not on the item, so the outcome never says "by you".
 function AskCard({ it, color, store }: { it: Extract<Item, { kind: "ask" }>; color: Palette; store: SessionStore }) {
   const open = it.state === "open";
   const question = it.askKind === "question";
   const need = fromAsk({ id: it.ask, thread: store.thread, tool: it.tool, summary: it.summary, kind: it.askKind, at: it.at ?? Date.now() });
   const answer = (d: "approve" | "reject") => need && answers.commit(need, d);
+  const what = it.summary ?? it.tool ?? "";
+  const kind = question ? "Question" : "Permission";
+  const withdrawn = it.state === "cancelled";
+  const denied = !withdrawn && it.decision === "deny";
+  const outcome = withdrawn ? "Withdrawn" : denied ? "Denied" : question ? "Answered" : "Allowed";
   return (
-    <View style={[styles.card, { backgroundColor: color.panel, borderColor: open ? color.beacon : color.rule }]}>
-      <View style={styles.cardHead}>
-        {open ? <StatusMark status="needsYou" /> : null}
-        <Text style={[type.meta, { color: color.label }]}>{question ? "Question" : "Permission"}{open ? "" : ` · ${it.state === "cancelled" ? "cancelled" : it.decision === "deny" ? "denied" : "allowed"}`}</Text>
-      </View>
-      <Text selectable style={[question ? type.read : type.mono, { color: color.text }]}>{it.summary ?? it.tool ?? ""}</Text>
-      {open ? (
-        <View style={styles.cardButtons}>
-          {question ? (
-            <Text style={[type.meta, { color: color.text2 }]}>Answer it in the Deck for now. Also in Needs.</Text>
-          ) : (
-            <Button kind="primary" label="Allow once" onPress={() => answer("approve")} />
-          )}
-          <Button kind="ghost" label="Deny" onPress={() => answer("reject")} />
-        </View>
-      ) : null}
+    <View style={styles.card}>
+      <Card
+        mark={open ? <StatusMark status="needsYou" /> : <Icon name={withdrawn || denied ? "x" : "check"} color={withdrawn ? color.label : color.text2} />}
+        label={open ? kind : outcome}
+        meta={[need?.agent, hm(it.at)].filter(Boolean).join(" · ")}
+        needsYou={open}
+        decided={!open && !withdrawn}
+        accessibilityLabel={need?.agent ? `${kind} ${question ? "" : "ask "}from ${need.agent}` : undefined}
+        footer={
+          open ? (
+            <>
+              {question ? (
+                <Text style={[type.meta, { color: color.text2 }]}>Answer it in the Deck for now. Also in Needs.</Text>
+              ) : (
+                <Button kind="primary" label="Allow once" onPress={() => answer("approve")} />
+              )}
+              <Button kind="ghost" label="Deny" onPress={() => answer("reject")} />
+            </>
+          ) : null
+        }
+      >
+        {need?.title ? <Text style={[type.readStrong, { color: color.text }]}>{need.title}</Text> : null}
+        {question ? <Text selectable style={[type.read, { color: color.text }]}>{what}</Text> : what ? <CardCode text={what} /> : null}
+      </Card>
     </View>
   );
 }
@@ -167,7 +192,5 @@ const styles = StyleSheet.create({
   user: { maxWidth: "88%", borderRadius: tokens.radius.bubble, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: tokens.space[4], paddingVertical: tokens.space[3] },
   tool: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], paddingHorizontal: G, minHeight: 28, paddingVertical: tokens.space[2] },
   toolText: { flex: 1 },
-  card: { marginHorizontal: G, marginVertical: tokens.space[3], padding: tokens.space[4], gap: tokens.space[3], borderRadius: tokens.radius.cardPhone, borderWidth: 1 },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: tokens.space[3] },
-  cardButtons: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], flexWrap: "wrap" },
+  card: { marginHorizontal: G, marginVertical: tokens.space[3] },
 });

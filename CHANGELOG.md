@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: every card on Card, an icon button, the first icons
+
+- The vault's trust card and the session's ask card draw on the one Card (card.md, ask-card.md):
+  a neutral border at all times, the needs-you dot and the label in the attention colour while an
+  ask is open, the command in the card's code block, the buttons in the footer. Answered, the
+  header names the outcome ("Allowed", "Denied", "Withdrawn") beside a neutral check or x.
+- `src/ui/IconButton.tsx` (icon-button.md): 28, 32 and 44 squares, plain, toggle, filled round and
+  primary, busy, an accessible name the type requires, and a 44 hit area on the phone at any size.
+  The composer's Stop and Send are 44 icon circles on it (composer.md).
+- `src/ui/Icon.tsx`: send, stop, check and x from the icon set's path data, drawn as bars with round
+  caps (no SVG renderer in the app, and no new dependency).
+
 #### A vyred killed by a signal is started again in the box
 
 - core/daemon/loop.sh waited again on a vyred that died by a signal (SIGKILL, the OOM killer)

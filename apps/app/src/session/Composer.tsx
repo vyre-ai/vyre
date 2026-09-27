@@ -45,6 +45,7 @@ import { viewCache } from "../state/cache";
 import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
 import { face, type } from "../theme/type";
+import { IconButton } from "../ui/IconButton";
 import type { SendResult, SessionStore } from "./store";
 
 const touch = Platform.OS !== "web" || (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
@@ -268,22 +269,18 @@ export const Composer = memo(function Composer({
           accessibilityLabel="Message"
           style={[styles.input, { color: color.text, backgroundColor: color.panel, borderColor: color.rule }, focusRing(color.focus)]}
         />
-        {running ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={onStop} style={[styles.btn, { backgroundColor: color.hover }]}>
-            <Text style={[type.readStrong, { color: color.text }]}>Stop</Text>
-          </Pressable>
-        ) : null}
-        <Pressable
-          accessibilityRole="button"
+        {running ? <IconButton icon="stop" round size="touch" accessibilityLabel="Stop" onPress={onStop} /> : null}
+        <IconButton
+          icon="send"
+          round
+          size="touch"
+          primary={!!text.trim()}
           accessibilityLabel={running ? "Send, or hold to queue" : "Send"}
           disabled={!text.trim()}
           onPress={() => press({ button: true })}
           onLongPress={() => press({ button: true, hold: true })}
           delayLongPress={tokens.motion.hold}
-          style={[styles.btn, { backgroundColor: text.trim() ? color.primaryBg : color.hover }]}
-        >
-          <Text style={[type.readStrong, { color: text.trim() ? color.primaryInk : color.label }]}>Send</Text>
-        </Pressable>
+        />
       </View>
       <View style={styles.chips}>
         <Pressable
@@ -321,9 +318,6 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.buttonTouch,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  // Stop and Send are the composer's own controls (44 circles on the phone per the composer spec,
-  // icon buttons, not the Button), so they keep their box here and take only their type from type.ts.
-  btn: { height: tokens.control.touch, paddingHorizontal: tokens.space[5], borderRadius: tokens.radius.buttonTouch, justifyContent: "center" },
   chips: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], flexWrap: "wrap" },
   chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: tokens.radius.buttonTouch, paddingHorizontal: tokens.space[3], paddingVertical: 2 },
   menu: { borderWidth: StyleSheet.hairlineWidth, borderRadius: tokens.radius.cardPhone, paddingVertical: tokens.space[2] },
