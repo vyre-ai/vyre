@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule reads Agent SDK session events, and streams at a steady pace
+
+- Tool rows by call id (thread.tool {call, status}): running, done, failed and canceled, one
+  quiet line each with a mark, the newest three and a count of earlier ones; a status update
+  changes its row in place. The same rows in a DM. A canceled turn (thread.finished canceled)
+  marks its running tools canceled and reads "stopped", not failed.
+- thread.turn fixes a reply's turn, and events of another turn of the thread are not this
+  reply's. thread.state: waiting reads "needs you" (the status model's word), failed carries its
+  error and stays failed through the idle that follows, and a clean finish then idle reads
+  "done · idle". thread.usage sets the turn's cost (not added twice with thread.finished) and
+  the session total. The older phase/error shape still folds.
+- Paced reveal: bursts are revealed at a rate that drains the backlog in about a quarter second,
+  with a frame timer that runs only while there is a backlog and the panel is shown.
+- `Tests/StreamPerfTests.swift` measures native-core's budgets on a bursty fake stream, off
+  screen. Optimised build: event to paint p95 1.1 ms, first token 2.2 ms (budget 100),
+  characters per frame CV 0.47 (budget 2), visible-update gap p95 18 ms (budget 250), no size
+  change while streaming (budget 5), Esc to stopped 1.5 ms (budget 100).
+
 #### An app send whose approval failed is not reported as sent
 
 - capsule-apps (7b08a18): gate.approve answers a failed send as data (state "failed"), which the

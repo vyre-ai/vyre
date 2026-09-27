@@ -89,11 +89,12 @@ without editing Capsule files:
   fix, the extension seam, `@` targets: see CHANGELOG.
 
 ## Doing
-- Paused (lead, 2026-09-27): the user is refocusing on the native core. Final branch sha is the
-  tip of work/capsule-pro, which carries main c8fb9aae plus the CI trigger paths (9078985), the
-  real-Mac check doc (b9b7b67), and capsule-apps-native 7b08a18 and 95aad5f (Swift 285/285).
-  capsule-mac CI run 36317665732 is on 58a2c49. Next wake: the real-Mac check (below), or
-  sessions' thread.state / thread.tool events (Next 2).
+- Session events (ADR 0030, sessions d12171cc): tool rows, turn, state, usage and the paced
+  reveal are built and measured (see CHANGELOG), Swift 287/287. They land after batch 3a is on
+  main: merge main then, run the suite, hand the sha to the integrator, and stop again.
+  Numbers (optimised, off-screen panel): event to paint p95 1.1 ms; first token 2.2 ms; chars per
+  frame CV 0.47; visible-update gap p95 18 ms; 0 size changes; Esc to stopped 1.5 ms; typing
+  p95 8.7 ms.
 
 ## Footprint: met (2026-09-27)
 - CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use
@@ -160,8 +161,8 @@ card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.
 If a step fails, note its number and what the screen said. Screenshots of the Capsule only.
 
 ## Next
-2. When sessions lands thread.state, thread.tool {call, status}, thread.turn and thread.usage:
-   tool rows by call id, "idle" on @ session rows (VyreThread has no state yet), and "send now".
+2. "idle" on @ session rows from threads.list `status` (VyreThread has no status yet), and
+   "send now".
 3. Switch the "live in terminal" badge to capsule-now's `live` flag (threads.list and
    projects.catalog rows carry it via fc7fa70).
 4. Local ring answers kept only in memory (PlannerBanners.unsent). Persist them to
