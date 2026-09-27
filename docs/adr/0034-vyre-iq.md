@@ -3,12 +3,12 @@ title: "ADR 0034: Vyre IQ"
 summary: One question in, one cited answer out, from every session the user has had, their personal facts and the people and projects graph, in one to three seconds, and "not sure, here's what I know" rather than a wrong answer.
 audience: builders, agents
 owner: memory-iq
-status: draft
+status: accepted
 ---
 
 # ADR 0034: Vyre IQ
 
-Status: proposed, 27 Sep 2026 · Workstream: memory-iq (module `memory`, `core/memory`) · Builds on
+Status: approved with amendments, 27 Sep 2026 · Workstream: memory-iq (module `memory`, `core/memory`) · Builds on
 ADR 0007 (intelligence), ADR 0023 (personal facts, written into this one) and ADR 0030 (sessions)
 
 ## The problem
@@ -30,16 +30,46 @@ Vyre IQ is the user-facing name for question answering over everything memory ho
 tool on the memory module:
 
 ```
-iq.ask { question, project_cwds?, room?, stream? }
+memory.ask { question, project_cwds?, room?, context?: { project?, thread? }, stream? }
   -> { answer: string|null, confidence: number, abstained: boolean, known: string[],
        sources: [{ session, seq, name, quote, ts }], via: "fact"|"retrieval"|null,
        latency_ms, cost_usd }
 ```
 
-`stream: true` emits `iq.thinking { id, stage }` (understanding, searching, reading, checking)
-and `iq.answered { id }`, so a surface shows a thinking state within 100 ms. The Capsule, Chat
+`stream: true` emits `memory.thinking { id, stage }` (understanding, searching, reading, checking)
+and `memory.answered { id }`, so a surface shows a thinking state within 100 ms. The Capsule, Chat
 and the phone call it; app-design owns how it looks. memory.answer stays as the fast path and the
 contract cc-plugin already uses. Internal names (memory, personal, reader) stay.
+
+A module's tools start with its own name (core/modules validate()), so the tool is `memory.ask`
+and its retrieval `memory.retrieve`; "Vyre IQ" stays the name people see. context.project scopes
+the question like project_cwds; context.thread favours that thread's turns and never filters.
+
+## Amendments (lead, 27 Sep 2026)
+
+1. **The graph is a product pillar.** People, projects and decisions stay a visible and editable
+   graph whatever the ablation finds. The ablation only sets how much the graph weighs in
+   retrieval.
+2. **Source trust.** A personal fact comes only from the user's own words about their life. Never
+   from Claude's turns, tool output, code, test fixtures, sample worlds, docs or pasted text, and
+   never from a session that is a program's (a subagent's brief, a headless run), the Capsule's
+   own ask thread, in a Vyre folder, or about building memory (core/memory/personal/trust.js).
+   The same rule filters the user's own said lines. The trigger was a trial Capsule that answered
+   "what is my wife's name" with a name from a Vyre dev session's test example. Two causes, both
+   fixed: the trial home indexed the person's real ~/.claude (Recall now reads it only for the
+   real ~/.vyre), and nothing kept dev and test text out of personal facts.
+3. **Determinism.** Fact ids are the fact itself (subject, relation, object), so a re-derive keeps
+   them. A turn is read by the model once and the read is kept by the text's hash, so a question
+   over the same facts gives the same answer, confidence and sources every time. Claude Code has no
+   temperature setting, so for model steps this comes from the cache, not from sampling. Answers
+   will be cached by fact-set version (phase 4).
+4. **Grounded or abstain.** An answer told as fact names the facts or turns it stands on, or IQ
+   says "I don't know yet". Each of 2 to 4 is an eval case: the trust world (the "Jordan" trap),
+   every question asked three times (inconsistent must be 0), and answers with nothing behind
+   them (ungrounded must be 0).
+5. **Who someone is to the user** is told as fact from confidence 0.6 (other facts 0.5). Swept at
+   0.5 to 0.75 over every world: no world's score or confident-wrong count moved, so the bar is
+   set where the user's own repeated lowercase mentions still answer.
 
 ### The pipeline
 
@@ -105,7 +135,9 @@ with their own daily cap line. The fast path costs nothing.
 The evaluation decides every step above, and each result goes into this ADR as it lands.
 
 - **Worlds.** `sealed` (life facts, written without the rules and never opened) stays the
-  personal score. A new sealed **sessions** world holds questions answerable only from session
+  personal score, and `trust` holds the source-trust traps. A new sealed **sessions** world (test/fixtures/iq-sealed.js,
+  61 sessions, 100 questions, written blind, scored only) and an open one for tuning
+  (test/fixtures/iq-open.js, 52 sessions, 90 questions) hold questions answerable only from session
   transcripts: decisions, files, bugs, dates, who said what, what was deployed. It is written by
   an agent that never reads the code.
 - **Metrics per world:** accuracy, confident-wrong (answered at 0.5 or more and wrong), abstain
@@ -126,7 +158,7 @@ The evaluation decides every step above, and each result goes into this ADR as i
 3. The answer step with citations, code-checked facts and abstention, replayed in CI.
 4. The second look, the fast path from verified facts, and an answer cache that a new turn
    invalidates.
-5. The warm session with sessions (latency), then `iq.ask` in the Capsule, Chat and the phone
+5. The warm session with sessions (latency), then `memory.ask` in the Capsule, Chat and the phone
    with app-design.
 
 ## Consequences

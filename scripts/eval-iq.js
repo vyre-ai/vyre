@@ -6,6 +6,10 @@
 //   node scripts/eval-iq.js --world sealed    the sealed sessions world (written blind; scores only,
 //                                             never a question, a passage or a failure)
 //   node scripts/eval-iq.js --json            the same, as JSON
+//   node scripts/eval-iq.js --answer          also memory.ask on every question, its replies replayed
+//                                             from test/eval/asks/<world>.json (CI calls no model)
+//   node scripts/eval-iq.js --answer --record  ask the fast model (`claude -p`, testbox) and keep
+//                                             its replies there; the sealed world is recorded unread
 //   node scripts/eval-iq.js --embedder real   meaning by the real model (all-MiniLM-L6-v2), installed
 //                                             into VYRE_EVAL_EMBEDDER_DIR (default: os.tmpdir()/vyre-eval-embedder);
 //                                             the default is the fake one (hashed words), as in CI
@@ -33,7 +37,9 @@ import { seedRecall } from "../test/fixtures/corpus.js";
 import { Dense } from "../core/recall/dense.js";
 import { load } from "../core/recall/embed.js";
 import { fakeEmbedder } from "../core/recall/testing.js";
-import { startMemory, embedAll, correct } from "./eval-answer.js";
+import { startMemory, embedAll, correct, CONFIDENT } from "./eval-answer.js";
+import { claudeOnce, modelFor } from "../core/memory/personal/reader.js";
+import { VERSION as ASK_VERSION } from "../core/memory/iq/ask.js";
 import * as openWorld from "../test/fixtures/iq-open.js";
 import * as sealedWorld from "../test/fixtures/iq-sealed.js";
 
@@ -86,7 +92,7 @@ export function scoreRetrieval(questions, got, ms) {
 }
 
 /**
- * @param {{ world?: "open"|"sealed", embedder?: "fake"|"real", only?: string[] }} [opts]
+ * @param {{ world?: "open"|"sealed", embedder?: "fake"|"real", only?: string[], answer?: boolean, record?: boolean }} [opts]
  */
 export async function runIq(opts = {}) {
   const w = WORLDS[opts.world || "open"];
@@ -111,7 +117,13 @@ export async function runIq(opts = {}) {
     const t0 = performance.now();
     await embedAll(db, embedder);
     const embedMs = performance.now() - t0;
-    mem = await startMemory(db, { me: world.ME, embedder, dense });
+    const asksFile = path.join(ROOT, "test/eval/asks", `${opts.world || "open"}.json`);
+    mem = await startMemory(db, { me: world.ME, embedder, dense, iqRunner: opts.record ? claudeOnce({ cwd: dir }) : null });
+    if (opts.answer && fs.existsSync(asksFile)) {
+      const kept = JSON.parse(fs.readFileSync(asksFile, "utf8"));
+      const ins = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
+      if (kept.version === ASK_VERSION) for (const [h, r] of Object.entries(kept.replies || {})) ins.run(h, ASK_VERSION, 0, String(r), 0);
+    }
     await mem.call("memory.curate", { full: true });
     const questions = gold.questions;
     /** @type {Record<string, any>} */
@@ -134,7 +146,35 @@ export async function runIq(opts = {}) {
       const b = await mem.call("memory.retrieve", { question: q.q, k: K });
       if (JSON.stringify(a.passages.map(p => p.id)) !== JSON.stringify(b.passages.map(p => p.id))) inconsistent++;
     }
+    let answered = null;
+    if (opts.answer) {
+      // memory.ask: right (an acceptable answer, or an abstention where there is none),
+      // confident-wrong, abstained, ungrounded, and the same answer when asked again.
+      let right = 0, cw = 0, abst = 0, ungrounded = 0, incons = 0, usd = 0;
+      const ms = [], kinds = {};
+      for (const q of questions) {
+        const r = await mem.call("memory.ask", { question: q.q });
+        ms.push(r.latency_ms); usd += r.cost_usd || 0;
+        const ok = q.expect ? correct(r.answer, q.expect) : !r.answer;
+        if (ok) right++;
+        if (r.answer && !ok && r.confidence >= CONFIDENT) cw++;
+        if (r.abstained) abst++;
+        if (r.answer && !(r.sources || []).length) ungrounded++;
+        const again = await mem.call("memory.ask", { question: q.q });
+        if (again.answer !== r.answer || JSON.stringify((again.sources || []).map(x => `${x.session}:${x.seq}`)) !== JSON.stringify((r.sources || []).map(x => `${x.session}:${x.seq}`))) incons++;
+        const k = kinds[q.kind] || (kinds[q.kind] = { n: 0, ok: 0 }); k.n++; if (ok) k.ok++;
+      }
+      answered = { accuracy: round(right / questions.length), confident_wrong: cw, abstain_rate: round(abst / questions.length), ungrounded, inconsistent: incons,
+        p50_ms: round(pct(ms, 0.5)), p95_ms: round(pct(ms, 0.95)), cost_usd: round(usd * 1e3) / 1e3, cost_per_question: round(usd / questions.length * 1e4) / 1e4,
+        by_kind: Object.fromEntries(Object.entries(kinds).map(([k, v]) => [k, round(v.ok / v.n)])) };
+      if (opts.record) {
+        const replies = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT hash, reply FROM memory_iq_asks WHERE v = ? ORDER BY hash").all(ASK_VERSION)).map(r => [String(r.hash), String(r.reply)]));
+        fs.mkdirSync(path.dirname(asksFile), { recursive: true });
+        fs.writeFileSync(asksFile, JSON.stringify({ version: ASK_VERSION, model: modelFor({}), replies }, null, 1) + "\n");
+      }
+    }
     return {
+      answered,
       world: { name: opts.world || "open", sealed, sessions: world.SESSIONS.length, turns: world.SESSIONS.reduce((n, s) => n + s.turns.length, 0),
         questions: questions.length, answerable: questions.filter(q => q.expect).length, embedder: opts.embedder === "real" ? "all-MiniLM-L6-v2" : "fake (hashed words)",
         embed_ms: round(embedMs) },
@@ -156,6 +196,12 @@ function print(r) {
     out.push(`  ${name.padEnd(10)} ${String(a.recall_at_8).padEnd(9)} ${String(a.session_at_8).padEnd(10)} ${String(a.answer_at_8).padEnd(9)} ${String(a.mrr).padEnd(6)} ${a.p95_ms}`);
   }
   out.push(`  inconsistent: ${r.inconsistent}`);
+  if (r.answered) {
+    const a = r.answered;
+    out.push(`  memory.ask: accuracy ${a.accuracy}, confident-wrong ${a.confident_wrong}, abstained ${a.abstain_rate}, ungrounded ${a.ungrounded}, inconsistent ${a.inconsistent}`);
+    out.push(`    latency p50/p95 ${a.p50_ms} / ${a.p95_ms} ms (replayed replies take no model time), cost $${a.cost_usd} ($${a.cost_per_question} a question)`);
+    out.push(`    by kind: ${Object.entries(a.by_kind).map(([k, v]) => `${k} ${v}`).join(", ")}`);
+  }
   const full = r.ablations.full;
   if (full) out.push(`  full, by kind: ${Object.entries(full.by_kind).map(([k, v]) => `${k} ${v}`).join(", ")}`);
   process.stdout.write(out.join("\n") + "\n");
@@ -163,7 +209,8 @@ function print(r) {
 
 async function main(argv) {
   const wi = argv.indexOf("--world"), ei = argv.indexOf("--embedder");
-  const r = await runIq({ world: /** @type {any} */ (wi >= 0 ? argv[wi + 1] : "open"), embedder: /** @type {any} */ (ei >= 0 ? argv[ei + 1] : "fake") });
+  const r = await runIq({ world: /** @type {any} */ (wi >= 0 ? argv[wi + 1] : "open"), embedder: /** @type {any} */ (ei >= 0 ? argv[ei + 1] : "fake"),
+    answer: argv.includes("--answer"), record: argv.includes("--record"), only: argv.includes("--answer") ? ["full"] : undefined });
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 1) + "\n"); else print(r);
 }
 

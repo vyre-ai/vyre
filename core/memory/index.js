@@ -16,7 +16,8 @@ import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
-import { createReader, claudeOnce } from "./personal/reader.js";
+import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
+import { asker } from "./iq/ask.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -86,12 +87,13 @@ export default {
       const d = path.join(root, "memory-jobs");
       try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; } catch { return null; }
     };
+    const runner = ctx.memoryRunner !== undefined ? ctx.memoryRunner
+      : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
+      : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null;
     const model = createReader({
       db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
       // Never a real model under node --test unless a test points VYRE_CLAUDE_BIN at a fake.
-      runner: ctx.memoryRunner !== undefined ? ctx.memoryRunner
-        : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
-        : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null,
+      runner,
     });
     const modelOffs = [
       ctx.events.on("thread.stopped", () => void model.pump()),
@@ -437,6 +439,29 @@ export default {
         if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
         return retrieve({ question: String(input.question || ""), project_cwds, k: input.k ?? 8, personal: sees,
           expand: input.expand !== false, when: input.when !== false, recency: input.recency !== false, hybrid: input.hybrid !== false, knobs: input.knobs || {} });
+      },
+    });
+    // Vyre IQ's answer (ADR 0034, core/memory/iq/ask.js): a personal fact, else the fast model over
+    // the retrieved passages, checked by code. Questions have their own daily cap
+    // (config.memory.model.askDailyUsd, $0.10) in memory's budget table.
+    const askDay = () => `ask:${new Date().toISOString().slice(0, 10)}`;
+    const askSpent = () => Number(/** @type {any} */ (ctx.store.db.prepare("SELECT usd FROM memory_me_budget WHERE day = ?").get(askDay()))?.usd || 0);
+    const ask = asker({ db: ctx.store.db, answer, retrieve, runner: ctx.iqRunner !== undefined ? ctx.iqRunner : runner, model: () => modelFor(ctx.config),
+      budget: {
+        allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : 0.1) + 1e-9,
+        charge: usd => void ctx.store.db.prepare(`INSERT INTO memory_me_budget (day, usd, calls) VALUES (?, ?, 1)
+          ON CONFLICT (day) DO UPDATE SET usd = round(usd + excluded.usd, 6), calls = calls + 1`).run(askDay(), usd),
+      } });
+    ctx.tool("memory.ask", {
+      description: "Vyre IQ: answer a question from everything memory holds, with its sources, or abstain. Returns { answer, confidence, abstained, known, sources: [{ session, seq, name, quote, ts }], via: fact|retrieval|null, latency_ms, cost_usd }. answer is null and abstained true when memory does not know yet; known lists what it does know that bears on it.",
+      input: { type: "object", required: ["question"], properties: { question: { type: "string" }, project_cwds: cwds,
+        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
+        let sees = true;
+        try { await personalOnly(input, caller, "memory.ask"); } catch { sees = false; }
+        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
+        return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread: typeof input.context?.thread === "string" ? input.context.thread : null });
       },
     });
     ctx.tool("memory.profile", {

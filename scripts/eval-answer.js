@@ -161,7 +161,7 @@ export function score(questions, got) {
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {{ me: any, embedder: any, dense: any }} opts
  */
-export async function startMemory(db, { me, embedder, dense, runner = null }) {
+export async function startMemory(db, { me, embedder, dense, runner = null, iqRunner = null }) {
   const tools = new Map();
   const ctx = {
     name: "memory",
@@ -186,6 +186,8 @@ export async function startMemory(db, { me, embedder, dense, runner = null }) {
     tool: (name, def) => tools.set(name, def),
     // The reader's model: `claude -p` when recording, none when replaying (reads come from the fixture).
     memoryRunner: runner,
+    // Vyre IQ's answer model (memory.ask): recorded with eval-iq --record, else replayed.
+    iqRunner,
   };
   const mod = (await import("../core/memory/index.js")).default;
   const handle = await mod.start(ctx);

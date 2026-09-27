@@ -93,10 +93,11 @@ export function retriever({ search, personal = null, graph = null, askDir = null
 
   /**
    * @param {{ question: string, project_cwds?: string[], k?: number, personal?: boolean,
-   *   expand?: boolean, when?: boolean, recency?: boolean, hybrid?: boolean, knobs?: any }} input
+   *   expand?: boolean, when?: boolean, recency?: boolean, hybrid?: boolean, thread?: string|null, knobs?: any }} input
+   *   thread: the thread asked from; its turns are favoured, never the only ones
    * @returns {Promise<{ passages: { id: string, session: string, seq: number, role: string, ts: number, text: string, name: string|null, cwd: string|null, score: number, via: string[] }[], expanded: string[], window: [number, number]|null }>}
    */
-  return async function retrieve({ question, project_cwds = [], k = 8, personal: seesPersonal = false, expand = true, when = true, recency = true, hybrid = true, knobs = {} }) {
+  return async function retrieve({ question, project_cwds = [], k = 8, personal: seesPersonal = false, expand = true, when = true, recency = true, hybrid = true, thread = null, knobs = {} }) {
     const words = contentWords(question);
     const base = words.length ? words.join(" ") : String(question);
     const scope = project_cwds.length ? { project_cwds } : {};
@@ -121,6 +122,7 @@ export function retriever({ search, personal = null, graph = null, askDir = null
     }
     for (const p of pool.values()) {
       if (win && p.ts >= win[0] && p.ts < win[1]) p.score *= 1.5;
+      if (thread && p.session === thread) p.score *= 1.3;
       if (recency && p.ts) p.score *= 1 + 0.15 * Math.exp(-Math.max(0, t0 - p.ts) / (60 * DAY));
     }
     // Ties break on session and seq, so the same question over the same index reads the same passages.
