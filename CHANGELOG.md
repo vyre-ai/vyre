@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Esc takes back a message still queued for a terminal session
+
+- In the Electron Capsule, Esc on a queued reply calls `threads.unqueue` for that message
+  ("Taken back. <name> never got it."). Once the Harness has handed it over it is the session's,
+  so Esc only stops following, and nothing is stopped in the terminal (before this, Esc called
+  threads.stop on it). A hand-over racing the key says "Too late" once. `local/capsule/lib/bridge.js`
+  `unqueue`, `app/capsule.js`; test in local/capsule/lib/bridge.test.js.
+
 #### Sessions say when a terminal has them open, and queued words can be taken back
 
 - `threads.list` rows and `projects.catalog` sessions carry `live`: true when the session is

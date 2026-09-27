@@ -54,6 +54,14 @@ them, one per fix.
    line is not sent to a model (the quote under it is). No model runs for any of this. Reference:
    `lib/said.js` `rankSaid`, `yourAnswer`.
 
+8. **Esc takes back queued words.** On a reply queued for a terminal-busy session with no reply
+   text yet: not handed over, Esc calls `threads.unqueue {thread, queued: queued_id, surface}`;
+   a non-empty `unqueued` finishes the reply as "taken back" with the note "Taken back. <name>
+   never got it."; an empty one means it was handed over meanwhile: mark it delivered and say
+   "Too late: <name> already has it. Its reply shows here when its turn ends." Handed over: Esc
+   stops following only ("Stopped following. <name> already has your message; its reply lands
+   in its thread."), never threads.stop. Reference: `bridge.js` `unqueue`.
+
 ## Done
 - f5bd7b9 fix(switchboard): limit notice only at >= 80% or rejected; `lowlimit` in fake-claude.
 - cf4531e fix(capsule): memory in quick prompts, quotes as quotes, notices as status, question line.
@@ -68,6 +76,8 @@ them, one per fix.
   (HotkeyReport, retried on reconnect); a132faf waiting on you is violet #B8A4FF (Theme.attention)
   in the native and Electron Capsules; 7526089 a compile fix for a stray `askItem` line that is
   also on work/capsule-pro's tip.
+- Esc on a queued reply takes it back in the Electron Capsule (rule 8); the native one is on
+  work/capsule-agent.
 - Tailnet has my answers to its Mac-send design (sent 2026-09-27).
 
 ## Doing
@@ -77,8 +87,7 @@ them, one per fix.
   docs/work/capsule-agent.md on that branch.
 
 ## Next (open requests, in order)
-- Wire threads.unqueue into the Capsules: Esc on a queued reply (native and Electron) and the
-  phone. Streaming a queued session's reply live.
+- threads.unqueue on the phone (mobile's, rule 8 is the spec). Streaming a queued session's reply live.
 - tailnet (answers sent 2026-09-27): sending to Mac sessions from the box. My answers:
   1 yes: a separate WRITE allowlist (threads.send, later threads.unqueue), person callers only, and
     `as: "person"` checked on the Mac.
@@ -125,6 +134,7 @@ them, one per fix.
   results carry `memo` and each source `kind` ("fact" or "quote") and `role`.
 
 ## Tests
+- 2026-09-27 Esc/unqueue: capsule bridge + state 47/47 on the test box.
 - 2026-09-27 on the test box: switchboard, projects, federation-reads, link-federation, harness
   77/77; switchboard-cli, capsule bridge, onboard, deck machine, guests 70/70.
 - local/capsule/lib/bridge.test.js 29/29, state.test.js 14/14, core/switchboard 26/26,

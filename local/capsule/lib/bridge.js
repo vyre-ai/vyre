@@ -396,7 +396,8 @@ export class Bridge extends EventEmitter {
       // Busy in a terminal: the words wait for its turn to end (the Harness hands them over at
       // Stop), and its reply comes back on this thread like any other.
       if (!r.error && r.data && r.data.queued) {
-        this.reply = { ...this.reply, queued: { name: String(r.data.name || d.threadLabel || "The session"), delivered: false } };
+        const id = Number.isInteger(r.data.queued_id) ? r.data.queued_id : null;
+        this.reply = { ...this.reply, queued: { name: String(r.data.name || d.threadLabel || "The session"), delivered: false, id } };
         this.emit("change");
         return { thread: String(d.thread), queued: true, note: r.data.note || null };
       }
@@ -455,10 +456,37 @@ export class Bridge extends EventEmitter {
   async cancel() {
     const r = this.reply;
     if (!r || r.finished) return { ok: false, note: "Nothing is answering now." };
+    if (r.queued && !r.order.length) return this.unqueue(r);                 // no reply text yet
     this.reply = st.cancel(r);
     this.emit("change");
     if (!r.thread) { this.cancelWanted = true; return { ok: true, stopped: false, note: "Stopped. The thread is stopped as soon as it is known." }; }
     return this.stopThread(r.thread);
+  }
+
+  /**
+   * Esc on words queued for a session busy in a terminal. Not handed over yet: take them back
+   * (threads.unqueue). Handed over: they are that session's now and there is no interrupt path
+   * into a terminal, so the Capsule stops following and the session keeps them.
+   * @param {import("./state.js").Reply} r
+   */
+  async unqueue(r) {
+    const q = /** @type {{ name: string, delivered: boolean, id?: number|null }} */ (r.queued);
+    if (!q.delivered && r.thread && this.has("threads.unqueue")) {
+      const u = await this.client.call("threads.unqueue", { thread: r.thread, surface: "capsule", ...(q.id != null ? { queued: q.id } : {}) });
+      if (!u.error && u.data && Array.isArray(u.data.unqueued) && u.data.unqueued.length) {
+        this.reply = { ...st.cancel(r), queued: { ...q, withdrawn: true } };
+        this.emit("change");
+        return { ok: true, note: `Taken back. ${q.name} never got it.` };
+      }
+      if (u.error) return { ok: false, note: `Could not take it back: ${explain(u.error)}` };
+      // Handed over between the key and the call: say so once; the next Esc stops following.
+      this.reply = { ...r, queued: { ...q, delivered: true } };
+      this.emit("change");
+      return { ok: false, note: `Too late: ${q.name} already has it. Its reply shows here when its turn ends.` };
+    }
+    this.reply = st.cancel(r);
+    this.emit("change");
+    return { ok: true, note: `Stopped following. ${q.name} already has your message; its reply lands in its thread.` };
   }
 
   /** threads.stop, marking the stop as ours so its thread.stopped is not read as a failure. */

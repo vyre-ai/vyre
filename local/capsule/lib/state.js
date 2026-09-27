@@ -138,7 +138,7 @@ const drop = (list, source, id) => {
  * `cancelled` is the user's Stop: nothing that arrives after it changes the reply.
  * @typedef {{ thread: string, order: string[], text: Record<string, string>, tools: { id: string, summary: string, done: boolean, error: boolean }[],
  *   finished: boolean, ok: boolean|null, error: string|null, lease: string|null, cost: number|null, ms: number|null,
- *   cancelled?: boolean, notice?: string|null, queued?: { name: string, delivered: boolean }|null, model?: string|null, memory?: { answer: string|null, sources: any[], confidence?: number|null, answerAge?: string|null }|null }} Reply
+ *   cancelled?: boolean, notice?: string|null, queued?: { name: string, delivered: boolean, id?: number|null, withdrawn?: boolean }|null, model?: string|null, memory?: { answer: string|null, sources: any[], confidence?: number|null, answerAge?: string|null }|null }} Reply
  */
 export function reply(thread) {
   return /** @type {Reply} */ ({ thread, order: [], text: {}, tools: [], finished: false, ok: null, error: null, lease: null, cost: null, ms: null });

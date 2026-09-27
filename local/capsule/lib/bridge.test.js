@@ -674,7 +674,8 @@ test("real switchboard: a session busy in a terminal gets the message at its tur
   const r = await b.send({ kind: "thread", thread: id, threadLabel: "Intake form", meta: "" }, "which branch are you on?");
   assert.deepEqual(r, { thread: id, queued: true, note: "Intake form is busy in your terminal. I'll hand it your message when this turn ends." });
   let snap = b.snapshot().reply;
-  assert.deepEqual([snap?.thread, snap?.queued, snap?.finished, snap?.text], [id, { name: "Intake form", delivered: false }, false, ""]);
+  assert.deepEqual([snap?.thread, snap?.queued?.name, snap?.queued?.delivered, snap?.finished, snap?.text], [id, "Intake form", false, false, ""]);
+  assert.ok(Number.isInteger(snap?.queued?.id), "the queued id, for Esc to take it back");
 
   const stop = (await hook("harness.stop", { session: id, text: "Tests pass." })).data;
   assert.deepEqual(stop, { decision: "block", reason: "Message from the user via the Capsule: which branch are you on?" });
@@ -686,6 +687,31 @@ test("real switchboard: a session busy in a terminal gets the message at its tur
   snap = b.snapshot().reply;
   assert.deepEqual([snap?.text, snap?.ok, snap?.error], ["On main.", true, null]);
   assert.ok(events.some(e => e.type === "thread.queued" && e.thread === id));
+});
+
+test("real switchboard: Esc on words still queued takes them back; once handed over it only stops following", async t => {
+  const { root, b, work } = await live(t);
+  const tx = JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).transcripts[0];
+  const id = "33333333-cccc-4000-8000-000000000003";
+  const dir = path.join(tx, "-" + work.replace(/[^A-Za-z0-9]/g, "-"));
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, `${id}.jsonl`), [{ type: "user", cwd: work, sessionId: id, message: { role: "user", content: "fix the intake form" } },
+    { type: "custom-title", customTitle: "Intake form", sessionId: id }].map(l => JSON.stringify(l)).join("\n") + "\n");
+  const hook = (tool, input) => call(tool, input, { root, caller: "harness", timeout: 20_000 });
+  await b.refresh();
+  assert.equal((await b.send({ kind: "thread", thread: id, threadLabel: "Intake form", meta: "" }, "never mind this")).queued, true);
+  assert.deepEqual(await b.cancel(), { ok: true, note: "Taken back. Intake form never got it." });
+  const snap = b.snapshot().reply;
+  assert.deepEqual([snap?.finished, snap?.queued?.withdrawn], [true, true]);
+  assert.deepEqual((await hook("harness.stop", { session: id, text: "Tests pass." })).data, { ok: true }, "nothing is handed over");
+
+  // Handed over first: Esc cannot take it back, and nothing is stopped in the terminal.
+  assert.equal((await b.send({ kind: "thread", thread: id, threadLabel: "Intake form", meta: "" }, "which branch?")).queued, true);
+  await hook("harness.stop", { session: id, text: "Tests pass." });
+  await until(() => b.snapshot().reply?.queued?.delivered, "handed over");
+  const r = await b.cancel();
+  assert.match(r.note, /^Stopped following\. Intake form already has your message/);
+  assert.equal(b.snapshot().reply?.queued?.withdrawn, undefined);
 });
 
 test("real switchboard: a question goes to a fast model in the Capsule's folder, follows up in its thread, and Stop stops it", async t => {

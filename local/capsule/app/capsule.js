@@ -316,6 +316,7 @@ window.addEventListener("keydown", e => {
     if (S.mode === "report") { S.mode = "ask"; S.report = null; paint(); return box.focus(); }
     if (S.mode === "actions" || S.mode === "code") { S.mode = "ask"; S.acts = null; S.code = null; paint(); return box.focus(); }
     // An answer still streaming: the first Esc stops it and keeps what came; the next one closes.
+    // Words still queued for a terminal session: the first Esc takes them back (bridge unqueue).
     if (S.mode === "reply" && S.snap.reply && !S.snap.reply.finished) { api.cancel().then(r => { if (r && r.note) { S.note = r.note; paint(); } }); return; }
     // One press, always the same result: the Capsule goes and the keyboard goes back.
     return api.dismiss();
@@ -530,7 +531,7 @@ function paint() {
     const r = snap.reply;
     const { who, where } = S.sent.dest.show;
     const stopped = r && r.error === "stopped";
-    const state = !r ? "sending" : stopped ? "stopped" : r.error ? "failed" : r.finished ? "done" : r.queued && !r.text ? (r.queued.delivered ? "handed over" : "queued")
+    const state = !r ? "sending" : r.queued && r.queued.withdrawn ? "taken back" : stopped ? "stopped" : r.error ? "failed" : r.finished ? "done" : r.queued && !r.text ? (r.queued.delivered ? "handed over" : "queued")
       : r.lease && r.lease !== "capsule" ? `${r.lease} is typing` : "answering";
     // What it cost, small: the model, the dollars the switchboard reported, the time.
     const cost = r && r.finished ? [r.model, r.cost != null ? `$${Number(r.cost).toFixed(3)}` : null, r.ms ? `${(r.ms / 1000).toFixed(1)} s` : null].filter(Boolean).join(" · ") : "";
@@ -541,7 +542,7 @@ function paint() {
     const mem = r && r.memory && (r.memory.memo || []).length ? r.memory : null;
     if (mem) kids.push(memoBox(mem));
     // Queued for a session busy in a terminal: it gets the words when its turn ends (harness Stop).
-    if (r && r.queued && !r.text) kids.push(h("div", { class: "sect status" }, r.queued.delivered ? `Handed to ${r.queued.name}. Its reply shows here when its turn ends.` : `Queued for ${r.queued.name}: it gets this when its current turn ends.`));
+    if (r && r.queued && !r.text && !r.finished) kids.push(h("div", { class: "sect status" }, r.queued.delivered ? `Handed to ${r.queued.name}. Its reply shows here when its turn ends.` : `Queued for ${r.queued.name}: it gets this when its current turn ends.`));
     if (r && r.tools.length) kids.push(h("div", { class: "tools" }, r.tools.map(t => h("span", { class: "tl" + (t.error ? " fail" : "") }, `${t.done ? (t.error ? "failed" : "done") : "running"} · ${t.summary}`))));
     kids.push(h("div", { class: "reply md" }, r && r.text ? md(r.text) : null, r && !r.finished && !(r.queued && !r.text) ? h("span", { class: "caret" }) : null));
     // Vyre's own words (a usage limit), faint, under the answer and never in it.
