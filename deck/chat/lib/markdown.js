@@ -1,14 +1,14 @@
 // @ts-check
-// Turns a Claude Code turn or a user message — untrusted text, possibly adversarial — into DOM,
+// Turns a Claude Code turn or a user message, untrusted text, possibly adversarial, into DOM,
 // built only with h()/add()/createTextNode. No innerHTML anywhere, so raw HTML in the input (a
 // prompt-injected <img onerror=...>, a fake heading trying to take over the page) can never
-// become markup: it is text, or it is nothing. Not full CommonMark — just what Claude Code's own
+// become markup: it is text, or it is nothing. Not full CommonMark, just what Claude Code's own
 // output looks like: paragraphs, headings, fences, inline code, lists, links, blockquotes.
 
 import { h, add } from "../../js/dom.js";
 import { highlight } from "./highlight.js";
 
-const CAP = 50_000; // past this, truncate rather than parse — keeps pathological input cheap
+const CAP = 50_000; // past this, truncate rather than parse, keeps pathological input cheap
 const MAX_LIST_DEPTH = 8; // nesting is clamped, not rejected, so a "list" 500 levels deep is flat past here
 const MAX_INLINE_DEPTH = 4; // bold-inside-italic-inside-bold... stops mattering past this
 
@@ -22,7 +22,7 @@ export function renderMarkdown(text) {
   if (src.length > CAP) { src = src.slice(0, CAP); truncated = true; }
   const frag = document.createDocumentFragment();
   add(frag, parseBlocks(src));
-  if (truncated) add(frag, h("p", { class: "md-truncated" }, "(message truncated — too long to render in full)"));
+  if (truncated) add(frag, h("p", { class: "md-truncated" }, "(message truncated: too long to render in full)"));
   return frag;
 }
 
@@ -155,7 +155,7 @@ function inlineToken(tok, depth) {
   return h("em", null, ...inline(tok.slice(1, -1), depth + 1));
 }
 
-/** http(s) or a relative path only — never javascript:, data:, vbscript:, or protocol-relative //. */
+/** http(s) or a relative path only, never javascript:, data:, vbscript:, or protocol-relative //. */
 function isSafeUrl(url) {
   if (/^https?:\/\//i.test(url)) return true;
   if (/^\/\//.test(url)) return false;

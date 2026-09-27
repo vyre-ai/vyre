@@ -65,7 +65,7 @@ export function assistantCard({ onCreated } = {}) {
     const via = st.data?.detail?.claude?.auth || null;
     const input = { name: slug(display), kind: "assistant", projects: "*", auth: authFor(via), computer: computer.checked,
       instructions: `Your name is ${display}.${person ? ` You work for ${person}.` : ""} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` };
-    const r = await attempt("agents.create", input, { presence: true });
+    const r = await attempt("agents.create", input);
     create.disabled = false;
     nameIn.disabled = false;
     computer.disabled = false;

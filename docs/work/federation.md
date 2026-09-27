@@ -144,16 +144,113 @@ box.
   (core/link/mac.js). link-federation + federation-reads, three at once, four rounds: 12 of 12
   (2 of 9 failed before). link + hygiene 9/9.
 
+- The browser look (the pass "Next" asked for). `deck/test/mac-world.js` (a box and a Mac in one
+  process, paired as the link tests pair them; Mac: Harlow intake, Northwind invoices, weekly
+  planning; box: the Harlow site rebuild and its subagent, the headless Northwind summary; a box
+  project Harlow Legal) and `deck/test/mac-shots.js` (asserts each chip or note, no sideways
+  scroll, no page errors). Run on the test box's shared headless Chrome. Shots, 1440 and 390 each
+  (in <team-dir>/shots/federation/): chat-list, chat-mac-session, now, search, board,
+  onboard-history, chat-offline, now-offline. 15 of 16 checks pass; no console errors on any page.
+  The offline chip appeared within about 7 s of `/__mac/off` (hold 2 s plus the 5 s window).
+  Right: Mac rows carry the alex-mac chip in Chat, Now, the header search and the board; box rows
+  carry none; a Mac session reads its turns with no composer and the note "On alex-mac. Open it
+  there to continue."; the picked Mac session resolves on the board with the chip and the note;
+  the dashed "alex-mac offline" chip sits beside Chat's title and in Now's Working head, and Mac
+  rows drop out while it shows.
+  Wrong, for the pwa / deck owners (none fixed here):
+  - Find page (/find, the phone's search): Mac sessions have no machine chip (the check that
+    fails), and it says "Files on your Mac show here when your Mac is online." while the Mac is
+    online.
+  - Onboarding history (deck/onboard/onboard.js): the meter reads `recall.status`, the box's own
+    index, so it says "3 sessions" while `onboard.status` counts 6 (3 box, 3 Mac); it never shows
+    `detail.history.machines` or "Your Mac (alex-mac) is offline". The picker lists the Mac's
+    sessions with no chip. On the phone it read "Reading sessions" at about a third, the desktop
+    load a moment earlier said done.
+  - Chat's project row says "Harlow Legal 1 session" while the board lists 2 threads (the picked
+    Mac session is not counted).
+  - Now on a phone: the chip sits on its own line between title and meta, so Mac rows are a line
+    taller than box rows; on the laptop it sits inline after the title. The chips are below two
+    setup cards (passkey, assistant), off the first screen.
+  - The rail footer shows the machine's OS hostname (`system.info` host) with "On this machine
+    only", not the box's name (harlow-box); onboarding's header says "Setting up alex-box" (the
+    fake tailnet's name). Three names for one box.
+  - Board thread pane header says "on alex-mac" in plain text while everywhere else uses the
+    chip; Chat's session header has the chip plus a grey status dot that means nothing for a Mac
+    session.
+  - Not ours: at 1440 the address pill wraps a long /chat/thread/<id> path onto two lines.
+
+- Sending to a Mac session (ADR 0021, "Sending to a Mac session"). Main merged first (8b5dabe);
+  work in d15d21c. The person on the box types into a Mac's session; a session busy in a
+  terminal queues the words on the Mac; the thread's events come back to the box's bus labelled
+  with the Mac. Tests on the test box: test/federation-send.test.js 7/7, three runs in a row and
+  two copies at once (7/7 each); test/link.test.js 10/10, test/link-federation.test.js 7/7,
+  test/federation-reads.test.js 7/7, core/switchboard/switchboard.test.js 31/31,
+  core/harness/floor.test.js 8/8, core/harness/harness.test.js 12/12, test/harness.test.js 15/15,
+  test/hygiene.test.js 1/1. Choices: the box remembers which Macs it sent a thread to at queue
+  time (not at the answer), since the Mac's first batch can beat its reply; a Mac that answered
+  with an error other than a timeout is struck off at once. A widened test `allow` list sends
+  `threads.send` as a read, without `as`, which is how the Mac's own refusal is tested. A timeout
+  answers `timeout`, "<name> did not answer in time; your message may not have been sent". The
+  Mac's `link.status` gains `following`. `threads.unqueue` does not exist on main, so WRITE is
+  `threads.send` alone.
+
+  What the Deck sees from `threads.send` for a Mac thread (as the person, on the box):
+  - sent: `{ sent: true, thread, source: "mac", machine: "alex-mac" }`
+  - busy in a terminal: `{ sent: false, queued: true, open_elsewhere: true, thread, name,
+    busy: "terminal", note, source: "mac", machine }`, note "<name> is busy in your terminal on
+    alex-mac. I'll hand it your message when this turn ends."
+  - another surface on the Mac holds the keyboard: queued the same way, `busy: "<holder>"`, note
+    "<name> is in use in <holder> on alex-mac. ..." (the box never takes the keyboard).
+  - Mac offline: error `{ code: "mac_offline", message: "alex-mac is offline; your message was not sent" }`
+  - no machine has it: the box's own error `{ code: "failed", message: "no thread <id>" }`
+  Then, on the box's event stream, with `thread` in the envelope, `project` null and the source
+  module "link": `thread.queued { queued, text, surface: "box:deck" }`, `thread.sent { text,
+  surface, queued?, via? }`, `thread.text { message, delta }` and `{ message, text, done: true,
+  notice? }`, `thread.finished { ok, cost_usd?, via? }`, `thread.stopped { code, reason }`,
+  `thread.contended`, `thread.limit`; every payload also carries `thread`, `source: "mac"` and
+  `machine`.
+
 ## Doing
 
-- (nothing; Task C is done)
+27 Sep 2026: the Mac-send loose ends are done (below); next is rich Mac transcripts (chat's ask),
+then Taildrive on work/tailnet.
+
+- capsule-now's answers, applied (d86afcc): 1 was already built (WRITE allowlist, `as: "person"`
+  checked on the Mac). 2: `fromLink` in core/switchboard/index.js, an explicit caller kind for
+  `link:box` in guard(), surfaceOf() (always `box:<surface>`) and queuesFor(); the box's note
+  names the Mac. 3: already the rule (a finish while queued words wait does not end the follow;
+  test "a thread.finished while queued words wait"). 4: `send(..., { wait })` queues while any
+  Mac surface holds the lease and never takes it; answers carry `busy`. The Harness says a box
+  message came "via the Deck on the box". New test: "a Mac session another surface holds".
+- Find (b7526a3): the machine chip on Mac rows (sessions, Recent, "Type into"), beside the title
+  rather than inside its ellipsis (a long Mac title hid it). The files note now says the box does
+  not search the Mac's files. mac-shots ONLY=search: 1440 and 390 both pass once; later runs
+  failed on timing while the test box sat at load 40 from another run (a blank page, then no
+  `.search` input on 1440), so re-run it when the box is quiet.
+- ADR 0021: the queue rule (4a) and v2 of threads.answer (a presence assertion signed by the
+  paired box, for that one ask only). v1 says "Answer it on <mac>".
+- Chat's labels: chat reads `projects.catalog {limit}`, `threads.list {all: true}` and
+  `projects.list` without `machines`, as `deck` or the owner over the tailnet; both federate and
+  label rows (test/federation-reads.test.js covers deck, cli, capsule and `tailnet:<owner>` on
+  the catalogue, and threads.list {all: true}).
+- Tests on the test box: federation-send 8/8, switchboard 31/31, core/harness 12/12,
+  test/harness 15/15, link 10/10, link-federation 7/7, federation-reads 7/7, floor 8/8,
+  hygiene 1/1.
 
 ## Next
 
-- A browser pass on the fixture Deck (`?fixtures=1` on a machine without the link, or a box with
-  a paired Mac): chips in Chat, Now, search and a project board; a Mac thread in Chat and at
-  /threads/:id shows no composer and the note; the offline chip in Chat and Now. Screenshots
-  from a test world only.
+- Rich Mac transcripts: done on work/federation-transcript (off work/chat, which has
+  recall.transcript; main does not yet). Box side: `recall.transcript` federates like
+  recall.thread. Chat's side still to do in deck/chat/session.js: a Mac session boots from
+  `recall.transcript { session, source: "mac" }` instead of legacyBoot. Tests: federation-reads
+  8/8, recall transcript 3/3, recall module 5/5, link 10/10, link-federation 7/7,
+  federation-send 8/8, hygiene 1/1. Limit: a page travels in one link.reply, and vyred takes
+  bodies up to 5 MB, so a page of 400 blocks with large tool output could fail as `timeout`.
+- projects.list does not count a picked Mac session in a project's thread count.
+- Chat: a composer for Mac sessions (the read-only rule in deck/js/machine.js lifts for
+  threads.send only; lease, answer and release stay off).
+
+- The pwa / deck owners: the problems listed under "The browser look".
 - Chat's rail groups by project slug, and a Mac project whose slug is also a box project's shares
   that group (both chips show). Worth a decision with the deck owner if it confuses.
 
@@ -162,6 +259,9 @@ box.
 - lead: ADR 0021 assigned (done).
 - deck: review the machine and offline chips, the read-only rule and the choices above (Task C).
 - projects, recall, switchboard owners: review the `machines` input and the row labels.
+- chat: a composer for Mac sessions, sending with `threads.send { thread, text, machine }` and
+  showing the answers above; the note and the offline chip stay for everything else.
+- capsule-now: answered (applied in d86afcc).
 
 ## Changed contracts
 
@@ -218,6 +318,24 @@ box.
   machine "alex-mac"); new `deck/fixtures/link.json` answers `link.macs` with alex-mac online and
   alex-air offline. There are no projects, recall or catalogue fixtures (those modules are live
   wherever the Deck runs), so none were added.
+
+- Sending to a Mac session: `WRITE = ["threads.send"]` and `FOLLOWED` (the event types) in
+  `core/link/allow.js`. `link.macs.call` takes `mac` (a peer id or name: that Mac only) and `as`
+  (a WRITE tool needs `as: "person"`, else `denied` before queueing); writes default to a 15 s
+  timeout; the queued request carries `as`. New box tool `link.events { key, events: [{ type,
+  thread, project, at, payload }] }` answering `{ ok, taken }` or `{ paired: false }`; the link
+  manifest declares it and emits the seven thread types it re-emits. On the Mac a WRITE runs only
+  with `as: "person"`, as the caller `link:box`, with `surface` forced to `box:<surface or
+  deck>`. `ctx.call(tool, input, { as })` (core/modules/index.js): calls as another caller label only
+  for a module under core/ and only a label the registry's fixed `CALL_AS` map gives it (today
+  `link` -> `link:box`); a manifest cannot grant it, so a module installed into a home never can. `threads.send` takes `machine` and, on the box for the person, forwards a
+  thread the box does not have; the answer gains `source: "mac"` and `machine`; new errors
+  `mac_offline` and `timeout`. New `Switchboard.knows(id)`. Re-emitted events' payloads gain
+  `source: "mac"` and `machine`. The Mac's `link.status` gains `following`.
+- `Switchboard.send` takes `wait` (queue while another surface holds the lease; never take it);
+  `queue()` takes the holder, and its answer gains `busy` ("terminal" or the holder). New export
+  `fromLink` in core/switchboard/index.js; `queuesFor("link:box")` is true by name. The Harness's
+  hand-over names a `box:<surface>` as "<surface> on the box" (core/harness/index.js).
 
 ## Notes for Task B
 

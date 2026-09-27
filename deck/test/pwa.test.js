@@ -64,3 +64,20 @@ test("pwa: the service worker caches no tool call but its two offline reads", ()
   assert.match(sw, /OFFLINE_TOOLS = new Set\(\["threads\.get", "projects\.list"\]\)/);
   assert.match(sw, /url\.pathname\.startsWith\("\/v1\/"\)/, "GETs under /v1/ are never cached");
 });
+
+test("pwa: a planner-ack push closes that ring's notification and shows none; a labelled ring shows its body", async () => {
+  const vm = await import("node:vm");
+  const on = {}, shown = [], closed = [];
+  const open = [{ tag: "planner-f_1", close: () => closed.push("planner-f_1") }];
+  const self = { addEventListener: (type, fn) => { on[type] = fn; },
+    registration: { showNotification: async (title, o) => { shown.push({ title, ...o }); },
+      getNotifications: async ({ tag }) => open.filter(n => n.tag === tag) } };
+  vm.runInNewContext(read("sw.js"), { self, URL, Response, caches: {}, fetch: () => {}, console });
+  const push = async d => { const waits = []; on.push({ data: { json: () => d }, waitUntil: p => waits.push(p) }); await Promise.all(waits); };
+  await push({ kind: "planner-ack", tag: "planner-f_1", at: 1 });
+  assert.deepEqual([shown.length, closed], [0, ["planner-f_1"]]);
+  await push({ kind: "planner", title: "Reminder", path: "/planner/f_2", tag: "planner-f_2", body: "Call kit", at: 1 });
+  assert.deepEqual([shown[0].title, shown[0].body, shown[0].tag], ["Reminder", "Call kit", "planner-f_2"]);
+  await push({ kind: "ask", title: "A session is waiting for your answer", path: "/needs/a", tag: "ask-a", at: 1 });
+  assert.equal(shown[1].body, "Waiting on your answer.");
+});

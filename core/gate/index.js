@@ -4,8 +4,11 @@
 // This file is the tool layer. It decides who may call what and hands the work to the Gate class.
 // The rule behind the table: anyone may ask for something to go out, only a person may let it go.
 // So gate.request is open to Claude, and gate.approve, gate.revise and gate.reject refuse every
-// mcp caller and, whatever the caller, need presence (core/presence, floor rules 1 and 2): the
-// `presence.summary` on each says what the person is proving before they prove it. A module may
+// mcp caller. Only approving what acts as the user outside (a send, a spend, a deletion) needs presence
+// (core/presence, floor rule 1, the no-nag rule), and one live presence session on the device
+// covers it; revising and discarding send nothing and need none. `presence.summary` says what the
+// person is proving before they prove it, and every held item carries `presence: {required,
+// covered}` so a surface never guesses from the kind. A module may
 // approve only when config.json names it under gate.approvers, for a caller not already on the
 // explicit allowlist (deck, capsule); Vyre Chat is deck/chat/, so it calls as "deck" and needs no
 // entry there.
@@ -29,6 +32,13 @@ const byModel = caller => /^mcp(?:$|[\s:])/.test(String(caller || ""));
 const destOf = (edited, it) => [].concat((edited && edited.to) ?? it.to).filter(Boolean).join(", ") || "(no destination)";
 const mergedContent = (edited, it) => ({ ...(it.final || it.draft), ...(edited || {}) });
 const previewOf = c => String((c && (c.subject || c.body || (c.method && c.url ? `${c.method} ${c.url}` : ""))) || "").replace(/\s+/g, " ").trim().slice(0, 120);
+
+/**
+ * The kinds that act as the user in the outside world: sending or posting, paying, and deleting
+ * their mail, files or posts (which cannot be undone). Approving one needs presence. Every Gate
+ * kind is one of these today; a kind added later asks only if it is listed here.
+ */
+const OUTBOUND = new Set(["send", "spend", "delete"]);
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
@@ -85,9 +95,23 @@ export default {
       return { thread, ...(known ? { project: known } : {}) };
     };
 
+    /** Does approving this item need a proof? Anything the Gate cannot find asks. */
+    const needsProof = id => { try { return OUTBOUND.has(gate.get({ id }).kind); } catch { return true; } };
+    /** Whether the caller's device has a live presence session (presence.covered). */
+    const covered = async peer => {
+      const r = await ctx.call("presence.covered", peer ? { peer } : {});
+      return Boolean(r.data && r.data.covered);
+    };
+    /** Each item with what approving it takes, for this caller's device. */
+    const withPresence = async (items, peer) => {
+      const c = items.length ? await covered(peer) : false;
+      return items.map(it => ({ ...it, presence: { required: OUTBOUND.has(it.kind), covered: c } }));
+    };
+
     ctx.tool("gate.request", {
       description: "Ask for something to go out as the user: an email, a post, a payment, a deletion. It is held until the user approves the final content; nothing is sent from here. See gate.senders for the `via` values and what each takes.",
-      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str },
+      input: obj({ kind: { type: "string", enum: KINDS }, via: str, to: { anyOf: [str, { type: "array", items: str }] }, content: { type: "object" }, why: str, thread: str, project: str, agent: str,
+        tool_use_id: { type: "string", description: "The tool call this request comes from, when the caller knows it, so the user's surface can show it in the session." } },
         ["kind", "via", "to", "content"]),
       // `agent` in the input is heard only from a module, which files a request for the agent it
       // verified (the MCP hub, whose ctx.call runs as module:mcp). A model's claim is ignored.
@@ -104,21 +128,20 @@ export default {
     ctx.tool("gate.held", {
       description: "What is held at the Gate waiting for the user, oldest first.",
       input: obj({ thread: str, project: str }),
-      run: input => gate.held(input),
+      run: (input, { peer }) => withPresence(gate.held(input), peer),
     });
 
     ctx.tool("gate.get", {
       description: "One item in full: the draft, what was finally sent, and what the user changed.",
       input: obj({ id: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
-      run: input => gate.get(input),
+      run: async (input, { peer }) => (await withPresence([gate.get(input)], peer))[0],
     });
 
     ctx.tool("gate.revise", {
       description: "The user changes a held item without sending it: the content as it should go out, or the fields that changed (\"\" clears one), `to` included. Send then sends exactly this.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id", "edited"]),
       callers: ["cli", "local", "module", "tailnet"],
-      presence: { summary: async ({ id, edited }) => { const it = gate.get({ id }); return `Change what goes to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`; } },
       run: (input, { caller }) => { const c = person(caller); return gate.revise({ ...input, by: input.by || c }); },
     });
 
@@ -126,7 +149,12 @@ export default {
       description: "The user approves a held item, optionally with edits (the whole content as it should go out, or the fields that changed; an empty string clears one; `to` included). It sends exactly that, never the original, with the credential added at the boundary.",
       input: obj({ id: str, edited: { type: "object" }, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
-      presence: { summary: async ({ id, edited }) => { const it = gate.get({ id }); return `Send ${it.kind} via ${it.via} to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`; } },
+      presence: {
+        when: ({ id }) => needsProof(id),
+        // One passkey or Touch ID opens a ~30 minute session on that device, and the sends after it ride it.
+        session: ({ id }) => needsProof(id),
+        summary: async ({ id, edited }) => { const it = gate.get({ id }); return `Send ${it.kind} via ${it.via} to ${destOf(edited, it)}: "${previewOf(mergedContent(edited, it))}"`; },
+      },
       run: (input, { caller }) => { const c = person(caller); return gate.approve({ ...input, by: input.by || c }); },
     });
 
@@ -134,7 +162,6 @@ export default {
       description: "The user discards a held item. Nothing is sent.",
       input: obj({ id: str, reason: str, by: str }, ["id"]),
       callers: ["cli", "local", "module", "deck", "capsule", "tailnet"],
-      presence: { summary: async ({ id }) => { const it = gate.get({ id }); return `Discard the ${it.kind} to ${destOf(null, it)}: "${it.summary}"`; } },
       run: (input, { caller }) => { const c = person(caller); return gate.reject({ ...input, by: input.by || c }); },
     });
 

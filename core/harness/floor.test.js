@@ -150,6 +150,7 @@ test("floor: VYRE_HOME is recognised by its real path too", t => {
 test("floor: the vault's value-out commands, the clipboard, and a way out through docker", () => {
   for (const c of [`vyre vault run API=api-key -- node x.js`, `vyre vault inject api-key`, `vyre vault backup /tmp/b`, `vyre vault export`,
     `vyre vault get api-key --reveal`, `vyre vault copy api-key`, `vyre vault pair`, `vyre learn relax 2`, `vyre computers takeover scout`,
+    `vyre call computers.takeover '{"agent":"kit","surface":"deck:laptop"}'`, `vyre call glass.take '{"target":"computer:kit"}'`,
     `vyre link approve 123-456`, `ssh box vyre gate approve g1`,
     `docker run --privileged -it alpine sh`, `docker run -v /:/host alpine chroot /host`, `docker run -v /var/run/docker.sock:/var/run/docker.sock docker`,
     `docker run --pid=host alpine nsenter -t 1 -m sh`, `curl -X POST http://docker-api:2375/containers/create -d @evil.json`,

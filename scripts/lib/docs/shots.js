@@ -19,7 +19,8 @@
 //   name     the file name: <dir>/shots/<name>.png, and <name>.dark.png for the dark theme
 //   dir      the docs folder the page lives in (get-started, using, ...)
 //   world    which sample world renders it: deck (the Deck, from deck/test/world.js), onboard
-//            (a fresh box in its onboarding, with fake tailscale and claude), glass (a box with
+//            (a fresh box in its onboarding, with fake tailscale and claude), fresh (that same box's
+//            Deck once its setup is finished, with no assistant yet), glass (a box with
 //            a folder of sample files open to Glass), capsule (the Capsule's own page, its bridge
 //            answered by the deck world's vyred)
 //   url      the route to open (deck, capsule), or the onboarding step (#you ... #devices)
@@ -32,6 +33,7 @@
 //   clip     a CSS selector: crop to that element (plus pad pixels) instead of the viewport
 //   shows    repository files the shot depicts; a change to any of them makes it stale
 //   needs    files that must exist for the shot to be taken at all (a surface on another branch)
+//   setup    "pair": alex's Mac, alex-mbp, asks to pair with the box just before the shot
 //   alt, page, heading   the alt text, and where the shot belongs, for whoever places it
 
 import crypto from "node:crypto";
@@ -42,6 +44,9 @@ export const MANIFEST = "docs/shots.json";
 export const RERUN = "run npm run docs:shots on testbox";
 
 const DECK = ["deck/css/deck.css", "deck/js/app.js", "deck/index.html"];
+const NOW = ["deck/views/now.js", "deck/css/views/now.css", "deck/js/needs.js"];
+const PAIR = ["deck/js/pair.js", "deck/css/pair.css", "core/link/box.js"];
+const PHONE = ["deck/js/phone-setup.js", "deck/css/views/phone-setup.css"];
 const ONBOARD = ["deck/onboard/onboard.js", "deck/onboard/onboard.css", "deck/onboard/index.html", "deck/css/deck.css", "core/onboard/index.js"];
 const CAPSULE = ["local/capsule/app/capsule.html", "local/capsule/app/capsule.js", "local/capsule/app/capsule.css", "local/capsule/lib/bridge.js", "local/capsule/lib/route.js"];
 const BOTH = ["light", "dark"];
@@ -69,34 +74,38 @@ export const SHOTS = [
   { name: "onboarding-you", dir: "get-started", world: "onboard", url: "#you", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
     script: `type("#name", "alex"); type("#assistant", "Juno"); await until('!document.querySelector("#primary").disabled');`,
     alt: "Step 1 of the onboarding: your name and your assistant's name, with the note that the address will be on your tailnet.",
-    page: "get-started/onboarding.md", heading: "3. Finish in the browser" },
+    page: "get-started/onboarding.md", heading: "1. You" },
   { name: "onboarding-claude", dir: "get-started", world: "onboard", url: "#claude", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
     script: `await until('document.querySelector(".choice")');`,
     alt: "Step 2: Claude Code is found on the machine, and Vyre offers to sign in with your Claude subscription or an API key.",
-    page: "get-started/onboarding.md", heading: "3. Finish in the browser" },
+    page: "get-started/onboarding.md", heading: "2. Claude Code" },
   { name: "onboarding-tailscale", dir: "get-started", world: "onboard", url: "#tailscale", width: 1280, height: 800, themes: ["dark"], shows: [...ONBOARD, "core/names/tailscale.js"],
     script: `await until('document.querySelector("#primary")');
       if (/connect/i.test(document.querySelector("#primary").innerText)) click("#primary");
       await until('/continue/i.test(document.querySelector("#primary").innerText)', 20000);`,
     alt: "Step 3: the machine has joined the tailnet as alex-box, with each sign-in step ticked.",
-    page: "get-started/onboarding.md", heading: "3. Finish in the browser" },
+    page: "get-started/onboarding.md", heading: "3. Tailscale" },
   { name: "onboarding-name", dir: "get-started", world: "onboard", url: "#name", width: 1280, height: 800, themes: ["dark"], shows: [...ONBOARD, "core/names/service.js"],
     script: `await until('document.querySelector("#primary")'); click("#primary");
       await until('document.querySelector("#primary") && /switch to/i.test(document.querySelector("#primary").innerText)', 30000);`,
-    alt: "Step 4: the address https://alex-box.tail4e2a.ts.net is reserved, pointed at the machine and has its certificate.",
-    page: "get-started/onboarding.md", heading: "3. Finish in the browser" },
+    alt: "Step 4: the address https://alex-box.tail0000.ts.net is reserved, pointed at the machine and has its certificate.",
+    page: "get-started/onboarding.md", heading: "4. Your address" },
   { name: "onboarding-history", dir: "get-started", world: "onboard", url: "#history", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
     script: `await until('/sessions/.test(document.querySelector(".meter") && document.querySelector(".meter").innerText) && !document.querySelector(".bar.moving")', 20000); await wait(800);`,
     alt: "Step 5: Vyre has read the Claude Code sessions on the machine and offers to group them into first projects.",
-    page: "get-started/onboarding.md", heading: "3. Finish in the browser" },
-  { name: "onboarding-devices", dir: "get-started", world: "onboard", url: "#devices", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
-    script: `await wait(1500);`,
-    alt: "Step 6: codes to get Tailscale and open the Deck on your phone, and the Capsule to download for your Mac.",
-    page: "get-started/onboarding.md", heading: "5. Your phone and other devices" },
+    page: "get-started/onboarding.md", heading: "5. Your history" },
+  { name: "onboarding-devices", dir: "get-started", world: "onboard", url: "#devices", width: 1280, height: "fit", maxHeight: 1300, themes: ["dark"], shows: [...ONBOARD, ...PAIR],
+    script: `await until('document.querySelector(".pair-list") && document.querySelector(".pair-list").children.length', 15000); await wait(800);`,
+    fit: ".ob-main",
+    alt: "Step 6: the Pair this Mac card with alex-mbp asking to pair and a field for its code, and the Open Vyre on your phone card with a code for Tailscale and one for this box's address.",
+    page: "get-started/onboarding.md", heading: "6. Your devices" },
+  { name: "onboarding-ready", dir: "get-started", world: "onboard", url: "#ready", width: 1280, height: 800, themes: ["dark"], shows: ONBOARD,
+    alt: "The last screen of the setup: Vyre is ready, with your Mac, your phone and your history ticked or still to do, and Open Vyre.",
+    page: "get-started/onboarding.md", heading: "The last screen" },
 
   // ---- The Deck ----
   { name: "deck-now", dir: "using", world: "deck", url: "/now", width: 1280, height: 900, themes: BOTH,
-    shows: [...DECK, "deck/views/now.js", "deck/css/views/now.css", "deck/js/needs.js"],
+    shows: [...DECK, ...NOW],
     alt: "Now in the Deck: two things wait for you, an email to Dana at Harlow Legal and a spend for Northwind Bakery, both held at the Gate.",
     page: "using/deck.md", heading: "What is on each view" },
   { name: "deck-held", dir: "using", world: "deck", url: "/now", width: 1280, height: "fit", maxHeight: 1100, themes: BOTH, script: HELD_EMAIL,
@@ -106,7 +115,7 @@ export const SHOTS = [
   { name: "deck-search", dir: "using", world: "deck", url: "/now", width: 1280, height: 720, themes: BOTH, script: SEARCH,
     shows: [...DECK],
     alt: "The Deck's search finding the Harlow intake session by what was said in it.",
-    page: "using/memory.md", heading: "Search past sessions" },
+    page: "using/deck.md", heading: "Search what was said" },
   { name: "deck-projects", dir: "using", world: "deck", url: "/projects", width: 1280, height: 480, themes: BOTH,
     shows: [...DECK, "deck/views/projects.js", "deck/css/views/projects.css"],
     alt: "Projects in the Deck: Northwind Bakery and Harlow Legal, each with its person and thread count.",
@@ -147,10 +156,10 @@ export const SHOTS = [
     alt: "Settings in the Deck: the six setup steps, each with the vyre command that finishes it, then you and your address.",
     page: "using/deck.md", heading: "Finish setup, or change it" },
   { name: "settings-connections", dir: "using", world: "deck", url: "/settings#connections", width: 1280, height: 1000, themes: BOTH,
-    needs: ["deck/views/connections.js"],
-    shows: [...DECK, "deck/views/settings.js", "deck/views/connections.js", "deck/css/views/settings.css"],
-    alt: "Settings, Connections: the MCP servers every session gets and the Google accounts Vyre can use.",
-    page: "using/connectors.md", heading: "Use your own MCP servers" },
+    script: `await until('/harlow-docs/.test(document.querySelector("#connections") && document.querySelector("#connections").parentElement.innerText)', 15000); await wait(800);`,
+    shows: [...DECK, "deck/views/settings.js", "deck/views/connections.js", "deck/css/views/settings.css", "deck/css/views/connections.css"],
+    alt: "Settings, Connections: the harlow-docs MCP server with its tools and the projects it serves, and Harlow Legal's Google account, each with Test and Remove, and the buttons to add more.",
+    page: "using/connectors.md", heading: "Add an MCP server" },
   { name: "glass-files", dir: "using", world: "glass", url: "/glass/box", width: 1280, height: 640, themes: BOTH,
     script: `const open = async name => {
         const el = await until('[...document.querySelectorAll(".view *")].find(e => !e.children.length && e.textContent.trim() === ' + JSON.stringify(name) + ')');
@@ -159,17 +168,41 @@ export const SHOTS = [
       await open("Work"); await open("Q3 report.md");`,
     shows: [...DECK, "deck/views/glass.js", "deck/glass/index.js", "deck/glass/files.js", "deck/glass/glass.css"],
     alt: "Glass on the box: the Work folder's files, with Q3 report.md open beside the list to download, rename or trash.",
-    page: "using/glass.md", heading: "Move files" },
+    page: "using/glass.md", heading: "Browse and move files" },
 
   // ---- The Deck on a phone ----
   { name: "phone-now", dir: "using", world: "deck", url: "/now", width: 390, height: 844, phone: true, themes: BOTH,
-    shows: [...DECK, "deck/views/now.js", "deck/css/views/now.css", "deck/js/needs.js"],
-    alt: "Now on a phone: what needs you, with the tab bar at the bottom.",
-    page: "using/mobile.md", heading: "What you can do from the phone" },
+    shows: [...DECK, ...NOW, ...PHONE],
+    alt: "Now on a phone: the Set up this phone card (Home Screen, notifications, a passkey), what needs you, and the tab bar with Now, Projects, Chat, Find and Agents.",
+    page: "using/mobile.md", heading: "Set up the phone" },
   { name: "phone-held", dir: "using", world: "deck", url: "/now", width: 390, height: 844, phone: true, themes: BOTH, script: HELD_EMAIL,
     shows: [...DECK, "deck/views/needs.js", "deck/css/views/needs.css", "deck/js/needs.js"],
     alt: "A held email on a phone, with Send and Discard in reach of your thumb.",
     page: "using/mobile.md", heading: "Approving from the phone" },
+
+  { name: "phone-find", dir: "using", world: "deck", url: "/find", width: 390, height: 844, phone: true, themes: BOTH,
+    script: `const i = await until('document.querySelector(".view input")'); i.spellcheck = false; i.focus(); i.value = "harlow"; i.dispatchEvent(new Event("input", { bubbles: true })); await wait(1800); i.blur();`,
+    shows: [...DECK, "deck/views/find.js", "deck/css/views/find.css", "deck/js/commands.js"],
+    alt: "Find on a phone with harlow typed: ask juno first, then the Harlow sessions, and the projects that match.",
+    page: "using/mobile.md", heading: "What you can do from the phone" },
+
+  { name: "settings-devices", dir: "using", world: "deck", url: "/settings#devices", width: 1280, height: 800, themes: BOTH,
+    script: `await until('/alex-iphone/.test(document.body.innerText)', 15000); await wait(600);`,
+    shows: [...DECK, "deck/views/settings.js", "deck/css/views/settings.css", "core/onboard/index.js"],
+    alt: "Settings, Your devices: the iPhone alex-iphone, offline in Tailscale with how to turn it back on, and the Mac alex-mbp online, with Add a device.",
+    page: "using/deck.md", heading: "Finish setup, or change it" },
+
+  // ---- The Deck of a box whose setup just finished ----
+  { name: "deck-new-box", dir: "using", world: "fresh", url: "/now", width: 1280, height: 900, themes: BOTH, setup: "pair",
+    script: `await until('document.querySelector(".asst-title")', 15000); await wait(800);`,
+    shows: [...DECK, ...NOW, ...PAIR, "deck/js/assistant-setup.js"],
+    alt: "Now on a box whose setup just finished: the Create your assistant card, and the Mac alex-mbp asking to pair.",
+    page: "using/agents.md", heading: "Make the assistant later" },
+  { name: "deck-pair", dir: "using", world: "fresh", url: "/now", width: 1280, height: 900, themes: BOTH, setup: "pair", clip: ".pair-list", pad: 16,
+    script: `await until('document.querySelector(".pair-list") && document.querySelector(".pair-list").children.length', 15000); await wait(600);`,
+    shows: [...DECK, ...NOW, ...PAIR],
+    alt: "The card on Now when a Mac asks to pair: alex-mbp, a field for the code the Mac shows, Approve and Deny.",
+    page: "using/tailscale.md", heading: "Connect your Mac to the box" },
 
   // ---- The Capsule ----
   { name: "capsule-ask", dir: "using", world: "capsule", url: "/capsule.html", width: 728, height: 520, themes: ["dark"], clip: "#cap", pad: 24,
@@ -183,7 +216,7 @@ export const SHOTS = [
   { name: "capsule-open", dir: "using", world: "capsule", url: "/capsule.html", width: 728, height: 520, themes: ["dark"], clip: "#cap", pad: 24,
     script: `await until('window.__capReady'); await wait(1200);`, shows: CAPSULE,
     alt: "The Capsule just opened: an empty box, and a line saying two things wait on you.",
-    page: "using/capsule.md", heading: "Install and open it" },
+    page: "using/capsule.md", heading: "Install it" },
   { name: "capsule-waiting", dir: "using", world: "capsule", url: "/capsule.html", width: 728, height: 520, themes: ["dark"], clip: "#cap", pad: 24,
     script: `await until('window.__capReady'); await wait(800); ${KEY("ArrowUp")} await wait(1200);`, shows: CAPSULE,
     alt: "The Capsule listing what waits on you: an email to dana@harlowlegal.com and a payment for Northwind Bakery, both held at the Gate.",

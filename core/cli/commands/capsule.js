@@ -4,7 +4,8 @@
 //   vyre capsule            open it (starting vyred and the app when they are not running)
 //   vyre capsule --dev      run it from source in this terminal, with its log here; ctrl-C quits
 //   vyre capsule build      build the Swift helpers; --app also packages Vyre.app
-//   vyre capsule install    download the packaged app into ~/Applications (capsule-install.js)
+//   vyre capsule install    build and package Vyre.app on this Mac, without opening it. There is
+//                           no download any more: the app is built here, from this package.
 //
 // The trap this command exists to close: a packaged Electron app runs app.asar, so an edit to
 // the source does nothing until the app is packaged again, and nothing says so. The prototype
@@ -213,7 +214,11 @@ export default {
   async run(args) {
     const flags = { dev: args.includes("--dev"), hidden: args.includes("--hidden"), app: args.includes("--app") };
     if (args[0] === "build") return build(flags);
-    if (args[0] === "install") return (await import("./capsule-install.js")).install(args.slice(1));
+    if (args[0] === "install") {
+      // It was a zip from vyre.run, which no longer serves one.
+      if (process.platform === "darwin") out(dim("  vyre capsule install builds the Capsule on this Mac; nothing is downloaded."));
+      return build({ ...flags, app: true });
+    }
     // A mistyped word ("biuld") used to open the Capsule; now it says so.
     if (args[0] && !args[0].startsWith("--")) return usage(`vyre capsule ${args[0]}: not a subcommand`, "vyre capsule, vyre capsule build [--app] or vyre capsule install");
     return open(flags);
