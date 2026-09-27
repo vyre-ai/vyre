@@ -23,7 +23,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { callerKind } from "../modules/index.js";
 import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
-  headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, runTests } from "./git.js";
+  headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, runTests, B } from "./git.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE team_teammates (
@@ -308,7 +308,7 @@ export default {
       if (!(await isOwnWorktree(info.repo, info.dir, info.branch))) {
         return { done: false, fatal: `${info.dir} is not ${integrator.project}'s own ${info.branch} worktree any more; vyred will not merge into it` };
       }
-      const recorded = integrator.main_sha || await headSha(info.repo, info.base);
+      const recorded = integrator.main_sha || await headSha(info.repo, B(info.base));
       if (!recorded) return { done: false, fatal: `${integrator.project}'s ${info.base} has no commit yet to merge onto` };
       const reset = await resetTo(info.dir, recorded);
       if (!reset.ok) return { done: false, fatal: `could not reset the integrator's worktree to ${info.base}: ${reset.stderr}` };
@@ -327,7 +327,7 @@ export default {
         // or — a worktree is not a security boundary — a teammate's Bash). Resync and let the next
         // attempt (the automatic one, or team.merge) try again from the real, current tip, rather
         // than overwrite whatever is there now.
-        const fresh = await headSha(info.repo, info.base);
+        const fresh = await headSha(info.repo, B(info.base));
         setTeammate(integrator.agent, { main_sha: fresh });
         return { done: false, refMoved: true, detail: `${info.base} moved since vyred last recorded it; resynced and will try again` };
       }
@@ -352,7 +352,7 @@ export default {
       if (await stillConflicted(info.dir)) {
         return { done: false, detail: "there are still unresolved conflicts (git diff --diff-filter=U); resolve them, git add them, and call team.merge again" };
       }
-      const recorded = integrator.main_sha || await headSha(info.repo, info.base);
+      const recorded = integrator.main_sha || await headSha(info.repo, B(info.base));
       if (integrator.test_command) {
         const tested = await runTests(info.dir, integrator.test_command);
         if (!tested.ok) return { done: false, detail: `${integrator.test_command} still fails:\n${(tested.stderr || tested.stdout)}`.slice(0, 4000) };
@@ -360,7 +360,7 @@ export default {
       const newSha = await headSha(info.dir, "HEAD");
       if (!newSha) return { done: false, fatal: "could not read the integrator's worktree HEAD" };
       if (!(await compareAndSwap(info.repo, info.base, recorded, newSha))) {
-        const fresh = await headSha(info.repo, info.base);
+        const fresh = await headSha(info.repo, B(info.base));
         setTeammate(integrator.agent, { main_sha: fresh });
         return { done: false, refMoved: true, detail: `${info.base} moved since vyred last recorded it; resynced, call team.merge again` };
       }
@@ -624,7 +624,7 @@ export default {
               const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
               if (iw.ok) insertTeammate({ project: i.project, role: INTEGRATOR_ROLE, isolation: "worktree",
                 brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
-                main_sha: await headSha(repo, base), test_command: await detectTestCommand(repo) });
+                main_sha: await headSha(repo, B(base)), test_command: await detectTestCommand(repo) });
               else ctx.log?.(`team: ${i.project}'s integrator worktree failed, so it was not added: ${iw.stderr}`);
             }
           }

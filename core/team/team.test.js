@@ -445,6 +445,21 @@ test("isolation: worktree makes the teammate's own worktree and branch, and brin
   assert.ok(fs.existsSync(worktreePath(repo, "integrator")));
 });
 
+test("a tag named like the base branch never hijacks a worktree's fork point (reviewer, slice A, MEDIUM)", async t => {
+  const { tool, project, repo } = await bootGit(t);
+  // A planted tag "main", at the repo's first commit — then real main moves on. gitrevisions'
+  // own disambiguation order checks refs/tags/<name> before refs/heads/<name>, so a bare "main"
+  // would resolve to this tag, not the real branch tip, unless every ref is fully qualified.
+  git(project.home, ["tag", "main"]);
+  fs.writeFileSync(path.join(project.home, "CHANGES.md"), "real main moved on\n");
+  git(project.home, ["add", "."]);
+  git(project.home, ["commit", "-q", "-m", "second, on the real branch"]);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const dir = worktreePath(repo, "design");
+  assert.ok(fs.existsSync(path.join(dir, "CHANGES.md")),
+    "the worktree should fork from refs/heads/main's real tip, not a same-named tag");
+});
+
 test("a second worktree teammate does not get a second integrator", async t => {
   const { tool, project, repo } = await bootGit(t);
   await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
