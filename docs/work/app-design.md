@@ -37,7 +37,15 @@ Session 5 (27 Sep, after logout 4). Done this session, all on work/app-design:
 - Spec lists by team: docs/design/system/teams.md (f0752612).
 - Install boards: the real 8-character code, 7KQM-4P2X, valid 10 min (e7db7f55).
 
-Compile phase next: the design workflow green in CI on the pushed branch, then polish passes.
+- Later in session 5: appearance aligned with ADR 0035 (34ac793b; 14/15 with native-core's
+  settings overlaid, the skip is the device level); specs tip, glass-mini, suggestions,
+  account-row, credential-sheet, result-card and the waiting count in needs-row (b4d7b27e); boards
+  TipLine and GlassMini (3da9eecb), all audited; canvas republished (63 boards).
+- The design workflow passed in CI on 548c4572 (run 36326407452).
+
+Next: native-core's six asks for appearance (device level, call check, choicesFrom shape,
+settings.snapshot, /theme.css and /v1/theme from the daemon, GROUPS), then switch the keys to
+account + device and drop the tokens tool store. Then polish passes over the specs with each team.
 
 ## Next
 
