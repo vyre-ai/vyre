@@ -279,3 +279,17 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   (47030189). Updated card.md, chip.md (new Asking state on the filter chip) and the board (the
   Touch ID shield glyph trails the Agents chip whenever it's off). Told connectors, who hadn't
   built the DOM yet, before checking with them (msg_id 2bf39209).
+- Reviewed connectors' real build (work/connectors 482f7b6d, deck/views/connections.js +
+  deck/css/views/connections.css): structure's right, two real fixes needed. (1) toggleSurface
+  treats Agents like every other surface — no presence check — built after or crossed with the
+  47030189 rule above; they already import withPresence and use it for vault.grant elsewhere in
+  the same file, just not wired into this path yet. (2) .cn-chip-on is `--hover`/`--rule-strong`,
+  not chip.md's lime On state (--focus border, --signal-wash fill) — traces back to deck.css's
+  base .chip never having had an On state at all, and being 26/square instead of spec's 28/full
+  radius (chip.md's own pre-existing Gap, now worth closing since they're the ones adding the
+  first real On state). Answered their two questions: Sign in again opens the credential sheet
+  with {module, need, account} per credential-sheet.md/account-row.md, oauth-only is enough for
+  now since every problem card in their data is a sign-in not a missing key; and yes, fold into
+  card.md/chip.md now, not later, since f65d51e5 (03:16) landed before their commit (03:42) and
+  their "still draft with no Connections row" comment is already stale. Waiting on their fix +
+  final class names to close card.md's native-core Gap line (msg_id 717f7d6c).
