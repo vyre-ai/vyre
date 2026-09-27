@@ -3041,7 +3041,7 @@ How the sessions Vyre starts run on this machine: the driver (sdk or cli), the C
 
 ### `settings.get`
 
-Settings with the value in effect and where it comes from (project, account, default). Give key for one, group for a group, nothing for all; project to see a project's view.
+Settings with the value in effect and where it comes from (project, account, default). Give key for one, group for a group, nothing for all; project to see a project's view. A secret setting's values are masked for anyone but the person.
 
 - Input:
   - `group` string

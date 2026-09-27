@@ -32,6 +32,32 @@ export const GROUPS = [
   ["tools", "Tools"], ["devices", "Devices"],
 ];
 
+/** What a secret setting's value reads as to anyone but the person. */
+export const MASK = "•••• set";
+
+/**
+ * A secret setting's value as a caller who isn't the person sees it: an object keeps its names
+ * with every value masked, anything else is MASK. Unset stays unset; other keys pass through.
+ * @param {any} d @param {any} value
+ */
+export const maskFor = (d, value) => {
+  if (!d || !d.secret || value === undefined || value === null) return value;
+  if (typeof value === "object" && !Array.isArray(value)) return Object.fromEntries(Object.keys(value).map(k => [k, MASK]));
+  return MASK;
+};
+
+/**
+ * Whether a caller is the person, for reading secret values: one of the person's own surfaces
+ * with no agent label, or the owner's device over the tailnet or the relay with a person session.
+ * @param {string} caller @param {any} meta
+ */
+export const isPerson = (caller, meta) => {
+  const c = String(caller);
+  if (/(?:^|[\s:])agent:/.test(c)) return false;
+  if (PEOPLE.includes(c)) return true;
+  return /^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(c) && Boolean(meta && meta.person);
+};
+
 /** The label another module sees when this one passes a person's change on. @param {string} caller */
 const asPerson = caller => {
   const k = String(caller).replace(/[\s:]agent:.*$/s, "");
@@ -45,7 +71,7 @@ const describe = d => ({
   ...(d.min !== undefined ? { min: d.min } : {}), ...(d.max !== undefined ? { max: d.max } : {}),
   levels: d.levels, apply: d.apply, owner: d.store && d.store.claude ? "C" : "V", ...(d.advanced ? { advanced: true } : {}),
   ...(d.security ? { security: d.security } : {}), ...(d.confirm ? { confirm: d.confirm } : {}), ...(d.loosens ? { loosens: d.loosens } : {}),
-  ...(d.default !== undefined ? { default: d.default } : {}),
+  ...(d.default !== undefined ? { default: d.default } : {}), ...(d.secret ? { secret: true } : {}),
 });
 
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
@@ -91,15 +117,20 @@ export default {
       catch (e) { return { value: undefined, error: /** @type {any} */ (e).code || "failed", message: /** @type {Error} */ (e).message }; }
     };
 
-    /** The value in effect and where it came from. @param {any} d @param {string|null} project */
-    const effective = async (d, project) => {
+    /**
+     * The value in effect and where it came from. A secret key's values are masked unless the
+     * caller is the person (clear: true).
+     * @param {any} d @param {string|null} project
+     */
+    const effective = async (d, project, clear = true) => {
       const [p, a] = await Promise.all([level(d, "project", project), level(d, "account", project)]);
-      const value = p.value !== undefined ? p.value : a.value !== undefined ? a.value : d.default;
+      const show = (/** @type {any} */ v) => (clear ? v : maskFor(d, v));
+      const value = show(p.value !== undefined ? p.value : a.value !== undefined ? a.value : d.default);
       const source = p.value !== undefined ? "project" : a.value !== undefined ? "account" : d.default !== undefined ? "default" : "unset";
       const err = a.error || p.error;
       return {
         ...describe(d), value, source,
-        ...(a.value !== undefined ? { account: a.value } : {}), ...(p.value !== undefined ? { project: p.value } : {}),
+        ...(a.value !== undefined ? { account: show(a.value) } : {}), ...(p.value !== undefined ? { project: show(p.value) } : {}),
         available: err !== "unavailable",
         ...(err && err !== "unavailable" ? { problem: a.message || p.message } : {}),
       };
@@ -118,13 +149,14 @@ export default {
     });
 
     ctx.tool("settings.get", {
-      description: "Settings with the value in effect and where it comes from (project, account, default). Give key for one, group for a group, nothing for all; project to see a project's view.",
+      description: "Settings with the value in effect and where it comes from (project, account, default). Give key for one, group for a group, nothing for all; project to see a project's view. A secret setting's values are masked for anyone but the person.",
       input: { type: "object", properties: { key: str, group: str, project: str } },
-      run: async i => {
+      run: async (i, meta) => {
         const project = slugOf(i.project);
-        if (i.key) return effective(declOf(i.key), project);
+        const clear = isPerson(meta && meta.caller, meta);
+        if (i.key) return effective(declOf(i.key), project, clear);
         const list = decls().filter(d => !i.group || (d.group || d.module) === i.group);
-        return { project, settings: await Promise.all(list.map(d => effective(d, project))) };
+        return { project, settings: await Promise.all(list.map(d => effective(d, project, clear))) };
       },
     });
 

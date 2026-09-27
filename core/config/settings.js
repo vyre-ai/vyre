@@ -49,6 +49,7 @@ export function validateDecls(module, list, { firstParty = false, tools = [] } =
     if (!Array.isArray(d.levels) || !d.levels.length || d.levels.some(l => !LEVELS.includes(l))) out.push(`setting ${k}: levels must be account and/or project`);
     if (!APPLY.includes(d.apply)) out.push(`setting ${k}: apply must be live, session or restart`);
     if (typeof d.label !== "string" || !d.label) out.push(`setting ${k}: needs a label`);
+    if (d.secret !== undefined && typeof d.secret !== "boolean") out.push(`setting ${k}: secret is true or false`);
     // Words for an enum's values, shown instead of the raw value: only values the enum has.
     if (d.labels !== undefined && (!d.labels || typeof d.labels !== "object" || Array.isArray(d.labels) || d.type !== "enum"
       || Object.entries(d.labels).some(([v, l]) => !(d.enum || []).includes(v) || typeof l !== "string" || !l))) out.push(`setting ${k}: labels names words for its enum's values`);

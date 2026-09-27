@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A secret setting's values reach only the person
+
+- core/settings: a declaration may say `secret: true` (sessions.env and sessions.hooks do).
+  settings.get then shows its names but masks its values ("•••• set") for any caller that isn't
+  the person: MCP, agent labels, a module, or the owner's device over the tailnet or the relay
+  without a person session. The one helper, maskFor(d, value), is exported for settings.write.
+  settings.resolve stays internal (modules only), and no value is ever logged or put in an event
+  (e2e review, HIGH).
+
 #### Settings shows modes in words, checked in a real browser
 
 - A setting's declaration may name `labels` for its enum values (core/config/settings.js checks

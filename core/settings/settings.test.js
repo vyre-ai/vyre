@@ -298,3 +298,34 @@ test("settings passes the person on only to the getters and setters first-party 
   assert.ok(d.registry.settingTools().has("sessions.models.set"));
   assert.ok(!d.registry.settingTools().has("threads.answer"));
 });
+
+test("a secret setting's values reach only the person: agents and a device without a session see names, never values", async t => {
+  const { d, claudeDir } = await world(t);
+  fs.mkdirSync(claudeDir, { recursive: true });
+  fs.writeFileSync(path.join(claudeDir, "settings.json"), JSON.stringify({ env: { NORTHWIND_TOKEN: "nw-secret-123", LOG_LEVEL: "debug" } }));
+  const get = (/** @type {string} */ caller, /** @type {any} */ opts = {}) => d.registry.call("settings.get", { key: "sessions.env" }, caller, opts);
+  for (const caller of ["mcp", "mcp:agent:kit", "cli agent:kit", "tailnet:agent:kit", "tailnet:alex", "device:abcdefghijklmnop", "module:bakery"]) {
+    const r = await get(caller);
+    assert.equal(r.error, undefined, `${caller}: ${JSON.stringify(r)}`);
+    assert.deepEqual(r.data.value, { NORTHWIND_TOKEN: "•••• set", LOG_LEVEL: "•••• set" }, caller);
+    assert.ok(!JSON.stringify(r).includes("nw-secret-123"), `${caller} saw the value`);
+    assert.equal(r.data.secret, true);
+  }
+  // A whole group read masks it too.
+  const all = await d.registry.call("settings.get", {}, "mcp:agent:kit");
+  assert.ok(!JSON.stringify(all).includes("nw-secret-123"), "the list leaks nothing");
+  // The person, on the box's own surfaces or on their device with a person session, sees values.
+  assert.equal((await get("cli")).data.value.NORTHWIND_TOKEN, "nw-secret-123");
+  assert.equal((await get("tailnet:alex", { person: { id: "p1" } })).data.value.NORTHWIND_TOKEN, "nw-secret-123");
+  // A plain key is not masked for anyone.
+  assert.equal((await d.registry.call("settings.get", { key: "sessions.mode" }, "mcp:agent:kit")).data.value, "default");
+});
+
+test("maskFor masks only secret keys, keeps an object's names, and leaves unset alone", async () => {
+  const { maskFor, MASK } = await import("./index.js");
+  assert.deepEqual(maskFor({ secret: true }, { A: "1" }), { A: MASK });
+  assert.equal(maskFor({ secret: true }, "tok"), MASK);
+  assert.equal(maskFor({ secret: true }, undefined), undefined);
+  assert.equal(maskFor({}, "plain"), "plain");
+  assert.deepEqual(validateDecls("bakery", [{ key: "bakery.k", label: "K", type: "string", levels: ["account"], apply: "live", secret: "yes" }]), ["setting bakery.k: secret is true or false"]);
+});
