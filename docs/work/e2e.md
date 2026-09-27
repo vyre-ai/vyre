@@ -223,6 +223,13 @@ Plan (to the lead before building):
 - node RED on main 68463d04 (run 36341827061): 0 fail. journey.test.js:221 is the marked todo; the
   exit 1 is tmp-guard catching test/onboard.test.js (reserve/ts.net test) leaving a config.json.
   Verdict sent: known, deploy OK; the leak is the integrator's.
+- Review teammates f8cbc882 (core/team, ADR 0031 step 1): NOT signed off. HIGH: person label
+  "cli" is a free claim on the main socket (fromClaude only for PERSON_ONLY), so a session's Bash
+  passes team.notes set / cancel / status / ask-with-project; team.notes `part` path traversal
+  (any .md, e.g. project CLAUDE.md); result wrapper breakout into the requester's user turn.
+  MEDIUM: projectOf falls to input when the thread has no project; team.list and notes get read
+  across projects. LOW: MAX_VIA off by one; thread.finished subscribed after launch. Lead asked:
+  daemon-wide downgrade of person labels that fromClaude catches. Waiting on their fix sha.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
