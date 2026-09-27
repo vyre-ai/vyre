@@ -157,6 +157,23 @@ test("gate: reject discards, and a discarded item cannot be approved", async () 
   assert.equal(sent.length, 0);
 });
 
+test("gate: settle marks a failed send sent with its evidence, once, and only after an approval failed", async () => {
+  const { gate, events, sent, failNext } = setup();
+  const { id } = ask(gate);
+  assert.throws(() => gate.settle({ id, outcome: "sent", by: "capsule" }), /never approved/, "an item never approved is the person's to decide");
+  failNext("connection closed");
+  assert.equal((await gate.approve({ id })).state, "failed");
+  assert.throws(() => gate.settle({ id, outcome: "rejected" }), /outcome must be/);
+  assert.deepEqual(gate.settle({ id, outcome: "sent", evidence: { ts: "1727431200.000200" }, by: "capsule" }), { id, state: "sent", settled: true });
+  assert.deepEqual(events.at(-1), { type: "gate.settled", payload: { id, kind: "send", via: "mail", outcome: "sent", by: "capsule" }, where: { thread: "t-1", project: "harlow-legal" } });
+  const it = gate.get({ id });
+  assert.deepEqual([it.state, it.result], ["sent", { settled: true, evidence: { ts: "1727431200.000200" } }]);
+  assert.equal(gate.held().length, 0);
+  await assert.rejects(gate.approve({ id }), /already sent/, "a settled item is never sent again");
+  assert.throws(() => gate.settle({ id, outcome: "sent" }), /already sent/);
+  assert.equal(sent.length, 0);
+});
+
 test("gate: a failed send goes back to held with its error, keeps the edits, and can be retried", async () => {
   const { gate, events, sent, failNext } = setup();
   const { id } = ask(gate);

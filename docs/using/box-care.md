@@ -62,8 +62,7 @@ vyre logs      # follow vyred's output (docker compose logs -f vyre)
 ```
 
 vyred also writes a log file per day, `~/.vyre/logs/YYYY-MM-DD.log`. On a Docker box that is
-`/home/vyre/.vyre/logs/` inside the `vyre_vyre-home` volume. On a Mac, the Capsule logs to
-`~/.vyre/logs/capsule.out`.
+`/home/vyre/.vyre/logs/` inside the `vyre_vyre-home` volume.
 
 ## Upgrade
 
@@ -96,6 +95,11 @@ it rebuilds the image from `VYRE_SOURCE` with fresh base images instead; and whe
 what changed, waits up to a minute for vyred, and prints what `vyre up` prints. Your volumes carry
 over, and each module migrates its own data at start
 ([Specification](../architecture/spec.md#71-store-config-events-modules-daemon), Section 7.1).
+
+The image carries the Claude Agent SDK that Vyre's own sessions run on, with the Claude Code it
+bundles, in `/opt/vyre-sessions-sdk` ([ADR 0030](../adr/0030-sessions.md)). The box never
+downloads it at runtime. Its version is pinned as `VERSION` in `core/sessions/sdk.js`: a bump there
+rebuilds the image, and `vyre update` brings it in like any other change.
 
 To update the box files themselves (`compose.yml`, the wrapper and the rest), run the installer
 again. It rewrites them and leaves `.env` and `vyre.env` alone:

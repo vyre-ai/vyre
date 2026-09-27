@@ -1,0 +1,464 @@
+// @ts-check
+// client: the device side of the relay for the Expo app (web, iOS, Android) and for Node tests.
+// `pair()` scans the QR offer and runs the first handshake; `connect()` keeps a channel to the box
+// open and puts fetch, event streams and WebSockets on top of it (ADR 0026, sections 3, 4, 6, 8).
+//
+// Resilience (ADR 0029): reconnects back off from 1 s to 60 s with jitter and handshake afresh;
+// a text "ping" at most every 60 s, answered "pong" by the relay, and two missed pongs are a stall;
+// nothing keeps alive while the page or app is hidden, and coming back reconnects at once; event
+// streams resume with Last-Event-ID; every non-GET carries an Idempotency-Key, and a request whose
+// response was lost to a dropped channel is sent once more on the next channel with the same key.
+
+import { dial, FRAME, MAX_FRAME } from "./channel.js";
+import { EMPTY, base64url, fromBase64url, fromUtf8, toBytes, concat, uuidFrom } from "./bytes.js";
+import { Pipe, makeResponse, lowerHeaders } from "./response.js";
+import { followEvents } from "./sse.js";
+import { webCrypto, indexedDbKeyStore } from "./webcrypto.js";
+
+export const PAIR_BASE = "https://vyre.run/pair";
+const PING_MS = 60_000;
+const BACKOFF = { min: 1000, max: 60_000 };
+const HANDSHAKE_MS = 15_000;
+const ROUTE_RE = /^[a-z2-7]{26}$/;
+
+/** The WebSocket API accepts only 1000 and 3000 to 4999 from an application. */
+const closeCode = c => c === 1000 || (c >= 3000 && c <= 4999) ? c : 4000;
+const abortError = () => Object.assign(new Error("aborted"), { name: "AbortError" });
+
+/**
+ * The offer in a scanned URL, or null when it is not one of ours. Same format as core/relay/pairing.js.
+ * @param {string} url
+ * @returns {{ relay: string, route: string, box: Uint8Array, secret: string, name: string } | null}
+ */
+export function parsePairUrl(url) {
+  const u = String(url);
+  const at = u.indexOf("#");
+  if (at < 0 || !u.startsWith(PAIR_BASE)) return null;
+  let o;
+  try { o = JSON.parse(fromUtf8(fromBase64url(u.slice(at + 1)))); } catch { return null; }
+  if (!o || o.v !== 1 || typeof o.r !== "string" || !ROUTE_RE.test(o.i) || typeof o.s !== "string" || typeof o.k !== "string") return null;
+  let box;
+  try { box = fromBase64url(o.k); } catch { return null; }
+  if (box.length !== 32 || !/^wss?:\/\/[^\s/]+/.test(o.r)) return null;
+  return { relay: o.r, route: o.i, box, secret: o.s, name: typeof o.n === "string" ? o.n.slice(0, 64) : "" };
+}
+
+/**
+ * The page's or app's visibility. The default reads `document.visibilityState`; React Native
+ * passes one built on AppState. `on` returns an unsubscribe.
+ * @typedef {{ hidden(): boolean, on(fn: () => void): () => void }} Visibility
+ * @returns {Visibility}
+ */
+export function defaultVisibility() {
+  const doc = /** @type {any} */ (globalThis).document;
+  if (!doc || typeof doc.addEventListener !== "function") return { hidden: () => false, on: () => () => {} };
+  return {
+    hidden: () => doc.visibilityState === "hidden",
+    on(fn) { doc.addEventListener("visibilitychange", fn); return () => doc.removeEventListener("visibilitychange", fn); },
+  };
+}
+
+/** The device's static key from the store, made and stored on first use. */
+export async function deviceKey({ keyStore, crypto }) {
+  let k = await keyStore.get();
+  if (!k) { k = await crypto.generateKeyPair(); await keyStore.set(k); }
+  return k;
+}
+
+const defaults = o => ({
+  crypto: o.crypto || webCrypto(),
+  keyStore: o.keyStore || indexedDbKeyStore(),
+  WebSocket: o.WebSocket || globalThis.WebSocket,
+});
+
+/**
+ * One WebSocket to the relay and one handshake with the box.
+ * @returns {Promise<{ channel: import("./channel.js").Channel, reply: any, ws: any }>}
+ */
+function openChannel(o) {
+  return new Promise((resolve, reject) => {
+    const WS = o.WebSocket;
+    if (!WS) { reject(new Error("no WebSocket here: pass one")); return; }
+    let ws;
+    try { ws = new WS(`${String(o.relay).replace(/\/+$/, "")}/v1/device?route=${encodeURIComponent(o.route)}`); } catch (e) { reject(e); return; }
+    try { ws.binaryType = "arraybuffer"; } catch {}
+    /** @type {ReturnType<typeof dial> | null} */
+    let side = null;
+    let done = false;
+    const fail = msg => { if (done) return; done = true; globalThis.clearTimeout(timer); reject(new Error(msg)); };
+    const timer = globalThis.setTimeout(() => { fail("the box did not answer"); try { ws.close(4000, "timeout"); } catch {} }, o.timeout ?? HANDSHAKE_MS);
+    ws.onopen = () => {
+      side = dial({
+        send: b => { try { ws.send(b); } catch {} },
+        close: (c, r) => { try { ws.close(closeCode(c), String(r || "").slice(0, 120)); } catch {} },
+      }, { crypto: o.crypto, s: o.keys, box: o.box, route: o.route, hello: o.hello, rekeyEvery: o.rekeyEvery });
+      side.ready.then(({ channel, reply }) => {
+        if (done) { channel.close(1000, "too late"); return; }
+        done = true;
+        globalThis.clearTimeout(timer);
+        resolve({ channel, reply, ws });
+      }, e => fail(e.message));
+    };
+    ws.onmessage = e => {
+      const d = e.data;
+      if (typeof d === "string") { if (d === "pong") o.onpong?.(); return; }
+      if (side) side.receive(toBytes(d));
+    };
+    ws.onclose = e => {
+      const reason = (e && e.reason) || `closed ${e && e.code}`;
+      if (side) side.gone(reason); else fail(reason);
+    };
+    // On Node 22 a refused WebSocket fires only `error`, never `close`: before the socket opens,
+    // that is a failed dial, so the backoff runs now rather than after the handshake timeout.
+    ws.onerror = () => { if (!side) { fail("could not reach the relay"); try { ws.close(); } catch {} } };
+  });
+}
+
+/**
+ * What a device says about itself in every hello (ADR 0026 section 10): the hosted web app sends
+ * kind "web" and the release and manifest hash it loaded, so the box can show the build.
+ * @param {{ kind?: "app"|"web", release?: string, manifest?: string } | undefined} a
+ */
+const about = a => ({
+  ...(a && (a.kind === "web" || a.kind === "app") ? { kind: a.kind } : {}),
+  ...(a && typeof a.release === "string" ? { release: a.release } : {}),
+  ...(a && typeof a.manifest === "string" ? { manifest: a.manifest } : {}),
+});
+
+/**
+ * Pair with a box from its QR offer: make (or reuse) this device's key, prove the one-time secret
+ * and learn this device's id. Returns what `connect()` needs; store it (it holds no secret).
+ * @param {string} offerUrl
+ * @param {{ name?: string, presenceKey?: { public_key: string, alg?: number }, about?: { kind?: "app"|"web", release?: string, manifest?: string }, keyStore?: import("./webcrypto.js").KeyStore,
+ *   crypto?: import("./noise.js").CryptoProvider, WebSocket?: any, timeout?: number }} [o]
+ */
+export async function pair(offerUrl, o = {}) {
+  const offer = parsePairUrl(offerUrl);
+  if (!offer) throw new Error("not a Vyre pairing code");
+  const d = defaults(o);
+  const keys = await deviceKey(d);
+  const hello = { v: 1, ...about(o.about), pair: offer.secret, name: o.name || "a device", ...(o.presenceKey ? { presenceKey: o.presenceKey } : {}) };
+  const { channel, reply } = await openChannel({ ...d, relay: offer.relay, route: offer.route, box: offer.box, keys, hello, timeout: o.timeout });
+  channel.close(1000, "paired");
+  return {
+    relay: offer.relay, route: offer.route, box: base64url(offer.box),
+    name: (reply && reply.box && reply.box.name) || offer.name,
+    device: reply && reply.device, presence: (reply && reply.presence) || null,
+  };
+}
+
+/**
+ * Stay connected to a paired box.
+ * @param {{ relay: string, route: string, box: string|Uint8Array, name?: string, about?: { kind?: "app"|"web", release?: string, manifest?: string },
+ *   keyStore?: import("./webcrypto.js").KeyStore, crypto?: import("./noise.js").CryptoProvider, WebSocket?: any,
+ *   visibility?: Visibility, pingMs?: number, backoff?: { min?: number, max?: number }, timeout?: number,
+ *   rekeyEvery?: number, random?: () => number }} o
+ */
+export function connect(o) {
+  return new Connection(o);
+}
+
+/** A kept-open channel to one box, with fetch, events and socket on top. */
+export class Connection {
+  /** @param {Parameters<typeof connect>[0]} o */
+  constructor(o) {
+    if (!o || !ROUTE_RE.test(String(o.route)) || !/^wss?:\/\/[^\s/]+/.test(String(o.relay))) throw new Error("connect needs the relay, route and box from pair()");
+    const box = typeof o.box === "string" ? fromBase64url(o.box) : toBytes(o.box);
+    if (box.length !== 32) throw new Error("the box key is 32 bytes");
+    this.o = { ...o, ...defaults(o), box };
+    this.pingMs = o.pingMs || PING_MS;
+    this.min = o.backoff?.min ?? BACKOFF.min;
+    this.max = o.backoff?.max ?? BACKOFF.max;
+    this.random = o.random || Math.random;
+    this.visibility = o.visibility || defaultVisibility();
+    /** @type {"connecting"|"open"|"offline"} */
+    this.state = "connecting";
+    /** @type {(state: "connecting"|"open"|"offline") => void} */
+    this.onstate = () => {};
+    this.closed = false;
+    /** @type {import("./channel.js").Channel | null} */
+    this.channel = null;
+    this.ws = null;
+    /** @type {any} the box's handshake reply: { v, box: { name }, device } */
+    this.reply = null;
+    /** @type {Error|null} */
+    this.lastError = null;
+    this.dialing = false;
+    this.backoff = this.min;
+    /** @type {any} */ this.retryTimer = null;
+    /** @type {any} */ this.pinger = null;
+    this.outstanding = false;
+    this.missed = 0;
+    /** @type {Array<{ resolve: (c: any) => void, reject: (e: any) => void }>} */
+    this.waiters = [];
+    /** @type {Set<{ close(): void }>} */
+    this.follows = new Set();
+    this.offVisible = this.visibility.on(() => this.visibleChanged());
+    const g = /** @type {any} */ (globalThis);
+    const online = () => this.wake();
+    if (typeof g.addEventListener === "function") { g.addEventListener("online", online); this.offOnline = () => g.removeEventListener("online", online); }
+    else this.offOnline = () => {};
+    Promise.resolve().then(() => this.dial());
+  }
+
+  get open() { return this.state === "open"; }
+
+  setState(s) {
+    if (this.state === s) return;
+    this.state = s;
+    try { this.onstate(s); } catch {}
+  }
+
+  async dial() {
+    if (this.closed || this.dialing || this.channel) return;
+    if (this.visibility.hidden()) { this.setState("offline"); return; }
+    this.dialing = true;
+    this.setState("connecting");
+    try {
+      const keys = await deviceKey(this.o);
+      const hello = { v: 1, ...about(this.o.about), ...(this.o.name ? { name: this.o.name } : {}) };
+      const { channel, reply, ws } = await openChannel({ ...this.o, keys, hello, onpong: () => { this.outstanding = false; this.missed = 0; } });
+      this.dialing = false;
+      if (this.closed) { channel.close(1000, "closed"); return; }
+      this.channel = channel;
+      this.ws = ws;
+      this.reply = reply;
+      this.backoff = this.min;
+      this.lastError = null;
+      channel.onclose = () => this.lost(channel);
+      this.setState("open");
+      this.keepalive();
+      for (const w of this.waiters.splice(0)) w.resolve(channel);
+    } catch (e) {
+      this.dialing = false;
+      this.lastError = /** @type {Error} */ (e);
+      this.retry();
+    }
+  }
+
+  /** @param {import("./channel.js").Channel} ch */
+  lost(ch) {
+    if (this.channel !== ch) return;
+    this.channel = null;
+    this.ws = null;
+    globalThis.clearInterval(this.pinger);
+    this.pinger = null;
+    this.retry();
+  }
+
+  retry() {
+    if (this.closed) return;
+    this.setState("offline");
+    globalThis.clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    if (this.visibility.hidden()) return;               // coming back to the front dials
+    const delay = this.backoff * (0.8 + 0.4 * this.random());
+    this.backoff = Math.min(this.backoff * 2, this.max);
+    this.retryTimer = globalThis.setTimeout(() => { this.retryTimer = null; this.dial(); }, delay);
+  }
+
+  /** Reconnect now if we are not connected (a wake, the network came back, the app came to the front). */
+  wake() {
+    if (this.closed) return;
+    if (this.channel) {
+      // After a sleep the socket may be dead without knowing it: ask now.
+      this.missed = 0;
+      this.ping();
+      return;
+    }
+    if (this.dialing) return;
+    globalThis.clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+    this.backoff = this.min;
+    this.dial();
+  }
+
+  visibleChanged() { if (!this.visibility.hidden()) this.wake(); }
+
+  keepalive() {
+    globalThis.clearInterval(this.pinger);
+    this.outstanding = false;
+    this.missed = 0;
+    this.pinger = globalThis.setInterval(() => this.tick(), this.pingMs);
+  }
+
+  tick() {
+    if (!this.channel || this.visibility.hidden()) return;
+    if (this.outstanding && ++this.missed >= 2) {
+      this.channel.close(4000, "no answer to two pings");
+      return;
+    }
+    this.ping();
+  }
+
+  ping() {
+    if (!this.ws) return;
+    this.outstanding = true;
+    try { this.ws.send("ping"); } catch {}
+  }
+
+  /** The open channel, now or when the next one opens. */
+  ready(signal) {
+    if (this.closed) return Promise.reject(new Error("connection closed"));
+    if (this.channel) return Promise.resolve(this.channel);
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) { reject(abortError()); return; }
+      const w = { resolve, reject };
+      this.waiters.push(w);
+      signal?.addEventListener?.("abort", () => { this.waiters = this.waiters.filter(x => x !== w); reject(abortError()); }, { once: true });
+    });
+  }
+
+  /**
+   * A request through the box's router. Resolves on the response head; read the body with
+   * text(), json() or `for await (const chunk of res.body)`.
+   * @param {string} path
+   * @param {{ method?: string, headers?: any, body?: string|Uint8Array|ArrayBuffer|null, signal?: AbortSignal }} [init]
+   */
+  async fetch(path, init = {}) {
+    const method = String(init.method || "GET").toUpperCase();
+    const headers = lowerHeaders(init.headers);
+    if (method !== "GET" && method !== "HEAD" && !headers["idempotency-key"]) headers["idempotency-key"] = await newKey(this.o.crypto);
+    const body = init.body == null ? EMPTY : toBytes(init.body);
+    const head = { method, path, headers };
+    for (let attempt = 0; ; attempt++) {
+      const ch = await this.ready(init.signal);
+      try { return await request(ch, head, body, init.signal); }
+      catch (e) { if (/** @type {any} */ (e)?.lost && attempt === 0 && !this.closed) continue; throw e; }
+    }
+  }
+
+  /**
+   * Follow a server-sent event stream, across reconnects, resuming with Last-Event-ID.
+   * @param {string} path
+   * @param {Omit<Parameters<typeof followEvents>[2], "onEvent"> & { onEvent: Parameters<typeof followEvents>[2]["onEvent"] }} o
+   */
+  events(path, o) {
+    const f = followEvents((p, init) => this.fetch(p, init), path, { random: this.random, ...o });
+    const handle = { get lastEventId() { return f.lastEventId; }, reopen: () => f.reopen(), close: () => { f.close(); this.follows.delete(handle); } };
+    this.follows.add(handle);
+    return handle;
+  }
+
+  /**
+   * A WebSocket to one of the box's /v1/streams/ paths, through the channel. It does not survive
+   * a reconnect: on close, open a new one (the stream's own resume, like a terminal offset, is
+   * the caller's).
+   * @param {string} path @param {{ headers?: Record<string, string> }} [o]
+   */
+  socket(path, o = {}) {
+    const sock = new RelaySocket();
+    this.ready().then(ch => { if (sock.readyState === 0) sock.attach(ch, path, lowerHeaders(o.headers)); },
+      e => sock.finish(1006, String(e.message)));
+    return sock;
+  }
+
+  close() {
+    if (this.closed) return;
+    this.closed = true;
+    globalThis.clearTimeout(this.retryTimer);
+    globalThis.clearInterval(this.pinger);
+    this.offVisible();
+    this.offOnline();
+    for (const f of [...this.follows]) f.close();
+    for (const w of this.waiters.splice(0)) w.reject(new Error("connection closed"));
+    const ch = this.channel;
+    this.channel = null;
+    ch?.close(1000, "closed");
+    this.setState("offline");
+  }
+}
+
+async function newKey(crypto) {
+  const g = /** @type {any} */ (globalThis).crypto;
+  if (g && typeof g.randomUUID === "function") return g.randomUUID();
+  return uuidFrom(await crypto.randomBytes(16));
+}
+
+/**
+ * One request on one channel. Rejects with `lost: true` when the channel dropped before the
+ * response head arrived, so the caller can send it once more on the next channel.
+ * @param {import("./channel.js").Channel} ch
+ */
+export function request(ch, head, body, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(abortError()); return; }
+    let s;
+    try { s = ch.open(head); } catch (e) { reject(e); return; }
+    const pipe = new Pipe();
+    let answered = false;
+    const onAbort = () => { s.reset("cancelled"); const e = abortError(); if (answered) pipe.fail(e); else reject(e); };
+    signal?.addEventListener?.("abort", onAbort, { once: true });
+    const cleanup = () => signal?.removeEventListener?.("abort", onAbort);
+    pipe.oncancel = () => { cleanup(); s.reset("cancelled"); };
+    s.onhead = h => {
+      if (answered) return;
+      answered = true;
+      resolve(makeResponse(Number(h && h.status) || 0, (h && h.headers) || {}, pipe, { path: head.path }));
+    };
+    s.ondata = c => pipe.push(c);
+    s.onend = () => { cleanup(); if (!answered) reject(new Error("the box ended the stream without a response")); pipe.end(); };
+    s.onreset = reason => {
+      cleanup();
+      const lost = ch.closed;
+      const e = Object.assign(new Error(lost ? `connection lost: ${reason}` : `request reset: ${reason}`), { lost });
+      if (answered) pipe.fail(e); else reject(e);
+    };
+    if (body.length) s.write(body);
+    s.end();
+  });
+}
+
+/** A WebSocket-shaped stream: data frames are [1 text | 2 binary][message], as in core/relay/channel.js. */
+export class RelaySocket {
+  constructor() {
+    this.readyState = 0;
+    this.binaryType = "arraybuffer";
+    /** @type {any} */ this.stream = null;
+    /** @type {((e: any) => void) | null} */ this.onopen = null;
+    /** @type {((e: { data: string|ArrayBuffer }) => void) | null} */ this.onmessage = null;
+    /** @type {((e: { code: number, reason: string, wasClean: boolean }) => void) | null} */ this.onclose = null;
+    /** @type {((e: any) => void) | null} */ this.onerror = null;
+  }
+  /** @param {import("./channel.js").Channel} ch @param {string} path @param {Record<string, string>} headers */
+  attach(ch, path, headers) {
+    let s;
+    try { s = ch.open({ ws: path, headers }); } catch (e) { this.finish(1006, "connection lost"); return; }
+    this.stream = s;
+    s.onhead = h => {
+      if (h && h.status === 101) { this.readyState = 1; this.onopen?.({}); return; }
+      this.onerror?.({ status: h && h.status });
+      s.reset("refused");
+      this.finish(1006, `refused: ${h && h.status}`);
+    };
+    s.ondata = c => {
+      if (this.readyState !== 1 || !c.length) return;
+      const m = c.subarray(1);
+      this.onmessage?.({ data: c[0] === 1 ? fromUtf8(m) : m.slice().buffer });
+    };
+    s.onend = () => this.finish(1000, "");
+    s.onreset = r => this.finish(1006, r);
+  }
+  /** One message, one frame: a WebSocket message is never split. @param {string|Uint8Array|ArrayBuffer} data */
+  send(data) {
+    if (this.readyState !== 1) throw Object.assign(new Error("the socket is not open"), { name: "InvalidStateError" });
+    const payload = concat(new Uint8Array([typeof data === "string" ? 1 : 2]), toBytes(data));
+    if (payload.length + 5 + 16 > MAX_FRAME) throw new Error("message too big for one relay frame (1 MiB)");
+    this.stream.ch.frame(FRAME.data, this.stream.id, payload);
+  }
+  close(code = 1000, reason = "") {
+    if (this.readyState >= 2) return;
+    if (this.stream) this.stream.end();
+    this.finish(code, reason);
+  }
+  /** @param {number} code @param {string} reason */
+  finish(code, reason) {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    this.onclose?.({ code, reason, wasClean: code === 1000 });
+  }
+}
+RelaySocket.CONNECTING = 0;
+RelaySocket.OPEN = 1;
+RelaySocket.CLOSING = 2;
+RelaySocket.CLOSED = 3;

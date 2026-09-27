@@ -134,7 +134,42 @@ cached help page. Recommendation to the lead and app-design: relay as the always
 the tailnet as an automatic upgrade when the probe answers. The docs row is in
 docs/using/tailscale.md "When a device cannot connect".
 
-Waiting: e2e (the web-session rule and header names), relay (origin list, and whether the
+Later the same day (lead and e2e answers):
+- 1afde745 e2e's contract: CORS headers are content-type, authorization, x-vyre-proof (not
+  x-vyre-session, the socket's thread header). The listener no longer checks sessions: it passes
+  `req` untouched with `peer.origin`; the router (core/daemon/index.js route()) refuses any
+  cross-origin call without a person session, `401 person_session_required`, except
+  `POST /v1/person/token`. The seam is `core/presence/person.js` `personSessions(db).sessionOf`
+  (a stub that finds none; e2e wires it; `start({ person })` injects one in tests). WebSockets
+  from the hosted origin pass for the owner (tickets already need the session). GUEST_SAFE is
+  threads.list only. `projects.move` is PERSON_ONLY. Test box: 285 tests, 284 pass, 1 skipped.
+- 75d21113 projects: no automatic move. A new box uses /work/projects; an existing one keeps
+  ~/Vyre/projects until `projects.move` (`vyre projects move --dry-run` first). The real move
+  needs VYRE_PROJECTS_MOVE=1 or config projects.move "enabled": box-deploy validates it on a
+  copy of the live box first.
+- Lead decisions: a login-only ssh remote is not a secret; relay is the always-works phone path
+  and the tailnet an automatic upgrade when the probe answers.
+
+- 7cd25e6c: e2e built the gate in the router themselves (work/e2e 8ad92a73, fb097a3d), so my
+  stub core/presence/person.js and my route() gate are removed; the listener only sets
+  peer.origin and passes req untouched. Trial merge with work/e2e conflicts only in generated
+  docs, CHANGELOG, core/presence/index.js (PERSON_ONLY: take both lists) and
+  test/guests.test.js (take mine: guests have threads.list only). NOT yet tested: the test box is
+  frozen for the integrator's suite. Queued run: core/names/service.test.js test/guests.test.js
+  test/daemon.test.js core/presence/presence.test.js test/hygiene.test.js test/docs-build.test.js.
+
+- Relay (27 Sep): the only origin is https://app.vyre.run (no previews). The relay path needs no
+  CORS (one WebSocket to relay.vyre.run, requests rebuilt in-process by bridge.js with caller
+  device:<id> and no Origin), so this CORS serves only the direct tailnet path. Its allowed
+  headers now match the relay's: content-type, authorization, x-vyre-proof, x-vyre-presence,
+  idempotency-key, last-event-id.
+
+- After the freeze (test box, `nice -n 15`, load 4.5): names service, identity, guests, onboard,
+  daemon, presence, presence-bypass, projects, config, hygiene, docs-build, docs-index, fixtures:
+  179 tests, 178 pass. The one failure was my hosted-app test asserting e2e's 401, which lives on
+  work/e2e; it now asserts only the listener's part (guests 9 of 9).
+
+Waiting: e2e (merges work/tailnet and tests the app flow end to end), relay (origin list, and whether the
 hosted app ever reaches the box through the relay), sessions (threads.answer contract for
 Mac-owned sessions, below).
 
@@ -238,13 +273,12 @@ only read-only checks on the test box.
   in deck/chat/session.js).
 - integrator: merge work/tailnet (this branch's tip) and work/federation 5c247ce.
 - e2e: re-run the egress checks on headscale (the list under "Verify on first real run").
-- e2e: the web-session rule for the hosted app: header name (proposed `x-vyre-session`), the
-  WebSocket form, the session-start route (must answer without a session), and a
-  `webSession(req, who)` to wire into names() in core/names/index.js.
+- e2e: merge work/tailnet and run the hosted-app flow end to end.
+- box-deploy: validate `projects.move` on a copy of the live box (dry run, then the real move
+  with VYRE_PROJECTS_MOVE=1, then a Claude session resuming through an old-path link).
 - relay: the hosted app's origin list (preview origins?) and whether it ever reaches the box
   through the relay (then CORS must be answered there too).
 - sessions: confirm (a) to (d) of the threads.answer contract (Next 0).
-- lead, confirm: an ssh remote URL with only a login name (ssh://git@...) is not a secret finding.
 
 - vault: see the tailnet entry in docs/work/vault.md "Needs from others".
 - computers: review the Pacer (`glass.js`), the pool's egress remake and agent-node join, the
@@ -498,6 +532,10 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **names** (27 Sep): config `network.origins` (default `["https://app.vyre.run"]`); `names()`
   takes `webSession`; the router's peer may carry `origin` and `webSession`; cross-origin
   `GET /v1/health` answers `{ reachable: true }` in the listener; `401 web_session_required`.
+- **deck** (27 Sep, pwa's file): deck/views/settings.js, the Network share row is titled
+  "VyreDrive" and its line reads "VyreDrive (built on Tailscale's Taildrive) opens your box's
+  folders in Finder on your Mac." (was "...open in Finder on your Mac through Taildrive."), in
+  both the on and off states (1498c4a).
 - **presence** (27 Sep): `files.drive.access` is PERSON_ONLY, no longer HUMAN_ONLY.
 - **names guests** (27 Sep): GUEST_SAFE drops `glass.open`.
 - **files** (27 Sep): the share scan's skips and `.git/config` check (`gitConfigCredential`).

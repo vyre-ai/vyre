@@ -83,6 +83,9 @@ Then the Mac pairs with the box:
    the code from the Mac's screen into **Code on that Mac** and press **Approve**, which asks for
    your passkey. **Deny** turns it down. A terminal on the box cannot give a passkey, so
    `vyre link approve <code>` there answers "approve it in the Deck".
+
+   ![The card on Now when a Mac asks to pair: alex-mbp, a field for the code the Mac shows, Approve and Deny.](shots/deck-pair.png)
+
 3. Check it on the Mac with `vyre link`:
 
    ```output
@@ -134,8 +137,8 @@ More in [Troubleshooting](../get-started/troubleshooting.md) and
   `funnel` or `lock` command. Nothing about your box is public unless you publish a webhook route
   with Funnel yourself.
 - No other site's page can call it, except Vyre's hosted app (`https://app.vyre.run`), and only
-  from the owner's browser with a web session. Without one, the app learns only that the box is
-  reachable. `network.origins` changes the list; `[]` turns it off.
+  from the owner's browser with a person session (signed in on the box). Without one, the app
+  learns only that the box is reachable. `network.origins` changes the list; `[]` turns it off.
 - It turns on none of the optional features below by itself.
 
 ## Optional Tailscale features

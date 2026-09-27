@@ -256,3 +256,23 @@ test("new session: a success clears the message, so a revisit of the kept sheet 
   assert.equal($(box, "textarea").value, "");
   stop();
 });
+
+test("new session: every session busy says so, with Try again, which starts it once one frees up", async () => {
+  let busy = true;
+  const api = vyred({ ...WORLD, "threads.start": i => (busy ? { $error: { code: "busy", message: "no free session" } } : { id: "t-free", cwd: "/work/harlow-legal", project: i.project || null, status: "starting" }) });
+  went.length = 0;
+  const box = /** @type {any} */ (document.createElement("div"));
+  const stop = mountNewSession(box, { onDone: () => {} });
+  await tick(); await tick();
+  $(box, "textarea").value = "Tidy the Harlow Legal intake";
+  $$(box, "button").find(b => text(b) === "Start session").click();
+  await tick(); await tick();
+  assert.match(text($(box, ".ns-error")), /^All sessions are busy; one will free up shortly\./);
+  assert.deepEqual(went, []);
+  busy = false;
+  $(box, ".ns-retry").click();
+  await tick(); await tick();
+  assert.equal(api.of("threads.start").length, 2);
+  assert.equal(went.length, 1);
+  stop();
+});

@@ -1,0 +1,9 @@
+:root { --bg: #fbfaf8; --fg: #1d1b19; --muted: #6b6560; --accent: #5b4bd6; --on-accent: #fff; --line: #e4e0db; }
+@media (prefers-color-scheme: dark) { :root { --bg: #141312; --fg: #eeebe7; --muted: #9a938c; --accent: #9d91ff; --on-accent: #141312; --line: #2e2b28; } }
+html, body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, -apple-system, sans-serif; }
+main { max-width: 32rem; margin: 12vh auto 0; padding: 0 16px; }
+h1 { font-size: 22px; margin: 0 0 12px; }
+#actions { display: flex; flex-direction: column; gap: 10px; }
+.button { display: block; text-align: center; padding: 12px 16px; border-radius: 10px; background: var(--accent); color: var(--on-accent); text-decoration: none; min-height: 20px; }
+.button.quiet { background: transparent; color: var(--fg); border: 1px solid var(--line); }
+.small { color: var(--muted); font-size: 13px; }

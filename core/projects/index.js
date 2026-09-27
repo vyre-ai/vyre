@@ -3,11 +3,12 @@
 // ctx.call and are not listed under requires, because projects must still start, list and
 // brief without them; it only searches less and says so.
 
+import fs from "node:fs";
 import path from "node:path";
 import { Projects, MIGRATIONS } from "./projects.js";
 import { label } from "./brief.js";
-import { moveProjects } from "./move.js";
-import { boxProjectsDir, oldProjectsDir, home as vyreHome } from "../config/index.js";
+import { moveProjects, RECORD } from "./move.js";
+import { boxProjectsDir, oldProjectsDir, workDir, home as vyreHome } from "../config/index.js";
 import { wantsMacs, askMacs, mergeRows, sourcesOf, boxLabel, macLabel } from "../modules/federate.js";
 
 const str = { type: "string" };
@@ -41,18 +42,26 @@ function resolvePicks(ctx, rows, answers) {
   return out.sort((a, b) => Number(Boolean(a.missing)) - Number(Boolean(b.missing)) || (b.last || 0) - (a.last || 0));
 }
 
+/**
+ * The catalogue with live on each session: true when a terminal has it open now, from the
+ * Switchboard's binds. Without the Switchboard every row says false.
+ * @param {any} ctx @param {{ sessions: any[] }} cat
+ */
+export async function withLive(ctx, cat) {
+  const r = await ctx.call("threads.live", {}).catch(() => null);
+  const live = new Set(r && r.data && Array.isArray(r.data.sessions) ? r.data.sessions : []);
+  return { ...cat, sessions: cat.sessions.map(s => ({ ...s, live: live.has(s.id) })) };
+}
+/** The person's own surfaces. The loader refuses every other caller (agents' MCP, models' harness, guests, modules). */
+const OWNER = ["cli", "local", "capsule", "deck"];
+/** A caller that names an agent ("cli:agent:kit"): the same test as drive's and glass's. */
+const isAgent = (/** @type {any} */ caller) => /(?:^|[\s:])agent:/.test(String(caller || ""));
+const refuse = (/** @type {string} */ message, /** @type {string} */ code) => Object.assign(new Error(message), { code });
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
-    // On a box whose projects folder is the work folder's, homes still in ~/Vyre/projects move
-    // there once (./move.js). Nothing happens on a Mac, or where config.json names the folder.
-    if (ctx.config.role === "box" && path.resolve(String(ctx.config.projectsDir || "")) === boxProjectsDir()) {
-      try {
-        moveProjects({ db: ctx.store.db, from: oldProjectsDir(), to: boxProjectsDir(), root: ctx.paths ? ctx.paths.root : vyreHome(),
-          log: m => ctx.log(m), emit: (type, payload) => ctx.events.emit(type, payload) });
-      } catch (e) { ctx.log("could not move the projects: " + /** @type {Error} */ (e).message); }
-    }
     const P = new Projects({
       db: ctx.store.db, config: ctx.config, call: ctx.call,
       emit: (type, payload, where) => ctx.events.emit(type, payload, where),
@@ -88,15 +97,15 @@ export default {
       run: async ({ project, threads }) => P.removeThreads(project, threads),
     });
     ctx.tool("projects.catalog", {
-      description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity and projects. q searches names, first messages, folders and, through Recall, what was said.",
+      description: "Every session on this device for picking into projects, with its /rename name, first message, folder, last activity, projects, and live (a terminal has it open now). q searches names, first messages, folders and, through Recall, what was said.",
       input: { type: "object", properties: { q: str, limit: { type: "integer" }, human: { type: "boolean" }, machines } },
       run: async (input, { caller } = {}) => {
         const { machines: _, ...own } = input;
-        if (!wantsMacs(ctx, input, caller)) return P.catalog(own);
+        if (!wantsMacs(ctx, input, caller)) return withLive(ctx, await P.catalog(own));
         // On the box, for the person: every Mac's sessions too, in one list in the catalogue's
         // order, capped at the limit. total counts every machine; sources says who answered, and
         // each one's own total.
-        const [here, answers] = await Promise.all([P.catalog(own), askMacs(ctx, "projects.catalog", own)]);
+        const [here, answers] = await Promise.all([P.catalog(own).then(c => withLive(ctx, c)), askMacs(ctx, "projects.catalog", own)]);
         const total = answers.reduce((n, a) => n + (a.ok && a.data ? Number(a.data.total) || 0 : 0), here.total);
         const sessions = mergeRows(ctx, here.sessions, answers, { rows: d => d && d.sessions, compare: byCatalog, limit: own.limit ?? 50 });
         const totals = [here.total, ...answers.map(a => (a.ok && a.data ? Number(a.data.total) || 0 : undefined))];
@@ -129,6 +138,35 @@ export default {
       description: "The brief for a thread starting in a project, as plain text for Claude: what the project is, its people, its other threads and its memory. Give project, or cwd and session as a SessionStart hook sees them.",
       input: { type: "object", properties: { project: str, cwd: str, session: str } },
       run: async input => P.context(input),
+    });
+    ctx.tool("projects.move", {
+      description: "Box only, the owner only: move the project homes from ~/Vyre/projects to /work/projects, leaving a link at each old folder and rewriting the rows and markers. dry: true (do this first) answers what would move, what would be skipped and why, and the rewrites, and changes nothing. A real move runs once, only while VYRE_PROJECTS_MOVE=1 or config projects.move is \"enabled\", and answers restart: true: vyred uses /work/projects after a restart.",
+      input: { type: "object", properties: { dry: { type: "boolean" } } },
+      callers: OWNER,
+      run: async ({ dry = false } = {}, meta = {}) => {
+        if ((meta && meta.agent) || isAgent(meta && meta.caller)) throw refuse("an agent cannot move the projects folder; that is for the owner", "denied");
+        if (ctx.config.role !== "box") throw refuse("projects.move is for a box; a Mac keeps its projects where they are", "not_box");
+        const root = ctx.paths ? ctx.paths.root : vyreHome();
+        const from = oldProjectsDir(), to = boxProjectsDir();
+        const record = path.join(root, RECORD);
+        let done = null;
+        try { done = JSON.parse(fs.readFileSync(record, "utf8")); } catch {}
+        if (done) {
+          if (dry) return { dry: true, done: true, ...done, next: `already moved; the record is ${record}` };
+          throw refuse(`the projects were already moved (${record})`, "already_moved");
+        }
+        let work = false;
+        try { work = fs.statSync(workDir()).isDirectory(); } catch {}
+        if (!work) throw refuse(`this box has no work folder (${workDir()}), so there is nowhere to move the projects to`, "no_work_folder");
+        const on = process.env.VYRE_PROJECTS_MOVE === "1" || (ctx.config.projects && ctx.config.projects.move === "enabled");
+        if (!dry && !on) throw refuse("the move is off until box-deploy validates it on a copy of this box; run it with dry: true to see what it would do", "move_off");
+        const out = moveProjects({ db: ctx.store.db, from, to, root, dryRun: dry,
+          log: m => ctx.log(m), emit: (type, payload) => ctx.events.emit(type, payload) });
+        if (!out) return { dry, from, to, moved: [], skipped: [], rewrites: [], next: `nothing to move: ${from} is not a folder, or is ${to} itself` };
+        if (dry) return { dry: true, ...out };
+        P.refresh();
+        return { dry: false, ...out, restart: true, next: `Restart vyred: the projects folder is now ${to}` };
+      },
     });
     return { async stop() {} };
   },

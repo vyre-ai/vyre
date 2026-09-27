@@ -1,11 +1,10 @@
-# The Capsule on macOS: the Swift helpers, the native app once it lands on main, its Swift tests,
-# and the Capsule's Node tests that only run on a Mac. Built here so no one compiles it on their own Mac.
+# The Capsule on macOS: the native app, its Swift tests, and the Node tests that only run on a Mac. Built here so no one compiles it on their own Mac.
 name: capsule-mac
 on:
   push:
-    paths: ["local/**", "core/vault/native*", "package*.json", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", "package*.json", ".github/workflows/capsule-mac.yml"]
   pull_request:
-    paths: ["local/**", "core/vault/native*", "package*.json", ".github/workflows/capsule-mac.yml"]
+    paths: ["local/**", "core/vault/native*", "core/cli/commands/capsule*", "scripts/capsule-native-check.mjs", "package*.json", ".github/workflows/capsule-mac.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -26,8 +25,6 @@ jobs:
           cache: npm
       - name: Toolchain
         run: sw_vers && swiftc --version && xcodebuild -version
-      - name: Swift helpers (hotkey, vyre-launcher, local)
-        run: sh local/capsule/build.sh
       - name: Native Capsule tests
         if: hashFiles('local/capsule/native/build.sh') != ''
         run: sh local/capsule/native/build.sh test
@@ -35,10 +32,16 @@ jobs:
         # Built even when a native test fails, so the app still comes out and the job still fails.
         if: (success() || failure()) && hashFiles('local/capsule/native/build.sh') != ''
         run: sh local/capsule/native/build.sh app
+      - name: Native Capsule driven and measured
+        if: always() && hashFiles('local/capsule/native/build.sh') != ''
+        timeout-minutes: 6
+        env:
+          VYRE_CAPSULE_CHECK_DETAIL: "1"
+        run: node scripts/capsule-native-check.mjs local/capsule/native/.build/Vyre.app
       - name: Node tests that need a Mac
         run: |
           npm ci --no-audit --no-fund
-          node --test --test-reporter=spec "local/*/*.test.js" "local/*/lib/*.test.js"
+          node --test --test-reporter=spec "local/*/*.test.js"
       - name: Vyre Local signing on a throwaway keychain
         # Proves the signing path `vyre capsule` offers (capsule-native.js createIdentity). Only the
         # throwaway keychain is written; the runner's login keychain is untouched. Nothing here may
@@ -83,7 +86,6 @@ jobs:
         if: success() || failure()
         run: |
           mkdir -p dist
-          ditto -c -k --keepParent local/capsule/bin dist/capsule-helpers.zip
           if [ -d local/capsule/native/.build/Vyre.app ]; then
             ditto -c -k --keepParent local/capsule/native/.build/Vyre.app dist/Vyre-capsule.app.zip
           fi

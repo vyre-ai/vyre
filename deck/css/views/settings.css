@@ -86,7 +86,7 @@
 @media (max-width: 1180px) {
   .set-nav { display: none; }
 }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .set-wrap { padding: 12px 16px 32px; }
   .set-top { padding-top: 8px; }
   .set-sec { padding-top: 32px; }

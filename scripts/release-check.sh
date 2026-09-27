@@ -76,10 +76,10 @@ for want in bin/vyre core/daemon/main.js core/cli/index.js harness/.claude-plugi
   grep -qx "$want" "$work/files" || fail "the tarball has no $want"
 done
 ok "has the bin, core, the Harness plugin, the Deck and the box installer"
-if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design/boards|work|proposals)/|^docs/.*\.png$|^local/capsule/(dist|bin)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
+if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design|work|proposals)/|^docs/.*\.png$|^local/capsule/native/(\.build|Tests)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
   fail "the tarball carries the files above, which it should not"
 fi
-ok "no tests, fixtures, test helpers, design boards, docs screenshots, build output or env files"
+ok "no tests, fixtures, test helpers, design docs, docs screenshots, build output or env files"
 node -e '
   const p = require(process.argv[1]);
   if (Object.keys(p.dependencies || {}).length) throw new Error("regular dependencies: " + Object.keys(p.dependencies));
@@ -96,7 +96,11 @@ pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
 kb=$(du -sk "$work/prefix" | cut -f1)
 [ ! -d "$pkg/node_modules" ] || fail "npm i -g installed dependencies: $(ls "$pkg/node_modules" | tr '\n' ' ')"
-[ "$kb" -lt 10240 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
+# 12 MB: real code growth (memory/personal, the Mac apps module, relay, resilience) plus the docs
+# and docs/index.json, which scripts and agents read offline. du counts a block per file, so 670
+# small files cost more here than in the 2.5 MB tarball. A dependency or build output coming back
+# would add tens of MB; design docs and screenshots are kept out above.
+[ "$kb" -lt 12288 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"

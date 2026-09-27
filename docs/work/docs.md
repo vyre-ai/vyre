@@ -66,19 +66,18 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Doing
 
-- Screenshot retake (stale after main's Deck changes). The 403 not_owner blocker is fixed in the
-  tooling (0039172, 8036a21): identity.js refuses anything outside 100.64/10 before whois, so the
-  preload (VYRE_SHOTS_PEER=127.0.0.2=100.64.0.2) makes pairFrom's socket read as 100.64.0.2, the
-  fake whois answers for 100.64.0.2, and after pairing the onboarding carries on at
-  http://alex-box.tail0000.ts.net/onboard (the owner reaching the box closes the loopback door, as
-  on a real box). The four pairing shots retook cleanly. A full run is going on the test box
-  (~/vyre-ci/docs-s, log ~/vyre-ci/docs-s-run.log).
-  Resume: if the run finished, copy back `docs/**/shots/*.png` and `docs/shots.json` from
-  ~/vyre-ci/docs-s, place new shots on pages, regen reference/index from a clean git archive, run
-  the docs tests, redeploy preview (`--branch preview`), send the head to the integrator.
-- Glass boot-failure text applied (c006e55 on main).
-- a93dbcb: agents need no passkey (e6922da on main): using/agents.md, concepts/presence.md (the
-  list now matches HUMAN_ONLY, plus presence.when).
+- Screenshot retake DONE on main ef51363 (6dc29f1): 52 files; glass-files passed (last run's miss
+  was load timing). Six new shots placed (settings-devices, settings-connections, deck-pair,
+  deck-new-box, phone-find, onboarding-ready). Found and fixed: the onboarding loopback link 403'd
+  `/theme.css` and `/fonts/*` (core/onboard/loopback.js assetPath, 331f719d, test in
+  test/onboard.test.js), so the first steps rendered unstyled; onboarding shots retaken after it.
+  deck/test/world.js: alex's folder is plainly `alex` (no temp name in shown paths).
+- Reference and index regenerated from a clean archive (e0537194). Docs tests on testbox: 79 run.
+- Then: redeploy the preview (`--branch preview`), head to the integrator.
+- Retake settings-connections after tailnet's VyreDrive rename (it says Taildrive).
+- Shots commands: `uptime` on the test box first (wait while load > 8), rsync to
+  ~/vyre-ci/docs-s, `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools CHROME=/usr/local/bin/vyre-chrome
+  nice -n 15 node scripts/docs-shots [--only a,b]`, copy back the shots PNGs and docs/shots.json.
 
 ## Next
 
@@ -86,11 +85,30 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Pending page changes (apply when the code reaches main)
 
+- NEW USER DECISIONS (logout 3), apply as each lands on main:
+  - ADR 0030: Agent SDK sessions are the default for every Vyre-started session (Chat, agents,
+    Capsule, phone, planner/learn jobs); terminal `claude` stays plain; auth Mac=login,
+    box=setup-token, API key fallback; 10 min idle, cap 6; editable system prompt per
+    assistant/agent/project; "Open in terminal" stays; per-purpose model map. Pages: using/chat,
+    using/agents, concepts/box-and-mac, claude-code, a new concepts/sessions page, ADR in nav.
+  - The one-app design (Direction A): one Expo app for web/iOS/Android, hosted at app.vyre.run
+    (ADR 0027). using/mobile, using/deck.
+  - Relay (ADR 0026) and the hosted app; vault v2 (ADR 0028); resilience (ADR 0029).
+  - The CLI and the phone are first-class: every feature gets a CLI verb and a phone path.
+- Applied 2026-09-27 (after main ef51363): glass-live (no passkey for take-over, hand-back,
+  Sign in privately; older-box snag), cc-plugin /vyre todo/remind/agenda/remember/lesson,
+  no-nag at the Gate (deck.md, chat.md, presence.md: send/spend/delete ask, one proof = 30 min,
+  answers/edits/discard ask nothing).
+
+- USER DECISION: Taildrive is "VyreDrive" in all user-facing text, described as "built on
+  Tailscale's Taildrive" with a link to Tailscale's Taildrive docs. Apply when tailnet's rename
+  lands: using/tailscale.md, get-started/tailscale.md, then regenerate reference (tools, index).
+  ADR 0014 keeps its wording (a record).
 - USER STANDING RULE, Vyre must not nag: fewer prompts. Touch ID only for pairing a device, vault
   secrets, and sending, posting or paying outside; one Touch ID lasts about 30 minutes. Pages
   change only when that code lands (presence.md, vault.md, memory.md, learning.md, glass.md,
   deck.md, troubleshooting, first-day, install, concepts/floor.md all describe presence prompts).
-- glass-live dcb03ce (take-over, hand-back and Sign in privately ask for no passkey): when it
+- DONE glass-live dcb03ce: when it
   merges, glass.md step 2 (no passkey needed for Glass), Take over, hand-back, and Sign in
   privately (just Sign in privately, then Start); concepts/presence.md moves computers.takeover
   and computers.giveback to the new PERSON_ONLY list (no proof; agents, tailnet guests and

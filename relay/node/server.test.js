@@ -1,0 +1,137 @@
+// @ts-check
+import test from "node:test";
+import assert from "node:assert/strict";
+import { createRelay } from "./server.js";
+import { newRouteKey, routeId, authMessage, signRoute, CLOSE } from "../../core/relay/wire.js";
+
+/** A WebSocket that queues what it receives, so a test can await the next message or the close. */
+function sock(url) {
+  const ws = new WebSocket(url);
+  ws.binaryType = "arraybuffer";
+  const queue = [], waiters = [];
+  let closed = null;
+  const closeWaiters = [];
+  ws.onmessage = e => {
+    const v = typeof e.data === "string" ? e.data : Buffer.from(e.data);
+    const w = waiters.shift();
+    w ? w(v) : queue.push(v);
+  };
+  ws.onclose = e => { closed = { code: e.code, reason: e.reason }; closeWaiters.splice(0).forEach(f => f(closed)); };
+  return {
+    ws,
+    open: () => new Promise((res, rej) => { ws.onopen = () => res(undefined); ws.onerror = rej; }),
+    next: () => queue.length ? Promise.resolve(queue.shift()) : new Promise(res => waiters.push(res)),
+    closed: () => closed ? Promise.resolve(closed) : new Promise(res => closeWaiters.push(res)),
+    json: async function () { return JSON.parse(String(await this.next())); },
+  };
+}
+
+async function box(base, key = newRouteKey(), route = routeId(key.pub)) {
+  const s = sock(`${base}/v1/box?route=${route}`);
+  await s.open();
+  const ch = await s.json();
+  assert.equal(ch.t, "challenge");
+  s.ws.send(JSON.stringify({ t: "auth", pub: key.pub.toString("base64url"), sig: signRoute(key.priv, authMessage(route, Buffer.from(ch.n, "base64url"))).toString("base64url") }));
+  return { s, route, key };
+}
+
+test("a box that signs its route is served, and device frames reach it both ways", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+
+  const b = await box(base);
+  const ready = await b.s.json();
+  assert.equal(ready.t, "ready");
+
+  const dev = sock(`${base}/v1/device?route=${b.route}`);
+  await dev.open();
+  dev.ws.send(new Uint8Array([1, 2, 3]));           // before the box's data socket: buffered
+  const open = await b.s.json();
+  assert.equal(open.t, "open");
+
+  const data = sock(`${base}/v1/box?route=${b.route}&c=${open.c}&t=${ready.ticket}`);
+  await data.open();
+  assert.deepEqual([...await data.next()], [1, 2, 3]);
+  data.ws.send(new Uint8Array([9]));
+  assert.deepEqual([...await dev.next()], [9]);
+
+  dev.ws.close();
+  assert.deepEqual(await b.s.json(), { t: "close", c: open.c });
+  assert.equal((await data.closed()).code, CLOSE.deviceGone);
+});
+
+test("a box with the wrong key, or a bad signature, is refused", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const real = newRouteKey();
+  const route = routeId(real.pub);
+
+  const imposter = await box(base, newRouteKey(), route);
+  assert.equal((await imposter.s.closed()).code, CLOSE.refused);
+
+  const s = sock(`${base}/v1/box?route=${route}`);
+  await s.open();
+  await s.json();
+  s.ws.send(JSON.stringify({ t: "auth", pub: real.pub.toString("base64url"), sig: Buffer.alloc(64).toString("base64url") }));
+  assert.equal((await s.closed()).code, CLOSE.refused);
+  assert.equal(relay.stats().routes, 0);
+});
+
+test("an imposter cannot take a served route offline", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = await box(base);
+  await b.s.json();
+  const imposter = await box(base, newRouteKey(), b.route);
+  await imposter.s.closed();
+  const dev = sock(`${base}/v1/device?route=${b.route}`);
+  await dev.open();
+  assert.equal((await b.s.json()).t, "open", "the real box still gets devices");
+});
+
+test("a data socket needs the current ticket", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = await box(base);
+  await b.s.json();
+  const dev = sock(`${base}/v1/device?route=${b.route}`);
+  await dev.open();
+  const { c } = await b.s.json();
+  const bad = sock(`${base}/v1/box?route=${b.route}&c=${c}&t=wrong-ticket-wrong-tick`);
+  await bad.open();
+  assert.equal((await bad.closed()).code, CLOSE.refused);
+});
+
+test("a device for a route with no box is told the box is offline", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const dev = sock(`${base}/v1/device?route=${routeId(newRouteKey().pub)}`);
+  await dev.open();
+  assert.equal((await dev.closed()).code, CLOSE.boxOffline);
+});
+
+test("waiting connections are capped per route", async t => {
+  const relay = createRelay({ limits: { waiting: 2 } });
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = await box(base);
+  await b.s.json();
+  const devs = [0, 1, 2].map(() => sock(`${base}/v1/device?route=${b.route}`));
+  await Promise.all(devs.map(d => d.open()));
+  assert.equal((await devs[2].closed()).code, CLOSE.busy);
+});
+
+test("a text ping is answered by the relay and never forwarded", async t => {
+  const relay = createRelay();
+  const base = await relay.listen();
+  t.after(() => relay.close());
+  const b = await box(base);
+  await b.s.json();
+  b.s.ws.send("ping");
+  assert.equal(await b.s.next(), "pong");
+});

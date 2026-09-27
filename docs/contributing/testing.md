@@ -77,7 +77,6 @@ No test runs the real `claude`, `tailscale`, `ssh`, `docker` or a browser. Each 
 | `VYRE_TAILSCALE_BIN` | `tailscale` | `core/names`, `core/cli/tailnet.js`, `core/link` |
 | `VYRE_SSH_BIN` | `ssh` | `core/cli/ssh.js` |
 | `VYRE_OPEN_BIN` | the command that opens a browser | `vyre up`, `vyre box` |
-| `VYRE_CAPSULE_BIN` | the Capsule app | `vyre capsule`, `local/capsule` |
 | `VYRE_HANDS_BIN` | the macOS accessibility helper | `local/hands-mac` |
 
 The fakes themselves:

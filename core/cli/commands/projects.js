@@ -201,6 +201,19 @@ export function claude(args, cwd, brief, project) {
 
 export async function resume(t, { project, name } = {}) {
   if (!t.cwd || !fs.existsSync(t.cwd)) return fail(`${t.label} ran in ${tilde(t.cwd) || "an unknown folder"}, which is gone; Claude Code can only resume it there`, "vyre start begins a new thread instead");
+  // A session vyred runs (ADR 0030) is handed over, never shared: one transcript takes one
+  // writer. An idle one is closed here first; one in the middle of a turn is left alone.
+  const run = await call("threads.get", { thread: t.id, limit: 1 });
+  const st = run.data?.thread?.status;
+  if (st === "working" || st === "waiting" || st === "starting") {
+    return fail(`${t.label} is ${st === "waiting" ? "waiting on a question" : "in the middle of a turn"} in vyred`,
+      `let it finish, or stop the turn first: vyre call threads.interrupt '{"thread":"${t.id}"}'`);
+  }
+  if (st === "idle") {
+    const stop = await call("threads.stop", { thread: t.id });
+    if (stop.error) return fail(`could not hand ${t.label} over from vyred: ${stop.error.message}`);
+    out(dim(`  handed over from vyred; a message from the Deck or the Capsule brings it back there once you exit`));
+  }
   const ctx = await call("projects.context", { ...(project ? { project } : {}), cwd: t.cwd, session: t.id });
   const brief = ctx.data?.text || "";
   const args = ["--resume", t.id];
@@ -279,10 +292,31 @@ async function emptyCatalog(q) {
   return "no Claude Code sessions on this machine yet · they show up here once you have some; vyre threads list shows headless ones";
 }
 
+/** `vyre projects move [--dry-run]`: the box's homes to /work/projects, through projects.move. */
+async function moveHomes(args) {
+  const { flags, pos } = parse(args, { bool: ["dry-run"], values: [], cmd: "projects" });
+  if (pos.length) return usage("vyre projects move takes no names", "vyre projects move --dry-run shows what would move");
+  if (!(await up())) return 5;
+  const dry = Boolean(flags["dry-run"]);
+  const r = await tool("projects.move", { dry });
+  if (!r) return 1;
+  if (json()) return emit(r);
+  out("");
+  if (r.done) { out(dim(`  ${r.next}`)); return 0; }
+  out(`  ${bold(dry ? "Would move" : "Moved")} ${r.moved.length} project${r.moved.length === 1 ? "" : "s"} ${dim(`${tilde(r.from)} -> ${tilde(r.to)}`)}`);
+  for (const s of r.moved) out(`   ${s}`);
+  for (const s of r.skipped) out(beacon(`   ${s.slug}: ${s.why}`));
+  if (dry && r.rewrites && r.rewrites.length) out(dim(`  and ${r.rewrites.length} rewrite${r.rewrites.length === 1 ? "" : "s"} of markers and rows (--json lists them)`));
+  if (r.next) { out(""); out(dim(`  ${r.next}`)); }
+  else if (dry) { out(""); out(dim("  nothing has changed; vyre projects move runs it, once box-deploy has validated it on a copy")); }
+  return 0;
+}
+
 export default [
   {
-    name: "projects", order: 20, usage: "vyre projects [--json]", summary: "every project",
+    name: "projects", order: 20, usage: "vyre projects [--json] | vyre projects move [--dry-run]", summary: "every project; on a box, move moves the homes to /work/projects",
     async run(args) {
+      if (args[0] === "move") return moveHomes(args.slice(1));
       parse(args, { values: [], cmd: "projects" });
       if (!(await up())) return 5;
       const list = await tool("projects.list", {});
