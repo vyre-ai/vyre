@@ -88,15 +88,15 @@ without editing Capsule files:
 - Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
   fix, the extension seam, `@` targets: see CHANGELOG.
 
-## Doing (session 5, 2026-09-27, after logout 4)
-Handed to the integrator: work/capsule-pro-said a127335d (capsule-mac green): the clipping fix,
-no empty headings, ⌘⏎ same thread, capsule-agent 42e8da05, Said.swift removed (memory.answer only),
-four timing-only test fixes.
-On work/capsule-pro since (not handed over yet): Design A T1 (b330aa82: 560 fixed, rows 44,
-headers 28, footer 32, sentence case, keys-only footer), ⌘⏎ always think deeper, screen context
-on every ask by default ("sees:" chip, Stop sharing command), the inline key row through the
-vault (Credentials.swift), `vyre ...` run in the panel with --view frames (CommandRun.swift;
-/v1/health `cli`). Swift 322/322.
+## Doing (session 6, 2026-09-27/28, Design A for the RC)
+Handed earlier: work/capsule-pro-said a127335d (capsule-mac green).
+On work/capsule-pro since, for the RC cut (Design A; deadline 03:00 UTC, go/no-go 01:30 UTC):
+Design A T1 (b330aa82, 560 fixed, keys-only footer), ⌘⏎ think deeper, screen context with the
+"sees" chip, the inline key row (fcd80523), `vyre ...` in the panel with --view frames
+(1b516a68, e43708bc), 560 in one 150 ms step and the 2 s status line (e762c5f8), the compact
+empty panel with the waiting rows and footer (e784fcae), mail rows (9b56b201). Swift 325/325.
+Then: push work/capsule-pro, capsule-mac CI green, hand the sha to the integrator. After that,
+memory.answer -> memory.ask when memory-iq's lands on main (not there at 19:30 UTC).
 
 The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
 - runs from a separate local checkout ../vyre-capsule-pro-trial (detached; my branch plus
@@ -111,10 +111,9 @@ The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, n
 - The real Vyre (~/.vyre) is untouched.
 
 ## Next
-1. app-design 305fc07b: compact panel with nothing typed (input, waiting list, footer), 560 in
-   one 150 ms step on the first result, the 2 s status line; tip.md (tips.next, ⌘. dismisses),
-   credential-sheet.md check against the row built, glass-mini.md step pill.
-2. Hand work/capsule-pro to the integrator as a READY sha once capsule-mac is green on it.
+1. app-design 305fc07b left: tip.md (tips.next, ⌘. dismisses), credential-sheet.md check
+   against the row built, glass-mini.md step pill; "three recent items" on open (capsule.md).
+2. A held mail from "Write it" could open its card at once (today: words, then ↑).
 3. Vyre IQ over iq.ask {stream:true} when memory-iq lands it (stages, source chips ⌘1..⌘3, Not
    sure, nothing found). [n] in replies linked to source rows (sessions 51eaa964).
 4. Cohesion glue as each lands on main: context.report on front-app switch, sight.now,
