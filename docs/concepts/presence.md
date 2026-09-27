@@ -26,7 +26,7 @@ Before you prove anything, every method shows you the tool's summary: for the Ga
 
 The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A module can add a tool to it with `presence: true`, or ask only for some inputs with a `when` function on the tool's presence setting, but it cannot take one away.
 
-- Sending: `gate.approve`.
+- Sending: `gate.approve`, for a send, a payment or a deletion (every Gate kind today; a kind added later asks only if the Gate lists it).
 - Vault: `vault.put`, `vault.approve`, `vault.unlock`, `vault.offboard`, `vault.inject`, `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`, `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`, `vault.render`, `vault.session.open`, `vault.kit`.
 - Learning: `learn.accept`, `learn.retire`, `learn.relax`, `learn.skill-install`.
 - Machines: `link.pair.approve`.
@@ -73,7 +73,7 @@ vyre presence remove <id>
 
 ## Sessions in the Deck
 
-Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 5 minutes idle and 30 minutes at most, bound to the tailnet node that opened it.
+Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 30 minutes from the proof, used or not, bound to the tailnet node that opened it. A Gate approval can open one too: a send with `x-vyre-presence-keep: 1` and a strong proof gets a session back, so the next sends on that device ask for nothing.
 
 ## What a tool sees
 

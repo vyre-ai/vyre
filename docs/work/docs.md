@@ -89,6 +89,21 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Pending page changes (apply when the code reaches main)
 
+- NEW USER DECISIONS (logout 3), apply as each lands on main:
+  - ADR 0030: Agent SDK sessions are the default for every Vyre-started session (Chat, agents,
+    Capsule, phone, planner/learn jobs); terminal `claude` stays plain; auth Mac=login,
+    box=setup-token, API key fallback; 10 min idle, cap 6; editable system prompt per
+    assistant/agent/project; "Open in terminal" stays; per-purpose model map. Pages: using/chat,
+    using/agents, concepts/box-and-mac, claude-code, a new concepts/sessions page, ADR in nav.
+  - The one-app design (Direction A): one Expo app for web/iOS/Android, hosted at app.vyre.run
+    (ADR 0027). using/mobile, using/deck.
+  - Relay (ADR 0026) and the hosted app; vault v2 (ADR 0028); resilience (ADR 0029).
+  - The CLI and the phone are first-class: every feature gets a CLI verb and a phone path.
+- Applied 2026-09-27 (after main ef51363): glass-live (no passkey for take-over, hand-back,
+  Sign in privately; older-box snag), cc-plugin /vyre todo/remind/agenda/remember/lesson,
+  no-nag at the Gate (deck.md, chat.md, presence.md: send/spend/delete ask, one proof = 30 min,
+  answers/edits/discard ask nothing).
+
 - USER DECISION: Taildrive is "VyreDrive" in all user-facing text, described as "built on
   Tailscale's Taildrive" with a link to Tailscale's Taildrive docs. Apply when tailnet's rename
   lands: using/tailscale.md, get-started/tailscale.md, then regenerate reference (tools, index).
@@ -97,7 +112,7 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   secrets, and sending, posting or paying outside; one Touch ID lasts about 30 minutes. Pages
   change only when that code lands (presence.md, vault.md, memory.md, learning.md, glass.md,
   deck.md, troubleshooting, first-day, install, concepts/floor.md all describe presence prompts).
-- glass-live dcb03ce (take-over, hand-back and Sign in privately ask for no passkey): when it
+- DONE glass-live dcb03ce: when it
   merges, glass.md step 2 (no passkey needed for Glass), Take over, hand-back, and Sign in
   privately (just Sign in privately, then Start); concepts/presence.md moves computers.takeover
   and computers.giveback to the new PERSON_ONLY list (no proof; agents, tailnet guests and

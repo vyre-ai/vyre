@@ -20,9 +20,8 @@ streamed in [ADR 0003](../adr/0003-glass-stream.md).
 1. Turn agents' computers on. On a Docker box that is the `computers` profile: add
    `COMPOSE_PROFILES=computers` to `/srv/vyre/.env`, then run `vyre up`. See
    [Box care](box-care.md).
-2. Add a passkey for the Deck on this device (see [Deck](deck.md#add-a-passkey)). Taking the
-   keyboard and handing it back both ask for it. Without one, the dialog says so and links to
-   Settings.
+2. Nothing else. Taking the keyboard, handing it back and signing in privately ask for no
+   passkey: they only pause kit. Agents and tailnet guests can't take the keyboard.
 
 ## Give an agent a computer
 
@@ -68,14 +67,12 @@ wakes where it left off.
 
 ## Take the keyboard, then hand it back
 
-1. Press **Take over** (or `T`). Vyre asks for your passkey (Touch ID, Face ID or a security
-   key), because taking the keyboard pauses kit.
+1. Press **Take over** (or `T`). Taking the keyboard pauses kit.
 2. You see a green frame, "You have control", a timer, and **Hand back to kit**. While you drive,
    kit's hands wait. Your clicks and typing reach kit's screen, and other people watching can't
    type.
 3. Optionally, leave kit a note (up to 280 characters).
-4. Press **Hand back to kit** (or Ctrl+Enter when focus is outside the screen), and confirm with
-   your passkey.
+4. Press **Hand back to kit** (or Ctrl+Enter when focus is outside the screen).
 
 ```output
 You handed the keyboard back to kit. Your note is in its thread.
@@ -86,12 +83,16 @@ long, and your note. It never sees what you typed. The activity list shows "You 
 keyboard." and "You handed back to kit." If you close the tab, or the hold lapses on the box, the
 keyboard goes back to kit on its own.
 
+> [!SNAG] "This box still asks for a passkey to take the keyboard."
+> The box runs an older Vyre. Update it with `vyre box update` from the Mac (see
+> [Box care](box-care.md#upgrade)). Take-over needs no passkey now.
+
 ## Sign in to a site in kit's Chrome
 
 Take over leaves kit's link to Chrome open, so it could read the page. For a password, use
 **Sign in privately** instead. It also hides the page from kit while you type.
 
-1. Press **Sign in privately**, then **Start**, and confirm with your passkey.
+1. Press **Sign in privately**, then **Start**.
 2. In kit's Chrome, go to the site's sign-in page (for example `accounts.example.com`) and sign
    in.
 3. Hand back. kit sees the page again and can use the signed-in session.
