@@ -80,6 +80,8 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 6. First real Cloudflare deploy once the lead confirms the command.
 
 ## Needs from others
+- polish-cli: one QR encoder. Whoever reaches main second swaps `vyre relay pair` to
+  core/cli/qr.js `terminal(qr(url))` (polish-cli 6eaa6a0) and deletes terminalQr + its test.
 - tailnet: CORS on vyred for https://app.vyre.run (the /v1/health probe and API calls), or
   Direction A's direct path is blocked in the browser.
 - presence owner: enroll a passkey presence key (rp app.vyre.run) sent at pairing by a web
