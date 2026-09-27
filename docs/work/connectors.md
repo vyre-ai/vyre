@@ -57,6 +57,8 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
 
 ## Doing
 
+- LOAD RULE (lead, 2026-09-27): check `ssh testbox uptime` right before every run; run only under 6 (not 8) while the integrator's suites run.
+
 - work/connectors 20f49371: mail + e2e fixes, green on testbox 2026-09-27 (load under 5): 226/226
   targeted (modules, mcp, google, mail, connectors, connect, harness, gate), docs 50/50. e2e: OK
   once green (sent). Kernel commit af11226d is with platform for review.
