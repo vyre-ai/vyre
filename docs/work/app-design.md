@@ -37,8 +37,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 - User (via lead): violet or teal; confirm the install defaults (iPhone: web app over Tailscale;
   Android: APK over adb); Planner in the desktop rail and the phone's Places sheet.
-- sessions: ADR 0030 was not on any branch when this was drawn. The session header assumes a
-  provider chip ("Claude · opus", "Codex") and a Session / Terminal / Files switch.
+- sessions: Session board aligned with ADR 0030 (work/sessions 3496b48): provider, model and auth
+  in the chip, the state word, Stop (Esc) as interrupt, queued words with Edit, Take back and
+  Send now, idle close "Resumes on your next message", Mac-owned asks. ExitPlanMode and mode
+  switches still need a surface design (ADR 0030 open question).
 - relay: the hosted app at app.vyre.run and the relay QR copy follow ADR 0026 as proposed.
 
 ## Changed contracts

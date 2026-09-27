@@ -80,10 +80,9 @@
 
               <div class="col" style="min-width: 0; min-height: 0;">
                 <div class="row" style="height: 48px; flex: none; padding: 0 24px; gap: 10px; border-bottom: 1px solid var(--rule);">
-                  <span class="chip" style="height: 24px; cursor: default;"><span class="dot dot-run" style="width: 6px; height: 6px;"></span>Claude · opus</span>
-                  <span class="t13 w6">Harlow Legal</span>
-                  <span class="mono t12 t3 trunc grow">~/work/harlow-legal</span>
-                  <span class="t12 t3">q3-report</span>
+                  <span class="chip" style="height: 24px; cursor: default;">Claude · opus · subscription</span><span class="st"><span class="ring"></span>running · turn 7</span>
+                  <span class="t13 w6" style="white-space: nowrap;">Harlow Legal</span>
+                  <span class="mono t12 t3 trunc grow">~/work/harlow-legal · q3-report</span>
                 </div>
                 <div class="col" data-scrolls="" style="flex: 1 1 auto; min-height: 0; overflow: hidden; justify-content: flex-end; gap: 10px; padding: 8px 24px 10px;">
 
@@ -121,7 +120,7 @@
                   </section>
                 </div>
                 <div class="col" style="flex: none; padding: 0 24px 16px; gap: 8px;">
-                  <div class="queued"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg><span>Queued · sends when kit finishes</span><span class="t2 trunc grow">"Then open a PR against main"</span></div>
+                  <div class="row" style="gap: 8px; padding: 4px 4px 4px 12px; border: 1px solid var(--rule); border-radius: 8px;"><svg class="ic ic-12 t3" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg><span class="t12 t3" style="white-space: nowrap;">Queued</span><span class="t2 trunc grow">Then open a PR against main</span><button class="btn btn-g btn-sm" type="button">Edit</button><button class="btn btn-g btn-sm" type="button">Take back</button><button class="btn btn-sm" type="button">Send now</button></div>
                   <div class="composer">
                     <div class="composer-in trunc" style="min-height: 40px;">Reply to kit, @ to mention, / for commands</div>
                     <div class="composer-bar">
@@ -131,7 +130,7 @@
                       <span class="tag" style="gap: 4px;"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg>vault: northwind orders</span>
                       <span class="grow"></span>
                       <button class="ibtn ibtn-sm" type="button" aria-label="Dictate"><svg class="ic" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button>
-                      <button class="ibtn ibtn-sm" type="button" aria-label="Send" style="background: var(--hover); color: var(--text);"><svg class="ic" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
+                      <button class="btn btn-s btn-sm" type="button" aria-label="Stop kit (Esc)"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"></rect></svg>Stop<span class="k">Esc</span></button><button class="ibtn ibtn-sm" type="button" aria-label="Queue message" style="background: var(--hover); color: var(--text);"><svg class="ic" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
                     </div>
                   </div>
                 </div>
@@ -210,11 +209,11 @@
             <div class="composer-in t17 trunc" style="min-height: 44px;">Reply to kit, @ to mention, / for commands</div>
             <div class="composer-bar" style="padding: 0 4px 4px;">
               <button class="ibtn" type="button" aria-label="Attach" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg></button>
-              <button class="cchip" type="button" style="height: 44px;">opus<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
+              <button class="cchip" type="button" style="height: 44px;">Claude · opus<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
               <button class="cchip" type="button" style="height: 44px;">Asks first<svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3.5 6l4.5 4.5 4.5-4.5"></path></svg></button>
               <span class="grow"></span>
               <button class="ibtn" type="button" aria-label="Dictate" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button>
-              <button class="ibtn" type="button" aria-label="Send" style="width: 44px; height: 44px; border-radius: 22px; background: var(--hover); color: var(--text);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 13V3M4 7l4-4 4 4"></path></svg></button>
+              <button class="ibtn" type="button" aria-label="Stop kit" style="width: 44px; height: 44px; border-radius: 22px; background: var(--hover); color: var(--text);"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"></rect></svg></button>
             </div>
           </div>
         </div>
@@ -277,11 +276,11 @@
 
     <div class="anno">
       <span class="lbl">How it works</span>
-      <div class="anno-i"><span class="anno-n">1</span><span>Vyre owns the session through the Agent SDK. The chip says which provider the router picked (Claude · opus or Codex) and switches it for the next turn. Project and folder sit beside it, the folder in mono.</span></div>
+      <div class="anno-i"><span class="anno-n">1</span><span>Vyre owns the session (ADR 0030). The chip names the provider the router picked, the model and the auth (Claude · opus · subscription, or Codex); a limit fallback to the API key shows as a line in the turn. The state word is one of starting, idle, running, waiting, stopped, failed. A session closed for idleness says "Resumes on your next message".</span></div>
       <div class="anno-i"><span class="anno-n">2</span><span>Beautified, not hidden: every tool call is one quiet row with a verb and a mono summary. Runs fold into one line; a diff opens in place, additions on the lime wash, deletions on a neutral wash. Never red.</span></div>
       <div class="anno-i"><span class="anno-n">3</span><span>Quiet work never looks stalled: a running row counts up (Running npm run build · 0:42), thinking collapses to its length, and each turn ends with its time and tokens.</span></div>
       <div class="anno-i"><span class="anno-n">4</span><span>Asks and questions live inline at the tail and in Needs at once. Answer either one and the other resolves: the desktop shows the question answered from alex's iPhone.</span></div>
-      <div class="anno-i"><span class="anno-n">5</span><span>One composer everywhere: attach, model, mode (Asks first), vault chips, mic, send. Typing while kit works queues the message; it sends when the turn ends.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Words typed during a turn wait in Vyre's queue: Edit or Take back until the turn ends. Send now hands them to kit at its next step. Stop (Esc) interrupts: the turn's open asks close and it ends "Stopped by you". An ask from a Mac-owned session says "Answer it on alex's MacBook Pro" until federation forwards answers.</span></div>
       <div class="anno-i"><span class="anno-n">6</span><span>Terminal is the same session's pty. One device owns the size; others watch at that size until they tap Take size. The key bar carries what a phone keyboard lacks.</span></div>
     </div>
 
