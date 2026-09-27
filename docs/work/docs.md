@@ -73,7 +73,7 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   http://alex-box.tail0000.ts.net/onboard (the owner reaching the box closes the loopback door, as
   on a real box). The four pairing shots retook cleanly. A full run is going on the test box
   (~/vyre-ci/docs-s, log ~/vyre-ci/docs-s-run.log).
-  Resume: if the run finished, copy back docs/**/shots/*.png and docs/shots.json from
+  Resume: if the run finished, copy back `docs/**/shots/*.png` and `docs/shots.json` from
   ~/vyre-ci/docs-s, place new shots on pages, regen reference/index from a clean git archive, run
   the docs tests, redeploy preview (`--branch preview`), send the head to the integrator.
 - Glass boot-failure text applied (c006e55 on main).

@@ -148,7 +148,7 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 
 ## Needs from others
 - deck-design: visual direction for the cards and the terminal; behaviour is built first.
-- pwa: owns deck views generally; this team owns deck/chat/** and deck/views/chat.js only.
+- pwa: owns deck views generally; this team owns `deck/chat/**` and `deck/views/chat.js` only.
 
 - box/tailnet (reported to main): the tailnet listener (core/names/service.js) and the loopback
   listener carry no WebSocket upgrades, so the terminal (and Glass) only work on vyred's socket.

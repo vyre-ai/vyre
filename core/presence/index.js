@@ -46,13 +46,16 @@ export const HUMAN_ONLY = new Set([
 /**
  * The person's own actions that ask no proof, because the owner does them on their own screens and
  * Vyre does not nag (ADR 0024, user rule 27 Sep): answering a session's ask, opening a terminal,
- * changing or discarding a held draft (gate.revise, gate.reject send nothing), and the owner's
- * hands on an agent's computer (taking the keyboard pauses the agent, handing it back returns what
- * it had). None sends, pays, pairs or releases a secret. The tools' caller checks keep models,
- * agents and guests out (computers ownSurface, glass surfaceOf, the allowlists), and the harness
- * floor refuses a model's shell that names one of these, as it does the list above.
+ * making and changing agents, changing or discarding a held draft (gate.revise, gate.reject send
+ * nothing), and the owner's hands on an agent's computer (taking the keyboard pauses the agent,
+ * handing it back returns what it had). None sends, pays, pairs or releases a secret. The tools'
+ * caller checks keep models, agents and guests out (computers ownSurface, glass surfaceOf, the
+ * allowlists), the harness floor refuses a model's shell that names one of these, as it does the
+ * list above, and vyred refuses a socket call to one from any process under a `claude` or a
+ * thread's process (core/daemon/peer.js).
  */
-export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
+export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach",
+  "agents.create", "agents.update", "gate.revise", "gate.reject",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
