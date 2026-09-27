@@ -149,7 +149,15 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   network.origins); 1cf2662 merged main 9efbddc (249/249 targeted); 0c2ee51 push.subscribed,
   push.test receipts + push.receipt -> push.delivered, push.seen standalone event (for `vyre
   phone add`); 501b0d1 /app/ serving + /app/sw.js + manifest. Pushed work/pwa.
-- Waiting: the lead on e2e 8ad92a73 and app-design 99820a16 reaching main (items 2 and 3);
+- Since: c7f0582 merged main c8fb9aa (sent to the integrator for batch 3b); bf65f90 a sideways
+  phone keeps the phone layout (PHONE_QUERY in deck/js/dom.js, lead's decision); 0abb70d the
+  palette from generated deck/css/tokens.css (missing tokens listed for app-design); 39022ec the
+  person-session sheet + Signed-in devices in Settings (against e2e's contract; wire to e2e's
+  signIn/deck:person once 3b lands); 886a86e /pair for `vyre phone add --tailscale-only`, and
+  push.seen carries device. 313/313 targeted.
+- Lead decisions: keep JS row swipes until mobile's iPhone spike; no merging other teams'
+  branches, wait for main; pwa owns deck/sw.js (told chat and e2e).
+- Waiting (old line): the lead on e2e 8ad92a73 and app-design 99820a16 reaching main (items 2 and 3);
   polish-cli on what /pair shows; mobile on precache.json.
 - QUEUE (from teammates, 2026-09-27; testbox: targeted runs only, uptime < 8, no worlds or
   Chrome without asking the lead):
