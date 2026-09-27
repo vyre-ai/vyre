@@ -144,8 +144,9 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   sign-off: fast-forward main, targeted run, tell box-deploy to redeploy (backup first). Then merge into pre/rc.
 - Reviewer (security) now signs off shas. Cleared for 0.1.1: teammates 9d9e6688 (on 20d0f121, fixes its LOW; supersedes b19f10c2),
   memory-iq d0b916b9 + 7ee03df6 (together). windows 8cd4722d cleared (with cac517d4 + 63156fe9).
-- connectors 21beb66b (lib/connectors move, shrinks the rc.2 freeze; mcp discover) AFTER e2e signs off;
-  connectors will ping.
+- connectors 482f7b6d (21beb66b e2e-signed; then 9ca2c50a discover fixes, vault-next merged, Connections card;
+  kernel add: core/config claudeJson()). Needs sign-off on 482f7b6d itself. vault-next is already in rc.2, so it
+  is on main before batch 1.
 - memory-iq batch 1 head 0a7ea3e7: fd7f57ab + 0a7ea3e7 cleared; e67ba34d (memory.card) HELD (MEDIUM: a
   project agent's card lists other projects). Wait for the reviewer's cleared fix sha before taking the head.
 - box -> server (ADR 0038): core/cli user strings listed by docs; I asked docs to route them to polish-cli with
