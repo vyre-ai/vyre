@@ -246,6 +246,12 @@ Plan (to the lead before building):
   capsule+chat, chat's send_mail pick routes to planner.add. MEDIUM: mcp revokes any surface;
   tailnet counts as person in allowed() without meta.person. LOW: "mobile" label claimable.
   connectors 8be461a9 OK (1-line label change since 84f630c9). Rerun the probe on vault's fix sha.
+- teammates round 3 (49d2bd4d, tested with 1941f2cf's daemon applied): HIGH 2/3 OK; forged notes
+  refused. OPEN: forged `team.ask` with another project got queued (after the downgrade a bare
+  "mcp" with no thread/agent still passes projectOf's input.project). Asked: input.project only
+  for PERSON callers + probe test. Their priority test races (subagent-slow never matches a
+  wrapped prompt); my fix's +15 ms per cli socket call (perl peer-pid; 5.4 vs 20.5 ms/call on
+  testbox, cached per keep-alive connection) exposes it.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
