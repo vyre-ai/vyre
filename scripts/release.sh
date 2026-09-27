@@ -16,6 +16,7 @@
 #   4. deploy site/ to Cloudflare Pages, unless vyre.run already serves the same SHA256SUMS
 #   5. scripts/release-check.sh --live, and a summary
 #
+# The Capsule is not released here: a Mac builds it from the npm install (`vyre capsule install`).
 # Needs CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID in the environment (the vault's
 # .env.vyre, loaded with set -a).
 set -eu
@@ -30,7 +31,7 @@ while [ $# -gt 0 ]; do
     --claude) claude=--claude ;;
     --skip-tests) skip="--skip-tests --skip-perf" ;;
     --dry-run) dry=1 ;;
-    -h|--help) sed -n '2,23p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
     *) echo "release: unknown option $1" >&2; exit 1 ;;
   esac
   shift

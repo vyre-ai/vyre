@@ -402,3 +402,38 @@ test("R2: offline writes wait in the browser outbox and land once, in order, whe
   await until(() => done.length === 3, "the outbox to drain");
   assert.deepEqual(w.applied(), [1, 2, 3]);
 });
+
+test("R6: a ring answered from a device's own schedule while the box was out of reach is never rung by the box, and the answer lands once", { timeout: 30_000 }, async t => {
+  const w = await world(t);
+  const [p] = w.proxies;
+  const call = node.caller(p.url, { headers: { "x-vyre-caller": "deck" }, timeoutMs: 1_000 });
+  const timer = /** @type {any} */ ((await call("planner.add", { kind: "timer", title: "Tea", in_ms: 4_000 })).data);
+  // The device schedules the ring itself, keyed as the box's push will be.
+  const up = /** @type {any} */ ((await call("planner.upcoming", {})).data);
+  const entry = up.entries.find(e => e.item === timer.id);
+  assert.ok(entry, "the timer is in the device's schedule");
+  assert.equal(entry.key, `planner-${timer.id}-${entry.due}`);
+  assert.ok(up.last_event > 0);
+
+  // The box goes out of reach; the person answers the ring on the device, into its outbox.
+  p.partition();
+  const done = [];
+  const box = await outbox({ store: memoryStore(), call, backoff: quick(), onChange: o => { if (o.done) done.push(o.done.data); } });
+  t.after(() => box.stop());
+  await box.add("planner.done", { key: entry.key });
+  await sleep(400);
+  p.heal();
+  p.drop();
+  await until(() => done.length === 1, "the answer to land when the box is back");
+
+  // Past the moment: the box never rang it, one ack says it was answered unrung.
+  await sleep(Math.max(0, entry.at - Date.now()) + 1_500);
+  const of = type => w.d.events.since(0, { type, limit: 100 }).filter(e => e.payload.item === timer.id);
+  assert.deepEqual(of("planner.fired"), [], "the box rang a moment the device had answered");
+  const acks = of("planner.acked");
+  assert.deepEqual(acks.map(e => [e.payload.key, e.payload.unrung]), [[entry.key, true]]);
+  // A retry of the same answer (no key, or after the key's day) is harmless and says so.
+  assert.equal(/** @type {any} */ ((await call("planner.done", { key: entry.key })).data).already, true);
+  assert.equal(of("planner.acked").length, 1);
+  assert.ok(!(/** @type {any} */ ((await call("planner.upcoming", {})).data)).entries.some(e => e.item === timer.id), "an answered moment leaves the schedule");
+});

@@ -55,12 +55,68 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   81 -> 94 MB by 15 min, then flat for 5 minutes: warmup, not a leak. The 40 min confirmation run
   was stopped at 12 min on the lead's word (testbox load).
 
+## Done (5), after logout 3 (the CLI is first-class)
+
+- The CLI's 30-minute window (998c2a1, narrowed by the lead's decision): one Touch ID, Capsule or
+  passkey proof from a login covers that login's vault.approve and vault.grant only
+  (TERMINAL_WINDOWED); reveal/copy/totp/run and gate.approve ask every time (keystroke injection:
+  tmux send-keys, AppleScript; ADR 0004 addendum). Each use: a line on that terminal and a
+  vault_audit row. No secret on disk: vyred keys the window on the terminal the kernel
+  names (socket peer pid -> controlling tty -> listed by `who`), after e2e's ancestry check, so
+  anything under claude, detached, or in a script pty never rides it. Bound to the login (tty +
+  leader pid + start), so a reused tty starts fresh; a tmux pane rides it when every attached
+  client is in such a login with no claude above (core/daemon/peer.js loginOf, tmuxClients).
+- Verb parity: `vyre needs`, `vyre gate` (drafts), full `threads answer`, live `vault totp`
+  countdown + vault health/breach/history/revert/clear-clipboard, `vyre phone add|list|remove|test`
+  (dependency-free QR in core/cli/qr.js), planner edit/rm/ringing/dismiss, agents
+  history/resume/computer, --json on learn/connect/hooks/send.
+
 ## Doing
 
-- Nothing in flight.
+- After LOGOUT 4: merged main 7880dfa6 (presence lists take the union: agents.resume and
+  projects.move). My 3b work (704d325e and before) was NOT in 3b, so it rides batch 4 with the
+  chat parity verbs. Parity verbs run live against main's sessions tools (the test now requires
+  them). `vyre relay pair` uses core/cli/qr.js; phone tests post push receipts. Targeted runs on
+  testbox: 158/160 then 17/17 phone, 18/18 threads-sessions, 99/99 consistency+docs+presence.
+- Compile phase: verb audit done; tests added for about 60 verbs (5 test commits + 1). Still
+  untested: agents update/stop/delete/threads, threads stop/edit/send-now/fork/lease/release/
+  list/show (the subagent hit a usage limit before these). Usage lines leave out many verbs
+  handled in run() (threads names 6 of 28): a usage/help pass is next.
+- Vault usage slips still exit 1 (its documented older codes); left for the vault owners.
+- Link bugs for the link team: link.signin's loopback server outlives the module stop (up to
+  10 min); a second `vyre link pair` leaves the first request listed as waiting on the box.
+- New asks (lead, user): stable documented --json for every verb (rows, statuses, QR payloads,
+  prompts as data) and `vyre commands --json` for the Capsule's autocomplete, with capsule-pro;
+  then docs' dim tip line after a command (tips.next, work/docs d960197d); e2e's statusline
+  switch to config.claudeHome once work/e2e-noclaude 32dc0956 lands (plus a temp-home test);
+  cohesion's plan items 5 to 7 (docs/design/cohesion.md on work/cohesion 199120b5).
 
 ## Next
 
+1. Batch 4: send the integrator the sha after merging main (7d2f9c32 or later).
+2. `vyre config`: once native-core's settings are on main, take over config.js/config.test.js
+   (77faf1e3, server side 42dcb98c) and make the nine review fixes with tests (see below).
+3. Module command dispatcher (ADR 0033 P4) when platform sends its P1 sha: GET /v1/modules rows
+   `commands`, input schemas and presence from GET /v1/tools; review platform's module.js/update.js.
+4. The 30-minute stress check at nice -n 19 when the lead says testbox is quiet (after a deploy).
+5. Sessions: the queue drops images (still true on main 7880dfa6: queue() takes no images);
+   switch the CLI's refusal off when fixed.
+- After 3a (sessions) lands: merge main, resolve modules/index.js, presence (PERSON_ONLY union),
+  switchboard.test; targeted run; send the integrator the sha (batch 3b).
+- Modularity: core/cli/qr.js -> deck/vendor/qrcode.js is an OK'd allowlist entry (lead: a
+  third-party vendored lib; platform moves it to a shared vendor/ later). When ci-boundaries is on
+  main, add it to test/boundaries.test.js and docs/architecture/boundaries.md (or the integrator at
+  the batch 4 check).
+- threads.queue {thread} when sessions ships it (asked).
+- Session verbs follow-ups when work/sessions lands: threads.send `mode`, queued_id, a queue read,
+  the unqueue/edit/send_now/rewind tools, thread.turn/state/usage payloads (7 gaps sent to sessions).
+- pwa's push.subscribed / push.delivered / push.seen {standalone}: wire them into phone.js checks.
+- Session verbs: start, send, send-now, queue edit/drop, stop/interrupt, take back, open in
+  terminal, watch, all with --json, once sessions answers.
+- `vyre phone add`: the relay is the default (lead). Built against work/relay 0dfbd12 (path, rtt,
+  node, device.moved); retest once relay lands on main. A Mac is sent to the box/Deck to pair
+  (ADR 0032: link.call refuses human-only tools). One QR encoder: asked relay to use core/cli/qr.js.
+  Still missing box-side: push.subscribed event, push delivery ack, an APK the box serves.
 - When the integrator says testbox is free: a 30 min stress run at nice -n 19 to confirm the
   second-half RSS slope is under 1 MB/10 min.
 - Deck/Capsule clients: to ride a session for approve/grant they need e2e's
@@ -74,6 +130,12 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - connectors: `vyre connect` conventions and any tool the screen should show (asked).
 
 ## Changed contracts
+
+- presence (owner: e2e/security): Presence.verify takes `terminal`; Registry.call passes it;
+  vyred's socket route sets it (atTerminal) for cli/local callers of SESSIONABLE tools.
+  peer.js gains controllingTty. PERSON_ONLY gains agents.resume.
+- agents (owner: agents): agents.resume is callable by cli, local, deck, capsule (not only
+  modules); `thread` optional (the latest), checks ownership, leaves a running thread alone.
 
 - presence (owner: e2e/security): SESSIONABLE gains vault.approve, vault.grant; a session proves a
   vault.* tool only for deck, capsule or tailnet-owner callers. HUMAN_ONLY loses learn.accept,

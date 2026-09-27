@@ -99,16 +99,23 @@ function withEnv(vars, fn) {
   try { return fn(); } finally { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
 }
 
-test("config: a box with a work folder keeps projects in it; without one, or on a Mac, ~/Vyre/projects", t => {
+test("config: a new box with a work folder keeps projects in it; an existing one only once its homes moved; a Mac never", t => {
   const root = tempHome(t);
   const work = path.join(root, "work");
+  const oldDir = path.join(root, "home", "Vyre", "projects");
   const old = path.join(os.homedir(), "Vyre", "projects");
   const set = obj => fs.writeFileSync(path.join(root, "config.json"), JSON.stringify(obj));
-  withEnv({ VYRE_WORK_DIR: work }, () => {
+  withEnv({ VYRE_WORK_DIR: work, VYRE_OLD_PROJECTS_DIR: oldDir }, () => {
     set({ role: "box" });
     assert.equal(config.load(root).projectsDir, old, "no work folder yet");
     fs.mkdirSync(work);
-    assert.equal(config.load(root).projectsDir, path.join(work, "projects"));
+    assert.equal(config.load(root).projectsDir, path.join(work, "projects"), "a new box: no old folder");
+    fs.mkdirSync(oldDir, { recursive: true });
+    assert.equal(config.load(root).projectsDir, path.join(work, "projects"), "a new box: an empty old folder");
+    fs.mkdirSync(path.join(oldDir, "harlow-legal"));
+    assert.equal(config.load(root).projectsDir, old, "an existing box keeps its folder until projects.move runs");
+    fs.writeFileSync(path.join(root, config.MOVED_RECORD), "{}\n");
+    assert.equal(config.load(root).projectsDir, path.join(work, "projects"), "moved: the work folder");
     assert.equal(config.boxProjectsDir(), path.join(work, "projects"));
     set({ role: "local" });
     assert.equal(config.load(root).projectsDir, old, "a Mac never uses the work folder");

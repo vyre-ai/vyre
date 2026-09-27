@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Glass · take-over and hand-back states</title>
+<script src="./support.js"></script>
+<link rel="stylesheet" href="vyre.css">
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;600&amp;family=JetBrains+Mono:wght@400;600&amp;display=swap">
+<style>body{margin:0}</style>
+</helmet>
+<div class="vy board {{theme}}" style="width: 2700px; height: 1500px; gap: 32px;">
+
+  <div class="bhead">
+    <div class="col" style="max-width: 1600px;">
+      <span class="lbl">Glass · take-over and hand-back states</span>
+      <h1 class="t28 w6">One keyboard, no passkey, and the agent always learns why it got its computer back.</h1>
+      <p class="t15 t2">Every state a person meets while taking over an agent's computer, on the phone and the desktop: before the screen exists, while someone else holds it, as it runs idle, and after it goes back.</p>
+    </div>
+  </div>
+
+  <div class="row" style="gap: 48px; align-items: flex-start;">
+    <div class="col" style="gap: 28px;">
+<div class="row" style="gap: 32px; align-items: flex-start;"><section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Starting</h2><span class="t13 t2">the boot check, before Glass has a screen</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Desktop · kit's computer, first seconds</span><div class="win" style="width: 600px; height: 340px;">
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 14px 18px; gap: 12px;">
+<div class="row" style="gap: 10px;"><span class="av av-32">k</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 w6 trunc">kit's computer</span><span class="st"><span class="spin" style="width: 10px; height: 10px; border-radius: 5px;"></span>Starting</span></div><div class="row" style="gap: 8px;"><button class="btn" type="button" disabled title="Starting"><svg class="ic" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>Sign in privately</button><button class="btn btn-p" type="button" disabled title="Starting"><svg class="ic" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg>Take over<span class="k">T</span></button></div></div>
+<div class="glass" style="flex: 1 1 auto; min-height: 0; align-items: center; justify-content: center; gap: 10px;">
+<div class="row" style="gap: 10px;"><span class="spin"></span><span class="t15 w6">Starting kit's computer · 12 s</span></div>
+<span class="t13 t2">Glass draws a screen once the boot check passes. Up to 30 s.</span>
+<div class="col" style="width: 280px; margin-top: 6px;">
+<div class="check"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13">Container up</span></div>
+<div class="check"><span class="ok"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg></span><span class="t13">Desktop and Chrome</span></div>
+<div class="check"><span class="spin" style="width: 18px; height: 18px; border-radius: 9px;"></span><span class="t13">Screen stream</span></div>
+</div>
+</div>
+</div>
+</div></div>
+</div>
+</section>
+<section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Failed to start</h2><span class="t13 t2">the container exited on boot</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Desktop · kit's computer, boot failed</span><div class="win" style="width: 600px; height: 340px;">
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 14px 18px; gap: 12px;">
+<div class="row" style="gap: 10px;"><span class="av av-32">k</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 w6 trunc">kit's computer</span><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg>Exited on boot</span></div></div>
+<div class="card col" style="padding: 16px; gap: 12px; flex: 1 1 auto;">
+<div class="row" style="gap: 10px;"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg><span class="t15 w6">Exited on boot · code 137</span></div>
+<p class="t13 t2">kit's computer stopped before its screen came up. Code 137 means the box stopped it, most often for memory. Its files and Chrome profile are kept.</p>
+<div class="col" style="gap: 8px;"><span class="lbl">Limits</span>
+<div class="row" style="gap: 8px;"><div class="inp" style="width: 56px; justify-content: center;">2</div><span class="t13 t2">cores</span><span class="t12 t3">1 to 16</span><div class="inp inp-focus" style="width: 56px; justify-content: center; margin-left: 16px;">6</div><span class="t13 t2">GB memory</span><span class="t12 t3">1 to 64</span></div>
+<span class="t12 t3">Limits apply at the next restart.</span></div>
+<div class="row" style="gap: 8px; margin-top: auto;"><button class="btn btn-p" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"></path></svg>Restart</button><button class="btn btn-g" type="button"><svg class="ic" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"></rect></svg>Stop</button><span class="t12 t3 grow" style="text-align: right;">computers.restart · computers.limits</span></div>
+</div>
+</div>
+</div></div>
+</div>
+</section>
+<section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Screens full</h2><span class="t13 t2">the cap is screens, not viewers</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Phone · opening juno's computer</span><div class="phone" style="height: 340px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+<div style="height: 14px; flex: none;"></div>
+<div class="ph-nav"><button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button><span class="t17 w6 grow trunc">juno's computer</span></div>
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 4px 16px 0; gap: 10px;">
+<span class="lbl">First 30 s</span>
+<div class="ph-card"><div class="ph-row" style="align-items: center;"><span class="spin"></span><div class="col grow" style="min-width: 0;"><span class="t17">Waiting for a screen · 30 s</span><span class="t13 t2">Both screens are held. Free one to go first.</span></div></div></div>
+<span class="lbl">Then</span>
+<div class="ph-card"><div class="ph-row"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg><div class="col grow" style="min-width: 0; gap: 2px;"><span class="t17">Every screen is in use: kit (taken over by you), ledger (watched by 1)</span><span class="t13 t2">Screens 2 of 2 in use</span></div></div>
+<div class="row" style="padding: 0 14px 12px; gap: 10px;"><button class="btn ph-btn" type="button" style="flex: 1;">Try again</button></div></div>
+</div>
+</div></div>
+</div>
+</section>
+<section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Old box</h2><span class="t13 t2">a box from before no-passkey take-over</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Phone · an older box</span><div class="phone" style="height: 340px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+<div style="height: 14px; flex: none;"></div>
+<div class="ph-nav"><button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button><span class="t17 w6 grow trunc">kit's computer</span></div>
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 4px 16px 0; gap: 10px;">
+<div class="ph-card"><div class="ph-row"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="4" rx="1"></rect><rect x="2" y="9" width="12" height="4" rx="1"></rect><path d="M4.5 5h.5M4.5 11h.5"></path></svg><div class="col grow" style="min-width: 0; gap: 2px;"><span class="t17">This box still asks for a passkey to take the keyboard.</span><span class="t13 t2">Update the box: take-over needs none now.</span></div></div>
+<div class="row" style="padding: 0 14px 12px;"><button class="btn ph-btn" type="button" style="flex: 1;">Open About</button></div></div>
+<div class="row" style="gap: 10px;"><button class="btn ph-btn" type="button" style="flex: 1;">Watch</button><button class="btn btn-p ph-btn" type="button" style="flex: 1;">Take over</button></div>
+<p class="t12 t3">On an older box, Take over still asks for the passkey until it updates.</p>
+</div>
+</div></div>
+</div>
+</section></div>
+<div class="row" style="gap: 32px; align-items: flex-start;"><section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Another viewer</h2><span class="t13 t2">read only while someone holds the keyboard</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Desktop · alex's MacBook Pro, while the phone holds it</span><div class="win" style="width: 520px; height: 340px;">
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 14px 18px; gap: 12px;">
+<div class="row" style="gap: 10px;"><span class="av av-32">k</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 w6 trunc">kit's computer</span><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"></path></svg>kit is paused</span></div><div class="row" style="gap: 8px; position: relative;"><button class="btn btn-p" type="button" disabled title="alex has control from phone"><svg class="ic" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg>Take over<span class="k">T</span></button><span class="sheet t12" style="position: absolute; right: 0; top: 38px; padding: 6px 10px; white-space: nowrap; z-index: 3;">Your phone has control</span></div></div>
+<div class="banner" style="flex: none;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg><div class="col grow" style="min-width: 0;"><span class="t13 w6 trunc">Your phone has the keyboard · 2:14</span><span class="t12 t2 trunc">kit is paused and this view is read-only.</span></div></div>
+<div class="glass" style="height: 170px; flex: none;">
+<div class="glass-bar"><span class="mono t12 t3 grow trunc" style="text-align: center;">staging.harlow.test/intake/estate</span></div>
+<div class="col" style="padding: 12px 18px; gap: 9px;">
+<span class="gl-line" style="width: 42%;"></span>
+<div class="row" style="gap: 10px;"><span class="gl-block grow" style="height: 22px;"></span><span class="gl-block grow" style="height: 22px;"></span></div>
+<span class="gl-block" style="height: 22px;"></span>
+<span class="gl-block" style="height: 36px;"></span>
+</div>
+<span class="ring" style="position: absolute; left: 240px; top: 100px; width: 22px; height: 22px; border-radius: 11px; border-top: 0;"></span>
+</div>
+</div>
+</div></div>
+</div>
+</section>
+<section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Laptop to phone</h2><span class="t13 t2">the take-over moves with the lease</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">alex's MacBook Pro · went read-only</span><div class="win" style="width: 400px; height: 340px;">
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 14px 18px; gap: 12px;">
+<div class="row" style="gap: 10px;"><span class="av av-32">k</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 w6 trunc">kit's computer</span><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"></path></svg>kit is paused</span></div><button class="btn btn-p" type="button" disabled title="alex has control from phone"><svg class="ic" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg>Take over<span class="k">T</span></button></div>
+<div class="banner" style="flex: none;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg><div class="col grow" style="min-width: 0;"><span class="t13 w6 trunc">Your phone has the keyboard · 0:03</span><span class="t12 t2 trunc">The phone took it; this view is read-only.</span></div></div>
+<div class="glass" style="height: 170px; flex: none;">
+<div class="glass-bar"><span class="mono t12 t3 grow trunc" style="text-align: center;">staging.harlow.test/intake/estate</span></div>
+<div class="col" style="padding: 12px 18px; gap: 9px;">
+<span class="gl-line" style="width: 42%;"></span>
+<div class="row" style="gap: 10px;"><span class="gl-block grow" style="height: 22px;"></span><span class="gl-block grow" style="height: 22px;"></span></div>
+<span class="gl-block" style="height: 22px;"></span>
+<span class="gl-block" style="height: 36px;"></span>
+</div>
+
+</div>
+</div>
+</div></div>
+<div class="cap" style="gap: 6px;"><span class="cap-t">alex's iPhone · took it</span><div class="phone" style="height: 340px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+<div style="height: 14px; flex: none;"></div>
+<div class="ph-nav"><button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button><span class="t17 w6 grow trunc">kit's computer</span><span class="live" style="margin-right: 8px; font-weight: 400;">direct · 30 fps</span></div>
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 4px 16px 0; gap: 10px;">
+<div class="row" style="flex: none; padding: 8px 8px 8px 14px; gap: 10px; border-radius: 12px; background: var(--signal-wash); box-shadow: inset 0 0 0 1px var(--focus);">
+<svg class="ic ic-20" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg>
+<div class="col grow" style="min-width: 0;"><span class="t17 w6 trunc">You have control</span><span class="t13 t2 trunc">from phone · 0:03</span></div>
+<button class="btn ph-btn" type="button" style="background: var(--panel);">Hand back</button>
+</div>
+<div class="glass" style="height: 150px; flex: none;">
+<div class="glass-bar"><span class="mono t12 t3 trunc">staging.harlow.test/intake</span></div>
+<div class="col" style="padding: 10px 14px; gap: 8px;">
+<span class="gl-line" style="width: 55%;"></span>
+<div class="row" style="gap: 8px;"><span class="gl-block grow" style="height: 18px;"></span><span class="gl-block grow" style="height: 18px;"></span></div>
+<span class="gl-block" style="height: 18px;"></span>
+</div>
+<span class="ring" style="position: absolute; left: 160px; top: 80px; width: 22px; height: 22px; border-radius: 11px; border-top: 0;"></span>
+</div>
+</div>
+</div></div>
+</div>
+</section>
+<section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Idle warning</h2><span class="t13 t2">any input clears it</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Phone · 10 s before the idle hand-back</span><div class="phone" style="height: 340px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+<div style="height: 14px; flex: none;"></div>
+<div class="ph-nav"><button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button><span class="t17 w6 grow trunc">kit's computer</span></div>
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 4px 16px 0; gap: 10px;">
+<div class="row" style="flex: none; padding: 8px 8px 8px 14px; gap: 10px; border-radius: 12px; background: var(--signal-wash); box-shadow: inset 0 0 0 1px var(--focus);">
+<svg class="ic ic-20" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg>
+<div class="col grow" style="min-width: 0;"><span class="t17 w6 trunc">You have control</span><span class="t13 t2 trunc">from phone · 4:52</span></div>
+<button class="btn ph-btn" type="button" style="background: var(--panel);">Hand back</button>
+</div>
+<div class="row" role="status" style="flex: none; gap: 10px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--rule-strong); background: var(--panel);"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg><span class="t13 grow">Handing back to kit in 8 s. Type or move to keep control.</span></div>
+<div class="glass" style="height: 96px; flex: none;">
+<div class="glass-bar"><span class="mono t12 t3 trunc">staging.harlow.test/intake</span></div>
+<div class="col" style="padding: 10px 14px; gap: 8px;">
+<span class="gl-line" style="width: 55%;"></span>
+<div class="row" style="gap: 8px;"><span class="gl-block grow" style="height: 18px;"></span><span class="gl-block grow" style="height: 18px;"></span></div>
+<span class="gl-block" style="height: 18px;"></span>
+</div>
+
+</div>
+<p class="t12 t3">Control returns to kit on Hand back, after 5 min idle, or when this screen stays hidden past 90 s.</p>
+</div>
+</div></div>
+</div>
+</section>
+<section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Agent paused</h2><span class="t13 t2">take over works, the hands stay stopped</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Phone · kit paused by you</span><div class="phone" style="height: 340px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+<div style="height: 14px; flex: none;"></div>
+<div class="ph-nav"><button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button><span class="t17 w6 grow trunc">kit's computer</span></div>
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 4px 16px 0; gap: 10px;">
+<div class="ph-card"><div class="ph-row"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"></path></svg><div class="col grow" style="min-width: 0; gap: 2px;"><span class="t17">kit is paused. Resume it before its hands can act.</span><span class="t13 t2">Take over still works. After you hand back, its hands stay stopped.</span></div></div>
+<div class="row" style="padding: 0 14px 12px;"><button class="btn ph-btn" type="button" style="flex: 1;"><svg class="ic" viewBox="0 0 16 16"><path d="M5 3l8 5-8 5z"></path></svg>Resume kit</button></div></div>
+<div class="row" style="gap: 10px;"><button class="btn ph-btn" type="button" style="flex: 1;">Watch</button><button class="btn btn-p ph-btn" type="button" style="flex: 1;">Take over</button></div>
+<p class="t12 t3">The hands stay stopped after hand-back until you resume.</p>
+</div>
+</div></div>
+</div>
+</section></div>
+<div class="row" style="gap: 32px; align-items: flex-start;"><section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Hand-back</h2><span class="t13 t2">with an optional note</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Desktop · the bar, then the notice</span><div class="win" style="width: 440px; height: 340px;">
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 14px 18px; gap: 12px;">
+<span class="lbl">While you hold it</span>
+<div class="col" style="flex: none; gap: 8px; padding: 10px 12px; border-radius: 10px; background: var(--signal-wash); box-shadow: inset 0 0 0 1px var(--focus);">
+<div class="row" style="gap: 10px;"><svg class="ic" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg><span class="t13 w6">You have control</span><span class="mono t12 t2">2:14</span></div>
+<div class="row" style="gap: 8px;"><div class="inp grow" style="background: var(--panel);"><span class="trunc">fixed the date picker</span></div><button class="btn btn-p" type="button">Hand back to kit<span class="k">⌃⏎</span></button></div>
+<span class="t12 t2">Note for kit (optional)</span>
+</div>
+<span class="lbl">Then</span>
+<div class="banner" style="flex: none; align-items: flex-start; padding-top: 10px; padding-bottom: 10px;"><svg class="ic t2" viewBox="0 0 16 16"><path d="M3 8.5l3 3 7-7"></path></svg><span class="t13 grow">You handed back to kit (2m 14s). Your note is in its thread.</span><button class="btn btn-g btn-sm" type="button">Dismiss</button></div>
+</div>
+</div></div>
+</div>
+</section>
+<section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Thread lines</h2><span class="t13 t2">the exact reason, every time</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Desktop · kit's thread in Chat</span><div class="win" style="width: 440px; height: 340px;">
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 14px 18px; gap: 12px;">
+<div class="row" style="gap: 10px;"><span class="av av-32">k</span><div class="col grow" style="gap: 2px; min-width: 0;"><span class="t15 w6 trunc">kit · Estate intake</span><span class="t12 t3 trunc">Harlow Legal · four take-overs today</span></div></div>
+<div class="col"><div class="row" style="gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--rule);"><svg class="ic t2" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg><span class="t13 t2 grow">The keyboard went back to kit (2m 14s) · note: fixed the date picker</span><span class="t12 t3">14:12</span></div><div class="row" style="gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--rule);"><svg class="ic t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M8 4.5V8l2.5 1.5"></path></svg><span class="t13 t2 grow">Handed back to kit after 5 min idle.</span><span class="t12 t3">15:40</span></div><div class="row" style="gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--rule);"><svg class="ic t2" viewBox="0 0 16 16"><path d="M2 2l12 12M5.5 8.5a4 4 0 0 1 2.5-1M3 6a8 8 0 0 1 3-1.7M10.5 5A8 8 0 0 1 13 6.2M7 11.5a1.5 1.5 0 0 1 2 0"></path></svg><span class="t13 t2 grow">Your take-over lapsed after 90 s without a signal (from phone).</span><span class="t12 t3">16:05</span></div><div class="row" style="gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--rule);"><svg class="ic t2" viewBox="0 0 16 16"><path d="M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8"></path></svg><span class="t13 t2 grow">Your take-over ended when the thread moved to chat (from phone).</span><span class="t12 t3">16:31</span></div><div class="row" style="gap: 10px; align-items: flex-start; padding: 8px 0; border-top: 1px solid var(--rule);"><svg class="ic t2" viewBox="0 0 16 16"><path d="M7 9a3 3 0 0 0 4.2 0l2-2a3 3 0 0 0-4.2-4.2l-.8.8M9 7a3 3 0 0 0-4.2 0l-2 2a3 3 0 0 0 4.2 4.2l.8-.8"></path></svg><span class="t13 t2 grow">Your take-over ended when the thread's lease was released (from deck).</span><span class="t12 t3">16:40</span></div></div>
+<span class="t12 t3">Why it ended, never what was typed.</span>
+</div>
+</div></div>
+</div>
+</section>
+<section class="col" style="gap: 10px;">
+<div class="row" style="gap: 10px; align-items: baseline;"><h2 class="t15 w6">Sign in privately</h2><span class="t13 t2">explain, run shielded, or say why not</span></div>
+<div class="row" style="gap: 20px; align-items: flex-start;">
+<div class="cap" style="gap: 6px;"><span class="cap-t">Phone · before it starts</span><div class="phone" style="height: 340px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+<div style="height: 14px; flex: none;"></div>
+<div class="ph-nav"><button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button><span class="t17 w6 grow trunc">kit's computer</span></div>
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 4px 16px 0; gap: 10px;">
+<div class="glass" style="height: 80px; flex: none;">
+<div class="glass-bar"><span class="mono t12 t3 trunc">staging.harlow.test/intake</span></div>
+<div class="col" style="padding: 10px 14px; gap: 8px;">
+<span class="gl-line" style="width: 55%;"></span>
+<div class="row" style="gap: 8px;"><span class="gl-block grow" style="height: 18px;"></span><span class="gl-block grow" style="height: 18px;"></span></div>
+<span class="gl-block" style="height: 18px;"></span>
+</div>
+
+</div>
+<div class="ph-card col" style="padding: 12px 14px; gap: 8px;">
+<div class="row" style="gap: 8px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg><span class="t17 w6">Sign in privately</span></div>
+<p class="t13 t2">kit cannot see or read the page: its hands stop, it takes no screenshots, and nothing you type reaches its thread. It keeps the session, never the password.</p>
+<div class="row" style="gap: 10px;"><button class="btn btn-g ph-btn" type="button" style="flex: 1;">Cancel</button><button class="btn btn-p ph-btn" type="button" style="flex: 1;"><svg class="ic" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>Start</button></div>
+</div>
+</div>
+</div></div>
+<div class="cap" style="gap: 6px;"><span class="cap-t">Phone · shielded, running</span><div class="phone" style="height: 340px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+<div style="height: 14px; flex: none;"></div>
+<div class="ph-nav"><button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button><span class="t17 w6 grow trunc">kit's computer</span></div>
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 4px 16px 0; gap: 10px;">
+<div class="row" style="flex: none; padding: 8px 8px 8px 14px; gap: 10px; border-radius: 12px; background: var(--signal-wash); box-shadow: inset 0 0 0 1px var(--focus);">
+<svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>
+<div class="col grow" style="min-width: 0;"><span class="t17 w6 trunc">Signing in privately</span><span class="t13 t2 trunc">kit sees nothing · 0:41</span></div>
+<button class="btn ph-btn" type="button" style="background: var(--panel);">Hand back</button>
+</div>
+<div class="glass" style="height: 96px; flex: none;">
+<div class="glass-bar"><span class="mono t12 t3 trunc">login.northwind.test</span></div>
+<div class="col" style="padding: 10px 14px; gap: 8px;">
+<span class="gl-line" style="width: 55%;"></span>
+<div class="row" style="gap: 8px;"><span class="gl-block grow" style="height: 18px;"></span><span class="gl-block grow" style="height: 18px;"></span></div>
+<span class="gl-block" style="height: 18px;"></span>
+</div>
+
+</div>
+<div class="row" style="gap: 10px;"><button class="btn btn-s ph-btn" type="button" style="flex: 1;">Keyboard</button><button class="btn btn-s ph-btn" type="button" style="flex: 1;"><svg class="ic" viewBox="0 0 16 16"><circle cx="5" cy="11" r="2.5"></circle><path d="M6.8 9.2l6.2-6.2M11 5l2 2M9.5 6.5l1.5 1.5"></path></svg>Fill a login</button></div>
+<p class="t12 t3">Fill a login types a vault login into the page. Only here, where kit's link to Chrome is cut.</p>
+</div>
+</div></div>
+<div class="cap" style="gap: 6px;"><span class="cap-t">Phone · the shield is not running</span><div class="phone" style="height: 340px; border-radius: 28px 28px 0 0; border-bottom: 0;">
+<div style="height: 14px; flex: none;"></div>
+<div class="ph-nav"><button class="ibtn" type="button" aria-label="Back" style="width: 44px; height: 44px;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></button><span class="t17 w6 grow trunc">kit's computer</span></div>
+<div class="col" style="flex: 1 1 auto; min-height: 0; padding: 4px 16px 0; gap: 10px;">
+<div class="glass" style="height: 96px; flex: none;">
+<div class="glass-bar"><span class="mono t12 t3 trunc">staging.harlow.test/intake</span></div>
+<div class="col" style="padding: 10px 14px; gap: 8px;">
+<span class="gl-line" style="width: 55%;"></span>
+<div class="row" style="gap: 8px;"><span class="gl-block grow" style="height: 18px;"></span><span class="gl-block grow" style="height: 18px;"></span></div>
+<span class="gl-block" style="height: 18px;"></span>
+</div>
+
+</div>
+<div class="ph-card"><div class="ph-row"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M6 6l4 4M10 6l-4 4"></path></svg><div class="col grow" style="min-width: 0; gap: 2px;"><span class="t17 w6">Private sign-in did not start</span><span class="t13 t2">Private sign-in needs the computers shield, which is not running.</span></div></div>
+<div class="row" style="padding: 0 14px 12px;"><button class="btn btn-g ph-btn" type="button" style="flex: 1;">Dismiss</button></div></div>
+<p class="t12 t3">Nothing was taken. Take over still works, without the shield.</p>
+</div>
+</div></div>
+</div>
+</section></div>
+    </div>
+<div class="anno">
+<span class="lbl">Rules</span>
+<div class="anno-i"><span class="anno-n">1</span><span>No proof to take the keyboard. Take over, hand back and Sign in privately ask no passkey or Face ID. Agents, tailnet guests and Claude's own sessions are refused them outright, so no prompt ever appears.</span></div>
+<div class="anno-i"><span class="anno-n">2</span><span>One keyboard. While someone holds it every other screen is read-only and Take over is disabled, its tooltip naming who and from where. The take-over follows the lease from laptop to phone.</span></div>
+<div class="anno-i"><span class="anno-n">3</span><span>Idle hand-back: Off, 2, 5 or 15 min, 5 by default, in Settings, Network. Only typing, clicks and pointer moves reset it. The chip shows the last 10 s.</span></div>
+<div class="anno-i"><span class="anno-n">4</span><span>The thread says who, how long, why it ended (gave back, idle, lapsed, released) and the note. Never what was typed.</span></div>
+<div class="anno-i"><span class="anno-n">5</span><span>Screens, not viewers: 2 computers checked out at once by default. A third takes the least recently touched unwatched screen, or waits 30 s and names who holds each.</span></div>
+<div class="anno-i"><span class="anno-n">6</span><span>Fill a login exists only in Sign in privately. In a plain take-over kit's link to Chrome stays open, so a filled password would be readable.</span></div>
+<div class="anno-i"><span class="anno-n">7</span><span>Errors are neutral text and the failed glyph. Violet appears only as a needs-you dot, and none of these states needs you.</span></div>
+<div class="anno-i"><span class="anno-n">8</span><span>Smooth: every state swaps in the strip above the screen, so the screen never jumps. The countdown ticks only while the page is visible; hand-back shows its notice on commit, and the screen canvas keeps its last frame through Starting.</span></div>
+</div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"theme":{"editor":"enum","options":["t-dark","t-light"],"default":"t-dark"},"$preview":{"width":2700,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return { theme: this.props.theme ?? 't-dark' };
+  }
+}
+</script>
+</body>
+</html>

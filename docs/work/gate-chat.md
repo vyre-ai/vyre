@@ -213,3 +213,14 @@ lease surface naming pattern, and never inventing custom UI for what a real cont
 - `package.json`: the test glob includes `modules/**/*.test.js`.
 - `core/modules/index.js`: `ctx.vault.fetch` accepts any `per-<thing>` declaration, not only
   `per-watcher` (gate uses `per-sender`; agents' `per-agent` is covered too).
+
+## Changed by capsule-apps (2026-09-27, the lead asked)
+- `gate.settle {id, outcome: "sent", evidence}` (core/gate/gate.js settle, core/gate/index.js):
+  marks an approved item whose send failed as sent, with the evidence, once. Only an item that was
+  approved and failed (error and final set); callers are a person or the module that offered the
+  item's sender (sender_module), else the same rule as approving. Emits `gate.settled`. Tested in
+  core/gate/gate.test.js and local/apps/slack.test.js (a Slack post whose answer was lost).
+- A failed approval now says `reached: "maybe" | "no"` when the sender's error carries
+  detail.reached (the MCP hub's); gate.failed carries it too. moduleType.send keeps r.error.detail.
+- previewOf also reads an MCP call's words from content.arguments, so gate.approve's presence line
+  is not blank for hub-held calls (557421d).

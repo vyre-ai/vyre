@@ -34,7 +34,7 @@
 .pj-head { height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 20px; padding: 0 20px 0 24px; border-bottom: 1px solid var(--rule); }
 .pj-id { display: flex; align-items: center; gap: 16px; min-width: 0; }
 .pj-name { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
-.pj-org { padding: 3px 7px; border: 1px solid var(--rule-strong); border-radius: var(--r-1); white-space: nowrap; }
+.pj-org { padding: 3px 7px; border: 1px solid var(--rule-strong); border-radius: var(--radius-chip, 4px); white-space: nowrap; }
 .pj-people { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .pj-tabs { display: flex; align-items: center; gap: 4px; margin-left: 4px; }
 .pj-tabs a { height: 56px; display: flex; align-items: center; padding: 0 10px; font-size: 14px; color: var(--text-2); text-decoration: none; }
@@ -44,7 +44,7 @@
 .initial.sm { width: 22px; height: 22px; }
 .nt { position: relative; }
 .nt-pop { position: absolute; right: 0; top: 40px; width: 340px; z-index: 15; display: flex; flex-direction: column; gap: 10px; padding: 14px;
-  background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--r-3); box-shadow: var(--popover); }
+  background: var(--panel); border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); box-shadow: var(--popover); }
 .nt-actions { display: flex; gap: 8px; }
 
 .pj-body { flex-grow: 1; min-height: 0; display: flex; }
@@ -52,7 +52,7 @@
 .pj-threads { display: flex; flex-direction: column; gap: 2px; padding: 14px 10px; }
 .pj-threads-l { padding: 0 12px 8px; }
 .pj-none { padding: 8px 12px; }
-.pj-t { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--r-2); text-decoration: none; color: var(--text); }
+.pj-t { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--radius-field, 8px); text-decoration: none; color: var(--text); }
 .pj-t:hover { background: var(--hover); }
 .pj-t[aria-current="true"] { background: var(--signal-wash); }
 .pj-t[aria-current="true"] .pj-t-name { font-weight: 500; }
@@ -82,7 +82,7 @@
 .th-name { font-size: 13px; line-height: 18px; font-weight: 600; }
 .th-who .code { font-size: 11px; line-height: 14px; }
 .th-text { font-size: 14px; line-height: 21px; color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; }
-.th-recalled { margin-left: 36px; display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-radius: var(--r-2); }
+.th-recalled { margin-left: 36px; display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border-radius: var(--radius-field, 8px); }
 .th-rl { display: flex; align-items: center; gap: 8px; }
 .th-rl .dot { width: 7px; height: 7px; }
 .th-rtext { font-size: 13px; line-height: 19px; color: var(--text); overflow-wrap: anywhere; }
@@ -110,7 +110,7 @@
 
 .th-compose { flex-shrink: 0; padding: 12px 28px 18px; border-top: 1px solid var(--rule); background: var(--bg); }
 .th-box { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 6px 0 14px; border: 1px solid var(--rule-strong);
-  border-radius: var(--r-2); background: var(--panel); max-width: 760px; }
+  border-radius: var(--radius-field, 8px); background: var(--panel); max-width: 760px; }
 .th-box:focus-within { border-color: var(--focus); }
 .th-in { flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-size: 14px; }
 .th-in::placeholder { color: var(--label); }
@@ -160,7 +160,7 @@
 }
 
 /* Phone: the list, then the thread full-width with a back link. */
-@media (max-width: 760px) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .pj-phone { display: inline-flex; }
   .pl { padding: 16px 16px 24px; }
   .pl-head { flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 16px; }
@@ -210,7 +210,7 @@
 }
 
 /* Late rules: desktop hides the phone back links; the whole project row opens the project. */
-@media (min-width: 761px) { .pj-back.pj-phone { display: none; } }
+@media (min-width: 720px) and (min-height: 501px), (min-width: 720px) and (pointer: fine), (min-width: 720px) and (pointer: none) { .pj-back.pj-phone { display: none; } }
 .th-box .ibtn:disabled { opacity: 0.4; cursor: default; background: transparent; }
 .pl-row { position: relative; }
 .pl-row .pl-open::after { content: ""; position: absolute; inset: 0; }

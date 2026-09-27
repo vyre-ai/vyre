@@ -100,6 +100,46 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - Keyboard: `n` (or Cmd/Ctrl+K then "new") opens New session from anywhere in Chat; in a card,
   arrow keys move, space toggles, Enter answers, 1-9 pick an option, Esc steps back.
 
+## Paseo comparison (27 Sep 2026, user decision: port their session view and terminal)
+
+Source: <reference>/paseo (Apache 2.0, Copyright (c) 2025-present Mohamed Boudra), React Native
+(Expo) plus web. Studied: app/src agent-stream, composer, keyboard, file-pane, panels, terminal;
+server + protocol streaming.
+
+What theirs does better, by value to the user:
+1. Runs of tool calls collapse into one summary row ("3 edits, 2 commands"), expanding to cards;
+   on a phone a tool's detail opens in a bottom sheet. Ours is a long stack of cards.
+2. A typed tool detail (shell, read, edit, write, search, fetch, sub_agent, plan, unknown) built
+   once from Claude's tool input; the client renders by detail type, not tool name.
+3. Smooth streaming: committed tail plus a streaming head, 60 ms server coalescing, a paced text
+   reveal, so history never reflows.
+4. Terminal restore from a screen snapshot (a headless xterm on the server), with a snapshot
+   instead of the backlog when a socket backs up. Our 64 KB byte replay garbles full-screen apps.
+5. Composer: steer vs interrupt while busy, an editable queue, @file mentions, slash autocomplete,
+   Esc interrupts.
+6. A bottom-anchor state machine (sticky vs detached) and windowed rendering for long sessions.
+7. Diff review with line comments; tool calls open the file at the line.
+
+Where ours is ahead and stays: transcript `seq` is the file's line index, so a view resumes
+exactly after a restart (their timeline is in memory, a new epoch per start, every client resets).
+Their terminals die with the server; ours will outlive vyred per ADR 0029 R4.
+
+What we keep that they lack: Needs anchors on asks and held items (they pin permission cards in a
+footer with no anchor), the Gate (held outbound sends, approve and revise), memory, the assistant
+name labels (never "claude"), federated Mac sessions (source "mac", offline chip, "Answer it on
+<machine>"), always-in-project, the diff totals on asks, and a terminal that belongs to its screen.
+
+Port plan (shared core in deck/chat/core/: plain ESM with JSDoc types, no DOM, importable by the
+Deck as served files and by the Expo app through Metro; mobile to confirm):
+- P1 tool detail: port the Claude tool-call detail parser and tool-call display to
+  deck/chat/core/tool-detail.js; transcripts.blocks tool blocks gain `detail`.
+- P2 grouping: runs of tool blocks as one overview row (core/grouping.js), anchors expand the run.
+- P3 streaming and scroll: text reveal, head/tail merge, bottom anchor, windowed rows.
+- P4 terminal to ADR 0029 R4: byte offsets and a 1 MB ring, attach from=<offset>, 12 h keep,
+  client keeps scrollback and queued keys; headless snapshot when the offset left the ring.
+- P5 composer: steer/interrupt/queue, @file and slash autocomplete, Esc interrupts.
+- P6 phone: the Expo app renders the same core (mobile owns the RN views).
+
 ## Done
 - d763ad2 switchboard: question asks, permission detail, always-allow, fake claude `ask`/`demo` + transcripts.
 - 4f288d2 recall.transcript + transcripts.blocks (tail by default, `before`/`first` paging, `open` turns).
@@ -132,19 +172,89 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
-## Doing
-- Waiting on tailnet: frozen shas for the WebSocket upgrade (work/tailnet f309059?) and the rich
-  Mac transcripts (work/federation-transcript 6731af9, off work/chat). Asked 27 Sep.
+## Doing (27 Sep, after logout 4)
+- Done this session: 19c287db merge main 7880dfa6; 553017a1 scroll jump (content-visibility
+  placeholder collapsed the just-finished reply; native-bar budget 5 now 0 px, CLS 0; phone keyboard
+  lift read an undefined `following`); 0293db20 question card never cut off + ask/question cards to
+  Design A v1 (A/D, busy verbs, outline Always, kbd chips) + deck/test/chat-shots.js; f697d345
+  terminal fills the view, key bar 2x7, spec look; 5d91f833 refuse queuing images (composer-state
+  enterAction do "refuse"); 93945c49 diff/status marks/checkbox/avatar to spec; dbeac450 relative
+  paths, tool rows as verbs (waiting on you, failed, no "done"), no footer on an open turn, phone
+  header two rows, folds on the phone, steer marker copy. deck/chat tests 285/285 on testbox.
+- model.switched: listened (session.js on("model.switched"), session-state case, test in
+  session-state.test.js and session.test.js).
+- Shots: `ssh testbox 'cd ~/vyre-ci/chat && flock ~/vyre-ci/chat.lock node deck/test/chat-shots.js <out>'`
+  (every chat testbox run goes through flock ~/vyre-ci/chat.lock).
+- Open from the 13: #5 phone composer and #6 queued row are native-core's. Spaces collapse in
+  Instrument Sans in headless Chrome on the phone shots ("Nooneis typing"): not chat CSS, report to
+  pwa/app-design. Raw view still prints absolute paths (Claude Code prints relative ones).
+- Next (lead): with native-core, fling p95 67 ms, cold open 2.4 s, send-to-row 102 ms. Then, once
+  the lead OKs new work: cohesion items 1, 5, 9 (context.report on open, / merges commands.list, one
+  nav catalog); docs tips.next chip; plan card (spec, not built).
+
+## Before logout 4
+- Chat smoothness (27 Sep, all five committed, untested: testbox held, node --check only): 1 reconnect
+  (api.js stream.reset + CLOSED retry + onResume, session re-read on resume; api.js change to tell pwa),
+  2 stick to bottom (window-view.js createStick, ResizeObserver), 3 frozen live-text blocks + linear
+  settledEnd + highlight on close, 4 paced reveal (Paseo text-reveal), 5 incremental grouping.
+  Next: run deck/chat tests on testbox (api-stream, live-text, grouping, pace, session, window new/changed).
+New direction: ADR 0030 (Agent SDK sessions are the default) and Direction A (docs/design/one-app on
+work/app-design, Session board). Chat is a native chat over Vyre's event stream; the terminal stays.
+- Take size back in the Deck terminal (27 Sep) against resilience's core/term size owner (ab4fdc4d).
+- Done this session: fb22bad (pre-logout WIP committed), 231221b merged main ef51363, 7f49979 diff
+  summary on the permission card (changesRow, exported for pwa's needs.js), b20fec2 live text keys
+  (message, block) equal the transcript's (verified against one real Claude Code 2.1.268 run on
+  testbox; user blocks carry uuid), f2c5b62 core tests + 2 bug fixes (tool-detail Task threw,
+  line-diff dropped "-- x" lines), 7fa868e deck/chat/core/session-state.js, pace.js, grouping.js.
+  Tests: core 45/45, transcripts+switchboard 98/98, deck/chat 87/87 (testbox).
+- Event shapes proposed to sessions (27 Sep): thread.text block, thread.tool call/status,
+  thread.turn uuid = SDK message uuid = transcript uuid, thread.queued uuid, thread.unqueued,
+  thread.state, thread.usage, thread.started provider/model/auth, finished canceled. Tools asked:
+  threads.unqueue, threads.edit, threads.send {now}, threads.interrupt. Awaiting reply.
+- Done (27 Sep): cbe3a66 session view rendered from session-state + grouping + pace (live-text.js),
+  fold rows, count-up, thinking length, provider chip, state word, idle "Resumes on your next
+  message", Stop (Esc: threads.interrupt, else threads.stop), queued rows (buttons disabled: no
+  threads.edit / threads.unqueue / threads.send {now} on any branch yet), inline asks with A/D,
+  "Answered from <surface> · <time>". Behaviour changed on purpose: tool runs fold (session.test.js
+  "open" test opens them first); the composer's own queue line is gone (rows replace it); a failed
+  turn reads "Turn failed: ..." in its footer. Tests: deck/chat + deck/test 221/221 (1 skipped) on testbox.
+- Aligned to the final sessions contract (27 Sep, untested: testbox held): queue by row id
+  (unqueue/edit/send_now), step counted client-side, rewind forks and opens the fork, Shift+Tab
+  over three modes, threads.start busy note, NOT_OFFERED tools off from the start in caps.js.
+- Gaps for sessions: threads.interrupt is on work/sessions only (the Deck falls back);
+  threads.edit, threads.unqueue, threads.send {now} are nowhere; thread.queued needs `uuid` for rows
+  to act on; ask.answered `by` is a surface, not a device ("alex's iPhone" needs a device name).
+- Mac asks answered from the Deck (federation v2, untested: testbox held): buttons + "on <mac>", threads.answer carries `machine`; person_session_required / presence_required reuse api.js's passkey proof, mac_offline / timeout retry; no box flag exists, so an unknown/unsupported refusal (or "no ask" on an unrelayed ask) falls back to "Answer it on <mac>" for the page.
+
+## Composer like Claude Code (27 Sep, TESTBOX FREEZE: tests written, not run)
+- deck/chat/core/composer-state.js (draft mode by first character, @ at the caret, history ring,
+  Enter decision, Esc machine, Shift+Tab over offered modes, KEYMAP, image caps), core/caps.js
+  (lazy "no such tool" probe, one per page), commands.js normalizeCommands + local /model /rewind.
+- session-state: localSend/dropLocal (optimistic steer and queue), thread.steered (marker
+  steer:<uuid> moved to where it joined), thread.rewound (drops from that message on; dropped
+  idents never read back), thread.mode/model/thinking/task, s.todos (newest TodoWrite), s.tasks
+  (derived from Bash run_in_background / KillShell / BashOutput / Task until thread.task),
+  localShell rows, checkpoints().
+- Deck: composer.js rewritten (pickers.js, tray.js), session.js wiring, chat.css.
+- core/transcripts: steered user blocks.
+- Live now: steer/queue drawing (threads.send accepts extra fields today), history, Esc stop,
+  todos pin, derived tasks tray (View output), thinking view toggle, @files via files.search,
+  static commands. Waiting on sessions: thread.steered, threads.unqueue/edit/steer, rewind +
+  checkpoints, mode, model, sessions.models, commands, shell, remember, thinking, thread.task,
+  kill_task, images on threads.send (a send answer without `uuid` is read as an older box).
+- Tell pwa: deck/sw.js SHELL needs /chat/pickers.js, /chat/tray.js, /chat/core/composer-state.js,
+  /chat/core/caps.js, /chat/core/commands.js, /chat/core/match.js (the last two were missing already).
 
 ## Next
-- Merge tailnet's WebSocket sha, then reshoot (CHAT_DEMO=1 node deck/test/world.js 4791 from a
-  `git archive HEAD` snapshot on testbox; deck/test/shoot.js with CHROME=/usr/local/bin/vyre-chrome):
-  the terminal (no unlock now) and the whole flow; time Back with deck/test/pwa-perf.js (< 100 ms).
-- Merge federation-transcript so Mac replies keep tool cards after the re-read (priority 5).
-- Try Mac messaging against a paired Mac once federation is on main.
-- Folder rows: names truncate ("harlow-si..."); put the path on a second line.
-- Show detail.totals/changes on the permission card (phone-design's Changes row consumes it).
-- Restyle with deck-design once the user picks a direction.
+- thread.limit as a line in the turn (the design's limit fallback); windowed rows above 100 items;
+  an inline ask anchored to its tool row once ask.raised carries tool_use_id.
+- Screenshots in one world on port 4795 (load rule), time Back (< 100 ms).
+- Mounted tabs (LRU) with pwa. Real WebKit run for 60 fps / 300 MB; if iOS momentum stutters, invert the scroller.
+- Design look at the key bar and Take size (app-design).
+- ask.raised should carry tool_use_id so an inline ask anchors to its tool row (ask sessions/switchboard).
+- deck/chat/lib/diff.js may share line-diff's "-- x" header bug: check.
+- Folder rows: path on a second line.
+- Test command on testbox: node 22 needs globs, `node --test "deck/chat/**/*.test.js"`, not a folder.
 
 ## Needs from others
 - deck-design: visual direction for the cards and the terminal; behaviour is built first.
@@ -156,6 +266,8 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - tailnet: WebSocket upgrade fix (owned by tailnet, per the lead).
 
 ## Changed contracts
+- deck/test/pwa.test.js (pwa's): two pins follow chat's changes: the keyboard lift reads stick.stuck, and
+  transcript rows carry no content-visibility (windowed instead).
 - threads.answer: `answers`, decision `always`. threads.asks / ask.raised: `kind`, `questions`,
   `detail`, `always`. New tools recall.transcript, files.dirs, files.recent, term.*. New stream
   /v1/streams/term/pty. New events term.opened, term.closed.
@@ -169,3 +281,4 @@ contracts": `core/switchboard/` (asks), `core/transcripts/` + `core/recall/` (a 
 - recall.watch/unwatch, events session.turn and session.state; recall.thread items add id, at; recall.status adds watches.
 - threads.asks { kind }; asks add agent, thread_name, anchor { tool_use_id, event }, always_project; request_id hidden. threads.answer scope "project". gate.held adds anchor { tool_use_id, event, thread, at }; gate.request takes tool_use_id. ask.answered adds scope.
 - ask.answered adds `answers`. answerLine takes a fifth argument { answers, permissions }.
+- transcripts.blocks / recall.transcript: a user block inside an open turn has `steered: true, step: n` and does not close the turn.

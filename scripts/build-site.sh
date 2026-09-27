@@ -6,7 +6,7 @@
 #   --src DIR       the checkout to take the box files from and pack vyre.tgz from (default: this
 #                   repo, which needs box/ in it).
 #
-# The Mac installs from npm (`vyre capsule` builds the Capsule there), so there is no Capsule zip.
+# The Capsule is not here: a Mac builds it from the npm install (`vyre capsule install`).
 #
 # Writes (all generated, all gitignored):
 #   site/install.sh               what `curl -fsSL https://vyre.run/install.sh | sh` runs
@@ -15,7 +15,8 @@
 #                                 the stack install-box.sh lays out in /srv/vyre
 #   site/box/Dockerfile, dockerignore
 #                                 how the image is built from vyre.tgz while none is published
-#   site/box/vyre.tgz             `npm pack` of --src, until the package is on npm
+#   site/box/vyre.tgz             `npm pack` of --src, until the package is on npm, with the web
+#                                 app scripts/build-app.sh exports into <src>/apps/app/dist first
 #   site/box/SHA256SUMS           sha256 of every file above, `sha256sum -c` format
 #   site/_redirects               /box to install-box.sh, and /download/mac (onboarding's Capsule
 #                                 link) to /start#mac
@@ -73,6 +74,8 @@ else
   echo "build-site: $src is not a git checkout; the package says no commit" >&2
   rm -f "$src/build.json"
 fi
+# The web app at /app/ (apps/app/dist), which vyre.tgz ships; nothing when --src has no apps/app.
+sh "$here/scripts/build-app.sh" --src "$src"
 # npm pack writes the tarball's name on its last line of stdout.
 name=$(cd "$src" && npm pack --silent --pack-destination "$out" | tail -n 1)
 mv "$out/$name" "$out/vyre.tgz"

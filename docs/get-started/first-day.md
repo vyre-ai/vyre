@@ -37,9 +37,9 @@ Press Control twice, in any app. The Capsule opens over what you are doing, with
 - Anything waiting on you (a permission question from a thread, a message held before sending) shows in the Capsule and can be answered there.
 
 > [!SNAG] Control twice does nothing
-> Click the Capsule's menu bar icon. If a line there starts `Double-Control is off:`, it says why. If the
-> helper is not built, run `vyre capsule build`. Otherwise grant Input Monitoring in System
-> Settings, Privacy & Security, then run `vyre capsule` to open it wired to this Mac's `vyred`.
+> Click the Capsule's menu bar icon. If a line there starts `Double-Control is off:`, it says why.
+> Grant Input Monitoring in System Settings, Privacy & Security, then run `vyre capsule` to open
+> it wired to this Mac's `vyred`. Option-Space opens it meanwhile.
 
 More in [The Capsule](../using/capsule.md).
 

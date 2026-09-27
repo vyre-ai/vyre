@@ -1,0 +1,12 @@
+Vyre is licensed under the Apache License, Version 2.0 (LICENSE).
+
+This product includes software from these projects:
+
+Portions derived from Paseo, Copyright (c) 2025-present Mohamed Boudra, Apache License 2.0.
+  https://github.com/getpaseo/paseo
+  Files carrying a "Derived from Paseo" header were adapted from it and modified for Vyre.
+  The Apache License 2.0 text is in LICENSE.
+
+xterm.js 6.0.0 and @xterm/addon-fit 0.11.0 (deck/vendor/xterm), Copyright (c) the xterm.js
+authors, MIT License (deck/vendor/xterm/LICENSE,
+deck/vendor/xterm/LICENSE.addon-fit).

@@ -93,8 +93,28 @@ in the conversation.
 2. Press **Send** (Command-Enter) to approve exactly what the card shows, or **Discard** to reject
    it.
 
-The box may ask for your passkey first (see [Deck](deck.md#add-a-passkey)). If the send fails,
+The first Send may ask for your passkey (see [Deck](deck.md#add-a-passkey)); one proof covers
+30 minutes on this device. Editing and Discard ask for nothing. If the send fails,
 the card says "failed:" with the reason, and Send tries again.
+
+## Open a terminal on the box
+
+Press **Folders** at the top of Chat, go to a folder, and press **Open in terminal**. A shell
+opens in that folder on the box, in the Deck. It asks for no passkey: it is your own screen.
+Agents, tailnet guests and Claude's sessions can't open one.
+
+A terminal belongs to the screen that opened it; another device can't pick it up. It outlives
+your connection:
+
+- Close the tab or lose the network, and the shell keeps running. Come back and the Deck
+  reconnects, showing the last 64 KB it printed. Keys typed while the link is down are not sent.
+- With nobody looking at it, it is kept for 12 hours, then ended. Change that with the config
+  key `term.keep_hours`.
+- On a box, the shell survives vyred restarting. Updating the box ends it, and the terminal says
+  "the box was updated and this terminal was closed; open a new one".
+- Typing `exit` ends it at once.
+
+On a Mac, the terminal ends when vyred stops.
 
 ## Sessions from your Mac
 

@@ -138,6 +138,18 @@
       const cr = ratio(fg, bg);
       if (cr < min) fails.push({ text: text.slice(0, 60), ratio: +cr.toFixed(2), min, color: cs.color, bg: `rgb(${bg.slice(0, 3).map(Math.round)})`, cls: el.className });
       if (!el.closest("[data-scrolls]") && (r.right > box.right + 1 || r.bottom > box.bottom + 1 || r.left < box.left - 1)) clipped.push(text.slice(0, 60));
+      else if (!el.closest("[data-scrolls]") && !el.closest("[data-clip-ok]")) {
+        // Cut off by a clipping ancestor (a button or card with overflow hidden), unless it ends in
+        // an ellipsis or a line clamp on purpose, or sits in a [data-clip-ok] (a row drawn mid-swipe).
+        for (let e = el; e && e !== root; e = e.parentElement) {
+          const c = getComputedStyle(e);
+          if (c.textOverflow === "ellipsis" || (c.webkitLineClamp && c.webkitLineClamp !== "none")) break;
+          if (c.overflow === "visible" && c.overflowX === "visible" && c.overflowY === "visible") continue;
+          const b = e.getBoundingClientRect();
+          if (r.right > b.right + 1 || r.left < b.left - 1 || r.bottom > b.bottom + 1) { clipped.push("cut: " + text.slice(0, 56)); }
+          break;
+        }
+      }
     }
     return { fails, clipped, offscale: system(root) };
   }

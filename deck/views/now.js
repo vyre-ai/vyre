@@ -10,7 +10,7 @@
 // and no Watch (a Mac thread is read here, never driven: js/machine.js). A paired Mac that is away
 // shows as one quiet chip in Working's head, from link.macs, read each time Working redraws.
 
-import { h, put, link, head, empty } from "../js/dom.js";
+import { h, put, link, head, empty, isPhone } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
@@ -21,9 +21,16 @@ import { pairRequests } from "../js/pair.js";
 import { firstPasskeyCard } from "../js/first-passkey.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
 import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
+import { createProjectInline, indexHistoryInline } from "../js/empty-actions.js";
+import { phoneNow } from "../js/now-phone.js";
+import { sessionHref, elsewhere, fromMac } from "../js/need-rows.js";
+
+/** Under 760 px Now is the phone's own layout (js/now-phone.js); this file draws the Deck's. */
+const phone = () => isPhone();
 
 /** @param {any} ctx */
 export default async function now(ctx) {
+  if (phone()) { phoneNow(ctx); return; }
   const date = h("div", { class: "lbl" }, today());
   const title = h("h1", { class: "h1 now-title" }, " ");
   const sub = h("p", { class: "muted" }, " ");
@@ -156,7 +163,8 @@ export default async function now(ctx) {
     if (f.error) { put(learned, headRow, empty("Memory is not available.", f.error)); return; }
     if (!facts.length) {
       const total = (f.data?.facts || []).length;
-      put(learned, headRow, h("div", { class: "empty" }, total ? `Nothing new today. Memory holds ${plural(total, "fact")}.` : "Nothing learned yet."));
+      put(learned, headRow, total ? h("div", { class: "empty" }, `Nothing new today. Memory holds ${plural(total, "fact")}.`)
+        : h("div", { class: "empty" }, "Nothing learned yet. Memory learns people and what links them from your indexed sessions.", indexHistoryInline()));
       return;
     }
     put(learned, headRow, h("div", { class: "rows" }, facts.slice(0, 8).map(x => factRow(x, projectOf, names))));
@@ -173,7 +181,9 @@ export default async function now(ctx) {
     const headRow = head("Recent projects");
     /** @type {HTMLElement} */ (headRow.firstChild).id = "recent-h";
     if (r.error) { put(recentProjects); return; }
-    if (!list.length) { put(recentProjects); return; }
+    // Only a Mac's projects: nothing to open here. None at all: say so, with the way to make one.
+    if (!list.length && (r.data?.projects || []).length) { put(recentProjects); return; }
+    if (!list.length) { put(recentProjects, headRow, h("div", { class: "empty" }, "No projects yet. A project is a folder, its threads and the people in it.", createProjectInline())); return; }
     put(recentProjects, headRow, h("div", { class: "rows" }, list.map(p =>
       h("div", { class: "work-row" },
         h("span", { class: "initial", "aria-hidden": "true" }, icon("projects", 14)),
@@ -187,7 +197,8 @@ export default async function now(ctx) {
 
 /** One held item: a draft at the Gate, or a question from a session. */
 function needCard(n) {
-  const where = [n.projectName, n.threadName].filter(Boolean).join(" · ");
+  // A Mac session's: "on <mac>", where its answer runs.
+  const where = [n.projectName, n.threadName, fromMac(n) ? `on ${n.machine || "your Mac"}` : null].filter(Boolean).join(" · ");
   const threadHref = n.thread ? (n.project ? `/projects/${encodeURIComponent(n.project)}/${encodeURIComponent(n.thread)}` : `/threads/${encodeURIComponent(n.thread)}`) : null;
   const status = h("div", { class: "small muted", role: "status" });
   const buttons = h("div", { class: "need-actions" });
@@ -201,10 +212,20 @@ function needCard(n) {
     try { await needs.answer(n, opt, f && f.changed() ? f.edited() : null); }
     catch (e) {
       put(status, problem(e));
-      for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
+      // The box cannot forward answers to this Mac (needs.js): the line says where; the list redraws the card.
+      if (!(/** @type {any} */ (e)?.elsewhere)) for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     }
   };
-  put(buttons,
+  // A question has choices, drawn where it was asked: the session's card answers it.
+  const qHref = n.kind === "question" ? sessionHref(n) : null;
+  // A Mac session's ask or question on a box that cannot forward the answer: no buttons here.
+  const mac = elsewhere(n);
+  if (mac) put(buttons, h("span", { class: "small muted" }, `Answer it on ${mac}`), h("div", { style: { flexGrow: "1" } }),
+    threadHref ? link(threadHref, { class: "link small", style: { color: "var(--text-2)" } }, "Open the thread") : null);
+  else if (n.kind === "question") put(buttons,
+    qHref ? link(qHref, { class: "btn btn-primary" }, "Answer in the session") : null,
+    h("button", { type: "button", class: "btn btn-ghost", onclick: () => act({ label: "Decline", decision: "deny" }) }, "Decline"));
+  else put(buttons,
     n.options.map((o, i) => h("button", { type: "button",
       class: "btn" + (o.primary ? " btn-primary" : "") + (i === n.options.length - 1 && !o.primary ? " btn-ghost" : ""),
       onclick: () => act(o) }, o.label)),
@@ -213,6 +234,7 @@ function needCard(n) {
 
   const heading = n.kind === "ask"
     ? h("h3", null, `May ${n.agent || "this session"} run `, h("code", { class: "need-cmd" }, n.command || ""), "?")
+    : n.kind === "question" ? h("h3", null, n.questions?.[0]?.question || n.title)
     : h("h3", null, n.title);
   return h("div", { class: "need-row" },
     h("div", { class: "need-time mono" }, clock(n.at)),

@@ -96,10 +96,19 @@ export function commandText(text) {
 /** "840 ms", "12.4 s", "3 min 05 s". */
 export function duration(ms) {
   if (ms == null || !isFinite(ms) || ms < 0) return "";
-  if (ms < 1000) return `${Math.round(ms)} ms`;
+  // Under a twentieth of a second says nothing a person reads ("0 ms done"): no time at all.
+  if (ms < 50) return "";
+  if (ms < 1000) return `${(ms / 1000).toFixed(1)} s`;
   if (ms < 60_000) return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)} s`;
   const m = Math.floor(ms / 60_000), s = Math.round((ms % 60_000) / 1000);
   return `${m} min ${String(s).padStart(2, "0")} s`;
+}
+
+/** A clock counting up: "0:42", "12:05". */
+export function elapsed(ms) {
+  if (ms == null || !isFinite(ms) || ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
 /** "910", "3.2k", "1.4M". */
@@ -122,7 +131,7 @@ export function turnParts(t) {
   const d = duration(t.duration_ms);
   if (d) parts.push(d);
   const tk = t.tokens || {};
-  if (tk.input || tk.output) parts.push(`${tokens(tk.input || 0)} in, ${tokens(tk.output || 0)} out`);
+  if (tk.input || tk.output) parts.push(`${tokens((tk.input || 0) + (tk.output || 0))} tokens`);
   const c = cost(t.cost_usd);
   if (c) parts.push(c);
   return parts;
@@ -144,14 +153,15 @@ export function langOf(path) {
 }
 
 /** The line a tool card's header shows next to the tool's name. */
-export function toolTitle(tool, input) {
+export function toolTitle(tool, input, cwd = null) {
   const i = input || {};
   const one = s => String(s ?? "").split("\n")[0].slice(0, 300);
+  const p = s => shortPath(one(s), cwd);
   switch (tool) {
-    case "Bash": return one(i.command);
-    case "Read": case "Write": case "Edit": case "MultiEdit": case "NotebookEdit": return one(i.file_path || i.notebook_path);
-    case "Grep": return one(i.pattern) + (i.path ? ` in ${one(i.path)}` : "");
-    case "Glob": return one(i.pattern) + (i.path ? ` in ${one(i.path)}` : "");
+    case "Bash": return inCwd(one(i.command), cwd);
+    case "Read": case "Write": case "Edit": case "MultiEdit": case "NotebookEdit": return p(i.file_path || i.notebook_path);
+    case "Grep": return one(i.pattern) + (i.path ? ` in ${p(i.path)}` : "");
+    case "Glob": return one(i.pattern) + (i.path ? ` in ${p(i.path)}` : "");
     case "WebFetch": return one(i.url);
     case "WebSearch": return one(i.query);
     case "TodoWrite": {
@@ -167,9 +177,54 @@ export function toolTitle(tool, input) {
   }
 }
 
-/** A tool block's state word: running (no output yet, not done), failed, or done. */
+/**
+ * A path as the session reads it: relative to the session's folder when inside it ("menu.md",
+ * "src/app.js", "." for the folder itself), else the whole path, shortened to its last three
+ * parts past five ("…/alex/Work/other/notes.md"). The full path goes in a title.
+ * @param {string|null|undefined} path @param {string|null|undefined} [cwd]
+ */
+export function shortPath(path, cwd = null) {
+  const s = String(path ?? "");
+  if (!s) return "";
+  const base = cwd ? String(cwd).replace(/\/+$/, "") : "";
+  if (base && s === base) return ".";
+  if (base && s.startsWith(base + "/")) return s.slice(base.length + 1);
+  const parts = s.split("/").filter(Boolean);
+  return s.startsWith("/") && parts.length > 5 ? "…/" + parts.slice(-3).join("/") : s;
+}
+
+/** A command with the session's folder dropped where it names a path inside it ("cat src/a.js"). */
+function inCwd(cmd, cwd) {
+  const base = cwd ? String(cwd).replace(/\/+$/, "") : "";
+  if (!base || !cmd.includes(base)) return cmd;
+  return cmd.split(base + "/").join("").split(base).join(".");
+}
+
+/**
+ * The verb a tool row leads with (tool-row.md): past tense done, the -ing form while it runs.
+ * Never the SDK's names ("Bash", "TodoWrite"). An MCP tool reads its own name, words spaced.
+ * @param {string} tool @param {string} state from toolState, or "waiting"
+ */
+export function toolVerb(tool, state) {
+  const now = state === "running" || state === "waiting";
+  const V = /** @type {Record<string, [string, string]>} */ ({
+    Read: ["Read", "Reading"], Edit: ["Edited", "Editing"], MultiEdit: ["Edited", "Editing"], NotebookEdit: ["Edited", "Editing"],
+    Write: ["Wrote", "Writing"], Bash: ["Ran", "Running"], Grep: ["Searched", "Searching"], Glob: ["Searched", "Searching"],
+    WebFetch: ["Fetched", "Fetching"], WebSearch: ["Searched the web", "Searching the web"], Task: ["Delegated", "Delegating"],
+    Agent: ["Delegated", "Delegating"], TodoWrite: ["Todos", "Todos"], AskUserQuestion: ["Asked", "Asking"],
+    ExitPlanMode: ["Plan", "Plan"], BashOutput: ["Read output", "Reading output"], KillShell: ["Stopped a task", "Stopping a task"],
+    KillBash: ["Stopped a task", "Stopping a task"],
+  });
+  const v = V[tool];
+  if (v) return v[now ? 1 : 0];
+  const name = String(tool || "tool").replace(/^mcp__.+?__/, "").replace(/_/g, " ");
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** A tool block's state word: running (no output yet, not done), failed, canceled (the turn was stopped), or done. */
 export function toolState(b) {
   if (b.error) return "failed";
+  if (b.canceled) return "canceled";
   if (b.output == null && !b.done_ts && !b.done) return "running";
   return "done";
 }

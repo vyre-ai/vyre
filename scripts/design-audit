@@ -1,0 +1,64 @@
+#!/usr/bin/env node
+// @ts-check
+// design-audit: renders every Design A board in headless Chrome and fails on any text under WCAG AA,
+// any text outside its frame or cut by a clipping parent, and any size, weight, family or colour
+// outside the system (docs/design/system/audit.md). The same check the design team runs by hand.
+//
+//   node scripts/design-audit [Board ...]      all boards, or the named ones
+//   CHROME=/path/to/chrome node scripts/design-audit
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const PROJECT = path.join(REPO, "docs/design/one-app/project");
+const SUPPORT = path.join(REPO, "docs/design/one-app/render/support.js");
+
+function chrome() {
+  const candidates = [process.env.CHROME, "/usr/bin/google-chrome", "/usr/bin/chromium", "/usr/bin/chromium-browser",
+    "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"].filter(Boolean);
+  for (const c of candidates) if (fs.existsSync(/** @type {string} */ (c))) return /** @type {string} */ (c);
+  throw new Error("no Chrome found: set CHROME to a Chrome or Chromium binary");
+}
+
+/** A board's own size, from its $preview. */
+function size(file) {
+  const m = /"\$preview":\{"width":(\d+),"height":(\d+)\}/.exec(fs.readFileSync(file, "utf8"));
+  return m ? [Number(m[1]), Number(m[2])] : [1440, 900];
+}
+
+const bin = chrome();
+const work = fs.mkdtempSync(path.join(os.tmpdir(), "design-audit-"));
+for (const f of fs.readdirSync(PROJECT)) fs.copyFileSync(path.join(PROJECT, f), path.join(work, f));
+fs.copyFileSync(SUPPORT, path.join(work, "support.js"));
+
+const names = process.argv.slice(2).length
+  ? process.argv.slice(2)
+  : fs.readdirSync(PROJECT).filter(f => f.endsWith(".dc.html")).map(f => f.replace(/\.dc\.html$/, "")).sort();
+
+let failed = 0;
+for (const name of names) {
+  const file = path.join(work, `${name}.dc.html`);
+  const [w, h] = size(file);
+  let dom = "";
+  try {
+    dom = execFileSync(bin, ["--headless=new", "--no-sandbox", "--disable-gpu", "--hide-scrollbars", "--allow-file-access-from-files",
+      "--force-device-scale-factor=1", "--virtual-time-budget=10000", `--window-size=${w},${h + 200}`, "--dump-dom", `file://${file}`],
+      { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"], timeout: 120_000 });
+  } catch (e) { dom = String(/** @type {any} */ (e).stdout || ""); }
+  const m = /<pre id="dc-audit"[^>]*>([\s\S]*?)<\/pre>/.exec(dom);
+  if (!m) { console.log(`FAIL ${name}: no audit (the board did not render)`); failed++; continue; }
+  const a = JSON.parse(m[1].replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&"));
+  const off = a.offscale || [];
+  const bad = a.fails.length + a.clipped.length + off.length;
+  console.log(`${bad ? "FAIL" : "ok  "} ${name}: ${a.fails.length} contrast, ${a.clipped.length} clipped, ${off.length} off-system`);
+  for (const f of a.fails) console.log(`     contrast ${f.ratio}<${f.min} "${f.text}" ${f.color} on ${f.bg}`);
+  for (const c of a.clipped.slice(0, 8)) console.log(`     clipped "${c}"`);
+  for (const o of off.slice(0, 12)) console.log(`     off-system ${o}`);
+  if (bad) failed++;
+}
+fs.rmSync(work, { recursive: true, force: true });
+console.log(`${names.length - failed} of ${names.length} boards pass`);
+process.exit(failed ? 1 : 0);

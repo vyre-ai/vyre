@@ -5,11 +5,23 @@
 //
 //   node scripts/eval-answer.js          the synthetic personal world, as a report
 //   node scripts/eval-answer.js --json   the same, as JSON
+//   node scripts/eval-answer.js --record  read the world's turns with the fast model (`claude -p`) into
+//            test/eval/reads/<world>.json; by default the reads are replayed from there, no model
+//   node scripts/eval-answer.js --no-model  the rules alone
+//   node scripts/eval-answer.js --claims <text>  also list the claims that name it (not for sealed)
+//   node scripts/eval-answer.js --facts  also list the personal facts the world left (not for sealed)
 //   node scripts/eval-answer.js --keyword  without the dense index (keyword recall only)
 //   node scripts/eval-answer.js --world heldout  the held-out world (test/fixtures/personal-heldout.js
 //            and test/eval/answer-heldout.json), written before reading the rules
 //   node scripts/eval-answer.js --world blind  the blind world (test/fixtures/personal-blind.js and
 //            test/eval/answer-blind.json), written without seeing the rules or the other worlds
+//   node scripts/eval-answer.js --world fresh  the fresh world (test/fixtures/personal-fresh.js and
+//            test/eval/answer-fresh.json), sealed: written without the rules or any other world's
+//            body, and not to be read by whoever tunes the rules
+//   node scripts/eval-answer.js --world sealed  the second sealed world (test/fixtures/personal-sealed.js
+//            and test/eval/answer-sealed.json), written the same way; no --facts, --claims or --ask
+//   node scripts/eval-answer.js --world trust  source trust (test/fixtures/personal-trust.js): the
+//            user's own words against dev sessions, subagents, injected blocks and Claude's words
 //
 // Exits non-zero when memory.answer misses the bar: overall 0.9 or more, no confident wrong
 // answer, p95 under 150 ms.
@@ -20,7 +32,7 @@
 // recall.search and recall.thread, curates, and then asks every question in
 // test/eval/answer-gold.json of two answerers:
 //
-//   before   today's Capsule path (local/capsule/lib/bridge.js recall()): memory.relevant, then the
+//   before   today's Capsule path (the Capsule's recall()): memory.relevant, then the
 //            user's own words through recall.search, rankSaid and yourAnswer.
 //   answer   the memory module's memory.answer tool. Reported as unsupported, never thrown, when
 //            the module has no such tool yet.
@@ -39,17 +51,23 @@ import { seedRecall } from "../test/fixtures/corpus.js";
 import { PERSONAL_SESSIONS, ME, NOW, SCRATCH } from "../test/fixtures/personal-world.js";
 import * as heldout from "../test/fixtures/personal-heldout.js";
 import * as blind from "../test/fixtures/personal-blind.js";
+import * as fresh from "../test/fixtures/personal-fresh.js";
+import * as sealed from "../test/fixtures/personal-sealed.js";
+import * as trust from "../test/fixtures/personal-trust.js";
 import { search, thread } from "../core/recall/search.js";
 import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
+import { claudeOnce, modelFor, VERSION } from "../core/memory/personal/reader.js";
 import { fakeEmbedder } from "../core/recall/testing.js";
-import { rankSaid, yourAnswer } from "../local/capsule/lib/said.js";
-import { words } from "../local/capsule/lib/route.js";
+import { rankSaid, yourAnswer, words } from "./lib/said.js";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const GOLD_FILE = path.join(ROOT, "test/eval/answer-gold.json");
 export const HELDOUT_GOLD_FILE = path.join(ROOT, "test/eval/answer-heldout.json");
 export const BLIND_GOLD_FILE = path.join(ROOT, "test/eval/answer-blind.json");
+export const FRESH_GOLD_FILE = path.join(ROOT, "test/eval/answer-fresh.json");
+export const SEALED_GOLD_FILE = path.join(ROOT, "test/eval/answer-sealed.json");
+export const TRUST_GOLD_FILE = path.join(ROOT, "test/eval/answer-trust.json");
 
 /**
  * The worlds the evaluation knows: the one the rules were written against, and a held-out one.
@@ -59,6 +77,10 @@ export const WORLDS = {
   personal: () => ({ gold: JSON.parse(fs.readFileSync(GOLD_FILE, "utf8")), sessions: PERSONAL_SESSIONS, me: ME, now: NOW, scratch: SCRATCH }),
   heldout: () => ({ gold: JSON.parse(fs.readFileSync(HELDOUT_GOLD_FILE, "utf8")), sessions: heldout.HELDOUT_SESSIONS, me: heldout.ME, now: heldout.NOW, scratch: heldout.SCRATCH }),
   blind: () => ({ gold: JSON.parse(fs.readFileSync(BLIND_GOLD_FILE, "utf8")), sessions: blind.BLIND_SESSIONS, me: blind.ME, now: blind.NOW, scratch: blind.SCRATCH }),
+  fresh: () => ({ gold: JSON.parse(fs.readFileSync(FRESH_GOLD_FILE, "utf8")), sessions: fresh.FRESH_SESSIONS, me: fresh.ME, now: fresh.NOW, scratch: fresh.SCRATCH }),
+  sealed: () => ({ gold: JSON.parse(fs.readFileSync(SEALED_GOLD_FILE, "utf8")), sessions: sealed.SEALED_SESSIONS, me: sealed.ME, now: sealed.NOW, scratch: sealed.SCRATCH }),
+  // Source trust: only the user's own words teach personal facts (ADR 0034, the "Jordan" trap).
+  trust: () => ({ gold: JSON.parse(fs.readFileSync(TRUST_GOLD_FILE, "utf8")), sessions: trust.TRUST_SESSIONS, me: trust.ME, now: trust.NOW, scratch: trust.SCRATCH }),
 };
 /** An answer at this confidence or more is one the user is told as a fact. */
 export const CONFIDENT = 0.5;
@@ -87,12 +109,19 @@ const pct = (xs, q) => { if (!xs.length) return null; const s = [...xs].sort((a,
  * @param {{ q: string, expect: string[]|null, kind: string }[]} questions
  * @param {{ answer: string|null, confidence: number|null, ms: number }[]} got
  */
+/** What must not change between two asks of the same question: everything but the time taken. */
+export const stable = r => JSON.stringify({ a: r.answer ?? null, c: r.confidence ?? null, f: (r.facts || []).map(x => x.id ?? null), s: (r.sources || []).map(x => `${x.session}:${x.seq}`) });
+
+/** Grounded or abstain (ADR 0034): an answer told as a fact names the facts or turns it came from. */
+const grounded = r => Boolean((r.facts && r.facts.length) || (r.sources && r.sources.length) || r.from === 0 && r.kind === "fact");
+
 export function score(questions, got) {
-  let known = 0, right = 0, unknown = 0, silent = 0, confidentWrong = 0;
+  let known = 0, right = 0, unknown = 0, silent = 0, confidentWrong = 0, ungrounded = 0;
   const failures = [];
   questions.forEach((g, i) => {
     const r = got[i];
     const conf = typeof r.confidence === "number" ? r.confidence : 0;
+    if (r.answer && conf >= CONFIDENT && !grounded(r)) ungrounded++;
     if (g.expect) {
       known++;
       const ok = correct(r.answer, g.expect);
@@ -116,6 +145,7 @@ export function score(questions, got) {
     precision_at_1: round(known ? right / known : null),
     no_answer_accuracy: round(unknown ? silent / unknown : null),
     confident_wrong: confidentWrong,
+    ungrounded,
     overall: round(questions.length ? (right + silent) / questions.length : null),
     p50_ms: round(pct(ms, 0.5)),
     p95_ms: round(pct(ms, 0.95)),
@@ -131,11 +161,12 @@ export function score(questions, got) {
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {{ me: any, embedder: any, dense: any }} opts
  */
-async function startMemory(db, { me, embedder, dense }) {
+async function startMemory(db, { me, embedder, dense, runner = null }) {
   const tools = new Map();
   const ctx = {
     name: "memory",
-    config: { me, role: "local" },
+    // VYRE_EVAL_PASSES: readings per batch when recording (config.memory.model.passes).
+    config: { me, role: "local", memory: { model: { passes: Number(process.env.VYRE_EVAL_PASSES) || 2 } } },
     paths: {},
     store: { db, migrate: () => {} },
     log: () => {},
@@ -153,6 +184,8 @@ async function startMemory(db, { me, embedder, dense }) {
       return { error: { code: "no_such_tool", message: `${tool} is not in the evaluation` } };
     },
     tool: (name, def) => tools.set(name, def),
+    // The reader's model: `claude -p` when recording, none when replaying (reads come from the fixture).
+    memoryRunner: runner,
   };
   const mod = (await import("../core/memory/index.js")).default;
   const handle = await mod.start(ctx);
@@ -194,7 +227,7 @@ const now = () => Number(process.hrtime.bigint()) / 1e6;
 
 /**
  * The answerers. Each takes a question and returns { answer, confidence, ms }. `before` is the
- * Capsule's recall() in local/capsule/lib/bridge.js, step for step, minus the page.
+ * Electron Capsule's recall() (bridge.js), step for step, minus the page.
  * @typedef {(q: string) => Promise<{ answer: string|null, confidence: number|null, ms: number, via?: string|null }>} Answerer
  */
 function answerers(mem, scratch = SCRATCH) {
@@ -224,7 +257,13 @@ function answerers(mem, scratch = SCRATCH) {
       let r;
       try { r = await mem.call("memory.answer", { q }); } catch (e) { return { answer: null, confidence: null, ms: now() - t0, via: null, error: /** @type {Error} */ (e).message }; }
       const d = r && typeof r === "object" && "data" in r ? r.data : r;
-      return { answer: d?.answer ?? null, confidence: typeof d?.confidence === "number" ? d.confidence : null, ms: now() - t0, via: d?.via ?? null };
+      // What an answer stood on, without its words: each fact's relation and the methods of the
+      // claims behind it (rule, indirect, lower, model, assistant), for the sealed world's report.
+      const db = mem.ctx.store.db;
+      const basis = (d?.facts || []).map(f => ({ rel: f.rel, methods: [...new Set(/** @type {any[]} */ (db.prepare(`SELECT c.method FROM memory_me_evidence v
+        JOIN memory_me_claims c ON c.session = v.session AND c.seq = v.seq AND c.rel = ? WHERE v.fact = ?`).all(f.rel, String(f.id))).map(x => String(x.method)))] }));
+      return { answer: d?.answer ?? null, confidence: typeof d?.confidence === "number" ? d.confidence : null, ms: now() - t0, via: d?.via ?? null, basis,
+        kind: d?.kind ?? null, from: d?.from ?? 0, facts: d?.facts || [], sources: d?.sources || [] };
     };
   }
   return out;
@@ -258,10 +297,31 @@ export async function runEval(opts = {}) {
     const dense = embedder ? new Dense(db) : null;
     if (embedder) await embedAll(db, embedder);
     const embedMs = now() - t0;
-    mem = await startMemory(db, { me: opts.me || ME, embedder, dense });
+    // The reader's reads: replayed from test/eval/reads/<world>.json, recorded with --record,
+    // or left out with --no-model (the rules alone).
+    const readsFile = path.join(ROOT, "test/eval/reads", `${opts.world || "personal"}.json`);
+    const mode = opts.model || "replay";
+    const runner = mode === "record" ? claudeOnce({ cwd: dir }) : null;
+    mem = await startMemory(db, { me: opts.me || ME, embedder, dense, runner });
+    if (mode !== "off" && fs.existsSync(readsFile)) {
+      const kept = JSON.parse(fs.readFileSync(readsFile, "utf8"));
+      if (kept.version === VERSION) {
+        const ins = db.prepare("INSERT OR REPLACE INTO memory_me_reads (hash, v, at, facts, usd) VALUES (?,?,?,?,?)");
+        for (const [h, f] of Object.entries(kept.reads || {})) ins.run(h, VERSION, 0, JSON.stringify(f), 0);
+      }
+    }
     const t1 = now();
     await mem.call("memory.curate", { full: true });
+    let recorded = null;
+    if (mode === "record") {
+      const got = await mem.call("memory.read", { now: true, max_runs: 1000 });
+      recorded = { ...got.ran, ...(got.ran.waiting ? { why: got.status.last?.result ?? null } : {}) };
+      const reads = Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT hash, facts FROM memory_me_reads WHERE v = ? ORDER BY hash").all(VERSION)).map(r => [String(r.hash), JSON.parse(String(r.facts))]));
+      fs.mkdirSync(path.dirname(readsFile), { recursive: true });
+      fs.writeFileSync(readsFile, JSON.stringify({ version: VERSION, model: modelFor({}), reads }, null, 1) + "\n");
+    }
     const curateMs = now() - t1;
+    const waitingTurns = Number(/** @type {any} */ (db.prepare("SELECT COUNT(DISTINCT hash) n FROM memory_me_queue").get()).n);
     const count = sql => Number(/** @type {any} */ (db.prepare(sql).get()).n);
     const world = {
       sessions: count("SELECT COUNT(*) n FROM recall_sessions"),
@@ -270,9 +330,15 @@ export async function runEval(opts = {}) {
       embedder: embedder ? "fake (hashed words)" : "none (keyword only)",
       questions: questions.length,
       unknowns: questions.filter(q => !q.expect).length,
+      model: mode, unread_turns: waitingTurns, ...(recorded ? { recorded } : {}),
       embed_ms: round(embedMs),
       curate_ms: round(curateMs),
     };
+    // --facts: the personal facts the world left, for working on the rules (never on the sealed world).
+    if (opts.facts) world.facts = /** @type {any[]} */ (db.prepare(`SELECT subj, rel, obj, obj_label, confidence, current, sessions,
+      (SELECT group_concat(DISTINCT c.method) FROM memory_me_claims c WHERE c.rel = f.rel AND c.obj = f.obj) methods FROM memory_me_facts f ORDER BY subj, rel, confidence DESC`).all());
+    // --claims <text>: every claim whose subject or object has that text, with where it came from.
+    if (opts.claims) world.claims = /** @type {any[]} */ (db.prepare("SELECT session, seq, subj, rel, obj, conf, method FROM memory_me_claims WHERE subj LIKE ? OR obj LIKE ? ORDER BY ts").all(`%${opts.claims}%`, `%${opts.claims}%`));
     const all = answerers(mem, opts.scratch || SCRATCH);
     /** @type {Record<string, any>} */
     const results = {};
@@ -281,7 +347,13 @@ export async function runEval(opts = {}) {
       if (!fn) { results[name] = { supported: false, reason: `the memory module has no ${name === "answer" ? "memory.answer" : name} tool yet` }; continue; }
       const got = [];
       for (const g of questions) got.push(await fn(g.q));
-      results[name] = { supported: true, ...score(questions, got), answers: questions.map((g, i) => ({ q: g.q, answer: got[i].answer, confidence: round(got[i].confidence), via: got[i].via ?? null })) };
+      // Determinism (ADR 0034): the same question over the same facts gives the same answer,
+      // confidence and sources, every time. Asked twice more.
+      let inconsistent = 0;
+      if (name === "answer") for (let k = 0; k < 2; k++) for (let i = 0; i < questions.length; i++) {
+        if (stable(await fn(questions[i].q)) !== stable(got[i])) inconsistent++;
+      }
+      results[name] = { supported: true, ...score(questions, got), inconsistent, answers: questions.map((g, i) => ({ q: g.q, answer: got[i].answer, confidence: round(got[i].confidence), via: got[i].via ?? null, basis: got[i].basis ?? [] })) };
     }
     return { world, answerers: results };
   } finally {
@@ -299,6 +371,7 @@ function print(r) {
   const out = [];
   out.push(`eval-answer: ${w.sessions} sessions, ${w.turns} turns, ${w.vectors} vectors (${w.embedder}); ${w.questions} questions, ${w.unknowns} with no answer`);
   out.push(`  embedded in ${Math.round(w.embed_ms)} ms, curated in ${Math.round(w.curate_ms)} ms`);
+  out.push(`  reader: ${w.model}, ${w.unread_turns} turns with no read${w.recorded ? `; recorded ${w.recorded.read} turns in ${w.recorded.runs} runs for $${w.recorded.usd}${w.recorded.read ? ` ($${Math.round(w.recorded.usd / w.recorded.read * 1e6) / 1e3} per 1,000 turns)` : ""}${w.recorded.waiting ? `, stopped: ${w.recorded.waiting}${w.recorded.why ? ` (${w.recorded.why})` : ""}` : ""}` : ""}`);
   for (const [name, a] of Object.entries(r.answerers)) {
     out.push("");
     if (!a.supported) { out.push(`${name}: unsupported (${a.reason})`); continue; }
@@ -306,6 +379,8 @@ function print(r) {
     out.push(`  precision@1         ${a.precision_at_1}`);
     out.push(`  no-answer accuracy  ${a.no_answer_accuracy}`);
     out.push(`  confident-wrong     ${a.confident_wrong}`);
+    if (a.ungrounded != null) out.push(`  ungrounded          ${a.ungrounded}`);
+    if (a.inconsistent != null && name === "answer") out.push(`  inconsistent        ${a.inconsistent} (each question asked three times)`);
     out.push(`  overall             ${a.overall}`);
     out.push(`  latency p50/p95     ${a.p50_ms} / ${a.p95_ms} ms`);
     out.push(`  failures (${a.failures.length}):`);
@@ -318,7 +393,7 @@ function print(r) {
 }
 
 /** The bar memory.answer must clear (test/eval/answer-eval.test.js holds it too). */
-export const BAR = { overall: 0.9, confident_wrong: 0, p95_ms: 150 };
+export const BAR = { overall: 0.9, confident_wrong: 0, p95_ms: 150, ungrounded: 0, inconsistent: 0 };
 
 /** Why the answer bar fails, or [] when it holds. */
 export function barFailures(a) {
@@ -327,13 +402,25 @@ export function barFailures(a) {
   if (!(a.overall >= BAR.overall)) out.push(`overall ${a.overall} is under ${BAR.overall}`);
   if (a.confident_wrong > BAR.confident_wrong) out.push(`${a.confident_wrong} confident wrong answer(s)`);
   if (!(a.p95_ms < BAR.p95_ms)) out.push(`p95 ${a.p95_ms} ms is not under ${BAR.p95_ms} ms`);
+  if (a.ungrounded > BAR.ungrounded) out.push(`${a.ungrounded} answer(s) told as fact with no fact or turn behind them`);
+  if (a.inconsistent > BAR.inconsistent) out.push(`${a.inconsistent} answer(s) changed when asked again`);
   return out;
 }
 
 async function main(argv) {
   const wi = argv.indexOf("--world");
   const world = wi >= 0 ? argv[wi + 1] : "personal";
-  const r = await runEval({ world, vectors: !argv.includes("--keyword") });
+  if (argv.includes("--facts") && world === "sealed") throw new Error("the sealed world is sealed: no --facts");
+  const model = argv.includes("--record") ? "record" : argv.includes("--no-model") ? "off" : "replay";
+  const ai = argv.indexOf("--ask");
+  if (ai >= 0 && world === "sealed") throw new Error("the sealed world is sealed: no --ask");
+  const ci = argv.indexOf("--claims");
+  if (ci >= 0 && world === "sealed") throw new Error("the sealed world is sealed: no --claims");
+  const r = await runEval({ world, vectors: !argv.includes("--keyword"), facts: argv.includes("--facts"), model, claims: ci >= 0 ? argv[ci + 1] : null,
+    ...(ai >= 0 ? { gold: { questions: [{ q: argv[ai + 1], expect: null }] }, full: true } : {}) });
+  if (ai >= 0) { process.stdout.write(JSON.stringify(r.answerers.answer.answers[0], null, 1) + "\n"); return; }
+  if (r.world.claims) for (const c of r.world.claims) process.stdout.write(`  ${c.subj} ${c.rel} ${c.obj} @${round(c.conf)} ${c.method} ${String(c.session).slice(-4)}:${c.seq}\n`);
+  if (r.world.facts) for (const f of r.world.facts) process.stdout.write(`  ${f.current ? " " : "x"} ${f.subj} ${f.rel} ${f.obj_label || f.obj} @${round(f.confidence)} (${f.sessions}) ${f.methods || ""}\n`);
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 2) + "\n"); else print(r);
   // CI runs this: a memory.answer under the bar fails the build.
   const bad = barFailures(r.answerers.answer);

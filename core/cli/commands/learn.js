@@ -9,11 +9,13 @@
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { callAsPerson } from "../presence.js";
-import { json, emit, failTool, usage, EXIT } from "../kit.js";
+import { json, emit, fail as kitFail, failTool, usage, EXIT } from "../kit.js";
 
 const LEVELS = ["remind", "ask", "block"];
 const USAGE = "vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills] [--json]";
 const fail = r => failTool(r.error);
+/** A line that says why nothing was done: as it always read, or the JSON error under --json. */
+const say = (text, message, code = "bad_input") => { if (json()) kitFail(message, { code }); else out(text); };
 
 /** A lesson's effect, in a word. */
 const effect = s => (!s ? "" : s.verdict === "working" ? signal("working") : s.verdict === "not working" ? beacon("not working") : dim("measuring"));
@@ -52,7 +54,7 @@ async function current(id) {
   const all = await call("learn.lessons", { status: "all" });
   if (all.error) { fail(all); return null; }
   const l = all.data.find(x => x.id === id);
-  if (!l) { out(beacon(`  no lesson ${id}`)); return null; }
+  if (!l) { kitFail(`no lesson ${id}`, { code: "not_found" }); return null; }
   return l;
 }
 
@@ -71,10 +73,10 @@ async function scopeOf(args) {
     if (name) return { project: name };
     const r = await call("projects.of", { cwd: process.cwd() });
     if (r.data && r.data.slug) return { project: r.data.slug };
-    out(`  this folder is in no project ${dim("· vyre learn scope <id> project <slug>")}`);
+    say(`  this folder is in no project ${dim("· vyre learn scope <id> project <slug>")}`, "this folder is in no project; vyre learn scope <id> project <slug>");
     return null;
   }
-  out("  vyre learn scope <id> all|project [slug]|agent <name>");
+  say("  vyre learn scope <id> all|project [slug]|agent <name>", "vyre learn scope <id> all|project [slug]|agent <name>");
   return null;
 }
 
@@ -87,11 +89,11 @@ async function relaxOf(l, args) {
   if (what === "pin") return { pinned: true };
   if (what === "when" && rest.length) return { when: rest.join(" ") };
   if (what === "paths" && rest[0]) {
-    if (!l.check) { out("  that lesson has no check to narrow"); return null; }
+    if (!l.check) { say("  that lesson has no check to narrow", "that lesson has no check to narrow"); return null; }
     return { check: { ...l.check, paths: rest[0] } };
   }
   if (what === "scope") { const scope = await scopeOf(rest); return scope ? { scope } : null; }
-  out(`  ${usage}`);
+  say(`  ${usage}`, usage);
   return null;
 }
 
@@ -99,6 +101,7 @@ async function relaxOf(l, args) {
 async function signals() {
   const r = await call("learn.signals", { limit: 20 });
   if (r.error) return fail(r);
+  if (json()) return emit(r.data);
   const { counts, repeats, corrected, jobs } = r.data;
   if (!counts.length && !jobs.length) { out(dim("  nothing heard yet")); return 0; }
   out(`\n  ${signal("signals")} ${dim(counts.map(c => `${c.kind} ${c.n}`).join(" · "))}`);
@@ -124,8 +127,9 @@ async function stats() {
   const [l, s] = [await call("learn.lessons", { status: "active" }), await call("learn.stats", {})];
   if (l.error) return fail(l);
   if (s.error) return fail(s);
-  if (!l.data.length) { out(dim("  no active lessons")); return 0; }
   const by = new Map(s.data.map(x => [x.id, x]));
+  if (json()) return emit(l.data.map(x => ({ ...x, stats: by.get(x.id) ?? null })));
+  if (!l.data.length) { out(dim("  no active lessons")); return 0; }
   out("");
   for (const x of l.data) {
     const st = by.get(x.id);
@@ -142,6 +146,7 @@ async function skills(args) {
   if (!sub) {
     const r = await call("learn.skills", {});
     if (r.error) return fail(r);
+    if (json()) return emit(r.data);
     const { skills: list, drift } = r.data;
     const live = list.filter(s => s.status === "proposed" || s.status === "installed");
     if (!live.length) { out(dim("  no skills yet · Vyre proposes one when a procedure repeats cleanly in 3 sessions")); return 0; }
@@ -162,7 +167,8 @@ async function skills(args) {
     const r = await call("learn.skills", {});
     if (r.error) return fail(r);
     const s = r.data.skills.find(x => x.id === id);
-    if (!s) { out(beacon(`  no skill ${id}`)); return 1; }
+    if (!s) return kitFail(`no skill ${id}`, { code: "not_found" });
+    if (json()) return emit(s);
     out(`\n  ${bold(String(s.id))} ${s.name} ${dim(`[${s.status}] ${where(s.scope)}${s.path ? ` · ${s.path}` : ""}`)}\n`);
     out(s.body);
     return 0;
@@ -177,12 +183,14 @@ async function skills(args) {
     if (flags.includes("--private")) Object.assign(input, { private: true });
     const r = await callAsPerson("learn.skill-install", input);
     if (r.error) return fail(r);
+    if (json()) return emit(r.data);
     out(`  installed skill ${bold(String(r.data.id))} ${dim(r.data.path)}`);
     return 0;
   }
   const tool = sub === "retire" ? "learn.skill-retire" : "learn.skill-dismiss";
   const r = await callAsPerson(tool, { id });
   if (r.error) return fail(r);
+  if (json()) return emit(r.data);
   out(`  ${sub === "retire" ? "retired" : "dismissed"} skill ${bold(String(r.data.id))}`);
   return 0;
 }
@@ -222,6 +230,7 @@ export default {
       const l = await current(id);
       if (!l) return 1;
       const s = await call("learn.stats", { id });
+      if (json()) return emit({ ...l, stats: s.error ? null : s.data ?? null });
       out("");
       line(l, s.data);
       out(dim(`      ${where(l.scope)} · when ${l.when}${l.max_level ? ` · at most ${l.max_level}` : ""}${l.pinned ? " · pinned" : ""} · from ${l.source && l.source.kind}`));
