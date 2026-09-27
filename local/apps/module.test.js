@@ -421,3 +421,16 @@ test("module: Apple words inside a message stay in the message", async t => {
   const note = (await reg.call("apps.route", { text: "note in apple notes: buy milk" }, "capsule")).data;
   assert.equal(note.app, "Notes");
 });
+
+test("module: apps.list says what Vyre can do in an app it has words for, and nothing for one it has not", async t => {
+  const { reg, home } = await start(t, { apps: { adapters: [whatsapp()] } });
+  const dir = path.join(home, "Applications");
+  fakeApp(dir, "WhatsApp", "net.whatsapp.WhatsApp");
+  fakeApp(dir, "Northwind Bakery POS", "com.example.pos");
+  const rows = (await reg.call("apps.list", { limit: 100 }, "capsule")).data.apps;
+  const wa = rows.find((/** @type {any} */ r) => r.name === "WhatsApp");
+  assert.deepEqual({ actions: wa.actions, nests: wa.nests, tier: wa.tier }, { actions: ["send"], nests: true, tier: "ax" });
+  const pos = rows.find((/** @type {any} */ r) => r.name === "Northwind Bakery POS");
+  assert.equal(pos.actions, undefined);
+  assert.equal(pos.nests, undefined);
+});

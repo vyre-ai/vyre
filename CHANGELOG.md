@@ -25,6 +25,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   one?"), never sent to whichever the app finds first. "in apple notes" inside a message stays in
   the message, and "whatsapp juno running late" drops "juno" from the text only when juno is
   someone in the app.
+- `apps.list` rows carry `actions` and `nests` (the app holds people or notes to pick) for an app
+  Vyre has words for, so the Capsule's `@App` picker can say so.
 - `vyre apps` asks on a terminal: the question, the Did you mean line and numbered candidates;
   a number, a name, or Enter for the Did you mean, up to three rounds. An empty answer, "no" or
   Ctrl-D sends nothing, and after a question the preview needs one more Enter before the send. Off a terminal, or with `--json`, it prints the question (as JSON with `--json`) and

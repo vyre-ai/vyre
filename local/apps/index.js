@@ -88,14 +88,17 @@ export default {
     };
 
     ctx.tool("apps.list", {
-      description: "Apps installed on this Mac: name, bundle id, path, and tier (how Vyre reaches it: connector, intents, script, or ax for its UI). Filter with q; names that start with q come first.",
+      description: "Apps installed on this Mac: name, bundle id, path, and tier (how Vyre reaches it: connector, intents, script, or ax for its UI); actions and nests (has things inside to pick) when Vyre has words for the app. Filter with q; names that start with q come first.",
       input: { type: "object", properties: { q: str, limit: { type: "integer", description: `Most rows, default 20, at most ${LIST_MAX}.` } } },
       async run({ q = "", limit = 20 }) {
         const rows = await apps.find({ q, limit: Math.min(LIST_MAX, Math.max(1, limit)) });
         return {
           apps: rows.map(r => {
             const a = registry.find(r.name) || registry.find(r.bundleId);
-            return { name: r.name, bundleId: r.bundleId, path: r.path, tier: a ? a.tier : "ax" };
+            // What Vyre can do in it, for a picker: its actions, and whether it holds people or
+            // notes to pick (nests). Absent for an app Vyre has no adapter for yet.
+            return { name: r.name, bundleId: r.bundleId, path: r.path, tier: a ? a.tier : "ax",
+              ...(a ? { actions: Object.keys(a.actions), nests: typeof a.targets === "function" } : {}) };
           }),
         };
       },
