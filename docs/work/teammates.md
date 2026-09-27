@@ -19,10 +19,12 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   boards (work/app-design), Paseo's agent tools and lifecycle docs.
 
 ## Doing
-- Waiting on the user's answers to the ADR's seven open questions, relayed by the lead.
+- User decisions folded in (auto-merging integrator, sharing and assistant-assigned teammates,
+  one per role, notes per project folder, offered conversion, 200 turns a day, Balanced default).
+  Docs tests NOT rerun: testbox freeze by the lead; rerun docs:ref and test/docs-*.test.js after it.
 
 ## Next
-1. Fold the user's answers into ADR 0031.
+1. After the testbox freeze: docs:ref, docs tests, commit the index.
 2. When ADR 0030 steps 1 to 3 are on main: migration step 1 (core/team, fake driver), then 2 to 8.
 
 ## Needs from others
@@ -34,8 +36,8 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 - app-design: the project Limits settings screen (sent 2026-09-27).
 - app-design: the Agents place tabs (Now, Inbox, Results, Notes, Setup), the summon box, the
   Needs kinds "New teammate", "Merge", "Stuck".
-- vault: `vault.agent.grant` on a teammate's agent name; revoke on removal.
-- The user: the seven open questions in ADR 0031.
+- vault: `vault.agent.grant` on a teammate's agent name; revoke on removal; a `project` column on
+  `vault_agent_grants`, checked on release for shared teammates.
 
 ## Changed contracts
 - None yet (design only). Proposed: module `team`, tables `agents_teammates`, `team_requests`,

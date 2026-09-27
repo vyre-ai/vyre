@@ -61,11 +61,12 @@ what we do not:
 
 ## Decision
 
-**A teammate is a Vyre agent bound to one project with one role. It has one long-lived session,
-a notes file that is its memory of record, and an inbox that serialises work from every session,
-person and teammate in the project. Any session in the project summons it with an in-process
-tool. Delegating to a teammate is the default; subagents are for one-offs. A teammate never
-holds person-only powers, and a person creates it.**
+**A teammate is a Vyre agent with one role, owned by one project and optionally shared with
+others. It has a notes file that is its memory of record and an inbox that serialises work from
+every session, person and teammate in the projects it serves. Any session in those projects
+summons it with an in-process tool. Delegating to a teammate is the default; subagents are for
+one-offs. Code teammates work on their own branches and an integrator teammate merges them when
+the tests pass. A teammate never holds person-only powers, and a person creates and shares it.**
 
 ### 1. The model
 
@@ -73,8 +74,9 @@ A teammate is an `agents_agents` row of kind `teammate` plus a `agents_teammates
 
 | Field | Meaning |
 |---|---|
-| `project` | one project slug. Exactly one. |
-| `role` | a slug unique in the project: `design`, `backend`, `research`, `copy`, `ops`, `qa`. This is how people and sessions address it ("ask design"). |
+| `project` | the owning project's slug. Exactly one. |
+| `shared` | other project slugs it serves, or `*` when it is assigned to the assistant (section 12). Empty by default. Changed by a person only. |
+| `role` | a slug that names one teammate in each project it serves: `design`, `backend`, `research`, `copy`, `ops`, `qa`. This is how people and sessions address it ("ask design"). |
 | `agent` | the agent name, generated as `<role>-<project>` (cut to 31 characters), so callers, keys, spend, vault grants and `mcp:agent:<name>` work unchanged. |
 | `brief` | one line: what work goes to it. Sessions read it to route; the person reads it in the Agents place. |
 | `instructions` | the role's system prompt append, versioned (the user's decision for ADR 0030: append by default, replace as an advanced option). |
@@ -92,11 +94,13 @@ purposes, `teammate` and `helper`, and assumes the map lives in config (`models.
 sessions. A teammate may override its purpose with a model id.
 
 **Roles come from templates**, not from nothing: design, frontend, backend, research, writer, ops,
-qa. A template sets the brief, instructions, tools and isolation, and the person edits them.
+qa, and integrator (section 8). A template sets the brief, instructions, tools and isolation,
+and the person edits them.
 Templates are data in `core/team/roles/`, so a project can add its own.
 
 The assistant (juno) is not a teammate. It is the user's, it spans projects, and it routes: "ask
-Harlow's design to..." from the Capsule goes through juno to that project's teammate.
+Harlow's design to..." from the Capsule goes through juno to that project's teammate. A teammate
+can be assigned to the assistant, which makes it available in every project (section 12).
 
 ### 2. The session
 
@@ -136,6 +140,15 @@ teammate's memory of record:
   `thread.usage`), or it has compacted once, or it is 7 days old, Vyre closes it and the next item
   starts a fresh session from the notes and the last three results. The old transcript stays in
   recall. Rotation is how a teammate stays sharp for months.
+
+**A shared teammate** (section 12) keeps one notes file with a General part and one part per
+project it serves. The General part and the owning project's part live in the owning project's
+folder. Each other project's part lives in that project's own folder
+(`.vyre/team/<role>@<owner>.md`), so one client's notes never sit in another client's folder or
+repository. Surfaces show them as one file with a section per project. For a request, the session
+gets General plus the requesting project's part only, and `team.done` refuses a change to any
+other project's part. General is for how the role works, never for a project's facts; the person
+checks that in the Notes diff.
 
 Lessons that belong to the project, not to the role ("the client signs with a middle initial"),
 go to memory through `learn.add` as today, never into notes only.
@@ -179,7 +192,7 @@ input.
 | `team.cancel` | the requester (its own queued request), persons (any) | a running request is interrupted only by a person |
 | `team.done`, `team.fail` | the teammate itself, for its running request only | closes it with a result |
 | `team.propose` | sessions, the assistant | proposes a new teammate (section 7) |
-| `team.add`, `team.update`, `team.remove`, `team.pause`, `team.resume` | persons only (PERSON_ONLY) | creation and changes |
+| `team.add`, `team.update`, `team.remove`, `team.pause`, `team.resume`, `team.share`, `team.unshare` | persons only (PERSON_ONLY) | creation, changes and sharing |
 
 **Results come back as a message, not a poll.** When a request finishes, Vyre puts the result in
 the caller's thread inbox (ADR 0030's queue, `threads_inbox`), delivered when the caller's current
@@ -239,6 +252,11 @@ Capsule or the phone sends a request without spending the current session's turn
   with a role, brief and why. That raises a Needs you row, kind "New teammate", showing the draft
   role, tools and grants; the person edits and approves it, or declines. A session never creates
   one.
+- **The integrator comes with the first code teammate.** When a person adds a project's first
+  teammate with `isolation: worktree`, the confirmation says "and an integrator, which merges
+  their work when the tests pass", and the same tap creates both. The confirmation shows the test
+  command Vyre found (`npm test`, `pytest`, `go test ./...`, `cargo test`, or the project's own),
+  which the person can change. Removing the integrator turns auto-merge off for the project.
 - **Project setup offers a starting team:** a code project gets none by default and one tap to
   add frontend, backend and qa; a practice project (a law firm) gets the same for intake, writer
   and ops. Nothing is created without the tap.
@@ -250,12 +268,33 @@ Capsule or the phone sends a request without spending the current session's turn
   request the teammate merges the main branch in (our rule: merge main at the start of every
   session). Vyre does this, not the model, and a conflict fails the request with the conflict in
   the result.
-- **A teammate never merges into main and never pushes.** When a request ends with commits on its
-  branch, the result carries them, and Needs you gets a "Merge" row: the diff summary, the tests the
-  teammate ran and their result, "Merge", "Ask for changes" (a new request) and "Discard". Merging
-  is a person's action by default. A project may name one teammate its integrator (our own shape):
-  it may merge a teammate branch into main after the project's tests pass, and a push is still an
-  outbound action at the Gate.
+- **Only the integrator merges, and the person does not approve merges** (the user's decision,
+  and our own team's shape). No other teammate merges into main or pushes.
+- **The flow.** When a request ends with new commits on `team/<role>`, Vyre queues a request to
+  the project's integrator: "merge team/design a1b2c3d..9e8f7a6, from request r_8f2c". The
+  integrator's inbox is serial like every other, so merges happen one at a time, in order. In its
+  own worktree (`<repo>/../<repo>-integrator`, branch `team/integrator`, reset to main before each
+  merge) it:
+  1. merges the teammate's branch;
+  2. resolves conflicts itself when it can, reading both sides and the two requests' results;
+  3. runs the project's test command;
+  4. when the tests pass, moves main forward with a fast-forward only, as a compare-and-swap
+     (`git update-ref refs/heads/main <new> <old>`), so a main that moved meanwhile makes it start
+     again from step 1 rather than overwrite anything. If main is checked out in the project home,
+     Vyre fast-forwards that checkout instead, and only when its tree is clean; with local changes
+     the merge waits (shown as "waiting for a clean main" in the integrator's inbox) and becomes a
+     Needs you row only after 24 hours.
+- **Success is a Results line**, not a question: "Merged design's r_8f2c into main, 42 tests
+  pass", on the integrator and on the original request's result.
+- **Failure is a Needs you row, kind "Merge failed"**, when the tests fail after the merge, or a
+  conflict is one the integrator will not resolve alone (both sides changed the same behaviour, or
+  the resolution would drop either side's work). It shows the branch, the failing tests or the
+  conflict, and three actions: "Ask design to fix" (a new request to the original teammate, with
+  the failure), "Open the integrator's session", "Discard the branch".
+- **Never force.** The floor denies teammates `git push --force`, `-f`, `--force-with-lease`,
+  `git reset --hard` on main, `git rebase` of main, branch deletion other than a merged `team/*`
+  branch, and any history rewrite of main. Pushing main to a remote is off by default; a person
+  turns on "Push main after each merge" per project, and those pushes are fast-forward only.
 - `isolation: folder` teammates write in the project folder. Two `folder` teammates may not both
   hold `files` on the same folder; the second gets `worktree` or read-only.
 
@@ -274,8 +313,9 @@ five tabs:
 A **summon box** sits at the bottom of every teammate's pane ("Ask design..."). The Capsule
 accepts `@design` and picks the project from where you are.
 
-**Needs you** gets three new kinds, in the same row shape: "New teammate" (a proposal), "Merge"
-(a finished branch), "Stuck" (a failed or retried request). A teammate's own permission asks and
+**Needs you** gets three new kinds, in the same row shape: "New teammate" (a proposal), "Merge
+failed" (tests failed or a conflict the integrator will not resolve), "Stuck" (a failed or retried
+request). Successful merges never reach Needs you. A teammate's own permission asks and
 Gate drafts appear as today, labelled `design · Harlow Legal` and, below, "asked by the Intake form
 session", so the person sees both who acts and who started it.
 
@@ -291,6 +331,7 @@ vyre team inbox design             # queued, running, done
 vyre team show r_8f2c              # one request and its result
 vyre team notes design [--edit]
 vyre team pause design | resume design | remove design
+vyre team share design --with northwind-bakery | --assistant    # and unshare
 ```
 
 The phone has the same Agents place, summon box and Needs kinds (ADR 0027, one app). Everything
@@ -317,15 +358,39 @@ A teammate is an agent. Everything ADR 0030 section 8 says of agents holds, and:
   use; removing a teammate revokes its grants.
 - **The floor** runs in `canUseTool` for its session and helpers, as for every owned session.
 - **Callers are checked against the project.** `team.ask` accepts a session only when that thread
-  belongs to the project (picked or by folder), a teammate only of the same project, and the
-  assistant. Everything else is refused.
+  belongs to a project the teammate serves (its owner or one it is shared with; any project when it
+  is assigned to the assistant), a teammate only of such a project, and the assistant. Everything
+  else is refused. The request's project is the caller's, never an input.
+- **A shared teammate sees one project per request.** Its session for a request runs in that
+  project's workspace with that project's brief, memory room and notes part, and nothing of the
+  other projects it serves (section 12).
+- **The integrator** is an agent like any other: it cannot approve its own asks, its tests run
+  under the floor, and it cannot force, rewrite main or push unless the person turned pushing on.
 
 ### 12. Across projects
 
-No, by default. A teammate reads, remembers and writes only inside its project, and sessions of
-other projects cannot summon it. The assistant may relay a request into a project (it already
-spans projects), and the request shows it came through juno. Sharing a teammate across projects
-(an agency's "design" for all clients) is a later decision, since it mixes client memory.
+A teammate belongs to its owning project. A person may **share** it with other projects, or
+**assign it to the assistant**, which makes it available in every project (the user's decision).
+Sharing is PERSON_ONLY (`team.share`, `team.unshare`), from the teammate's Setup tab or
+`vyre team share`.
+
+- **One teammate, one inbox, one notes file.** Requests from every project it serves queue in its
+  one inbox and run one at a time, so its way of working stays consistent across clients.
+- **One project per request.** For each request the teammate runs in a session bound to the
+  requesting project: that project's workspace (its own worktree in that project's repo for a code
+  teammate), brief, memory room and notes part. It keeps one sleeping session per project it
+  serves and resumes the right one, so no transcript carries one client's work into another's. The
+  General part of the notes and the role's instructions are the only things every project sees.
+- **Notes are tagged by project** (section 3): the owning project holds General and its own part;
+  each other project's part lives in that project's folder.
+- **Roles stay unique.** Sharing `design` into a project that already has a `design` is refused;
+  the person renames one first (for example `design-agency`).
+- **Grants are per project.** A vault grant to a shared teammate names the project it is for, and
+  the vault releases it only for requests from that project (a change asked of ADR 0028).
+- **Limits and budget count where the work comes from:** a request takes an active slot in the
+  requesting project (section 14); spend is recorded per project and per teammate.
+- **Unsharing** refuses new requests from that project, lets its queued ones finish or be
+  cancelled by the person, and leaves that project's notes part in its folder.
 
 ### 13. Cost and limits
 
@@ -335,7 +400,9 @@ spans projects), and the request shows it came through juno. Sharing a teammate 
   concurrency limits of section 14, and the live cap of ADR 0030 shared with every session.
 - Budget per teammate per day and month, including its helpers. At 80 percent a notice, at 100
   percent `paused` with a Needs you row; queued requests wait. On a subscription the budget is in
-  turns and tokens, since dollars are not billed per call.
+  turns, default 200 a day per teammate, adjustable in Setup; on an API key it is in dollars. The
+  concurrency presets (section 14) are the main usage control; the daily turn limit is a backstop
+  against one runaway teammate.
 - Rotation (section 3) keeps context, and so cost per turn, bounded.
 
 ### 14. Concurrency and usage limits
@@ -380,6 +447,11 @@ How the estimate is made, and why these defaults:
   `thread.usage` once a project has a week of history, and the estimate until then.
 - A plan's usage window drains roughly that many times faster at the peak. On Balanced, a window
   the person alone would use up in 5 hours lasts a little over an hour if every slot is busy.
+- **Balanced is the default for new projects** (decided). Vyre suggests Light, with one line why
+  ("Your plan looks like Pro: Light keeps teammates from using up your window"), when the plan looks
+  like Pro. It reads that from the rate-limit signals where it can (which window kinds appear, and
+  how much utilization one turn moves), and otherwise does not guess. Max is only ever chosen by
+  the person.
 - Balanced is the default because three teammates cover the common split (a builder, a reviewer
   or tester, and one for words or design), and four subagents let one teammate fan out a burst
   while the others work. Light protects a Pro plan. Max is for someone who wants throughput and
@@ -430,11 +502,14 @@ A new module `core/team` (roles box and local) requires `agents`, `threads`, `pr
 `team`. It talks to agents, threads and projects through `ctx.call` only.
 
 Events (small, no text): `teammate.created`, `teammate.changed`, `teammate.removed`,
+`teammate.shared`, `teammate.unshared`, `merge.finished` (`status`: merged, failed, waiting),
 `teammate.proposed`, `summon.queued`, `summon.started`, `summon.finished` (`status`),
 `summon.cancelled`.
 
 Changes elsewhere, each through its contract:
 
+- **vault (ADR 0028):** `vault_agent_grants` gains `project`, checked on release for shared
+  teammates.
 - **agents:** kind `teammate`; `agents.ask` on a teammate becomes a `team.ask`; a teammate's
   thread is launched with the team append.
 - **sessions and switchboard:** the slot ledger of section 14 (`sessions.slots`: take, release,
@@ -457,42 +532,44 @@ In order, after ADR 0030 steps 1 to 3:
 2. Notes: the file, versions, the `team.done` check, compaction re-injection, rotation.
 3. Summon from every session: through the plugin's `vyre mcp` first, then the in-process server
    when ADR 0030 phase 3 lands. Results through `threads_inbox`.
-4. Isolation: worktrees, merge-main-before-request, the Merge row, the integrator option.
-5. Surfaces (app-design, chat, mobile, capsule): the Agents place tabs, the summon box, `@role`,
+4. Isolation and merging: worktrees, merge-main-before-request, the integrator template and its
+   merge flow, the "Merge failed" row, the floor's git rules.
+5. Sharing: `team.share`, per-project sessions and notes parts, per-project grants.
+6. Surfaces (app-design, chat, mobile, capsule): the Agents place tabs, the summon box, `@role`,
    the Needs kinds.
-6. Policy and creation: the append, `team.propose`, templates, project setup.
-7. Today's agents: an agent scoped to exactly one project is offered, once, to become a teammate
+7. Policy and creation: the append, `team.propose`, templates, project setup.
+8. Today's agents: an agent scoped to exactly one project is offered, once, to become a teammate
    ("kit works only in Harlow Legal: make it Harlow's intake teammate?"), keeping its name, key,
    grants, spend and thread. Agents with several projects or `*` stay agents. The assistant is
    unchanged.
-8. Docs: `using/teammates.md`, the reference pages, the spec's agents section.
+9. Docs: `using/teammates.md`, the reference pages, the spec's agents section.
 
 ## Proof
 
 None yet, by design: the inbox depends on ADR 0030's session model. The first proof, after step
 1, runs on testbox with the fake driver: two sessions summon `design` at once and results come back
 in order; a cycle is refused; a restart retries the running request; `team.done` without a notes
-change is refused; a teammate's Bash cannot call `team.add` or `threads.answer`; and an idle
+change is refused; a teammate's Bash cannot call `team.add` or `threads.answer`; the integrator merges a green
+branch, refuses a red one into a "Merge failed" row and loses a compare-and-swap race safely; a
+shared teammate's request from one project cannot read another project's notes part; and an idle
 teammate costs 0 CPU and no process.
 
-## Risks and open questions
+## Decisions and open questions
 
-For the user:
+Decided by the user (27 Sep 2026):
 
-1. **Merging.** A person approves each teammate merge in Needs you (the default here), or a
-   project's integrator teammate merges after green tests, as our own integrator does?
-2. **Across projects.** Keep teammates inside one project, with juno relaying (the default here),
-   or allow a shared teammate across projects later?
-3. **One per role.** Strictly one teammate per role with a serial queue (the default here), or a
-   second lane when the queue is long?
-4. **Where notes live.** In the project folder (`.vyre/team/<role>/notes.md`, visible, can go
-   under git; the default here) or only in Vyre's home?
-5. **Today's single-project agents.** Offer to convert them (the default here), convert them
-   automatically, or leave them?
-6. **Concurrency preset.** Balanced (3 active teammates, 4 subagents) as the default for new
-   projects, with Light suggested when the plan is Pro?
-7. **Subscription budgets.** Turns and tokens per day as the limit on a subscription: which
-   default (the proposal is 200 turns a day per teammate)?
+1. **Merging.** An integrator teammate merges automatically once the tests are green; the person
+   does not approve merges. Failures become a Needs you row; success is a Results line (section 8).
+2. **Across projects.** One project by default; a person can share a teammate with other projects
+   or assign it to the assistant (section 12).
+3. **One per role**, with a serial queue.
+4. **Notes** live in the project folder; a shared teammate's are tagged by project, each part in its
+   project's folder (section 3).
+5. **Today's single-project agents** are offered conversion, never converted automatically.
+6. **Budget:** 200 turns a day per teammate on a subscription, adjustable; the concurrency presets
+   are the main usage control.
+7. **Concurrency:** Balanced by default, Light suggested when the plan looks like Pro, Max only by
+   choice. Section 14 is approved as written.
 
 For us:
 

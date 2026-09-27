@@ -9,7 +9,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - docs/adr/0031-teammates.md: persistent, project-bound agents with durable notes, a serial inbox
   and a summon tool for every session in the project. Design only; the build waits on ADR 0030
   steps 1 to 3. docs/work/teammates.md tracks it. Section 14 sets per-project concurrency limits
-  (active teammates, subagents), a box-wide ceiling, a fair queue and a usage-aware pause.
+  (active teammates, subagents), a box-wide ceiling, a fair queue and a usage-aware pause. The
+  user's decisions: an integrator teammate auto-merges green branches, teammates can be shared
+  with other projects or assigned to the assistant, Balanced is the default preset.
 
 #### The switchboard tests pass on the Mac
 
