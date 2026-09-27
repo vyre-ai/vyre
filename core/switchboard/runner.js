@@ -29,13 +29,16 @@ import { spawnSession, killGroup } from "../sessions/spawn.js";
  * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
- * @param {{ id: string, resume?: boolean, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
+ * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
     "--permission-prompts", "host", "--permission-prompt-tool", "stdio"];
-  a.push(...(o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
+  // A fork continues another session's conversation as a new one, with the id given here.
+  a.push(...(o.forkFrom ? ["--resume", o.forkFrom, "--fork-session", "--session-id", o.id] : o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
+  // A rewind: resume only up to this entry, as Claude Code's double Esc does (the flag the SDK passes).
+  if (o.resumeAt && (o.resume || o.forkFrom)) a.push("--resume-session-at", o.resumeAt);
   for (const dir of [o.plugin, ...(o.plugins || [])]) if (dir) a.push("--plugin-dir", dir);
   if (o.tools === "none") a.push("--tools", "", "--strict-mcp-config");
   if (o.settings === false) a.push("--setting-sources", "");
@@ -47,8 +50,14 @@ export function argsFor(o) {
   return a;
 }
 
-/** A user turn, as stream-json input. */
-export const userLine = (text, session) => ({ type: "user", message: { role: "user", content: String(text) }, parent_tool_use_id: null, session_id: session });
+/**
+ * A user turn, as stream-json input. `uuid` is the message's own id (the transcript line's, and
+ * the key Claude Code echoes back); `priority: "next"` steers it into a running turn at the next
+ * step, as a message typed while Claude Code works does.
+ * @param {string} text @param {string} session @param {{ uuid?: string, priority?: "next"|"now"|"later" }} [o]
+ */
+export const userLine = (text, session, o = {}) => ({ type: "user", message: { role: "user", content: String(text) }, parent_tool_use_id: null, session_id: session,
+  ...(o.uuid ? { uuid: o.uuid } : {}), ...(o.priority ? { priority: o.priority } : {}) });
 
 /**
  * The answer to a can_use_tool request, as the Agent SDK sends it. Allowing passes the input back

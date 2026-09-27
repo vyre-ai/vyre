@@ -262,7 +262,7 @@ async function trayImages() {
   };
   const idle = await draw(svg("currentColor", 1.9));
   idle.setTemplateImage(true);
-  const needs = await draw(svg("#FF7A59", 2.3));
+  const needs = await draw(svg("#B8A4FF", 2.3));
   return { idle, needs };
 }
 let images = null;

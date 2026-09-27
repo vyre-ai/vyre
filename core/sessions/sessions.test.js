@@ -54,11 +54,11 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   const root = tempHome(t);
   const log = path.join(root, "claude.log");
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG,
-    VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSIONS_SDK_DIR: process.env.VYRE_SESSIONS_SDK_DIR };
-  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, FAKE_CLAUDE_LOG: log, VYRE_SESSIONS_DRIVER: driver });
+    VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSIONS_SDK_DIR: process.env.VYRE_SESSIONS_SDK_DIR, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, FAKE_CLAUDE_LOG: log, VYRE_SESSIONS_DRIVER: driver, FAKE_CLAUDE_TRANSCRIPTS: transcripts });
   if (SDK) process.env.VYRE_SESSIONS_SDK_DIR = SDK;
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  const transcripts = path.join(root, "transcripts");
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role, transcripts: [transcripts],
     sessions: { install: false, ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
@@ -84,7 +84,27 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   const events = async id => (await tool("threads.get", { thread: id, limit: 500 })).data.events;
   const finished = async (id, n = 1) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n} of ${id.slice(0, 8)}`);
   const said = async id => (await events(id)).filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice).map(e => e.payload.text);
-  return { root, d, work, tool, launches, events, finished, said };
+  return { root, d, work, tool, launches, events, finished, said, transcripts };
+}
+
+/**
+ * A session a terminal `claude` wrote, as an older Claude Code left it: a summary line, no
+ * entrypoint, version 1.0.40. `ageMs` 0 is a session busy in a terminal right now.
+ */
+function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.randomUUID() } = {}) {
+  const dir = path.join(transcripts, cwd.replace(/[^A-Za-z0-9]/g, "-"));
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${id}.jsonl`);
+  const base = { sessionId: id, cwd, version: "1.0.40", userType: "external", isSidechain: false };
+  fs.writeFileSync(file, [
+    { type: "summary", summary: "Northwind Bakery menu", leafUuid: "u2" },
+    { ...base, type: "user", uuid: "u1", parentUuid: null, timestamp: new Date(Date.now() - ageMs).toISOString(), message: { role: "user", content: "start the menu for Northwind Bakery" } },
+    { ...base, type: "assistant", uuid: "u2", parentUuid: "u1", timestamp: new Date(Date.now() - ageMs).toISOString(),
+      message: { id: "msg_old_1", role: "assistant", model: "claude-3-5-sonnet", content: [{ type: "text", text: "Started the menu." }] } },
+  ].map(l => JSON.stringify(l)).join("\n") + "\n");
+  const when = (Date.now() - ageMs) / 1000;
+  fs.utimesSync(file, when, when);
+  return { id, file };
 }
 
 // ------------------------------------------------------------ pure parts
@@ -388,6 +408,152 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(e.model, "haiku", "an explicit model wins");
     const map = (await w.tool("sessions.models.get", {})).data;
     assert.deepEqual([map.purposes.chat.model, map.purposes.memory.model, map.purposes.capsule.model, map.projects["harlow-legal"]], ["opus", "haiku", "claude-haiku-4-5", "sonnet"]);
+  });
+
+  test(`${driver}: a session a terminal started, by an older Claude Code, is resumed through Vyre on the first message, once in the list`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const old = terminalSession(w.transcripts, w.work);
+    const r = (await w.tool("threads.send", { thread: old.id, text: "carry on", surface: "deck" })).data;
+    assert.deepEqual(r, { sent: true, thread: old.id });
+    await w.finished(old.id);
+    const rec = (await w.tool("threads.get", { thread: old.id })).data.thread;
+    assert.deepEqual([rec.driver, rec.cwd], [driver, w.work], "resumed by Vyre, in the transcript's own folder");
+    const argv = w.launches().at(-1).argv;
+    assert.equal(argv[argv.indexOf("--resume") + 1], old.id);
+    assert.deepEqual(await w.said(old.id), ["echo: carry on"]);
+    const lines = fs.readFileSync(old.file, "utf8").trim().split("\n").map(l => JSON.parse(l));
+    assert.equal(lines[0].type, "summary", "the old lines are kept as they were");
+    assert.ok(lines.some(l => l.type === "user" && l.message.content === "carry on"), "the new turn is in the same transcript");
+    // One row per session, and the live text keys to the transcript's own message id.
+    assert.equal((await w.tool("threads.list", {})).data.filter(x => x.id === old.id).length, 1);
+    const live = (await w.events(old.id)).find(e => e.type === "thread.text" && e.payload.done).payload.message;
+    assert.ok(lines.some(l => l.type === "assistant" && l.message.id === live), "live and history share the message id");
+  });
+
+  test(`${driver}: a session live in a terminal is queued, never typed into, and a fork carries on as a copy`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const busy = terminalSession(w.transcripts, w.work, { ageMs: 0 });
+    const before = fs.readFileSync(busy.file, "utf8");
+    const q = (await w.tool("threads.send", { thread: busy.id, text: "add the autumn specials", surface: "deck" })).data;
+    assert.equal(q.queued, true);
+    assert.equal(q.busy, "terminal");
+    assert.ok(!w.launches().some(l => l.argv && l.argv.includes(busy.id)), "no second writer was started");
+    const f = (await w.tool("threads.fork", { thread: busy.id, prompt: "from here", surface: "deck" })).data;
+    assert.notEqual(f.id, busy.id);
+    await w.finished(f.id);
+    const argv = w.launches().at(-1).argv;
+    assert.equal(argv[argv.indexOf("--resume") + 1], busy.id);
+    assert.ok(argv.includes("--fork-session"));
+    assert.equal(argv[argv.indexOf("--session-id") + 1], f.id);
+    assert.equal((await w.events(f.id)).find(e => e.type === "thread.started").payload.forked_from, busy.id);
+    assert.deepEqual(await w.said(f.id), ["echo: from here"]);
+    assert.equal(fs.readFileSync(busy.file, "utf8"), before, "the original transcript is untouched");
+    const copy = fs.readFileSync(path.join(path.dirname(busy.file), `${f.id}.jsonl`), "utf8");
+    assert.match(copy, /start the menu for Northwind Bakery/, "the fork starts with the conversation so far");
+  });
+
+  test(`${driver}: a turn's cost is its own, from Claude Code's running total`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "spend 0.5", surface: "deck" })).data;
+    await w.finished(th.id);
+    await w.tool("threads.send", { thread: th.id, text: "spend 0.35", surface: "deck" });
+    await w.finished(th.id, 2);
+    const done = (await w.events(th.id)).filter(e => e.type === "thread.finished").map(e => [e.payload.cost_usd, e.payload.total_cost_usd]);
+    assert.deepEqual(done, [[0.5, 0.5], [0.35, 0.85]]);
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.cost_usd, 0.85);
+  });
+
+  test(`${driver}: a message sent while working steers the running turn at its next step`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const r = (await w.tool("threads.send", { thread: th.id, text: "use pnpm instead", surface: "deck" })).data;
+    assert.equal(r.steered, true);
+    assert.equal(r.turn, `${th.id}:1`, "it joins the running turn");
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id);
+    const ev = await w.events(th.id);
+    assert.ok(ev.some(e => e.type === "thread.sent" && e.payload.via === "steer" && e.payload.uuid === r.uuid));
+    const steered = ev.find(e => e.type === "thread.steered");
+    assert.equal(steered && steered.payload.uuid, r.uuid, "Claude took it in at a step");
+    assert.match((await w.said(th.id)).at(-1), /took in: use pnpm instead/);
+    assert.equal(ev.filter(e => e.type === "thread.turn").length, 1, "no turn of its own");
+    assert.equal(ev.filter(e => e.type === "thread.finished").length, 1);
+    // Every event of the turn says which turn; the state and usage are said.
+    assert.ok(ev.filter(e => /^(thread\.(text|tool|finished|sent)|ask\.)/.test(e.type)).every(e => e.payload.turn === `${th.id}:1`));
+    assert.deepEqual(ev.filter(e => e.type === "thread.state").map(e => e.payload.state), ["starting", "running", "waiting", "running", "idle"]);
+    assert.ok(ev.some(e => e.type === "thread.usage" && typeof e.payload.cost_usd === "number"));
+    const text = ev.filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice);
+    assert.ok(text.every(e => typeof e.payload.block === "number"), "done text carries its block");
+  });
+
+  test(`${driver}: queued for after the turn: edited, taken back, sent now, or handed over as one turn`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const a = (await w.tool("threads.send", { thread: th.id, text: "then the menu", surface: "deck", mode: "queue" })).data;
+    assert.equal(a.queued, true);
+    assert.match(a.note, /is working on something/);
+    assert.doesNotMatch(a.note, /terminal/);
+    const b = (await w.tool("threads.send", { thread: th.id, text: "and the prices", surface: "deck", mode: "queue" })).data;
+    const c = (await w.tool("threads.send", { thread: th.id, text: "never mind this", surface: "deck", mode: "queue" })).data;
+    assert.deepEqual((await w.tool("threads.edit", { thread: th.id, queued: b.queued_id, text: "and the autumn prices" })).data, { edited: true, queued: b.queued_id });
+    assert.deepEqual((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id })).data, { unqueued: [c.queued_id] });
+    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id }, "mcp")).error.code, "denied", "a model never takes a person's words back");
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 2);
+    const ev = await w.events(th.id);
+    const handed = ev.filter(e => e.type === "thread.sent" && e.payload.via === "turn");
+    assert.deepEqual(handed.map(e => e.payload.queued), [a.queued_id, b.queued_id], "one thread.sent per row, in order");
+    const second = ev.filter(e => e.type === "thread.turn")[1];
+    assert.ok(handed.every(e => e.id < second.id), "announced before the turn that answers them");
+    assert.equal((await w.said(th.id)).at(-1), "echo: then the menu\n\nand the autumn prices");
+    assert.ok(ev.some(e => e.type === "thread.unqueued" && e.payload.queued === c.queued_id));
+    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: a.queued_id })).data.unqueued.length, 0, "handed over words stay Claude's");
+
+    // Send now: a queued row joins the running turn instead of waiting.
+    await w.tool("threads.send", { thread: th.id, text: "bash npm run build", surface: "deck" });
+    const ask2 = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the second ask");
+    const d = (await w.tool("threads.send", { thread: th.id, text: "skip the lint", surface: "deck", mode: "queue" })).data;
+    const now = (await w.tool("threads.send-now", { thread: th.id, queued: d.queued_id })).data;
+    assert.equal(now.sent, true);
+    await w.tool("threads.answer", { ask: ask2.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 3);
+    assert.match((await w.said(th.id)).at(-1), /took in: skip the lint/);
+    assert.ok((await w.events(th.id)).some(e => e.type === "thread.sent" && e.payload.via === "now" && e.payload.queued === d.queued_id));
+  });
+
+  test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    await w.tool("threads.interrupt", { thread: th.id });
+    await w.finished(th.id);
+    const fin = (await w.events(th.id)).find(e => e.type === "thread.finished").payload;
+    assert.deepEqual([fin.canceled, fin.reason], [true, "interrupt"]);
+  });
+
+  test(`${driver}: rewind goes back to a message, as a double Esc does, and its words come back`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "one", surface: "deck" })).data;
+    await w.finished(th.id);
+    for (const [n, text] of [[2, "two"], [3, "three"]]) { await w.tool("threads.send", { thread: th.id, text, surface: "deck" }); await w.finished(th.id, n); }
+    const turns = (await w.events(th.id)).filter(e => e.type === "thread.turn").map(e => e.payload);
+    const file = path.join(w.transcripts, w.work.replace(/[^A-Za-z0-9]/g, "-"), `${th.id}.jsonl`);
+    const lines = () => fs.readFileSync(file, "utf8").trim().split("\n").map(l => JSON.parse(l));
+    const two = lines().find(l => l.type === "user" && l.uuid === turns[1].uuid);
+    assert.ok(two, "a user message's transcript uuid is the one thread.turn gave");
+    const r = (await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid })).data;
+    assert.deepEqual(r, { rewound: true, thread: th.id, uuid: turns[1].uuid, text: "two" });
+    const argv = (await until(() => w.launches().find(l => l.argv && l.argv.includes("--resume-session-at")), "the rewound launch")).argv;
+    assert.equal(argv[argv.indexOf("--resume-session-at") + 1], two.parentUuid, "it goes on from just before the message");
+    assert.ok((await w.events(th.id)).some(e => e.type === "thread.rewound" && e.payload.at === two.parentUuid));
+    await w.tool("threads.send", { thread: th.id, text: "two, but shorter", surface: "deck" });
+    await w.finished(th.id, 4);
+    const again = lines().find(l => l.type === "user" && l.message.content === "two, but shorter");
+    assert.equal(again.parentUuid, two.parentUuid, "the new message hangs where the old one did");
+    assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[0].uuid })).data.rewound, false, "the first message starts a new session instead");
+    assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid }, "mcp")).error.code, "denied");
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {

@@ -10,29 +10,27 @@ fallback; bundled Claude Code on the box, installed on the Mac; idle 10 min; cap
 Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 
 ## Done
-- ADR 0030 + proof (3496b48).
-- Steps 1 to 3 (759dec8, dfeda64 and the docs commit after): core/sessions (claude.js driver with
-  the runner's contract, sdk.js install-on-first-use, config.js, prompts.js, module `sessions`),
-  switchboard wiring (driver pick, lazy SDK load, box credential, composed system prompt, idle
-  close, cap, threads.interrupt, `driver` on records), vyre resume hand-over, docs/using/sessions.md.
-- Tests: core/sessions/sessions.test.js 32/32 on both drivers; switchboard 47/47 on sdk; agents,
-  learn, computers, harness, presence, daemon, federation, onboard, peer, projects-cli 267/267
-  on both.
-
-## How to run the SDK tests
-- testbox has the pinned SDK in ~/vyre-ci/sessions-proof. `VYRE_SESSIONS_SDK_DIR=$HOME/vyre-ci/sessions-proof`
-  enables the sdk cases; `VYRE_SESSIONS_DRIVER=sdk` runs any suite on the SDK driver.
+- ADR 0030 + proof (3496b48); steps 1 to 3 (759dec8, dfeda64, 0bae485).
+- e2e blockers (e20f459): spawn.js (group/session, tini -s, uid/gid, pids+pgids+sids), floor denies
+  settings-file writes and runs before asks, threads.mode person-only and safePermissions; dash bind;
+  callerKind mcp:thread; restart reason; box image with SDK + tini.
+- Models per purpose + providers as modules + conformance (33ae9e7).
+- Adoption, threads.fork, idempotent answers, ADR contract/security/models/adoption/parity (a6021c88).
+- Cost from Claude Code's running total (9eb5d18).
+- Steering by default, queue + unqueue/edit/send-now, thread.turn/state/usage/steered/unqueued,
+  block and call keys (b8b1a0a7).
 
 ## Doing
-- Waiting on a full-suite slot with VYRE_SESSIONS_DRIVER=sdk (integrator), then the default flip.
+- Waiting for the full-suite slot (after the integrator's batch; load under 4), run with
+  VYRE_SESSIONS_DRIVER=sdk; then flip `driver` default to "sdk" in core/sessions/config.js.
 
 ## Next
-1. Flip `sessions.driver` default to `sdk` (config.js one line) once the full suite is green on it.
-2. Retire runner.js as a fallback only (keep for the "not installed yet" window).
-3. Phase 3: in-process hooks and MCP for owned sessions (caller set by the driver), floor in canUseTool.
-4. New events from the ADR (thread.turn, thread.usage, thread.state, tool status by call id), queue
-   take-back/edit, "send now".
-5. Codex driver, then ACP.
+1. The flip, then retire runner.js except as the not-installed-yet fallback.
+2. Rewind (threads.rewind {thread, uuid} via resumeSessionAt/forkSession, thread.rewound), usage context max.
+3. Phase 3: in-process hooks (SessionStart about-you + memory.context, UserPromptSubmit, PreToolUse floor, Stop)
+   and in-process MCP (planner, memory tool sets agreed) with the driver-set caller; with e2e, the box's session uid.
+4. Credentials-in-Bash measurement (cc-plugin's fake Messages API).
+5. Parity items that are ours: slash-command list, @file, !, #, image paste, background tasks, compact.
 
 ## Needs from others
 - integrator: one full-suite run with `VYRE_SESSIONS_DRIVER=sdk VYRE_SESSIONS_SDK_DIR=<dir with SDK 0.3.283>`.
@@ -45,6 +43,11 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   error); `threads.interrupt`; `busy` refusal on start; sessions.prompt.* for a settings screen.
 
 ## Changed contracts
+- threads: send {mode}, unqueue, edit, send-now, fork, mode, interrupt; events thread.turn, state,
+  usage, steered, unqueued, mode.changed; `turn` on every turn event; thread.text `block`;
+  thread.tool `call`/`name`/`status`; thread.finished `total_cost_usd`, `canceled`; cost_usd is the
+  turn's own; send answers `queued_id` and `uuid` when queued; answer repeats return `already`.
+- modules: manifest `does.providers`, ctx.provider / ctx.providers; callerKind strips :thread:.
 - threads: new tool `threads.interrupt`; records carry `driver`; `thread.stopped` reason `idle`;
   `threads.start`/`launch` can refuse with code `busy` (sessions.max_live); manifest needs.vault
   claude-setup-token, anthropic-api-key.

@@ -66,14 +66,22 @@ const MODEL = flag("--model") || "fake-model";
 // ------------------------------------------------------------ transcript lines, as Claude Code writes them
 
 const TX = process.env.FAKE_CLAUDE_TRANSCRIPTS;
-/** @type {string|null} */
-let parent = null;
+// A fork (--resume <from> --fork-session --session-id <new>) starts with the other session's
+// lines, under its own id, as Claude Code does. The original is not touched.
+if (TX && argv.includes("--fork-session")) {
+  const dir = path.join(TX, process.cwd().replace(/[^A-Za-z0-9]/g, "-"));
+  const from = path.join(dir, `${flag("--resume")}.jsonl`);
+  if (fs.existsSync(from)) fs.writeFileSync(path.join(dir, `${session}.jsonl`), fs.readFileSync(from, "utf8").split("\n").filter(Boolean)
+    .map(l => { try { return JSON.stringify({ ...JSON.parse(l), sessionId: session }); } catch { return l; } }).join("\n") + "\n");
+}
+/** @type {string|null} A rewind (--resume-session-at) continues from that entry: the next lines hang under it. */
+let parent = flag("--resume-session-at") || null;
 function tx(type, message, extra = {}) {
   if (!TX) return;
   const cwd = process.cwd();
   const dir = path.join(TX, cwd.replace(/[^A-Za-z0-9]/g, "-"));
   fs.mkdirSync(dir, { recursive: true });
-  const uuid = crypto.randomUUID();
+  const uuid = extra.uuid || crypto.randomUUID();
   fs.appendFileSync(path.join(dir, `${session}.jsonl`), JSON.stringify({ parentUuid: parent, isSidechain: false, userType: "external", cwd, sessionId: session,
     version: "2.1.283", gitBranch: "", entrypoint: "sdk-cli", type, message, uuid, timestamp: new Date().toISOString(), ...extra }) + "\n");
   parent = uuid;
@@ -85,15 +93,34 @@ const txAssistant = (id, block, stop = null) => tx("assistant", { id, type: "mes
 
 out({ type: "system", subtype: "hook_response", hook_name: "SessionStart:startup", output: "whatever the user's own hooks print" });
 
+/**
+ * Steered messages (priority "next") that arrived while a turn ran, not yet taken in. Claude Code
+ * folds them into the running turn at its next step: here, at the turn's next reply, which says
+ * so and carries the message's uuid (user_message_uuid), as Claude Code stamps it.
+ * @type {{ uuid: string|null, text: string }[]}
+ */
+let folds = [];
+/** The uuids of every message the current turn took in, for its result (user_message_uuids). */
+let took = [];
+let busy = false;
+
 async function say(text) {
   const id = `msg_${++n}`;
+  let stamp = null;
+  if (folds.length) {
+    const f = folds; folds = [];
+    text = `${text} (took in: ${f.map(x => x.text).join("; ")})`;
+    stamp = f.at(-1).uuid;
+    for (const x of f) if (x.uuid) took.push(x.uuid);
+  }
   txAssistant(id, { type: "text", text }, "end_turn");
   out({ type: "stream_event", event: { type: "message_start", message: { id, role: "assistant", content: [] } }, session_id: session, parent_tool_use_id: null });
   for (const piece of text.match(/.{1,6}/gs) || []) {
     out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: piece } }, session_id: session, parent_tool_use_id: null });
     await sleep(2);
   }
-  out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }] }, session_id: session, parent_tool_use_id: null });
+  out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }] }, session_id: session, parent_tool_use_id: null,
+    ...(stamp ? { user_message_uuid: stamp } : {}) });
 }
 
 async function think(text) {
@@ -162,13 +189,17 @@ const TODOS = [
   { content: "Ask kit to review the copy", status: "pending", activeForm: "Asking kit to review the copy" },
 ];
 
+// Claude Code's total_cost_usd is the running total of this process's turns, not the turn's own.
+let spent = 0;
 const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "success" : "error_during_execution", is_error: !ok, result: text,
-  total_cost_usd: cost, duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
-  usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 } });
+  total_cost_usd: (spent = Math.round((spent + cost) * 1e6) / 1e6), duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
+  usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 },
+  ...(took.length ? { user_message_uuids: took } : {}) });
 
-async function turn(prompt) {
+async function turn(prompt, uuid = null) {
   const p = String(prompt).trim();
-  tx("user", { role: "user", content: String(prompt) });
+  // A user line's uuid is the message's own when the host gave one, as Claude Code keeps it.
+  tx("user", { role: "user", content: String(prompt) }, uuid ? { uuid } : {});
   if (/^write /i.test(p)) {
     const file = path.resolve(p.slice(6).trim());
     const { allowed } = await useTool("Write", { file_path: file, content: "hi" }, { ask: true,
@@ -316,5 +347,15 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     }
     return;
   }
-  if (m.type === "user") { const text = m.message.content; queue = queue.then(() => turn(text)); }
+  if (m.type === "user") {
+    const text = m.message.content;
+    // Steered while a turn runs: taken in at the turn's next step. Else a turn of its own, in order.
+    if (m.priority === "next" && busy) { folds.push({ uuid: m.uuid || null, text: String(text) }); return; }
+    queue = queue.then(async () => {
+      busy = true; took = m.uuid ? [m.uuid] : [];
+      try { await turn(text, m.uuid || null); } finally { busy = false; }
+      // Steered words the turn never reached (an interrupt, a turn with no reply left) run next.
+      if (folds.length) { const f = folds; folds = []; queue = queue.then(async () => { busy = true; took = f.map(x => x.uuid).filter(Boolean); try { await turn(f.map(x => x.text).join("\n\n")); } finally { busy = false; } }); }
+    });
+  }
 }).on("close", () => { queue.then(() => process.exit(0)); });

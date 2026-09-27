@@ -36,7 +36,9 @@ test("translate: real stream-json lines become small thread events", () => {
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hel" } }, parent_tool_use_id: null }).delta, "hel");
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "x" } }, parent_tool_use_id: "toolu_9" }).delta, undefined, "a subagent's text is not the thread's");
   const tool = translate({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "/w/a.txt", content: "x".repeat(50000) } }] } });
-  assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", tool: "Write", phase: "started", summary: "Write /w/a.txt", destination: "/w/a.txt" } });
+  // call and status (ADR 0030): the row is keyed by call, id kept equal during the migration.
+  assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", call: "t1", tool: "Write", name: "Write", phase: "started", status: "running", block: 0,
+    summary: "Write /w/a.txt", destination: "/w/a.txt" } });
   const ask = translate({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls -la" }, tool_use_id: "t2" } });
   assert.equal(ask.ask.summary, "ls -la");
   assert.equal(ask.ask.request_id, "r1");
@@ -180,8 +182,9 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
   // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
-  // Vyre's own state, as it does on a real machine.
-  const work = fs.mkdtempSync(path.join(SCRATCH, "vyre-work-"));
+  // Vyre's own state, as it does on a real machine. realpath: on the Mac the temp dir sits under
+  // /var, which vyred and fake claude see as /private/var.
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
   t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
@@ -245,10 +248,10 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   const open = (await tool("threads.asks", {})).data;
   assert.equal(open.length, 1);
   assert.equal(open[0].request_id, undefined, "Claude Code's request id stays inside vyred");
-  assert.deepEqual(open[0].presence, { required: false, covered: false }, "answering takes no proof; a surface renders from this");
+  assert.deepEqual(open[0].presence, { required: false, covered: false, since: null }, "answering takes no proof; a surface renders from this");
   const got = (await tool("threads.get", { thread: id })).data;
   assert.equal(got.thread.status, "waiting");
-  assert.deepEqual(got.asks[0].presence, { required: false, covered: false });
+  assert.deepEqual(got.asks[0].presence, { required: false, covered: false, since: null });
 
   // A model never approves a permission: the loader refuses both MCP caller forms and hides the
   // tool. (An agent named without its thread's key is refused before that, listing included.)
@@ -277,6 +280,8 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   await until(() => fs.existsSync(target), "the file the answer allowed");
   assert.deepEqual((await tool("threads.asks", { thread: id })).data, []);
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny" })).data.answered, false, "an answered ask stays answered");
+  assert.deepEqual((await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" })).data,
+    { ask: raised.payload.ask, answered: true, decision: "allow", already: true }, "the same answer again is the earlier outcome (ADR 0029 R2)");
 
   // The lease: the other surface is read-only until it takes the keyboard.
   const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "phone" })).data;
@@ -369,6 +374,9 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   t.after(() => again.stop());
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");
+  // ADR 0029 R7: the stop said why, so a surface shows "the box restarted", not a spinner.
+  const stopped = again.events.since(0, { type: "thread.stopped", limit: 10 }).filter(e => e.thread === id);
+  assert.deepEqual(stopped.map(e => e.payload.reason), ["restart"]);
 });
 
 test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {
@@ -708,7 +716,9 @@ test("usage on the subscription: turns and time, no dollars, and the rate-limit 
   await tool("agents.create", { name: "juno", kind: "assistant" });
   const r = (await tool("agents.ask", { agent: "juno", text: "nearlimit" })).data;
   const limit = await until(() => of(s.got, r.thread, "thread.limit")[0], "thread.limit");
-  assert.deepEqual(limit.payload, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
+  const { turn, ...rest } = limit.payload;
+  assert.equal(turn, `${r.thread}:1`, "every event of a turn says which turn (ADR 0030)");
+  assert.deepEqual(rest, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
   const said = await until(() => of(s.got, r.thread, "thread.text").find(e => e.payload.notice), "the notice");
   assert.match(said.payload.text, /^Claude's five-hour usage limit is at 85%; it resets at \d\d:\d\d UTC\.$/);
   const all = (await tool("agents.usage", {})).data;

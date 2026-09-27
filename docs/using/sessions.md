@@ -38,6 +38,35 @@ whether the SDK is installed.
 When your subscription's limit is reached and an API key is in the vault, a session carries on
 under the key and says so in the thread.
 
+## Which model
+
+Real work runs on Opus: Chat, agents and project sessions. Quick answers and background jobs
+(Capsule quick asks, memory, the planner, learning, any one-shot job) run on a faster, cheaper
+model, haiku by default. An agent's own model wins, and you can change any of it:
+
+```sh
+vyre call sessions.models.get
+vyre call sessions.models.set '{"scope":"purpose:capsule","model":"sonnet"}'
+vyre call sessions.models.set '{"scope":"project:northwind-bakery","model":"opus"}'
+```
+
+`sessions.models` in `config.json` sets the defaults per purpose (`chat`, `agent`, `project`,
+`capsule`, `job`, `memory`, `planner`, `learn`). A thread shows its model on its chip.
+
+## Your existing sessions
+
+Every session is in one list, whether a terminal, Vyre, your Mac or your box started it. Send one
+a message from Chat and Vyre resumes it where it ran, on the machine that has it; from then on it
+works like any session Vyre started. If it is open in a terminal right now, your message waits and
+is handed over when that terminal's turn ends, or you can fork it: `threads.fork` carries on the
+conversation as a copy, and the terminal's session is never touched.
+
+## Permission modes
+
+`threads.mode` puts a running session in `default` (asks), `acceptEdits` (edits without asking)
+or `plan` (reads and plans only), as Shift+Tab does in Claude Code. Only you can change a mode; a
+session or an agent never can, and Vyre never offers the mode that skips every question.
+
 ## Closed when idle, back on the next message
 
 An idle session costs about 180 MB of memory. So a session with no turn running, no question

@@ -97,7 +97,10 @@ test("federation send: a Mac session busy in a terminal queues the person's word
   const busy = terminalSession(s.transcripts, s.macWork, { ageMs: 1000 });
   const r = await s.boxCall("threads.send", { thread: busy.id, text: "which branch are you on?" }, "deck");
   assert.ok(!r.error, JSON.stringify(r.error));
-  assert.deepEqual(r.data, { sent: false, queued: true, open_elsewhere: true, thread: busy.id, name: "Northwind orders", busy: "terminal",
+  // queued_id and uuid (ADR 0030): the row a surface takes back or edits, and the message's own id.
+  const { uuid, ...data } = r.data;
+  assert.match(uuid, /^[0-9a-f-]{36}$/);
+  assert.deepEqual(data, { sent: false, queued: true, queued_id: 1, open_elsewhere: true, thread: busy.id, name: "Northwind orders", busy: "terminal",
     note: "Northwind orders is busy in your terminal on alex-mac. I'll hand it your message when this turn ends.", source: "mac", machine: "alex-mac" });
   const queued = await until(() => got(s, busy.id, "thread.queued")[0]);
   assert.deepEqual([queued.payload.text, queued.payload.surface, queued.payload.machine], ["which branch are you on?", "box:deck", "alex-mac"]);
