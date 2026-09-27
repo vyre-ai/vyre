@@ -54,7 +54,9 @@ const HELD_EMAIL = `const r = await (await fetch("/v1/tools/gate.held", { method
   const d = (r.data || []).find(x => x.via === "mail") || (r.data || [])[0];
   if (!d) throw new Error("nothing held at the Gate");
   go("/needs/" + encodeURIComponent(d.id));
-  await until('document.querySelector(".view") && /dana@harlowlegal/i.test(document.querySelector(".view").innerText)');`;
+  // A phone opens the item as a sheet over Now (deck/views/needs.js, deck/js/need-sheet.js).
+  await until('document.querySelector(".nsh-title") || (document.querySelector(".view") && /dana@harlowlegal/i.test(document.querySelector(".view").innerText))');
+  await wait(800);`;
 const SEARCH = `const s = document.querySelector("header input[type=search], header input");
   s.spellcheck = false; s.focus(); s.value = "harlow intake"; s.dispatchEvent(new Event("input", { bubbles: true }));
   await wait(1500);`;

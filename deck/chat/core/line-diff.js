@@ -127,3 +127,46 @@ export function parseUnifiedDiff(diffText) {
   }
   return diff;
 }
+
+/** The true minus sign; counts never use the hyphen. */
+export const MINUS = "−";
+
+/**
+ * Added and removed line counts of diff lines (headers and context not counted).
+ * @param {DiffLine[]} lines @returns {{ added: number, removed: number }}
+ */
+export function countLines(lines) {
+  let added = 0, removed = 0;
+  for (const l of lines || []) { if (l.type === "add") added++; else if (l.type === "remove") removed++; }
+  return { added, removed };
+}
+
+/**
+ * Counts the way every surface prints them beside the path: "+12 −4", "+60" for a new file,
+ * "−3" when only lines went. Neutral text; the colour is the caller's (--text-2, never a hue).
+ * @param {{ added: number, removed: number }} c @returns {string}
+ */
+export function formatCounts({ added, removed }) {
+  const parts = [];
+  if (added || !removed) parts.push(`+${added || 0}`);
+  if (removed) parts.push(`${MINUS}${removed}`);
+  return parts.join(" ");
+}
+
+/**
+ * The inline variant's cut: the first `cap` lines (headers not counted) and how many lines the
+ * whole diff has, for "Show all N lines". Nothing hidden when the diff fits.
+ * @param {DiffLine[]} lines @param {number} [cap]
+ * @returns {{ shown: DiffLine[], total: number, hidden: number }}
+ */
+export function capLines(lines, cap = 20) {
+  const all = lines || [];
+  const total = all.filter(l => l.type !== "header").length;
+  if (!(cap > 0) || total <= cap) return { shown: all, total, hidden: 0 };
+  let seen = 0, k = 0;
+  for (; k < all.length && seen < cap; k++) if (all[k].type !== "header") seen++;
+  return { shown: all.slice(0, k), total, hidden: total - cap };
+}
+
+/** The ghost button's words: "Show all 64 lines". @param {number} total */
+export const showAllLabel = total => `Show all ${Number(total).toLocaleString("en-US")} lines`;

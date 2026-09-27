@@ -332,6 +332,34 @@
       "h": 1200,
       "title": "Teammates and usage (interactive) \u00b7 paper",
       "is_interactive": true
+    },
+    "SettingsRegistry.dc.html": {
+      "x": 12480,
+      "y": 6160,
+      "w": 2700,
+      "h": 1180,
+      "title": "Settings: account and project scopes"
+    },
+    "SettingsRegistry-paper.dc.html": {
+      "x": 12480,
+      "y": 7940,
+      "w": 2700,
+      "h": 1180,
+      "title": "Settings: account and project scopes \u00b7 paper"
+    },
+    "TrustBrowser.dc.html": {
+      "x": 15660,
+      "y": 9720,
+      "w": 2700,
+      "h": 1260,
+      "title": "Devices: trusting a browser for the vault"
+    },
+    "TrustBrowser-paper.dc.html": {
+      "x": 15660,
+      "y": 12170,
+      "w": 2700,
+      "h": 1260,
+      "title": "Devices: trusting a browser for the vault \u00b7 paper"
     }
   },
   "createdOnFiles": {
@@ -447,23 +475,27 @@
     "Memory.dc.html",
     "Settings.dc.html",
     "Composer.dc.html",
+    "SettingsRegistry.dc.html",
     "Onboarding-paper.dc.html",
     "Projects-paper.dc.html",
     "Memory-paper.dc.html",
     "Settings-paper.dc.html",
     "Composer-paper.dc.html",
+    "SettingsRegistry-paper.dc.html",
     "States.dc.html",
     "InstallLaptop.dc.html",
     "InstallPhones.dc.html",
     "Capsule.dc.html",
     "Takeover.dc.html",
     "Presence.dc.html",
+    "TrustBrowser.dc.html",
     "States-paper.dc.html",
     "InstallLaptop-paper.dc.html",
     "InstallPhones-paper.dc.html",
     "Capsule-paper.dc.html",
     "Takeover-paper.dc.html",
     "Presence-paper.dc.html",
+    "TrustBrowser-paper.dc.html",
     "Teammates.dc.html",
     "TeammatesNeeds.dc.html",
     "Limits.dc.html",

@@ -9,7 +9,7 @@ import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
 import { since } from "../js/fmt.js";
 import { wantSheet } from "../js/now-phone.js";
-import { elsewhere } from "../js/need-rows.js";
+import { elsewhere, fromMac } from "../js/need-rows.js";
 
 /** @param {any} ctx */
 export default async function view(ctx) {
@@ -22,9 +22,10 @@ export default async function view(ctx) {
     return;
   }
   const draw = () => {
-    const n = needs.current().find(x => x.id === id);
+    // The list's item, else an ask raised while this page was open (needs.find).
+    const n = needs.find(id);
     if (!n) return put(ctx.root, h("div", { class: "nd" }, top(null),
-      h("h1", { class: "nd-title" }, "This is not waiting any more."),
+      h("h1", { class: "nd-title" }, "This ask was answered or has gone."),
       h("p", { class: "muted" }, "It was answered from another screen, or it expired. ", link("/now", { class: "link" }, "Back to Now"))));
     put(ctx.root, n.kind === "draft" ? draft(n) : ask(n));
   };
@@ -63,7 +64,9 @@ function actions(n, buttons, status, list, getEdited) {
     try { await needs.answer(n, opt, edited); go("/now"); }
     catch (e) {
       put(status, problem(e));
-      for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
+      // The box cannot forward answers to this Mac (needs.js): the line says where, no buttons.
+      if (/** @type {any} */ (e)?.elsewhere) put(buttons);
+      else for (const b of buttons.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = false;
     } finally { answering = false; }
   } }, opt.label === "Send" ? [icon("send", 14), "Send"] : opt.label));
 }
@@ -84,11 +87,11 @@ function ask(n) {
   const opts = mac ? [] : [...n.options];
   // "Always" becomes a rule in this project (Learning); offered only when the ask is in one.
   if (!mac && n.project && !opts.some(o => o.decision === "always")) opts.splice(Math.max(1, opts.length - 1), 0, { label: "Always in this project", decision: "always" });
-  // A Mac session's ask is answered on that Mac: the line in place of the buttons.
+  // A Mac session's ask on a box that cannot forward the answer: the line in place of the buttons.
   put(buttons, mac ? h("p", { class: "small muted" }, `Answer it on ${mac}`) : actions(n, buttons, status, opts.map((o, i) => ({ opt: o, cls: i === 0 ? "btn-primary" : "" }))));
   const threadHref = n.thread ? (n.project ? `/projects/${encodeURIComponent(n.project)}/${encodeURIComponent(n.thread)}` : `/threads/${encodeURIComponent(n.thread)}`) : null;
   return h("div", { class: "nd" }, top(n),
-    h("p", { class: "nd-who" }, h("b", null, n.agent || "A session"), ` asks${where ? ", in " + where : ""}`),
+    h("p", { class: "nd-who" }, h("b", null, n.agent || "A session"), ` asks${where ? ", in " + where : ""}${fromMac(n) ? ` on ${n.machine || "your Mac"}` : ""}`),
     h("h1", { class: "nd-title" }, "May I run"),
     h("div", { class: "nd-cmd" }, h("span", { class: "faint", "aria-hidden": "true" }, "$ "), h("code", null, n.command || "")),
     n.intent ? [h("div", { class: "lbl nd-lbl" }, `Why ${n.agent || "it"} wants to`), h("p", { class: "nd-p" }, n.intent)] : null,
