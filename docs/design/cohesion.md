@@ -58,6 +58,7 @@ days across two or three teams), L (a week or more, several teams).
 | 15 | One card set for asks, approvals and plans | app-design, chat, pwa, mobile, capsule-pro | M | proposed |
 | 16 | Event vocabulary and a live event catalog | platform, cohesion | S | proposed |
 | 17 | Shrink the boundaries allowlist | ci, owners of each edge | M | proposed |
+| 18 | Inline pictures in chat: an agent's screen at a step, or an image it made | chat (render, owns), sessions, cohesion (sight), glass | M | proposed, 0.1.1 |
 
 ### 1. One screen service on both sides
 
@@ -206,6 +207,34 @@ records only, never tool or test text.
 - **Events:** a catalog tool from the manifests; one noun form (file versus files, computer versus
   computers) with aliases for a release; names built at run time documented.
 - **Boundaries:** 26 frozen edges; most are shared-library moves (tailscale, transport, auth).
+
+### 18. Inline pictures in chat
+
+**The user's ask:** now that chat runs through the Agent SDK, sometimes show a picture inline in
+the transcript, not just a row of text: what an agent's screen looked like at a step, or an image
+it made or a tool returned.
+
+**Two sources, two capture paths, one render path.**
+- **A step's screen.** `sight.frame {target, maxWidth}` (built, core/sight) already returns one
+  scaled JPEG keyed to the last step on that target, refreshed on `sight.stepped`, never a timer.
+  Glass calls it directly for its own reconnect-fallback still and resting-tile preview (agreed
+  with glass, 2026-09-28); a chat row can call the same tool for the same reason, keyed by the tool
+  call id sessions already carries.
+- **An image the agent made.** A Canva render, a saved screenshot, a generated image, whatever a
+  tool call returned or wrote. This is not sight's data: no live screen, no target, no step. It
+  needs its own small attachment convention (thread + call -> a file reference, or the tool's
+  result carrying an image block directly), owned by whoever already writes those files today.
+
+**Owners, decided by the lead 2026-09-28.** Chat owns rendering in every transcript (Deck, PWA,
+Expo, all from chat-core so it is built once). Sessions passes image blocks through from the
+Agent SDK's own message shape rather than chat re-deriving them. Cohesion's part stays `sight.frame`
+and `sight.stepped`, already built; cohesion does not render anything. Glass is a second consumer
+of `sight.frame`, not a second capture path: one still, two callers.
+
+**Open for 0.1.1, when sessions and chat relaunch.** Whether "an image the agent made" is a new
+small module or rides on an existing one (files, drive); how large an inline image gets before it
+is a link instead; whether a `sight.frame` call from chat needs its own rate limit alongside
+Glass's (both call the same tool, on different cadences).
 
 ## One service, both sides
 
