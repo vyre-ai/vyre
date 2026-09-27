@@ -40,7 +40,7 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
   });
 
   ctx.tool("vault.health", {
-    description: "Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, unprotected, expired or expiring. Names and reason codes only.",
+    description: "Watchtower: items that are weak, reused, old, marked to rotate, missing two-factor, missing a passkey the site offers, unprotected, expired or expiring. Names and reason codes only.",
     input: obj({}),
     run: async (_input, { caller }) => {
       const cols = ctx.store.db.prepare("PRAGMA table_info(vault_items)").all().map(c => String(c.name));
@@ -62,7 +62,12 @@ export function register({ ctx, vault, fetch = globalThis.fetch }) {
       }
       const out = judge(items, { classes });
       vault.audit("health", null, caller, true, `${out.checked} items, ${out.items.length} flagged`);
-      return { ...out, at: Date.now() };
+      // A nudge, not a finding: Touch ID unlock is the biggest usability win available (no
+      // password prompts), and it needs nothing new - only a Mac with a Secure Enclave and a
+      // personal vault already started.
+      const status = vault.accountStatus();
+      const touchid = { enrolled: status.touchid, available: status.account && Boolean(vault.enclave) };
+      return { ...out, touchid, at: Date.now() };
     },
   });
 
