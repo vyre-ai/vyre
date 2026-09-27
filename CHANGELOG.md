@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+## 0.0.1
+
+- A dry-run section for the release proof.
+
+
 #### CI: the release workflow (ADR 0033)
 
 - .github/workflows/release.yml: a tag vX.Y.Z publishes a GitHub Release (stable), vX.Y.Z-beta.N a

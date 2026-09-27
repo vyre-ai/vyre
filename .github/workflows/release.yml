@@ -12,7 +12,7 @@
 name: release
 on:
   push:
-    tags: ["v[0-9]+.[0-9]+.[0-9]+", "v[0-9]+.[0-9]+.[0-9]+-beta.[0-9]+"]
+    branches: [work/ci-release]  # PROOF BRANCH ONLY: a dry run as v0.0.1
   workflow_dispatch:
     inputs:
       tag:
@@ -33,12 +33,12 @@ jobs:
       attestations: write
       actions: read        # app.yml's Android artifact
     env:
-      TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
-      PUBLISH: ${{ github.event_name == 'push' }}
+      TAG: v0.0.1
+      PUBLISH: false
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'push' && github.ref || inputs.tag }}
+          ref: ${{ github.ref }}
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
