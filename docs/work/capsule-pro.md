@@ -71,57 +71,39 @@ without editing Capsule files:
   verbs; the Swift seam is for native UI and Mac APIs.
 
 ## Done
-- (nothing merged yet)
+- The native Capsule is THE Capsule: Electron, its helpers and the zip are retired (9f9157f,
+  b76552d). `vyre capsule install` builds on the Mac. Verified 2026-09-27 in a temp home
+  (VYRE_NO_DIALOGS=1, not opened): built and signed ad hoc as sh.vyre.capsule, and the second run
+  said "up to date".
+- Session 4 (2026-09-27, after logout 3): merged main ef51363, fixed the build (the stale askItem
+  call), and merged capsule-now fc7fa70, capsule-agent 792420c, capsule-sight 876975b and
+  capsule-apps-native 8cba106. apps-native's own CI had been cancelled; the Swift suite on the Mac
+  passed 260/260 with it merged, so it went in. ADR 0015 got front matter and a nav entry. Node
+  targeted tests on testbox passed 122/122.
+- The presence session (008ee64): gate.approve refused `presence_required` asks once in the panel
+  with readable words, sends `x-vyre-presence-keep: 1`, and keeps the returned session in memory.
+  Later sessionable calls ride it. It is dropped on refusal, a minute before it ends, and on
+  lock or sleep (presence.session.close too). `CapsuleHost.prove(tool:input:summary:)` is for
+  capsule-apps. Swift 267/267.
+- Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
+  fix, the extension seam, `@` targets: see CHANGELOG.
 
 ## Doing
-- First runnable native build (2026-09-27): `Sources/Host/` (App, Panel, Hotkeys, CapsuleModel,
-  main) and `Sources/UI/` (Theme, CapsuleView). Panel is Spotlight's size and place (680 wide,
-  56 px bar, results grow down, top edge 22% from the screen top), a non-activating NSPanel at
-  popUpMenu level with [.canJoinAllSpaces, .fullScreenAuxiliary], so it opens over a full-screen
-  app on its Space. Core: apps, settings panes, files (Spotlight), dictionary, calculator,
-  system commands, and Ask (threads.start, lean haiku, reply streamed under the bar).
-  Hot keys: Control twice when Input Monitoring is already granted (asked only from the menu),
-  and ⌥Space (VYRE_CAPSULE_HOTKEY) with no permission. `open Vyre.app` again toggles it.
-- Build: `<team-dir>/buildlock.sh capsule-pro local/capsule/native/build.sh app`
-  writes `local/capsule/native/.build/Vyre.app` (plist, ad hoc signature, id sh.vyre.capsule).
-- Done 2026-09-27: plain `vyre capsule` builds the native app on first run
-  (core/cli/commands/capsule-native.js, 5 tests on the test box; a real build into a scratch home took
-  34 s and the second call was "up to date"). Swift tests 162/163.
-- Done 2026-09-27: capsule-now rules 1-5 and 7 in native: Said.swift (said.js + memoItems/
-  memoLines/quickAppend), Catalog.swift, Reply.notice/queued, `@` chip and sends (threads.send
-  with the queue, agents.ask, threads.start in a project). Tests: said 7, capsule model 2 (memory
-  goes with a quick question; a queued send is said and marked handed over). Swift 171/172.
-- Done 2026-09-27 (uncommitted during ci's git freeze, commit when ci says done): the host loads
-  extensions (ExtensionHost.swift), VyredLink.stream, CapsuleHost.sessionWindow. With sight's
-  folder in a scratch copy: 184/185, app builds with SightExtension registered.
-- Done 2026-09-27: typing glitch fixed and measured (Tests/TypingPerfTests.swift; run optimised
-  with `VYRE_CAPSULE_OPT=1 build.sh test typing`). Before: p50 2.81 ms, p95 4.88 ms, 14 size
-  changes and 7 flickers over 20 keys. After: p50 2.88 ms, p95 7.86 ms, 0 size changes, 0
-  flickers, longest main-thread pass 10.25 ms, none over 16 ms.
-- Done 2026-09-27: the "Vyre Local" identity with consent (capsule-native.js offerIdentity; 14
-  CLI tests on the test box with a fake keychain). The real keychain path has not run anywhere yet: it
-  needs the user's own `vyre capsule` (or a CI runner's throwaway keychain).
-- Done 2026-09-27: design pass (snapshots in Tests/SnapshotTests.swift), and `@` targets for
-  extensions (`mentions(matching:)`, `send(_:to:query:)`, CandidateKind.app) for capsule-apps.
-- Done 2026-09-27: Touch ID in the panel (presence method capsule, cross-checked with
-  core/presence in Node), banners for answers landing while hidden, menu-bar popover and health
-  dot, headless footprint mode (16.1 MB footprint hidden). Swift tests all pass (200).
-- Done 2026-09-27: Taildrop send (⌘S on a file row). SendAttaching (c61e3af). Merged
-  capsule-sight 45be614 and capsule-agent (fcfcef0). Spotlight-strict short matching. Memory as one
-  line, replies by the assistant's name, answer takes the area (801038f). `vyre capsule install`
-  builds locally, zip retired (1a503e9). Planner banners (d608b8a). Swift 238/238.
-- Not yet run for real: enrolment (vyred's Touch ID dialog) and the in-panel Touch ID, which need
-  the user at the Mac; the banner permission prompt.
+- Footprint. The 93 MB figure is RSS, which counts shared AppKit and SwiftUI pages.
+  phys_footprint (Activity Monitor's Memory) is what the 60 MB target means: 17 MB hidden in
+  headless mode on the Mac, RSS 72 MB. Merged capsule-pro-footprint 286ad05 (the check reports
+  both, plus vmmap and heap on CI). CI run 36313677709 on work/capsule-pro gives the shown-then-
+  hidden number.
 
 ## Next
-1. Switch the "live in terminal" badge to a real flag once projects.catalog/threads.list carry
-   `live` (asked capsule-now, who owns the open-elsewhere code, 2026-09-27).
-2. Merge capsule-apps' Kit branch (nested and async mentions) when it sends the hash; review it.
-3. memory.answer from memory-iq: fold its {answer, confidence, facts, sources} into MemoryAnswer
-   (conversations, confidence) in place of Said ranking; said.js stays the fallback.
-4. Planner rows (next alarm, today's agenda) if the planner team wants them.
-5. A perf-check entry for the native app (VYRE_CAPSULE_HEADLESS=1 footprint, typing check).
-6. Prove the enrolment and in-panel Touch ID with the user at the Mac.
+1. Read CI 36313677709. If the shown-then-hidden phys_footprint is over 60 MB, trim what
+   survives a hide: SwiftUI view trees, icon caches, the extension panels.
+2. Planner banners on the Agent SDK sessions event model, and Capsule sessions (ADR 0030): quick
+   answers on the fast model, project sessions where the work lives. The sessions team owns the
+   event model; consume it for streaming, stop and the queue.
+3. Direction A tokens: import tokens.json (app-design, docs/design/one-app) into Theme.swift.
+4. Switch the "live in terminal" badge to capsule-now's `live` flag (on main via fc7fa70).
+5. Prove enrolment and the in-panel Touch ID with the user at the Mac.
 
 ## Needs from others
 - capsule-now: its rules doc (docs/work/capsule-now.md) is not written yet; the lead asked the
