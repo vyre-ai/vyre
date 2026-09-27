@@ -164,6 +164,17 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   tool event. Given the changed keys it regroups from the row before the first change and stops
   at the first old row boundary past the last one; unchanged rows stay the same objects.
   groupItems stays the pure full pass, and a test checks both agree on random sequences.
+#### Design system: Design A v1, frozen
+
+- docs/design/system/ is the design system of record: tokens, layout and navigation, copy, the
+  render audit, and 41 component specs (anatomy, variants, sizes, states, keyboard and touch,
+  motion, copy, accessibility), each naming its implementing file in the Deck, the app and the
+  Capsule, its status, and its gaps as a checklist. Surveyed 27 Sep on main and the teams' branches.
+- scripts/design-audit (`npm run design:audit`) renders every board in headless Chrome and fails on
+  text under AA, text outside its frame or cut by a clipping parent, and anything off the system.
+  .github/workflows/design.yml runs it with `gen-tokens --check` and the token and theme tests.
+- docs-check knows the app-design team as an owner. icons.txt gains unlock and minus.
+
 #### Sessions: concurrency slots for teammates and subagents (the user's usage control)
 
 #### The floor follows links
@@ -1698,12 +1709,28 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
 #### Tokens: one JSON, rendered for the Capsule, the app and the Deck
 
+- deck/css/tokens.css now carries the whole scale, not only colours: --size-*/--line-* for the
+  five type steps (the phone's larger read and title steps under 720 px), --space-0 to --space-9,
+  --control-*, --motion-* and --ease, next to the colour roles, --radius-*, --float and --popover.
+  Regenerated after merging main (the committed file predated the popover and radius tokens).
+
+- Theme overrides (ADR 0033 section 3): scripts/lib/theme.js deep-merges a partial tokens.json
+  (the person's overrides/theme.json or a module's themes/<name>.json) over the shipped one, and
+  refuses the whole file, naming each failure, when it touches status, layout, icon or a key the
+  tokens lack, or when the result breaks a rule: AA for every text and ground pair the surfaces
+  draw (washes composited), a 3:1 focus ring, the attention colour reused by another role, text
+  under 12 or touch targets under 44. `fromLegacy()` maps config.theme.colors for one release.
+  `node scripts/gen-tokens --validate <file>` runs it. Tests in test/theme.test.js.
+
 - scripts/gen-tokens (`npm run tokens`) is the one token generator (lead, 27 Sep; it replaces the
   app's and the Capsule's own). It writes apps/app/src/theme/tokens.ts (byte-identical to the
   app's current file: `tokens`, `Scheme`, `Colors`, `attention()`), the Capsule's
   local/capsule/native/Sources/UI/Tokens.generated.swift and deck/css/tokens.css (the Deck's
   selectors and role names, incl. --beacon-ink, --beacon-dot, --beacon-badge-ink). `--check` exits
-  1 when a file is stale; `--ts/--swift/--css <path>` write one output elsewhere. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
+  1 when a file is stale; `--ts/--swift/--css <path>` write one output elsewhere.
+- tokens.json gains `popover` (the Deck's menu shadow, dark and paper); tokens.css gains --popover
+  and --radius-* from the radius scale. Writing and `--check` both skip a surface whose root
+  folder (apps/app, local/capsule/native, deck) is not in the tree. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
   now a list of sizes (12, 13), not a size and line pair; phone type steps get their own enum.
   Tests in test/tokens.test.js.
 
