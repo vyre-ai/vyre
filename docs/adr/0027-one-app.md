@@ -136,12 +136,23 @@ A hosted page that could change under the user would be a way into every box. So
 
 - app.vyre.run serves only immutable, content-addressed folders (`/v/<sha>/`), built by CI from
   a tagged release, with the manifest's hashes signed by the release key.
-- The box names the version it trusts. The page first loads a tiny, fixed loader that asks the
-  box (over the relay) for its version and the signed hashes, then loads only that folder with
-  Subresource Integrity. A box on version X is never served app code from version Y.
+- The box names the version it trusts. The page first loads a tiny, fixed loader (the trust
+  root: SRI-pinned, swapped by its service worker only on a signed update; relay/app/) that asks
+  the box over the relay with `relay.web.release` for `{ sha, manifest }`, the owner's pin or the
+  newest known release, then loads only that folder with Subresource Integrity. A box on version
+  X is never served app code from version Y. CI's signature is a second check (ADR 0026).
 - Nothing about a box, a session or a secret is stored on app.vyre.run. The relay only forwards
   sealed frames (ADR 0026).
 - The Cloudflare plan is approved; the relay team deploys it, and this ADR adds no other hosting.
+
+### 4a. The Android APK from the box
+
+CI builds an unsigned release APK and `android.json` (`version`, `versionCode`, `sha`,
+`sha256`, `size`, `minSdk`). The box signs it with the owner's own release key from the vault
+(made on the first `vyre phone add`, so updates install over each other) and serves
+`/apps/android.json` and `/apps/android/<file>.apk` to the owner's devices only.
+`vyre phone add --android --usb` checks the sha256 and installs over adb; the app checks the
+manifest on foreground, at most hourly, and offers the update through the system installer.
 
 ### 5. The smoothness bar
 
