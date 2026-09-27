@@ -246,19 +246,31 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 
 | Component | Gap | Commit |
 |---|---|---|
-| Button | `.btn` is mono 12 caps: now Instrument Sans 13/18 600, sentence case (css/buttons.css) | buttons |
-| Button | no secondary, outline, hold or busy; disabled was opacity 0.45 and primary disabled kept lime | buttons |
-| Button | `.btn-ghost` ink `--text-2` and radius `--r-2`: now `--text` and `--radius-button` | buttons |
-| Button | `.sb` / `.sb-primary` second system (min 46, opacity disabled): folded in at 44 and 54 | buttons |
-| Icon button | `.ibtn` radius `--r-2`; no 44 size, no filled round, no busy | buttons |
-| Status mark | no running ring, crossed circle or hollow done dot in `deck.css` (css/marks.css, js/status-mark.js) | marks |
-| Status mark | relayed health dots used gold: now `--label` solid, and unknown is `--label` hollow | marks |
-| Status mark | rail count was violet mono text: the Now count is the 18 badge (99+, "3 need you") | marks |
-| Toast | two toasts (`.np-toast` on Now, `.vt-toast` in the vault): one js/toast.js + css/toast.css | toast |
-| Toast | no in-place variant: `showToast({ slot })` draws it (Now's rows still use the floating one) | toast |
-| Toast | shadow `--light-top` and words 15/20: now `--float`, base 13/18, phone read 17/24 | toast |
+| Button | `.btn` is mono 12 caps: now Instrument Sans 13/18 600, sentence case (css/buttons.css) | 68b935df |
+| Button | no secondary, outline, hold or busy; disabled was opacity 0.45 and primary disabled kept lime | 68b935df |
+| Button | `.btn-ghost` ink `--text-2` and radius `--r-2`: now `--text` and `--radius-button` | 68b935df |
+| Button | `.sb` / `.sb-primary` second system (min 46, opacity disabled): folded in at 44 and 54 | 68b935df |
+| Icon button | `.ibtn` radius `--r-2`; no 44 size, no filled round, no busy | 68b935df |
+| Status mark | no running ring, crossed circle or hollow done dot in `deck.css` (css/marks.css, js/status-mark.js) | 6a86462d |
+| Status mark | relayed health dots used gold: now `--label` solid, and unknown is `--label` hollow | 6a86462d |
+| Status mark | rail count was violet mono text: the Now count is the 18 badge (99+, "3 need you") | 6a86462d |
+| Toast | two toasts (`.np-toast` on Now, `.vt-toast` in the vault): one js/toast.js + css/toast.css | 82685182 |
+| Toast | no in-place variant: `showToast({ slot })` draws it (Now's rows still use the floating one) | 82685182 |
+| Toast | shadow `--light-top` and words 15/20: now `--float`, base 13/18, phone read 17/24 | 82685182 |
+
+Not closed here: the phone tab bar badge (this branch has no tab bar, the phone shell uses page
+labels); `.needs-pill` is still a violet wash (the spec gives no replacement); `.dot.recall` is
+still gold (memory, not a status, and the spec has no role for it); the 10 s toast under a screen
+reader (a page cannot tell one is on); Now's rows keep the floating toast rather than in place.
+Chat and native-core draw their own marks: chat/session.js and chat/index.js (`dot signal` for
+running), chat/nav.js (`agent-dot`), chat/gate-item.js (`dot beacon`, now 8 via the alias),
+chat/term.js (`term-dot`), chat/chat.css (`.cv-state-*`, `.rail-sub .count`), views/agents.js
+(`ag-dot`), glass/watch.js (`gl-live-dot`, `gl-over-dot`, `dot signal`).
 
 ## Needs from others
+- app-design: tick the gaps in "Design A gaps closed" after the merge. One question: a hold
+  button's hover fill is `--hover` and so is its growing fill; buttons.css grows it in `--rule`
+  under the pointer so the hold still shows. Confirm or give the colour.
 - tailnet or names: a read of config `network.origins` (a field on system.info or names.status)
   for the Settings > Network "Hosted app" row.
 - polish-cli answered: no --step; Settings says `vyre up` (and `vyre index` for history).
