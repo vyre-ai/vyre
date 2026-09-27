@@ -1,5 +1,5 @@
 // @ts-check
-// backoff — how long to wait before the next reconnect (docs/adr/0029-resilience.md, R3).
+// backoff: how long to wait before the next reconnect (docs/adr/0029-resilience.md, R3).
 // 2 s, doubling to 60 s, each wait moved up to 20 percent either way so a hundred devices that
 // lost the box together do not all come back in the same second.
 

@@ -7,21 +7,29 @@ pieces (SSE cursor fixes, idempotency layer, drain on stop, reference stream and
 in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes filed to owners.
 
 ## Done
-- ADR 0029 drafted (R1 streams, R2 idempotency and outbox, R3 quiet reconnect, R4 terminal,
-  R5 path failover, R6 local alarms, R7 restarts, R8 chaos harness).
-- Audit of every surface (27 Sep 2026), summary under "Audit" below.
+- ADR 0029 drafted (R1..R8), aligned with ADR 0030 (sessions): the key reaches the tool, keyUuid
+  for the SDK message uuid, `thread.stopped` reason `restart` on stop.
+- Box side: SSE `retry:` and `id:` on open and on heartbeat, `stream.reset`, AUTOINCREMENT event
+  ids; Idempotency-Key in Registry.call (24 h table, 409 conflict, overlap waits, failed not
+  kept); drain on stop (503 `restarting`, 5 s); Switchboard stopAll ends threads with reason
+  `restart`; dtach in box/Dockerfile.
+- R4 terminal box side: core/term under dtach (re-adopted after a vyred restart), byte offsets,
+  1 MB ring cut at line ends, `from=`, cut/at frames, 1012 on stop, `term.keep_hours` (12).
+- Reference client: core/resilience/ stream, outbox (+ kick), backoff, sse, node.js transports,
+  web.js (fetch transport and caller, IndexedDB outbox, cursor and snapshot stores, lifecycle).
+- CLI `threads watch`, `connect --sign-in` and the live screen use the resilient client.
+- Chaos harness test/chaos/ (proxy, R1 R2 R3 R5 R7 tests, browser transport tests, web.test.js).
+- Tests on testbox (27 Sep): 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
+  (real dtach), daemon and modules tests.
 
 ## Doing
-- Reported ADR summary and top gaps to the lead; next the shared box-side pieces.
+- Reporting to the lead; filing per-team fixes.
 
 ## Next
-1. core/daemon stream(): `retry:`, `id:` on open and on heartbeat, `event: reset` past a prune.
-2. events table AUTOINCREMENT migration.
-3. Idempotency layer in Registry.call + `Idempotency-Key` header, 24 h table.
-4. Drain on stop (5 s), `thread.stopped{reason:"restart"}`.
-5. test/chaos/ fault proxy + R1..R7 tests.
-6. core/resilience/ reference client (stream + outbox), adopted by CLI threads watch/connect.
-7. File fixes to owners (list under "Needs from others").
+1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
+2. R6 local alarms contract with planner and mobile (dedupe key planner-<item>-<due>).
+3. `last_event` on threads.get, planner.list and Needs reads (R1), with their owners.
+4. A 30 min perf check of an idle durable terminal and of the stream client (scripts/perf-check).
 
 ## Audit (27 Sep 2026)
 - R1: Deck, iOS, Android and the Mac link reconnect with since=latest if they drop before the
@@ -40,7 +48,25 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - R7: stop() cuts in-flight calls (closeAllConnections) and SSE without draining.
 
 ## Needs from others
-- (filed after lead review)
+- lead/box: vyred is PID 1 in the box container, so dtach terminals survive a vyred restart but
+  not a container recreate (every deploy). Decide: a tiny init plus a restart loop inside the
+  container, or accept that deploys end terminals.
+- sessions (ADR 0030): threads.send passes `keyUuid(caller, meta.idempotencyKey)` as the SDK
+  message uuid and refuses a uuid it already queued or handed over; the driver's close on vyred
+  stop uses reason `restart` (the Switchboard's stopAll does it today); threads.answer and
+  gate.approve/reject return the earlier outcome on a repeat.
+- pwa + mobile: adopt core/resilience/web.js in the Deck and the Expo web target: outbox for
+  sends, answers, approvals, notes, todos; cursor persisted; open from snapshot cache; one quiet
+  Reconnecting pill after the first failed retry; never remount or drop drafts on reconnect.
+- relay + tailnet: CORS for app.vyre.run on vyred or the relay, allowing authorization,
+  idempotency-key, last-event-id and content-type (the web client needs it cross-origin).
+- chat: the browser terminal client on the new term contract (from=, cut/at frames, 1012
+  reattach, 4 KB key buffer, keep scrollback). docs: ADR 0024 still says 10 s idle.
 
 ## Changed contracts
-- (none yet)
+- Registry.call: new meta `idempotencyKey` (from the Idempotency-Key header); tools receive it.
+- vyred HTTP: 409 `idempotency_conflict`; 503 `restarting` with retry-after during drain.
+- Switchboard stopAll: `thread.stopped` reason `restart` (was `stopped`).
+- term: `term.open`/`term.attach` add `durable`, `offset`, `oldest`; attach takes `from`; new
+  text frames `cut` and `at` only when `from` is given; close code 1012 on stop; config
+  `term.keep_hours`.

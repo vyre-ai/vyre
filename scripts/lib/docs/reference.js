@@ -235,6 +235,7 @@ const ENV_MEANING = {
   COMPUTERS_NETWORK: "The Docker network agent computers join. Default `vyre-computers`.",
   DOCKER_PROXY_PORT: "The port the Docker proxy listens on. Default 2375.",
   DOWNLOAD_BASE: "Where `vyre capsule install` downloads the app from.",
+  DTACH_BIN: "The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred.",
   HANDS_BIN: "Another build of the Mac hands helper.",
   HARNESS_DIR: "The Harness plugin folder threads load. Default the one beside this install.",
   HOME: "Where Vyre keeps its data. Default `~/.vyre`.",
@@ -508,6 +509,7 @@ const MEANING = {
   "network.box": "On a Mac: the address of the box it is paired with.",
   "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
+  term: "Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell.",
 };
 
 /** The fields of a JSDoc object type, top level only: [{ key, optional, type }]. */

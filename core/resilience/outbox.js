@@ -1,5 +1,5 @@
 // @ts-check
-// outbox — writes made while the box is out of reach are kept and delivered once
+// outbox: writes made while the box is out of reach are kept and delivered once
 // (docs/adr/0029-resilience.md, R2).
 //
 // A surface puts every send, answer, approval, note and todo here first, with a key that stays
@@ -55,7 +55,7 @@ export async function outbox({ store, call, onChange, newKey = () => globalThis.
       if (r.error && RETRY.has(r.error.code)) {
         entry.state = "waiting";
         await persist(); tell();
-        wait = setTimeout(flush, backoff.delay());
+        if (!stopped) wait = setTimeout(flush, backoff.delay());
         return;
       }
       if (r.error && r.error.code === "presence_required") {
@@ -97,6 +97,11 @@ export async function outbox({ store, call, onChange, newKey = () => globalThis.
     /** The box is back, the network changed, or the person proved presence: try now. */
     retry() {
       for (const e of pending) if (e.state !== "sending") e.state = "waiting";
+      backoff.reset();
+      return flush();
+    },
+    /** The network came back or the app is in front again: try now, but do not ask for presence again. */
+    kick() {
       backoff.reset();
       return flush();
     },

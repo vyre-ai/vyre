@@ -6,6 +6,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- Aligned with ADR 0030 (Vyre-owned sessions): a call's Idempotency-Key reaches the tool as
+  `meta.idempotencyKey`, and `keyUuid()` maps any key to a stable uuid for the Agent SDK message
+  id. On stop, every live thread ends with `thread.stopped` reason `restart`.
+- term (R4): the shell runs under dtach when it is on the PATH (the box image now installs it), so
+  it outlives a vyred restart; the next vyred picks it up from run/term/terms.json. No dtach: a
+  plain pty, and term.open says durable: false. term.attach and the pty stream take
+  `from=<offset>`: the box counts every byte and replays exactly the bytes after it from a 1 MB
+  ring trimmed at line ends, with `{"t":"cut"}` and `{"t":"at"}` text frames; without `from`, the
+  old replay. A disconnect never ends a terminal; one with nobody attached is kept for
+  `term.keep_hours` (default 12). A vyred stop closes a durable socket with 1012.
+- core/resilience/web.js: the browser side of the reference client. A fetch transport for
+  follow() and a fetch caller for the outbox (relay base paths and bearer headers work),
+  IndexedDB stores for the outbox, the stream cursor and a per-view snapshot cache (falling back
+  to localStorage, then memory, so a private window never throws), and lifecycle() wiring hidden
+  pages, the back/forward cache and online/offline to the stream and the new outbox.kick().
 - vyred's event stream sends `retry: 2000` and an `id:` with the cursor as it opens and with every
   heartbeat, so a client that drops before its first event resumes from there, not from "latest".
   A filtered stream's cursor moves with every event. A cursor ahead of the box's log gets a

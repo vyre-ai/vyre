@@ -36,6 +36,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `computers` | `{ tailnet: { enabled: boolean, tag: string }, [k: string]: any }` | none | Not described yet. |
 | `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> }` | none | Not described yet. |
 | `theme` | `{ colors?: { dark?: Record<string, string>, light?: Record<string, string> } }` | unset | Your colours, over the defaults in `core/config/theme.js`. The box serves them as `/theme.css`. |
+| `term` | `{ keep_hours: number, max?: number, shell?: string }` | `{ keep_hours: 12 }` | Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell. |
 
 ### network
 
@@ -81,6 +82,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_COMPUTERS_NETWORK` | The Docker network agent computers join. Default `vyre-computers`. | `core/dockerproxy/main.js` |
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
+| `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |
 | `VYRE_EGRESS_GATE_HOST` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_GATE_PORT` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_GATE_STATUS` | Not described yet. | `core/computers/egress.js` |

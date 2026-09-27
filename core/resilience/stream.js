@@ -1,5 +1,5 @@
 // @ts-check
-// stream — follow vyred's events and never lose one (docs/adr/0029-resilience.md, R1, R3, R5).
+// stream: follow vyred's events and never lose one (docs/adr/0029-resilience.md, R1, R3, R5).
 //
 // The reference client every surface can use as is, or copy: the CLI and the Mac link run it in
 // Node, and it has no Node imports, so the Deck can load it too. What it guarantees:

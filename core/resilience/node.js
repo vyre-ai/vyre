@@ -1,5 +1,5 @@
 // @ts-check
-// node — the transports stream.js and outbox.js take, for Node callers. A base is either
+// node: the transports stream.js and outbox.js take, for Node callers. A base is either
 // "unix:<socket path>" (the CLI and the Capsule on the same machine as vyred) or an http(s) URL
 // (a path over the LAN, the tailnet or the relay). No connection pooling: a pooled socket from
 // before a vyred restart fails the first call after it, which reads as "unreachable".

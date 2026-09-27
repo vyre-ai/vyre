@@ -64,9 +64,14 @@ terminal, Glass, the relay and federation between boxes. Each rule has a test in
   same run and gets its answer. Successes and the tool's own coded refusals are stored; a crash
   (`failed`) is not, so it can be retried. Checks run before the lookup as before (rules,
   presence), so a replay never answers a caller the tool itself would have refused.
+- The key reaches the tool as `meta.idempotencyKey`. A tool that hands the work on carries it:
+  `threads.send` gives it to the Agent SDK as the message `uuid` (ADR 0030; `keyUuid(caller, key)`
+  in `core/modules/idempotency.js` turns a key that is not a uuid into a stable one), so a send
+  retried from an outbox, across the queue or after a restart is one turn, not two.
 - A restart that kills vyred mid-run loses the in-memory "running" mark, and the retry runs the
-  tool again. Tools whose writes cannot be repeated safely make their own write and the key's
-  record in one transaction (a later step; none needs it yet).
+  tool again. That is why the uuid matters: the session driver refuses a message uuid it has
+  already queued or handed over. Other tools whose writes cannot be repeated safely make their own
+  write and the key's record in one transaction (a later step; none needs it yet).
 - Tools that refuse a second attempt today (`threads.answer`, `gate.approve`, `gate.reject`)
   should return the earlier outcome as a success, so a retry that comes without a key (or after
   the key's day) still reads as done.
@@ -98,7 +103,10 @@ terminal, Glass, the relay and federation between boxes. Each rule has a test in
 ### R4. The terminal survives like mosh
 
 - The shell runs on the box under a detachable holder (a pty kept by vyred's term module, with a
-  `dtach` socket so it outlives a vyred restart). A client disconnect never ends it. An idle
+  `dtach` socket so it outlives a vyred restart; the next vyred re-adopts it from
+  `run/term/terms.json`). Without `dtach` on the PATH it is a plain pty and `term.open` says
+  `durable: false`. It outlives a restart of the vyred process, not of its container: while vyred
+  is the container's PID 1, a deploy that recreates the container still ends every terminal. A client disconnect never ends it. An idle
   terminal is kept for 12 h by default (`term.keep_hours`), not seconds.
 - The box counts every output byte. A client attaches with `from=<offset>` and gets exactly the
   bytes after it from a 1 MB ring, trimmed only at line boundaries. If the offset has left the
@@ -139,8 +147,12 @@ terminal, Glass, the relay and federation between boxes. Each rule has a test in
 - On SIGTERM vyred stops accepting new connections, lets in-flight tool calls finish (up to 5 s),
   then ends streams with a final `retry: 2000` so clients come back fast.
 - Event ids, idempotency records and outboxes are durable, so a restart costs a reconnect and
-  nothing else. Threads that a restart cut get a `thread.stopped` with reason `restart`, so the
-  Deck says what happened instead of spinning.
+  nothing else. On stop, every live session ends with `thread.stopped` reason `restart` (the
+  Switchboard's stopAll today, the session driver's `close("restart")` under ADR 0030), written
+  before the streams close, so a surface replays it and says "the box restarted" instead of
+  spinning. Idle sessions lose nothing: the next send resumes them.
+- The durable terminal socket closes with code 1012 ("restarting"), so the client reattaches with
+  `from` instead of ending.
 - The Deck's service worker swaps its shell as one versioned set, so a deploy never mixes old and
   new modules.
 
@@ -157,7 +169,10 @@ surface team adds its own client to the harness by pointing it at the proxy.
 - Every surface team has work to meet R1 to R6; the resilience workstream tracks it in
   `docs/work/resilience.md` and does the shared pieces: the SSE changes, the idempotency layer,
   the drain on stop, the chaos harness and a reference client (stream plus outbox) in
-  `core/resilience/` that the CLI, the Capsule's Electron lib and the Deck can use as is.
+  `core/resilience/` that the CLI and the Mac link use in Node (`node.js`), and the Deck, the
+  hosted web app and the Expo web target use in a browser (`web.js`: a fetch transport and
+  caller, IndexedDB stores for the outbox, the cursor and a snapshot cache, and `lifecycle()` for
+  hidden pages, the back/forward cache and online/offline).
 - Idempotency costs one small table and one lookup per write. Reads skip it.
 - A terminal that outlives vyred needs `dtach` in the box image (a 30 KB binary).
 - Local alarms mean each device holds the next 48 h of alarm titles. They are the user's own

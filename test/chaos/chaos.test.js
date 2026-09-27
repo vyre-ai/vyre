@@ -16,6 +16,7 @@ const { follow } = await import("../../core/resilience/stream.js");
 const { outbox, memoryStore } = await import("../../core/resilience/outbox.js");
 const { backoff } = await import("../../core/resilience/backoff.js");
 const node = await import("../../core/resilience/node.js");
+const web = await import("../../core/resilience/web.js");
 
 const quick = () => backoff({ min: 50, max: 400, jitter: 0 });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -263,4 +264,127 @@ test("R1, R7: the CLI's live screen stream comes back after a vyred restart and 
   await until(() => got.length === 1, "an event after the restart", 12_000);
   assert.deepEqual(got, [1]);
   assert.ok(opens >= 2, "the screen was told to refresh on reopen");
+});
+
+// The browser side (core/resilience/web.js): the same stream client and outbox over fetch, which
+// Node 22 has too, through the same fault proxies.
+
+test("R1: the browser transport replays a gap, survives a mid-event cut and a vyred restart, and delivers each event once", { timeout: 30_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w, { open: web.open });
+  t.after(() => f.s.stop());
+  await opened(f);
+  const [p] = w.proxies;
+  p.refuse(); p.drop();
+  w.emit(1); w.emit(2);
+  await sleep(150);
+  p.heal();
+  await until(() => f.got.length >= 2, "the gap to replay");
+  p.cutAfter(90);
+  w.emit(3);
+  await sleep(300);
+  p.heal(); p.drop();
+  await until(() => f.got.length >= 3, "the event cut mid-frame");
+  await w.restart();
+  w.emit(4);
+  await until(() => f.got.length >= 4, "an event after the restart");
+  await sleep(200);
+  assert.deepEqual(f.got, [1, 2, 3, 4]);
+});
+
+test("R1: the browser transport notices a partition by the missing heartbeat", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w, { open: web.open });
+  t.after(() => f.s.stop());
+  await opened(f);
+  w.proxies[0].partition();
+  w.emit(1);
+  await until(() => f.states.some(x => x.state === "reconnecting"), "the stall to be noticed");
+  w.proxies[0].heal();
+  await until(() => f.got.length >= 1, "the event held up by the partition");
+  assert.deepEqual(f.got, [1]);
+});
+
+test("R5: the browser transport fails over to the next path and moves back when the first heals", { timeout: 20_000 }, async t => {
+  const w = await world(t, 2);
+  const [lan, tailnet] = w.proxies;
+  const f = watch(w, { open: web.open });
+  t.after(() => f.s.stop());
+  await opened(f);
+  lan.refuse(); lan.drop();
+  w.emit(1);
+  await until(() => f.got.length === 1 && f.s.path === tailnet.url, "the switch to the second path");
+  lan.heal();
+  await until(() => f.s.path === lan.url, "the move back to the first path");
+  w.emit(2);
+  await until(() => f.got.length === 2, "events after moving back");
+  assert.deepEqual(f.got, [1, 2]);
+});
+
+test("R3: the browser lifecycle closes a hidden page's stream and resumes it from the cursor when visible", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const f = watch(w, { open: web.open });
+  t.after(() => f.s.stop());
+  const doc = Object.assign(new EventTarget(), { visibilityState: "visible" });
+  const off = web.lifecycle(f.s, { win: new EventTarget(), doc });
+  t.after(off);
+  await opened(f);
+  doc.visibilityState = "hidden"; doc.dispatchEvent(new Event("visibilitychange"));
+  await until(() => w.proxies[0].open === 0, "the hidden page's stream to close");
+  w.emit(1); w.emit(2);
+  await sleep(200);
+  assert.deepEqual(f.got, [], "a hidden page heard nothing");
+  doc.visibilityState = "visible"; doc.dispatchEvent(new Event("visibilitychange"));
+  await until(() => f.got.length === 2, "the events missed while hidden");
+  assert.deepEqual(f.got, [1, 2]);
+});
+
+test("R2: the browser caller sends the key only when given, and a retried key runs once", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const call = web.caller(w.proxies[0].url);
+  assert.deepEqual((await call("chaos.key", {}, "key-00000011")).data, { key: "key-00000011" });
+  assert.deepEqual((await call("chaos.key", {}, "")).data, { key: null });
+  const [a, b] = await Promise.all([call("chaos.slow", { ms: 200, n: 1 }, "key-00000012"), call("chaos.slow", { ms: 200, n: 1 }, "key-00000012")]);
+  const c = await call("chaos.slow", { ms: 200, n: 1 }, "key-00000012");
+  assert.deepEqual([a.data, b.data, c.data], [{ n: 1 }, { n: 1 }, { n: 1 }]);
+  assert.equal(/** @type {any} */ (c).replayed, true);
+  assert.deepEqual(w.applied(), [1]);
+});
+
+test("R2: the browser caller answers unreachable, timeout and restarting instead of throwing", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const [p] = w.proxies;
+  p.refuse();
+  assert.equal((await web.caller(p.url, { timeoutMs: 2_000 })("chaos.add", { n: 1 }, "key-00000013")).error?.code, "unreachable");
+  p.heal(); p.partition();
+  assert.equal((await web.caller(p.url, { timeoutMs: 300 })("chaos.add", { n: 2 }, "key-00000014")).error?.code, "timeout");
+  p.heal(); p.drop();
+  // A running write holds vyred's stop open; a call that arrives meanwhile is told it is restarting.
+  const running = web.caller(p.url)("chaos.slow", { ms: 600, n: 3 }, "key-00000015");
+  await sleep(100);
+  const stopping = w.d.stop();
+  await sleep(50);
+  assert.equal((await web.caller(p.url)("chaos.add", { n: 4 }, "key-00000016")).error?.code, "restarting");
+  assert.deepEqual((await running).data, { n: 3 });
+  await stopping;
+  await w.restart();
+});
+
+test("R2: offline writes wait in the browser outbox and land once, in order, when the network is back", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  const [p] = w.proxies;
+  p.refuse();
+  const done = [];
+  const box = await outbox({ store: memoryStore(), call: web.caller(p.url, { timeoutMs: 1_000 }), backoff: backoff({ min: 60_000, max: 60_000, jitter: 0 }),
+    onChange: o => { if (o.done) done.push(o.done.entry.input.n); } });
+  t.after(() => box.stop());
+  const win = new EventTarget();
+  const off = web.lifecycle(null, { win, doc: new EventTarget(), outbox: box });
+  t.after(off);
+  for (const n of [1, 2, 3]) await box.add("chaos.add", { n });
+  await until(() => box.pending[0]?.state === "waiting", "the first try to fail");
+  p.heal();
+  win.dispatchEvent(new Event("online"));   // the 60 s backoff is skipped: the network is back
+  await until(() => done.length === 3, "the outbox to drain");
+  assert.deepEqual(w.applied(), [1, 2, 3]);
 });

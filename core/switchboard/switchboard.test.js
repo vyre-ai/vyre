@@ -365,6 +365,9 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   t.after(() => again.stop());
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");
+  // ADR 0029 R7: the stop said why, so a surface shows "the box restarted", not a spinner.
+  const stopped = again.events.since(0, { type: "thread.stopped", limit: 10 }).filter(e => e.thread === id);
+  assert.deepEqual(stopped.map(e => e.payload.reason), ["restart"]);
 });
 
 test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {

@@ -1,5 +1,5 @@
 // @ts-check
-// idempotency — a write a client retries runs once (docs/adr/0029-resilience.md, R2).
+// idempotency: a write a client retries runs once (docs/adr/0029-resilience.md, R2).
 //
 // A surface sends an Idempotency-Key with every call that changes something, and reuses it when
 // it retries: after a lost response, a dropped path, a restart, or from its outbox. The registry

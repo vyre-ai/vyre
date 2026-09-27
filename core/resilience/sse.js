@@ -1,5 +1,5 @@
 // @ts-check
-// sse — frames from a server-sent-events buffer that may end mid-frame. The same rules as the
+// sse: frames from a server-sent-events buffer that may end mid-frame. The same rules as the
 // browser's EventSource: a blank line ends a frame, ":" starts a comment, several data lines join
 // with "\n", and an `id:` with no data still moves the cursor (vyred sends one on open and with
 // every heartbeat, ADR 0029 R1).
