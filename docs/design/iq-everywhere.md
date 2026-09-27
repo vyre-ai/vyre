@@ -190,8 +190,11 @@ delete is complete; unpairing deletes too. It is 0.2 work.
 
 - **Consent.** One switch per Mac in the settings hub (ADR 0035), off by default, turned on only by
   a person. Vyre's own folders, `<home>/quick` and folders the person excludes never leave the Mac.
-  Turning it off deletes `<home>/synced/<machine>/` on the box; `sync.revoked { machine }` then
-  drops that machine's Recall rows and everything derived from them, and says how much went.
+  Turning it off, unpairing, or replacing the device deletes nothing: what came from it is the
+  person's (ADR 0008, amendment item 5). "Delete everything that came from <device>" is the
+  person's own action: federation deletes `<home>/synced/<machine>/` and emits
+  `sync.deleted { machine }`, and memory drops that machine's Recall rows and everything derived,
+  and says how much went (`memory.forgot`); `memory.device` is the preview.
 - **What moves.** Raw session files (JSONL), encrypted in transit over the tailnet, into
   `<home>/synced/<machine>/` in the Mac's own projects layout. The file's own folder (cwd) is kept
   as it was: source trust keys off it, never off the synced path.

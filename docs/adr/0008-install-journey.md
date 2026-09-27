@@ -248,11 +248,17 @@ not a rule:
    the same source-trust rules (by the session's own folder, not the synced path). Only the box
    runs the model reader for a synced Mac, so no turn is paid for twice. The Mac keeps its own
    index for offline search.
-5. **Turning it off** deletes that Mac's synced files and everything derived from them on the box,
-   and says how much went.
+5. **What came from a device is the person's, not the device's** (the user, 28 Sep: "I upgrade my
+   laptop and now I don't have access to any of it, that's just stupid"). Unpairing a device, or
+   it being replaced or lost, keeps everything by default: sessions, memories, the graph and files.
+   Turning sync off stops new uploads only. Deleting is a separate action the person takes:
+   "Delete everything that came from <device>", person-only, with a preview of what goes (in
+   counts) and one confirm, from the device's page in Settings, and offered as an unticked option
+   in the unpair dialog. "Replace this device" gives the new one the old one's history view,
+   grants and sync choices. Every derived row keeps its device, so the delete stays possible.
 5a. **A one-time import** (onboarding's "Import these now", docs/design/import.md) follows the same
-   rules: the person chooses what goes and confirms once with a person session, and revoking the
-   device deletes it the same way. It sends only what was chosen, once; new sessions go only if
+   rules: the person chooses what goes and confirms once with a person session, and the person's
+   delete removes it the same way. It sends only what was chosen, once; new sessions go only if
    the person also turns sync on. Discovery on the device reads file metadata and sends nothing.
 6. **Security conditions** (e2e's review, 28 Sep; they hold before 0.2 is built):
    - *Transport.* The box takes `<machine>` from the verified link peer, never from the request
@@ -261,7 +267,8 @@ not a rule:
      `.jsonl`. Files are written to a temp file and renamed, symlinks are never followed, and
      each Mac has a quota.
    - *The switch.* Turning it on needs a person session on that Mac. Turning it off works from
-     any person surface, the box included, and the box stops accepting that Mac's files at once.
+     any person surface, the box included, and the box stops accepting that Mac's files at once;
+     it deletes nothing (item 5).
    - *Trust.* The folder written in a synced session is the Mac's claim. Its trust is the lower of
      the folder rule and the trust of `mac-sync`, so a compromised Mac cannot pass as a trusted
      project folder.
@@ -269,9 +276,11 @@ not a rule:
      indexing runs at ingest. `<home>/synced` stays out of agent users, the files and Drive tools
      and MCP. An agent's recall of synced sessions is scoped by project, as it is locally.
    - *The delete.* Every derived row (Recall turns and chunks, embeddings, graph facts, personal
-     facts, IQ caches and answers) carries the machine it came from from ingest on, so everything
-     derived can be listed and deleted. Unpairing the Mac deletes the same way. The screen says
-     that existing box backups keep the data until they age out.
+     facts, IQ caches, answers and fixes) carries the machine it came from from ingest on, so
+     everything derived can be listed and deleted. The delete is the person's choice (item 5), never
+     a side effect of unpairing: a person-chosen delete removes everything that device sent and
+     everything derived from it. The screen says that existing box backups keep the data until they
+     age out.
    - e2e reviews the transport code when federation has it. Federation owns the transport and
      memory-iq the indexing (docs/design/iq-everywhere.md, "Host to server").
 
@@ -286,7 +295,7 @@ not a rule:
 - `vyre box add` holds an SSH connection for as long as onboarding takes. That is a foreground
   command the person is watching, so it is outside the idle budgets; nothing polls once it ends.
 - The Mac's history does not move to the box unless the person turns on session sync for that Mac
-  (amendment below). Otherwise the box reads it through the link while the Mac is online.
+  or imports it (amendment below). Once there, it stays until the person deletes it. Otherwise the box reads it through the link while the Mac is online.
 
 ## Who builds what
 
