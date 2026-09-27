@@ -4,7 +4,7 @@
 # Output: <scratch>/png/*.png and a summary; exits 1 if any text fails AA or leaves its frame.
 set -e
 HERE=$(cd "$(dirname "$0")/.." && pwd)
-DEST=vyre-ci/deck-design-render
+DEST=${DEST:-vyre-ci/deck-design-render}
 OUT=${OUT:-${TMPDIR:-/tmp}/deck-render}
 mkdir -p "$OUT"
 rsync -a --delete --exclude render "$HERE/" "testbox:$DEST/"
