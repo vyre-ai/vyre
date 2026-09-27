@@ -397,13 +397,13 @@ export class Pool {
         this.set(agent, { state: st.state === "missing" ? "none" : "stopped", ...(st.state === "missing" ? { container: null } : {}) });
         this.hosts.delete(agent);
         const code = st.exitCode != null ? ` (exit code ${st.exitCode})` : "";
-        throw new Error(`${agent}'s computer stopped as soon as it started${code}; its image (${this.opts.image}) may be broken: see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
+        throw bootFailure(`${agent}'s computer stopped as soon as it started${code}`, `its image (${this.opts.image}) may be broken: see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
       }
       if (st.host) this.hosts.set(agent, { host: st.host, ports: st.ports || { ...PORTS } });
       const h = this.hosts.get(agent);
       if (!this.probe || (h && await this.probe(h.host, h.ports.vnc))) return;
       if (Date.now() >= deadline) {
-        throw new Error(`${agent}'s computer started but its screen did not answer within ${Math.round(this.opts.bootMs / 1000)} s; see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
+        throw bootFailure(`${agent}'s computer started but its screen did not answer within ${Math.round(this.opts.bootMs / 1000)} s`, `see docker logs ${this.opts.prefix}-computer-${agent} on the box`);
       }
       await new Promise(r => setTimeout(r, 250));
     }
@@ -685,6 +685,15 @@ export class Pool {
       cpus: this.limitsOf(r).cpus, memory_gb: Math.round(this.limitsOf(r).memoryMb / 1024 * 10) / 10,
     };
   }
+}
+
+/**
+ * A computer that did not boot. `short` is the part a person reads first (Glass shows it, and it
+ * fits a WebSocket close reason); the message adds where to look on the box.
+ * @param {string} short @param {string} more
+ */
+function bootFailure(short, more) {
+  return Object.assign(new Error(`${short}; ${more}`), { boot: true, short });
 }
 
 /** Does something accept a TCP connection at host:port? Closed at once; never sends a byte. */

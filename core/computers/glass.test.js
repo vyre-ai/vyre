@@ -406,3 +406,46 @@ test("glass: without the slow mark, every update request passes straight through
   assert.deepEqual(Buffer.concat(c.xvnc.received), Buffer.concat([fbur(1), fbur(2), fbur(3)]));
   await c.teardown();
 });
+
+/** Connect with a pool whose viewer fails as given; resolves to the raw bytes after the 101. */
+async function failedViewer(fail) {
+  const pool = { ...fakePool({ port: 0 }), async viewer() { throw fail; } };
+  const ticket = pool.issue("kit", "glass:laptop");
+  const glass = new Glass({ pool, keyboard: /** @type {any} */ ({ canType: () => false }), log: () => {} });
+  const server = net.createServer(sock => glass.handle(req(), sock, Buffer.alloc(0), { url: new URL(`http://vyred/v1/streams/computers/glass?ticket=${ticket}`) }));
+  await new Promise(r => server.listen(0, "127.0.0.1", r));
+  const { sock, closed } = await fakeBrowser(/** @type {any} */ (server.address()).port);
+  const chunks = [];
+  sock.on("data", d => chunks.push(d));
+  await closed;
+  await new Promise(r => server.close(r));
+  const all = Buffer.concat(chunks);
+  const i = all.indexOf("\r\n\r\n");
+  assert.match(all.subarray(0, i).toString("latin1"), /^HTTP\/1\.1 101/);
+  return all.subarray(i + 4);
+}
+
+test("glass: a computer that did not boot closes the stream with 4001 and the reason, so Glass can say why", async () => {
+  const short = "kit's computer stopped as soon as it started (exit code 127)";
+  const frame = await failedViewer(Object.assign(new Error(`${short}; see docker logs x on the box`), { boot: true, short }));
+  assert.equal(frame[0], 0x88, "a final close frame");
+  const len = frame[1] & 0x7f;
+  assert.equal(frame.readUInt16BE(2), 4001);
+  assert.equal(frame.subarray(4, 2 + len).toString("utf8"), short);
+});
+
+test("glass: any other checkout failure closes with 1011 and no reason, and Glass tries again", async () => {
+  const frame = await failedViewer(new Error("every screen is in use (juno (working)); try again when one is released"));
+  assert.equal(frame[0], 0x88);
+  assert.equal(frame[1] & 0x7f, 2, "a code and no reason");
+  assert.equal(frame.readUInt16BE(2), 1011);
+});
+
+test("glass: a close reason is cut to the 123 bytes a close frame allows, never mid-character", async () => {
+  const { closeWith } = await import("./glass.js");
+  let out = Buffer.alloc(0);
+  closeWith(/** @type {any} */ ({ write: b => { out = b; } }), 4001, "é".repeat(100));
+  const len = out[1] & 0x7f;
+  assert.ok(len <= 125);
+  assert.equal(out.subarray(4, 2 + len).toString("utf8"), "é".repeat(61));
+});
