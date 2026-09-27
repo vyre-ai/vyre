@@ -302,7 +302,7 @@ Plan (to the lead before building):
   signed off as a sha: it carries 0c645473 files.deliver. MEDIUM: every Mac runs `tailscale file
   get --loop` into ~/Vyre/inbox (takes over Taildrop); make it opt-in. LOW: callers "module".
   Lead's rule: security sign-offs need a read of the diff, every commit in the sha.
-  e8302dce (nonces persisted, read: OK). Still blocked on files.deliver (opt-in receiver, no module caller) or a split.
+  e8302dce (nonces persisted, read: OK). aa9cb40c: files.receive opt-in, no module caller (read). BRANCH SIGNED OFF at aa9cb40c.
 - memory-iq f49f7b02 (agent corrections from the person's words, 0.1.1): read; NOT signed off.
   HIGH: heard() is word containment only (any "not" = wrong/forget; value words anywhere = replace)
   -> need target words, freshness (latest turn / 10 min), per-turn and per-thread caps. MEDIUM:
