@@ -387,6 +387,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   streams byte-compatibly with the box, and reconnects with a fresh handshake. Event streams
   resume with Last-Event-ID. A write whose answer was lost is retried once with the same
   Idempotency-Key. It fails over between the tailnet and the relay (ADR 0029, R5).
+- WebSocket streams cross the relay: a `ws` stream (Glass's screen, the terminal) becomes a real
+  upgrade through vyred's stream router as `device:<id>`. The bridge answers the router's pings
+  itself, and each whole message is one data frame, never split.
+- Web devices (ADR 0026 section 10): a browser paired from the hosted web app is kind `web`.
+  Until the person trusts it from another device (`relay.devices.trust`, new, with presence), it
+  cannot mint pairings, change trust, enroll presence keys or take a secret out of the vault. It
+  expires after `relay.web_expiry_days` (30) without use. `device.paired` and the device list
+  carry its kind, its release and whether the build is one this box knows (core/relay/releases.json).
 - The box's bridge passes `Idempotency-Key`. A box replaced on its route by another copy of
   itself waits 5 minutes before retrying, instead of trading places with the copy.
 - ADR 0026 accepted. It gains section 10, the hosted web app at app.vyre.run, and its trust

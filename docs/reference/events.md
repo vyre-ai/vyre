@@ -253,8 +253,8 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `device.paired` | `id`, `name` |
-| `device.removed` | `id` |
+| `device.paired` | `id`, `kind`, `name`; sometimes `build`, `release` |
+| `device.removed` | `id`, `why` |
 | `relay.connected` | built in a variable before the emit; see the source |
 | `relay.disconnected` | built in a variable before the emit; see the source |
 
