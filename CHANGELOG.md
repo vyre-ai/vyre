@@ -38,6 +38,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   while hidden. `outbox()` keeps writes made offline and delivers them in order, once.
 - `test/chaos/`: vyred behind fault proxies (drop, partition, refuse, delay, cut mid-event, two
   paths, restart), with a test per rule of ADR 0029.
+#### The switchboard tests pass on the Mac
+
+- core/switchboard/switchboard.test.js: the work folder is realpath'd, so the Mac's /var and
+  /private/var name the same place in the Edit ask and the transcript path.
+
+#### The Google test counts only its own reads
+
+- core/google/module.test.js: "one call, one 401, one retry" counts the test's own calendar reads.
+  The planner's calendar mirror also reads a window on google.added, which made it 4, not 3, on
+  every run since the planner merge.
+#### Harness: a Read or a cat into the vault is denied with vyred up, not waved through
+
+- vyred's registry runs the floor on every call's input, so `harness.rules` for a tool call that
+  reaches into the vault was itself refused (`denied`), and the PreToolUse hook took that as "no
+  opinion": the Read went on to Claude Code's own permissions. The hook now runs the floor
+  locally on `denied`, as it does when vyred is down. Test in test/cc-plugin.test.js.
+- scripts/cc-plugin-parity/parity.mjs: the plugin installed with `claude -p`, through the Agent
+  SDK's `plugins` option (ADR 0030 phase 2), and both at once, on one Claude Code binary against a
+  fake Messages API. The three match: the MCP server, 220 tools, /vyre, about.md in the first
+  request, each hook once, the floor's deny before `canUseTool`.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
