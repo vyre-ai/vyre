@@ -14,6 +14,11 @@
 // The one write (allow.js WRITE, threads.send) runs only when the box says it is the person's,
 // as the caller "link:box", and the Mac then follows that thread's events and sends them to the
 // box with link.events, batched, until the answer is finished (see follow below).
+//
+// The other write, threads.answer, runs only with an assertion signed by the box's key, which this
+// Mac pinned when it paired (or once, over the pinned channel, when it paired before answers
+// crossed). assert.js checks it. While paired, the Mac also forwards every ask it raises and its end
+// (allow.js ASKS), so the person sees the Mac's asks on the box and can answer them there.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -21,7 +26,8 @@ import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
 import { createHealth, unknown } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
-import { ALLOW, WRITE, FOLLOWED } from "./allow.js";
+import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
+import { checkAnswer, Nonces } from "./assert.js";
 
 const MAX_BACKOFF = 30_000;
 /** How long the box holds link.serve open (box.js); the Mac waits this plus a margin. */
@@ -41,7 +47,7 @@ const BATCH = 500;
 export function macSide(ctx, seam = {}) {
   const file = path.join(ctx.paths.root, "link.json");
   const verify = seam.verify || identifyBox;
-  /** @type {{ box: { address: string, stableId: string, node?: string, name?: string|null }, key: string, peer: string, pairedAt: number, revoked?: boolean } | null} */
+  /** @type {{ box: { address: string, stableId: string, node?: string, name?: string|null, assertKey?: string }, key: string, peer: string, pairedAt: number, self?: string, revoked?: boolean } | null} */
   let saved = null;
   try { saved = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
   const save = v => {
@@ -123,8 +129,15 @@ export function macSide(ctx, seam = {}) {
     const r = await boxCall("link.hello", { key: saved.key });
     // An unpair or a new pairing while this was out wins: its answer is about a pairing that is gone.
     if (saved !== asked) return;
-    if (r.data && r.data.paired === false) { save({ ...saved, revoked: true }); beating(false); unfollowAll(); state.error = "the box no longer knows this Mac; pair again"; }
-    else if (r.data && r.data.box && r.data.box.name !== saved.box.name) save({ ...saved, box: { ...saved.box, name: r.data.box.name } });
+    if (r.data && r.data.paired === false) { save({ ...saved, revoked: true }); beating(false); unfollowAll(); askListen(false); state.error = "the box no longer knows this Mac; pair again"; }
+    else if (r.data && r.data.box) {
+      const b = r.data.box, you = r.data.you && typeof r.data.you.stableId === "string" ? r.data.you.stableId : null;
+      // A Mac paired before answers crossed pins the box's key once, from this channel (already
+      // pinned to the box's node). A pinned key is never replaced: a new one means pairing again.
+      const pin = !saved.box.assertKey && typeof b.assertKey === "string" && b.assertKey ? { assertKey: b.assertKey } : {};
+      const self = !saved.self && you ? { self: you } : {};
+      if (b.name !== saved.box.name || pin.assertKey || self.self) save({ ...saved, ...self, box: { ...saved.box, name: b.name, ...pin } });
+    }
   }
   // The heartbeat runs only while paired, once a minute (the 60-second floor for recurring timers).
   // A Mac that never paired keeps no timer at all. Between beats, a call to the box finds out on
@@ -134,7 +147,7 @@ export function macSide(ctx, seam = {}) {
     if (on && !beat && !stopped) { beat = setInterval(() => { if (!stopped) hello(); }, seam.heartbeat || 60_000); beat.unref(); }
     if (!on && beat) { clearInterval(beat); beat = null; }
   };
-  if (saved && !saved.revoked) { beating(true); setImmediate(() => { if (!stopped) hello(); }); }
+  if (saved && !saved.revoked) { beating(true); setImmediate(() => { if (!stopped) { hello(); askListen(true); } }); }
 
   // Following a thread the box sent to. Its events on this Mac (FOLLOWED) go to the box in
   // batches (link.events), at most every FLUSH ms while they flow; nothing is sent when idle, and
@@ -201,6 +214,35 @@ export function macSide(ctx, seam = {}) {
     boxCall("link.events", { key: saved.key, events: batch }).catch(() => {});
   }
 
+  // Every ask on this Mac goes to the box while paired: a listener only, no timer, and nothing sent
+  // while no ask is raised or ends. Batched with the followed events.
+  /** @type {null | (() => void)} */
+  let askOff = null;
+  function askListen(on) {
+    if (on && !askOff && !stopped && saved && !saved.revoked) {
+      const offs = ASKS.map(type => ctx.events.on(type, e => {
+        if (!e.thread || !saved || saved.revoked) return;
+        queueOut({ type: e.type, thread: e.thread, project: e.project || null, at: e.at, payload: e.payload || {} });
+      }));
+      askOff = () => { for (const off of offs) off(); };
+    }
+    if (!on && askOff) { askOff(); askOff = null; }
+  }
+
+  // Nonces of the box's answers seen here, each until its assertion expires (memory only).
+  const nonces = new Nonces();
+  /**
+   * The box's answer to one of this Mac's asks: runs only when its assertion checks out.
+   * @param {any} q the box's request
+   */
+  async function answer(q) {
+    const input = q.input && typeof q.input === "object" ? q.input : {};
+    const c = checkAnswer({ assertion: q.assertion, tool: q.tool, input, pinned: saved && saved.box.assertKey, self: saved && saved.self, nonces, now: seam.now ? seam.now() : Date.now() });
+    if (!c.ok) return { error: { code: "denied", message: `the box's answer was refused: ${c.reason}` } };
+    // write() follows input.thread, and an answer names none: nothing is followed for it.
+    return write("threads.answer", input);
+  }
+
   /**
    * threads.send for the person at the box: as "link:box", its surface marked as the box's, with
    * the thread followed while it runs and after, if it succeeded.
@@ -252,7 +294,8 @@ export function macSide(ctx, seam = {}) {
         if (!q || typeof q.id !== "string" || typeof q.tool !== "string") return;
         const input = q.input && typeof q.input === "object" ? q.input : {};
         const result = WRITE.includes(q.tool)
-          ? (q.as === "person" ? await write(q.tool, input) : { error: { code: "denied", message: `${q.tool} is answered through the link only for the person` } })
+          ? (q.as !== "person" ? { error: { code: "denied", message: `${q.tool} is answered through the link only for the person` } }
+            : q.tool === "threads.answer" ? await answer(q) : await write(q.tool, input))
           : ALLOW.includes(q.tool) ? await ctx.call(q.tool, input)
           : { error: { code: "denied", message: `${q.tool} is not answered through the link` } };
         if (!live()) return;
@@ -275,12 +318,15 @@ export function macSide(ctx, seam = {}) {
       const s = r.data && r.data.state;
       if (s === "approved") {
         pairing = null;
-        save({ box: { address: p.address, stableId: p.stableId, node: p.node, name: r.data.box && r.data.box.name }, key: r.data.key, peer: r.data.peer, pairedAt: Date.now() });
+        const b = r.data.box || {}, you = r.data.you && typeof r.data.you.stableId === "string" ? r.data.you.stableId : null;
+        save({ box: { address: p.address, stableId: p.stableId, node: p.node, name: b.name, ...(typeof b.assertKey === "string" && b.assertKey ? { assertKey: b.assertKey } : {}) },
+          key: r.data.key, peer: r.data.peer, pairedAt: Date.now(), ...(you ? { self: you } : {}) });
         conn = connect(p.address, p.stableId);
         state.announced = null;
         emit("link.paired", { box: p.address, peer: r.data.peer });
         beating(true);
         hello();
+        askListen(true);
       } else if (s === "denied" || s === "expired" || s === "gone") {
         pairing = null; state.error = `pairing ${s === "gone" ? "was cancelled" : s}; start again`;
       } else p.timer = setTimeout(poll, seam.pollMs || 2000);
@@ -366,7 +412,7 @@ export function macSide(ctx, seam = {}) {
       if (!saved) return { unpaired: false };
       const told = saved.revoked ? { data: true } : await boxCall("link.unpair", { key: saved.key });
       const was = saved.box.address;
-      save(null); beating(false); stopServing(); unfollowAll(); conn = null; state.reachable = false; state.announced = null;
+      save(null); beating(false); stopServing(); unfollowAll(); askListen(false); conn = null; state.reachable = false; state.announced = null;
       ctx.events.emit("link.unpaired", { box: was });
       return { unpaired: true, boxForgot: !told.error };
     },
@@ -440,7 +486,7 @@ export function macSide(ctx, seam = {}) {
 
   return {
     async stop() {
-      stopped = true; beating(false); stopServing(); unfollowAll();
+      stopped = true; beating(false); stopServing(); unfollowAll(); askListen(false);
       if (pairing && pairing.timer) clearTimeout(pairing.timer);
       for (const end of streams) end();
     },

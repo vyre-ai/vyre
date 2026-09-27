@@ -210,10 +210,32 @@ box.
   `thread.contended`, `thread.limit`; every payload also carries `thread`, `source: "mac"` and
   `machine`.
 
+- **Answering a Mac's ask from the box** (ADR 0021 "v2", ADR 0030 step 7). The box's Ed25519
+  key (core/link/assert.js, `link-assert-key.json` at 0600 in its home), pinned by the Mac at
+  pairing or once over the pinned channel by a Mac paired before. Every Mac ask reaches the box
+  (`ask.raised`, `ask.answered`, labelled `source`, `machine`, `node`). `threads.answer` on the
+  box, for the person, forwards to the Mac that raised the ask with an assertion bound to that
+  Mac, ask and exact input for 60 s and one use; the Mac checks all of it before running as
+  `link:box`, and refuses with `denied` otherwise. Decisions:
+  - How the box knows an ask is a Mac's: the relayed `ask.raised` (the box remembers ask -> Mac),
+    with a `machine` input as the fallback after a box restart. No hint and no record means the
+    box's own answer; an assertion never goes to every Mac.
+  - Asks are forwarded for all Mac threads, not only followed ones: the phone must see every
+    ask, asks are few, and it costs a listener and the existing batches, no timer.
+  - No follow for an answer: `write()` follows `input.thread`, which an answer has none of, so it
+    is free and nothing was added.
+  - `machine` on relayed ask events is the Mac's name (as mergeRows and the relayed thread events
+    label them), and `node` carries its stableId.
+  - The Mac learns its own node from the box (`you.stableId` in pair.poll and hello), since the
+    Mac never asks Tailscale about itself; A.mac is checked against it.
+  - The box's learn module ignores relayed asks (`source: "mac"`); the Mac's learn counts them.
+  - A socket client may not claim a `link:` caller label (core/daemon FORBIDDEN_LABEL), now that
+    `threads.answer` lists `link:box`.
+
 ## Doing
 
-27 Sep 2026: the Mac-send loose ends are done (below); next is rich Mac transcripts (chat's ask),
-then Taildrive on work/tailnet.
+27 Sep 2026: answering a Mac's ask from the box is built (Done, above). Before that, the Mac-send
+loose ends (below); next is rich Mac transcripts (chat's ask), then Taildrive on work/tailnet.
 
 - capsule-now's answers, applied (d86afcc): 1 was already built (WRITE allowlist, `as: "person"`
   checked on the Mac). 2: `fromLink` in core/switchboard/index.js, an explicit caller kind for
@@ -262,6 +284,17 @@ then Taildrive on work/tailnet.
 - chat: a composer for Mac sessions, sending with `threads.send { thread, text, machine }` and
   showing the answers above; the note and the offline chip stay for everything else.
 - capsule-now: answered (applied in d86afcc).
+- chat: a Mac-owned ask can be answered from the Deck now. deck/chat/question.js and
+  deck/chat/ask-item.js show "Answer it on <mac>" (`ask.elsewhere`, set in deck/chat/session.js)
+  with no buttons. Replace that with the usual buttons, calling `threads.answer { ask, decision,
+  message?, answers?, scope?, surface, machine: <the Mac's name> }` (machine is optional when the
+  box saw the ask, and needed after a box restart). The answer comes back with `source: "mac"`,
+  `machine`; errors `mac_offline` ("<mac> is offline; your answer was not sent"), `timeout`,
+  `denied` (the Mac refused the box's assertion: pair again), or the Mac's own ("no ask <id>",
+  final). Mac asks arrive on the box's stream as `ask.raised` / `ask.answered` with `source:
+  "mac"`, `machine`, `node`; `threads.asks` on the box does not list them, so a reconnecting
+  Deck sees only asks raised since. The phone's push for a Mac ask opens `/needs/<ask>`, which
+  the box cannot load with `threads.asks` either (pwa).
 
 ## Changed contracts
 
@@ -336,6 +369,19 @@ then Taildrive on work/tailnet.
   `queue()` takes the holder, and its answer gains `busy` ("terminal" or the holder). New export
   `fromLink` in core/switchboard/index.js; `queuesFor("link:box")` is true by name. The Harness's
   hand-over names a `box:<surface>` as "<surface> on the box" (core/harness/index.js).
+
+- Answering a Mac's ask (v2): `WRITE = ["threads.send", "threads.answer"]` and new `ASKS =
+  ["ask.raised", "ask.answered"]` in core/link/allow.js; new core/link/assert.js (`boxKey`,
+  `signAnswer`, `checkAnswer`, `Nonces`, `canonical`, `decisionHash`). `link.pair.poll`'s
+  approved answer and `link.hello` gain `box.assertKey` and `you: { stableId } | null`; the Mac's
+  link.json gains `box.assertKey` and `self`. `link.macs.call` takes `by: { caller, device? }`
+  and, for threads.answer, sends only to the Mac the ask is on (or `mac`); the queued request
+  carries `assertion: { a, sig }`. `link.events` takes `ask.raised`/`ask.answered` for any
+  thread of the Mac; relayed events gain `node`. The link manifest emits both. `threads.answer`
+  takes `machine`, lists `link:box` in its callers, and on the box forwards for the person
+  (answer gains `source`, `machine`; errors `mac_offline`, `timeout`, `denied` or the Mac's).
+  core/learn skips `ask.answered` with `source: "mac"`. core/daemon: `link:` joins the socket's
+  forbidden caller labels.
 
 ## Notes for Task B
 

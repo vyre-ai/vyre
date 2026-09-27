@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The person answers a Mac session's ask from the box (ADR 0021 v2, ADR 0030 step 7)
+
+- core/link: the box signs the person's answer to a paired Mac's ask with its own Ed25519 key
+  (made on first need, 0600 in its home), bound to that Mac, that ask and that exact answer, for
+  60 s and one use. The Mac pins the key at pairing, or once over the pinned channel if it paired
+  before, and checks every part before `threads.answer` runs as `link:box`; anything else is
+  refused with `denied`. `threads.answer` joins the link's WRITE list. Every Mac ask
+  (`ask.raised`, `ask.answered`) now reaches the box's bus labelled `source: "mac"`, `machine`,
+  `node`.
+- core/switchboard: `threads.answer` on a box forwards an ask the box does not have to the Mac
+  that raised it, for the person's own callers only; it takes `machine` and lists `link:box`.
+- core/learn ignores a Mac's relayed answers on the box. core/daemon: a socket client can no
+  longer claim a `link:` caller label.
+
 #### The design docs stay out of the package
 
 - package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at

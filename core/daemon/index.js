@@ -183,7 +183,9 @@ async function body(req) {
  * the only event type its streams may see, and headers to add to every response. The socket has none.
  */
 
-const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|onboard$|hook$)/;
+// "link:" is the paired box's person on a Mac, which only the link module may call as (CALL_AS in
+// core/modules): threads.answer takes it only with the box's signed assertion checked.
+const FORBIDDEN_LABEL = /^(module:|tailnet:|tailnet-guest:|link:|onboard$|hook$)/;
 
 /**
  * Who a socket request says it is. No label is "anonymous", which no tool's callers list names,

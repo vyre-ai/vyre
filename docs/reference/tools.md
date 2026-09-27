@@ -1458,7 +1458,7 @@ Call a tool on your box from this Mac (threads, agents, files). Answers box_unre
 
 ### `link.events`
 
-A paired Mac sends the events of a thread the box sent to: { key, events: [{ type, thread, project, at, payload }] }. The box re-emits each, labelled with the Mac.
+A paired Mac sends the events of a thread the box sent to, and of every ask it raises: { key, events: [{ type, thread, project, at, payload }] }. The box re-emits each, labelled with the Mac.
 
 - Input:
   - `events` list of object, required
@@ -1501,11 +1501,14 @@ The paired Macs and whether each is online for the box to read now.
 
 ### `link.macs.call`
 
-Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send. Answers [{ mac, name, ok, data?, error? }], one per Mac asked.
+Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send or threads.answer (by: the box's caller and device, for the answer's assertion). Answers [{ mac, name, ok, data?, error? }], one per Mac asked.
 
 - Input:
   - `tool` string, required
   - `as` string
+  - `by` object
+    - `caller` string
+    - `device` string
   - `input` object
   - `mac` string
   - `timeout` number
@@ -2690,16 +2693,17 @@ Open a terminal: the user's login shell in a folder, on this machine. Returns a 
 
 ### `threads.answer`
 
-Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with ", ", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.
+Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code offers it). A question is answered with allow and answers { [question]: chosen label(s) joined with ", ", or the typed text }, or declined with deny. Only a person's surface can answer; a model never approves a permission, its own or another session's. On a box, the person's answer to a paired Mac's ask goes to that Mac (machine: its name, when the box has not seen the ask).
 
 - Input:
   - `ask` string, required
   - `decision` one of "allow", "deny", "always", required
   - `answers` object
+  - `machine` string
   - `message` string
   - `scope` "project": With always: allow this tool from now on in the thread's project only (the ask's always_project).
   - `surface` string
-- Callers: `capsule`, `cli`, `deck`, `local`, `module`
+- Callers: `capsule`, `cli`, `deck`, `link:box`, `local`, `module`
 
 ### `threads.asks`
 
