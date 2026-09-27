@@ -57,17 +57,11 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
 
 ## Doing
 
-- Mail (ADR 0016 decision 8, lead approved 2026-09-27): built on work/connectors. `core/mail/`
-  with the google, mcp, apps-script and imap adapters, mail.accounts/map/test/send/search/read,
-  Capsule mail.find + mail.compose, mail.release. `account` = vault connection id. Tests: 74 mail
-  + message unit and module tests (module test runs on a fake ctx, since vault.connections is on
-  work/vault-next), 130/130 neighbours (google, mcp, connectors, gate, harness, connect), docs
-  tests green (docs-check: only the 263 pre-existing shot mtimes).
-- 4de05249: needs.credentials (imap, apps-script), need ids in needs_credential, google.connect client defaults to google-oauth-client (vault's oauth `next` passes only a name). NOT yet run: core/mail/module.test.js and core/google/module.test.js after this change (testbox held at load 20 by the lead); run them first when it is free.
-- Landing plan (lead): after e2e approves hold/on_behalf, push as finished and hand the integrator the sha for the batch after batch 4, together with vault's connections (9b).
-- 8aad06f3: mail.release uses vault.connections.get {id} (vault's request).
-- Waiting: vault's module-only `vault.connections.list {caller}`, `vault.connections.get {id}` and `use` entries pointing at
-  mail.*; then a real-vyred mail test once both are on main.
+- work/connectors 20f49371: mail + e2e fixes, green on testbox 2026-09-27 (load under 5): 226/226
+  targeted (modules, mcp, google, mail, connectors, connect, harness, gate), docs 50/50. e2e: OK
+  once green (sent). Kernel commit af11226d is with platform for review.
+- Landing (lead): push as finished and hand the integrator the sha for the batch after batch 4,
+  together with vault's 9b (connections list {caller}, get, use). Then real-vyred mail tests.
 
 ## Next
 
