@@ -146,6 +146,15 @@ context, computer use), not before.
 
 ## 7. Risks and open questions
 
+- **The local `vyred` socket's Windows security is unverified (security review, flagged LOW).**
+  The CLI always talks to a local `vyred`, per the federation model, never the remote server's
+  socket directly, so Tier A on a Windows PC needs a local daemon listening on
+  `config.socketPath()`'s plain filesystem path, which has no `win32` branch today.
+  `fs.chmodSync(socket, 0o600)` (`core/daemon/index.js`) does nothing meaningful on Windows, and
+  whether the resulting socket (AF_UNIX or a named pipe, depending on Node/libuv version) gets a
+  DACL that keeps a second local user off is unchecked. Needs real Windows hardware, before Tier A
+  is called done, not CI. Disabling local `vyred` on win32 is not a cheap mitigation: it would
+  break Tier A's CLI, not narrow it, since nearly every command needs the local daemon.
 - Tier B WSL2 requires Docker Desktop (licensing cost at company scale) or bare WSL2 + Docker
   Engine, which does he want documented/supported?
 - Tier C native cost: Tauri vs WinUI 3 is a real fork in long-term maintenance burden (Rust+web vs

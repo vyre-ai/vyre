@@ -61,11 +61,14 @@ Four tiers, cheapest first:
 - `core/config/index.js` `defaults()`: a fresh install's role defaults to `local` (a device) on
   `win32` as well as `darwin`; only a bare non-Mac, non-Windows install still defaults to `box`
   (a server). Existing configs are untouched; role is only ever guessed once, on a fresh install.
-- `core/cli/kit.js` gets one shared `openInBrowser(url)`: `open` on darwin, `cmd /c start "" <url>`
-  on `win32`, `xdg-open` elsewhere, `VYRE_OPEN_BIN` always wins (tests and overrides). Replaces
-  four near-duplicate, Mac-or-Linux-only implementations in `up.js`, `box.js`, `connect.js` and
-  `vault.js`, the last of which only opened a browser on darwin at all, so this also fixes it on
-  Linux, not just Windows.
+- `core/cli/kit.js` gets one shared `openInBrowser(url)`: `open` on darwin, `xdg-open` elsewhere,
+  and on `win32` `rundll32 url.dll,FileProtocolHandler <url>` with the URL as its own argv entry,
+  never through `cmd.exe` (a security review caught the first version of this, `cmd /c start`,
+  letting a query string's `&`/`|`/`^`/`<`/`>` run as command operators after it; every OAuth URL
+  has a `&`). Every scheme but `http:`/`https:` is refused, on every platform, `VYRE_OPEN_BIN`
+  included. Replaces four near-duplicate, Mac-or-Linux-only implementations in `up.js`, `box.js`,
+  `connect.js` and `vault.js`, the last of which only opened a browser on darwin at all, so this
+  also fixes it on Linux, not just Windows. Tests: `core/cli/kit.test.js`.
 - `node.yml` (or an added job in it, see `docs/work/windows.md` for the exact shape once landed):
   a `windows-latest` leg of the same `npm test`, to catch path/shell assumptions with no new
   native code.
@@ -82,6 +85,16 @@ Four tiers, cheapest first:
   status` and `vyre voice key` were never Mac-only to begin with and are untouched.
 - Tier B is undertested until someone runs it on real Windows hardware; `windows-latest` CI
   proves the Node suite, not WSL2 or Docker Desktop itself.
+- **Open, unresolved risk (security review, flagged LOW, not yet fixed):** the CLI on any device
+  role always talks to a *local* `vyred` (never the remote server socket directly, per the
+  federation model), so Tier A on a Windows PC needs a local `vyred` listening on
+  `core/config/index.js`'s `socketPath()`, same as a Mac. That path is a plain filesystem path
+  with no `win32` branch; `core/daemon/index.js`'s `fs.chmodSync(socket, 0o600)` has no POSIX
+  meaning on Windows either way. Whether the resulting Windows socket (a real AF_UNIX socket, or a
+  named pipe, depending on Node/libuv version) ends up with a DACL that keeps a second local user
+  off is **unverified**, and disabling local `vyred` on win32 to sidestep the question would break
+  Tier A's CLI entirely, not just narrow it, so it's not a small mitigation. This needs a real
+  Windows-hardware check before Tier A is called done, not just CI. Flagged to the lead.
 - Every future Windows-only module (`local/hands-win`, `local/screen-win`, a `vault` backend for
   Credential Manager, a Capsule shell) ships through the existing `local/*` module registry, with
   its own manifest and tests, no fork of `core`, no special-casing per file the way the four

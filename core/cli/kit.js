@@ -21,20 +21,30 @@ import { frame } from "./view.js";
 
 /**
  * Spawn this device's "open a URL in the browser" command, detached, its errors swallowed (a
- * missing browser command is never worth failing a run over). `VYRE_OPEN_BIN` (env) always wins,
- * for tests and for a person's own override. darwin: `open` · win32: `cmd /c start "" <url>`
- * (the empty title keeps a URL containing `&` from being read as the window's title) · anything
- * else (linux, WSL, ...): `xdg-open`.
- * @param {string} url @param {{ env?: NodeJS.ProcessEnv }} [opts]
+ * missing browser command is never worth failing a run over). Only `http:`/`https:` URLs are
+ * opened, on every platform: this opens URLs vyre did not create (an OAuth consent page, a
+ * paired server's link), so a `file:`/`javascript:` scheme is refused rather than handed to
+ * `open`/`xdg-open` to interpret. On win32 the URL never touches a shell at all: `cmd /c start`
+ * would let a query string's `&`, `|`, `^`, `<`, `>` (every OAuth URL has a `&`) run as command
+ * operators after it, which is a real vulnerability, not a theoretical one, so this uses
+ * `rundll32`'s `FileProtocolHandler` (the same path Explorer opens a link through) with the URL
+ * as one argv entry instead. `VYRE_OPEN_BIN` (env) always wins, for tests and for a person's own
+ * override, but the http(s)-only check still applies to it.
+ * @param {string} url
+ * @param {{ env?: NodeJS.ProcessEnv, platform?: string, spawn?: typeof spawn }} [opts] `spawn` is
+ *   for a test to capture the argv without launching anything real.
  */
-export function openInBrowser(url, { env = process.env } = {}) {
+export function openInBrowser(url, { env = process.env, platform = process.platform, spawn: spawnImpl = spawn } = {}) {
+  let parsed;
+  try { parsed = new URL(url); } catch { return; }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return;
   const custom = env.VYRE_OPEN_BIN;
   const [cmd, args] = custom ? [custom, [url]]
-    : process.platform === "darwin" ? ["open", [url]]
-    : process.platform === "win32" ? ["cmd", ["/c", "start", "", url]]
+    : platform === "darwin" ? ["open", [url]]
+    : platform === "win32" ? ["rundll32", ["url.dll,FileProtocolHandler", url]]
     : ["xdg-open", [url]];
   try {
-    const p = spawn(cmd, args, { stdio: "ignore", detached: true, windowsHide: true });
+    const p = spawnImpl(cmd, args, { stdio: "ignore", detached: true, windowsHide: true });
     p.on("error", () => {});
     p.unref();
   } catch {}
