@@ -163,3 +163,15 @@ test("waiting.changed: after the owners' events, coalesced, and only when the co
   assert.equal(w.said.at(-1).by_kind.pairing, 0);
   assert.equal(w.said.length, 5);
 });
+
+test("fromAsks: an ask from a session on the paired Mac names its machine, and the answer carries it", async () => {
+  const { fromAsks } = await import("./index.js");
+  const [mac, box] = fromAsks([
+    { id: "a1", kind: "permission", tool: "Bash", summary: "npm test", source: "mac", machine: "alex-mbp", at: 2 },
+    { id: "a2", kind: "permission", tool: "Bash", summary: "ls", at: 1 },
+  ]);
+  assert.equal(mac.machine, "alex-mbp");
+  assert.deepEqual(mac.answer.input, { ask: "a1", machine: "alex-mbp" });
+  assert.equal(box.machine, undefined);
+  assert.deepEqual(box.answer.input, { ask: "a2" });
+});
