@@ -185,11 +185,20 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
   thread.turn uuid = SDK message uuid = transcript uuid, thread.queued uuid, thread.unqueued,
   thread.state, thread.usage, thread.started provider/model/auth, finished canceled. Tools asked:
   threads.unqueue, threads.edit, threads.send {now}, threads.interrupt. Awaiting reply.
-- Now: session view (deck/chat/session.js) rendered from session-state + grouping + pace, with the
-  Session board's provider chip, state word, Stop (Esc), queued rows (Edit, Take back, Send now),
-  inline ask and question cards at the tail, A/D keys.
+- Done (27 Sep): cbe3a66 session view rendered from session-state + grouping + pace (live-text.js),
+  fold rows, count-up, thinking length, provider chip, state word, idle "Resumes on your next
+  message", Stop (Esc: threads.interrupt, else threads.stop), queued rows (buttons disabled: no
+  threads.edit / threads.unqueue / threads.send {now} on any branch yet), inline asks with A/D,
+  "Answered from <surface> · <time>". Behaviour changed on purpose: tool runs fold (session.test.js
+  "open" test opens them first); the composer's own queue line is gone (rows replace it); a failed
+  turn reads "Turn failed: ..." in its footer. Tests: deck/chat + deck/test 221/221 (1 skipped) on testbox.
+- Gaps for sessions: threads.interrupt is on work/sessions only (the Deck falls back);
+  threads.edit, threads.unqueue, threads.send {now} are nowhere; thread.queued needs `uuid` for rows
+  to act on; ask.answered `by` is a surface, not a device ("alex's iPhone" needs a device name).
 
 ## Next
+- thread.limit as a line in the turn (the design's limit fallback); windowed rows above 100 items;
+  an inline ask anchored to its tool row once ask.raised carries tool_use_id.
 - Screenshots in one world on port 4795 (load rule), time Back (< 100 ms).
 - Virtualize long sessions (windowed rows above 100), mounted tabs.
 - Terminal P4 (core/term/holder.js + ring.js exist, untested; ADR 0029 R4): tests, wire into term.

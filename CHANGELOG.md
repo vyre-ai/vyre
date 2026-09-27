@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: a session reads as a native chat over the event stream (ADR 0030)
+
+- deck/chat/session.js renders from deck/chat/core/session-state.js: the transcript read and
+  live thread.* and ask.* events go into one keyed state, and only the rows whose keys changed
+  are patched. Runs of tool calls fold into one row ("Edited 3 files, ran 2 commands · 12 s")
+  that opens to the calls; a running call counts up ("Running npm run build · 0:42"); thinking
+  shows its length; a todo list is never folded. Replies stream paced to the display
+  (deck/chat/live-text.js, core/pace.js), frames only while the page is on screen, and only the
+  growing paragraph re-parses. Rows off screen use content-visibility.
+- The header shows the provider, model and auth ("Claude · opus · subscription") and the state
+  word; a session closed for idleness says "Resumes on your next message".
+- Stop (Esc) while a turn runs: threads.interrupt, or threads.stop on a Switchboard without it;
+  the turn reads "Stopped by you". Queued messages sit above the composer with Edit, Take back
+  and Send now, disabled ("Needs the sessions update") until the Switchboard has
+  threads.edit, threads.unqueue and threads.send `now`.
+- Permission cards: A allows once, D denies. An ask answered on another screen says so
+  ("Answered from the Capsule · 14:31").
+- deck/sw.js SHELL keeps the new modules. Tests in deck/chat/session.test.js and core tests.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
