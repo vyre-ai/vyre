@@ -274,6 +274,12 @@ Plan (to the lead before building):
 - rc.1 hotfix a3a844e4: GATE PASS 22/0/2 (theme on now; skips phone enrol, mail). Built on testbox:
   clone at the sha, build-app.sh, build-site.sh -> ~/vyre-ci/e2e-rc1h/site/box/vyre.tgz. box-deploy
   cleared to redeploy.
+- a3a844e4 CONTESTED: box-deploy's 2 runs failed (step 3 onboard "vyred not running" right after
+  step 2 passed; vault item gone across update), mine pass 22/0/2 on both tgz (theirs
+  ~/vyre-release-a3a844e/vyre.tgz 8d5192ce has 3 Mac capsule bins extra; scripts identical).
+  Suspect vyred restarting under the spawner (loop.sh logs "vyred exited (N); starting it again"
+  to docker logs) and the vault losing items. Asked box-deploy for invocation, env, overlap, and
+  one RC_KEEP=1 failing container. Lead told to hold the redeploy.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
