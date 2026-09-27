@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The onboard page test cleans its home last
+
+- test/onboard-page.test.js left its temp home behind on Node 24 runners, so tmp-guard failed main's
+  node workflow. tempHome's cleanup ran before vyred stopped and Chrome exited, and their late writes
+  brought the home back. A last after-hook now removes it.
+
 #### perf-check gates the live heap, and RSS on the Node the box ships
 
 - The idle RSS gate failed on GitHub's Node 24 runners at 185 to 333 MB on every batch-4 merge and on

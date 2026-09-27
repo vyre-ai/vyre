@@ -92,6 +92,9 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     const link = await call("onboard.link", {}, { root });
     assert.ok(link.data, JSON.stringify(link.error));
     const page = await chrome(t, root);
+    // Last, after vyred's stop and Chrome's exit: tempHome's own cleanup runs first (after-hooks
+    // run in the order they were added), and the late writes of both brought the home back.
+    t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     await page.send("Page.enable");
     await page.send("Page.navigate", { url: link.data.url });
     await page.until(`document.querySelector("#name")`, "the name field");
