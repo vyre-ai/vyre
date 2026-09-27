@@ -127,7 +127,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 ## Next: 0.1.1 batch 1 (right after rc.2 lands)
 
 - federation 9338a6a5 (supersedes aa9cb40c; e2e signed off: fail-closed ask checks, persisted nonces, files.deliver opt-in).
-- windows 8cd4722d (Tier A+B, ADR 0037, test-windows job non-blocking; reviewer cleared).
+- windows e56c45e9 (on 8cd4722d; Tier A+B, ADR 0037, test-windows job non-blocking; reviewer cleared).
 - docs 40dcb26d (supersedes 53bbc146): ADR 0038 terminology, glossary, docs-check terminology rule
   (hard-fails docs-owned pages only).
 - memory-iq's 0.1.1 sha (memory.ask stream: true cutover, around ffae4f08) BEFORE capsule-pro's
