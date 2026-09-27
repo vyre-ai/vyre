@@ -22,8 +22,12 @@ export const seams = new Map();
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const AGENTS = ["mcp", "module", "harness"];
-/** What an agent may add or change (ADR point 12): never an alarm, a timer or an event. */
-const AGENT_KINDS = ["todo", "reminder", "note"];
+/** What an agent may add with no permission (the user's rule): everything but an event, which is an invite. */
+const AGENT_KINDS = ["alarm", "timer", "reminder", "todo", "note"];
+/** A runaway guard, not a limit anyone should meet: adds an hour from one agent. */
+const AGENT_CAP = 200;
+/** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit". vyred has checked the name. */
+const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/;
 const TIMED = ["alarm", "timer", "reminder", "event"];
 const LINK_CODES = ["box_unreachable", "no_link", "unreachable", "timeout", "not_box", "unpaired"];
 const MAX_TIMER = 30 * 86_400_000;
@@ -72,7 +76,7 @@ export default {
 
     const scheduler = new Scheduler({ db, st, settings, now, setTimer: seam.setTimer, clearTimer: seam.clearTimer, log: ctx.log,
       fired: (f, item) => emit("planner.fired", { firing: f.id, item: item.id, kind: item.kind, title: item.title, due: f.due, ring: f.ring,
-        missed: Boolean(f.missed), actions: ["done", "snooze"] }, item) });
+        missed: Boolean(f.missed), actions: ["done", "snooze"], ...(item.source_name ? { added_by: item.source_name } : {}) }, item) });
 
     // ---- The Mac's side: paired means the box keeps the planner. -----------------------------
     let linked = false;
@@ -152,7 +156,7 @@ export default {
       if (kind === "todo") return { ...out, at: wall ? at : null, wall, date, repeat, due: date };
       if (at == null && date && TIMED.includes(kind)) throw fail(`a ${kind} needs a time of day (wall "HH:MM") with its date`);
       if (at == null && TIMED.includes(kind)) throw fail(`a ${kind} needs a time: at, or wall (and date)`);
-      if (at != null && at <= t && !repeat && (kind === "alarm" || kind === "reminder")) throw fail("that time has already passed");
+      if (at != null && at < t && !repeat && (kind === "alarm" || kind === "reminder")) throw fail("that time has already passed");
       return { ...out, at, wall, date, repeat };
     };
 
@@ -161,11 +165,63 @@ export default {
 
     // ---- Who may do what ----------------------------------------------------------------------
 
+    // The user's rule: anyone, agents included, adds alarms, timers, reminders, todos and notes
+    // with no prompt. The person changes anything; an agent changes only what it added. An item
+    // keeps who added it (source), and shows a name (added_by) only when that was neither the
+    // person nor their assistant.
+
     const isPerson = caller => callerAllowed(PEOPLE, caller);
-    const agentKind = (kind, caller, what) => {
-      if (isPerson(caller)) return;
-      if (!AGENT_KINDS.includes(kind)) throw fail(`an agent may ${what} todos, reminders and notes, not ${kind}s`, "denied");
+
+    /** The assistant's name, read from agents.list at most once a minute. */
+    let assistant = { name: /** @type {string|null} */ (null), at: -Infinity };
+    const isAssistant = async name => {
+      if (Date.now() - assistant.at > 60_000) {
+        const r = await ctx.call("agents.list", {}).catch(() => null);
+        const a = r && Array.isArray(r.data) ? r.data.find(x => x && x.kind === "assistant") : null;
+        assistant = { name: a ? String(a.name) : null, at: Date.now() };
+      }
+      return assistant.name === name;
     };
+
+    /**
+     * Who a call is from: { person, source, name }. A paired Mac passes an agent's identity on as
+     * `as`, which only a person's call (the Mac's link arrives as the owner) may carry.
+     * @returns {Promise<{ person: boolean, source: string, name: string|null }>}
+     */
+    const who = async (i, caller) => {
+      if (isPerson(caller)) {
+        const as = i && i.as && typeof i.as === "object" ? i.as : null;
+        if (as && as.source) return { person: false, source: String(as.source).slice(0, 120), name: as.name ? String(as.name).slice(0, 80) : null };
+        return { person: true, source: callerKind(caller), name: null };
+      }
+      const c = String(caller);
+      if (c.startsWith("module:")) return { person: false, source: c.slice(0, 120), name: null };
+      const m = AGENT_CLAIM.exec(c);
+      // An unnamed MCP or harness caller is the person's own Claude session: their assistant.
+      if (!m) return { person: false, source: callerKind(caller), name: null };
+      return { person: false, source: `agent:${m[1]}`, name: (await isAssistant(m[1])) ? null : m[1] };
+    };
+
+    const agentKind = (kind, w) => {
+      if (w.person) return;
+      if (!AGENT_KINDS.includes(kind)) throw fail(`an agent may add alarms, timers, reminders, todos and notes, not ${kind}s`, "denied");
+    };
+    /** An agent may change, finish, snooze or delete only what it added. */
+    const owns = (item, w) => {
+      if (w.person || (item && item.source === w.source)) return;
+      throw fail("an agent may change only the items it added", "denied");
+    };
+
+    /** Adds in the last hour, by agent. Silent: nobody is told the number. */
+    const recent = new Map();
+    const capped = w => {
+      if (w.person) return;
+      const t = now();
+      const seen = (recent.get(w.source) || []).filter(x => x > t - 3_600_000);
+      recent.set(w.source, seen);
+      if (seen.length >= AGENT_CAP) throw fail("too many items added in the last hour; try again later", "busy");
+    };
+    const counted = w => { if (!w.person) recent.get(w.source)?.push(now()); };
 
     // ---- Items --------------------------------------------------------------------------------
 
@@ -183,23 +239,25 @@ export default {
     };
 
     /** Read free text with the parser, if there is one. */
-    const parseText = (text, t = now()) => {
+    const parseText = (text, t = now(), kind = undefined) => {
       if (!parser) return null;
-      try { return parser(String(text), { now: t, tz: settings().timezone }) || null; }
+      try { return parser(String(text), { now: t, tz: settings().timezone, ...(kind ? { kind } : {}) }) || null; }
       catch (e) { ctx.log(`planner: parse failed (${/** @type {Error} */ (e).message})`); return null; }
     };
 
-    const add = (i, caller) => {
+    const add = (i, w) => {
       const t = now();
       let input = { ...i };
       if (typeof i.text === "string" && i.text.trim()) {
-        const p = parseText(i.text, t);
+        const p = parseText(i.text, t, i.kind);
+        if (p && p.ambiguous) throw fail(p.reason || "those words do not say when", "ambiguous");
         const given = Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "text"));
         input = { ...(p || {}), ...given, title: given.title ?? (p && p.title) ?? i.text.trim() };
       }
       const kind = input.kind || "note";
       if (!KINDS.includes(kind)) throw fail(`kind is one of ${KINDS.join(", ")}`);
-      agentKind(kind, caller, "add");
+      agentKind(kind, w);
+      capped(w);
       const s = settings();
       const time = resolveTime(kind, input, s, t);
       let title = String(input.title ?? "").trim().slice(0, 500);
@@ -208,11 +266,12 @@ export default {
       if (input.parent && !st.item(input.parent)) throw fail("no such parent item", "not_found");
       const row = { id: newId("i"), kind, title, body: clip(input.body, 100_000), list: clip(input.list, 80), priority: priorityOf(input.priority),
         parent: input.parent ? String(input.parent) : null, project: clip(input.project, 120), thread: clip(input.thread, 120),
-        tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: callerKind(caller) };
+        tags: tagsOf(input.tags), pinned: Boolean(input.pinned), state: "open", ...time, created: t, updated: t, source: w.source, source_name: w.name };
       const n = schedule(row, t);
       if (row.repeat) row.at = n.at;
       st.insert({ ...row, next_fire: n.next_fire });
-      emit("planner.added", { item: row.id, kind, title, ...(row.at != null ? { at: row.at } : {}) }, row);
+      counted(w);
+      emit("planner.added", { item: row.id, kind, title, ...(row.at != null ? { at: row.at } : {}), ...(w.name ? { added_by: w.name } : {}) }, row);
       scheduler.arm();
       return shape(st.item(row.id));
     };
@@ -220,10 +279,10 @@ export default {
     const EDITABLE = ["title", "body", "list", "priority", "pinned", "tags", "project", "thread", "parent", "state"];
     const TIME_FIELDS = ["at", "in_ms", "wall", "date", "repeat", "tz", "floating", "due"];
 
-    const update = (i, caller) => {
+    const update = (i, w) => {
       const item = st.item(i.item);
       if (!item || item.deleted_at) throw fail("no such item", "not_found");
-      agentKind(item.kind, caller, "change");
+      owns(item, w);
       if (i.kind !== undefined && i.kind !== item.kind) throw fail("an item's kind does not change; add a new one");
       const t = now();
       const patch = /** @type {any} */ ({});
@@ -282,9 +341,9 @@ export default {
       return { f: st.ringing(item.id) || null, item };
     };
 
-    const ack = (f, action, caller, until = null) => {
-      st.patchFiring(f.id, { state: "acked", acked_at: now(), action, by: callerKind(caller), until, next_ring: null });
-      emit("planner.acked", { firing: f.id, item: f.item, action, by: callerKind(caller), ...(until ? { until } : {}) }, st.item(f.item));
+    const ack = (f, action, w, until = null) => {
+      st.patchFiring(f.id, { state: "acked", acked_at: now(), action, by: w.source, until, next_ring: null });
+      emit("planner.acked", { firing: f.id, item: f.item, action, by: w.source, ...(until ? { until } : {}) }, st.item(f.item));
     };
     /** Stop any ring for an item that has ended; surfaces drop the banner on the ack. */
     const cancelRinging = id => {
@@ -307,8 +366,9 @@ export default {
       return row ? { f: st.ringing(row.id) || null, row } : null;
     };
     /** done, snooze or dismiss on a calendar event's ring: the copy is read-only, so only the ring changes. */
-    const calAck = (c, action, caller, minutes) => {
-      agentKind("event", caller, "finish");
+    const calAck = (c, action, w, minutes) => {
+      // A calendar copy is nobody's to add, so no agent owns its ring.
+      if (!w.person) throw fail("an agent may change only the items it added", "denied");
       if (c.f && c.f.state !== "ringing") return already(c.f);
       let until = null;
       if (action === "snooze") {
@@ -317,21 +377,21 @@ export default {
         until = now() + Math.round(m * 60_000);
         cal.snooze(c.row.id, until);
       } else cal.clearSnooze(c.row.id);
-      if (c.f) ack(c.f, action, caller, until);
+      if (c.f) ack(c.f, action, w, until);
       else if (action === "dismiss") throw fail("nothing is ringing for that event", "not_found");
       return { item: shapeCal(cal.row(c.row.id)), firing: c.f ? shapeFiring(st.firing(c.f.id)) : null, ...(until ? { until } : {}) };
     };
     const oneOffEnds = item => !item.repeat;
 
-    const done = (i, caller) => {
+    const done = (i, w) => {
       const c = calTarget(i);
-      if (c) return calAck(c, "done", caller);
+      if (c) return calAck(c, "done", w);
       const { f, item } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
-      agentKind(item.kind, caller, "finish");
+      owns(item, w);
       if (i.firing && f && f.state !== "ringing") return already(f);
       const t = now();
-      if (f && f.state === "ringing") ack(f, "done", caller);
+      if (f && f.state === "ringing") ack(f, "done", w);
       if (item.repeat) {
         // A repeating item keeps going. Done with nothing ringing is done for this time round.
         const patch = /** @type {any} */ ({ snooze_until: null, updated: t });
@@ -346,29 +406,31 @@ export default {
       return { item: shape(st.item(item.id)), firing: f ? shapeFiring(st.firing(f.id)) : null };
     };
 
-    const snooze = (i, caller) => {
+    const snooze = (i, w) => {
       const c = calTarget(i);
-      if (c) return calAck(c, "snooze", caller, i.minutes);
+      if (c) return calAck(c, "snooze", w, i.minutes);
       const { f, item } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
+      owns(item, w);
       if (i.firing && f && f.state !== "ringing") return already(f);
       const minutes = i.minutes === undefined ? 9 : Number(i.minutes);
       if (!Number.isFinite(minutes) || minutes < 1 || minutes > 7 * 1440) throw fail("minutes is 1 to 10080");
       const until = now() + Math.round(minutes * 60_000);
-      if (f && f.state === "ringing") ack(f, "snooze", caller, until);
+      if (f && f.state === "ringing") ack(f, "snooze", w, until);
       st.patch(item.id, { snooze_until: until, updated: now() });
       scheduler.arm();
       return { item: shape(st.item(item.id)), firing: f ? shapeFiring(st.firing(f.id)) : null, until };
     };
 
-    const dismiss = (i, caller) => {
+    const dismiss = (i, w) => {
       const c = calTarget(i);
-      if (c) return calAck(c, "dismiss", caller);
+      if (c) return calAck(c, "dismiss", w);
       const { f, item } = target(i);
       if (!item) throw fail("that firing's item is gone", "not_found");
+      owns(item, w);
       if (!f) throw fail("nothing is ringing for that item", "not_found");
       if (f.state !== "ringing") return already(f);
-      ack(f, "dismiss", caller);
+      ack(f, "dismiss", w);
       const t = now();
       // A one-off alarm, timer, reminder or event is over once dismissed; a todo stays to be done.
       if (oneOffEnds(item) && item.kind !== "todo" && item.state === "open") {
@@ -379,9 +441,10 @@ export default {
       return { item: shape(st.item(item.id)), firing: shapeFiring(st.firing(f.id)) };
     };
 
-    const remove = i => {
+    const remove = (i, w) => {
       const item = st.item(i.item);
       if (!item) throw fail("no such item", "not_found");
+      owns(item, w);
       const t = now();
       if (i.restore) {
         if (!item.deleted_at) return shape(item);
@@ -514,8 +577,8 @@ export default {
     const cal = calendarCache({ ctx, db, st, scheduler, settings, now, emit, cancelRinging, active: () => role === "box" || !linked });
 
     /** An agent may only ask for an invite on a connected calendar, which the google module holds at the Gate. */
-    const createCheck = (i, caller) => {
-      if (isPerson(caller)) return;
+    const createCheck = (i, w) => {
+      if (w.person) return;
       const to = Array.isArray(i.attendees) ? i.attendees.filter(Boolean) : i.attendees ? [i.attendees] : [];
       if (!i.account || !to.length) throw fail("an agent may only ask for an invite on a connected calendar (account and attendees), which waits at the Gate", "denied");
     };
@@ -531,8 +594,8 @@ export default {
       return str;
     };
 
-    const createEvent = async (i, caller) => {
-      createCheck(i, caller);
+    const createEvent = async (i, w) => {
+      createCheck(i, w);
       const s = settings();
       if (i.tz !== undefined && i.tz !== null && !validZone(i.tz)) throw fail(`${i.tz} is not a time zone`);
       const tz = String(i.tz || s.timezone);
@@ -544,7 +607,7 @@ export default {
           endAt = ms(i.end);
           if (!Number.isFinite(endAt) || !(endAt > startAt)) throw fail("end must be a time after start");
         }
-        const item = add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread }, caller);
+        const item = add({ kind: "event", title: i.title, at: i.start, tz, project: i.project, thread: i.thread }, w);
         st.patch(item.id, { duration_ms: endAt != null ? endAt - item.at : 3_600_000, where_: clip(i.where, 500) });
         return shape(st.item(item.id));
       }
@@ -569,34 +632,23 @@ export default {
     const ref = { type: "object", properties: { firing: str, item: str } };
 
     /**
-     * Register a tool. On a paired Mac it runs on the box; an agent's limits are checked here
-     * first, since the box sees every forwarded call as the owner.
+     * Register a tool. On a paired Mac it runs on the box, which sees the forwarded call as the
+     * owner; an agent's call carries `as` so the box applies the agent's rules. A `local` tool
+     * (the parser: pure, no state) answers where it is asked.
      */
-    const tool = (name, description, input, run, { agents = false, check = null } = {}) => ctx.tool(name, {
+    const tool = (name, description, input, run, { agents = false, local = false } = {}) => ctx.tool(name, {
       description, input, callers: agents ? [...PEOPLE, ...AGENTS] : PEOPLE,
       run: async (i, meta) => {
-        const caller = meta.caller;
-        if (role === "local" && (await checkLink())) {
-          if (check && !isPerson(caller)) await check(i, caller, (t, x) => forward(t, x));
-          return forward(name, i);
-        }
-        return run(i, caller);
+        const w = await who(i, meta.caller);
+        const { as: _as, ...rest } = i || {};
+        if (!local && role === "local" && (await checkLink())) return forward(name, w.person ? rest : { ...rest, as: { source: w.source, name: w.name } });
+        return run(rest, w);
       },
     });
-    /** The kind an agent's update or done is about, read wherever the planner lives. */
-    const kindOnBox = async (i, caller, remote) => {
-      const got = await remote("planner.get", i.firing ? { firing: i.firing } : { item: i.item });
-      agentKind(got && got.item && got.item.kind, caller, "change");
-    };
 
-    tool("planner.add", "Add an alarm, timer, reminder, todo, note or event. Times: at (ISO or ms), in_ms for a timer, or wall \"HH:MM\" with date \"YYYY-MM-DD\" and repeat {every: day|weekday|week|month|year, days?, interval?, until?}. Or give text (\"alarm 7am\") to read it. Agents may add todos, reminders and notes only.",
+    tool("planner.add", "Add an alarm, timer, reminder, todo, note or event. Times: at (ISO or ms), in_ms for a timer, or wall \"HH:MM\" with date \"YYYY-MM-DD\" and repeat {every: day|weekday|week|month|year, days?, interval?, until?}. Or give text (\"alarm 7am\") to read it, with kind as a hint. Anyone may add alarms, timers, reminders, todos and notes.",
       { type: "object", properties: { kind: { type: "string", enum: KINDS }, text: str, ...itemFields } },
-      async (i, caller) => add(i, caller),
-      { agents: true, check: async (i, caller, remote) => {
-        let kind = i.kind;
-        if (!kind && i.text) { const p = await remote("planner.parse", { text: i.text }); kind = (p && p.kind) || "note"; }
-        agentKind(kind || "note", caller, "add");
-      } });
+      async (i, w) => add(i, w), { agents: true });
 
     tool("planner.list", "Items, newest time first: filter by kind, state (open by default; all), list, project, pinned, tag; limit up to 500.",
       { type: "object", properties: { kind: { type: "string", enum: KINDS }, state: { type: "string", enum: [...STATES, "all"] }, list: str, project: str, pinned: bool, tag: str, limit: int } },
@@ -619,24 +671,25 @@ export default {
       { type: "object", properties: {} },
       async () => st.allRinging().map(f => {
         const it = st.item(f.item) || cal.row(f.item);
-        return { firing: f.id, item: f.item, kind: f.kind, title: it ? String(it.title || "") : "", due: f.due, ring: f.ring, missed: Boolean(f.missed), actions: ["done", "snooze"] };
+        return { firing: f.id, item: f.item, kind: f.kind, title: it ? String(it.title || "") : "", due: f.due, ring: f.ring, missed: Boolean(f.missed), actions: ["done", "snooze"],
+          ...(it && it.source_name ? { added_by: it.source_name } : {}) };
       }), { agents: true });
 
-    tool("planner.update", "Change an item: title, body, list, priority, pinned, tags, project, thread, parent, state (open, done, cancelled) or its time. Agents may change todos, reminders and notes only.",
+    tool("planner.update", "Change an item: title, body, list, priority, pinned, tags, project, thread, parent, state (open, done, cancelled) or its time. An agent may change only the items it added.",
       { type: "object", required: ["item"], properties: { item: str, kind: str, state: { type: "string", enum: STATES }, ...itemFields } },
-      async (i, caller) => update(i, caller), { agents: true, check: kindOnBox });
+      async (i, w) => update(i, w), { agents: true });
 
     tool("planner.done", "Done: acknowledge a firing (an alarm stops ringing; a repeating one keeps its schedule) or finish a todo or reminder. Give firing or item.",
-      ref, async (i, caller) => done(i, caller), { agents: true, check: kindOnBox });
+      ref, async (i, w) => done(i, w), { agents: true });
 
     tool("planner.snooze", "Snooze a firing or an item: it rings again after minutes (9 by default).",
-      { type: "object", properties: { firing: str, item: str, minutes: { type: "number" } } }, async (i, caller) => snooze(i, caller));
+      { type: "object", properties: { firing: str, item: str, minutes: { type: "number" } } }, async (i, w) => snooze(i, w), { agents: true });
 
     tool("planner.dismiss", "Stop a firing without finishing a todo. A one-off alarm, timer or reminder ends.",
-      ref, async (i, caller) => dismiss(i, caller));
+      ref, async (i, w) => dismiss(i, w), { agents: true });
 
     tool("planner.delete", "Delete an item. It can be restored (restore: true) for 30 days.",
-      { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async i => remove(i));
+      { type: "object", required: ["item"], properties: { item: str, restore: bool } }, async (i, w) => remove(i, w), { agents: true });
 
     tool("planner.agenda", "What is on between from and to (today in the planner's zone by default): alarms, reminders, timers and events, the connected calendars' events, and the todos due. Each entry has source (\"planner\" or the Google account's name), start, end, all_day, where, url. busy: true returns only the busy intervals, merged. next: n returns the next n entries from now.",
       { type: "object", properties: { from: when, to: when, busy: bool, next: int } }, async i => agenda(i), { agents: true });
@@ -647,10 +700,10 @@ export default {
     tool("planner.calendar.create", "Make an event. Without account it is the planner's own event. With account it is written to that Google calendar through google.calendar.create; attendees mean invites, which wait at the Gate for the user (returns { held, message }). Agents may only ask for an invite (account and attendees).",
       { type: "object", required: ["title", "start"], properties: { title: str, start: when, end: when, where: str, attendees: { anyOf: [str, { type: "array", items: str }] },
         account: str, tz: str, why: str, project: str, thread: str } },
-      async (i, caller) => createEvent(i, caller), { agents: true, check: async (i, caller) => createCheck(i, caller) });
+      async (i, w) => createEvent(i, w), { agents: true });
 
-    tool("planner.parse", "Read words like \"alarm 7am\", \"timer 10 min\" or \"remind me to call the printer at 6\" into a proposed item, or null.",
-      { type: "object", required: ["text"], properties: { text: str } }, async i => parseText(i.text), { agents: true });
+    tool("planner.parse", "Read words like \"alarm 7am\", \"timer 10 min\" or \"remind me to call the printer at 6\" into a proposed item { kind, title, at (ms), tz, duration?, repeat? }, { ambiguous, reason } when they cannot be placed, or null. kind is a hint. Answers where it is asked, never forwarded.",
+      { type: "object", required: ["text"], properties: { text: str, kind: { type: "string", enum: KINDS } } }, async i => parseText(i.text, now(), i.kind), { agents: true, local: true });
 
     tool("planner.settings", "The planner's zone (floating alarms follow it), escalate_after (minutes, from 1), escalate_max (rings after the first) and event_lead (minutes). With no input, the current settings.",
       { type: "object", properties: { timezone: str, escalate_after: int, escalate_max: int, event_lead: int } }, async i => changeSettings(i));

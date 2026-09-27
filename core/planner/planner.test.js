@@ -49,6 +49,8 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
         tool: (name, def) => w.tools.set(name, def),
         // No Google account connected: the calendar slice stays asleep (core/planner/calendar.test.js covers it).
         call: async tool => tool === "link.status" ? { data: { linked: w.linked } } : tool === "google.accounts" ? { data: [] }
+          // juno is the user's assistant; kit is an agent they made.
+          : tool === "agents.list" ? { data: [{ name: "juno", kind: "assistant" }, { name: "kit", kind: "agent" }] }
           : { error: { code: "no_such_tool", message: "no" } },
         remote: async (tool, input) => w.remote ? w.remote(tool, input) : { error: { code: "no_link", message: "no link" } },
       };
@@ -255,26 +257,58 @@ test("planner: one timer, at most six hours out, none when nothing is due, and a
   assert.equal(w.timers.size, 1);
 });
 
-test("planner: an agent may add and finish a todo, reminder or note, never an alarm, and never snooze", async t => {
+test("planner: anyone adds alarms, reminders, todos and notes; an agent changes only its own", async t => {
   const w = await world(t);
   const kit = "mcp:agent:kit";
-  assert.equal((await w.call("planner.add", { kind: "alarm", wall: "07:00" }, kit)).error.code, "denied");
-  assert.equal((await w.call("planner.add", { kind: "timer", in_ms: MIN }, "module:watchers")).error.code, "denied");
+  // No prompt and no permission for any of these, agents included.
+  const alarm = await w.ok("planner.add", { kind: "alarm", title: "Northwind Bakery delivery", wall: "07:00" }, kit);
+  assert.deepEqual([alarm.source, alarm.added_by], ["agent:kit", "kit"], "an agent's item shows its name");
+  const timer = await w.ok("planner.add", { kind: "timer", in_ms: MIN }, "module:watchers");
+  assert.deepEqual([timer.source, timer.added_by], ["module:watchers", null]);
   const todo = await w.ok("planner.add", { kind: "todo", title: "Draft the Northwind Bakery proposal", project: "northwind" }, kit);
-  assert.equal(todo.source, "mcp");
-  await w.ok("planner.add", { kind: "note", title: "juno prefers mornings" }, kit);
+  const mine = await w.ok("planner.add", { kind: "note", title: "juno prefers mornings" }, "mcp:agent:juno");
+  assert.deepEqual([mine.source, mine.added_by], ["agent:juno", null], "the assistant's items show no source");
+  const session = await w.ok("planner.add", { kind: "reminder", title: "Call kit", wall: "18:00" }, "mcp");
+  assert.deepEqual([session.source, session.added_by], ["mcp", null], "the person's own session shows no source");
+  const person = await w.ok("planner.add", { kind: "alarm", wall: "06:00" });
+  assert.deepEqual([person.source, person.added_by], ["cli", null]);
+  assert.equal(w.events.since(0, { type: "planner.added" }).find(e => e.payload.item === alarm.id).payload.added_by, "kit");
+  assert.equal((await w.call("planner.add", { kind: "event", title: "x", at: T0 + HOUR }, kit)).error.code, "denied", "an event is an invite");
+
+  // kit edits, snoozes, finishes and deletes what kit added.
   await w.ok("planner.update", { item: todo.id, priority: 3 }, kit);
+  await w.ok("planner.snooze", { item: alarm.id, minutes: 5 }, kit);
   await w.ok("planner.done", { item: todo.id }, kit);
-  const alarm = await w.ok("planner.add", { kind: "alarm", wall: "07:00" });
-  assert.equal((await w.call("planner.update", { item: alarm.id, title: "x" }, kit)).error.code, "denied");
-  assert.equal((await w.call("planner.done", { item: alarm.id }, kit)).error.code, "denied");
-  assert.equal((await w.call("planner.snooze", { item: todo.id }, kit)).error.code, "denied");
+  await w.ok("planner.delete", { item: alarm.id }, kit);
+  await w.ok("planner.delete", { item: alarm.id, restore: true }, kit);
+  // Nothing anyone else added: the person's, the assistant's, another module's.
+  for (const item of [person, mine, timer]) {
+    assert.equal((await w.call("planner.update", { item: item.id, title: "x" }, kit)).error.code, "denied");
+    assert.equal((await w.call("planner.done", { item: item.id }, kit)).error.code, "denied");
+    assert.equal((await w.call("planner.snooze", { item: item.id }, kit)).error.code, "denied");
+    assert.equal((await w.call("planner.delete", { item: item.id }, kit)).error.code, "denied");
+  }
+  assert.equal((await w.call("planner.update", { item: todo.id, title: "x" }, "mcp:agent:juno")).error.code, "denied", "the assistant too");
+  // The person changes anything, with no prompt, whoever added it.
+  await w.ok("planner.update", { item: alarm.id, title: "Harlow Legal call" });
+  await w.ok("planner.snooze", { item: mine.id, minutes: 10 }, "deck");
+  await w.ok("planner.done", { item: todo.id }, "capsule");
+  await w.ok("planner.delete", { item: timer.id }, "tailnet:alex");
   assert.equal((await w.call("planner.settings", {}, kit)).error.code, "denied");
-  assert.equal((await w.call("planner.delete", { item: todo.id }, kit)).error.code, "denied");
   assert.ok((await w.ok("planner.list", {}, kit)).length >= 1, "agents read");
   assert.ok((await w.ok("planner.agenda", {}, kit)).entries.length >= 0);
-  // The owner's own Deck over the tailnet is a person.
-  assert.ok(!(await w.call("planner.add", { kind: "alarm", wall: "08:00" }, "tailnet:alex")).error);
+});
+
+test("planner: a runaway agent stops at the hour's cap, quietly, and starts again an hour later", async t => {
+  const w = await world(t);
+  const kit = "mcp:agent:kit";
+  for (let n = 0; n < 200; n++) await w.ok("planner.add", { kind: "note", title: `note ${n}` }, kit);
+  const over = await w.call("planner.add", { kind: "note", title: "one more" }, kit);
+  assert.equal(over.error.code, "busy");
+  assert.ok(!(await w.call("planner.add", { kind: "note", title: "someone else" }, "mcp:agent:juno")).error, "per agent");
+  assert.ok(!(await w.call("planner.add", { kind: "note", title: "the person" })).error, "never the person");
+  w.advance(HOUR + 1);
+  assert.ok(!(await w.call("planner.add", { kind: "note", title: "later" }, kit)).error);
 });
 
 test("planner: a paired Mac forwards to the box and keeps its timer idle; an unpaired Mac runs alone", async t => {
@@ -290,10 +324,26 @@ test("planner: a paired Mac forwards to the box and keeps its timer idle; an unp
   assert.deepEqual(sent, [["planner.add", { kind: "reminder", title: "Call kit", wall: "18:00" }]]);
   assert.equal(mac.db.prepare("SELECT COUNT(*) AS n FROM planner_items").get().n, 0, "nothing kept on the Mac");
   assert.equal(mac.timers.size, 0, "the Mac's scheduler is idle");
-  // An agent on the Mac is held to its limits here: the box sees the forwarded call as the owner.
-  assert.equal((await mac.call("planner.add", { text: "alarm 7am" }, "mcp:agent:kit")).error.code, "denied");
-  assert.equal((await mac.call("planner.done", { item: "i_box" }, "mcp")).error.code, "denied");
-  assert.deepEqual(sent.map(s => s[0]), ["planner.add", "planner.parse", "planner.get"], "the agent's add never reached the box");
+  // The box sees a forwarded call as the owner, so an agent's call names the agent (as), and the
+  // box holds it to the agent's rules. A person's call carries nothing, and nobody can forge as.
+  await mac.ok("planner.add", { text: "alarm 7am" }, "mcp:agent:kit");
+  await mac.ok("planner.done", { item: "i_box", as: { source: "cli" } }, "mcp");
+  assert.deepEqual(sent.slice(1), [["planner.add", { text: "alarm 7am", as: { source: "agent:kit", name: "kit" } }],
+    ["planner.done", { item: "i_box", as: { source: "mcp", name: null } }]]);
+  // planner.parse answers on the Mac, never forwarded.
+  assert.equal((await mac.ok("planner.parse", { text: "timer 10 min" })).kind, "timer");
+  assert.equal(sent.length, 3, "the parse did not reach the box");
+
+  // On the box, as from the owner's link applies the agent's rules.
+  const onBox = await world(t);
+  const item = await onBox.ok("planner.add", { kind: "note", title: "kit's", as: { source: "agent:kit", name: "kit" } }, "tailnet:alex");
+  assert.deepEqual([item.source, item.added_by], ["agent:kit", "kit"]);
+  const own = await onBox.ok("planner.add", { kind: "note", title: "alex's" });
+  assert.equal((await onBox.call("planner.delete", { item: own.id, as: { source: "agent:kit", name: "kit" } }, "tailnet:alex")).error.code, "denied");
+  await onBox.ok("planner.delete", { item: item.id, as: { source: "agent:kit", name: "kit" } }, "tailnet:alex");
+  // An agent's own as is ignored: it stays itself.
+  const forged = await onBox.ok("planner.add", { kind: "note", title: "x", as: { source: "cli" } }, "mcp:agent:kit");
+  assert.equal(forged.source, "agent:kit");
   mac.remote = async () => ({ error: { code: "box_unreachable", message: "away" } });
   assert.deepEqual((await mac.call("planner.list", {})).error.code, "box_unreachable");
 
@@ -316,7 +366,9 @@ test("planner: words become items through parse.js, when it is there", async t =
   const rem = await w.ok("planner.add", { text: "remind me to call the printer at 6" });
   assert.equal(rem.kind, "reminder");
   assert.equal(localParts(rem.at, "Asia/Karachi").hour, 18);
-  assert.equal((await w.call("planner.add", { text: "alarm 7am" }, "mcp")).error.code, "denied", "parsed as an alarm, so not for an agent");
+  assert.equal((await w.ok("planner.add", { text: "alarm 7am" }, "mcp")).kind, "alarm", "an agent may set an alarm too");
+  assert.equal((await w.call("planner.add", { text: "timer" })).error.code, "ambiguous", "words that cannot be placed say why");
+  assert.equal((await w.ok("planner.add", { text: "10 min", kind: "timer" })).at, T0 + 10 * MIN, "kind is a hint to the parser");
   const note = await w.ok("planner.add", { text: "juno's bakery order is 40 rolls", kind: "note" }, "mcp");
   assert.equal(note.kind, "note");
 });

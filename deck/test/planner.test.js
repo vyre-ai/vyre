@@ -19,7 +19,7 @@ const ITEMS = [
   item({ id: "i_tea", kind: "timer", title: "Tea", next_fire: T + 5 * 60_000 }),
   item({ id: "i_old", kind: "alarm", title: "Old", state: "open", next_fire: null }),
   item({ id: "i_inv", kind: "todo", title: "Send the Northwind Bakery invoice", due: "2026-09-27" }),
-  item({ id: "i_call", kind: "todo", title: "Call alex back" }),
+  item({ id: "i_call", kind: "todo", title: "Call alex back", added_by: "kit" }),
   item({ id: "i_n1", kind: "note", title: "Printer codes", body: "Harlow Legal: 4471", updated: T - 1000 }),
   item({ id: "i_n2", kind: "note", title: "Pinned plan", pinned: true, updated: T - 9000 }),
 ];
@@ -94,6 +94,7 @@ test("renders agenda, alarms, todos and notes from the tools", async () => {
   assert.equal($$(sec(el, "todos"), "input[type=checkbox]").length, 2);
   assert.deepEqual($$(sec(el, "notes"), ".pl-note").map((/** @type {any} */ n) => n.getAttribute("data-item")), ["i_n2", "i_n1"]);
   assert.ok($(sec(el, "notes"), "[data-item=i_n2] .pl-pin"), "the pinned note shows a pin");
+  assert.deepEqual($$(el, ".pl-from").map((/** @type {any} */ f) => text(f)), ["from kit"], "only an agent's item names who added it");
 });
 
 test("add by text calls planner.add { text } and redraws", async () => {
@@ -134,7 +135,8 @@ test("planner.fired shows one banner per firing; Done and Snooze answer it; plan
   assert.deepEqual(api.of("planner.done").map(c => c.input), [{ firing: "f_1" }]);
   assert.equal($$(el, ".pl-banner").length, 0);
 
-  emit("planner.fired", { ...fired, firing: "f_2" });
+  emit("planner.fired", { ...fired, firing: "f_2", added_by: "kit" });
+  assert.match(text($(el, ".pl-banner")), /from kit/);
   await $(el, ".pl-banner [data-act=snooze]").click();
   assert.deepEqual(api.of("planner.snooze").map(c => c.input), [{ firing: "f_2" }]);
 

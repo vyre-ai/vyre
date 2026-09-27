@@ -23,6 +23,9 @@ export const CHANGES = ["planner.added", "planner.changed", "planner.removed", "
 const KIND_WORD = { alarm: "Alarm", timer: "Timer", reminder: "Reminder", todo: "Todo", note: "Note", event: "Event" };
 export const kindWord = k => KIND_WORD[k] || "Item";
 
+/** "from kit" when an agent other than the person's assistant added it; nothing otherwise. */
+const from = it => (it && it.added_by ? h("span", { class: "lbl pl-from" }, `from ${it.added_by}`) : null);
+
 /** When an item next rings (a snooze wins), or its time. */
 export const nextAt = it => it.snooze_until ?? it.next_fire ?? it.at ?? null;
 
@@ -101,7 +104,7 @@ export async function drawPlanner(el, ctx, deps = {}) {
     put(box,h("div", { class: "pl-banner-main" },
       h("span", { class: "lbl beacon pl-ring" }, h("span", { class: "dot beacon", "aria-hidden": "true" }),
         kindWord(p.kind), p.missed ? " · missed" : p.ring > 1 ? ` · ring ${p.ring}` : ""),
-      h("div", { class: "pl-banner-title" }, p.title || kindWord(p.kind)),
+      h("div", { class: "pl-banner-title" }, p.title || kindWord(p.kind)), from(p),
       p.due ? h("div", { class: "code" }, clock(p.due)) : null),
       actions(p.firing, box, status), status);
   };
@@ -121,7 +124,7 @@ export async function drawPlanner(el, ctx, deps = {}) {
     const ringing = firing?.state === "ringing";
     put(card,
       h("div", { class: "lbl" + (ringing ? " beacon" : "") }, kindWord(item.kind), ringing ? " · ringing" : firing?.action ? ` · ${firing.action}` : ""),
-      h("div", { class: "pl-card-title" }, item.title || kindWord(item.kind)),
+      h("div", { class: "pl-card-title" }, item.title || kindWord(item.kind)), from(item),
       item.body ? h("p", { class: "muted pl-body" }, item.body) : null,
       h("div", { class: "code" }, firing?.due ? clock(firing.due) : nextAt(item) ? clock(nextAt(item)) : ""),
       ringing ? actions(firing.id, card, status) : null, status);
@@ -173,7 +176,7 @@ export async function drawPlanner(el, ctx, deps = {}) {
     headed(alarmsBox, "Alarms", null, [
       next.length ? h("div", { class: "rows" }, next.map(a => h("div", { class: "pl-row", "data-item": a.id },
         h("span", { class: "code pl-time" }, clock(nextAt(a))),
-        h("span", { class: "pl-what ellipsis" }, a.title || kindWord(a.kind)),
+        h("span", { class: "pl-what ellipsis" }, a.title || kindWord(a.kind)), from(a),
         h("span", { class: "lbl" }, a.snooze_until ? "Snoozed" : repeatWord(a.repeat) || when(nextAt(a))))))
         : h("div", { class: "empty" }, "No alarms set."),
       addForm, status]);
@@ -193,7 +196,7 @@ export async function drawPlanner(el, ctx, deps = {}) {
         if (r.error) { box.checked = false; box.disabled = false; row.setAttribute("title", String(r.error.message || r.error)); return; }
         row.remove();
       } }));
-      put(row, box, h("span", { class: "pl-what ellipsis" }, t.title), t.due ? h("span", { class: "code" }, t.due) : null);
+      put(row, box, h("span", { class: "pl-what ellipsis" }, t.title), from(t), t.due ? h("span", { class: "code" }, t.due) : null);
       return row;
     })));
   }
@@ -203,7 +206,7 @@ export async function drawPlanner(el, ctx, deps = {}) {
     if (!notes.length) return headed(notesBox, "Notes", null, h("div", { class: "empty" }, "No notes."));
     headed(notesBox, "Notes", null, h("div", { class: "rows" }, notes.map(n => h("div", { class: "pl-note", "data-item": n.id },
       h("div", { class: "pl-note-head" }, n.pinned ? h("span", { class: "lbl recall pl-pin" }, "Pinned") : null,
-        h("span", { class: "pl-what" }, n.title || "Note"), h("span", { class: "code" }, when(n.updated))),
+        h("span", { class: "pl-what" }, n.title || "Note"), from(n), h("span", { class: "code" }, when(n.updated))),
       n.body ? h("p", { class: "small muted pl-body" }, n.body) : null))));
   }
 

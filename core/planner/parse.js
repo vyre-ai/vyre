@@ -1,34 +1,49 @@
 // @ts-check
 // parse: a person's words to a proposed planner item (ADR 0025, decision 13). "alarm 7am" is an
-// alarm at the next 07:00, "timer 10 min" a timer of 600000 ms, "remind me to call the printer at
-// 6" a reminder at whichever 6 o'clock comes next, "todo call kit by friday !high" a todo due
-// Friday at priority 3. Words that are not a planner phrase, or that name a time that cannot be
-// placed ("remind me today at 6am" at noon), give null: the surface then asks, it never guesses.
+// alarm at the next 07:00, "timer 10 min" a timer of 600000 ms, "remind me to call juno at 6" a
+// reminder at whichever 6 o'clock comes next, "todo call kit by friday !high" a todo due Friday at
+// priority 3. This file is the planner's one reader of time words.
+//
+// Three answers. An item: { kind, title, at, tz, ... } with `at` the next ring instant in UTC ms.
+// Words that are a planner phrase but cannot be placed ("remind me today at 6am" at noon, "timer
+// for the bread"): { ambiguous: true, reason }, and the surface asks, it never guesses. Words that
+// are not a planner phrase at all ("whatsapp juno: running late"): null.
+//
+// A kind hint (o.kind) reads the words as that kind without its keyword: kind "timer" with "10
+// min", kind "reminder" with "call juno at 6", kind "note" with anything.
 //
 // Pure: `now` (ms) and `tz` (IANA zone) come in, nothing runs, and only Intl is used for time.
 // Wall times are read in `tz`, never the zone of the machine running the code.
 //
-// The time words and their readings are copied from the Capsule's apps router
-// (local/apps/route.js on work/capsule-apps: parseDuration, parseClock, reminderParts) so both
-// parse alike. Keep the two in step when either changes.
+// The time words and their readings are ported from the Capsule's apps router
+// (local/apps/route.js on work/capsule-apps: parseDuration with its number words up to sixty,
+// parseClock, fixed, and reminderParts with its rules for time words in the middle of a task,
+// "tonight at 12" and "tonight at 1" to 4, the current minute, "today" after 09:00 and a
+// trailing "please"). Keep the two in step when either changes.
 //
 // Daylight saving: a duration ("in 20 minutes", a timer) is added to the instant. A wall time is
 // turned into UTC in the zone; a time a spring change skips (02:30 that morning) moves forward
 // by the gap (03:30), and a time a fall change repeats is the first of the two.
 
 /**
+ * @typedef {"alarm" | "timer" | "reminder" | "todo" | "note"} Kind
  * @typedef {{ every: "day" | "weekday" | "week", days?: number[] }} Repeat
  * @typedef {{
- *   kind: "alarm" | "timer" | "reminder" | "todo" | "note", title: string, at?: string, wall?: string,
- *   date?: string, repeat?: Repeat, duration_ms?: number, list?: string, priority?: number, due?: string
+ *   kind: Kind, title: string, at?: number, tz?: string, wall?: string, date?: string, repeat?: Repeat,
+ *   duration?: number, duration_ms?: number, list?: string, priority?: number, due?: string
  * }} Parsed
- * @typedef {{ y: number, mo: number, d: number, h: number, mi: number, dow: number }} Wall
+ * @typedef {{ ambiguous: true, reason: string }} Ambiguous
+ * @typedef {Parsed | Ambiguous} Result
+ * @typedef {{ y: number, mo: number, d: number, h: number, mi: number, s: number, dow: number }} Wall
+ * @typedef {{ now: number, w: Wall, tz: string }} Ctx
  */
 
 /** Longer text than this is never a command; refusing it early also bounds every regex below. */
 export const MAX_TEXT = 2000;
 
-// ---- Time words (copied from the apps router) -------------------------------------------
+export const KINDS = /** @type {const} */ (["alarm", "timer", "reminder", "todo", "note"]);
+
+// ---- Time words (ported from the apps router) --------------------------------------------
 
 const UNIT = "(?:hours?|hrs?|h|minutes?|mins?|m|seconds?|secs?|s)(?![a-z])";
 const ONE = `\\d+(?:\\.\\d+)?\\s*${UNIT}`;
@@ -51,8 +66,8 @@ function numberWords(/** @type {string} */ s) {
 }
 
 /**
- * Seconds in "10 min", "1h30m", "1h30", "a 10-minute", "ten minutes", "half an hour"; null
- * unless the whole text is a duration.
+ * Seconds in "10 min", "1h30m", "1h30", "a 10-minute", "ten minutes", "2 hours and 5 minutes",
+ * "half an hour"; null unless the whole text is a duration.
  * @param {string} text
  */
 export function parseDuration(text) {
@@ -73,17 +88,17 @@ export function parseDuration(text) {
 /**
  * "7", "6:45", "7.30", "7am", "3:30 p.m.", "noon" -> hour, minute, and am/pm when said.
  * @param {string} text
- * @returns {{ h: number, mi: number, mer: "am" | "pm" | null } | null}
+ * @returns {{ h: number, mi: number, mer: "am" | "pm" | null, colon: boolean } | null}
  */
 export function parseClock(text) {
   const s = String(text).trim().toLowerCase();
-  if (s === "noon") return { h: 12, mi: 0, mer: "pm" };
-  if (s === "midnight") return { h: 0, mi: 0, mer: "am" };
+  if (s === "noon") return { h: 12, mi: 0, mer: "pm", colon: false };
+  if (s === "midnight") return { h: 0, mi: 0, mer: "am", colon: false };
   const m = /^(\d{1,2})(?:[:.](\d{2}))?\s*(?:([ap])\.?m\.?)?$/.exec(s);
   if (!m) return null;
   const h = Number(m[1]), mi = m[2] ? Number(m[2]) : 0, mer = m[3] ? (m[3] === "a" ? "am" : "pm") : null;
   if (mi > 59 || h > 23 || (mer && (h < 1 || h > 12))) return null;
-  return { h, mi, mer };
+  return { h, mi, mer, colon: Boolean(m[2]) };
 }
 
 /** A clock time on a 24-hour dial, when it can be only one. */
@@ -98,7 +113,7 @@ const pad = (/** @type {number} */ n) => String(n).padStart(2, "0");
 /** @type {Map<string, Intl.DateTimeFormat>} one formatter per zone; building them is the slow part */
 const FORMATS = new Map();
 
-/** The wall clock at `ms` in a zone. */
+/** The wall clock at `ms` in a zone. @returns {Wall} */
 function wall(/** @type {number} */ ms, /** @type {string} */ tz) {
   let f = FORMATS.get(tz);
   if (!f) {
@@ -158,9 +173,12 @@ function ahead(/** @type {Wall} */ w, /** @type {string} */ name, next = false) 
 const tidy = (/** @type {string} */ s) => String(s).replace(/\s+/g, " ").trim()
   .replace(/[?!.]+$/, "").replace(/[\s,]+please$/i, "").replace(/^please\s+/i, "").replace(/[?!.]+$/, "").trim();
 
-/** A resolved wall time: the local date and time plus the UTC instant. */
+/** @returns {Ambiguous} */
+const unsure = (/** @type {string} */ reason) => ({ ambiguous: true, reason });
+
+/** A resolved wall time: the local date and time, and the UTC instant (ms). */
 function placed(/** @type {{ y: number, mo: number, d: number }} */ day, /** @type {number} */ h, /** @type {number} */ mi, /** @type {string} */ tz) {
-  return { date: ymd(day), wall: `${pad(h)}:${pad(mi)}`, at: new Date(utcFor(day.y, day.mo, day.d, h, mi, tz)).toISOString() };
+  return { date: ymd(day), wall: `${pad(h)}:${pad(mi)}`, at: utcFor(day.y, day.mo, day.d, h, mi, tz) };
 }
 
 // ---- Repeats -----------------------------------------------------------------------------
@@ -188,12 +206,12 @@ function takeRepeat(s) {
 }
 
 /** The first moment at h:mi on a day the rule allows, strictly after now. */
-function nextRepeat(/** @type {Repeat} */ r, /** @type {number} */ h, /** @type {number} */ mi, /** @type {Wall} */ w, /** @type {string} */ tz) {
-  const now = nowIso(w);
+function nextRepeat(/** @type {Repeat} */ r, /** @type {number} */ h, /** @type {number} */ mi, /** @type {Ctx} */ c) {
+  const now = nowIso(c.w);
   for (let n = 0; n <= 7; n++) {
-    const day = dayAfter(w, n);
+    const day = dayAfter(c.w, n);
     if (r.days && !r.days.includes(day.dow)) continue;
-    const p = placed(day, h, mi, tz);
+    const p = placed(day, h, mi, c.tz);
     if (`${p.date}T${p.wall}` > now) return p;
   }
   return null;
@@ -202,17 +220,32 @@ function nextRepeat(/** @type {Repeat} */ r, /** @type {number} */ h, /** @type 
 // ---- Timers and alarms -------------------------------------------------------------------
 
 /** @returns {Parsed} */
-function timer(/** @type {number} */ seconds, /** @type {number} */ now, /** @type {string} */ label) {
-  return { kind: "timer", title: label || "Timer", duration_ms: seconds * 1000, at: new Date(now + seconds * 1000).toISOString() };
+function timer(/** @type {number} */ seconds, /** @type {Ctx} */ c, /** @type {string | undefined} */ label) {
+  const ms = seconds * 1000;
+  return { kind: "timer", title: (label || "").trim() || "Timer", at: c.now + ms, tz: c.tz, duration: ms, duration_ms: ms };
+}
+
+/** @param {string} t @param {Ctx} c @returns {Result | undefined} undefined: not timer words */
+function timerRules(t, c) {
+  let m = /^(?:(?:set|start)\s+)?(?:an?\s+)?timer(?:\s*:\s*|\s+(?:for\s+)?|$)(.*)$/i.exec(t);
+  if (m) {
+    const [, len, label] = /^(.*?)(?:\s+(?:for|called)\s+(.+))?$/i.exec(m[1]) || [];
+    const s = len ? parseDuration(len) : null;
+    return s ? timer(s, c, label) : unsure(len ? `"${len}" is not a length of time` : "how long a timer?");
+  }
+  m = /^(?:(?:set|start)\s+)?(?:an?\s+)?(.+?)\s+timer(?:\s+(?:for|called)\s+(.+))?$/i.exec(t);
+  if (m && parseDuration(m[1])) return timer(/** @type {number} */ (parseDuration(m[1])), c, m[2]);
+  return undefined;
 }
 
 /**
  * An alarm's words after "alarm" or "wake me": a time, an optional day or repeat, an optional
  * label. The time reads as the router reads it: am/pm when said, a colon time as written, and a
- * bare hour in the morning. With no day, the next time the clock shows it.
- * @param {string} words @param {Wall} w @param {string} tz @returns {Parsed | null}
+ * bare hour in the morning. With no day, the next time the clock shows it (strictly after now:
+ * an alarm for the current minute would ring at once, so it is the next one).
+ * @param {string} words @param {Ctx} c @returns {Result}
  */
-function alarm(words, w, tz) {
+function alarm(words, c) {
   const { repeat, rest: r1 } = takeRepeat(words);
   let rest = ` ${r1} `, dayWord = null;
   const dm = new RegExp(`\\s(?:on\\s+)?((?:next\\s+)?${WEEKDAY}|today|tonight|tomorrow)(?=\\s)`, "i").exec(rest);
@@ -221,61 +254,62 @@ function alarm(words, w, tz) {
     rest = rest.slice(0, dm.index) + " " + rest.slice(dm.index + dm[0].length);
   }
   const m = new RegExp(`^(?:at\\s+|for\\s+)?(${CLOCK})(?:\\s+(?:for\\s+|to\\s+|called\\s+|-\\s+|:\\s*)?([\\s\\S]*))?$`, "i").exec(tidy(rest));
-  const c = m ? parseClock(m[1]) : null;
-  if (!m || !c || (repeat && dayWord)) return null;
-  let h = fixed(c) ?? c.h;
+  if (!m) return unsure(`"${tidy(words).slice(0, 60)}" is not a time Vyre can set an alarm for`);
+  const cl = parseClock(m[1]);
+  if (!cl) return unsure(`"${m[1].trim()}" is not a time Vyre can set an alarm for`);
+  if (repeat && dayWord) return unsure("a repeating alarm cannot also be for one day");
+  let h = fixed(cl) ?? cl.h;
   // Tonight runs past midnight, as in reminders: 12 is midnight, 1 to 4 the small hours after it.
-  if (dayWord === "tonight" && c.mer === null && h <= 12) {
+  if (dayWord === "tonight" && cl.mer === null && h <= 12) {
     if (h === 12 || h <= 4) dayWord = "tomorrow", h %= 12;
     else h += 12;
   }
   const title = (m[2] || "").trim() || "Alarm";
   if (repeat) {
-    const p = nextRepeat(repeat, h, c.mi, w, tz);
-    return p && { kind: "alarm", title, at: p.at, wall: p.wall, repeat };
+    const p = nextRepeat(repeat, h, cl.mi, c);
+    return p ? { kind: "alarm", title, at: p.at, tz: c.tz, wall: p.wall, repeat } : unsure("that rule has no time left to ring");
   }
-  const now = nowIso(w);
+  const now = nowIso(c.w);
   let days;
   if (!dayWord) days = [0, 1];
   else if (dayWord === "today" || dayWord === "tonight") days = [0];
   else if (dayWord === "tomorrow") days = [1];
   else {
-    const n = ahead(w, dayWord.replace(/^next /, ""), dayWord.startsWith("next "));
+    const n = ahead(c.w, dayWord.replace(/^next /, ""), dayWord.startsWith("next "));
     days = n === 0 ? [0, 7] : [n];
   }
   for (const n of days) {
-    const p = placed(dayAfter(w, n), h, c.mi, tz);
-    if (`${p.date}T${p.wall}` > now) return { kind: "alarm", title, at: p.at, wall: p.wall, date: p.date };
+    const p = placed(dayAfter(c.w, n), h, cl.mi, c.tz);
+    if (`${p.date}T${p.wall}` > now) return { kind: "alarm", title, at: p.at, tz: c.tz, wall: p.wall, date: p.date };
   }
-  return null;
+  return unsure("that time has already passed today");
 }
 
-/** @param {string} t @param {number} now @param {Wall} w @param {string} tz @returns {Parsed | null | undefined} undefined: not clock words */
-function clockRules(t, now, w, tz) {
-  let m = /^(?:(?:set|start)\s+)?(?:an?\s+)?timer(?:\s*:\s*|\s+(?:for\s+)?|$)(.*)$/i.exec(t);
-  if (m) {
-    const [, len, label] = /^(.*?)(?:\s+(?:for|called)\s+(.+))?$/i.exec(m[1]) || [];
-    const s = len ? parseDuration(len) : null;
-    return s ? timer(s, now, label) : null;
-  }
-  m = /^(?:(?:set|start)\s+)?(?:an?\s+)?(.+?)\s+timer(?:\s+(?:for|called)\s+(.+))?$/i.exec(t);
-  if (m && parseDuration(m[1])) return timer(/** @type {number} */ (parseDuration(m[1])), now, m[2]);
-  m = /^(?:(?:set|make)\s+)?(?:an?\s+)?alarm(?:\s*:\s*|\s+(?:for\s+|at\s+)?|$)(.*)$/i.exec(t) || /^wake\s+me(?:\s+up)?(?:\s+at)?\s+(.+)$/i.exec(t);
-  if (m) return m[1] ? alarm(m[1], w, tz) : null;
+/** @param {string} t @param {Ctx} c @returns {Result | undefined} undefined: not alarm words */
+function alarmRules(t, c) {
+  const m = /^(?:(?:set|make)\s+)?(?:an?\s+)?alarm(?:\s*:\s*|\s+(?:for\s+|at\s+)?|$)(.*)$/i.exec(t) || /^wake\s+me(?:\s+up)?(?:\s+at)?\s+(.+)$/i.exec(t);
+  if (!m) return undefined;
+  return m[1] ? alarm(m[1], c) : unsure("an alarm for what time?");
+}
+
+/** Timer and alarm words, and a bare duration ("5 min") as a timer. @returns {Result | undefined} */
+function clockRules(/** @type {string} */ t, /** @type {Ctx} */ c) {
+  const r = timerRules(t, c) ?? alarmRules(t, c);
+  if (r) return r;
   const s = parseDuration(t);
-  if (s) return timer(s, now, "");
-  return undefined;
+  return s ? timer(s, c, "") : undefined;
 }
 
 // ---- Notes -------------------------------------------------------------------------------
 
-/** @param {string} raw @returns {Parsed | null | undefined} */
+/** @param {string} raw @returns {Result | undefined} */
 function noteRules(raw) {
   // A dash separates only with spaces round it, so "note-taking tips" is not a note.
   const m = /^(?:(?:add|save)\s+(?:this\s+)?to\s+(?:my\s+)?notes?|new\s+note|make\s+a\s+note|take\s+a\s+note|note(?:\s+down)?)(?:\s*:\s*|\s+-\s+|\s+|$)([\s\S]*)$/i.exec(raw);
   if (!m) return undefined;
   const text = m[1].replace(/^(?:to\s+self\b\s*:?\s*|that\s+|of\s+)/i, "").trim();
-  if (!text || /^(?:this|that|it)[.!]?$/i.test(text)) return null;
+  // "make a note of this" names nothing to write down.
+  if (!text || /^(?:this|that|it)[.!]?$/i.test(text)) return unsure("a note saying what?");
   return { kind: "note", title: text };
 }
 
@@ -284,10 +318,12 @@ function noteRules(raw) {
 /**
  * A reminder's words to its task and time. Time words are taken after "at", "on" or "in"
  * wherever they are, and bare ("tomorrow", "friday", "9am") only at the start or the end, so
- * "email about sunday brunch" and "take my 3pm pill" keep their words.
- * @param {string} words @param {number} now @param {Wall} w @param {string} tz @returns {Parsed | null}
+ * "email about sunday brunch" and "take my 3pm pill" keep their words. A time in the current
+ * minute counts as now: `at` is then now itself, never a moment already gone.
+ * @param {string} words @param {Ctx} c @returns {Result}
  */
-function reminder(words, now, w, tz) {
+function reminder(words, c) {
+  const { now, w, tz } = c;
   const { repeat, rest: r1 } = takeRepeat(words);
   let rest = ` ${r1} `;
   /** @type {Record<string, RegExpExecArray | null>} */
@@ -315,21 +351,21 @@ function reminder(words, now, w, tz) {
     }
   }
   const title = tidy(rest).replace(/^(?:to|that|about)\s+/i, "").replace(/\s+(?:to|at|on|in)$/i, "").trim();
-  if (!title) return null;
+  if (!title) return unsure("remind you of what?");
 
   if (got.dur) {
-    if (repeat || got.time || got.day) return null;
+    if (repeat || got.time || got.day) return unsure("say either a length of time or a time of day, not both");
     const s = parseDuration(got.dur[1]);
-    return s ? { kind: "reminder", title, at: new Date(now + s * 1000).toISOString() } : null;
+    return s ? { kind: "reminder", title, at: now + s * 1000, tz } : unsure(`"in ${got.dur[1]}" is not a length of time`);
   }
   const clock = got.time ? parseClock(got.time[1]) : null;
-  if (got.time && !clock) return null;
+  if (got.time && !clock) return unsure(`"${got.time[1].trim()}" is not a time`);
   if (repeat) {
-    if (got.day) return null;
+    if (got.day) return unsure("a repeating reminder cannot also be for one day");
     // A repeat with no time rings at 9, as a named day with no time does.
     const h = !clock ? 9 : fixed(clock) ?? (clock.h >= 7 || clock.h === 0 ? clock.h : clock.h + 12);
-    const p = nextRepeat(repeat, h, clock ? clock.mi : 0, w, tz);
-    return p && { kind: "reminder", title, at: p.at, wall: p.wall, repeat };
+    const p = nextRepeat(repeat, h, clock ? clock.mi : 0, c);
+    return p ? { kind: "reminder", title, at: p.at, tz, wall: p.wall, repeat } : unsure("that rule has no time left to ring");
   }
   const dayWord = got.day ? got.day[1].toLowerCase().replace(/\s+/g, " ") : null;
   const next = Boolean(dayWord && dayWord.startsWith("next "));
@@ -365,11 +401,18 @@ function reminder(words, now, w, tz) {
   const nowWall = nowIso(w);
   for (const [n, h] of tries) {
     const p = placed(dayAfter(w, n), h, mi, tz);
-    if (`${p.date}T${p.wall}` >= nowWall) return { kind: "reminder", title, ...p };
+    if (`${p.date}T${p.wall}` >= nowWall) return { kind: "reminder", title, at: Math.max(p.at, now), tz, wall: p.wall, date: p.date };
   }
   // "today" with no time, once 09:00 has gone, is a plain reminder; a named time that has gone is not.
   if (!clock && dayWord === "today") return { kind: "reminder", title };
-  return null;
+  return unsure(offset === 0 ? "that time has already passed today" : "that time has passed");
+}
+
+/** @param {string} t @param {Ctx} c @returns {Result | undefined} */
+function reminderRules(t, c) {
+  const m = /^remind\s+me(?:\s+(.*))?$/i.exec(t);
+  if (!m) return undefined;
+  return m[1] ? reminder(m[1], c) : unsure("remind you of what?");
 }
 
 // ---- Todos -------------------------------------------------------------------------------
@@ -380,9 +423,9 @@ const PRIORITY = /** @type {Record<string, number>} */ ({ "!": 1, "!!": 2, "!!!"
 /**
  * A todo's title, with a priority mark ("!high", "!!") and a due day ("by friday", "due
  * tomorrow") taken out. A due day is a date, not a moment.
- * @param {string} words @param {Wall} w @param {Record<string, string>} extra @returns {Parsed | null}
+ * @param {string} words @param {Ctx} c @param {Record<string, string>} extra @returns {Result}
  */
-function todo(words, w, extra) {
+function todo(words, c, extra) {
   let rest = ` ${words.replace(/\s+/g, " ")} `;
   /** @type {number | undefined} */
   let priority;
@@ -400,32 +443,32 @@ function todo(words, w, extra) {
     if (/^\d{4}-\d{2}-\d{2}$/.test(word)) {
       const [y, mo, d] = word.split("-").map(Number);
       const t = new Date(Date.UTC(y, mo - 1, d));
-      if (t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return null;
+      if (t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d) return unsure(`"${word}" is not a date`);
       due = word;
     } else {
-      const n = word === "today" || word === "tonight" ? 0 : word === "tomorrow" ? 1 : ahead(w, word.replace(/^next /, ""), word.startsWith("next "));
-      due = ymd(dayAfter(w, n));
+      const n = word === "today" || word === "tonight" ? 0 : word === "tomorrow" ? 1 : ahead(c.w, word.replace(/^next /, ""), word.startsWith("next "));
+      due = ymd(dayAfter(c.w, n));
     }
     rest = rest.slice(0, dm.index) + " " + rest.slice(dm.index + dm[0].length);
   }
   const title = tidy(rest);
-  if (!title) return null;
+  if (!title) return unsure("a todo saying what?");
   /** @type {Parsed} */
   const out = { kind: "todo", title, ...extra };
-  if (due) out.due = due;
+  if (due) Object.assign(out, { due, tz: c.tz });
   if (priority !== undefined) out.priority = priority;
   return out;
 }
 
-/** @param {string} raw @param {Wall} w @returns {Parsed | null | undefined} */
-function todoRules(raw, w) {
+/** @param {string} raw @param {Ctx} c @returns {Result | undefined} */
+function todoRules(raw, c) {
   let m = /^(?:add\s+(?:a\s+)?)?(?:todo|to-do|to\s+do|task)(?:\s*:\s*|\s+-\s+|\s+|$)([\s\S]*)$/i.exec(raw);
-  if (m) return todo(m[1], w, {});
+  if (m) return todo(m[1], c, {});
   // "add milk to shopping list", "add milk to my shopping list", "put eggs on the list".
   m = /^(?:add|put)\s+([\s\S]+?)\s+(?:to|on(?:to)?)\s+(?:my\s+|the\s+|our\s+)?(?:([\w' -]{1,40}?)\s+)?list$/i.exec(tidy(raw));
   if (m) {
     const name = (m[2] || "").trim().toLowerCase();
-    return todo(m[1], w, name && !/^(?:todo|to-do|to do|task)$/.test(name) ? { list: name } : {});
+    return todo(m[1], c, name && !/^(?:todo|to-do|to do|task)$/.test(name) ? { list: name } : {});
   }
   return undefined;
 }
@@ -433,22 +476,43 @@ function todoRules(raw, w) {
 // ---- The parser --------------------------------------------------------------------------
 
 /**
- * Words to a proposed planner item, or null when they are not one or cannot be placed.
- * @param {string} text @param {{ now?: number, tz?: string }} [o]
- * @returns {Parsed | null}
+ * Words read as one kind, as the router reads words inside an @App scope: that kind's own
+ * phrases first, then the bare words as that kind.
+ * @param {Kind} kind @param {string} raw @param {string} t @param {Ctx} c @returns {Result}
+ */
+function asKind(kind, raw, t, c) {
+  if (kind === "note") {
+    const n = noteRules(raw);
+    return n && !("ambiguous" in n) ? n : { kind: "note", title: raw };
+  }
+  if (kind === "todo") return todoRules(raw, c) ?? todo(raw, c, {});
+  if (kind === "reminder") return reminderRules(t, c) ?? reminder(t, c);
+  if (kind === "timer") {
+    const r = timerRules(t, c);
+    if (r) return r;
+    const s = parseDuration(t);
+    return s ? timer(s, c, "") : unsure("a timer needs a length, like 10 min");
+  }
+  const r = alarmRules(t, c);
+  if (r) return r;
+  return parseClock(t) || /\d/.test(t) ? alarm(t, c) : unsure("an alarm needs a time, like 7am");
+}
+
+/**
+ * Words to a proposed planner item; { ambiguous, reason } when they are a planner phrase that
+ * cannot be placed; null when they are not a planner phrase.
+ * @param {string} text @param {{ now?: number, tz?: string, kind?: string }} [o]
+ * @returns {Result | null}
  */
 export function parse(text, o = {}) {
   const now = o.now ?? Date.now(), tz = o.tz || "UTC";
   if (String(text ?? "").length > MAX_TEXT) return null;
   const raw = String(text ?? "").trim();
   const t = tidy(raw);
-  if (!t) return null;
-  const w = wall(now, tz);
-  for (const rule of [() => clockRules(t, now, w, tz), () => noteRules(raw), () => todoRules(raw, w)]) {
-    const r = rule();
-    if (r !== undefined) return r;
-  }
-  const m = /^remind\s+me(?:\s+(.*))?$/i.exec(t);
-  if (m) return m[1] ? reminder(m[1], now, w, tz) : null;
-  return null;
+  const kind = /** @type {Kind | undefined} */ (KINDS.find(k => k === String(o.kind ?? "").trim().toLowerCase()));
+  if (!t) return kind ? unsure(`a ${kind} saying what?`) : null;
+  /** @type {Ctx} */
+  const c = { now, w: wall(now, tz), tz };
+  if (kind) return asKind(kind, raw, t, c);
+  return clockRules(t, c) ?? noteRules(raw) ?? todoRules(raw, c) ?? reminderRules(t, c) ?? null;
 }

@@ -58,13 +58,24 @@ the Deck in a browser. Every surface should be able to add, snooze and finish th
     and cached in `planner_calendar`. The agenda merges both. Each timed event gets a reminder
     (10 minutes before by default) that feeds the scheduler. Making an event on a connected
     calendar calls `google.calendar.create`, whose invite sending is held at the Gate.
-12. **Who may call.** People's surfaces (`cli`, `local`, `deck`, `capsule`) may use every tool.
-    Agents (`mcp`, `module`) may read the agenda and items and add or change todos, reminders and
-    notes. Anything that leaves the box goes through the Gate as it does today.
-13. **Natural language stays on the surface side.** `planner.parse` turns "alarm 7am",
-    "timer 10 min", "remind me to call the printer at 6" into a proposed item with a resolved
-    time, using the same time words as the Capsule's apps router. Apple Clock, Notes and
-    Reminders become optional adapters in the Capsule, not the default.
+12. **Who may call (the user's rule).** Anyone, a person or an agent, adds alarms, timers,
+    reminders, todos and notes with no permission, prompt or Touch ID. The person (`cli`, `local`,
+    `deck`, `capsule`, their own devices over the tailnet) edits, completes, snoozes and deletes
+    any item with no prompt. An agent (`mcp`, `harness`, `module`) changes only the items it added,
+    and never adds an event: an event with other people is an invite, held at the Gate through
+    `planner.calendar.create`. Each item keeps its `source` (the caller: `cli`, `mcp`,
+    `agent:<name>`, `module:<name>`) and shows `added_by` (the agent's name) only when it was
+    neither the person nor their assistant (an unnamed MCP session, or the agent whose kind is
+    assistant). A paired Mac forwards an agent's call with `as: { source, name }`, honoured only
+    on a person's call (the Mac's link arrives as the owner), so the box applies the agent's
+    rules. A silent guard stops one agent after 200 adds in an hour (code `busy`); it is not a
+    limit anyone should meet and is not shown. Settings stay the person's.
+13. **Natural language: one parser.** `planner.parse` (core/planner/parse.js) turns "alarm 7am",
+    "timer 10 min", "remind me to call the printer at 6" into `{ kind, title, at (UTC ms), tz,
+    duration?, repeat? }`, `{ ambiguous, reason }` when the words cannot be placed, or null. It
+    takes `kind` as a hint and holds the Capsule's apps router's tested time rules. It is pure and
+    answers on the Mac where it is asked, never forwarded to the box; only writes forward. Apple
+    Clock, Notes and Reminders become optional adapters in the Capsule, not the default.
 
 ## Contract
 

@@ -36,6 +36,8 @@ export const MIGRATIONS = [
    ALTER TABLE planner_calendar ADD COLUMN snooze_until INTEGER;
    CREATE INDEX planner_calendar_fire ON planner_calendar (next_fire) WHERE next_fire IS NOT NULL;
    ALTER TABLE planner_items ADD COLUMN where_ TEXT;`,
+  // Who added an item, as the person sees it: an agent's name, or null for the person and their assistant.
+  `ALTER TABLE planner_items ADD COLUMN source_name TEXT;`,
 ];
 
 export const KINDS = ["alarm", "timer", "reminder", "todo", "note", "event"];
@@ -53,7 +55,7 @@ export function shape(r) {
     at: r.at ?? null, tz: r.tz ?? null, floating: Boolean(r.floating), wall: r.wall ?? null, date: r.date ?? null,
     repeat: safeJSON(r.repeat, null), due: r.due ?? null, duration_ms: r.duration_ms ?? null, snooze_until: r.snooze_until ?? null,
     next_fire: r.next_fire ?? null, created: r.created, updated: r.updated, done_at: r.done_at ?? null, deleted_at: r.deleted_at ?? null,
-    source: r.source ?? null, where: r.where_ ?? null,
+    source: r.source ?? null, added_by: r.source_name ?? null, where: r.where_ ?? null,
   };
 }
 export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, due: f.due, ring: f.ring, missed: Boolean(f.missed), state: f.state,
@@ -62,7 +64,7 @@ export const shapeFiring = f => f && ({ id: f.id, item: f.item, kind: f.kind, du
 function safeJSON(s, fallback) { try { return s == null ? fallback : JSON.parse(String(s)); } catch { return fallback; } }
 
 const COLUMNS = ["kind", "title", "body", "list", "priority", "parent", "project", "thread", "tags", "pinned", "state", "at", "tz", "floating",
-  "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source", "where_"];
+  "wall", "date", "repeat", "due", "duration_ms", "snooze_until", "next_fire", "created", "updated", "done_at", "deleted_at", "source", "source_name", "where_"];
 
 /** Plain values for SQLite: objects as JSON, booleans as 0/1. */
 const cell = (k, v) => v === undefined ? null : (k === "tags" || k === "repeat") ? (v == null ? (k === "tags" ? "[]" : null) : JSON.stringify(v))

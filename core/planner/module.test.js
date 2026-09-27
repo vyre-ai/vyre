@@ -27,8 +27,9 @@ test("planner module: discovered, callers enforced by the registry, and a firing
   assert.equal(mod && mod.state, "running", JSON.stringify(mod));
   const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
 
-  assert.equal((await as("mcp")("planner.add", { kind: "alarm", wall: "07:00" })).error.code, "denied");
-  assert.equal((await as("mcp")("planner.snooze", { item: "x" })).error.code, "denied");
+  const theirs = await as("mcp")("planner.add", { kind: "alarm", title: "Harlow Legal call", wall: "08:00" });
+  assert.ok(!theirs.error, JSON.stringify(theirs.error));
+  assert.equal((await as("mcp")("planner.settings", {})).error.code, "denied", "settings are the person's");
   const todo = await as("mcp")("planner.add", { kind: "todo", title: "Send Harlow Legal the draft" });
   assert.ok(!todo.error, JSON.stringify(todo.error));
   assert.equal((await as("cli")("planner.settings", {})).data.timezone, "Asia/Karachi");
@@ -44,5 +45,5 @@ test("planner module: discovered, callers enforced by the registry, and a firing
   const done = await as("deck")("planner.done", { firing: fired[0].payload.firing });
   assert.equal(done.data.firing.state, "acked");
   assert.deepEqual(d.events.since(0, { type: "planner.acked" }).map(e => e.payload.action), ["done"]);
-  assert.deepEqual(d.events.since(0, { type: "planner.added" }).map(e => e.payload.kind), ["todo", "alarm"]);
+  assert.deepEqual(d.events.since(0, { type: "planner.added" }).map(e => e.payload.kind), ["alarm", "todo", "alarm"]);
 });

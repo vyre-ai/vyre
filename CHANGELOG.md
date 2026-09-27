@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The planner: anyone adds alarms, reminders, todos and notes; one parser, answered on the Mac
+
+- Agents now add alarms and timers as well as reminders, todos and notes, with no prompt. The
+  person edits, completes, snoozes and deletes anything with no prompt; an agent changes only
+  what it added (planner.snooze, planner.dismiss and planner.delete are open to agents for their
+  own items). Agents still never add events. Items carry `added_by`, the agent's name, when an
+  agent other than the person's assistant added them; planner.added, planner.fired and
+  planner.ringing carry it too, and the Deck panel shows "from kit". Migration 3 adds
+  planner_items.source_name. A silent guard refuses one agent's 201st add in an hour (`busy`).
+- A paired Mac forwards an agent's call with `as { source, name }` so the box applies the agent's
+  rules; `as` is honoured only on a person's call. The Mac no longer checks before forwarding.
+- planner.parse returns `{ kind, title, at (ms), tz, duration?, repeat? }`, `{ ambiguous, reason }`
+  or null, takes a `kind` hint, and answers on the Mac without the box. parse.js holds the apps
+  router's time rules and its test cases as fixtures (current minute, tonight at 12 and 1 to 4,
+  today after 09:00, trailing please). planner.add with text refuses ambiguous words with the
+  reason (code `ambiguous`); a reminder for the current minute is no longer "already passed".
+
 #### The planner's calendar: Google copies, event reminders, busy time, and events through the Gate
 
 - planner.calendar.sync reads connected Google calendars through google.calendar.list (never a
