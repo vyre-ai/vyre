@@ -67,7 +67,7 @@ a.ask-smeta:hover { text-decoration: underline; text-underline-offset: 3px; }
 .ask-send:hover { background: var(--primary-hover); }
 .ask-send:disabled { opacity: 0.45; cursor: default; }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .ask .phone-head { height: 44px; padding: 0 16px; margin-top: 10px; }
   .ask-col { padding: 12px 16px 20px; justify-content: flex-start; }
   /* The tab bar is 76px and fixed, and .view already pads 84px for it, so bottom: 0 here

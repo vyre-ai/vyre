@@ -2,7 +2,6 @@
   "network.guests.list": {
     "enabled": true,
     "safe": [
-      "glass.close",
       "threads.list"
     ],
     "people": [

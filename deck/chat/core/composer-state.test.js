@@ -8,6 +8,7 @@ import {
   MODES, nextMode, modeLabel, draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles,
   createHistory, remember, recall, recalling, stopRecall, historyStore, upAction, enterAction,
   createEsc, escape, KEYMAP, binding, keyOf, actionFor, addImage, removeImage, sendImages, b64Bytes, newUuid,
+  modelChoices, shortModel,
 } from "./composer-state.js";
 import { scorePath, compareScores } from "./match.js";
 
@@ -183,10 +184,14 @@ test("pasted images: types, a count cap and a size cap; the list is never change
   r = addImage(one, { media_type: "image/jpeg", data: "x", size: 6 * 1024 * 1024 });
   assert.match(String(r.error), /over 5 MB/);
   let list = one;
-  for (let i = 0; i < 3; i++) list = addImage(list, png).list;
-  assert.equal(list.length, 4);
-  assert.match(String(addImage(list, png).error), /At most 4 images/);
-  assert.equal(removeImage(list, 0).length, 3);
+  // threads.send's caps (sessions 034c71e5): 5 images, 5 MB each as base64 length * 3/4.
+  for (let i = 0; i < 4; i++) list = addImage(list, png).list;
+  assert.equal(list.length, 5);
+  assert.match(String(addImage(list, png).error), /At most 5 images/);
+  assert.equal(removeImage(list, 0).length, 4);
+  const MB5 = 5 * 1024 * 1024;
+  assert.equal(addImage([], { ...png, size: MB5 - 2 }).error, undefined, "a multiple of 3 under 5 MB");
+  assert.match(String(addImage([], { ...png, size: MB5 - 1 }).error), /over 5 MB/, "base64 rounds it up past 5 MB: the box would refuse it");
   assert.deepEqual(sendImages(one), [{ media_type: "image/png", data: "iVBORw0KGgo=" }]);
   assert.equal(b64Bytes("iVBORw0KGgo="), 8);
   assert.equal(b64Bytes("TWFu"), 3);
@@ -198,4 +203,20 @@ test("uuids are v4 shaped, with or without crypto", () => {
   const c = Object.getOwnPropertyDescriptor(globalThis, "crypto");
   Object.defineProperty(globalThis, "crypto", { value: undefined, configurable: true });
   try { assert.match(newUuid(), re); } finally { if (c) Object.defineProperty(globalThis, "crypto", c); }
+});
+
+test("the model picker: the aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
+  const plain = modelChoices({ current: "opus" });
+  assert.deepEqual(plain.map(m => [m.id, m.now]), [["opus", true], ["sonnet", false], ["haiku", false]]);
+  const got = modelChoices({
+    current: "claude-sonnet-4-5",
+    purposes: { chat: { model: "opus", from: "config:chat" }, agent: { model: "opus", from: "config:agent" }, job: { model: "claude-haiku-4-5", from: "purpose:job" } },
+  });
+  assert.deepEqual(got.map(m => m.id), ["opus", "sonnet", "haiku", "claude-haiku-4-5", "claude-sonnet-4-5"]);
+  assert.equal(got[0].description, "Used for chat, agent");
+  assert.equal(got[3].description, "Used for job");
+  assert.deepEqual(got.filter(m => m.now).map(m => m.id), ["claude-sonnet-4-5"], "the exact id wins over its family");
+  assert.deepEqual(modelChoices({ current: "claude-opus-4-5[1m]" }).filter(m => m.now).map(m => m.id), ["claude-opus-4-5[1m]"]);
+  assert.deepEqual(modelChoices({ current: null, purposes: { chat: { model: "<b>x</b>" } } }).map(m => m.id), ["opus", "sonnet", "haiku"], "only what a model id can be");
+  assert.equal(shortModel("claude-opus-4-5"), "opus");
 });

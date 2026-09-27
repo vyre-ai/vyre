@@ -12,13 +12,16 @@
 //   2 data  bytes of the body, or for a WebSocket stream [1 text | 2 binary][message]
 //   3 end   the sender has no more to say on this stream
 //   4 reset abandon the stream; payload is a reason
+//   5 ping  on stream 0, from the box: 8 bytes the device sends straight back in
+//   6 pong  on stream 0, which is how the box measures the round trip (relay.devices.list rtt)
 // Devices open odd stream ids. Any decrypt failure closes the channel: a frame the relay replayed,
 // dropped, reordered or reflected cannot decrypt under the next counter.
 
+import crypto from "node:crypto";
 import { Handshake, MAX_NONCE } from "./noise.js";
 import { PROLOGUE_TAG } from "./wire.js";
 
-export const FRAME = Object.freeze({ head: 1, data: 2, end: 3, reset: 4 });
+export const FRAME = Object.freeze({ head: 1, data: 2, end: 3, reset: 4, ping: 5, pong: 6 });
 /** Body bytes per data frame; well under the relay's 1 MiB frame limit after the 21 bytes of framing and tag. */
 export const CHUNK = 64 * 1024;
 /** Both sides rekey after this many messages in a direction, with no signal needed. */
@@ -53,6 +56,27 @@ export class Channel {
     this.onstream = () => {};
     /** @type {(reason: string) => void} */
     this.onclose = () => {};
+    /** @type {Map<string, (ms: number) => void>} pings waiting for their pong */
+    this.pings = new Map();
+  }
+
+  /**
+   * The round trip to the device in ms, or null when it does not answer in time (an older client
+   * never does). Asked on demand, never on a timer.
+   * @param {number} [timeout]
+   * @returns {Promise<number|null>}
+   */
+  ping(timeout = 1000) {
+    if (this.closed) return Promise.resolve(null);
+    const nonce = crypto.randomBytes(8);
+    const key = nonce.toString("hex");
+    const t0 = performance.now();
+    return new Promise(resolve => {
+      const timer = setTimeout(() => { this.pings.delete(key); resolve(null); }, timeout);
+      timer.unref?.();
+      this.pings.set(key, () => { clearTimeout(timer); resolve(Math.round(performance.now() - t0)); });
+      this.frame(FRAME.ping, 0, nonce);
+    });
   }
 
   /** @param {number} type @param {number} id @param {Buffer} payload */
@@ -76,6 +100,11 @@ export class Channel {
     if (this.rx.n % REKEY_EVERY === 0) this.rx.rekey();
     if (pt.length < 5) { this.close(4400, "short frame"); return; }
     const type = pt[0], id = pt.readUInt32BE(1), payload = pt.subarray(5);
+    if (id === 0) {
+      if (type === FRAME.ping) this.frame(FRAME.pong, 0, Buffer.from(payload));
+      else if (type === FRAME.pong) { const k = payload.toString("hex"); this.pings.get(k)?.(0); this.pings.delete(k); }
+      return;
+    }
     let s = this.streams.get(id);
     if (!s) {
       if (type !== FRAME.head) return;             // late frames for a stream already gone

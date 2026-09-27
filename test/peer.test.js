@@ -23,6 +23,12 @@ const tree = {
   900: { ppid: 1, args: "tmux new -s work" }, 901: { ppid: 900, args: "-bash" }, 902: { ppid: 901, args: "vyre gate approve g1" },
   910: { ppid: 900, args: "-bash" }, 911: { ppid: 910, args: "claude" }, 912: { ppid: 911, args: "/bin/sh -c vyre gate approve g1" },
   920: { ppid: 310, args: "tmux new -d" }, 921: { ppid: 920, args: "vyre gate approve g1" },
+  // An orphan a thread left behind (nohup .. &, then its shell exited): parent init, group the thread's.
+  940: { ppid: 1, pgid: 600, args: "vyre threads answer" },
+  // An orphan of a shell whose group is gone (nohup .. & under a terminal claude, the shell exited),
+  // and the Capsule, which launchd started as its own group.
+  950: { ppid: 1, pgid: 949, args: "sh -c sleep 2; vyre call link.call" }, 951: { ppid: 950, pgid: 949, args: "vyre call link.call" },
+  960: { ppid: 1, pgid: 960, args: "/Applications/Vyre.app/Contents/MacOS/Vyre" },
   // A link vyred cannot read (the process ended mid-walk).
   990: { ppid: 989, args: "vyre threads answer" },
 };
@@ -41,6 +47,9 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal,
   assert.deepEqual(insideClaude(802, o), { inside: false }, "the person over ssh");
   assert.deepEqual(insideClaude(902, o), { inside: false }, "the person's shell in tmux");
   assert.deepEqual(insideClaude(912, o), { inside: true, by: 911 }, "claude in a tmux pane");
+  assert.deepEqual(insideClaude(940, o), { inside: true, by: 600 }, "an orphan in a thread's process group");
+  assert.deepEqual(insideClaude(951, o), { inside: false, unknown: true }, "an orphan of a shell that is gone: refused as unknown");
+  assert.deepEqual(insideClaude(960, o), { inside: false }, "the Capsule, its own group under launchd");
   assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
   assert.deepEqual(insideClaude(500, o), { inside: false }, "vyred itself");
   assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true }, "an unreadable chain is unknown, and vyred refuses it");
@@ -98,6 +107,10 @@ test("peer: a person-only call from under a claude is refused silently; the same
   // Tools that are not person-only are not traced at all.
   const list = await client(dir, socket, "agents.list", {}, { underClaude: true });
   assert.equal(list.status, 200, JSON.stringify(list));
+  // link.call is traced by what it carries: a person's tool inside it is refused as that tool is.
+  const carried = await client(dir, socket, "link.call", { tool: "threads.answer", input: {} }, { underClaude: true });
+  assert.equal(carried.status, 403, JSON.stringify(carried));
+  assert.match(carried.body.error.message, /inside a Claude session/);
   // A human-only tool with a proof (a presence session, say) from inside is an agent's: refused before the proof is read.
   const held = await client(dir, socket, "presence.session.open", {}, { underClaude: true, headers: { "x-vyre-presence": "session id=abc secret=def" } });
   assert.equal(held.status, 403, JSON.stringify(held));
