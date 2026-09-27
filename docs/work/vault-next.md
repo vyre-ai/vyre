@@ -95,8 +95,9 @@ mobile and the Capsule (through their owners).
 6. vault.agent.fill against glass-live's final computers.fill contract (agreed; wiring after native
    core). Pass the grant's ORIGIN (scheme://host[:port]) to computers.fill.begin, never a URL:
    glass-live does not trim it yet.
-7. Android: the device check (mobile), and the CredentialProviderService (not started; the
-   subagent wrote nothing). Tell mobile the sha on any module change: their copy is not linked.
+7. Android: the device check (mobile). The Credential Manager provider is built (type-checked, pure
+   core 27 JUnit): check on a device whether Chrome keeps its own clientDataJSON when passing the
+   hash; excluded credential returns Unknown, not InvalidState. Tell mobile the sha on any module change: their copy is not linked.
 8. Apple: parked until after native core; then mobile (iOS app) and capsule-pro (Capsule) add the
    targets from modules/vault-apple. The extension keeps its session in the shared Keychain, 30
    min, cleared on lock (approved).
