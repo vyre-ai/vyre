@@ -21,24 +21,17 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
   on work/chat 10604b9; phone.md section 15 names the fields.
 
 ## Doing
-- Waiting on deck-design's reduced system (2 families, neutrals, lime, one attention colour, no
-  gold, no red) to apply it to phone.md and the canvas. Not landed on work/deck-design as of
-  1b37bda (their Next 1 is still open).
-- Done this session: honey dropped (the user does not like it; violet recommended, teal the
-  alternative). The no-nag rule is in phone.md section 5 "When Face ID shows": a proof only for
-  pairing, vault secrets and outbound send/post/pay, one proof lasts about 30 minutes, ordinary
-  asks are one tap with no glyph.
+- The reduced system (deck-design e1428b1) is applied to phone.md (352c985) and to the 10 Picked
+  canvas boards (scratchpad phone/project F*.dc.html; backup in project-backup-pre-reduced,
+  transform in scratchpad reduce.py). Contrast re-run on the Picked boards: 338 checks in both
+  themes, 0 below AA. Canvas NOT yet republished: waiting on the lead for the canvas link and
+  whether to drop the old A and B boards.
 
 ## Next
-1. Apply deck-design's reduced set when they send it (first job after their restart; their notes
-   at deck-design 24c3f31). Working answers: From memory goes neutral (--hover fill, --text-2, a
-   memory icon, no gold); --match stays as lime's wash; sizes collapse to 12/13/15/20/28 (phone
-   22/26 to 20 or 28, 17/16 to 15). Agreed with deck-design (f0c9738): the phone adds +2 on 15
-   and 20 (17 for messages and row titles, 22 for page labels); 12, 13 and 28 stay shared. Then re-run the contrast pass (scratchpad phone-render/
-   build.py, rebuilt if the scratchpad is gone), republish the canvas, tell the integrator.
-2. The attention colour pick is still pending with the user: violet (current) or teal. Honey is
-   out. It is a one-line swap per theme of the three --beacon-* values.
-3. Review pwa and mobile builds against phone.md as screenshots arrive.
+1. Republish the canvas to the same link once the lead sends it (files under project/, never the
+   repo as root). Then send the integrator the head.
+2. The attention colour stays violet unless the user picks teal: one line per theme.
+3. Review the Expo app (mobile, ADR 0027) against phone.md as screenshots arrive.
 
 ## Needs from others
 - pwa (core/push, ADR 0011) owns the box-side push rule in phone.md section 11, with the planner
