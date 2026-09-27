@@ -42,9 +42,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - modules/hands-chrome/chrome.test.js: the fake computerd proxy destroys its upgraded CDP pipes
   on close. An open pipe held server.close() forever, so a failed Chrome test on Node 22 hung the
   whole node job until its 30-minute timeout.
-- test/onboard-page.test.js waits for its Chrome to exit (SIGKILL, 3 s cap) before removing the
-  profile. A late profile write recreated the temp home after tempHome's cleanup, and tmp-guard
-  failed the node job on it.
+- Both Chrome tests (modules/hands-chrome/chrome.test.js, test/onboard-page.test.js) start
+  Chrome in its own process group and SIGKILL the group, wait for the exit (3 s cap), and remove
+  the profile with retries, never throwing. Chrome's helpers outlived the browser and kept
+  writing: on Node 22 the removal threw ENOTEMPTY, the throwing after hook skipped vyred's stop,
+  and the file never exited (the node 22 job hung to its 30-minute timeout on every branch). On
+  Node 24 a late write recreated the temp home and tmp-guard failed the job.
 
 #### A stopped vyred leaves a removed home removed
 

@@ -30,12 +30,16 @@ async function launchChrome(t) {
   const child = spawn(CHROME_BIN, [
     "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${dir}`,
     "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--disable-extensions", "about:blank",
-  ], { stdio: ["ignore", log, log] });
+  ], { stdio: ["ignore", log, log], detached: true });
+  // Chrome's own helpers outlive a SIGKILL to the browser and keep writing the profile, so the
+  // whole process group goes, and the removal retries and never throws: a throwing after hook
+  // skips the ones after it (vyred's stop), and on Node 22 the file then never exits.
   t.after(async () => {
-    try { child.kill("SIGKILL"); } catch {}
-    await new Promise(r => { child.once("exit", r); setTimeout(r, 500); });
+    const gone = child.exitCode === null ? new Promise(r => { child.once("exit", r); setTimeout(r, 3000); }) : null;
+    try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch {} }
+    await gone;
     try { fs.closeSync(log); } catch {}
-    fs.rmSync(dir, { recursive: true, force: true });
+    try { fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}
   });
   let port = null;
   const deadline = Date.now() + 10_000;
