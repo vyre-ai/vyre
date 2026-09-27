@@ -369,7 +369,13 @@ async function turn(prompt, uuid = null) {
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
   // A subagent (Claude Code's Agent tool), which Vyre's concurrency slots hold back when full.
-  const sub = /^subagent(-slow)? (.+)$/i.exec(p);
+  // Found anywhere in the prompt, like vyre/forge/bareforge above, so a teammate's wrapped
+  // <vyre-request> text can hold its turn open for a real interval (core/team's priority-order
+  // test needs this: a request-wrapped prompt never starts with "subagent", so the old
+  // start-anchored-only match let the turn finish in milliseconds instead of the 1.5s it asked for).
+  const SUB = /^subagent(-slow)? (.+)$/i;
+  const subAt = lines.findIndex(l => SUB.test(l));
+  const sub = subAt < 0 ? null : SUB.exec(lines[subAt]);
   if (sub) {
     const { allowed, r } = await useTool("Agent", { description: sub[2], prompt: sub[2], subagent_type: "general-purpose" }, {
       run: async () => { if (sub[1]) await sleep(1500); return { content: `subagent done: ${sub[2]}` }; } });

@@ -33,11 +33,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `part`; a result wrapper a teammate's own output could break out of, now closed with a
   per-request nonce and a neutralising pass on anything that reads as one of the wrapper's tags).
   A third finding, a caller label trusted without proof it was not forged from inside a Claude
-  session, is fixed once in the daemon for every tool, not per module.
-- core/switchboard/testing/fake-claude.js (test-only): its `"vyre <tool> <json>"` and
-  `"forge"`/new `"bareforge"` scripted prompt lines are now found anywhere in the prompt, not only
-  when the whole prompt starts with it, so a teammate's `<vyre-request>`-wrapped text can still
-  script a tool call (or a forged one) in a test.
+  session, is fixed once in the daemon for every tool, not per module (above). One more shape of
+  it was still open in `projectOf`: once a forged label is downgraded, the caller looks exactly
+  like a genuine person surface (no thread, no agent), so `input.project` is now trusted only
+  when the caller actually is one (`PERSON.has(callerKind(caller))`), never just "has neither".
+- core/switchboard/testing/fake-claude.js (test-only): its `"vyre <tool> <json>"`,
+  `"forge"`/new `"bareforge"`, and `"subagent[-slow]"` scripted prompt lines are now found
+  anywhere in the prompt, not only when the whole prompt starts with it, so a teammate's
+  `<vyre-request>`-wrapped text can still script a tool call (or a forged one, or hold its turn
+  open for a real interval) in a test.
 
 #### On a Mac, waiting leaves the planner to the box
 

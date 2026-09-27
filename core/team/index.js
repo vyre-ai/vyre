@@ -21,6 +21,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { callerKind } from "../modules/index.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE team_teammates (
@@ -119,11 +120,13 @@ export default {
      * verified thread (threads_runs.project) or its verified agent identity, never from the
      * input, once either is known (ADR 0031 section 11: "The request's project is the caller's,
      * never an input."): a thread bound to no project refuses rather than falling back to
-     * whatever `project` the input claims. Only a caller with neither (a genuine person surface;
-     * every tool that reaches this line is PERSON_ONLY, so vyred has already refused this claim
-     * from anything running inside a Claude session) may say which project with `input.project`.
+     * whatever `project` the input claims. `input.project` is taken only from a verified person
+     * surface (the daemon downgrades a forged cli/local/deck/capsule label from under a Claude
+     * session to plain "mcp", never to a person kind, so this is not the same check as "has
+     * neither a thread nor an agent": a bare mcp caller with neither has none of these either,
+     * and must be refused, not handed the run of `input.project` — e2e review round 3).
      */
-    const projectOf = async ({ thread, agent }, input) => {
+    const projectOf = async ({ thread, agent, caller }, input) => {
       if (thread) {
         const t = await use("threads.get", { thread });
         if (t && t.project) return t.project;
@@ -132,7 +135,7 @@ export default {
       const tm = callerTeammate(agent);
       if (tm) return tm.project;
       if (agent) throw Object.assign(new Error("this agent is not a teammate"), { code: "denied" });
-      if (input && input.project) {
+      if (PERSON.has(callerKind(caller)) && input && input.project) {
         if (!SLUG.test(String(input.project))) throw Object.assign(new Error("project must be a project slug"), { code: "bad_input" });
         return String(input.project);
       }
