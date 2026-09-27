@@ -218,9 +218,14 @@ bound to its device; one init (tini PID 1, spawner, loop.sh; check.sh 24/24); fl
 agent's own folder. Reviewed: sessions e20f459 (approved, three follow-ups), glass-live 70a72036
 (two HIGH). Waiting: relay's relay.device.presence; the integrator's full suite on batch 3.
 
-Next: the Mac Secure Enclave key so the Mac proves HUMAN_ONLY to the box (approved); the headscale
-run on main after batch 3a+3b, before box-deploy ships it; rerun switchboard.test.js on the Mac
-after 123e70f6.
+Also done: the Mac Secure Enclave key (bf6d4ccb; helper compiles, Touch ID sign not yet run on the
+real Mac, needs the lead's OK); switchboard.test.js 42/42 on the Mac with 123e70f6. Batch 3 sha
+sent: bf6d4ccb.
+
+Next: the headscale gate on main after batch 3a+3b, before box-deploy ships it (setup kept in
+/srv/vyre-e2e; `./run1.sh`, `./run2.sh <link>`, `./run3.sh`, then the person-session checks in
+the 27 Sep notes above). Follow up: sessions' three changes, glass-live's two HIGH, relay's
+relay.device.presence.
 
 ## Earlier (27 Sep, after the restart)
 
