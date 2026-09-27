@@ -5,9 +5,9 @@ import XCTest
 final class CountingSigner: PresenceSigner, @unchecked Sendable {
     private let lock = NSLock()
     private var n = 0
-    var count: Int { lock.lock(); defer { lock.unlock() }; return n }
+    var count: Int { lock.withLock { n } }
     func deviceHeader(tool: String, input: JSON, reason: String) async throws -> String {
-        lock.lock(); n += 1; lock.unlock()
+        lock.withLock { n += 1 }
         return "device key=k ts=1 nonce=nnnnnnnn sig=s"
     }
     func sessionHeader() async -> String? { nil }

@@ -236,8 +236,9 @@ fun FactScreen(id: String, back: String, onBack: () -> Unit) {
  * The New agent sheet: name (the lowercase rule checked before sending), the projects it works
  * in, its job, what it runs on (a subscription's setup token, with an optional API-key fallback
  * and a monthly budget, or an API key with a budget), and a computer. Credentials are Vault item
- * names picked from vault.list, never values. agents.create is becoming human-only, so a
- * presence_required answer is signed with the device key and retried once (Client.callOrProve).
+ * names picked from vault.list, never values. Making an agent needs no fingerprint (a person caller
+ * is enough); should a box still answer presence_required, it is signed and retried once
+ * (Client.callOrProve).
  */
 @Composable
 fun NewAgentSheet(onClose: () -> Unit) {

@@ -2,8 +2,8 @@ import SwiftUI
 
 /// New agent (the "+" on Agents): the Deck's New agent form (deck/views/agents.js newForm) as a
 /// sheet. Name, the projects it works in, its job, what it runs on (Vault items picked by name,
-/// never a value typed here), and a computer. `agents.create` answers `presence_required` once it
-/// is human-only; the call then signs with the device key after Face ID and retries once.
+/// never a value typed here), and a computer. Making an agent needs no Face ID (a person caller is
+/// enough); should a box still answer `presence_required`, the call signs once and retries once.
 struct NewAgentSheet: View {
     @Environment(AppModel.self) private var app
     @State private var name = ""
