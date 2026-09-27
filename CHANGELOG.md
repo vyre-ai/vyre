@@ -136,6 +136,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   allowlist (core/link/allow.js), and agents and MCP still never get it. Test:
   test/federation-reads.test.js.
 
+- The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
+  `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still
+  redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
+  stamp in build.json ignores the files build-site writes, so running it twice on a clean checkout
+  says `dirty: false`. `release-check.sh` asserts both redirects, that nothing names the zip, that
+  `/start` is served as committed, and that the install has no node_modules. The docs
+  screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
+  brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
+  still fetches the zip until capsule-pro retires it.
+
 #### Chat starts sessions, browses the box's folders, opens a terminal, and asks real questions (ADR 0024)
 
 - Chat has New session (header, rail, empty state, key `n`): pick a project, a folder on the box or
@@ -269,6 +279,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the build (`scripts/install-box.sh`, `box/vyre`). The test tarball is packed with 1985 mtimes,
   as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
   Found by box-deploy.
+
+#### A model's shell cannot answer or approve as the person, even as "cli"
+
+- On vyred's socket a caller label is only a claim. For a person-only tool (core/presence
+  PERSON_ONLY: threads.answer, term.open, term.attach, and now agents.create, agents.update,
+  gate.revise, gate.reject), vyred asks the kernel which process connected (LOCAL_PEERPID on
+  macOS, SO_PEERCRED on Linux, read by a one-line perl) and walks its ancestry. Under a running
+  `claude`, or under a process vyred runs a thread in, the call is refused with `denied`, never
+  asked. Processes above vyred itself do not count. A pid vyred cannot read is refused.
+- threads.answer refuses an answer from the session that raised the ask.
+- `core/daemon/peer.js` (new), `core/daemon/index.js`, `core/presence/index.js`, internal
+  `threads.pids` in `core/switchboard`; test/peer.test.js (a fake `claude` parent).
 
 #### Every ask and held item says what answering it takes
 
