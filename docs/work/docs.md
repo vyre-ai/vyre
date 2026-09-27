@@ -87,6 +87,14 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Pending page changes (apply when the code reaches main)
 
+- chat f964f8a, b85ab3f (Deck terminal offsets), HOLD until merged: using/chat.md "Open a terminal
+  on the box" changes: reattaches from its offset with its own scrollback (a cut shows a dim
+  "older output was not kept" line); holds up to 4 KB of keys typed while the link is down and
+  sends them once caught up; after a deploy "The box was updated and this terminal was closed."
+  with a button for a new terminal in the same folder; the last screen to send a size wins;
+  phones get a key bar (Esc, Tab, Ctrl, Alt, arrows, Paste). Drop "Keys typed while the link is
+  down are not sent" and the 64 KB replay line. Retake any terminal shot.
+
 - DONE (f623b257 merge, applied) glass-live 67b85c0 (idle hand-back): glass.md gets "idle" as a fourth way a
   take-over ends (after Hand back, the 90 s lease, the lease moving); config
   `computers.handbackIdleMin` 0/2/5/15, default 5, set in Settings, Network, Glass hand-back;
