@@ -88,6 +88,9 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
 
 ## Changed contracts
 
+- KERNEL (core/modules/index.js, native-core's area): registry.call sets `meta.firstParty` (true only for a module whose folder is under core/, overwriting any passed value), plus `Registry.firstParty(name)`. For e2e's HIGH. Test in core/modules/modules.test.js.
+- on_behalf now needs meta.firstParty and a real thread (core/connectors/behalf.js), and sets who.person=false in the hub (e2e MEDIUM 1 and 2).
+
 - `mcp.call` takes `hold: true` and `on_behalf {thread, agent}`, heard from module callers only (core/mcp/index.js, hub.js).
 - `google.mail.send` takes `on_behalf {thread, agent}`, heard from module callers only.
 - core/google/mail.js helpers moved to core/connectors/message.js (re-exported; same behaviour).

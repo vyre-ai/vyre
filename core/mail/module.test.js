@@ -37,6 +37,7 @@ async function world(t, { connections, items = {}, handlers = {} }) {
       return s && c.surfaces.includes(s);
     }).map(({ surfaces, ...c }) => c),
     "vault.connections.get": ({ id }) => { const c = connections.find(x => x.id === id); if (!c) return null; const { surfaces, ...row } = c; return row; },
+    "threads.get": ({ thread }) => { const th = { "t-kit": { id: "t-kit", agent: "kit" }, "t-7": { id: "t-7" } }[thread]; if (!th) throw Object.assign(new Error("no thread"), { code: "not_found" }); return { thread: th }; },
     "gate.offer": () => ({ offered: true }),
     "gate.held": () => [...held.values()].filter(i => i.state === "held"),
     "gate.request": input => { const id = `g${++n}`; held.set(id, { id, state: "held", ...input }); return { id, message: "held" }; },
@@ -318,4 +319,24 @@ test("mail: after a restart, a held mail item's sender is offered again so it ca
   const again = await world(t, { connections: [], handlers: { "gate.held": () => [...w.held.values()] } });
   assert.ok(again.calls.some(c => c.tool === "gate.offer" && c.input.name === "mail:cn_imap_alex"));
   assert.ok(offers >= 1);
+});
+
+test("mail: on_behalf is heard only from Vyre's own modules, and its thread must be real", async t => {
+  const w = await imapWorld(t);
+  const own = w.as("module:capsule-agent", { firstParty: true });
+  const home = w.as("module:bakery-helper", {});
+
+  // One of Vyre's own modules acting for the Capsule sees the Capsule's accounts.
+  assert.deepEqual((await own("mail.accounts", { on_behalf: { surface: "capsule" } })).data.map(a => a.account), ["cn_imap_alex"]);
+  // A module installed into a home sees nothing, whatever it claims.
+  assert.deepEqual((await home("mail.accounts", { on_behalf: { surface: "capsule" } })).data, []);
+  assert.equal((await home("mail.send", { to: "dana@northwind-bakery.example", subject: "Hi", body: "Hi", on_behalf: { surface: "capsule" } })).error.code, "no_account");
+
+  // A chat thread that exists files the item there; one that does not is refused.
+  const ok = await own("mail.send", { to: "dana@northwind-bakery.example", subject: "Hi", body: "Hi", on_behalf: { surface: "chat", thread: "t-7" } });
+  assert.equal(w.held.get(ok.data.held).thread, "t-7", JSON.stringify(ok));
+  assert.equal((await own("mail.send", { to: "dana@northwind-bakery.example", subject: "Hi", body: "Hi", on_behalf: { surface: "chat", thread: "t-none" } })).error.code, "bad_input");
+  // An agent that is not the thread's own is refused.
+  assert.equal((await own("mail.accounts", { on_behalf: { surface: "agent", agent: "juno", thread: "t-kit" } })).error.code, "denied");
+  assert.equal(w.fake.sent.length, 0);
 });

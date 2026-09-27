@@ -295,6 +295,11 @@ test("mcp: hold and on_behalf are for modules only", async t => {
   const mod = (tool, input = {}) => v.d.registry.call(tool, input, "module:mail", {});
   const gateGet = async id => (await v.cli("gate.get", { id })).data;
   const behalf = { thread: "t-9", agent: "kit" };
+  // The threads on_behalf may name: kit's t-9 and a person's t-8, as the Switchboard knows them.
+  const now = Date.now();
+  const db = v.d.registry.deps.db;
+  db.prepare("INSERT INTO threads_runs (id, cwd, agent, status, started_at, last_at) VALUES (?,?,?,?,?,?)").run("t-9", v.root, "kit", "stopped", now, now);
+  db.prepare("INSERT INTO threads_runs (id, cwd, status, started_at, last_at) VALUES (?,?,?,?,?)").run("t-8", v.root, "stopped", now, now);
 
   // A module: hold holds even a read, and the item is filed under the thread and agent it names.
   const r1 = await mod("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: behalf });
@@ -353,6 +358,26 @@ test("mcp: hold and on_behalf are for modules only", async t => {
   const r8 = await v.cli("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "z" }, on_behalf: behalf });
   const it8 = await gateGet(r8.data.held);
   assert.ok(!it8.thread && !it8.agent, JSON.stringify(it8));
+
+  // A thread that does not exist, or one that is another agent's, is refused, not filed.
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "a" }, on_behalf: { thread: "t-none" } })).error.code, "bad_input");
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "b" }, on_behalf: { thread: "t-9", agent: "juno" } })).error.code, "denied");
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "c" }, on_behalf: { thread: "t-8", agent: "kit" } })).error.code, "denied");
+
+  // A module that is not one of Vyre's own (no folder under core/): on_behalf is dropped, and
+  // hold still holds, since it only makes a call stricter.
+  const home = (tool, input = {}) => v.d.registry.call(tool, input, "module:bakery-helper", {});
+  const r9 = await home("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "d" }, on_behalf: behalf });
+  const it9 = await gateGet(r9.data.held);
+  assert.ok(!it9.thread && !it9.agent, JSON.stringify(it9));
+  assert.ok((await home("mcp.call", { server: "chat", tool: "list_issues", hold: true })).data.held);
+  // Nor can a caller pass firstParty in: the registry sets it.
+  const r10 = await v.d.registry.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "e" }, on_behalf: behalf }, "module:bakery-helper", { firstParty: true });
+  assert.ok(!(await gateGet(r10.data.held)).thread);
+
+  // on_behalf an agent scopes the call to that agent: kit never reaches a server only juno may use.
+  assert.equal((await v.cli("mcp.add", stdio("juno-only", log, {}, { scope: { agents: ["juno"] } }))).data.test.ok, true);
+  assert.equal((await mod("mcp.call", { server: "juno-only", tool: "list_issues", on_behalf: behalf })).error.code, "denied");
 
   assert.equal(calls(log).length, 4, "a held call reached the server");
   assert.ok(calls(log).every(l => l.startsWith("call list_issues ")));

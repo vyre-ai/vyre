@@ -19,6 +19,7 @@
 // server's sender stays offered until vyred restarts; release refuses it.
 
 import { Credentials } from "../connectors/auth.js";
+import { checkBehalf } from "../connectors/behalf.js";
 import { connect } from "./client.js";
 import { Hub, MIGRATIONS, TRANSPORTS, AUTH_TYPES, whoFrom } from "./hub.js";
 
@@ -126,16 +127,20 @@ export default {
       input: obj({ server: str, tool: str, name: str, arguments: { type: "object" },
         hold: { type: "boolean", description: "modules only: hold this call at the Gate even if the tool reads" },
         on_behalf: obj({ thread: str, agent: str }) }),
-      run: (input, meta) => {
-        // A module (mail) calls for a chat or an agent that vyred verified for it: the held item is
-        // filed under that thread and agent. From anyone else both fields are dropped, never trusted.
+      run: async (input, meta) => {
+        // One of Vyre's own modules (mail) calls for a chat or an agent: the held item is filed
+        // under that thread and agent, checked against the Switchboard (connectors/behalf.js), and
+        // the server scope becomes that agent's or that thread's project, never the person's.
+        // From anyone else on_behalf is dropped, never trusted. `hold` only makes a call stricter,
+        // so any module may ask for it.
         const mod = String(meta.caller || "").startsWith("module:");
         const { hold, on_behalf, ...rest } = input;
         const w = who(meta);
-        if (mod && on_behalf && typeof on_behalf === "object") {
-          if (typeof on_behalf.thread === "string" && on_behalf.thread) w.thread = on_behalf.thread;
-          if (typeof on_behalf.agent === "string" && on_behalf.agent) w.agent = on_behalf.agent;
-          w.person = true;
+        const b = await checkBehalf((tool, x) => ctx.call(tool, x), meta, on_behalf);
+        if (b) {
+          if (b.thread) w.thread = b.thread;
+          if (b.agent) w.agent = b.agent;
+          w.person = false;
         }
         return hub.call({ ...rest, ...(mod && hold === true ? { hold: true } : {}) }, w);
       },

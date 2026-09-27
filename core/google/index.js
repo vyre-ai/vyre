@@ -24,6 +24,7 @@
 // google.add does. Only people start, finish or cancel a sign-in; a model never can.
 
 import { Credentials, CredentialError } from "../connectors/auth.js";
+import { checkBehalf } from "../connectors/behalf.js";
 import { client, SCOPE, SCOPES } from "./api.js";
 import { MIGRATIONS, check, store, forRead, forWrite, EMAIL, loopback } from "./accounts.js";
 import { calendar, fieldsOf, dayRange } from "./calendar.js";
@@ -79,14 +80,14 @@ export default {
     for (const a of accounts.all()) await offer(a);
 
     /** Hold something at the Gate, filed under the model's own thread when vyred verified one. */
-    // A module (mail) passes the chat or agent vyred verified for it as `on_behalf`; from anyone
-    // else that field is ignored, so a model cannot file its send under another thread.
+    // One of Vyre's own modules (mail) passes the chat or agent vyred verified for it as
+    // `on_behalf`, checked against the Switchboard (connectors/behalf.js); from anyone else that
+    // field is ignored, so neither a model nor a home module can file a send under another thread.
     const hold = async (acct, to, content, input, meta) => {
-      const mod = String(meta?.caller || "").startsWith("module:");
-      const b = mod && input.on_behalf && typeof input.on_behalf === "object" ? input.on_behalf : {};
-      const thread = named(b.thread) || (meta && meta.thread) || undefined;
+      const b = (await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf)) || {};
+      const thread = b.thread || (meta && meta.thread) || undefined;
       const r = await ctx.call("gate.request", { kind: "send", via: `google:${acct.name}`, to, content,
-        ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(named(b.agent) ? { agent: b.agent } : {}) });
+        ...(named(input.why) ? { why: input.why } : {}), ...(thread ? { thread } : {}), ...(b.agent ? { agent: b.agent } : {}) });
       if (r.error) throw fail(r.error.message, r.error.code || "failed");
       return r.data.id;
     };

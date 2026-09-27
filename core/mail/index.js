@@ -23,6 +23,7 @@
 // - Nothing runs in the background: no timer, no poll, no child.
 
 import { addresses, checkContent, parseQuery, addressOf, nameOf } from "../connectors/message.js";
+import { checkBehalf } from "../connectors/behalf.js";
 import { MIGRATIONS, ID, callerFor, filingFor, adapterOf, imapConfig, view, pickFor } from "./accounts.js";
 import { guess, checkMap, sendArgs, messagesOf, messageOf } from "./mcpmap.js";
 import { parse, composeId, parseComposeId, messageId, parseMessageId } from "./capsule.js";
@@ -71,11 +72,20 @@ export default {
 
     /** The mail accounts this caller may use, from the vault's connections. */
     const usable = async (meta, input) => {
-      const caller = callerFor(meta.caller, meta, input && input.on_behalf);
+      // on_behalf counts only from one of Vyre's own modules, and its thread is checked against
+      // the Switchboard (connectors/behalf.js) before anything is filed under it.
+      let bh;
+      if (meta.firstParty === true && input && input.on_behalf && typeof input.on_behalf === "object") {
+        const checked = await checkBehalf((tool, x) => ctx.call(tool, x), meta, input.on_behalf);
+        bh = { surface: input.on_behalf.surface, ...(checked || {}) };
+      }
+      const caller = callerFor(meta.caller, meta, bh);
+      // A module installed into a home is not the person and speaks for no one: it sees no account.
+      if (String(meta.caller || "").startsWith("module:") && meta.firstParty !== true) return { caller, filing: {}, list: [] };
       const rows = await use("vault.connections.list", { caller });
       const list = (Array.isArray(rows) ? rows : rows?.connections || [])
         .filter(r => r && ID.test(String(r.id)) && adapterOf(r) && (r.capabilities || []).some(c => MAILCAPS.includes(c)));
-      return { caller, filing: filingFor(meta.caller, meta, input && input.on_behalf), list };
+      return { caller, filing: filingFor(meta.caller, meta, bh), list };
     };
 
     /** A vault value, with a missing or ungranted item said plainly. */

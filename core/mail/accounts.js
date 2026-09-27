@@ -8,8 +8,9 @@
 //
 // Rules, and why:
 // - The caller comes from vyred, never from the input: the Capsule is `capsule`, a person's own
-//   session in a thread is `mcp:thread:<id>`, an agent is `mcp:agent:<name>`. Only a module may
-//   say whom it acts for (`on_behalf`), since a module is code the person installed.
+//   session in a thread is `mcp:thread:<id>`, an agent is `mcp:agent:<name>`. Only one of Vyre's
+//   own modules may say whom it acts for (`on_behalf`): the registry marks those calls
+//   `meta.firstParty`, and a module installed into a home stays plain `module:<name>`.
 // - People's managing callers (cli, local, deck) see every account, as the vault decides.
 // - A send with no account names the only one or asks. It never guesses: an email from the wrong
 //   address is a mistake the person sees.
@@ -26,7 +27,7 @@ const fail = (msg, code = "bad_input", detail) => Object.assign(new Error(msg), 
 
 /**
  * The caller string the vault decides surfaces by, from what vyred verified.
- * @param {string} caller @param {{ thread?: string, agent?: string }} meta @param {any} [behalf]
+ * @param {string} caller @param {{ thread?: string, agent?: string, firstParty?: boolean }} meta @param {any} [behalf]
  */
 export function callerFor(caller, meta = {}, behalf) {
   const c = String(caller || "");
@@ -34,7 +35,7 @@ export function callerFor(caller, meta = {}, behalf) {
   if (/^(mcp|tailnet|harness):agent:./.test(c)) return c;
   if (c === "mcp") return meta.thread ? `mcp:thread:${meta.thread}` : "mcp";
   if (c.startsWith("module:")) {
-    const b = behalf && typeof behalf === "object" ? behalf : {};
+    const b = meta.firstParty === true && behalf && typeof behalf === "object" ? behalf : {};
     if (b.surface === "capsule") return "capsule";
     if (b.surface === "agent" && typeof b.agent === "string" && b.agent) return `mcp:agent:${b.agent}`;
     if (b.surface === "chat") return typeof b.thread === "string" && b.thread ? `mcp:thread:${b.thread}` : "mcp";
@@ -47,11 +48,11 @@ export function callerFor(caller, meta = {}, behalf) {
 /**
  * The thread and agent a held item is filed under: what vyred verified, or for a module the
  * chat or agent it acts for. An agent's own caller string names it even without meta.
- * @param {string} caller @param {{ thread?: string, agent?: string }} meta @param {any} [behalf]
+ * @param {string} caller @param {{ thread?: string, agent?: string, firstParty?: boolean }} meta @param {any} [behalf]
  */
 export function filingFor(caller, meta = {}, behalf) {
   const c = String(caller || "");
-  const b = c.startsWith("module:") && behalf && typeof behalf === "object" ? behalf : {};
+  const b = c.startsWith("module:") && meta.firstParty === true && behalf && typeof behalf === "object" ? behalf : {};
   const thread = meta.thread || (typeof b.thread === "string" && b.thread ? b.thread : undefined);
   const named = /^(?:mcp|tailnet|harness):agent:(.+)$/s.exec(c);
   const agent = meta.agent || (named ? named[1] : undefined) || (b.surface === "agent" && typeof b.agent === "string" && b.agent ? b.agent : undefined);

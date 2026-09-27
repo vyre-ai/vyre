@@ -417,6 +417,8 @@ test("google: on_behalf files a module's held send under the thread and agent it
   await item(v, "work-google", "secret", { value: fake.serviceAccount(ME) });
   assert.ok((await v.cli("google.add", { name: "work", email: ME, auth: { type: "service-account", item: "work-google" }, base: fake.base })).data);
   const mail = { to: "dana@northwind-bakery.example", subject: "Oven rota", body: "Hi Dana, the rota is ready. Alex" };
+  const now = Date.now();
+  v.d.registry.deps.db.prepare("INSERT INTO threads_runs (id, cwd, agent, status, started_at, last_at) VALUES (?,?,?,?,?,?)").run("t-9", v.root, "kit", "stopped", now, now);
 
   // The mail module sends for a chat (or an agent) that vyred verified for it.
   const fromModule = await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:mail", {});
@@ -434,5 +436,12 @@ test("google: on_behalf files a module's held send under the thread and agent it
   const fromCli = await v.cli("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } });
   const c = (await v.local("gate.get", { id: fromCli.data.held })).data;
   assert.ok(!c.thread && !c.agent, JSON.stringify(c));
+  // A thread that does not exist, or that is another agent's, is refused.
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-none" } }, "module:mail", {})).error.code, "bad_input");
+  assert.equal((await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "juno" } }, "module:mail", {})).error.code, "denied");
+  // A module installed into a home (not under core/) is heard as no one's: on_behalf dropped.
+  const fromHome = await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:bakery-helper", { firstParty: true });
+  const d = (await v.local("gate.get", { id: fromHome.data.held })).data;
+  assert.ok(!d.thread && !d.agent, JSON.stringify(d));
   assert.equal(fake.mail.sent.length, 0, "a held send reached Gmail");
 });
