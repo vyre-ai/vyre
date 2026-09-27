@@ -1,6 +1,7 @@
 // @ts-check
 // Commands about vyred itself. `vyre up` lives in up.js.
 
+import { progressLine } from "../../recall/progress.js";
 import { label } from "../../daemon/build.js";
 import { request, call } from "../../daemon/client.js";
 import { stop } from "../daemonctl.js";
@@ -29,16 +30,16 @@ export default [
         return EXIT.UNREACHABLE;
       }
       const d = h.data;
-      // The first model download is the one slow thing a fresh install does; say so once.
-      const why = (await call("recall.status")).data?.vectors?.why;
+      // A first index, or the first model download, is the one slow thing a fresh install does.
+      const recall = progressLine((await call("recall.status")).data);
       // What memory knows about the user, and the model pass's spend; absent when memory is.
       const personal = (await call("memory.stats").catch(() => null))?.data?.personal;
       const mem = memoryLine(personal);
-      if (json()) return emit({ running: true, ...d, ...(typeof why === "string" && why.startsWith("downloading") ? { note: why } : {}), ...(mem ? { memory: personal } : {}) });
+      if (json()) return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}) });
       out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (mem) out(`  ${mem}`);
-      if (typeof why === "string" && why.startsWith("downloading")) out(dim(`  ${why}`));
+      if (recall) out(dim(`  ${recall}`));
       return 0;
     },
   },

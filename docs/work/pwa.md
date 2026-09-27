@@ -24,6 +24,31 @@ work/polish-surfaces (phone Chat, five tabs, title truncation), with main merged
 
 Android: Chrome, same address, then Install app from the menu (or the Install button on Now).
 
+## What to look at on your phone (after pairing the Mac)
+
+1. Install. Tailscale on, then Safari to your address, Share, Add to Home Screen, and open Vyre
+   from the Home Screen. You should see Vyre full screen: no Safari bars, a dark status bar, the
+   five tabs (Now, Projects, Chat, Find, Agents) clear of the home bar.
+2. Now. At the top, "Set up this phone" with Install ticked. Tap Turn on under Notifications and
+   Allow. Under Passkey, if your Mac passkey synced through iCloud Keychain, approving anything
+   will offer it with Face ID. Below, what needs you, then what is running.
+3. Chat. Your Mac's projects and sessions are listed (Recent shows the latest). Open one: the
+   conversation reads like the terminal, newest at the bottom. Type a line and send. If the
+   session is busy in your Mac's terminal, a line says "Queued for <name>" and the message goes in
+   when that turn ends.
+4. Find. Pull down from the top of any screen, or tap Find. Type part of a session name, a file
+   name or a person: sessions, box files, agents and memory show up as you type. Try
+   "watch <a session>": the line under the box says what Enter will do; press it and you should
+   get a notification when that session finishes or asks.
+5. An approval. When something is held (a draft email) or a session asks permission, it shows on
+   Now and in the Chat. Send or Allow asks for Face ID, then says Sent or Allowed.
+6. Settings, Devices. Your iPhone and Mac are listed as online, the Mac marked "Paired with this
+   box". If a device is offline in Tailscale, it says so in plain words.
+7. Notifications. With the app closed, an ask or a held draft should arrive as a notification
+   that says only that something needs you. Tapping it opens that item in Vyre.
+8. Offline. Turn on Airplane Mode and open Vyre: it still opens, shows what it last had, and one
+   line says the phone is offline. Turn it off and tap Retry: the line goes and the screen fills.
+
 ## Done
 - 2e5d78a merge main into work/pwa (CHANGELOG kept both sides, world.js kept breach: off).
 - Shell (deck/index.html, manifest.webmanifest, css/deck.css, js/pwa.js): standalone manifest with
@@ -52,24 +77,52 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   (no sideways scroll, tab bar present, standalone, no page errors, pull releases to /find, reopen
   lands on the last screen). iPhone UA, touch, 3x, safe areas 47/34 and 59/34.
 
+- After ci's history rewrite the pairing card is 845f637. Since then: first-passkey card on Now
+  and the iCloud Keychain line on the pairing card; memory.relevant for the owner's tailnet devices
+  and system.info owner.name (116ceb7, tests in core/memory/access.test.js and test/daemon.test.js);
+  Find commands (76d473f, deck/js/commands.js + commands.test.js, the mobile/Capsule grammar);
+  /theme.css from config theme.colors (394753a, core/config/theme.js + tests, daemon route).
+- Shots: 56 (19 screens at 390 and 430, plus onboarding, pairing, no assistant and Now at 1280,
+  1440, 2000), all checks pass.
+
+- Speed (lead, from the user's iPhone): pages kept mounted (app.js router: mount/away/drop,
+  KEEP 8), the tabs warmed at idle on a phone, Chat opens sessions from known rows with the last 60
+  turns, Back is history.back, fonts self-hosted, SW stale-while-revalidate. deck/test/pwa-perf.js
+  (tab first tap, revisit, Chat open/back/open) and pwa-perf.test.js. Numbers in CHANGELOG.
+- Queue: threads.send queues for tailnet:<login> (was already true on main after capsule-now;
+  queuesFor now also refuses an agent's tailnet node). If the user's phone still refused, his box
+  runs code from before capsule-now's merge.
+
 ## How to rerun the shots (the test box)
 - `rsync -a --delete --exclude node_modules --exclude .git ./ the test box:~/vyre-ci/pwa/`
-- Chrome: `docker run -d --rm --name vyre-pwa-chrome --network host --shm-size=1g chromedp/headless-shell:latest --remote-debugging-port=9422 --remote-debugging-address=127.0.0.1`
+- Chrome (connectors' shared install): `/usr/local/bin/vyre-chrome --headless=new --remote-debugging-port=9422 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/pwa-chrome-prof about:blank`
 - World: `cd ~/vyre-ci/pwa && VYRE_NO_DIALOGS=1 nice -n 15 node deck/test/world.js 4790`
 - `CDP=http://127.0.0.1:9422 node deck/test/pwa-shots.js http://127.0.0.1:4790 ~/vyre-ci/pwa-out`
-  (`ONLY=<regex>` for some screens). Stop the world and `docker stop vyre-pwa-chrome` after.
+  (`ONLY=<regex>` for some screens, `DESKTOP=1280x800,1440x900,2000x1100` adds desktop sizes,
+  `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
 ## Doing
-- Nothing running. Waiting on the lead to try it on the phone.
+- Pushed work/pwa; integrator told the tip is ready. 1cd5346: Create your assistant offers a computer.
+- Waiting for the user to pair his Mac, then: check the phone PWA against his real box, read-only,
+  with the Mac's sessions showing (federation), and fix what looks off.
 
 ## Next
-- Wire the queue once capsule-now names it (composer.js `sendInput`, QUEUE SEAM comment).
-- See a live streamed reply in a browser: the world has no harness, so streaming is unit-level only.
-- Real iPhone check by the user: launch screens, push on the Home Screen app, Face ID passkey.
-- A monochrome badge icon for Android notifications (the colour icon shows as a white square).
+- SW version skew: the Deck's files come from the cache first; a new release lands on the second
+  launch. Consider registering sw.js with the build commit so a release swaps the cache at once.
+- Settings > Setup rows could rerun a step in place (polish-cli's suggestion) instead of naming
+  `vyre up`.
+- Step 6 Mac card: "Already on your tailnet" for an online Mac node.
+- theme.colors: match docs' final shape (asked docs: "light" or "paper", shared validator).
+- threads.unqueue once capsule-now ships it.
+- Real iPhone check by the user.
 
 ## Needs from others
-- capsule-now: the queue-to-busy-session contract (tool and event names). Asked 2026-09-27.
+- polish-cli answered: no --step; Settings says `vyre up` (and `vyre index` for history).
+- box: review the additive `onboard.status` detail.devices.peers and parsePeers (core/onboard).
+  Also onboard.finish sends auth {vault: "anthropic-api-key"} for an API key, which agents reads as
+  a subscription token (the assistant card sends {fallback: "anthropic-api-key"} instead).
+- e2e: confirm the passkey on the user's box has the right rpId (the lead asked them).
+- docs: the theme.colors shape.
 - link / files: the box cannot search the Mac's files (link carries Mac to box only). Find says
   "Files on your Mac show here when your Mac is online."
 - lead or e2e: confirm the phone's first passkey code comes from `vyre presence code` on the Mac
@@ -77,6 +130,11 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - mobile: told the tool names, push payload and tab order so the native apps match.
 
 ## Changed contracts
+- memory.relevant: tailnet:<login> callers may read without a room (was refused).
+- system.info: adds owner { name } (onboard.person).
+- GET /theme.css served by vyred from config theme.colors.
+- onboard.status: detail.devices.peers [{name, dns, os, online, lastSeen}] (additive), parsePeers export.
+- docs/JOURNEY.md step 6 describes pairing the Mac and Add to Home Screen.
 - Tabs on the phone: Now, Projects, Chat, Find, Agents (Ask moved off the tab bar; /ask stays).
 - api.js exports `reachable` and fires `deck:reach` on window. No tool or event changes.
 - Now's first child on a phone may be the setup card (phone-setup.js).

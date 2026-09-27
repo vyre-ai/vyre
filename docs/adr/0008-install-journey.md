@@ -1,8 +1,16 @@
-# ADR 0008 · The install journey
+---
+title: ADR 0008: The install journey
+summary: The install journey from a Mac and a server to a working assistant: vyre box add over SSH, onboarding in the browser, pairing and the ending.
+audience: builders
+owner: integrator
+status: stable
+---
+
+# ADR 0008: The install journey
 
 Status: proposed, 26 Sep 2026. Builds on ADR 0002 (network and identity). Amends SPEC section 1
 ("Install and onboarding") where noted. The one-page version for users is
-[docs/JOURNEY.md](../JOURNEY.md).
+[Onboarding](../get-started/onboarding.md).
 
 ## Context
 
@@ -209,14 +217,14 @@ From the Mac, each command runs over the saved `box.ssh`, so the person still ne
 
 | Command | Does |
 |---|---|
-| `vyre box update` | `vyre update` on the host (pull, recreate, wait), then updates the Mac's own vyred if the box is newer |
+| `vyre box update` | `vyre update` on the host (pull, recreate, wait), then compares versions: if the box is newer it prints the Mac's own update (`npm i -g vyre@latest && vyre up`) rather than replacing a global package unasked |
 | `vyre box backup [file]` | stops the stack, tars `vyre-home`, `vyre-work` and `tailscale-state` on the host, starts it, and copies one file to the Mac, 0600 |
 | `vyre box move user@newhost` | `box add` on the new host up to step 4, stops the old stack, streams the three volumes old → new through the Mac, starts the new one, runs `--uninstall` (not `--purge`) on the old. `tailscale-state` moves too, so the node keeps its name, address and certificate |
 | `vyre box remove [--purge]` | `install-box.sh --uninstall [--purge]` on the host; forgets `network.box` |
 
 On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an older vyred);
 `vyre down && npm rm -g vyre` removes it and leaves `~/.vyre`. On the server alone, box's
-`vyre update` and `install.sh --uninstall` stand as written in docs/INSTALL.md.
+`vyre update` and `install.sh --uninstall` stand as written in [Install on a server](../get-started/install.md).
 
 ## Consequences
 

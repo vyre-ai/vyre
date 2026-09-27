@@ -55,6 +55,20 @@
   },
   "threads.list": [
     {
+      "id": "33333333-cccc-4000-8000-000000000001",
+      "name": "Northwind autumn menu",
+      "project": null,
+      "projectName": null,
+      "agent": null,
+      "state": "running",
+      "status": "working",
+      "started": "$ago:12m",
+      "last": "$ago:3m",
+      "activity": "Edit(menu/autumn.md)",
+      "source": "mac",
+      "machine": "alex-mac"
+    },
+    {
       "id": "t-pax-invoices",
       "name": "File this week's invoices",
       "project": "northwind-bakery",

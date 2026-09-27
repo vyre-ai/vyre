@@ -2,8 +2,8 @@
 // A Mac asking to pair with this box, answered in the Deck: Now shows one card per waiting
 // request, and onboarding's devices step uses the same card. The box never lists a request's
 // code (core/link/box.js): the code is on the Mac's screen, so the person types it here, and the
-// passkey proves they are the one looking at both. Approving from the Mac that is asking is
-// refused by the box, so the card says to use the phone or another device when that happens.
+// passkey proves they are the one looking at both. The Mac that is asking may approve itself
+// here too: the box accepts that only with a fresh passkey assertion on that Mac.
 //
 // Tools: link.pending, link.pair.approve {code} (presence), link.pair.deny {id}.
 // Events: link.pair-requested, link.paired. Nothing polls: the minutes left are redrawn once a
@@ -59,6 +59,7 @@ export function pairCard(p, opts = {}) {
   const approve = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-primary", disabled: true, onclick: () => decide("approve") }, "Approve"));
   const deny = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-ghost", onclick: () => decide("deny") }, "Deny"));
   const note = h("div", { class: "pair-note small", role: "status" });
+  const hint = h("div", { class: "small faint" }, "Approve with Touch ID on this Mac or on your phone. A passkey you made on the Mac also works on your iPhone if iCloud Keychain is on.");
   const left = h("span", { class: "code faint" });
   const form = h("div", { class: "pair-form" }, h("label", { class: "lbl", for: "pc-" + p.id }, "Code on that Mac"), codeIn, h("div", { class: "pair-actions" }, approve, deny));
   codeIn.id = "pc-" + p.id;
@@ -66,7 +67,7 @@ export function pairCard(p, opts = {}) {
     h("div", { class: "pair-top" }, h("span", { class: "lbl beacon" }, h("span", { class: "dot beacon" }), " Pairing"), left),
     h("div", { class: "pair-title" }, icon("laptop", 16), h("span", null, "A Mac wants to pair: ", h("b", null, p.name))),
     h("div", { class: "small muted" }, [p.node, p.login].filter(Boolean).join(" · ")),
-    form, note);
+    form, hint, note);
   let busy = false;
 
   async function decide(/** @type {"approve" | "deny"} */ what) {
@@ -82,6 +83,7 @@ export function pairCard(p, opts = {}) {
     }
     stop();
     form.remove();
+    hint.remove();
     left.remove();
     if (what === "approve") {
       el.classList.add("paired");
@@ -113,7 +115,7 @@ const shape = (/** @type {string} */ s) => { const d = digits(s); return d.lengt
 /** The box's refusals, in words that say what to do next. */
 function why(/** @type {any} */ e) {
   const m = String(e.message || e);
-  if (/cannot approve its own/.test(m)) return "The Mac that is asking cannot approve itself. Open Vyre on your phone and approve it there.";
+  if (/cannot approve its own/.test(m)) return "The Mac that is asking can approve itself only with a passkey. Approve again and use Touch ID, or approve on your phone.";
   if (/no pairing request has that code/.test(m)) return "That code does not match. Check the code on the Mac and try again.";
   if (/too many wrong codes/.test(m)) return "Too many wrong codes, so every request was cancelled. Start again on the Mac.";
   if (e.code === "no_passkey" || e.code === "cancelled" || e.code === "presence_required") return `${m} Approving needs a passkey on this device: Settings, Security.`;

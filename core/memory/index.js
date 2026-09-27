@@ -242,7 +242,9 @@ export default {
     ctx.tool("memory.relevant", {
       description: "The few facts worth adding to a prompt about this text, or [] when nothing in it is known. For the Enrich hook: precise, and fast.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer" }, ...agentField } },
-      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => { const room = roomOf(rest); return (await guard({ agent, project_cwds, room }, caller), graph.relevant({ text, project_cwds, room, limit: Math.min(20, Math.max(1, limit)) })); },
+      // The owner on a phone reads it too: Find searches memory by meaning with it, account-wide,
+      // as the Deck does on the Mac. A session still names its room.
+      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => { const room = roomOf(rest); return (await guard({ agent, project_cwds, room }, caller, { tailnet: true }), graph.relevant({ text, project_cwds, room, limit: Math.min(20, Math.max(1, limit)) })); },
     });
     ctx.tool("memory.why", {
       description: "The turns that support a fact (its id, src|rel|dst) or where a thing came up (a name). Turns that no longer exist are counted as gone.",
