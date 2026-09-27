@@ -20,6 +20,10 @@ import { sessionsConfig, sdkDir, claudeBin, configModel, PURPOSES } from "./conf
 const MODELS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_models (scope TEXT PRIMARY KEY, model TEXT NOT NULL, by TEXT, at INTEGER NOT NULL)`;
 const MODEL = /^[A-Za-z0-9._:\[\]-]{1,80}$/;
 import { installed, install, VERSION, DOWNLOAD_MB } from "./sdk.js";
+import { Slots, KINDS, BOX_DEFAULTS } from "./slots.js";
+
+/** Per-project concurrency limits a person set (sessions.limits.set). */
+const LIMITS_MIGRATION = `CREATE TABLE IF NOT EXISTS sessions_limits (project TEXT NOT NULL, kind TEXT NOT NULL, value INTEGER NOT NULL, PRIMARY KEY (project, kind))`;
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const str = { type: "string" };
@@ -27,7 +31,7 @@ const scope = { type: "string", description: "assistant, agent:<name> or project
 
 export default {
   async start(ctx) {
-    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION]);
+    ctx.store.migrate([PROMPTS_MIGRATION, MODELS_MIGRATION, LIMITS_MIGRATION]);
     const db = ctx.store.db;
     const override = scope => { const r = /** @type {any} */ (db.prepare("SELECT model FROM sessions_models WHERE scope = ?").get(scope)); return r ? String(r.model) : null; };
     /**
@@ -120,6 +124,52 @@ export default {
       input: { type: "object", properties: { purpose: str, project: str, model: str } },
       run: async i => modelFor(i),
     });
+
+    // ------------------------------------------------------------ concurrency slots
+
+    const boxLimits = () => {
+      const l = (ctx.config && ctx.config.sessions && ctx.config.sessions.limits) || {};
+      const n = (v, d) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : d);
+      return { teammate: n(l.max_active_teammates, BOX_DEFAULTS.teammate), subagent: n(l.max_subagents, BOX_DEFAULTS.subagent) };
+    };
+    const projectLimits = slug => Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT kind, value FROM sessions_limits WHERE project = ?").all(String(slug))).map(r => [String(r.kind), Number(r.value)]));
+    const slots = new Slots({ limits: () => ({ box: boxLimits(), project: projectLimits }), emit: (type, payload) => { try { ctx.events.emit(type, payload); } catch {} } });
+    const kind = { type: "string", enum: KINDS };
+
+    ctx.tool("sessions.slots", {
+      description: "The concurrency ledger (for the Switchboard and teammates): take a teammate or subagent slot (waiting its turn, or not), release one, release all an owner holds, or read what is held.", internal: true,
+      input: { type: "object", required: ["action"], properties: { action: { type: "string", enum: ["take", "release", "release-owner", "status"] }, kind, project: str, owner: str, key: str,
+        wait: { type: "boolean" }, timeout_ms: { type: "integer" }, id: str } },
+      run: async i => {
+        if (i.action === "status") return slots.status();
+        if (i.action === "release") return { released: i.id ? slots.release(String(i.id)) : slots.releaseKey(String(i.owner), String(i.key)) };
+        if (i.action === "release-owner") return { released: slots.releaseOwner(String(i.owner), i.kind || null) };
+        const want = { kind: /** @type {any} */ (i.kind), project: String(i.project || "_none"), owner: String(i.owner || ""), key: String(i.key || "") };
+        const r = slots.take(want, { wait: i.wait !== false, timeoutMs: Math.min(Number(i.timeout_ms) || 10 * 60_000, 60 * 60_000) });
+        if (!(r instanceof Promise)) return r;
+        const s = await r;
+        return { id: s.id, kind: s.kind, project: s.project };
+      },
+    });
+
+    tool("sessions.slots.status", "How many teammates and subagents are running and waiting, box-wide and per project, and the limits in force.",
+      { type: "object", properties: {} }, async () => slots.status());
+
+    tool("sessions.limits.get", "The concurrency limits: box-wide (sessions.limits in config: max_active_teammates, max_subagents) and a project's own.",
+      { type: "object", properties: { project: str } },
+      async i => ({ box: boxLimits(), ...(i.project ? { project: projectLimits(i.project) } : {}) }));
+
+    tool("sessions.limits.set", "Set a project's limits: at most this many active teammates (max_active) and subagents across all its sessions (max_subagents). null removes one. Over a limit, new ones wait their turn.",
+      { type: "object", required: ["project"], properties: { project: str, max_active: { type: ["integer", "null"] }, max_subagents: { type: ["integer", "null"] } } },
+      async i => {
+        for (const [key, k] of [["max_active", "teammate"], ["max_subagents", "subagent"]]) {
+          if (!(key in i)) continue;
+          if (i[key] == null) db.prepare("DELETE FROM sessions_limits WHERE project = ? AND kind = ?").run(i.project, k);
+          else db.prepare("INSERT INTO sessions_limits (project, kind, value) VALUES (?,?,?) ON CONFLICT(project, kind) DO UPDATE SET value = excluded.value").run(i.project, k, Math.max(0, Number(i[key])));
+          slots.pump(k);
+        }
+        return { project: i.project, ...projectLimits(i.project) };
+      }, PEOPLE);
 
     ctx.tool("sessions.prompt.compose", {
       description: "The system prompt for a session starting now: the levels around Vyre's own launch text.", internal: true,

@@ -7,6 +7,7 @@
 // nothing more. What it does depends on the prompt:
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
 //   "bash <command>" asks permission for Bash with that command, and runs nothing
+//   "subagent[-slow] <task>"  runs Claude Code's Agent tool (after the host's PreToolUse hooks)
 //   "fail"          a turn that ends in an error result
 //   "orphan"        leaves a `sleep 4` in its process group, then exits on its own
 //   "settings"      asks to Write its own .claude/settings.local.json with allow Bash(*)
@@ -150,12 +151,34 @@ const REJECTED = "The user doesn't want to proceed with this tool use. The tool 
  * @param {string} name @param {any} input
  * @param {{ ask?: boolean, suggestions?: any[], run: (input: any) => Promise<{ content: string, result?: any, error?: boolean }> | { content: string, result?: any, error?: boolean } }} o
  */
+/** @type {{ matcher?: string, hookCallbackIds?: string[] }[]} the host's PreToolUse hooks */
+let preHooks = [];
+/** Ask each matching host hook; the first deny's reason, or null. */
+async function preToolUse(name, input, tu) {
+  for (const h of preHooks) {
+    if (h.matcher && !new RegExp(`^(?:${h.matcher})$`).test(name)) continue;
+    for (const cb of h.hookCallbackIds || []) {
+      const rid = `req-${++n}`;
+      const answer = new Promise(r => waiting.set(rid, r));
+      out({ type: "control_request", request_id: rid, request: { subtype: "hook_callback", callback_id: cb, tool_use_id: tu,
+        input: { hook_event_name: "PreToolUse", session_id: session, cwd: process.cwd(), tool_name: name, tool_input: input, tool_use_id: tu } } });
+      const got = /** @type {any} */ (await answer) || {};
+      const spec = got.hookSpecificOutput || {};
+      if (spec.permissionDecision === "deny" || got.decision === "block") return spec.permissionDecisionReason || got.reason || "a hook refused it";
+    }
+  }
+  return null;
+}
+
 async function useTool(name, input, o) {
   const id = `msg_${++n}`, tu = `toolu_${++n}`;
   const block = { type: "tool_use", id: tu, name, input };
   txAssistant(id, block, "tool_use");
   out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [block] }, session_id: session, parent_tool_use_id: null });
-  const r = o.ask ? await permission(name, input, tu, o.suggestions) : { behavior: "allow", updatedInput: input };
+  // The host's PreToolUse hooks first (the Agent SDK registers them at initialize), as Claude Code
+  // runs them before any permission question: a deny ends the call.
+  const hooked = await preToolUse(name, input, tu);
+  const r = hooked ? { behavior: "deny", message: hooked } : o.ask ? await permission(name, input, tu, o.suggestions) : { behavior: "allow", updatedInput: input };
   const allowed = r.behavior === "allow";
   const done = allowed ? await o.run(r.updatedInput || input) : { content: REJECTED, error: true, result: `Error: ${REJECTED}` };
   const res = { tool_use_id: tu, type: "tool_result", content: done.content, is_error: Boolean(done.error) };
@@ -309,6 +332,15 @@ async function turn(prompt, uuid = null) {
   }
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
+  // A subagent (Claude Code's Agent tool), which Vyre's concurrency slots hold back when full.
+  const sub = /^subagent(-slow)? (.+)$/i.exec(p);
+  if (sub) {
+    const { allowed, r } = await useTool("Agent", { description: sub[2], prompt: sub[2], subagent_type: "general-purpose" }, {
+      run: async () => { if (sub[1]) await sleep(1500); return { content: `subagent done: ${sub[2]}` }; } });
+    const text = allowed ? `subagent done: ${sub[2]}` : `The subagent did not run: ${r.message}`;
+    await say(text);
+    return result(true, text);
+  }
   if (/^fail$/i.test(p)) { await say("Trying."); return result(false, "API Error: 500 the fake broke on purpose", 0); }
   if (/^lowlimit$/i.test(p)) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "seven_day", resetsAt: 1790000000, utilization: 0.27 } });
@@ -340,6 +372,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
   }
   if (m.type === "control_request" && m.request?.subtype === "initialize") {
     logLaunch(m.request);
+    preHooks = (m.request.hooks && m.request.hooks.PreToolUse) || [];
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     out({ type: "system", subtype: "init", session_id: session, cwd: process.cwd(), model: MODEL, tools: ["Read", "Edit", "Write", "Bash", "TodoWrite", "AskUserQuestion"] });
     return;

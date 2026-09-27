@@ -605,6 +605,25 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.mode, "plan", "the record says the mode");
   });
 
+  test(`${driver}: subagents wait for a slot when the box or the project is full, then run`, { skip: driver === "cli" ? "subagent slots need the Agent SDK's in-process hooks" : skip }, async t => {
+    const w = await boot(t, { driver, sessions: { limits: { max_subagents: 1 } } });
+    const a = (await w.tool("threads.start", { cwd: w.work, prompt: "subagent-slow read the menu", surface: "deck" })).data;
+    await until(async () => (await w.tool("sessions.slots.status", {})).data.subagent.held === 1, "the first subagent's slot");
+    const b = (await w.tool("threads.start", { cwd: w.work, prompt: "subagent check the prices", surface: "deck:phone" })).data;
+    const queued = await until(async () => {
+      const s = (await w.tool("sessions.slots.status", {})).data.subagent;
+      return Object.values(s.projects).some(p => p.waiting === 1) ? s : null;
+    }, "the second to wait");
+    assert.equal(queued.held, 1, "never over the limit");
+    await w.finished(a.id);
+    await w.finished(b.id);
+    assert.deepEqual([...await w.said(a.id), ...await w.said(b.id)], ["subagent done: read the menu", "subagent done: check the prices"]);
+    const st = (await w.tool("sessions.slots.status", {})).data.subagent;
+    assert.equal(st.held, 0, "every slot came back");
+    assert.deepEqual((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 2 })).data, { project: "harlow-legal", subagent: 2 });
+    assert.equal((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 9 }, "mcp")).error.code, "denied", "a model never raises its own limits");
+  });
+
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {
     const w = await boot(t, { driver, role: "local" });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;
