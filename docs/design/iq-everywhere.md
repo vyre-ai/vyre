@@ -159,6 +159,56 @@ hits there is a 12 px gap (space-3), full width. The shape every surface shares:
   it never reads personal facts or another client's sessions. Its brief gains one line saying so.
 - **Gap.** Small. Owner: teammates.
 
+## Project graphs: a session that joins a project later
+
+Cohesion writes the product spec. This is what IQ needs from it and what it costs.
+
+- **Today.** Memory's rooms already follow projects: `project.created`, `project.changed`,
+  `thread.picked` and `thread.unpicked` mark the rooms stale, and the next pass files a picked
+  session's facts in that project's room (the ids come from `projects.list` picks). Personal facts
+  never move: they are the user's, not a project's.
+- **Gap.** IQ's retrieval scopes a project by its folders. `recall.search` has `project_cwds` and no
+  session filter, so a session picked into a project from outside its folders is in the project's
+  graph but not in the passages IQ reads for that project, and a project-scoped agent cannot read it.
+- **Should.** `recall.search` takes `sessions: string[]` next to `project_cwds`, and a turn matches
+  if either holds. `memory.retrieve` and `memory.ask` scope a project by its folders plus its picked
+  session ids. A session unpicked leaves at the next pass. An agent's grants follow the same union.
+- **Size.** Recall: S (one filter, an index on session already exists). memory-iq: S (the room's ids
+  into retrieve, a test in each direction). Cohesion's spec decides the user-facing words.
+
+## Host to server: the Mac's sessions build the box's graph
+
+Federation owns the transport. This is the contract memory-iq proposes. It reverses ADR 0008's
+"a Mac transcript is never stored on the box", so it needs an amendment and the user's yes.
+
+- **Consent.** Off until the user turns it on for one Mac, in onboarding or Settings: "Build
+  memory on your box from this Mac's Claude Code sessions." A person-only setting (presence proof).
+  Folders can be left out (`memory.personal.skipCwds` and a sync exclude list); Vyre's own folders
+  and `<home>/quick` are never sent. Turning it off deletes that Mac's turns and everything derived
+  from them on the box, by machine tag, and says how much was deleted.
+- **What moves.** Turns, not raw transcripts: `{ machine, session, seq, role, ts, cwd, name, text }`
+  as the Mac's Recall indexes them, with the vault's scrub applied on the Mac first (keys, tokens,
+  passwords never leave). Also the Mac's kept model reads (`memory_me_reads`, by text hash), so a
+  turn the Mac already read is not paid for again on the box.
+- **Dedupe.** The key is `(session, seq)`; the machine is a label, not part of the identity, so the
+  same session copied to two Macs is stored once. Uploads are idempotent upserts from a per-session
+  cursor the box acknowledges. A rewritten (compacted) session is sent with `rewritten: true` and
+  replaces the old rows, which fires `session.indexed { rewritten }` as today.
+- **What is indexed where.** The Mac keeps its own Recall for offline search. The box indexes
+  everything it receives: Recall's keywords and embeddings (local model, CPU), the graph (rules,
+  no model), and personal facts (the model reader). The model reader runs on one machine only:
+  on the box when sync is on, so nothing is read twice. Mac surfaces ask the box's `memory.ask`
+  over the link, and the Mac's own when the box is offline.
+- **Load.** The Mac uploads in batches of at most 500 turns, no faster than every 60 s, only
+  while idle, and never while a thread of the user's is working.
+- **Cost.** Transport and storage: text only, tens of MB for a year of sessions. Embeddings and the
+  graph: box CPU, no money. The model reader: a one-time backfill of about $1.50 to $2.60 in
+  reported usage, then at most $0.25 a day (config.memory.model). It runs through the Claude
+  Code login on the box, so the box needs one; with none, reading waits and nothing else breaks.
+- **Size.** Federation: M to L (upload channel, cursor, consent and delete). memory-iq: M (ingest
+  with machine labels, reader location, reads import, delete by machine, eval on a two-machine
+  fixture). Recall: S (accept pushed turns). An ADR amendment for 0008.
+
 ## Ranked
 
 Value is how often the user meets it and how wrong things are today. Cost is the work to build and
@@ -176,6 +226,8 @@ test it.
 | 8 | Phone Find IQ card | mobile | M | medium | spec sent (0.1.1) |
 | 9 | Chat renders "(from <session>)" as a link | chat | S | medium | spec sent (0.1.1) |
 | 10 | Teammates' brief: memory_ask for project history | teammates | S | low | built (work/teammates 7eb7ffb8; reaches teammates with core/team step 3) |
+| 11 | Project graphs: IQ reads a project's picked sessions, not only its folders | memory-iq, recall | S | high | proposed (0.1.1) |
+| 12 | Mac sessions build the box's graph (consent, dedupe, one reader) | federation, memory-iq, recall | M-L | highest for a box user | contract proposed |
 
 ## What makes IQ smarter, whatever the surface
 
