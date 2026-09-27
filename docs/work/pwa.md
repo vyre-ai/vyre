@@ -149,7 +149,7 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   retired colours + "pin" wording; b623ddcc waiting.list / waiting.count / waiting.changed in
   js/needs.js (4 tests); 41f9b14d context.report (js/context-report.js, 3 tests); 084036c1 the
   Glass mini pill on Now (js/glass-mini.js, 3 tests; no picture yet: needs sight.frame or a small
-  viewer, asked cohesion). Still to do: one Chrome run of Now with a fake agent computer, after cohesion's run 3.
+  viewer, asked cohesion). Chrome check done (testbox, 390/430/1280): now-glass-mini, now, places-sheet, chat-session, and the pill flows all ok.
 - Old next list (done above): cohesion's waiting.list,
   context.report, connections.list, credential sheet, Glass mini-view (said yes, once on main);
   docs' tips.next wiring (said yes, once on main).
