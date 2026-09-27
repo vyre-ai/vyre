@@ -176,8 +176,12 @@ final class PlannerBanners: NSObject, UNUserNotificationCenterDelegate {
         for e in entries {
             let c = content(e.firing)
             if !e.loud { c.interruptionLevel = .active }
-            let secs = max(1, (e.at - t) / 1000)
-            let req = UNNotificationRequest(identifier: e.key, content: c, trigger: UNTimeIntervalNotificationTrigger(timeInterval: secs, repeats: false))
+            // At the wall moment, not an interval from now: a clock correction or a long gap
+            // before the next refresh cannot skew it. `at` is an absolute instant.
+            let when = Calendar.current.dateComponents(in: .current, from: Date(timeIntervalSince1970: e.at / 1000))
+            var parts = DateComponents(year: when.year, month: when.month, day: when.day, hour: when.hour, minute: when.minute, second: when.second)
+            parts.timeZone = .current
+            let req = UNNotificationRequest(identifier: e.key, content: c, trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: false))
             center.add(req, withCompletionHandler: nil)
         }
     }

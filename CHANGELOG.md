@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Fixes: the voice test's last check, and planner rings at the wall moment
+
+- local/voice/talk.test.js waits up to 5 s for the listen stream to close on vyred's side before
+  checking none is left open. On a slow CI runner the close lands after the last subtest.
+- The Capsule schedules local planner rings with a calendar trigger at `at`, not an interval
+  counted from the refresh.
+
 #### Planner rings by key, and the next 48 hours ring on the Mac
 
 - Capsule banners use each ring's key ("planner-<item>-<due>") as the notification identifier.
