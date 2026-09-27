@@ -140,6 +140,30 @@ VYRE TIPS (user request, 27 Sep 2026, after RESUME 5). The plan went to the lead
   their voice lines before finishing job 2 (drop "(pending)" marks, first-hour colour-through-hub
   update, 48 pending tips) once the RC lands.
 
+## Terminology: server and devices (lead, 2026-09-28)
+
+- 125a0f54 ADR 0038 (docs/adr/0038-terminology-server-and-devices.md, claimed in
+  docs/work/README.md), docs/reference/glossary.md, and a docs-check "terminology" rule flagging
+  bare "box" (allowlist: `vyre box`, `box image`, message/text/dialog box; exempt: CHANGELOG.md,
+  docs/adr/*, docs/reference/glossary.md itself, and generated docs/reference/*.md — edit the
+  code, not the page).
+- d3b95fbe swept the 20 docs pages docs owns (index, using/{agents,memory,vault,
+  projects-and-threads,tips,claude-code}, concepts/{floor,modules,presence}, build/*,
+  architecture/{index,performance}, CONTRIBUTING-DOCS, known-gaps, releases/0.1.0, first-hour) to
+  server/device. 97 terminology hits on those files before, 26 after; the 26 left are deliberate
+  (unrenamed CLI/config/error-code literals owned by other teams, the real
+  `vyre.run/box/vyre.tgz` install URL, and one anchor-compat shim on using/memory.md). Two spots
+  needed a real rewrite, not a word swap, since they described the retired Mac-as-its-own-box
+  setup (0.1.0.md's release copy, first-hour.md's box's-address line).
+- Every other published page still says "box" on purpose: owned by another team, not swept here.
+  docs-check will flag them until each team sweeps its own (tracked as their 0.1.1 work, not
+  docs's to fix).
+- docs/work/terminology-inventory-0038.md: every user-facing "box" string found in code, grouped
+  by owning team, for the lead to hand out. Flags one open call: does `vyre box <sub>` itself
+  become `vyre server <sub>` with an alias (ADR 0038 assumes yes, one release)?
+- Sent launch the words for vyre.run (server/device, same ADR, no alias window since it's a
+  fresh-visitor page).
+
 ## Next (queued before tips)
 
 - Shots retake on current main (docs-check shows 263 stale). Run `uptime` on the test box first
