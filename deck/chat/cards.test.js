@@ -351,3 +351,32 @@ test("Mac refusals, by code: which step each needs; only an unknown tool, bad in
   assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, { node: "nMacStable1" }), null);
   assert.equal(macRefusal({ code: "denied", message: "pair again" }, { node: "nMacStable1" }), null);
 });
+
+// ---- the rewind sheet: what it restores ------------------------------------------------------
+
+test("the rewind sheet: Claude Code's three restores, code off on a box that restores the conversation only", async () => {
+  const { rewindSheet } = await import("./pickers.js");
+  /** @type {any[]} */
+  const chose = [];
+  let codeOk = /** @type {boolean|null} */ (false);
+  const sheet = rewindSheet({ points: [{ uuid: "u2", text: "Rebuild the Estate intake", at: null }, { uuid: "u1", text: "Read the intake folder", at: null }],
+    can: () => true, codeOk: () => codeOk, onChoose: async (p, r) => { chose.push([p.uuid, r]); return null; }, onClose: () => {} });
+  const opts = () => $$(sheet.el, ".cv-rw-opt");
+  assert.deepEqual(opts().map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"]);
+  assert.deepEqual(opts().map(b => b.disabled), [true, false, true], "an older box: the conversation only");
+  assert.equal(opts()[0].getAttribute("title"), "Needs the sessions update");
+  assert.equal(sheet.restore(), "conversation");
+  sheet.key(/** @type {any} */ ({ key: "ArrowRight" }));
+  assert.equal(sheet.restore(), "conversation", "arrows skip what is off");
+  codeOk = true;
+  sheet.refresh();
+  assert.equal(sheet.restore(), "both", "the default once the box can put files back");
+  sheet.key(/** @type {any} */ ({ key: "ArrowDown" }));
+  sheet.key(/** @type {any} */ ({ key: "ArrowRight" }));
+  assert.equal(text($(sheet.el, ".cv-rw-opt[aria-checked=true]")), "Restore conversation");
+  sheet.key(/** @type {any} */ ({ key: "ArrowRight" }));
+  assert.equal(text($(sheet.el, ".cv-rw-go")).replace("⏎", "").trim(), "Restore here");
+  sheet.key(/** @type {any} */ ({ key: "Enter" }));
+  await new Promise(r => setTimeout(r, 0));
+  assert.deepEqual(chose, [["u1", "code"]]);
+});

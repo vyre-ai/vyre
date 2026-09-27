@@ -542,6 +542,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (prefers-reduced-motion: reduce) { .cv-run .cv-chev { transition: none; } }
 
 .cv-chip { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.cv-context { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.cv-context.high { color: var(--beacon-ink); }
 .cv-state { font-family: var(--mono); font-size: 11px; color: var(--label); white-space: nowrap; }
 .cv-state-running, .cv-state-starting { color: var(--signal-ink-text, var(--signal)); }
 .cv-state-waiting { color: var(--text); }
@@ -636,6 +638,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-task-meta { flex-shrink: 0; font-family: var(--mono); font-size: 11px; color: var(--label); }
 .cv-task[data-status="running"] .cv-task-meta { color: var(--signal-ink-text, var(--signal)); }
 .cv-task-err { font-size: 11px; }
+.cv-task-summary { font-size: 11px; max-width: 40%; }
+.cv-user-images { font-size: 11px; margin-top: 4px; }
 
 .cv-queued-local { border-style: dotted; }
 
@@ -653,6 +657,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-rewind-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; border-top: 1px solid var(--rule); }
 .cv-rewind-acts .btn .kbd { margin-left: 4px; }
 .cv-rewind-acts .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.cv-rewind-opts { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px; border-top: 1px solid var(--rule); }
+.cv-rw-opt[aria-checked="true"] { background: var(--hover); color: var(--text); }
+.cv-rw-opt[disabled] { opacity: 0.5; cursor: not-allowed; }
 .cv-rewind-note { padding: 0 6px 4px; font-size: 12px; color: var(--beacon-ink); }
 .cv-rewind-note:empty { display: none; }
 
@@ -662,3 +669,5 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-steer, .cv-shell { margin-left: 0; max-width: 100%; }
 }
 @media (pointer: coarse) { .composer-chip .kbd, .cv-rewind-acts .btn .kbd { display: none; } }
+.composer-attach { width: 36px; height: 44px; flex-shrink: 0; }
+.composer-attach[hidden] { display: none; }

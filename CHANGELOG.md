@@ -48,6 +48,88 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   needs the keyboard. Queued rows carry `kind` (new column), and `thread.queued` and
   `thread.sent` say it.
 
+
+#### Chat: images, ! shell, # memory, thinking and background tasks on the box's real shapes
+
+Wires sessions 034c71e5 and db44749b (thinking as its own event) in deck/chat.
+- caps.js: threads.shell, threads.remember, threads.thinking, threads.tasks and threads.kill-task
+  are live (SESSION_TOOLS); NOT_OFFERED is empty. threads.tasks' answer (asked when a session
+  opens) says it for images, "!", "#", thinking and Stop (RELEASE_034, LINKED), so an older box
+  keeps all of them off from its first "no such tool".
+- Images: threads.send {images: [{media_type, data}]}, the box's caps (5, 5 MB each as base64
+  length * 3/4; png, jpeg, gif, webp). Paste, an attach button or a drop; a box that has not said
+  yet is asked first, so images never go to one that would drop them. thread.sent {images} and a
+  steer drawn on send show "N images" on the message.
+- "!": threads.shell {thread, command} answers {code, output}; thread.shell is the same row, not a
+  second one, and another screen's is a row of its own. A transcript read splits the next
+  message's <bash-input>/<bash-stdout>/<bash-stderr> blocks back into shell rows and the words.
+- "#": threads.remember {thread, text, scope} answers {scope, file}: the note names the file;
+  thread.remembered is a notice in the timeline.
+- Thinking: threads.thinking {thread, on} ({thinking: null, note} when not running puts the chip
+  back); thinking.switched moves the chip. Reasoning rows from thread.thinking {message, block,
+  delta | text + done} (and 034c71e5's thread.text kind "reasoning", the same row) are keyed
+  r:<message>:<block>, apart from text's m:.
+- Background tasks: thread.task merges only the fields each event carries (kind and title from
+  the start, summary and error at the end; stopped reads killed); threads.tasks seeds the tray;
+  Stop sends threads.kill-task {thread, task} (was {id}). The tray says done, failed or stopped
+  and the summary.
+- Tests: the live-key tests in core/switchboard and core/transcripts compare text keys with text
+  keys and reasoning (thread.thinking, or kind "reasoning") with reasoning, so they pass with or
+  without thinking deltas. The stuck-scroll window tests wait for the reveal and the stick frame,
+  not a fixed 60 ms, so a loaded machine does not fail them.
+  test/chat-sessions-contract: the 034c71e5 tools and events are AHEAD (remove when on main),
+  and their payload keys are checked on both sides, strictly once core has them.
+
+#### Chat: the model picker, the session's commands, rewind with code, the context meter
+
+Wires sessions 7543952e and 468af69f in deck/chat.
+- caps.js: threads.model, threads.commands and sessions.models.get are live (SESSION_TOOLS, learnt
+  lazily, so an older box switches them off on its first "no such tool"), out of NOT_OFFERED.
+  REWIND_CODE (threads.rewind's restore "code"/"both") is learnt with them (LINKED).
+- Model chip and picker (composer.js, composer-state.js modelChoices): the aliases opus, sonnet
+  and haiku, then every id sessions.models.get names per purpose ("Used for chat, agent") and the
+  thread's own, "now" on the thread's. threads.model switches it; a stopped thread's note is shown.
+  session-state reduces model.switched, and model.changed only without a scope (a scoped one is
+  sessions.models.set's per-purpose default, not the thread's).
+- "/" menu: threads.commands' {commands: [{name, description, argumentHint}]}, with the static
+  core/commands.js list while the thread is not running (asked again after 15 s) or on an older box.
+- Rewind sheet (pickers.js): Claude Code's "Restore code and conversation" (the default),
+  "Restore conversation" and "Restore code". Code keeps the conversation, the view and the
+  composer's words; a notice says "Restored N files" (or why not). Both adds it to the rewind's
+  notice. Code choices are off, with "Needs the sessions update", on a box that restores the
+  conversation only. A code restore is never noted as an abandoned branch.
+- Header: "62% of context" from thread.usage context, only when the box gives the share.
+- test/chat-sessions-contract: AHEAD_TOOLS and AHEAD_EVENTS allow threads.model,
+  threads.commands and model.switched to be missing from this tree's core until sessions merges;
+  strict once core has them. Dotted tool names (sessions.models.get) are read whole.
+
+#### Chat: the stream resumes, and long replies stay smooth
+
+- Reconnect (deck/js/api.js, ADR 0029 R1): the shared stream hears `stream.reset` and lowers its
+  cursor to vyred's id, so events after a box's log reset are no longer all dropped as seen. A
+  stream the browser gave up on (CLOSED) is opened again from the last id seen, 1 s doubling to
+  30 s, only while the page is visible. `onResume(fn)` tells a view the stream came back or was
+  reset; the session view then re-reads threads.get (events since the last one applied),
+  threads.asks and the transcript from `next`, merged through session-state, so nothing is missing
+  or shown twice.
+- Stick to the bottom (window-view.js createStick, after Paseo's web stream): a ResizeObserver on
+  the scroller and every mounted row, and at most one frame per burst setting scrollTop, replace
+  reading scrollHeight around every live event and scrolling on every reveal frame. Only the
+  reader's intent detaches (an upward wheel, PageUp / ArrowUp / Home, a touch drag, the
+  scrollbar, within 100 ms of the scroll); within 1 px of the bottom sticks again. The windowed
+  view's anchoring and the Jump to latest pill are kept.
+- Live text (live-text.js): finished blocks are rendered once and frozen; only the block being
+  written re-parses each frame. Block ends are found by a line scan that resumes where it
+  stopped, so a long open code fence is no longer scanned quadratically (settledEnd is linear). A
+  code block shows plain text while its fence is open and is highlighted once, when it closes.
+- Pace (core/pace.js, after Paseo's text-reveal): each frame reveals ceil(backlog * dt / 150 ms)
+  characters, at least one, at most once per 60 Hz frame; a stall counts as 250 ms at most. The
+  pacer's API is unchanged (maxLagMs still reads as the horizon); live-text draws nothing on a
+  faster display's extra frames.
+- Grouping (core/grouping.js createGrouper): the session view no longer folds every item on each
+  tool event. Given the changed keys it regroups from the row before the first change and stops
+  at the first old row boundary past the last one; unchanged rows stay the same objects.
+  groupItems stays the pure full pass, and a test checks both agree on random sequences.
 #### Sessions: concurrency slots for teammates and subagents (the user's usage control)
 
 #### The floor follows links
@@ -261,6 +343,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   or queued answers `{sent: true, already: true}` and starts nothing, even after a restart.
 - `threads.queue {thread}`: the words queued and not handed over yet (queued, uuid, text, surface, at).
 - Thread records carry `mode` (default, acceptEdits, plan), kept by `threads.mode`.
+
 
 #### Sessions: the Agent SDK is the default driver (ADR 0030)
 
