@@ -48,6 +48,8 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
 - Lead's list done through 7. Compile phase next: the promised items below, then docs + polish.
 
 ## Next
+- When native-core c012c13c (MODEL_ALIASES) lands: keep it on merge; make sessions.models read it, or retire sessions.models for sessions.models.get aliases.
+- Tell launch (onboard page restyle) if vault's Connect Claude relay changes any onboard page text or step.
 - After 0.1.0 (the lead): the 5 cross-imports among core/sessions, core/switchboard,
   core/transcripts, core/spawner and core/harness (frozen in test/boundaries allowlist) are mine to
   remove: merge sessions and switchboard into one module, or talk over ctx.call.
