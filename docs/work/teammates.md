@@ -9,6 +9,8 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 
 ## Done
 - ADR 0031 drafted (number claimed in docs/work/README.md, front matter, nav.json entry).
+- docs:ref regenerated (docs/index.json, docs/reference/index.md); on testbox
+  test/docs-build, docs-check, docs-index, docs-shots: 61 of 61 pass.
 - Read: ADR 0030 (work/sessions), core/agents, core/projects, core/memory, presence and the
   daemon's agent checks, ADR 0028's agent grants (work/vault-next), the one-app Agents and Needs
   boards (work/app-design), Paseo's agent tools and lifecycle docs.
