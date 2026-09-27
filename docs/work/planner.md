@@ -90,17 +90,23 @@ the contract in ADR 0025.
   The registry's callerKind does not strip `:thread:` yet (sessions owns it).
 - Tests on the test box: 80 of 80 (core/planner/*, push, deck planner + pwa, cc-plugin), docs 61 of 61.
 
+## Done (session 4, later)
+- Answers settled: resilience exposed ctx.events.latestId (on main 15e82dd7), and the fallback was
+  dropped (379fea4c). Sessions fixed callerKind for `mcp:thread:<id>` (work/sessions e20f459), took the
+  planner tool set for in-process MCP, and got the rules line for the append. capsule-pro follows the
+  key contract (work/capsule-pro 61dd9dc). app-design's Planner board matches (6a1e2f7a).
+- Tests: 82 of 82 targeted, docs 61 of 61 (a755b03a). Staged in the integrator's batch 3b.
+
 ## Doing
-- Nothing in flight. Resume from Next.
+- Stopped at the lead's wrap-up (2026-09-27). Nothing in flight.
 
 ## Next
-1. Answers from resilience, sessions, pwa, capsule-pro, mobile (sent 2026-09-27, session 4).
-2. If sessions wants it: a planner rules text for the session's append prompt, and the in-process
-   MCP tool list (planner.add/list/agenda/done/snooze/dismiss/upcoming; never settings).
-3. (done) Fallback dropped (379fea4c); tested after the freeze: 82 of 82 targeted, docs 61 of 61.
-4. CLI prints the parser's `reason` on ambiguous words (if the user wants it).
-5. Email/SMS fallback (later, needs the user's go and the Gate).
-6. Known limit: a planner-ack push goes out only for firings pushed since vyred started (and every
+1. If the integrator reports a merge failure in planner code, fix it.
+2. pwa and mobile: confirm they got the key contract (relayed by the lead): the push tag is the
+   key; mobile schedules planner.upcoming with id = key.
+3. CLI prints the parser's `reason` on ambiguous words (if the user wants it).
+4. Email/SMS fallback (later, needs the user's go and the Gate).
+5. Known limit: a planner-ack push goes out only for firings pushed since vyred started (and every
    unrung answer).
 
 ## Contracts owed
