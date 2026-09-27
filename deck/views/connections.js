@@ -87,6 +87,46 @@ export function pickAccounts(d) {
   }));
 }
 
+/**
+ * The surfaces vault.connections.grant/revoke know (ADR 0028 decision 9b). "Planner" is not
+ * one yet: app-design's Connections board shows a Planner chip, and the lead's ask is for these
+ * chips to grant real access, so this is a live question back to vault and app-design rather
+ * than a chip this file invents (docs/work/connectors.md, Needs from others).
+ */
+export const SURFACE_NAMES = ["capsule", "chat", "agents", "phone"];
+/** A provider name (core/vault/providers.js) to the word and card group the board draws. */
+const PROVIDER_WORDS = {
+  "google-oauth": { word: "Google", group: "google" }, "google-dwd": { word: "Google", group: "google" },
+  "google-apps-script": { word: "Apps Script", group: "mail" }, "imap-smtp": { word: "Mail login", group: "mail" },
+  mcp: { word: "MCP server", group: "mcp" },
+};
+const providerWord = p => (PROVIDER_WORDS[p] || { word: p || "Connection", group: "other" });
+
+/**
+ * vault.connections.list → one card's fields per connection, named only, whatever the source
+ * (Google, mail, Apps Script or an MCP server): the shape every mcp-native card in
+ * docs/design/mcp-native.md and app-design's Connections board (db3dbbfa) draws from. A
+ * multi-account server (two Gmail MCPs, one per inbox) is already two rows here, each its own
+ * card and its own grant, since the vault resyncs one connection per mcp.servers row.
+ * @param {any} d
+ */
+export function pickConnections(d) {
+  const list = Array.isArray(d) ? d : Array.isArray(d?.connections) ? d.connections : [];
+  return list.filter(c => c && typeof c.id === "string").map(c => {
+    const { word, group } = providerWord(str(c.provider));
+    const surfaces = SURFACE_NAMES.filter(s => Array.isArray(c.surfaces) && c.surfaces.includes(s));
+    const caps = strs(c.capabilities);
+    const defaultFor = strs(c.default).filter(cap => caps.includes(cap));
+    return {
+      id: c.id, provider: str(c.provider), providerWord: word, group,
+      account: str(c.account), label: str(c.label) || str(c.account),
+      ready: c.state === "ready", needs: Array.isArray(c.needs) ? c.needs.map(n => ({ module: str(n?.module), need: str(n?.need) })) : [],
+      capabilities: caps, surfaces, defaultFor,
+      lastUsed: num(c.last_used), connected: num(c.added),
+    };
+  });
+}
+
 /** vault.list → { name, kind, fields, grants } per live item: names only. */
 export function pickItems(d) {
   const list = Array.isArray(d) ? d : Array.isArray(d?.items) ? d.items : [];
