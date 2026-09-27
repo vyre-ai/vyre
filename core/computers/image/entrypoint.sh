@@ -133,7 +133,8 @@ log "session bus at ${DBUS_SESSION_BUS_ADDRESS}"
 # fluxbox is vyre's: the agent's processes are stopped during a sign-in (below), and a stopped
 # window manager would never map the window a fill opens.
 log "starting fluxbox (vyre) and xterm (the agent)"
-as_vyre sh -c 'mkdir -p "$HOME/.fluxbox" && exec fluxbox >"$HOME/.fluxbox/log" 2>&1' &
+# No wallpaper: fbsetbg's error dialog would otherwise sit on the screen Glass shows.
+as_vyre sh -c 'mkdir -p "$HOME/.fluxbox" && echo "background: none" > "$HOME/.fluxbox/overlay" && exec fluxbox >"$HOME/.fluxbox/log" 2>&1' &
 sleep 1
 as_agent xterm -geometry 100x30 &
 
@@ -142,7 +143,8 @@ as_agent xterm -geometry 100x30 &
 # signal exactly the agent's processes (kill -1 as uid 1000 reaches uid 1000 and nothing else).
 # When computerd exits, the pipe closes and everything the agent runs is continued.
 # Stopping sweeps three times, so a process that forked during one sweep is caught by the next.
-signal_agent() { setpriv --reuid=1000 --regid=1000 --clear-groups --inh-caps=-all -- kill -s "$1" -- -1 2>/dev/null || true; }
+# The image has no kill binary, only the shell's builtin: bash runs it as the agent's uid.
+signal_agent() { setpriv --reuid=1000 --regid=1000 --clear-groups --inh-caps=-all -- /bin/bash -c "kill -s $1 -1" 2>/dev/null || true; }
 freezer() {
   while IFS= read -r cmd; do
     case "${cmd}" in
