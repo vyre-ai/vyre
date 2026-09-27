@@ -157,7 +157,10 @@ export default {
         // other caller naming a thread would put its steps in someone else's chat (e2e review).
         // The call links the step to the chat row that asked for it (ADR 0036), as a link only.
         const kind = callerKind(caller);
-        const thread = meta.thread ? String(meta.thread) : i.thread && PERSON_SURFACES.has(kind) ? String(i.thread) : null;
+        // callerKind drops an agent label ("cli agent:kit" is "cli"): an agent vouched on a person's
+        // surface is still an agent, and names no thread.
+        const person = PERSON_SURFACES.has(kind) && !/(?:^|[\s:])agent:/.test(String(caller));
+        const thread = meta.thread ? String(meta.thread) : i.thread && person ? String(i.thread) : null;
         const line = (/** @type {unknown} */ x) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
         ctx.events.emit("desktop.acted",
           { agent, action: actionName, summary: line(i.name), ok: result.ok, ...(i.app ? { app: line(i.app) } : {}),

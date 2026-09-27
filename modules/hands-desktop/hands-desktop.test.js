@@ -228,6 +228,14 @@ test("hands-desktop: act presses a uniquely-named control and verifies the windo
   assert.equal(last.payload.call, "toolu_09");
   assert.equal(last.payload.thread, s.kitThread);
   assert.equal(last.payload.app, "gedit");
+
+  // A person's surface may say which thread a step is for; an agent vouched on that surface may not.
+  const own = await s.d.registry.call("hands-desktop.act", { agent: "kit", thread: s.kitThread, name: "Filename", role: "entry", action: "set-text", value: "c.txt" }, "cli");
+  assert.equal(own.error, undefined, JSON.stringify(own));
+  assert.equal(s.desktopEvents().at(-1).payload.thread, s.kitThread);
+  const vouched = await s.d.registry.call("hands-desktop.act", { agent: "kit", thread: s.kitThread, name: "Filename", role: "entry", action: "set-text", value: "d.txt" }, "cli agent:kit");
+  assert.equal(vouched.error, undefined, JSON.stringify(vouched));
+  assert.equal(s.desktopEvents().at(-1).payload.thread, undefined, "an agent on the person's CLI names no thread");
 });
 
 test("hands-desktop: a consequential control is refused before any click reaches computerd", async t => {
