@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### An app send whose approval failed is not reported as sent
+
+- capsule-apps (7b08a18): gate.approve answers a failed send as data (state "failed"), which the
+  Capsule showed as "Sent". AppsWordsProvider.approveHeld, used by the @App path and the words
+  row, now asks apps.act Slack "sent" after a failure or before retrying one that failed: "It
+  went out" when it did, otherwise it stays at the Gate and Enter tries again.
+
+#### CI: capsule-mac runs when the Capsule's check or CLI changes
+
+- capsule-mac.yml also triggers on scripts/capsule-native-check.mjs and core/cli/commands/capsule*,
+  which it runs; a change there alone used to need a manual dispatch.
+
 #### The answer eval runs without the Electron Capsule
 #### Onboarding: the first steps load the theme and fonts
 

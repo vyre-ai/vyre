@@ -264,6 +264,35 @@ let appsExtensionSuite = Suite("apps extension") { t in
         t.eq(l2.calls("gate.approve").count, 0)
     }
 
+    t.test("Enter: a send whose answer was lost is read in Slack before anything is said, and never approved twice") {
+        /// One gated send through the extension: the act answers `held`, the approval `approve`, the check `sent`.
+        func run(held: [String: Any], approve: [String: Any], sent: Bool) -> (ActionOutcome?, AppsLink) {
+            let l = link { i in ["app": "Slack", "action": "send", "args": ["to": "#general", "text": i["text"] ?? ""], "sends": true, "gated": true, "said": "Slack → #general: \(i["text"] ?? "")"] }
+            l.answer("apps.act") { i in (i["action"] as? String) == "sent" ? .success(["sent": sent]) : .success(["held": held]) }
+            l.answer("gate.approve") { _ in .success(approve) }
+            let r = t.wait { @MainActor () -> ActionOutcome in
+                let ext = AppsExtension(host: AppsHost(l))
+                await ext.refreshApps(l)
+                let slack = ext.mentions(matching: "slack", context: .top)[0]
+                await ext.readInside("Slack", parent: slack.id, l)
+                let c = ext.mentions(matching: "", context: MentionContext(parent: slack, extensionID: "apps"))[0]
+                _ = await ext.send("shipped", to: c, in: slack, query: Query(""))
+                return await ext.send("shipped", to: c, in: slack, query: Query(""))
+            }
+            return (r, l)
+        }
+        let (lost, l1) = run(held: ["id": "g7", "at": 1790503200000], approve: ["id": "g7", "state": "failed", "error": "closed"], sent: true)
+        t.eq(lost, .said("It went out: Slack → #general: shipped"))
+        let check = l1.calls("apps.act").last
+        t.eq((check?["args"] as? [String: Any])?["since"] as? Double, 1790503200000, "only posts since it was held count")
+        let (gone, _) = run(held: ["id": "g7"], approve: ["id": "g7", "state": "failed", "error": "closed"], sent: false)
+        t.eq(gone, .failed("Slack did not answer, so it may not have gone. It waits at the Gate: press Enter to try again."))
+        // The same item again after a failed approval: checked first, and not approved when it went out.
+        let (tried, l3) = run(held: ["id": "g7", "tried": true], approve: ["id": "g7", "state": "sent"], sent: true)
+        t.eq(tried, .said("It went out already: Slack → #general: shipped"))
+        t.eq(l3.calls("gate.approve").count, 0)
+    }
+
     t.test("Enter: with no apps module on this Vyre, it says so") {
         let l = AppsLink()
         let out = t.wait { @MainActor () -> ActionOutcome in
