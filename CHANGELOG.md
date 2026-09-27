@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Tests: the plugin's memory test always runs
+
+- test/cc-plugin.test.js: memory-iq's bare-mcp gate is on main, so the remember-then-answer test
+  no longer skips.
+
 #### The design docs stay out of the package
 
 - package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at
