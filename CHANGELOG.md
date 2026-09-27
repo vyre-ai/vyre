@@ -213,6 +213,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   nonce set with the Capsule. It opens a presence session. Migration 3 widens
   `presence_keys.kind`. For the native Android build and relay `device:<id>` callers (ADR 0026,
   ADR 0027). ADR 0004 addendum; tests in core/presence/presence.test.js.
+#### Tokens: one JSON, rendered for the Capsule, the app and the Deck
+
+- scripts/gen-tokens (`npm run tokens`) is the one token generator (lead, 27 Sep; it replaces the
+  app's and the Capsule's own). It writes apps/app/src/theme/tokens.ts (byte-identical to the
+  app's current file: `tokens`, `Scheme`, `Colors`, `attention()`), the Capsule's
+  local/capsule/native/Sources/UI/Tokens.generated.swift and deck/css/tokens.css (the Deck's
+  selectors and role names, incl. --beacon-ink, --beacon-dot, --beacon-badge-ink). `--check` exits
+  1 when a file is stale; `--ts/--swift/--css <path>` write one output elsewhere. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
+  now a list of sizes (12, 13), not a size and line pair; phone type steps get their own enum.
+  Tests in test/tokens.test.js.
+
+#### Design: teammates, usage limits, planner ring counts
+
+- New boards: the Agents place with teammates (ADR 0031), the teammate kinds in Needs you, and an
+  interactive "Teammates and usage" limits board (presets, custom steppers with live impact, the
+  box ceiling, usage pause, the slot queue). The Planner board counts rings as 1 + escalate_max
+  and ties "Live" to a connected stream.
+
 #### Design: one app for the web, iOS and Android
 
 - docs/design/one-app/: the one-app design sheet (principles, system, layout, key screens on phone

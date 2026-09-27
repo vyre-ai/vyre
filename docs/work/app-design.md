@@ -46,6 +46,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Changed contracts
 
+- New: scripts/gen-tokens and scripts/lib/tokens.js own the token exports (capsule-pro asked,
+  27 Sep). The Swift output's default path is local/capsule/native/Sources/UI/Tokens.generated.swift;
+  mono sizes are `monoSizes: [12, 13]` (the hand-written file had `mono: (12, 13)` as size and line).
+
 - docs/nav.json (docs team): design/one-app/README.md and DIRECTION.md added under Contributing;
   docs/index.json and docs/reference/index.md regenerated with npm run docs:ref.
 - Proposed only: the CLI verbs `vyre phone add` and `vyre allow` / `vyre deny` (lines marked
