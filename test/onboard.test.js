@@ -296,6 +296,13 @@ test("onboard: reserve goes to ts.net without a zone token and says so when the 
   const yes = await (await tool(base, session, "onboard.name", { name: "kit", action: "reserve", confirm: true })).json();
   assert.ok(!yes.error, JSON.stringify(yes.error));
   assert.equal(JSON.parse(fs.readFileSync(path.join(root, "config.json"), "utf8")).name, "kit", "confirmed, so it is the name");
+  // The claim runs on in the background and saves config.json when it ends. The temp home is
+  // removed before vyred stops, so let it end first or its late write leaks the home.
+  for (let i = 0; i < 250; i++) {
+    const { phase } = (await call("names.status", {}, { root })).data || {};
+    if (phase !== "dns" && phase !== "certificate") break;
+    await new Promise(res => setTimeout(res, 20));
+  }
 });
 
 test("onboard: when tailscale cert itself refuses because HTTPS is off, the address step says so with the admin console link", async t => {
