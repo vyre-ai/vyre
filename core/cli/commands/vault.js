@@ -554,6 +554,102 @@ async function approve(args) {
   return 0;
 }
 
+// ------------------------------------------------------------ needs and connect
+
+const STATE = { ready: signal, missing: beacon, not_granted: beacon, pending: beacon, expired: beacon };
+
+/** `needs [module]`: what each module needs from the Vault, and how to fill it. Names only. */
+async function needsCmd(args) {
+  if (args.length > 1) return oops("vyre vault needs [module]");
+  const r = await tool("vault.need", args[0] ? { module: args[0] } : {});
+  if (r.error) return fail(r);
+  const { needs = [], groups = [] } = r.data;
+  if (!needs.length) { say(dim("  no module declares a credential it needs")); return 0; }
+  say("");
+  let mod = "";
+  for (const n of needs) {
+    if (n.module !== mod) {
+      mod = n.module;
+      const gs = groups.filter(g => g.module === mod);
+      say(`  ${bold(mod)}${gs.map(g => dim(` · ${g.group} ${g.ready ? "ready" : "not ready (one of " + g.members.join(", ") + ")"}`)).join("")}`);
+    }
+    const paint = STATE[/** @type {keyof typeof STATE} */ (n.state)] || dim;
+    say(`    ${n.id.padEnd(18)} ${paint(n.state.replace("_", " "))}  ${dim(`${n.provider} · ${n.purpose}${n.optional ? " · optional" : ""}`)}`);
+  }
+  say(dim(`\n  vyre vault connect <module> [need]\n`));
+  return 0;
+}
+
+/** Prompts for connect: a terminal asks each one; piped input answers one line each, in order. */
+async function connectAnswers() {
+  if (process.stdin.isTTY) return { hidden: q => hiddenPrompt(q), plain: q => visiblePrompt(q) };
+  const lines = (await stdinText()).split(/\r?\n/);
+  let i = 0;
+  const next = async () => lines[i++] ?? "";
+  return { hidden: next, plain: next };
+}
+
+/** `connect <module> [need] [--file f] [--label l]`: fill one need through vault.connect. */
+async function connectCmd(args) {
+  let f;
+  try { f = flags(args, { string: ["file", "label"] }); } catch (e) { return oops(e.message); }
+  const [module, want] = f._;
+  if (!module || f._.length > 2) return oops("vyre vault connect <module> [need] [--file key.json] [--label l]");
+  const r = await tool("vault.need", { module });
+  if (r.error) return fail(r);
+  const needs = r.data.needs || [];
+  let n = want ? needs.find(x => x.id === want) : null;
+  if (want && !n) return oops(`${module} declares no need ${want}; it needs ${needs.map(x => x.id).join(", ")}`);
+  const ask = await connectAnswers();
+  if (!n) {
+    // One per group (its first member) and every need on its own, leaving out what is ready.
+    const seen = new Set();
+    const open = needs.filter(x => {
+      if (x.group) { if (seen.has(x.group) || r.data.groups.some(g => g.module === x.module && g.group === x.group && g.ready)) return false; seen.add(x.group); }
+      return x.state !== "ready";
+    });
+    if (!open.length) { say(dim(`  everything ${module} needs is ready · vyre vault connect ${module} <need> to replace one`)); return 0; }
+    if (open.length === 1) n = open[0];
+    else {
+      if (!process.stdin.isTTY) return oops(`${module} needs more than one: name it, one of ${open.map(x => x.id).join(", ")}`);
+      const pick = await ask.plain(`  which one (${open.map(x => x.id).join(", ")}): `);
+      n = needs.find(x => x.id === pick.trim());
+      if (!n) return oops("nothing picked, nothing stored");
+    }
+  }
+  if (n.help) say(dim(`  ${n.provider}: get it at ${n.help}`));
+  if (n.how === "oauth") {
+    const c = await tool("vault.connect", { module, need: n.id, ...(f.label ? { label: f.label } : {}) });
+    if (c.error) return fail(c);
+    say(`  ${beacon("a sign-in")} ${dim(`· ${n.provider} signs in through ${c.data.next.tool}`)}`);
+    return 0;
+  }
+  /** @type {Record<string, string>} */
+  let fields = {};
+  let file;
+  try {
+    if (n.how === "file") {
+      const at = f.file || await ask.plain("  key file (a path): ");
+      if (!at) return oops("no file given, nothing stored");
+      const p = path.resolve(at.replace(/^~(?=\/)/, os.homedir()));
+      file = { content: fs.readFileSync(p, "utf8"), filename: path.basename(p) };
+    } else if (f.file) return oops(`${n.provider} takes fields, not a file`);
+    for (const x of n.fields) {
+      if (n.how === "file" && x.secret) continue;
+      const v = x.secret ? await ask.hidden(`  ${x.label}: `) : await ask.plain(`  ${x.label}${x.optional ? " (optional)" : ""}: `);
+      if (v) fields[x.name] = v;
+    }
+  } catch (e) { return oops(/** @type {Error} */ (e).message === "cancelled" ? "cancelled, nothing stored" : /** @type {Error} */ (e).message); }
+  if (!Object.keys(fields).length && !file) return oops("nothing given, nothing stored");
+  const c = await tool("vault.connect", { module, need: n.id, fields, ...(file ? { file } : {}), ...(f.label ? { label: f.label } : {}) });
+  fields = {}; file = undefined;
+  if (c.error) return fail(c);
+  const g = c.data.grant;
+  if (g && g.status === "pending") say(`  ${signal("stored")} ${bold(c.data.item)} ${beacon("· grant waiting for approval")} ${dim(`vyre vault approve ${g.id}`)}`);
+  else say(`  ${signal("stored")} ${bold(c.data.item)} ${dim(`· ${c.data.provider}, granted to ${module}`)}`);
+  return 0;
+}
+
 // ------------------------------------------------------------ run
 
 /**
@@ -1498,6 +1594,7 @@ const HELP = [
   ["git-credential <get|store|erase>", "git's credential helper (bin/git-credential-vyre)"],
   ["put <name> [--kind k] [--description d] [--url u] [--host h ...] [--allow-body]", "prompts for the value without echo"],
   ["    [--username u] [--totp] [--field F ...] [--expires 90d] [--scope s ...] [--provider p] [--from file]", "kinds: " + KINDS.join(", ")],
+  ["needs [module] | connect <module> [need] [--file key.json] [--label l]", "what each module needs from the vault, and filling one: hidden prompts, a key file for service accounts"],
   ["grant <name> <module> [--watcher w]", "let a module use an item"],
   ["revoke <name> <module> [--watcher w]", "take it back"],
   ["pending", "grants and passes an agent asked for"],
@@ -1558,7 +1655,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health: healthCmd, remind: remindCmd, history: historyCmd, revert: revertCmd, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, needs: needsCmd, connect: connectCmd, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health: healthCmd, remind: remindCmd, history: historyCmd, revert: revertCmd, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 export default {

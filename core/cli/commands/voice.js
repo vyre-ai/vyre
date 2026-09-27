@@ -1,5 +1,6 @@
 // @ts-check
-// `vyre voice`: push-to-talk from the terminal, the voice module's status, and saving its key.
+// `vyre voice`: push-to-talk from the terminal, the voice module's status, and saving its key
+// (a shortcut for `vyre vault connect voice <provider>`).
 // The talking itself lives in local/voice/talk.js; this file only parses arguments.
 
 import { call } from "../../daemon/client.js";
@@ -38,14 +39,13 @@ export default {
       try { value = await hiddenPrompt(`${provider} key: `); } catch { value = ""; }
       if (!value) { out("  no key given, nothing stored"); return 1; }
       // Saving and granting a key are a person's acts: Touch ID or a code typed at this terminal
-      // (read from /dev/tty, so the key can still come in on stdin).
-      const put = await callAsPerson("vault.put", { name: item, kind: "api-key", fields: { value }, description: `${provider} key for push-to-talk` });
+      // (read from /dev/tty, so the key can still come in on stdin). vault.connect does both, for
+      // the need voice declares for this provider.
+      const r = await callAsPerson("vault.connect", { module: "voice", need: provider, fields: { value } });
       value = "";
-      if (put.error) return fail(put);
-      const g = await callAsPerson("vault.grant", { name: item, module: "voice" });
-      if (g.error) return fail(g);
-      const grant = g.data.grant;
-      if (grant.status === "pending") out(`  ${signal("stored")} ${bold(item)} ${beacon("· grant waiting for approval")} ${dim(`vyre vault approve ${grant.id}`)}`);
+      if (r.error) return fail(r);
+      const grant = r.data.grant;
+      if (grant && grant.status === "pending") out(`  ${signal("stored")} ${bold(item)} ${beacon("· grant waiting for approval")} ${dim(`vyre vault approve ${grant.id}`)}`);
       else out(`  ${signal("stored")} ${bold(item)} ${dim("· granted to voice")}`);
       if (provider !== "deepgram") {
         const s = await call("voice.settings", { provider });

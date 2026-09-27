@@ -53,8 +53,37 @@ export function validate(m) {
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
+  out.push(...checkCredentials(m.needs && m.needs.credentials));
   return out;
 }
+
+const NEED = /^[a-z][a-z0-9_-]{0,40}$/;
+/**
+ * needs.credentials (ADR 0028, decision 9a): what a module needs from the Vault, which the vault
+ * lists and fills. The kind and provider words are the vault's to check; this checks the shape.
+ * @param {any} list
+ */
+function checkCredentials(list) {
+  if (list === undefined) return [];
+  if (!Array.isArray(list)) return ["needs.credentials must be a list"];
+  const out = [], ids = new Set();
+  for (const [i, c] of list.entries()) {
+    const at = `needs.credentials[${i}]`;
+    if (!c || typeof c !== "object" || Array.isArray(c)) { out.push(`${at} must be an object`); continue; }
+    if (!NEED.test(String(c.id ?? ""))) out.push(`${at}.id must be a lowercase name`);
+    else if (ids.has(c.id)) out.push(`${at}.id ${c.id} is declared twice`);
+    ids.add(c.id);
+    for (const k of ["kind", "provider", "purpose"]) if (typeof c[k] !== "string" || !c[k]) out.push(`${at}.${k} must be a string`);
+    if (c.item !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(String(c.item))) out.push(`${at}.item must be a vault item name`);
+    if (c.group !== undefined && !NEED.test(String(c.group))) out.push(`${at}.group must be a lowercase name`);
+    if (c.optional !== undefined && typeof c.optional !== "boolean") out.push(`${at}.optional must be true or false`);
+  }
+  return out;
+}
+
+/** The vault items a module's needs.credentials names: `item`, or `<module>-<id>`. @param {any} m */
+export const credentialItems = m => (Array.isArray(m && m.needs && m.needs.credentials) ? m.needs.credentials : [])
+  .map(c => (c && c.item) || `${m.name}-${c && c.id}`);
 
 /** Every folder under the given roots that holds a module.json. */
 export function discover(roots) {
@@ -262,8 +291,8 @@ export class Registry {
       // watcher runtime, whose grants are per watcher.
       vault: {
         fetch: async (name, { field, watcher } = {}) => {
-          const declared = (m.needs && m.needs.vault) || [];
-          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-"))) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault`);
+          const declared = [...((m.needs && m.needs.vault) || []), ...credentialItems(m)];
+          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-"))) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
           const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`);
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
@@ -331,6 +360,8 @@ export class Registry {
         if (!driver || typeof driver.run !== "function") throw new Error(`provider ${name} needs a run function`);
         this.providers.set(name, { module: m.name, driver });
       },
+      // Every module's name, state and declared needs.credentials (the vault lists and fills them).
+      modules: { list: () => this.status() },
       providers: {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
         list: () => [...this.providers.keys()],
@@ -432,7 +463,8 @@ export class Registry {
     // `shows` says which surfaces a module offers itself to (SPEC 5.1): the Capsule reads
     // shows.capsule here for the results and actions it lists.
     return [...this.modules.entries()].map(([name, r]) => ({ name, version: r.manifest && r.manifest.version, state: r.state, error: r.error,
-      ...(r.manifest && r.manifest.shows ? { shows: r.manifest.shows } : {}) }));
+      ...(r.manifest && r.manifest.shows ? { shows: r.manifest.shows } : {}),
+      ...(r.manifest && r.manifest.needs && Array.isArray(r.manifest.needs.credentials) ? { credentials: r.manifest.needs.credentials } : {}) }));
   }
 
   /** Tools the given caller may use. Without a caller, every tool that is neither internal nor a hook. */

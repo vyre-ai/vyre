@@ -105,7 +105,9 @@
       "vault.agent.grant",
       "vault.agent.grants",
       "vault.agent.revoke",
-      "vault.uses"
+      "vault.uses",
+      "vault.need",
+      "vault.connect"
     ]
   },
   "watches": {
@@ -147,7 +149,8 @@
       "vault.emergency-requested",
       "vault.emergency-released",
       "vault.emergency-denied",
-      "vault.emergency-removed"
+      "vault.emergency-removed",
+      "vault.connected"
     ]
   },
   "shows": {

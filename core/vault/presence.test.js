@@ -24,6 +24,7 @@ export const NEEDS_PRESENCE = [
   "vault.members.invite", "vault.members.accept", "vault.members.role", "vault.members.remove", "vault.vaults.rotate", "vault.move",
   "vault.device.approve", "vault.agent.grant", "vault.codes", "vault.codes.import", "vault.sweep", "vault.rotate",
   "vault.emergency.add", "vault.emergency.refresh", "vault.emergency.request", "vault.emergency.status",
+  "vault.connect",
 ];
 /** Taking access away, reading names and asking for pending things never needs a person. */
 const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit", "vault.lock", "vault.identity",
@@ -33,7 +34,7 @@ const NO_PRESENCE = ["vault.list", "vault.revoke", "vault.pending", "vault.audit
   "vault.item", "vault.ssh.keys", "vault.ssh.generate", "vault.ssh.approvals", "vault.ssh.forget",
   "vault.session.close", "vault.session.status", "vault.caps", "vault.health", "vault.clipboard.clear", "vault.search",
   "vault.agent.grants", "vault.agent.revoke", "vault.uses", "vault.remind.run", "vault.rotation",
-  "vault.emergency.deny", "vault.emergency.remove", "vault.emergency.list"];
+  "vault.emergency.deny", "vault.emergency.remove", "vault.emergency.list", "vault.need"];
 
 test("presence: every value-out or access-giving tool declares it, with a summary", async t => {
   const { tools } = await recorded(t);

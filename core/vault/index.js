@@ -29,6 +29,7 @@ import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
+import * as needsTools from "./tools/needs.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -336,6 +337,8 @@ export default {
     account.register({ ctx, vault, tool });
     historyTools.register({ ctx, vault, tool });
     agentTools.register({ vault, tool });
+    // What modules need from the Vault, and the one way to fill it (ADR 0028, decision 9a).
+    needsTools.register({ ctx, vault, tool });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),

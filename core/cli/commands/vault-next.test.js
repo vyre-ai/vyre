@@ -1,7 +1,8 @@
 // @ts-check
 // The vault's newer verbs as a person runs them: the real bin/vyre in a child process, against a
 // vyred started here in a temp home with presence stubbed. import of a project with --rewrite,
-// run, codes, sweep, health, remind, history and revert, agent logins and uses, rotate --how.
+// run, codes, sweep, health, remind, history and revert, agent logins and uses, rotate --how,
+// needs and connect, and voice key through vault.connect.
 // Every value is made at run time; none may appear in any output.
 
 import { test } from "node:test";
@@ -13,7 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
 import { call } from "../../daemon/client.js";
-import { tempHome, present } from "../../../test/helpers.js";
+import { tempHome, present, writeModule } from "../../../test/helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
 const hex = n => crypto.randomBytes(n).toString("hex");
@@ -98,5 +99,77 @@ test("vault cli: import --rewrite, run, codes, sweep, health, history, agent log
   assert.match(how.out, /github, by hand:/);
 
   const all = [pre, imp, ran, imported, codes, sw, h, hist, rev, g, gs, uses, how].map(r => r.out).join("\n");
+  for (const x of values) assert.ok(!all.includes(x), "a value reached the terminal");
+});
+
+/** bin/vyre with stdin piped in, for the prompts. @returns {Promise<{ code: number, out: string }>} */
+const piped = (root, args, stdin) => new Promise(resolve => {
+  const p = execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 60_000 },
+    (err, stdout, stderr) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, out: stdout + stderr }));
+  p.stdin?.end(stdin);
+});
+
+test("vault cli: needs, connect (a key, a mailbox, a key file) and voice key, never echoing a value", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-mac", transcripts: [], vault: { keystore: "file", reminders: false },
+    modules: { enable: ["voice"], disable: ["recall", "memory", "learn", "capsule", "hands", "screen"] } }));
+  writeModule(path.join(root, "modules"), "harlow", { does: { tools: [] }, needs: { credentials: [
+    { id: "mail", kind: "env-set", provider: "imap-smtp", purpose: "the intake mailbox" },
+    { id: "drive", kind: "cloud", provider: "google-dwd", purpose: "case files" },
+  ] } }, "export default { async start() { return {}; } };");
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const tool = (name, input = {}) => call(name, input, { root, caller: "cli" });
+  const values = [];
+  const v = s => (values.push(s), s);
+
+  const before = await piped(root, ["vault", "needs"], "");
+  assert.equal(before.code, 0, before.out);
+  assert.match(before.out, /voice · speech not ready \(one of deepgram, openai, elevenlabs\)/);
+  assert.match(before.out, /deepgram\s+missing\s+deepgram · push-to-talk/);
+  assert.match(before.out, /mail\s+missing\s+imap-smtp · the intake mailbox/);
+
+  // `vyre vault connect voice` picks the group's first member and asks for the key, hidden.
+  const dg = v(hex(20));
+  const c = await piped(root, ["vault", "connect", "voice"], dg + "\n");
+  assert.equal(c.code, 0, c.out);
+  assert.match(c.out, /stored voice-deepgram-key · deepgram, granted to voice/);
+  assert.match(c.out, /get it at https:\/\/console\.deepgram\.com/);
+  assert.equal((await tool("voice.status")).data.key, true);
+
+  // `vyre voice key openai` is the same thing, through vault.connect.
+  const oa = v("sk-" + hex(24));
+  const vk = await piped(root, ["voice", "key", "openai"], oa + "\n");
+  assert.equal(vk.code, 0, vk.out);
+  assert.match(vk.out, /stored voice-openai-key · granted to voice/);
+  const item = (await tool("vault.list", { filter: "voice-openai-key" })).data.items[0];
+  assert.equal(item.details.provider, "openai"); assert.deepEqual(item.grants, [{ module: "voice" }]);
+  const wrong = await piped(root, ["voice", "key", "elevenlabs"], v("sk-ant-" + hex(16)) + "\n");
+  assert.equal(wrong.code, 1); assert.match(wrong.out, /looks like a key for anthropic/);
+
+  // A mailbox: one line per field, in the catalog's order.
+  const pw = v(hex(12));
+  const mail = await piped(root, ["vault", "connect", "harlow", "mail", "--label", "juno at Harlow Legal"],
+    ["imap.harlow.test", "993", "smtp.harlow.test", "465", "juno", pw, "", "tls"].join("\n") + "\n");
+  assert.equal(mail.code, 0, mail.out);
+  assert.match(mail.out, /stored harlow-mail · imap-smtp, granted to harlow/);
+
+  // A key file, by path, with the subject asked for after it.
+  const pk = v(hex(40));
+  const file = path.join(root, "harlow-sa.json");
+  fs.writeFileSync(file, JSON.stringify({ type: "service_account", client_email: "files@harlow-legal.iam.gserviceaccount.test", private_key: `-----BEGIN PRIVATE KEY-----\n${pk}\n-----END PRIVATE KEY-----\n` }));
+  const sa = await piped(root, ["vault", "connect", "harlow", "drive", "--file", file], "alex@harlow.test\n\n");
+  assert.equal(sa.code, 0, sa.out);
+  assert.match(sa.out, /stored harlow-drive · google-dwd, granted to harlow/);
+  const bad = await piped(root, ["vault", "connect", "harlow", "nope"], "");
+  assert.equal(bad.code, 1); assert.match(bad.out, /declares no need nope/);
+
+  const after = await piped(root, ["vault", "needs", "harlow"], "");
+  assert.match(after.out, /mail\s+ready/); assert.match(after.out, /drive\s+ready/);
+  const json = await piped(root, ["vault", "needs", "voice", "--json"], "");
+  const parsed = JSON.parse(json.out.trim().split("\n").at(-1));
+  assert.equal(parsed.data.groups[0].ready, true);
+
+  const all = [before, c, vk, wrong, mail, sa, bad, after, json].map(r => r.out).join("\n");
   for (const x of values) assert.ok(!all.includes(x), "a value reached the terminal");
 });

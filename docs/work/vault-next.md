@@ -79,6 +79,12 @@ mobile and the Capsule (through their owners).
   userHandle), passkey.assert / passkey.register over a clientDataHash.
 - hygiene: test fixtures assemble PEM headers at run time. Full set + hygiene: 576 pass, 0 fail.
 
+- ADR 0028 decision 9a, connecting a key: core/vault/providers.js (catalog), needs.credentials in
+  the module validator and ctx.vault.fetch, vault.need + vault.connect (tools/needs.js), `vyre vault
+  needs|connect`, `vyre voice key` through vault.connect, voice declares its speech group. Hook for
+  9b: vault.connect returns {item, module, need, provider, granted, grant} and emits
+  vault.connected {module, need, item, provider}. Targeted set on testbox: 584 pass, 0 fail.
+
 ## Doing
 
 - PAUSED for the native-core refocus (lead, 27 Sep). Branch is green on its targeted set.
@@ -121,6 +127,10 @@ mobile and the Capsule (through their owners).
 - lead: refs stay vault://item/field; accept vyre://vault/... as an alias? Who builds the Deck/phone vault board (Direction A): pwa + mobile, or vault-next?
 
 ## Changed contracts
+
+- Kernel (core/modules/index.js): validate() checks needs.credentials; ctx.vault.fetch also accepts
+  its items; status() (and GET /v1/modules) carries `credentials`; ctx.modules.list() returns
+  status(). voice: module.json needs.credentials, voice.status adds `need` while no key is ready.
 
 - vault.import on a .env file now makes ONE env-set (named after the file's path), holding only
   secrets, instead of one secret per variable. vault.import/preview take a folder and `rewrite`.

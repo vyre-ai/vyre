@@ -7,6 +7,13 @@
   "does": { "tools": ["voice.status", "voice.settings", "voice.speak"] },
   "watches": { "emits": [] },
   "shows": { "capsule": ["settings:voice"], "streams": ["listen"] },
-  "needs": { "vault": ["voice-deepgram-key", "voice-openai-key", "voice-elevenlabs-key"] },
+  "needs": {
+    "vault": ["voice-deepgram-key", "voice-openai-key", "voice-elevenlabs-key"],
+    "credentials": [
+      { "id": "deepgram", "kind": "api-key", "provider": "deepgram", "purpose": "push-to-talk words, streamed as you speak", "item": "voice-deepgram-key", "group": "speech" },
+      { "id": "openai", "kind": "api-key", "provider": "openai", "purpose": "push-to-talk words, transcribed on release", "item": "voice-openai-key", "group": "speech" },
+      { "id": "elevenlabs", "kind": "api-key", "provider": "elevenlabs", "purpose": "push-to-talk words and spoken replies", "item": "voice-elevenlabs-key", "group": "speech" }
+    ]
+  },
   "teaches": {}
 }

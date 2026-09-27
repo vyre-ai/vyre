@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Connecting a key: needs.credentials, vault.need and vault.connect (ADR 0028, decision 9a)
+
+- A manifest may declare `needs.credentials`: `{id, kind, provider, purpose, item?, optional?,
+  group?}`. The module validator checks the shape, and `ctx.vault.fetch` accepts those items
+  (`item`, or `<module>-<id>`). The registry's status and `ctx.modules.list()` carry each module's
+  declared credentials.
+- core/vault/providers.js is the provider catalog: Deepgram, OpenAI, ElevenLabs, Anthropic, the
+  Claude setup token, GitHub, Cloudflare, Tailscale, Telegram, Google sign-in, Google service
+  accounts, Apps Script web apps, IMAP and SMTP, and MCP bearer tokens. Each lists its kinds, how
+  it is given (field, file or sign-in), its fields, capabilities and where to get the key.
+- `vault.need` (people's surfaces, no presence) lists every need with its state and the form to
+  fill it, never a value. `vault.connect` (people's surfaces, presence, never Claude) checks the
+  fields or a service-account file, saves the item with `details.provider`, grants it and emits
+  `vault.connected {module, need, item, provider}`. A sign-in returns `next: {tool, input}`.
+- `vyre vault needs [module]` and `vyre vault connect <module> [need] [--file f]`. `vyre voice
+  key` now goes through `vault.connect`. Voice declares its three keys as one `speech` group, and
+  `voice.status` carries a `need` pointer while the key is not ready.
+
 - modules/vault-android is also a Credential Manager provider on Android 14 and later: passwords and
   passkeys from `identities`, an "Unlock Vyre" action without a fill window, `passkey.assert` and
   `passkey.register` over the platform's clientDataHash or Vyre's own clientDataJSON

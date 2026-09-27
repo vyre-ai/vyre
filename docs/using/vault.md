@@ -246,6 +246,34 @@ Taking access away never needs presence; giving it does.
 > `vault.release`, which no surface or model can call. Every use is written to the audit log, by
 > name.
 
+## Connecting a key
+
+A module says what it needs in its manifest (`needs.credentials`), and you fill each need in one
+place. Voice needs a Deepgram, OpenAI or ElevenLabs key, for example, and any one of the three
+will do.
+
+1. See what every module needs, and what is still missing: `vyre vault needs`.
+
+   ```output
+     voice · speech not ready (one of deepgram, openai, elevenlabs)
+       deepgram           missing  deepgram · push-to-talk words, streamed as you speak
+       openai             missing  openai · push-to-talk words, transcribed on release
+       elevenlabs         missing  elevenlabs · push-to-talk words and spoken replies
+   ```
+
+2. Fill one: `vyre vault connect voice deepgram`. It says where to get the key, then asks for it
+   without echo. Leave out the need and it picks the first one still missing.
+
+The key is checked against the provider (a pasted OpenAI key is refused in the Deepgram box),
+saved with its kind and provider, and granted to the module, in one step that asks you to prove
+you are there. A service-account key file goes in by path, `vyre vault connect <module> <need>
+--file key.json`, and then asks for the email to act as. A Google sign-in stores nothing here: it
+names the sign-in to run next. `vyre voice key` is a shortcut for `vyre vault connect voice`.
+
+A need is `ready`, `missing`, `not_granted` (saved but not granted), `pending` (Claude asked for
+the grant and it waits for you) or `expired`. Claude can never connect a key: the value only ever
+comes from your own screen.
+
 ## Use an item in a script
 
 Scripts outside Vyre run under `vyre vault run`, which puts the values into one child process's
