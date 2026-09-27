@@ -61,7 +61,7 @@ let iqAskSuite = Suite("iq ask") { t in
             let starts = v.callsOf("threads.start")
             return (v.callsOf("memory.ask").count - before.0, starts.count > before.1 ? starts.last : nil)
         }
-        let r: [String]? = t.wait {
+        let r: [String]? = t.wait(timeout: 40) {
             let err = await run("what is this error")
             let sel = await run("explain it simply", selected: true)
             let mem = await run("which car do I drive")
@@ -76,7 +76,7 @@ let iqAskSuite = Suite("iq ask") { t in
         v.tool("memory.ask") { _ in ["answer": "You drive a blue Volvo XC40.", "confidence": 0.9, "abstained": false, "known": [Any](), "sources": [Any]()] }
         v.tool("threads.start") { _ in ["id": "q10"] }
         let screen = MainActor.assumeIsolated { () -> FakeScreen in let s = FakeScreen(); s.slow = 600_000_000; return s }
-        let r: [Double]? = t.wait {
+        let r: [Double]? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.attachers = [screen]; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
             // ⏎ at once, while the chip is still settling (600 ms).
@@ -128,7 +128,7 @@ let iqAskSuite = Suite("iq ask") { t in
         v.tool("memory.ask") { _ in ["answer": "You drive a blue Volvo XC40.", "confidence": 0.9, "abstained": false, "known": [Any](),
                                      "sources": [["session": "s1", "seq": 4, "name": "Insurance renewal", "quote": "I drive a blue Volvo XC40"]], "via": "fact"] }
         v.tool("threads.start") { _ in ["id": "q2"] }
-        let r: [String]? = t.wait {
+        let r: [String]? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
             await MainActor.run { m.text = "which car do I drive" }
@@ -151,7 +151,7 @@ let iqAskSuite = Suite("iq ask") { t in
         let v = FakeVyred(); v.start(); defer { v.stop() }
         v.listed = ["memory.ask"]
         v.tool("threads.start") { _ in ["id": "q3"] }
-        let started: Bool? = t.wait {
+        let started: Bool? = t.wait(timeout: 40) {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp && m.vyred.has("memory.ask") }
             await MainActor.run { m.text = "which car do I drive" }
