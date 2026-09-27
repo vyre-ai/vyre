@@ -53,3 +53,25 @@ test("module: bad input is refused by the Registry's schema check", async t => {
   assert.equal((await reg.call("hands.act", { selector: { role: "AXButton" }, kind: "drag" })).error.code, "bad_input");
   assert.equal(f.calls.length, 0);
 });
+
+test("module: hands.acted carries the thread, tool call and agent of the call that caused it", async t => {
+  const home = tempHome(t);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const f = fakeApp({ texts: ["0"], elements: [{ path: "/0/0/7", role: "AXButton", name: "7", enabled: true }] },
+    (req, s) => { s.texts = ["7"]; return { acted: true }; });
+  const reg = new Registry({ db, events: new Events(db), log: () => {},
+    config: { role: "local", hands: { runner: f.run, sleep: async () => {} } } });
+  await reg.start(discover([path.dirname(HERE)]).filter(m => m.dir === HERE), { role: "local" });
+  const selector = { role: "AXButton", name: "7", path: "/0/0/7" };
+  const r = await reg.call("hands.act", { selector, kind: "press" }, "mcp:agent:kit", { thread: "t-kit-1", call: "toolu_07" });
+  assert.equal(r.data.verified, true, JSON.stringify(r));
+  const [e] = reg.deps.events.since(0).filter(x => x.type === "hands.acted");
+  assert.equal(e.payload.thread, "t-kit-1");
+  assert.equal(e.payload.call, "toolu_07");
+  assert.equal(e.payload.agent, "kit");
+  assert.equal(e.thread, "t-kit-1", "scoped to the thread");
+  await reg.call("hands.act", { selector, kind: "press" }, "cli");
+  const plain = reg.deps.events.since(0).filter(x => x.type === "hands.acted")[1];
+  assert.equal(plain.payload.thread, undefined, "a call with no thread labels nothing");
+});

@@ -27,6 +27,9 @@ export function findSubreaper() {
   return null;
 }
 
+/** Do sessions start through the spawner here (sessions.spawner "on", Linux, its socket there)? */
+export const usesSpawner = () => process.env.VYRE_SESSIONS_SPAWNER === "on" && process.platform === "linux" && spawnerHere();
+
 /**
  * @param {string} command @param {string[]} args
  * An API key never goes in the environment: Claude Code passes its environment to every tool it
@@ -38,9 +41,9 @@ export function findSubreaper() {
  *           uid?: number, gid?: number, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
  */
 export function spawnSession(command, args, o = {}) {
-  // Only with sessions.spawner "on" (VYRE_SESSIONS_SPAWNER=on): off until owned sessions reach
-  // Vyre's tools in process (ADR 0030 phase 3), since vyre-agent cannot open vyred's socket.
-  if (o.spawner === true || (o.spawner !== false && process.env.VYRE_SESSIONS_SPAWNER === "on" && process.platform === "linux" && spawnerHere())) return viaSpawner(command, args, o);
+  // With sessions.spawner "on" (VYRE_SESSIONS_SPAWNER=on) and a spawner here. vyre-agent cannot
+  // open vyred's socket, so the session reaches Vyre on its own one (VYRE_SOCKET in o.env).
+  if (o.spawner === true || (o.spawner !== false && usesSpawner())) return viaSpawner(command, args, o);
   const posix = process.platform !== "win32";
   const [cmd, argv] = o.subreaper && posix ? [o.subreaper, ["-s", "--", command, ...args]] : [command, args];
   const env = { ...(o.env || {}) };

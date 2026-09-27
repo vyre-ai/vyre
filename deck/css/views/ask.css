@@ -27,9 +27,9 @@
 .ask-ranswer { font-size: 17px; line-height: 24px; font-weight: 500; text-wrap: pretty; overflow-wrap: anywhere; }
 .ask-srcs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .ask-src { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 8px; padding: 10px 0; border-top: 1px solid var(--rule-strong); }
-.ask-n { font-family: var(--mono); font-size: 12px; line-height: 20px; font-weight: 500; color: var(--recall-ink); }
+.ask-n { font-family: var(--mono); font-size: 12px; line-height: 20px; font-weight: 500; color: var(--text-2); }
 .ask-stext { display: flex; flex-direction: column; gap: 2px; font-size: 14px; line-height: 20px; overflow-wrap: anywhere; }
-.ask-smeta { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--recall-ink); text-decoration: none; }
+.ask-smeta { font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--text-2); text-decoration: none; }
 a.ask-smeta:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .ask-acts { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -40,11 +40,11 @@ a.ask-smeta:hover { text-decoration: underline; text-underline-offset: 3px; }
 .ask-dock-in { width: 640px; max-width: 100%; margin: 0 auto; padding: 8px 24px 24px; }
 .ask-capsule { margin: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px; background: var(--panel);
   border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); box-shadow: var(--light-top); }
-.ask-hints { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; margin-bottom: 2px; background: var(--recall-wash); border-radius: var(--radius-field, 8px); }
+.ask-hints { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; margin-bottom: 2px; background: var(--hover); border-radius: var(--radius-field, 8px); }
 .ask-hlist { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .ask-hlist li { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ask-htext { font-size: 13px; line-height: 18px; color: var(--text); overflow-wrap: anywhere; }
-.ask-hsrc { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--recall-ink); text-decoration: none;
+.ask-hsrc { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--text-2); text-decoration: none;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ask-hsrc:hover { text-decoration: underline; }
 

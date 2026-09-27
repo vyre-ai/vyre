@@ -151,7 +151,7 @@ public extension VyredLink {
     }
 }
 
-/// Something an extension offers to add to words on their way out ("with your screen: Safari ·
+/// Something an extension offers to add to words on their way out ("sees: Safari ·
 /// Northwind Bakery"). Shown as a chip before sending; one key or a click on its x removes it;
 /// nothing is ever attached without the chip on screen.
 public struct SendAttachment: Sendable, Equatable {
@@ -317,6 +317,33 @@ public protocol CapsuleHost: AnyObject {
     /// 'on my way' to Dana in WhatsApp"). A live presence session covers it without asking when
     /// the tool may ride one. Esc or a refusal comes back as `.failure(code: "presence")`.
     func prove(tool: String, input: [String: Any], summary: String) async -> VyredResult
+
+    /// A module needs a key or a login: the Capsule shows "Add your <label>" in the panel with a
+    /// secure field, saves it through the vault as the person, then calls `saved`. Never a
+    /// terminal command to run (the user, 2026-09-27). See Host/Credentials.swift.
+    func askCredential(_ need: CredentialNeed, saved: @escaping @MainActor () -> Void)
+}
+
+/// What a module needs saved in the vault: vault's need (module + need id, ADR 0028 decision 9),
+/// and for a vyred without vault.connect, the item name the module reads.
+public struct CredentialNeed: Sendable, Equatable {
+    public struct Field: Sendable, Equatable {
+        public var name: String
+        public var label: String
+        public var secret: Bool
+        public init(name: String, label: String, secret: Bool = true) { self.name = name; self.label = label; self.secret = secret }
+    }
+    public var module: String
+    public var need: String
+    /// "Deepgram key": what the row asks for.
+    public var label: String
+    public var fields: [Field]
+    /// The vault item the module reads (voice-deepgram-key), for vault.put + vault.grant.
+    public var item: String?
+    public var help: String?
+    public init(module: String, need: String, label: String, fields: [Field] = [Field(name: "value", label: "Key")], item: String? = nil, help: String? = nil) {
+        self.module = module; self.need = need; self.label = label; self.fields = fields; self.item = item; self.help = help
+    }
 }
 
 public extension CapsuleHost {
@@ -327,6 +354,7 @@ public extension CapsuleHost {
         await vyred.call(tool, input, presence: true, summary: summary)
     }
     func commandsChanged() {}
+    func askCredential(_ need: CredentialNeed, saved: @escaping @MainActor () -> Void) {}
 }
 
 @MainActor

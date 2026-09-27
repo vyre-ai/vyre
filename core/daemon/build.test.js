@@ -45,6 +45,9 @@ test("build: /v1/health and system.info report version and commit", async t => {
   assert.deepEqual([h.version, h.commit, h.dirty], [b.version, b.commit, b.dirty]);
   assert.deepEqual([i.version, i.commit, i.dirty], [b.version, b.commit, b.dirty]);
   assert.ok("commit" in h && "commit" in i);
+  // The Capsule runs this vyred's own CLI by argv: node, then bin/vyre in the same tree.
+  assert.equal(h.cli[0], process.execPath);
+  assert.ok(h.cli[1].endsWith(path.join("bin", "vyre")) && fs.existsSync(h.cli[1]));
   assert.deepEqual(i.network, { origins: ["https://app.vyre.run"] }, "the hosted app's origin, when config names none");
 });
 

@@ -32,12 +32,17 @@ export interface SettingDef {
   help?: string;
   type: "enum" | "bool" | "int" | "number" | "string" | "list" | "object" | "model";
   enum?: string[];
+  /** The allowed numbers for an int. */
   choices?: number[];
+  /** A tool of this module that lists the choices when the schema is read, within 500 ms (ADR 0035). */
+  choicesFrom?: { tool: ToolName; read?: string };
+  /** A tool of this module asked { ok } or { ok: false, message } before a value is stored, within 500 ms; off or late refuses (ADR 0035). */
+  check?: { tool: ToolName };
   min?: number;
   max?: number;
   default?: unknown;
-  /** Where it may be set. A project's value beats the account's, which beats the default. */
-  levels: ("account" | "project")[];
+  /** Where it may be set. session > device > project > account > default (ADR 0035). */
+  levels: ("account" | "project" | "device" | "session")[];
   /** live: at once; session: from the next session; restart: when vyred next starts. */
   apply: "live" | "session" | "restart";
   advanced?: boolean;
@@ -50,7 +55,7 @@ export interface SettingDef {
   /** What it loosens, in a few words. */
   loosens?: string;
   /** Ask the person before a change: always, or only for these values. */
-  confirm?: true | { values: unknown[] };
+  confirm?: true | { values: unknown[] } | { drops: true };
   /** Where the value is kept. Omitted: Vyre's settings table. "$value" and "$project" fill a tool store's input. */
   store?:
     | { config: string }
@@ -113,6 +118,8 @@ export interface Manifest {
     network?: string[];
     /** @planned UI slots it fills. */
     slots?: Slot[];
+    /** What it needs from the Vault, which the vault lists and fills (ADR 0028, 9a). */
+    credentials?: CredentialNeed[];
   };
   teaches?: {
     /** Fact kinds it hands the curator. */
@@ -125,7 +132,52 @@ export interface Manifest {
   [experimental: `x-${string}`]: unknown;
 }
 
-export type Surface = "capsule" | "deck" | "chat" | "phone" | "cli" | "glass";
+export type Surface = "capsule" | "deck" | "chat" | "phone" | "cli" | "glass" | "statusline";
+
+/** One need under needs.credentials (ADR 0028, 9a). */
+export interface CredentialNeed {
+  id: string;
+  kind: string;
+  provider: string;
+  purpose: string;
+  /** The vault item; omitted, it is "<module>-<id>". */
+  item?: string;
+  group?: string;
+  optional?: boolean;
+  /** More than one of it may be connected. */
+  multiple?: boolean;
+  [experimental: `x-${string}`]: unknown;
+}
+
+/**
+ * What a tool answers when it is called with render: true, and the `view` that `vyre <cmd> --view`
+ * frames carry ({ v: 1, cmd, view, data }, docs/reference/cli-json.md), so the Capsule, chat and the
+ * CLI draw one set of views. Every kind may carry a title and actions.
+ */
+export type Render = (
+  | { kind: "table"; columns: { key: string; label: string }[]; rows: Record<string, unknown>[]; /** Shown when there are no rows. */ empty?: string }
+  | { kind: "card"; fields: { label: string; value: unknown }[]; state?: CheckState }
+  | { kind: "text"; lines: string[] }
+  | { kind: "qr"; /** The payload to draw. */ text: string; caption?: string }
+  | { kind: "checks"; /** ids let a live view update a check in place. */ items: { id: string; label: string; state: CheckState; note?: string }[] }
+  | ({ kind: "prompt" } & RenderPrompt)
+  | { kind: "error"; code: string; message: string; next?: string }
+) & { title?: string; actions?: RenderAction[] };
+
+export type CheckState = "ok" | "wait" | "failed" | "unknown";
+
+/** Something the person can do from the view: a tool call. */
+export interface RenderAction { label: string; tool: ToolName; input?: Record<string, unknown> }
+
+/**
+ * A question the surface asks. `label` is the question. The CLI answers by running the verb again
+ * (argv: args plus how the answer is given); a tool called with render: true is answered by
+ * calling `tool` with `input` and the answer under `name`.
+ */
+export type RenderPrompt = { name: string; label: string; choices?: string[]; secret?: boolean } & (
+  | { args: string[]; answer: "word" | "flag" | "stdin" | "confirm"; flag?: string }
+  | { tool: ToolName; input?: Record<string, unknown> }
+);
 
 export interface Tip {
   id: string;
@@ -160,6 +212,8 @@ export interface CallMeta {
   /** How a person proved presence for this call, when the tool needed it. Never the proof. */
   presence?: { method: string; keyId: string | null };
   idempotencyKey?: string;
+  /** The chat's id for this tool call, on a session's own paths only. Unverified: for linking, never for a decision. */
+  call?: string;
   [k: string]: unknown;
 }
 
@@ -209,6 +263,27 @@ export interface ModuleEvents {
 
 // ---- The context ------------------------------------------------------------------------------
 
+/** One row of GET /v1/modules, which ctx.modules.status() also returns. */
+export interface ModuleStatus {
+  name: string;
+  version?: string;
+  state: "pending" | "running" | "off" | "failed" | "invalid";
+  error?: string;
+  shows?: Manifest["shows"];
+  commands?: NonNullable<Manifest["does"]>["commands"];
+  connections?: ToolName;
+  suggest?: ToolName;
+  notices?: string[];
+  emits?: EventType[];
+  /** needs.credentials, for the vault. */
+  credentials?: CredentialNeed[];
+  /** Calls to its tools from people, surfaces and models (never modules or webhooks). lastUsed is ms since the epoch. */
+  use: { calls: number; lastUsed: number | null };
+}
+
+/** A tool as GET /v1/tools lists it to a caller. */
+export interface ToolListing { name: ToolName; module: string; description: string; input: InputSchema; presence?: true }
+
 export interface ModuleLog {
   (message: string, extra?: unknown): void;
   /** @planned */ info(message: string, extra?: unknown): void;
@@ -229,6 +304,8 @@ export interface ModuleContext {
   /** Register a tool declared under does.tools. */
   tool<I = any, O = any>(name: ToolName, def: ToolDef<I, O>): void;
   events: ModuleEvents;
+  /** Read only: every module's status row (a copy), and the tools a given caller may use. */
+  readonly modules: { status(): ModuleStatus[]; tools(caller?: Caller): ToolListing[] };
   /** @planned This module's own settings, resolved project over account over default. */
   settings: {
     get<T = unknown>(key: string, opts?: { project?: string }): Promise<T>;

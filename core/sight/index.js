@@ -270,6 +270,24 @@ export default {
       },
     });
 
+    ctx.tool("sight.frame", {
+      description: "One still of an agent's screen: a JPEG scaled to maxWidth (160-1280, default 480), base64. For a small \"what the agent is doing now\" view that refreshes on sight.stepped, never on a timer; the live view is sight.watch. Refused while a person is signing in on that computer (the shield). The Mac answers local_only.",
+      input: { type: "object", required: ["target"], properties: {
+        target: { type: "string" }, maxWidth: { type: "integer", minimum: 160, maximum: 1280 },
+      } },
+      callers: CALLERS,
+      run: async i => {
+        const t = parseTarget(i.target);
+        if (t.kind === "mac") throw fail("local_only", "this Mac's pixels never leave this Mac");
+        const maxWidth = Number.isInteger(i.maxWidth) ? i.maxWidth : 480;
+        const r = await ctx.call("hands-desktop.screenshot", { agent: t.agent, format: "jpeg", maxWidth });
+        if (r && r.error && r.error.code === "no_such_tool") return { target: i.target, image: null, why: "this machine runs no agent computers" };
+        if (!r || r.error) throw fail((r && r.error && r.error.code) || "failed", (r && r.error && r.error.message) || "the screenshot failed");
+        const last = db.prepare("SELECT * FROM sight_steps WHERE target = ? ORDER BY id DESC LIMIT 1").get(String(i.target));
+        return { target: i.target, image: r.data.image, mime: r.data.mime, maxWidth, at: Date.now(), step: last ? stepOf(last) : null };
+      },
+    });
+
     ctx.tool("sight.steps", {
       description: "Recent steps on screens, newest first: action, a short summary, app, outcome, and the thread and tool call that made each. Filter by target or thread. The Mac's steps are left out for a caller from the tailnet.",
       input: { type: "object", properties: {
