@@ -25,7 +25,6 @@
 //   maxChunks  the dense index's hard cap in chunk vectors (default 50,000, ~78MB); past it the
 //              oldest sessions drop out of ranking by meaning and fall back to full-text search
 
-import os from "node:os";
 import path from "node:path";
 import { MIGRATIONS } from "./schema.js";
 import { Indexer } from "./indexer.js";
