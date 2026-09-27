@@ -141,9 +141,12 @@ export function shouldAsk({ home, env = process.env, tty = Boolean(process.stdin
  * certificate for code signing only (openssl), imported so codesign may use the key, then
  * trusted for code signing (the step macOS may ask the password for). The key never leaves the
  * keychain after this; the temp folder it was made in is removed whatever happens.
- * @param {{runner?: Runner, keychain?: string, tmp?: string}} [o]
+ * @param {{runner?: Runner, keychain?: string, tmp?: string, tty?: boolean}} [o]
  */
-export function createIdentity({ runner = run, keychain = path.join(os.homedir(), "Library", "Keychains", "login.keychain-db"), tmp = os.tmpdir() } = {}) {
+export function createIdentity({ runner = run, keychain = path.join(os.homedir(), "Library", "Keychains", "login.keychain-db"), tmp = os.tmpdir(), tty = Boolean(process.stdin.isTTY) } = {}) {
+  // Trusting the certificate asks for the password on the terminal: with no terminal (a Deck or
+  // Capsule path) `security` would wait for ever. A caller with its own runner (CI) decides itself.
+  if (runner === run && !tty) return { ok: false, message: "making a signing identity needs a terminal, where macOS asks for your password" };
   const dir = fs.mkdtempSync(path.join(tmp, "vyre-sign-"));
   fs.chmodSync(dir, 0o700);
   const key = path.join(dir, "key.pem"), cert = path.join(dir, "cert.pem"), p12 = path.join(dir, "id.p12");

@@ -180,3 +180,9 @@ test("capsule native: an app signed ad hoc is rebuilt once the identity exists",
   assert.deepEqual(withId.calls.find(c => c[0] === "sign-with"), ["sign-with", "Vyre Local"]);
   assert.equal(ensureBuilt({ dir, home, runner: withId.r }).built, false);
 });
+
+test("capsule native: with no terminal, createIdentity says so and runs nothing (security would wait for a password)", () => {
+  const r = createIdentity({ tty: false, tmp: SCRATCH });
+  assert.equal(r.ok, false);
+  assert.match(r.message, /needs a terminal/);
+});

@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Making the signing identity never waits on a password it cannot ask for
+
+- createIdentity refuses with "needs a terminal" when stdin is not a TTY and no runner was given,
+  so a Deck or Capsule path cannot hang on `security add-trusted-cert`. CI passes its own runner.
+
 #### The Capsule reads the one tokens.json
 
 - Theme.swift takes its colours, the status model (needs you, failed, running, unread, done: word,
