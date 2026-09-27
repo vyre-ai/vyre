@@ -36,6 +36,12 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 2. Steps 2 to 9 of the ADR's Migration section, in order.
 
 ## Settings this feature needs (handed to native-core for Settings)
+Declared by native-core (work/native-core 42dcb98c, core/sessions/module.json settings list):
+sessions.max_active, sessions.max_subagents (per project, via sessions.limits.get/set),
+sessions.box_teammates, sessions.box_subagents, sessions.model.teammate, sessions.model.helper.
+Not declared yet: preset, pause_at_warning, api_fallback (sessions' manifest when built);
+push_after_merge, test_command, daily_turns (core/team's manifest when built). Rows appear in
+Settings from a manifest "settings" list with no Deck work.
 Per project (Project settings > Teammates > Limits):
 - `team.preset`: `light` (1, 2) | `balanced` (3, 4, default) | `max` (6, 10) | `custom`. Suggest
   Light with one line when the rate-limit signals show a Pro plan; never preselect Max.
