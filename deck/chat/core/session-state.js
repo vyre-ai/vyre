@@ -21,10 +21,18 @@
 // Steering (the composer's default while a turn runs): the words join the running turn at its
 // next step. A steer is a user item plus a marker item just before it ("Steered at step N", key
 // steer:<uuid>), placed where the words joined: localSend() draws both at once ("steering"),
-// thread.steered {uuid, turn, step} confirms them and moves them to the turn's tail, and a
-// transcript user block with steered: true (core/transcripts) gets the same marker on a re-read.
-// A rewind (thread.rewound {uuid, restore}) drops that message and everything after it when the
-// conversation is restored; the dropped blocks are never read back in.
+// thread.sent {via: "steer"} (or "now", a queued row sent into the turn) echoes them, and
+// thread.steered {uuid, turn} confirms them and moves them to the turn's tail. The event names no
+// step: the step is counted here, the tool calls of that turn finished when it arrives. A
+// transcript user block with steered: true (core/transcripts) gets the same marker on a re-read,
+// with the transcript's step.
+//
+// The queue: rows are keyed by the box's threads_inbox row id (`queued`), uuid alongside.
+// thread.queued adds a row, or (threads.edit) re-emits it with new words under the same id;
+// thread.unqueued takes it away; thread.sent {queued, via: "turn"} hands it over at a turn's end
+// (a message of its own) and {queued, via: "now"} steers it into the running turn.
+// A rewind (thread.rewound {uuid, fork}) forks the session at that message: this session keeps
+// every word, s.rewound names the fork (a new thread) and the words to take back there.
 
 import { toolDetail } from "./tool-detail.js";
 
@@ -40,10 +48,11 @@ import { toolDetail } from "./tool-detail.js";
  *   patch?: any, at?: number, seq?: number }} ToolItem
  * @typedef {{ key: string, kind: "turn", n?: number, ok?: boolean, result?: string, cost_usd?: number, tokens?: any, duration_ms?: number|null,
  *   error?: string, canceled?: boolean, reason?: string|null, model?: string|null, open?: boolean, at?: number, seq?: number }} TurnItem
- * @typedef {{ key: string, kind: "notice", text: string, at?: number }} NoticeItem
+ * @typedef {{ key: string, kind: "notice", text: string, at?: number, seq?: number }} NoticeItem
  * @typedef {{ key: string, kind: "ask", ask: string, askKind: string, tool: string|null, state: "open"|"answered"|"cancelled",
- *   decision?: string|null, summary?: string|null, answers?: any, at?: number }} AskItem
- * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|AskItem|SteerItem} Item
+ *   decision?: string|null, summary?: string|null, answers?: any, at?: number, seq?: number }} AskItem
+ * @typedef {{ key: string, kind: "shell", command: string, output: string, exit: number|null, duration_ms: number|null, error?: string, at?: number, seq?: number }} ShellItem
+ * @typedef {UserItem|TextItem|ToolItem|TurnItem|NoticeItem|AskItem|SteerItem|ShellItem} Item
  * @typedef {{ ask: string, kind: string, tool: string|null, state: "open"|"answered"|"cancelled", decision: string|null, at: number|null }} Ask
  * @typedef {{ uuid: string|null, text: string, queued: number|string|null, at: number|null, local?: boolean }} Queued
  * @typedef {{ content: string, status: string, activeForm?: string }} Todo
@@ -55,9 +64,9 @@ import { toolDetail } from "./tool-detail.js";
  *   usage: any, limit: any, stopped: string|null,
  *   mode: string|null, modes: string[]|null, thinking: boolean|null,
  *   todos: { key: string, todos: Todo[] }|null, tasks: Map<string, Task>,
- *   rewound: { uuid: string, restore: string, text: string, at: number|null }|null,
+ *   rewound: { uuid: string, fork: string|null, text: string, at: number|null }|null, purpose: string|null,
  *   meta: { live: number, notices: number, turns: number, lastId: number, stateSeen: boolean,
- *     uuids: Map<string, string>, idents: Map<string, string>, texts: Map<string, string>, dropped: Set<string>, taskEvents: boolean }
+ *     uuids: Map<string, string>, idents: Map<string, string>, texts: Map<string, string>, taskEvents: boolean }
  * }} Session
  */
 
@@ -66,14 +75,14 @@ export function createSession(thread) {
   return {
     thread, provider: null, model: null, auth: null, state: "idle", turn: null,
     items: [], byKey: new Map(), queued: [], asks: new Map(), usage: null, limit: null, stopped: null,
-    mode: null, modes: null, thinking: null, todos: null, tasks: new Map(), rewound: null,
+    mode: null, modes: null, thinking: null, todos: null, tasks: new Map(), rewound: null, purpose: null,
     // Bookkeeping a view does not read: counters for keys, the newest event id applied, whether
     // the switchboard sends thread.state (then state is never guessed), uuid -> key for users
     // whose key was minted before their uuid was known, transcript block identity -> key, the
-    // words of queued messages by uuid (a steer from the queue names only the uuid), block
-    // identities a rewind dropped, and whether thread.task events come (then tasks are theirs).
+    // words of queued messages by uuid (a hand-over or a steer from the queue may name only the
+    // uuid), and whether thread.task events come (then tasks are theirs).
     meta: { live: 0, notices: 0, turns: 0, lastId: -Infinity, stateSeen: false, uuids: new Map(), idents: new Map(),
-      texts: new Map(), dropped: new Set(), taskEvents: false },
+      texts: new Map(), taskEvents: false },
   };
 }
 
@@ -123,11 +132,17 @@ function nextBlock(s, kind, message) {
   return n;
 }
 
-/** Streaming text is done, and tools still running are canceled: nothing more is coming. @param {Session} s @param {Set<string>} out */
+/**
+ * Streaming text is done, and tools still running are canceled: nothing more is coming. A steer
+ * still "steering" was taken by the turn that just ended (a box without thread.steered never
+ * says when), so it reads as steered, without a step.
+ * @param {Session} s @param {Set<string>} out
+ */
 function settle(s, out) {
   for (const it of s.items) {
     if ((it.kind === "text" || it.kind === "reasoning") && it.streaming) { it.streaming = false; out.add(it.key); }
     if (it.kind === "tool" && it.status === "running") { it.status = "canceled"; out.add(it.key); }
+    if (it.kind === "steer" && it.pending) { it.pending = false; out.add(it.key); }
   }
 }
 
@@ -217,16 +232,19 @@ function ensureMarker(s, user, f, out) {
 
 /**
  * The composer sent something: draw it now. "steer": the words and a "steering" marker at the
- * tail; "queue": a row in the queue. A plain send (idle) draws nothing: thread.sent does. Returns
- * the keys touched.
- * @param {Session} s @param {{ uuid: string, text: string, mode: "steer"|"queue"|null, at?: number }} m
+ * tail; "queue": a row in the queue, and again with `queued` (the row id threads.send answered)
+ * once it is known, so the row's buttons can name it. A plain send (idle) draws nothing:
+ * thread.sent does. Returns the keys touched.
+ * @param {Session} s @param {{ uuid: string, text: string, mode: "steer"|"queue"|null, at?: number, queued?: number|string|null }} m
  */
 export function localSend(s, m) {
   /** @type {Set<string>} */
   const out = new Set();
   if (!m || !m.uuid) return [];
   if (m.mode === "queue") {
-    if (!s.queued.some(q => q.uuid === m.uuid)) s.queued.push({ uuid: m.uuid, text: m.text, queued: null, at: m.at ?? null, local: true });
+    const was = s.queued.find(q => q.uuid === m.uuid);
+    if (!was) s.queued.push({ uuid: m.uuid, text: m.text, queued: m.queued ?? null, at: m.at ?? null, local: true });
+    else if (m.queued != null && was.queued == null) was.queued = m.queued;
     s.meta.texts.set(m.uuid, m.text);
     out.add("@queued");
     return [...out];
@@ -270,11 +288,27 @@ export function dropLocal(s, uuid) {
   return [...out];
 }
 
+/**
+ * The step a steer joined at, counted when thread.steered arrives: the tool calls of the running
+ * turn that have finished. The turn is everything after the last closed turn marker.
+ * @param {Session} s
+ */
+function stepNow(s) {
+  let n = 0;
+  for (let i = s.items.length - 1; i >= 0; i--) {
+    const it = s.items[i];
+    if (it.kind === "turn" && !it.open) break;
+    if (it.kind === "tool" && it.status !== "running") n++;
+  }
+  return n;
+}
+
 /** @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out */
 function onSteered(s, p, at, out) {
   const uuid = String(p.uuid ?? "");
   if (!uuid) return;
-  const step = typeof p.step === "number" ? p.step : null;
+  // The final contract names no step; an older build of the proposal did.
+  const step = typeof p.step === "number" ? p.step : stepNow(s);
   let key = s.meta.uuids.get(uuid);
   if (!key && s.meta.texts.has(uuid)) {
     // Steered from the queue: the words are the queued ones.
@@ -304,39 +338,44 @@ function onSteered(s, p, at, out) {
   out.add(user.key);
 }
 
-/** @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out */
+/**
+ * A rewind forks the session at a message of the person's (threads.rewind): the fork is a new
+ * thread holding what came before it. This session keeps every word; a notice says where it went.
+ * @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out
+ */
 function onRewound(s, p, at, out) {
   const uuid = String(p.uuid ?? "");
-  const restore = ["conversation", "code", "both"].includes(p.restore) ? p.restore : "both";
   const key = s.meta.uuids.get(uuid) ?? s.items.find(it => it.kind === "user" && it.uuid === uuid)?.key;
   const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
-  s.rewound = { uuid, restore, text: user?.text ?? String(p.text ?? ""), at: at ?? null };
+  const fork = p.fork != null && p.fork !== "" ? String(p.fork) : null;
+  s.rewound = { uuid, fork, text: user?.text ?? String(p.text ?? ""), at: at ?? null };
   out.add("@rewound");
   const nkey = `rw:${uuid}:${++s.meta.notices}`;
   const quote = s.rewound.text.length > 60 ? s.rewound.text.slice(0, 59) + "…" : s.rewound.text;
-  if (restore !== "code" && user) {
-    let i = s.items.indexOf(user);
-    const mk = markerOf(s, user.key);
-    if (mk && s.items.indexOf(mk) === i - 1) i--;
-    const gone = s.items.splice(i);
-    const keys = new Set(gone.map(g => g.key));
-    for (const g of gone) {
-      s.byKey.delete(g.key);
-      out.add(g.key);
-      if (g.kind === "user" && g.uuid) s.meta.uuids.delete(g.uuid);
-      if (g.kind === "ask") s.asks.delete(g.ask);
-    }
-    for (const [ident, k] of s.meta.idents) if (keys.has(k)) { s.meta.idents.delete(ident); s.meta.dropped.add(ident); }
-  }
-  const text = restore === "code" ? `Files put back to before "${quote}"`
-    : `Rewound to before "${quote}"` + (restore === "both" ? ", files too" : "");
+  const text = quote ? `Rewound to before "${quote}" in a new session` : "Rewound in a new session";
   insert(s, /** @type {NoticeItem} */ ({ key: nkey, kind: "notice", text, ...(at !== undefined ? { at } : {}) }));
   out.add(nkey);
 }
 
 /**
+ * A "!" command the person ran in the session's folder, from threads.shell's answer (no event
+ * carries it): a row with the command and its output. Returns the keys touched.
+ * @param {Session} s
+ * @param {{ id: string, command: string, output?: string, exit?: number|null, duration_ms?: number|null, error?: string, at?: number }} r
+ */
+export function localShell(s, r) {
+  const key = `sh:${r.id}`;
+  /** @type {ShellItem} */
+  const item = { key, kind: "shell", command: r.command, output: String(r.output ?? ""), exit: r.exit ?? null, duration_ms: r.duration_ms ?? null,
+    ...(r.error ? { error: r.error } : {}), ...(r.at !== undefined ? { at: r.at } : {}) };
+  const was = s.byKey.get(key);
+  if (was) Object.assign(was, item); else insert(s, item);
+  return [key];
+}
+
+/**
  * Messages a rewind can go back to: the person's own (not commands) that have a uuid, newest
- * first. What the rewind picker offers when the box cannot list checkpoints itself.
+ * first. What the rewind sheet lists (the box has no threads.checkpoints).
  * @param {Session} s @returns {{ uuid: string, text: string, at: number|null, key: string }[]}
  */
 export function checkpoints(s) {
@@ -537,6 +576,49 @@ function onFinished(s, p, at, out) {
 }
 
 /**
+ * thread.sent: a message went in. via "turn" (a queued row handed over at a turn's end) and a
+ * plain send are messages of their own; via "steer" (threads.send into a running turn) and "now"
+ * (threads.send_now, a queued row into the running turn) are steers: the words and a "steering"
+ * marker until thread.steered. A hand-over may carry only its row id and uuid: the words are the
+ * row's. A steer drawn on send that the box took as a plain message (the turn ended first) loses
+ * its marker.
+ * @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out
+ */
+function onSent(s, p, at, out) {
+  const row = s.queued.find(q => (p.queued != null && q.queued === p.queued) || (p.uuid && q.uuid === p.uuid));
+  const uuid = p.uuid || row?.uuid || undefined;
+  const text = typeof p.text === "string" && p.text ? p.text : row?.text ?? (uuid ? s.meta.texts.get(uuid) : undefined) ?? "";
+  if (p.queued != null || p.uuid) {
+    const before = s.queued.length;
+    s.queued = s.queued.filter(q => !((p.queued != null && q.queued === p.queued) || (uuid && q.uuid === uuid)));
+    if (s.queued.length !== before) out.add("@queued");
+  }
+  liveUser(s, { text, uuid, at, surface: p.surface ?? null }, out);
+  if (uuid && p.via !== "steer" && p.via !== "now") s.meta.texts.delete(uuid);
+  const key = uuid ? s.meta.uuids.get(uuid) : undefined;
+  const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
+  if (user && user.seq === undefined) {
+    const steer = p.via === "steer" || p.via === "now";
+    const m = markerOf(s, user.key);
+    if (steer) {
+      user.steered = true;
+      if (!m || m.pending) ensureMarker(s, user, { uuid, pending: true, turn: p.turn ?? null, ...(at !== undefined ? { at } : {}) }, out);
+      out.add(user.key);
+    } else if (p.via !== undefined && m && m.pending) {
+      // Drawn as a steer, taken as a message of its own.
+      const i = s.items.indexOf(m);
+      if (i >= 0) s.items.splice(i, 1);
+      s.byKey.delete(m.key);
+      out.add(m.key);
+      user.steered = false;
+      out.add(user.key);
+    }
+  }
+  guess(s, "running");
+  out.add("@session");
+}
+
+/**
  * One live event. Returns the keys it changed or added ("@session" and "@queued" for the header
  * and the queue). An event for another thread, or one whose numeric id was applied already, is
  * a no-op.
@@ -555,7 +637,7 @@ export function applyEvent(s, e) {
   const at = typeof e.at === "number" ? e.at : undefined;
   switch (e.type) {
     case "thread.started":
-      for (const k of /** @type {const} */ (["provider", "model", "auth"])) if (p[k] != null) s[k] = String(p[k]);
+      for (const k of /** @type {const} */ (["provider", "model", "auth", "purpose"])) if (p[k] != null) s[k] = String(p[k]);
       if (typeof p.mode === "string") s.mode = p.mode;
       if (Array.isArray(p.modes)) s.modes = p.modes.map(String);
       if (typeof p.thinking === "boolean") s.thinking = p.thinking;
@@ -566,17 +648,7 @@ export function applyEvent(s, e) {
     case "thread.state":
       if (typeof p.state === "string") { s.state = p.state; s.meta.stateSeen = true; out.add("@session"); }
       break;
-    case "thread.sent": {
-      if (p.queued != null || p.uuid) {
-        const before = s.queued.length;
-        s.queued = s.queued.filter(q => !((p.queued != null && q.queued === p.queued) || (p.uuid && q.uuid === p.uuid)));
-        if (s.queued.length !== before) out.add("@queued");
-      }
-      liveUser(s, { text: String(p.text ?? ""), uuid: p.uuid || undefined, at, surface: p.surface ?? null }, out);
-      guess(s, "running");
-      out.add("@session");
-      break;
-    }
+    case "thread.sent": onSent(s, p, at, out); break;
     case "thread.turn": {
       const m = /:(\d+)$/.exec(String(p.turn ?? ""));
       if (m) { s.turn = Number(m[1]); out.add("@session"); }
@@ -586,20 +658,27 @@ export function applyEvent(s, e) {
     case "thread.queued": {
       /** @type {Queued} */
       const q = { uuid: p.uuid ?? null, text: String(p.text ?? ""), queued: p.queued ?? null, at: at ?? null };
-      if (q.uuid) s.meta.texts.set(q.uuid, q.text);
-      // The row drawn on send is this one: by uuid, or (an older switchboard) by its words.
-      const mine = s.queued.findIndex(x => x.local && ((q.uuid && x.uuid === q.uuid) || (!q.uuid && sameText(x.text, q.text))));
-      if (mine >= 0) s.queued[mine] = { ...q, uuid: q.uuid ?? s.queued[mine].uuid };
-      else if (!(q.uuid && s.queued.some(x => x.uuid === q.uuid))) s.queued.push(q);
+      // The same row: by its id (threads.edit re-emits it with new words), by uuid (the row drawn
+      // on send), or (an older switchboard) the row drawn on send with the same words.
+      let i = q.queued != null ? s.queued.findIndex(x => x.queued === q.queued) : -1;
+      if (i < 0 && q.uuid) i = s.queued.findIndex(x => x.uuid === q.uuid);
+      if (i < 0 && !q.uuid) i = s.queued.findIndex(x => x.local && sameText(x.text, q.text));
+      if (i >= 0) {
+        const was = s.queued[i];
+        s.queued[i] = { ...q, uuid: q.uuid ?? was.uuid, queued: q.queued ?? was.queued, at: was.local ? q.at : was.at ?? q.at };
+      } else s.queued.push(q);
+      const uuid = s.queued[i >= 0 ? i : s.queued.length - 1].uuid;
+      if (uuid) s.meta.texts.set(uuid, q.text);
       out.add("@queued");
       break;
     }
     case "thread.unqueued": {
       const before = s.queued.length;
-      s.queued = s.queued.filter(q => !((p.uuid && q.uuid === p.uuid) || (p.queued != null && q.queued === p.queued)));
+      const gone = s.queued.filter(q => (p.queued != null && q.queued === p.queued) || (p.uuid && q.uuid === p.uuid));
+      s.queued = s.queued.filter(q => !gone.includes(q));
       if (s.queued.length !== before) out.add("@queued");
       // Taken back: its words are no longer coming. Sent or steered: thread.sent or thread.steered follows with them.
-      if (p.uuid && p.reason === "taken") s.meta.texts.delete(String(p.uuid));
+      if (p.reason === "taken") for (const u of [p.uuid, ...gone.map(q => q.uuid)]) if (u) s.meta.texts.delete(String(u));
       break;
     }
     case "thread.steered": onSteered(s, p, at, out); break;
@@ -772,8 +851,6 @@ export function applyBlocks(s, blocks) {
     const ord = ords.get(ok) ?? 0;
     ords.set(ok, ord + 1);
     const ident = identOf(b, ord);
-    // Rewound away: never read back in.
-    if (s.meta.dropped.has(ident)) return { b, ord, ident, item: null, dropped: true };
     const known = s.meta.idents.get(ident);
     const item = known ? s.byKey.get(known) ?? null : matchLive(s, b, taken, list, i, anyLive);
     if (item) taken.add(item.key);
@@ -786,7 +863,6 @@ export function applyBlocks(s, blocks) {
   const hint = { at: -1 };
   plan.forEach((step, i) => {
     const { b, ord, ident } = step;
-    if (/** @type {any} */ (step).dropped) return;
     const f = fieldsOf(b);
     if (!f) return;
     let item = step.item;

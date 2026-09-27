@@ -21,9 +21,17 @@
 // unknown parts left out) and its state word (starting, idle, running, waiting, stopped, failed);
 // a session closed for idleness says "Resumes on your next message". While a turn runs the
 // composer has Stop (Esc): threads.interrupt, or on a Switchboard without it threads.stop.
-// Messages waiting in the queue sit above the composer: "Queued <text>" with Edit, Take back and
-// Send now (threads.edit, threads.unqueue, threads.send {now}); no Switchboard has those yet, so
-// the buttons are disabled and say so.
+//
+// The composer works like Claude Code in the terminal (composer.js, core/composer-state.js):
+// typing while a turn runs steers it, and a quiet "Steered at step N" row marks where the words
+// joined (live, and again on a re-read: core/transcripts marks such a line). Messages queued for
+// after the turn sit above the composer: "Queued for after <text>" with Edit, Take back and Steer
+// now (threads.edit, threads.unqueue, threads.send_now, each naming the row's `queued` id). Esc
+// Esc opens the rewind sheet: your messages from the session state; choosing one forks the
+// session there (threads.rewind) and the fork opens with the words back in its composer. The
+// pinned todo list and the background tasks tray sit above the composer, and Ctrl+O hides or
+// shows the thinking. A box without the sessions update is learnt from its first "no such tool"
+// (core/caps.js): that control turns off and says "Needs the sessions update".
 //
 // Asks and questions are inline at the tail and in Needs at once; answering either resolves the
 // other, and one answered on another screen says where ("Answered from the Capsule · 14:31"). Keys
@@ -31,8 +39,8 @@
 // A allows once, D denies, Enter, Esc, arrows, space and 1-9 as the cards define. Keys are heard
 // only while this page is on screen.
 //
-// Kept from before: Mac sessions (source "mac": sends carry the machine, an offline chip, cards
-// say "Answer it on <machine>"), gate items, memory facts after their turn, notices, day rules,
+// Kept from before: Mac sessions (source "mac": sends and answers carry the machine, an offline
+// chip, cards say "on <machine>", or "Answer it on <machine>" on a box that cannot forward), gate items, memory facts after their turn, notices, day rules,
 // the Raw toggle (the same items printed the way the terminal prints them), "Load earlier", the
 // Jump to latest pill, deep links from Needs (?at, ?ask, ?tool). An older box without
 // recall.transcript gets the earlier view (recall.thread turns and thread.* events), unchanged.
@@ -43,7 +51,7 @@
 //
 // Nothing here uses innerHTML: text is untrusted, so it goes through lib/markdown.js or text nodes.
 
-import { h, put, empty } from "../js/dom.js";
+import { h, put, empty, go } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
@@ -51,13 +59,18 @@ import { healthDot } from "../js/health.js";
 import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
+import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
-import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView } from "./blocks.js";
+import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
 import { textItemRow } from "./live-text.js";
-import { createSession, applyEvent as applyStateEvent, applyBlocks } from "./core/session-state.js";
+import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints } from "./core/session-state.js";
+import { CAPS, NEEDS_UPDATE } from "./core/caps.js";
+import { rewindSheet } from "./pickers.js";
+import { threadHref } from "./lib/routes.js";
+import { todoPin, tasksTray } from "./tray.js";
 import { groupItems } from "./core/grouping.js";
 import { isAtBottom } from "./core/window.js";
 import { createWindowView } from "./window-view.js";
@@ -73,16 +86,20 @@ const WINDOW = 60;
 const FLASH_MS = 1600;
 /** A turn cancelled this soon after this screen pressed Stop was stopped by you. */
 const STOP_MS = 120_000;
+const THINK_KEY = "vyre.chat.hide-thinking";
+const readHideThinking = () => { try { return localStorage.getItem(THINK_KEY) === "1"; } catch { return false; } };
 /**
- * The queue tools (threads.edit, threads.unqueue, threads.send {now}) are not on any Switchboard
- * yet (asked of the sessions team, 27 Sep). Until they are, the queued rows' buttons are disabled.
+ * Event names the view reads beyond the ones api.js always listens for: naming them makes the
+ * shared stream listen (thread.* only hears the names it knows).
  */
-const QUEUE_TOOLS = false;
-const NEEDS_UPDATE = "Needs the sessions update";
+const MORE_EVENTS = ["thread.state", "thread.turn", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
+  "thread.mode", "thread.model", "thread.thinking", "thread.task", "thread.usage", "thread.limit"];
 const editable = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
 const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", codex: "Codex", acp: "ACP" });
 const BUSY = new Set(["starting", "running", "waiting"]);
 /** Where an answer came from, as the card says it. */
+/** Words a rewind took back, by the fork thread they open in (read once, when that thread mounts). */
+const PREFILL = new Map();
 const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "the Capsule", cli: "the terminal", local: "the terminal", phone: "your phone",
   mobile: "your phone", pwa: "your phone", needs: "Needs", deck: "the Deck", chat: "the Deck", glass: "Glass" });
 
@@ -156,9 +173,34 @@ export function mountSession(container, opts) {
   const composer = mountComposer({ thread, agents: [], threads: [], holder: null, surface: "chat", machine: isMac(where) ? macName() : null,
     onQueue: (n, name) => { mac.queued = n; mac.name = name; if (isMac(where)) drawHead(); },
     onOffline: m => { mac.offline = m; drawHead(); },
-    onStop: () => stopTurn() });
+    onStop: () => stopTurn(),
+    session: S, patch: keys => patch(keys),
+    cwd: () => record.current?.cwd || recorded.session?.cwd || null,
+    name: () => agentName(),
+    onRewind: () => openRewind(),
+    onTasks: () => tray.toggle(),
+    onThinkingView: () => setHideThinking(!hideThinking),
+    onOverlayEscape: () => { if (!rewind) return false; closeRewind(); return true; } });
+  /** The live todo list and the background tasks, above the composer. */
+  const pin = todoPin();
+  const tray = tasksTray({
+    can: () => CAPS.has("threads.kill_task"),
+    onView: t => { if (!t.call) return; const el = reveal("t:" + t.call); if (el) { el.scrollIntoView?.({ block: "center" }); el.classList.add("cv-flash"); setTimeout(() => el.classList.remove("cv-flash"), FLASH_MS); } },
+    onKill: async t => {
+      const r = await CAPS.use("threads.kill_task", () => attempt("threads.kill_task", { thread, id: t.id }));
+      return r.error ? (r.missing ? NEEDS_UPDATE : "Could not stop it: " + (r.error.message || r.error.code)) : null;
+    },
+  });
+  /** The rewind sheet (Esc Esc), while it is open. */
+  const rewindBox = h("div", { class: "cv-rewind-box", hidden: true });
+  let rewind = /** @type {ReturnType<typeof rewindSheet>|null} */ (null);
+  let hideThinking = readHideThinking();
+  const capsOff = CAPS.on(() => { drawQueued(); tray.draw(); rewind?.refresh(); });
 
-  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, queuedBox, composer.el);
+  put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, pin.el, tray.el, queuedBox, rewindBox, composer.el);
+  // Opened as the fork of a rewind: the words taken back are in the composer to edit.
+  const prefill = PREFILL.get(thread);
+  if (prefill) { PREFILL.delete(thread); composer.setText(prefill.text, prefill.note); }
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   let names = /** @type {{ assistant: string|null, owner: string|null }} */ ({ assistant: null, owner: null });
@@ -193,7 +235,10 @@ export function mountSession(container, opts) {
       const rec = record.current || {};
       const st = rec.state || ({ running: "running", stopped: "stopped", idle: "idle", failed: "failed", starting: "starting", waiting: "waiting" })[rec.status];
       if (st) S.state = st;
-      for (const k of /** @type {const} */ (["provider", "model", "auth"])) if (rec[k]) S[k] = String(rec[k]);
+      for (const k of /** @type {const} */ (["provider", "model", "auth", "purpose"])) if (rec[k]) S[k] = String(rec[k]);
+      if (typeof rec.mode === "string") S.mode = rec.mode;
+      if (Array.isArray(rec.modes)) S.modes = rec.modes.map(String);
+      if (typeof rec.thinking === "boolean") S.thinking = rec.thinking;
     }
     // Only a box without the tool gets the earlier view: api.js calls any 404 "missing", and a
     // transcript not found yet (code not_found) is a live thread that still reads as blocks.
@@ -226,6 +271,8 @@ export function mountSession(container, opts) {
     layout();
     drawHead();
     drawQueued();
+    pin.set(S.todos);
+    tray.set(S.tasks);
     drawEarlier();
     for (const e of early.splice(0)) onLive(e);
     if (raw) drawRaw();
@@ -286,6 +333,8 @@ export function mountSession(container, opts) {
       mac.offline ? h("span", { class: "tag machine off cv-offline", title: `${mac.offline} is not reachable` }, `${mac.offline} offline`) : null,
       chip ? h("span", { class: "tag cv-chip" }, chip) : null,
       sb ? h("span", { class: "cv-state cv-state-" + S.state, title: "This session is " + S.state }, S.state + (S.turn && BUSY.has(S.state) ? ` · turn ${S.turn}` : "")) : null,
+      mode === "blocks" ? h("button", { class: "btn btn-ghost btn-sm cv-think-toggle", type: "button", "aria-pressed": String(!hideThinking),
+        title: "Show or hide the thinking (Ctrl+O)", onclick: () => setHideThinking(!hideThinking) }, hideThinking ? "Show thinking" : "Hide thinking") : null,
       mode === "blocks" ? h("button", { class: "btn btn-ghost btn-sm cv-raw-toggle", type: "button", "aria-pressed": String(raw), title: "Show it the way the terminal prints it",
         onclick: () => setRaw(!raw) }, raw ? "Rich" : "Raw") : null,
       health.el,
@@ -309,19 +358,88 @@ export function mountSession(container, opts) {
   /** Found to be the Mac's from recall.thread's answer: sends from now on carry the machine. */
   function onMac() { composer.setMachine(macName()); }
 
-  /** "Queued <text>" rows above the composer, from the session's queue. */
+  /**
+   * "Queued for after <text>" rows above the composer, from the session's queue: Edit takes the
+   * words back into the box (Enter saves them, threads.edit), Take back withdraws the message
+   * (threads.unqueue; the words come back to the box), Steer now hands it to the running turn at
+   * its next step (threads.send_now). Each names the row by its `queued` id, so a row drawn on
+   * send has its buttons off until the box has answered with one. A button whose tool the box
+   * lacks is off and says so.
+   */
   function drawQueued() {
     queuedBox.hidden = !S.queued.length;
-    const off = !QUEUE_TOOLS;
-    const btn = (label, cls, fn) => h("button", { class: "btn btn-ghost btn-sm " + cls, type: "button", disabled: off, title: off ? NEEDS_UPDATE : label, onclick: fn }, label);
-    put(queuedBox, S.queued.map(q => h("div", { class: "cv-queued-row" },
-      h("span", { class: "lbl" }, "Queued"),
+    const btn = (label, cls, tool, q, fn) => {
+      const off = CAPS.has(tool) === false, early = q.queued == null;
+      return h("button", { class: "btn btn-ghost btn-sm " + cls, type: "button", disabled: off || early,
+        title: off ? NEEDS_UPDATE : early ? "Queueing…" : label, onclick: fn }, label);
+    };
+    put(queuedBox, S.queued.map(q => h("div", { class: "cv-queued-row" + (q.local ? " cv-queued-local" : "") },
+      h("span", { class: "lbl" }, "Queued for after"),
       h("span", { class: "cv-queued-text ellipsis" }, q.text),
-      btn("Edit", "cv-q-edit", async () => { if ((await attempt("threads.unqueue", { thread, uuid: q.uuid, queued: q.queued })).data) composer.setText(q.text); }),
-      btn("Take back", "cv-q-take", () => attempt("threads.unqueue", { thread, uuid: q.uuid, queued: q.queued })),
-      btn("Send now", "cv-q-now", () => attempt("threads.send", { thread, text: q.text, now: true, uuid: q.uuid, surface: "deck" })),
+      btn("Edit", "cv-q-edit", "threads.edit", q, () => composer.editQueued(q)),
+      btn("Take back", "cv-q-take", "threads.unqueue", q, () => queueAct("threads.unqueue", q)),
+      btn("Steer now", "cv-q-now", "threads.send_now", q, () => queueAct("threads.send_now", q)),
     )));
   }
+  /** @param {"threads.unqueue"|"threads.send_now"} tool @param {any} q */
+  async function queueAct(tool, q) {
+    if (q.queued == null) return;
+    const r = await CAPS.use(tool, () => attempt(tool, { thread, queued: q.queued }));
+    if (r.error) { if (!r.missing) { stop.error = (tool === "threads.send_now" ? "Could not steer: " : "Could not take it back: ") + (r.error.message || r.error.code); drawHead(); } drawQueued(); return; }
+    // Done: the row goes now (thread.unqueued says the same a moment later); taken back, the words return to the box.
+    S.queued = S.queued.filter(x => x !== q);
+    drawQueued();
+    if (tool === "threads.unqueue" && !composer.value().trim()) composer.setText(q.text);
+  }
+
+  // ---- rewind (Esc Esc) --------------------------------------------------------------------
+
+  /** A rewind this screen asked for: its message, and whether the fork has opened. */
+  let rewinding = /** @type {{ uuid: string, text: string, at: number|null, went: boolean }|null} */ (null);
+
+  function openRewind() {
+    if (rewind || !switchboard()) return;
+    rewind = rewindSheet({
+      points: checkpoints(S),
+      can: () => CAPS.has("threads.rewind"),
+      onClose: closeRewind,
+      onChoose: async p => {
+        rewinding = { uuid: p.uuid, text: p.text, at: p.at, went: false };
+        const res = await CAPS.use("threads.rewind", () => attempt("threads.rewind", { thread, uuid: p.uuid }));
+        if (res.error) { rewinding = null; return res.missing ? NEEDS_UPDATE : "Could not rewind: " + (res.error.message || res.error.code); }
+        const fork = /** @type {any} */ (res.data)?.fork;
+        if (fork) { toFork(String(fork)); return null; }
+        // The answer did not name it: thread.rewound {uuid, fork} will.
+        return rewinding && rewinding.went ? null : "Opening the new session…";
+      },
+    });
+    rewindBox.hidden = false;
+    put(rewindBox, rewind.el);
+    rewind.el.setAttribute("tabindex", "-1");
+    rewind.el.focus?.();
+  }
+  /** The fork a rewind of this screen's made: it opens, with the words back in its composer. @param {string} fork */
+  function toFork(fork) {
+    if (!rewinding || rewinding.went) return;
+    rewinding.went = true;
+    PREFILL.set(fork, { text: rewinding.text, note: "Prefilled from " + (rewinding.at ? clock(rewinding.at) : "the rewind") });
+    if (rewind) closeRewind();
+    go(threadHref({ id: fork, project: record.current?.project || null }, opts.project));
+  }
+  function closeRewind() {
+    rewind = null;
+    rewindBox.hidden = true;
+    rewindBox.replaceChildren();
+    composer.focus();
+  }
+
+  function setHideThinking(v) {
+    hideThinking = v;
+    try { localStorage.setItem(THINK_KEY, v ? "1" : "0"); } catch {}
+    timeline.classList.toggle("cv-hide-thinking", v);
+    drawHead();
+  }
+  timeline.classList.toggle("cv-hide-thinking", hideThinking);
 
   // ---- Stop -------------------------------------------------------------------------------
 
@@ -368,6 +486,8 @@ export function mountSession(container, opts) {
     const keep = win.anchor();
     applyBlocks(S, older);
     layout();
+    pin.set(S.todos);
+    tray.set(S.tasks);
     first = typeof r.data.first === "number" ? r.data.first : older.length ? older[0].seq : 0;
     if (!older.length) first = 0;
     drawEarlier();
@@ -429,6 +549,8 @@ export function mountSession(container, opts) {
       case "turn": return turnRow(asBlock(it));
       case "notice": return noticeMsg(it.text, it.at);
       case "ask": return askEl(it);
+      case "steer": return steerEl(it);
+      case "shell": return shellEl(it);
       default: return h("div", { class: "cv-row" });
     }
   }
@@ -446,12 +568,39 @@ export function mountSession(container, opts) {
     return nel;
   }
 
+  /** Where typed words joined a running turn: "Steered at step 2 · 14:32", or "Steering" until it reads them. */
+  function steerEl(it) {
+    const label = it.pending ? "Steering" : it.step != null ? `Steered at step ${it.step}` : "Steered here";
+    return h("div", { class: "cv-row cv-steer" + (it.pending ? " cv-steer-pending" : ""), role: "note" },
+      h("span", { class: "line" }),
+      h("span", { class: "cv-steer-lbl" }, label,
+        it.pending ? h("span", { class: "faint" }, " · joins at the next step") : it.at ? h("span", { class: "msg-when" }, " · " + clock(it.at)) : null),
+      h("span", { class: "line" }));
+  }
+  /** A "!" command run in the session's folder, and what it printed. */
+  function shellEl(it) {
+    const state = it.error ? "failed" : it.exit == null && !it.output && it.duration_ms == null ? "running" : it.exit ? "failed" : "done";
+    return h("div", { class: "cv-row cv-shell", "data-state": state },
+      h("div", { class: "cv-shell-head" },
+        h("span", { class: "lbl" }, "Shell"), h("code", { class: "cv-shell-cmd ellipsis" }, it.command),
+        h("span", { class: "cv-shell-meta" }, ["you", state === "running" ? "running" : null, it.duration_ms != null ? duration(it.duration_ms) : null,
+          it.exit ? `exit ${it.exit}` : null].filter(Boolean).join(" · "))),
+      it.error ? h("div", { class: "err cv-shell-err" }, it.error) : it.output ? outputEl(it.output, { err: !!it.exit }) : null);
+  }
+
   // ---- asks ---------------------------------------------------------------------------------
 
   function askData(id, it) {
     const info = askInfo.get(id) || {};
     return { id, tool: it?.tool ?? info.tool ?? null, summary: it?.summary ?? info.summary ?? null, kind: info.kind || it?.askKind || "permission",
-      ...info, agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : {}) };
+      ...info, agent: agentName(), ...macOf(info) };
+  }
+  /** A Mac session's ask: answered from here with its machine (the relayed event's, else the row's),
+   * unless this box has shown it cannot forward answers (presence.js macAnswersHeld). */
+  function macOf(info) {
+    if (info.source !== "mac" && !isMac(where)) return {};
+    const machine = info.machine || macName();
+    return { machine, ...(macAnswersHeld() ? { elsewhere: machine } : {}) };
   }
   function askEl(it) {
     const full = askData(it.ask, it);
@@ -507,7 +656,8 @@ export function mountSession(container, opts) {
     return d.toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
   }
   const dayRule = d => h("div", { class: "day-rule" }, h("span", { class: "line" }), h("span", { class: "lbl" }, d), h("span", { class: "line" }));
-  const sideOfItem = it => it.kind === "user" ? "user" : it.kind === "turn" ? "turn" : it.kind === "ask" || it.kind === "notice" ? null : "assistant";
+  const sideOfItem = it => it.kind === "user" ? "user" : it.kind === "turn" ? "turn"
+    : it.kind === "ask" || it.kind === "notice" || it.kind === "steer" || it.kind === "shell" ? null : "assistant";
 
   /** A fold row for a run of tool calls. */
   function runEl(r) {
@@ -669,8 +819,16 @@ export function mountSession(container, opts) {
     for (const k of keys) {
       if (k === "@session") { if (booted) drawHead(); continue; }
       if (k === "@queued") { drawQueued(); continue; }
+      if (k === "@todos") { pin.set(S.todos); continue; }
+      if (k === "@tasks") { tray.set(S.tasks); continue; }
+      if (k === "@rewound") {
+        // This screen's rewind: its fork opens. Another screen's: the notice row says so.
+        const rw = S.rewound;
+        if (rw && rw.fork && rewinding && rw.uuid === rewinding.uuid) toFork(rw.fork);
+        continue;
+      }
       const it = S.byKey.get(k);
-      if (!it) { order = true; continue; }
+      if (!it) { const gone = els.get(k); if (gone) { gone.stop?.(); els.delete(k); } order = true; continue; }
       if (it.kind === "turn" && it.canceled && stop.at && Date.now() - stop.at < STOP_MS && !byMe.has(k)) { byMe.add(k); stop.at = 0; }
       const el = els.get(k);
       if (!el) { order = true; continue; }
@@ -915,7 +1073,10 @@ export function mountSession(container, opts) {
     }
     if (e.type === "thread.stopped") { timeline.append(h("div", { class: "turn-foot" }, icon("terminal", 12), "session stopped" + (p.reason ? ": " + p.reason : ""))); return; }
     if (e.type === "ask.raised") {
-      upsertAsk({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, kind: p.kind, questions: p.questions });
+      // A relayed Mac ask carries source "mac", machine and node (the Mac's stableId); threads.asks on the box does not list it.
+      upsertAsk({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, kind: p.kind, questions: p.questions,
+        ...(p.source === "mac" ? { source: "mac", machine: p.machine || macName(), node: p.node ?? null,
+          ...Object.fromEntries(["detail", "always", "always_project"].filter(k => p[k] !== undefined).map(k => [k, p[k]])) } : {}) });
       fetchAsks();
       return;
     }
@@ -931,7 +1092,8 @@ export function mountSession(container, opts) {
   }
   /** The earlier view's cards: appended, then filled in. */
   function legacyAsk(a) {
-    const full = { ...askInfo.get(a.id), agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : {}) };
+    const info = askInfo.get(a.id) || {};
+    const full = { ...info, agent: agentName(), ...macOf(info) };
     let el = cards.get(a.id);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return; }
     el = /** @type {any} */ (a.kind === "question" ? questionCard(full) : askCard(full));
@@ -952,14 +1114,18 @@ export function mountSession(container, opts) {
   }
   const onKey = (/** @type {KeyboardEvent} */ e) => {
     // The shell keeps pages mounted while away (deck/js/app.js): keys belong to the page on screen.
-    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || !container.isConnected || container.closest?.(".away")) return;
+    if (e.defaultPrevented || !container.isConnected || container.closest?.(".away")) return;
     if (opts.shown && !opts.shown()) return;
     const t = /** @type {any} */ (e.target);
-    if (editable(t)) return; // the composer (its own Esc stops), the "Other" field, the deny reason: their own keys
+    if (editable(t)) return; // the composer (its own keys), the "Other" field, the deny reason: their own keys
     if (t && (t.tagName === "BUTTON" || t.tagName === "A") && (e.key === "Enter" || e.key === " ")) return; // the focused control's own press
+    if (rewind && rewind.key(e)) { e.preventDefault(); return; }
+    // Ctrl+O, Ctrl+B, Alt+T and the like: the composer's page-wide keys, never a card's.
+    if (e.metaKey || e.ctrlKey || e.altKey) { if (composer.key(e)) e.preventDefault(); return; }
     const card = cardFor(t);
     if (card && card.onKey(e)) { e.preventDefault(); return; }
-    if (e.key === "Escape" && busy()) { e.preventDefault(); stopTurn(); }
+    // Esc stops (Esc Esc rewinds), Shift+Tab the next mode: the same keys as in the box.
+    if (composer.key(e)) e.preventDefault();
   };
   document.addEventListener("keydown", onKey);
   /** Back on screen: streaming replies catch up at the display rate. */
@@ -1083,6 +1249,9 @@ export function mountSession(container, opts) {
     // memory.curated carries no thread: refetch this open thread and let the id dedup filter it.
     on("memory.curated", () => fetchMemory()),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) !== thread) return; if (mode === "blocks") refresh(); else readMoreLegacy(); }),
+    // Heard through "thread.*" above; named here so the stream listens for them at all.
+    ...MORE_EVENTS.map(name => on(name, () => {})),
+    capsOff,
   ];
   return () => {
     health.stop(); for (const off of offs) off(); composer.stop();

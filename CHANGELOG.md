@@ -70,6 +70,48 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 
 
+#### Chat: the composer speaks the final sessions contract
+
+- Queue rows are named by the box's row id (`queued`): Take back is threads.unqueue {thread,
+  queued}, Edit is threads.edit {thread, queued, text} (thread.queued comes back under the same
+  id), Steer now is threads.send_now {thread, queued} (was threads.steer). A row drawn on send has
+  its buttons off until threads.send answers {queued: <id>, uuid}. A hand-over at a turn's end
+  (thread.sent {queued, uuid, via: "turn"}) takes its words from the row.
+- thread.steered carries no step: the Deck counts the turn's finished tool calls when it arrives.
+  thread.sent via "steer" or "now" draws a steer; a steer the box took as a plain message loses
+  its marker.
+- Esc Esc lists your messages from the session and forks there (threads.rewind {thread, uuid} ->
+  thread.rewound {uuid, fork}): the fork opens with the words back in its composer; this session
+  keeps every word. No conversation / code / both choice, no threads.checkpoints.
+- Shift+Tab cycles default, acceptEdits and plan only. threads.start answering "busy" says "All
+  sessions are busy; one will free up shortly" with Try again. thread.started's purpose is kept.
+- Model, commands, shell, memory, thinking, killing a task and images on send start off
+  (core/caps.js NOT_OFFERED) instead of being learnt on first use.
+
+#### Chat: the composer works like Claude Code in the terminal
+
+- Typing while a turn runs steers it: Enter hands the words to the running turn at its next step
+  (threads.send mode "steer"), drawn at once as "Steering" and confirmed as "Steered at step N"
+  where they joined (thread.steered). Alt+Enter, a "Queue for after this turn" toggle, or a hold
+  on the send button queues them instead: a row above the composer with Edit, Take back and
+  Steer now. Up in an empty composer recalls the last message (per thread, the last 100) or takes
+  the newest queued one back to edit.
+- Esc stops at once; Esc Esc opens a rewind sheet (restore the conversation, the code or both;
+  the words come back to edit). Shift+Tab cycles the permission mode (a chip under the box: Asks
+  first, Accepts edits, Plan mode; Doesn't ask only when the session offers it); a model chip and
+  /model open a picker; a thinking chip turns thinking on or off; Ctrl+O hides or shows it.
+- "/" opens the session's commands with source badges (threads.commands, else a static list),
+  "@" files in the session's folder (files.search), "!" runs a shell command there with its
+  output as a row, "#" saves a memory to this project or about you. A pasted image is attached
+  (at most 4, 5 MB each). The live todo list is pinned above the composer; a tray lists
+  background shells and subagents with View output and Stop.
+- The rules live in deck/chat/core/composer-state.js (no DOM), with one key map the Deck and the
+  phone both read. Tools the sessions team has not shipped are learnt from their first "no such
+  tool" (deck/chat/core/caps.js): that control turns off and says "Needs the sessions update".
+- core/transcripts: a person's line inside an open turn (after a tool call, before the reply) is a
+  steer, `steered: true, step: <calls finished before it>`, and starts no turn, so a re-read shows
+  the same marker as live.
+
 #### Chat: long sessions and terminals that outlive vyred
 
 - Long sessions render windowed above 100 rows (deck/chat/core/window.js, deck/chat/window-view.js):

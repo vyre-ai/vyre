@@ -10,18 +10,20 @@
 // move, space toggles (multi-select) or picks, Enter picks and moves on (on the last step it
 // submits), Esc steps back. Submit calls threads.answer { ask, decision: "allow", answers,
 // surface: "deck" } (no passkey, ADR 0024); Decline sends "deny". Answered here or elsewhere
-// (ask.answered), the card folds to what was answered.
+// (ask.answered), the card folds to what was answered. A Mac session's ask (ask.machine) is answered
+// the same way with `machine` added, and says "on <machine>"; its refusals are presence.js macProblem's.
 
 import { h, put, add } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { renderMarkdown } from "./lib/markdown.js";
-import { problemLine } from "./presence.js";
+import { problemLine, macHeld, macLabel, macProblem } from "./presence.js";
 import { fromLine } from "./ask-item.js";
 import { emptyPick, choose, answerText, answered, answerInput } from "./lib/answers.js";
 
 /**
- * @param {{ id: string, questions?: any[], agent?: string|null, elsewhere?: string|null }} ask elsewhere: the machine to answer on (the paired Mac), no buttons here
+ * @param {{ id: string, questions?: any[], agent?: string|null, machine?: string|null, node?: string|null, elsewhere?: string|null }} ask
+ * machine: the paired Mac the answer goes to; elsewhere: set once the box has shown it cannot forward it (no buttons here)
  * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string, answers?: any, from?: { where: string, at?: number|null }|null) => void,
  *   onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
  */
@@ -32,7 +34,7 @@ export function questionCard(ask) {
   let picks = questions.map(() => emptyPick());
   let cursor = questions.map(() => 0);
   const state = { step: 0, busy: false, error: /** @type {any} */ (null), decided: /** @type {string|null} */ (null), shown: /** @type {Record<string, string>|null} */ (null),
-    from: /** @type {{ where: string, at?: number|null }|null} */ (null) };
+    from: /** @type {{ where: string, at?: number|null }|null} */ (null), again: /** @type {(o: { presence?: boolean }) => void} */ (() => {}) };
   const who = ask.agent || "Vyre";
   const many = () => questions.length > 1;
   const reviewStep = () => questions.length; // only reached when there are several
@@ -64,39 +66,47 @@ export function questionCard(ask) {
   }
   function back() { if (state.step > 0) { state.step--; draw(); el.focus?.(); } }
 
-  async function submit() {
+  const onMac = () => (ask.machine ? { machine: ask.machine } : {});
+  /** @param {{ presence?: boolean }} [opts] a passkey proof first (a Mac's refusal asked for one) */
+  async function submit(opts = {}) {
     if (state.busy || state.decided) return;
     let input;
-    try { input = answerInput(ask.id, questions, picks); } catch (e) { state.error = e; draw(); return; }
+    try { input = { ...answerInput(ask.id, questions, picks), ...onMac() }; } catch (e) { state.error = e; draw(); return; }
     state.busy = true; state.error = null; draw();
-    const r = await attempt("threads.answer", input);
+    const r = await attempt("threads.answer", input, opts.presence ? { presence: true } : {});
     state.busy = false;
-    if (r.error) state.error = r.error; else { state.decided = "allow"; state.shown = input.answers; }
+    if (!r.error) { state.decided = "allow"; state.shown = input.answers; }
+    else failed(r.error, o => submit({ ...opts, ...o }));
     draw();
   }
-  async function decline() {
+  /** @param {{ presence?: boolean }} [opts] */
+  async function decline(opts = {}) {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
-    const r = await attempt("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" });
+    const r = await attempt("threads.answer", { ask: ask.id, decision: "deny", surface: "deck", ...onMac() }, opts.presence ? { presence: true } : {});
     state.busy = false;
-    if (r.error) state.error = r.error; else state.decided = "deny";
+    if (!r.error) state.decided = "deny";
+    else failed(r.error, o => decline({ ...opts, ...o }));
     draw();
   }
+  function failed(err, again) { if (!macHeld(ask, err)) { state.error = err; state.again = again; } }
+  const problem = () => state.error ? (ask.machine ? macProblem(state.error, ask.machine, ask, state.again) : problemLine(state.error)) : null;
 
   function draw() {
     const title = h("div", { class: "gate-row" },
       h("span", { class: "ask-title" }, `${who} asks`),
+      ask.machine && !ask.elsewhere ? macLabel(ask.machine) : null,
       many() && !state.decided ? h("span", { class: "cv-q-step" }, onReview() ? "Review" : `${state.step + 1} of ${questions.length}`) : null);
     otherInput = null; nextBtn = null;
     if (state.decided) { put(el, title, folded()); el.classList.add("answered"); return; }
     if (!questions.length) { put(el, title, h("div", { class: "cv-note" }, "Reading the question…")); return; }
-    // A session on the paired Mac: answers are not forwarded, so the questions show and say where to answer.
+    // A session on the paired Mac, and a box that cannot forward the answer: the questions show and say where to answer.
     if (ask.elsewhere) {
       put(el, title, h("dl", { class: "cv-q-review" }, questions.map(q => [h("dt", null, q.header || q.question), h("dd", null, q.options.map(o => o.label).join(" / "))])),
         h("div", { class: "cv-elsewhere" }, icon("laptop", 12), `Answer it on ${ask.elsewhere}`));
       return;
     }
-    put(el, title, onReview() ? review() : stepView(state.step), actions(), state.error ? problemLine(state.error) : null);
+    put(el, title, onReview() ? review() : stepView(state.step), actions(), problem());
   }
 
   function folded() {
@@ -171,7 +181,7 @@ export function questionCard(ask) {
     return h("div", { class: "gate-actions" },
       nextBtn,
       state.step > 0 ? h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: back }, "Back") : null,
-      h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: decline }, "Decline"),
+      h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: () => decline() }, "Decline"),
     );
   }
 

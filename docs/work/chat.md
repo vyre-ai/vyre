@@ -192,9 +192,32 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
   "Answered from <surface> · <time>". Behaviour changed on purpose: tool runs fold (session.test.js
   "open" test opens them first); the composer's own queue line is gone (rows replace it); a failed
   turn reads "Turn failed: ..." in its footer. Tests: deck/chat + deck/test 221/221 (1 skipped) on testbox.
+- Aligned to the final sessions contract (27 Sep, untested: testbox held): queue by row id
+  (unqueue/edit/send_now), step counted client-side, rewind forks and opens the fork, Shift+Tab
+  over three modes, threads.start busy note, NOT_OFFERED tools off from the start in caps.js.
 - Gaps for sessions: threads.interrupt is on work/sessions only (the Deck falls back);
   threads.edit, threads.unqueue, threads.send {now} are nowhere; thread.queued needs `uuid` for rows
   to act on; ask.answered `by` is a surface, not a device ("alex's iPhone" needs a device name).
+- Mac asks answered from the Deck (federation v2, untested: testbox held): buttons + "on <mac>", threads.answer carries `machine`; person_session_required / presence_required reuse api.js's passkey proof, mac_offline / timeout retry; no box flag exists, so an unknown/unsupported refusal (or "no ask" on an unrelayed ask) falls back to "Answer it on <mac>" for the page.
+
+## Composer like Claude Code (27 Sep, TESTBOX FREEZE: tests written, not run)
+- deck/chat/core/composer-state.js (draft mode by first character, @ at the caret, history ring,
+  Enter decision, Esc machine, Shift+Tab over offered modes, KEYMAP, image caps), core/caps.js
+  (lazy "no such tool" probe, one per page), commands.js normalizeCommands + local /model /rewind.
+- session-state: localSend/dropLocal (optimistic steer and queue), thread.steered (marker
+  steer:<uuid> moved to where it joined), thread.rewound (drops from that message on; dropped
+  idents never read back), thread.mode/model/thinking/task, s.todos (newest TodoWrite), s.tasks
+  (derived from Bash run_in_background / KillShell / BashOutput / Task until thread.task),
+  localShell rows, checkpoints().
+- Deck: composer.js rewritten (pickers.js, tray.js), session.js wiring, chat.css.
+- core/transcripts: steered user blocks.
+- Live now: steer/queue drawing (threads.send accepts extra fields today), history, Esc stop,
+  todos pin, derived tasks tray (View output), thinking view toggle, @files via files.search,
+  static commands. Waiting on sessions: thread.steered, threads.unqueue/edit/steer, rewind +
+  checkpoints, mode, model, sessions.models, commands, shell, remember, thinking, thread.task,
+  kill_task, images on threads.send (a send answer without `uuid` is read as an older box).
+- Tell pwa: deck/sw.js SHELL needs /chat/pickers.js, /chat/tray.js, /chat/core/composer-state.js,
+  /chat/core/caps.js, /chat/core/commands.js, /chat/core/match.js (the last two were missing already).
 
 ## Next
 - thread.limit as a line in the turn (the design's limit fallback); windowed rows above 100 items;
@@ -230,3 +253,4 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
 - recall.watch/unwatch, events session.turn and session.state; recall.thread items add id, at; recall.status adds watches.
 - threads.asks { kind }; asks add agent, thread_name, anchor { tool_use_id, event }, always_project; request_id hidden. threads.answer scope "project". gate.held adds anchor { tool_use_id, event, thread, at }; gate.request takes tool_use_id. ask.answered adds scope.
 - ask.answered adds `answers`. answerLine takes a fifth argument { answers, permissions }.
+- transcripts.blocks / recall.transcript: a user block inside an open turn has `steered: true, step: n` and does not close the turn.
