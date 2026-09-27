@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Docs: the planner page
+
+- docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
+  the Deck, answering a ring, the lock-screen label, what agents may do, connected calendars,
+  settings. ADR 0025 gains front matter and joins the nav; the reference pages are regenerated.
+
 #### Push: a planner notification closes everywhere once answered, and an opt-in lock-screen label
 
 - core/push sends `{ kind: "planner-ack", tag: "planner-<firing>" }` to every device when a

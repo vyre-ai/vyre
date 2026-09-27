@@ -36,6 +36,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
+| [`planner`](#planner) | `core/planner` | `box`, `local` | 14 | 5 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 6 | 4 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
@@ -238,6 +239,17 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Tools: [10](tools.md#onboard)
 - Emits: [2 events](events.md#onboard)
 - Shows on: no surface
+
+## planner
+
+Alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings when the Mac is shut.
+
+- Folder: `core/planner`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [14](tools.md#planner)
+- Emits: [5 events](events.md#planner)
+- Shows on: capsule, cli, deck
 
 ## presence
 

@@ -1,4 +1,12 @@
-# ADR 0025 · The planner: time, alarms, reminders, todos, notes and a calendar on the box
+---
+title: "ADR 0025: The planner on the box"
+summary: Alarms, timers, reminders, todos, notes and a calendar kept on the box with one scheduler, delivered to push, the Capsule and the Deck, and open to agents.
+audience: builders, agents
+owner: docs
+status: draft
+---
+
+# ADR 0025: The planner on the box
 
 Status: proposed, 27 Sep 2026 · Workstream: planner (module `planner`, `core/planner`) · Spec: sections 2, 5, 9
 
