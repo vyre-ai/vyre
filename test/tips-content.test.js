@@ -65,7 +65,8 @@ test("tips content: each docs link lands on a real page and heading", () => {
 });
 
 test("tips content: every surface has first-use, power and discovery tips", () => {
-  for (const s of SURFACES) {
+  // The status line is one short line Claude Code draws; it carries no tips of its own yet.
+  for (const s of SURFACES.filter(x => x !== "statusline")) {
     const mine = all.filter(t => t.surfaces.includes(s));
     for (const lv of ["first-use", "power", "discovery"]) assert.ok(mine.some(t => t.level === lv), `${s} has no ${lv} tip`);
   }

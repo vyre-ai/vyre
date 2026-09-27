@@ -36,7 +36,7 @@ Tips live in `module.json` under `teaches.tips`:
 | --- | --- | --- |
 | `id` | yes | lowercase letters, digits and dashes, unique in the module. The full id is `<module>/<id>` |
 | `text` | yes | the tip itself, at most 140 characters. Put a key or command in backticks |
-| `surfaces` | yes | where it makes sense: `capsule`, `deck`, `chat`, `phone`, `cli`, `glass` |
+| `surfaces` | yes | where it makes sense: `capsule`, `deck`, `chat`, `phone`, `cli`, `glass`, `statusline` |
 | `level` | yes | `first-use` (the basics), `power` (shortcuts for regular users), `discovery` (why to try it) |
 | `trigger` | yes | `on-use` (while the person is in this module), `idle` (when they pause), `never-used` (for people who have not tried it), `after-update` (only as news in a release) |
 | `since` | yes | the version that brought it. First-party tips use Vyre's version; yours use your module's |
@@ -93,6 +93,10 @@ A surface that shows tips does three things:
   when they press Show me or run the command. The CLI passes `mark: true` to `tips.next` instead,
   since it prints at once;
 - calls `tips.dismiss {id}` on ×, or `tips.dismiss {module}` for "Hide tips about this".
+
+A surface that leaves out `module` gets the view it last reported to cohesion's `context.now`, and
+anything in `waiting.count` counts as busy, so a surface that already reports its context need not
+say it twice. `idle`, `first` and a running turn are always the surface's own to say.
 
 Calling `tips.used {module}` when the person opens a module's view, even with no tip on screen,
 keeps the "used" count right. The tips module never pushes anything; it only answers.

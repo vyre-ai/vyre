@@ -9,7 +9,7 @@
 // them all off. A surface asks with tips.next; nothing here pushes a tip anywhere.
 
 import { build } from "../daemon/build.js";
-import { checkTips, compareVersions } from "./check.js";
+import { checkTips, compareVersions, SURFACES } from "./check.js";
 import { pick, DEFAULTS } from "./pick.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
@@ -23,7 +23,7 @@ const MIGRATIONS = [
 ];
 const SETTINGS = { enabled: "tips.enabled", gapMinutes: "tips.gap_minutes" };
 const str = { type: "string" };
-const surfaceIn = { type: "string", enum: ["capsule", "deck", "chat", "phone", "cli", "glass"] };
+const surfaceIn = { type: "string", enum: SURFACES };
 
 /** Test seam: a fake clock per home. @type {Map<string, { now: () => number }>} */
 export const seams = new Map();
@@ -139,13 +139,33 @@ export default {
         whatsnew: seen !== null && compareVersions(t.since, seen) > 0 };
     };
 
+    // What a surface did not say, from cohesion's context (ADR 0036) when it runs: the view the
+    // person is in on this surface (context.now's `view`), and busy while anything waits on them
+    // (waiting.count). Idle, first and a running turn are the surface's own to say. Without
+    // those modules, nothing is added.
+    const fromCohesion = async (/** @type {string} */ surface, /** @type {any} */ given) => {
+      /** @type {any} */
+      const out = {};
+      if (!given.module) {
+        const r = await ctx.call("context.now", { surface });
+        const view = r && r.data && r.data.view;
+        if (typeof view === "string" && view) out.module = view;
+      }
+      if (!given.busy) {
+        const r = await ctx.call("waiting.count", {});
+        if (r && r.data && Number(r.data.count) > 0) out.busy = true;
+      }
+      return out;
+    };
+
     ctx.tool("tips.next", {
-      description: "The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in, first on the surface's very first open (one welcome tip, once), idle when they have paused, busy while an ask, a prompt or a running turn is on screen. mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.",
+      description: "The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in (else context.now's view for that surface), first on the surface's very first open (one welcome tip, once), idle when they have paused, busy while an ask, a prompt or a running turn is on screen (anything in waiting.count counts as busy too). mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.",
       callers: PEOPLE,
       input: { type: "object", required: ["surface"], properties: {
         surface: surfaceIn, mark: { type: "boolean" },
         context: { type: "object", properties: { module: str, idle: { type: "boolean" }, busy: { type: "boolean" }, first: { type: "boolean" } } } } },
-      run: async ({ surface, context = {}, mark = false }) => {
+      run: async ({ surface, context: given = {}, mark = false }) => {
+        const context = { ...given, ...(await fromCohesion(surface, given)) };
         if (context.module) use(String(context.module));
         const s = state();
         const r = pick({ tips: all().tips, surface, context, now: now(), settings: await readSettings(), ...s,

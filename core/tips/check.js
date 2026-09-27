@@ -3,7 +3,7 @@
 // module check` and the docs tests all hold tips to one rule. A bad tip is dropped with a reason,
 // never the whole module: one long sentence should not cost a module its other tips.
 
-export const SURFACES = ["capsule", "deck", "chat", "phone", "cli", "glass"];
+export const SURFACES = ["capsule", "deck", "chat", "phone", "cli", "glass", "statusline"];
 export const LEVELS = ["first-use", "power", "discovery"];
 export const TRIGGERS = ["on-use", "idle", "never-used", "after-update"];
 export const MAX_TEXT = 140;

@@ -383,7 +383,7 @@ function fields(schema, prefix = "", depth = 0) {
 }
 
 function callersText(t) {
-  if (t.internal) return "other modules only (internal, never listed)";
+  if (t.internal) return "other modules only (internal: `vyre call` answers no_such_tool)";
   if (t.hook) return "its webhook route only, `POST /v1/<module>/<name>/hook`";
   if (!t.callers) return "any caller";
   return t.callers.slice().sort(byName).map(code).join(", ");
@@ -433,6 +433,7 @@ function toolsPage(mods, byModule) {
     `${total} tools across ${[...byModule.values()].filter(ts => ts.length).length} modules. Every caller reaches a tool through the same path: Claude through MCP, a surface through HTTP, the CLI with \`vyre call <tool> [json]\`. The input is checked against the schema below, then the rules run, then the tool.`,
     "",
     "Callers are the kinds of caller that may use a tool: `cli` (the terminal), `local` (the Mac's own surfaces), `deck`, `capsule`, `mcp` (Claude and agents), `module` (another module). Any caller means the tool does not limit them. See [tools and events](../build/tools-and-events.md).",
+    "A tool marked internal is registered, but only another module can call it: `vyre call`, MCP and HTTP answer `no_such_tool`, and `vyre tools` never lists it. A person reaches what it does through a public tool (`agents.history` reads `threads.history`, for example).",
     "",
     "A tool marked \"needs a person present\" runs only after someone proves they are at the machine, with Touch ID, a passkey or the terminal: see [presence](../concepts/presence.md). A call from Claude alone cannot pass it.",
     "",
