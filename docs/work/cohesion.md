@@ -103,6 +103,19 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 
 - lead: route event renames (platform recorded as PLANNED in core/event-catalog): glass + harness file.* -> files.*, computers computer.* -> computers.*, projects projects.moved -> project.moved. Aliases go live one release after each rename.
 
+## One-product audit (projects x sessions x IQ x watchers x teammates x helpers x chat x vault)
+
+Merged main into work/cohesion first (58007a54; rc.1 landed since my last merge, resolved
+CHANGELOG.md/waiting.test.js/generated-docs conflicts by hand, targeted tests 90/90, boundaries
+5/5 clean). Worked from sessions' docs/design/projects-map.md (their factual map) plus the code.
+Sent the lead 6 ranked findings, under 25 lines, not yet messaging owners: vault grants are
+per-agent not per-project (a shared teammate could use the wrong client's creds); watchers have no
+marker field or UI at all; agent-caller identity is checked by separate per-module regexes (the
+exact class of bug I patched twice this week in core/sight); project identity has four unrelated
+shapes (marker+slug, memory's folder-path list, a teammate's agent-name suffix, a coming grants
+column); no session-credentials design doc exists; chat's project picker is data-ready but its UI
+is paused/unconfirmed. Waiting on the lead before messaging vault/projects/sessions/chat.
+
 ## Follow-ups from the interaction pass
 
 - Item 20 (696107fb): the lead decided the Chrome extension ships 0.1.1; cohesion's part is one
