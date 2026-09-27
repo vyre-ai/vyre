@@ -158,6 +158,23 @@ Harlow Legal is the sample-world firm (home `~/Work/harlow-site`) used across th
    because grants are per-agent and design's agent only serves Harlow; once vault-next's `project`
    column lands, the same holds for a teammate shared across both firms.
 
+## Open findings (cohesion's one-product audit, 2026-09-28)
+
+- **Project identity has four unrelated shapes**: the marker plus slug (projects), memory's
+  folder-path list (memory-iq), a teammate's agent-name suffix `<role>-<project>` (teammates), and
+  soon a vault grants column (vault) — nothing declares them the same thing. Fix: one canonical
+  project-id type in `core/projects`; the others become derived views, not separate truths.
+- **Watchers have no on-ramp beyond the session owner**: the marker field and add/remove call
+  named as a gap above don't exist yet, so a person who isn't the session owner has no way to
+  watch a project at all today.
+- **No session-credentials doc exists** (env injection at a session's start) — vault is now
+  writing `docs/design/session-credentials.md` per the lead; coordinate the shape with them
+  directly rather than duplicating it here.
+
+`core/projects` has no active teammate right now (its own work doc shows "Doing: Nothing," and no
+`projects` agent is in the current roster) — these three need an owner assigned before they can be
+built, flagged to the lead.
+
 ## Owner and status summary
 
 | Part | Owner | Status |
