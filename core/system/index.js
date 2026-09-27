@@ -9,10 +9,12 @@ import { build } from "../daemon/build.js";
 export default {
   async start(ctx) {
     ctx.tool("system.info", {
-      description: "What this machine is running: Vyre version and the commit it was built from, role, host and platform, and the owner's name as onboarding saved it (for a surface's avatar).",
+      description: "What this machine is running: Vyre version and the commit it was built from, role, host and platform, the owner's name as onboarding saved it (for a surface's avatar), and the assistant's name, which every surface uses to label replies (null: surfaces say \"Vyre\").",
       input: { type: "object", properties: {} },
       run: async () => ({ ...build(), role: ctx.config.role, host: os.hostname().split(".")[0], platform: process.platform, node: process.version,
-        owner: { name: (ctx.config.onboard && ctx.config.onboard.person) || null } }),
+        owner: { name: (ctx.config.onboard && ctx.config.onboard.person) || null },
+        // The name the user gave their assistant in onboarding, else the agent it was created as.
+        assistant: { name: (ctx.config.onboard && (ctx.config.onboard.assistant || (ctx.config.onboard.greeted && ctx.config.onboard.greeted.agent))) || null } }),
     });
     ctx.tool("system.echo", {
       description: "Returns what it was given. For checking that tools and the rules path work.",

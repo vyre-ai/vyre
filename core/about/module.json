@@ -1,0 +1,12 @@
+{
+  "name": "about",
+  "version": "0.1.0",
+  "description": "A few lines on who the user is, cached for every Claude Code session to start with.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["about.text"] },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

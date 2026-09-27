@@ -91,3 +91,31 @@ settings.
   from vyred's); a statusLine set by a SessionStart hook writing settings.json (edits a user's
   config without asking, and Learning rightly treats that as weakening); calling vyred from the
   status line (a socket round trip on every refresh, and a hang when vyred is stuck).
+
+## Addendum, 27 Sep 2026: the session knows the user
+
+**About you.** A module, `core/about`, keeps `<home>/about.md`: the person's name and their
+assistant's (onboarding's step 1, read from config), their four busiest projects and the people in
+them (`projects.list`), then memory-iq's `memory.profile {limit: 12}`: second-person lines that still hold at weight
+0.5 or more, of kind work, place or preference only. People, vehicles and clients stay out,
+because the text reaches every project's sessions, and one client's name has no place in
+another's. It recomputes 5 s after a memory, onboarding, project or agent event, writes only
+on change (mode 600), and stays under 600 characters. A line is dropped whole if it looks like a
+credential, a long token, an email address, a phone number or names a password, secret or key.
+The SessionStart hook reads the file directly, not through vyred, so it holds when vyred is down,
+and puts it ahead of the project brief as additionalContext, marked as facts, not instructions. An
+agent scoped to some projects does not get it, because it names projects outside its scope; the
+assistant and a person's own session do.
+
+**Tools.** Nothing to add to the MCP server for memory-iq's `memory.answer` or the planner's
+the planner's tools: it forwards every vyred tool, so they appear as `memory_answer`,
+`planner_add`, `planner_list` and `planner_agenda` once those modules run. Its instructions now
+tell Claude to back a promised reminder with `planner_add` in the same turn, and without it to say
+Vyre cannot remind yet rather than promise.
+
+**Commands.** `/vyre todo <text>` (`planner.add {text, kind: "todo"}`; with no text,
+`planner.list {kind: "todo"}`), `/vyre remind <when> <text>` (`planner.add {text: "remind me <when>
+<text>"}`, so the planner's own parser reads the time and a reminder with none is refused),
+`/vyre agenda` (`planner.agenda`, `{from: "YYYY-MM-DD"}` for another day), and
+`/vyre remember <fact>` (a memory fact, through `memory.remember` from memory-iq). The lesson form
+that `remember` used to be is now `/vyre lesson <rule>`.
