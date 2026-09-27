@@ -134,7 +134,23 @@ cached help page. Recommendation to the lead and app-design: relay as the always
 the tailnet as an automatic upgrade when the probe answers. The docs row is in
 docs/using/tailscale.md "When a device cannot connect".
 
-Waiting: e2e (the web-session rule and header names), relay (origin list, and whether the
+Later the same day (lead and e2e answers):
+- 1afde745 e2e's contract: CORS headers are content-type, authorization, x-vyre-proof (not
+  x-vyre-session, the socket's thread header). The listener no longer checks sessions: it passes
+  `req` untouched with `peer.origin`; the router (core/daemon/index.js route()) refuses any
+  cross-origin call without a person session, `401 person_session_required`, except
+  `POST /v1/person/token`. The seam is `core/presence/person.js` `personSessions(db).sessionOf`
+  (a stub that finds none; e2e wires it; `start({ person })` injects one in tests). WebSockets
+  from the hosted origin pass for the owner (tickets already need the session). GUEST_SAFE is
+  threads.list only. `projects.move` is PERSON_ONLY. Test box: 285 tests, 284 pass, 1 skipped.
+- 75d21113 projects: no automatic move. A new box uses /work/projects; an existing one keeps
+  ~/Vyre/projects until `projects.move` (`vyre projects move --dry-run` first). The real move
+  needs VYRE_PROJECTS_MOVE=1 or config projects.move "enabled": box-deploy validates it on a
+  copy of the live box first.
+- Lead decisions: a login-only ssh remote is not a secret; relay is the always-works phone path
+  and the tailnet an automatic upgrade when the probe answers.
+
+Waiting: e2e (wires sessionOf), relay (origin list, and whether the
 hosted app ever reaches the box through the relay), sessions (threads.answer contract for
 Mac-owned sessions, below).
 
@@ -238,13 +254,12 @@ only read-only checks on the test box.
   in deck/chat/session.js).
 - integrator: merge work/tailnet (this branch's tip) and work/federation 5c247ce.
 - e2e: re-run the egress checks on headscale (the list under "Verify on first real run").
-- e2e: the web-session rule for the hosted app: header name (proposed `x-vyre-session`), the
-  WebSocket form, the session-start route (must answer without a session), and a
-  `webSession(req, who)` to wire into names() in core/names/index.js.
+- e2e: wire `personSessions(db).sessionOf` in core/presence/person.js (merge from work/tailnet).
+- box-deploy: validate `projects.move` on a copy of the live box (dry run, then the real move
+  with VYRE_PROJECTS_MOVE=1, then a Claude session resuming through an old-path link).
 - relay: the hosted app's origin list (preview origins?) and whether it ever reaches the box
   through the relay (then CORS must be answered there too).
 - sessions: confirm (a) to (d) of the threads.answer contract (Next 0).
-- lead, confirm: an ssh remote URL with only a login name (ssh://git@...) is not a secret finding.
 
 - vault: see the tailnet entry in docs/work/vault.md "Needs from others".
 - computers: review the Pacer (`glass.js`), the pool's egress remake and agent-node join, the
