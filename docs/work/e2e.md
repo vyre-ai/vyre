@@ -262,6 +262,11 @@ Plan (to the lead before building):
   sight.frame (proxies hands-desktop.screenshot as module:sight; hands-desktop resolveAgent only
   knows mcp:agent:). Offered lead a kernel fix: vouch agent claims only after mcp:/harness:
   ("cli:agent:kit" with a key passes person callers lists). Waiting on both.
+- Agent-claim hardening (lead OK): work/e2e-agentclaim 1ff45c03 (on 5a646023). Socket labels name
+  an agent only as mcp:agent:/harness:agent:; others 403 before the key check. No producer of other
+  forms (MCP server, hooks, CLI, Capsule, Deck, app, fake-claude checked). 402/0/13 on testbox;
+  sent to the integrator for rc.2. Worktree ../vyre-e2e-label (branches e2e-label, e2e-surfaces,
+  e2e-agentclaim).
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
@@ -430,6 +435,9 @@ event stream's first byte. Tear down afterwards.
 - vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
+
+- core/daemon: on the socket an agent is named only as mcp:agent:<name> or harness:agent:<name>
+  (1ff45c03). core/modules exports SURFACE_LABELS (5a646023).
 
 - core/daemon: a socket caller's person label from under a claude or a thread is "mcp" (or
   "mcp:thread:<id>"), for every tool (work/e2e-label 1941f2cf).
