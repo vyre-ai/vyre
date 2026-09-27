@@ -17,14 +17,13 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 - docs-check OWNERS gains "cohesion" (scripts/lib/docs/check.js, docs team's file).
 
 ## Doing
-- Perf: with the four modules, perf-check on testbox (load 9.3, over the rule's 8): CPU 0.00%,
-  RSS mean 112.5 MB, RSS max 153.2 MB (FAIL vs 150), no timer under 60 s. Baseline run without them
-  failed on load (memory.curate timeout). Re-run the baseline when load < 8 to see if the max is ours.
-  ci already tracks an idle-RSS regression on main.
+- Handed d314850b (glue + drift test, main 53cd1326 merged) to the integrator. Targeted run 125/125.
+  Perf on testbox, load under 6: baseline RSS mean 105.1 / max 152.4 MB; with the four modules
+  111.0 / 155.3 MB; CPU 0.00% both; no timer under 60 s. The max already fails on main (ci is
+  moving the gate to heapUsed after GC; lead: don't block). Cost of the glue: about 6 MB mean.
+- Next: chrome.open query strip (privacy, first), then thread/call/app on acted events; e2e reviews.
 
 ## Next
-1. Perf baseline (above). If the glue adds real RSS, lazy-load suggest's lists (they already are)
-   and sight's table only on first use.
 2. Owner replies: record below. Send owners the built contracts and their exact asks.
 3. Drift test: models + policy rules done (test/cohesion-drift.test.js); add tokens once the hub generates them.
 4. Hand the finished sha to the integrator (no WIP pushes until the lead says "pushes open").
@@ -39,13 +38,13 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 | 5 | One ask path + wife's-name fix | memory-iq, sessions, capsule-pro, chat | lead: yes; owners |
 | 6 | Commands everywhere | platform, polish-cli, capsule-pro, chat | asked |
 | 7 | Keys once through the vault | vault (owns, ADR 0028 9a), connectors, polish-cli | vault owns; align |
-| 8 | Waiting on you | pwa, capsule-pro, mobile, polish-cli | glue built; asked |
-| 9 | Hub read live everywhere | native-core, platform, app-design, capsule-pro, mobile, sessions | asked |
+| 8 | Waiting on you | pwa, capsule-pro, mobile, polish-cli | glue built; mobile yes (after 0.1.0) |
+| 9 | Hub read live everywhere | native-core, platform, app-design, capsule-pro, mobile, sessions | native-core yes (settings.changed = rev + non-secret level value; lists from settings.schema and presence.policy) |
 | 10 | One live catalog | sessions, capsule-pro, chat, mobile | asked |
-| 11 | Tips (slot + signals) | docs (content, tips module), app-design (slot spec) | added by lead |
+| 11 | Tips (slot + signals) | docs (tips.next/dismiss/seen/whatsnew/list, teaches.tips), app-design (slot spec) | docs building |
 
 ## Needs from others
-- platform: tool call id in registry call meta (core/modules/index.js:366) so acted events can carry `call`.
+- platform (accepted, P1): meta.call from X-Vyre-Call-Id; registry.status() use counts {calls, lastUsed}; commands.list; events.catalog.
 - hands-desktop (modules/hands-desktop/index.js:151): `app` and `call` on desktop.acted.
 - hands-chrome (modules/hands-chrome/index.js:68,121,125,147): thread/call on chrome.acted; chrome.open's
   summary carries the full URL with its query into the event store; click fallback stringifies the selector.
@@ -56,7 +55,7 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
   summary isn't redacted (core/switchboard/translate.js:97).
 - link: link.pending has no created time (core/link/box.js:94); waiting derives it from the 10 min TTL.
 - vault: allow module:suggest (or per surface) on vault.connections.list; a connection event family.
-- lead: vault and connectors both plan core/mail (ADR 0028 9c vs ADR 0016 8).
+- DECIDED (lead): connectors owns core/mail; the argument is `account` = the vault connection id.
 
 ## Changed contracts
 - New tools: sight.targets/now/watch/steps, context.report/now, suggest.query/offer/picked,
