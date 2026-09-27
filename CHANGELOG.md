@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The settings hub, steps 2 and 3: device and session levels, snapshot, checks, theme routes
+
+- core/settings: settings.get, set and reset take device and session. A narrower level wins
+  (session, device, project, account, default); a device's value lives in hub.json's devices, a
+  session's in its module's own tools ("$session"). With no device named, the owner's device over
+  the tailnet or the relay reads its own.
+- settings.snapshot {project?, device?, session?}: every value in effect in one read, with rev,
+  sources, each level's own value, and the device it resolved.
+- A key's `check: {tool}` is asked before anything is stored, by tool or by hand, as the settings
+  module, with a 500 ms deadline; off or late, it refuses. `choicesFrom: {tool, read}` fills the
+  schema's choices at run time.
+- A thread's chip changing in sessions (model.switched, effort.switched, thinking.switched,
+  mode.changed) is also a session-level settings.changed with the next rev.
+- Secret keys never go into hub.json (e2e review, MEDIUM); a hand edit of one is named, not applied.
+- core/daemon: GET /theme.css?device= and GET /v1/theme?device= serve appearance.resolve's answer,
+  with the hub's rev as ETag and a 304 on If-None-Match; without the appearance module, the old
+  config colours. GROUPS gains appearance.
+- core/config/settings.js: levels device and session; a device-level key has no store.
+
 #### Settings' phone layout uses the shared phone query
 
 - deck/css/views/settings-keys.css: the phone block is dom.js PHONE_QUERY, so a sideways phone stays

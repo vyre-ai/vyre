@@ -26,13 +26,17 @@ const MIGRATIONS = [
   `CREATE TABLE settings_meta (k TEXT PRIMARY KEY, v TEXT NOT NULL)`,
 ];
 const SLUG = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+/** A device's id: the owner's tailnet node ("tailnet:<login>"), a relay device, or "mac:<host>". */
+const DEVICE = /^[A-Za-z0-9][A-Za-z0-9:._@-]{0,127}$/;
+/** A thread's id. */
+const THREAD = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const str = { type: "string" };
 
 // How the groups a module names are shown, in order. A group no one declared doesn't appear; an
 // unknown group goes last under its own name.
 export const GROUPS = [
   ["models", "Models and thinking"], ["permissions", "Permissions"], ["sessions", "Sessions"], ["teammates", "Teammates"],
-  ["notifications", "Notifications"], ["tips", "Tips"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
+  ["notifications", "Notifications"], ["tips", "Tips"], ["appearance", "Appearance"], ["planner", "Planner"], ["memory", "Memory"], ["vault", "Vault"], ["files", "Files and terminal"],
   ["tools", "Tools"], ["devices", "Devices"],
 ];
 
@@ -112,6 +116,15 @@ export default {
       },
     };
 
+    // ---- where a value lives: a level and its target (ADR 0035) -------------------------------------
+    // account has no target; project is a slug, device a device id, session a thread id. A narrower
+    // level wins: session > device > project > account > default.
+    /** @typedef {"account"|"project"|"device"|"session"} Lv */
+    /** @typedef {{ project: string|null, device: string|null, session: string|null }} At */
+    const ORDER = /** @type {const} */ (["session", "device", "project", "account"]);
+    const targetOf = (/** @type {Lv} */ lv, /** @type {At} */ at) => (lv === "account" ? null : at[lv]);
+    const scopeKey = (/** @type {Lv} */ lv, /** @type {string|null} */ target) => (lv === "account" ? "account" : `${lv}:${target}`);
+
     // ---- the hub file (ADR 0035) ------------------------------------------------------------------
     // settings_values holds what is in effect; hub.json mirrors it for the person to edit. A hand
     // edit is checked like settings.set: plain changes apply, a bad value is kept out and named on
@@ -122,27 +135,34 @@ export default {
     const rev = () => Number(meta("rev") || 0);
     /** @type {Map<string, string>} */ const hubProblems = new Map();
     /** @type {Map<string, { value: any }>} */ const pending = new Map();
-    const pkey = (/** @type {string} */ key, /** @type {string|null} */ project) => `${project ? "project:" + project : "account"}\t${key}`;
-    const pendingOf = (/** @type {any} */ d, /** @type {string|null} */ project, /** @type {(v: any) => any} */ show) => {
-      const out = {};
-      for (const [lv, target] of /** @type {const} */ ([["account", null], ["project", project]])) {
-        const p = target === undefined || (lv === "project" && !target) ? null : pending.get(pkey(d.key, target));
-        if (p) Object.assign(out, { pending: { level: lv, ...(target ? { project: target } : {}), value: p.value === undefined ? null : show(p.value), from: "hub.json" } });
+    const pkey = (/** @type {string} */ key, /** @type {Lv} */ lv, /** @type {string|null} */ target) => `${scopeKey(lv, target)}\t${key}`;
+    const pendingOf = (/** @type {any} */ d, /** @type {At} */ at, /** @type {(v: any) => any} */ show) => {
+      for (const lv of /** @type {const} */ (["device", "project", "account"])) {
+        const target = targetOf(lv, at);
+        if (lv !== "account" && !target) continue;
+        const p = pending.get(pkey(d.key, lv, target));
+        if (p) return { pending: { level: lv, ...(target ? { [lv]: target } : {}), value: p.value === undefined ? null : show(p.value), from: "hub.json" } };
       }
-      return out;
+      return {};
     };
     let seen = { digest: "", mtime: 0, size: -1 };
     const noteFile = () => { try { const st = fs.statSync(hubPath(root)); seen = { ...seen, mtime: st.mtimeMs, size: st.size }; } catch {} };
-    /** Every Vyre-owned value in effect, as a hub. */
+    /** Secret keys never go into hub.json, which is plain text and in every backup (e2e review). */
+    const secretKeys = () => new Set(decls().filter(d => d.secret).map(d => d.key));
+    /** Every Vyre-owned value in effect, as a hub, secret keys left out. */
     const fromTable = () => {
-      const h = { account: /** @type {Record<string, any>} */ ({}), projects: /** @type {Record<string, Record<string, any>>} */ ({}) };
+      const secret = secretKeys();
+      const h = { account: /** @type {Record<string, any>} */ ({}), projects: /** @type {Record<string, Record<string, any>>} */ ({}), devices: /** @type {Record<string, Record<string, any>>} */ ({}) };
       for (const r of /** @type {any[]} */ (ctx.store.db.prepare("SELECT scope, key, value FROM settings_values ORDER BY scope, key").all())) {
-        const v = JSON.parse(String(r.value));
-        if (r.scope === "account") h.account[r.key] = v;
-        else if (String(r.scope).startsWith("project:")) (h.projects[String(r.scope).slice(8)] ||= {})[r.key] = v;
+        if (secret.has(String(r.key))) continue;
+        const v = JSON.parse(String(r.value)), sc = String(r.scope);
+        if (sc === "account") h.account[r.key] = v;
+        else if (sc.startsWith("project:")) (h.projects[sc.slice(8)] ||= {})[r.key] = v;
+        else if (sc.startsWith("device:")) (h.devices[sc.slice(7)] ||= {})[r.key] = v;
       }
       return h;
     };
+    const rebuild = (/** @type {import("./hub.js").Hub} */ h) => { const t = fromTable(); h.account = t.account; h.projects = t.projects; h.devices = t.devices; };
     /**
      * The one write of the hub: `change` edits it, rev goes up by one, and the new rev comes back
      * for the event. A file that isn't JSON is moved aside to hub.json.bad and rebuilt from what
@@ -153,25 +173,44 @@ export default {
       const next = rev() + 1;
       let broken = false;
       try { readHub(root); } catch { broken = true; }
-      if (broken) {
-        try { fs.renameSync(hubPath(root), hubPath(root) + ".bad"); } catch {}
-        const t = fromTable();
-        const w = writeHub(root, h => { h.account = t.account; h.projects = t.projects; }, { rev: next });
-        seen.digest = w.digest;
-      } else {
-        const w = writeHub(root, change, { rev: next });
-        seen.digest = w.digest;
-      }
+      if (broken) try { fs.renameSync(hubPath(root), hubPath(root) + ".bad"); } catch {}
+      seen.digest = writeHub(root, broken ? rebuild : change, { rev: next }).digest;
       hubProblems.delete("hub.json");
       setMeta("rev", String(next));
       noteFile();
       return next;
     };
-    /** A value that lives in the hub file changed through settings.set or reset: mirror it. */
-    const mirror = (/** @type {any} */ d, /** @type {"account"|"project"} */ lv, /** @type {string|null} */ target, /** @type {any} */ value) => {
-      pending.delete(pkey(d.key, target));
-      return commit(d.store ? undefined : h => { const bag = levelOf(h, lv, target); if (value === undefined) delete bag[d.key]; else bag[d.key] = value; });
+    /** A change through settings.set or reset: mirror a hub-held value, bump rev for any other. */
+    const mirror = (/** @type {any} */ d, /** @type {Lv} */ lv, /** @type {string|null} */ target, /** @type {any} */ value) => {
+      pending.delete(pkey(d.key, lv, target));
+      const held = !d.store && !d.secret && lv !== "session";
+      return commit(held ? h => { const bag = levelOf(h, lv, target); if (value === undefined) delete bag[d.key]; else bag[d.key] = value; } : undefined);
     };
+
+    // ---- check and choicesFrom: a module's own say, with a deadline --------------------------------
+    const DEADLINE = 500;
+    const inTime = (/** @type {Promise<any>} */ p, /** @type {string} */ tool) => Promise.race([p,
+      new Promise((_, no) => { const t = setTimeout(() => no(Object.assign(new Error(`${tool} took too long`), { code: "bad_input" })), DEADLINE); t.unref?.(); })]);
+    /** A key's own check, called as this module: it refuses, never passes by default. */
+    const checked = async (/** @type {any} */ d, /** @type {any} */ value, /** @type {Lv} */ lv, /** @type {string|null} */ target) => {
+      if (!d.check || !d.check.tool || value === undefined) return;
+      const tool = String(d.check.tool);
+      const r = await inTime(ctx.call(tool, { key: d.key, value, level: lv, ...(target ? { [lv]: target } : {}) }), tool);
+      if (r && r.error) throw Object.assign(new Error(r.error.code === "no_such_tool" ? `${tool} is not running, so ${d.key} can't be checked` : r.error.message), { code: "bad_input" });
+      if (!r || !r.data || r.data.ok !== true) throw Object.assign(new Error((r && r.data && r.data.message) || `${tool} refused this value`), { code: "bad_input" });
+    };
+    /** Choices a module names at run time: [{id, label}] or strings, read by `read`. Null when it can't say. */
+    const choicesOf = async (/** @type {any} */ d) => {
+      if (!d.choicesFrom || !d.choicesFrom.tool) return null;
+      try {
+        const r = await inTime(ctx.call(String(d.choicesFrom.tool), {}), String(d.choicesFrom.tool));
+        const list = r && r.data ? (d.choicesFrom.read ? String(d.choicesFrom.read).split(".").reduce((/** @type {any} */ x, k) => (x == null ? x : x[k]), r.data) : r.data) : null;
+        if (!Array.isArray(list)) return null;
+        const items = list.map(x => (typeof x === "string" ? { id: x, label: x } : x && typeof x.id === "string" ? { id: x.id, label: String(x.label || x.id) } : null)).filter(Boolean);
+        return /** @type {{ id: string, label: string }[]} */ (items);
+      } catch { return null; }
+    };
+
     /** Read a person's edit of hub.json and apply, hold or refuse each change in it. */
     const reconcile = async () => {
       let text = "";
@@ -186,33 +225,46 @@ export default {
       const byKey = new Map(all.map(d => [d.key, d]));
       const known = new Set();
       hubProblems.clear();
-      /** @type {[string, "account"|"project", string|null, Record<string, any>][]} */
-      const places = [["account", "account", null, h.account], ...Object.entries(h.projects).map(([p, bag]) => /** @type {any} */ (["project:" + p, "project", p, bag]))];
+      /** @type {[Lv, string|null, Record<string, any>][]} */
+      const places = [["account", null, h.account],
+        ...Object.entries(h.projects).map(([p, bag]) => /** @type {any} */ (["project", p, bag])),
+        ...Object.entries(h.devices).map(([p, bag]) => /** @type {any} */ (["device", p, bag]))];
+      // A level the file stopped naming has had its values removed: those are resets.
+      for (const r of /** @type {any[]} */ (ctx.store.db.prepare("SELECT DISTINCT scope FROM settings_values WHERE scope != 'account'").all())) {
+        const [lv, ...rest] = String(r.scope).split(":");
+        const target = rest.join(":");
+        if ((lv === "project" && !(target in h.projects)) || (lv === "device" && !(target in h.devices))) places.push([/** @type {Lv} */ (lv), target, {}]);
+      }
       let changed = 0;
-      for (const [, lv, target, bag] of places) {
-        if (target !== null && !SLUG.test(target)) { hubProblems.set("hub.json", `hub.json: ${target} is not a project's slug`); continue; }
+      for (const [lv, target, bag] of places) {
+        if (lv === "project" && !SLUG.test(String(target))) { hubProblems.set("hub.json", `hub.json: ${target} is not a project's slug`); continue; }
+        if (lv === "device" && !DEVICE.test(String(target))) { hubProblems.set("hub.json", `hub.json: ${target} is not a device id`); continue; }
         for (const k of Object.keys(bag)) {
           const d = byKey.get(k);
           if (!d) hubProblems.set(k, `hub.json: no setting ${k}`);
           else if (d.store) hubProblems.set(k, `hub.json doesn't hold ${k}; it is kept in ${await whereIs(env, d, lv, target)}`);
+          else if (!d.levels.includes(lv)) hubProblems.set(k, `hub.json: ${k} isn't set per ${lv}`);
+          else if (d.secret) hubProblems.set(k, `hub.json never holds ${k}, a secret; set it in the Deck or with vyre config`);
         }
         for (const d of all) {
-          if (d.store || !d.levels.includes(lv)) continue;
+          if (d.store || d.secret || !d.levels.includes(lv)) continue;
           const raw = bag[d.key];
           const now = (await level(d, lv, target)).value;
           let value;
           try { value = raw === undefined ? undefined : coerce(d, raw); }
           catch (e) { hubProblems.set(d.key, `hub.json: ${d.key}: ${/** @type {Error} */ (e).message}; ${JSON.stringify(now ?? d.default ?? null)} still applies`); continue; }
-          if (JSON.stringify(value) === JSON.stringify(now)) { pending.delete(pkey(d.key, target)); continue; }
-          known.add(pkey(d.key, target));
+          if (JSON.stringify(value) === JSON.stringify(now)) { pending.delete(pkey(d.key, lv, target)); continue; }
+          known.add(pkey(d.key, lv, target));
           const held = (value === undefined && d.security === "loosens") || needsConfirm(d, value, now);
-          if (held) { pending.set(pkey(d.key, target), { value }); ctx.log(`hub.json asks to ${value === undefined ? "reset" : "change"} ${d.key}; it waits for the person`); continue; }
-          pending.delete(pkey(d.key, target));
+          if (held) { pending.set(pkey(d.key, lv, target), { value }); ctx.log(`hub.json asks to ${value === undefined ? "reset" : "change"} ${d.key}; it waits for the person`); continue; }
+          try { await checked(d, value, lv, target); }
+          catch (e) { hubProblems.set(d.key, `hub.json: ${d.key}: ${/** @type {Error} */ (e).message}`); continue; }
+          pending.delete(pkey(d.key, lv, target));
           await write(env, d, lv, target, value, "local", "hub.json");
           const r = rev() + 1;
           setMeta("rev", String(r));
           changed++;
-          ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, rev: r, by: "hub.json", ...said(d, value) });
+          ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { [lv]: target } : {}), apply: d.apply, rev: r, by: "hub.json", ...said(d, value) });
           ctx.log(`${d.key} ${value === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} from hub.json`);
         }
       }
@@ -238,37 +290,57 @@ export default {
       if (!SLUG.test(String(project))) throw Object.assign(new Error("project is a project's slug"), { code: "bad_input" });
       return String(project);
     };
+    /**
+     * Where a call looks: its project, its device (the caller's own when it names none: the
+     * owner's tailnet node or a relay-paired device), and its session.
+     * @param {any} i @param {any} meta @returns {At & { ownDevice: boolean }}
+     */
+    const atOf = (i, meta) => {
+      const project = slugOf(i.project);
+      let device = i.device == null || i.device === "" ? null : String(i.device);
+      if (device && !DEVICE.test(device)) throw Object.assign(new Error("device is a device's id"), { code: "bad_input" });
+      const caller = String((meta && meta.caller) || "");
+      const own = !device && /^(?:tailnet:(?!agent:)[^\s:]+|device:[a-z2-7]{16})$/.test(caller);
+      if (own) device = caller;
+      const session = i.session == null || i.session === "" ? null : String(i.session);
+      if (session && !THREAD.test(session)) throw Object.assign(new Error("session is a thread's id"), { code: "bad_input" });
+      return { project, device, session, ownDevice: own };
+    };
 
     /** One level's stored value, or undefined, and why it couldn't be read. */
-    const level = async (/** @type {any} */ d, /** @type {"account"|"project"} */ lv, /** @type {string|null} */ project) => {
-      if (!d.levels.includes(lv) || (lv === "project" && !project)) return { value: undefined };
-      try { return { value: await read(env, d, lv, project) }; }
+    const level = async (/** @type {any} */ d, /** @type {Lv} */ lv, /** @type {string|null} */ target) => {
+      if (!d.levels.includes(lv) || (lv !== "account" && !target)) return { value: undefined };
+      try { return { value: await read(env, d, lv, target) }; }
       catch (e) { return { value: undefined, error: /** @type {any} */ (e).code || "failed", message: /** @type {Error} */ (e).message }; }
     };
 
     /**
      * The value in effect and where it came from. A secret key's values are masked unless the
      * caller is the person (clear: true).
-     * @param {any} d @param {string|null} project
+     * @param {any} d @param {At} at
      */
-    const effective = async (d, project, clear = true) => {
-      const [p, a] = await Promise.all([level(d, "project", project), level(d, "account", project)]);
+    const effective = async (d, at, clear = true) => {
+      const got = await Promise.all(ORDER.map(lv => level(d, lv, targetOf(lv, at))));
+      const by = Object.fromEntries(ORDER.map((lv, n) => [lv, got[n]]));
       const show = (/** @type {any} */ v) => (clear ? v : maskFor(d, v));
-      const value = show(p.value !== undefined ? p.value : a.value !== undefined ? a.value : d.default);
-      const source = p.value !== undefined ? "project" : a.value !== undefined ? "account" : d.default !== undefined ? "default" : "unset";
-      const err = a.error || p.error;
+      const win = ORDER.find(lv => by[lv].value !== undefined);
+      const value = show(win ? by[win].value : d.default);
+      const source = win || (d.default !== undefined ? "default" : "unset");
+      const bad = got.find(g => g.error && g.error !== "unavailable");
+      const unavailable = got.some(g => g.error === "unavailable");
       return {
         ...describe(d), value, source,
-        ...(a.value !== undefined ? { account: show(a.value) } : {}), ...(p.value !== undefined ? { project: show(p.value) } : {}),
-        available: err !== "unavailable",
-        ...(err && err !== "unavailable" ? { problem: a.message || p.message } : hubProblems.has(d.key) ? { problem: hubProblems.get(d.key) } : {}),
-        ...pendingOf(d, project, show),
+        ...Object.fromEntries(ORDER.filter(lv => by[lv].value !== undefined).map(lv => [lv, show(by[lv].value)])),
+        ...(at.device && d.levels.includes("device") ? { device_id: at.device } : {}),
+        available: !unavailable,
+        ...(bad ? { problem: bad.message } : hubProblems.has(d.key) ? { problem: hubProblems.get(d.key) } : {}),
+        ...pendingOf(d, at, show),
       };
     };
 
     // First start: the file is made from what is in effect. Later starts read the person's edits
     // made while vyred was off.
-    if (!fs.existsSync(hubPath(root))) commit(h => { const t = fromTable(); h.account = t.account; h.projects = t.projects; });
+    if (!fs.existsSync(hubPath(root))) commit(rebuild);
     else await reconcile();
     let timer = /** @type {any} */ (null);
     /** @type {fs.FSWatcher|null} */ let watcher = null;
@@ -282,58 +354,109 @@ export default {
       watcher.on("error", () => {});
     } catch {}
 
+    // A thread's own chips change in sessions (Shift+Tab, the model picker): the hub says so too,
+    // as the session level, so a surface follows one event for every level (ADR 0035). Which
+    // setting a chip is comes from the sessions module's declarations, never from here.
+    const CHIPS = /** @type {Record<string, [string, string]>} */ ({ "model.switched": ["sessions.model", "model"], "effort.switched": ["sessions.effort", "effort"],
+      "thinking.switched": ["sessions.thinking", "on"], "mode.changed": ["sessions.mode", "mode"] });
+    const offChips = ctx.events.on("*", (/** @type {any} */ e) => {
+      const chip = CHIPS[e && e.type];
+      if (!chip || !e.thread) return;
+      const d = decls().find(x => x.key === chip[0]);
+      if (!d) return;
+      const r = rev() + 1;
+      setMeta("rev", String(r));
+      const v = e.payload ? e.payload[chip[1]] : undefined;
+      ctx.events.emit("settings.changed", { key: d.key, level: "session", session: String(e.thread), apply: d.apply, rev: r, by: "session", ...said(d, v) });
+    });
+
+    /** A key as the schema shows it, with the choices its module names now. */
+    const described = async (/** @type {any} */ d) => {
+      const out = describe(d);
+      const items = await choicesOf(d);
+      if (items) return { ...out, type: out.type === "string" ? "enum" : out.type, enum: items.map(x => x.id), labels: Object.fromEntries(items.map(x => [x.id, x.label])) };
+      return d.choicesFrom ? { ...out, choices_unavailable: true } : out;
+    };
 
     ctx.tool("settings.schema", {
-      description: "Every setting the running modules declare: key, owning module, group, label, type and choices, the levels it may be set at (account, project), when a change applies (live, next session, restart), whether Claude Code's own files hold it (owner C), and whether changing it loosens security (a proof) or needs a confirm.",
+      description: "Every setting the running modules declare: key, owning module, group, label, type and choices (a module may name them at run time), the levels it may be set at (account, project, device, session), when a change applies (live, next session, restart), whether Claude Code's own files hold it (owner C), and whether changing it loosens security (a proof) or needs a confirm. hub says where the hub file is and its rev.",
       input: { type: "object", properties: {} },
       run: async () => {
-        const keys = decls().map(describe);
+        await fresh();
+        const keys = await Promise.all(decls().map(described));
         const known = new Map(GROUPS);
         const used = [...new Set(keys.map(k => k.group))];
         const groups = [...GROUPS.filter(([id]) => used.includes(id)), ...used.filter(g => !known.has(g)).map(g => [g, g])];
-        await fresh();
         return { groups: groups.map(([id, label]) => ({ id, label })), keys,
           hub: { file: hubPath(root), rev: rev(), ...(hubProblems.has("hub.json") ? { problem: hubProblems.get("hub.json") } : {}) } };
       },
     });
 
+    const where = { project: str, device: str, session: str };
     ctx.tool("settings.get", {
-      description: "Settings with the value in effect and where it comes from (project, account, default). Give key for one, group for a group, nothing for all; project to see a project's view. A secret setting's values are masked for anyone but the person.",
-      input: { type: "object", properties: { key: str, group: str, project: str } },
+      description: "Settings with the value in effect and where it comes from (session, device, project, account, default). Give key for one, group for a group, nothing for all; project, device and session to see that view (device defaults to the caller's own). A secret setting's values are masked for anyone but the person.",
+      input: { type: "object", properties: { key: str, group: str, ...where } },
       run: async (i, meta) => {
-        const project = slugOf(i.project);
+        const at = atOf(i, meta);
         const clear = isPerson(meta && meta.caller, meta);
         await fresh();
-        if (i.key) return effective(declOf(i.key), project, clear);
+        if (i.key) return effective(declOf(i.key), at, clear);
         const list = decls().filter(d => !i.group || (d.group || d.module) === i.group);
-        return { project, settings: await Promise.all(list.map(d => effective(d, project, clear))) };
+        return { project: at.project, ...(at.device ? { device: at.device } : {}), settings: await Promise.all(list.map(d => effective(d, at, clear))) };
       },
     });
 
-    const change = async (/** @type {any} */ i, /** @type {string} */ caller, /** @type {any} */ raw) => {
+    ctx.tool("settings.snapshot", {
+      description: "Every setting's value in effect for one surface, in one read: {rev, device, values: {key: value}, sources: {key: level}, levels: {key: {account?, project?, device?, session?}}}. device defaults to the caller's own and is echoed. Compare rev after a reconnect; follow settings.changed after that. A secret setting's values are masked for anyone but the person.",
+      input: { type: "object", properties: where },
+      run: async (i, meta) => {
+        const at = atOf(i, meta);
+        const clear = isPerson(meta && meta.caller, meta);
+        await fresh();
+        const rows = await Promise.all(decls().map(d => effective(d, at, clear)));
+        /** @type {Record<string, any>} */ const values = {}, sources = {}, levels = {};
+        for (const r of rows) {
+          if (r.value === undefined) continue;
+          values[r.key] = r.value;
+          sources[r.key] = r.source;
+          const own = Object.fromEntries(ORDER.filter(lv => r[lv] !== undefined).map(lv => [lv, r[lv]]));
+          if (Object.keys(own).length) levels[r.key] = own;
+        }
+        return { rev: rev(), device: at.device, ...(at.project ? { project: at.project } : {}), ...(at.session ? { session: at.session } : {}), values, sources, levels };
+      },
+    });
+
+    const change = async (/** @type {any} */ i, /** @type {any} */ meta, /** @type {any} */ raw) => {
+      const caller = String(meta && meta.caller);
       // A caller vouched as an agent ("cli agent:kit", "mcp:agent:kit") is never the person,
       // whatever surface kind it rides on.
-      if (/(?:^|[\s:])agent:/.test(String(caller))) throw Object.assign(new Error("settings are the person's own; an agent never changes one"), { code: "denied" });
+      if (/(?:^|[\s:])agent:/.test(caller)) throw Object.assign(new Error("settings are the person's own; an agent never changes one"), { code: "denied" });
       const d = declOf(i.key);
-      const project = slugOf(i.project);
-      const lv = i.level || (project && d.levels.includes("project") ? "project" : "account");
+      const at = atOf(i, meta);
+      // A level said, or the narrowest one this call names: a session, a device named outright
+      // (never the caller's own by default), a project, else the account.
+      const lv = /** @type {Lv} */ (i.level || (at.session && d.levels.includes("session") ? "session"
+        : at.device && !at.ownDevice && d.levels.includes("device") ? "device"
+        : at.project && d.levels.includes("project") ? "project" : "account"));
       if (!d.levels.includes(lv)) throw Object.assign(new Error(`${d.key} is set at ${d.levels.join(" or ")} level, not ${lv}`), { code: "bad_input" });
-      if (lv === "project" && !project) throw Object.assign(new Error("a project setting needs project"), { code: "bad_input" });
+      const target = targetOf(lv, at);
+      if (lv !== "account" && !target) throw Object.assign(new Error(`a ${lv} setting needs ${lv}`), { code: "bad_input" });
       const value = raw === undefined ? undefined : coerce(d, raw);
-      const target = lv === "project" ? project : null;
-      const where = await whereIs(env, d, lv, target);
+      const whereTo = await whereIs(env, d, lv, target);
       const before = await level(d, lv, target);
+      const tag = target ? { [lv]: target } : {};
       // What would change, for the person to see first. Nothing is written.
-      if (i.preview) return { key: d.key, level: lv, ...(target ? { project: target } : {}), where, before: before.value, after: value,
+      if (i.preview) return { key: d.key, level: lv, ...tag, where: whereTo, before: before.value, after: value,
         ...(needsConfirm(d, value, before.value) ? { confirm: d.loosens || `This lets Claude do more without asking: ${d.label}.` } : {}) };
       if (needsConfirm(d, value, before.value) && i.confirm !== true) {
         throw Object.assign(new Error(`${d.loosens || `This lets Claude do more without asking: ${d.label}.`} Show the person and send confirm: true.`), { code: "confirm_required" });
       }
-      await write(env, d, lv, target, value, asPerson(caller), String(caller));
+      await checked(d, value, lv, target);
+      await write(env, d, lv, target, value, asPerson(caller), caller);
       const r = mirror(d, lv, target, value);
-      ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, rev: r, ...said(d, value) });
-      ctx.log(`${d.key} ${raw === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${caller} (${where})`);
-      return effective(d, project);
+      ctx.events.emit("settings.changed", { key: d.key, level: lv, ...tag, apply: d.apply, rev: r, ...said(d, value) });
+      ctx.log(`${d.key} ${raw === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${caller} (${whereTo})`);
+      return effective(d, at);
     };
 
     // A fresh proof only for keys that loosen security; everything else is a person's plain act.
@@ -341,23 +464,24 @@ export default {
       when: (/** @type {any} */ i) => { try { return declOf(String(i && i.key)).security === "loosens" && !(i && i.preview); } catch { return false; } },
       summary: (/** @type {any} */ i) => `Change ${i && i.key}`,
     };
+    const LEVEL = { type: "string", enum: ["account", "project", "device", "session"] };
 
     ctx.tool("settings.set", {
-      description: "Change a setting at account level, or for one project (give project). The value is checked against the setting's type. preview: true returns what would change and writes nothing. A key that widens what Claude may do needs confirm: true; one that loosens security needs a presence proof. Returns the value now in effect.",
-      input: { type: "object", required: ["key", "value"], properties: { key: str, value: {}, level: { type: "string", enum: ["account", "project"] }, project: str,
+      description: "Change a setting at account level, or for one project, device or session (give it). The value is checked against the setting's type, and by its module when it names a check. preview: true returns what would change and writes nothing. A key that widens what Claude may do needs confirm: true; one that loosens security needs a presence proof. Returns the value now in effect.",
+      input: { type: "object", required: ["key", "value"], properties: { key: str, value: {}, level: LEVEL, ...where,
         preview: { type: "boolean" }, confirm: { type: "boolean" } } },
       callers: PEOPLE, presence,
-      run: async (i, { caller }) => {
+      run: async (i, meta) => {
         if (i.value === null) throw Object.assign(new Error("use settings.reset to remove a value"), { code: "bad_input" });
-        return change(i, caller, i.value);
+        return change(i, meta, i.value);
       },
     });
 
     ctx.tool("settings.reset", {
-      description: "Remove a setting's value at one level, so the level below (account, then default) applies again. Removing entries from a list that keeps Claude asking or refusing (sessions.deny, sessions.ask) needs confirm: true.",
-      input: { type: "object", required: ["key"], properties: { key: str, level: { type: "string", enum: ["account", "project"] }, project: str, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
+      description: "Remove a setting's value at one level, so the next level down (then the default) applies again. Removing entries from a list that keeps Claude asking or refusing (sessions.deny, sessions.ask) needs confirm: true.",
+      input: { type: "object", required: ["key"], properties: { key: str, level: LEVEL, ...where, preview: { type: "boolean" }, confirm: { type: "boolean" } } },
       callers: PEOPLE, presence,
-      run: async (i, { caller }) => change(i, caller, undefined),
+      run: async (i, meta) => change(i, meta, undefined),
     });
 
     ctx.tool("settings.resolve", {
@@ -365,13 +489,13 @@ export default {
       internal: true,
       input: { type: "object", properties: { project: str } },
       run: async i => {
-        const project = slugOf(i.project);
+        const at = { project: slugOf(i.project), device: null, session: null };
         await fresh();
-        const rows = await Promise.all(decls().filter(d => !(d.store && d.store.claude)).map(d => effective(d, project)));
+        const rows = await Promise.all(decls().filter(d => !(d.store && d.store.claude)).map(d => effective(d, at)));
         return Object.fromEntries(rows.filter(r => r.value !== undefined).map(r => [r.key, r.value]));
       },
     });
 
-    return { async stop() { clearTimeout(timer); watcher?.close(); } };
+    return { async stop() { clearTimeout(timer); watcher?.close(); if (typeof offChips === "function") offChips(); } };
   },
 };
