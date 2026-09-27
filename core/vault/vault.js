@@ -41,6 +41,7 @@ import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
+import { CONNECTIONS_MIGRATION, CONNECTION_MACED } from "./connections.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -101,6 +102,8 @@ export const MIGRATIONS = [
   EMERGENCY_MIGRATION,
   // ADR 0028, decision 5: a phone's device key opens a fill window.
   FILL_KEY_MIGRATION,
+  // ADR 0028, decision 9b: connections, and which surfaces may use each.
+  CONNECTIONS_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -128,6 +131,8 @@ export const MACED = {
   vault_marks: ["name", "stale"],
   // Who may ask for emergency access, how long they wait, and where each request stands.
   vault_emergency: EMERGENCY_MACED,
+  // Which connection a row is, what it can do, and which surfaces may use it (ADR 0028, 9b).
+  vault_connections: CONNECTION_MACED,
 };
 /** The key column of each MACed table, where it is not `id`. */
 const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name", vault_device_keys: "device" };

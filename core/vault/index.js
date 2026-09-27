@@ -30,6 +30,7 @@ import * as account from "./tools/account.js";
 import * as historyTools from "./tools/history.js";
 import * as agentTools from "./tools/agents.js";
 import * as needsTools from "./tools/needs.js";
+import * as connectionTools from "./tools/connections.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -339,6 +340,9 @@ export default {
     agentTools.register({ vault, tool });
     // What modules need from the Vault, and the one way to fill it (ADR 0028, decision 9a).
     needsTools.register({ ctx, vault, tool });
+    // Every connection and which surface may use it (ADR 0028, decision 9b).
+    const conns = connectionTools.register({ ctx, vault, tool });
+    if (!vault.guarded) conns.connections.resync().catch(() => {});
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),
@@ -365,6 +369,7 @@ export default {
       ssh: cli.ssh,
       async stop() {
         reminders.stop();
+        await conns.stop();
         await kits.stop();
         vault.devices.stop();
         await cli.stop();

@@ -27,6 +27,16 @@ const ANY_SHAPE = new Set(["mcp-bearer", "google-apps-script", "imap-smtp"]);
 /** detect.js's word for a catalog provider's family, where the two differ. */
 const FAMILY = { "claude-setup-token": "anthropic", "google-oauth": "google", "google-dwd": "google" };
 
+/** A label that names one of a multiple need's items: <module>-<label>. */
+const LABEL = /^[a-z0-9][a-z0-9-]{0,40}$/;
+
+/** The item a connect fills: the need's own, or for a multiple need <module>-<label>. */
+function itemOf(n, label) {
+  if (!n.multiple) return n.item;
+  if (!LABEL.test(String(label ?? ""))) throw new Error(`${n.module}'s ${n.id} takes several accounts: give each a label (lowercase letters, digits and dashes), which names its item ${n.module}-<label>`);
+  return `${n.module}-${label}`;
+}
+
 /**
  * @param {{ ctx: any, vault: import("../vault.js").Vault,
  *   tool: (name: string, callers: string[]|null, description: string, input: any, run: Function, needs?: any) => void }} o
@@ -36,7 +46,7 @@ export function register({ ctx, vault, tool }) {
   const declared = () => {
     const mods = ctx.modules && typeof ctx.modules.list === "function" ? ctx.modules.list() : [];
     return mods.filter(m => m.state !== "invalid" && Array.isArray(m.credentials))
-      .flatMap(m => m.credentials.map(c => ({ module: m.name, ...c, item: c.item || `${m.name}-${c.id}` })));
+      .flatMap(m => m.credentials.map(c => ({ module: m.name, ...c, item: c.multiple ? null : c.item || `${m.name}-${c.id}` })));
   };
 
   const needOf = (module, id) => {
@@ -52,18 +62,23 @@ export function register({ ctx, vault, tool }) {
     const items = new Map(vault.list().items.map(i => [i.name, i]));
     const pending = vault.pending().grants;
     const now = Date.now();
+    const one = (n, name) => {
+      const it = items.get(name);
+      if (!it) return "missing";
+      const exp = it.details && it.details.expires;
+      if (typeof exp === "number" && exp <= now) return "expired";
+      if ((it.grants || []).some(g => g.module === n.module && !g.watcher)) return "ready";
+      if (pending.some(g => g.name === name && g.module === n.module && !g.watcher)) return "pending";
+      return "not_granted";
+    };
+    // A multiple need is ready when any of its items is; its items are <module>-<label> of its provider.
+    const RANK = ["ready", "pending", "not_granted", "expired", "missing"];
     return needs.map(n => {
-      const it = items.get(n.item);
-      let state = "missing";
-      if (it) {
-        const exp = it.details && it.details.expires;
-        if (typeof exp === "number" && exp <= now) state = "expired";
-        else if ((it.grants || []).some(g => g.module === n.module && !g.watcher)) state = "ready";
-        else if (pending.some(g => g.name === n.item && g.module === n.module && !g.watcher)) state = "pending";
-        else state = "not_granted";
-      }
+      const mine = n.multiple ? [...items.values()].filter(i => i.name.startsWith(`${n.module}-`) && i.details && i.details.provider === n.provider) : [];
+      const state = n.multiple ? mine.map(i => one(n, i.name)).sort((a, b) => RANK.indexOf(a) - RANK.indexOf(b))[0] || "missing" : one(n, n.item);
       const p = catalog(n.provider);
       return { module: n.module, id: n.id, kind: n.kind, provider: n.provider, purpose: n.purpose, item: n.item,
+        ...(n.multiple ? { multiple: true, items: mine.map(i => ({ name: i.name, state: one(n, i.name) })) } : {}),
         group: n.group ?? null, optional: Boolean(n.optional), state,
         how: p ? p.how : null, fields: formFields(p), help: p ? p.help : null, ...(p && p.next ? { next: { tool: p.next.tool } } : {}) };
     });
@@ -98,10 +113,11 @@ export function register({ ctx, vault, tool }) {
       const p = catalog(n.provider);
       if (!p) throw new Error(`${module}'s need ${id} names provider ${n.provider}, which is not in the catalog`);
       if (!p.kinds.includes(n.kind)) throw new Error(`${p.label} is kept as ${p.kinds.join(" or ")}, but ${module} declares ${id} as ${n.kind}`);
-      const base = { item: n.item, module, need: id, provider: p.name };
+      const item = itemOf(n, label);
+      const base = { item, module, need: id, provider: p.name };
       if (p.how === "oauth") {
         if (fields !== undefined || file !== undefined) throw new Error(`${p.label} is a sign-in; it takes no fields or file here`);
-        return { ...base, granted: false, grant: null, next: { tool: p.next ? p.next.tool : "", input: { name: label || n.item } } };
+        return { ...base, granted: false, grant: null, next: { tool: p.next ? p.next.tool : "", input: { name: n.multiple ? String(label) : label || item } } };
       }
       /** @type {Record<string, string>} */
       let clean;
@@ -124,18 +140,18 @@ export function register({ ctx, vault, tool }) {
           }
         }
       }
-      await vault.put({ name: n.item, kind: n.kind, fields: clean,
+      await vault.put({ name: item, kind: n.kind, fields: clean,
         description: String(label || `${p.label} for ${module}: ${n.purpose}`).slice(0, 200),
         details: { provider: p.name, ...(file && file.filename ? { filename: file.filename } : {}) } }, caller);
       clean = {};
-      const { grant } = await vault.grant({ name: n.item, module }, caller);
+      const { grant } = await vault.grant({ name: item, module }, caller);
       const granted = grant.status === "active";
-      ctx.events.emit("vault.connected", { module, need: id, item: n.item, provider: p.name });
+      ctx.events.emit("vault.connected", { module, need: id, item, provider: p.name });
       return { ...base, granted, grant };
     },
-    presence("Connect a key for a module", ({ module, need: id }) => {
+    presence("Connect a key for a module", ({ module, need: id, label }) => {
       const n = needOf(module, id);
       const p = catalog(n.provider);
-      return `Save ${p ? p.label : n.provider} as ${quoted(n.item)} and let ${module} use it (${String(n.purpose).slice(0, 80)})`;
+      return `Save ${p ? p.label : n.provider} as ${quoted(itemOf(n, label))} and let ${module} use it (${String(n.purpose).slice(0, 80)})`;
     }));
 }

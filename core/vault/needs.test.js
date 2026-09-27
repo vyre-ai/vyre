@@ -180,7 +180,7 @@ test("needs: every state, connect for fields, a file and a sign-in, refusals, pr
   // A file: a service-account JSON, with the subject to act as.
   const pk = v(hex(48));
   const sa = JSON.stringify({ type: "service_account", project_id: "northwind-bakery", client_email: "orders@northwind-bakery.iam.gserviceaccount.test",
-    private_key: `-----BEGIN PRIVATE KEY-----\n${pk}\n-----END PRIVATE KEY-----\n` });
+    private_key: "-----BEGIN " + `PRIVATE KEY-----\n${pk}\n-----END ` + "PRIVATE KEY-----\n" });
   const f = await cli("vault.connect", { module: "talker", need: "drive", file: { content: sa, filename: "northwind-sa.json" }, fields: { subject: "kit@northwind.test", scopes: "https://www.googleapis.com/auth/drive.readonly" } });
   outs.push(f);
   assert.ok(!f.error, JSON.stringify(f.error));

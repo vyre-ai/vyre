@@ -107,7 +107,16 @@
       "vault.agent.revoke",
       "vault.uses",
       "vault.need",
-      "vault.connect"
+      "vault.connect",
+      "vault.connections.list",
+      "vault.connections.get",
+      "vault.connections.grant",
+      "vault.connections.revoke",
+      "vault.connections.update",
+      "vault.connections.sync",
+      "vault.connections.register",
+      "vault.connections.unregister",
+      "vault.connections.allowed"
     ]
   },
   "watches": {
@@ -150,7 +159,10 @@
       "vault.emergency-released",
       "vault.emergency-denied",
       "vault.emergency-removed",
-      "vault.connected"
+      "vault.connected",
+      "vault.connection-added",
+      "vault.connection-removed",
+      "vault.connection-changed"
     ]
   },
   "shows": {

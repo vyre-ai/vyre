@@ -49,9 +49,9 @@ const LIST = [
       { name: "scopes", label: "Scopes (space or comma separated)", secret: false, optional: true, pattern: "^[\\w:./, -]{1,2000}$" }],
     capabilities: ["send_mail", "read_mail", "calendar", "files"], help: "https://console.cloud.google.com/iam-admin/serviceaccounts" },
   { name: "google-apps-script", label: "Google Apps Script web app", kinds: ["env-set"], how: "field",
-    fields: [{ name: "url", label: "Web app URL", secret: false, pattern: "^https://script\\.google\\.com/\\S{1,500}$" },
+    fields: [{ name: "url", label: "Web app URL", secret: false, pattern: "^https://script\\.google\\.com/(a/macros/[A-Za-z0-9.-]{1,253}/s|macros/s)/[A-Za-z0-9_-]{10,200}/exec$" },
       { name: "token", label: "Token", secret: true }],
-    capabilities: [], pick: true, help: "https://script.google.com/home" },
+    capabilities: ["send_mail", "read_mail"], pick: true, help: "https://script.google.com/home" },
   { name: "imap-smtp", label: "Email (IMAP and SMTP)", kinds: ["env-set"], how: "field",
     fields: [
       { name: "imap_host", label: "IMAP server", secret: false, pattern: "^[A-Za-z0-9.-]{1,253}$" },
