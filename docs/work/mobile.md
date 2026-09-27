@@ -24,6 +24,12 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   `device` in METHODS and in the presence session description; deck/test/world.js keeps its
   exports with main's alex-beside-home, CHAT_DEMO and WebSocket pass-through.
 
+- Merged local work/app-design (2e205af): docs/design/one-app/ with tokens.json.
+- scripts/gen-tokens -> apps/app/src/theme/tokens.ts (violet beacon, teal as attentionAlt), test.
+- Answered pwa (apps/app, export served at /app/ with its own SW scope; pwa owns the SW and the
+  /app/ route) and ci (app.yml: own lockfile in apps/app, plain prebuild+gradle, no EAS; a
+  headless Chrome perf job reading window.__vyrePerf.report() as a regression guard).
+
 ## One app: Doing
 - Plan the one-week spike with pwa (Now, a session, the approve swipe) and scaffold apps/app.
 

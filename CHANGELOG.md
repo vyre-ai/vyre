@@ -14,6 +14,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - apps/app/perf/meter.js: a DOM-free frame meter the web (requestAnimationFrame) and native
   (Reanimated) both feed; bounded rings, named measures, gaps and long tasks, and a verdict
   against `BAR`, the ADR's table as data. Tests in apps/app/perf/meter.test.js.
+- scripts/gen-tokens (`npm run tokens`, `--check`): writes apps/app/src/theme/tokens.ts from
+  docs/design/one-app/tokens.json, with `attention(scheme, alt)` so violet or teal stays one key.
+  Coral is gone from the app's tokens. Test in apps/app/src/theme/tokens.test.js.
 - deck/test/world.js keeps its exported pieces (for apps/test/world.js) with main's alex folder
   beside the home, CHAT_DEMO and the WebSocket pass-through.
 
