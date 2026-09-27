@@ -186,6 +186,7 @@ facts are not a project's.
   memory curator's background pass, in bounded batches that yield.
 
 ## Changed contracts
+- core/config/index.js: default transcripts add <home>/synced; recall reads each device folder under it. recall.forget (internal). Event recall.embedded. memory listens to sync.revoked and emits memory.forgot. New module core/import (import.scan/plan/status, event import.progress).
 - core/harness/index.js harness.brief adds memory.today's lines ("Lately in this project") for a project session.
 - recall.search takes `sessions` (union with project_cwds; dropped for any caller but modules and the person's surfaces); dense keep(cwd, session).
 - New tools memory.today; memory.retrieve takes `replies`; passages may carry `reply {seq, text}`.

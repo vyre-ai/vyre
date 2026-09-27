@@ -17,7 +17,7 @@ import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
-import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
+import { createReader, claudeOnce, modelFor, turnHash } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
 import { fixes as fixLog } from "./iq/fix.js";
 import { heard, contentWords } from "./iq/heard.js";
@@ -143,6 +143,41 @@ export default {
       if (p.rewritten && p.session) { curator.reset(String(p.session)); personal.reset(String(p.session)); }
       soon();
     });
+    // A device's synced sessions revoked (ADR 0008 amendment; e2e's condition): everything derived
+    // from them goes, then Recall forgets them. Federation has already deleted the files.
+    const forgetMachine = async machine => {
+      const m = String(machine || "");
+      if (!/^[A-Za-z0-9._-]{1,80}$/.test(m) || !ctx.paths?.root || !personal.hasRecall()) return { machine: m, sessions: 0 };
+      const db = ctx.store.db, dir = path.join(ctx.paths.root, "synced", m) + path.sep;
+      const ids = /** @type {any[]} */ (db.prepare("SELECT id FROM recall_sessions WHERE substr(file, 1, ?) = ?").all(dir.length, dir)).map(r => String(r.id));
+      if (!ids.length) return { machine: m, sessions: 0 };
+      // The model's reads are kept by the text's hash: the hashes come from the turns, before they go.
+      const hashes = new Set();
+      const turns = db.prepare("SELECT text FROM recall_turns WHERE session = ? AND role = 'user'");
+      for (const id of ids) for (const t of /** @type {any[]} */ (turns.all(id))) hashes.add(turnHash(String(t.text)));
+      if (running) await running.catch(() => {});
+      for (const id of ids) { personal.reset(id); curator.reset(id); }
+      db.exec("BEGIN");
+      try {
+        const delRead = db.prepare("DELETE FROM memory_me_reads WHERE hash = ?");
+        for (const h of hashes) delRead.run(h);
+        const inAnswers = db.prepare("DELETE FROM memory_iq_answers WHERE turns LIKE ? AND id NOT IN (SELECT answer FROM memory_iq_fixes)");
+        for (const id of ids) inAnswers.run(`%"${id}:%`);
+        db.prepare("DELETE FROM memory_iq_heard WHERE thread IN (SELECT value FROM json_each(?))").run(JSON.stringify(ids));
+        db.prepare("DELETE FROM memory_iq_suggested WHERE thread IN (SELECT value FROM json_each(?))").run(JSON.stringify(ids));
+        // Kept replies quote passages; which ones came from this device is not recorded, so all go.
+        db.exec("DELETE FROM memory_iq_asks");
+        db.exec("COMMIT");
+      } catch (e) { db.exec("ROLLBACK"); throw e; }
+      const r = await ctx.call("recall.forget", { sessions: ids });
+      personal.derive({ force: true });
+      await run({ force: true }).catch(e => ctx.log("curate failed: " + e.message));
+      const out = { machine: m, sessions: ids.length, recall: r?.data?.forgot ?? 0, reads: hashes.size };
+      ctx.events.emit("memory.forgot", out);
+      return out;
+    };
+    const revokedOff = ctx.events.on("sync.revoked", e => { forgetMachine(e.payload?.machine).catch(err => ctx.log(`forgetting a revoked device failed: ${err.message}`)); });
+
     // A project made, changed or a thread picked changes the rooms.
     const offs = ["project.created", "project.changed", "thread.picked", "thread.unpicked"].map(type => ctx.events.on(type, () => { roomsStale = true; soon(); }));
     soon();
@@ -886,6 +921,7 @@ export default {
         clearTimeout(timer);
         off();
         for (const o of offs) o();
+        revokedOff();
         for (const o of modelOffs) if (typeof o === "function") o();
         model.stop();
         if (running) await running.catch(() => {});
