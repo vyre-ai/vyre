@@ -21,6 +21,9 @@ import { validateDecls } from "../config/settings.js";
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
 const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** Vyre's own modules are the ones shipped in the repo (core, local, modules); a home's never are. */
+const REPO_DIR = path.resolve(CORE_DIR, "..");
+const firstParty = (/** @type {string} */ dir) => path.resolve(dir).startsWith(REPO_DIR + path.sep);
 /**
  * The only caller labels a module may call under, and who may. A person's labels ("cli", "deck")
  * are never here: a module that could call as one would act as the person. The link on a Mac types
@@ -33,10 +36,11 @@ const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 
 /**
- * Check a manifest. Returns a list of problems; empty means valid.
- * @param {any} m
+ * Check a manifest. Returns a list of problems; empty means valid. `firstParty` is true for a
+ * module shipped with Vyre; a module from anywhere else is held to more (its settings' stores).
+ * @param {any} m @param {{ firstParty?: boolean }} [opts]
  */
-export function validate(m) {
+export function validate(m, { firstParty = false } = {}) {
   const out = [];
   if (!m || typeof m !== "object") return ["module.json is not an object"];
   if (!NAME.test(String(m.name || ""))) out.push(`name "${m.name}" must be lowercase letters, digits and dashes`);
@@ -49,7 +53,7 @@ export function validate(m) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
   for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
-  out.push(...validateDecls(String(m.name), m.settings));
+  out.push(...validateDecls(String(m.name), m.settings, { firstParty, tools: (m.does && m.does.tools) || [] }));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
@@ -68,7 +72,7 @@ export function discover(roots) {
       const file = path.join(dir, "module.json");
       if (!fs.existsSync(file)) continue;
       let manifest = null, problems = [];
-      try { manifest = JSON.parse(fs.readFileSync(file, "utf8")); problems = validate(manifest); }
+      try { manifest = JSON.parse(fs.readFileSync(file, "utf8")); problems = validate(manifest, { firstParty: firstParty(dir) }); }
       catch (err) { problems = ["module.json unreadable: " + /** @type {Error} */ (err).message]; }
       found.push({ dir, manifest, problems });
     }
@@ -232,7 +236,8 @@ export class Registry {
       // Every running module's declared settings (module.json "settings"), for the settings
       // module to serve. Manifests are public; a module switched off takes its settings with it.
       declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
-        .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name }))),
+        // module and firstParty come from the loader, after the declaration, so a manifest can't claim them.
+        .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name, firstParty: firstParty(r.dir) }))),
       // The module's namespace in vyre.db: migrations are bound to its name, so its tables must
       // carry that name. Reads may join any table; writes to another module's tables go through
       // that module's tools.
