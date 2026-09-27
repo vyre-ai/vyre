@@ -43,6 +43,8 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - Reviewed connectors af11226d meta.firstParty: OK (merge after b7bbf5d8). Vault told to read ctx.modules.status().
 - Testbox runs on hold until the integrator reports batch 4 (lead).
 
+- Lead: event renames (PLANNED in core/event-catalog) wait until after 0.1.0; lead routes them then, aliases for one release.
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
