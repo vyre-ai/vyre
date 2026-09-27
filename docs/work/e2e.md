@@ -236,7 +236,7 @@ you". recall's readable() guards only under node --test, so a dev world read the
 commit): vyred in a child with HOME = a planted fake home, NODE_TEST_CONTEXT cleared, every fs call on
 a .claude path recorded and refused. Red on main with exactly those 3 paths. FIXED by me (lead's call): claudeHome() in core/config, work/e2e-noclaude 32dc0956, guard
 green, sent to the integrator. memory-iq keeps its recall-side fix (I review it). One-line switches sent to sessions,
-polish-cli, native-core; learn/skills.js has no owner, asked the lead. Other defaults to route through one kernel helper:
+polish-cli, native-core; learn done by me (lead OK): 399ca89f; the skills write guard keeps refusing the real ~/.claude too. Branch sent at 399ca89f. Other defaults to route through one kernel helper:
 learn/skills.js:414, switchboard/index.js:1333, cli statusline.js:22, native-core settings claudeDir.
 
 Batch 4 lows (lead, 27 Sep): DONE in 8b9b092c. Unknown ids at gate.* and agents.* answer 404
