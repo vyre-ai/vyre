@@ -56,6 +56,12 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - Waiting: vault work/vault-next (green sha from the vault team) with connectors 8be461a9.
 - Then: full suite once on testbox, ci-rc 1d8ae652 LAST, push main, report to the lead.
 - Generated docs on a conflict: take ours, rerun `node scripts/gen-docs-reference`.
+- Fixes on pre/rc: 75148174 onboard reserve test waits for its claim (tmp-guard leak), ae6fe249
+  switchboard fake key built at run time (hygiene), 2913b069 drift allowlist shrinks. Targeted run
+  after them: 1129 tests, only the drift allowlist failed, now 2/2.
+- Launch: aa9da103 and 342e02f5 both HELD by the lead (retired tokens, violet fills). Take only the
+  sha after app-design's re-review. On merge, deck/onboard/onboard.css: keep HEAD's .dev-off and
+  .need (bordered, no fill).
 
 ## Done after Logout 3 (2026-09-27)
 
