@@ -2,9 +2,11 @@
 // vault/import: turn another password manager's export, or a .env file, into vault items.
 //
 // People leave a password manager only when leaving costs them nothing, so this reads the files
-// they already have: .env, 1Password CSV and .1pux, Bitwarden CSV and JSON, Chrome CSV and Safari
-// CSV (ADR 0001, decision 10). vyred reads the file itself and hands the bytes to parseFile, so
-// values never pass through Claude.
+// they already have: .env, 1Password CSV and .1pux, Bitwarden CSV and JSON, Chrome CSV, and the
+// Apple Passwords (and Safari) CSV (ADR 0001, decision 10; ADR 0028, decision 1). import-more.js adds
+// LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass and KeePassXC, Firefox, and the
+// Chromium browsers that write Chrome's CSV. vyred reads the file itself and hands the bytes to
+// parseFile, so values never pass through Claude.
 //
 // Everything here is pure: bytes or text in, items out, no disk writes. Sealing and storing belong to
 // the vault. Two rules follow from decision 4, where an item's name and description are
@@ -16,21 +18,34 @@
 
 import path from "node:path";
 import { unzip } from "./zip.js";
+import { readEnv } from "./envfiles.js";
+import { parseMore, parseMoreZip, moreCSVFormat, moreJSONFormat, looksLikeKeeperCSV, isKdbx, KDBX_ERROR } from "./import-more.js";
 
-/** @typedef {"env"|"1password-csv"|"1password-1pux"|"bitwarden-csv"|"bitwarden-json"|"chrome-csv"|"safari-csv"|"csv"} Format */
+/** @typedef {"env"|"1password-csv"|"1password-1pux"|"bitwarden-csv"|"bitwarden-json"|"chrome-csv"|"apple-csv"|"safari-csv"|"csv"
+ *   |"edge-csv"|"brave-csv"|"arc-csv"|"opera-csv"|"vivaldi-csv"|"firefox-csv"|"lastpass-csv"|"dashlane-csv"|"dashlane-zip"
+ *   |"keeper-csv"|"keeper-json"|"nordpass-csv"|"protonpass-csv"|"protonpass-json"|"protonpass-zip"|"enpass-json"
+ *   |"keepass-xml"|"keepassxc-csv"} Format */
 /**
  * @typedef {object} Item
  * @property {string} name
- * @property {"secret"|"api-key"|"login"|"note"|"card"} kind
+ * @property {"secret"|"api-key"|"login"|"note"|"card"|"env-set"|"authenticator"|"address"|"identity"|"wifi"} kind
  * @property {string} description
  * @property {Record<string,string>} fields
  * @property {string} [url]
  * @property {string[]} hosts
  * @property {string[]} [tags]
  */
-/** @typedef {{ format: Format|null, items: Item[], skipped: string[], error?: string }} Result */
+/** @typedef {{ format: Format|null, items: Item[], skipped: string[], error?: string, vars?: import("./envfiles.js").Var[], kept?: string[] }} Result */
 
-export const FORMATS = /** @type {const} */ (["env", "1password-csv", "1password-1pux", "bitwarden-csv", "bitwarden-json", "chrome-csv", "safari-csv", "csv"]);
+export const FORMATS = /** @type {const} */ ([
+  "env", "1password-csv", "1password-1pux", "bitwarden-csv", "bitwarden-json", "chrome-csv", "apple-csv", "safari-csv", "csv",
+  // Chromium browsers write Chrome's CSV; these names parse exactly like chrome-csv.
+  "edge-csv", "brave-csv", "arc-csv", "opera-csv", "vivaldi-csv",
+  "firefox-csv", "lastpass-csv", "dashlane-csv", "dashlane-zip", "keeper-csv", "keeper-json", "nordpass-csv",
+  "protonpass-csv", "protonpass-json", "protonpass-zip", "enpass-json", "keepass-xml", "keepassxc-csv",
+]);
+/** Exports that are zip archives, read from bytes by parseFile. */
+const ZIP_FORMATS = ["1password-1pux", "dashlane-zip", "protonpass-zip"];
 export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /**
@@ -45,10 +60,13 @@ export function parse(text, { format, filename } = {}) {
   text = text.replace(/^﻿/, "");
   const fmt = format ?? detect(text, filename);
   if (fmt === "1password-1pux") return fail(fmt, "a .1pux file is a zip archive; read it as bytes with parseFile");
+  if (fmt && ZIP_FORMATS.includes(fmt)) return fail(fmt, `a ${fmt} export is a zip archive; read it as bytes with parseFile`);
   if (!fmt) return fail(null, "could not tell what kind of export this is; pass a format (" + FORMATS.join(", ") + ")");
   try {
     if (fmt === "env") return parseEnv(text, filename);
     if (fmt === "bitwarden-json") return parseBitwardenJSON(text);
+    const more = parseMore(text, fmt);
+    if (more) return more;
     return parseRows(text, fmt);
   } catch {
     // A parser bug must not surface a message built from the input.
@@ -57,8 +75,9 @@ export function parse(text, { format, filename } = {}) {
 }
 
 /**
- * Parse an export from its raw bytes. A zip (or a name ending .1pux) is read as a 1Password .1pux;
- * anything else is decoded as UTF-8 and handed to `parse`.
+ * Parse an export from its raw bytes. A zip is read as a 1Password .1pux (or any file named .1pux),
+ * a Dashlane zip or a Proton Pass zip, by what it holds; a KeePass database is refused with the
+ * way to export it; anything else is decoded as UTF-8 and handed to `parse`.
  * @param {Uint8Array} buffer
  * @param {{ format?: Format, filename?: string }} [opts]
  * @returns {Result}
@@ -68,10 +87,26 @@ export function parseFile(buffer, { format, filename } = {}) {
   if (format && !FORMATS.includes(format)) return fail(null, `unknown format "${String(format).slice(0, 40)}"; expected one of ${FORMATS.join(", ")}`);
   const zipped = buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4b && buffer[2] === 0x03 && buffer[3] === 0x04;
   const named = !!filename && /\.1pux$/i.test(filename);
-  if (format === "1password-1pux" || (!format && (zipped || named))) {
+  if ((!format || format === "keepass-xml") && isKdbx(buffer)) return fail("keepass-xml", KDBX_ERROR);
+  if (format === "1password-1pux" || (!format && named)) {
     try { return parse1pux(buffer); } catch { return fail("1password-1pux", "the .1pux file could not be read"); }
   }
-  if (zipped) return fail(format ?? null, "this is a zip archive; the only zip export read is a 1Password .1pux");
+  if (format === "dashlane-zip" || format === "protonpass-zip" || (!format && zipped)) {
+    if (!zipped) return fail(format ?? null, `a ${format} export is a zip archive, and this file is not one`);
+    /** @type {Map<string, Buffer>} */
+    let entries;
+    try { entries = unzip(buffer); } catch (e) {
+      // zip.js errors name entries and problems, never contents.
+      return fail(format ?? null, `the zip archive could not be read (${e instanceof Error ? e.message : "not a zip archive"})`);
+    }
+    try {
+      if (!format && entries.has("export.data")) return parse1pux(entries);
+      const r = parseMoreZip(entries, format);
+      if (r) return r;
+    } catch { return fail(format ?? null, "the zip archive could not be read"); }
+    return fail(null, "this zip archive is not an export read here: a 1Password .1pux, a Dashlane zip or a Proton Pass zip");
+  }
+  if (zipped) return fail(format ?? null, "this is a zip archive; the zip exports read are a 1Password .1pux, a Dashlane zip and a Proton Pass zip");
   let text;
   try { text = new TextDecoder("utf-8", { fatal: true }).decode(buffer); } catch { return fail(format ?? null, "the file is not UTF-8 text"); }
   return parse(text, { format, filename });
@@ -133,6 +168,100 @@ export function merge(existingNames, items) {
   return { add, duplicate };
 }
 
+/**
+ * @typedef {object} Existing an item already in the vault. Only a login carries origin,
+ *   username and password, opened by the caller; any other item is there for its name.
+ * @property {string} name
+ * @property {string} kind
+ * @property {string} [origin]
+ * @property {string} [username]
+ * @property {string} [password]
+ * @property {Record<string, string>} [fields] an env-set's variables, opened by the caller
+ */
+/**
+ * @typedef {object} Plan
+ * @property {Item[]} add items to put, under their final names
+ * @property {string[]} same imported logins whose origin, username and password are already here
+ * @property {{ name: string, existing: string, item: Item }[]} conflicts same origin and username, a different password
+ * @property {{ from: string, to: string }[]} renamed items whose name was taken
+ */
+
+/**
+ * Decide what an import does, by content and not only by name (ADR 0028, decision 1). A login is
+ * keyed on the origin of its url (or first host) plus its username, lowercased and trimmed:
+ *   - same key and same password as an existing login: `same`, skipped;
+ *   - same key, another password: `conflicts`, naming the existing item;
+ *   - an env-set is keyed on its name (the file it came from): every imported variable already
+ *     there with the same value is `same`, anything else is a conflict;
+ *   - otherwise it is added, and a name already taken (in the vault, or earlier in this batch)
+ *     becomes name-2, name-3 and so on, listed in `renamed`.
+ * Pure: nothing here reads the disk, and nothing returned carries a value except `add` and
+ * `conflicts[].item`, which the caller stores and never reports.
+ * @param {Existing[]} existing
+ * @param {Item[]} items
+ * @returns {Plan}
+ */
+export function plan(existing, items) {
+  /** @type {Map<string, Existing>} */
+  const logins = new Map();
+  /** @type {Map<string, Existing>} */
+  const sets = new Map();
+  const taken = new Set();
+  for (const e of existing) {
+    taken.add(e.name);
+    if (e.kind === "env-set" && e.fields) sets.set(e.name, e);
+    if (e.kind !== "login") continue;
+    const k = loginKey(e.origin ? originOf(e.origin) : "", e.username ?? "");
+    if (k && !logins.has(k)) logins.set(k, e);
+  }
+  /** @type {Plan} */
+  const out = { add: [], same: [], conflicts: [], renamed: [] };
+  /** @type {Item[]} */
+  const fresh = [];
+  for (const it of items) {
+    if (it.kind === "login") {
+      const e = logins.get(loginKey(itemOrigin(it), it.fields.username ?? ""));
+      if (e) {
+        if ((e.password ?? "") === (it.fields.password ?? "")) out.same.push(it.name);
+        else out.conflicts.push({ name: it.name, existing: e.name, item: it });
+        continue;
+      }
+    }
+    if (it.kind === "env-set") {
+      const e = sets.get(it.name);
+      if (e) {
+        const have = e.fields ?? {};
+        if (Object.entries(it.fields).every(([k, v]) => have[k] === v)) out.same.push(it.name);
+        else out.conflicts.push({ name: it.name, existing: e.name, item: it });
+        continue;
+      }
+    }
+    fresh.push(it);
+  }
+  // Names later in the batch are reserved, so a rename never lands on one of them.
+  const reserved = new Set(fresh.map(i => i.name));
+  for (const it of fresh) {
+    let name = it.name;
+    if (taken.has(name)) {
+      for (let n = 2; ; n++) {
+        const s = String(n);
+        const c = fit(name, s.length + 1) + "-" + s;
+        if (NAME.test(c) && !taken.has(c) && !reserved.has(c)) { name = c; break; }
+      }
+      out.renamed.push({ from: it.name, to: name });
+    }
+    taken.add(name);
+    out.add.push(name === it.name ? it : { ...it, name });
+  }
+  return out;
+}
+
+/** An empty origin never matches: a login with no site is judged by its name alone. @param {string} origin @param {string} username */
+const loginKey = (origin, username) => (origin ? `${origin}\n${username.trim().toLowerCase()}` : "");
+
+/** @param {Item} it */
+const itemOrigin = it => (it.url ? originOf(it.url) : "") || (it.hosts[0] ? originOf(it.hosts[0]) : "");
+
 // ---------------------------------------------------------------------------------------------
 // Detection
 
@@ -141,9 +270,13 @@ function detect(text, filename) {
   const base = filename ? path.basename(filename) : "";
   if (/^\.env/i.test(base) || /\.env$/i.test(base)) return "env";
   const head = text.trimStart();
+  if (head.startsWith("-----BEGIN PGP MESSAGE-----")) return "protonpass-json";
+  if (head.startsWith("<")) return /<KeePassFile[\s>]/.test(head.slice(0, 8192)) ? "keepass-xml" : null;
   if (head.startsWith("{")) {
     try {
       const j = JSON.parse(text);
+      const more = moreJSONFormat(j);
+      if (more) return more;
       if (j && Array.isArray(j.items)) return "bitwarden-json";
       if (j && j.encrypted === true) return "bitwarden-json";
     } catch { /* not JSON */ }
@@ -154,6 +287,7 @@ function detect(text, filename) {
     const rows = parseCSV(head.slice(0, 4096));
     const f = rows.length ? csvFormat(rows[0]) : null;
     if (f) return f;
+    if (looksLikeKeeperCSV(head)) return "keeper-csv";
   }
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#"));
   if (lines.length && ENV_LINE.test(lines[0]) && lines.filter(l => ENV_LINE.test(l)).length * 2 >= lines.length) return "env";
@@ -163,14 +297,19 @@ function detect(text, filename) {
 const ENV_LINE = /^(?:export\s+)?[A-Za-z_][A-Za-z0-9_.-]*\s*=/;
 
 /** @param {string} h */
-const norm = h => h.trim().toLowerCase().replace(/[\s_-]+/g, " ");
+export const norm = h => h.trim().toLowerCase().replace(/[\s_-]+/g, " ");
 
 /** @param {string[]} header @returns {Format|null} */
 function csvFormat(header) {
   const h = new Set(header.map(norm));
+  // The newer formats first: several of them also carry Chrome's name, url and password.
+  const more = moreCSVFormat(h);
+  if (more) return more;
   if (h.has("login password") || h.has("login uri") || h.has("login username")) return "bitwarden-csv";
   if (h.has("title") && (h.has("website") || h.has("archived") || h.has("favorite")) && h.has("password")) return "1password-csv";
-  if (h.has("title") && h.has("url") && h.has("otpauth") && h.has("password")) return "safari-csv";
+  // Apple Passwords (macOS 15, iOS 18) and Safari both write Title,URL,Username,Password,Notes,OTPAuth.
+  // "safari-csv" stays accepted as an explicit format and parses the same way.
+  if (h.has("title") && h.has("url") && h.has("otpauth") && h.has("password")) return "apple-csv";
   if (h.has("name") && h.has("url") && h.has("password") && !h.has("title")) return "chrome-csv";
   const cols = columns(header);
   if (cols.password >= 0 || (cols.title >= 0 && (cols.username >= 0 || cols.url >= 0 || cols.notes >= 0))) return "csv";
@@ -180,69 +319,22 @@ function csvFormat(header) {
 // ---------------------------------------------------------------------------------------------
 // .env
 
-/** @param {string} text @param {string} [filename] @returns {Result} */
+/**
+ * A .env file is one env-set item holding its secret variables (envfiles.js); plain config is
+ * listed in `kept` and stays in the file. `vars` says what each variable is, never its value.
+ * @param {string} text @param {string} [filename] @returns {Result}
+ */
 function parseEnv(text, filename) {
-  const description = `from ${filename ? path.basename(filename) : ".env"}`;
-  /** @type {Map<string, Item>} */
-  const found = new Map();
-  /** @type {string[]} */
-  const skipped = [];
-  const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  for (let n = 0; n < lines.length; n++) {
-    const line = lines[n];
-    const t = line.trim();
-    if (!t || t.startsWith("#")) continue;
-    const m = /^\s*(?:export\s+)?([^\s=#]+)\s*=\s*(.*)$/.exec(line);
-    if (!m) { skipped.push(`line ${n + 1}: not NAME=value`); continue; }
-    const name = m[1];
-    let rest = m[2];
-    let value;
-    if (rest.startsWith('"')) {
-      // Double quotes: escapes, and the value may run across lines until the closing quote.
-      let out = "";
-      let i = 1;
-      let closed = false;
-      let j = n;
-      for (;;) {
-        for (; i < rest.length; i++) {
-          const c = rest[i];
-          if (c === "\\" && i + 1 < rest.length) {
-            const e = rest[++i];
-            out += e === "n" ? "\n" : e === "t" ? "\t" : e === "r" ? "\r" : e === '"' ? '"' : e === "\\" ? "\\" : "\\" + e;
-          } else if (c === '"') { closed = true; break; }
-          else out += c;
-        }
-        if (closed || j + 1 >= lines.length) break;
-        out += "\n";
-        rest = lines[++j];
-        i = 0;
-      }
-      if (!closed) { skipped.push(`${safeName(name)}: no closing double quote`); continue; }
-      n = j;
-      value = out;
-    } else if (rest.startsWith("'")) {
-      const close = rest.indexOf("'", 1);
-      if (close < 0) { skipped.push(`${safeName(name)}: no closing single quote`); continue; }
-      value = rest.slice(1, close);
-    } else {
-      value = rest.replace(/\s+#.*$/, "").trim();
-      if (value.startsWith("#")) value = "";
-    }
-    if (!NAME.test(name)) { skipped.push(`${safeName(name)}: not a usable item name`); continue; }
-    if (value === "") { skipped.push(`${name}: empty value`); continue; }
-    if (found.has(name)) { skipped.push(`${name}: set more than once, the last one is kept`); found.delete(name); }
-    found.set(name, { name, kind: "secret", description, fields: { value }, hosts: [] });
-  }
-  return { format: "env", items: [...found.values()], skipped };
+  const r = readEnv(text, { file: filename });
+  return { format: "env", items: r.item ? [r.item] : [], skipped: r.skipped, vars: r.vars, kept: r.kept };
 }
 
 /** A variable name is safe to report, but only a bounded, printable one. @param {string} s */
-const safeName = s => s.replace(/[^\x21-\x7e]/g, "?").slice(0, 64);
 
 // ---------------------------------------------------------------------------------------------
 // CSV exports
 
-const ALIASES = {
+export const ALIASES = {
   title: ["title", "name"],
   username: ["username", "login username", "user name", "email", "login", "user"],
   password: ["password", "login password"],
@@ -255,7 +347,7 @@ const ALIASES = {
 };
 
 /** @param {string[]} header @returns {Record<keyof typeof ALIASES, number>} */
-function columns(header) {
+export function columns(header) {
   const h = header.map(norm);
   /** @type {any} */
   const out = {};
@@ -267,7 +359,7 @@ function columns(header) {
 }
 
 /** @param {string} text @param {Format} fmt @returns {Result} */
-function parseRows(text, fmt) {
+export function parseRows(text, fmt) {
   const rows = parseCSV(text);
   if (!rows.length) return fail(fmt, "the file is empty");
   const cols = columns(rows[0]);
@@ -317,10 +409,10 @@ function parseRows(text, fmt) {
 }
 
 /** Keep a cell exactly as written except for line ends. @param {string[]} row @param {number} i */
-const cell = (row, i) => (i >= 0 ? (row[i] ?? "").replace(/\r\n/g, "\n") : "");
+export const cell = (row, i) => (i >= 0 ? (row[i] ?? "").replace(/\r\n/g, "\n") : "");
 
 /** Bitwarden's "fields" column: one "name: value" per line. @param {string} s */
-function custom(s) {
+export function custom(s) {
   /** @type {Record<string,string>} */
   const out = {};
   for (const line of s.split(/\r?\n/)) {
@@ -397,12 +489,13 @@ function parseBitwardenJSON(text) {
 
 const CATEGORY = { login: "001", card: "002", note: "003", password: "005", api: "112" };
 
-/** @param {Uint8Array} buffer @returns {Result} */
+/** @param {Uint8Array|Map<string, Buffer>} buffer the archive, or its entries already read @returns {Result} */
 function parse1pux(buffer) {
   const F = "1password-1pux";
   /** @type {Map<string, Buffer>} */
   let entries;
-  try { entries = unzip(buffer); } catch (e) {
+  if (buffer instanceof Map) entries = buffer;
+  else try { entries = unzip(buffer); } catch (e) {
     // zip.js errors name entries and problems, never contents.
     return fail(F, `the .1pux file could not be read (${e instanceof Error ? e.message : "not a zip archive"})`);
   }
@@ -599,7 +692,11 @@ const printableName = s => s.replace(/[^\x20-\x7e]/g, "?");
 
 const LABELS = {
   "1password-csv": "1Password", "1password-1pux": "1Password", "bitwarden-csv": "Bitwarden", "bitwarden-json": "Bitwarden",
-  "chrome-csv": "Chrome", "safari-csv": "Safari", csv: "CSV", env: ".env",
+  "chrome-csv": "Chrome", "apple-csv": "Apple Passwords", "safari-csv": "Apple Passwords", csv: "CSV", env: ".env",
+  "edge-csv": "Edge", "brave-csv": "Brave", "arc-csv": "Arc", "opera-csv": "Opera", "vivaldi-csv": "Vivaldi", "firefox-csv": "Firefox",
+  "lastpass-csv": "LastPass", "dashlane-csv": "Dashlane", "dashlane-zip": "Dashlane", "keeper-csv": "Keeper", "keeper-json": "Keeper",
+  "nordpass-csv": "NordPass", "protonpass-csv": "Proton Pass", "protonpass-json": "Proton Pass", "protonpass-zip": "Proton Pass",
+  "enpass-json": "Enpass", "keepass-xml": "KeePass", "keepassxc-csv": "KeePassXC",
 };
 
 /**
@@ -607,7 +704,7 @@ const LABELS = {
  * @param {{ title: string, kind: Item["kind"], fields: Record<string,string>, url?: string, username?: string, tags?: string[], fmt: Format, description?: string }} o
  * @returns {Item}
  */
-function item(names, o) {
+export function item(names, o) {
   const host = o.url ? hostOf(o.url) : "";
   const origin = o.url ? originOf(o.url) : "";
   const base = slug(o.title) || slug(host) || slug(o.username ?? "") || o.kind;
@@ -625,7 +722,7 @@ function item(names, o) {
   return out;
 }
 
-class Names {
+export class Names {
   constructor() { /** @type {Set<string>} */ this.used = new Set(); }
   /** @param {string} base @param {string} username */
   take(base, username) {
@@ -650,13 +747,13 @@ class Names {
 const fit = (s, room) => s.slice(0, Math.max(1, 128 - room)).replace(/[-._]+$/, "") || "item";
 
 /** Lowercase, runs of anything else to "-", trimmed. @param {string} s */
-function slug(s) {
+export function slug(s) {
   return s.normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase()
     .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 128).replace(/-+$/, "");
 }
 
 /** @param {string} s */
-function firstURL(s) {
+export function firstURL(s) {
   return (s.split(/[\n,]/).map(x => x.trim()).find(Boolean) ?? "");
 }
 
@@ -668,12 +765,12 @@ function parseURL(u) {
   } catch { return null; }
 }
 /** @param {string} u */
-const originOf = u => parseURL(u)?.origin ?? "";
+export const originOf = u => parseURL(u)?.origin ?? "";
 /** @param {string} u */
 const hostOf = u => parseURL(u)?.hostname ?? "";
 
 /** Drop empty fields. @param {Record<string,string>} f */
-function compact(f) {
+export function compact(f) {
   /** @type {Record<string,string>} */
   const out = {};
   for (const [k, v] of Object.entries(f)) if (typeof v === "string" && v !== "") out[k] = v;
@@ -681,9 +778,9 @@ function compact(f) {
 }
 
 /** @param {unknown} v */
-const str = v => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
+export const str = v => (typeof v === "string" ? v : typeof v === "number" ? String(v) : "");
 /** A title for a reason line: bounded and on one line. @param {string} s */
-const short = s => s.replace(/\s+/g, " ").slice(0, 60);
+export const short = s => s.replace(/\s+/g, " ").slice(0, 60);
 
 /** @param {Format|null} format @param {string} error @returns {Result} */
-function fail(format, error) { return { format, items: [], skipped: [], error }; }
+export function fail(format, error) { return { format, items: [], skipped: [], error }; }

@@ -1,7 +1,10 @@
 // @ts-check
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parse, sshLine } from "./up.js";
+import fs from "node:fs";
+import path from "node:path";
+import { parse, sshLine, envCandidates } from "./up.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 test("up: flags with and without values", () => {
   assert.deepEqual(parse(["--system", "--user", "alex", "--dry-run"]), { flags: { system: true, user: "alex", "dry-run": true }, rest: [] });
@@ -15,12 +18,27 @@ test("up: over SSH, the tunnel line points at the address the person connected t
   assert.equal(sshLine(7300, "alex", {}), null, "not over SSH: no tunnel needed");
 });
 
+test("up: envCandidates counts secret-looking .env values, never the trivial or already-vault'd ones", (t) => {
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-up-env-"));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  assert.equal(envCandidates(dir), 0, "no .env at all");
+  fs.writeFileSync(path.join(dir, ".env"), [
+    "PORT=3000", "NODE_ENV=production", "DEBUG=true", "COUNT=42",
+    `OPENAI_API_KEY=${["sk", "proj", "a1b2c3d4e5f6g7h8"].join("-")}`,
+    `export STRIPE_KEY="${["sk", "live", "a1b2c3d4e5f6g7h8"].join("_")}"`,
+    "ALREADY_IN=vault://acme-openai-key/value",
+    "",
+    "# a comment=not a variable",
+  ].join("\n"));
+  assert.equal(envCandidates(dir), 2, "two secret-looking values; the rest are trivial, referenced or not a variable");
+  fs.writeFileSync(path.join(dir, ".env.local"), "ANOTHER_KEY=totally-made-up-fixture-value\n");
+  assert.equal(envCandidates(dir), 3, "checks .env.local too");
+});
+
 // The Mac side of `vyre up` (ADR 0008): every piece that would touch the world is a fake. vyred is
 // never started (bring), tools answer from a table (call), the tailnet comes from a fake
 // `tailscale` binary, and probe() answers from a set of addresses instead of fetching over TLS.
 
-import fs from "node:fs";
-import path from "node:path";
 import { up, mac } from "./up.js";
 import * as config from "../../config/index.js";
 import { tempHome } from "../../../test/helpers.js";

@@ -16,6 +16,7 @@
 import crypto from "node:crypto";
 import { canonical } from "./crypto.js";
 import { readSealed } from "./store.js";
+import { cleanDetails } from "../../lib/vault-kinds/kinds.js";
 
 const PREFIX = "vyre-backup:v1:";
 const AAD = "vyre:backup:v1";
@@ -51,6 +52,9 @@ function outer(blob) {
   return o;
 }
 
+/** Only the details this Vyre can check. @param {Record<string, any>} d */
+const knownDetails = d => Object.fromEntries(Object.entries(d).filter(([k, v]) => { try { cleanDetails({ [k]: v }); return true; } catch { return false; } }));
+
 /**
  * Seal the whole vault under a passphrase.
  * @param {import("./vault.js").Vault} vault
@@ -71,6 +75,7 @@ export async function backup(vault, passphrase, { params = SCRYPT } = {}) {
       name: r.name, kind: r.kind, description: r.description, fields: await vault.fields(r), order: json(r.fields, []),
       url: r.url ?? null, hosts: json(r.hosts, []), origin: r.origin ?? null, rotate: r.rotate ?? null,
       apps: json(r.apps, []), reprompt: Boolean(r.reprompt), created: r.created, updated: r.updated,
+      ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}),
     });
   }
   const at = Date.now();
@@ -149,7 +154,9 @@ export async function restore(vault, blob, passphrase, { mode = "merge", who = "
     if (vault.row(it.name)) { kept.push(it.name); continue; }
     await vault.put({ name: it.name, kind: it.kind, description: it.description, fields: it.fields,
       url: it.url || undefined, hosts: it.hosts, origin: it.origin || undefined,
-      ...(Array.isArray(it.apps) ? { apps: it.apps } : {}), ...(typeof it.reprompt === "boolean" ? { reprompt: it.reprompt } : {}) }, "restore");
+      ...(Array.isArray(it.apps) ? { apps: it.apps } : {}), ...(typeof it.reprompt === "boolean" ? { reprompt: it.reprompt } : {}),
+      // A detail from a newer Vyre that this one does not know is dropped, not a failed restore.
+      ...(it.details && typeof it.details === "object" ? { details: knownDetails(it.details) } : {}) }, "restore");
     // Canonical JSON sorts keys, so the listed field order is carried separately and put back.
     const row = vault.row(it.name);
     const names = json(row.fields, []);

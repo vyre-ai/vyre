@@ -98,14 +98,21 @@ function checkCredentials(list) {
     for (const k of ["kind", "provider", "purpose"]) if (typeof c[k] !== "string" || !c[k]) out.push(`${at}.${k} must be a string`);
     if (c.item !== undefined && !/^[A-Za-z0-9_.-]{1,128}$/.test(String(c.item))) out.push(`${at}.item must be a vault item name`);
     if (c.group !== undefined && !NEED.test(String(c.group))) out.push(`${at}.group must be a lowercase name`);
-    for (const k of ["optional", "multiple"]) if (c[k] !== undefined && typeof c[k] !== "boolean") out.push(`${at}.${k} must be true or false`);
+    if (c.optional !== undefined && typeof c.optional !== "boolean") out.push(`${at}.optional must be true or false`);
+    // multiple: one item per account, named <module>-<label> when the person connects it.
+    if (c.multiple !== undefined && typeof c.multiple !== "boolean") out.push(`${at}.multiple must be true or false`);
+    if (c.multiple === true && c.item !== undefined) out.push(`${at}.item cannot be set with multiple: each item is named <module>-<label>`);
   }
   return out;
 }
 
 /** The vault items a module's needs.credentials names: `item`, or `<module>-<id>`. @param {any} m */
 export const credentialItems = m => (Array.isArray(m && m.needs && m.needs.credentials) ? m.needs.credentials : [])
-  .map(c => (c && c.item) || `${m.name}-${c && c.id}`);
+  .filter(c => !(c && c.multiple === true)).map(c => (c && c.item) || `${m.name}-${c && c.id}`);
+
+/** Whether an item is one of a `multiple` need's items: `<module>-<label>`. @param {any} m @param {string} name */
+export const multipleItem = (m, name) => (Array.isArray(m && m.needs && m.needs.credentials) ? m.needs.credentials : [])
+  .some(c => c && c.multiple === true) && String(name).startsWith(`${m.name}-`);
 
 /** Every folder under the given roots that holds a module.json. */
 export function discover(roots) {
@@ -379,7 +386,7 @@ export class Registry {
       vault: {
         fetch: async (name, { field, watcher } = {}) => {
           const declared = [...((m.needs && m.needs.vault) || []), ...credentialItems(m)];
-          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-"))) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
+          if (!declared.includes(name) && !declared.some(d => d.startsWith("per-")) && !multipleItem(m, name)) throw new Error(`${m.name} asked the vault for ${name}, which its manifest does not declare under needs.vault or needs.credentials`);
           const r = await this.call("vault.release", { name, ...(field ? { field } : {}), ...(watcher ? { watcher } : {}) }, `module:${m.name}`);
           if (r.error) throw new Error(r.error.code === "no_such_tool" ? "the vault is not running on this machine" : r.error.message);
           return r.data && r.data.value;
@@ -458,6 +465,15 @@ export class Registry {
         if (this.providers.has(name)) throw new Error(`provider ${name} is already registered`);
         if (!driver || typeof driver.run !== "function") throw new Error(`provider ${name} needs a run function`);
         this.providers.set(name, { module: m.name, driver });
+      },
+      // What every module is, read only: the rows GET /v1/modules gives, including what each
+      // declares (commands, connections, suggest, notices, emits) and how much it is used. A copy,
+      // so nothing a module does to it changes the registry.
+      modules: {
+        status: () => structuredClone(this.status()),
+        // The tools a caller may use, as GET /v1/tools gives them to it. For a module that lists
+        // what a surface can run (commands.list), never for deciding a call: the registry does that.
+        tools: caller => structuredClone(this.listTools(caller ? String(caller) : undefined)),
       },
       providers: {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },

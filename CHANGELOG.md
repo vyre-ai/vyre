@@ -56,6 +56,236 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   test/pack-imports.test.js runs it on `npm pack --dry-run`'s list; scripts/release-check.sh runs
   it on the installed folder, loads every CLI command from there and asks `vyre --version`.
 
+#### Vault, Connections: every account and key, granted per surface (ADR 0028, decision 9b)
+
+- A new table, `vault_connections`, MACed like the grant rows: the vault's own items with a
+  catalog provider (resynced on `vault.connected`, put and delete), the rows of `google.accounts`
+  and `mcp.servers` (read through those tools on their events and on first read), and rows modules register with
+  `vault.connections.register` (source = the calling module, id `cn_...` stable across upserts;
+  capabilities given, or read from tool names by a small pattern table). `unregister` removes a
+  module's own row. A row whose items are missing or not granted has state `needs_credential`.
+- `vault.connections.list {capability?, surface?, caller?}` shows only what the caller's surface
+  (capsule, chat, agents, phone) may use, each with `uses` (capability to `{tool, input}`);
+  `get`, `grant` (presence), `revoke` (no presence), `update` (presence; label and capabilities
+  survive resyncs), `sync`, and `allowed` for modules. New rows are granted to capsule and chat.
+  A tampered row is granted to nothing. Events `vault.connection-added`, `-removed`, `-changed`.
+- The account picker: `default` (one per capability, set with `update {default_for}` from a
+  person's surface, no presence) and `last_used` (on each yes from `allowed`, at most once a
+  minute). Outside the MAC; with a capability, `list` adds `is_default` and sorts by them.
+- core/modules/needs-credential.js: the one missing-key shape, `{code: "needs_credential",
+  message, detail: {module, need, account?}}`.
+- `needs.credentials` takes `multiple: true`: `vault.connect` then needs a `label`, and the item
+  is `<module>-<label>`. The Apps Script provider can send and read mail, and takes the
+  `/a/macros/<domain>/s/<id>/exec` URL too.
+- `vyre vault connections [--can c] [--surface s]`, `connections grant|revoke <id> <surface>`,
+  `connections sync`.
+
+#### Connecting a key: needs.credentials, vault.need and vault.connect (ADR 0028, decision 9a)
+
+- A manifest may declare `needs.credentials`: `{id, kind, provider, purpose, item?, optional?,
+  group?}`. The module validator checks the shape, and `ctx.vault.fetch` accepts those items
+  (`item`, or `<module>-<id>`). The registry's status and `ctx.modules.list()` carry each module's
+  declared credentials.
+- core/vault/providers.js is the provider catalog: Deepgram, OpenAI, ElevenLabs, Anthropic, the
+  Claude setup token, GitHub, Cloudflare, Tailscale, Telegram, Google sign-in, Google service
+  accounts, Apps Script web apps, IMAP and SMTP, and MCP bearer tokens. Each lists its kinds, how
+  it is given (field, file or sign-in), its fields, capabilities and where to get the key.
+- `vault.need` (people's surfaces, no presence) lists every need with its state and the form to
+  fill it, never a value. `vault.connect` (people's surfaces, presence, never Claude) checks the
+  fields or a service-account file, saves the item with `details.provider`, grants it and emits
+  `vault.connected {module, need, item, provider}`. A sign-in returns `next: {tool, input}`.
+- `vyre vault needs [module]` and `vyre vault connect <module> [need] [--file f]`. `vyre voice
+  key` now goes through `vault.connect`. Voice declares its three keys as one `speech` group, and
+  `voice.status` carries a `need` pointer while the key is not ready.
+
+- modules/vault-android is also a Credential Manager provider on Android 14 and later: passwords and
+  passkeys from `identities`, an "Unlock Vyre" action without a fill window, `passkey.assert` and
+  `passkey.register` over the platform's clientDataHash or Vyre's own clientDataJSON
+  (`android:apk-key-hash:` for apps, with an assetlinks.json check), and `save` for passwords. New
+  dependency androidx.credentials 1.3.0, for the provider API. Type-checked, not run on a device.
+
+#### iOS and macOS AutoFill provider, and passkeys for platforms that hash their own client data
+
+- modules/vault-apple/ holds the iOS and macOS credential provider: passwords, passkeys and
+  one-time codes behind a Secure Enclave device key. It has a SwiftUI host and an XcodeGen project
+  that builds unsigned for the simulator. It is type-checked only: nothing is signed, built or run
+  without an Apple Developer team.
+- The fill listener adds `identities` for the OS credential stores, which carries usernames by
+  default and item names with `vault.autofill.identities: "names"`, a `totp` flag, and passkey
+  user handles. It also adds `passkey.assert` and `passkey.register` over the platform's
+  clientDataHash (webauthn.js assertHash). The same routes serve Android's Credential Manager.
+
+#### Android autofill: a module for the Vyre app, phone pairing codes, native-app matching
+
+- modules/vault-android/ is an Expo local module (Kotlin): an AutofillService whose suggestions
+  hold no value and unlock through a BiometricPrompt-signed device key, plus save, cards,
+  addresses and one-time codes. mobile includes it by copying or linking it into
+  apps/app/modules/. Uncompiled by gradle here; its pure core has 17 JUnit tests.
+- `vyre vault pair --phone` (presence) makes a code that alone accepts a device key; such a pair
+  may come without an extension Origin. match, fill and otp take `android://<package>@<sha256>`
+  and fill a login only when its `apps` list that exact package and certificate.
+
+#### A phone opens a fill window with its device key
+
+- The fill listener pairs a device with an optional P-256 public key (`pair {code, key}`), kept
+  in a new MACed table vault_device_keys. `POST challenge` gives a one-time, 60-second challenge;
+  `POST unlock {signature}` checks the key's signature over `vyre:fill-unlock:v1:<challenge>` and
+  opens the usual 30-minute window. The phone signs after its own biometric prompt (StrongBox or
+  the Secure Enclave), so the signature is the person's presence. Failures count toward the
+  unlock lockout. Test: core/vault/fill-devicekey.test.js.
+
+#### Every vault feature has a CLI verb
+
+- `vyre vault health [--breach]`, `remind`, `history <name>`, `revert <name> <version>`,
+  `agent grant|grants|revoke`, `uses [item] [--agent] [--since 7d]` and `rotate <name> --how`,
+  alongside `import <folder> --rewrite`, `codes`, `sweep`, `rotate`, `emergency` and `vyre run`.
+  Test: core/cli/commands/vault-next.test.js runs the real bin/vyre against a temp-home vyred.
+
+#### Emergency access: a verified contact can open your items after a wait you can stop
+
+- New `core/vault/emergency.js` and tools `vault.emergency.add`, `.refresh`, `.deny`, `.remove`,
+  `.list`, `.request` and `.status`; `vyre vault emergency ...` in the CLI. The owner names a
+  verified contact; the vault builds the sealed-pass ticket for them and escrows it (AES-256-GCM
+  file in `<vault>/emergency/`, its key sealed in the agent vault). The contact asks over the
+  owner's relay listener at the new `POST /v1/emergency`; the owner gets an event, an audit row
+  and a planner todo; after the wait (1d to 30d, 7d default) and without a deny, status releases
+  the ticket and the contact's vault accepts it like a sealed pass.
+- New table `vault_emergency`, MACed. The escrow refreshes on account unlock at most once a day.
+  `vault.offboard` also removes emergency access.
+- relay.js: `emergencyEnvelope`/`checkEmergency` (tag `vyre:emergency:v1`), `serve({ onEmergency })`.
+  vault.js: `ticketFor()` factored out of `issue()`, shared by passes and emergency access.
+- ADR 0028 decision 8; docs/using/vault.md "Emergency access". Tests:
+  core/vault/emergency.test.js.
+
+#### Card and address autofill: `/v1/fill/cards`, `card.fill` and `address.fill`, and the extension fills checkout and address forms
+
+- New `core/vault/fill-cards.js` routes and `modules/vault-extension/cards.js` field detection (autocomplete tokens, then English name/label heuristics, split expiry and country selects); popup "Cards and addresses", inline "Fill card: ..." on trusted clicks; a card (reprompt by default) fills only within 60 seconds of a proof, and no value reaches an audit row.
+
+#### Passkeys in the browser extension: Vyre answers a site's passkey request, on the person's click
+
+- "Use Vyre for passkeys" (popup, on by default once paired and allowed on pages) registers two
+  scripts for every page and frame at document start: `passkey-page.js` in the page's own world
+  stands in for `navigator.credentials.create`/`.get` (publicKey only; conditional, silent and
+  anything unreadable go to the browser's own), and `passkey-bridge.js` draws the prompt in a
+  closed shadow root: "Save a passkey for harlow.test in Vyre?", "Sign in to harlow.test as
+  alex@harlow.test with Vyre?" or a picker, with Continue, Use another device (the browser's own
+  authenticator, original options) and Cancel (NotAllowedError). It acts only on trusted clicks.
+- background.js: `passkey-list`/`passkey-create`/`passkey-get` from content scripts only (the popup
+  is refused), for the frame's origin from the sender; a frame of another site sends crossOrigin
+  and the tab's topOrigin. Not paired or vyred unreachable answers `{ fallback: true }`. The
+  scripts follow pairing, page access and the toggle; Firefox needs 128 or later.
+- The page script's answer is a PublicKeyCredential on the page's own prototypes with
+  ArrayBuffer fields and toJSON(); vyred's errors become the DOMExceptions a browser throws.
+- build.mjs refuses a package that lacks a script the worker injects. Manifest 0.3.0.
+- Tests: modules/vault-extension/passkey.test.js (page script, bridge, worker against a real fill
+  listener, and one create and sign-in end to end, verified as a relying party would).
+
+#### Leaks and rotation: a sweep, rotation at the provider, and daily reminders in the planner
+
+- `vault.sweep {path, history?, shell?}` (CLI `vyre vault sweep [path] --history --shell`) compares
+  every vault value with a folder's files, the lines each git commit added, and the shell's
+  history, and spots credentials the vault lacks by shape (detect.js) and private key blocks. It
+  returns file, line, commit and the item name or credential type, never a value or context.
+  Dependencies, build output, binaries and files over 2 MB are skipped. core/vault/sweep.js.
+- `vault.rotate {name}` (CLI `vyre vault rotate <name>`) makes the new credential with the current
+  one, stores it as a new version, THEN revokes the old one. It is automatic for AWS IAM keys
+  (SigV4 implemented here), GitLab PATs (self/rotate), Cloudflare user API tokens (roll) and
+  Google Cloud service-account keys (a self-signed JWT). Every other provider detect.js knows,
+  Twilio included (Standard API keys may not manage keys), gets its key page and hand steps.
+  `vault.rotation {name}` says which way an item rotates. Errors name the provider and never carry
+  a value, a header or a body. core/vault/rotate.js, core/vault/tools/rotate.js.
+- Rotation reminders (ADR 0028, decision 4): once a day, the first run after 09:00 local, on the
+  box (or a Mac with no box). Watchtower's expired, expiring, rotate, reused and old findings
+  become planner todos in the Vault list, once each; more than five at once become one todo that
+  lists them. A fixed item's todo is marked done, and a dismissed one stays quiet. A rotation
+  closes its item's todos at once. `vault.remind.run` runs the pass now; `vault.reminders: false`
+  turns it off. core/vault/remind.js, migration vault_reminders + vault_jobs.
+- Tests: sweep.test.js, rotate.test.js (fake servers on 127.0.0.1 only), rotate-tool.test.js,
+  remind.test.js.
+
+#### SSH: move ~/.ssh keys in, and sign git commits through the vault's agent
+
+- `vyre vault ssh import [--dir]` moves private keys from ~/.ssh into the vault; the files stay
+  until you delete them. `vyre vault ssh setup [name] [--git]` prints the IdentityAgent and
+  SSH_AUTH_SOCK lines (Vyre never edits ~/.ssh/config or a profile). With `--git` it sets
+  gpg.format ssh, user.signingkey key::<public key>, commit and tag signing, and an
+  allowed_signers line. Every signature asks, as before. core/vault/ssh/setup.js.
+
+#### The authenticator: current and next codes, and Google Authenticator's export
+
+- `vault.codes` lists every one-time code with the next one and the seconds left; `vault.totp`
+  now returns `next` too. `vault.codes.import` reads Google Authenticator's transfer export
+  (otpauth-migration://, split across several QR codes, gathered in any order) and otpauth://totp/
+  links into `authenticator` items; a seed already in the vault is skipped; HOTP and MD5 are
+  refused by name. CLI: `vyre vault codes`, `vyre vault codes import`. Neither tool is offered
+  to Claude. Tests: core/vault/codes.test.js.
+
+#### Vault import reads LastPass, Dashlane, Keeper, NordPass, Proton Pass, Enpass, KeePass and Firefox
+
+- New formats in core/vault/import-more.js, detected without a hint: lastpass-csv, dashlane-csv
+  and dashlane-zip, keeper-csv (headerless) and keeper-json, nordpass-csv, protonpass-csv,
+  protonpass-json and protonpass-zip, enpass-json, keepass-xml, keepassxc-csv, firefox-csv. Edge,
+  Brave, Arc, Opera and Vivaldi write Chrome's CSV: edge-csv, brave-csv, arc-csv, opera-csv and
+  vivaldi-csv parse like chrome-csv, and detection still says chrome-csv.
+- Records land as the kind they fit: login, authenticator (a TOTP seed alone), card, address,
+  identity (Dashlane IDs), wifi (Proton Pass) or note. vault.import.preview counts the new kinds.
+- KeePass XML goes through a small dependency-free reader that refuses a DOCTYPE, so no entity or
+  external entity is ever expanded. A .kdbx file, an encrypted Proton Pass export and a PGP-armoured
+  file are refused with the way to export again. Names, descriptions, skip reasons and errors
+  still never carry a value. Tests: core/vault/import-more.test.js.
+
+#### Typed credentials: PATs with scopes and expiry, cloud keys, certificates, Wi-Fi and more
+
+- New kinds: authenticator, passkey, address, identity, pat, oauth, cloud, db-url, cert,
+  recovery-codes, wifi, license, file (core/vault/kinds.js, now the one list; the four copies of
+  the default-field table are gone). Each kind names the fields it needs and the one it hands over.
+- `details` on vault.put and vault.update (listable, never a value, neither sealed nor MACed):
+  expires ("90d" or a date), scope, provider, issuer, ssid, product, filename, count, rp. A
+  certificate's end date, an authenticator's issuer, a recovery-code count and a network name are
+  read from the fields. Details are kept across puts and carried in backups.
+- A passkey, like an ssh key, is never released, injected, revealed or copied. The Deck and
+  Capsule reveal now also refuses an ssh key's private half.
+- Watchtower: `expired` and `expiring` (within 14 days); tokens of typed kinds count toward reuse.
+- CLI: `vyre vault put --kind pat --scope repo --expires 90d --provider github`, `--from` for a
+  file, a certificate or a service-account JSON, `--key-from`, `--ssid`. The list shows details.
+  Tests: core/vault/kinds.test.js.
+
+#### `vyre run -- <command>` reads a project's .env references
+
+- A top-level `vyre run` is `vyre vault run` with two differences. It adds the `--` when it is
+  missing. With no items and no `--env-file`, it reads ./.env when that file holds at least one
+  `vault://` reference, which is what `vyre vault import --rewrite` leaves behind. A plain .env
+  is left to the program. Test: core/cli/commands/run.test.js.
+
+#### Vault imports a project's .env files, typed, and can rewrite them to vault references
+
+- `vault.import.preview` and `vault.import` take a folder: every `.env`, `.env.*` and `*.env` under
+  it, skipping node_modules, .git and build folders, listing `.env.example` and other templates
+  without importing them, following no symlinks, at most 200 files of 1 MB. The token covers every
+  file's path and bytes, so a file changing, appearing or going away refuses the import.
+- A .env file is now one `env-set` item named after its path (`harlow-intake.env`), not one secret
+  per variable. Only secrets go in; core/vault/detect.js types each variable (api-key, pat, oauth,
+  cloud, db-url, private-key, cert, jwt, webhook, password, secret, config) and names about 40
+  providers, from the value's shape first and the name second, returning only fixed words and a JWT
+  expiry. The preview lists `files` with each variable's type, what stays, and git state.
+- `vault.import {rewrite: true}` (CLI `--rewrite`) swaps each stored line for
+  `KEY=vault://item/KEY`, keeping comments, config, `export` and line endings, only when every value
+  in that file is stored, atomically and with no backup. `vyre vault run --env-file .env` runs the
+  program with the same environment. Tests: core/vault/detect.test.js, core/vault/env-import.test.js.
+
+#### Vault import previews first, finds duplicates by content, and reads Apple Passwords
+
+- `vault.import.preview {file, format?}` (cli, local, mcp; same presence as import) returns the
+  format, counts per kind, and the names to add, already here (`same`), in conflict and renamed,
+  never a value. Its `token` is an HMAC, under a per-process key, of the file's SHA-256 and size.
+  `vault.import` takes `token` and refuses a file that changed since, and `conflicts: "update"`
+  puts the file's password into the existing login as a new version, so history keeps the old one.
+  Duplicates are keyed on a login's origin plus its username (lowercased); a taken name becomes
+  `-2`, `-3`. The Apple Passwords export (the Safari header) is reported as `apple-csv`, with
+  `safari-csv` kept as an alias. `vyre vault import <file>` previews, then imports with the token;
+  `--preview` stops after the preview and `--update-conflicts` takes the file's passwords. The
+  import result adds `updated`, `same`, `conflicts` and `renamed`, and keeps `duplicate`. Audit rows
+  carry counts only (ADR 0028, decision 1).
 ## 0.1.0
 
 The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
