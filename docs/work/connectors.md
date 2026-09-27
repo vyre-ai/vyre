@@ -57,6 +57,31 @@ Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, 
 
 ## Doing
 
+- RESUME 8 (2026-09-28), finished the three items on the wave-1 list:
+  1. Granting the Agents surface now goes through presence server-side, not just in the Deck.
+     `vault.connections.grant` (core/vault/tools/connections.js) takes `presence(..., { when: input
+     => input.surface === "agents" })`, reusing the same `presence()` helper vault.grant already
+     uses; every other surface, and every revoke, stays a plain call. core/vault/connections.test.js
+     covers both (a denied presence refuses `agents`, `capsule` grants and revokes go through with
+     presence.deny still set). The Deck side (deck/views/connections.js) was already mid-rewrite
+     from the prior session: withPresence wired into the Agents chip's toggle (Off until it
+     resolves, aria-busy while asking, a shield glyph trailing the label while off), Capsule/Chat/
+     Phone stay optimistic with Undo. Fixed two things that made the tests fail: the fixture
+     (deck/fixtures/connections.json) had cn_alex missing "phone" from its granted surfaces and
+     cn_tracker already granted "agents" (so the "starts off" test couldn't tell), and the shield
+     glyph had no class for the "off" assertion to find — gave it `cn-chip-shield` (deck/css/views/
+     connections.css already had the color rule for that class, just nothing used it yet).
+     core/vault/connections.test.js 15/15, deck/test/connections.test.js 47/47 on testbox.
+  2. app-design's review: the granted chip's "on" colour. `.cn-chip-on` in deck/css/views/
+     connections.css already used `--focus`/`--signal-wash` (fixed in the same WIP before this
+     resume) — confirmed correct against chip.md, no further change needed.
+  3. e2e's LOW: `claudeJson(root, env)` (core/config/dialogs.js) ignored CLAUDE_CONFIG_DIR
+     entirely, always reading `~/.claude.json`. Claude Code actually moves `.claude.json` inside
+     CLAUDE_CONFIG_DIR when it's set (not just the `.claude` folder), so fixed claudeJson to look
+     there too, same rule claudeHome already follows. core/config/claude-home.test.js's assertion
+     flipped from asserting the old (wrong) behavior to the corrected one.
+  Full run: core/config + core/mcp 70/70 on testbox before the connection dropped (testbox went
+  unreachable mid docs-check run — one docs test result unseen, re-run before calling this final).
 - LOAD RULE (lead): check `ssh testbox uptime` right before every run; run only under 6.
 - RESUMED 2026-09-28: merged origin/main (794 commits, 0.1.0-rc.1/rc.2 landed) into work/connectors
   at 38a0240c. Conflicts: CHANGELOG.md (kept both entries), core/modules/index.js and

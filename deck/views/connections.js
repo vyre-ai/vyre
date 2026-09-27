@@ -26,7 +26,7 @@
 import { h, put, empty } from "../js/dom.js";
 import { icon } from "../js/icons.js";
 import { attempt as apiAttempt } from "../js/api.js";
-import { withPresence } from "./memory-presence.js";
+import { withPresence, PresenceError } from "./memory-presence.js";
 import { showToast } from "../js/toast.js";
 import { since } from "../js/fmt.js";
 import { statusMark, statusOf } from "../js/status-mark.js";
@@ -248,17 +248,19 @@ export async function drawConnections(el, ctx, deps = {}) {
   // ---- Connections cards (vault.connections.list) --------------------------------------------
   //
   // One card per connection, whatever the source (Google, mail, Apps Script, an MCP server), same
-  // shape (app-design's Connections board, db3dbbfa; mcp-native gap 2). Two accounts of one MCP
+  // shape (card.md's "Connections card" variant, account-row.md, chip.md's surface-grant chip,
+  // all finished by app-design f65d51e5/47030189; mcp-native gap 2). Two accounts of one MCP
   // server are already two vault_connections rows, so already two cards, each its own grants.
   // "Wrong account?" and a problem row's fix action are not wired yet (need a real reconnect flow
   // per provider from app-design/vault); the toggle chips and "Connect another account" are real.
 
-  // Icon names from deck/js/icons.js's fixed set (no new artwork here): "login" for an OAuth
-  // sign-in account (no globe glyph exists), "mail" for a mail login or Apps Script, "terminal"
-  // for an MCP server, "key" for anything else the catalog names.
-  const GROUP_ICON = { google: "login", mail: "mail", mcp: "terminal", other: "key" };
+  // Icon names from deck/js/icons.js's set: "globe" for an OAuth sign-in account (icons.md has no
+  // per-provider glyph yet, account-row.md's own Gaps), "mail" for a mail login or Apps Script,
+  // "agents" for an MCP server (the board's own choice, no MCP glyph exists either), "key" for
+  // anything else the catalog names.
+  const GROUP_ICON = { google: "globe", mail: "mail", mcp: "agents", other: "key" };
   /** Surface name to the chip's label and icon, in the order the board draws them. */
-  const SURFACE_META = { capsule: { label: "Capsule", icon: "ask" }, chat: { label: "Chat", icon: "chat" },
+  const SURFACE_META = { capsule: { label: "Capsule", icon: "capsule" }, chat: { label: "Chat", icon: "chat" },
     agents: { label: "Agents", icon: "agents" }, phone: { label: "Phone", icon: "phone" } };
 
   function drawCards() {
@@ -272,10 +274,10 @@ export async function drawConnections(el, ctx, deps = {}) {
     if (!st.connections.length) { put(cardsBox); return; }
     put(cardsBox, h("h3", { class: "set-h3" }, "Connections"),
       h("div", { class: "cn-card-list" }, st.connections.map(connectionCard)),
-      h("div", { class: "cn-card cn-add", tabindex: "0", role: "button", onclick: () => chooseAdd() },
+      h("div", { class: "cn-add", tabindex: "0", role: "button", onclick: () => chooseAdd() },
         h("span", { class: "cn-avatar" }, icon("plus", 16)),
         h("div", { class: "cn-add-t" }, h("span", { class: "cn-name" }, "Connect another account"),
-          h("span", { class: "small muted" }, "Google, a mail login, or any MCP server"))));
+          h("span", { class: "cn-meta" }, "Google, a mail login, or any MCP server"))));
   }
 
   /** The existing add flow: MCP server or Google account (mail's own Deck row is not built yet). */
@@ -283,47 +285,98 @@ export async function drawConnections(el, ctx, deps = {}) {
     openForm(st.servers.length <= st.accounts.length ? "mcp" : "google");
   }
 
+  /** account-row.md's meta line: "label · provider", or the provider alone with no custom label. */
+  function metaLine(c) {
+    return c.label && c.label !== c.account ? `${c.label} · ${c.providerWord}` : c.providerWord;
+  }
+
+  /** account-row.md's Trailing, priority order: a default beats Last used beats nothing. */
+  function trailing(c) {
+    if (c.defaultFor.length) return "Default";
+    if (c.lastUsed) return `Last used ${since(c.lastUsed)} ago`;
+    return "";
+  }
+
   function connectionCard(c) {
     if (!c.ready) {
       return h("div", { class: "cn-card cn-card-problem", "data-connection": c.id },
         h("span", { class: "cn-avatar" }, icon(GROUP_ICON[c.group] || GROUP_ICON.other, 16)),
-        h("div", { class: "cn-card-t" }, h("span", { class: "cn-name" }, c.label),
-          h("span", { class: "small muted" }, c.needs.length ? "Needs sign-in" : "Needs a fix")),
+        h("div", { class: "cn-card-t" }, h("span", { class: "cn-name" }, c.account),
+          h("span", { class: "cn-meta" }, "Needs sign-in")),
         h("button", { type: "button", class: "btn btn-sm" }, "Sign in"));
     }
+    const trail = trailing(c);
     return h("div", { class: "cn-card", "data-connection": c.id },
-      h("div", { class: "cn-card-head" },
+      h("div", { class: "cn-card-top" },
         h("span", { class: "cn-avatar" }, icon(GROUP_ICON[c.group] || GROUP_ICON.other, 16)),
-        h("div", { class: "cn-card-t" }, h("span", { class: "cn-name" }, c.label),
-          h("span", { class: "small muted" }, c.providerWord)),
-        h("span", { class: "small muted cn-last" }, c.lastUsed ? `Last used ${since(c.lastUsed)} ago` : "")),
-      h("div", { class: "cn-chips" },
-        h("span", { class: "small muted cn-granted-l" }, "Granted to"),
+        h("div", { class: "cn-card-t" }, h("span", { class: "cn-name" }, c.account), h("span", { class: "cn-meta" }, metaLine(c))),
+        trail ? h("span", { class: "cn-trailing" }, trail) : null),
+      h("div", { class: "cn-granted" },
+        h("span", { class: "cn-granted-l" }, "Granted to"),
         ...SURFACE_NAMES.map(s => chip(c, s))),
       h("div", { class: "cn-card-f" },
         h("span", { class: "cn-steplink", role: "button", tabindex: "0", onclick: () => chooseAdd() }, "Wrong account?"),
-        h("span", { class: "small muted cn-connected" }, c.connected ? `Connected ${since(c.connected)} ago` : "")));
+        h("span", { class: "cn-connected" }, c.connected ? `Connected ${since(c.connected)} ago` : "")));
   }
 
   function chip(c, surface) {
     const on = c.surfaces.includes(surface);
-    const { icon: iconName } = SURFACE_META[surface];
-    return h("button", { type: "button", class: "chip" + (on ? " cn-chip-on" : ""), "aria-pressed": on ? "true" : "false",
-      onclick: () => toggleSurface(c, surface, !on) }, icon(iconName, 12), SURFACE_META[surface].label);
+    const { label, icon: iconName } = SURFACE_META[surface];
+    // Granting Agents hands a credential to an autonomous session, so it asks for Touch ID or a
+    // passkey first (chip.md's Asking state); the shield glyph trails the label whenever it is
+    // off, showing the affordance rather than leaving it to be discovered on tap. Every other
+    // grant, and every revoke, is one tap (card.md's Connections card, the lead's call
+    // 2026-09-28).
+    let shieldIcon = null;
+    if (!on && surface === "agents") {
+      shieldIcon = icon("shield", 12);
+      shieldIcon.setAttribute("class", "cn-chip-shield");
+    }
+    return h("button", { type: "button", class: "cn-chip" + (on ? " cn-chip-on" : ""), "aria-pressed": on ? "true" : "false",
+      onclick: (/** @type {Event} */ e) => toggleSurface(c, surface, !on, e) },
+      icon(iconName, 12), label, shieldIcon);
   }
 
   /**
-   * Grant or revoke one surface, optimistic (cohesion's docs/design/interaction.md): flip the chip
-   * and redraw before the call settles, then a toast either confirms with Undo (call the opposite
-   * action again) or, on error, reverts the chip and says why. `c` is the object inside
-   * st.connections, mutated in place so a later redraw from the same state stays consistent.
+   * Grant or revoke one surface. Revoke, and a grant to anything but Agents, is optimistic
+   * (cohesion's docs/design/interaction.md): the chip flips and redraws before the call settles,
+   * then a toast either confirms with Undo (call the opposite action again) or, on error, reverts
+   * the chip and says why. Granting Agents does not flip until vault's own presence gate on
+   * `vault.connections.grant` (core/vault/tools/connections.js, `when: surface === "agents"`)
+   * resolves: withPresence (this file's `presence`, the same helper vault.grant already uses
+   * below) shows the system's Touch ID or passkey sheet, retries once proven, and a refusal
+   * leaves the chip Off with nothing shown but the system's own cancel (chip.md's Asking state;
+   * reusing vault's existing gate, not a new check, per the lead).
    * @param {ReturnType<typeof pickConnections>[number]} c @param {string} surface @param {boolean} next
+   * @param {Event} [e]
    */
-  async function toggleSurface(c, surface, next) {
+  async function toggleSurface(c, surface, next, e) {
+    const label = SURFACE_META[surface].label;
+    if (next && surface === "agents") {
+      const btn = /** @type {HTMLButtonElement} */ (e && e.currentTarget);
+      if (btn) btn.setAttribute("aria-busy", "true");
+      try {
+        await presence("vault.connections.grant", { id: c.id, surface }, { summary: `Let Agents use "${c.label}"` });
+      } catch (err) {
+        // Cancelled, no passkey, expired or refused: withPresence's own sheet already shows why
+        // (memory-presence.js), so nothing more here (chip.md: "nothing shown but the system's
+        // own cancel"). Only a plain tool error (not a PresenceError: the connection failed
+        // outright) gets a toast of its own.
+        if (btn) btn.removeAttribute("aria-busy");
+        if (!ctx.alive()) return;
+        if (!(err instanceof PresenceError)) showToast({ text: `Could not let Agents use ${c.label}: ${errText(err)}` });
+        return;
+      }
+      if (!ctx.alive()) return;
+      if (btn) btn.removeAttribute("aria-busy");
+      c.surfaces = [...new Set([...c.surfaces, surface])];
+      drawCards();
+      showToast({ text: `${label} granted for ${c.label}`, undo: () => toggleSurface(c, surface, false) });
+      return;
+    }
     const before = c.surfaces;
     c.surfaces = next ? [...new Set([...before, surface])] : before.filter(s => s !== surface);
     drawCards();
-    const label = SURFACE_META[surface].label;
     const r = await attempt(next ? "vault.connections.grant" : "vault.connections.revoke", { id: c.id, surface });
     if (!ctx.alive()) return;
     if (r.error) {
@@ -332,7 +385,7 @@ export async function drawConnections(el, ctx, deps = {}) {
       showToast({ text: `Could not change ${label} for ${c.label}: ${errText(r.error)}` });
       return;
     }
-    showToast({ text: `${label} ${next ? "granted" : "revoked"} for ${c.label}`, undo: () => toggleSurface(c, surface, !next) });
+    if (next) showToast({ text: `${label} granted for ${c.label}`, undo: () => toggleSurface(c, surface, false) });
   }
 
   // ---- MCP servers ----

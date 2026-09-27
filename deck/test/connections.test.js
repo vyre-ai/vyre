@@ -126,48 +126,81 @@ test("renders every server and account with names only", async () => {
 
 const connection = (el, id) => $(el, `[data-connection=${id}]`);
 
+const chipsOf = c => [...$$(c, ".cn-chip")].map(b => ({ text: text(b).trim(), on: b.getAttribute("aria-pressed") === "true" }));
+const findChip = (c, label) => [...$$(c, ".cn-chip")].find(b => text(b).startsWith(label));
+
 test("Connections cards: one per vault connection, whatever the source, granted chips shown, problem rows simplified", async () => {
   const { el } = await render();
   const alex = text(connection(el, "cn_alex"));
-  assert.match(alex, /alex@harlowlegal\.com/);
+  assert.match(alex, /alex@harlowlegal\.com/, "the account is the heading, not the label (account-row.md)");
   assert.match(alex, /Google/);
-  assert.match(alex, /6 min ago/);
+  assert.match(alex, /Default/, "a default beats Last used (account-row.md's Trailing priority)");
+  assert.doesNotMatch(alex, /min ago/, "Last used is not shown once Default applies");
   assert.match(alex, /Connected 9 d ago/);
   assert.match(alex, /Wrong account\?/);
-  // Granted: Capsule and Chat show pressed; Agents and Phone do not.
-  const chipsOf = c => [...$$(c, ".chip")].map(b => ({ text: text(b).trim(), on: b.getAttribute("aria-pressed") === "true" }));
+  // Granted: Capsule and Chat show pressed; Agents and Phone do not. The Agents chip trails a
+  // shield glyph while off (chip.md's Asking state); the others do not.
   assert.deepEqual(chipsOf(connection(el, "cn_alex")), [
-    { text: "Capsule", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: false } ]);
+    { text: "Capsule", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: true } ]);
+  assert.ok($(findChip(connection(el, "cn_alex"), "Agents"), "svg.cn-chip-shield"), "the Agents chip, off, trails the shield glyph");
+  assert.equal($(findChip(connection(el, "cn_alex"), "Capsule"), "svg.cn-chip-shield"), null, "a non-Agents chip never trails one");
 
   const tracker = text(connection(el, "cn_tracker"));
-  assert.match(tracker, /Northwind Tracker MCP/);
+  assert.match(tracker, /tracker/, "the account (its own name/ref for an MCP row) is the heading");
+  assert.match(tracker, /Northwind Tracker MCP/, "a distinct label shows in the meta line");
   assert.match(tracker, /MCP server/);
 
   const script = connection(el, "cn_appsscript");
   assert.match(text(script), /Apps Script/);
   assert.match(text(script), /Needs sign-in/);
   assert.ok($(script, "button"), "a Sign in button, no chips or footer on a problem row");
-  assert.equal($$(script, ".chip").length, 0);
+  assert.equal($$(script, ".cn-chip").length, 0);
 
   assert.ok($(el, ".cn-add"), "Connect another account is offered");
   noLeak(el);
 });
 
-test("Connections cards: a chip toggle is optimistic, calls grant or revoke by id and surface, and a failure reverts", async () => {
+test("Connections cards: a chip toggle is optimistic for Capsule/Chat/Phone, calls grant or revoke by id and surface, and a failure reverts", async () => {
   const { el, api } = await render();
-  const agentsChip = [...$$(connection(el, "cn_tracker"), ".chip")].find(b => text(b).includes("Chat"));
-  assert.equal(agentsChip.getAttribute("aria-pressed"), "false");
-  await Promise.all(agentsChip.dispatchEvent(new Event("click")));
+  const chatChip = findChip(connection(el, "cn_tracker"), "Chat");
+  assert.equal(chatChip.getAttribute("aria-pressed"), "false");
+  await Promise.all(chatChip.dispatchEvent(new Event("click")));
   // Optimistic: the chip flips before the call even resolves (fakeApi is synchronous here, so
   // check the call was made with the right id/surface, and the chip ends up pressed).
   assert.deepEqual(api.of("vault.connections.grant"), [{ tool: "vault.connections.grant", input: { id: "cn_tracker", surface: "chat" } }]);
-  assert.equal([...$$(connection(el, "cn_tracker"), ".chip")].find(b => text(b).includes("Chat")).getAttribute("aria-pressed"), "true");
+  assert.equal(findChip(connection(el, "cn_tracker"), "Chat").getAttribute("aria-pressed"), "true");
 
   const failing = await render({ over: { "vault.connections.grant": { $error: { code: "denied", message: "not your surface" } } } });
-  const chip2 = [...$$(connection(failing.el, "cn_tracker"), ".chip")].find(b => text(b).includes("Chat"));
+  const chip2 = findChip(connection(failing.el, "cn_tracker"), "Chat");
   await Promise.all(chip2.dispatchEvent(new Event("click")));
-  assert.equal([...$$(connection(failing.el, "cn_tracker"), ".chip")].find(b => text(b).includes("Chat")).getAttribute("aria-pressed"), "false",
-    "reverted after the call failed");
+  assert.equal(findChip(connection(failing.el, "cn_tracker"), "Chat").getAttribute("aria-pressed"), "false", "reverted after the call failed");
+});
+
+test("Connections cards: revoking any surface, including Agents, is one tap through vault.connections.revoke directly, never presence", async () => {
+  const { el, api, p } = await render();
+  const capsuleChip = findChip(connection(el, "cn_alex"), "Capsule");
+  await Promise.all(capsuleChip.dispatchEvent(new Event("click")));
+  assert.deepEqual(api.of("vault.connections.revoke"), [{ tool: "vault.connections.revoke", input: { id: "cn_alex", surface: "capsule" } }]);
+  assert.equal(api.of("vault.connections.grant").length, 0);
+  assert.equal(p.asked.length, 0, "revoke never asks for presence");
+});
+
+test("Connections cards: granting Agents goes through presence (Touch ID or a passkey), not a direct call; a refusal leaves it off with no toast of its own", async () => {
+  const { el, api, p } = await render();
+  const agentsChip = findChip(connection(el, "cn_tracker"), "Agents");
+  assert.equal(agentsChip.getAttribute("aria-pressed"), "false");
+  await Promise.all(agentsChip.dispatchEvent(new Event("click")));
+  // Went through presence(), not a bare attempt(): vault.connections.grant never appears in the
+  // plain API call log for this click, but presence's own asked log has it.
+  assert.equal(api.of("vault.connections.grant").length, 0);
+  assert.deepEqual(p.asked.map(a => [a.tool, a.input]), [["vault.connections.grant", { id: "cn_tracker", surface: "agents" }]]);
+  assert.equal(findChip(connection(el, "cn_tracker"), "Agents").getAttribute("aria-pressed"), "true");
+
+  const refused = await render({}, fakePresence({ fail: true }));
+  const chip2 = findChip(connection(refused.el, "cn_tracker"), "Agents");
+  await Promise.all(chip2.dispatchEvent(new Event("click")));
+  assert.equal(findChip(connection(refused.el, "cn_tracker"), "Agents").getAttribute("aria-pressed"), "false", "a refusal leaves it off");
+  assert.equal(refused.api.of("vault.connections.grant").length, 0);
 });
 
 test("Connections cards: vault.connections.list missing (an older Vyre) draws nothing extra, no error banner", async () => {
