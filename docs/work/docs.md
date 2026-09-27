@@ -74,9 +74,8 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   deck/test/world.js: alex's folder is plainly `alex` (no temp name in shown paths).
 - Reference and index regenerated from a clean archive (e0537194). Docs tests on testbox: 79 run.
 - Then: redeploy the preview (`--branch preview`), head to the integrator.
-- STALE AGAIN after main 15e82dd7 (coral to violet 36d5a5b, VyreDrive, idle hand-back): docs-check
-  says 67 shots are older than deck.css, settings.js, glass.css and the Capsule files. Full retake
-  when the lead lifts the testbox freeze, then place, regen index, tests, preview.
+- Full retake DONE after the freeze on main 9efbddc0 (violet, VyreDrive, idle hand-back): 52 files,
+  0 failures, docs-check clean. Preview redeployed; head to the integrator.
 - Retake settings-connections after tailnet's VyreDrive rename (it says Taildrive).
 - Shots commands: `uptime` on the test box first (wait while load > 8), rsync to
   ~/vyre-ci/docs-s, `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools CHROME=/usr/local/bin/vyre-chrome
