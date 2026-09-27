@@ -319,7 +319,7 @@ test("install-box.sh: an old Compose stops the install", t => {
 test("install-box.sh: says what to do on a Mac", t => {
   const mac = runScript(t, ["--dry-run"], { uname: `echo Darwin` });
   assert.equal(mac.status, 0);
-  assert.match(mac.stdout, /on a Mac: npm install -g vyre && vyre up/);
+  assert.match(mac.stdout, /On a Mac, Vyre installs with npm:\n {2}npm install -g https:\/\/vyre\.run\/box\/vyre\.tgz && vyre up$/m);
   assert.deepEqual(mac.calls, ["uname -s"]);
 });
 

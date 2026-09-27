@@ -5,6 +5,44 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### Gold retired, the real Capsule hotkey, and app-design's launch art (2026-09-27)
+
+- `index.html`, `styles.css`: removed the last gold from the page. app-design's review found it
+  still styling the whole memory section (`--recall`/`--recall-wash`, the `.gold` utility, the
+  recalled-answer card, the legend swatch, the terminal glimpse's "recalled" chip). Design A
+  retired gold completely; every one of those now reads as a plain source chip or plain text
+  (`--bone`/`--stone`, a `1px solid var(--rule-strong)` border, no fill), the same pattern
+  app-design's Og board uses ("From · Q3 report · Harlow Legal · Tue"). The `--recall`/
+  `--recall-wash` tokens are gone from `:root`.
+- Fixed the Capsule hotkey copy: capsule-pro confirmed the default is Option-Space, with Control
+  twice as an optional toggle (menu-bar mark, needs Input Monitoring), not the only way in as
+  the page previously said. Updated the hero hint, the feature list, the settings preview, the
+  keycap icons (now &#8997; + Space), and `app.js`'s demo listener (opens on Option-Space or
+  Control-twice); `site/start/index.html` too.
+- `docs/brand/`: replaced og.png, social-preview.png and readme-hero(.png/-light.png) with
+  app-design's audited Design A renders (both themes; `-paper.png` added for each). `site/og.png`
+  updated to match (dark only; that's the one the page's `og:image` meta uses).
+- `index.html`, `styles.css`: reworked hero to lead with "Your best work, with a partner that
+  never drops the thread." and brought the rest of the page in line with the Design A boards and
+  `lib/theme/tokens.json`.
+- `404.html`: rebuilt self-contained (does not load `/styles.css`, so a stylesheet change can
+  never break it) with its own small Capsule field and an orbiting dot around the "0" that quiets
+  under `prefers-reduced-motion`.
+- `install.sh` terminal look: numbered steps, a check per step, a calmer finish line; unchanged
+  flags, exit codes and `VYRE_NO_UP=1`. Verified with `test/install-box-look.test.js` and
+  `core/names/system.test.js` (65 passing, plain ASCII under NO_COLOR/CI, colour and the mark on
+  a real terminal).
+- `deck/onboard`: look and copy only (logic stays with sessions): a step progress bar, a polite
+  live-region announcement per step, softer copy when setup isn't running yet or the link needs
+  reopening.
+- Fixed the `npm install -g vyre` bug in `README.md`: 0.1.0 has no npm package; the quickstart now
+  matches install.sh and this page (curl installer, or the Mac npm-tgz line).
+- Fixed the install tabs (Linux box / Mac / What it needs): `.ipanel`'s own `display: flex`
+  outranked the browser's default `[hidden] { display: none }`, so all three panels showed at
+  once on load, and nothing wired the tabs' clicks in the first place (`app.js` had no listener
+  for `.itabs`). Screenshot-verified on testbox with `vyre-chrome --headless=new`: the Mac and
+  What-it-needs panels are hidden until their tab is picked.
+
 ### The first landing page (2026-09-26)
 
 - `index.html`: the page, built from the Landing, LandingMobile and LandingCapsuleDemo boards in

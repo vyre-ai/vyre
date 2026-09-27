@@ -178,7 +178,7 @@ function subsIn(text) {
 
 /**
  * Every `vyre` command, read from core/cli/commands without running it.
- * @returns {{ name: string, aliases: string[], file: string, subs: string[], strict: boolean }[]}
+ * @returns {{ name: string, aliases: string[], file: string, subs: string[], strict: boolean, secret: boolean }[]}
  */
 export function cliCommands(root) {
   const dir = path.join(root, "core/cli/commands");
@@ -199,6 +199,7 @@ export function cliCommands(root) {
       const usageRef = obj.match(/\busage(?:\s*:\s*([A-Za-z_$][\w$]*))?\s*[,}]/);
       const usage = usageLit ? usageLit[1] : usageRef ? [constString(text, usageRef[1] || "usage"), constString(text, "USAGE")].join(" ") : "";
       const order = Number((obj.match(/\border:\s*(\d+)/) || [])[1] ?? 50);
+      const secret = /\bsecret\s*:\s*true\b/.test(obj);
       const aliases = [...((obj.match(/\baliases:\s*\[([^\]]*)\]/) || [])[1] || "").matchAll(/"([^"]+)"/g)].map(a => a[1]);
       // Subcommands are compared in the command's own object, or in the run function it names
       // (box.js: `run` defined above the export). A file's SUBS table serves its one command.
@@ -207,7 +208,7 @@ export function cliCommands(root) {
       if (objs.length === 1 && /\bconst SUBS\s*=/.test(text)) body = text;
       const subs = new Set([...subsIn(body), ...usageWords(usage, name)]);
       const rec = found.get(name);
-      if (!rec) found.set(name, { name, aliases: new Set(aliases), file: `core/cli/commands/${f}`, order, subs });
+      if (!rec) found.set(name, { name, aliases: new Set(aliases), file: `core/cli/commands/${f}`, order, subs, secret });
       else {
         for (const a of aliases) rec.aliases.add(a);
         for (const s of subs) rec.subs.add(s);
@@ -222,7 +223,7 @@ export function cliCommands(root) {
     const block = wrapper.slice(wrapper.search(/\bcase "\$\{1:-\}" in\b/));
     for (const m of block.matchAll(/^\s{2}([a-z][a-z-]*)\)/gm)) if (!found.has(m[1])) found.set(m[1], { name: m[1], aliases: new Set(), file: "box/vyre", order: 99, subs: new Set() });
   } catch {}
-  const out = [...found.values()].map(c => ({ name: c.name, aliases: [...c.aliases].sort(byName), file: c.file, subs: [...c.subs].filter(s => s !== c.name).sort(byName), strict: STRICT.has(c.name) }));
+  const out = [...found.values()].map(c => ({ name: c.name, aliases: [...c.aliases].sort(byName), file: c.file, subs: [...c.subs].filter(s => s !== c.name).sort(byName), strict: STRICT.has(c.name), secret: Boolean(c.secret) }));
   out.push({ name: "help", aliases: ["--help", "-h"], file: "core/cli/index.js", subs: [], strict: false });
   out.push({ name: "version", aliases: ["--version", "-v"], file: "core/cli/index.js", subs: [], strict: false });
   return out.sort((a, b) => byName(a.name, b.name));
@@ -582,7 +583,10 @@ export function buildIndex({ root, reference = {} }) {
   /** @type {Map<string, { kind: string, name: string, definedIn: string | null, page: string | null, mentions: { page: string, line: number, anchor: string }[], [x: string]: any }>} */
   const things = new Map();
   const put = (kind, name, definedIn, page, extra = {}) => things.set(`${kind}\0${name}`, { kind, name, definedIn, page, ...extra, mentions: [] });
-  for (const c of k.commands) {
+  // A `secret` command (core/cli/index.js) gets no index entry at all: found only by typing it,
+  // never by reading a generated doc. known(root).commands still lists it, for the "terms: the
+  // real tree" parity check against the CLI's own command list.
+  for (const c of k.commands.filter(c => !c.secret)) {
     put("command", `vyre ${c.name}`, c.file, null, c.aliases.length ? { aliases: c.aliases } : {});
     for (const s of c.subs) put("command", `vyre ${c.name} ${s}`, c.file, null);
   }

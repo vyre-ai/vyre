@@ -288,6 +288,8 @@ function cliPage(commands) {
     { name: "help", aliases: ["--help", "-h"], summary: "every command, with a line on what it does", usage: "vyre help", hidden: false, help: "" },
     { name: "version", aliases: ["--version", "-v"], summary: "the version of Vyre installed", usage: "vyre version", hidden: false, help: "" },
   ];
+  // A `secret` command (core/cli/index.js) never reaches this page at all: harvest.mjs drops it
+  // before writing docs/index.json, so there is nothing here to filter further.
   const shown = [...commands.filter(c => !c.hidden), ...builtins];
   const hidden = commands.filter(c => c.hidden);
   const section = c => {
