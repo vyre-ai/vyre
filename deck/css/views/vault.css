@@ -23,7 +23,8 @@
 .vt-mm { color: var(--text); letter-spacing: 0.04em; font-variant-numeric: tabular-nums; }
 .vt.editing .vt-head .btn-primary { background: transparent; border-color: var(--rule-strong); color: var(--text); }
 
-/* Places in the shell's rail (lower group). Hidden below 1200px, where the chip row takes over. */
+/* Places in the shell's list column, right of the rail. Hidden below 1400px, where the chip row
+   takes over and the item list keeps the width (the rail is 72 and the list column 240). */
 .vt-rail { display: flex; flex-direction: column; }
 .vt-rail-g { display: flex; flex-direction: column; gap: 1px; }
 .vt-rail-g.sep { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--rule); }
@@ -34,8 +35,8 @@
 .vt-count { margin-left: auto; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--label); }
 .vt-count.beacon { color: var(--beacon-ink); }
 .vt-chips { display: none; }
-@media (max-width: 1199px) {
-  .rail-pins:has(.vt-rail) { display: none; }
+@media (max-width: 1399px) {
+  .rail-lower:has(.vt-rail) { display: none; }
   .vt-chips { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: -6px 0 18px; padding-bottom: 2px; }
   .vt-chips::-webkit-scrollbar { display: none; }
 }

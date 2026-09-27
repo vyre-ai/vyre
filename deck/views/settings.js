@@ -93,6 +93,8 @@ export default async function settings(ctx) {
   ctx.root.addEventListener("scroll", spy, { passive: true });
   ctx.cleanup(() => ctx.root.removeEventListener("scroll", spy));
   mark_(SECTIONS[0][0]);
+  // The rail's Devices is /settings#devices: a kept Settings page scrolls to it again on the way back.
+  ctx.onShow?.(() => { const id = location.hash.slice(1); if (id && SECTIONS.some(([s]) => s === id)) jump(id, false); });
 
   const loads = [
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),

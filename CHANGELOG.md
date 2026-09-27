@@ -4,6 +4,33 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck's rail is the 72 px icon rail (Design A v1)
+
+- From 720 px up the rail is a 72 px column (deck/js/rail.js, css/deck.css `.rail`): the home
+  mark (to Now, "Vyre home"; its dot turns `--beacon-dot` while anything needs you), then Now,
+  Chat, Agents, Projects, Planner, Memory, Vault, and at the bottom Devices, Settings and the
+  person's avatar ("Account", titled with the owner's name). Each place is 60 by 50, radius 10,
+  an icon 20 over its 12/16 label in `--label`; hover and the current place fill `--hover` with
+  `--text`, the current label at 600 and `aria-current="page"`. Fills change over
+  `--motion-tap` with `--ease`, and not at all under Reduce Motion.
+- The Now badge is the one from js/status-mark.js, now on the icon (top 4, right 8) and
+  `aria-hidden`; Now itself reads "Now, 5 need you". It is the only colour in the rail.
+- Cmd+1 to Cmd+9 (Ctrl off a Mac) open the places in rail order, never while typing in a field,
+  and not on the phone.
+- Planner is /planner. Devices is /settings#devices (Settings scrolls to it again when a kept
+  page comes back). The avatar opens Settings until the account menu is drawn.
+- New icons in the 16 grid: planner (a calendar page) and devices (a laptop beside a phone).
+- The brand, the avatar and the machine footer (host, "On your tailnet") left the shell: the
+  header sits right of the rail with its address, search and needs pill, and the sample-data
+  note moved into it. The nav is named "Vyre", not "Places".
+- A view's own list (Chat's sessions, Vault's places) and the pinned or recent projects beside
+  a project now sit in a 240 list column right of the rail (`aside.rail-lower`), hidden while
+  empty. Under 900 a session or a project's board replaces it; the projects beside a board show
+  from 1400, and so do Vault's places (was 1200), its chip row below that.
+- The phone shell is unchanged: `.rail` and the list column are hidden under 720.
+- deck/test/rail.test.js covers the order, labels, names, the badge on Now, the key map and the
+  CSS geometry.
+
 #### The Deck paints with token roles only (Design A v1)
 
 - deck.css no longer defines --graphite, --carbon, --raised, --ash, --stone, --bone, --signal,
