@@ -358,6 +358,39 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   SDK's `plugins` option (ADR 0030 phase 2), and both at once, on one Claude Code binary against a
   fake Messages API. The three match: the MCP server, 220 tools, /vyre, about.md in the first
   request, each hook once, the floor's deny before `canUseTool`.
+#### The relay: reach the box with a QR code, no Tailscale (ADR 0026, in progress)
+
+- A new box module, `relay` (core/relay/), off until the first pairing. The box dials out to a
+  relay and signs its route with an Ed25519 key; a device scans a QR code carrying the box's
+  X25519 key and a one-time secret (10 minutes, single use) and runs
+  Noise_IK_25519_AESGCM_SHA256 with it, in node:crypto alone and checked against the cacophony
+  test vector. Each direction has its own key and counter, so a replayed, reordered or reflected
+  frame closes the channel. Each stream in the channel becomes a real HTTP request to vyred's own
+  router through an in-memory duplex, so every route, the event stream and presence work as on
+  the tailnet.
+- A paired device is the caller `device:<id>`. The new `ownerDevice()` in core/modules counts it,
+  like `tailnet:<owner>`, as the owner on their own device for `callerAllowed` and the floor's
+  person check; presence still decides every human-only call. The socket can no longer claim a
+  `device:` label.
+- Tools: `relay.status`, `relay.enable`, `relay.disable`, `relay.pair.start` (presence),
+  `relay.pair.first` (onboarding only, before any person exists; Touch ID on a Mac),
+  `relay.devices.list|rename|remove` (remove needs presence and closes the device's connection
+  at once). Events: `relay.connected`, `relay.disconnected`, `device.paired`, `device.removed`.
+- relay/node/server.js: the relay in plain Node, for tests and self-hosting.
+- relay/worker/: the same relay as a Cloudflare Worker with one hibernating Durable Object per
+  route. It has no timers, and buffered frames sit in DO storage. Tested against a fake
+  runtime that rebuilds the object after every event, with the box's own link running
+  unchanged against it. Nothing is deployed.
+- relay/client/: the device side for the one app (web, iOS, Android), with no dependencies.
+  Noise runs over WebCrypto, where the device's private key is non-extractable, or over
+  @noble functions the app injects. The client reproduces the cacophony vector, multiplexes
+  streams byte-compatibly with the box, and reconnects with a fresh handshake. Event streams
+  resume with Last-Event-ID. A write whose answer was lost is retried once with the same
+  Idempotency-Key. It fails over between the tailnet and the relay (ADR 0029, R5).
+- The box's bridge passes `Idempotency-Key`. A box replaced on its route by another copy of
+  itself waits 5 minutes before retrying, instead of trading places with the copy.
+- ADR 0026 accepted. It gains section 10, the hosted web app at app.vyre.run, and its trust
+  mitigations, and section 2 now matches the code (4429, the ticket, text pings).
 
 #### Docs: the planner page
 

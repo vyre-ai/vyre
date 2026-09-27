@@ -73,6 +73,7 @@
       "adr/0021-box-reads-the-mac.md",
       "adr/0024-chat.md",
       "adr/0025-planner.md",
+      "adr/0026-relay.md",
       "adr/0029-resilience.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
