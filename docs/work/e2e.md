@@ -366,6 +366,10 @@ Plan (to the lead before building):
 - connectors 21beb66b SIGNED OFF for 0.1.1 batch 1 (read: kernel merge firstParty after ...meta; lib move
   pure renames; discover.js read-only). Before wiring discover: strip env/header values (names only),
   userHome via a claudeJson(root) kernel rule, cwd from the verified project.
+- peerfix ae9c6cdc SIGNED OFF by reviewer; integrator told to land ae9c6cdc. ps -A replacement -> 0.1.1.
+- Waiting: glass hotfix sha (read full diff as second pair of eyes); federation transport code.
+- 0.1.1 queue (after rc.2): agent-browser sizing on testbox; browse eval harness (~30 fixture tasks,
+  CI gate, 90%) once glass's browse.task exists; per-level peer lookup instead of ps -A.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
