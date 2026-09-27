@@ -13,7 +13,7 @@
 
 import { h, put, link as anchor } from "../js/dom.js";
 import { attempt, call } from "../js/api.js";
-import { gicon, errText, viewerCount, holderOf, surfaceKind } from "./util.js";
+import { gicon, errText, viewerCount, holderOf, surfaceKind, yourDevice } from "./util.js";
 import { takeover } from "./takeover.js";
 import { attach } from "./input.js";
 import { pinchZoom, softKeyboard } from "./phone.js";
@@ -363,7 +363,7 @@ export function mountScreen(o) {
     if (dead) return;
     if (agentOf(e) !== name && e.payload?.target !== target) return;
     const p = e.payload || {};
-    const who = p.surface === surface ? "You" : `Someone on ${surfaceKind(p.surface)}`;
+    const who = p.surface === surface ? "You" : yourDevice(p.surface);
     switch (e.type) {
       case "computer.taken-over": case "glass.taken":
         if (!s.holder || s.holder.surface !== p.surface) s.holder = { surface: p.surface, since: p.since || e.at || Date.now(), private: !!p.private };

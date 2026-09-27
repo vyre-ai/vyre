@@ -280,7 +280,8 @@ export class Pool {
   holders() {
     return [...this.checkouts.values()].map(c => {
       const h = this.heldBy(c.agent);
-      return `${c.agent} (${h ? `taken over by ${h}` : c.viewers ? `watched by ${c.viewers}` : "working"})`;
+      // Only the owner can take over, so a held screen is theirs: "taken over by you".
+      return `${c.agent} (${h ? "taken over by you" : c.viewers ? `watched by ${c.viewers}` : "working"})`;
     }).join(", ");
   }
 
