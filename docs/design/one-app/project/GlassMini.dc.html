@@ -230,7 +230,7 @@
         <div class="capsule"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="ph">Ask juno, find, or run</span><button class="mic" type="button" aria-label="Hold to talk"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button></div>
         <div class="home-ind"></div>
       </div>
-      <span class="note" style="max-width: 390px;">Full width minus 32, from <span class="mono">sight.frame</span> stills every 2 s. Over the relay the last still dims to 60 % and the steps keep coming. The whole card is the target.</span>
+      <span class="note" style="max-width: 390px;">Full width minus 32, from a <span class="mono">sight.frame</span> still, fetched on open and on each <span class="mono">sight.stepped</span>, never on a timer. Over the relay the last still dims to 60 % and the steps keep coming. The whole card is the target.</span>
     </div>
 
     <!-- (f) States -->
@@ -279,7 +279,7 @@
       <div class="anno-i"><span class="anno-n">1</span><span>Mini frame: 16:10, radius 8, <span class="mono">--code-bg</span>, 1 px <span class="mono">--rule-strong</span>. The picture is letterboxed, never cropped. The small Live badge sits 8 in at the top left; no other chrome.</span></div>
       <div class="anno-i"><span class="anno-n">2</span><span>Step line, 8 below: the status mark, the step's summary, a middle dot and the age. It truncates with an ellipsis; the full summary is the tooltip. A failed step adds why on a second line.</span></div>
       <div class="anno-i"><span class="anno-n">3</span><span>Three variants: Card on Now (240, phone full width minus 32), Header in a thread (320, right aligned, collapsible with Hide screen and Show screen), Pill in the Capsule and the phone's collapsed thread.</span></div>
-      <div class="anno-i"><span class="anno-n">4</span><span>The data is <span class="mono">sight</span> (ADR 0036): <span class="mono">sight.watch</span> live on desktop, <span class="mono">sight.frame</span> stills on the phone, <span class="mono">sight.stepped</span> for the line.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>The data is <span class="mono">sight</span> (ADR 0036): <span class="mono">sight.frame</span> stills on every card, refreshed on each step; <span class="mono">sight.watch</span> live only in the view you opened, closed when hidden; <span class="mono">sight.stepped</span> for the line.</span></div>
       <div class="anno-i"><span class="anno-n">5</span><span>Step summaries are the acting module's own words, never screen text. The picture is <span class="mono">aria-hidden</span>; the line is a polite live region, at most once every 5 s ("kit: Clicked Compose in Mail").</span></div>
       <div class="anno-i"><span class="anno-n">6</span><span>Smooth: the picture replaces in place with no fade; live frames never cross-fade. The step line swaps its text with a 150 opacity change and never slides. The ring stops under reduced motion.</span></div>
     </div>
