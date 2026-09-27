@@ -61,3 +61,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0031 | teammates | Project teammates |
 | 0032 | e2e | The person and the device |
 | 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
+| 0036 | cohesion | One system |

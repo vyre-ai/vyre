@@ -184,6 +184,60 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   transcripts, and in-page measures for keystrokes, first token, pacing, layout shift, scroll,
   open, reconnect, send, Esc and idle timers, plus a pty terminal comparison. First numbers in
   docs/design/native-bar.md.
+#### A still of what an agent is doing, for the phone
+
+- `sight.frame {target: "agent:<name>", maxWidth?}`: one JPEG of an agent's screen scaled to
+  maxWidth (default 480) with its last step, for a small view that refreshes on `sight.stepped`,
+  never on a timer. A VNC client is too heavy for a phone and the relay; the live view stays
+  `sight.watch`. The shield still refuses it while a person signs in on that computer.
+- `hands-desktop.screenshot {format: "jpeg", maxWidth}` and computerd's
+  `/screenshot?format=jpeg&width=` scale the display down (never up) at quality 70.
+- `context.report` takes `view` (the module the person is in on that surface) and
+  `context.now {surface}` answers from one surface's own report, for tips.
+
+#### An agent's browser steps no longer store query strings, and every step says where it came from
+
+- Privacy: `chrome.acted` put the full URL of `chrome.open`, query and fragment included, into
+  the event store, which every module reads; sign-in links and tokens live there. Every
+  chrome.acted summary and reason now keeps a URL's origin and path only, and a click or type that
+  matched nothing names the selector's role and name instead of its raw JSON. A URL runs to the
+  next whitespace, so a quote cannot end it early; everything from the first ? or # goes even when
+  URL() refuses the string; and a token-shaped path segment (20 or more letters, digits, - or _:
+  reset and magic links, signed downloads) becomes an ellipsis. chrome.open's summary is built from
+  the parsed URL, never the model's raw words.
+- `chrome.acted`, `desktop.acted` and `hands.acted` carry the `thread` vyred verified (a thread an
+  input names counts only from a person's own surface) and the
+  tool `call` id (from the call's meta, once platform passes it), scoped to that thread, so Glass
+  and chat can tie a step to the row that asked for it (ADR 0036). `chrome.acted` and
+  `desktop.acted` also name the `app`; `hands.acted` names the `agent` and says `why` when a step
+  was not verified.
+- `context.report` from a device paired through the relay takes the device from its caller when
+  the report leaves it out.
+- The hands-chrome end-to-end tests kill their Chrome's whole process group and retry removing
+  its profile: on Linux the renderer and crashpad children outlived the browser and the teardown
+  failed ENOTEMPTY. They now pass on the test server's Chromium.
+
+#### One system: sight, context, suggest and waiting (ADR 0036)
+
+- `sight.*`: one screen service on both sides. `sight.now {target: "mac" | "agent:<name>"}` gives
+  the app, window, URL without its query, the last step and who holds the keyboard; the Mac adds
+  text only when asked and only on the Mac. `sight.watch` hands out an agent's frames (the Mac
+  answers local_only). `sight.stepped` turns `desktop.acted`, `chrome.acted` and `hands.acted`,
+  which nothing read, into "what the agent is doing now", kept as the newest 500 steps.
+- `context.report` and `context.now`: where the user is (project, folder, thread, surface,
+  device, front app) merged across surfaces, with the project found from the folder.
+  `context.changed` names what changed at most once a second and never carries the app, window
+  or URL. Text and selection are refused, and a model can neither report nor read it.
+- `suggest.query`: one predictive-text tool for the Capsule, chat and the phone. Mentions,
+  commands, accounts and times from cached lists (about 2 ms at p95 with 500 threads), plus
+  sources a module offers with `suggest.offer` under a 25 ms deadline; `suggest.picked` teaches
+  the ranking.
+- `waiting.list`, `waiting.count` and `waiting.changed`: one "waiting on you" across questions,
+  held drafts, ringing reminders and Mac pairings, each row naming the owner tool that answers it.
+- docs-check knows the cohesion team as a page owner.
+- test/cohesion-drift.test.js freezes the surfaces' own copies of model names and presence's
+  tool-policy sets; a new copy fails, and the list only shrinks.
+
 #### A vyred killed by a signal is started again in the box
 
 - core/daemon/loop.sh waited again on a vyred that died by a signal (SIGKILL, the OOM killer)
