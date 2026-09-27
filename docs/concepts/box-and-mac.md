@@ -106,7 +106,7 @@ On a Docker box it is `/home/vyre/.vyre`, inside the `vyre_vyre-home` volume.
   vyred.sock, vyred.pid
 ```
 ::: tab On this Mac
-On the Mac it is `~/.vyre` in your own home folder. It has the same store, vault, search model and logs, and no `certs/` or `names/`, because the Mac serves nothing on the tailnet. It also holds `link.json` (0600), the key that pairs this Mac with its box, and `logs/capsule.out`, the Capsule's log.
+On the Mac it is `~/.vyre` in your own home folder. It has the same store, vault, search model and logs, and no `certs/` or `names/`, because the Mac serves nothing on the tailnet. It also holds `link.json` (0600), the key that pairs this Mac with its box, and `capsule/Vyre.app`, the Capsule as built on this Mac.
 :::
 
 ### Claude Code on the box

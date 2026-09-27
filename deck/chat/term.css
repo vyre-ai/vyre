@@ -10,18 +10,44 @@
 .term-dot { background: var(--label); }
 .term[data-state="live"] .term-dot { background: var(--signal); }
 .term[data-state="connecting"] .term-dot, .term[data-state="waiting"] .term-dot { background: var(--recall); }
-.term[data-state="error"] .term-dot, .term[data-state="blocked"] .term-dot { background: var(--beacon-dot); }
+.term[data-state="error"] .term-dot, .term[data-state="blocked"] .term-dot, .term[data-state="gone"] .term-dot { background: var(--beacon-dot); }
 .term-note { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-2);
   border-bottom: 1px solid var(--rule); background: var(--hover); }
 .term-screen { flex: 1 1 auto; min-height: 0; padding: 8px 4px 4px 10px; }
 .term-screen .xterm { height: 100%; }
 .term-screen .xterm-viewport { background-color: transparent !important; }
-.term[data-state="ended"] .term-screen { opacity: 0.7; }
+.term[data-state="ended"] .term-screen, .term[data-state="gone"] .term-screen { opacity: 0.7; }
+/* Catching up after a drop: what is drawn stays, dimmed, until the box has sent what was missed. */
+.term[data-catching] .term-screen { opacity: 0.55; transition: opacity 120ms ease; }
+/* Another screen owns the size: drawn at its size, scaled down to fit and centred (term.js draw). */
+.term[data-watching] .term-screen { overflow: hidden; min-width: 0; }
+.term[data-watching] .term-screen .xterm { height: auto; width: max-content; }
+.term-watch { display: inline-flex; align-items: center; flex-shrink: 0; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.term-watch[hidden] { display: none; }
+.term-watch-words { font-variant-numeric: tabular-nums; }
+.term-watch-sep { white-space: pre; }
+.term-take { min-height: 32px; padding: 0 4px; border: 0; background: transparent; color: var(--text); font: inherit;
+  text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; cursor: pointer; touch-action: manipulation; }
+.term-take:hover { text-decoration-color: currentColor; }
+.term-take:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+/* The key bar: shown on touch screens, where there is no Esc, Tab, Ctrl or arrows. */
+.term-keys { display: none; gap: 6px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--rule);
+  overflow-x: auto; flex-shrink: 0; scrollbar-width: none; }
+.term-key { flex: 0 0 auto; min-width: 44px; height: 36px; padding: 0 10px; border: 1px solid var(--rule); border-radius: var(--r-2, 6px);
+  background: var(--hover); color: var(--text); font-family: var(--mono); font-size: 13px; touch-action: manipulation; }
+.term-key[aria-pressed="true"] { background: var(--focus); color: var(--panel); border-color: var(--focus); }
+.term[data-state="blocked"] .term-keys, .term[data-state="ended"] .term-keys, .term[data-state="gone"] .term-keys { display: none; }
 /* No live link: the note stands in place of the terminal. */
 .term[data-state="blocked"] .term-screen { display: none; }
 .term[data-state="blocked"] .term-note { flex: 1 1 auto; align-content: center; justify-content: center; text-align: center; border-bottom: 0; background: transparent; padding: 24px; }
 
+@media (pointer: coarse) { .term:not([data-state="blocked"]):not([data-state="ended"]):not([data-state="gone"]) .term-keys { display: flex; } }
+
 @media (max-width: 599px) {
   .term { border-radius: 0; border-left: 0; border-right: 0; }
+  .term:not([data-state="blocked"]):not([data-state="ended"]):not([data-state="gone"]) .term-keys { display: flex; }
   .term-screen { padding: 4px 2px 2px 6px; }
+  /* Room for "Watching at ... · Take size" beside Back and Close: the dot says live on its own. */
+  .term:has(.term-watch:not([hidden])) .term-word { display: none; }
+  .term-head { gap: 6px; }
 }

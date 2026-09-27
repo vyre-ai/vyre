@@ -24,7 +24,7 @@ In the order `vyre help` lists them.
 | [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
 | [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
-| [`vyre projects`](#vyre-projects) | every project |
+| [`vyre projects`](#vyre-projects) | every project; on a box, move moves the homes to /work/projects |
 | [`vyre recall`](#vyre-recall) | search every session for what was said (vyre recall eval <file> to measure it) |
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
@@ -55,9 +55,12 @@ In the order `vyre help` lists them.
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
+| [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
+| [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
+| [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
@@ -112,10 +115,10 @@ vyre status [--json]
 
 ### vyre projects
 
-Every project.
+Every project; on a box, move moves the homes to /work/projects.
 
 ```
-vyre projects [--json]
+vyre projects [--json] | vyre projects move [--dry-run]
 ```
 
 ### vyre recall
@@ -232,7 +235,7 @@ vyre agents [list|create|update|ask|threads|usage|stop|delete] … [--json]
 The Mac command bar: Control twice, anywhere.
 
 ```
-vyre capsule [--dev] | build [--app] | install
+vyre capsule [--hidden] | install
 ```
 
 ### vyre memory
@@ -386,8 +389,22 @@ vyre hooks [status|on|off|open|close] [name]
 Pair this Mac with your box, or approve a Mac on the box.
 
 ```
-vyre link [pair|approve|deny|unpair] [--json]
+vyre link [pair|approve|deny|unpair|signin|signout] [--json]
 ```
+
+### vyre relay
+
+Reach this box from your phone with a QR code, no Tailscale.
+
+```
+vyre relay [status|pair|devices|remove <id>|rename <id> <name>|trust <id> [--off]|on [--url u]|off|pin <release>|unpin] [--json]
+```
+
+vyre relay: whether the relay is on and connected
+vyre relay pair: a QR code for one more device (once, 10 minutes)
+vyre relay devices: paired devices, which are connected, and how
+vyre relay remove|rename|trust: manage one (a browser from the web app is limited until trusted)
+vyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this box trusts
 
 ### vyre send
 
@@ -405,12 +422,28 @@ Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
 vyre apps <words...>
 ```
 
+### vyre sideview
+
+This session on the left, Chrome filling the rest.
+
+```
+vyre sideview [close|status]
+```
+
 ### vyre statusline
 
 Vyre's line under every Claude Code session.
 
 ```
 vyre statusline [install|uninstall]
+```
+
+### vyre voice
+
+Push-to-talk from the terminal (Enter to talk), status, and the speech key.
+
+```
+vyre voice [status | key [provider] | --send <thread>]
 ```
 
 ### vyre mcp

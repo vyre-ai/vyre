@@ -106,6 +106,10 @@ it.
 
 ### Capsule
 
+These numbers are for the Electron Capsule, since retired. The native Capsule
+(`local/capsule/native`) is measured in CI by `scripts/capsule-native-check.mjs`, against
+budgets of under 60 MB resident and under 0.1% CPU while hidden, and a wake under 50 ms.
+
 | Measure | Result | Budget |
 |---|---|---|
 | Hidden RSS, all processes | 212 to 233 MB (238 MB with the hotkey helper) | under 250 MB |
@@ -117,12 +121,10 @@ it.
 Before the fixes, hidden RSS was 301 to 324 MB (the network service and GPU now run in the main
 process, with no spare renderer), and hidden CPU with vyred down was 0.791% (a health check every
 3 s and a stream reconnect every 1.5 s, now backed off to 60 s and 30 s while hidden). The
-clipboard watcher (the Swift helper `local/capsule/bin/local`, polling the pasteboard every
-750 ms) measured 0.016%.
+clipboard watcher (a Swift helper, polling the pasteboard every 750 ms) measured 0.016%.
 
 Wake timing leaves out the hotkey's own double-tap window (about 450 ms, by design) and the
-first show after launch (about 721 ms). Set `VYRE_CAPSULE_TRACE_WAKE=1` to have the Capsule
-report `wakeMs` for each wake.
+first show after launch (about 721 ms).
 
 ### Deck and Glass
 

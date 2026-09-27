@@ -25,7 +25,9 @@ test("hands: observe returns bounded elements, each with a selector to hand back
   const o = await new Hands({ run: f.run }).observe({ app: "Calculator", limit: 50 });
   assert.equal(o.elements.length, 3);
   assert.deepEqual(o.elements[0].selector, { role: "AXButton", name: "7", container: "keypad", path: "/0/0/7" });
-  assert.deepEqual(f.calls[0], { cmd: "snap", app: "Calculator", limit: 50 });
+  // The place is looked up first, without reading it, and the snap is pinned to the pid it found.
+  assert.deepEqual(f.calls[0], { cmd: "where", app: "Calculator" });
+  assert.deepEqual(f.calls[1], { cmd: "snap", pid: 4242, limit: 50 });
 });
 
 test("hands: a press that changes the screen is verified by the observation after it", async () => {
@@ -36,7 +38,7 @@ test("hands: a press that changes the screen is verified by the observation afte
   assert.equal(r.acted, true);
   assert.equal(r.verified, true);
   assert.equal(r.changes?.textChanged, true);
-  assert.deepEqual(f.calls.map(c => c.cmd), ["snap", "act", "snap"], "act did not observe before and after");
+  assert.deepEqual(f.calls.map(c => c.cmd), ["where", "snap", "act", "snap"], "act did not observe before and after");
   assert.equal(events[0][0], "hands.acted");
   assert.equal(events[0][1].verified, true);
 });
@@ -79,7 +81,7 @@ test("hands: when the helper finds a different control at the path, nothing is c
   const f = fakeApp(calculator());
   const run = async (/** @type {any} */ req) => {
     const out = await f.run(req);
-    if (req.cmd === "snap" && f.calls.length === 1) f.state.elements[0].name = "Seven";   // renamed between looking and reaching
+    if (req.cmd === "snap" && f.calls.length === 2) f.state.elements[0].name = "Seven";   // renamed between looking and reaching
     return out;
   };
   const r = await new Hands({ run, sleep: nosleep }).act({ selector: { role: "AXButton", name: "7" }, kind: "press" });
@@ -136,7 +138,7 @@ test("runner: the request travels on stdin, not in argv", { skip: !mac }, async 
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const bin = path.join(dir, "ax");
   fs.writeFileSync(bin, `#!/bin/sh\nread -r line\nprintf '{"argc":%s,"got":%s}\\n' "$#" "$line"\n`, { mode: 0o755 });
-  const r = await makeRunner({ bin })({ cmd: "act", value: "Dana Reyes" });
+  const r = await makeRunner({ bin })({ cmd: "act", value: "Harlow Legal" });
   assert.equal(r.argc, 0);
-  assert.equal(r.got.value, "Dana Reyes");
+  assert.equal(r.got.value, "Harlow Legal");
 });

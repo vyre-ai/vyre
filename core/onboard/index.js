@@ -30,7 +30,8 @@ const VAULT_ITEM = { subscription: "claude-setup-token", "api-key": "anthropic-a
 const VAULT_KIND = { subscription: "secret", "api-key": "api-key" };
 const VAULT_ABOUT = { subscription: "Claude subscription token from `claude setup-token`, for headless sessions", "api-key": "Anthropic API key, for headless sessions" };
 // The switchboard's agents module starts the headless sessions and hands them this credential.
-const CREDENTIAL_READERS = ["agents"];
+// agents for their own threads; threads for every other session Vyre starts (ADR 0030).
+const CREDENTIAL_READERS = ["agents", "threads"];
 // Who may be handed a passkey code: the loopback onboarding session and the box's own terminal.
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);

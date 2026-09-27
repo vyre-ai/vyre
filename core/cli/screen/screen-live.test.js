@@ -13,6 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempHome, upPresent } from "../../../test/helpers.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 import { call } from "../../daemon/client.js";
 import { fakeTerminal } from "./testing.js";
 import { interactive } from "../commands/home.js";
@@ -42,7 +43,11 @@ test("screen (live): a thread streams in, the keyboard is taken, an ask is allow
   t.after(() => { try { process.kill(/** @type {number} */ (up.pid), "SIGTERM"); } catch {} });
 
   // Another surface starts a thread and so holds its keyboard; an agent asks to send an email.
-  const started = await call("threads.start", { cwd: root, prompt: "hello from alex", surface: "deck:phone" });
+  // The thread works outside the home: the security floor treats everything in VYRE_HOME as Vyre's
+  // own state and refuses a write there before anyone is asked, as on a real machine.
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
+  const started = await call("threads.start", { cwd: work, prompt: "hello from alex", surface: "deck:phone" });
   assert.ok(started.data, JSON.stringify(started));
   const thread = started.data.id;
   const held = await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "Intake follow-up", body: "Dana, the intake notes are ready." } }, { caller: "mcp" });
@@ -66,7 +71,7 @@ test("screen (live): a thread streams in, the keyboard is taken, an ask is allow
   capture("02-streaming-thread", await term.waitFor(/echo: hello from alex/));
 
   // Tab to type; the phone holds the keyboard, so the send waits and says how to take it.
-  const file = path.join(root, "notes.md");
+  const file = path.join(work, "notes.md");
   term.type("\t", "write " + file, "\r");
   assert.match(await term.waitFor(/deck:phone has the keyboard · ctrl-l takes it/), /notes\.md▏/, "the typed line was lost");
   term.type("\x0c");

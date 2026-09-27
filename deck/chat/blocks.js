@@ -16,7 +16,7 @@ import { clock } from "../js/fmt.js";
 import { renderMarkdown } from "./lib/markdown.js";
 import { renderUnified, renderRows, patchRows } from "./lib/diff.js";
 import { highlight } from "./lib/highlight.js";
-import { clip, commandText, duration, langOf, rawLines, toolState, toolTitle, turnParts } from "./lib/blocks.js";
+import { clip, commandText, duration, elapsed, langOf, rawLines, toolState, toolTitle, turnParts } from "./lib/blocks.js";
 
 const OUTPUT_LINES = 12;
 /** Bash shows this much of what it printed before "show all". */
@@ -52,12 +52,14 @@ export function agentAv(who, assistant = who === "Vyre") {
 const tag = (el, kind, ts) => { /** @type {any} */ (el)._kind = kind; /** @type {any} */ (el)._ts = ts ?? null; return el; };
 
 /** "you" (or a surface's name) and the words, as a chat message. */
-export function userRow(who, text, ts, me = null) {
+export function userRow(who, text, ts, me = null, images = 0) {
   return tag(h("div", { class: "msg cv-row cv-user" },
     personAv(who, me),
     h("div", { class: "msg-body" },
       h("div", { class: "msg-head" }, h("span", { class: "msg-who" }, who), ts ? h("span", { class: "msg-when" }, clock(ts)) : null),
-      h("div", { class: "msg-text cv-user-text" }, String(text ?? ""))),
+      h("div", { class: "msg-text cv-user-text" }, String(text ?? "")),
+      // Pasted images went with the words (threads.send images); the count, not the pictures.
+      images > 0 ? h("div", { class: "cv-user-images faint" }, images === 1 ? "1 image" : `${images} images`) : null),
   ), "user", ts);
 }
 
@@ -104,19 +106,35 @@ export function liveTextRow(ts, every = 120) {
   return el;
 }
 
-/** Thinking, folded: "Thinking" opens it. */
-export function thinkingRow(text, ts) {
+/**
+ * Thinking, folded to its length ("Thinking · 8 s"): the label opens it. .set(text, label) redraws
+ * both in place, so a thought that grows or learns its length keeps whether it is open.
+ * @returns {HTMLElement & { set: (text: string, label?: string) => void }}
+ */
+export function thinkingRow(text, ts, label = "Thinking") {
   const body = h("div", { class: "cv-think-body", hidden: true }, String(text ?? ""));
+  const word = h("span", { class: "cv-think-len" }, label);
   const btn = h("button", { class: "cv-think-head", type: "button", "aria-expanded": "false", onclick: () => {
     body.hidden = !body.hidden; btn.setAttribute("aria-expanded", String(!body.hidden));
-  } }, icon("chevron", 12), "Thinking");
-  return tag(h("div", { class: "cv-row cv-think" }, btn, body), "assistant", ts);
+  } }, icon("chevron", 12), word);
+  const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-think" }, btn, body), "assistant", ts));
+  let had = String(text ?? ""), said = label;
+  el.set = (t, l) => {
+    const s = String(t ?? "");
+    if (s !== had) { had = s; body.replaceChildren(s); }
+    if (l && l !== said) { said = l; word.replaceChildren(l); }
+  };
+  return el;
 }
 
-/** The quiet line under a turn: time taken, tokens, cost. */
+/**
+ * The quiet line under a turn: time taken, tokens, cost. A stopped turn leads with "Stopped by
+ * you" (t.byMe) or "Stopped"; a failed one with what failed.
+ */
 export function turnRow(t) {
-  const parts = turnParts(t);
-  const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-turn" + (t.open ? " cv-open" : "") }, parts.length ? parts.join(" · ") : null), "turn", t.ts));
+  const lead = t.canceled ? (t.byMe ? "Stopped by you" : "Stopped") : t.error ? "Turn failed: " + t.error : null;
+  const parts = [lead, ...turnParts(t)].filter(Boolean);
+  const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-turn" + (t.open ? " cv-open" : "") + (t.error && !t.canceled ? " cv-turn-err" : "") }, parts.length ? parts.join(" · ") : null), "turn", t.ts));
   el._cost = typeof t.cost_usd === "number" ? t.cost_usd : null;
   return el;
 }
@@ -226,17 +244,21 @@ function fileLine(path, note) {
  * A tool call as a card. `b` is a transcript tool block, or a live one built from thread.tool
  * ({ tool, summary, destination } with no input yet). The card's .update(b) redraws it in place,
  * keeping whether it is open.
- * @returns {HTMLElement & { update: (b: any) => void }}
+ * @returns {HTMLElement & { update: (b: any) => void, tick: (now?: number) => void }}
  */
 export function toolCard(b) {
   const el = /** @type {any} */ (tag(h("div", { class: "cv-row cv-tool" }), "assistant", b.ts));
   let open = null;
+  /** @type {any} */ let timeEl = null;
+  el.tick = (now = Date.now()) => { if (timeEl && b.ts && toolState(b) === "running") timeEl.replaceChildren(elapsed(now - b.ts)); };
   el.update = nb => {
     b = nb;
+    timeEl = null;
     const state = toolState(b);
     if (open === null && (state !== "running" || b.input)) open = opensByDefault({ ...b, error: state === "failed" });
-    const title = b.input ? toolTitle(b.tool, b.input) : (b.summary || "");
-    const d = duration(b.duration_ms);
+    const title = b.input && Object.keys(b.input).length ? toolTitle(b.tool, b.input) : (b.summary || "");
+    // A call still running counts up ("0:42"), so quiet work never looks stalled; tick() moves it.
+    const d = state === "running" && b.ts ? elapsed(Date.now() - b.ts) : duration(b.duration_ms);
     el.setAttribute("data-tool", String(b.tool || ""));
     el.setAttribute("data-state", state);
     // The body is built the first time it opens, so a long session's closed cards cost nothing.
@@ -255,7 +277,7 @@ export function toolCard(b) {
       h("span", { class: "cv-tool-name" }, displayName(b.tool)),
       h("span", { class: "cv-tool-title" }, title),
       h("span", { class: "cv-tool-meta" },
-        d ? h("span", { class: "cv-tool-time" }, d) : null,
+        d ? (timeEl = h("span", { class: "cv-tool-time" }, d)) : null,
         h("span", { class: "cv-tool-state cv-" + state }, state)),
     );
     put(el, head, body);
@@ -272,7 +294,7 @@ function displayName(tool) {
 
 /** A block as its row. @param {any} b @param {{ who?: string, me?: string|null }} [ctx] */
 export function blockRow(b, ctx = {}) {
-  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me); if (b.command) el.classList.add("cv-command"); return el; }
+  if (b.kind === "user") { const el = userRow(ctx.who || "you", b.command ? commandText(b.text) : b.text, b.ts, ctx.me, Number(b.images) || 0); if (b.command) el.classList.add("cv-command"); return el; }
   if (b.kind === "text") return textRow(b.text, b.ts);
   if (b.kind === "thinking") return thinkingRow(b.text, b.ts);
   if (b.kind === "tool") return toolCard(b);
