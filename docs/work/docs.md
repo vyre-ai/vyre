@@ -85,8 +85,12 @@ Stopped at the lead's wrap-up (27 Sep 2026). Nothing running. Head handed to the
 - USER: the yes on the preview before production docs.vyre.run and the custom domain.
 - chat f964f8a, b85ab3f (Deck terminal offsets): rewrite using/chat.md's terminal section when it
   lands on main (see Pending below).
-- pwa: the first-passkey card on Now says a passkey approves "answers" (stale under no-nag); sent
-  to pwa with suggested copy. Retake deck-now and deck-new-box when it lands.
+- pwa a222fa4 (batch 3b): the first-passkey card now reads "Your passkey confirms messages you send
+  out, payments, deletions, vault secrets and new devices. One tap covers 30 minutes." When 3b is
+  on main: full shots retake (deck-now, deck-new-box, plus tokens.css palette changes: paper
+  hover, code background, paper shadow; Settings VyreDrive rows; the new /pair screen, which
+  may want a new shot on using/tailscale.md; the Reconnecting pill replacing the offline line),
+  and check deck.md and troubleshooting for the old offline line.
 - New decisions to reflect as their code lands: ADR 0030 Agent SDK sessions, one-app, relay and
   the hosted app, vault v2, CLI and phone first-class (Pending below).
 
