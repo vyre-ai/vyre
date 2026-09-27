@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createCaps, isMissing, NEEDS_UPDATE, SESSION_TOOLS } from "./caps.js";
+import { createCaps, isMissing, NEEDS_UPDATE, SESSION_TOOLS, NOT_OFFERED, SEND_IMAGES, CAPS } from "./caps.js";
 
 test("a tool is unknown until asked, there once it answers, missing once it is no such tool (and never called again)", async () => {
   const caps = createCaps();
@@ -38,5 +38,23 @@ test("what counts as missing", () => {
   assert.equal(isMissing({ code: "not_found", message: "no such thread" }), false);
   assert.equal(isMissing({ code: "busy" }), false);
   assert.equal(isMissing(null), false);
-  assert.ok(SESSION_TOOLS.includes("threads.kill_task"));
+  assert.ok(SESSION_TOOLS.includes("threads.send_now"));
+});
+
+test("the final contract: its tools are learnt, what it does not offer starts off and is never called", async () => {
+  for (const gone of ["threads.steer", "threads.checkpoints", "threads.tasks"]) assert.ok(!SESSION_TOOLS.includes(gone), gone);
+  for (const t of ["threads.interrupt", "threads.unqueue", "threads.edit", "threads.rewind", "threads.mode"]) {
+    assert.ok(SESSION_TOOLS.includes(t), t);
+    assert.equal(CAPS.has(t), null, "live tools are asked, not assumed");
+  }
+  for (const t of ["threads.model", "sessions.models", "threads.commands", "threads.shell", "threads.remember", "threads.thinking", "threads.kill_task", SEND_IMAGES]) {
+    assert.ok(NOT_OFFERED.includes(t), t);
+    assert.equal(CAPS.has(t), false, t);
+  }
+  const caps = createCaps({ off: ["threads.shell"] });
+  let calls = 0;
+  const r = await caps.use("threads.shell", async () => { calls++; return { data: {} }; });
+  assert.equal(calls, 0);
+  assert.equal(r.missing, true);
+  assert.equal(createCaps().has("threads.shell"), null, "a probe of its own starts empty");
 });

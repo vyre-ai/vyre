@@ -11,7 +11,8 @@
 //   line; on a touch screen Enter is a new line and the send button sends.
 // - Esc: closes a picker; stops a running turn; leaves the shell or memory mode; twice within
 //   800 ms with an empty draft opens the rewind picker, with words in the draft clears them.
-// - Shift+Tab: the next permission mode the session offers (bypass only when offered).
+// - Shift+Tab: the next permission mode, over default, acceptEdits and plan (threads.mode never
+//   takes bypass, so Shift+Tab never reaches it).
 // - Up in an empty composer: the last message sent (again for older), or, when messages wait in
 //   the queue, the newest of those to edit.
 // - Pasted images: a count cap and a size cap, png, jpeg, gif and webp only.
@@ -21,9 +22,9 @@
 
 // ---- modes ---------------------------------------------------------------------------------
 
-/** Claude Code's permission modes, in the order Shift+Tab walks them. */
+/** Claude Code's permission modes, in its order (bypass only ever read, from a session started in it). */
 export const MODES = Object.freeze(["default", "acceptEdits", "plan", "bypassPermissions"]);
-/** What a session offers when it does not say: never bypass. */
+/** What Shift+Tab walks: the modes threads.mode takes. Never bypass. */
 export const DEFAULT_MODES = Object.freeze(["default", "acceptEdits", "plan"]);
 /** The chip under the composer. */
 export const MODE_LABELS = Object.freeze(/** @type {Record<string, string>} */ ({
@@ -34,14 +35,14 @@ export const MODE_LABELS = Object.freeze(/** @type {Record<string, string>} */ (
 export const modeLabel = mode => MODE_LABELS[mode || "default"] || String(mode);
 
 /**
- * The mode after `current`, over the modes offered, in MODES order (unknown offered modes after
- * them). Bypass is only ever reached when the session offers it.
+ * The mode after `current`, over the three threads.mode takes (narrowed to the ones the session
+ * offers, when it says), in their usual order. Bypass is never reached; from bypass (a session
+ * started in it) the next is default.
  * @param {string|null|undefined} current @param {readonly string[]|null|undefined} [offered]
  */
 export function nextMode(current, offered) {
-  const list = offered && offered.length ? offered : DEFAULT_MODES;
-  const order = [...MODES.filter(m => list.includes(m)), ...list.filter(m => !MODES.includes(m))];
-  if (!order.length) return current || "default";
+  const narrowed = offered && offered.length ? DEFAULT_MODES.filter(m => offered.includes(m)) : [];
+  const order = narrowed.length ? narrowed : [...DEFAULT_MODES];
   const i = order.indexOf(current || "default");
   return order[(i + 1) % order.length];
 }

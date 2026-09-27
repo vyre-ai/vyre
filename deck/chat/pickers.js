@@ -64,17 +64,15 @@ export function listMenu(label = "Suggestions") {
 /** "⏎ run", printed as keys. @param {...[string, string]} pairs */
 export const keysLine = (...pairs) => pairs.map(([k, what], i) => [i ? " · " : null, h("span", { class: "kbd" }, k), " ", what]);
 
-/**
- * @typedef {{ uuid: string, text: string, at: number|null, files_changed?: number|null }} RewindPoint
- * @typedef {"conversation"|"code"|"both"} Restore
- */
+/** @typedef {{ uuid: string, text: string, at: number|null }} RewindPoint */
 
 /**
- * The rewind sheet: "Rewind to an earlier message", newest first, each with its time and the
- * file changes after it (when the box says). Choosing one offers what to restore: the
- * conversation (the words come back to the composer to edit), the code, or both. Arrows move,
- * 1 2 3 restore, Esc closes. A box without threads.rewind shows the list with the buttons off.
- * @param {{ points: RewindPoint[], can: () => boolean|null, onChoose: (p: RewindPoint, restore: Restore) => Promise<string|null>|void, onClose: () => void }} o
+ * The rewind sheet: "Rewind to an earlier message", your messages newest first, each with its
+ * time. Choosing one forks the session at it (threads.rewind): the fork opens with the words back
+ * in the composer, and this session stays as it was. Arrows move, Enter rewinds, Esc closes. A
+ * box without threads.rewind shows the list with the button off. (The box restores the
+ * conversation only; what to restore, code or both, is one more argument to onChoose when it can.)
+ * @param {{ points: RewindPoint[], can: () => boolean|null, onChoose: (p: RewindPoint) => Promise<string|null>|void, onClose: () => void }} o
  *   onChoose resolves to an error message to show, or null.
  * @returns {{ el: HTMLElement, key: (e: KeyboardEvent) => boolean, refresh: () => void }}
  */
@@ -86,15 +84,13 @@ export function rewindSheet(o) {
   const el = h("div", { class: "cv-rewind", role: "dialog", "aria-label": "Rewind" },
     h("div", { class: "cv-rewind-head" }, h("span", null, "Rewind to an earlier message"), h("span", { class: "kbd" }, "Esc Esc")),
     list, acts, note);
-  const after = (/** @type {RewindPoint} */ p) => typeof p.files_changed === "number"
-    ? (p.files_changed ? `${p.files_changed} file change${p.files_changed === 1 ? "" : "s"} after this` : "no file changes after this") : null;
-  async function choose(/** @type {Restore} */ restore) {
+  async function choose() {
     const p = o.points[sel];
     if (!p || busy || o.can() === false) return;
-    busy = true; draw();
-    const err = await o.onChoose(p, restore);
+    busy = true; put(note, "Rewinding…"); draw();
+    const err = await o.onChoose(p);
     busy = false;
-    if (err) put(note, err);
+    put(note, err || "");
     draw();
   }
   function draw() {
@@ -102,11 +98,11 @@ export function rewindSheet(o) {
     put(list, o.points.length ? o.points.map((p, i) => h("button", { type: "button", role: "option", class: "cv-rewind-row" + (i === sel ? " on" : ""),
       "aria-selected": String(i === sel), onclick: () => { sel = i; draw(); } },
       h("span", { class: "cv-rewind-text ellipsis" }, p.text),
-      h("span", { class: "cv-rewind-meta" }, [p.at ? clock(p.at) : null, after(p)].filter(Boolean).join(" · ")))) :
+      h("span", { class: "cv-rewind-meta" }, p.at ? clock(p.at) : ""))) :
       h("div", { class: "cv-menu-empty" }, "No earlier messages to go back to"));
-    const btn = (/** @type {Restore} */ r, /** @type {string} */ label, /** @type {string} */ k) => h("button", { class: "btn btn-ghost btn-sm cv-rw-" + r, type: "button",
-      disabled: off || busy || !o.points.length, title: off ? NEEDS_UPDATE : null, onclick: () => choose(r) }, label, h("span", { class: "kbd" }, k));
-    put(acts, btn("conversation", "Conversation", "1"), btn("code", "Code", "2"), btn("both", "Both", "3"),
+    put(acts,
+      h("button", { class: "btn btn-ghost btn-sm cv-rw-go", type: "button", disabled: off || busy || !o.points.length, title: off ? NEEDS_UPDATE : "Opens a new session from before this message",
+        onclick: () => choose() }, "Rewind here", h("span", { class: "kbd" }, "⏎")),
       h("button", { class: "btn btn-ghost btn-sm cv-rw-cancel", type: "button", onclick: o.onClose }, "Cancel", h("span", { class: "kbd" }, "Esc")));
     if (off) put(note, NEEDS_UPDATE);
   }
@@ -117,9 +113,7 @@ export function rewindSheet(o) {
     key(e) {
       if (e.key === "Escape") { o.onClose(); return true; }
       if (e.key === "ArrowDown" || e.key === "ArrowUp") { if (o.points.length) { sel = (sel + (e.key === "ArrowDown" ? 1 : -1) + o.points.length) % o.points.length; draw(); } return true; }
-      if (e.key === "1" || e.key === "Enter") { choose("conversation"); return true; }
-      if (e.key === "2") { choose("code"); return true; }
-      if (e.key === "3") { choose("both"); return true; }
+      if (e.key === "Enter") { choose(); return true; }
       return false;
     },
   };

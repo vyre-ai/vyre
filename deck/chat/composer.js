@@ -3,10 +3,12 @@
 // core/composer-state.js, shared with the phone; this file is the Deck's DOM for them.
 //
 // - Enter sends. While a turn runs it steers: the words join the running turn at its next step
-//   (threads.send mode "steer"), drawn at once with a "steering" marker that thread.steered
-//   confirms. Alt+Enter, or the "Queue for after this turn" toggle, queues them instead (mode
-//   "queue"): a row above the composer with Edit, Take back and Steer now. Shift+Enter is a new
-//   line; on a touch screen Enter is a new line and the send button sends (hold it to queue).
+//   (threads.send mode "steer", the box's default for a running turn; it answers {sent, steered,
+//   uuid, turn}), drawn at once with a "steering" marker that thread.steered confirms. Alt+Enter,
+//   or the "Queue for after this turn" toggle, queues them instead (mode "queue"; the answer is
+//   {queued: <row id>, uuid}): a row above the composer with Edit, Take back and Steer now. A
+//   session busy in a terminal queues every message, steer or not. Shift+Enter is a new line; on
+//   a touch screen Enter is a new line and the send button sends (hold it to queue).
 // - The first character picks the mode and the composer names it: "/" commands (a picker with
 //   the session's own list, threads.commands, else a static one; /model and /rewind open their
 //   pickers here), "!" runs a shell command in the session's folder (threads.shell, the output as
@@ -16,16 +18,17 @@
 //   or memory mode and closes a picker. Shift+Tab cycles the permission mode (the chip under the
 //   box); the model chip opens the model picker; the thinking chip turns thinking on or off.
 // - Up in an empty composer recalls the last message sent here (per thread, the last 100), or
-//   takes the newest queued message back to edit (threads.edit). Down goes back.
-// - A pasted image is attached (thumbnails, at most 4, 5 MB each) and sent with the words.
+//   takes the newest queued message back to edit (threads.edit {thread, queued, text}). Down goes back.
+// - A pasted image is attached (thumbnails, at most 4, 5 MB each) and sent with the words, once
+//   the box takes images on threads.send (core/caps.js SEND_IMAGES; until then a paste says so).
 //
-// Tools the sessions team has not shipped are learnt through core/caps.js: the first "no such
-// tool" switches that control off with "Needs the sessions update" as its title, the words stay
-// in the box. A paired Mac's session (opts.machine) keeps the plain send it had: threads.send
+// Tools are learnt through core/caps.js: what the contract does not offer yet (model, thinking,
+// commands, shell, memory) starts off, and the first "no such tool" from an older box switches
+// that control off too, with "Needs the sessions update" as its title; the words stay in the box. A paired Mac's session (opts.machine) keeps the plain send it had: threads.send
 // {thread, text, surface, machine}, no chips, and the notes for an offline or slow Mac.
 //
-// A session busy in the user's terminal takes the message into the inbox queue instead
-// (capsule-now's contract): threads.send answers {sent: false, queued: true, name, note}, and
+// A session busy in the user's terminal takes the message into the inbox queue instead: threads.send
+// answers {queued: <row id>, uuid} (an older box: {sent: false, queued: true, name, note}), and
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
 import { h, put } from "../js/dom.js";
@@ -37,7 +40,7 @@ import {
 } from "./core/composer-state.js";
 import { findCommand, rankCommands, applyCommand, normalizeCommands, sourceLabel } from "./core/commands.js";
 import { scorePath, compareScores } from "./core/match.js";
-import { CAPS, NEEDS_UPDATE } from "./core/caps.js";
+import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell } from "./core/session-state.js";
 import { listMenu, keysLine } from "./pickers.js";
 
@@ -304,6 +307,7 @@ export function mountComposer(opts) {
     const items = [...(e.clipboardData?.items || [])].filter(it => it.kind === "file" && IMAGE_TYPES.includes(it.type));
     if (!items.length || machine) return;
     e.preventDefault();
+    if (off(SEND_IMAGES)) { say("Images: " + NEEDS_UPDATE.toLowerCase() + "."); return; }
     for (const it of items) {
       const file = it.getAsFile();
       if (!file) continue;
@@ -360,7 +364,7 @@ export function mountComposer(opts) {
     if (drawn) patch(localSend(/** @type {any} */ (S), { uuid, text, mode, at: Date.now() }));
     /** @type {Record<string, any>} */
     const input = machine ? { thread, text, surface: "deck", machine }
-      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length ? { images: sendImages(imgs) } : {}) };
+      : { thread, text, surface: "deck", uuid, ...(mode ? { mode } : {}), ...(imgs.length && !off(SEND_IMAGES) ? { images: sendImages(imgs) } : {}) };
     const r = await attempt("threads.send", input);
     sending = false;
     send.disabled = false;
@@ -388,10 +392,14 @@ export function mountComposer(opts) {
     if (r.error) { say("Could not send: " + r.error.message, false); back(); return; }
     const d = /** @type {any} */ (r.data) || {};
     if (machine) opts.onOffline?.(null);
-    if (d.queued === true) {
-      // The session is busy in a terminal: the inbox queue has it (thread.queued draws the row).
-      // A steer drawn on send was not one.
+    if (d.queued != null && d.queued !== false) {
+      // Queued: asked for (mode "queue"), or a session busy in a terminal, which queues every
+      // message. The answer names the row ({queued: <id>, uuid}; an older box says queued: true
+      // and thread.queued names it). A steer drawn on send was not one: it becomes the row.
+      const id = d.queued === true ? null : d.queued;
       if (drawn && mode === "steer") patch(dropLocal(/** @type {any} */ (S), uuid));
+      if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
+      if (id != null && !machine) return;
       busyName = d.name || busyName;
       if (![...waiting.values()].includes(text)) waiting.set("pending:" + text, text);
       drawQueued();
@@ -441,7 +449,9 @@ export function mountComposer(opts) {
 
   /** A queued message back in the box: Enter saves the new words (threads.edit), Esc lets it be. */
   function editQueued(/** @type {{ uuid: string|null, queued?: any, text: string }} */ q) {
+    if (!q) return;
     if (off("threads.edit")) { say(NEEDS_UPDATE); return; }
+    if (q.queued == null) { say("Still queueing; edit it in a moment."); return; }
     editing = { uuid: q.uuid, queued: q.queued };
     setValue(q.text);
     say([h("span", { class: "lbl" }, "Editing a queued message"), " ", keysLine(["⏎", "saves"], ["Esc", "leaves it as it was"])]);
@@ -451,9 +461,10 @@ export function mountComposer(opts) {
     const e = editing;
     if (!e) return;
     const text = ta.value.trim();
-    const r = await CAPS.use("threads.edit", () => attempt("threads.edit", { thread, uuid: e.uuid, ...(e.queued != null ? { queued: e.queued } : {}), text }));
+    const r = await CAPS.use("threads.edit", () => attempt("threads.edit", { thread, queued: e.queued, text }));
     if (r.error) { say(r.missing ? NEEDS_UPDATE : "Could not change it: " + r.error.message); return; }
-    const q = S?.queued.find(x => x.uuid === e.uuid);
+    // thread.queued comes back with the same id and the new words; the row shows them now.
+    const q = S?.queued.find(x => x.queued === e.queued);
     if (q) { q.text = text; patch(["@queued"]); }
     editing = null;
     setValue("");

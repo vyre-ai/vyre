@@ -133,13 +133,13 @@ test("Esc: stops a turn, twice rewinds (empty) or clears (words), closes a picke
   assert.equal(escape(createEsc(), { now: 1, running: false, text: "Use v2", recalled: true }), "clear");
 });
 
-test("Shift+Tab walks the modes the session offers; bypass only when offered", () => {
+test("Shift+Tab walks default, acceptEdits and plan, never bypass", () => {
   assert.equal(nextMode("default"), "acceptEdits");
   assert.equal(nextMode("acceptEdits"), "plan");
-  assert.equal(nextMode("plan"), "default", "no bypass unless offered");
+  assert.equal(nextMode("plan"), "default");
   assert.equal(nextMode(null), "acceptEdits");
-  assert.equal(nextMode("plan", MODES), "bypassPermissions");
-  assert.equal(nextMode("bypassPermissions", MODES), "default");
+  assert.equal(nextMode("plan", MODES), "default", "bypass is never reached, even when a session lists it");
+  assert.equal(nextMode("bypassPermissions"), "default", "a session started in bypass steps out of it");
   assert.equal(nextMode("default", ["plan", "default"]), "plan", "the offered ones, in the usual order");
   assert.equal(modeLabel("default"), "Asks first");
   assert.equal(modeLabel("acceptEdits"), "Accepts edits");

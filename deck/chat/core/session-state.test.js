@@ -213,21 +213,26 @@ test("a live done text the transcript already holds is not added twice", () => {
   assert.deepEqual(keys(s), ["m:msg_x:0"]);
 });
 
-test("queued, then unqueued (proposed) or sent from the queue (today)", () => {
+test("queue rows by their row id: queued, edited (same id), taken back, handed over at the turn's end", () => {
   const s = createSession(T);
-  assert.deepEqual(ev(s, "thread.queued", { uuid: "q-1", text: "and the Northwind order", queued: 7 }, { at: 5 }), ["@queued"]);
-  ev(s, "thread.queued", { text: "then stop", queued: 8 });
+  assert.deepEqual(ev(s, "thread.queued", { queued: 7, uuid: "q-1", text: "and the Northwind order", surface: "deck" }, { at: 5 }), ["@queued"]);
+  ev(s, "thread.queued", { queued: 8, uuid: "q-2", text: "then stop", surface: "deck" });
   assert.equal(s.queued.length, 2);
   assert.deepEqual(s.queued[0], { uuid: "q-1", text: "and the Northwind order", queued: 7, at: 5 });
-  assert.deepEqual(ev(s, "thread.unqueued", { uuid: "q-1", reason: "taken" }), ["@queued"]);
+  // threads.edit: thread.queued again, same id and uuid, new words, same place.
+  assert.deepEqual(ev(s, "thread.queued", { queued: 8, uuid: "q-2", text: "then stop and summarise", surface: "deck" }, { at: 6 }), ["@queued"]);
+  assert.equal(s.queued.length, 2);
+  assert.deepEqual(s.queued[1], { uuid: "q-2", text: "then stop and summarise", queued: 8, at: 6 });
+  assert.deepEqual(ev(s, "thread.unqueued", { queued: 7, uuid: "q-1", reason: "taken" }), ["@queued"]);
   assert.equal(s.items.length, 0, "taken back: never a user item");
-  const out = ev(s, "thread.sent", { text: "then stop", queued: 8, via: "idle" });
+  // The hand-over names the row and its uuid, not the words: they are the row's.
+  const out = ev(s, "thread.sent", { queued: 8, uuid: "q-2", via: "turn" });
   assert.ok(out.includes("@queued"));
   assert.equal(s.queued.length, 0);
-  assert.equal(s.byKey.get("u:live:1").text, "then stop");
-  assert.deepEqual(ev(s, "thread.unqueued", { uuid: "nope" }), []);
+  assert.equal(s.byKey.get("u:q-2").text, "then stop and summarise");
+  assert.equal(s.byKey.get("u:q-2").steered, undefined, "a message of its own, not a steer");
+  assert.deepEqual(ev(s, "thread.unqueued", { queued: 99, uuid: "nope", reason: "taken" }), []);
 });
-
 test("an interrupt: finished canceled ends streaming text and running tools", () => {
   const s = createSession(T);
   ev(s, "thread.text", { message: "msg_i", block: 0, delta: "Working" });
@@ -299,24 +304,27 @@ test("a session closed for idleness is idle, not stopped", () => {
 
 // ---- steering, the queue, rewinds, modes, todos and tasks (the composer like Claude Code) ----
 
-test("a steer: drawn on send, moved to where it joined, and a transcript re-read keeps one marker", () => {
+test("a steer: drawn on send, echoed via steer, moved to where it joined at the step counted here, and a re-read keeps one marker", () => {
   const s = createSession(T);
   ev(s, "thread.sent", { text: "Rebuild the Estate intake", uuid: "u-1" }, { at: 1000 });
-  ev(s, "thread.tool", { call: "c1", name: "Read", status: "running" }, { at: 2000 });
+  ev(s, "thread.tool", { call: "c1", id: "c1", name: "Read", status: "running" }, { at: 2000 });
   const drawn = localSend(s, { uuid: "u-2", text: "Use Estate intake v2 instead", mode: "steer", at: 3000 });
   assert.deepEqual(keys(s), ["u:u-1", "t:c1", "steer:u-2", "u:u-2"]);
   assert.ok(drawn.includes("steer:u-2") && drawn.includes("u:u-2"));
   assert.equal(s.byKey.get("steer:u-2").pending, true, "steering until kit reads it");
-  ev(s, "thread.tool", { call: "c1", status: "completed" }, { at: 3500 });
-  ev(s, "thread.tool", { call: "c2", name: "Bash", status: "running" }, { at: 3600 });
-  ev(s, "thread.tool", { call: "c2", status: "completed" }, { at: 3900 });
-  const out = ev(s, "thread.steered", { uuid: "u-2", turn: `${T}:1`, step: 2 }, { at: 4000 });
+  ev(s, "thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: "u-2", turn: `${T}:1`, via: "steer" });
+  assert.equal(s.items.filter(i => i.kind === "user").length, 2, "the echo is the same message");
+  assert.equal(s.byKey.get("steer:u-2").pending, true, "still steering");
+  ev(s, "thread.tool", { call: "c1", id: "c1", status: "completed" }, { at: 3500 });
+  ev(s, "thread.tool", { call: "c2", id: "c2", name: "Bash", status: "running" }, { at: 3600 });
+  ev(s, "thread.tool", { call: "c2", id: "c2", status: "completed" }, { at: 3900 });
+  // No step on the event: two tool calls of this turn had finished when it came.
+  const out = ev(s, "thread.steered", { uuid: "u-2", turn: `${T}:1` }, { at: 4000 });
   assert.deepEqual(keys(s), ["u:u-1", "t:c1", "t:c2", "steer:u-2", "u:u-2"], "the words moved to the tail they joined");
   const m = s.byKey.get("steer:u-2");
   assert.deepEqual([m.pending, m.step, m.user, m.at], [false, 2, "u:u-2", 4000]);
+  assert.equal(s.byKey.get("u:u-2").step, 2);
   assert.ok(out.includes("steer:u-2") && out.includes("u:u-2"));
-  ev(s, "thread.sent", { text: "Use Estate intake v2 instead", uuid: "u-2" });
-  assert.equal(s.items.filter(i => i.kind === "user").length, 2, "the echo is the same message");
   applyBlocks(s, [
     { seq: 0, kind: "user", ts: 1000, text: "Rebuild the Estate intake", uuid: "u-1" },
     { seq: 1, kind: "tool", ts: 2000, id: "c1", tool: "Read", input: { file_path: "src/intake/general.ts" }, output: "x", error: false },
@@ -328,6 +336,29 @@ test("a steer: drawn on send, moved to where it joined, and a transcript re-read
   assert.equal(s.byKey.get("u:u-2").steered, true);
 });
 
+test("the step counts only this turn's finished calls; a steer from another screen arrives via steer", () => {
+  const s = createSession(T);
+  ev(s, "thread.sent", { text: "Draft the Northwind Bakery menu", uuid: "u-1" });
+  ev(s, "thread.tool", { call: "c1", name: "Read", status: "completed" });
+  ev(s, "thread.finished", { ok: true });
+  ev(s, "thread.sent", { text: "Now the prices", uuid: "u-2", via: "turn" });
+  ev(s, "thread.tool", { call: "c2", name: "Read", status: "completed" });
+  ev(s, "thread.tool", { call: "c3", name: "Bash", status: "running" });
+  ev(s, "thread.sent", { text: "Keep the prices under 10", surface: "phone", uuid: "u-3", turn: `${T}:2`, via: "steer" });
+  assert.equal(s.byKey.get("steer:u-3").pending, true, "another screen's steer reads as steering too");
+  ev(s, "thread.steered", { uuid: "u-3", turn: `${T}:2` });
+  assert.equal(s.byKey.get("steer:u-3").step, 1, "c1 was the last turn's; c3 still runs");
+});
+
+test("a steer the box took as a message of its own (the turn had ended) loses its marker", () => {
+  const s = createSession(T);
+  localSend(s, { uuid: "u-5", text: "And the Harlow Legal intake", mode: "steer" });
+  const out = ev(s, "thread.sent", { text: "And the Harlow Legal intake", surface: "deck", uuid: "u-5", via: "turn" });
+  assert.ok(out.includes("steer:u-5"));
+  assert.equal(s.byKey.get("steer:u-5"), undefined);
+  assert.deepEqual(keys(s), ["u:u-5"]);
+  assert.equal(s.byKey.get("u:u-5").steered, false);
+});
 test("a steer read from the transcript alone gets the same marker, once", () => {
   const s = createSession(T);
   applyBlocks(s, [
@@ -342,21 +373,26 @@ test("a steer read from the transcript alone gets the same marker, once", () => 
   assert.equal(s.items.filter(i => i.kind === "steer").length, 1, "read twice, one marker");
 });
 
-test("queued on send, confirmed by thread.queued, then steered from the queue: the queued words are the steer", () => {
+test("queued on send, named by the answer, then Steer now: via now, the queued words are the steer", () => {
   const s = createSession(T);
   ev(s, "thread.sent", { text: "Rebuild the intake", uuid: "u-1" });
   assert.deepEqual(localSend(s, { uuid: "q-1", text: "Then open a PR against main", mode: "queue", at: 5 }), ["@queued"]);
   assert.deepEqual(s.queued, [{ uuid: "q-1", text: "Then open a PR against main", queued: null, at: 5, local: true }]);
-  ev(s, "thread.queued", { uuid: "q-1", text: "Then open a PR against main" }, { at: 6 });
-  assert.deepEqual(s.queued, [{ uuid: "q-1", text: "Then open a PR against main", queued: null, at: 6 }], "one row, the box's");
-  ev(s, "thread.unqueued", { uuid: "q-1", reason: "steered" });
+  // threads.send answered {queued: 12, uuid}: the row has its id.
+  localSend(s, { uuid: "q-1", text: "Then open a PR against main", mode: "queue", queued: 12 });
+  assert.equal(s.queued[0].queued, 12);
+  ev(s, "thread.queued", { queued: 12, uuid: "q-1", text: "Then open a PR against main", surface: "deck" }, { at: 6 });
+  assert.deepEqual(s.queued, [{ uuid: "q-1", text: "Then open a PR against main", queued: 12, at: 6 }], "one row, the box's");
+  ev(s, "thread.tool", { call: "c1", name: "Read", status: "completed" });
+  // threads.send_now: the row goes into the running turn.
+  ev(s, "thread.sent", { queued: 12, uuid: "q-1", via: "now" }, { at: 8 });
   assert.equal(s.queued.length, 0);
-  ev(s, "thread.steered", { uuid: "q-1", step: 3 }, { at: 9 });
-  assert.deepEqual(keys(s), ["u:u-1", "steer:q-1", "u:q-1"]);
   assert.equal(s.byKey.get("u:q-1").text, "Then open a PR against main");
-  assert.equal(s.byKey.get("steer:q-1").step, 3);
+  assert.equal(s.byKey.get("steer:q-1").pending, true);
+  ev(s, "thread.steered", { uuid: "q-1", turn: `${T}:1` }, { at: 9 });
+  assert.deepEqual(keys(s), ["u:u-1", "t:c1", "steer:q-1", "u:q-1"]);
+  assert.deepEqual([s.byKey.get("steer:q-1").pending, s.byKey.get("steer:q-1").step], [false, 1]);
 });
-
 test("a failed send takes back what was drawn; an echo without a uuid is the words drawn on send", () => {
   const s = createSession(T);
   localSend(s, { uuid: "u-9", text: "Keep the witness page", mode: "steer" });
@@ -376,7 +412,7 @@ test("a failed send takes back what was drawn; an echo without a uuid is the wor
   assert.deepEqual([s.byKey.get("steer:u-10").pending, s.byKey.get("steer:u-10").step], [false, null]);
 });
 
-test("a rewind drops that message and everything after it, and a re-read does not bring them back", () => {
+test("a rewind forks: this session keeps every word, s.rewound names the fork and the words", () => {
   const s = createSession(T);
   const blocks = [
     { seq: 0, kind: "user", ts: 1, text: "Read the intake folder", uuid: "a" },
@@ -388,22 +424,18 @@ test("a rewind drops that message and everything after it, and a re-read does no
   ];
   applyBlocks(s, blocks);
   assert.deepEqual(checkpoints(s).map(c => c.uuid), ["b", "a"], "newest first");
-  const out = ev(s, "thread.rewound", { uuid: "b", restore: "both" }, { at: 10 });
-  assert.ok(out.includes("@rewound") && out.includes("t:c1") && out.includes("u:@2"));
-  assert.deepEqual(s.rewound, { uuid: "b", restore: "both", text: "Rebuild the Estate intake", at: 10 });
-  assert.deepEqual(keys(s).slice(0, 3), ["u:@0", "m:msg_a:0", "turn:@2"]);
-  assert.equal(s.items.length, 4);
-  assert.equal(s.items[3].text, 'Rewound to before "Rebuild the Estate intake", files too');
+  const out = ev(s, "thread.rewound", { uuid: "b", fork: "th-harlow-fork" }, { at: 10 });
+  assert.ok(out.includes("@rewound"));
+  assert.deepEqual(s.rewound, { uuid: "b", fork: "th-harlow-fork", text: "Rebuild the Estate intake", at: 10 });
+  assert.equal(s.items.length, 7, "nothing dropped");
+  assert.equal(s.items[6].text, 'Rewound to before "Rebuild the Estate intake" in a new session');
   applyBlocks(s, blocks);
-  assert.equal(s.items.length, 4, "the dropped blocks stay dropped");
-  ev(s, "thread.rewound", { uuid: "a", restore: "code" });
-  assert.equal(s.items.length, 5, "code only: the conversation stays");
-  assert.equal(s.items[4].text, 'Files put back to before "Read the intake folder"');
+  assert.equal(s.items.length, 7, "a re-read changes nothing");
 });
-
 test("mode, model and thinking: from thread.started and their own events", () => {
   const s = createSession(T);
-  ev(s, "thread.started", { provider: "claude", model: "opus", mode: "default", modes: ["default", "acceptEdits", "plan", "bypassPermissions"], thinking: false });
+  ev(s, "thread.started", { provider: "claude", model: "opus", auth: "subscription", purpose: "chat", mode: "default", modes: ["default", "acceptEdits", "plan", "bypassPermissions"], thinking: false });
+  assert.deepEqual([s.provider, s.model, s.auth, s.purpose], ["claude", "opus", "subscription", "chat"]);
   assert.equal(s.mode, "default");
   assert.deepEqual(s.modes, ["default", "acceptEdits", "plan", "bypassPermissions"]);
   assert.equal(s.thinking, false);

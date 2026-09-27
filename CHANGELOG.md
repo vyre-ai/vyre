@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: the composer speaks the final sessions contract
+
+- Queue rows are named by the box's row id (`queued`): Take back is threads.unqueue {thread,
+  queued}, Edit is threads.edit {thread, queued, text} (thread.queued comes back under the same
+  id), Steer now is threads.send_now {thread, queued} (was threads.steer). A row drawn on send has
+  its buttons off until threads.send answers {queued: <id>, uuid}. A hand-over at a turn's end
+  (thread.sent {queued, uuid, via: "turn"}) takes its words from the row.
+- thread.steered carries no step: the Deck counts the turn's finished tool calls when it arrives.
+  thread.sent via "steer" or "now" draws a steer; a steer the box took as a plain message loses
+  its marker.
+- Esc Esc lists your messages from the session and forks there (threads.rewind {thread, uuid} ->
+  thread.rewound {uuid, fork}): the fork opens with the words back in its composer; this session
+  keeps every word. No conversation / code / both choice, no threads.checkpoints.
+- Shift+Tab cycles default, acceptEdits and plan only. threads.start answering "busy" says "All
+  sessions are busy; one will free up shortly" with Try again. thread.started's purpose is kept.
+- Model, commands, shell, memory, thinking, killing a task and images on send start off
+  (core/caps.js NOT_OFFERED) instead of being learnt on first use.
+
 #### Chat: the composer works like Claude Code in the terminal
 
 - Typing while a turn runs steers it: Enter hands the words to the running turn at its next step

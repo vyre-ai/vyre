@@ -192,6 +192,9 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
   "Answered from <surface> · <time>". Behaviour changed on purpose: tool runs fold (session.test.js
   "open" test opens them first); the composer's own queue line is gone (rows replace it); a failed
   turn reads "Turn failed: ..." in its footer. Tests: deck/chat + deck/test 221/221 (1 skipped) on testbox.
+- Aligned to the final sessions contract (27 Sep, untested: testbox held): queue by row id
+  (unqueue/edit/send_now), step counted client-side, rewind forks and opens the fork, Shift+Tab
+  over three modes, threads.start busy note, NOT_OFFERED tools off from the start in caps.js.
 - Gaps for sessions: threads.interrupt is on work/sessions only (the Deck falls back);
   threads.edit, threads.unqueue, threads.send {now} are nowhere; thread.queued needs `uuid` for rows
   to act on; ask.answered `by` is a surface, not a device ("alex's iPhone" needs a device name).
