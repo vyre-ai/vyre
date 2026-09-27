@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### An agent is named only as mcp:agent or harness:agent
+
+- vyred vouched any label naming an agent ("cli:agent:kit", "deck agent:kit") with that agent's key,
+  and the label then passed every callers list as the surface in front of it (hands-desktop took it
+  for the person). On the socket an agent is now named only as mcp:agent:<name> (its MCP server) or
+  harness:agent:<name> (its hooks), the only forms Vyre sends; any other label naming an agent is
+  refused before its key is checked. An agent's tailnet node (tailnet:agent:<name>) is unchanged.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at

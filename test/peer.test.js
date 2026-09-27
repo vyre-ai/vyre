@@ -166,6 +166,25 @@ test("peer: a person's or any surface's label from under a claude is the session
   assert.match(made.body.error.message, /inside a Claude session/);
 });
 
+test("peer: an agent is named only as mcp:agent or harness:agent; a surface's label naming one is refused before any key is checked", async t => {
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const dir = fs.mkdtempSync(path.join(root, "peer-"));
+  const socket = d.paths.socket;
+  for (const label of ["cli:agent:kit", "cli agent:kit", "deck agent:kit", "capsule:agent:kit", "mobile:agent:kit", "mcp agent:kit"]) {
+    const r = await client(dir, socket, "system.echo", { text: "hi" }, { headers: { "x-vyre-caller": label, "x-vyre-agent-key": "k-northwind" } });
+    assert.equal(r.status, 403, `${label}: ${JSON.stringify(r)}`);
+    assert.match(r.body.error.message, /named only as mcp:agent/, label);
+  }
+  // The MCP server's and the hooks' own forms go on to the key check (this key is no thread's).
+  for (const label of ["mcp:agent:kit", "harness:agent:kit"]) {
+    const r = await client(dir, socket, "system.echo", { text: "hi" }, { headers: { "x-vyre-caller": label, "x-vyre-agent-key": "k-northwind" } });
+    assert.equal(r.status, 403, label);
+    assert.match(r.body.error.message, /no thread of that agent is running with this key/, label);
+  }
+});
+
 test("peer: a detached process has no controlling terminal, whatever it says", async () => {
   const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 2000)"], { detached: true, stdio: "ignore" });
   await new Promise(r => setTimeout(r, 200));
