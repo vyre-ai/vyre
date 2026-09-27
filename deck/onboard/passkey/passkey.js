@@ -11,6 +11,7 @@
 import { h, put } from "../../js/dom.js";
 import { canProve, callWithCode } from "../../js/api.js";
 import { icon, mark, wordmark } from "../../js/icons.js";
+import { signInAfterEnroll } from "../../js/person.js";
 
 const root = /** @type {HTMLElement} */ (document.getElementById("pk"));
 
@@ -74,6 +75,8 @@ function screen() {
       put(st, /** @type {any} */ (e)?.message || String(e));
       return;
     }
+    // A box with person sessions: sign this device in now, so its first action asks nothing more.
+    await signInAfterEnroll();
     done();
   }
 

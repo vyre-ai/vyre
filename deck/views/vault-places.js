@@ -3,6 +3,7 @@
 // top), Shared with you and Devices, and the share and offboard sheets.
 
 import { h, put } from "../js/dom.js";
+import { action } from "../js/empty-actions.js";
 import { attempt } from "../js/api.js";
 import { icon, kindIcon, tile, sheet, errText, toast, confirmButton, field } from "../vault/ui.js";
 import { REASON, pickDevices, expiryWord } from "../vault/model.js";
@@ -127,7 +128,8 @@ export function passesView(app, body) {
           h("button", { type: "button", class: "btn btn-ghost", onclick: () => app.offboard() }, "Offboard a person"),
           h("button", { type: "button", class: "btn", onclick: () => app.share([]), disabled: !st.items.length }, icon("pass", 14), "New pass"))),
       st.passErr ? h("div", { class: "empty" }, errText(st.passErr))
-        : !given.length && !heldFrom.length ? h("div", { class: "empty" }, "No passes. Nobody else's Vyre can use anything here.")
+        : !given.length && !heldFrom.length ? h("div", { class: "empty" }, "No passes. Nobody else's Vyre can use anything here.",
+          st.items.length ? action("New pass", () => app.share([])) : null)
         : h("ul", { class: "vt-list", role: "list" }, [...given, ...heldFrom].map(p => passRow(app, p)))));
 }
 

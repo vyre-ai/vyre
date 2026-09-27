@@ -35,6 +35,8 @@ test("the bridge passes Idempotency-Key and Last-Event-ID, and drops what a devi
     "idempotency-key": "8f14e45f-ceea-467a-9575-8f2b2d7e3a1c",
     "last-event-id": "42",
     "x-vyre-agent-key": "not yours",
+    "authorization": "Vyre k1.s1",
+    "x-vyre-proof": "t n sig",
     "content-type": "application/json",
   } });
   const status = new Promise(resolve => { s.onhead = h => resolve(h.status); });
@@ -44,6 +46,8 @@ test("the bridge passes Idempotency-Key and Last-Event-ID, and drops what a devi
   assert.equal(seen[0].headers["idempotency-key"], "8f14e45f-ceea-467a-9575-8f2b2d7e3a1c");
   assert.equal(seen[0].headers["last-event-id"], "42");
   assert.equal(seen[0].headers["x-vyre-agent-key"], undefined);
+  assert.equal(seen[0].headers.authorization, "Vyre k1.s1", "a person session passes untouched");
+  assert.equal(seen[0].headers["x-vyre-proof"], "t n sig");
   device.close();
 });
 

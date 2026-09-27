@@ -169,6 +169,7 @@ Question: can a process that is not the person act as the person over HTTP? Yes,
 | computerd | 0.0.0.0 in each computer | vyre-computers, the computer's tailnet node | per-computer bearer (plain `===`) | none | low |
 | egressgate, docker-api proxy | 0.0.0.0 on internal networks | vyred's namespace, computers | none | none | low (status leaks a reason; docker-api can stop computers) |
 | vyred socket core/daemon/index.js | unix socket 0600 | same uid | label + peer ancestry for person actions | label | HIGH (below) |
+| agent computer (glass-live 70a72036, reviewed 27 Sep) | computerd, CDP over a pipe, Xvnc with a cookie | the agent (uid 1000) in its own container | token, untrusted X cookie, freezer during a shield | none | HIGH until fixed: token and VNC password in Config.Env (every exec reads them); CDP denylist leaves cookies, file:// and chrome:// open |
 
 Findings:
 
@@ -210,10 +211,16 @@ Plan (to the lead before building):
 
 ## Doing (27 Sep, after logout 3)
 
-Audit reported to the lead (above); waiting for go on the person session and the two decisions
-(uid split on the box; Mac CLI person session). ADR 0030 notes sent to sessions. presence.since
-done. Next: the headscale run on the next deployed sha. Two switchboard.test.js cases fail on the
-Mac only on main too (/var vs /private/var), not ours.
+Batch 3 reconcile done (c8e00e7b, then a33ad949): main c8fb9aae and tailnet f30a7333 merged;
+the person gate on ownerDevice (relayed devices); cross-origin reads refused; vyre:// PKCE with a
+signed trade; the phone's biometric key enrolled at the native trade; a relayed browser's passkey
+bound to its device; one init (tini PID 1, spawner, loop.sh; check.sh 24/24); floor rule 8 for an
+agent's own folder. Reviewed: sessions e20f459 (approved, three follow-ups), glass-live 70a72036
+(two HIGH). Waiting: relay's relay.device.presence; the integrator's full suite on batch 3.
+
+Next: the Mac Secure Enclave key so the Mac proves HUMAN_ONLY to the box (approved); the headscale
+run on main after batch 3a+3b, before box-deploy ships it; rerun switchboard.test.js on the Mac
+after 123e70f6.
 
 ## Earlier (27 Sep, after the restart)
 
@@ -258,6 +265,34 @@ event stream's first byte. Tear down afterwards.
 - vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
+
+- core/spawner: spawnAsAgent(argv, { env, cwd }) -> ChildProcess-like (pid, stdin, stdout, stderr,
+  kill, exit). VYRE_SPAWNER_SOCKET (/run/vyre/spawner.sock), VYRE_SPAWNER_ALLOW (extra programs,
+  colon-separated). Image: users vyre (1000), vyre-agent (1001), group vyre-work (1002); CMD is
+  core/spawner/main.js. compose: vyre service user 0:0, cap_add SETUID SETGID KILL, volume
+  vyre-agent-home.
+
+- link: link.signin / link.signout (callers cli, local, capsule), link.status.signedIn,
+  events link.signed-in / link.signed-out. remote() carries PERSON_ONLY tools with the Mac's
+  person session for person callers only; HUMAN_ONLY never rides the link. presence.person.start
+  accepts `return` = http://127.0.0.1:<port>/cb/<nonce> (a Mac's vyred, traded with no Origin).
+- vault fill: Fill({ extensions }) from vault.fill.extensions; pair(body, headers) keeps the
+  Origin and an optional ES256 `key` (vault_meta device-origin:/device-key:); a key-bound
+  device must send `x-vyre-proof` (same format as the person session). vault.devices and
+  vault.device.revoke callers cli, local, deck, capsule. handle(route, body, headers, { raw, path }).
+
+- Person session (core/presence/person.js). Over the tailnet (`tailnet:<login>` callers) the
+  registry refuses PERSON_ONLY and presence-needing tools without `meta.person`, which only the
+  router sets, from the cookie `__Host-vyre_person` or `authorization: Vyre <id>.<secret>` plus
+  `x-vyre-proof: t=<ms> n=<nonce> sig=<b64url>` (ES256 P1363 over
+  `METHOD\npath?query\nsha256b64url(body)\nt\nn`). 401 `person_session_required`. Exempt:
+  presence.person.start and presence.enroll. Routes POST /v1/person/token {code, verifier, key},
+  POST /v1/person/end. Tools presence.person.start {cc?, return?, label?} (with cc, return must be an allowed https origin, network.origins; the answer carries redirect) (HUMAN_ONLY), .status, .sessions,
+  .revoke (PERSON_ONLY). Events presence.signed-in, presence.signed-out. A request tailnet marks
+  cross-origin (peer.origin) is refused without a session. Tests standing in for a signed-in Deck
+  pass `person: { id, kind }` in meta.
+
+- link.call / ctx.remote refuse PERSON_ONLY and HUMAN_ONLY box tools: `person_session_required`.
 
 - core/modules: `callerAllowed(callers, caller)`. A `tailnet:<login>` caller (the names listener
   admits only the owner) may use any tool whose callers list names `deck`; `tailnet:agent:*` and

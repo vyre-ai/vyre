@@ -155,7 +155,10 @@ export default {
       run: async ({ tool_name, tool_input, cwd, session, prompt_id, agent: named, tool_use_id, plugin_root }, { caller } = {}) => {
         const agent = agentOf(named, caller);
         /** @type {{ decision: "deny"|"ask"|null, reason?: string, rule?: number, lesson?: number }} */
-        let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined });
+        // Only an agent vyred vouched for (its key, harness:agent:<name>) gets its own folder as a
+        // working place; a name in the input is a claim.
+        const vouched = /^harness:agent:(.+)$/.exec(String(caller || ""))?.[1] || null;
+        let verdict = rules({ tool: tool_name, input: tool_input || {}, cwd, home: ctx.paths ? ctx.paths.root : undefined, agent: vouched });
         // A send inside an agent's thread goes through the Gate instead, where the user can edit
         // it. Without the Gate running, the floor's "ask first" stands.
         if (verdict.rule === 1 && agent) {

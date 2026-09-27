@@ -42,10 +42,12 @@ const GATED = new Set(["google_mail_send"].flatMap(t => [`mcp__vyre__${t}`, `mcp
 const DEST_KEYS = ["to", "channel", "channel_id", "recipient", "recipients", "email", "thread_id", "chat_id", "user", "url"];
 
 /**
- * @param {{ tool: string, input: Record<string, any>, cwd?: string, home?: string, userHome?: string }} call
+ * @param {{ tool: string, input: Record<string, any>, cwd?: string, home?: string, userHome?: string, agent?: string|null }} call
+ *   agent: the agent whose session this is, as vyred vouched for it (never the tool's input): its
+ *   own folder, VYRE_HOME/agents/<agent>, is a working place for it, as watchers/ is.
  * @returns {{ decision: "deny"|"ask"|null, reason?: string, rule?: number }}
  */
-export function rules({ tool, input, cwd, home, userHome }) {
+export function rules({ tool, input, cwd, home, userHome, agent = null }) {
   const vyreHome = path.resolve(home || process.env.VYRE_HOME || path.join(os.homedir(), ".vyre"));
   const vault = path.join(vyreHome, "vault");
 
@@ -68,7 +70,8 @@ export function rules({ tool, input, cwd, home, userHome }) {
   let real = vyreHome;
   try { real = fs.realpathSync(vyreHome); } catch {}
   for (const h of new Set([vyreHome, real])) {
-    const routed = typeof input.command === "string" ? shellRoutes(input.command, { vyreHome: h, cwd, userHome }) : toolRoutes(tool, input, { vyreHome: h, cwd });
+    const own = typeof agent === "string" && /^[a-z0-9][a-z0-9-]{0,39}$/.test(agent) ? agent : null;
+    const routed = typeof input.command === "string" ? shellRoutes(input.command, { vyreHome: h, cwd, userHome, agent: own }) : toolRoutes(tool, input, { vyreHome: h, cwd, agent: own });
     if (routed) return routed;
   }
 
@@ -124,11 +127,13 @@ const GREPS = new Set(["grep", "egrep", "fgrep", "rg", "ag", "ack"]);
 
 /**
  * Where a path falls in VYRE_HOME: null outside it, "watchers" and "modules" for the folders a
- * model may work in, "internal" for everything else.
+ * model may work in, "own" for the agent's own folder (agents/<agent>, when the session is that
+ * agent's; another agent's folder is not), "internal" for everything else.
  */
-function place(p, vyreHome) {
+function place(p, vyreHome, agent = null) {
   if (!within(p, vyreHome)) return null;
-  const first = path.relative(vyreHome, p).split(path.sep)[0];
+  const [first, second] = path.relative(vyreHome, p).split(path.sep);
+  if (agent && first === "agents" && second === agent) return "own";
   return first === "watchers" || first === "modules" ? first : "internal";
 }
 
@@ -136,7 +141,7 @@ function place(p, vyreHome) {
  * A Bash command: human-only vyre commands, raw socket clients, forged headers, and Vyre's internals.
  * @param {string} command @param {{ vyreHome: string, cwd?: string, userHome?: string }} o
  */
-function shellRoutes(command, { vyreHome, cwd, userHome }) {
+function shellRoutes(command, { vyreHome, cwd, userHome, agent = null }) {
   const flat = flatten(command, userHome);
   // A command substitution stands in the word list as "$", a word whose value is unknown.
   const w = words(flat.replace(/\$\(|`/g, " $ "));
@@ -204,13 +209,16 @@ function shellRoutes(command, { vyreHome, cwd, userHome }) {
     const abs = path.resolve(base, x);
     if (/[*?[]/.test(x)) {
       if (!globReaches(abs, vyreHome)) continue;
-      const next = abs.split("/").filter(Boolean)[vyreHome.split("/").filter(Boolean).length];
+      const parts = abs.split("/").filter(Boolean), depth = vyreHome.split("/").filter(Boolean).length;
+      const next = parts[depth];
       if (next === "watchers") continue;
+      // A glob inside the agent's own folder (agents/<agent>/...), with no wildcard above it.
+      if (agent && next === "agents" && parts[depth + 1] === agent && !/[*?[]/.test(parts.slice(0, depth + 2).join("/"))) continue;
       if (next === "modules") return { decision: "ask", rule: 8, reason: "A module runs inside vyred. Vyre asks before anything changes one." };
       return { decision: "deny", rule: 8, reason: INTERNALS };
     }
     if (!x.includes("/") && !x.startsWith(".")) continue;
-    const at = place(abs, vyreHome);
+    const at = place(abs, vyreHome, agent);
     if (at === "internal") return { decision: "deny", rule: 8, reason: INTERNALS };
     if (at === "modules") return { decision: "ask", rule: 8, reason: "A module runs inside vyred. Vyre asks before anything changes one." };
   }
@@ -218,21 +226,24 @@ function shellRoutes(command, { vyreHome, cwd, userHome }) {
 }
 
 /** The file tools: Read, Write, Edit, NotebookEdit, Grep and Glob, on Vyre's internals. */
-function toolRoutes(tool, input, { vyreHome, cwd }) {
+function toolRoutes(tool, input, { vyreHome, cwd, agent = null }) {
   const writes = ["Write", "Edit", "MultiEdit", "NotebookEdit"].includes(tool);
   const base = cwd || os.homedir();
   for (const k of ["file_path", "path", "notebook_path"]) {
     if (typeof input[k] !== "string") continue;
     const p = path.resolve(base, untilde(input[k]));
     if (INTERNAL_FILE.test(p)) return { decision: "deny", rule: 8, reason: INTERNALS };
-    const at = place(p, vyreHome);
+    const at = place(p, vyreHome, agent);
     if (at === "internal") return { decision: "deny", rule: 8, reason: INTERNALS };
     if (at === "modules" && writes) return { decision: "ask", rule: 8, reason: "A module runs inside vyred. Vyre asks before anything changes one." };
   }
   const glob = tool === "Glob" ? input.pattern : tool === "Grep" ? input.glob : null;
   if (typeof glob === "string") {
     const g = path.resolve(base, typeof input.path === "string" ? untilde(input.path) : ".", untilde(glob));
-    if (INTERNAL_FILE.test(g) || globReaches(g, vyreHome)) return { decision: "deny", rule: 8, reason: INTERNALS };
+    // A glob that stays inside the agent's own folder (no wildcard above agents/<agent>).
+    const ownDir = agent ? path.join(vyreHome, "agents", agent) : null;
+    const inOwn = ownDir && within(g, ownDir) && !/[*?[]/.test(path.relative(vyreHome, g).split(path.sep).slice(0, 2).join("/"));
+    if (INTERNAL_FILE.test(g) || (!inOwn && globReaches(g, vyreHome))) return { decision: "deny", rule: 8, reason: INTERNALS };
   }
   return null;
 }

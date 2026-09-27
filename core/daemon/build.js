@@ -39,3 +39,9 @@ export function build(repo = REPO) {
 export function label(/** @type {Build} */ b) {
   return b.commit ? `${b.version} · ${b.commit.slice(0, 7)}${b.dirty ? "+dirty" : ""}` : b.version;
 }
+
+/** deck/sw.js with BUILD set to this build: the commit (12 characters, "-dirty" when dirty), else "v" and the version. */
+export function swWithBuild(/** @type {string} */ src, b = build()) {
+  const id = b.commit ? b.commit.slice(0, 12) + (b.dirty ? "-dirty" : "") : "v" + b.version;
+  return src.replace('const BUILD = "dev";', `const BUILD = ${JSON.stringify(id.replace(/[^\w.-]/g, ""))};`);
+}

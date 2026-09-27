@@ -159,7 +159,7 @@
   .ab-aside { width: auto; border-left: none; border-top: 1px solid var(--rule); max-width: 640px; }
 }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .ag-col { padding: 16px 16px 24px; }
   .ag-top { flex-direction: column; align-items: stretch; gap: 14px; padding-bottom: 20px; }
   .ag-top .btn-primary { align-self: flex-start; }
