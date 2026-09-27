@@ -3,7 +3,18 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { memoryLine } from "./daemon.js";
+import { tempHome } from "../../../test/helpers.js";
+
+const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
+/** @returns {Promise<{ code: number, stdout: string }>} */
+const run = (root, args) => new Promise(resolve =>
+  execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 },
+    (err, stdout) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, stdout })));
+const frames = s => s.trim().split("\n").map(l => JSON.parse(l));
 
 test("vyre status: the memory line", () => {
   const model = { on: true, today_usd: 0.02, cap_usd: 0.05, calls_today: 2, cues_waiting: 40, last: null };
@@ -14,4 +25,28 @@ test("vyre status: the memory line", () => {
   assert.equal(memoryLine({ current: 0, model: { on: true, today_usd: 0, cap_usd: 0.05 } }), "memory   0 facts about you, model pass $0.00 of $0.05 today");
   assert.equal(memoryLine({ current: 5, model: { on: true } }), "memory   5 facts about you", "a model object without numbers says nothing");
   for (const bad of [undefined, null, "x", {}, { facts: "many" }]) assert.equal(memoryLine(bad), null);
+});
+
+test("vyre down, status, modules, tools and call: no sub-verbs, so vyre commands lists their arguments", async t => {
+  const root = tempHome(t);
+  const d = JSON.parse((await run(root, ["commands", "--all", "--json"])).stdout);
+  const of = n => d.commands.find(c => c.name === n);
+  for (const n of ["down", "status", "modules", "tools", "call"]) assert.deepEqual(of(n).verbs, [], `${n} has no verbs`);
+  assert.deepEqual(of("call").args, [{ name: "tool", required: true }, { name: "json", required: false }]);
+  assert.deepEqual(of("call").flags, [{ name: "tty" }]);
+  assert.deepEqual(of("down").flags, [{ name: "json" }]);
+});
+
+test("vyre down and status --view: a card when nothing runs, an error frame with exit 5 for status", async t => {
+  const root = tempHome(t);
+  const down = await run(root, ["down", "--view"]);
+  assert.equal(down.code, 0, down.stdout);
+  const f = frames(down.stdout);
+  assert.deepEqual([f[0].cmd, f[0].view.kind, f[0].view.fields[0].value], ["down", "card", "was not running"]);
+  assert.deepEqual(f[0].data, { stopped: false, wasRunning: false });
+  const st = await run(root, ["status", "--view"]);
+  assert.equal(st.code, 5, st.stdout);
+  const s = frames(st.stdout);
+  assert.deepEqual([s[0].view.kind, s[0].view.code], ["error", "unreachable"]);
+  assert.deepEqual(s.at(-1), { v: 1, done: true, exit: 5 });
 });

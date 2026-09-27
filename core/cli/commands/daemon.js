@@ -1,20 +1,31 @@
 // @ts-check
-// Commands about vyred itself. `vyre up` lives in up.js.
+// Commands about vyred itself. `vyre up` lives in up.js. Each is one verb with no sub-verbs, so
+// `vyre commands` lists their arguments and flags from the usage line.
+//
+// --json shapes: down {stopped, wasRunning, pid?} · status {running, version, commit, role, pid,
+// uptime, modules:{running, failed}, note?, recall?, memory?} · modules [{name, version, state,
+// error?}] · tools [{name, description}] · call: the tool's data (always JSON; one frame under --view).
 
 import { progressLine } from "../../recall/progress.js";
 import { label } from "../../daemon/build.js";
 import { request, call } from "../../daemon/client.js";
 import { stop } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
+import { personIO } from "./presence.js";
 import { out, dim, signal, beacon } from "../style.js";
-import { EXIT, json, emit, fail, failTool, usage } from "../kit.js";
+import { EXIT, json, emit, fail, failTool, usage, viewing } from "../kit.js";
 
 export default [
   {
-    name: "down", order: 11, usage: "vyre down", summary: "stop it",
+    name: "down", order: 11, usage: "vyre down [--json]", summary: "stop it",
     async run() {
       const r = await stop();
-      if (json()) { emit({ stopped: r.ok && r.wasRunning, wasRunning: r.wasRunning, ...(r.pid ? { pid: r.pid } : {}) }); return r.ok ? 0 : 1; }
+      if (json()) {
+        const d = { stopped: r.ok && r.wasRunning, wasRunning: r.wasRunning, ...(r.pid ? { pid: r.pid } : {}) };
+        emit(d, { kind: "card", title: "vyred", state: r.ok ? "ok" : "failed",
+          fields: [{ label: "vyred", value: !r.wasRunning ? "was not running" : r.ok ? "stopped" : `did not stop within 5 seconds (pid ${r.pid})` }] });
+        return r.ok ? 0 : 1;
+      }
       if (!r.wasRunning) { out("  vyred is not running"); return 0; }
       if (r.ok) { out("  vyred stopped"); return 0; }
       return fail(`vyred did not stop within 5 seconds (pid ${r.pid})`, { next: `kill ${r.pid}, then vyre up` });
@@ -35,7 +46,12 @@ export default [
       // What memory knows about the user, and the model pass's spend; absent when memory is.
       const personal = (await call("memory.stats").catch(() => null))?.data?.personal;
       const mem = memoryLine(personal);
-      if (json()) return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}) });
+      if (json()) {
+        return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}) }, { kind: "card", title: "vyred", state: d.modules.failed ? "failed" : "ok", fields: [
+          { label: "vyred", value: `running · ${label(d)} · ${d.role}` }, { label: "Up", value: `${Math.round(d.uptime / 1000)} s · pid ${d.pid}` },
+          { label: "Modules", value: `${d.modules.running} running${d.modules.failed ? `, ${d.modules.failed} failed (vyre modules)` : ""}` },
+          ...(mem ? [{ label: "Memory", value: mem.replace(/^memory\s+/, "") }] : []), ...(recall ? [{ label: "Search", value: recall }] : [])] });
+      }
       out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
       if (mem) out(`  ${mem}`);
@@ -48,7 +64,10 @@ export default [
     async run() {
       const r = await request("GET", "/v1/modules");
       if (r.error) return failTool(r.error);
-      if (json()) return emit(r.data);
+      if (json()) {
+        return emit(r.data, { kind: "table", title: "Modules", rows: r.data,
+          columns: [{ key: "name", label: "Module" }, { key: "version", label: "Version" }, { key: "state", label: "State" }, { key: "error", label: "Error" }] });
+      }
       for (const m of r.data) {
         const state = m.state === "running" ? signal(m.state) : ["failed", "invalid"].includes(m.state) ? beacon(m.state) : dim(m.state);
         out(`  ${String(m.name).padEnd(20)} ${String(m.version || "").padEnd(8)} ${state}${m.error ? dim("  " + m.error) : ""}`);
@@ -61,7 +80,7 @@ export default [
     async run() {
       const r = await request("GET", "/v1/tools");
       if (r.error) return failTool(r.error);
-      if (json()) return emit(r.data);
+      if (json()) return emit(r.data, { kind: "table", title: "Tools", rows: r.data, columns: [{ key: "name", label: "Tool" }, { key: "description", label: "What it does" }] });
       for (const t of r.data) out(`  ${t.name.padEnd(28)} ${dim(t.description)}`);
       return 0;
     },
@@ -76,7 +95,9 @@ export default [
       if (!name) return usage("vyre call needs a tool", "vyre tools lists them · vyre call system.echo '{\"text\":\"hi\"}'");
       let input = {};
       if (input0) { try { input = JSON.parse(input0); } catch { return usage("vyre call: the input must be JSON", `vyre call ${name} '{"key":"value"}'`); } }
-      const r = await callAsPerson(name, input, { tty });
+      const r = await callAsPerson(name, input, { tty, io: personIO() });
+      // Under --view it is one frame of the tool's data, or an error frame.
+      if (viewing()) return r.error ? failTool(r.error) : emit(r.data);
       if (r.error) {
         // The code word first, as before: scripts match on it.
         out(beacon(`  ${r.error.code}: `) + r.error.message);
