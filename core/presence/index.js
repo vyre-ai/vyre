@@ -280,11 +280,20 @@ export class Presence {
    * machine's own surfaces)? A surface shows "covered" and sends the session instead of asking.
    * @param {any} peer
    */
-  covered(peer) {
+  covered(peer) { return this.coverage(peer).covered; }
+
+  /**
+   * The same, with when: `since` is when the newest live session for this device was proved and
+   * `expires` when it lapses (ms since the epoch), both null when there is none. A surface shows
+   * "confirmed 12 min ago" from since.
+   * @param {any} peer @returns {{ covered: boolean, since: number|null, expires: number|null }}
+   */
+  coverage(peer) {
     const now = this.now();
     const id = peerId(peer);
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT peer FROM presence_sessions WHERE expires > ? AND last_used > ?").all(now, now - SESSION_IDLE));
-    return rows.some(r => (r.peer ?? null) === id);
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT peer, created, expires FROM presence_sessions WHERE expires > ? AND last_used > ? ORDER BY created DESC").all(now, now - SESSION_IDLE));
+    const row = rows.find(r => (r.peer ?? null) === id);
+    return row ? { covered: true, since: Number(row.created), expires: Number(row.expires) } : { covered: false, since: null, expires: null };
   }
 
   /** What the person sees before proving anything. Never carries a control character. */

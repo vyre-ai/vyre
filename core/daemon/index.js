@@ -179,18 +179,20 @@ export function socketCaller(req) {
 const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
 
 /**
- * Why a socket call to a person-only tool is refused, or null. The label is only a claim, so vyred
- * asks the kernel which process connected (core/daemon/peer.js): from under a `claude`, or under a
- * process vyred runs a thread in, it is a model's shell, however it names itself. Refused
- * silently, never asked: there is nothing the person could prove here. Unknown means refused.
+ * Why a socket call for a person is refused, or null. The label is only a claim, so vyred asks the
+ * kernel which process connected (core/daemon/peer.js). From under a `claude`, or under a process
+ * vyred runs a thread in, it is a model's shell however it names itself: it is an agent caller,
+ * refused silently, and no presence proof or session counts for it. So is a caller whose ancestry
+ * vyred cannot read to the top.
  * @param {import("node:net").Socket} socket @param {any} registry
  */
 async function fromClaude(socket, registry) {
   const pid = await peerPid(socket);
-  if (!pid) return "vyred cannot tell which process is calling, so this person-only tool is refused";
+  if (!pid) return "vyred cannot tell which process is calling, so this is refused";
   const r = await registry.call("threads.pids", {}, "module:vyred");
-  const { inside } = insideClaude(pid, { threads: (r.data && r.data.pids) || [] });
-  return inside ? "this comes from inside a Claude session; only the person answers and approves, on their own screen" : null;
+  const who = insideClaude(pid, { threads: (r.data && r.data.pids) || [] });
+  if (who.inside) return "this comes from inside a Claude session, which acts as an agent: only the person answers, approves and proves presence";
+  return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
 }
 
 /**
@@ -289,14 +291,20 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    if (socket && PERSON_ONLY.has(name) && !MODEL_LABEL.test(caller)) {
+    const input = await body(req);
+    // A person's action on the socket: a person-only tool, one that needs presence for this input,
+    // or any call carrying a presence proof or session.
+    const def = registry.tools.get(name);
+    const personal = PERSON_ONLY.has(name) || Boolean(req.headers["x-vyre-presence"])
+      || Boolean(def && (registry.deps.presence ? registry.deps.presence.required(name, def, input) : def.presence));
+    if (socket && personal && !MODEL_LABEL.test(caller)) {
       const why = await fromClaude(req.socket, registry);
       if (why) return send(res, 403, { error: { code: "denied", message: why } });
     }
     const proof = parsePresence(req.headers["x-vyre-presence"]);
     // For a tool one proof covers, the CLI's terminal: its window is bound to it (core/presence).
     const terminal = socket && person && SESSIONABLE.has(name) && /^(cli|local)$/.test(caller) ? await person(req.socket) : null;
-    const result = await registry.call(name, await body(req), caller, { ...via, proof, ...(terminal ? { terminal } : {}),
+    const result = await registry.call(name, input, caller, { ...via, proof, ...(terminal ? { terminal } : {}),
       keep: req.headers["x-vyre-presence-keep"] === "1" });
     // A session the proof opened goes back in a header, in the form x-vyre-presence takes.
     if (result.session) {

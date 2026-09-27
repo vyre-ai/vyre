@@ -18,19 +18,32 @@ const tree = {
   300: { ppid: 200, args: "node /usr/local/bin/claude" }, 310: { ppid: 300, args: "/bin/bash -c vyre call threads.answer" }, 311: { ppid: 310, args: "vyre call threads.answer" },
   600: { ppid: 500, args: "/opt/claude-code/cli.js --session-id x" }, 610: { ppid: 600, args: "curl --unix-socket" },
   700: { ppid: 400, args: "/Users/alex/.local/bin/claude" },
+  // On the box: the person over ssh, in tmux; a claude someone runs in a tmux pane; tmux a model opened.
+  800: { ppid: 1, args: "sshd: alex [priv]" }, 801: { ppid: 800, args: "-bash" }, 802: { ppid: 801, args: "vyre vault reveal northwind-mail" },
+  900: { ppid: 1, args: "tmux new -s work" }, 901: { ppid: 900, args: "-bash" }, 902: { ppid: 901, args: "vyre gate approve g1" },
+  910: { ppid: 900, args: "-bash" }, 911: { ppid: 910, args: "claude" }, 912: { ppid: 911, args: "/bin/sh -c vyre gate approve g1" },
+  920: { ppid: 310, args: "tmux new -d" }, 921: { ppid: 920, args: "vyre gate approve g1" },
+  // A link vyred cannot read (the process ended mid-walk).
+  990: { ppid: 989, args: "vyre threads answer" },
 };
 const look = pid => tree[pid] || null;
 
-test("peer: the ancestry walks up to init", () => {
-  assert.deepEqual(ancestry(311, look).map(p => p.pid), [311, 310, 300, 200]);
+test("peer: the ancestry walks up to init, and says when it could not", () => {
+  assert.deepEqual(ancestry(311, look), { chain: [311, 310, 300, 200].map(pid => ({ pid, args: tree[pid].args })), complete: true });
+  assert.equal(ancestry(990, look).complete, false);
 });
 
-test("peer: under a claude, or under a thread vyred runs, is inside; a terminal and vyred's own parents are not", () => {
+test("peer: under a claude, or under a thread vyred runs, is inside; a terminal, ssh, tmux and vyred's own parents are not", () => {
   const o = { look, self: 500, threads: [600] };
   assert.deepEqual(insideClaude(311, o), { inside: true, by: 300 }, "a model's Bash under a terminal claude");
   assert.deepEqual(insideClaude(610, o), { inside: true, by: 600 }, "a headless thread's child, whatever its command line says");
   assert.deepEqual(insideClaude(210, o), { inside: false }, "the person's own terminal");
+  assert.deepEqual(insideClaude(802, o), { inside: false }, "the person over ssh");
+  assert.deepEqual(insideClaude(902, o), { inside: false }, "the person's shell in tmux");
+  assert.deepEqual(insideClaude(912, o), { inside: true, by: 911 }, "claude in a tmux pane");
+  assert.deepEqual(insideClaude(921, o), { inside: true, by: 300 }, "a tmux a model started");
   assert.deepEqual(insideClaude(500, o), { inside: false }, "vyred itself");
+  assert.deepEqual(insideClaude(990, o), { inside: false, unknown: true }, "an unreadable chain is unknown, and vyred refuses it");
   // A claude above vyred (vyred and the caller both started from one session) is not the caller's.
   tree[400].ppid = 700;
   try { assert.deepEqual(insideClaude(210, { ...o, self: 500 }), { inside: false }); }
@@ -38,12 +51,12 @@ test("peer: under a claude, or under a thread vyred runs, is inside; a terminal 
 });
 
 /** A client run as `node <client.mjs>`, optionally under a fake `claude`. It prints the tool's answer. */
-function client(dir, socket, tool, input, { underClaude = false } = {}) {
+function client(dir, socket, tool, input, { underClaude = false, headers = {} } = {}) {
   const js = path.join(dir, "client.mjs");
   fs.writeFileSync(js, `import http from "node:http";
 const data = JSON.stringify(${JSON.stringify(input)});
 const req = http.request({ socketPath: ${JSON.stringify(socket)}, path: "/v1/tools/${tool}", method: "POST",
-  headers: { "content-type": "application/json", "content-length": Buffer.byteLength(data), "x-vyre-caller": "cli" } }, res => {
+  headers: { "content-type": "application/json", "content-length": Buffer.byteLength(data), "x-vyre-caller": "cli", ...${JSON.stringify(headers)} } }, res => {
   let out = ""; res.on("data", c => (out += c)); res.on("end", () => { process.stdout.write(JSON.stringify({ status: res.statusCode, body: JSON.parse(out) })); });
 });
 req.end(data);
@@ -85,6 +98,10 @@ test("peer: a person-only call from under a claude is refused silently; the same
   // Tools that are not person-only are not traced at all.
   const list = await client(dir, socket, "agents.list", {}, { underClaude: true });
   assert.equal(list.status, 200, JSON.stringify(list));
+  // A human-only tool with a proof (a presence session, say) from inside is an agent's: refused before the proof is read.
+  const held = await client(dir, socket, "presence.session.open", {}, { underClaude: true, headers: { "x-vyre-presence": "session id=abc secret=def" } });
+  assert.equal(held.status, 403, JSON.stringify(held));
+  assert.match(held.body.error.message, /inside a Claude session/);
 });
 
 test("peer: a detached process has no controlling terminal, whatever it says", async () => {
