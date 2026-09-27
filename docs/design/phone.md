@@ -312,23 +312,24 @@ Action area (8 between buttons, 34 bottom):
   are always `required: false`). Under it, two secondary buttons side by side, 46 tall, radius
   12: "Always in <project>" (approves and writes the rule) and "Deny". Where
   `ask.always_project` is null, Deny takes the full width.
-- Held item at the Gate (a send or spend): the primary follows the three presence states below,
+- Held item at the Gate (a send, spend or delete of outside data): the primary follows the three presence states below,
   "Send with Face ID" (22 px glyph; "with Touch ID", "with fingerprint", "with passkey" by
   device) only when not covered; "Discard" secondary, never a proof. Drafts are held sends.
   Nothing else.
 - Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" secondary. No
   proof.
 - When Face ID shows (the no-nag rule): only for pairing a device, reading or using a vault
-  secret, and outbound actions (messages, posts, emails, payments). In this sheet that means a
-  held send or spend at the Gate. Asks (Claude's permission asks and questions), edits, commands,
-  git pushes, discards and deletions never prompt. The phone reads the box's `presence:
+  secret, outbound actions (messages, posts, emails, payments), and deleting outside data (mail,
+  files, posts). In this sheet that means a held send, spend or delete at the Gate. Asks
+  (Claude's permission asks and questions), edits, commands, git pushes and discards never
+  prompt. The phone reads the box's `presence:
   {required, covered}` on every ask and held item and never guesses from the tool name. There
   are three states:
   - `required: false`: no proof. "Approve" or "Send" with a check glyph, one tap.
-  - `required: true, covered: true`: this device proved presence recently (the session ends after
-    5 minutes idle, 30 at most). No prompt. "Send" with a check glyph, and one Meta `--text-2`
+  - `required: true, covered: true`: this device proved presence recently (one proof lasts about
+    30 minutes). No prompt. "Send" (or "Delete") with a check glyph, and one Meta `--text-2`
     line under the button: "Confirmed with Face ID a moment ago" ("12 min ago").
-  - `required: true, covered: false`: "Send with Face ID" with the Face ID glyph; the proof runs
+  - `required: true, covered: false`: "Send with Face ID" ("Delete with Face ID") with the glyph; the proof runs
     on tap and opens a new presence session.
   If `covered` has lapsed by the time you tap (the box refuses), the sheet asks for Face ID then,
   in place, without closing.
