@@ -102,7 +102,7 @@ const tail = (s, n) => { const t = String(s || ""); return t.length > n ? "…" 
 // ------------------------------------------------------------ how --view draws them (core/cli/view.js)
 
 /** A thread's status as a card's state. */
-const stateOf = st => (st === "idle" ? "ok" : st === "stopped" ? "off" : st === "failed" ? "failed" : "wait");
+const stateOf = st => (st === "idle" ? "ok" : st === "stopped" ? "unknown" : st === "failed" ? "failed" : "wait");
 /** threads.list's rows as a table: the columns a person reads, the id kept to act on. @param {any[]} ts */
 export const threadTable = ts => ({ kind: "table", title: "Threads", empty: "No headless threads in the last day",
   columns: [{ key: "name", label: "Thread" }, { key: "status", label: "Status" }, { key: "holder", label: "Keyboard" }, { key: "agent", label: "Agent" }, { key: "asks", label: "Asks" }, { key: "id", label: "Id" }],

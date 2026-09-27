@@ -82,14 +82,15 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   core/cli/commands/threads-sessions.test.js core/cli/commands/apps.test.js voice.test.js
   statusline.test.js sessions.test.js needs.test.js box.test.js core/term/term.test.js
   test/projects-cli.test.js test/docs-index.test.js test/docs-check.test.js test/docs-build.test.js,
-  then every core/cli/commands/*.test.js one file at a time.
+  then every core/cli/commands/*.test.js one file at a time, all with VYRE_CHECK_VIEWS=1 (a view
+  that does not fit platform's Render then fails the verb; core/cli/view.js renderProblems).
 - Batch 4 sha sent: 4bc5c14b. The next batch gets HEAD once the runs above pass.
 
 ## Next
 
-0. Render (platform agreed to our frame fields, prompt flat as asked; work/platform 7d548e64, local until platform pushes):
-   when its sha lands, JSDoc-import Render from packages/module-sdk in core/cli/view.js and add a
-   test that every builder and derived view satisfies it.
+0. Render: platform took our fields, prompt flat (work/platform b5145ee1, local until pushed).
+   view.js renderProblems mirrors it at run time (VYRE_CHECK_VIEWS=1 in tests); when the d.ts is
+   on main, add the JSDoc type import too.
    vyre key (cohesion 6): thin verbs over vault.need / vault.connect once work/vault-next lands;
    vault-next already has `vyre vault need|connect` in vault.js, which will conflict with our
    vault.js views (d035a46c): merge carefully. voice key becomes an alias.

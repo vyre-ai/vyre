@@ -40,7 +40,7 @@ function parse(args) {
 /** The side view as a card: each half and where it sits. @param {any} d */
 export function card(d) {
   if (!d.open) return { kind: "text", lines: ["The side view is not open"] };
-  return { kind: "card", title: "Side view", state: "open", fields: [
+  return { kind: "card", title: "Side view", state: "ok", fields: [
     { label: "Left", value: `${d.left.app} · ${box(d.left.frame)}` }, { label: "Right", value: `${d.right.app} · ${box(d.right.frame)}` }] };
 }
 

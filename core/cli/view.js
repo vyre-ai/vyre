@@ -92,6 +92,52 @@ export function derive(data) {
   return { kind: "card", fields: Object.entries(data).map(([k, v]) => ({ label: label(k), value: show(v) })) };
 }
 
+/** A check's or a card's state (platform's CheckState). */
+export const STATES = Object.freeze(["ok", "wait", "failed", "unknown"]);
+
+/**
+ * What in a view does not fit platform's Render (packages/module-sdk/index.d.ts), as short
+ * reasons; [] when it fits. Surfaces draw exactly that type, so the CLI's tests hold every view
+ * the CLI makes to it.
+ * @param {any} v
+ * @returns {string[]}
+ */
+export function renderProblems(v) {
+  const bad = [];
+  const str = x => typeof x === "string";
+  const list = (x, each, what) => { if (!Array.isArray(x)) bad.push(`${what} is not a list`); else x.forEach((e, i) => { const why = each(e); if (why) bad.push(`${what}[${i}]: ${why}`); }); };
+  if (!v || typeof v !== "object" || !KINDS.includes(v.kind)) return [`kind is not one of ${KINDS.join(", ")}`];
+  if (v.title !== undefined && !str(v.title)) bad.push("title is not text");
+  if (v.actions !== undefined) list(v.actions, a => (a && str(a.label) && str(a.tool) ? null : "an action needs label and tool"), "actions");
+  const known = { table: ["columns", "rows", "empty"], card: ["fields", "state"], text: ["lines"], qr: ["text", "caption"], checks: ["items"],
+    prompt: ["name", "label", "choices", "secret", "args", "answer", "flag", "tool", "input"], error: ["code", "message", "next"] }[v.kind];
+  for (const k of Object.keys(v)) if (!["kind", "title", "actions", ...known].includes(k)) bad.push(`${v.kind} has no field ${k}`);
+  switch (v.kind) {
+    case "table":
+      list(v.columns, c => (c && str(c.key) && str(c.label) ? null : "a column is {key, label}"), "columns");
+      list(v.rows, r => (r && typeof r === "object" && !Array.isArray(r) ? null : "a row is an object"), "rows");
+      if (v.empty !== undefined && !str(v.empty)) bad.push("empty is not text");
+      break;
+    case "card":
+      list(v.fields, f => (f && str(f.label) && "value" in f ? null : "a field is {label, value}"), "fields");
+      if (v.state !== undefined && !STATES.includes(v.state)) bad.push(`state ${v.state} is not one of ${STATES.join(", ")}`);
+      break;
+    case "text": list(v.lines, l => (str(l) ? null : "a line is text"), "lines"); break;
+    case "qr": if (!str(v.text) || !v.text) bad.push("qr needs its text"); if (v.caption !== undefined && !str(v.caption)) bad.push("caption is not text"); break;
+    case "checks":
+      list(v.items, c => (c && str(c.id) && str(c.label) && STATES.includes(c.state) ? null : "a check is {id, label, state}"), "items");
+      break;
+    case "prompt":
+      if (!str(v.name) || !str(v.label)) bad.push("a prompt needs name and label");
+      if (v.choices !== undefined) list(v.choices, c => (str(c) ? null : "a choice is text"), "choices");
+      if (Array.isArray(v.args)) { if (!ANSWERS.includes(v.answer)) bad.push("an argv prompt needs answer"); if (v.answer === "flag" && !str(v.flag)) bad.push("a flag prompt names its flag"); }
+      else if (!str(v.tool)) bad.push("a prompt is answered by args or a tool");
+      break;
+    case "error": if (!str(v.code) || !str(v.message)) bad.push("an error needs code and message"); break;
+  }
+  return bad;
+}
+
 /**
  * One frame line.
  * @param {string} cmd the words that name the verb ("threads list")
@@ -99,6 +145,11 @@ export function derive(data) {
  * @param {any} [view] the verb's own view; derived when left out
  */
 export function frame(cmd, data, view) {
+  // Tests run with VYRE_CHECK_VIEWS=1: a view that does not fit Render fails the verb there.
+  if (process.env.VYRE_CHECK_VIEWS === "1" && view) {
+    const bad = renderProblems(view);
+    if (bad.length) throw new Error(`the ${cmd} view does not fit Render: ${bad.join("; ")}`);
+  }
   return { v: VERSION, cmd, view: view && typeof view === "object" && view.kind ? view : derive(data), data: data === undefined ? null : data };
 }
 

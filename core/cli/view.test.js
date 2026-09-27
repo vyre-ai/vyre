@@ -9,7 +9,7 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tempHome } from "../../test/helpers.js";
-import { derive, frame, done, verbWords, textLines, label, prompt, KINDS, ANSWERS } from "./view.js";
+import { derive, frame, done, verbWords, textLines, label, prompt, renderProblems, KINDS, ANSWERS, STATES } from "./view.js";
 import { parseUsage, verbsOf, argsOf } from "./verbs.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "bin", "vyre");
@@ -60,6 +60,21 @@ test("view: every prompt says where its answer goes", () => {
   assert.deepEqual(prompt({ name: "turn", label: "Which?", args: ["threads", "rewind", "t1"], answer: "word", choices: ["1", "2"] }).choices, ["1", "2"]);
   assert.throws(() => prompt({ name: "x", label: "x", args: [], answer: "maybe" }), /word, flag, stdin, confirm/);
   assert.throws(() => prompt({ name: "x", label: "x", args: [], answer: "flag" }), /names its flag/);
+});
+
+test("view: every derived view and prompt fits platform's Render; a misfit is named", () => {
+  const samples = [[{ id: "d1", label: "kit" }], [], { box: "Harlow Legal", devices: [{ id: "d1" }] }, { devices: [] }, { a: 1, b: [1, 2] }, "hi", ["a"], null,
+    { error: { code: "bad_input", message: "no", next: "vyre help" } }];
+  for (const d of samples) assert.deepEqual(renderProblems(derive(d)), [], JSON.stringify(d));
+  assert.deepEqual(renderProblems(prompt({ name: "t", label: "T", args: ["x"], answer: "word" })), []);
+  assert.deepEqual(renderProblems({ kind: "prompt", name: "t", label: "T", tool: "gate.revise", input: { id: "d1" } }), [], "a tool-answered prompt");
+  assert.deepEqual(renderProblems({ kind: "qr", text: "https://vyre.run/pair#x", caption: "Scan it", actions: [{ label: "Copy", tool: "relay.pair.start" }] }), []);
+  assert.deepEqual(renderProblems({ kind: "checks", items: STATES.map(s => ({ id: s, label: s, state: s })) }), []);
+  assert.deepEqual(renderProblems({ kind: "card", state: "off", fields: [] }), ["state off is not one of ok, wait, failed, unknown"]);
+  assert.deepEqual(renderProblems({ kind: "table", columns: ["name"], rows: [] }), ["columns[0]: a column is {key, label}"]);
+  assert.deepEqual(renderProblems({ kind: "text", text: "x", lines: [] }), ["text has no field text"]);
+  assert.deepEqual(renderProblems({ kind: "prompt", name: "t", label: "T" }), ["a prompt is answered by args or a tool"]);
+  assert.deepEqual(renderProblems({ kind: "nope" }), ["kind is not one of table, card, text, qr, checks, prompt, error"]);
 });
 
 test("verbs: the usage grammar gives verbs, arguments, flags and choices", () => {

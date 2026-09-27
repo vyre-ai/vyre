@@ -50,7 +50,7 @@ test("sideview status --json and --view: a read that never starts vyred, exit 5 
 
 test("sideview: the open side view is a card with each half and where it sits", () => {
   const d = { open: true, left: { app: "Terminal", frame: { x: 0, y: 25, w: 600, h: 875 } }, right: { app: "Google Chrome", frame: { x: 600, y: 25, w: 840, h: 875 } } };
-  assert.deepEqual(card(d), { kind: "card", title: "Side view", state: "open", fields: [
+  assert.deepEqual(card(d), { kind: "card", title: "Side view", state: "ok", fields: [
     { label: "Left", value: "Terminal · 600x875 at 0,25" }, { label: "Right", value: "Google Chrome · 840x875 at 600,25" }] });
   assert.deepEqual(card({ open: false }), { kind: "text", lines: ["The side view is not open"] });
 });
