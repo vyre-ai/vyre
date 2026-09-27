@@ -186,10 +186,16 @@ async function freePort() {
 test("computerd: /fs is behind the bearer token, and the shield answers 423 on its eyes and hands", async t => {
   const dir = home(t);
   const port = await freePort();
+  // computerd starts Chrome itself: give it the fake one (testing/fake-chrome.js), never a real one.
+  const side = fs.mkdtempSync(path.join(SCRATCH, "computerd-chrome-"));
+  fs.mkdirSync(path.join(side, "profile"));
+  const chrome = path.join(side, "fake-chromium");
+  fs.writeFileSync(chrome, `#!/bin/sh\nexec "${process.execPath}" "${path.join(HERE, "testing", "fake-chrome.js")}" "$@"\n`);
+  fs.chmodSync(chrome, 0o755);
   const child = spawn(process.execPath, [path.join(HERE, "index.js")], {
-    env: { ...process.env, COMPUTERD_TOKEN: TOKEN, COMPUTERD_PORT: String(port), COMPUTERD_FS_ROOT: dir }, stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, HOME: side, CHROME_BIN: chrome, CHROME_PROFILE: path.join(side, "profile"), COMPUTERD_TOKEN: TOKEN, COMPUTERD_PORT: String(port), COMPUTERD_FS_ROOT: dir }, stdio: ["ignore", "pipe", "pipe"],
   });
-  t.after(() => { child.kill("SIGKILL"); });
+  t.after(() => { child.kill("SIGKILL"); fs.rmSync(side, { recursive: true, force: true }); });
   await new Promise((resolve, reject) => {
     child.stdout.on("data", d => { if (/listening/.test(String(d))) resolve(undefined); });
     child.once("exit", code => reject(new Error(`computerd exited ${code}`)));
