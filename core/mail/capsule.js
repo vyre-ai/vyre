@@ -52,7 +52,7 @@ export function composeId(account, fill) {
 
 /** @param {string} id */
 export function parseComposeId(id) {
-  const m = /^compose:([a-z][a-z0-9-]{0,31}):([A-Za-z0-9_-]{0,4000})$/.exec(String(id || ""));
+  const m = /^compose:([A-Za-z0-9_-]{1,64}):([A-Za-z0-9_-]{0,4000})$/.exec(String(id || ""));
   if (!m) return null;
   try {
     const f = JSON.parse(Buffer.from(m[2], "base64url").toString("utf8") || "{}");
@@ -65,6 +65,6 @@ export function parseComposeId(id) {
 /** A message row's id, for the "open" action on a search row. */
 export const messageId = (account, id) => `msg:${account}:${Buffer.from(String(id), "utf8").toString("base64url")}`;
 export function parseMessageId(id) {
-  const m = /^msg:([a-z][a-z0-9-]{0,31}):([A-Za-z0-9_-]{1,2000})$/.exec(String(id || ""));
+  const m = /^msg:([A-Za-z0-9_-]{1,64}):([A-Za-z0-9_-]{1,2000})$/.exec(String(id || ""));
   return m ? { account: m[1], id: Buffer.from(m[2], "base64url").toString("utf8") } : null;
 }

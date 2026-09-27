@@ -406,3 +406,29 @@ test("google: a sign-in finished by the pasted address works once, and a cancell
   assert.deepEqual(types, ["google.added", "google.connected", "google.connect-failed", "google.connect-failed"]);
   assertNoLeak(v, [client.client_secret, ...fake.issued.keys(), ...fake.tokens.keys(), new URL(back).searchParams.get("code") || ""]);
 });
+
+test("google: on_behalf files a module's held send under the thread and agent it names; from a model it is ignored", async t => {
+  const fake = await startFakeGoogle(t);
+  const v = await vyred(t);
+  await item(v, "work-google", "secret", { value: fake.serviceAccount(ME) });
+  assert.ok((await v.cli("google.add", { name: "work", email: ME, auth: { type: "service-account", item: "work-google" }, base: fake.base })).data);
+  const mail = { to: "dana@northwind-bakery.example", subject: "Oven rota", body: "Hi Dana, the rota is ready. Alex" };
+
+  // The mail module sends for a chat (or an agent) that vyred verified for it.
+  const fromModule = await v.d.registry.call("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } }, "module:mail", {});
+  assert.ok(fromModule.data?.held, JSON.stringify(fromModule));
+  const a = (await v.local("gate.get", { id: fromModule.data.held })).data;
+  assert.deepEqual([a.via, a.thread, a.agent], ["google:work", "t-9", "kit"]);
+
+  // A model naming another thread and agent: filed under its own verified thread, no agent.
+  const fromModel = await v.model("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } });
+  assert.ok(fromModel.data?.held, JSON.stringify(fromModel));
+  const b = (await v.local("gate.get", { id: fromModel.data.held })).data;
+  assert.deepEqual([b.via, b.thread, b.agent ?? null], ["google:work", "t-1", null]);
+
+  // From cli, a person, it is ignored as well.
+  const fromCli = await v.cli("google.mail.send", { ...mail, on_behalf: { thread: "t-9", agent: "kit" } });
+  const c = (await v.local("gate.get", { id: fromCli.data.held })).data;
+  assert.ok(!c.thread && !c.agent, JSON.stringify(c));
+  assert.equal(fake.mail.sent.length, 0, "a held send reached Gmail");
+});

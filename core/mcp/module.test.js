@@ -236,3 +236,124 @@ test("mcp: a server that keeps crashing stops restarting after three tries, unti
   assert.equal((await v.cli("mcp.restart", { name: "flaky" })).data.state, "running");
   assert.equal(starts(log), 5);
 });
+
+test("mcp: several instances of one server, each with its own credential", async t => {
+  const v = await vyred(t);
+  const home = fake("mail-home"), work = fake("mail-work");
+  await v.secret("mail-home-token", home);
+  await v.secret("mail-work-token", work);
+  const sha = s => crypto.createHash("sha256").update(s).digest("hex");
+  const homeLog = path.join(v.root, "mail-home.log"), workLog = path.join(v.root, "mail-work.log");
+  // The same fake server twice, one credential each, told to say which one it holds as a hash.
+  const mail = (name, logFile, item) => stdio(name, logFile, { FAKE_MCP_IDENTITY_ENV: "MAIL_TOKEN", FAKE_MCP_REQUIRE_ENV: "MAIL_TOKEN" },
+    { env: { MAIL_TOKEN: item }, tools: { mode: { whoami: "read" } }, idle: 200 });
+  const a = await v.cli("mcp.add", mail("mail-home", homeLog, "mail-home-token"));
+  assert.equal(a.data.test.ok, true, JSON.stringify(a));
+  assert.equal(a.data.tools, 7);
+  const b = await v.cli("mcp.add", mail("mail-work", workLog, "mail-work-token"));
+  assert.equal(b.data.test.ok, true, JSON.stringify(b));
+
+  const servers = (await v.cli("mcp.servers")).data;
+  assert.deepEqual(servers.map(s => [s.name, s.transport]), [["mail-home", "stdio"], ["mail-work", "stdio"]]);
+  const tools = (await v.session("t-1")("mcp.tools")).data;
+  assert.equal(tools.length, 14);
+  const names = tools.map(x => x.name);
+  assert.equal(new Set(names).size, names.length, "two instances share a tool name");
+  assert.ok(names.includes("mail-home__whoami") && names.includes("mail-work__whoami"));
+  assert.deepEqual(tools.filter(x => x.tool === "send_message").map(x => [x.server, x.outward]), [["mail-home", true], ["mail-work", true]]);
+
+  // Both stop when idle; a call to one starts that one alone.
+  await until(async () => (await v.cli("mcp.servers")).data.every(s => s.state === "stopped"));
+  assert.deepEqual([starts(homeLog), starts(workLog)], [1, 1]);
+  const h = await v.cli("mcp.call", { name: "mail-home__whoami" });
+  assert.equal(h.data.structuredContent.sha256, sha(home), JSON.stringify(h));
+  assert.deepEqual([starts(homeLog), starts(workLog)], [2, 1], "a call to mail-home started mail-work");
+  assert.deepEqual(calls(workLog), [], "a call to mail-home reached mail-work");
+  assert.equal(calls(homeLog).length, 1);
+
+  const w = await v.cli("mcp.call", { server: "mail-work", tool: "whoami" });
+  assert.equal(w.data.structuredContent.sha256, sha(work), JSON.stringify(w));
+  assert.notEqual(sha(home), sha(work));
+  assert.deepEqual([starts(homeLog), starts(workLog)], [2, 2]);
+  assert.equal(calls(homeLog).length, 1, "a call to mail-work reached mail-home");
+  assert.equal(calls(workLog).length, 1);
+
+  // A held send is filed for its own instance, and names it.
+  const held = (await v.session("t-1")("mcp.call", { name: "mail-work__send_message", arguments: { to: "dana@northwind-bakery.example", text: "The rota is ready." } })).data.held;
+  assert.equal((await v.cli("gate.get", { id: held })).data.via, "mcp:mail-work");
+  assert.equal(calls(workLog).length, 1);
+
+  const rows = v.d.registry.deps.db.prepare("SELECT * FROM mcp_servers").all();
+  const everything = JSON.stringify([v.events(), v.lines, rows, servers, tools, h, w, a, b]);
+  for (const value of [home, work]) assert.ok(!everything.includes(value), "a credential leaked");
+});
+
+test("mcp: hold and on_behalf are for modules only", async t => {
+  const v = await vyred(t);
+  const log = path.join(v.root, "chat.log");
+  assert.equal((await v.cli("mcp.add", stdio("chat", log))).data.test.ok, true);
+  const mod = (tool, input = {}) => v.d.registry.call(tool, input, "module:mail", {});
+  const gateGet = async id => (await v.cli("gate.get", { id })).data;
+  const behalf = { thread: "t-9", agent: "kit" };
+
+  // A module: hold holds even a read, and the item is filed under the thread and agent it names.
+  const r1 = await mod("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: behalf });
+  assert.ok(r1.data?.held, JSON.stringify(r1));
+  assert.deepEqual(calls(log), [], "a held read reached the server");
+  const it1 = await gateGet(r1.data.held);
+  assert.deepEqual([it1.via, it1.kind, it1.thread, it1.agent], ["mcp:chat", "send", "t-9", "kit"]);
+  assert.equal(it1.state, "held");
+  // Without hold, the same read from the module runs.
+  assert.equal((await mod("mcp.call", { server: "chat", tool: "list_issues" })).data.structuredContent.issues.length, 2);
+  assert.equal(calls(log).length, 1);
+
+  // A tool that sends can never be set to read; a plain one can, and hold still holds it.
+  const refused = await v.cli("mcp.update", { name: "chat", tools: { mode: { send_message: "read" } } });
+  assert.match(refused.error.message, /sends as the person/);
+  assert.ok((await v.cli("mcp.update", { name: "chat", tools: { mode: { get_issue: "read" } } })).data);
+  const r2 = await mod("mcp.call", { server: "chat", tool: "get_issue", arguments: { id: 1 }, hold: true, on_behalf: { thread: "t-8" } });
+  assert.ok(r2.data?.held, JSON.stringify(r2));
+  const it2 = await gateGet(r2.data.held);
+  assert.equal(it2.thread, "t-8");
+  assert.ok(!it2.agent);
+  assert.equal(calls(log).length, 1, "a held get_issue reached the server");
+
+  // A model in a person's session: hold on a read is ignored (it runs), on_behalf never refiles.
+  const s = v.session("t-1");
+  const r3 = await s("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: behalf });
+  assert.equal(r3.data?.held, undefined, JSON.stringify(r3));
+  assert.equal(r3.data.structuredContent.issues.length, 2);
+  assert.equal(calls(log).length, 2);
+  const r4 = await s("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "Oven rota" }, on_behalf: behalf });
+  const it4 = await gateGet(r4.data.held);
+  assert.deepEqual([it4.thread, it4.agent ?? null], ["t-1", null]);
+  // A session with no thread claims one through on_behalf: still filed under none.
+  const r4b = await v.session()("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "x" }, on_behalf: behalf });
+  const it4b = await gateGet(r4b.data.held);
+  assert.ok(!it4b.thread && !it4b.agent, JSON.stringify(it4b));
+
+  // An agent: the same, filed under its own verified thread and name.
+  const kit = v.agent("kit", "t-k");
+  const r5 = await kit("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: { thread: "t-9", agent: "juno" } });
+  assert.equal(r5.data?.held, undefined, JSON.stringify(r5));
+  assert.equal(calls(log).length, 3);
+  const r6 = await kit("mcp.call", { server: "chat", tool: "send_message", arguments: { to: "dana@northwind-bakery.example", text: "Rota is up." }, on_behalf: { thread: "t-9", agent: "juno" } });
+  const it6 = await gateGet(r6.data.held);
+  assert.deepEqual([it6.thread, it6.agent], ["t-k", "kit"]);
+  // The in-process caller string alone, with no meta: still the agent, never the claim.
+  const r6b = await v.d.registry.call("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "y" }, on_behalf: { thread: "t-9", agent: "juno" } }, "mcp:agent:kit", {});
+  const it6b = await gateGet(r6b.data.held);
+  assert.equal(it6b.agent, "kit");
+  assert.notEqual(it6b.thread, "t-9");
+
+  // cli: a person, but not a module; both fields are ignored too.
+  const r7 = await v.cli("mcp.call", { server: "chat", tool: "list_issues", hold: true, on_behalf: behalf });
+  assert.equal(r7.data?.held, undefined, JSON.stringify(r7));
+  assert.equal(calls(log).length, 4);
+  const r8 = await v.cli("mcp.call", { server: "chat", tool: "create_issue", arguments: { title: "z" }, on_behalf: behalf });
+  const it8 = await gateGet(r8.data.held);
+  assert.ok(!it8.thread && !it8.agent, JSON.stringify(it8));
+
+  assert.equal(calls(log).length, 4, "a held call reached the server");
+  assert.ok(calls(log).every(l => l.startsWith("call list_issues ")));
+});

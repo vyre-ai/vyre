@@ -44,7 +44,7 @@ function best(tools, verb, need) {
  * @returns {{ send?: any, search?: any, read?: any }}
  */
 export function guess(tools) {
-  const list = Array.isArray(tools) ? tools : [];
+  const list = (Array.isArray(tools) ? tools : []).filter(t => t && typeof t === "object");
   /** @type {any} */
   const map = {};
   const s = best(list, /send|compose_and_send|^reply$/i, [TO, SUBJECT, BODY]);
