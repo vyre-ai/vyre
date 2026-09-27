@@ -13,6 +13,8 @@
 //     than from anything this script says.
 //   - A password read at submit goes to the worker once, is held there in memory for two
 //     minutes, and is saved only if the person clicks Save on the prompt that follows.
+//   - A payment or address field (cards.js, loaded first, says which) offers the vault's cards or
+//     addresses the same way: names only here, the values go from the worker to cards.js.
 
 /* global chrome */
 
@@ -87,6 +89,54 @@
   /** @param {HTMLInputElement} el */
   const isLoginField = el => el.type === "password" || /username|email/i.test(`${el.autocomplete} ${el.type} ${el.name} ${el.id}`);
 
+  // ---- cards and addresses ----------------------------------------------------------------
+
+  const C = g.vyreCards;
+  /** Fields that make a form an address form, not just a name or an email box. */
+  const ADDRESSY = /^(street-address|address-line1|address-level2|postal-code)$/;
+  /** After a fill, the fields it focused are not offered again straight away. */
+  let quietUntil = 0;
+
+  /** @param {Element} el @returns {string|null} */
+  function keyOf(el) {
+    try { return C.classify(C.describe(el)); } catch { return null; }
+  }
+
+  /** "card", "address" or null for a focused field. @param {HTMLElement} el */
+  function payKind(el) {
+    if (!C) return null;
+    const key = keyOf(el);
+    if (!key) return null;
+    if (C.isCardKey(key)) return "card";
+    if (!C.isAddressKey(key)) return null;
+    const scope = /** @type {any} */ (el).form || document;
+    return [...scope.querySelectorAll("input, select, textarea")].some(x => ADDRESSY.test(keyOf(x) || "")) ? "address" : null;
+  }
+
+  /** The vault's cards or addresses under a field. @param {HTMLElement} anchor @param {"card"|"address"} kind */
+  async function chooseCard(anchor, kind) {
+    const r = await ask({ type: "inline-cards" });
+    box.replaceChildren();
+    if (r && r.error) {
+      box.append(line(r.error.code === "locked" ? "Vyre is locked. Unlock it from the toolbar button." : r.error.message));
+    } else {
+      const items = r && r.data ? (kind === "card" ? r.data.cards : r.data.addresses) : null;
+      if (!Array.isArray(items) || !items.length) return hide();
+      for (const it of items) {
+        const label = `${kind === "card" ? "Fill card" : "Fill address"}: ${String(it.description || it.name).slice(0, 60)}`;
+        box.append(button(label, async () => {
+          g.vyreCardAnchor = anchor;
+          const f = await ask({ type: kind === "card" ? "inline-card-fill" : "inline-address-fill", name: it.name });
+          if (f && f.error) { box.replaceChildren(line(f.error.message), button("Close", hide)); return; }
+          quietUntil = Date.now() + 1500;
+          hide();
+        }));
+      }
+    }
+    box.append(button("Close", hide));
+    place(/** @type {HTMLInputElement} */ (anchor));
+  }
+
   /** @param {HTMLInputElement|null} anchor @param {{ otp?: boolean }} [o] */
   async function choose(anchor, { otp = false } = {}) {
     const r = await ask({ type: "inline-match" });
@@ -109,11 +159,20 @@
   }
 
   document.addEventListener("focusin", e => {
-    const el = /** @type {HTMLInputElement} */ (e.target);
-    if (!e.isTrusted || !(el instanceof HTMLInputElement) || el.disabled || el.readOnly) return;
+    const t = /** @type {any} */ (e.target);
+    if (!e.isTrusted || Date.now() < quietUntil) return;
+    // A select or textarea can be a card or address field (a country, an expiry month), never a login.
+    if (!(t instanceof HTMLInputElement)) {
+      const pay = (t instanceof HTMLSelectElement || t instanceof HTMLTextAreaElement) && !t.disabled && !t.readOnly ? payKind(t) : null;
+      if (pay) chooseCard(t, pay);
+      return;
+    }
+    const el = /** @type {HTMLInputElement} */ (t);
+    if (el.disabled || el.readOnly) return;
     if (el.autocomplete === "new-password") return;
     if (isOtp(el)) choose(el, { otp: true });
     else if (isLoginField(el) && document.querySelector('input[type="password"]')) choose(el);
+    else { const pay = payKind(el); if (pay) chooseCard(el, pay); }
   }, true);
 
   document.addEventListener("keydown", e => { if (e.key === "Escape" && host.isConnected) hide(); }, true);

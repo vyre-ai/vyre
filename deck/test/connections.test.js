@@ -12,7 +12,11 @@ import { fileURLToPath } from "node:url";
 import { install, text, everything, $, $$ } from "./fake-dom.js";
 
 install();
-const { drawConnections, pickServers, pickItems, pickGoogleTest, itemsFor, toolModes, EVENTS } = await import("../views/connections.js");
+// icons.js (the Connections cards' avatars and chip glyphs) parses its drawings with DOMParser,
+// which the fake DOM does not have (deck/test/rail.test.js's own fix).
+/** @type {any} */ (globalThis).DOMParser = class { parseFromString() { const s = document.createElement("svg"); s.append(document.createElement("circle")); return { documentElement: s }; } };
+/** @type {any} */ (document).importNode = (/** @type {any} */ n) => n;
+const { drawConnections, pickServers, pickItems, pickGoogleTest, pickConnections, itemsFor, toolModes, EVENTS } = await import("../views/connections.js");
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const FIXTURE = JSON.parse(fs.readFileSync(path.join(DECK, "fixtures", "connections.json"), "utf8"));
@@ -82,7 +86,7 @@ const submit = form => Promise.all(form.dispatchEvent(new Event("submit")));
 
 test("renders every server and account with names only", async () => {
   const { el, api } = await render();
-  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["google.accounts", "mcp.servers"], "opening makes two calls, and never google.test");
+  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["google.accounts", "mcp.servers", "vault.connections.list"], "opening makes three calls, and never google.test");
 
   const t = text(server(el, "tracker"));
   assert.match(t, /tracker/);
@@ -118,6 +122,91 @@ test("renders every server and account with names only", async () => {
   assert.match(b, /OAuth/);
   assert.match(b, /northwind-google/);
   noLeak(el);
+});
+
+const connection = (el, id) => $(el, `[data-connection=${id}]`);
+
+const chipsOf = c => [...$$(c, ".cn-chip")].map(b => ({ text: text(b).trim(), on: b.getAttribute("aria-pressed") === "true" }));
+const findChip = (c, label) => [...$$(c, ".cn-chip")].find(b => text(b).startsWith(label));
+
+test("Connections cards: one per vault connection, whatever the source, granted chips shown, problem rows simplified", async () => {
+  const { el } = await render();
+  const alex = text(connection(el, "cn_alex"));
+  assert.match(alex, /alex@harlowlegal\.com/, "the account is the heading, not the label (account-row.md)");
+  assert.match(alex, /Google/);
+  assert.match(alex, /Default/, "a default beats Last used (account-row.md's Trailing priority)");
+  assert.doesNotMatch(alex, /min ago/, "Last used is not shown once Default applies");
+  assert.match(alex, /Connected 9 d ago/);
+  assert.match(alex, /Wrong account\?/);
+  // Granted: Capsule and Chat show pressed; Agents and Phone do not. The Agents chip trails a
+  // shield glyph while off (chip.md's Asking state); the others do not.
+  assert.deepEqual(chipsOf(connection(el, "cn_alex")), [
+    { text: "Capsule", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: true } ]);
+  assert.ok($(findChip(connection(el, "cn_alex"), "Agents"), "svg.cn-chip-shield"), "the Agents chip, off, trails the shield glyph");
+  assert.equal($(findChip(connection(el, "cn_alex"), "Capsule"), "svg.cn-chip-shield"), null, "a non-Agents chip never trails one");
+
+  const tracker = text(connection(el, "cn_tracker"));
+  assert.match(tracker, /tracker/, "the account (its own name/ref for an MCP row) is the heading");
+  assert.match(tracker, /Northwind Tracker MCP/, "a distinct label shows in the meta line");
+  assert.match(tracker, /MCP server/);
+
+  const script = connection(el, "cn_appsscript");
+  assert.match(text(script), /Apps Script/);
+  assert.match(text(script), /Needs sign-in/);
+  assert.ok($(script, "button"), "a Sign in button, no chips or footer on a problem row");
+  assert.equal($$(script, ".cn-chip").length, 0);
+
+  assert.ok($(el, ".cn-add"), "Connect another account is offered");
+  noLeak(el);
+});
+
+test("Connections cards: a chip toggle is optimistic for Capsule/Chat/Phone, calls grant or revoke by id and surface, and a failure reverts", async () => {
+  const { el, api } = await render();
+  const chatChip = findChip(connection(el, "cn_tracker"), "Chat");
+  assert.equal(chatChip.getAttribute("aria-pressed"), "false");
+  await Promise.all(chatChip.dispatchEvent(new Event("click")));
+  // Optimistic: the chip flips before the call even resolves (fakeApi is synchronous here, so
+  // check the call was made with the right id/surface, and the chip ends up pressed).
+  assert.deepEqual(api.of("vault.connections.grant"), [{ tool: "vault.connections.grant", input: { id: "cn_tracker", surface: "chat" } }]);
+  assert.equal(findChip(connection(el, "cn_tracker"), "Chat").getAttribute("aria-pressed"), "true");
+
+  const failing = await render({ over: { "vault.connections.grant": { $error: { code: "denied", message: "not your surface" } } } });
+  const chip2 = findChip(connection(failing.el, "cn_tracker"), "Chat");
+  await Promise.all(chip2.dispatchEvent(new Event("click")));
+  assert.equal(findChip(connection(failing.el, "cn_tracker"), "Chat").getAttribute("aria-pressed"), "false", "reverted after the call failed");
+});
+
+test("Connections cards: revoking any surface, including Agents, is one tap through vault.connections.revoke directly, never presence", async () => {
+  const { el, api, p } = await render();
+  const capsuleChip = findChip(connection(el, "cn_alex"), "Capsule");
+  await Promise.all(capsuleChip.dispatchEvent(new Event("click")));
+  assert.deepEqual(api.of("vault.connections.revoke"), [{ tool: "vault.connections.revoke", input: { id: "cn_alex", surface: "capsule" } }]);
+  assert.equal(api.of("vault.connections.grant").length, 0);
+  assert.equal(p.asked.length, 0, "revoke never asks for presence");
+});
+
+test("Connections cards: granting Agents goes through presence (Touch ID or a passkey), not a direct call; a refusal leaves it off with no toast of its own", async () => {
+  const { el, api, p } = await render();
+  const agentsChip = findChip(connection(el, "cn_tracker"), "Agents");
+  assert.equal(agentsChip.getAttribute("aria-pressed"), "false");
+  await Promise.all(agentsChip.dispatchEvent(new Event("click")));
+  // Went through presence(), not a bare attempt(): vault.connections.grant never appears in the
+  // plain API call log for this click, but presence's own asked log has it.
+  assert.equal(api.of("vault.connections.grant").length, 0);
+  assert.deepEqual(p.asked.map(a => [a.tool, a.input]), [["vault.connections.grant", { id: "cn_tracker", surface: "agents" }]]);
+  assert.equal(findChip(connection(el, "cn_tracker"), "Agents").getAttribute("aria-pressed"), "true");
+
+  const refused = await render({}, fakePresence({ fail: true }));
+  const chip2 = findChip(connection(refused.el, "cn_tracker"), "Agents");
+  await Promise.all(chip2.dispatchEvent(new Event("click")));
+  assert.equal(findChip(connection(refused.el, "cn_tracker"), "Agents").getAttribute("aria-pressed"), "false", "a refusal leaves it off");
+  assert.equal(refused.api.of("vault.connections.grant").length, 0);
+});
+
+test("Connections cards: vault.connections.list missing (an older Vyre) draws nothing extra, no error banner", async () => {
+  const { el } = await render({ missing: ["vault"] });
+  assert.equal($(el, ".cn-card"), null);
+  assert.ok(server(el, "tracker"), "the mcp/google groups still work standalone");
 });
 
 test("empty state when neither module runs, and each half on its own", async () => {
@@ -571,4 +660,34 @@ test("pickers copy named fields only", () => {
   assert.deepEqual(itemsFor(items, "oauth"), []);
   assert.deepEqual(toolModes([{ tool: "b", outward: true }, { tool: "a", outward: false }], { c: "off", a: "write" }).map(t => [t.tool, t.mode]),
     [["a", "write"], ["b", "write"], ["c", "off"]]);
+});
+
+test("pickConnections: one card per row, named fields only, whatever the source", () => {
+  const rows = pickConnections([
+    { id: "c1", source: "google", ref: "alex@harlowlegal.com", provider: "google-oauth", account: "alex@harlowlegal.com",
+      auth: "oauth", label: "alex@harlowlegal.com", capabilities: ["send_mail", "calendar"], state: "ready",
+      surfaces: ["chat", "capsule"], uses: {}, default: ["send_mail"], last_used: 1000, added: 500, value: LEAK },
+    { id: "c2", source: "mcp", ref: "sheets", provider: "mcp", account: "Google Sheets MCP", auth: "env",
+      label: "Google Sheets MCP", capabilities: ["other"], state: "ready", surfaces: ["agents"], uses: {}, default: [], last_used: null, added: 700 },
+    { id: "c3", source: "google-apps-script", ref: "harlow", provider: "google-apps-script", account: "Apps Script",
+      auth: "env", label: "Apps Script", capabilities: ["send_mail"], state: "needs_credential",
+      needs: [{ module: "mail", need: "google-apps-script" }], surfaces: [], uses: {}, default: [], last_used: null, added: 900 },
+  ]);
+  assert.ok(!JSON.stringify(rows).includes(LEAK));
+  assert.deepEqual(rows[0], { id: "c1", provider: "google-oauth", providerWord: "Google", group: "google",
+    account: "alex@harlowlegal.com", label: "alex@harlowlegal.com", ready: true, needs: [],
+    capabilities: ["send_mail", "calendar"], surfaces: ["capsule", "chat"], defaultFor: ["send_mail"], lastUsed: 1000, connected: 500 });
+  assert.deepEqual(rows[1], { id: "c2", provider: "mcp", providerWord: "MCP server", group: "mcp",
+    account: "Google Sheets MCP", label: "Google Sheets MCP", ready: true, needs: [],
+    capabilities: ["other"], surfaces: ["agents"], defaultFor: [], lastUsed: null, connected: 700 });
+  assert.equal(rows[2].ready, false);
+  assert.deepEqual(rows[2].needs, [{ module: "mail", need: "google-apps-script" }]);
+  // A stray surface name (not one of vault's four: "planner" is not a grantable surface yet) is
+  // dropped, not shown as granted.
+  const withStray = pickConnections([{ id: "c4", provider: "mcp", account: "a", label: "a", state: "ready", surfaces: ["chat", "planner", "made-up"], capabilities: [], default: [] }]);
+  assert.deepEqual(withStray[0].surfaces, ["chat"]);
+  // An unrecognized provider still gets a card: the raw name as its word, "other" as its group.
+  assert.deepEqual(pickConnections([{ id: "c5", provider: "stripe", account: "a", label: "a", state: "ready", capabilities: [], default: [] }])[0],
+    { id: "c5", provider: "stripe", providerWord: "stripe", group: "other", account: "a", label: "a", ready: true, needs: [],
+      capabilities: [], surfaces: [], defaultFor: [], lastUsed: null, connected: null });
 });

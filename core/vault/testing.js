@@ -113,24 +113,38 @@ export async function onSearchList(file) {
 }
 
 /** Start the vault module against a ctx that records every tool definition. */
-export async function recorded(t, extra = {}) {
+export async function recorded(t, extra = {}, { call } = /** @type {{ call?: (tool: string, input: any) => Promise<any> }} */ ({})) {
   const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-presence-"));
   const db = open(path.join(tmp, "vyre.db"));
   /** @type {Map<string, any>} */
   const tools = new Map();
   const events = [], logs = [];
+  /** @type {Map<string, Set<Function>>} */
+  const listeners = new Map();
   const ctx = {
     store: { db, migrate: steps => migrate(db, "vault", steps) },
     paths: { vault: path.join(tmp, "vault") },
     config: { name: "test-box", vault: { keystore: "file", ...extra } },
-    events: { emit: (type, p) => events.push({ type, p }) },
+    events: {
+      emit: (type, p) => {
+        events.push({ type, p });
+        for (const fn of listeners.get(type) || []) fn({ type, payload: p });
+        for (const fn of listeners.get("*") || []) fn({ type, payload: p });
+      },
+      on: (type, fn) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(fn);
+        return () => listeners.get(type)?.delete(fn);
+      },
+    },
     log: m => logs.push(m),
     tool: (name, def) => tools.set(name, def),
+    ...(call ? { call } : {}),
   };
   const mod = (await import("./index.js")).default;
   const running = await mod.start(ctx);
   t.after(async () => { await running.stop(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
   const run = (name, input, caller = "cli") => tools.get(name).run(input, { caller });
-  return { tmp, db, tools, events, logs, run };
+  return { tmp, db, tools, events, logs, run, vault: running.vault, connections: running.connections };
 }
 

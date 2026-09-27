@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  NOT APPLIED YET. These entitlements need a paid Apple Developer team to sign: the AutoFill
+  Credential Provider entitlement and a keychain access group come only with a provisioning
+  profile (ADR 0028, decision 6). project.yml sets CODE_SIGNING_ALLOWED NO, so the simulator and
+  macOS builds ignore this file. When the team exists: set DEVELOPMENT_TEAM, turn signing on,
+  and add the same capability to the App ID in the developer portal.
+-->
+<plist version="1.0">
+<dict>
+	<key>com.apple.developer.authentication-services.autofill-credential-provider</key>
+	<true/>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)sh.vyre.shared</string>
+	</array>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>

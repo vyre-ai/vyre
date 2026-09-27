@@ -59,6 +59,7 @@ In the order `vyre help` lists them.
 | [`vyre vault`](#vyre-vault) | credentials, sealed; shared by pass; used without being seen |
 | [`vyre watchers`](#vyre-watchers) | what the watchers are doing, and turning them on and off |
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
+| [`vyre run`](#vyre-run) | run a program with vault values in its environment; reads ./.env references |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre phone`](#vyre-phone) | add a phone to your box, list, remove and test the ones it has |
@@ -539,7 +540,7 @@ A one-off alarm, timer or reminder ends; a repeating alarm rings again at its ne
 Credentials, sealed; shared by pass; used without being seen.
 
 ```
-vyre vault [list|get|read|put|edit|delete|inject|share|ssh|git-credential|pair|devices|unlock-passphrase|backup|restore|relay|grant|revoke|pending|approve|run|totp|health|breach|history|revert|clear-clipboard|generate|import|audit|card|people|fingerprint|kit|vaults|members|move|device|pass|offboard|unlock|lock|account|migrate-key|help] [--json]
+vyre vault [list|get|read|put|edit|delete|inject|share|ssh|git-credential|pair|devices|unlock-passphrase|backup|restore|relay|grant|revoke|pending|approve|run|totp|health|remind|breach|history|revert|clear-clipboard|needs|connect|connections|sweep|rotate|agent|uses|codes|emergency|generate|import|audit|card|people|fingerprint|kit|vaults|members|move|device|pass|offboard|unlock|lock|account|migrate-key|help] [--json]
 ```
 
 ### vyre watchers
@@ -556,6 +557,14 @@ MCP servers and Google accounts Vyre can reach for you.
 
 ```
 vyre connect list|add|remove|rm|test|help [--json]
+```
+
+### vyre run
+
+Run a program with vault values in its environment; reads ./.env references.
+
+```
+vyre run [--env-file f] [<item...>] -- <command...>
 ```
 
 ### vyre hooks

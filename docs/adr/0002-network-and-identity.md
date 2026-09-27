@@ -147,7 +147,7 @@ owner. Changing owner later is `vyre owner <login>` on the socket.
   through Cloudflare. It resolves on the public internet to a `100.x` address that is
   unreachable from anywhere but the tailnet. This leaks the tailnet IP, which is not a secret.
 - **Interim**: the user's own Cloudflare API token for the vyre.run zone, from
-  `CLOUDFLARE_VYRE_TOKEN` in vyred's environment or the vault item `cloudflare-vyre-token`.
+  `CLOUDFLARE_vyre_token` in vyred's environment or the vault item `cloudflare-vyre-token`.
   Never a global key. Code only ever looks up the zone by its configured name (`network.domain`,
   default `vyre.run`) and refuses any record not inside it. Available means no record exists,
   or the one there already points at this box.
