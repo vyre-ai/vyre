@@ -94,7 +94,7 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
   in settings-keys.css (native-core) and term.js (chat f697d345); temp home reads ~/.claude at
   core/config/settings.js:97 (native-core/platform). app: ci's own apostrophe bug, fixed 2c1ac9aa.
   android Md.kt animateFloat, ios DetailSheet FactRow redeclared (mobile). capsule-mac: capsule-pro
-  170dac3b. sessions-sdk: sessions dfeda64b (options sent, waiting).
+  170dac3b. sessions-sdk: FIXED by sessions d7924a1d (test-only); GitHub driver job 249/0 (run 36333524676).
 - box-image prints vyre.tgz / installed / app sizes against the 16 MB cap (42372d6a).
 - testbox keeps vyre-box:gate and ~/vyre-ci/{ci,ci-gate,sdk-js,gate1.sh}.
 
