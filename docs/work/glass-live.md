@@ -116,6 +116,29 @@ Events (never a value, a username or a token)
 A take-over (computers.takeover, glass.take) during a fill is refused `busy`; a person's shield
 and a fill's never replace each other.
 
+## e2e security review of 70a72036 (27 Sep): to fix before or right after it ships
+- HIGH 1: COMPUTERD_TOKEN and VNC_PASSWORD are still in the container's Config.Env
+  (driver/docker.js), so any docker exec (even as 1000) gets them; the VNC password is a trusted
+  RFB session. Fix: not in Env; a 0400 file for uid 1001 (vyre volume or written by the root
+  entrypoint), read by computerd and never put in its env. Isolation test: an exec'd environ has
+  neither.
+- HIGH 2: CDP is a denylist. The agent can read cookies (Storage.getCookies, Network.getAllCookies),
+  open file:// as 1001 (/var/lib/vyre: VNC passwd, profile DBs), drive chrome:// pages, and
+  aim Browser.setDownloadBehavior anywhere. Fix: managed URLBlocklist file://*, chrome://*,
+  devtools://*, chrome-extension://*; refuse cookie/storage dumps for kind "agent"; pin downloads
+  to /home/agent/Downloads.
+- MEDIUM: 3 dockerproxy refuses exec for a shielded agent, and the freezer re-sweeps every ~100 ms
+  until cont; 4 on shield computerd raises and focuses Chrome and unmaps untrusted top-level
+  windows (keys queued to an agent window); 5 take-over and fill require frozen:true;
+  6 Chrome as a third uid, token out of computerd's env.
+- LOW: 7 trusted cookie via `xauth source -` not argv; 8 stage the agent cookie under
+  /var/lib/vyre, not /tmp; 9 migration copies regular files only; 10 fd 9 close-on-exec;
+  11 the PAC list in Chrome's argv (hidepid=2, or accept).
+- Isolation tests to add: no XTEST/RECORD/XInput/XKB/MIT-SHM/GLX/X-Resource/RANDR under the
+  agent cookie; GetImage on root refused; no reading trusted selections; no keymap changes or
+  device grabs; timeout 0 after an idle.
+- Both HIGHs also exist on main today (everything as one uid): the branch fixes more than it leaves.
+
 ## Next (after the native core)
 1. The vault wires vault.agent.fill to the contract above; glass-live answers questions.
 2. perf-check under low load (the idle hand-back run's RSS max 156.2 MB was taken at load 8.9).
