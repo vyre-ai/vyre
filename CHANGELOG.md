@@ -9,6 +9,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - box/Dockerfile makes /var/lib/vyre-secrets owned by vyre (1000), mode 700. Without it the new
   docker-api-bearer volume mounted root-owned and vyred could not write the bearer, so the
   computers module failed to start on a real stack. test/box-init.test.js holds the line.
+- docker-api no longer crash-loops on a fresh install: with no bearer yet (computers not set up), it
+  retries quickly for 30 s for the boot race, then waits quietly, looking once a minute, and starts
+  serving as soon as vyred writes one (lib/bearer read's `patient`).
 
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
