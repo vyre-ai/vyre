@@ -175,22 +175,36 @@ Filled in as each lands.
   preselected, 30-day Claude Code retention note): `deck/onboard/onboard.js`'s `history()`
   rewritten into Discover/Choose/Watch, `core/onboard/loopback.js`'s tool allowlist extended
   (`import.scan/plan/start/status`, `memory.answer`), fixtures added
-  (`deck/fixtures/import.json`, a `memory.answer` entry in `deck/fixtures/memory.json`).
-  Provisional: memory-iq had not shipped the tools yet at build time, so every call degrades
-  through the existing missing-module pattern. Not yet screenshot-verified with fixtures
-  (`?fixtures=1`): would need a temp vyred + browser session on the test box, deferred as
-  disproportionate effort against a still-provisional contract; `test/onboard*.test.js` (16/16)
-  confirms the daemon/loopback side is unaffected. `test/journey.test.js` failed on this branch,
-  but at journey 1's very first `vyre up` (before onboarding's browser is ever reached, "vyred is
-  already running" / "onboarding is not available: links are made only from the box's own
-  terminal"), which looks like pre-existing test-environment state, not this change; did not
-  chase further since it is e2e's suite.
+  (`deck/fixtures/import.json`, a `memory.answer` entry in `deck/fixtures/memory.json`). Then
+  memory-iq shipped `core/import/` for real (959e8e2f) with shapes that differed from the design
+  doc's guess (two-level scan: source then folders, suggested/why on the folder; plan.folders is
+  the path array, not a count; status has no "upload" stage and graph is a live count, not a
+  done/total); corrected the UI and the fixture to match. `import.start` still does not exist
+  (waits on federation's transport), so it still degrades through the missing-module pattern.
+  Not yet screenshot-verified with fixtures (`?fixtures=1`): would need a temp vyred + browser
+  session on the test box, deferred as disproportionate effort while the contract keeps moving;
+  `test/onboard*.test.js` (16/16) confirms the daemon/loopback side is unaffected.
+- Terminology sweep for ADR 0038 (server/device, no "box"): `site/index.html`,
+  `site/start/index.html`, `README.md`, `scripts/install-box.sh`'s terminal copy. Left URL paths
+  and one literal quote of `vyre up`'s live CLI menu text alone (the CLI itself has not renamed
+  that string), and left `role: "box"` config/status output alone (the ADR keeps it for 0.1.1,
+  that rename is platform/native-core's). Updated `core/names/system.test.js`'s two assertions
+  that matched install-box.sh's exact old wording.
+- `docs/design/onboarding-v2.md` updated: the lead's "one onboarding for every device" scoping
+  decision, a new step 7 (Vyre Drive, not designed yet), renumbered phone/Capsule to 8/9, and
+  app-design's three new boards noted against their steps.
+- `test/journey.test.js` failed on this branch at journey 1's very first `vyre up` (before
+  onboarding's browser is ever reached, "vyred is already running" / "onboarding is not
+  available: links are made only from the box's own terminal"), which looks like pre-existing
+  test-environment state, not this change; did not chase further since it is e2e's suite.
 
 ## Next
 
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
 - Confirm `test/journey.test.js`'s failure is pre-existing (not caused by this branch) with e2e,
   or fix it if it turns out to be mine.
+- Start building the step-shell and steps 1-3, per the lead's go-ahead.
+- Design step 7 (Vyre Drive) once federation's options and the user's choices come back.
 
 ## Needs from others
 
@@ -204,24 +218,23 @@ Filled in as each lands.
   canvas.json, e95897c3). Left launch's .html sources as-is rather than trying to reconcile two
   branches; worth cleaning up docs/brand/ to point at or drop in favour of the canvas boards once
   both branches are merged.
-- ~~federation/tailnet: per-project/date-range session breakdown~~ answered: memory-iq's
-  `import.scan`/`import.plan` (docs/design/import.md) covers this; my two earlier questions to
-  federation and memory-iq are superseded by that spec and by docs/design/onboarding-v2.md.
+- ~~federation: per-project/date-range session breakdown~~ answered: memory-iq's `import.scan`
+  covers this for real now (core/import/, 959e8e2f).
+- ~~federation: standalone flow or an entry point into onboarding-v2?~~ answered by the lead: one
+  onboarding for every device (docs/design/onboarding-v2.md "One onboarding for every device").
 - vault (onboarding-v2 step 5 and part of step 6): tool shapes for discovering and importing
-  secrets per source (`.env`, shell exports, password managers, Chrome, SSH keys, MCP/Claude env),
-  mirroring memory-iq's scan/plan/start/progress pattern. Asked; not yet answered.
-- connectors (onboarding-v2 step 6): confirm scope, which existing connector flows this step wraps.
-- app-design (onboarding-v2): a board for step 5's masked/grouped list, the Touch ID moment and
-  the per-key animate-in, and for the step-shell's shared progress/celebration look. Asked twice
-  (once before onboarding-v2.md existed, once after); not yet answered.
-- mobile: confirm step 7 (phone pairing) is fine as a stub for 0.1.1, per the lead's "later".
-- federation (new, 29 Sep): a second-device "device role" (Mac or Windows PC pairs, then walks
-  `~/.claude/projects/*` and uploads, no live reads/Taildrop/etc.) is coming once e2e reviews the
-  transport (docs/design/federation-plan.md, "the device role", work/federation 8d982f85). Asked
-  federation whether this is a standalone flow on the second machine or an "add another device"
-  entry point into onboarding-v2's existing step 2/4. Waiting on the transport review before
-  designing anything; the open "how does someone install this on Windows" question has no answer
-  yet either.
+  secrets per source (`.env`, shell exports, password managers, Chrome, SSH keys, MCP/Claude env).
+  app-design's sent the step 5 board (`VaultImport.dc.html`, 19a96abd) ahead of the tool shapes;
+  asked; not yet answered.
+- connectors (onboarding-v2 step 6): confirm scope, which existing connector flows this step
+  wraps. app-design's `Connections.dc.html` (db3dbbfa) is available if it helps.
+- app-design: still owed the step-shell's shared progress/celebration board (the step 5 and
+  step 4 boards landed).
+- mobile: confirm step 8 (phone pairing, renumbered from 7) is fine as a stub for 0.1.1.
+- federation: step 7's drafted Vyre Drive options, once the lead brings the user's decisions
+  back; step 2's existing-server detection contract for the "add this device" path.
+- windows: `docs/using/windows.md` (in progress) needs to cover what onboarding-v2 step 2 points
+  a fresh Windows PC at for install.
 
 ## Changed contracts
 
