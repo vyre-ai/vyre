@@ -555,6 +555,22 @@ send queue (touch a fake transcript on the box within ACTIVE_MS); tailnet's egre
 status fields per case, recovery within 2 s, restart with a reusable key, Chromium data: PAC); the
 event stream's first byte. Tear down afterwards.
 
+## Doing (28 Sep, RESUME 8, wave 1)
+
+Done this session:
+- glass-hotfix 57dc12c3 fresh-install check on /srv/vyre-e2e (project vyre-e2ehf, real Docker,
+  never /srv/vyre): PASS. RestartCount=0, no docker-api crash loop; docker-api moved past
+  "no bearer yet" to listening once vyred wrote it. Bearer file 0400 vyre:vyre inside a
+  CapDrop=ALL container (root can't even stat the 700 dir); bearer value never in env or
+  `docker inspect` (only the DOCKER_PROXY_BEARER_FILE path). Torn down (containers, networks,
+  volumes removed; image left cached). Verdict sent to reviewer, integrator, team-lead.
+- vyre-e2e-safegit's 5 dirty files (finishing the lib/git-safe.js migration off 9efb1851, no
+  more lib/git/safe.js callers) committed as e5944433 on work/e2e-safegit. safe-git.test.js
+  (4/4) and boundaries.test.js (5/5) pass on testbox. Reviewer + integrator told to re-review
+  at e5944433 instead of 9efb1851.
+
+Next: re-review federation's fix sha (the link.upload path guard HIGH + the MEDIUMs) once sent.
+
 ## Next
 
 - The standing rule itself: Touch ID only for pairing a new device, revealing or granting vault
