@@ -28,7 +28,8 @@ computer use" (CapsuleDo), each with a paper board.
 2. **No empty headings.** A group header draws only when its group has at least one row. There is
    never a "Sends to", "Commands" or any other heading with nothing under it.
 3. **The footer holds keys only.** Key hints, at most four, for what the keys do right now. Status
-   goes in the row or card it belongs to, never the footer.
+   goes in the row or card it belongs to, never the footer. A passing status with no row of its own
+   ("Copied", "Taken back") is one 12/16 `text2` line in the body just above the footer, for 2 s.
 4. **The keyboard can do everything.** Every action has a key, and the key is in its
    accessibility hint. The mouse is never required.
 5. **Honest answers.** Vyre IQ answers with its sources, says "Not sure" when it is, and says when
@@ -142,8 +143,10 @@ This is the fix for the clipped answer the person reported on 27 Sep.
 - Keys, while the field has focus and nothing below the card is selected: ⌘↑ and ⌘↓ go to the top
   and bottom, PageUp and PageDown move a page, ⌥↑ and ⌥↓ move three lines. The trackpad and the
   wheel always scroll the card under the pointer.
-- The panel's height eases once, over `Motion.reveal` (150 ms), when the card first needs more
-  room, and never while text streams or a key repeats.
+- The panel's height changes only between states, never while text streams or a key repeats
+  (0 size changes while streaming). Empty, it is the input, the waiting list and the footer. The
+  first result or question takes it to 560 in one step over `Motion.reveal` (150 ms), and it stays
+  at 560 until the field is cleared. The card grows and scrolls inside that fixed panel.
 - A test: a snapshot of a 60-line answer shows the last line whole, the thumb, and no text cut at
   the card's bottom edge; a second shows the top after ⌘↑.
 
@@ -167,7 +170,7 @@ This is the fix for the clipped answer the person reported on 27 Sep.
 
 ## Computer use: "do ..."
 
-- "do " at the start, or ⌘⏎ on words that are not a question, starts an agent that uses this Mac
+- "do " at the start, then ⏎, is the only way into computer use: it starts an agent that uses this Mac
   (a full agent session with hands and screen). The field keeps the words; the panel shows the
   run.
 - **The strip.** 36 tall, right under the input: the running ring, "Using your Mac" 13 `text`,
@@ -198,7 +201,7 @@ This is the fix for the clipped answer the person reported on 27 Sep.
 | type | search; a question answers on pause |
 | ↑ ↓ | move through the results; ↑ from the first row returns to the field |
 | ⏎ | open the selected result; with the field focused and a question typed, ask now; in the follow-up box, continue the thread |
-| ⌘⏎ | think deeper; on words that are not a question, do it on the Mac |
+| ⌘⏎ | think deeper, always (one meaning per key); computer use starts only from "do ..." and ⏎ |
 | ⌘O | open in Vyre (the thread, the session, the item) |
 | ⌘1 ⌘2 ⌘3 | open a source |
 | ⌘↑ ⌘↓, PageUp PageDown, ⌥↑ ⌥↓ | scroll the card |
