@@ -42,7 +42,7 @@ async function world(mode) {
   fs.writeFileSync(path.join(root, "about.md"), ABOUT);
   const runs = path.join(dir, "node-runs.log");
   fs.writeFileSync(path.join(shim, "node"), `#!/bin/sh
-echo "$* <- $PPID $(ps -o args= -p $PPID | cut -c1-60)" >> "${runs}"
+echo "$* <- $PPID $(ps -o args= -p $PPID | cut -d" " -f1)" >> "${runs}"
 exec "${NODE}" "$@"
 `, { mode: 0o755 });
   fs.symlinkSync(path.join(REPO, "bin", "vyre"), path.join(shim, "vyre"));
