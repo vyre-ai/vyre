@@ -241,10 +241,10 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   const open = (await tool("threads.asks", {})).data;
   assert.equal(open.length, 1);
   assert.equal(open[0].request_id, undefined, "Claude Code's request id stays inside vyred");
-  assert.deepEqual(open[0].presence, { required: false, covered: false }, "answering takes no proof; a surface renders from this");
+  assert.deepEqual(open[0].presence, { required: false, covered: false, since: null }, "answering takes no proof; a surface renders from this");
   const got = (await tool("threads.get", { thread: id })).data;
   assert.equal(got.thread.status, "waiting");
-  assert.deepEqual(got.asks[0].presence, { required: false, covered: false });
+  assert.deepEqual(got.asks[0].presence, { required: false, covered: false, since: null });
 
   // A model never approves a permission: the loader refuses both MCP caller forms and hides the
   // tool. (An agent named without its thread's key is refused before that, listing included.)

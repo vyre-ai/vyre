@@ -73,9 +73,9 @@ export default {
 
     ctx.tool("presence.covered", {
       internal: true,
-      description: "Whether the device a call came from (its tailnet peer; none for this machine) has a live presence session. The Gate and the Switchboard put it on held items and asks.",
+      description: "Whether the device a call came from (its tailnet peer; none for this machine) has a live presence session, since when and until when (ms). The Gate and the Switchboard put it on held items and asks.",
       input: obj({ peer: { type: "object" } }),
-      run: async ({ peer }) => ({ covered: presence.covered(peer || null) }),
+      run: async ({ peer }) => presence.coverage(peer || null),
     });
 
     ctx.tool("presence.session.close", {

@@ -2195,7 +2195,7 @@ A one-time code, valid 10 minutes, that enrolls one passkey from the Deck. Needs
 
 ### `presence.covered`
 
-Whether the device a call came from (its tailnet peer; none for this machine) has a live presence session. The Gate and the Switchboard put it on held items and asks.
+Whether the device a call came from (its tailnet peer; none for this machine) has a live presence session, since when and until when (ms). The Gate and the Switchboard put it on held items and asks.
 
 - Input:
   - `peer` object

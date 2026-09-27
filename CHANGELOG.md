@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### presence.since: when this device last proved presence
+
+- presence.covered returns `{ covered, since, expires }` (ms since the epoch, null when no live
+  session). Held items (gate.held, gate.get) and asks (threads.asks, threads.get) carry
+  `presence: { required, covered, since }`, so a surface can say "confirmed 12 min ago".
+
+#### Security: the socket's person check
+
+- Any person action on the socket is traced (a presence-needing tool or a presence header, not
+  only PERSON_ONLY), an ancestry vyred cannot read to the top is refused, and macOS reads `ps`
+  once per check. The peer fd is passed by number so the person's keep-alive connection survives.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and

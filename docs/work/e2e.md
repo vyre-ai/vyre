@@ -208,7 +208,14 @@ Plan (to the lead before building):
   cookie store is keychain-encrypted, Safari's is TCC-protected; IndexedDB keys are not). The
   session raises the bar from one curl to stealing a browser's store.
 
-## Doing (27 Sep, after the restart)
+## Doing (27 Sep, after logout 3)
+
+Audit reported to the lead (above); waiting for go on the person session and the two decisions
+(uid split on the box; Mac CLI person session). ADR 0030 notes sent to sessions. presence.since
+done. Next: the headscale run on the next deployed sha. Two switchboard.test.js cases fail on the
+Mac only on main too (/var vs /private/var), not ours.
+
+## Earlier (27 Sep, after the restart)
 
 Done this session: main c48959b merged in (fc80279); the no-nag agents reversal and the SSE
 `: open` byte at 61692fd, pushed, sha sent to the integrator and the lead. The docs "403
@@ -268,3 +275,5 @@ event stream's first byte. Tear down afterwards.
   gate.revise, gate.reject, threads.answer: no presence. gate.approve: presence for send, spend
   and delete, sessionable. A presence session lasts 30 minutes from the proof. Request header `x-vyre-presence-keep: 1` + strong proof returns
   `x-vyre-presence-session: session id=.. secret=.. expires=..`. Internal tool presence.covered.
+- presence.covered returns `{ covered, since, expires }`; items and asks carry
+  `presence: { required, covered, since }` (since in ms, null when not covered).
