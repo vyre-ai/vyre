@@ -373,6 +373,102 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The render audit fails text off the five sizes, the two weights or the two families, and any
   colour outside the palette.
 
+#### Apps: the planner by default, and a question instead of nothing (ADR 0022)
+
+- Timers, alarms, "wake me", reminders, todos and notes now route to Vyre's own planner
+  (`Planner add {text, kind}`, which calls `planner.add`, ADR 0025), so they ring when the Mac is
+  shut. Apple's Clock, Notes and Reminders are opt-in: words like "in Apple Notes" or "notes app",
+  an `@Notes`, `@Clock` or `@Reminders` scope, or config `apps.planner = "apple"`. With no
+  planner module on this Vyre the answer is code `setup`, "The planner is not on this Vyre yet".
+  "todo buy milk" and "add call kit to my todos" are new words for a todo.
+- The time in a route is read by the planner's `planner.parse` (ADR 0025, the one reader of time
+  words, answering on the Mac): our rules say which app and kind, the planner says when. Its line
+  becomes the route's ("Reminder: call juno, today at 18:00"), and for Apple Clock and Reminders
+  its reading becomes their args. Its "cannot place that" is the answer, so the person is asked.
+  Words our rules refuse but the planner reads ("alarm 6pm every weekday") go to the planner. With
+  no planner on this Vyre our own reading stands, until the planner is on main.
+- When a message's app or recipient is unclear, `apps.route` asks rather than refusing or
+  guessing: `{needs: {app} | {recipient}, ask, text, app?, action, to?, didYouMean?}`, the words
+  kept as typed. The candidates are the messaging apps on this Mac, or the app's people ranked by
+  a fuzzy match (`local/apps/fuzzy.js`: a prefix, the first word, every word's start, a slip of a
+  letter or two), and a lone strong match adds "Did you mean Ammi jee on WhatsApp?". A send to a
+  name the app does not know is asked about the same way. "tell mom I'm on slack now" asks who
+  on Slack, keeping "I'm on slack now".
+- `apps.route {text, app, to}` is how an answer goes back: the app and who as picked (a
+  candidate's id, or a name typed), the words from the question. It is checked against the app's
+  people and asked again if still unclear; two people with the same name are asked about ("Which
+  one?"), never sent to whichever the app finds first. "in apple notes" inside a message stays in
+  the message, and "whatsapp juno running late" drops "juno" from the text only when juno is
+  someone in the app.
+- `apps.list` rows carry `actions` and `nests` (the app holds people or notes to pick) for an app
+  Vyre has words for, so the Capsule's `@App` picker can say so.
+- `vyre apps` asks on a terminal: the question, the Did you mean line and numbered candidates;
+  a number, a name, or Enter for the Did you mean, up to three rounds. An empty answer, "no" or
+  Ctrl-D sends nothing, and after a question the preview needs one more Enter before the send. Off a terminal, or with `--json`, it prints the question (as JSON with `--json`) and
+  exits 3, so a script can tell "asked" from "failed".
+
+#### Apps: timers, notes, reminders and the weather from the Capsule (ADR 0022, slice 1)
+
+- A new vyred module `apps` (`local/apps/`, roles local) drives the Mac's apps. `apps.list` reads
+  the Applications folders (no mdfind; bundle ids from Info.plist, `plutil` only for a binary one
+  and only for the rows returned) and says how Vyre reaches each app: connector, intents, script,
+  or ax. `apps.targets` lists what is inside an app (notes, reminder lists). `apps.act` runs an
+  action that sends nothing as the person and emits `apps.acted {app, action}`, never the text.
+  `apps.send` runs one that does, declares presence with the action's preview as its summary
+  ("WhatsApp → juno: running late"), and so needs a person's proof per call from every caller
+  but a module. `apps.act` refuses a sending action with code `sends`.
+- Four adapters. Clock timers and alarms through two shortcuts the person imports once ("Vyre
+  Timer", "Vyre Alarm"; a missing one is code `setup` naming `vyre apps setup clock`). Notes
+  (new note, add to a note) and Reminders (new reminder with an alerting due time, set from
+  numbers so no locale reads it) through constant AppleScripts that take user text only as argv.
+  Weather from Open-Meteo, which needs no key, with the place from config or the time zone.
+- Every contact with the Mac goes through `local/apps/env.js`. Under tests or a throwaway home the
+  real osascript, shortcuts and `open` refuse with `no_dialog` before spawning anything; off a Mac
+  they refuse with `not_mac`. Starting the module runs nothing, and its caches expire on read.
+  Tests use a fake exec, a fake fetch and fake bundles only.
+- Adding to a note refuses a locked note or one with attachments (`not_supported`), since a body
+  rewrite would lose them. Note targets skip Recently Deleted (by name, configurable as
+  apps.notes.trash). A reminder's due time in the past is refused, and "today" is judged in the
+  Mac's time zone. An AppleScript that does not answer is `setup`, pointing at the Automation
+  consent. Weather requests time out after 10 s. `local/apps/mac.test.js` compiles the real
+  scripts with osacompile, only when VYRE_MAC_REAL=1 on a Mac.
+- `apps.send` rides the short presence session (ADR 0004): one Touch ID, Capsule or passkey proof
+  opens it, and a burst of messages from the Capsule then goes without asking each time, each
+  still previewed there. It is added to the floor's SESSIONABLE list (`core/presence/index.js`)
+  and declares `presence.session`. A tool off that list still refuses a session proof.
+- `apps.route {text, app?, model?}` turns words into one app action without running it: timers
+  ("10 minute timer", "timer for 2 hours and 5 minutes"), alarms ("wake me at 7"), notes,
+  reminders ("remind me to call juno at 6" is the next 6:00 or 18:00; "remind me on friday to
+  pay rent" is Friday 09:00; "in 20 min"), the weather ("is it cold in Lahore today") and
+  messages ("whatsapp juno: running late", sending). Rules only, in the Mac's time zone
+  (`local/apps/route.js`); `app` is the Capsule's @App scope. What the rules cannot place is
+  ambiguous, and config `apps.model` (a function) may try it when the caller passes `model:
+  true`; whether its answer sends comes from the adapter, never from the model.
+- `apps.setup {app}`: Clock's one-time setup. It writes the Vyre Timer and Vyre Alarm shortcuts
+  under the Vyre home, signs them with `shortcuts sign --mode anyone`, and opens each so
+  Shortcuts shows its Add button, with steps in words and a by-hand recipe
+  (`local/apps/setup.js`). Two action identifiers are unverified and marked so. The dialog gate
+  refuses it under tests before any file is written. Only the CLI, the Capsule and the Deck may
+  call it; a model or another module is denied.
+- `vyre apps`: the apps on this Mac; `vyre apps find <words>`, `vyre apps targets <app> [words]`,
+  `vyre apps setup clock`, and `vyre apps <words...>`, which routes the words and runs them
+  ("vyre apps timer 10 min" prints "Timer set for 10 minutes"). A send prints its preview, then
+  asks this terminal for a person's proof through apps.send. `--app`, `--model`, `--json`,
+  `--help`, and `vyre apps -- <words>` for words that start like a subcommand
+  (`core/cli/commands/apps.js`).
+- The router's review round. A message goes exactly as typed (punctuation and line breaks
+  kept), and its recipient must look like one name, #channel or @handle, else the words are
+  ambiguous ("tell mom I'm on slack now" sends nothing). A model-routed send's preview is built
+  from its args, never the model's own line. Reminder time words are taken after at, on or in,
+  or at the start or end, so "take my 3pm pill" keeps its words; "next friday" is next week's,
+  "tonight at 12" is midnight, the current minute counts as now, and "today" after 09:00 is a
+  plain reminder. More timer and alarm phrasings ("a 10-minute timer", "timer ten minutes",
+  "alarm 7.30"), stricter notes and weather questions, "weather this weekend", and weekday
+  names in the weather adapter. Text over 2000 characters is refused. Clock's setup removes a
+  stale file, signs both before opening either, and reports one that failed; `vyre apps setup`
+  waits 180 s; with `--json` a send's preview goes to stderr before the proof; an unknown flag
+  or `--app` without a name exits 2. apps.setup also admits the owner's devices over the tailnet
+  (the Registry's callerAllowed), never a guest.
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
 - npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size

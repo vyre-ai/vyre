@@ -19,6 +19,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | --- | --- | --- | --- | --- | --- |
 | [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
+| [`apps`](#apps) | `local/apps` | `local` | 6 | 2 | none |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 21 | 14 | cli, deck |
@@ -69,6 +70,17 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`
+
+## apps
+
+Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders and the weather. Actions that send as the person go through apps.send, with a proof per call.
+
+- Folder: `local/apps`, version 0.1.0
+- Runs on: `local`
+- Requires: none
+- Tools: [6](tools.md#apps)
+- Emits: [2 events](events.md#apps)
+- Shows on: no surface
 
 ## capsule
 

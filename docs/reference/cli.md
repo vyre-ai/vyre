@@ -56,6 +56,7 @@ In the order `vyre help` lists them.
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
@@ -392,6 +393,14 @@ Send files from this Mac to your box with Taildrop.
 
 ```
 vyre send <file> [more files]
+```
+
+### vyre apps
+
+Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
+
+```
+vyre apps <words...>
 ```
 
 ### vyre statusline
