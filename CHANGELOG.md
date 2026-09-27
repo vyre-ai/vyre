@@ -21,6 +21,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   vyre-signer), so a clean checkout could not build them. Only the prebuild output is ignored now.
   vault-android is the copy of work/vault-next 725e4a41 (Credential Manager provider).
 - Fixed: the app's HUMAN_ONLY mirror lacked presence.person.start.
+- The perf meter stays on for this device after ?perf=1 until ?perf=0 (src/perf/flag.js): the app
+  added to the Home Screen opens at /app/ with no query. On the web, Settings has a Performance
+  meter row that turns it on or off from inside the installed app.
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 

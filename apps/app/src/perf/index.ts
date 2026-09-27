@@ -8,17 +8,26 @@ import { createMeter } from "@vyre/perf/meter.js";
 export { BAR, createMeter, percentile } from "@vyre/perf/meter.js";
 export type Meter = ReturnType<typeof createMeter>;
 
+import { perfFlag } from "./flag.js";
+
 export const meter: Meter = createMeter();
 
-/** On for this page: ?perf=1 on the web. Native has no page URL; its feed lands with the native build. */
-export const perfOn: boolean = (() => {
-  try {
-    const loc = (globalThis as { location?: { search?: string } }).location;
-    return typeof loc?.search === "string" && new URLSearchParams(loc.search).get("perf") === "1";
-  } catch {
-    return false;
-  }
-})();
+/**
+ * On for this page: ?perf=1 on the web, remembered on this device until ?perf=0, because the app
+ * added to the Home Screen opens at the manifest's start_url (/app/) with no query. Native has no
+ * page URL; its feed lands with the native build.
+ */
+export const perfOn: boolean = perfFlag(
+  (globalThis as { location?: { search?: string } }).location?.search,
+  (() => {
+    // Reading localStorage itself throws where site data is blocked.
+    try {
+      return (globalThis as { localStorage?: Storage }).localStorage;
+    } catch {
+      return undefined;
+    }
+  })(),
+);
 
 const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 

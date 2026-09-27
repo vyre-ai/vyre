@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { meter, type Meter } from "./index";
+import { meter, perfOn, type Meter } from "./index";
 
 declare global {
   interface Window {
@@ -7,21 +7,13 @@ declare global {
   }
 }
 
-function wanted(): boolean {
-  try {
-    return new URLSearchParams(window.location.search).get("perf") === "1";
-  } catch {
-    return false;
-  }
-}
-
 /**
- * With ?perf=1, feeds meter.frame from requestAnimationFrame while the page is visible, records
+ * With ?perf=1 (or the flag this device kept, src/perf/flag.js), feeds meter.frame from requestAnimationFrame while the page is visible, records
  * long tasks where the browser reports them, and exposes the meter as window.__vyrePerf so CI can
  * call report(). Without the flag it does nothing, so it costs nothing.
  */
 export function usePerfOverlay(): boolean {
-  const [on] = useState(wanted);
+  const [on] = useState(perfOn);
   useEffect(() => {
     if (!on) return;
     window.__vyrePerf = meter;
