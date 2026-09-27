@@ -45,7 +45,7 @@ async function world(t) {
   const base = `http://127.0.0.1:${/** @type {any} */ (server.address()).port}`;
   const phone = async (tool, input, headers = {}) => {
     const r = await fetch(`${base}/v1/tools/${tool}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(input) });
-    return { status: r.status, body: await r.json() };
+    return { status: r.status, body: await r.json(), cookie: String(r.headers.get("set-cookie") || "").split(";")[0] };
   };
 
   // The mail credential and a held draft, set up by alex at the Mac with a signed Capsule call.
@@ -89,12 +89,12 @@ test("mobile: a tailnet device is asked for presence on gate.approve, and a devi
   assert.ok(!tools.data.some(x => x.name === "link.pair"), "link.pair stays off the phone");
   assert.equal((await w.phone("gate.get", { id: w.id })).status, 200, "the phone reads a held item");
 
+  // The owner's own action wants the person's session first (ADR 0032), whatever the caller claims.
   const bare = await w.phone("gate.approve", { id: w.id });
-  assert.equal(bare.status, 403);
-  assert.equal(bare.body.error.code, "presence_required", "a device is asked for a proof, not denied");
+  assert.equal(bare.status, 401, JSON.stringify(bare.body));
+  assert.equal(bare.body.error.code, "person_session_required");
+  assert.equal((await w.phone("gate.approve", { id: w.id }, { "x-vyre-caller": "cli" })).body.error.code, "person_session_required", "a forged caller header changes nothing");
   assert.equal(w.mail.got.length, 0);
-  // A forged caller header changes nothing over the tailnet.
-  assert.equal((await w.phone("gate.approve", { id: w.id }, { "x-vyre-caller": "cli" })).body.error.code, "presence_required");
 
   // Enroll the device key with a one-time code, as /onboard/device does when the box has no passkey.
   const k = deviceKey();
@@ -103,16 +103,27 @@ test("mobile: a tailnet device is asked for presence on gate.approve, and a devi
   const enrolled = await w.phone("presence.enroll", enroll, { "x-vyre-presence": `code code=${code}` });
   assert.equal(enrolled.status, 200, JSON.stringify(enrolled.body));
   assert.equal(enrolled.body.data.id, k.id);
-  assert.ok((await w.phone("gate.approve", { id: w.id })).body.error.methods.includes("device"), "device is offered once enrolled");
 
-  const wrong = await w.phone("gate.approve", { id: w.id }, k.header("gate.approve", { id: "someone-else" }));
+  // The device key signs the phone in as the person.
+  const signin = await w.phone("presence.person.start", {}, k.header("presence.person.start", {}));
+  assert.equal(signin.status, 200, JSON.stringify(signin.body));
+  assert.ok(signin.cookie, "a session cookie");
+  const person = { cookie: signin.cookie };
+
+  // Signed in, a send still asks for a proof, and the device is offered.
+  const asked = await w.phone("gate.approve", { id: w.id }, person);
+  assert.equal(asked.status, 403, JSON.stringify(asked.body));
+  assert.equal(asked.body.error.code, "presence_required", "a device is asked for a proof, not denied");
+  assert.ok(asked.body.error.methods.includes("device"), "device is offered once enrolled");
+
+  const wrong = await w.phone("gate.approve", { id: w.id }, { ...person, ...k.header("gate.approve", { id: "someone-else" }) });
   assert.equal(wrong.body.error.code, "presence_required", "a proof for another item is no proof");
-  const ok = await w.phone("gate.approve", { id: w.id }, k.header("gate.approve", { id: w.id }));
+  const ok = await w.phone("gate.approve", { id: w.id }, { ...person, ...k.header("gate.approve", { id: w.id }) });
   assert.equal(ok.status, 200, JSON.stringify(ok.body));
   assert.equal(w.mail.got.length, 1, "the approved draft went out");
 
   // A device proof opens a presence session bound to this phone.
-  const s = await w.phone("presence.session.open", {}, k.header("presence.session.open", {}));
+  const s = await w.phone("presence.session.open", {}, { ...person, ...k.header("presence.session.open", {}) });
   assert.equal(s.status, 200, JSON.stringify(s.body));
   assert.ok(s.body.data.session && s.body.data.secret);
 });
