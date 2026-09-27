@@ -19,12 +19,13 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing (after LOGOUT 4 resume, 2026-09-27)
-NOW (22d8fae9, WIP, NOT TESTED): hub steps 2 and 3 + theme routes + secrets out of hub.json + chip
-events. A run before the lead's testbox hold showed step 2 breaking settings.set in hub.test.js
-worlds (hung; I stopped my pids). FIRST when testbox frees: run core/settings/hub.test.js alone,
-find why settings.set stops writing (check: atOf, change(), mirror), then settings.test.js,
-settings-keys, backup, daemon. Batch-4 fixes live in integrator f7226849 (carry in on next main
-merge; review it). Side branch work/native-core-b4fix adb8df46 is superseded.
+NOW: fa349d31 PUSHED + TESTED (targeted 146/146, daemon.test.js 21/21 alone). Hub steps 1-3, theme
+routes, secrets out of hub.json, Dark/Paper switch on appearance.scheme. Sent to integrator, e2e
+(review steps 2-3), platform (settings.write rebases), app-design (work/app-design-hub).
+Next: e2e review fixes; merge main (with f7226849) when the batch lands; ping mobile + pwa + sessions
+(settings.resolve sha) when on main; then Vault Connections entry (vault), composer suggest.query and
+model list from schema (cohesion), budget 8 rerun on pwa's sha, fling/cold open/send with chat.
+Testbox: single targeted runs allowed when uptime < 6, nice 15, --test-timeout, one at a time.
 
 LATEST (ac34c322, pushed): e2e signed off 3ae4fc93 (secret masking). Since then: no-passkey text
 in plain words (90617c03); ADR 0035 accepted (b95cc4dc); hub step 1 = hub.json with rev, live hand
