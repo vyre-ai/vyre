@@ -1,5 +1,5 @@
 // @ts-check
-// The term module inside a real Registry: who may open a terminal, the presence unlock, the files
+// The term module inside a real Registry: who may open a terminal (no passkey for the owner), the files
 // guard on cwd, one-use tickets, and on Linux a real shell over a real WebSocket (echo, resize,
 // close ending the whole session, and the end after the last socket goes away).
 
@@ -22,7 +22,7 @@ const CORE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const LINUX = process.platform === "linux";
 const DECK = "deck:abc123";
 
-/** A presence verifier that passes only a call carrying a proof, so unlock's gate is real. */
+/** A presence verifier that passes only a call carrying a proof, so a presence gate here would bite. */
 const presence = {
   required: (_tool, def) => Boolean(def && def.presence),
   verify: async ({ proof }) => proof ? { ok: true, method: "test" } : { ok: false, code: "presence_required", message: "needs a person", methods: ["passkey"] },
@@ -43,7 +43,6 @@ async function registry(t, term = {}) {
   return { reg, work, events };
 }
 
-const PROOF = { proof: { method: "test" } };
 const ok = async (reg, tool, input, caller = "deck", meta = {}) => {
   const r = await reg.call(tool, input, caller, meta);
   if (r.error) throw new Error(`${tool}: ${r.error.code} ${r.error.message}`);
@@ -120,30 +119,27 @@ test("term: only a person's surfaces may use it; a tailnet guest and an agent ar
     const r = await reg.call("term.open", { cwd: work, surface: DECK }, caller);
     assert.ok(r.error, `${caller} should be refused`);
     assert.ok(["denied", "no_such_tool"].includes(r.error.code), `${caller}: ${r.error.code}`);
-    const u = await reg.call("term.unlock", { surface: DECK }, caller, PROOF);
-    assert.ok(u.error, `${caller} should not unlock`);
   }
   assert.ok(!reg.listTools("tailnet-guest:x").some(x => x.name.startsWith("term.")));
 });
 
-test("term: open needs an unlock from the same screen, and the unlock needs presence", async t => {
+test("term: the owner opens a terminal with no passkey, and only the screen that opened it reattaches", async t => {
   const { reg, work } = await registry(t);
-  const first = await reg.call("term.open", { cwd: work, surface: DECK }, "deck");
-  assert.equal(first.error?.code, "unlock_required");
-  const noProof = await reg.call("term.unlock", { surface: DECK }, "deck");
-  assert.equal(noProof.error?.code, "presence_required");
-  const u = await ok(reg, "term.unlock", { surface: DECK }, "deck", PROOF);
-  assert.ok(u.until > Date.now() + 11 * 3_600_000);
-  // Another screen, another caller or another tailnet node has no grant.
-  assert.equal((await reg.call("term.open", { cwd: work, surface: "phone:zzz999" }, "deck")).error?.code, "unlock_required");
-  assert.equal((await reg.call("term.open", { cwd: work, surface: DECK }, "cli")).error?.code, "unlock_required");
-  await ok(reg, "term.unlock", { surface: DECK }, "tailnet:alex", { ...PROOF, peer: { stableId: "nPhone" } });
-  assert.equal((await reg.call("term.open", { cwd: work, surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "unlock_required");
+  // No proof on the call, and none asked for (no nagging).
+  const o = await ok(reg, "term.open", { cwd: work, surface: DECK }, "deck");
+  assert.ok(o.ticket && o.term);
+  assert.ok(!reg.listTools("deck").some(x => x.name.startsWith("term.") && x.presence));
+  assert.ok(!reg.listTools("deck").some(x => x.name === "term.unlock"));
+  // Another screen, another caller or another tailnet node cannot pick it up.
+  assert.equal((await reg.call("term.attach", { term: o.term, surface: "phone:zzz999" }, "deck")).error?.code, "not_found");
+  assert.equal((await reg.call("term.attach", { term: o.term, surface: DECK }, "cli")).error?.code, "not_found");
+  const p = await ok(reg, "term.open", { cwd: work, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } });
+  assert.equal((await reg.call("term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "not_found");
+  await ok(reg, "term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } });
 });
 
 test("term: cwd must pass the files guard", async t => {
   const { reg, work } = await registry(t);
-  await ok(reg, "term.unlock", { surface: DECK }, "deck", PROOF);
   for (const cwd of ["/", "/etc", path.dirname(work), path.join(work, "..", "x"), "relative/path", path.join(work, "missing")]) {
     const r = await reg.call("term.open", { cwd, surface: DECK }, "deck");
     assert.ok(r.error, `${cwd} should be refused`);
@@ -154,7 +150,6 @@ test("term: cwd must pass the files guard", async t => {
 test("term: a ticket works once and expires", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
   const { reg, work } = await registry(t, { ticketMs: 300 });
   const port = await server(t, reg);
-  await ok(reg, "term.unlock", { surface: DECK }, "deck", PROOF);
   const o = await ok(reg, "term.open", { cwd: path.join(work, "proj"), surface: DECK, cols: 80, rows: 24 });
   const a = await connect(port, o.path);
   assert.equal(a.status, 101);
@@ -164,14 +159,13 @@ test("term: a ticket works once and expires", { skip: !LINUX && "the pty runs on
   await wait(400);
   assert.equal((await connect(port, late.path)).status, 403);
   // Attach is for the screen that opened it.
-  assert.equal((await reg.call("term.attach", { term: o.term, surface: "phone:zzz999" }, "deck")).error?.code, "unlock_required");
+  assert.equal((await reg.call("term.attach", { term: o.term, surface: "phone:zzz999" }, "deck")).error?.code, "not_found");
   a.sock.destroy();
 });
 
 test("term: a real shell round trip, resize, and close ends the whole session", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
   const { reg, work, events } = await registry(t);
   const port = await server(t, reg);
-  await ok(reg, "term.unlock", { surface: DECK }, "deck", PROOF);
   const o = await ok(reg, "term.open", { cwd: path.join(work, "proj"), surface: DECK, cols: 80, rows: 24 });
   assert.match(o.path, /^\/v1\/streams\/term\/pty\?ticket=/);
   const c = await connect(port, o.path);
@@ -204,7 +198,6 @@ test("term: a real shell round trip, resize, and close ends the whole session", 
 test("term: the terminal ends a while after its last socket closes, unless reattached", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
   const { reg, work } = await registry(t, { endAfterMs: 400 });
   const port = await server(t, reg);
-  await ok(reg, "term.unlock", { surface: DECK }, "deck", PROOF);
   const o = await ok(reg, "term.open", { cwd: work, surface: DECK });
   const c = await connect(port, o.path);
   c.send({ t: "in", d: "echo ready\n" });
@@ -224,7 +217,6 @@ test("term: the terminal ends a while after its last socket closes, unless reatt
 
 test("term: at most max terminals, and stop ends them all", { skip: !LINUX && "the pty runs on the box (util-linux script)" }, async t => {
   const { reg, work } = await registry(t, { max: 2 });
-  await ok(reg, "term.unlock", { surface: DECK }, "deck", PROOF);
   await ok(reg, "term.open", { cwd: work, surface: DECK });
   await ok(reg, "term.open", { cwd: work, surface: DECK });
   assert.equal((await reg.call("term.open", { cwd: work, surface: DECK }, "deck")).error?.code, "too_many");

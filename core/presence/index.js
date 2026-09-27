@@ -21,7 +21,7 @@ import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
  */
 export const HUMAN_ONLY = new Set([
   // Floor rules 1 and 2: nothing goes out, and no permission is given, unseen.
-  "gate.approve", "gate.revise", "gate.reject", "threads.answer",
+  "gate.approve", "gate.revise", "gate.reject",
   // Floor rule 8: every way a value, or the power to release one, leaves the vault.
   "vault.put", "vault.approve", "vault.unlock", "vault.offboard", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.delete", "vault.device.code", "vault.device.unlock",
@@ -42,6 +42,14 @@ export const HUMAN_ONLY = new Set([
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
 ]);
+
+/**
+ * The person's own actions that ask no proof, because the owner does them on their own screens and
+ * Vyre does not nag (ADR 0024): answering a session's ask and opening a terminal. The tools' caller
+ * allowlists keep models, agents and guests out, and the harness floor refuses a model's shell
+ * that names one of these, as it does the list above.
+ */
+export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
 

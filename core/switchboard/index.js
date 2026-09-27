@@ -20,6 +20,7 @@ import { translate, cut, clip, CAPS } from "./translate.js";
 import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
+import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
@@ -375,26 +376,50 @@ export class Switchboard {
       const ev = this.emit(e.type, e.payload, id, project);
       if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
     }
-    if (t.ask) {
-      const a = this.asks.raise({ thread: id, request_id: t.ask.request_id, tool: t.ask.tool, summary: t.ask.summary, destination: t.ask.destination,
-        reason: t.ask.reason ? cut(clip(t.ask.reason, 2000)) : null, kind: t.ask.kind, questions: t.ask.questions, detail: t.ask.detail, tool_use_id: t.ask.tool_use_id });
-      st.inputs = st.inputs || new Map();
-      st.inputs.set(a.id, t.ask.input);                                    // kept in memory only, to hand back on allow
-      if (t.ask.suggestions) { this.suggestions.set(a.id, t.ask.suggestions); if (rec && rec.project) this.projectScope(id).catch(() => {}); }
-      this.set(id, { status: "waiting" });
-      // Small: a question's options without their previews, and never a permission's detail.
-      // Surfaces read the whole card from threads.asks.
-      const questions = a.kind === "question" ? { questions: (a.questions || []).map(q => ({ ...q, options: q.options.map(({ preview, ...o }) => o) })) } : {};
-      const ev = this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null,
-        agent: a.agent, thread_name: a.thread_name, ...questions }, id, project);
-      this.asks.anchored(a.id, ev && ev.id);
-    }
+    if (t.ask && t.ask.kind === "permission") {
+      // The Changes row: an edit's line counts come from its input, now; a push's from git,
+      // which is held for at most GIT_MS and raised without them if git is slower.
+      const cwd = rec ? rec.cwd : undefined;
+      try { const c = editChanges(t.ask.tool, t.ask.input, cwd); if (c) t.ask.detail = { ...t.ask.detail, ...c }; } catch {}
+      const dir = t.ask.tool === "Bash" && cwd ? pushDir(t.ask.input && t.ask.input.command, cwd) : null;
+      if (dir) {
+        const held = st.held = st.held || new Set();
+        const rid = t.ask.request_id, ask = t.ask;
+        held.add(rid);
+        pushChanges(dir).catch(() => null).then(c => {
+          if (!held.delete(rid) || this.live.get(id) !== st) return;       // withdrawn, or the thread ended meanwhile
+          if (c) ask.detail = { ...ask.detail, ...c };
+          this.raiseAsk(id, st, ask);
+        });
+      } else this.raiseAsk(id, st, t.ask);
+    } else if (t.ask) this.raiseAsk(id, st, t.ask);
     if (t.cancel) {
-      const a = this.asks.byRequest(id, t.cancel);
-      if (a) this.closeAsk(a, "cancelled", "claude");
+      if (st.held && st.held.delete(t.cancel)) { /* withdrawn before it was raised */ }
+      else {
+        const a = this.asks.byRequest(id, t.cancel);
+        if (a) this.closeAsk(a, "cancelled", "claude");
+      }
     }
     if (t.limit) this.limit(id, st, t.limit, project);
     if (t.limited && st.launch.fallback && !st.switching) this.fallback(id, st);
+  }
+
+  /** Record an ask, set the thread waiting and emit ask.raised (small: never a permission's detail). */
+  raiseAsk(id, st, ask) {
+    const rec = this.record(id);
+    const project = rec ? rec.project : null;
+    const a = this.asks.raise({ thread: id, request_id: ask.request_id, tool: ask.tool, summary: ask.summary, destination: ask.destination,
+      reason: ask.reason ? cut(clip(ask.reason, 2000)) : null, kind: ask.kind, questions: ask.questions, detail: ask.detail, tool_use_id: ask.tool_use_id });
+    st.inputs = st.inputs || new Map();
+    st.inputs.set(a.id, ask.input);                                        // kept in memory only, to hand back on allow
+    if (ask.suggestions) { this.suggestions.set(a.id, ask.suggestions); if (rec && rec.project) this.projectScope(id).catch(() => {}); }
+    this.set(id, { status: "waiting" });
+    // Small: a question's options without their previews, and never a permission's detail.
+    // Surfaces read the whole card from threads.asks.
+    const questions = a.kind === "question" ? { questions: (a.questions || []).map(q => ({ ...q, options: q.options.map(({ preview, ...o }) => o) })) } : {};
+    const ev = this.emit("ask.raised", { ask: a.id, kind: a.kind, tool: a.tool, summary: a.summary, destination: a.destination, reason: a.reason, holder: rec ? rec.holder : null,
+      agent: a.agent, thread_name: a.thread_name, ...questions }, id, project);
+    this.asks.anchored(a.id, ev && ev.id);
   }
 
   /**
@@ -968,10 +993,10 @@ export default {
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
-      ["cli", "local", "module", "deck", "capsule"],
-      // And a person must be there right now (presence proof, ADR 0004): the summary is what they
-      // read in the Touch ID dialog or at the terminal before the answer goes through.
-      { presence: { summary: i => answerSummary(sb, i) } });
+      // No presence proof: answering is the owner's own action on their own screen, and Vyre does
+      // not nag (ADR 0024, "No nagging"). The allowlist keeps models, agents and guests out, and the
+      // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
+      ["cli", "local", "module", "deck", "capsule"]);
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },

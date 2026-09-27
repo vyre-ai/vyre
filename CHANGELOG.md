@@ -11,9 +11,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   first, then the box's folders, with search, "New session here" and "Open in terminal"
   (files.dirs, files.recent, through the files guard).
 - A terminal in the browser: core/term runs a login shell under `script` (no native dependency),
-  over a ticketed WebSocket, with xterm 6.0.0 vendored in deck/vendor/xterm (MIT). The first open
-  needs a passkey (term.unlock, 12 h per surface). A terminal ends 10 s after its last viewer
-  leaves, and nothing it prints is logged.
+  over a ticketed WebSocket, with xterm 6.0.0 vendored in deck/vendor/xterm (MIT). Opening one
+  needs no passkey, and only the screen that opened it can reattach. A terminal ends 10 s after
+  its last viewer leaves, and nothing it prints is logged.
 - The session view reads the transcript (recall.transcript, new): tool calls as cards with
   command, output, duration and status, edits as diffs, reads as previews, todo lists as
   checklists, thinking folded, time and tokens per turn, and a Raw toggle that prints it the way
@@ -21,7 +21,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Claude Code's questions (AskUserQuestion) are asks of kind `question`, answered from a card:
   options, multi-select, Other, previews side by side, arrow keys and number keys.
   threads.answer takes `answers`. Permission asks carry what exactly will run (`detail`) and
-  offer Always for this (decision `always`, when Claude Code suggests it).
+  offer Always for this (decision `always`, when Claude Code suggests it). Answering needs no
+  passkey or Touch ID: `threads.answer` left the floor's human-only list for a new `PERSON_ONLY`
+  list (with `term.open` and `term.attach`), which asks no proof but which the harness still
+  refuses to a model's shell (core/presence/index.js, core/harness/rules.js).
+- Permission asks for Edit, MultiEdit, Write and a plain `git push` carry a diff summary in
+  `detail.changes` (file, added, removed per file) and `detail.totals` (files, added, removed).
+  Edits count lines from their full input, a Write is compared with the file on disk, and a push
+  runs `git diff --numstat` over what is ahead of `@{push}` (else the upstream, else origin's
+  default branch) with no shell, no network and a 3 s budget. Binary files are counted as files
+  with `binary: true`, and a push keeps 200 rows (`truncated: true`). ask.raised stays small.
+
 #### The person on the box types into a Mac's session
 
 - `threads.send` on the box, for a thread only a paired Mac has, goes to that Mac for the

@@ -1,12 +1,10 @@
 // @ts-check
 // A terminal in a folder on the box (ADR 0024, contracts 4 and 5). openTerminal starts one
-// (term.open, with the one passkey term.unlock asks for the first time this screen opens a
-// terminal in 12 hours); mountTerminal draws it with xterm.js over /v1/streams/term/pty.
+// (term.open, no passkey: it is the owner's own screen); mountTerminal draws it with xterm.js over
+// /v1/streams/term/pty.
 //
 // Rules this file keeps:
 //  - xterm's script and stylesheet load only when a terminal opens, never with Chat;
-//  - the passkey is asked for only when the box says unlock_required, and on a reload only from a
-//    button (a browser shows a passkey prompt only after a tap);
 //  - a hidden tab keeps its socket (closing it would end the terminal 10 s later); reconnects
 //    after a drop wait for the tab to be visible, with a fresh ticket from term.attach, backing
 //    off 1, 2, 4 ... 30 s;
@@ -37,10 +35,6 @@ export function termError(err) {
   if (!err) return "";
   if (err.missing && err.code !== "offline") return "Terminals are not available on this machine yet (the term module is not running).";
   const words = {
-    unlock_required: "Prove it is you to open a terminal from this screen.",
-    presence_required: "Prove it is you to open a terminal from this screen.",
-    cancelled: "The passkey was cancelled, so no terminal was opened.",
-    no_passkey: "This browser cannot use a passkey. Open the Deck in Safari or Chrome over your tailnet.",
     not_available: "That folder is outside the folders the box shares, or it holds keys.",
     too_many: "Eight terminals are already open. Close one first.",
     not_found: "That terminal has ended.",
@@ -50,20 +44,14 @@ export function termError(err) {
 }
 
 /**
- * Open a terminal in a folder. Asks for a passkey only when the box says this screen has not
- * unlocked terminals yet. Call it from a tap: the passkey prompt needs one.
+ * Open a terminal in a folder.
  * @param {string} cwd
  * @returns {Promise<{ term: string } | { error: any }>}
  */
 export async function openTerminal(cwd) {
   const surface = surfaceId();
   const input = { cwd: String(cwd || ""), surface, ...guessSize() };
-  let r = await attempt("term.open", input);
-  if (r.error && r.error.code === "unlock_required") {
-    const u = await attempt("term.unlock", { surface }, { presence: true });
-    if (u.error) return { error: u.error };
-    r = await attempt("term.open", input);
-  }
+  const r = await attempt("term.open", input);
   if (r.error) return { error: r.error };
   fresh.set(r.data.term, { path: r.data.path, cwd: r.data.cwd, until: Date.now() + 25_000 });
   return { term: r.data.term };
@@ -133,10 +121,10 @@ export function mountTerminal(container, { term, onBack }) {
     note, screen);
   put(container, root);
 
-  /** @param {"connecting"|"live"|"waiting"|"ended"|"locked"|"error"|"blocked"} state @param {string} [msg] @param {any} [action] */
+  /** @param {"connecting"|"live"|"waiting"|"ended"|"error"|"blocked"} state @param {string} [msg] @param {any} [action] */
   function status(state, msg = "", action = null) {
     root.dataset.state = state;
-    word.textContent = { connecting: "Connecting", live: "Live", waiting: "Reconnecting", ended: "Ended", locked: "Locked", error: "Not connected", blocked: "No live link" }[state];
+    word.textContent = { connecting: "Connecting", live: "Live", waiting: "Reconnecting", ended: "Ended", error: "Not connected", blocked: "No live link" }[state];
     if (msg || action) { put(note, h("span", null, msg), action ? [" ", action] : null); note.hidden = false; }
     else { put(note); note.hidden = true; }
   }
@@ -182,7 +170,6 @@ export function mountTerminal(container, { term, onBack }) {
     const r = await ticket();
     if (dead) return;
     if (r.error) {
-      if (r.error.code === "unlock_required") { status("locked", "Terminals on this screen are locked.", h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: unlock }, "Unlock")); return; }
       if (r.error.code === "not_found") { finish("That terminal has ended."); return; }
       if (r.error.code === "offline") { later("The box did not answer."); return; }
       status("error", termError(r.error)); return;
@@ -251,14 +238,6 @@ export function mountTerminal(container, { term, onBack }) {
 
   const onVisible = () => { if (document.visibilityState === "visible" && !ws && !ended && !dead && root.dataset.state === "waiting") connect(); };
   document.addEventListener("visibilitychange", onVisible);
-
-  async function unlock() {
-    status("connecting");
-    const u = await attempt("term.unlock", { surface }, { presence: true });
-    if (dead) return;
-    if (u.error) { status("locked", termError(u.error), h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: unlock }, "Try again")); return; }
-    connect();
-  }
 
   function finish(msg) {
     ended = true;

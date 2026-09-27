@@ -6,6 +6,7 @@
 // deltas, whole assistant messages, can_use_tool control requests, a result per turn) and
 // nothing more. What it does depends on the prompt:
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
+//   "bash <command>" asks permission for Bash with that command, and runs nothing
 //   "ask"           asks an AskUserQuestion (a single-select with previews, then a multi-select)
 //                   and says back the answers it got
 //   "demo"          a rich turn: thinking, Read, an Edit and a Bash each behind a permission ask,
@@ -155,6 +156,11 @@ async function turn(prompt) {
       run: i => { fs.writeFileSync(file, String(i.content)); return { content: `File created successfully at: ${file}` }; } });
     await say(allowed ? "Wrote it." : "I was not allowed to.");
     return result(true, allowed ? "Wrote it." : "I was not allowed to.");
+  }
+  if (/^bash /i.test(p)) {
+    const { allowed } = await useTool("Bash", { command: p.slice(5).trim(), description: "Run it" }, { ask: true, run: () => ({ content: "" }) });
+    await say(allowed ? "Ran it." : "I was not allowed to.");
+    return result(true, allowed ? "Ran it." : "I was not allowed to.");
   }
   if (/^ask$/i.test(p)) {
     let got = null;

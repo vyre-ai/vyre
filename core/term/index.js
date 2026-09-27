@@ -10,16 +10,14 @@
 // socket closes the terminal ends 10 s later unless something reattaches.
 //
 // Who may: only a person's surfaces (cli, local, deck, capsule; the owner's own Deck over the
-// tailnet counts as deck, a tailnet guest never does), and only after proving presence once.
+// tailnet counts as deck, a tailnet guest never does). No passkey: opening a terminal is the
+// owner's own action on their own screen, and Vyre does not nag (ADR 0024). Models, agents and
+// guests are kept out by the caller allowlist, and a model's shell naming term.open by the
+// harness floor (core/presence PERSON_ONLY).
 //
-// Presence, the simplest design that keeps guests and other callers out: term.unlock is a
-// presence tool (a passkey from the Deck, Touch ID or a terminal code on the Mac), so the registry
-// runs it only with a fresh proof. What it records is a grant, in memory only, for 12 h, keyed by
-// who asked: the caller label, the tailnet node the listener verified (when there is one) and the
-// surface named in the input. term.open and term.attach look up the same key and refuse with
-// code "unlock_required" when there is none, so the Deck proves presence only when told to. The
-// node in the key is what makes the grant a device's: the owner's phone unlocking cannot open a
-// shell for the owner's laptop. A restart forgets every grant, which is the safe direction.
+// A terminal belongs to the screen that opened it: the caller label, the tailnet node the
+// listener verified (when there is one) and the surface named in the input. term.attach from any
+// other screen is not_found, so the owner's phone cannot pick up the shell open on their laptop.
 //
 // Nothing a terminal prints is written to the event log or vyred's log; term.opened and
 // term.closed carry the id, the folder and why, never content.
@@ -36,7 +34,6 @@ const int = { type: "integer" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const SURFACE = /^(deck|phone|capsule|glass|cli):[A-Za-z0-9_-]{1,64}$/;
-const HOUR = 3_600_000;
 
 /** An error with a code the registry passes through to the caller. */
 function fail(code, message) {
@@ -67,7 +64,6 @@ export default {
     const max = Number(cfg.max ?? 8);
     const scrollback = Number(cfg.scrollback ?? 64 * 1024);
     const endAfterMs = Number(cfg.endAfterMs ?? 10_000);
-    const grantMs = Number(cfg.grantMs ?? 12 * HOUR);
     const ticketMs = Number(cfg.ticketMs ?? 30_000);
     const shell = cfg.shell ? String(cfg.shell) : undefined;
     const login = cfg.login !== false;
@@ -78,8 +74,6 @@ export default {
     const roots = Array.isArray(fcfg.roots) && fcfg.roots.length ? fcfg.roots.map(String) : role === "box" ? ["/work"] : [os.homedir()];
     const g = guard({ roots, allowDot: Array.isArray(fcfg.allowDot) ? fcfg.allowDot : [], vyreHome: ctx.paths.root, vault: ctx.paths.vault });
 
-    /** @type {Map<string, number>} grant key -> until */
-    const grants = new Map();
     /** @type {Map<string, Term>} */
     const terms = new Map();
     /** @type {Map<string, { term: string, expires: number }>} */
@@ -94,17 +88,8 @@ export default {
       if (!SURFACE.test(s)) throw fail("bad_input", "surface must name this screen, such as deck:<device> or phone:<device>");
       return s;
     };
-    /** Who is asking, as precisely as vyred verified it: caller, tailnet node, surface. */
+    /** Which screen is asking, as precisely as vyred verified it: caller, tailnet node, surface. */
     const keyOf = (caller, peer, surface) => `${String(caller || "")}|${peer && peer.stableId ? String(peer.stableId) : peer && peer.node ? String(peer.node) : ""}|${surface}`;
-    const granted = key => {
-      const until = grants.get(key);
-      if (until && until > now()) return true;
-      grants.delete(key);
-      return false;
-    };
-    const needGrant = key => {
-      if (!granted(key)) throw fail("unlock_required", "prove you are here to open a terminal from this screen (term.unlock)");
-    };
 
     const issue = t => {
       for (const [k, v] of tickets) if (v.expires <= now()) tickets.delete(k);
@@ -156,19 +141,10 @@ export default {
 
     const tool = (name, description, input, run, extra = {}) => ctx.tool(name, { description, input, run, callers: PEOPLE, ...extra });
 
-    tool("term.unlock", "Prove you are here so this screen may open terminals for the next 12 hours.",
-      obj({ surface: str }, ["surface"]), async (i, { caller, peer }) => {
-        const surface = surfaceOf(i);
-        const until = now() + grantMs;
-        grants.set(keyOf(caller, peer, surface), until);
-        return { surface, until };
-      }, { presence: { summary: () => "Open terminals on this machine from this screen for 12 hours" } });
-
-    tool("term.open", "Open a terminal: the user's login shell in a folder, on this machine. Needs term.unlock from the same screen first (code unlock_required). Returns a one-use ticket (30 s) for the stream at path.",
+    tool("term.open", "Open a terminal: the user's login shell in a folder, on this machine. Returns a one-use ticket (30 s) for the stream at path.",
       obj({ cwd: str, cols: int, rows: int, surface: str }, ["cwd", "surface"]), async (i, { caller, peer }) => {
         const surface = surfaceOf(i);
         const key = keyOf(caller, peer, surface);
-        needGrant(key);
         let dir;
         try { dir = g.resolveSafe(String(i.cwd)).real; }
         catch (e) { throw fail(/** @type {any} */ (e).code === "not_available" ? "not_available" : "bad_input", /** @type {Error} */ (e).message); }
@@ -191,7 +167,6 @@ export default {
       obj({ term: str, surface: str }, ["term", "surface"]), async (i, { caller, peer }) => {
         const surface = surfaceOf(i);
         const key = keyOf(caller, peer, surface);
-        needGrant(key);
         const t = terms.get(String(i.term));
         if (!t || t.key !== key) throw fail("not_found", "no such terminal on this screen");
         if (!t.sockets.size) idleSoon(t, ticketMs);
@@ -275,12 +250,11 @@ export default {
     });
 
     return {
-      terms, grants,
+      terms,
       async stop() {
         stopping = true;
         await Promise.all([...terms.values()].map(t => end(t, "stopped")));
         tickets.clear();
-        grants.clear();
       },
     };
   },

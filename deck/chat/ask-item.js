@@ -4,8 +4,8 @@
 // the file and a preview; WebFetch: the URL; anything else: the input as keys and values), why
 // (the reason Claude Code gave), and three answers: Allow once (Enter), Always in <project> (when
 // the ask offers `always_project`: decision "always", scope "project"; "Always for this" when only
-// `always` is offered), Deny (Esc, with an optional "tell <assistant> why" sent as `message`). threads.answer is on the floor's human-only list, so the answer carries a passkey
-// proof. Once answered, here or on another screen (session.js calls .answered on ask.answered),
+// `always` is offered), Deny (Esc, with an optional "tell <assistant> why" sent as `message`). No passkey: answering
+// is the owner's own action (ADR 0024, no nagging). Once answered, here or on another screen (session.js calls .answered on ask.answered),
 // the card loses its buttons and says what was decided; a failure says why and gives them back.
 //
 // ask.raised carries no detail, so the card is drawn from the event first and filled in by
@@ -86,7 +86,7 @@ export function askCard(ask) {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
     const input = { ask: ask.id, decision, surface: "deck", ...extra, ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}) };
-    const r = await attempt("threads.answer", input, { presence: true });
+    const r = await attempt("threads.answer", input);
     state.busy = false;
     if (r.error) state.error = r.error; else state.decided = decision;
     draw();

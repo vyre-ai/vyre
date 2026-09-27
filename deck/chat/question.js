@@ -9,7 +9,7 @@
 // Keys (routed by session.js when focus is not in the composer): 1-9 pick an option, arrow keys
 // move, space toggles (multi-select) or picks, Enter picks and moves on (on the last step it
 // submits), Esc steps back. Submit calls threads.answer { ask, decision: "allow", answers,
-// surface: "deck" } with a passkey proof; Decline sends "deny". Answered here or elsewhere
+// surface: "deck" } (no passkey, ADR 0024); Decline sends "deny". Answered here or elsewhere
 // (ask.answered), the card folds to what was answered.
 
 import { h, put, add } from "../js/dom.js";
@@ -66,7 +66,7 @@ export function questionCard(ask) {
     let input;
     try { input = answerInput(ask.id, questions, picks); } catch (e) { state.error = e; draw(); return; }
     state.busy = true; state.error = null; draw();
-    const r = await attempt("threads.answer", input, { presence: true });
+    const r = await attempt("threads.answer", input);
     state.busy = false;
     if (r.error) state.error = r.error; else { state.decided = "allow"; state.shown = input.answers; }
     draw();
@@ -74,7 +74,7 @@ export function questionCard(ask) {
   async function decline() {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
-    const r = await attempt("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" }, { presence: true });
+    const r = await attempt("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" });
     state.busy = false;
     if (r.error) state.error = r.error; else state.decided = "deny";
     draw();

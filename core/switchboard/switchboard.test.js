@@ -1035,3 +1035,42 @@ test("always in <project>: offered for a thread in its project's folder, sent as
   assert.match((await tool("threads.answer", { ask: ask.id, decision: "always", scope: "project", surface: "deck" })).error.message, /project/);
   assert.equal((await tool("threads.asks", { thread: other })).data.length, 1, "still open after the refusal");
 });
+
+test("switchboard: a push ask and a Write ask carry the Changes row in threads.asks, never in ask.raised", async t => {
+  const { root, work, tool } = await boot(t);
+  const { execFileSync } = await import("node:child_process");
+  const env = { ...process.env, GIT_AUTHOR_NAME: "alex", GIT_AUTHOR_EMAIL: "alex@example.com", GIT_COMMITTER_NAME: "alex", GIT_COMMITTER_EMAIL: "alex@example.com",
+    GIT_CONFIG_NOSYSTEM: "1", GIT_CONFIG_GLOBAL: path.join(root, "gitconfig") };
+  const remote = path.join(root, "remote.git"), site = path.join(work, "site");
+  const git = (...a) => execFileSync("git", a, { cwd: site, env, stdio: ["ignore", "pipe", "pipe"] });
+  execFileSync("git", ["init", "-q", "--bare", "-b", "main", remote], { env });
+  fs.mkdirSync(site);
+  git("init", "-q", "-b", "main");
+  git("remote", "add", "origin", remote);
+  fs.writeFileSync(path.join(site, "menu.md"), "- Summer tart, 4.00\n");
+  git("add", "."); git("commit", "-q", "-m", "menu"); git("push", "-q", "-u", "origin", "main");
+  fs.writeFileSync(path.join(site, "menu.md"), "- Pumpkin loaf, 5.50\n- Apple cider donut, 3.25\n");
+  fs.writeFileSync(path.join(site, "logo.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0, 0, 1, 0]));
+  git("add", "."); git("commit", "-q", "-m", "autumn");
+
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "bash git -C site push origin main" })).data.id;
+  const raised = await until(() => of(s.got, id, "ask.raised")[0], "ask.raised");
+  assert.equal("detail" in raised.payload, false, "the event stays small");
+  const [ask] = (await tool("threads.asks", { thread: id })).data;
+  assert.equal(ask.detail.command, "git -C site push origin main");
+  assert.deepEqual(ask.detail.changes, [{ file: "logo.png", added: null, removed: null, binary: true }, { file: "menu.md", added: 2, removed: 1 }]);
+  assert.deepEqual(ask.detail.totals, { files: 2, added: 2, removed: 1 });
+  await tool("threads.answer", { ask: ask.id, decision: "deny", surface: "deck" });
+  await until(async () => (await tool("threads.get", { thread: id })).data.thread.status === "idle", "the turn to end");
+
+  const file = path.join(work, "notes.md");
+  fs.writeFileSync(file, "one\ntwo\n");
+  assert.equal((await tool("threads.send", { thread: id, text: `write ${file}`, surface: "cli" })).data.sent, true);
+  await until(() => of(s.got, id, "ask.raised")[1], "the second ask.raised");
+  const [w] = (await tool("threads.asks", { thread: id })).data;
+  assert.deepEqual(w.detail.changes, [{ file, added: 1, removed: 2 }], "the fake writes \"hi\" over two lines");
+  assert.deepEqual(w.detail.totals, { files: 1, added: 1, removed: 2 });
+  await tool("threads.stop", { thread: id });
+});
