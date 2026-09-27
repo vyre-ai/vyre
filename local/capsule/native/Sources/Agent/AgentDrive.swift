@@ -10,6 +10,8 @@
 //   {"probe": true}           what is on screen: the box, the rows, the selection, the reply, the
 //                             waiting list, the desk and the conversation
 //   {"timings": true}         the open and keystroke timings measured so far
+//   {"memory": true}          this process's memory as the kernel counts it: phys_footprint (what
+//                             Activity Monitor calls Memory), resident size, and malloc in use
 //
 // Nothing here posts an event outside this app: keys go straight to the panel's key handler.
 
@@ -69,6 +71,7 @@ enum Drive {
         }
         if VJ.truthy(c["probe"]) { say(probe(a)); return }
         if VJ.truthy(c["timings"]) { say(["timings": timings]); return }
+        if VJ.truthy(c["memory"]) { say(["memory": memory()]); return }
         say(["error": "unknown command"])
     }
 
@@ -81,6 +84,20 @@ enum Drive {
                 "finished": m.reply?.finished ?? NSNull(), "waiting": m.desk.waiting.map(\.title), "desk": desk,
                 "direct": m.direct.dm.map { d in d.messages.map { "\($0.role.rawValue): \($0.text)" } } ?? NSNull(),
                 "offline": m.offline, "target": m.target?.label ?? NSNull()]
+    }
+
+    /// TASK_VM_INFO for this task, in bytes, and the default malloc zones' totals.
+    static func memory() -> [String: Any] {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<integer_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+        }
+        guard kr == KERN_SUCCESS else { return ["error": Int(kr)] }
+        var z = malloc_statistics_t()
+        malloc_zone_statistics(nil, &z)
+        return ["footprint": Int(info.phys_footprint), "resident": Int(info.resident_size), "internal": Int(info.internal),
+                "compressed": Int(info.compressed), "mallocInUse": Int(z.size_in_use), "mallocAllocated": Int(z.size_allocated)]
     }
 
     static func ms(_ t0: DispatchTime) -> Double { Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1e6 }
