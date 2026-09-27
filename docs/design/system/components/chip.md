@@ -10,10 +10,11 @@ status: draft
 
 Small labels in three kinds. A **tag** states a fact on a row ("Claude", "orders", "Update
 ready"). A **filter chip** narrows a list and toggles on and off ("All", "About you", "Harlow
-Legal"). A **source chip** says where a setting's value comes from (Project, Account, Claude Code
-file). Drawn on "Memory, phone and desktop", "Vault, phone and desktop", "Planner, phone and
-desktop", "States, every list, every size" and "Settings · account and project scopes". The
-session mode and provider chips are their own component (mode-chip).
+Legal") or grants a surface on the Connections card. A **source chip** says where a setting's
+value comes from (Project, Account, Claude Code file). Drawn on "Memory, phone and desktop",
+"Vault, phone and desktop", "Planner, phone and desktop", "States, every list, every size",
+"Settings · account and project scopes" and the Connections board. The session mode and provider
+chips are their own component (mode-chip).
 
 | Surface | Implementing file | Status |
 |---|---|---|
@@ -39,8 +40,15 @@ the setting's value, before the control.
 | Kind | Interactive | Words |
 |---|---|---|
 | Tag | No | A kind, a label, a provider, a short state ("Update ready", "Recommended") |
-| Filter chip | Yes, toggles | "All", a kind with its count, a project, a person |
+| Filter chip | Yes, toggles | "All", a kind with its count, a project, a person, a surface |
 | Source chip | Claude Code file only (opens the file) | Project, Account, Claude Code file |
+
+**A surface grant** (the Connections card, card.md) is a filter chip, not a new kind: one chip per
+surface the connection can be used from: Capsule, Chat, Agents, Phone, the vault's real surfaces,
+never a made-up list. Leading icon the surface's own glyph, On meaning granted and Off meaning
+not. Tapping toggles the grant at once (no confirm, no sheet): this is the one place a filter
+chip's state is not a view filter but a real write, because the write is instant, single-step and
+undoable by tapping the chip again, the same bar draft-card.md sets for an in-place field edit.
 
 The source chip shows **only when the value is not the default**. Project beats Account beats
 the default. There is no "Default" chip and no "Not set" chip: a default value shows no chip.
@@ -106,3 +114,7 @@ mono, never a coloured tag.
 - [ ] Capsule: chips are capsule-shaped with gold icons (`Theme.recall`); use the tag and filter
   shapes and neutral ink.
 - [ ] System: the boards draw tags with radius 5; the token is `--radius-chip` (4).
+
+native-core
+- [ ] The Connections card's grant chips are not built; toggling one needs `vault.connections.update
+      {id, grants}` or equivalent (vault's call to name). See card.md's Connections card.

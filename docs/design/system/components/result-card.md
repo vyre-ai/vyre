@@ -54,8 +54,8 @@ is code, a log or a config is one code block (card.md, Code): `--code-bg`, radiu
 field rows as the draft card's (key 12/16 `--label` in a 64 column, value 13/18 `--text`), `--rule`
 between. For one device, one account, one module.
 
-**Answer.** Not a command result — the shape Deck Find, the Memory view's search box and phone
-Find draw for `memory.ask` (ADR 0034; memory-iq's iq-everywhere.md), sitting above the search hits
+**Answer.** Not a command result: the shape Deck Find, the Memory view's search box and phone
+Find draw for `memory.ask` (ADR 0034; memory-iq's iq-everywhere.md), sitting above the search hits <!-- terms: ignore -->
 it does not replace. Built once in chat-core so the PWA gets it too.
 
 - No header row: the answer is the card's first line, 13/18 `--text` (17/24 on the phone), in the
@@ -67,15 +67,15 @@ it does not replace. Built once in chat-core so the PWA gets it too.
   naming the session and when, with the quoted words; a tap opens that turn. A fourth and more
   collapse behind "More".
 - Abstained: the first line reads "Not sure yet.", then "What memory does know:" in `--label` and
-  the `known` lines under it, same shell, same padding — never a separate empty state.
-- Limited: the `message` from `memory.ask` shown as-is, with its link to Settings.
+  the `known` lines under it, same shell, same padding; never a separate empty state.
+- Limited: the `message` from `memory.ask` shown as-is, with its link to Settings. <!-- terms: ignore -->
 - **Correct in place.** A quiet "Wrong?" (steplink, not a chip or button) sits after the meta
   line, dot-separated. It expands the row in place, no sheet: two ghost buttons ("That's wrong",
   "Forget this") then a single-line text field prefilled with the current answer; ⏎ sends the
   edit, Esc collapses with nothing sent. An abstained card skips the two buttons and shows the
   field alone, always open, empty, placeholder "Know it? Tell me". After a fix the meta line
   becomes "you corrected this" with an "Undo" steplink beside it, dot-separated; unlike the
-  optimistic-action undo (toast.md, 4 s), this Undo does not time out — the card can sit
+  optimistic-action undo (toast.md, 4 s), this Undo does not time out: the card can sit
   unnoticed in a scrolled-past search result.
 
 **Mono.** Only values that are code, a path, a command, an id, a key or a version use JetBrains
@@ -161,6 +161,6 @@ System (app-design)
 - [ ] The ResultCard board on the canvas: table, text, card, error.
 - [ ] An AnswerCard board: the answer, sources, abstained, limited, and correct-in-place open.
 
-Deck (work/pwa), App (work/mobile) — the Answer variant
-- [ ] Find has no `memory.ask` card above its hits; the same gap in the Memory view's search box
+Deck (work/pwa), App (work/mobile): the Answer variant
+- [ ] Find has no `memory.ask` card above its hits; the same gap in the Memory view's search box <!-- terms: ignore -->
       and phone Find. Built once in chat-core (memory-iq's iq-everywhere.md, Deck/App/phone gaps).

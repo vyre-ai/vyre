@@ -56,7 +56,7 @@ another account" base `--text`, meta 12/16 `--label` naming what can be added fo
 | Capsule | "send an email" (or any words that name a capability) shows a "Send from" group of these rows at 44, ready rows first; ⏎ opens the draft from that account |
 | Chat | an agent that needs an account for a send lists them to the person in a question card whose choices are these rows (radio leading, provider tile after it) |
 | A send's draft card | a From field row (draft-card.md) shows the chosen account in mono 13; clicking it opens a picker popover of these rows (a sheet on the phone). With one ready account there is no picker: the row reads the account and nothing opens |
-| Settings, Vault, Connections | the same row, no check, with a More menu (native-core) |
+| Settings, Vault, Connections | grown into the Connections card (card.md): this row at the top, then a "Granted to" row of filter chips (chip.md) per surface, then a footer with "Wrong account?" and the connected date |
 
 Order: ready rows by Default, then Last used, then the box's order; then rows that need a fix;
 then Connect another.
@@ -133,7 +133,7 @@ Capsule (work/capsule-pro)
       "Sends to" row is where a message goes, not which account sends it; it stays.)
 
 native-core
-- [ ] Settings, Vault, Connections: draw these rows with a More menu (label, default, revoke).
+- [ ] Settings, Vault, Connections: build the Connections card (card.md): this row, the grant chips, "Wrong account?". Drawn on the Connections board (Sep 2026); not built.
 
 vault
 - [ ] A default per capability (proposed: `vault.connections.update {id, default: capability}`)

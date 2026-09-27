@@ -11,8 +11,8 @@ status: draft
 A card is `--panel` plus a hairline. It holds a held draft, an ask, a plan, a group of rows on the
 phone, a settings group, a network summary. Nothing inside a card gets its own box, except code.
 Drawn on nearly every board; the reference cards are the draft in "Needs you, phone and desktop",
-the decided card in "States, every list, every size" and the Network card in "Devices, network
-and VyreDrive".
+the decided card in "States, every list, every size", the Network card in "Devices, network
+and VyreDrive", and the Connections card on the Connections board (below).
 
 | Surface | Implementing file | Status |
 |---|---|---|
@@ -42,9 +42,26 @@ and VyreDrive".
   with a section label above it outside the card.
 - **Choice tile.** Same body at radius 10, padding 12, transparent fill; selected adds `--focus`
   border plus a 1 px `--focus` ring. Used for install paths and attention colour.
+- **Connections card** (Settings, Vault, Connections). The account-row (account-row.md) grown into
+  a card when the row needs to show what it's granted, not just be picked. No header rule; three
+  parts:
+  1. A row at the top, padding 14 16: the provider tile (account-row.md's, 32 here), the account
+     and its meta line (label · provider), then trailing the row's normal state (Default, Last
+     used, or the fix button when it needs one) right-aligned.
+  2. **Granted to**, padding 0 16 12, wrapped: the label `--label`, then one filter chip
+     (chip.md) per surface that can use this connection (Capsule, Chat, Agents, Phone: the
+     vault's real surfaces, never a made-up list), each with the surface's 12 icon leading. On
+     toggles the grant at once, no confirm; off revokes at once. A row that needs a fix (see
+     account-row.md States) skips this part and the footer: just the top row and its Sign in.
+  3. **Footer**, `--rule` top border, padding 12 16: "Wrong account?" (steplink, opens the
+     credential sheet to pick a different one for this need) on the left, "Connected 3 Jan" in
+     `--label` on the right. Never a Revoke or Disconnect here: that lives on the individual
+     grant chip turned off, or the row's More menu.
 
 Colour is never the card's: no violet, lime or wash on the body or border. A card that needs you
-shows it only through the dot and label in its header.
+shows it only through the dot and label in its header. On the Connections card the only colour is
+the grant chips' own lime "on" state (chip.md); the card itself stays neutral even when nothing
+is granted.
 
 ## Sizes
 
@@ -96,3 +113,7 @@ App (work/mobile)
 Capsule (work/capsule-pro)
 - [ ] HeldCardView uses hand-typed sizes and a caps mono label; use `Tokens.Radius.card` and the
       12/600 sentence-case label.
+
+native-core
+- [ ] Settings, Vault, Connections has no card yet. The Connections board (above) is drawn but
+      not built; account-row.md's own Gaps names the same page.
