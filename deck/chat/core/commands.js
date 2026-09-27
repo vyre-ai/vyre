@@ -7,9 +7,10 @@
 // the first word, which starts with "/"), which commands match it best, and the text once one is
 // picked. No DOM: shared core, tested on its own (commands.test.js).
 //
-// Where the list comes from. threads.commands {thread} (proposed to the sessions team) gives the
-// session's own: built-ins, the user's and the project's, plugins' and skills', each with its
-// source; normalizeCommands() makes that list the picker's shape. On a box without it the picker
+// Where the list comes from. threads.commands {thread} (work/sessions 7543952e) gives the
+// session's own, {commands: [{name, description, argumentHint}]}: built-ins, the user's and the
+// project's, plugins' and skills' (a source where a box names one), empty while the thread is not
+// running; normalizeCommands() makes that list the picker's shape. On a box without it the picker
 // offers this static list: Claude Code's built-in commands that work in a session the box runs,
 // and the one the Vyre plugin adds (harness/commands/vyre.md). Whatever is typed still goes to
 // threads.send verbatim, except the commands the composer answers itself (`local`: /model opens
@@ -93,13 +94,14 @@ export const SOURCE_LABELS = Object.freeze(/** @type {Record<string, string>} */
 export const sourceLabel = source => (source in SOURCE_LABELS ? SOURCE_LABELS[source] : String(source || ""));
 
 /**
- * threads.commands' answer as the picker's list: names without their slash, sources as given
+ * threads.commands' answer ({commands} or the list itself) as the picker's list: names without their slash, sources as given
  * ("builtin" read as "session"), unique by name (the first wins), and the composer's own local
  * commands added when the session does not name them. Anything else (an older box's {}) gives the
  * static list.
  * @param {unknown} list @returns {Command[]}
  */
 export function normalizeCommands(list) {
+  if (list && !Array.isArray(list) && Array.isArray(/** @type {any} */ (list).commands)) list = /** @type {any} */ (list).commands;
   if (!Array.isArray(list) || !list.length) return [...COMMANDS];
   /** @type {Map<string, Command>} */
   const out = new Map();

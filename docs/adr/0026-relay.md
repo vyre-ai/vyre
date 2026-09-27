@@ -338,30 +338,46 @@ effect. They cannot rule it out.
    `relay.pair.start` or reveal or export vault secrets, and it cannot change these rules for
    itself. The person can raise one browser to full trust from another device. A web device
    that goes 30 days without use expires (`relay.web_expiry_days`).
-3. **One published build, pinned.** CI builds the web target reproducibly from a public tag.
-   Every asset is content-addressed and loaded with subresource integrity. The release
-   manifest, the list of asset hashes, is signed with the Vyre release key and published in
-   the repo. The page is served with a strict CSP: scripts only from its own origin by hash,
-   no inline script, no `eval`, `connect-src` limited to the relay and `*.ts.net`,
-   `frame-ancestors 'none'`, and no third-party code or analytics.
-4. **A service worker that holds the release.** After the first visit, a service worker serves
-   the cached release and moves to a new one only when that release's manifest carries a valid
-   signature from the release key built into the worker. The browser still fetches the worker
-   script itself at least once a day, so an origin that turns hostile could replace it. The
-   worker's job is narrower: an asset changed at the CDN is refused, and every change the page
-   accepts is a signed, published release.
-5. **The box checks the build.** The hello carries the release id and manifest hash. The box
-   knows the published releases, since they ship with it. The pairing notice and the device list
-   show "web app, release 0.4.2" or, in warning colours, "web app, unknown build". A hostile
-   build can lie about itself, so this catches a mistake or a careless attack, not a determined
-   one.
+3. **The box names the version (ADR 0027, section 4).** app.vyre.run serves only immutable,
+   content-addressed folders, `/v/<sha>/`, built by CI from a tagged release. Each has a
+   manifest of its file hashes, signed with the Vyre release key. The page's entry is a small
+   fixed loader, and it is the trust root. It holds `relay/client/` and nothing else. It connects
+   to the box, calls `relay.web.release`, and gets the version the box trusts: the owner's pin,
+   or else the newest release in `core/relay/releases.json`, which ships with the box. It then
+   checks that version's signed manifest and loads only that folder, every file under
+   Subresource Integrity. A box on version X is never served app code from version Y. A folder
+   changed at the CDN fails its hash, and a new release reaches a box only when the box names it.
+4. **A fixed loader, held by a service worker.** Every response carries a strict CSP: scripts
+   only from its own origin, no inline script and no `eval`, `connect-src` limited to the relay
+   and `*.ts.net`, `frame-ancestors 'none'`, and no third-party code or analytics. A service
+   worker caches the loader and replaces it only with one signed by the release key. The browser
+   still fetches the worker script itself at least once a day, so an origin that turns hostile
+   could replace the worker and then the loader. The pin keeps that attack to the origin itself,
+   and makes every loader change a signed, published release that anyone can check.
+5. **The box checks the build.** The hello carries the loaded release and its manifest hash.
+   The pairing notice and the device list show "web app, release 0.4.2" or, in warning colours,
+   "web app, unknown build". A hostile loader can lie about itself, so this catches a mistake or
+   a careless attack, not a determined one.
 6. **Every pairing is announced** everywhere (section 6), and removing a device is one tap.
 7. **Nobody has to use ours.** The box serves the same build on the tailnet. `relay/node/` and
    any static host can run the whole path, and the app takes the relay URL from the QR code.
 
+**Person sessions.** On the direct path (a browser that reaches the box's tailnet name), the box
+trusts no origin by itself. The app signs the person in on the box's own page with a passkey
+and holds a session bound to a non-extractable key. Every call is signed with that key. The
+e2e team owns this; tailnet answers CORS for `https://app.vyre.run` only. On the relay path
+there is no CORS, because the browser opens one WebSocket to the relay and every request
+travels inside the channel. The box's sign-in page cannot be reached there either. For a relayed
+web device, pairing stands in for signing in: the device key is non-extractable, Noise binds
+every request to it, the pairing enrolls a passkey under `app.vyre.run` as its presence key, and
+the session is the device's pairing, with a 30-day sliding expiry, revoked by removing the
+device. The bridge passes `authorization` and `x-vyre-proof` untouched, so a session made on the
+direct path works over the relay too, pinned to the device's `stableId`.
+
 **Hosting.** `app.vyre.run` is static assets on Cloudflare Workers, under the same $5 a month
-plan as the relay. The mobile team owns the build. The relay team owns `relay/app/`: the
-headers, the service worker, the manifest signing and its check.
+plan as the relay. The mobile team owns the app's build. The relay team owns `relay/app/`: the
+headers, the loader, the service worker, `relay.web.release`, and the manifest signing and its
+check.
 
 ## Threat model
 

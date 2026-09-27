@@ -63,9 +63,10 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role, transcripts: [transcripts],
     sessions: { install: false, ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
   // Internal tools answer only modules: a module that asks threads.pids for the test.
-  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.pids"] } }, `
+  writeModule(path.join(root, "modules"), "probe", { does: { tools: ["probe.pids", "probe.post"] } }, `
     export default { async start(ctx) {
       ctx.tool("probe.pids", { input: { type: "object" }, run: async () => (await ctx.call("threads.pids", {})).data });
+      ctx.tool("probe.post", { input: { type: "object" }, run: async i => ctx.call("threads.post", i) });
       return { async stop() {} };
     } };`);
   for (const m of modules) writeModule(path.join(root, "modules"), m.name, m.manifest, m.source);
@@ -638,6 +639,88 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(st.held, 0, "every slot came back");
     assert.deepEqual((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 2 })).data, { project: "harlow-legal", subagent: 2 });
     assert.equal((await w.tool("sessions.limits.set", { project: "harlow-legal", max_subagents: 9 }, "mcp")).error.code, "denied", "a model never raises its own limits");
+  });
+
+  test(`${driver}: thread.usage says the context used and the window; a teammate's result waits for the turn, never steers`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    const usage = (await w.events(th.id)).find(e => e.type === "thread.usage").payload;
+    assert.equal(usage.context.max, 200000);
+    assert.ok(usage.context.used > 2400 && usage.context.share > 0 && usage.context.share < 1, JSON.stringify(usage.context));
+    await w.tool("threads.send", { thread: th.id, text: "bash npm test", surface: "deck" });
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const r = await w.tool("probe.post", { thread: th.id, text: "kit found the menu file", kind: "teammate-result", from: "teammate:kit" });
+    const posted = r.data && r.data.data ? r.data.data : r.data;
+    assert.ok(posted, JSON.stringify(r));
+    assert.equal(posted.queued, true, "queued behind the running turn, not steered");
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 3);
+    const sent = (await w.events(th.id)).find(e => e.type === "thread.sent" && e.payload.kind === "teammate-result");
+    assert.deepEqual([sent.payload.via, sent.payload.surface], ["turn", "teammate:kit"]);
+    assert.equal((await w.said(th.id)).at(-1), "echo: kit found the menu file");
+    assert.doesNotMatch((await w.said(th.id)).join(" "), /took in: kit/, "it never steered");
+  });
+
+  test(`${driver}: switch the model (/model), list the slash commands, and rewind the files a turn changed`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const menu = path.join(w.work, "menu.md");
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: `write ${menu}`, surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id);
+    assert.ok(fs.existsSync(menu));
+    // /model
+    assert.deepEqual((await w.tool("threads.model", { thread: th.id, model: "sonnet" }, "deck")).data, { thread: th.id, model: "sonnet" });
+    await until(() => w.launches().some(l => l.model === "sonnet"), "the switch to reach Claude Code");
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.model, "sonnet");
+    assert.ok((await w.events(th.id)).some(e => e.type === "model.switched" && e.payload.model === "sonnet"));
+    assert.equal((await w.tool("threads.model", { thread: th.id, model: "opus" }, "mcp")).error.code, "denied");
+    // The / menu
+    const cmds = (await w.tool("threads.commands", { thread: th.id })).data.commands;
+    assert.deepEqual(cmds.map(c => c.name), ["compact", "review"]);
+    if (driver === "sdk") assert.equal(cmds[0].description, "Clear the conversation but keep a summary", "the SDK knows the descriptions");
+    // Rewind the code only: the file its turn wrote goes, the conversation stays.
+    const turn = (await w.events(th.id)).find(e => e.type === "thread.turn").payload;
+    const r = (await w.tool("threads.rewind", { thread: th.id, uuid: turn.uuid, restore: "code" })).data;
+    assert.equal(r.restore, "code");
+    assert.deepEqual(r.files, { restored: true, files_changed: [menu] });
+    assert.ok(!fs.existsSync(menu), "the file is put back as it was (not there)");
+    assert.ok(!w.launches().some(l => l.argv && l.argv.includes("--resume-session-at")), "the conversation was not rewound");
+  });
+
+  test(`${driver}: images, ! shell, # memory, thinking and background tasks, as in Claude Code`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck" })).data;
+    await w.finished(th.id);
+    // Image paste
+    const png = Buffer.from("89504e470d0a1a0a", "hex").toString("base64");
+    await w.tool("threads.send", { thread: th.id, text: "look at this", surface: "deck", images: [{ media_type: "image/png", data: png }] });
+    await w.finished(th.id, 2);
+    assert.equal((await w.said(th.id)).at(-1), "echo: look at this (+1 images)");
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "x", images: [{ media_type: "application/pdf", data: png }] })).error.code, "bad_input");
+    // ! shell: runs here, as the person, under the floor; Claude sees it with the next message
+    const sh = (await w.tool("threads.shell", { thread: th.id, command: "echo northwind" }, "deck")).data;
+    assert.deepEqual([sh.code, sh.output.trim()], [0, "northwind"]);
+    assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo x > .claude/settings.local.json" }, "deck")).error.code, "denied", "the floor holds");
+    assert.equal((await w.tool("threads.shell", { thread: th.id, command: "echo hi" }, "mcp")).error.code, "denied", "a model never runs the person's shell");
+    await w.tool("threads.send", { thread: th.id, text: "what did it print?", surface: "deck" });
+    await w.finished(th.id, 3);
+    assert.match((await w.said(th.id)).at(-1), /<bash-input>echo northwind<\/bash-input>[\s\S]*<bash-stdout>northwind/);
+    // # memory
+    const rem = (await w.tool("threads.remember", { thread: th.id, text: "Prices have two decimals." }, "deck")).data;
+    assert.equal(rem.file, path.join(w.work, "CLAUDE.md"));
+    assert.match(fs.readFileSync(rem.file, "utf8"), /^- Prices have two decimals\.$/m);
+    // Thinking off
+    assert.deepEqual((await w.tool("threads.thinking", { thread: th.id, on: false }, "deck")).data, { thread: th.id, thinking: false });
+    await until(() => w.launches().some(l => l.thinking === 0), "thinking off to reach Claude Code");
+    // Background tasks
+    await w.tool("threads.send", { thread: th.id, text: "background npm run dev", surface: "deck" });
+    await w.finished(th.id, 4);
+    const task = (await w.tool("threads.tasks", { thread: th.id })).data.tasks[0];
+    assert.deepEqual([task.kind, task.status, task.title, task.background], ["shell", "running", "npm run dev", true]);
+    assert.equal((await w.tool("threads.kill-task", { thread: th.id, task: task.id }, "deck")).data.killed, true);
+    await until(async () => (await w.events(th.id)).some(e => e.type === "thread.task" && e.payload.status === "killed"), "the task to stop");
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {

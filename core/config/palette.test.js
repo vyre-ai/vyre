@@ -24,14 +24,18 @@ test("palette: the check catches a failing pair (bone on lime, the bug it exists
   assert.ok(contrast("#0E0D0C", "#C6F36B", "#0E0D0C") > 15);
 });
 
-// deck.css is violet now but still carries the old roles (recall, beacon wash and rule) and the old
-// paper hover; pwa moves it onto this palette and drops the todo.
-test("palette: deck.css declares the same roles, dark on :root and paper on data-theme", { todo: "pwa moves deck.css onto the reduced palette" }, () => {
-  const css = fs.readFileSync(new URL("../../deck/css/deck.css", import.meta.url), "utf8");
+// The Deck paints these roles from the generated deck/css/tokens.css (deck.css only adds what has
+// no token yet), so the two together must resolve every role to the palette.
+test("palette: tokens.css and deck.css declare the same roles, dark on :root and paper on data-theme", () => {
+  const files = ["../../deck/css/tokens.css", "../../deck/css/deck.css"].map(f => fs.readFileSync(new URL(f, import.meta.url), "utf8"));
   const block = (/** @type {RegExp} */ re) => {
-    const m = re.exec(css);
-    assert.ok(m, `no block for ${re}`);
-    return Object.fromEntries([...m[1].matchAll(/--([a-z0-9-]+):\s*([^;]+);/g)].map(x => [x[1], x[2].trim()]));
+    /** @type {Record<string, string>} */ const out = {};
+    for (const css of files) {
+      const m = re.exec(css);
+      if (m) Object.assign(out, Object.fromEntries([...m[1].matchAll(/--([a-z0-9-]+):\s*([^;]+);/g)].map(x => [x[1], x[2].trim()])));
+    }
+    assert.ok(Object.keys(out).length, `no block for ${re}`);
+    return out;
   };
   const dark = block(/^:root \{([\s\S]*?)^\}/m);
   const paper = { ...dark, ...block(/^:root\[data-theme="paper"\] \{([\s\S]*?)^\}/m) };

@@ -15,13 +15,21 @@
 // as the caller "link:box", and the Mac then follows that thread's events and sends them to the
 // box with link.events, batched, until the answer is finished (see follow below).
 
+import crypto from "node:crypto";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js";
 import { createHealth, unknown } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, FOLLOWED } from "./allow.js";
+import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
+import * as enclave from "./se/index.js";
+import { signed } from "../presence/person.js";
+
+/** The callers that are the person on this Mac: its terminal, the Capsule, its own screens. */
+const PEOPLE = new Set(["cli", "local", "capsule", "deck"]);
 
 const MAX_BACKOFF = 30_000;
 /** How long the box holds link.serve open (box.js); the Mac waits this plus a margin. */
@@ -54,6 +62,10 @@ export function macSide(ctx, seam = {}) {
   const connect = (address, pin) => connector({ address, verify, pinned: () => pin, insecure: Boolean(seam.insecure), ...(seam.ttl !== undefined ? { ttl: seam.ttl } : {}) });
   let conn = saved ? connect(saved.box.address, saved.box.stableId) : null;
   const health = seam.health || createHealth();
+  /** The Secure Enclave (se/): a test passes a software stand-in, which asks nobody. */
+  const se = seam.secureEnclave || enclave;
+  /** Only on a Mac, or with a stand-in: elsewhere there is no enclave to ask. */
+  const hasEnclave = () => Boolean(seam.secureEnclave) || process.platform === "darwin";
 
   // A temp home (a dev world, a demo, a stress run) never looks for or pairs with a real box: one
   // found the user's live box and sent it a pairing request. Test seams, a fake tailscale
@@ -90,10 +102,10 @@ export function macSide(ctx, seam = {}) {
    * @param {string} tool @param {any} input @param {any} [c] the connection, the paired box's by default
    * @param {{ timeout?: number, signal?: AbortSignal }} [opts] a longer timeout for link.serve, and a way to cancel it
    */
-  async function boxCall(tool, input, c = conn, { timeout, signal } = {}) {
+  async function boxCall(tool, input, c = conn, { timeout, signal, headers } = {}) {
     if (!c) return { error: { code: "no_link", message: "this Mac is not paired with a box (vyre link pair <address>)" } };
     try {
-      const r = await c.json("POST", "/v1/tools/" + encodeURIComponent(tool), input, { timeout: timeout || seam.timeout || 10_000, signal });
+      const r = await c.json("POST", "/v1/tools/" + encodeURIComponent(tool), input, { timeout: timeout || seam.timeout || 10_000, signal, ...(headers ? { headers } : {}) });
       if (c === conn) up();
       if (r.status === 403 && r.body && r.body.error && r.body.error.code === "not_owner") return { error: { code: "not_owner", message: "the box does not recognise this device as its owner" } };
       return r.body;
@@ -108,13 +120,49 @@ export function macSide(ctx, seam = {}) {
   }
 
   /** A box tool for a module or a surface on the Mac. Fails fast while the box is known to be away. */
-  async function remote(tool, input = {}) {
+  /** The kind of a caller label: "cli", "module", "mcp" ... */
+  const kindOf = caller => String(caller || "").startsWith("module:") ? "module" : String(caller || "").split(/[\s:]/)[0];
+
+  /** A person session's headers for one request: the token and a fresh signature over it. */
+  function personHeaders(person, pathname, body) {
+    const t = Date.now(), n = crypto.randomBytes(12).toString("base64url");
+    const key = crypto.createPrivateKey({ key: person.key, format: "jwk" });
+    const sig = crypto.sign("sha256", Buffer.from(signed({ method: "POST", path: pathname, raw: JSON.stringify(body), t, n })), { key, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    return { authorization: `Vyre ${person.token}`, "x-vyre-proof": `t=${t} n=${n} sig=${sig}` };
+  }
+
+  async function remote(tool, input = {}, caller = "module:link") {
     if (!saved || !conn) return { error: { code: "no_link", message: "this Mac is not paired with a box (vyre link pair <address>)" } };
     if (saved.revoked) return { error: { code: "unpaired", message: "the box no longer knows this Mac; pair again" } };
     // The link's own tools on the box are for the link, not for other modules to drive.
     if (String(tool).startsWith("link.")) return { error: { code: "denied", message: "link tools on the box are not callable through the link" } };
+    // The box takes this Mac's calls as its owner's device, not as the person: a person's own
+    // action (answering an ask, approving, a terminal) rides only with this Mac's person session
+    // (`vyre link signin`), and only for the person's own callers here, whose process vyred's
+    // socket has already traced. A module or a model never carries it. A human-only tool also
+    // needs a proof the box can check, which this Mac cannot give: those are the Deck's.
+    let extra = {};
+    const human = HUMAN_ONLY.has(String(tool));
+    if (human || PERSON_ONLY.has(String(tool))) {
+      const person = saved.person;
+      if (!person || !PEOPLE.has(kindOf(caller))) {
+        return { error: { code: "person_session_required", message: `${tool} is the person's own action on the box: sign this Mac in first (vyre link signin), or do it in the Deck, the Capsule or the phone` } };
+      }
+      extra = personHeaders(person, "/v1/tools/" + encodeURIComponent(tool), input);
+      // A human-only tool also needs a proof the box can check: this Mac's Secure Enclave key,
+      // enrolled on the box at sign-in, signs this exact call after Touch ID (ADR 0032 part 2c).
+      if (human) {
+        if (!person.human || !person.human.key) return { error: { code: "presence_required", message: `${tool} needs your passkey on the box, or sign this Mac in again (vyre link signin) to use Touch ID here` } };
+        const ts = String(Date.now()), nonce = crypto.randomBytes(12).toString("base64url");
+        const msg = Buffer.from(`vyre-presence-v1\n${tool}\n${inputHash(input)}\n${ts}\n${nonce}`);
+        let sig;
+        try { sig = await se.sign(person.human.handle, msg, `Vyre: ${tool} on your box`); }
+        catch (e) { return { error: { code: /** @type {any} */ (e).code || "presence_required", message: /** @type {Error} */ (e).message } }; }
+        extra["x-vyre-presence"] = `device key=${person.human.key} ts=${ts} nonce=${nonce} sig=${sig}`;
+      }
+    }
     if (!state.reachable && Date.now() < state.nextTry) return { error: { code: "box_unreachable", message: state.error || "the box is not reachable" } };
-    return boxCall(tool, input);
+    return boxCall(tool, input, conn, { headers: extra });
   }
 
   async function hello() {
@@ -336,6 +384,74 @@ export function macSide(ctx, seam = {}) {
     },
   });
 
+  // ---- this Mac's person session on the box (core/presence/person.js) ----
+  // `vyre link signin` opens the box's sign-in page in the person's browser with a PKCE challenge
+  // and a one-time loopback address here. The person confirms with their passkey (Touch ID) on
+  // the box's own page; the box sends a code to the loopback, and vyred trades it, with the
+  // verifier and the public half of a key it just made, for a 30-day session. The session and the
+  // key are kept in link.json (0600): a process of this user can read them, which is the Mac's
+  // accepted residual (docs/work/e2e.md); minting one always takes the person's passkey.
+  /** @type {{ server: http.Server, url: string, expires: number } | null} */
+  let signing = null;
+  ctx.tool("link.signin", {
+    description: "Sign this Mac's command line and Capsule in as you on the box for 30 days, so they can answer asks and approve there. Answers the address to open; you confirm with your passkey on the box's page.",
+    callers: ["cli", "local", "capsule"],
+    input: { type: "object", properties: {} },
+    run: async () => {
+      if (!saved || !conn || saved.revoked) throw Object.assign(new Error("this Mac is not paired with a box (vyre link pair <address>)"), { code: "no_link" });
+      if (signing && signing.expires > Date.now()) return { url: signing.url, expires: signing.expires };
+      const verifier = crypto.randomBytes(32).toString("base64url");
+      const cc = crypto.createHash("sha256").update(verifier).digest("base64url");
+      const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+      const nonce = crypto.randomBytes(16).toString("base64url");
+      const box = saved.box.address;
+      const server = http.createServer((req, res) => { answer(req, res).catch(e => { if (!res.headersSent) { res.writeHead(500, { "content-type": "text/plain; charset=utf-8" }); res.end(`Signing in did not work: ${e.message}`); } }); });
+      const answer = async (req, res) => {
+        const u = new URL(req.url || "/", "http://127.0.0.1");
+        const page = (status, text) => { res.writeHead(status, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" }); res.end(text); };
+        if (req.method !== "GET" || u.pathname !== `/cb/${nonce}` || !u.searchParams.get("code")) return page(404, "Not found");
+        const pub = publicKey.export({ format: "jwk" });
+        // A Secure Enclave key rides the sign-in, so this Mac can prove human-only calls too.
+        let sek = null;
+        if (hasEnclave()) { try { sek = await se.create(); } catch { sek = null; } }
+        const human = sek ? crypto.createPublicKey({ key: Buffer.from(sek.spki, "base64url"), format: "der", type: "spki" }).export({ format: "jwk" }) : undefined;
+        const r = await conn.json("POST", "/v1/person/token", { code: u.searchParams.get("code"), verifier, key: pub, ...(human ? { human } : {}) }).catch(e => ({ body: { error: { message: e.message } } }));
+        const data = r.body && r.body.data;
+        if (!data || !data.token) return page(403, `Signing in did not work: ${(r.body && r.body.error && r.body.error.message) || "the box refused"}`);
+        const enrolled = sek && data.human && data.human.key ? { handle: sek.handle, key: String(data.human.key) } : null;
+        save({ ...saved, person: { token: data.token, id: data.id, key: privateKey.export({ format: "jwk" }), expires: data.expires, ...(enrolled ? { human: enrolled } : {}) } });
+        ctx.events.emit("link.signed-in", { box, expires: data.expires });
+        // Closed once the page is sent: close() also drops idle connections, and would cut this one.
+        res.on("close", stop);
+        page(200, "This Mac is signed in for 30 days. You can close this tab.");
+      };
+      const stop = () => { if (signing && signing.server === server) signing = null; server.close(); };
+      await new Promise((resolve, reject) => { server.once("error", reject); server.listen(0, "127.0.0.1", () => resolve(undefined)); });
+      const port = /** @type {any} */ (server.address()).port;
+      const back = `http://127.0.0.1:${port}/cb/${nonce}`;
+      const url = `${box}/person/signin?cc=${cc}&return=${encodeURIComponent(back)}`;
+      const expires = Date.now() + 10 * 60_000;
+      signing = { server, url, expires };
+      setTimeout(stop, 10 * 60_000).unref();
+      return { url, expires };
+    },
+  });
+
+  ctx.tool("link.signout", {
+    description: "Sign this Mac out on the box: its command line and Capsule are only a device there again.",
+    callers: ["cli", "local", "capsule"],
+    input: { type: "object", properties: {} },
+    run: async () => {
+      const had = Boolean(saved && saved.person);
+      if (had && conn) {
+        const h = personHeaders(saved.person, "/v1/person/end", {});
+        await conn.json("POST", "/v1/person/end", {}, { headers: h }).catch(() => null);
+      }
+      if (had) { const { person, ...rest } = saved; save(rest); ctx.events.emit("link.signed-out", {}); }
+      return { signedOut: had };
+    },
+  });
+
   ctx.tool("link.status", {
     description: "Whether this Mac is paired with a box, and whether the box is reachable right now.",
     input: { type: "object", properties: {} },
@@ -344,6 +460,7 @@ export function macSide(ctx, seam = {}) {
       box: saved ? { address: saved.box.address, name: saved.box.name || null, node: saved.box.node || null, stableId: saved.box.stableId || null } : null,
       reachable: state.reachable, lastSeen: state.lastSeen, serving, following: follows.size,
       pending: pairing ? { id: pairing.id, code: pairing.code, expires: pairing.expires } : null,
+      signedIn: saved && saved.person && saved.person.expires > Date.now() ? { expires: saved.person.expires, touchId: Boolean(saved.person.human) } : null,
       ...(state.error ? { error: state.error } : {}),
     }),
   });
@@ -375,8 +492,8 @@ export function macSide(ctx, seam = {}) {
   ctx.tool("link.call", {
     description: "Call a tool on your box from this Mac (threads, agents, files). Answers box_unreachable when the box is away.",
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" } }, required: ["tool"] },
-    run: async ({ tool, input }) => {
-      const r = await remote(tool, input || {});
+    run: async ({ tool, input }, meta) => {
+      const r = await remote(tool, input || {}, meta && meta.caller);
       if (r.error) throw Object.assign(new Error(r.error.message), { code: r.error.code });
       return r.data;
     },
