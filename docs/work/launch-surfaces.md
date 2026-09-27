@@ -188,15 +188,24 @@ Filled in as each lands.
   canvas.json, e95897c3). Left launch's .html sources as-is rather than trying to reconcile two
   branches; worth cleaning up docs/brand/ to point at or drop in favour of the canvas boards once
   both branches are merged.
-- federation/tailnet (for the 0.1.1 import flow): a tool giving a per-project, per-date-range
-  breakdown of a newly-paired device's discovered Claude Code sessions (today's federated catalog
-  gives totals per source, not the breakdown the picker needs), with dev folders flagged so the
-  picker can leave them unticked by default.
-- memory-iq (for the 0.1.1 import flow): does an import-progress signal exist or is one planned
-  (searchable now / understood / the graph growing), or should onboarding model those three
-  stages itself against whatever memory-iq already emits (indexed count, embeddings done, etc.)?
-- app-design (for the 0.1.1 import flow): this is meant to be a delight moment: asked for a
-  board/spec for the picker screen and the three-stage progress display.
+- ~~federation/tailnet: per-project/date-range session breakdown~~ answered: memory-iq's
+  `import.scan`/`import.plan` (docs/design/import.md) covers this; my two earlier questions to
+  federation and memory-iq are superseded by that spec and by docs/design/onboarding-v2.md.
+- vault (onboarding-v2 step 5 and part of step 6): tool shapes for discovering and importing
+  secrets per source (`.env`, shell exports, password managers, Chrome, SSH keys, MCP/Claude env),
+  mirroring memory-iq's scan/plan/start/progress pattern. Asked; not yet answered.
+- connectors (onboarding-v2 step 6): confirm scope, which existing connector flows this step wraps.
+- app-design (onboarding-v2): a board for step 5's masked/grouped list, the Touch ID moment and
+  the per-key animate-in, and for the step-shell's shared progress/celebration look. Asked twice
+  (once before onboarding-v2.md existed, once after); not yet answered.
+- mobile: confirm step 7 (phone pairing) is fine as a stub for 0.1.1, per the lead's "later".
+- federation (new, 29 Sep): a second-device "device role" (Mac or Windows PC pairs, then walks
+  `~/.claude/projects/*` and uploads, no live reads/Taildrop/etc.) is coming once e2e reviews the
+  transport (docs/design/federation-plan.md, "the device role", work/federation 8d982f85). Asked
+  federation whether this is a standalone flow on the second machine or an "add another device"
+  entry point into onboarding-v2's existing step 2/4. Waiting on the transport review before
+  designing anything; the open "how does someone install this on Windows" question has no answer
+  yet either.
 
 ## Changed contracts
 
