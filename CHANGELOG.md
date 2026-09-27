@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Queued replies follow only their own turn (capsule-agent 42e8da05, merged)
+
+- A reply queued for a busy session ignores the turn it was busy with, counts only its own
+  handed-over row (by queued id), and then fixes its turn afresh from the answering turn.
+  `Sources/Vyred/State.swift`; `Tests/CapsuleModelTests.swift`, `Tests/StateTests.swift`.
+- The "@ a name then words" test waits for the box's words as well as the chip: CI read it
+  between the two and failed batch 4.
+
 #### ⌘⏎ thinks deeper in the same thread
 
 - ⌘⏎ on an answer, or on a follow-up typed under it, now switches the answer's own thread to the

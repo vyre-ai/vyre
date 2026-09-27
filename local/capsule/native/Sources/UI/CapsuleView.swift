@@ -171,7 +171,7 @@ struct CapsuleView: View {
             // Tool calls, collapsed to one line each, newest three; a row changes in place.
             if let tools = model.reply?.tools, !tools.isEmpty { ToolRows(tools: tools) }
             if let q = model.reply?.queued, !q.withdrawn {
-                Label(q.delivered ? "Handed over to \(q.name). Its answer comes when this turn ends." : "Queued for \(q.name): it gets this when its current turn ends.",
+                Label(q.delivered ? "Handed over to \(q.name). Its answer shows here as it comes." : "Queued for \(q.name): it gets this when its current turn ends.",
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }
