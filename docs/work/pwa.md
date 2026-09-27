@@ -145,12 +145,11 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   theme module is platform P4, not on main). Asked app-design and native-core to agree one route
   (app-design wrote /v1/appearance/theme). Settings' own Dark/Paper toggle (native-core's view)
   still writes localStorage; with the hub it should write appearance.scheme at device level.
-- Built, NOT yet tested (testbox runs held until the integrator reports batch 4): fd88ef27
+- Tested since (d1e41db8, targeted 494: 493 pass, 1 skipped, 0 fail). Built: fd88ef27
   retired colours + "pin" wording; b623ddcc waiting.list / waiting.count / waiting.changed in
   js/needs.js (4 tests); 41f9b14d context.report (js/context-report.js, 3 tests); 084036c1 the
   Glass mini pill on Now (js/glass-mini.js, 3 tests; no picture yet: needs sight.frame or a small
-  viewer, asked cohesion). FIRST when runs open: the targeted suite, then fix, then one Chrome
-  run of Now with a fake agent computer.
+  viewer, asked cohesion). Still to do: one Chrome run of Now with a fake agent computer, after cohesion's run 3.
 - Old next list (done above): cohesion's waiting.list,
   context.report, connections.list, credential sheet, Glass mini-view (said yes, once on main);
   docs' tips.next wiring (said yes, once on main).
