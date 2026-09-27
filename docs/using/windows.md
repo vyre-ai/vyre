@@ -57,6 +57,10 @@ completely unchanged.
 4. Everything past that point, Tailscale, the Deck, other devices connecting in, behaves like
    any other Linux server; WSL2 is invisible to them.
 
+Once `vyred` is running this way, live command completion (`suggest`) and the computer-use status
+strip (`sight`) already work, unmodified, the same as on a Linux server anywhere else: neither
+depends on macOS. That's the fastest way to feel a Windows-hosted server come alive.
+
 This is not yet exercised on real Windows hardware; it is tested as far as possible on GitHub's
 `windows-latest` CI runners (which do not have WSL2), and needs a hands-on pass on an actual
 Windows PC before calling it done.

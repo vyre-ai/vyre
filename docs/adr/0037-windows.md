@@ -27,6 +27,13 @@ Linux VM, including one inside WSL2 on a Windows PC (words per ADR 0038, termino
 once it merges). There is no Windows server and no Windows Capsule, and a Windows PC is never
 asked to be one.
 
+**`docs/design/interaction.md` (cohesion's interaction pass, binding for 0.1.1) is the acceptance
+criteria for Tier A and Tier B, decided by the lead 2026-09-28, not a bar to retrofit once a Windows
+device ships**: streaming, live events instead of polling, and the one motion/component vocabulary
+in `docs/design/one-app/DIRECTION.md` and `docs/design/system/components/*` apply to a Windows
+device exactly as they do to a Mac or the Deck, since Tier A and Tier B run the same client and
+server code as everywhere else. Nothing here is deferred to Tier C.
+
 Four tiers, cheapest first:
 
 - **Tier A**, a Windows PC as a device against a Linux server: the Deck in a browser, the PWA,
@@ -37,9 +44,14 @@ Four tiers, cheapest first:
   a second, ongoing platform branch through `core/daemon`, `core/vault`, `core/files`,
   `local/apps` for every `darwin` gate that exists today. Ships in 0.1.x, documented and tested as
   far as `windows-latest` CI allows (no WSL2 there); a hands-on pass on real hardware is still
-  needed.
-- **Tier C**, a native Windows Capsule, most likely Tauri (a Rust shell reusing Deck's web UI,
-  a real global-hotkey API) over WinUI 3/.NET or Electron. 0.2.
+  needed. Ships with a concrete "Windows already feels alive" milestone for free: `suggest` and
+  `sight` are server-side tools with no Mac dependency, so `suggest.query` and `sight.now`/
+  `sight.stepped` work on Windows the moment `vyred` runs under WSL2, no port needed; worth stating
+  and testing as its own deliverable, not left implicit inside "Tier B works" (cohesion, see below).
+- **Tier C**, a native Windows Capsule, most likely Tauri (a Rust shell built on
+  `docs/design/system/components/*` directly, the same card/row/button vocabulary every other
+  surface uses, not a reimplementation in a new toolkit), a real global-hotkey API, over WinUI
+  3/.NET or Electron. 0.2.
 - **Tier D**, computer use on Windows (UI Automation + `SendInput`, mirroring `hands-mac`'s
   observe/act/verify/floor/stop-key shape), a voice port, and Windows Credential Manager /
   Windows Hello standing in for Keychain / Touch ID. 0.2.

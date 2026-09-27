@@ -36,6 +36,19 @@ this round; verification leans on windows-latest CI.
 - Tests: targeted runs all green, no regressions: core/cli/commands/{box,connect,up,voice}.test.js,
   core/config/*.test.js, test/vault-cli*.test.js (91+28+12+21 tests), local/voice/{talk,voice}.test.js
   (24 tests), test/docs-*.test.js, test/boundaries.test.js (66 tests).
+- Cohesion's interaction pass (`docs/design/interaction.md`, sha 5debc1bc, binding for 0.1.1) made
+  it explicit that windows-plan.md never mentioned streaming, `Render`, `sight` or DIRECTION.md's
+  smoothness bar. Folded in, not stacked on top: docs/design/windows-plan.md and docs/adr/0037
+  now state `docs/design/interaction.md` and `docs/design/one-app/DIRECTION.md` +
+  `docs/design/system/components/*` as the acceptance criteria for Tier A and Tier B from day one
+  (both inherit it for free: same client/server code as every other surface); Tier C's write-up
+  now says explicitly to build the Tauri shell on `system/components/*` directly, not reinvent a
+  toolkit; and added the "Windows already feels alive" milestone: `suggest`/`sight` are
+  server-side and Mac-independent, so they work unmodified the moment `vyred` runs under Tier B
+  (WSL2), which is worth stating and testing as its own deliverable. docs/using/windows.md gained
+  one line about it too, for the person reading, not just builders. Referenced interaction.md as
+  plain text (not a markdown link) since it's only in cohesion's worktree, not merged yet, same
+  as ADR 0038.
 
 ## Doing
 - Asked e2e for a quick read of the role-default change (win32 now defaults to a device), per the
