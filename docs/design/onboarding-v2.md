@@ -161,13 +161,19 @@ kept locally only, same degrade-gracefully shape as every stub step here.
 
 ### Step 8: Vyre Drive
 
-Stubbed for now (`drive` in `deck/onboard/onboard.js`'s `STEPS`, a "Coming soon" card,
-Skip/Continue). New (lead, 29 Sep), added after connecting accounts and before the phone.
-federation is drafting the options the user will decide between: what to sync, how (on demand,
-offline, server only), where it shows up (the Finder sidebar, a Windows drive, the Capsule, the
-phone), agent access per folder, receiving from the server, conflicts, and a "drag a file in and
-watch it appear on your phone" delight moment. Not designed yet; waiting on the lead to bring the
-user's choices back, then this section gets the same treatment as steps 4 and 7.
+The user's decisions (the lead, 29 Sep): files on demand by default, a what-to-sync folder picker
+with sizes, per-folder agent access, a receive-files switch, no quota ("warn when the server's
+disk is low" instead). Full spec: `docs/design/drive-onboarding.md` on `work/federation`
+(e69a544a), which is candid about what each piece needs: on-demand mounting is real
+(`files.drive.share`/`mount`); the folder picker and per-folder access are **M** each (no picker
+UI, no grant table for shares yet); the receive-files switch is **S** but not wired to a settings
+UI yet (it's a `config.json` key today; federation tried the settings-hub route and reverted it
+rather than ship unreviewed); the "watch it appear on your other device" celebration needs the
+phone app and a Capsule drop target, neither of which exist, so it can't be the real celebration
+yet. Still a stub (`drive` in `deck/onboard/onboard.js`'s `STEPS`, "Coming soon", Skip/Continue),
+but the copy now names the decided design accurately instead of a placeholder line. Building the
+real picker/access/switch and the celebration waits on federation's and the phone team's tools
+landing; nothing to wire safely yet.
 
 ### Step 9: Your phone
 
