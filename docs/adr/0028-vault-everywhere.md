@@ -364,6 +364,78 @@ core/vault/emergency.js holds both sides.
 - Audit rows, events and todos carry names, the wait and dates. Never a value, the escrow key or
   the ticket.
 
+### 9. Connections: every key goes in through the Vault (27 Sep 2026)
+
+The user: every key the system needs, at any point, is set up through the Vault, and one place,
+"Vault, Connections", shows every connection and which surface may use it. Today the Capsule says
+"Run: vyre voice key", each module has its own way in, and nothing lists a person's four email
+accounts side by side.
+
+**9a. A module says what it needs; it never asks for a key itself.** A manifest adds
+`needs.credentials`, a list of `{id, kind, provider, purpose, item?, optional?, group?}`. `kind` is
+a kinds.js kind, `provider` a name in the provider catalog (core/vault/providers.js), `item` the
+vault item it fetches (default `<module>-<id>`), and `group` joins alternatives (voice: one of
+Deepgram, OpenAI or ElevenLabs). The module validator checks the shape; `ctx.vault.fetch`
+accepts these items as it accepts `needs.vault` names.
+
+- `vault.need {module?}` (people's surfaces, no presence) returns each need with its state:
+  `ready`, `missing`, `not_granted`, `pending` (an mcp grant waiting), `expired`, and how to fill
+  it: `{how: "field" | "file" | "oauth", fields: [{name, label, secret}], help, next?}`. It never
+  returns a value. A group is ready when any member is.
+- `vault.connect {module, need, fields? | file? , label?}` (people's surfaces, presence) checks
+  the fields against the catalog, puts the item with its kind and `details.provider`, grants it to
+  the module, and records the connection (9b). `how: "file"` takes a dropped service-account JSON;
+  `how: "oauth"` returns `next: {tool, input}` (for Google, `google.connect`), since the module
+  that owns the flow runs it. The Capsule shows a secure inline field, the Deck and the phone a
+  sheet, the CLI a hidden prompt (`vyre vault connect voice`). All four call the same two tools.
+  `vyre voice key` stays, as a shortcut for `vault.connect {module: "voice"}`.
+
+**9b. A connection is a provider, an account, an auth kind, capabilities and surfaces.** Table
+`vault_connections(id, source, ref, provider, account, auth, label, capabilities, surfaces,
+added, updated, mac)`, MACed like the grant rows, unique on `(source, ref)`. Sources:
+
+- `vault`: an item made by `vault.connect` or put with a catalog provider (API keys, PATs, IMAP
+  and SMTP logins, Apps Script web-app tokens).
+- `google`: each row of `google.accounts` (OAuth sign-in or DWD service account, one per
+  account email).
+- `mcp`: each server in the hub (`mcp.servers`). Two Gmail servers are two connections; the
+  account is the server's label.
+
+The vault reads the other two only through their tools (`google.accounts`, `mcp.servers`,
+`mcp.tools`) and resyncs a source on its events (`google.added`, `google.removed`,
+`google.connected`, `mcp.added`, `mcp.updated`, `mcp.removed`, `mcp.refreshed`). Nothing polls.
+Capabilities (`send_mail`, `read_mail`, `calendar`, `files`, `send_message`, `speech`, `llm`,
+`search`, `other`) come from the catalog for vault and Google connections and from the tool names
+for MCP servers; a person may change them (`vault.connections.update`).
+
+- Surfaces: `capsule`, `chat`, `agents`, `phone`. A new connection is granted to `capsule` and
+  `chat`; `agents` is opt-in. The caller decides the surface: `capsule`, `mobile` (phone),
+  `mcp:thread:<id>` (chat, or capsule when the thread says it came from the Capsule),
+  `mcp:agent:<n>` and `tailnet:agent:<n>` (agents). `cli`, `local` and `deck` are the person at a
+  settings screen and see everything.
+- `vault.connections.list {capability?, surface?}` (people's surfaces and mcp) returns only the
+  connections granted to the caller's surface, each with `use: {tool, input}`: for example
+  `google.mail.send {account}`, `mcp.call {server, tool}` or `mail.send {connection}`. So
+  "send an email" in the Capsule offers every account that can send, and Claude in a chat thread
+  sees the same list. Never a value, a token or a field name that holds one.
+- `vault.connections.grant {id, surface}` (presence) and `vault.connections.revoke {id, surface}`
+  (no presence: taking access away never needs it).
+- `vault.connections.allowed {source, ref, caller}` (modules only) is the check a module makes
+  before it acts on a connection. mcp.call and the google tools make it; the mail module does too.
+  A send is still held at the Gate as before; the grant decides who may ask.
+
+**9c. IMAP and SMTP.** A new module `mail` (core/mail) with `mail.test`, `mail.search`,
+`mail.read`, `mail.send` and `mail.release` over IMAP4rev1 and SMTP (TLS or STARTTLS, AUTH PLAIN
+or LOGIN), with no new dependency. A login is an `env-set` item of provider `imap-smtp` granted to
+`mail`. `mail.send` offers `mail:<connection>` to the Gate and releases through `mail.release`,
+as google does. Tests run against fake IMAP and SMTP servers only.
+
+**9d. What is not in this step.** Apps Script web apps are saved and listed (`url` and `token`,
+capabilities the person picks) but have no adapter yet: each script's shape is its own. OAuth for
+providers other than Google waits for a module that runs the flow. The Deck and phone sheets are
+pwa's and mobile's; the Capsule's inline field is capsule-pro's; the settings hub entry
+"Vault, Connections" is native-core's.
+
 ## Order of work
 
 1. This ADR.
@@ -376,6 +448,8 @@ core/vault/emergency.js holds both sides.
 8. The iOS extension, with mobile, built on GitHub Actions.
 9. The macOS extension, with capsule-pro, after the Apple team is in place.
 10. Passkeys.
+11. Connections (decision 9): the needs contract, the connections table and tools, the mail module,
+    then the surfaces through their owners.
 
 ## Consequences
 
