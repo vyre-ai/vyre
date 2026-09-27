@@ -523,7 +523,8 @@ export class Switchboard {
   }
 
   spawn(id, o) {
-    const env = { ...process.env, VYRE_HOME: this.deps.root, VYRE_THREAD: id };
+    // File checkpoints (the same switch the Agent SDK sets), so a rewind can restore files too.
+    const env = { ...process.env, VYRE_HOME: this.deps.root, VYRE_THREAD: id, CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING: "1" };
     // One credential per child, set only in that child. An agent on a setup token must not
     // quietly spend an API key that happens to be in vyred's own environment, or the reverse.
     if (o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) { delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.ANTHROPIC_API_KEY; }
@@ -571,6 +572,7 @@ export class Switchboard {
     if (t.model) this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });
     if (t.message !== undefined) { this.flush(id, st); st.message = t.message; }
     // A message's blocks so far: an assistant line's own block index plus the lines before it.
+    if (t.commands) st.commands = t.commands;
     if (typeof t.used === "number" && t.used > 0) st.used = t.used;
     if (t.window) st.window = t.window;
     if (t.blocks && m.message && m.message.id) {
@@ -1209,7 +1211,7 @@ export class Switchboard {
    * The same thread and transcript; a running turn is stopped first.
    * @param {string} id @param {string} uuid the user message (thread.turn's uuid, the transcript line's)
    */
-  async rewind(id, uuid) {
+  async rewind(id, uuid, restore = "conversation") {
     const rec = this.must(id);
     const t = findSession(this.deps.transcripts || [], id);
     if (!t) throw Object.assign(new Error("this session has no transcript here to rewind"), { code: "bad_input" });
@@ -1221,12 +1223,54 @@ export class Switchboard {
     if (!line) throw Object.assign(new Error(`no message ${String(uuid).slice(0, 8)} in this session`), { code: "bad_input" });
     const text = typeof line.message?.content === "string" ? line.message.content
       : (Array.isArray(line.message?.content) ? line.message.content.filter(b => b && b.type === "text").map(b => b.text).join("\n") : "");
-    if (!line.parentUuid) return { rewound: false, thread: id, text, note: "That is the first message: start a new session with it instead." };
+    // The files first, while the session that made the changes is running: Claude Code puts back
+    // what its tools changed since that message (its file checkpoints).
+    let files = null;
+    if (restore === "code" || restore === "both") {
+      if (!this.live.has(id)) await this.launch({ resume: id });
+      const live = this.live.get(id);
+      if (!live || !live.proc.control) throw Object.assign(new Error("this session cannot put files back"), { code: "unavailable" });
+      const r = await live.proc.control("rewind_files", { user_message_id: uuid });
+      files = { restored: true, ...(r && Array.isArray(r.filesChanged) ? { files_changed: r.filesChanged } : {}), ...(r && r.canRewind === false ? { restored: false, why: r.error || "no checkpoint" } : {}) };
+      if (restore === "code") {
+        this.emit("thread.rewound", { uuid, restore, files }, id, rec.project);
+        return { rewound: true, thread: id, uuid, restore, files };
+      }
+    }
+    if (!line.parentUuid) return { rewound: false, thread: id, text, note: "That is the first message: start a new session with it instead.", ...(files ? { files } : {}) };
     const st = this.live.get(id);
     if (st) await this.close(id, st, "rewind");
     await this.launch({ resume: id, resumeAt: String(line.parentUuid) });
-    this.emit("thread.rewound", { uuid, at: String(line.parentUuid) }, id, rec.project);
-    return { rewound: true, thread: id, uuid, text };
+    this.emit("thread.rewound", { uuid, at: String(line.parentUuid), restore, ...(files ? { files } : {}) }, id, rec.project);
+    return { rewound: true, thread: id, uuid, text, ...(restore !== "conversation" ? { restore, files } : {}) };
+  }
+
+  /**
+   * Switch a running thread's model (as /model does). The record and the chip follow.
+   * @param {string} id @param {string} model
+   */
+  async switchModel(id, model) {
+    if (!/^[A-Za-z0-9._:\[\]-]{1,80}$/.test(String(model))) throw Object.assign(new Error("a model is an alias like opus or haiku, or a model id"), { code: "bad_input" });
+    const rec = this.must(id);
+    const st = this.live.get(id);
+    if (st && st.proc.control) await st.proc.control("set_model", { model });
+    this.db.prepare("UPDATE threads_runs SET model = ? WHERE id = ?").run(String(model), id);
+    this.emit("model.switched", { model: String(model), live: Boolean(st) }, id, rec.project);
+    return { thread: id, model: String(model), ...(st ? {} : { note: "applies when the thread next runs" }) };
+  }
+
+  /** The slash commands a running thread offers (names, and descriptions where the driver has them). */
+  async commands(id) {
+    this.must(id);
+    const st = this.live.get(id);
+    if (!st) return { thread: id, commands: [], note: "not running; the list comes with the session" };
+    if (st.proc.control && this.sdk) {
+      try {
+        const r = await st.proc.control("supported_commands");
+        if (r && Array.isArray(r.commands)) return { thread: id, commands: r.commands.map(c => ({ name: String(c.name), description: c.description || "", argumentHint: c.argumentHint || "" })) };
+      } catch {}
+    }
+    return { thread: id, commands: (st.commands || []).map(name => ({ name, description: "", argumentHint: "" })) };
   }
 
   /** Stop the turn a thread is running; the thread stays and takes the next message. */
@@ -1608,13 +1652,25 @@ export default {
         return sb.sendNow(i.thread, i.queued);
       });
 
-    tool("threads.rewind", "Go back to a message, as a double Esc does in Claude Code: the session continues from just before it, and its words come back (text) to edit and send again. uuid: the message's (thread.turn's uuid).",
-      { type: "object", required: ["thread", "uuid"], properties: { thread: str, uuid: str } },
+    tool("threads.rewind", "Go back to a message, as a double Esc does in Claude Code: the session continues from just before it, and its words come back (text) to edit and send again. uuid: the message's (thread.turn's uuid). restore: conversation (the default), code (put back the files its tools changed since, keep the conversation) or both.",
+      { type: "object", required: ["thread", "uuid"], properties: { thread: str, uuid: str, restore: { type: "string", enum: ["conversation", "code", "both"] } } },
       async (i, { caller }) => {
         guard(caller, "rewind sessions");
         if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface can rewind a session"), { code: "denied" });
-        return sb.rewind(i.thread, i.uuid);
+        return sb.rewind(i.thread, i.uuid, i.restore || "conversation");
       });
+
+    tool("threads.model", "Switch a thread's model, as /model does in Claude Code: an alias (opus, sonnet, haiku) or a model id. A running thread switches at once; a stopped one when it next runs.",
+      { type: "object", required: ["thread", "model"], properties: { thread: str, model: str } },
+      async (i, { caller }) => {
+        guard(caller, "switch models");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches a session's model"), { code: "denied" });
+        return sb.switchModel(i.thread, i.model);
+      });
+
+    tool("threads.commands", "The slash commands a running thread offers (Claude Code's own, the user's and the project's, and plugins'), for a composer's / menu. Send one as a message, e.g. \"/compact\".",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
 
     tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript.",
       { type: "object", required: ["thread"], properties: { thread: str, prompt: str, name: str, surface: str } },

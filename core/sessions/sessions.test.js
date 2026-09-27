@@ -662,6 +662,33 @@ for (const driver of ["cli", "sdk"]) {
     assert.doesNotMatch((await w.said(th.id)).join(" "), /took in: kit/, "it never steered");
   });
 
+  test(`${driver}: switch the model (/model), list the slash commands, and rewind the files a turn changed`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const menu = path.join(w.work, "menu.md");
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: `write ${menu}`, surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id);
+    assert.ok(fs.existsSync(menu));
+    // /model
+    assert.deepEqual((await w.tool("threads.model", { thread: th.id, model: "sonnet" }, "deck")).data, { thread: th.id, model: "sonnet" });
+    await until(() => w.launches().some(l => l.model === "sonnet"), "the switch to reach Claude Code");
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.model, "sonnet");
+    assert.ok((await w.events(th.id)).some(e => e.type === "model.switched" && e.payload.model === "sonnet"));
+    assert.equal((await w.tool("threads.model", { thread: th.id, model: "opus" }, "mcp")).error.code, "denied");
+    // The / menu
+    const cmds = (await w.tool("threads.commands", { thread: th.id })).data.commands;
+    assert.deepEqual(cmds.map(c => c.name), ["compact", "review"]);
+    if (driver === "sdk") assert.equal(cmds[0].description, "Clear the conversation but keep a summary", "the SDK knows the descriptions");
+    // Rewind the code only: the file its turn wrote goes, the conversation stays.
+    const turn = (await w.events(th.id)).find(e => e.type === "thread.turn").payload;
+    const r = (await w.tool("threads.rewind", { thread: th.id, uuid: turn.uuid, restore: "code" })).data;
+    assert.equal(r.restore, "code");
+    assert.deepEqual(r.files, { restored: true, files_changed: [menu] });
+    assert.ok(!fs.existsSync(menu), "the file is put back as it was (not there)");
+    assert.ok(!w.launches().some(l => l.argv && l.argv.includes("--resume-session-at")), "the conversation was not rewound");
+  });
+
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {
     const w = await boot(t, { driver, role: "local" });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;

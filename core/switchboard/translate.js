@@ -120,7 +120,7 @@ export function describe(tool, input = {}) {
  */
 export function translate(m) {
   /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
-   *   folded?: string[], blocks?: number, used?: number, window?: number,
+   *   folded?: string[], blocks?: number, used?: number, window?: number, commands?: string[],
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
   const out = { events: [] };
   if (!m || typeof m !== "object") return out;
@@ -128,6 +128,8 @@ export function translate(m) {
   if (m.type === "system" && m.subtype === "init") {
     out.session = m.session_id;
     out.model = m.model || null;
+    // The slash commands this session offers (built in, the user's, the project's, plugins'), for a composer's menu.
+    if (Array.isArray(m.slash_commands)) out.commands = m.slash_commands.map(String);
     return out;
   }
 

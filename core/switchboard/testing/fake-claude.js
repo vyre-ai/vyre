@@ -65,7 +65,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let n = 0;
 /** @type {Map<string, (r: any) => void>} */
 const waiting = new Map();
-const MODEL = flag("--model") || "fake-model";
+let MODEL = flag("--model") || "fake-model";
+/** The slash commands it offers, as Claude Code lists them in init and in the initialize answer. */
+const COMMANDS = [{ name: "compact", description: "Clear the conversation but keep a summary", argumentHint: "<instructions>" },
+  { name: "review", description: "Review a pull request", argumentHint: "" }];
+/**
+ * Files its "write" turns changed, with what was there before and the user message that led to
+ * it: its file checkpoints, for a rewind_files request.
+ * @type {{ uuid: string|null, file: string, before: string|null }[]}
+ */
+const changed = [];
+let turnUuid = null;
 
 // ------------------------------------------------------------ transcript lines, as Claude Code writes them
 
@@ -234,7 +244,7 @@ async function turn(prompt, uuid = null) {
     const file = path.resolve(p.slice(6).trim());
     const { allowed } = await useTool("Write", { file_path: file, content: "hi" }, { ask: true,
       suggestions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
-      run: i => { fs.writeFileSync(file, String(i.content)); return { content: `File created successfully at: ${file}` }; } });
+      run: i => { changed.push({ uuid: turnUuid, file, before: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null }); fs.writeFileSync(file, String(i.content)); return { content: `File created successfully at: ${file}` }; } });
     await say(allowed ? "Wrote it." : "I was not allowed to.");
     return result(true, allowed ? "Wrote it." : "I was not allowed to.");
   }
@@ -367,6 +377,21 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
+  if (m.type === "control_request" && m.request?.subtype === "set_model") {
+    MODEL = String(m.request.model || MODEL);
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ model: MODEL }) + "\n");
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
+  // Put back what the writes since that user message changed, newest first.
+  if (m.type === "control_request" && m.request?.subtype === "rewind_files") {
+    const at = changed.findIndex(c => c.uuid === m.request.user_message_id);
+    const undo = at < 0 ? [] : changed.splice(at).reverse();
+    for (const c of undo) { if (c.before === null) fs.rmSync(c.file, { force: true }); else fs.writeFileSync(c.file, c.before); }
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id,
+      response: at < 0 ? { canRewind: false, error: "no checkpoint for that message" } : { canRewind: true, filesChanged: [...new Set(undo.map(c => c.file))] } } });
+    return;
+  }
   if (m.type === "control_request" && m.request?.subtype === "set_permission_mode") {
     if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ mode: m.request.mode }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
@@ -375,8 +400,9 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
   if (m.type === "control_request" && m.request?.subtype === "initialize") {
     logLaunch(m.request);
     preHooks = (m.request.hooks && m.request.hooks.PreToolUse) || [];
-    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
-    out({ type: "system", subtype: "init", session_id: session, cwd: process.cwd(), model: MODEL, tools: ["Read", "Edit", "Write", "Bash", "TodoWrite", "AskUserQuestion"] });
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { commands: COMMANDS } } });
+    out({ type: "system", subtype: "init", session_id: session, cwd: process.cwd(), model: MODEL, tools: ["Read", "Edit", "Write", "Bash", "TodoWrite", "AskUserQuestion"],
+      slash_commands: COMMANDS.map(c => c.name) });
     return;
   }
   if (m.type === "control_response") {
@@ -394,6 +420,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     if (m.priority === "next" && busy) { folds.push({ uuid: m.uuid || null, text: String(text) }); return; }
     queue = queue.then(async () => {
       busy = true; took = m.uuid ? [m.uuid] : [];
+      turnUuid = m.uuid || null;
       try { await turn(text, m.uuid || null); } finally { busy = false; }
       // Steered words the turn never reached (an interrupt, a turn with no reply left) run next.
       if (folds.length) { const f = folds; folds = []; queue = queue.then(async () => { busy = true; took = f.map(x => x.uuid).filter(Boolean); try { await turn(f.map(x => x.text).join("\n\n")); } finally { busy = false; } }); }

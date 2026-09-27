@@ -83,7 +83,9 @@ export function answerLine(requestId, decision, input, message, extra = {}) {
 export function run(o) {
   // Its own group and session, under the subreaper where there is one (core/sessions/spawn.js).
   const child = spawnSession(o.bin, o.args, { cwd: o.cwd, env: o.env, subreaper: o.subreaper, uid: o.uid, gid: o.gid, onSpawn: o.onSpawn });
-  let buf = "", err = "", exited = false;
+  let buf = "", err = "", exited = false, n = 0;
+  /** @type {Map<string, { resolve: (r: any) => void, reject: (e: Error) => void }>} control requests Vyre sent, waiting for their answer */
+  const asked = new Map();
   child.stdout.setEncoding("utf8");
   child.stdout.on("data", chunk => {
     buf += chunk;
@@ -93,6 +95,12 @@ export function run(o) {
       if (!line.trim()) continue;
       let m;
       try { m = JSON.parse(line); } catch { continue; }       // a stray non-JSON line is not a session event
+      // The answer to a control request Vyre sent (control()) goes back to it, not to the session.
+      if (m && m.type === "control_response" && m.response && asked.has(m.response.request_id)) {
+        const a = asked.get(m.response.request_id); asked.delete(m.response.request_id);
+        if (m.response.subtype === "error") a.reject(new Error(String(m.response.error || "Claude Code refused it"))); else a.resolve(m.response.response || {});
+        continue;
+      }
       try { o.onMessage(m); } catch {}
     }
   });
@@ -114,6 +122,19 @@ export function run(o) {
     pid: child.pid,
     write,
     get alive() { return !exited; },
+    /**
+     * A control request (set_model, rewind_files, stop_task and the like), answered by Claude Code.
+     * @param {string} subtype @param {Record<string, any>} [fields]
+     */
+    control(subtype, fields = {}) {
+      if (exited) return Promise.reject(new Error("the session has ended"));
+      const rid = `vyre-ctl-${++n}`;
+      return new Promise((resolve, reject) => {
+        asked.set(rid, { resolve, reject });
+        write({ type: "control_request", request_id: rid, request: { subtype, ...fields } });
+        setTimeout(() => { if (asked.delete(rid)) reject(new Error(`Claude Code did not answer ${subtype}`)); }, 15_000).unref?.();
+      });
+    },
     /** Stop the current turn (as Escape does); the session stays. */
     interrupt() { write({ type: "control_request", request_id: `vyre-int-${Date.now()}`, request: { subtype: "interrupt" } }); return Promise.resolve(); },
     /** End it: close stdin (Claude Code finishes and exits), then TERM, then KILL. */

@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: /model, the / menu, and rewinding code (parity with Claude Code)
+
+- `threads.model {thread, model}` (a person's surface): switches a running thread's model, as
+  `/model` does (the CLI's `set_model` control, the SDK's `setModel`); the record and the chip
+  follow; event `model.switched`. A stopped thread takes it when it next runs.
+- `threads.commands {thread}`: the slash commands a running thread offers (Claude Code's own, the
+  user's, the project's and plugins'), with descriptions on the SDK driver, names from init on the
+  CLI runner. A command is sent as a message.
+- `threads.rewind {restore: "code" | "both"}`: Claude Code puts back the files its tools changed
+  since that message (its file checkpoints, now on for every session Vyre runs:
+  `enableFileCheckpointing` on the SDK, `CLAUDE_CODE_ENABLE_SDK_FILE_CHECKPOINTING` on the CLI);
+  "code" keeps the conversation, "both" also rewinds it. The answer and `thread.rewound` say which
+  files changed.
+- Both drivers answer control requests Vyre sends (`control()`: the runner waits for Claude Code's
+  control_response; the SDK driver calls the SDK's own method). The fake `claude` switches models,
+  lists commands and keeps checkpoints of what its "write" turns changed.
+
 #### Sessions: context in use, and teammates' results
 
 - `thread.usage` carries `context: {used, max, share}`: what the last request held (its input,
