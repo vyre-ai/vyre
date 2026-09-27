@@ -57,3 +57,38 @@ test("verify: the diff names what moved and never repeats a value", () => {
   assert.equal(d.title?.to, "Untitled 2");
   assert.ok(!JSON.stringify(d).includes("a secret"));
 });
+
+test("verify: each accessibility action has its own rule, and says so when it cannot see an effect", () => {
+  const step = { path: "/0/4", role: "AXIncrementor", name: "Copies", value: "2" };
+  const s = { role: "AXIncrementor", name: "Copies" };
+  const v = (/** @type {string} */ action, /** @type {any} */ before, /** @type {any} */ after, sel = s) => verdict({ kind: "action", action, selector: sel, before, after });
+  assert.equal(v("AXIncrement", snap([step]), snap([{ ...step, value: "3" }])).verified, true);
+  assert.equal(v("AXIncrement", snap([step]), snap([{ ...step, value: "1" }])).verified, false);
+  assert.equal(v("AXDecrement", snap([step]), snap([{ ...step, value: "1" }])).verified, true);
+  assert.match(v("AXIncrement", snap([step]), snap([step])).reason, /at its limit/);
+  assert.match(v("AXIncrement", snap([{ ...step, value: undefined }]), snap([{ ...step, value: undefined }])).reason, /numeric value/);
+
+  const field = { path: "/0/0", role: "AXTextField", name: "Name" };
+  const f = { role: "AXTextField", name: "Name" };
+  const menu = { path: "/1/0", role: "AXMenuItem", name: "Copy" };
+  assert.equal(v("AXShowMenu", snap([field]), snap([field, menu]), f).verified, true);
+  const noMenu = v("AXShowMenu", snap([field]), snap([field], { texts: ["moved"] }), f);
+  assert.equal(noMenu.verified, false, "a window change was credited as a menu");
+  assert.match(noMenu.reason, /no menu appeared/);
+
+  const win = { path: "/0", role: "AXWindow", name: "Harlow Legal" };
+  const w = { role: "AXWindow", name: "Harlow Legal" };
+  assert.equal(v("AXRaise", snap([win]), snap([{ ...win, focused: true }]), w).verified, true);
+  assert.equal(v("AXRaise", snap([win]), snap([win]), w).verified, false);
+
+  const row = { ...field, frame: { x: 0, y: 900, w: 10, h: 10 } };
+  assert.equal(v("AXScrollToVisible", snap([row]), snap([{ ...row, frame: { x: 0, y: 300, w: 10, h: 10 } }]), f).verified, true);
+  const still = v("AXScrollToVisible", snap([row]), snap([row]), f);
+  assert.equal(still.verified, false);
+  assert.match(still.reason, /already have been in view/);
+
+  for (const a of ["AXConfirm", "AXPick", "AXCancel"]) {
+    assert.equal(v(a, snap([field]), snap([field], { texts: ["done"] }), f).verified, true, a);
+    assert.equal(v(a, snap([field]), snap([field]), f).verified, false, a);
+  }
+});

@@ -82,7 +82,7 @@ export function harvest({ root = REPO, tmp = os.tmpdir() } = {}) {
     const none = path.join(home, "no-such-binary");
     const env = { PATH: process.env.PATH || "/usr/bin:/bin", HOME: home, TMPDIR: path.join(home, "tmp"), VYRE_HOME: path.join(home, ".vyre"),
       VYRE_NO_DIALOGS: "1", VYRE_TAILSCALE_BIN: none, VYRE_CLAUDE_BIN: none, VYRE_OPEN_BIN: none, VYRE_SSH_BIN: none,
-      VYRE_HANDS_BIN: none, VYRE_CAPSULE_BIN: none, VYRE_NO_OPEN: "1", VYRE_NO_UP: "1" };
+      VYRE_HANDS_BIN: none, VYRE_NO_OPEN: "1", VYRE_NO_UP: "1" };
     fs.mkdirSync(env.TMPDIR);
     const r = spawnSync(process.execPath, [path.join(HERE, "harvest.mjs"), root, out], { env, encoding: "utf8", timeout: 120_000 });
     if (r.status !== 0 || !fs.existsSync(out)) throw new Error(`the tool harvest failed (exit ${r.status}): ${(r.stderr || r.error?.message || "").trim().slice(0, 500)}`);
@@ -205,7 +205,7 @@ export function environment(root = REPO) {
     for (const m of text.matchAll(/(?<![.\w])(VYRE_[A-Z0-9_]+)\s*:\s*[^\s]/g)) sets.add(m[1]);
   }
   // A few Vyre passes along but people set too; they belong with the ones people set.
-  const people = new Set(["VYRE_HOME", "VYRE_NO_UP", "VYRE_CAPSULE_LOG"]);
+  const people = new Set(["VYRE_HOME", "VYRE_NO_UP"]);
   return [...reads].map(([name, f]) => ({ name, files: [...f].sort(byName), set: sets.has(name) && !people.has(name), note: ENV_MEANING[name.slice(5)] || "" }))
     .sort((a, b) => byName(a.name, b.name));
 }
@@ -218,15 +218,12 @@ const ENV_MEANING = {
   AGENT_KEY: "The key that proves a thread's calls come from its agent.",
   AGENT_KIND: "`assistant` or `agent`. Only the assistant is offered the tools that drive other threads.",
   ALLOW_DIALOGS: "`1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins.",
-  APPS_DIR: "Where `vyre capsule install` puts the app. Default `~/Applications`.",
   BOX_INSTALLER: "The installer `vyre box add` runs on the server, in place of the published one.",
   BOX_POLL_MS: "How often `vyre box` checks on an install in progress. Default 5000.",
   BOX_PROBE_MS: "How long `vyre box` waits for the box's address to answer. Default two minutes.",
   BOX_WAIT_MS: "How long `vyre box` waits for an install to finish. Default 65 minutes.",
-  CAPSULE_BIN: "The folder holding the Capsule's native helpers.",
   CAPSULE_DRIVE: "In a development build, lets a script drive the Capsule.",
-  CAPSULE_LOG: "Writes the Capsule's log to stdout from a packaged build.",
-  CAPSULE_TRACE_WAKE: "Times each wake of the Capsule.",
+  DRIVE_ACCESS: "`ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change.",
   CLAUDE_BIN: "The `claude` binary to run. Default `claude` on the PATH.",
   CLOUDFLARE_API: "The Cloudflare API base URL, in place of the real one.",
   COMPUTERS_CAP_ADD: "Extra Linux capabilities for agent computers, comma separated.",
@@ -234,7 +231,7 @@ const ENV_MEANING = {
   COMPUTERS_LABEL_PREFIX: "The label prefix that marks Vyre's containers. Default `run.vyre.computers`.",
   COMPUTERS_NETWORK: "The Docker network agent computers join. Default `vyre-computers`.",
   DOCKER_PROXY_PORT: "The port the Docker proxy listens on. Default 2375.",
-  DOWNLOAD_BASE: "Where `vyre capsule install` downloads the app from.",
+  DTACH_BIN: "The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred.",
   HANDS_BIN: "Another build of the Mac hands helper.",
   HARNESS_DIR: "The Harness plugin folder threads load. Default the one beside this install.",
   HOME: "Where Vyre keeps its data. Default `~/.vyre`.",
@@ -487,7 +484,7 @@ const MEANING = {
   "theme.colors": "`{ dark: { token: colour }, light: { role: colour } }`, keys as on the design tokens page. A value that is not a plain CSS colour is ignored. Reload the Deck to see a change.",
   name: "This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`.",
   role: "`box` for the always-on server, `local` for a Mac. Decides which modules start.",
-  projectsDir: "The folder new projects are made in.",
+  projectsDir: "The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`.",
   roots: "More folders to look in for projects.",
   me: "Who you are, so memory can tell your own people and domains from everyone else's.",
   "me.domains": "Domains that are yours.",
@@ -508,6 +505,8 @@ const MEANING = {
   "network.box": "On a Mac: the address of the box it is paired with.",
   "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
+  "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe and the token exchange needs a person session.",
+  term: "Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell.",
 };
 
 /** The fields of a JSDoc object type, top level only: [{ key, optional, type }]. */

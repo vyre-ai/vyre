@@ -415,6 +415,17 @@ function reminderRules(t, c) {
   return m[1] ? reminder(m[1], c) : unsure("remind you of what?");
 }
 
+/**
+ * A time said first, the way people jot one down: "6pm call Harlow Legal", "at 6:30 pick up juno".
+ * Only a time that cannot be a count (am/pm, a colon, noon) leads: "3 apples" stays a note.
+ * @param {string} t @param {Ctx} c @returns {Result | undefined}
+ */
+function timeFirstRules(t, c) {
+  if (!new RegExp(`^(?:at\\s+)?(?:${AMPM}|\\d{1,2}:\\d{2}|noon)\\s+\\S`, "i").test(t)) return undefined;
+  const r = reminder(/^at\s/i.test(t) ? t : `at ${t}`, c);
+  return "ambiguous" in r || r.at === undefined ? undefined : r;
+}
+
 // ---- Todos -------------------------------------------------------------------------------
 
 const PRIORITY = /** @type {Record<string, number>} */ ({ "!": 1, "!!": 2, "!!!": 3, "!low": 1, "!med": 2, "!medium": 2,
@@ -514,5 +525,5 @@ export function parse(text, o = {}) {
   /** @type {Ctx} */
   const c = { now, w: wall(now, tz), tz };
   if (kind) return asKind(kind, raw, t, c);
-  return clockRules(t, c) ?? noteRules(raw) ?? todoRules(raw, c) ?? reminderRules(t, c) ?? null;
+  return clockRules(t, c) ?? noteRules(raw) ?? todoRules(raw, c) ?? reminderRules(t, c) ?? timeFirstRules(t, c) ?? null;
 }

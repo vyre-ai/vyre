@@ -9,10 +9,15 @@
 //                               there when the passkey is missing (docs/adr/0004-presence.md)
 //   vyre link deny <id>         on the box: refuse a request
 //   vyre link unpair [id]       forget the box (on the Mac) or a Mac (on the box)
+//   vyre link signin            on the Mac: sign this Mac's command line and Capsule in as you on
+//                               the box for 30 days (your passkey, on the box's page), so they can
+//                               answer asks and approve there (core/presence/person.js)
+//   vyre link signout           on the Mac: only a device on the box again
 
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { json, emit, failTool, usage } from "../kit.js";
+import { openUrl } from "./up.js";
 
 const fail = r => failTool(r.error);
 const ago = ms => { const s = Math.round((Date.now() - ms) / 1000); return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`; };
@@ -38,11 +43,12 @@ async function status() {
   if (!s.linked) { out(`  not paired with a box${s.error ? dim(" · " + s.error) : ""} ${dim("· vyre link pair <address>")}`); return 0; }
   const where = `${s.box.name || s.box.address}${s.box.node ? dim(" · " + s.box.node) : ""}`;
   out(s.reachable ? `  ${signal("●")} linked to ${where}` : `  ${beacon("○")} linked to ${where}, not reachable now${s.error ? dim(" · " + s.error) : ""}`);
+  out(s.signedIn ? dim(`  signed in on the box until ${new Date(s.signedIn.expires).toLocaleDateString()}`) : dim("  not signed in on the box: vyre link signin, to answer and approve there from this Mac"));
   return 0;
 }
 
 export default {
-  name: "link", order: 45, usage: "vyre link [pair|approve|deny|unpair] [--json]", summary: "pair this Mac with your box, or approve a Mac on the box",
+  name: "link", order: 45, usage: "vyre link [pair|approve|deny|unpair|signin|signout] [--json]", summary: "pair this Mac with your box, or approve a Mac on the box",
   async run(args) {
     const [sub, arg] = args.filter(a => a !== "--json");
     if (!sub) return status();
@@ -80,6 +86,21 @@ export default {
       out(r.data.unpaired ? "  unpaired" : "  was not paired");
       return 0;
     }
-    return usage(`vyre link ${sub}: not a subcommand`, "vyre link [pair <address>|approve <code>|deny <id>|unpair [id]]");
+    if (sub === "signin") {
+      const r = await call("link.signin", {});
+      if (r.error) return fail(r);
+      if (json()) return emit(r.data);
+      openUrl(r.data.url);
+      out(`  confirm with your passkey on your box's page: ${bold(r.data.url)}`);
+      out(dim(`  This Mac's command line and Capsule can then answer and approve on the box for 30 days. The page is open for ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
+      return 0;
+    }
+    if (sub === "signout") {
+      const r = await call("link.signout", {});
+      if (r.error) return fail(r);
+      out(r.data.signedOut ? "  signed out on the box" : "  was not signed in");
+      return 0;
+    }
+    return usage(`vyre link ${sub}: not a subcommand`, "vyre link [pair <address>|approve <code>|deny <id>|unpair [id]|signin|signout]");
   },
 };

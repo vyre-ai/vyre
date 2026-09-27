@@ -1,0 +1,12 @@
+{
+  "name": "apps",
+  "version": "0.1.0",
+  "description": "Drive the Mac's apps from the Capsule, the CLI and the phone: Clock timers and alarms, notes, reminders, the weather and Slack. Actions that send as the person go through apps.send, with a proof per call, or are held at the Gate for the person to approve (Slack).",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["apps.list", "apps.targets", "apps.act", "apps.send", "apps.route", "apps.setup"] },
+  "watches": { "emits": ["apps.acted", "apps.sent"] },
+  "shows": {},
+  "needs": {},
+  "teaches": {}
+}

@@ -8,16 +8,17 @@
 
 import { capValues } from "../link/transport.js";
 
-/** The app capability a tailnet grant gives a guest: values [{ "tools": ["glass.open", ...] }]. */
+/** The app capability a tailnet grant gives a guest: values [{ "tools": ["threads.list", ...] }]. */
 export const GUEST_CAP = "vyre.run/cap/guest";
 
 /**
- * The only tools a guest can ever reach, whatever the config or a grant says. View only: opening
- * and closing a Glass session, and the list of threads. glass.take, and anything that approves,
- * is never here. (threads.read does not exist; threads.get, which reads one thread's recent
+ * The only tools a guest can ever reach, whatever the config or a grant says. View only: the list
+ * of threads. No Glass: tailnet streams are the owner's alone, so a Glass ticket a guest opened
+ * could never be used, and a guest has no session of its own to close. glass.take, and anything that
+ * approves, is never here. (threads.read does not exist; threads.get, which reads one thread's recent
  * events, is left out until the owner decides a guest should see that much.)
  */
-export const GUEST_SAFE = Object.freeze(new Set(["glass.open", "glass.close", "threads.list"]));
+export const GUEST_SAFE = Object.freeze(new Set(["threads.list"]));
 
 /** network.guests with its defaults: off, nobody listed. */
 export function settings(network) {

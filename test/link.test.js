@@ -29,6 +29,12 @@ test("link: pairing, box tools from the Mac, a federated search and a fetch", as
   assert.deepEqual(echo.data, { text: "hi" });
   const linkTool = await s.macCall("link.call", { tool: "link.peers", input: {} });
   assert.match(linkTool.error.message, /not callable through the link/);
+  // The person's own actions never ride the link: a model on the Mac would answer its own ask on
+  // the box, or approve a held send, as the owner's device.
+  for (const tool of ["threads.answer", "gate.approve", "gate.reject", "term.open", "agents.create", "vault.reveal"]) {
+    const r = await s.macCall("link.call", { tool, input: {} });
+    assert.equal(r.error && r.error.code, "person_session_required", `${tool}: ${JSON.stringify(r)}`);
+  }
 
   fs.writeFileSync(path.join(s.boxWork, "plan-box.md"), "the box's plan");
   fs.writeFileSync(path.join(s.macWork, "plan-mac.md"), "the Mac's plan");
@@ -253,7 +259,7 @@ test("link: approving a pairing needs the owner's presence, whoever calls, and t
   if (!box.registry.deps.presence) return t.skip("this vyred has no presence check yet");
   const MAC_PEER = { node: "test-mac", stableId: "nMAC", login: OWNER };
   const p = (await box.registry.call("link.pair.request", { name: "work laptop" }, `tailnet:${OWNER}`, { peer: MAC_PEER })).data;
-  for (const [caller, meta] of [["cli", {}], ["local", {}], [`tailnet:${OWNER}`, { peer: PHONE }]]) {
+  for (const [caller, meta] of [["cli", {}], ["local", {}], [`tailnet:${OWNER}`, { peer: PHONE, person: { id: "s1", kind: "cookie" } }]]) {
     const r = await box.registry.call("link.pair.approve", { code: p.code }, caller, meta);
     assert.equal(r.error && r.error.code, "presence_required", `${caller} alone cannot approve`);
   }

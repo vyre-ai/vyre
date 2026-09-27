@@ -188,7 +188,7 @@ test("bypass: one strong proof opens a session on that device, and the sends aft
   assert.equal(tty.status, 403, "no proof, no session");
   // Held items say what approving takes, before anything is proved.
   const before = (await call("gate.held", {}, { root: b.root, caller: "deck" })).data;
-  assert.deepEqual(before.map(x => x.presence), [{ required: true, covered: false }]);
+  assert.deepEqual(before.map(x => x.presence), [{ required: true, covered: false, since: null }]);
   // The Capsule's proof for this send, asking to keep: sent, and a session comes back in a header.
   const first = await rawWithHeaders(b.socket, "/v1/tools/gate.approve", { id: b.id },
     { "x-vyre-caller": "capsule", "x-vyre-presence": b.signed("gate.approve", { id: b.id }), "x-vyre-presence-keep": "1" });
@@ -198,7 +198,12 @@ test("bypass: one strong proof opens a session on that device, and the sends aft
   assert.match(kept, /^session id=\S+ secret=\S+ expires=\d+$/);
   // The next send on this device rides it: no second Touch ID, and the item says it is covered.
   const next = await draft("Engagement letter");
-  assert.deepEqual((await call("gate.get", { id: next }, { root: b.root, caller: "deck" })).data.presence, { required: true, covered: true });
+  const cover = (await call("gate.get", { id: next }, { root: b.root, caller: "deck" })).data.presence;
+  assert.equal(cover.required, true);
+  assert.equal(cover.covered, true);
+  // since is when the proof was made, so a surface can say "confirmed 2 min ago".
+  const expires = Number(/expires=(\d+)/.exec(kept)[1]);
+  assert.ok(Number.isInteger(cover.since) && cover.since <= Date.now() && expires - cover.since === 30 * 60_000, JSON.stringify(cover));
   const second = await raw(b.socket, "/v1/tools/gate.approve", { id: next }, { "x-vyre-caller": "capsule", "x-vyre-presence": kept });
   assert.equal(second.status, 200, JSON.stringify(second.body));
   assert.equal(b.mail.got.length, 2);
@@ -224,7 +229,7 @@ test("bypass: revising, discarding and deleting sends nothing and asks for no pr
   // Deleting the user's data outside cannot be undone, so it asks like a send.
   const del = (await call("gate.request", { kind: "delete", via: "drive", to: "northwind-bakery", content: { method: "DELETE", url: `${b.mail.base}/files/menu.pdf` } }, { root: b.root, caller: "mcp" }));
   assert.ok(del.data, JSON.stringify(del.error));
-  assert.deepEqual((await call("gate.get", { id: del.data.id }, { root: b.root, caller: "deck" })).data.presence, { required: true, covered: false });
+  assert.deepEqual((await call("gate.get", { id: del.data.id }, { root: b.root, caller: "deck" })).data.presence, { required: true, covered: false, since: null });
   assert.equal((await raw(b.socket, "/v1/tools/gate.approve", { id: del.data.id }, deck)).body.error.code, "presence_required");
   // A model is refused all of them, silently: no proof is asked of it.
   const other = (await call("gate.request", { kind: "send", via: "mail", to: "dana@harlowlegal.com", content: { subject: "x", body: "y" } }, { root: b.root, caller: "mcp" })).data.id;

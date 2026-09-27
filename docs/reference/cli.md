@@ -24,7 +24,7 @@ In the order `vyre help` lists them.
 | [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
 | [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
-| [`vyre projects`](#vyre-projects) | every project |
+| [`vyre projects`](#vyre-projects) | every project; on a box, move moves the homes to /work/projects |
 | [`vyre recall`](#vyre-recall) | search every session for what was said (vyre recall eval <file> to measure it) |
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
@@ -46,6 +46,7 @@ In the order `vyre help` lists them.
 | [`vyre learn`](#vyre-learn) | the lessons Vyre learned from you, and what it proposed |
 | [`vyre timer`](#vyre-timer) | a timer that rings on every device |
 | [`vyre remind`](#vyre-remind) | a reminder at a time |
+| [`vyre assistant`](#vyre-assistant) | your assistant, or make one: vyre assistant Juno |
 | [`vyre todo`](#vyre-todo) | open todos by list; add and finish them |
 | [`vyre notes`](#vyre-notes) | notes, pinned first |
 | [`vyre snooze`](#vyre-snooze) | ring again later (9 minutes by default) |
@@ -56,7 +57,10 @@ In the order `vyre help` lists them.
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
+| [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
+| [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
+| [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
@@ -111,10 +115,10 @@ vyre status [--json]
 
 ### vyre projects
 
-Every project.
+Every project; on a box, move moves the homes to /work/projects.
 
 ```
-vyre projects [--json]
+vyre projects [--json] | vyre projects move [--dry-run]
 ```
 
 ### vyre recall
@@ -231,7 +235,7 @@ vyre agents [list|create|update|ask|threads|usage|stop|delete] … [--json]
 The Mac command bar: Control twice, anywhere.
 
 ```
-vyre capsule [--dev] | build [--app] | install
+vyre capsule [--hidden] | install
 ```
 
 ### vyre memory
@@ -242,6 +246,8 @@ What memory holds, or everything about one thing.
 vyre memory [about] [--project <slug>] [--json]
 ```
 
+Ask it:
+  vyre memory ask "<question>" [--sources]   one line about your life, from what you have said
 Change what it holds:
   vyre memory correct <fact> wrong|ended|replace|confirm [new object] [--at <date>] [--note <why>] [--project <slug>]
   vyre memory correct '<subject>|<rel>|<object>' add [--project <slug>]
@@ -308,6 +314,17 @@ vyre remind <what> at|in <when> [--json]
 
 vyre remind "call juno" at 6 · vyre remind me in 20 minutes to check the oven · vyre remind me tomorrow at 9 to email juno
 
+### vyre assistant
+
+Your assistant, or make one: vyre assistant Juno.
+
+```
+vyre assistant [name] [--json]
+```
+
+With no name: who your assistant is. With a name: make it, as onboarding does, if there is none yet.
+On a Mac paired with a box, the assistant lives on the box.
+
 ### vyre todo
 
 Open todos by list; add and finish them.
@@ -372,7 +389,7 @@ vyre hooks [status|on|off|open|close] [name]
 Pair this Mac with your box, or approve a Mac on the box.
 
 ```
-vyre link [pair|approve|deny|unpair] [--json]
+vyre link [pair|approve|deny|unpair|signin|signout] [--json]
 ```
 
 ### vyre relay
@@ -397,12 +414,36 @@ Send files from this Mac to your box with Taildrop.
 vyre send <file> [more files]
 ```
 
+### vyre apps
+
+Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
+
+```
+vyre apps <words...>
+```
+
+### vyre sideview
+
+This session on the left, Chrome filling the rest.
+
+```
+vyre sideview [close|status]
+```
+
 ### vyre statusline
 
 Vyre's line under every Claude Code session.
 
 ```
 vyre statusline [install|uninstall]
+```
+
+### vyre voice
+
+Push-to-talk from the terminal (Enter to talk), status, and the speech key.
+
+```
+vyre voice [status | key [provider] | --send <thread>]
 ```
 
 ### vyre mcp

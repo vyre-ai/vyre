@@ -125,6 +125,13 @@ function render() {
       "The box module is not running on this machine, so this step cannot finish here. Run ", h("code", null, "vyre up"),
       " again, or skip to the steps that work."));
   }
+  // A new browser, or the link already used here: the loopback door refuses every onboard.* call
+  // without the session `vyre up`'s link carries (core/onboard/loopback.js answers 403 "denied").
+  if (state.statusError?.code === "denied") {
+    col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
+      h("div", { class: "lbl beacon" }, "Open your setup link"),
+      "Open the link from ", h("code", null, "vyre up"), " on this machine. Run ", h("code", null, "vyre up"), " again to print a new one."));
+  }
   SCREENS[step.id](col, screen);
 }
 
@@ -142,6 +149,11 @@ function devStep(n, title, ...body) {
 }
 
 const LOOPBACK = /^(127\.|localhost$|\[?::1\]?$)/;
+
+/** Whether an address (with or without https://) is the one this page is open at. */
+function here(/** @type {string} */ address) {
+  try { return new URL(/^https?:\/\//.test(address) ? address : "https://" + address).host === location.host; } catch { return false; }
+}
 
 /**
  * A phone or tablet, by the OS Tailscale reports: "iPhone", "iPad" or "Android phone"; null for
@@ -431,8 +443,9 @@ const SCREENS = {
     col.append(h("div", { class: "ob-panel" }, addr, list, note));
     // Tailnet Lock comes after the HTTPS step, never before it.
     if (stepState("tailscale") === "done") col.append(lockCard());
+    // A line break is allowed only after a dot, never inside a name (onboard.css .address-big).
     const drawAddr = (/** @type {string|null} */ address) => put(addr, address
-      ? [h("i", null, "https://"), address.replace(/^https?:\/\//, "")]
+      ? [h("i", null, "https://"), h("wbr"), address.replace(/^https?:\/\//, "").replace(/\/$/, "").split(".").map((p, j, all) => j < all.length - 1 ? [p + ".", h("wbr")] : p)]
       : h("span", { class: "faint" }, "Not reserved yet."));
     const LABELS = { reserve: "Reserve your address", dns: "Point it at this machine on your tailnet", cert: "Get the certificate" };
     /** @type {Record<string, number>} when each line started working */
@@ -500,6 +513,10 @@ const SCREENS = {
           h("button", { type: "button", class: "btn btn-ghost", onclick: () => goto(0) }, n ? "Change it" : "Pick a name"),
           n ? h("button", { type: "button", class: "btn btn-ghost", onclick: () => reserve(false, "ts.net") }, "Use my tailnet name") : null) });
     };
+    const watch = () => every(async () => {
+      const p = await attempt("onboard.name", { name: state.name, action: "status" });
+      if (p.data && done(p.data)) for (const f of cleanup.splice(0)) f();
+    }, 1500);
     const reserve = async (/** @type {boolean} */ confirm = false, action = "reserve") => {
       const st = await attempt("onboard.status");
       if (blocked(st.data?.detail?.name)) return;
@@ -509,12 +526,26 @@ const SCREENS = {
       const r = await attempt("onboard.name", { ...(state.name ? { name: state.name } : {}), action, ...(confirm ? { confirm: true } : {}) });
       if (r.error) { put(note, empty("Could not reserve the address.", r.error)); s.foot({ label: "Try again", run: () => reserve() }); return; }
       if (done(r.data)) return;
-      every(async () => {
-        const p = await attempt("onboard.name", { name: state.name, action: "status" });
-        if (p.data && done(p.data)) for (const f of cleanup.splice(0)) f();
-      }, 1500);
+      watch();
     };
     s.foot({ label: "Get your address", run: () => reserve() });
+    // Coming back to this step: read where the address is now, so one that already serves shows
+    // as done (not "Not reserved yet"), and one still being set up keeps its progress lines.
+    (async () => {
+      const r = await attempt("onboard.name", { action: "status" });
+      if (!r.data || !addr.isConnected) return;
+      const rows = Array.isArray(r.data.steps) ? r.data.steps : [];
+      if (r.data.url && here(r.data.url)) {
+        // Already on this address: nothing to switch to.
+        draw(rows);
+        drawAddr(r.data.address || r.data.url);
+        put(note);
+        s.foot({ label: "Continue", run: s.next });
+        return;
+      }
+      if (!r.data.url && !rows.some((/** @type {any} */ x) => x.state !== "todo")) return;
+      if (!done(r.data) && rows.some((/** @type {any} */ x) => x.state === "doing")) watch();
+    })();
     col.append(h("details", { class: "ob-collapse" }, h("summary", null, "Your own domain"),
       h("p", { class: "small muted" }, "Point a domain you already own at this box instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the box's own configuration, then come back and reserve again.")));
   },
@@ -740,7 +771,7 @@ async function finish(col) {
 /**
  * The one ending screen, the same everywhere (ADR 0008 section 6): the assistant's greeting
  * streaming at the top, three ticks (Mac, phone, history), one button, "Open Vyre".
- * @param {{ url: string, thread?: string|null }} d
+ * @param {{ url: string, thread?: string|null, passkeyUrl?: string|null, assistant?: { name: string|null, display?: string|null, why?: string } | null }} d
  */
 function showEnding(d) {
   for (const f of cleanup) f();
@@ -764,7 +795,15 @@ function showEnding(d) {
     h("div", { class: "ob-panel" }, ticks),
     h("a", { class: "btn btn-primary ob-end-open", href: open }, d.passkeyUrl ? "Add a passkey" : "Open Vyre"),
     d.passkeyUrl ? h("p", { class: "small faint", style: { marginTop: "10px" } }, h("a", { class: "link", href: d.url.replace(/\/$/, "") + "/now" }, "Skip for now")) : null));
-  if (!d.thread) { put(greet, `${state.assistant || "Your assistant"} is ready when you are.`); return; }
+  // onboard.finish makes the assistant only with a Claude sign-in: assistant is null without one,
+  // and { name: null, why } when making it failed. Say so rather than greet someone who is not there.
+  if (!d.assistant?.name) {
+    put(greet, d.assistant?.why
+      ? `Your assistant was not made: ${String(d.assistant.why).replace(/\.$/, "")}. Create it on Now.`
+      : "Your assistant is not made yet: sign in to Claude Code, then Create your assistant on Now.");
+    return;
+  }
+  if (!d.thread) { put(greet, `${d.assistant.display || state.assistant || d.assistant.name} is ready when you are.`); return; }
   let text = "";
   const draw = () => put(greet, text || h("span", { class: "busy-inline faint" }, "Saying hello…"));
   cleanup.push(on("thread.text", e => {

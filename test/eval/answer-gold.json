@@ -1,0 +1,407 @@
+{
+  "about": "Questions for memory.answer on test/fixtures/personal-world.js. expect: acceptable answers, matched case-insensitively as whole words or phrases; null means the right output is no answer.",
+  "questions": [
+    {
+      "q": "What is the name of my wife?",
+      "expect": [
+        "jordan"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "name of my wife",
+      "expect": [
+        "jordan"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "who is my wife",
+      "expect": [
+        "jordan"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "what's my wife called",
+      "expect": [
+        "jordan"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "WHO IS MY WIFE?",
+      "expect": [
+        "jordan"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "wifes name?",
+      "expect": [
+        "jordan"
+      ],
+      "kind": "spouse-typo"
+    },
+    {
+      "q": "whats my wfie's name",
+      "expect": [
+        "jordan"
+      ],
+      "kind": "spouse-typo"
+    },
+    {
+      "q": "my wife",
+      "expect": [
+        "jordan"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "When is my wife's birthday?",
+      "expect": [
+        "14 march",
+        "march 14",
+        "14th of march",
+        "march 14th",
+        "14 mar",
+        "mar 14",
+        "03-14"
+      ],
+      "kind": "birthday"
+    },
+    {
+      "q": "when is Jordan's birthday",
+      "expect": [
+        "14 march",
+        "march 14",
+        "14th of march",
+        "march 14th",
+        "14 mar",
+        "mar 14",
+        "03-14"
+      ],
+      "kind": "birthday"
+    },
+    {
+      "q": "jordan birthday",
+      "expect": [
+        "14 march",
+        "march 14",
+        "14th of march",
+        "march 14th",
+        "14 mar",
+        "mar 14",
+        "03-14"
+      ],
+      "kind": "birthday"
+    },
+    {
+      "q": "wifes bday",
+      "expect": [
+        "14 march",
+        "march 14",
+        "14th of march",
+        "march 14th",
+        "14 mar",
+        "mar 14",
+        "03-14"
+      ],
+      "kind": "birthday-typo"
+    },
+    {
+      "q": "who is Jordan",
+      "expect": [
+        "wife",
+        "spouse"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "who's jordan",
+      "expect": [
+        "wife",
+        "spouse"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "Which car do I own?",
+      "expect": [
+        "volvo",
+        "xc40"
+      ],
+      "kind": "vehicle"
+    },
+    {
+      "q": "what do I drive",
+      "expect": [
+        "volvo",
+        "xc40"
+      ],
+      "kind": "vehicle"
+    },
+    {
+      "q": "what car do i have",
+      "expect": [
+        "volvo",
+        "xc40"
+      ],
+      "kind": "vehicle"
+    },
+    {
+      "q": "wat car do i own",
+      "expect": [
+        "volvo",
+        "xc40"
+      ],
+      "kind": "vehicle-typo"
+    },
+    {
+      "q": "what colour is my car",
+      "expect": [
+        "blue"
+      ],
+      "kind": "vehicle"
+    },
+    {
+      "q": "what car did I have before the Volvo",
+      "expect": [
+        "subaru",
+        "outback"
+      ],
+      "kind": "history"
+    },
+    {
+      "q": "Where do I live?",
+      "expect": [
+        "seattle"
+      ],
+      "kind": "place"
+    },
+    {
+      "q": "which city do i live in",
+      "expect": [
+        "seattle"
+      ],
+      "kind": "place"
+    },
+    {
+      "q": "where did I live before Seattle",
+      "expect": [
+        "portland"
+      ],
+      "kind": "history"
+    },
+    {
+      "q": "who is Dana Reyes",
+      "expect": [
+        "harlow"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "who is Sam",
+      "expect": [
+        "northwind"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "who is sam okafor",
+      "expect": [
+        "northwind"
+      ],
+      "kind": "person"
+    },
+    {
+      "q": "who are my clients",
+      "expect": [
+        "harlow",
+        "northwind"
+      ],
+      "kind": "client"
+    },
+    {
+      "q": "which clients do I have",
+      "expect": [
+        "harlow",
+        "northwind"
+      ],
+      "kind": "client"
+    },
+    {
+      "q": "who is my contact at Harlow Legal",
+      "expect": [
+        "dana"
+      ],
+      "kind": "client"
+    },
+    {
+      "q": "who is my contact at Northwind",
+      "expect": [
+        "sam"
+      ],
+      "kind": "client"
+    },
+    {
+      "q": "where do I work",
+      "expect": [
+        "rivera studio"
+      ],
+      "kind": "work"
+    },
+    {
+      "q": "what's the name of my company",
+      "expect": [
+        "rivera studio"
+      ],
+      "kind": "work"
+    },
+    {
+      "q": "what's my dog's name",
+      "expect": [
+        "biscuit"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "dog name",
+      "expect": [
+        "biscuit"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "who is Biscuit",
+      "expect": [
+        "dog"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "who is Ruth",
+      "expect": [
+        "mother",
+        "mom"
+      ],
+      "kind": "family"
+    },
+    {
+      "q": "what is my mom's name",
+      "expect": [
+        "ruth"
+      ],
+      "kind": "family"
+    },
+    {
+      "q": "my mother's name",
+      "expect": [
+        "ruth"
+      ],
+      "kind": "family"
+    },
+    {
+      "q": "my sister's name",
+      "expect": [
+        "maya"
+      ],
+      "kind": "family-once"
+    },
+    {
+      "q": "who is Maya",
+      "expect": [
+        "sister"
+      ],
+      "kind": "family-once"
+    },
+    {
+      "q": "what editor do I use",
+      "expect": [
+        "neovim"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "which text editor do i use",
+      "expect": [
+        "neovim"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "do I prefer tea or coffee",
+      "expect": [
+        "tea"
+      ],
+      "kind": "preference-once"
+    },
+    {
+      "q": "what is my name",
+      "expect": [
+        "alex"
+      ],
+      "kind": "identity"
+    },
+    {
+      "q": "what is my son's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "which bank do I use",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what is my daughter's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what is my father's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what's my brother's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what is my cat's name",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "where was I born",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what gym do I go to",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what phone do I have",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "who is my dentist",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what's my favourite restaurant",
+      "expect": null,
+      "kind": "unknown"
+    },
+    {
+      "q": "what is my blood type",
+      "expect": null,
+      "kind": "unknown"
+    }
+  ]
+}

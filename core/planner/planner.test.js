@@ -45,7 +45,7 @@ async function world(t, { role = "box", tz = "Asia/Karachi", linked = false, rem
         name: "planner", config: { role, planner: { timezone: tz } }, paths: { root },
         store: { db, migrate: steps => migrate(db, "planner", steps) },
         log: m => logs.push(m),
-        events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn) },
+        events: { emit: (type, p, where) => events.emit("planner", type, p, where), on: (p, fn) => events.on(p, fn), latestId: () => events.latestId() },
         tool: (name, def) => w.tools.set(name, def),
         // No Google account connected: the calendar slice stays asleep (core/planner/calendar.test.js covers it).
         call: async tool => tool === "link.status" ? { data: { linked: w.linked } } : tool === "google.accounts" ? { data: [] }
@@ -98,7 +98,7 @@ test("planner: a one-off alarm rings at its instant, and not before", async t =>
   assert.equal(w.fired.length, 0);
   w.advanceTo(a.at);
   assert.equal(w.fired.length, 1);
-  assert.deepEqual({ ...w.fired[0], firing: "x" }, { at: a.at, firing: "x", item: a.id, kind: "alarm", title: "Northwind Bakery delivery", due: a.at,
+  assert.deepEqual({ ...w.fired[0], firing: "x" }, { at: a.at, firing: "x", key: `planner-${a.id}-${a.at / 1000}`, item: a.id, kind: "alarm", title: "Northwind Bakery delivery", due: a.at,
     ring: 1, missed: false, actions: ["done", "snooze"] });
   assert.match((await w.call("planner.add", { kind: "alarm", at: new Date(T0 - HOUR).toISOString() })).error.message, /already passed/);
 });
@@ -148,7 +148,7 @@ test("planner: a snoozed reminder rings again after the snooze, as a new firing"
   assert.equal(first.at, T0 + 30 * MIN);
   const s = await w.ok("planner.snooze", { firing: first.firing });
   assert.equal(s.until, T0 + 39 * MIN, "nine minutes by default");
-  assert.deepEqual(w.acked, [{ firing: first.firing, item: r.id, action: "snooze", by: "cli", until: T0 + 39 * MIN }]);
+  assert.deepEqual(w.acked, [{ firing: first.firing, key: `planner-${r.id}-${(T0 + 30 * MIN) / 1000}`, item: r.id, due: T0 + 30 * MIN, action: "snooze", by: "cli", until: T0 + 39 * MIN }]);
   w.advance(9 * MIN - 1000);
   assert.equal(w.fired.length, 1, "no escalation while snoozed");
   w.advance(1000);
@@ -197,7 +197,7 @@ test("planner: an unacknowledged alarm rings escalate_max more times, then stops
   assert.ok(ringing.some(x => x.firing === fb.firing && x.item === b.id && x.kind === "alarm"), "a late surface sees what rings");
   const r = await w.ok("planner.done", { firing: fb.firing }, "capsule");
   assert.equal(r.firing.state, "acked");
-  assert.deepEqual(w.acked.at(-1), { firing: fb.firing, item: b.id, action: "done", by: "capsule" });
+  assert.deepEqual(w.acked.at(-1), { firing: fb.firing, key: `planner-${b.id}-${fb.due / 1000}`, item: b.id, due: fb.due, action: "done", by: "capsule" });
   w.advance(HOUR);
   assert.equal(w.fired.filter(f => f.item === b.id).length, 1, "no ring after the ack");
   assert.ok(!(await w.ok("planner.ringing", {})).some(x => x.firing === fb.firing), "an acked firing is not ringing");
@@ -371,4 +371,130 @@ test("planner: words become items through parse.js, when it is there", async t =
   assert.equal((await w.ok("planner.add", { text: "10 min", kind: "timer" })).at, T0 + 10 * MIN, "kind is a hint to the parser");
   const note = await w.ok("planner.add", { text: "juno's bakery order is 40 rolls", kind: "note" }, "mcp");
   assert.equal(note.kind, "note");
+});
+
+test("planner: at in words is the next such time in the item's zone", async t => {
+  const w = await world(t);
+  const six = await w.ok("planner.add", { kind: "reminder", title: "Call Harlow Legal", at: "6pm" });
+  assert.deepEqual([six.at, six.wall, six.date], [Z(2026, 9, 24, 13), "18:00", "2026-09-24"], "today's 6pm in Karachi");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "Email juno", at: "tomorrow at 9" })).at, Z(2026, 9, 25, 4));
+  assert.equal((await w.ok("planner.add", { kind: "alarm", at: "7:30" })).at, Z(2026, 9, 24, 14, 30), "the next 7:30");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "Oven", at: "in 20 minutes" })).at, T0 + 20 * MIN);
+  assert.equal((await w.ok("planner.add", { text: "call kit", kind: "reminder", at: "6pm" })).at, Z(2026, 9, 24, 13), "cc-plugin's shape");
+  assert.equal((await w.call("planner.add", { kind: "reminder", title: "x", at: "banana" })).error.code, "bad_input");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "ISO still", at: "2026-09-24T20:00:00+05:00" })).at, Z(2026, 9, 24, 15));
+});
+
+test("planner: an idle planner never asks Intl for a zone (ICU's zone data is about 8 MB)", async () => {
+  // A fresh process, since time.js keeps its formatters: start the planner on an empty store, let
+  // its scheduler tick, then add an alarm, counting zoned Intl formatters made on the way.
+  const { execFileSync } = await import("node:child_process");
+  const script = `
+    const Real = Intl.DateTimeFormat; let zoned = 0;
+    Intl.DateTimeFormat = function (l, o) { if (o && o.timeZone) zoned++; return new Real(l, o); };
+    const { DatabaseSync } = await import("node:sqlite");
+    const { migrate } = await import(${JSON.stringify(new URL("../store/index.js", import.meta.url).href)});
+    const planner = (await import(${JSON.stringify(new URL("./index.js", import.meta.url).href)})).default;
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
+    const tools = new Map();
+    const h = await planner.start({ name: "planner", config: { role: "box", planner: { timezone: "Asia/Karachi" } }, paths: { root: "/idle" },
+      store: { db, migrate: s => migrate(db, "planner", s) }, log: () => {}, events: { emit: () => {}, on: () => () => {}, latestId: () => 0 },
+      tool: (n, d) => tools.set(n, d), call: async t => t === "google.accounts" ? { data: [] } : { error: { code: "x" } }, remote: async () => ({}) });
+    await tools.get("planner.list").run({}, { caller: "cli" });
+    const idle = zoned;
+    await tools.get("planner.add").run({ kind: "alarm", wall: "07:00" }, { caller: "cli" });
+    console.log(JSON.stringify({ idle, after: zoned }));
+    await h.stop();`;
+  const out = JSON.parse(execFileSync(process.execPath, ["--no-warnings", "--input-type=module", "-e", script], { encoding: "utf8" }).trim());
+  assert.equal(out.idle, 0, "nothing zoned while idle");
+  assert.ok(out.after > 0, "a zone is read once there is something to place");
+});
+
+test("planner: upcoming lists the next 48 hours of rings, each keyed as the box's push will be", async t => {
+  const w = await world(t);
+  const alarm = await w.ok("planner.add", { kind: "alarm", title: "Wake", wall: "07:00", repeat: { every: "day" } });
+  const rem = await w.ok("planner.add", { kind: "reminder", title: "Call Harlow Legal", at: T0 + 3 * HOUR });
+  const timer = await w.ok("planner.add", { kind: "timer", title: "Tea", in_ms: 10 * MIN });
+  const ev = await w.ok("planner.add", { kind: "event", title: "Northwind Bakery tasting", at: T0 + 5 * HOUR });
+  await w.ok("planner.add", { kind: "todo", title: "No time, never rings" });
+  await w.ok("planner.add", { kind: "note", title: "Never rings" });
+  const up = await w.ok("planner.upcoming");
+  assert.ok(up.last_event > 0, "the event cursor the schedule is current to");
+  assert.equal(up.to - up.from, 48 * HOUR);
+  const K = (id, due) => `planner-${id}-${due / 1000}`;
+  assert.deepEqual(up.entries.map(e => [e.key, e.kind, e.at, e.due * 1000, e.loud]), [
+    [K(timer.id, T0 + 10 * MIN), "timer", T0 + 10 * MIN, T0 + 10 * MIN, true],
+    [K(rem.id, T0 + 3 * HOUR), "reminder", T0 + 3 * HOUR, T0 + 3 * HOUR, false],
+    [K(ev.id, T0 + 5 * HOUR - 10 * MIN), "event", T0 + 5 * HOUR - 10 * MIN, T0 + 5 * HOUR - 10 * MIN, false],
+    [K(alarm.id, Z(2026, 9, 25, 2)), "alarm", Z(2026, 9, 25, 2), Z(2026, 9, 25, 2), true],
+    [K(alarm.id, Z(2026, 9, 26, 2)), "alarm", Z(2026, 9, 26, 2), Z(2026, 9, 26, 2), true],
+  ]);
+  assert.equal(up.entries[2].start, T0 + 5 * HOUR, "an event says when it starts");
+  assert.equal(up.entries[1].title, "Call Harlow Legal", "titles stay on the user's devices");
+  assert.equal((await w.ok("planner.upcoming", { hours: 1 })).entries.length, 1);
+  assert.equal((await w.call("planner.upcoming", { hours: 100 })).error.code, "bad_input");
+
+  // The box rings with the same key, and planner.ringing and the ack say it too.
+  w.advance(10 * MIN);
+  assert.equal(w.fired.at(-1).key, K(timer.id, T0 + 10 * MIN));
+  assert.equal((await w.ok("planner.ringing"))[0].key, K(timer.id, T0 + 10 * MIN));
+  const r = await w.ok("planner.ringing", { cursor: true });
+  assert.ok(r.last_event > 0 && r.ringing.length === 1);
+  await w.ok("planner.done", { key: K(timer.id, T0 + 10 * MIN) });
+  assert.deepEqual([w.acked.at(-1).key, w.acked.at(-1).action, w.acked.at(-1).unrung], [K(timer.id, T0 + 10 * MIN), "done", undefined]);
+  assert.equal((await w.ok("planner.done", { key: K(timer.id, T0 + 10 * MIN) })).already, true, "a retried answer is harmless");
+  assert.ok(!(await w.ok("planner.upcoming")).entries.some(e => e.item === timer.id), "a rung moment leaves the schedule");
+  const listed = await w.ok("planner.list", { cursor: true });
+  assert.ok(Array.isArray(listed.items) && listed.last_event > 0);
+  assert.ok(Array.isArray(await w.ok("planner.list")), "without cursor, the list as before");
+});
+
+test("planner: a ring answered by key on a device before the box rang it is never rung by the box", async t => {
+  const w = await world(t);
+  await w.ok("planner.settings", { escalate_max: 0 });
+  const alarm = await w.ok("planner.add", { kind: "alarm", title: "Wake", wall: "07:00", repeat: { every: "day" } });
+  const rem = await w.ok("planner.add", { kind: "reminder", title: "Call kit", at: T0 + HOUR });
+  const snoozed = await w.ok("planner.add", { kind: "reminder", title: "Water the plants", at: T0 + 2 * HOUR });
+  const K = (id, due) => `planner-${id}-${due / 1000}`;
+
+  // The phone rang the reminder itself (the box was out of reach) and the user tapped Done; the
+  // outbox delivers it by key once the box answers.
+  const d = await w.ok("planner.done", { key: K(rem.id, T0 + HOUR) });
+  assert.equal(d.item.state, "done");
+  assert.deepEqual([d.firing.state, d.firing.action, d.firing.key], ["acked", "done", K(rem.id, T0 + HOUR)]);
+  assert.equal(w.acked.at(-1).unrung, true, "the others clear it from their schedules");
+  // Tomorrow's alarm, answered ahead: tomorrow is skipped, the day after rings.
+  await w.ok("planner.dismiss", { key: K(alarm.id, Z(2026, 9, 25, 2)) });
+  // A snooze by key: the moment it was for is skipped, the snooze rings.
+  const s = await w.ok("planner.snooze", { key: K(snoozed.id, T0 + 2 * HOUR), minutes: 30 });
+  assert.equal(s.until, T0 + 30 * MIN);
+  w.advanceTo(Z(2026, 9, 26, 3));
+  assert.deepEqual(w.fired.map(f => [f.item, f.at]), [[snoozed.id, T0 + 30 * MIN], [alarm.id, Z(2026, 9, 26, 2)]]);
+  assert.equal(w.fired[1].key, K(alarm.id, Z(2026, 9, 26, 2)));
+  assert.equal((await w.call("planner.done", { key: "banana" })).error.code, "bad_input");
+  assert.equal((await w.call("planner.done", { key: "planner-i_gone-1790000000" })).error.code, "not_found");
+});
+
+test("planner: a zone or lead change says the schedule moved", async t => {
+  const w = await world(t);
+  const moved = [];
+  w.events.on("planner.schedule", e => moved.push(e.payload.reason));
+  await w.ok("planner.settings", { escalate_max: 1 });
+  assert.deepEqual(moved, []);
+  await w.ok("planner.settings", { timezone: "Europe/London" });
+  await w.ok("planner.settings", { event_lead: 5 });
+  assert.deepEqual(moved, ["settings", "settings"]);
+});
+
+test("planner: a Vyre-owned session's thread is the assistant, whichever thread it is", async t => {
+  const w = await world(t);
+  // Straight to the tool: the registry's callers check for "mcp:thread:<id>" is the sessions team's (ADR 0030).
+  const run = (name, input, caller) => w.tools.get(name).run(input, { caller });
+  const a = await run("planner.add", { kind: "reminder", title: "Call kit", at: T0 + HOUR }, "mcp:thread:t_one");
+  assert.equal(a.source, "mcp");
+  assert.equal(a.added_by, null);
+  const b = await run("planner.update", { item: a.id, title: "Call kit back" }, "mcp:thread:t_two");
+  assert.equal(b.title, "Call kit back");
+  await assert.rejects(run("planner.update", { item: a.id, title: "x" }, "mcp:agent:kit"), /only the items it added/);
 });

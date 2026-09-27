@@ -2,6 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import * as config from "./index.js";
 import { tempHome } from "../../test/helpers.js";
@@ -89,4 +90,36 @@ test("config: computers.tailnet is off by default, and survives a user's other c
   assert.deepEqual(c.computers.tailnet, { enabled: false, tag: "tag:vyre-agent" }, "a user's computers.docker dropped the tailnet default");
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ computers: { tailnet: { enabled: true } } }));
   assert.deepEqual(config.load(root).computers.tailnet, { enabled: true, tag: "tag:vyre-agent" });
+});
+
+/** Run fn with env vars set, putting them back after. */
+function withEnv(vars, fn) {
+  const prev = Object.fromEntries(Object.keys(vars).map(k => [k, process.env[k]]));
+  Object.assign(process.env, vars);
+  try { return fn(); } finally { for (const [k, v] of Object.entries(prev)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+}
+
+test("config: a new box with a work folder keeps projects in it; an existing one only once its homes moved; a Mac never", t => {
+  const root = tempHome(t);
+  const work = path.join(root, "work");
+  const oldDir = path.join(root, "home", "Vyre", "projects");
+  const old = path.join(os.homedir(), "Vyre", "projects");
+  const set = obj => fs.writeFileSync(path.join(root, "config.json"), JSON.stringify(obj));
+  withEnv({ VYRE_WORK_DIR: work, VYRE_OLD_PROJECTS_DIR: oldDir }, () => {
+    set({ role: "box" });
+    assert.equal(config.load(root).projectsDir, old, "no work folder yet");
+    fs.mkdirSync(work);
+    assert.equal(config.load(root).projectsDir, path.join(work, "projects"), "a new box: no old folder");
+    fs.mkdirSync(oldDir, { recursive: true });
+    assert.equal(config.load(root).projectsDir, path.join(work, "projects"), "a new box: an empty old folder");
+    fs.mkdirSync(path.join(oldDir, "harlow-legal"));
+    assert.equal(config.load(root).projectsDir, old, "an existing box keeps its folder until projects.move runs");
+    fs.writeFileSync(path.join(root, config.MOVED_RECORD), "{}\n");
+    assert.equal(config.load(root).projectsDir, path.join(work, "projects"), "moved: the work folder");
+    assert.equal(config.boxProjectsDir(), path.join(work, "projects"));
+    set({ role: "local" });
+    assert.equal(config.load(root).projectsDir, old, "a Mac never uses the work folder");
+    set({ role: "box", projectsDir: "~/Elsewhere" });
+    assert.equal(config.load(root).projectsDir, path.join(os.homedir(), "Elsewhere"), "the user's projectsDir wins");
+  });
 });

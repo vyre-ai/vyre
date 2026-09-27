@@ -14,8 +14,8 @@ call and before a turn ends, so a model cannot forget it. Learning works in four
 **signals**, turns them into **lessons** you accept, **enforces** them, and **escalates** a
 lesson that keeps being broken.
 
-Anything that makes Vyre stricter is free. Anything that makes it looser needs you, with
-presence.
+Anything that makes Vyre stricter is free. Anything that makes it looser needs you, from your
+own terminal, Deck or Capsule.
 
 ## Signals: what Vyre hears
 
@@ -61,9 +61,8 @@ vyre learn retire 7            # retire an active lesson, or decline a proposed 
 vyre learn add "never use the section-sign character in docs"
 ```
 
-Accepting and retiring ask you to prove presence from the terminal you typed them in: Touch ID
-on the Mac, or a code vyred writes to that terminal on another Linux machine. A terminal on the
-box cannot prove it; accept there from the Deck, with your passkey. A proposed lesson looks like this in
+Accepting and retiring are yours: they ask nothing more. Claude and agents are refused, and
+the Harness stops Claude's shell from running them. A proposed lesson looks like this in
 `vyre learn`:
 
 ```output
@@ -113,9 +112,9 @@ lesson you allowed every time proposes a demotion for you to decide.
 ```
 vyre learn stats                       # working, not working, or still measuring
 vyre learn level 7 block               # raising is free
-vyre learn level 7 remind              # lowering needs presence
+vyre learn level 7 remind              # lowering is yours alone
 vyre learn scope 7 all                 # widening to everywhere is free
-vyre learn scope 7 project harlow-legal   # narrowing needs presence
+vyre learn scope 7 project harlow-legal   # narrowing is yours alone
 vyre learn relax 7 max ask             # cap it; also: pin, paths, when, scope
 ```
 
@@ -151,7 +150,7 @@ Installing and retiring a skill need presence.
 
 - Make a lesson you did not see and accept.
 - Let Claude retire, loosen or accept a lesson. Those are `learn.retire`, `learn.relax` and
-  `learn.accept`, open only to your surfaces with presence.
+  `learn.accept`, open only to your own surfaces.
 - Weaken a lesson on its own.
 - Let a command edit its way around the hooks: writes to the lessons snapshot, the database, the
   Harness's hooks or the Claude Code settings that load them are asked every time.

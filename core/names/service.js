@@ -15,6 +15,15 @@ const NAME = /^[a-z][a-z0-9-]{0,30}[a-z0-9]$/;
 const RESERVED = new Set(["www", "api", "app", "admin", "mail", "docs", "status", "blog", "help", "support", "deck", "vyre",
   "root", "ns1", "ns2", "dev", "staging", "test", "download", "install", "login", "auth", "directory"]);
 const HSTS = "max-age=31536000";
+
+/**
+ * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
+ * network.origins replaces the list; an empty list turns cross-origin calls off.
+ */
+export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
+/** What the hosted app may send. Anything else fails its preflight. */
+const CORS_METHODS = "GET, POST";
+const CORS_HEADERS = "content-type, authorization, x-vyre-proof, x-vyre-presence, idempotency-key, last-event-id";
 const DAY = 86_400_000;
 
 /** Is this a name someone can have? Pure, so the Deck's check and the claim agree. */
@@ -219,10 +228,14 @@ export function names(deps) {
       res.writeHead(421, { "content-type": "application/json" });
       return res.end(JSON.stringify({ error: { code: "misdirected", message: "not this box's address" } }));
     }
+    // Vyre's hosted app (app.vyre.run) is another site that may call in, with CORS, from the
+    // owner's own browser. Whois must still say owner, and vyred's router wants a person session
+    // for every call from it (core/presence/person.js).
+    const origin = String(req.headers.origin || "").toLowerCase();
+    if (origin && origin !== `https://${host}` && hosted(origin)) return crossOrigin(req, res, url, who, origin);
     if (req.method !== "GET" && req.method !== "HEAD") {
-      const origin = req.headers.origin;
       const json = /^application\/json\b/.test(String(req.headers["content-type"] || ""));
-      if (!json || (origin && origin.toLowerCase() !== `https://${host}`)) {
+      if (!json || (origin && origin !== `https://${host}`)) {
         res.writeHead(403, { "content-type": "application/json" });
         return res.end(JSON.stringify({ error: { code: "denied", message: "cross-site request" } }));
       }
@@ -237,6 +250,44 @@ export function names(deps) {
     // router limits a guest to its tools and wants an agent's key beside `tailnet:agent:<name>`.
     const peer = { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {},
       kind: who.kind, ...(who.kind === "agent" ? { agent: who.agent } : {}) };
+    return handle(req, res, callerOf(who), peer);
+  }
+
+  /** Is this origin one of the hosted app's (network.origins, default HOSTED_ORIGINS)? */
+  const hosted = origin => {
+    const list = Array.isArray(net().origins) ? net().origins : HOSTED_ORIGINS;
+    return list.some(o => String(o).toLowerCase().replace(/\/+$/, "") === origin);
+  };
+
+  /**
+   * A request from the hosted app's origin. Only the owner gets CORS headers at all; a guest or an
+   * agent's node gets the same 403 as any other site. The preflight carries no credentials and is
+   * answered here. GET /v1/health answers only that the box is reachable (the app's probe for the
+   * tailnet path), without asking vyred. Everything else goes to the router untouched (the body
+   * unread, since the session's proof signs its hash), with the origin beside the caller, never in
+   * the input; the router refuses it without a person session.
+   */
+  async function crossOrigin(req, res, url, who, origin) {
+    const json = (status, body) => { res.writeHead(status, { "content-type": "application/json" }); res.end(JSON.stringify(body)); };
+    if (who.kind !== "owner") return json(403, { error: { code: "denied", message: "cross-site request" } });
+    res.setHeader("access-control-allow-origin", origin);
+    res.setHeader("vary", "Origin");
+    if (req.method === "OPTIONS") {
+      const method = String(req.headers["access-control-request-method"] || "").toUpperCase();
+      const asked = String(req.headers["access-control-request-headers"] || "").toLowerCase().split(",").map(h => h.trim()).filter(Boolean);
+      const allowed = CORS_HEADERS.split(", ");
+      if (!CORS_METHODS.split(", ").includes(method) || asked.some(h => !allowed.includes(h))) return json(403, { error: { code: "denied", message: "not an allowed method or header" } });
+      const headers = { "access-control-allow-methods": CORS_METHODS, "access-control-allow-headers": CORS_HEADERS, "access-control-max-age": "600" };
+      // Chrome's Private Network Access: a public page calling a 100.64/10 address asks first.
+      if (String(req.headers["access-control-request-private-network"] || "") === "true") headers["access-control-allow-private-network"] = "true";
+      res.writeHead(204, headers);
+      return res.end();
+    }
+    if (req.method === "GET" && url.pathname === "/v1/health") return json(200, { data: { reachable: true } });
+    if (req.method !== "GET" && req.method !== "HEAD" && !/^application\/json\b/.test(String(req.headers["content-type"] || ""))) return json(403, { error: { code: "denied", message: "cross-site request" } });
+    if (!handle) handle = ctx.handler({});
+    const peer = { node: who.node, stableId: who.stableId || null, login: who.login, tags: who.tags || [], caps: who.caps || {},
+      kind: who.kind, origin };
     return handle(req, res, callerOf(who), peer);
   }
 
@@ -258,8 +309,10 @@ export function names(deps) {
     if (!mine.some(h => host === h || host === `${h}:${bound()}` || host === `[${h}]:${bound()}`)) return refuse(421, "Misdirected Request");
     // A browser sends Origin on every WebSocket, and a page on another site could open one with
     // the owner's address: only this box's own page may.
-    const origin = req.headers.origin;
-    if (origin && String(origin).toLowerCase() !== `https://${host}`) return refuse(403, "Forbidden");
+    // The hosted app's page may too: every stream opens with a ticket a tool minted, and minting
+    // one already needed the person session.
+    const origin = String(req.headers.origin || "").toLowerCase();
+    if (origin && origin !== `https://${host}` && !hosted(origin)) return refuse(403, "Forbidden");
     if (!upgrade) upgrade = ctx.upgrader({});
     upgrade(req, socket, head, callerOf(who));
   }

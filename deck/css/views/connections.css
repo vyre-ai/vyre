@@ -54,7 +54,7 @@
 .cn-copy { display: grid; grid-template-columns: 120px minmax(0, 1fr) auto; align-items: center; gap: 8px 16px; }
 .cn-copy-v { min-width: 0; height: 32px; font-size: 12px; font-family: var(--mono); color: var(--text-2); text-overflow: ellipsis; }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .cn-meta { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .cn-k { margin-top: 6px; }
   .cn-tool { flex-wrap: wrap; }

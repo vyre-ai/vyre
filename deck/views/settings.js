@@ -5,8 +5,8 @@
 //
 // Every section loads on its own and shows its own empty state, so one missing module never
 // blanks the page. Tools: onboard.status, onboard.claude, onboard.tailscale (box, also its read-only "lock"), agents.list and
-// agents.update (switchboard), link.health (link), files.drive.status and files.drive.audit (files), hooks.list and hooks.status (hooks),
-// network.guests.list (network), computers.tailnet.status and computers.egress.status (computers), recall.status, recall.index, memory.stats, memory.curate,
+// agents.update (switchboard), link.health (link), files.drive.status, files.drive.audit and files.drive.access (files), hooks.list and hooks.status (hooks),
+// network.guests.list (network), computers.tailnet.status, computers.egress.status and computers.handback.status/set (computers), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
 // Connections is drawn by views/connections.js (the connectors workstream, ADR 0016).
 
@@ -15,8 +15,10 @@ import { attempt, modules, canProve } from "../js/api.js";
 import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState, deviceName, deniedHelp } from "../js/phone-setup.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
+import { personStatus, signOutHere } from "../js/person.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
+import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
 
 const SECTIONS = [
   ["setup", "Setup"],
@@ -195,7 +197,7 @@ async function drawAssistant(el, ctx) {
       if (ins.value !== (a.instructions || "")) input.instructions = ins.value;
       if (Object.keys(input).length === 1) { show(); return; }
       /** @type {HTMLButtonElement} */ (save).disabled = true;
-      const u = await attempt("agents.update", input);
+      const u = await attempt("agents.update", input, { presence: "asked" });
       if (u.error) { put(st, errText(u.error)); /** @type {HTMLButtonElement} */ (save).disabled = false; return; }
       Object.assign(a, u.data && u.data.name ? u.data : { name: input.name || a.name, instructions: input.instructions ?? a.instructions });
       show();
@@ -235,7 +237,7 @@ async function drawNetwork(el, ctx) {
   const conn = h("div");
   const lockRow = h("div");
   // The tailnet features below each load on their own; a tool not on this vyred leaves its row out.
-  const extra = ["shares", "hooks", "guests", "agents", "egress"].map(() => h("div"));
+  const extra = ["shares", "hooks", "guests", "agents", "egress", "handback"].map(() => h("div"));
   put(el, r.error ? empty("Tailscale is checked by the box module.", r.error) : null,
     h("div", { class: "rows" },
       r.error ? null : row("Tailscale", on ? h("span", null, "Connected") : h("span", { class: "muted" }, !t.installed ? "Not installed" : t.state === "needs-login" ? "Waiting for sign-in" : "Not connected")),
@@ -246,8 +248,8 @@ async function drawNetwork(el, ctx) {
       extra),
     on ? null : foot(toOnboard("tailscale", "Connect")));
   if (on) drawLink(conn, ctx);
-  const [shares, hooks, guests, agents, egress] = extra;
-  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress)]);
+  const [shares, hooks, guests, agents, egress, handback] = extra;
+  await Promise.all([on ? drawLock(lockRow) : null, drawShares(shares, ctx), drawHooks(hooks), drawGuests(guests), drawAgentNodes(agents), drawEgress(egress), drawHandback(handback)]);
 }
 
 /** How the box reaches this device (link.health, the calling node), kept current by deck/js/health.js. */
@@ -288,20 +290,25 @@ async function optional(el, label, tool, draw) {
 const onOff = on => on ? h("span", null, "On") : h("span", { class: "muted" }, "Off");
 
 /**
- * Box shares (Taildrive): each folder the box offers, shared or not, and who the tailnet policy
- * lets reach them. The check runs on demand, and a drive.exposed event (after any share) shows
- * its findings here too. Sharing stays with the owner's terminal and the Capsule.
+ * VyreDrive (Taildrive underneath): each folder the box offers, shared or not, its own access, and who the
+ * tailnet policy lets reach them. The check runs on demand, and a drive.exposed event (after any
+ * share) shows its findings here too, with any shared folder that holds secrets. Sharing stays
+ * with the owner's terminal and the Capsule; switching a share between read only and read and
+ * write is the owner's own act (files.drive.access, no proof), offered only where the box has it.
  */
 function drawShares(el, ctx) {
   const found = h("div");
   const st = status();
   const showAudit = (/** @type {any} */ a) => {
     const f = Array.isArray(a?.findings) ? a.findings : [];
-    put(found, f.length
-      ? [h("div", { class: "small set-warn" }, `${plural(f.length, "device")} outside your paired Macs can reach these shares:`),
-        plainList(f, x => [mono(x.node || "a device"), x.login ? h("span", { class: "small faint" }, ` ${x.login}`) : null]),
-        faint("Only the tailnet policy decides this. Remove them in the Tailscale admin console, Access controls. Vyre does not change it.")]
-      : a ? faint(`Only your paired Macs can reach them. ${a.checked != null ? `Checked ${plural(a.checked, "online device")}.` : ""}`.trim()) : null);
+    const bad = unsafeLines(a);
+    put(found,
+      bad.map(x => h("div", { class: "small set-warn" }, x.text)),
+      f.length
+        ? [h("div", { class: "small set-warn" }, `${plural(f.length, "device")} outside your paired Macs can reach these shares:`),
+          plainList(f, x => [mono(x.node || "a device"), x.login ? h("span", { class: "small faint" }, ` ${x.login}`) : null]),
+          faint("Only the tailnet policy decides this. Remove them in the Tailscale admin console, Access controls. Vyre does not change it.")]
+        : a && !bad.length ? faint(`Only your paired Macs can reach them. ${a.checked != null ? `Checked ${plural(a.checked, "online device")}.` : ""}`.trim()) : null);
   };
   ctx.on("drive.exposed", (/** @type {any} */ e) => { if (ctx.alive()) showAudit(e.payload); });
   const check = h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
@@ -310,15 +317,48 @@ function drawShares(el, ctx) {
     check.disabled = false; put(st);
     if (a.error) put(st, errText(a.error)); else showAudit(a.data);
   } }, "Check who can reach them");
-  return optional(el, "Box shares", "files.drive.status", d => {
+  // Whether this box has files.drive.access: its status rows carry their own access, and a
+  // no_such_tool answer turns the switches off for good.
+  let canSwitch = true;
+  const intro = () => faint("VyreDrive (built on Tailscale's Taildrive) opens your box's folders in Finder on your Mac.");
+  return optional(el, "VyreDrive", "files.drive.status", d => {
     const shares = listOf(d.shares, "name");
-    if (!d.enabled) return row("Box shares", onOff(false),
-      faint("Your box's folders, open in Finder on your Mac through Taildrive."), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
-    return row("Box shares", h("span", null, d.access === "rw" ? "Read and write" : "Read only"),
-      shares.length ? plainList(shares, x => [mono(x.name), h("span", { class: "small " + (x.shared ? "muted" : "faint") }, x.shared ? " shared" : " not shared"),
-        x.mounted ? h("span", { class: "small faint" }, ", mounted on this Mac") : null]) : faint("The box offers no folders (files.drive.shares)."),
+    if (!d.enabled) return row("VyreDrive", onOff(false),
+      intro(), d.why ? faint(`Not available: ${d.why}.`) : null, d.fix ? faint(d.fix) : null);
+    const own = perShare(shares);
+    const remount = h("div");
+    const line = (/** @type {any} */ x) => {
+      const li = h("div");
+      let acc = shareAccess(x, d);
+      const draw = () => put(li, mono(x.name), h("span", { class: "small " + (x.shared ? "muted" : "faint") }, x.shared ? " shared" : " not shared"),
+        h("span", { class: "small faint" }, `, ${accessWord(acc).toLowerCase()}`),
+        x.mounted ? h("span", { class: "small faint" }, ", mounted on this Mac") : null,
+        own && canSwitch ? [" ", sw] : null);
+      const sw = h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
+        sw.disabled = true;
+        const r = await attempt("files.drive.access", { name: x.name, mode: flip(acc) });
+        sw.disabled = false;
+        if (r.error) {
+          // An old box: no switch, and nothing said.
+          if (r.error.missing) { canSwitch = false; for (const b of el.querySelectorAll("[data-drive-switch]")) b.remove(); return; }
+          put(st, errText(r.error)); return;
+        }
+        put(st);
+        acc = r.data?.access === "rw" ? "rw" : r.data?.access === "ro" ? "ro" : flip(acc);
+        put(sw, acc === "rw" ? "Make read only" : "Make read and write");
+        draw();
+        const m = mountHint(r.data);
+        put(remount, m ? [m.step ? cmd(m.step) : null, h("div", { class: "small set-warn" }, m.line)] : null);
+      } }, acc === "rw" ? "Make read only" : "Make read and write");
+      sw.setAttribute("data-drive-switch", "");
+      draw();
+      return li;
+    };
+    return row("VyreDrive", h("span", null, "On"), intro(),
+      shares.length ? plainList(shares, line) : faint("The box offers no folders (files.drive.shares)."),
+      remount,
       d.error ? faint(d.error) : null,
-      shares.some(x => !x.shared) ? [faint("Share one from the box's terminal:"), cmd(`vyre call files.drive.share '{"name":"${shares.find(x => !x.shared).name}"}'`)] : null,
+      shares.some(x => !x.shared) ? [faint("Share one from the box's terminal:"), cmd(`vyre call --tty files.drive.share '{"name":"${shares.find(x => !x.shared).name}"}'`)] : null,
       foot(check), st, found);
   });
 }
@@ -376,7 +416,7 @@ function drawGuests(el) {
       }) : null,
       safeLine,
       faint("Add someone from the box's terminal:"),
-      cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["glass.open"]}'`),
+      cmd(`vyre call --tty network.guests.add '{"login":"<login>","tools":["threads.list"]}'`),
       people.length ? [faint("Remove them:"), cmd(`vyre call --tty network.guests.remove '{"login":"${people[0].login}"}'`)] : null,
       faint("Turn guests off:"), cmd(`vyre call --tty network.guests.enable '{"on":false}'`));
   });
@@ -417,6 +457,27 @@ function drawEgress(el) {
       d.problem ? h("div", { class: "small set-warn" }, d.problem) : null,
       d.applies ? faint(`This ${d.applies}.`) : null,
       cmd(`vyre call --tty computers.egress.set '{"enabled":false}'`));
+  });
+}
+
+/** Glass hand-back: after how long without input a take-over goes back to the agent. */
+function drawHandback(el) {
+  return optional(el, "Glass hand-back", "computers.handback.status", d => {
+    const choices = Array.isArray(d.choices) ? d.choices : [0, 2, 5, 15];
+    const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select", "aria-label": "Hand back after this long without input" },
+      choices.map(m => h("option", { value: String(m), selected: Number(m) === Number(d.minutes) }, m ? `After ${m} min idle` : "Off"))));
+    const said = h("div", { class: "small faint", role: "status" }, "");
+    sel.onchange = async () => {
+      sel.disabled = true;
+      const r = await attempt("computers.handback.set", { minutes: Number(sel.value) });
+      sel.disabled = false;
+      if (r.error) { put(said, errText(r.error)); sel.value = String(d.minutes); return; }
+      d.minutes = r.data?.minutes;
+      put(said, "Saved. It applies to a take-over already running too.");
+    };
+    return row("Glass hand-back", sel,
+      faint(`When you take over an agent's computer and stop typing and moving, the keyboard goes back to the agent. You get a ${d.warn_s || 10} s warning first.`),
+      said);
   });
 }
 
@@ -480,7 +541,7 @@ async function drawDevices(el) {
   put(el,
     rows.length ? h("div", { class: "rows" }, rows)
       : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
-    foot(toOnboard("devices", rows.length ? "Add a device" : "Open")));
+    foot(toOnboard("devices", "Add a device")));
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------
@@ -745,7 +806,9 @@ async function drawNotifications(el, ctx) {
  * shared with the phone's setup card.
  */
 function drawSecurity(el, ctx) {
-  if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet.")); return; }
+  const signedIn = h("div");
+  drawSignedIn(signedIn, ctx);
+  if (!canProve()) { put(el, note("This browser cannot create or use a passkey. Open the Deck in Safari or Chrome over your tailnet."), signedIn); return; }
   const codeIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-code", autocomplete: "one-time-code", spellcheck: "false",
     autocapitalize: "off", placeholder: "from vyre presence code, on the box" }));
   const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", id: "sec-name", autocomplete: "off", placeholder: deviceName() }));
@@ -776,8 +839,48 @@ function drawSecurity(el, ctx) {
     h("div", { class: "rows" },
       row("Code", codeIn),
       row("Name this device", nameIn)),
-    foot(btn), st);
+    foot(btn), st, signedIn);
   drawKeys();
+}
+
+/**
+ * Signed-in devices (person sessions): every browser and app signed in as you, when, and a
+ * Revoke for each; "Sign out here" ends this one. A box without person sessions shows nothing.
+ * Revoking asks no passkey unless this box still wants one (presence "asked").
+ */
+function drawSignedIn(el, ctx) {
+  const draw = async () => {
+    const me = await personStatus();
+    if (!ctx.alive()) return;
+    await optional(el, "Signed-in devices", "presence.person.sessions", d => {
+      const list = Array.isArray(d.sessions) ? d.sessions : [];
+      const st = status();
+      const rows = list.map(x => {
+        const here = !!me?.id && x.id === me.id;
+        const btn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn btn-sm", "data-act": "revoke", onclick: async () => {
+          btn.disabled = true;
+          const r = await attempt("presence.person.revoke", { id: x.id }, { presence: "asked" });
+          if (!ctx.alive()) return;
+          if (r.error) { btn.disabled = false; put(st, errText(r.error)); return; }
+          if (here) { location.reload(); return; }
+          draw();
+        } }, "Revoke"));
+        return h("div", { class: "set-list-row", "data-session": x.id },
+          h("span", null, x.label || x.node || "A device",
+            h("span", { class: "small faint" }, `  ${x.kind === "bearer" ? "app" : "browser"}`),
+            here ? h("span", { class: "small" }, "  This device") : null),
+          h("div", { class: "small faint" }, `Signed in ${when(x.created)}`, x.last_used ? `, last used ${since(x.last_used)} ago` : ", not used yet"),
+          btn);
+      });
+      return [h("div", { class: "rows" }, row("Signed-in devices",
+        rows.length ? h("div", { class: "set-list" }, rows) : h("span", { class: "muted" }, "None yet."))),
+        me?.signed ? foot(h("button", { type: "button", class: "btn btn-sm", "data-act": "sign-out", onclick: () => signOutHere() }, "Sign out here")) : null,
+        st];
+    });
+  };
+  ctx.on("presence.signed-in", draw);
+  ctx.on("presence.signed-out", draw);
+  return draw();
 }
 
 // ---- 8. Modules ----------------------------------------------------------------------------

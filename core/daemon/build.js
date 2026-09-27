@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-/** @typedef {{ version: string, commit: string | null, dirty: boolean | null }} Build */
+/** @typedef {{ version: string, commit: string | null, dirty: boolean | null, stamped?: boolean }} Build */
 
 /** @type {Build | null} */
 let memo = null;
@@ -24,7 +24,7 @@ export function build(repo = REPO) {
   let b = { version, commit: null, dirty: null };
   try {
     const s = JSON.parse(fs.readFileSync(path.join(repo, "build.json"), "utf8"));
-    b = { version, commit: typeof s.commit === "string" ? s.commit : null, dirty: typeof s.dirty === "boolean" ? s.dirty : null };
+    b = { version, commit: typeof s.commit === "string" ? s.commit : null, dirty: typeof s.dirty === "boolean" ? s.dirty : null, stamped: true };
   } catch {
     if (fs.existsSync(path.join(repo, ".git"))) {
       const git = (/** @type {string[]} */ ...a) => execFileSync("git", ["-C", repo, ...a], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -38,4 +38,10 @@ export function build(repo = REPO) {
 /** "0.0.1 · 1a2b3c4" or "0.0.1 · 1a2b3c4+dirty": for a status line. */
 export function label(/** @type {Build} */ b) {
   return b.commit ? `${b.version} · ${b.commit.slice(0, 7)}${b.dirty ? "+dirty" : ""}` : b.version;
+}
+
+/** deck/sw.js with BUILD set to this build: the commit (12 characters, "-dirty" when dirty), else "v" and the version. */
+export function swWithBuild(/** @type {string} */ src, b = build()) {
+  const id = b.commit ? b.commit.slice(0, 12) + (b.dirty ? "-dirty" : "") : "v" + b.version;
+  return src.replace('const BUILD = "dev";', `const BUILD = ${JSON.stringify(id.replace(/[^\w.-]/g, ""))};`);
 }

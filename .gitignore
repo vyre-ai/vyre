@@ -8,7 +8,6 @@ site/box/
 site/install.sh
 site/_redirects
 __pycache__/
-box/Vyre-mac.sha256
 docs-site/
 build.json
 app-out/

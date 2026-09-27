@@ -81,7 +81,8 @@ export default {
 
     // Autofill: a listener only browser extensions (and the Capsule's helper) talk to, after
     // pairing and unlock. vault.fill is a route there, never a registry tool, so no agent has it.
-    const fill = new Fill({ vault, verifyVaultPassphrase: p => vault.checkPassphrase(p) });
+    const fill = new Fill({ vault, verifyVaultPassphrase: p => vault.checkPassphrase(p),
+      extensions: opts.fill && Array.isArray(opts.fill.extensions) ? opts.fill.extensions.map(String) : [] });
     let fillListener = null;
     if (opts.fill && (opts.fill.port !== undefined || opts.fill.host)) {
       fillListener = await serveFill({ host: opts.fill.host || "127.0.0.1", port: Number(opts.fill.port || 0), fill, names: Array.isArray(opts.fill.names) ? opts.fill.names.map(String) : [] });
@@ -167,7 +168,7 @@ export default {
       obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.grant(input, caller),
       // From Claude a grant only waits as pending, and approving it needs a person, so the proof is skipped there.
       presence("Let a module use a vault item", ({ name, module, watcher }) => `Let ${module}${watcher ? `/${watcher}` : ""} use ${quoted(name)} while you are away${vault.row(name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`,
-        { skip: ({ caller }) => callerKind(caller) === "mcp" }));
+        { skip: ({ caller }) => callerKind(caller) === "mcp", session: () => true }));
 
     tool("vault.revoke", null, "Take an item away from a module, or from one of its watchers.",
       obj({ name: str, module: str, watcher: str }, ["name", "module"]), (input, { caller }) => vault.revoke(input, caller));
@@ -184,7 +185,8 @@ export default {
         const s = p.passes.find(x => x.id === id);
         if (s) return `Share ${list(s.items)} with ${s.holder}, ${s.mode}, until ${new Date(s.expires).toISOString().slice(0, 10)}`;
         return "";
-      }));
+      // A presence session from the Deck or the Capsule covers approving (the floor keeps the CLI out).
+      }, { session: () => true }));
 
     ctx.tool("vault.release", {
       internal: true,

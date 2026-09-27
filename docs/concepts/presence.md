@@ -26,14 +26,14 @@ Before you prove anything, every method shows you the tool's summary: for the Ga
 
 The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A module can add a tool to it with `presence: true`, or ask only for some inputs with a `when` function on the tool's presence setting, but it cannot take one away.
 
-- Sending: `gate.approve`.
+- Sending: `gate.approve`, for a send, a payment or a deletion (every Gate kind today; a kind added later asks only if the Gate lists it).
 - Vault: `vault.put`, `vault.approve`, `vault.unlock`, `vault.offboard`, `vault.inject`, `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`, `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`, `vault.render`, `vault.session.open`, `vault.kit`.
-- Learning: `learn.accept`, `learn.retire`, `learn.relax`, `learn.skill-install`.
+- Learning: `learn.skill-install`.
 - Machines: `link.pair.approve`.
 - Presence itself: `presence.enroll`, `presence.remove`, `presence.code`, `presence.session.open`.
 - Who else reaches this box: `files.drive.share`, `files.drive.unshare`, `network.guests.add`, `network.guests.remove`, `network.guests.enable`, `hooks.enable`, `hooks.open`, `hooks.close`, `computers.tailnet.set`, `computers.egress.set`.
 
-Your own actions on your own screens ask for no proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making and changing agents (`agents.create`, `agents.update`), and taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`). Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
+Your own actions on your own screens ask for no proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making and changing agents (`agents.create`, `agents.update`), accepting, retiring and relaxing your lessons (`learn.accept`, `learn.retire`, `learn.relax`), taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`), and making one of the box's VyreDrive shares (built on Tailscale's Taildrive) read-only or read-write (`files.drive.access`). Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
 
 Your assistant may still change an agent's plain fields (name, instructions, model, effort, description) through Vyre's tools. See [Agents](../using/agents.md).
 
@@ -73,7 +73,11 @@ vyre presence remove <id>
 
 ## Sessions in the Deck
 
-Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 5 minutes idle and 30 minutes at most, bound to the tailnet node that opened it.
+Revealing or copying several vault items one after another would mean a passkey per click. `presence.session.open` (which itself needs Touch ID, a Capsule signature or a passkey) returns a secret that lasts 30 minutes from the proof, used or not, bound to the tailnet node that opened it. A Gate approval can open one too: a send with `x-vyre-presence-keep: 1` and a strong proof gets a session back, so the next sends on that device ask for nothing. It covers revealing, copying, one-time codes, approving and granting vault items, for an item that does not ask every time.
+
+A session serves the Deck and the Capsule. The CLI gets the same 30 minutes its own way, with no secret on disk: after one Touch ID (or a Capsule or passkey proof) from a login terminal, vyred remembers that terminal, and that terminal's reveals, copies, one-time codes, approvals and grants ask nothing until 30 minutes from the proof. vyred names the terminal from the kernel's word on which process connected and which terminal it runs in, never from anything the caller sends. A process under a Claude session, a process with no controlling terminal (the Bash tool, anything detached), and a `script`, tmux or expect pty that `who` does not list never ride it, and a terminal code proves its one call without opening a window. The window lives in vyred's memory, so a restart asks again. A Claude session's MCP tools and an agent are refused, and never asked.
+
+Your own memory and lessons ask nothing: `vyre memory correct`, `merge` and `split`, and `vyre learn accept`, `retire` and `relax`. Their callers lists keep models and agents out.
 
 ## What a tool sees
 
