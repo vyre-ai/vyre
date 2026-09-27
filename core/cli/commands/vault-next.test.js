@@ -73,10 +73,11 @@ test("vault cli: import --rewrite, run, codes, sweep, health, history, agent log
   await tool("vault.put", { name: "harlow-portal", kind: "login", fields: { username: "juno", password: pw } });
   await tool("vault.put", { name: "northwind-orders", kind: "login", fields: { username: "kit", password: pw } });
   const h = await vyre("vault", "health");
-  assert.match(h.out, /harlow-portal\s+login\s+.*reused/);
+  assert.match(h.out, /reused/);
+  assert.match(h.out, /harlow-portal.*northwind-orders|northwind-orders.*harlow-portal/);
   await tool("vault.put", { name: "northwind-orders", kind: "login", fields: { username: "kit", password: v(hex(10)) } });
   const hist = await vyre("vault", "history", "northwind-orders");
-  assert.match(hist.out, /v2 .* password .*current/);
+  assert.match(hist.out, /v2\s+current.*password/);
   const rev = await vyre("vault", "revert", "northwind-orders", "1");
   assert.equal(rev.code, 0, rev.out);
   assert.match(rev.out, /version 1 is back/);

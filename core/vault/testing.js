@@ -119,11 +119,24 @@ export async function recorded(t, extra = {}, { call } = /** @type {{ call?: (to
   /** @type {Map<string, any>} */
   const tools = new Map();
   const events = [], logs = [];
+  /** @type {Map<string, Set<Function>>} */
+  const listeners = new Map();
   const ctx = {
     store: { db, migrate: steps => migrate(db, "vault", steps) },
     paths: { vault: path.join(tmp, "vault") },
     config: { name: "test-box", vault: { keystore: "file", ...extra } },
-    events: { emit: (type, p) => events.push({ type, p }) },
+    events: {
+      emit: (type, p) => {
+        events.push({ type, p });
+        for (const fn of listeners.get(type) || []) fn({ type, payload: p });
+        for (const fn of listeners.get("*") || []) fn({ type, payload: p });
+      },
+      on: (type, fn) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(fn);
+        return () => listeners.get(type)?.delete(fn);
+      },
+    },
     log: m => logs.push(m),
     tool: (name, def) => tools.set(name, def),
     ...(call ? { call } : {}),

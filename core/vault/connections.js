@@ -252,7 +252,6 @@ export class Connections {
   async syncGoogle() {
     const rows = await this.ask("google.accounts");
     if (rows === null) return null; // the source answered with an error: keep its rows
-    await this.v.key();
     const found = rows.filter(a => a && typeof a.name === "string" && REF.test(a.name)).map(a => {
       const sa = a.auth && a.auth.type === "service-account";
       const capabilities = googleCapabilities(a);
@@ -261,6 +260,8 @@ export class Connections {
         items: a.auth && typeof a.auth.item === "string" && ITEM.test(a.auth.item) ? [a.auth.item] : [],
         use: capabilities.includes("calendar") ? { calendar: { tool: "google.calendar.list", input: { account: a.name } } } : null };
     });
+    // Signing a row needs the key; nothing to sign means nothing to open the vault for.
+    if (found.length) await this.v.key();
     const out = this.apply("google", found, { removeMissing: true });
     this.synced.add("google");
     return out;
@@ -272,7 +273,6 @@ export class Connections {
     if (servers === null) return null;
     const tools = servers.length ? await this.ask("mcp.tools") : [];
     if (tools === null) return null;
-    await this.v.key();
     /** @type {Map<string, string[]>} */
     const by = new Map();
     for (const t of tools) if (t && typeof t.server === "string") by.set(t.server, [...(by.get(t.server) || []), String(t.tool || t.name)]);
@@ -288,13 +288,14 @@ export class Connections {
         capabilities: list.length ? list : ["other"], items: x.auth && typeof x.auth.item === "string" && ITEM.test(x.auth.item) ? [x.auth.item] : [],
         use: Object.keys(use).length ? use : null };
     });
+    // Signing a row needs the key; nothing to sign means nothing to open the vault for.
+    if (found.length) await this.v.key();
     const out = this.apply("mcp", found, { removeMissing: true });
     this.synced.add("mcp");
     return out;
   }
 
   async syncVault() {
-    await this.v.key();
     // An item a module's registered row signs in with is that row, not a second connection.
     const claimed = new Set(/** @type {any[]} */ (this.db.prepare("SELECT items FROM vault_connections WHERE source != 'vault'").all()).flatMap(r => json(r.items, [])));
     const found = this.v.list().items
@@ -304,6 +305,8 @@ export class Connections {
         return { ref: i.name, provider: p.name, account: i.name, auth: AUTH_OF_KIND[/** @type {keyof typeof AUTH_OF_KIND} */ (i.kind)] || "api-key",
           label: cut(i.description || i.name, 200), capabilities: [...p.capabilities], items: [i.name], use: null };
       });
+    // Signing a row needs the key; nothing to sign means nothing to open the vault for.
+    if (found.length) await this.v.key();
     const out = this.apply("vault", found, { removeMissing: true });
     this.synced.add("vault");
     return out;
