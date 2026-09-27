@@ -61,3 +61,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0031 | teammates | Project teammates |
 | 0032 | e2e | The person and the device |
 | 0033 | platform | Hackable Vyre: the module API, extension points, user modules and updates |
+| 0034 | memory-iq | Vyre IQ: cited answers from every session, fact and the graph |

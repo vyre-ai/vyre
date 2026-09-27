@@ -75,7 +75,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_BOX_POLL_MS` | How often `vyre box` checks on an install in progress. Default 5000. | `core/cli/commands/box.js` |
 | `VYRE_BOX_PROBE_MS` | How long `vyre box` waits for the box's address to answer. Default two minutes. | `core/cli/commands/box.js` |
 | `VYRE_BOX_WAIT_MS` | How long `vyre box` waits for an install to finish. Default 65 minutes. | `core/cli/commands/box.js` |
-| `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
+| `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
 | `VYRE_CLOUDFLARE_API` | The Cloudflare API base URL, in place of the real one. | `core/names/index.js` |
 | `VYRE_COMPUTERS_CAP_ADD` | Extra Linux capabilities for agent computers, comma separated. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |

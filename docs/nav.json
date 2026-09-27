@@ -80,7 +80,8 @@
       "adr/0030-sessions.md",
       "adr/0031-teammates.md",
       "adr/0032-person-and-device.md",
-      "adr/0033-hackable-vyre.md"
+      "adr/0033-hackable-vyre.md",
+      "adr/0034-vyre-iq.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [

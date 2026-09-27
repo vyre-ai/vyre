@@ -46,6 +46,38 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Docs drift: SPEC's `requires` example named the store and events (never modules), its entry file
   imported a type that didn't exist, `ctx.events.latestId` was undocumented, and module-contract
   said the Deck reads `shows.deck` (it doesn't yet).
+#### Memory reads your turns with the fast model, once each
+
+- The reader (core/memory/personal/reader.js) sends every user turn of a few words to the fast
+  model (config.models.memory, then config.models.background, then haiku) in batches of 20, with
+  thinking off. It never sends code blocks. Turns with a personal signal go first and whole: a
+  relative, a pet, a car, a move, "i" with a life word, or a name memory already knows. The
+  rest follow with only their first 400 characters. A newly learned name moves its turns forward. It runs on events only, a minute apart at the least, never while a
+  user thread is working, and under a daily cap (config.memory.model.dailyUsd, $0.25). A one-time
+  backfill allowance (backfillUsd, $2) covers the history that was already there. Spend is what
+  the model reports.
+- A fact is kept only when it quotes the user's own words in that turn. Pasted, quoted and
+  dictated text does not count. Its subject and object must also be said there. It lands as a
+  model claim at no more than 0.8. The rules stay the cheap first pass.
+- What the model said about a text is kept by the text's hash (memory_me_reads). A re-read, a
+  rewritten transcript or the same words elsewhere never pay twice. The old cue pass through the
+  Switchboard is gone.
+- New relations `age` and `hobby` (anyone's), with questions "how old is sam" and "what do i do
+  for fun". A model birthday must name its month, a role must be an occupation, and "from" must
+  say where someone began.
+- Each batch is read twice (config.memory.model.passes, 2), and the union of what the two readings
+  found is kept. A second look (one small call per batch) then checks every fact that says who
+  someone is to the user: a spouse, a child, a friend, a name. A "no" drops the fact, and a
+  failed look keeps it only as a "maybe". Someone else's family is kept as theirs ("Seren is
+  Rhodri's wife"). A plural role's attribute goes to the named person ("Emrys is 8").
+- Answers: "how many kids" counts, "what pets do we have", "where did I used to work", "who is
+  bram" from what memory knows of them, the most specific word for who someone is (daughter over
+  child), and someone else's relative ("rhodri's wife") is never the user's.
+- New tool `memory.read {now?}` gives the usage line: today's spend, the backfill, turns waiting
+  and cost per 1,000 turns. With `now: true` it reads at once, within the caps. `vyre status`
+  shows the backfill and the turns still to read.
+- scripts/eval-answer.js replays the reads from test/eval/reads/<world>.json, so CI calls no
+  model. `--record` records them with `claude -p` and `--no-model` scores the rules alone.
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
@@ -1308,7 +1340,8 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   with the test verifier, since they make an agent.
 #### Memory answers the user's own Claude Code session
 
-- A bare `mcp` caller (Vyre's MCP server with no agent: the user's own Claude Code session) may
+- A bare `mcp` caller (Vyre's MCP server with no agent: the user's own Claude Code session), and
+  `mcp:thread:<id>` (a session Vyre runs for the user, ADR 0030), may
   call `memory.answer`, `memory.profile` and `memory.remember`, in any folder. An agent's thread
   (`mcp:agent:<name>`, or `agent` in the input) still needs every project, and bare `harness`
   is still refused. The main graph's other reads are unchanged.

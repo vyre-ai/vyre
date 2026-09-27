@@ -13,9 +13,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
-import { answerer } from "./personal/answer.js";
+import { answerer, parse as parseQuestion } from "./personal/answer.js";
 import { profile } from "./personal/profile.js";
-import { createModelPass } from "./personal/model.js";
+import { createReader, claudeOnce } from "./personal/reader.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -34,6 +34,22 @@ export default {
     // Personal facts (docs/work/memory-iq.md): read after each curator pass, in batches that yield.
     const personal = new Personal(ctx.store.db, { log: ctx.log });
     /** Read every unread turn for personal facts, then derive if anything changed. */
+    // memory.profile-changed: the about-you lines moved, so a session rebuilds its note on resume.
+    // Counts only; the lines themselves are read with memory.profile.
+    let lastProfile = null;
+    const profileChanged = () => {
+      try {
+        const lines = profile(personal, { limit: 12 }).facts.map(f => f.text);
+        const key = lines.join("\n");
+        if (lastProfile !== null && key !== lastProfile) ctx.events.emit("memory.profile-changed", { facts: lines.length });
+        lastProfile = key;
+      } catch (e) { ctx.log("memory profile check: " + /** @type {Error} */ (e).message); }
+    };
+    /** Names memory knew after the last pass: new ones send their older turns to the reader. */
+    // Kept in memory_meta so a restart does not scan for every name again.
+    const metaGet = ctx.store.db.prepare("SELECT v FROM memory_meta WHERE k = 'me_known'");
+    const metaSet = ctx.store.db.prepare("INSERT OR REPLACE INTO memory_meta (k, v) VALUES ('me_known', ?)");
+    let knownNames = new Set((() => { try { return JSON.parse(String(/** @type {any} */ (metaGet.get())?.v ?? "[]")); } catch { return []; } })());
     const personalPass = async ({ full = false } = {}) => {
       let turns = 0, claims = 0;
       while (!stopping) {
@@ -44,35 +60,37 @@ export default {
         await new Promise(r => setImmediate(r));
       }
       const d = stopping ? { changed: false } : personal.derive();
-      // New turns may have left sentences no rule could read: the model pass may take them.
-      if (turns && !stopping) void model.pump();
+      if (d.changed && !stopping) profileChanged();
+      // A name just learned: the turns that mention it are read by the model too.
+      if (!stopping) {
+        const now = personal.known(), fresh = [...now].filter(w => !knownNames.has(w));
+        knownNames = now;
+        if (fresh.length) { personal.requeue(fresh); metaSet.run(JSON.stringify([...now])); }
+      }
+      // New user turns may wait for the reader: kept reads apply at once, the rest in a batch.
+      if (turns && !stopping) { model.applyKept(); void model.pump(); }
       return { turns, claims, changed: d.changed };
     };
-    // What the rules cannot read goes to a budgeted haiku pass through the Switchboard, run like
-    // learn's jobs: on events only, one at a time, under a daily cost cap (config.memory.model).
-    const model = createModelPass({
-      db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log,
-      config: () => ctx.config,
-      dir: () => {
-        const root = ctx.paths && ctx.paths.root;
-        if (!root) return null;
-        const d = path.join(root, "memory-jobs");
-        try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; } catch { return null; }
-      },
+    // The fast model reads every user turn with a personal signal, once (personal/reader.js):
+    // on events, at most a batch a minute, never while a user thread works, under a daily cap and
+    // a one-time backfill allowance (config.memory.model). ctx.memoryRunner replaces `claude -p`
+    // in tests and the evaluation; null there means reads are only replayed from what is kept.
+    const jobs = () => {
+      const root = ctx.paths && ctx.paths.root;
+      if (!root) return null;
+      const d = path.join(root, "memory-jobs");
+      try { fs.mkdirSync(d, { recursive: true, mode: 0o700 }); return d; } catch { return null; }
+    };
+    const model = createReader({
+      db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
+      // Never a real model under node --test unless a test points VYRE_CLAUDE_BIN at a fake.
+      runner: ctx.memoryRunner !== undefined ? ctx.memoryRunner
+        : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
+        : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null,
     });
-    const threadOf = e => e.thread || (e.payload && e.payload.thread);
     const modelOffs = [
-      ctx.events.on("thread.text", e => {
-        const p = e.payload || {}, thread = threadOf(e);
-        if (p.done !== true || p.notice || p.kind === "reasoning" || p.message === "vyre" || typeof p.text !== "string" || !thread || !model.owns(thread)) return;
-        model.answered(thread, p.text).catch(err => ctx.log("memory model answer not read: " + err.message));
-      }),
-      ctx.events.on("thread.stopped", e => {
-        const thread = threadOf(e);
-        if (thread && model.owns(thread)) model.stopped(thread).catch(err => ctx.log("memory model run not closed: " + err.message));
-        else void model.pump();
-      }),
-      ctx.events.on("thread.finished", e => { const thread = threadOf(e); if (!thread || !model.owns(thread)) void model.pump(); }),
+      ctx.events.on("thread.stopped", () => void model.pump()),
+      ctx.events.on("thread.finished", () => void model.pump()),
     ];
     let running = null, again = false, stopping = false, timer = null;
     // Rooms are stored, so a restart reuses the last list; they are read again from Projects on
@@ -377,11 +395,13 @@ export default {
      * Personal facts are the user's, not a project's: the user's surfaces, their tailnet devices,
      * modules, and the assistant or an agent granted every project. A project's agent is refused.
      */
-    // A bare "mcp" caller is the user's own Claude Code session (an agent's thread says
-    // mcp:agent:<name>), so it asks about the user's life as the user's surfaces do.
+    // A bare "mcp" caller is the user's own Claude Code session, and "mcp:thread:<id>" a session
+    // Vyre runs for the user (ADR 0030; an agent's says mcp:agent:<name>), so both ask about the
+    // user's life as the user's surfaces do.
+    const ownSession = caller => /^mcp(?::thread:[A-Za-z0-9_-]+)?$/.test(String(caller));
     const personalOnly = async (input, caller, name) => {
       const r = await reach(input.agent, caller);
-      if (r.agent ? !r.all : !(reader(caller) || String(caller) === "mcp")) {
+      if (r.agent ? !r.all : !(reader(caller) || ownSession(caller))) {
         throw denied(r.agent ? `personal facts are not a project's: ${r.agent} is granted only some projects` : `${name} is for the user's own surfaces and agents granted every project, not ${plain(caller || "an unnamed caller", 60)}`);
       }
     };
@@ -469,6 +489,41 @@ export default {
         return run({ full, force: true });
       },
     });
+    // One call per prompt for a session (ADR 0030 phase 3's UserPromptSubmit): what the graph knows
+    // about the words in it, and, when the prompt is a question about the user's own life that
+    // memory can answer surely, that answer first.
+    ctx.tool("memory.context", {
+      description: "Context for one prompt: lines worth adding before it. The graph's facts about what it names (as memory.relevant), and when the prompt asks about the user's own life and memory is sure (confidence 0.5 or more), that answer first. Returns { lines: string[], answer: { text, confidence, from } | null }.",
+      input: { type: "object", required: ["text"], properties: { text: { type: "string" }, project_cwds: cwds, ...roomField, limit: { type: "integer", minimum: 1, maximum: 20 }, ...agentField } },
+      run: async ({ text, project_cwds = [], limit = 5, agent, ...rest }, { caller } = {}) => {
+        const room = roomOf(rest);
+        await guard({ agent, project_cwds, room }, caller, { tailnet: true });
+        const lines = graph.relevant({ text, project_cwds, room, limit: Math.min(20, Math.max(1, limit)) }).map(x => String(x.text));
+        let a = null;
+        // Only a question memory's rules can read, only a fact (never a loose quote), only for
+        // callers who may read the user's personal facts.
+        if (parseQuestion(String(text || ""))) {
+          const may = await personalOnly({ agent }, caller, "memory.context").then(() => true, () => false);
+          if (may) {
+            if (running) await running.catch(() => {});
+            const r = await answer({ q: String(text), project_cwds: clean(project_cwds), sources: false });
+            if (r.answer && r.kind === "fact" && Number(r.confidence) >= 0.5) a = { text: r.answer, confidence: r.confidence, from: r.from };
+          }
+        }
+        return { lines: a ? [a.text, ...lines.filter(l => l !== a.text)] : lines, answer: a };
+      },
+    });
+    // The reader's usage line, and "read now" for the person (spends from the same caps).
+    ctx.tool("memory.read", {
+      callers: OWNERS,
+      description: "The fast model's reading of your turns for personal facts: spend today and on the one-time backfill, turns waiting, cost per 1,000 turns. now: true reads what is waiting at once, within the caps.",
+      input: { type: "object", properties: { now: { type: "boolean" }, max_runs: { type: "integer", minimum: 1, maximum: 1000 } } },
+      run: ownerWrite(async ({ now = false, max_runs = 50 }) => {
+        if (running) await running.catch(() => {});
+        const r = now ? await model.drain({ maxRuns: max_runs }) : null;
+        return { ...(r ? { ran: r } : {}), status: model.status() };
+      }),
+    });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
       input: { type: "object", properties: { ...agentField } },
@@ -483,6 +538,7 @@ export default {
         off();
         for (const o of offs) o();
         for (const o of modelOffs) if (typeof o === "function") o();
+        model.stop();
         if (running) await running.catch(() => {});
       },
     };
