@@ -76,7 +76,7 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - From app-design (board "Devices: trusting a browser for the vault", work/app-design 46f1b3d),
   after native-core: (1) relay.devices.trust with trusted:false needs no proof (presence.when on
   input.trusted); (2) the presence summary names the device ("Trust browser Chrome on alex's
-  Pixel 8 fully"), not the id; (3) relay.devices.ask_trust {id}, callable by the untrusted web
+  Pixel 8 fully"), not the id; (3) relay.devices.ask-trust {id}, callable by the untrusted web
   device itself (not in WEB_DENY), puts one Device row in Needs on trusted devices (Trust / Not
   now), deduped per device.
 - e2e decision: the pairing presence key is the phone's biometric-bound key (vyre.human). Optional
