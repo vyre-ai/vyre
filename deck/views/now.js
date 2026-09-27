@@ -4,7 +4,7 @@
 // Needs you: drafts held at the Gate and open asks from sessions (js/needs.js), in Beacon.
 // Working: running threads from the switchboard (threads.list). When nothing runs, the most
 // recent sessions from the catalogue stand in, so Now is never an empty page.
-// Learned today: memory.facts last seen today, in Recall gold, each with its source thread.
+// Learned today: memory.facts last seen today, on --hover, each with its source thread.
 //
 // On the box, Working and the recent sessions take in the paired Mac's too, with a machine chip
 // and no Watch (a Mac thread is read here, never driven: js/machine.js). A paired Mac that is away

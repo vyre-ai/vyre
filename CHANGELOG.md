@@ -4,6 +4,25 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck's four Deck-only colours are retired (app-design, tokens.md "Retired names")
+
+- --recall, --recall-ink, --recall-wash, --beacon-wash and --beacon-rule are gone from deck.css,
+  with their paper overrides. Design A has no gold, and violet is only for "needs you".
+- Memory's gold is --text-2: `.dot.recall`, the From memory headings, source links, the memory
+  map's fact dots and today's links. `.lbl.recall` ("From memory", "Recalled") is a source chip:
+  a 1 px --rule-strong edge, radius --radius-chip, padding 0 6px, --text-2, at the start.
+- Memory cards (.recalled, .memory-fact, .nsh-recall, .np-mem, .fd-pmem, .ask-hints) sit on
+  --hover; .fd-recall hover and .hi and the pressed Today button take --hover, and .fd-recall.hi's
+  inset ring is --rule-strong.
+- No violet fill anywhere: the top bar's .needs-pill is its --beacon-ink count alone. A card or
+  badge whose only edge was the wash keeps one in `1px solid var(--rule)` (.held, .need on Now
+  and in onboarding, .set-off, .dev-off, .gl-banner, .gl-msg-err, .cv-ask, .gate-badge,
+  .mem-beacon), a pixel off its padding so it keeps its size. Violet rules are --rule.
+- .diff-del takes the real --del-wash. .cv-ask-dot has no halo.
+- The terminal's ANSI yellow is its own literal (#EBC76B dark, #7E5B0C paper, chat/term.js): ANSI
+  colours are the terminal's, not tokens. Its connecting and waiting dot is --text-2.
+- deck/test/tokens.test.js fails on any of the five names in a Deck source.
+
 #### The Deck follows the settings hub's theme (ADR 0035)
 
 - deck/js/theme-live.js reads settings.snapshot at start and links /theme.css with this device
@@ -21,12 +40,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the owner's name 17/600 from system.info, the box's address at 12 `--label`, with the path and
   its measured latency from link.health when it knows them, "vyre.harlow.ts.net · direct 12 ms"),
   a 3 column grid of six tiles (Projects, Planner, Memory, Vault, Devices, Settings; the rail's
-  places and routes, js/places.js), and the hint "Hold a place to keep it as a fourth page."
+  places and routes, js/places.js), and the hint "Long-press a tile to pin it as a fourth page."
 - A tap on a tile closes the sheet and opens the place pushed. Holding a tile 600 ms
   (`--motion-hold`), or the context menu key or Shift+F10 on a focused one, keeps it as a fourth
   page after Agents, or lets it go: its label joins the header and its page joins the pager. One
   kept place at most (a new one replaces the old), kept per device in localStorage "vyre.pin".
-  Tiles are links whose description says "Hold to keep as a page" or "Kept as a page".
+  Tiles are links whose description says "Long-press to pin as a page" or "Pinned as a page".
 - The header's labels scroll sideways when four do not fit, and never shrink; the current one
   scrolls into sight.
 - Settings is the Settings tile: the Settings sheet (openSettings, `.ph-settings`) is gone, since

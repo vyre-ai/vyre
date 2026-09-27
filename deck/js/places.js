@@ -19,9 +19,9 @@ const PAGES = new Set(["/now", "/chat", "/agents"]);
 export const TILES = Object.freeze(PLACES.filter(p => !PAGES.has(p.href)).map(p => ({ href: p.href, label: p.label, icon: p.icon })));
 
 export const PIN_KEY = "vyre.pin";
-export const HOLD_HINT = "Hold a place to keep it as a fourth page.";
-const HOLD = "Hold to keep as a page";
-const KEPT = "Kept as a page";
+export const HOLD_HINT = "Long-press a tile to pin it as a fourth page.";
+const HOLD = "Long-press to pin as a page";
+const KEPT = "Pinned as a page";
 
 /** @param {any} [store] */
 const storage = store => { try { return store ?? globalThis.localStorage ?? null; } catch { return null; } };

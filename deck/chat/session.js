@@ -1240,9 +1240,9 @@ export function mountSession(container, opts) {
     return h("div", { class: "gate-note cv-notice" }, icon("clock", 12), " ", text, " ", h("span", { class: "msg-when" }, clock(at)));
   }
 
-  // A gold fact, intelligence's real shape (memory.facts): {id, text, subject, rel, object,
+  // A memory fact, intelligence's real shape (memory.facts): {id, text, subject, rel, object,
   // confidence, age, stale, source, refs: [{seq}]}. Lessons are a different system and are never
-  // rendered gold; only what memory.facts returns is.
+  // rendered as memory facts; only what memory.facts returns is.
   function factCard(f) {
     const bits = [];
     if (f.age) bits.push(String(f.age));

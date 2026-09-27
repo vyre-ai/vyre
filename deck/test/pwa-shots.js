@@ -62,7 +62,7 @@ const SCREENS = [
   // tap on the label lands on the page, not pushed.
   { name: "places-kept", path: "/now", expect: "/planner", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
       const t = document.querySelector('.plc-tile[data-place=Planner]'); t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
-      if (t.getAttribute('aria-description') !== 'Kept as a page') throw new Error('the tile does not say it is kept');
+      if (t.getAttribute('aria-description') !== 'Pinned as a page') throw new Error('the tile does not say it is pinned');
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(600);
       const labels = [...document.querySelectorAll('.ph-tab')].map(a => a.textContent).join(',');
       if (labels !== 'Now,Chats,Agents,Planner') throw new Error('labels: ' + labels);

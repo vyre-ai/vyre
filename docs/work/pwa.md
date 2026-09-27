@@ -149,8 +149,7 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   context.report, connections.list, credential sheet, Glass mini-view (said yes, once on main);
   docs' tips.next wiring (said yes, once on main).
 - Open for app-design: Places hint wording ("Hold a place to keep it as a fourth page." vs the
-  spec's "Long-press a tile to pin it as a fourth page."); --recall*, --beacon-wash, --beacon-rule
-  have no role; the chat header's toggles on the phone read at base size (a menu would be better,
+  spec's "Long-press a tile to pin it as a fourth page."); the chat header's toggles on the phone read at base size (a menu would be better,
   chat's call).
 
 ## Earlier (resumed after logout 3, 2026-09-27)
@@ -294,10 +293,11 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 | Phone shell | the avatar opened a Settings sheet: now the Places sheet (head row, six tiles, hint), a dialog named "Places"; the avatar is "Places and account" | 79124ccd |
 | Phone shell | no pin-a-fourth-page: a held tile (600 ms, or Shift+F10 / the context menu key) joins the pager after Agents and the header, one at most, per device | 79124ccd |
 | Phone shell | the header labels could shrink: they never shrink and scroll sideways when four do not fit | 79124ccd |
+| Top bar | `.needs-pill` was a violet wash: no fill, its count is `--beacon-ink` text | TOKENS |
+| Status mark | `.dot.recall` was gold: now `--text-2`; "From memory" is a source chip (1 px `--rule-strong`) | TOKENS |
 
 Not closed here: the phone tab bar badge (this branch has no tab bar, the phone shell uses page
-labels); `.needs-pill` is still a violet wash (the spec gives no replacement); `.dot.recall` is
-still gold (memory, not a status, and the spec has no role for it); the 10 s toast under a screen
+labels); the 10 s toast under a screen
 reader (a page cannot tell one is on); Now's rows keep the floating toast rather than in place.
 Chat and native-core draw their own marks: chat/session.js and chat/index.js (`dot signal` for
 running), chat/nav.js (`agent-dot`), chat/gate-item.js (`dot beacon`, now 8 via the alias),

@@ -110,13 +110,15 @@ function loadXterm() {
 function theme() {
   const cs = getComputedStyle(document.documentElement);
   const v = (name, dflt) => cs.getPropertyValue(name).trim() || dflt;
+  // ANSI colours are the terminal's, not tokens: yellow has no design role, so it is a literal per theme.
+  const yellow = document.documentElement.dataset.theme === "paper" ? "#7E5B0C" : "#EBC76B";
   return {
     background: v("--panel", "#161513"), foreground: v("--text", "#F1EEE6"),
     cursor: v("--focus", "#C6F36B"), cursorAccent: v("--panel", "#161513"),
     selectionBackground: v("--rule-strong", "#3A3733"),
     red: v("--beacon-ink", "#B8A4FF"), brightRed: v("--beacon-dot", "#B8A4FF"),
     green: v("--focus", "#C6F36B"), brightGreen: v("--focus", "#C6F36B"),
-    yellow: v("--recall-ink", "#EBC76B"), brightYellow: v("--recall", "#EBC76B"),
+    yellow, brightYellow: yellow,
     brightBlack: v("--label", "#8C877D"),
   };
 }

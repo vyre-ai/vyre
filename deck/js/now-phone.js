@@ -11,7 +11,7 @@
 //                        (js/need-sheet.js), and real buttons carry the same actions.
 //   Working              running sessions with their step count and latest step; when nothing
 //                        runs, the two most recent sessions stand in.
-//   From memory          one block: what memory learned today (memory.facts), in --recall-wash.
+//   From memory          one block: what memory learned today (memory.facts), on --hover.
 //
 // The no-nag rule: approving or denying an ask, answering, Later and discarding prove nothing;
 // only Send (in the sheet) asks for Face ID. Undo is honest: a deny or a discard waits out its

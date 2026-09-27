@@ -73,9 +73,9 @@ test("places: the head (avatar, name, address), a grid of six links named by the
   assert.deepEqual(tiles.map((/** @type {any} */ a) => a.getAttribute("href")), ["/projects", "/planner", "/memory", "/vault", "/settings#devices", "/settings"]);
   for (const a of tiles) {
     assert.ok(d.$(a, "svg"), "an icon over the label");
-    assert.equal(a.getAttribute("aria-description"), "Hold to keep as a page");
+    assert.equal(a.getAttribute("aria-description"), "Long-press to pin as a page");
   }
-  assert.equal(d.$(d.body, ".plc-hint").textContent, "Hold a place to keep it as a fourth page.");
+  assert.equal(d.$(d.body, ".plc-hint").textContent, "Long-press a tile to pin it as a fourth page.");
   // No owner name yet: the head still names the account.
   const n = await draw({ name: null });
   assert.equal(n.$(n.head, ".plc-name").textContent, "Account");
@@ -101,14 +101,14 @@ test("places: Shift+F10 or the context menu key keeps the place, again lets it g
   assert.equal(f10.defaultPrevented, true);
   assert.equal(d.store.getItem("vyre.pin"), "/planner");
   assert.deepEqual(d.kept, ["/planner"]);
-  assert.equal(d.tile("Planner").getAttribute("aria-description"), "Kept as a page");
+  assert.equal(d.tile("Planner").getAttribute("aria-description"), "Pinned as a page");
   assert.ok(d.tile("Planner").hasAttribute("data-kept"));
   assert.equal(d.readPin(d.store)?.label, "Planner");
   assert.deepEqual(d.opened, [], "keeping a place does not open it");
   d.tile("Planner").dispatchEvent(ev("keydown", { key: "ContextMenu" }));
   assert.equal(d.store.getItem("vyre.pin"), null);
   assert.deepEqual(d.kept, ["/planner", null]);
-  assert.equal(d.tile("Planner").getAttribute("aria-description"), "Hold to keep as a page");
+  assert.equal(d.tile("Planner").getAttribute("aria-description"), "Long-press to pin as a page");
   // F10 alone is not the hold.
   d.tile("Planner").dispatchEvent(ev("keydown", { key: "F10" }));
   assert.equal(d.store.getItem("vyre.pin"), null);
@@ -120,12 +120,12 @@ test("places: one kept place at most: a new one replaces the old, and the sheet 
   d.tile("Vault").dispatchEvent(ev("keydown", { key: "ContextMenu" }));
   assert.equal(d.store.getItem("vyre.pin"), "/vault");
   assert.deepEqual(d.kept, ["/memory", "/vault"]);
-  assert.equal(d.tile("Memory").getAttribute("aria-description"), "Hold to keep as a page");
-  assert.equal(d.tile("Vault").getAttribute("aria-description"), "Kept as a page");
+  assert.equal(d.tile("Memory").getAttribute("aria-description"), "Long-press to pin as a page");
+  assert.equal(d.tile("Vault").getAttribute("aria-description"), "Pinned as a page");
   assert.equal(d.$$(d.body, "a[data-kept]").length, 1);
   // A sheet opened later reads what this device kept.
   const again = await draw({ store: d.store });
-  assert.equal(again.tile("Vault").getAttribute("aria-description"), "Kept as a page");
+  assert.equal(again.tile("Vault").getAttribute("aria-description"), "Pinned as a page");
 });
 
 test("places: a hold of the set time keeps the place and its click opens nothing; lifting early is a tap", async () => {

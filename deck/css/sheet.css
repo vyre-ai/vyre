@@ -150,8 +150,8 @@ html.sheet-open, html.sheet-open body { background: #000; }
 .nsh-form .ed-in:focus { box-shadow: 0 1px 0 var(--focus); }
 .nsh-form .ed-in::placeholder { color: var(--label); opacity: 1; }
 .nsh-form .ed-dirty .ed-lbl::after { content: " · edited"; color: var(--text-2); }
-.nsh-recall { margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--recall-wash); }
-.nsh-recall-h { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--recall); }
+.nsh-recall { margin-top: 16px; padding: 12px 14px; border-radius: 10px; background: var(--hover); }
+.nsh-recall-h { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text-2); }
 .nsh-recall p { margin: 6px 0 0; font-size: 15px; line-height: 21px; color: var(--text); }
 .nsh-recall .nsh-from { display: block; font-size: 13px; line-height: 18px; color: var(--text-2); }
 
