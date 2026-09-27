@@ -205,18 +205,21 @@ test("uuids are v4 shaped, with or without crypto", () => {
   try { assert.match(newUuid(), re); } finally { if (c) Object.defineProperty(globalThis, "crypto", c); }
 });
 
-test("the model picker: the aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
-  const plain = modelChoices({ current: "opus" });
+test("the model picker: the box's aliases, then the ids the per-purpose map and the thread name, 'now' on the thread's", () => {
+  // The box's list (sessions.models.get aliases); the Deck keeps none of its own.
+  const aliases = [{ id: "opus", label: "Opus", description: "The most capable" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }, { id: "<b>", label: "x" }];
+  const plain = modelChoices({ current: "opus", aliases });
   assert.deepEqual(plain.map(m => [m.id, m.now]), [["opus", true], ["sonnet", false], ["haiku", false]]);
   const got = modelChoices({
-    current: "claude-sonnet-4-5",
+    current: "claude-sonnet-4-5", aliases,
     purposes: { chat: { model: "opus", from: "config:chat" }, agent: { model: "opus", from: "config:agent" }, job: { model: "claude-haiku-4-5", from: "purpose:job" } },
   });
   assert.deepEqual(got.map(m => m.id), ["opus", "sonnet", "haiku", "claude-haiku-4-5", "claude-sonnet-4-5"]);
   assert.equal(got[0].description, "Used for chat, agent");
   assert.equal(got[3].description, "Used for job");
   assert.deepEqual(got.filter(m => m.now).map(m => m.id), ["claude-sonnet-4-5"], "the exact id wins over its family");
-  assert.deepEqual(modelChoices({ current: "claude-opus-4-5[1m]" }).filter(m => m.now).map(m => m.id), ["claude-opus-4-5[1m]"]);
-  assert.deepEqual(modelChoices({ current: null, purposes: { chat: { model: "<b>x</b>" } } }).map(m => m.id), ["opus", "sonnet", "haiku"], "only what a model id can be");
+  assert.deepEqual(modelChoices({ current: "claude-opus-4-5[1m]", aliases }).filter(m => m.now).map(m => m.id), ["claude-opus-4-5[1m]"]);
+  assert.deepEqual(modelChoices({ current: null, aliases, purposes: { chat: { model: "<b>x</b>" } } }).map(m => m.id), ["opus", "sonnet", "haiku"], "only what a model id can be");
+  assert.deepEqual(modelChoices({ current: "opus" }).map(m => m.id), ["opus"], "an older box with no aliases: the thread's own model still shows");
   assert.equal(shortModel("claude-opus-4-5"), "opus");
 });

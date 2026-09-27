@@ -2948,7 +2948,7 @@ Set a project's limits: at most this many active teammates (max_active) and suba
 
 ### `sessions.models.get`
 
-What each kind of session runs on: the model per purpose (chat, agent, project, teammate, capsule, job, memory, planner, learn, helper) and per project, and where each comes from. An agent's own model (agents.update) wins over these.
+What each kind of session runs on: the model per purpose (chat, agent, project, teammate, capsule, job, memory, planner, learn, helper) and per project, and where each comes from. An agent's own model (agents.update) wins over these. aliases is the list of model aliases to offer, with a label and a line each.
 
 - Input: none
 - Callers: any caller

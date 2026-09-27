@@ -29,7 +29,6 @@ const RULES = {
 /** Today's copies, by rule, file and count. Shrink it as surfaces read the owner instead. */
 const ALLOWED = {
   models: {
-    "deck/chat/core/composer-state.js": 5,
     "deck/views/agents.js": 3,
     "local/capsule/native/Sources/Agent/AgentDestinations.swift": 3,
     "local/capsule/native/Sources/Host/CapsuleModel.swift": 1,
