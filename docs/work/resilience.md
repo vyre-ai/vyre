@@ -55,7 +55,12 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
    delivering held entries early only if mobile wants that; ask.
 6. Done: e2e's start-up SIGTERM (main.js handlers before load) and loop.sh exit-code fixes,
    tested (main.test.js fails on the old main.js). One init confirmed by e2e (work/e2e c8e00e7b).
-7. After batch 3 deploys: confirm on the live box that PID 1 is tini (ci smoke asserts it) and
+7. Next main merge (batch 3): e2e c8e00e7b makes the image's CMD the root spawner
+   (core/spawner/main.js, caps dropped, runs daemon/loop.sh as vyre); the integrator updated
+   test/box-init.test.js to assert that CMD and that the spawner runs loop.sh. Take theirs on
+   conflict. The compose vyre service is e2e's spawner block (no user: 1000:1000); docker-api
+   keeps 1000:1000.
+8. After batch 3 deploys: confirm on the live box that PID 1 is tini (ci smoke asserts it) and
    that a vyred restart keeps an open terminal.
 
 ## Audit (27 Sep 2026)
