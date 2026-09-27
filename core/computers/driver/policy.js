@@ -112,12 +112,26 @@ const isEmptyObj = v => v && typeof v === "object" && !Array.isArray(v) && Objec
 const FORBIDDEN_CAPS = new Set(["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "DAC_READ_SEARCH", "SYS_RAWIO"]);
 
 /**
+ * What every computer gets, whatever computers.capAdd says: the image starts as root only to
+ * start Xvnc, computerd and Chrome as one user and the agent's desktop as another (entrypoint.sh,
+ * setpriv). Neither lets a process read or trace another's memory, and with no-new-privileges and
+ * a read-only root there is no setuid file to turn them into more.
+ */
+export const REQUIRED_CAPS = Object.freeze(["SETUID", "SETGID"]);
+
+/** The volumes a computer mounts, where, and the name each must have for its agent. */
+const VOLUMES = Object.freeze([
+  { target: "/home/agent", name: (prefix, agent) => `${prefix}-home-${agent}` },
+  { target: "/var/lib/vyre", name: (prefix, agent) => `${prefix}-browser-${agent}` },
+]);
+
+/**
  * @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config the
  *   box's own computers.network / computers.image / computers.labelPrefix / computers.capAdd,
  *   never taken from the request
  */
 function hostConfigShape(config, expectAgent) {
-  const capAdd = new Set((config.capAdd || []).map(String));
+  const capAdd = new Set([...REQUIRED_CAPS, ...(config.capAdd || []).map(String)]);
   return {
     NetworkMode: { required: true, is: eq(config.network) },
     PidMode: { required: true, is: eq("") },
@@ -127,7 +141,7 @@ function hostConfigShape(config, expectAgent) {
     PublishAllPorts: { required: true, is: eq(false) },
     Privileged: { required: true, is: eq(false) },
     CapDrop: { required: true, is: eq(["ALL"]) },
-    // Exactly the box's own configured set (default none), and never one of FORBIDDEN_CAPS -
+    // REQUIRED_CAPS plus the box's own configured set (default none), and never one of FORBIDDEN_CAPS -
     // config cannot turn this file into a rubber stamp for root-equivalent capabilities.
     CapAdd: { is: v => Array.isArray(v) && v.every(c => isStr(c) && capAdd.has(c) && !FORBIDDEN_CAPS.has(c)) },
     Devices: { required: true, is: eq([]) },
@@ -136,13 +150,14 @@ function hostConfigShape(config, expectAgent) {
     Tmpfs: { required: true, is: v => v && typeof v === "object" && !Array.isArray(v)
       && Object.keys(v).every(p => ["/tmp", "/run", "/var/run"].includes(p)) && Object.values(v).every(isStr) },
     ShmSize: { required: true, is: isPosInt },
-    Mounts: { required: true, is: v => Array.isArray(v) && v.length === 1 && isVolumeMount(v[0], config, expectAgent) },
+    Mounts: { required: true, is: v => Array.isArray(v) && v.length === VOLUMES.length && VOLUMES.every((vol, i) => isVolumeMount(v[i], config, expectAgent, vol)) },
     RestartPolicy: { required: true, is: eq({ Name: "no" }) },
   };
 }
 
 /**
- * The one mount a computer ever gets: its own named volume at /home/agent, never a bind, never
+ * The two mounts a computer ever gets, in order: its home volume at /home/agent and its browser
+ * volume at /var/lib/vyre (VOLUMES). Each is its own named volume, never a bind, never
  * an existing volume that happens to carry the right name by coincidence or by an attacker's
  * own choosing of both the label and the source together. `Source` must be exactly the name
  * docker.js derives for this agent (`<prefix>-home-<agent>`), so a caller cannot mount vyred's
@@ -157,11 +172,11 @@ function hostConfigShape(config, expectAgent) {
  * @param {any} m @param {{ network: string, image: string, labelPrefix: string, capAdd?: string[] }} config
  * @param {{ prefix: string, agent: string }} expectAgent from the body's own top-level Labels, pinned to config.labelPrefix
  */
-function isVolumeMount(m, config, expectAgent) {
+function isVolumeMount(m, config, expectAgent, vol = VOLUMES[0]) {
   if (!m || typeof m !== "object") return false;
   if (m.Type !== "volume") return false;
-  if (m.Target !== "/home/agent") return false;
-  if (m.Source !== `${expectAgent.prefix}-home-${expectAgent.agent}`) return false;
+  if (m.Target !== vol.target) return false;
+  if (m.Source !== vol.name(expectAgent.prefix, expectAgent.agent)) return false;
   const opts = m.VolumeOptions;
   if (!opts || typeof opts !== "object") return false;
   const got = claimedComputerLabels(opts.Labels, config.labelPrefix);

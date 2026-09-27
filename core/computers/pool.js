@@ -360,6 +360,7 @@ export class Pool {
         env: { VNC_PASSWORD: r.vnc_password, COMPUTERD_TOKEN: r.helper_token, SCREEN: `${w}x${h}`, ...egress },
         labels: { [`${this.opts.prefix}.computer`]: agent, [`${this.opts.prefix}.managed`]: "true" },
         volume: `${this.opts.prefix}-home-${agent}`,
+        browserVolume: `${this.opts.prefix}-browser-${agent}`,
       });
       this.set(agent, { container: id, state: "stopped", egress: want });
       this.emit("computer.created", { agent });

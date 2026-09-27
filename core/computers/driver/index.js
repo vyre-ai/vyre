@@ -25,6 +25,7 @@ export const SIZE = Object.freeze({ w: 1440, h: 900 });
  * @property {Record<string, string>} labels   `<prefix>.computer=<agent>` and `<prefix>.managed=true`
  * @property {string} [network]
  * @property {string} volume                   the agent's home volume, mounted at /home/agent
+ * @property {string} [browserVolume]          computerd's and Chrome's own volume, mounted at /var/lib/vyre
  * @property {number} [cpus]
  * @property {number} [memoryMb]
  * @property {{ w: number, h: number }} [size]
