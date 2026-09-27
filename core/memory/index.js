@@ -21,6 +21,7 @@ import { createReader, claudeOnce, modelFor } from "./personal/reader.js";
 import { asker, ASK_DAILY_USD } from "./iq/ask.js";
 import { fixes as fixLog } from "./iq/fix.js";
 import { heard, contentWords } from "./iq/heard.js";
+import { userWords, devTalk, vyreFolder } from "./personal/trust.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
 const SETTLE_MS = 250;
@@ -836,16 +837,26 @@ export default {
         const lines = [];
         const ids = [...(sc.sessions || [])].filter(x => x !== input.session);
         if (ids.length && personal.hasRecall()) {
-          const last = /** @type {any} */ (ctx.store.db.prepare(`SELECT name, title, ended FROM recall_sessions WHERE id IN (${ids.map(() => "?").join(",")}) AND human = 1 AND parent IS NULL ORDER BY ended DESC LIMIT 1`).get(...ids));
-          if (last && last.ended) lines.push(`Last session here: ${plain(last.name || last.title || "untitled", 60)}, ${ago(Number(last.ended), t)} ago.`);
+          // Only when: a session's name is usually a title Claude chose, a slot in every brief (e2e).
+          const last = /** @type {any} */ (ctx.store.db.prepare(`SELECT ended FROM recall_sessions WHERE id IN (${ids.map(() => "?").join(",")}) AND human = 1 AND parent IS NULL ORDER BY ended DESC LIMIT 1`).get(...ids));
+          if (last && last.ended) lines.push(`Last session here: ${ago(Number(last.ended), t)} ago.`);
         }
         // A brief goes into every session's context, so only the person's own words may feed it
         // (e2e, 28 Sep): a fact they corrected or confirmed, or one a turn they typed supports, in a
         // session a person started. Never one only Claude's words, tool output or a module taught.
-        const byUser = (() => { try { return ctx.store.db.prepare(`SELECT 1 FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id
+        // The evidence must hold in the person's own words of that turn: pasted and injected blocks
+        // stripped, no dev talk, in a session source trust keeps and not in a Vyre folder (e2e, 28 Sep).
+        const turnsOf = (() => { try { return ctx.store.db.prepare(`SELECT t.text, s.cwd, t.session FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id
           JOIN recall_turns t ON t.session = v.session AND t.seq = v.seq JOIN recall_sessions s ON s.id = t.session
-          WHERE e.src = ? AND e.rel = ? AND e.dst = ? AND t.role = 'user' AND s.human = 1 AND s.parent IS NULL LIMIT 1`); } catch { return null; } })();
-        const own = f => ["user", "confirmed"].includes(String(f.origin)) || (String(f.origin || "extract") === "extract" && Boolean(byUser?.get(f.subject?.id, f.rel, f.object?.id)));
+          WHERE e.src = ? AND e.rel = ? AND e.dst = ? AND t.role = 'user' AND s.human = 1 AND s.parent IS NULL LIMIT 12`); } catch { return null; } })();
+        const refused = ctx.store.db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?");
+        const low = x => String(x || "").toLowerCase();
+        const byUser = f => (turnsOf ? /** @type {any[]} */ (turnsOf.all(f.subject?.id, f.rel, f.object?.id)) : []).some(r => {
+          if (/** @type {any} */ (refused.get(r.session))?.ok === 0 || vyreFolder(r.cwd) || devTalk(String(r.text))) return false;
+          const words = low(userWords(String(r.text)));
+          return [f.subject?.label, f.object?.label].filter(Boolean).every(l => words.includes(low(l)));
+        });
+        const own = f => ["user", "confirmed"].includes(String(f.origin)) || (String(f.origin || "extract") === "extract" && byUser(f));
         const learned = graph.facts({ project_cwds, room: sc.room ?? undefined, limit: 80 }).facts
           .filter(f => f.rel !== "mentioned_in" && !f.stale && Number(f.seen) >= since && own(f))
           .sort((a, b) => Number(b.seen) - Number(a.seen) || (a.id < b.id ? -1 : 1));
