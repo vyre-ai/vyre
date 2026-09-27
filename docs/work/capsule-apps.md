@@ -98,53 +98,65 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   must preview with the title.
 - planner.parse as the single time parser stays with the planner team (ADR 0025, ../vyre-planner):
   switch apps.route to it when they send the hash; local answer on the Mac, no box round trip.
-- Slice 2 Kit (branch work/capsule-apps-native, worktree ../vyre-capsule-apps-native):
-  708b533 (nested + async mentions) and ff82b8f (all 11 review fixes; CI not rechecked after it).
-  Merging origin/work/capsule-pro c778f56 was aborted at logout: conflicts in CHANGELOG.md and
-  Sources/Host/{CapsuleModel,ExtensionHost,Panel}.swift. Redo the merge against origin/work/capsule-pro, now at 07af5e5 (never rebase, never
-  force-push). How the aborted merge resolved it (it compiled, extension filter 16/16): Panel.key keeps agentKey
-  plus the Cmd-Delete attachment case and calls dropChip; target's didSet does the parent sync and
-  calls targetChanged; appSendItem passes targetParent; send takes in: and model: together;
-  ExtensionHost keeps attachers beside the new closures; CHANGELOG keeps both entries. ff82b8f local
-  extension filter: 16 pass, push, run capsule-mac CI, then send the hash to capsule-pro to merge.
+- Slice 2 Kit (work/capsule-apps-native): capsule-pro 07af5e5 merged at 8cba106 (resolutions as
+  recorded before; plus AgentDestinations lost a stale askItem call). Extension suites 18/18 on the
+  Mac; capsule-mac CI run 36282275995 on 8cba106. Hand 8cba106 to capsule-pro once CI is green.
+- AppsExtension (same branch, 8ce0cad + 4d40355): @App from apps.list with .file(path) icons,
+  known apps first, others once named; nesting apps list apps.targets (read on pick, refreshed per
+  words); Enter: apps.route with the contact's raw id; non-sends run at once via apps.act; sends
+  preview then send on the second Enter via apps.send presence:true; gated (Slack) sends apps.act
+  then gate.approve presence:true. Review fixes: Kit boxChanged() (called on text/chip change)
+  forgets a preview, held Return ignored (Panel), hide/box generation guard, busy guard, gated
+  without held stops, no send by display name. Extension suites 28/28 on the Mac.
+  Not built yet: an ImmediateResults provider for words without @ ("timer 10 min" as a row);
+  the presence summary is still defaultSummary until capsule-pro's host.prove(summary:) lands.
 
 ## Next
-1. Kit: merge c778f56, CI, hand off to capsule-pro.
-3. AppsExtension (Sources/Extensions/apps on the native branch): installed apps as @ targets
-   with real icons (nests: true for apps with targets), refreshMentions/mentionPicked call
-   apps.targets, send() calls apps.route with the app scope; first Enter shows the preview,
-   second Enter sends. Sends: apps.send with presence (via capsule-pro's host.prove with
-   our summary line, and the session the host mints); Slack: apps.act returns {held} and the
-   Capsule calls gate.approve. Rows without @ come from providers (ImmediateResults) through apps.route.
-4. Slack adapter (slice 3, design below), then WhatsApp over hands (slice 4: hands.find,
+1. When CI on 8cba106 is green: send capsule-pro the hash to merge. Then run capsule-mac CI on
+   4d40355 (the AppsExtension) and hand that over too (it changes Kit, CapsuleModel,
+   ExtensionHost and Panel by one line each: see Changed contracts).
+2. Provider for words without @ through apps.route; switch the presence summary to host.prove
+   when capsule-pro ships it.
+3. Slack adapter (slice 3, design below), then WhatsApp over hands (slice 4: hands.find,
    settleMs up to 5000, press Send rather than key Return; needs_front for keys), then any-app.
-5. Rewrite the real-Mac check below for the planner default (Apple steps become opt-in).
+4. Switch apps.route to planner.parse when the planner team sends the hash.
 
-### Real-Mac check (after T4, Apple is the opt-in path: add "in Apple Notes" etc. to steps 4-10)
-- Real-Mac check (the lead with the user, on the Mac, in the user's own terminal):
+### Real-Mac check (planner default; the lead with the user, on the Mac, in the user's own terminal)
+Before: the planner module (work/planner, ADR 0025) must be on the branch under test, or steps 4
+and 5 answer code setup, "The planner is not on this Vyre yet" (that answer is itself a pass for
+"never silently nothing"). No step sends a message to anyone.
   1. `cd <worktree> && VYRE_MAC_REAL=1 nice -n 15 node --test local/apps/mac.test.js`: the five
      scripts compile.
   2. Run vyred from this branch (`bin/vyre down`, then `bin/vyre up` from the worktree).
   3. `bin/vyre apps find note`: Notes shows tier script and bundle id com.apple.Notes.
-  4. `bin/vyre apps note: Vyre check`: allow Notes in the Automation prompt; it prints "Note
-     saved: Vyre check" and the note is in the default account's default folder.
-  5. `bin/vyre apps targets notes vyre`: the note is listed with its id; a note moved to Recently
-     Deleted is not.
-  6. `bin/vyre call apps.act '{"app":"Notes","action":"append","args":{"note":"<id>","text":"line two"}}'`:
-     the line is added. On a note with an image, the answer is not_supported and the image stays.
-  7. `bin/vyre apps remind me in 2 min to check vyre`: allow Reminders; the reminder is in the
-     default list and alerts two minutes later. `bin/vyre apps targets reminders` lists ids.
-  8. `bin/vyre apps weather tomorrow` roughly matches the Weather app;
+  4. Planner (the default): `bin/vyre apps timer 1 min`, `bin/vyre apps remind me in 2 min to
+     check vyre`, `bin/vyre apps todo buy milk`, `bin/vyre apps note: Vyre check`. Each prints one
+     line and no prompt of any kind appears (no Touch ID, no Automation dialog, Clock, Notes and
+     Reminders stay closed). The timer and reminder ring through the planner on time.
+  5. `bin/vyre call planner.list '{}'` (or the Deck's Planner page) shows the four items.
+  6. Apple Notes, opt-in: `bin/vyre apps note: Vyre check in apple notes`: allow Notes in the
+     Automation prompt once; it prints "Note saved: Vyre check" and the note is in the default
+     folder. `bin/vyre apps targets notes vyre` lists it with its id; a note moved to Recently
+     Deleted is not listed. `bin/vyre call apps.act '{"app":"Notes","action":"append","args":{"note":"<id>","text":"line two"}}'`
+     adds the line; on a note with an image the answer is not_supported and the image stays.
+  7. Apple Reminders, opt-in: `bin/vyre apps --app Reminders remind me in 2 min to check vyre`:
+     allow Reminders once; the reminder is in the default list and alerts two minutes later.
+  8. Weather: `bin/vyre apps weather tomorrow` roughly matches the Weather app;
      `bin/vyre call apps.act '{"app":"Weather","action":"open"}'` opens Weather.
-  9. `bin/vyre apps timer 1 min` answers setup. (Both shortcuts start with Get Text from Input,
-     since `shortcuts run --input-path` hands the input over as a file.) `bin/vyre apps setup clock` opens two Shortcuts
-     import windows: click Add Shortcut on each. If one shows an unknown action, build it by
-     hand from the printed steps and note the identifiers for ACTIONS in setup.js.
-  10. `bin/vyre apps timer 1 min` starts a Clock timer; `bin/vyre apps alarm 7:05` adds a 07:05
-      alarm with its label. Clock does not come to the front.
-  11. Delete the check note, reminder and alarm.
+  9. Apple Clock, opt-in: `bin/vyre apps --app Clock timer 1 min` answers setup;
+     `bin/vyre apps setup clock` opens two Shortcuts import windows: click Add Shortcut on each
+     (an unknown action: build it from the printed steps and note the identifiers for ACTIONS in
+     setup.js). Then `bin/vyre apps --app Clock timer 1 min` starts a Clock timer and
+     `bin/vyre apps alarm 7:05 in apple clock` adds a 07:05 alarm. Clock does not come to the front.
+  10. Questions, never nothing: `bin/vyre apps tell juno I'm running late` asks "Which app?" with
+      the messaging apps on this Mac; press Ctrl-D and it prints "nothing sent".
+      `bin/vyre apps tell juno I'm running late < /dev/null` prints the question and exits 3
+      (`echo $?`). Nothing is sent in either.
+  11. Delete the check note, reminders, todo and alarm (and the planner items).
 - Known limit: Notes' trash is skipped by its name ("Recently Deleted", or config
   apps.notes.trash); the dictionary gives that folder nothing else, so another language needs it.
+- The Capsule half (@App, contacts, Enter twice) is checked once capsule-pro has merged the
+  native branch; its steps come with that handoff.
 
 ## Standing rule (user, 2026-09-27): Vyre must not nag
 The user runs on bypass permissions. No prompt or Touch ID for the person's own actions (notes,
@@ -163,6 +175,11 @@ outbound sends. So apps.act never asks; apps.send and gate.approve do, riding th
 - lead/user: import of the Vyre Clock shortcuts once (one click each), checked on the real Mac.
 
 ## Changed contracts
+- Native Capsule (owner capsule-pro), on work/capsule-apps-native: Kit `CapsuleExtension.boxChanged()`
+  (default no-op); CapsuleModel `extensionBoxChanged` called from the text and target didSets;
+  ExtensionHost forwards it to every extension; Panel ignores a repeated Return (isARepeat).
+- apps.route takes `to` with `app` (an answer to a question); apps.list rows carry `actions` and
+  `nests` for apps with an adapter.
 - New module `apps` (local/apps) and CLI file core/cli/commands/apps.js.
 - core/presence/index.js (owner: presence/security): `apps.send` added to SESSIONABLE, so a
   presence session (ADR 0004: one strong proof, 5 min idle, 30 max, device-bound) proves it.
