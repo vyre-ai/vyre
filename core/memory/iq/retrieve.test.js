@@ -20,7 +20,7 @@ const hit = (session, seq, ts, extra = {}) => ({ session, seq, role: "assistant"
 
 test("retrieve: searches are fused by rank, ties break the same way, and the Capsule's asks are never read", async () => {
   const lists = {
-    "northwind invoice total": [hit("a", 1, NOW - 40 * DAY), hit("b", 2, NOW - 3 * DAY), hit("ask", 0, NOW, { name: "Capsule: invoice total" })],
+    "northwind invoice total": [hit("a", 1, NOW - 40 * DAY), hit("b", 2, NOW - 3 * DAY), hit("ask", 0, NOW, { name: "Capsule: invoice total" }), hit("quick", 0, NOW, { cwd: "/home/alex/.vyre/quick/memory" })],
     "Northwind Bakery northwind invoice total": [hit("b", 2, NOW - 3 * DAY), hit("c", 0, NOW - 90 * DAY)],
   };
   const seen = [];
@@ -29,11 +29,11 @@ test("retrieve: searches are fused by rank, ties break the same way, and the Cap
     node: () => ({ label: "Northwind Bakery" }),
     view: () => null,
   };
-  const r = retriever({ graph, now: () => NOW, search: async q => { seen.push(q); return lists[q.q] || []; } });
+  const r = retriever({ graph, quickDir: "/home/alex/.vyre/quick", now: () => NOW, search: async q => { seen.push(q); return lists[q.q] || []; } });
   const out = await r({ question: "what was the northwind invoice total" });
   assert.deepEqual(out.expanded, ["Northwind Bakery"]);
   assert.equal(out.passages[0].id, "b:2", "found by both searches, it comes first");
-  assert.ok(!out.passages.some(p => p.session === "ask"));
+  assert.ok(!out.passages.some(p => p.session === "ask" || p.session === "quick"));
   assert.deepEqual((await r({ question: "what was the northwind invoice total" })).passages, out.passages);
   // Switched off, the graph widens nothing.
   const bare = await r({ question: "what was the northwind invoice total", expand: false });

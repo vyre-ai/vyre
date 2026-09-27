@@ -53,10 +53,10 @@ export function timeWindow(q, now) {
 }
 
 /**
- * @param {{ search: (q: any) => Promise<any[]>, personal?: any, graph?: any, askDir?: string|null, now?: () => number }} deps
+ * @param {{ search: (q: any) => Promise<any[]>, personal?: any, graph?: any, askDir?: string|null, quickDir?: string|null, now?: () => number }} deps
  *   search: recall.search's hits for a query; personal and graph: what widens a question.
  */
-export function retriever({ search, personal = null, graph = null, askDir = null, now = () => Date.now() }) {
+export function retriever({ search, personal = null, graph = null, askDir = null, quickDir = null, now = () => Date.now() }) {
   /**
    * Names memory knows that the question names: "my wife" -> "Noor", "northwind" -> "Northwind
    * Bakery". Personal names only for a caller that may see personal facts.
@@ -110,8 +110,9 @@ export function retriever({ search, personal = null, graph = null, askDir = null
     const pool = new Map();
     for (const { via, hits } of lists) {
       (hits || []).forEach((h, rank) => {
-        // The Capsule's own ask threads echo old answers: never a source.
-        if (/^Capsule: /.test(String(h.name || h.title || "")) || (askDir && h.cwd && String(h.cwd).startsWith(askDir))) return;
+        // The Capsule's own ask threads and IQ's own model calls echo old answers: never a source.
+        const cwd = h.cwd ? String(h.cwd) : "";
+        if (/^Capsule: /.test(String(h.name || h.title || "")) || (askDir && cwd.startsWith(askDir)) || (quickDir && cwd.startsWith(quickDir))) return;
         const id = `${h.session}:${h.seq}`;
         const p = pool.get(id) || { id, session: String(h.session), seq: Number(h.seq), role: String(h.role), ts: Number(h.ts) || 0, text: String(h.text || h.snippet || ""),
           name: h.name ?? h.title ?? null, cwd: h.cwd ?? null, score: 0, via: [] };

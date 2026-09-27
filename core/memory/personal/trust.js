@@ -40,7 +40,8 @@ const VYRE_DIR = /(?:^|\/)vyre(?:[-_.][\w.-]*)?(?:\/|$)/i;
 /**
  * Whether a session may teach personal facts, from what Recall knows of it.
  * @param {{ cwd?: string|null, human?: number|boolean|null, parent?: string|null, name?: string|null, title?: string|null }} s
- * @param {{ scratch?: string|null, skip?: string[] }} [o]  scratch: the Capsule's ask folder; skip: folders the user excluded
+ * @param {{ scratch?: string|null, quick?: string|null, skip?: string[] }} [o]  scratch: the Capsule's ask folder; quick: the
+ *   warm sessions' folder (threads.quick, <home>/quick); skip: folders the user excluded
  * @returns {{ ok: boolean, why: "program"|"ask"|"dev"|"skipped"|null }}
  */
 export function sessionTrust(s, o = {}) {
@@ -48,7 +49,7 @@ export function sessionTrust(s, o = {}) {
   if (s.parent || s.human === 0 || s.human === false) return { ok: false, why: "program" };
   const label = String(s.name || s.title || "");
   const cwd = String(s.cwd || "");
-  if (/^Capsule: /.test(label) || (o.scratch && cwd.startsWith(o.scratch))) return { ok: false, why: "ask" };
+  if (/^Capsule: /.test(label) || (o.scratch && cwd.startsWith(o.scratch)) || (o.quick && cwd.startsWith(o.quick))) return { ok: false, why: "ask" };
   if (VYRE_DIR.test(cwd)) return { ok: false, why: "dev" };
   if (o.skip?.some(p => p && (cwd === p || cwd.startsWith(p.endsWith("/") ? p : p + "/")))) return { ok: false, why: "skipped" };
   return { ok: true, why: null };

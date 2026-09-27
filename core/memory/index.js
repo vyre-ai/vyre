@@ -37,8 +37,11 @@ export default {
     // Source trust (personal/trust.js): never the Capsule's own asks, nor folders the user left out
     // in config.memory.personal.skipCwds.
     const askDir = ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null;
+    // threads.quick's warm sessions (memory.ask's own model calls) run in <home>/quick/<purpose>:
+    // their prompts are passages of the user's history, so they are never read back.
+    const quickDir = ctx.paths?.root ? path.join(String(ctx.paths.root), "quick") : null;
     const personal = new Personal(ctx.store.db, { log: ctx.log,
-      trust: () => ({ scratch: askDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] }) });
+      trust: () => ({ scratch: askDir, quick: quickDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] }) });
     /** Read every unread turn for personal facts, then derive if anything changed. */
     // memory.profile-changed: the about-you lines moved, so a session rebuilds its note on resume.
     // Counts only; the lines themselves are read with memory.profile.
@@ -413,7 +416,7 @@ export default {
       }
     };
     const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
-      scratch: ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null });
+      scratch: askDir, quick: quickDir });
     ctx.tool("memory.answer", {
       description: "Answer a question about the user's own life in one line (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\") from personal facts, the graph, then the user's own words. Returns { answer, confidence, kind: fact|said|null, from (conversations), facts, sources, via: fact|meaning|keyword|null, ms }; answer is null when memory does not know. sources: true lists more of the turns it came from.",
       input: { type: "object", properties: { q: { type: "string" }, question: { type: "string", description: "the same as q" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
@@ -425,7 +428,7 @@ export default {
     // Vyre IQ's retrieval (ADR 0034, core/memory/iq/retrieve.js): the passages a question's answer
     // would be read from, fused from Recall's searches and widened by names memory knows. Personal
     // names widen it only for a caller that may see personal facts.
-    const retrieve = retriever({ graph, personal, askDir, now: () => Date.now(),
+    const retrieve = retriever({ graph, personal, askDir, quickDir, now: () => Date.now(),
       search: async q => { const r = await ctx.call("recall.search", q); if (r?.error) throw new Error(r.error.message || "recall.search failed"); return Array.isArray(r?.data) ? r.data : r?.data?.hits || []; } });
     ctx.tool("memory.retrieve", {
       description: "The turns Vyre IQ would read to answer a question: { passages: [{ id, session, seq, role, ts, text, name, cwd, score, via }], expanded, window }. No model. expand, when, recency and hybrid switch steps off, for the evaluation.",

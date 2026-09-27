@@ -17,6 +17,7 @@ test("trust: programs, subagents, the Capsule's asks and Vyre's own folders neve
   assert.equal(sessionTrust({ cwd: "/home/alex/Work", human: 1, parent: "p" }).why, "program");
   assert.equal(sessionTrust({ cwd: "/home/alex/Work", name: "Capsule: who is my wife" }).why, "ask");
   assert.equal(sessionTrust({ cwd: "/home/alex/.vyre/capsule/ask/x" }, { scratch: "/home/alex/.vyre/capsule/ask" }).why, "ask");
+  assert.equal(sessionTrust({ cwd: "/home/alex/.vyre/quick/memory" }, { quick: "/home/alex/.vyre/quick" }).why, "ask");
   for (const cwd of ["/home/alex/Code/vyre", "/home/alex/Code/vyre-memory-iq", "/home/alex/Code/vyre/core", "/home/alex/src/Vyre_fork"]) {
     assert.equal(sessionTrust({ cwd }).why, "dev", cwd);
   }
