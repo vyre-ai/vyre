@@ -30,21 +30,26 @@ Paseo reference: <team-dir>/../reference/paseo (Apache 2.0, commit d7b7016).
 
 ## Done
 - d76b7d7 claimed ADR 0026.
-- ADR 0026 draft (proposed), this file.
+- 1dc5c35 ADR 0026 draft (proposed), this file. Design summary sent to the lead.
+- 3f858fe core/relay/noise.js: Noise_IK_25519_AESGCM_SHA256 in node:crypto, matches the
+  cacophony vector byte for byte (handshake and 4 transport messages); replay, reflection,
+  reorder, wrong key, wrong prologue, low-order key, rekey tests. 8/8.
+- core/relay/wire.js (route id, box auth, limits, close codes) and relay/node/server.js, the
+  reference relay: signed box control socket, ticketed data sockets, buffering, caps, text
+  ping answered at the relay. 7/7. package.json test glob gains relay/**/*.test.js.
 
 ## Doing
 - Waiting for the lead's reply on the design summary before the big build.
 
 ## Next
-1. `relay/protocol/`: Noise IK (node:crypto), framing, pairing URL codec. Unit tests with the
-   Noise test vectors (cacophony) for IK_25519_AESGCM_SHA256.
-2. `relay/node/`: the reference relay (signed box sockets, limits), tests.
-3. `core/relay/`: keys, control/data sockets, device store, pairing tools, stream-to-HTTP
+1. `core/relay/channel.js`: Noise over a WebSocket (device and box sides), chunking, rekey; the
+   stream multiplexer; pairing URL codec.
+2. `core/relay/`: keys, control/data sockets, device store, pairing tools, stream-to-HTTP
    bridge, `device:` caller. In-process tests with the node relay and a fake device.
-4. `relay/worker/`: Worker + DO, tested with a fake DO state (no deploy).
-5. `relay/client/`: the TypeScript transport for the Expo app (@noble), tested in Node.
-6. Onboarding card and Settings, Devices (with deck-design / docs owners).
-7. perf-check numbers for the idle box with the relay on.
+3. `relay/worker/`: Worker + DO, tested with a fake DO state (no deploy).
+4. `relay/client/`: the TypeScript transport for the Expo app (@noble), tested in Node.
+5. Onboarding card and Settings, Devices (with deck-design / docs owners).
+6. perf-check numbers for the idle box with the relay on.
 
 ## Needs from others
 - lead: approve the design (ADR 0026), and later a real Cloudflare deploy (Workers Paid, $5 a
