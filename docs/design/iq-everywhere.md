@@ -61,6 +61,25 @@ hits there is a 12 px gap (space-3), full width. The shape every surface shares:
    empty card.
 5. Limited: the `message` as it came, with its link to Settings.
 
+## The stream cutover (0.1.1)
+
+The lead's decision (28 Sep, docs/design/interaction.md): `memory.ask { stream: true }` is the
+default wherever it is called, from one shared cutover, coordinated here. No surface builds an
+interim path.
+
+- **The contract is final** as on work/memory-iq: `memory.ask { question, stream: true, id,
+  context?, screen? }`. The surface makes the id, shows a thinking state from the first
+  `memory.thinking { id, stage }`, and draws the reply: `{ id, answer, answer_id, confidence,
+  abstained, known, sources: [{ session, seq, role, name, quote, ts }], via, limited?, message? }`.
+  `memory.answered { id, abstained, limited }` closes it. Events carry no question or answer.
+- **Cutover: 30 Sep 2026, in the integrator's first 0.1.1 batch.** memory-iq's 0.1.1 sha lands
+  first in that batch; the Capsule (capsule-pro), the Deck and PWA card (chat-core), and the phone's
+  Find card (mobile) land in the same batch, built against work/memory-iq until then. A surface
+  that meets an older vyred (no `id` in the reply) draws the reply without the thinking stages.
+- **Owners:** capsule-pro (the Capsule), chat-core (Deck chat and PWA, paused: this spec), the
+  Deck and mobile (Find cards, paused: this spec), app-design (the Answer card, interaction.md
+  section 6). The correction gesture ("Wrong?") ships on each surface as it relaunches.
+
 ## Surface by surface
 
 ### The Capsule
