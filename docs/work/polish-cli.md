@@ -55,12 +55,30 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   81 -> 94 MB by 15 min, then flat for 5 minutes: warmup, not a leak. The 40 min confirmation run
   was stopped at 12 min on the lead's word (testbox load).
 
+## Done (5), after logout 3 (the CLI is first-class)
+
+- The CLI's 30-minute window (998c2a1): one Touch ID, Capsule or passkey proof from a login
+  terminal covers that terminal's SESSIONABLE calls (vault reveal/copy/totp/approve/grant,
+  gate.approve) for 30 minutes. No secret on disk: vyred keys the window on the terminal the kernel
+  names (socket peer pid -> controlling tty -> listed by `who`), after e2e's ancestry check, so
+  anything under claude, detached, or in a tmux/script pty never rides it. Known gap: a new login
+  that reuses a tty number within 30 minutes inherits it (still a person; claude children refused).
+- Verb parity: `vyre needs`, `vyre gate` (drafts), full `threads answer`, live `vault totp`
+  countdown + vault health/breach/history/revert/clear-clipboard, `vyre phone add|list|remove|test`
+  (dependency-free QR in core/cli/qr.js), planner edit/rm/ringing/dismiss, agents
+  history/resume/computer, --json on learn/connect/hooks/send.
+
 ## Doing
 
-- Nothing in flight.
+- Session verbs (ADR 0030) on the sessions team's event model: asked sessions for the contract.
 
 ## Next
 
+- Session verbs: start, send, send-now, queue edit/drop, stop/interrupt, take back, open in
+  terminal, watch, all with --json, once sessions answers.
+- `vyre phone add`: box-side signals are missing for the full five checks (reported to the lead:
+  push.subscribed event, push delivery ack, phone path direct/relayed, a linked Mac minting the
+  box's code, a Deck /pair route, relay tools, an APK the box serves).
 - When the integrator says testbox is free: a 30 min stress run at nice -n 19 to confirm the
   second-half RSS slope is under 1 MB/10 min.
 - Deck/Capsule clients: to ride a session for approve/grant they need e2e's
@@ -74,6 +92,12 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 - connectors: `vyre connect` conventions and any tool the screen should show (asked).
 
 ## Changed contracts
+
+- presence (owner: e2e/security): Presence.verify takes `terminal`; Registry.call passes it;
+  vyred's socket route sets it (atTerminal) for cli/local callers of SESSIONABLE tools.
+  peer.js gains controllingTty. PERSON_ONLY gains agents.resume.
+- agents (owner: agents): agents.resume is callable by cli, local, deck, capsule (not only
+  modules); `thread` optional (the latest), checks ownership, leaves a running thread alone.
 
 - presence (owner: e2e/security): SESSIONABLE gains vault.approve, vault.grant; a session proves a
   vault.* tool only for deck, capsule or tailnet-owner callers. HUMAN_ONLY loses learn.accept,

@@ -56,7 +56,7 @@ export const HUMAN_ONLY = new Set([
  * process under a `claude` or a thread's process (core/daemon/peer.js).
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
-  "agents.create", "agents.update",
+  "agents.create", "agents.update", "agents.resume",
   "computers.takeover", "computers.giveback", "glass.take", "glass.release",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax"]);

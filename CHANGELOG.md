@@ -4,6 +4,33 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Every Deck feature has a CLI verb: needs, gate, phone, live one-time codes, planner edits
+
+- `vyre needs`: everything waiting on you in one list, held drafts and open asks, newest first,
+  each with the command that answers it. `vyre gate` (also `vyre drafts`) lists, shows, approves,
+  rejects and revises held drafts; revise opens `$EDITOR` or takes `--text`/`--file`. Approving asks
+  for proof once, then the terminal's 30-minute window covers later approvals.
+- `vyre threads answer` takes always, `--scope project`, and question answers by `--pick N`,
+  `--answer "Q=choice"` or a picker in your terminal, and shows the ask before answering.
+- `vyre vault totp` and `vyre vault get --otp` count down live: the code grouped as "123 456", a
+  seconds-left bar redrawn from the local clock with the item's own period, one vault.totp call
+  per period; q, Esc or Ctrl-C quits, it stops after 5 minutes. `--once`, `--json` or a pipe print
+  one result. New `vyre vault health`, `breach`, `history <item>`, `revert <item> <version>` and
+  `clear-clipboard`.
+- `vyre phone add` walks a phone onto the box as the app-design sheet shows: the address with a
+  terminal QR (a dependency-free encoder, `core/cli/qr.js`), Tailscale, a one-time passkey code,
+  install steps, then live checks until the phone's push device, a test notification and its
+  passkey show up. `vyre phone list`, `remove <id>` and `test [id]`. `--android --usb|--wireless`
+  finds adb and says what is missing until the box serves the Android app.
+- `vyre todo`, `notes`, `alarm`, `timer` and `remind` take `edit <id>` and `rm <id>` (an id of
+  another kind is refused with the command that owns it); `vyre timer list`, `vyre remind list`,
+  `vyre ringing` and `vyre dismiss <id>`.
+- `vyre agents history`, `vyre agents resume` and `vyre agents computer <name> [restart|limits]`.
+  agents.resume is now a person's tool (cli, local, deck, capsule; PERSON_ONLY), defaulting to the
+  agent's latest thread and leaving a running one alone.
+- `--json` on `vyre learn` (stats, signals, skills, show, level, scope), `vyre connect`,
+  `vyre hooks` and `vyre send`.
+
 #### The CLI gets the same 30-minute window for the vault as the Deck
 
 - `vyre vault get --reveal`, copy, one-time codes, approve and grant asked for a proof on every
