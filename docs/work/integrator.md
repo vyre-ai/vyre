@@ -118,7 +118,11 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - Debts after 0.1.0: the five sessions/switchboard edges (sessions); drift copies (mobile x2,
   native-core, capsule-pro).
 
-## Next: batch 5 queue
+## Next: 0.1.1 batch 1 (right after rc.2 lands)
+
+- federation aa9cb40c (e2e signed off: fail-closed ask checks, persisted nonces, files.deliver opt-in).
+
+## Older: batch 5 queue
 
 - native-core ac34c322 hub step 1 (after e2e review), app-design b756d128 (core/appearance),
   platform 7398763b, mobile 503414d4, pwa 34195805, sessions db4af9c3 (501ca3fc held for e2e's
