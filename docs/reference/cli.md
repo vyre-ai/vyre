@@ -55,6 +55,7 @@ In the order `vyre help` lists them.
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
 | [`vyre hooks`](#vyre-hooks) | webhooks from the internet through Funnel, one route at a time |
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
+| [`vyre relay`](#vyre-relay) | reach this box from your phone with a QR code, no Tailscale |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
 | [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
@@ -390,6 +391,20 @@ Pair this Mac with your box, or approve a Mac on the box.
 ```
 vyre link [pair|approve|deny|unpair] [--json]
 ```
+
+### vyre relay
+
+Reach this box from your phone with a QR code, no Tailscale.
+
+```
+vyre relay [status|pair|devices|remove <id>|rename <id> <name>|trust <id> [--off]|on [--url u]|off|pin <release>|unpin] [--json]
+```
+
+vyre relay: whether the relay is on and connected
+vyre relay pair: a QR code for one more device (once, 10 minutes)
+vyre relay devices: paired devices, which are connected, and how
+vyre relay remove|rename|trust: manage one (a browser from the web app is limited until trusted)
+vyre relay on|off, pin <release>|unpin: the relay itself, and which web app build this box trusts
 
 ### vyre send
 

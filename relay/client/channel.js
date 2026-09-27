@@ -13,7 +13,7 @@ import { EMPTY, utf8, fromUtf8 } from "./bytes.js";
 
 export { MAX_NONCE };
 
-export const FRAME = Object.freeze({ head: 1, data: 2, end: 3, reset: 4 });
+export const FRAME = Object.freeze({ head: 1, data: 2, end: 3, reset: 4, ping: 5, pong: 6 });
 /** Body bytes per data frame, as on the box. */
 export const CHUNK = 64 * 1024;
 /** Both sides rekey after this many messages in a direction. */
@@ -89,6 +89,8 @@ export class Channel {
     if (this.closed) return;
     if (pt.length < 5) { this.close(4400, "short frame"); return; }
     const type = pt[0], id = new DataView(pt.buffer, pt.byteOffset).getUint32(1), payload = pt.subarray(5);
+    // Stream 0 is the box measuring the round trip: send its bytes straight back.
+    if (id === 0) { if (type === FRAME.ping) this.frame(FRAME.pong, 0, payload.slice()); return; }
     const s = this.streams.get(id);
     if (!s) return;                                    // the box never opens streams; late frames for a stream already gone
     if (type === FRAME.head) {

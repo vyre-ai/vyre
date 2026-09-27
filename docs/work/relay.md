@@ -64,19 +64,41 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - testbox: `core/relay`, `relay/**`, `test/relay.test.js` 93/93; docs tests 50/50.
 
 ## Doing
-- Nothing in flight. Reported to the lead.
+- Redial bug FIXED (lead asked during the pause): link.js and client.js treat a pre-open
+  `error` as a failed dial; 30 s dial timer in link.js. resilience's two chaos todos pass with
+  the fix (their branch + this fix, 54/54); they flip the todos on their branch.
+- PAUSED (lead, 27 Sep 2026): the user is refocusing on the native core. 4d58d4b is in batch 3b.
+  Nothing in flight; everything is pushed. The Cloudflare deploy stays deferred until the lead
+  says the phone spike or the hosted app needs a live relay (check the vyre.run zone is on
+  Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
-1. Surfaces show the `device.paired` notice with one-tap removal (pwa, capsule, mobile own the
-   UI; the event now carries kind, release, build known/unknown).
-2. relay/app/: the app.vyre.run host (CSP, SRI, signed release manifest, pinning service
-   worker) and vyre.run/pair forwarding the fragment. Build comes from mobile.
-3. `vyre relay` CLI (status, pair with a terminal QR, devices).
-4. Onboarding card and Settings, Devices (with deck-design / docs owners).
+0. PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
+   (a) at web pairing, the loader makes a passkey with rpId app.vyre.run and sends it in the
+   hello; admit() passes it to presence for enrollment bound to the device id; (b) the loader
+   and the native app call presence.person.start over the channel and keep the returned token,
+   signing calls with x-vyre-proof (the bridge already passes both headers).
+   NEEDED FROM e2e before starting: (1) the registry's person gate uses `ownerDevice(caller)`,
+   not `ownerOverTailnet(caller)`, so `device:*` is gated (MERGE HAZARD until done); the router
+   treats the relay's peer (kind "device", stableId = device id) as a device with nodeId =
+   stableId; (2) presence.person.start accepts, for a `device:<id>` caller, method "device" (the
+   phone's enrolled P-256 key) and method "webpasskey" (a WebAuthn assertion, rpId app.vyre.run,
+   origin https://app.vyre.run, only for the key enrolled for that device id), and returns the
+   same `Vyre <id>.<secret>` token pinned to the device id, taking the app's ES256 proof key;
+   (3) presence.enroll accepts kind "webpasskey" from caller module:relay with { device,
+   credential_id, public_key, alg }, bound to that device id; (4) the Mac Secure Enclave key
+   (lead approved) as a `device` presence key, so a linked Mac can mint relay.pair.start.
+1. After tests: CHANGELOG entries for relay/app, relay.web.*, person-session headers.
+2. Hand polish-cli the CLI verbs for `vyre phone add`.
+3. Surfaces show the `device.paired` notice with one-tap removal (pwa, capsule, mobile own the UI).
+4. Onboarding card and Settings, Devices (with deck-design / docs owners); docs site publishes
+   relay/app/pair/ at vyre.run/pair.
 5. perf-check numbers for the idle box with the relay on.
-6. First real Cloudflare deploy: approved spend ($5/mo), but ASK THE LEAD before deploying.
+6. First real Cloudflare deploy once the lead confirms the command.
 
 ## Needs from others
+- polish-cli: one QR encoder. Whoever reaches main second swaps `vyre relay pair` to
+  core/cli/qr.js `terminal(qr(url))` (polish-cli 6eaa6a0) and deletes terminalQr + its test.
 - tailnet: CORS on vyred for https://app.vyre.run (the /v1/health probe and API calls), or
   Direction A's direct path is blocked in the browser.
 - presence owner: enroll a passkey presence key (rp app.vyre.run) sent at pairing by a web

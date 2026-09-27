@@ -981,6 +981,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   carry its kind, its release and whether the build is one this box knows (core/relay/releases.json).
 - The box's bridge passes `Idempotency-Key`. A box replaced on its route by another copy of
   itself waits 5 minutes before retrying, instead of trading places with the copy.
+- The box names the web app build its browsers load: `relay.web.release` (the owner's pin, or the
+  newest release in core/relay/releases.json) and `relay.web.pin`. relay/app/ hosts app.vyre.run.
+  A fixed loader acts as trust root: it asks the box, then checks the build's Ed25519-signed
+  manifest and loads it under SRI. A service worker refuses tampered or rolled-back loaders. The
+  CSP allows no unsafe-* sources. The vyre.run/pair page makes no requests, and release.js does
+  keygen, build, loader and verify.
+- `vyre relay`: status, pair (the QR drawn in the terminal), devices, remove, rename, trust, on,
+  off, pin, unpin.
+- Devices report their path (`relay.devices.path`). The box measures the relay round trip with a
+  ping frame over the channel, on demand. A one-time code links a device to its tailnet node, so
+  the list shows `path` (relay or direct), `rtt` and `node`, and `device.moved` fires on each switch.
+- Fixed: a box could stay off the relay until vyred restarted. On Node 22 a refused WebSocket
+  fires only `error`, never `close`, and the relay link retried only on `close`. Now an error
+  before open counts as a failed dial (handled once), and a control socket not ready in 30 s is
+  redialled. A device dialling a dead relay backs off at once instead of waiting 15 s. Found by
+  resilience's R5 chaos tests.
+- The bridge passes `authorization` and `x-vyre-proof`, so a person session (ADR 0032) crosses
+  the relay unchanged.
 - ADR 0026 accepted. It gains section 10, the hosted web app at app.vyre.run, and its trust
   mitigations, and section 2 now matches the code (4429, the ticket, text pings).
 #### Onboarding: the first steps load the theme and fonts
