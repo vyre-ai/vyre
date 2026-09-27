@@ -38,7 +38,8 @@ export function findSubreaper() {
  *           uid?: number, gid?: number, onSpawn?: (g: { pid: number, pgid: number, sid: number }) => void }} o
  */
 export function spawnSession(command, args, o = {}) {
-  if (o.spawner === true || (o.spawner !== false && process.platform === "linux" && spawnerHere())) return viaSpawner(command, args, o);
+  // VYRE_SESSIONS_SPAWNER=0 keeps sessions as vyred's own uid (the split off), where the box has a spawner.
+  if (o.spawner === true || (o.spawner !== false && process.env.VYRE_SESSIONS_SPAWNER !== "0" && process.platform === "linux" && spawnerHere())) return viaSpawner(command, args, o);
   const posix = process.platform !== "win32";
   const [cmd, argv] = o.subreaper && posix ? [o.subreaper, ["-s", "--", command, ...args]] : [command, args];
   const env = { ...(o.env || {}) };
