@@ -13,7 +13,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   hands-desktop's `resolveAgent`) matched only the narrower "mcp:agent:" shape, so a caller
   vouched under another transport fell through to full trust - naming any agent's computer, or
   seeing every agent's computer in a list, as if it were the CLI itself (e2e review, 2026-09-28).
-  All six now import the one parser; the two real gaps are closed with it.
+  All six now import the one parser; the two real gaps are closed with it. `agentClaim` never
+  returns `""` for a claim with no name (e2e review): every caller checks `if (agentClaim(...))`,
+  and an empty string is falsy, so a caller shaped "cli agent:" (no name) would have read as no
+  claim at all and been trusted fully instead of refused.
 
 #### Two cohesion audit fixes: a real caller check and a real pairing timestamp
 
