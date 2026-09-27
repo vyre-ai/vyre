@@ -65,12 +65,12 @@ import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
 import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
-import { duration, elapsed, toolTitle } from "./lib/blocks.js";
+import { duration, elapsed, toolTitle, toolVerb } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
 import { textItemRow } from "./live-text.js";
-import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks } from "./core/session-state.js";
+import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind, contextLabel, filesNote, seedTasks, pendingEvents } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE, REWIND_CODE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
 import { todoPin, tasksTray } from "./tray.js";
@@ -275,6 +275,8 @@ export function mountSession(container, opts) {
         if (typeof e.id === "number") S.meta.lastId = Math.max(S.meta.lastId, e.id);
       }
       applyCosts(done);
+      // The queue and steers not taken in yet: the transcript holds neither, only the events do.
+      for (const e of pendingEvents(data.events)) applyStateEvent(S, e);
       for (const a of data.asks) upsertAsk(a);
     }
     booted = true;
@@ -541,6 +543,11 @@ export function mountSession(container, opts) {
 
   // ---- rows from items -----------------------------------------------------------------------
 
+  /** The session's folder, so paths inside it read relative ("menu.md", not the whole path). */
+  const sessionCwd = () => record.current?.cwd || recorded.session?.cwd || null;
+  /** A running call while the session waits on the person: its ask is open, so it is not working. */
+  const waitingOn = it => it.status === "running" && S.state === "waiting";
+
   /** An item as the block the renderers and the raw view know. */
   function asBlock(it) {
     const at = it.at;
@@ -550,8 +557,9 @@ export function mountSession(container, opts) {
       case "reasoning": return { kind: "thinking", text: it.text, ts: at };
       case "tool": return { kind: "tool", id: it.call, tool: it.name, input: it.input, output: it.output ?? null, summary: it.summary,
         error: it.status === "failed" || (!!it.error && it.status !== "running"), duration_ms: it.duration_ms ?? null, ts: at, patch: it.patch,
-        done: it.status !== "running", canceled: it.status === "canceled" };
-      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: it.open,
+        done: it.status !== "running", canceled: it.status === "canceled", cwd: sessionCwd(), waiting: waitingOn(it) };
+      // A turn the transcript has not closed is still going only while the session is busy.
+      case "turn": return { kind: "turn", ts: at, duration_ms: it.duration_ms, tokens: it.tokens, cost_usd: it.cost_usd, open: !!it.open && busy(),
         canceled: it.canceled, byMe: byMe.has(it.key), error: it.error || (it.ok === false && !it.canceled ? (it.reason || "error") : null) };
       default: return null;
     }
@@ -603,7 +611,7 @@ export function mountSession(container, opts) {
   function syncEl(el, it) {
     if (it.kind === "text") { el.sync(it); return el; }
     if (it.kind === "reasoning") { el.set(it.text, thinkLabel(it)); return el; }
-    const s = sig(it);
+    const s = sig(it) + (it.kind === "tool" && waitingOn(it) ? "w" : "");
     if (s === el._sig) return el;
     el._sig = s;
     if (it.kind === "tool") { el.update(asBlock(it)); return el; }
@@ -615,11 +623,11 @@ export function mountSession(container, opts) {
 
   /** Where typed words joined a running turn: "Steered at step 2 · 14:32", or "Steering" until it reads them. */
   function steerEl(it) {
-    const label = it.pending ? "Steering" : it.step != null ? `Steered at step ${it.step}` : "Steered here";
-    return h("div", { class: "cv-row cv-steer" + (it.pending ? " cv-steer-pending" : ""), role: "note" },
+    const words = it.pending ? `steering · ${agentName() || "Vyre"} reads it at its next step`
+      : ["you steered here", it.step != null ? `after ${it.step} ${it.step === 1 ? "step" : "steps"}` : null, it.at ? clock(it.at) : null].filter(Boolean).join(" · ");
+    return h("div", { class: "cv-row cv-steer" + (it.pending ? " cv-steer-pending" : ""), role: "separator", "aria-label": words },
       h("span", { class: "line" }),
-      h("span", { class: "cv-steer-lbl" }, label,
-        it.pending ? h("span", { class: "faint" }, " · joins at the next step") : it.at ? h("span", { class: "msg-when" }, " · " + clock(it.at)) : null),
+      h("span", { class: "cv-steer-lbl" }, words),
       h("span", { class: "line" }));
   }
   /** A "!" command run in the session's folder, and what it printed. */
@@ -639,7 +647,7 @@ export function mountSession(container, opts) {
   function askData(id, it) {
     const info = askInfo.get(id) || {};
     return { id, tool: it?.tool ?? info.tool ?? null, summary: it?.summary ?? info.summary ?? null, kind: info.kind || it?.askKind || "permission",
-      ...info, agent: agentName(), ...macOf(info) };
+      ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
   }
   /** A Mac session's ask: answered from here with its machine (the relayed event's, else the row's),
    * unless this box has shown it cannot forward answers (presence.js macAnswersHeld). */
@@ -724,15 +732,17 @@ export function mountSession(container, opts) {
         el._ts = items[0]?.at ?? null;
         const running = items.find(t => t.status === "running");
         const isOpen = openRuns.has(row.key);
+        const waiting = running && waitingOn(running);
         if (running) {
-          sum.replaceChildren("Running " + (running.input && Object.keys(running.input).length ? toolTitle(running.name, running.input) : running.summary || running.name));
-          meta.replaceChildren(running.at !== undefined ? " · " + elapsed(now - running.at) : "");
+          const what = running.input && Object.keys(running.input).length ? toolTitle(running.name, running.input, sessionCwd()) : running.summary || "";
+          sum.replaceChildren([toolVerb(running.name, "running"), what].filter(Boolean).join(" "));
+          meta.replaceChildren(waiting ? "waiting on you" : running.at !== undefined ? elapsed(now - running.at) : "");
         } else {
           sum.replaceChildren(row.summary);
           const ms = items.reduce((n, t) => n + (typeof t.duration_ms === "number" ? t.duration_ms : 0), 0);
-          meta.replaceChildren([ms ? duration(ms) : null, row.failed ? `${row.failed} failed` : null].filter(Boolean).map(s => " · " + s).join(""));
+          meta.replaceChildren([ms ? duration(ms) : null, row.failed ? `${row.failed} failed` : null].filter(Boolean).join(" · "));
         }
-        el.setAttribute("data-state", running ? "running" : row.failed ? "failed" : "done");
+        el.setAttribute("data-state", waiting ? "waiting" : running ? "running" : row.failed ? "failed" : "done");
         if (isOpen) el.setAttribute("data-open", ""); else el.removeAttribute("data-open");
         btn.setAttribute("aria-expanded", String(isOpen));
         body.hidden = !isOpen;
@@ -863,13 +873,30 @@ export function mountSession(container, opts) {
   /** Items changed since the last layout, for the incremental grouping. */
   const grouper = createGrouper();
   const changedKeys = new Set();
+  let lastState = /** @type {string|null} */ (null);
   /** Changed keys from session-state: rows patched in place; the order laid out again only when a row came, went or moved. */
   function patch(keys) {
     if (!keys.length) return;
     for (const k of keys) changedKeys.add(k);
     let order = false;
     for (const k of keys) {
-      if (k === "@session") { if (booted) drawHead(); continue; }
+      if (k === "@session") {
+        if (!booted) continue;
+        drawHead();
+        // Waiting on the person or working again: the running calls say which (no clock while waiting).
+        if (S.state !== lastState) {
+          lastState = S.state;
+          for (const it of S.items) {
+            if (!((it.kind === "tool" && it.status === "running") || (it.kind === "turn" && it.open))) continue;
+            const el = els.get(it.key);
+            if (!el) continue;
+            const nel = syncEl(el, it);
+            if (nel !== el) { els.set(it.key, nel); if (el.parentNode) el.replaceWith(nel); }
+          }
+          order = true;
+        }
+        continue;
+      }
       if (k === "@queued") { drawQueued(); continue; }
       if (k === "@todos") { pin.set(S.todos); continue; }
       if (k === "@tasks") { tray.set(S.tasks); continue; }
@@ -1139,7 +1166,7 @@ export function mountSession(container, opts) {
   /** The earlier view's cards: appended, then filled in. */
   function legacyAsk(a) {
     const info = askInfo.get(a.id) || {};
-    const full = { ...info, agent: agentName(), ...macOf(info) };
+    const full = { ...info, agent: agentName(), cwd: sessionCwd(), ...macOf(info) };
     let el = cards.get(a.id);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return; }
     el = /** @type {any} */ (a.kind === "question" ? questionCard(full) : askCard(full));
@@ -1374,7 +1401,7 @@ export function mountSession(container, opts) {
   const onKb = () => {
     if (!timeline.isConnected) return;
     const p = padNow();
-    if (following) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
+    if (stick.stuck) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
     pad = p;
   };
   container.addEventListener("focusin", onFocus);

@@ -21,5 +21,10 @@
       {"id": "assistant-adds", "text": "Ask juno to remind you of something and juno adds the reminder itself, with no prompt and no Touch ID.", "surfaces": ["chat", "capsule"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/planner.md#let-your-agents-use-it"},
       {"id": "agenda-today", "text": "Run `vyre agenda` for today's alarms, reminders and calendar events, then the todos due, overdue ones included.", "surfaces": ["cli", "deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre agenda", "docs": "using/planner.md#see-your-day"}
     ]
-  }
+  },
+  "settings": [
+    {"key": "planner.escalate_after", "group": "planner", "label": "Ring again after (minutes)", "type": "int", "min": 1, "max": 120, "default": 5, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "planner.settings", "input": {}, "read": "escalate_after"}, "set": {"tool": "planner.settings", "input": {"escalate_after": "$value"}}}}},
+    {"key": "planner.escalate_max", "group": "planner", "label": "Rings after the first", "type": "int", "min": 0, "max": 10, "default": 3, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "planner.settings", "input": {}, "read": "escalate_max"}, "set": {"tool": "planner.settings", "input": {"escalate_max": "$value"}}}}},
+    {"key": "planner.event_lead", "group": "planner", "label": "Warn before an event (minutes)", "type": "int", "min": 0, "max": 1440, "default": 10, "levels": ["account"], "apply": "live", "store": {"tool": {"get": {"tool": "planner.settings", "input": {}, "read": "event_lead"}, "set": {"tool": "planner.settings", "input": {"event_lead": "$value"}}}}}
+  ]
 }

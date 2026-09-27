@@ -24,5 +24,8 @@
       {"id": "workspaces", "text": "List a folder under `workspaces` in `.vyre/project.json` and its sessions join the project on the next read.", "surfaces": ["cli", "deck"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/projects-and-threads.md#where-a-project-lives"},
       {"id": "many-projects", "text": "One thread can sit in several projects, like a weekly planning session for Harlow Legal and Northwind Bakery.", "surfaces": ["cli", "deck", "chat"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/projects-and-threads.md#projects-and-threads"}
     ]
-  }
+  },
+  "settings": [
+    {"key": "projects.folder", "group": "files", "label": "Where new projects go", "type": "string", "levels": ["account"], "apply": "restart", "store": {"config": "projectsDir"}}
+  ]
 }

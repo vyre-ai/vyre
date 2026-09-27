@@ -1,0 +1,39 @@
+# platform
+
+Branch: work/platform · Worktree: ../vyre-platform · ADR 0033
+
+## Scope
+Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for every part; user modules and overrides that survive updates; `vyre update` from GitHub releases; `vyre module new/add/remove`; the boundary ratchet toward a thin kernel.
+
+## Done
+- ADR 0033 accepted by the lead (decisions recorded in the ADR). Inventory in its appendix.
+- Team asks sent 2026-09-27: native-core (module settings into the registry: they pick "settings reads manifests" or an internal settings.register), sessions (providers shape frozen by the schema; hooks seam in canUseTool, P4), polish-cli (verb shapes, who writes module.js/update.js), app-design (card shapes, iframe tokens, slot placement), pwa (slot registry + sw caching of /m/<module>/), ci (lib/* in boundaries, the release workflow), chat (renderer slot heads-up).
+- P0 written: packages/module-sdk (manifest.schema.json, manifest.js checkManifest, index.d.ts, package.json private, README), test/module-sdk.test.js, docs drift fixes in docs/architecture/spec.md and docs/build/module-contract.md.
+
+## Doing (2026-09-27, after resume from logout 4)
+- P0 for batch 4: work/platform e8e3d902 (merges main 7880dfa6; 101/101 targeted) sent to the integrator; the old b4 had the stale 2e6997dd.
+- Store limits: work/platform-store-limits 67abc47f = c9f1d630 + a clean merge of native-core 19b92574 (48/48 on testbox). Sent to native-core to fast-forward (their Doing item 3). Not adopted yet at 14:20 UTC.
+- settings.write e4515fb6: HELD until e2e signs off native-core (not yet). Then hand to the integrator.
+- Hub asks to native-core (hub file + live hand edits, per-key check tool, choices tool, prompt-layer toggle key): re-sent; no answer yet. They fold them into ADR 0035.
+- P2 DONE on work/platform 54180bb5 (145/146 on testbox, 1 skip = shellcheck absent; shellcheck clean by hand): core/cli/commands/update.js + core/cli/update/releases.js (Mac), box/vyre update/rollback (box, APK + releases.sign), docs/using/box-care.md, draft docs/build/first-module.md. up.js exports health/waitFor/bring; bring compares against mineOf().version. Not tried end to end with a real npm install and restart; releases stay dry-run (VYRE_RELEASES unset).
+
+## Next
+1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
+2. P1 once native-core's settings are on main (loader adopts packages/module-sdk/manifest.js, apiVersion, ctx.api/log/paths.data/settings, watches.on + needs.tools, replaces + disable, registry.status commands, core/cli/commands/module.js with polish-cli review).
+3. P2 follow-ups: an end-to-end update on testbox against a throwaway stack (not /srv/vyre) with ci's dry-run dist/ as the release; update.available daily check in vyred (update.auto notify); `vyre box update` from the Mac offering the Mac the same version; the systemd rollback race (restore while systemd restarts vyred).
+4. Compile phase: tests and polish for P0/P2; merge first-module.md with writing-a-module.md later (ADR 0033 Section 7).
+
+## Needs from others
+- ci: release.yml on work/ci 4b49ecf5. APK asset is android-<version>-<sha7>.apk and android.json's `file` is rewritten to match. Dry run only until repo variable VYRE_RELEASES=go. Its dist/ artifact is the P2 test fixture shape; waiting on the dry-run result.
+- (decided) first tag 0.1.0 after the native-core milestone; Cloudflare token for the mirror asked at 0.1.0. Both recorded as open in ADR 0033.
+- mobile (answered, work/mobile cb4e988c): android.json {version, versionCode, sha, sha256 (unsigned), size, minSdk>=24, built, file}; tool `releases.sign {}` (callers cli/local/module, idempotent, errors no_release/release_mismatch); folder config releases.android default <home>/releases/android/, APK first then android.json atomically last; signed copies never deleted. P2 wrapper: host fetch+check, compose cp in, keep android.json.prev, `vyre call releases.sign` in the container.
+- polish-cli: reviews core/cli/commands/module.js and update.js (module.js gets aliases ["modules"], remove `modules` from daemon.js, add both to GROUPS). They write the P4 does.commands dispatcher; wants the shape { verb, tool, summary, args? }.
+- integrator: "open" for testbox, then P0 into batch 4.
+- native-core: a way for modules' manifest `settings` to join the registry (registry reads `modules.list` manifests, or a `settings.register` internal tool), and `ctx.settings` scoped to the module's own keys.
+- sessions: `does.providers` shape stays as on work/sessions; `does.hooks` (brief/enrich/pretool/stop) placement vs the SDK driver's canUseTool.
+- polish-cli: `vyre module ...` and `vyre update` verbs next to `vyre config`.
+- app-design, pwa: the slot grammar (view, settings, now, renderer, slash) and the sandboxed iframe for third-party UI.
+- ci: `lib/*` as shared pure code in the boundary test; a tag-triggered release workflow.
+
+## Changed contracts
+- New: packages/module-sdk/manifest.schema.json is the manifest contract. test/module-sdk.test.js fails on any module.json key not in it (x- keys are free). Teams adding a manifest key add it to the schema and index.d.ts in the same commit.

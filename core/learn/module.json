@@ -23,5 +23,8 @@
       {"id": "signals", "text": "Run `vyre learn signals` to see what Learning heard, as counts by kind. It never keeps the text.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre learn signals", "docs": "using/learning.md#signals-what-vyre-hears"},
       {"id": "deck-lessons-tab", "text": "The Lessons tab under Memory in the Deck groups lessons as Proposed, Active, Retired and Proposed skills.", "surfaces": ["deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/learning.md#lessons-accept-edit-retire"}
     ]
-  }
+  },
+  "settings": [
+    {"key": "learn.distill_daily", "group": "memory", "label": "Lessons distilled per day", "type": "int", "min": 0, "max": 50, "default": 6, "levels": ["account"], "apply": "restart", "store": {"config": "learn.distill.daily"}}
+  ]
 }

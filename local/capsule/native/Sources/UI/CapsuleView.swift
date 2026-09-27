@@ -4,7 +4,8 @@
 // Enter and Escape behave the same whatever has focus. This view only draws.
 //
 // Layout: the bar (56), then one area of fixed height (results, memory, an answer, a side panel)
-// with a footer that says what Enter does. Rows are inset and rounded; the selected one is a
+// with a footer that says what Enter does. An answer's card grows with its words, then scrolls
+// (AnswerScroll.swift). Rows are inset and rounded; the selected one is a
 // raised plate with the signal pill at its left edge. The top hit is larger, like Spotlight's.
 
 import AppKit
@@ -35,12 +36,14 @@ struct CapsuleView: View {
                         AgentLayout.desk(model)
                     } else if model.answerAlone && side == nil {
                         // An answer alone gets the whole area, and scrolls in it.
-                        ScrollView(.vertical, showsIndicators: false) { answer }
-                            .frame(maxHeight: .infinity, alignment: .top)
+                        answerCard(cap: CapsuleLayout.answerCap(model, alone: true))
+                        Spacer(minLength: 0)
                     } else {
                         // Offline, and the conversation with an @agent above its rows (Agent/).
                         AgentLayout.above(model)
-                        if model.asked != nil { answer.frame(maxHeight: 200, alignment: .top).clipped(); Rule() }
+                        // The answer grows with its words up to the room left above a few results,
+                        // then scrolls (AnswerScroll.swift). It never clips a line out of reach.
+                        if model.asked != nil { answerCard(cap: CapsuleLayout.answerCap(model, alone: false)); Rule() }
                         if model.showsMemory, let m = model.memory { MemoryLine(memory: m, expanded: $model.memoryExpanded); Rule() }
                         HStack(alignment: .top, spacing: 0) {
                             if !model.groups.isEmpty { results } else { Spacer(minLength: 0) }
@@ -98,7 +101,7 @@ struct CapsuleView: View {
                 .frame(maxWidth: 240, alignment: .leading)
                 .fixedSize()
             }
-            TextField("", text: $model.text, prompt: Text(model.target == nil ? "Search, calculate, ask, or @ a session" : "Message").foregroundColor(Theme.ash.opacity(0.8)))
+            TextField("", text: $model.text, prompt: Text(model.target != nil ? "Message" : model.followUp ? "Ask a follow-up" : "Search, calculate, ask, or @ a session").foregroundColor(Theme.ash.opacity(0.8)))
                 .textFieldStyle(.plain)
                 .font(Theme.query)
                 .foregroundColor(Theme.bone)
@@ -168,7 +171,7 @@ struct CapsuleView: View {
             // Tool calls, collapsed to one line each, newest three; a row changes in place.
             if let tools = model.reply?.tools, !tools.isEmpty { ToolRows(tools: tools) }
             if let q = model.reply?.queued, !q.withdrawn {
-                Label(q.delivered ? "Handed over to \(q.name). Its answer comes when this turn ends." : "Queued for \(q.name): it gets this when its current turn ends.",
+                Label(q.delivered ? "Handed over to \(q.name). Its answer shows here as it comes." : "Queued for \(q.name): it gets this when its current turn ends.",
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }
@@ -193,6 +196,11 @@ struct CapsuleView: View {
         }
         .padding(.horizontal, 18).padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func answerCard(cap: CGFloat) -> some View {
+        AnswerScroll(scroller: model.answerScroll, cap: cap, grows: model.visibleReplyCount + (model.reply?.tools.count ?? 0),
+                     answerID: model.reply?.thread ?? model.asked ?? "") { answer }
     }
 
     private var replyState: String {
@@ -222,10 +230,11 @@ struct CapsuleView: View {
     private var results: some View {
         let flat = model.flat
         let index = Dictionary(flat.enumerated().map { ($1.id, $0) }, uniquingKeysWith: { a, _ in a })
-        return ScrollViewReader { proxy in
+        return GeometryReader { geo in ScrollViewReader { proxy in
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(model.groups) { g in
+                    // A heading is drawn only over rows: an empty group never shows a bare "Send to".
+                    ForEach(model.groups.filter { !$0.items.isEmpty }) { g in
                         SectionHeader(title: g.items.allSatisfy { $0.kind == "mention" } ? "Send to" : g.section.rawValue)
                         ForEach(g.items) { item in
                             let i = index[item.id] ?? -1
@@ -239,9 +248,12 @@ struct CapsuleView: View {
                 }
                 .padding(.bottom, 6)
             }
-            .frame(maxHeight: .infinity, alignment: .top)
+            // The list ends on a whole row, so a heading is never left at the bottom with its
+            // rows out of sight; the rows past it are still a scroll away.
+            .frame(height: CapsuleLayout.fit(model.groups.filter { !$0.items.isEmpty }, in: geo.size.height), alignment: .top)
             .onChange(of: model.selected) { if let id = model.current?.id { proxy.scrollTo(id) } }
-        }
+        } }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     var resultsHeight: CGFloat { CapsuleLayout.resultsHeight(model.groups) }
@@ -263,10 +275,11 @@ struct CapsuleView: View {
                 if n > 0 { Text(n == 1 ? "1 result" : "\(n) results").font(.system(size: 11.5)).foregroundColor(Theme.ash) }
             }
             Spacer(minLength: 8)
-            if model.answerAlone {
-                if model.flat.contains(where: { $0.kind == "ask" }) { KeyHint(title: "Follow up", keys: ["⏎"]) }
-                if !model.replyText.isEmpty { KeyHint(title: "Copy", keys: ["⌘", "C"]) }
-                if model.canGoDeeper { KeyHint(title: "Deeper", keys: ["⌘", "D"]) }
+            if model.target == nil && (model.followUp || (model.asked != nil && !model.userMoved)) {
+                // An answer on screen: the keys, nothing that needs the mouse.
+                KeyHint(title: "Ask", keys: ["⏎"])
+                KeyHint(title: "Think deeper", keys: ["⌘", "⏎"])
+                KeyHint(title: "Clear", keys: ["esc"])
             } else if let item = model.current {
                 if let first = item.actions.first {
                     KeyHint(title: model.confirming != nil ? "Confirm" : first.title, keys: ["⏎"])
@@ -307,6 +320,47 @@ enum CapsuleLayout {
         if let l = m.line, !l.isEmpty { return Theme.barHeight + 1 + lineHeight }
         if AgentLayout.slim(m) { return Theme.barHeight + 1 + lineHeight }
         return Theme.barHeight
+    }
+
+    /// The most room the answer card may take. Alone, the whole area above the footer; above
+    /// results, that less a heading and two rows, so the results stay in reach.
+    @MainActor static func answerCap(_ m: CapsuleModel, alone: Bool) -> CGFloat {
+        let room = area - footerHeight
+        if alone { return room }
+        let memory: CGFloat = m.showsMemory ? 40 : 0
+        // The first group, with up to two of its rows, stays in sight under the card.
+        let results = m.groups.first { !$0.items.isEmpty }.map { g in
+            6 + Theme.headerHeight + g.items.prefix(2).enumerated().reduce(0) { $0 + rowHeight($1.element, top: g.section == .top) }
+        } ?? 0
+        return max(Theme.rowHeight * 2, room - 1 - memory - results)
+    }
+
+    /// A row's height: the top hit is larger, like Spotlight's, and a sum larger still.
+    static func rowHeight(_ item: ResultItem, top: Bool) -> CGFloat {
+        item.kind == "calc" ? Theme.rowHeight + 22 : top ? Theme.rowHeight + 12 : Theme.rowHeight
+    }
+
+    /// The tallest the results list can be in `height` and still end on a whole row: a heading
+    /// is counted only with its first row. With room for everything, all of it.
+    static func fit(_ groups: [CapsuleModel.Group], in height: CGFloat) -> CGFloat {
+        var h: CGFloat = 0
+        outer: for g in groups {
+            let top = g.section == .top
+            guard let first = g.items.first, h + Theme.headerHeight + rowHeight(first, top: top || first.kind == "calc") <= height else { break }
+            h += Theme.headerHeight
+            for item in g.items {
+                let r = rowHeight(item, top: top || item.kind == "calc")
+                if h + r > height { break outer }
+                h += r
+            }
+        }
+        return h > 0 && h + 6 <= height ? h + 6 : h
+    }
+
+    /// The card's height for words `content` tall: as tall as they are, up to `cap`. Before the
+    /// first measure, a small card rather than none.
+    static func answerHeight(content: CGFloat, cap: CGFloat) -> CGFloat {
+        content <= 0 ? min(cap, 80) : min(content.rounded(.up), cap)
     }
 
     static let sideWidth: CGFloat = 260
@@ -566,7 +620,7 @@ struct Row: View, Equatable {
     @Environment(\.displayScale) private var scale
 
     private var iconSize: CGFloat { top ? 32 : 26 }
-    private var rowHeight: CGFloat { item.kind == "calc" ? Theme.rowHeight + 22 : top ? Theme.rowHeight + 12 : Theme.rowHeight }
+    private var rowHeight: CGFloat { CapsuleLayout.rowHeight(item, top: top) }
 
     var body: some View {
         HStack(spacing: 11) {

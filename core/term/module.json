@@ -18,5 +18,9 @@
       {"id": "no-ssh-needed", "text": "Need a shell on the box without SSH? Chat's Folders view opens one in any folder, and it asks for no passkey.", "surfaces": ["chat", "deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/chat.md#open-a-terminal-on-the-box"},
       {"id": "own-screen", "text": "A terminal belongs to the screen that opened it, so another device cannot pick it up. Open a new one there instead.", "surfaces": ["chat", "deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/chat.md#open-a-terminal-on-the-box"}
     ]
-  }
+  },
+  "settings": [
+    {"key": "term.keep_hours", "group": "files", "label": "Keep closed terminals for (hours)", "type": "int", "min": 0, "max": 168, "default": 12, "levels": ["account"], "apply": "restart", "store": {"config": "term.keep_hours"}},
+    {"key": "term.max", "group": "files", "label": "Terminals open at once", "type": "int", "min": 1, "max": 64, "default": 8, "levels": ["account"], "apply": "restart", "store": {"config": "term.max"}}
+  ]
 }

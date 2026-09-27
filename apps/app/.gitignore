@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.expo/
+# The prebuild output only; the local modules keep their own native sources.
+/android/
+/ios/
+modules/*/android/build/
+modules/*/android/.gradle/
+expo-env.d.ts

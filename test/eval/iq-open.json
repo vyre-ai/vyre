@@ -1,0 +1,1086 @@
+{
+  "about": "Open tuning world for Vyre IQ. expect: acceptable answers, matched case-insensitively as whole words or phrases; null: the right output is 'not sure'. where: the session id and turn seq (0-based index into turns) that hold the answer.",
+  "questions": [
+    {
+      "q": "where did we end up hosting the harlow site",
+      "expect": [
+        "vercel"
+      ],
+      "kind": "decision",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000001",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "what did we pick for northwind payments",
+      "expect": [
+        "square"
+      ],
+      "kind": "decision",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000002",
+          "seq": 7
+        }
+      ]
+    },
+    {
+      "q": "is the bakery site still on netlify?",
+      "expect": [
+        "cloudflare pages"
+      ],
+      "kind": "reversed",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000020",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "which db does the harlow intake thing use now",
+      "expect": [
+        "postgres"
+      ],
+      "kind": "reversed",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000022",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "am i on fish or zsh these days",
+      "expect": [
+        "zsh"
+      ],
+      "kind": "reversed",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000025",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "how does the harlow contact form send mail now",
+      "expect": [
+        "postmark"
+      ],
+      "kind": "reversed",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000026",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "what renders my invoice pdfs",
+      "expect": [
+        "typst"
+      ],
+      "kind": "decision",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000011",
+          "seq": 5
+        }
+      ]
+    },
+    {
+      "q": "why were the harlow images broken on preview",
+      "expect": [
+        "remotePatterns"
+      ],
+      "kind": "cause",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000004",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "which file had the image hostname fix",
+      "expect": [
+        "next.config.mjs"
+      ],
+      "kind": "file",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000004",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "the croissant order showing $10.049999, what caused it",
+      "expect": [
+        "floats",
+        "float"
+      ],
+      "kind": "cause",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000012",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "where was the money rounding bug in northwind",
+      "expect": [
+        "app/lib/money.ts",
+        "money.ts"
+      ],
+      "kind": "file",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000012",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "what other files did the float sweep turn up",
+      "expect": [
+        "order.tsx",
+        "square.ts"
+      ],
+      "kind": "file",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000012/agent-kf01",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "which agent swept northwind for float math",
+      "expect": [
+        "kit"
+      ],
+      "kind": "who",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000012/agent-kf01",
+          "seq": 0
+        }
+      ]
+    },
+    {
+      "q": "priya's email times were an hour off, why",
+      "expect": [
+        "daylight saving",
+        "-6 offset"
+      ],
+      "kind": "cause",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000014",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "what file does the timezone conversion in intake",
+      "expect": [
+        "app/timeutil.py",
+        "timeutil.py"
+      ],
+      "kind": "file",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000014",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "orders got closed early, like 5:30pm rejected. root cause?",
+      "expect": [
+        "utc"
+      ],
+      "kind": "cause",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000017",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "where does the order cutoff logic live",
+      "expect": [
+        "app/lib/cutoff.ts",
+        "cutoff.ts"
+      ],
+      "kind": "file",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000017",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "we hit the same timezone bug twice, what zone did both fixes use",
+      "expect": [
+        "America/Chicago"
+      ],
+      "kind": "multi",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000014",
+          "seq": 1
+        },
+        {
+          "session": "0a110000-0000-4000-8000-000000000017",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "how was the bakery cutoff bug related to the harlow email time bug",
+      "expect": [
+        "same class"
+      ],
+      "kind": "multi",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000017",
+          "seq": 3
+        },
+        {
+          "session": "0a110000-0000-4000-8000-000000000014",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "when did the harlow site go live",
+      "expect": [
+        "2026-06-12",
+        "june 12"
+      ],
+      "kind": "date",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000010",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "when did northwind move to cloudflare",
+      "expect": [
+        "2026-06-30",
+        "june 30"
+      ],
+      "kind": "date",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000020",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "when did intake first go out to fly",
+      "expect": [
+        "2026-07-04",
+        "july 4"
+      ],
+      "kind": "date",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000023",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "whats the fly url for intake",
+      "expect": [
+        "harlow-intake.fly.dev"
+      ],
+      "kind": "deploy",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000023",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "how do we deploy the bakery site now",
+      "expect": [
+        "wrangler pages deploy"
+      ],
+      "kind": "deploy",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000020",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "what domain did we put the northwind order site on",
+      "expect": [
+        "order.northwindbakery.com"
+      ],
+      "kind": "deploy",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000020",
+          "seq": 5
+        }
+      ]
+    },
+    {
+      "q": "what port does intake run on",
+      "expect": [
+        "8081"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000006",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "fly region for the intake app",
+      "expect": [
+        "dfw"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000023",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "env var for the postmark token",
+      "expect": [
+        "POSTMARK_SERVER_TOKEN"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000026",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "square webhook signing secret var name",
+      "expect": [
+        "SQUARE_WEBHOOK_SIGNATURE_KEY"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000037",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "what did i set the tmux prefix to",
+      "expect": [
+        "C-a"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000008",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "where does the studio cli read its config from",
+      "expect": [
+        "~/.config/studio/config.toml",
+        "config.toml"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000005",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "my hourly rate for harlow",
+      "expect": [
+        "140"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000005",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "what format are invoice numbers",
+      "expect": [
+        "RS-<year>-<seq>",
+        "RS-2026-001"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000005",
+          "seq": 5
+        }
+      ]
+    },
+    {
+      "q": "who's priya",
+      "expect": [
+        "paralegal"
+      ],
+      "kind": "people",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000006",
+          "seq": 0
+        }
+      ]
+    },
+    {
+      "q": "who's my contact at the bakery",
+      "expect": [
+        "sam okafor",
+        "sam"
+      ],
+      "kind": "people",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000002",
+          "seq": 0
+        }
+      ]
+    },
+    {
+      "q": "who asked for the gluten free filter",
+      "expect": [
+        "sam"
+      ],
+      "kind": "who",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000007",
+          "seq": 0
+        }
+      ]
+    },
+    {
+      "q": "who wanted the attorney team page",
+      "expect": [
+        "dana"
+      ],
+      "kind": "who",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000019",
+          "seq": 0
+        }
+      ]
+    },
+    {
+      "q": "who's proofreading the spanish translations",
+      "expect": [
+        "ana"
+      ],
+      "kind": "who",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000044",
+          "seq": 2
+        }
+      ]
+    },
+    {
+      "q": "who wrote the first post on the harlow blog",
+      "expect": [
+        "marcus-hale"
+      ],
+      "kind": "who",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000034",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "who did the accessibility pass on harlow",
+      "expect": [
+        "juno"
+      ],
+      "kind": "who",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000010/agent-a11y",
+          "seq": 0
+        }
+      ]
+    },
+    {
+      "q": "what did i shoot down for the intake email queue",
+      "expect": [
+        "celery"
+      ],
+      "kind": "rejected",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000006",
+          "seq": 7
+        }
+      ]
+    },
+    {
+      "q": "did we ever add customer accounts to the bakery site",
+      "expect": [
+        "guest checkout"
+      ],
+      "kind": "rejected",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000015",
+          "seq": 6
+        }
+      ]
+    },
+    {
+      "q": "did we put a cms on the harlow bios",
+      "expect": [
+        "markdown",
+        "no CMS"
+      ],
+      "kind": "rejected",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000029",
+          "seq": 5
+        }
+      ]
+    },
+    {
+      "q": "was studio rewritten in rust",
+      "expect": [
+        "kept node"
+      ],
+      "kind": "rejected",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000032",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "what contrast fix went into the harlow footer",
+      "expect": [
+        "#595959",
+        "Footer.tsx"
+      ],
+      "kind": "file",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000010/agent-a11y",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "what bug turned up while writing the admin tests for intake",
+      "expect": [
+        "commas",
+        "csv.writer"
+      ],
+      "kind": "bug",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000023/agent-kt02",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "two invoices got the same number, why",
+      "expect": [
+        "no lock"
+      ],
+      "kind": "cause",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000027",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "which file does invoice numbering",
+      "expect": [
+        "src/invoice/number.js",
+        "number.js"
+      ],
+      "kind": "file",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000027",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "client emails said 'Hi None', what was it",
+      "expect": [
+        "given_name"
+      ],
+      "kind": "bug",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000041",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "git push kept asking for my passphrase, how did we fix it",
+      "expect": [
+        "keychain"
+      ],
+      "kind": "bug",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000013",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "tmux prefix broke on the new laptop, why",
+      "expect": [
+        "skeleton",
+        ".tmux.conf"
+      ],
+      "kind": "cause",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000047",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "what branch did the automatic dep upgrade commit to",
+      "expect": [
+        "chore/deps-2026-07-02"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000021",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "how much did i bill in july",
+      "expect": [
+        "$7,480",
+        "7,480"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000043",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "total on the week 27 report",
+      "expect": [
+        "$2,330",
+        "2,330"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000024",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "how many thanksgiving pies per day can people order",
+      "expect": [
+        "28"
+      ],
+      "kind": "reversed",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000048",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "when does the holiday pie page open",
+      "expect": [
+        "2026-10-15"
+      ],
+      "kind": "date",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000040",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "is the coconut macaron gluten free",
+      "expect": [
+        "shared-equipment"
+      ],
+      "kind": "decision",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000033",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "what stops spam on the intake form",
+      "expect": [
+        "turnstile"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000031",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "how many junk intake rows got deleted",
+      "expect": [
+        "40"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000031",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "why did intake leave sqlite, and is the old file still around",
+      "expect": [
+        "database is locked"
+      ],
+      "kind": "multi",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000022",
+          "seq": 0
+        },
+        {
+          "session": "0a110000-0000-4000-8000-000000000049",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "packer or lazy in nvim",
+      "expect": [
+        "lazy.nvim"
+      ],
+      "kind": "decision",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000018",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "which python lsp am i using in neovim now",
+      "expect": [
+        "basedpyright"
+      ],
+      "kind": "reversed",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000042",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "where do the shop order emails go for the bakery",
+      "expect": [
+        "orders@northwindbakery.com"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000028",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "mobile lighthouse score after the perf work",
+      "expect": [
+        "96"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000029",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "how many orders per pickup slot",
+      "expect": [
+        "SLOT_CAPACITY=6"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000015",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "why did we move the bakery off netlify",
+      "expect": [
+        "cold starts"
+      ],
+      "kind": "cause",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000020",
+          "seq": 0
+        }
+      ]
+    },
+    {
+      "q": "where are harlow site and intake each hosted",
+      "expect": [
+        "vercel",
+        "fly"
+      ],
+      "kind": "multi",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000001",
+          "seq": 3
+        },
+        {
+          "session": "0a110000-0000-4000-8000-000000000023",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "how do migrations run on intake deploys",
+      "expect": [
+        "alembic upgrade head"
+      ],
+      "kind": "deploy",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000035",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "harlow phone number",
+      "expect": [
+        "(512) 555-0147",
+        "555-0147"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000038",
+          "seq": 0
+        }
+      ]
+    },
+    {
+      "q": "that dependabot next bump, which pr",
+      "expect": [
+        "PR #23"
+      ],
+      "kind": "deploy",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000046",
+          "seq": 1
+        }
+      ]
+    },
+    {
+      "q": "august intakes for estate planning",
+      "expect": [
+        "estate planning 31"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000045",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "what does the pending order cron do on northwind",
+      "expect": [
+        "older than 2 hours"
+      ],
+      "kind": "config",
+      "where": [
+        {
+          "session": "0a110000-0000-4000-8000-000000000037",
+          "seq": 3
+        }
+      ]
+    },
+    {
+      "q": "what did we decide about a mobile app for northwind",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "when did we deploy the dotfiles to production",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "who is the contact at brightline dental",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "what port does the northwind admin panel run on",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "which stripe account does harlow use",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "why did the harlow site move off vercel",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "what redis instance does intake use",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "when did sam okafor sign the contract",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "kubernetes namespace for harlow-intake?",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "how much did i bill northwind in september",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "what graphql schema did we add to studio-tools",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "root cause of the harlow site login bug",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "what docker image tag did we ship for studio",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "who is tom whitaker's assistant",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "what python version does intake run on",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "when did we switch the harlow site to astro",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "what did dana say about the spanish translation",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    },
+    {
+      "q": "which s3 bucket holds the bakery menu photos",
+      "expect": null,
+      "kind": "none",
+      "where": []
+    }
+  ]
+}

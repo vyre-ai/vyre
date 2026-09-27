@@ -15,7 +15,7 @@ test("link guard: only ~/.vyre, or a home that says so, may reach a real box", (
   const temp = path.join(os.tmpdir(), "vy-guard");
   assert.equal(realBoxAllowed(temp, {}), false);
   assert.equal(realBoxAllowed(realHome(), {}), true);
-  assert.equal(realBoxAllowed(temp, { VYRE_ALLOW_DIALOGS: "1" }), true);
+  assert.equal(realBoxAllowed(temp, { VYRE_ALLOW_DIALOGS: "1" }), false, "allowing dialogs is not allowing a real box");
   assert.equal(realBoxAllowed(temp, { VYRE_ALLOW_REAL_BOX: "1" }), true);
   assert.equal(realBoxAllowed(temp, { VYRE_ALLOW_REAL_BOX: "1", VYRE_NO_DIALOGS: "1" }), true, "no dialogs is not no pairing on request");
   assert.equal(realBoxAllowed(realHome(), { NODE_TEST_CONTEXT: "child" }), false, "never under tests");

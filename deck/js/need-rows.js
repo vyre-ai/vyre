@@ -6,7 +6,7 @@
 
 /** @typedef {{ kind: string, at: number, id?: string, project?: string|null, rule?: string, destination?: string|null, agent?: string|null, projectName?: string|null, threadName?: string|null, title?: string,
  *   command?: string, tool?: string, detail?: any, questions?: any[], why?: string, thread?: string|null, anchor?: any,
- *   source?: string|null, machine?: string|null,
+ *   source?: string|null, machine?: string|null, node?: string|null,
  *   gate?: { kind?: string, via?: string, to?: string[], toName?: string, summary?: string, draft?: Record<string, any>|null } | null,
  *   pair?: { name: string, node?: string|null, login?: string, expires: number } }} Item */
 
@@ -94,13 +94,13 @@ export function secondLine(n) {
   return { text: "", mono: false };
 }
 
-/** Line 3: "<agent> · <project>". @param {Item} n */
+/** Line 3: "<agent> · <project>", and "on <mac>" for a Mac session's. @param {Item} n */
 export function thirdLine(n) {
   if (n.kind === "pair") return [n.pair?.node, n.pair?.login].filter(Boolean).join(" · ") || "A Mac asking to pair";
   // Without an agent, the session's own name says who asks.
   const who = n.agent || n.threadName || (n.kind === "draft" ? "an agent" : "a session");
   const where = n.projectName && n.projectName !== who ? n.projectName : n.agent && n.threadName ? n.threadName : null;
-  return [who, where].filter(Boolean).join(" · ");
+  return [who, where, fromMac(n) ? `on ${n.machine || "your Mac"}` : null].filter(Boolean).join(" · ");
 }
 
 /** "now", "12m", "3h", "2d": the row's time since it was held. */
@@ -124,18 +124,36 @@ export function agoLong(/** @type {number} */ t, now = Date.now()) {
   return say(Math.floor(h / 24), "day");
 }
 
+// ---- a session on the paired Mac (federation v2) -------------------------------------------------
+// A Mac session's ask or question (source "mac") is answered from here like any other: threads.answer
+// carries its `machine` and the box forwards it (needs.js answer). There is no box flag saying it
+// does, so the first refusal that says it cannot (needs.js macRefused) turns forwarding off for the
+// rest of the page, and from then on every Mac item says "Answer it on <mac>" instead. The switch
+// lives here, not in needs.js, so this file stays free of the DOM and of api.js; needs.js re-exports it.
+
+let forwards = true;
+/** Does this box forward answers to the paired Mac (true until a refusal says it does not)? */
+export const macAnswers = () => forwards;
+/** This box cannot forward answers: every Mac item says where to answer, for the rest of the page. */
+export function holdMacAnswers() { forwards = false; }
+/** For tests: back to the page's first state. */
+export function resetMacAnswers() { forwards = true; }
+
+/** Is this an ask or question from a session on the paired Mac? @param {Item} n */
+export const fromMac = n => !!n && n.source === "mac" && (n.kind === "ask" || n.kind === "question");
+
 /**
- * The Mac an ask or question waits on, when its session runs on the paired Mac (source "mac"):
- * answers are not forwarded there, so no surface here approves, denies or answers it. Null for
- * every other item.
+ * The Mac an ask or question waits on, when it cannot be answered from here: its session runs on
+ * the paired Mac and this box has shown it does not forward answers (macAnswers false). Null for
+ * every other item, and for every Mac item while answers go through.
  * @param {Item} n @returns {string|null}
  */
 export function elsewhere(n) {
-  if (!n || n.source !== "mac" || (n.kind !== "ask" && n.kind !== "question")) return null;
+  if (!fromMac(n) || forwards) return null;
   return n.machine ? String(n.machine) : "your Mac";
 }
 
-/** The two swipe actions of a row, by kind: [right, left]. A Mac's ask has none: [] (it only opens). */
+/** The two swipe actions of a row, by kind: [right, left]. A Mac's ask that cannot be answered here has none: [] (it only opens). */
 export function swipeActions(/** @type {Item} */ n) {
   if (elsewhere(n)) return [];
   if (n.kind === "draft") return isSend(n) ? ["Send", "Discard"] : ["Approve", "Discard"];

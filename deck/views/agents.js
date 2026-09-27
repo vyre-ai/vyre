@@ -15,7 +15,7 @@
 // is picked at render and redrawn when the width crosses 760 px; the desktop list is unchanged.
 
 import { h, put, link, head, empty, PHONE_QUERY } from "../js/dom.js";
-import { attempt, on } from "../js/api.js";
+import { attempt, on, snapshot } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { assistantCard } from "../js/assistant-setup.js";
@@ -92,7 +92,8 @@ async function list(ctx) {
   const ph = phonePage(ctx, () => w, () => all, openNew, form);
 
   /** @type {any[]} */ let all = [];
-  let w = await world();
+  /** Project and thread names; empty until world() answers. */
+  let w = /** @type {Awaited<ReturnType<typeof world>>} */ ({ names: new Map(), threads: new Map(), projects: [], threadsErr: null });
   let listErr = null;
 
   const draw = () => {
@@ -126,11 +127,21 @@ async function list(ctx) {
       assistant && !others.length && form.hidden ? h("div", { class: "empty" }, "No other agents yet. An agent works only in the projects you give it.", action("New agent", openNew)) : null] : null);
   };
 
+  // The list as this device last saw it, at once (ADR 0029 R3); the box's answer replaces it.
+  const snap = await snapshot.get("agents");
+  if (!ctx.alive()) return;
+  if (snap && Array.isArray(snap.value) && snap.value.length) { all = snap.value; draw(); }
+  w = await world();
+  if (!ctx.alive()) return;
+
   const load = async () => {
     const r = await attempt("agents.list");
     if (!ctx.alive()) return;
+    // Out of reach with a list on screen: keep it (R3) rather than trade it for an error.
+    if (r.error?.code === "offline" && all.length) return;
     listErr = r.error || null;
     all = Array.isArray(r.data) ? r.data : r.data?.agents || [];
+    if (!r.error) void snapshot.set("agents", all);
     draw();
     // Scheduled is the phone's alone: read once per load, not on a desktop.
     if (mq.matches && !listErr) ph.schedules().then(() => { if (ctx.alive() && mq.matches) draw(); });

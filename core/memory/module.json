@@ -4,8 +4,8 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["memory.graph", "memory.facts", "memory.relevant", "memory.why", "memory.pin", "memory.mute", "memory.teach", "memory.curate", "memory.stats",
-    "memory.correct", "memory.corrections", "memory.uncorrect", "memory.merge", "memory.split", "memory.me", "memory.answer", "memory.profile", "memory.remember"] },
-  "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered"] },
+    "memory.correct", "memory.corrections", "memory.uncorrect", "memory.merge", "memory.split", "memory.me", "memory.answer", "memory.profile", "memory.remember", "memory.read", "memory.context"] },
+  "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered", "memory.profile-changed"] },
   "shows": { "deck": ["panel:memory"], "capsule": ["answer:memory.relevant"], "cli": ["memory", "why"] },
   "needs": {},
   "teaches": {
@@ -20,5 +20,9 @@
       {"id": "floor-plan", "text": "Open Memory in the Deck to see the graph as a floor plan: one room per project, each fact a gold dot you can trace.", "surfaces": ["deck"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "docs": "using/memory.md#see-what-memory-holds"},
       {"id": "learned-today", "text": "The Deck's Now page lists what memory learned today, each fact beside the thread it came from.", "surfaces": ["deck"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/memory.md#see-what-memory-holds"}
     ]
-  }
+  },
+  "settings": [
+    {"key": "memory.model", "group": "memory", "label": "Use a model to learn facts", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.on"}},
+    {"key": "memory.daily_usd", "group": "memory", "label": "Memory spend per day (USD)", "type": "number", "min": 0, "default": 0.05, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.dailyUsd"}}
+  ]
 }

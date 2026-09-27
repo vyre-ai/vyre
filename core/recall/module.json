@@ -19,5 +19,8 @@
       {"id": "status-no-words", "text": "Run `vyre recall` with no words to see how many sessions and turns are indexed, and whether search by meaning is on.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre recall", "docs": "using/memory.md#keep-the-index-up-to-date"},
       {"id": "setup-model", "text": "Search by meaning needs a 23 MB model. `vyre recall --setup` installs it now instead of on first use.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre recall --setup", "docs": "using/memory.md#keep-the-index-up-to-date"}
     ]
-  }
+  },
+  "settings": [
+    {"key": "recall.every", "group": "memory", "label": "Index new history every (minutes)", "type": "int", "min": 1, "max": 1440, "default": 5, "levels": ["account"], "apply": "restart", "store": {"config": "recall.every"}}
+  ]
 }

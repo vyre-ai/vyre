@@ -108,14 +108,14 @@ test("personal store: someone else's facts stay out, and Claude's echo is weak",
   assert.ok(!juno || juno.confidence < 0.5);
 });
 
-test("personal store: subagent sessions count once, under their parent", async t => {
+test("personal store: a subagent's brief is another agent's words and teaches nothing", async t => {
   const p = S(["My wife Jordan says hi."]);
   const sub = S(["My wife Jordan says hi."], { parent: p.id });
   const other = S(["My wife Jordan is at Harlow Legal today."], { start: T0 + DAY });
   const { me } = world(t, [p, sub, other]);
   await all(me);
   const f = me.lookup({ subj: "wife", rel: "name" })[0];
-  assert.equal(f.mentions, 3);
+  assert.equal(f.mentions, 2);
   assert.equal(f.sessions, 2);
 });
 
@@ -331,4 +331,43 @@ test("personal store: a lowercase car bought, the old one sold", async t => {
   const outback = me.lookup({ subj: "me", rel: "owns" }).find(f => f.object === "Subaru Outback");
   assert.equal(outback?.current, false);
   assert.equal(me.lookup({ subj: "vehicle:Volvo XC40", rel: "color" })[0]?.object, "blue");
+});
+
+test("personal store: a friend is their own person, and their things stay theirs", async t => {
+  const { me } = world(t, [
+    S(["my buddy kai just got a rivian r1s and won't stop talking about it"], { start: T0 }),
+    S(["kai's wife mara had twins, buying baby stuff"], { start: T0 + DAY }),
+    S(["my friend Sam lives in Denver."], { start: T0 + 2 * DAY }),
+  ]);
+  await all(me);
+  const friends = me.lookup({ subj: "me", rel: "friend" });
+  const kai = friends.find(f => f.object === "Kai");
+  assert.equal(kai?.confidence, 0.9, "a lowercase friend's name, confirmed by 'kai's' in another turn");
+  assert.ok(friends.some(f => f.object === "Sam"));
+  assert.equal(me.entity("kai")?.id, "name:Kai");
+  // Kai's car, and Sam's city, are not the user's.
+  assert.ok(!me.lookup({ subj: "me", rel: "owns" }).length);
+  assert.ok(!me.lookup({ subj: "me", rel: "lives_in" }).length);
+  assert.equal(me.lookup({ subj: "sam", rel: "lives_in" })[0]?.object, "Denver");
+  assert.ok(!me.lookup({ subj: "me", rel: "spouse" }).length, "Kai's wife is not the user's");
+});
+
+test("personal store: a relative's job and home, a pet's breed, and the user's diet", async t => {
+  const { me } = world(t, [
+    S(["my wife ren is a nurse", "my mom lives in tucson"], { start: T0 }),
+    S(["walked pepper (our corgi) in the rain", "i'm vegetarian so skip the bacon"], { start: T0 + DAY }),
+    S(["ma keeps phoning from tucson lol", "went vegan last month, going ok"], { start: T0 + 5 * DAY }),
+  ]);
+  await all(me);
+  assert.equal(me.lookup({ subj: "my wife", rel: "role" })[0]?.object, "nurse");
+  const mom = me.lookup({ subj: "my mom", rel: "lives_in" })[0];
+  assert.equal(mom?.object, "Tucson");
+  assert.ok(mom.confidence >= 0.5, JSON.stringify(mom));
+  assert.ok(!me.lookup({ subj: "me", rel: "lives_in" }).length, "the mother's home is not the user's");
+  assert.equal(me.lookup({ subj: "my dog", rel: "breed" })[0]?.object, "corgi");
+  assert.equal(me.entity("pepper")?.id, "kin:dog");
+  // Diet changes over a life: the newest wins.
+  const [diet] = me.lookup({ subj: "me", rel: "diet" });
+  assert.equal(diet?.object, "vegan");
+  assert.equal(diet?.current, true);
 });

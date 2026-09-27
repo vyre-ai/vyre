@@ -34,8 +34,10 @@ test("tokens: the CSS uses the Deck's selectors and role names", () => {
   assert.match(c, /^:root \{/m);
   assert.match(c, /^:root\[data-theme="paper"\] \{/m);
   for (const name of ["--bg:", "--panel:", "--hover:", "--text-2:", "--label:", "--rule-strong:", "--primary-bg:", "--primary-ink:",
-    "--focus:", "--signal-wash:", "--code-bg:", "--beacon-ink:", "--beacon-dot:", "--beacon-badge-ink:", "--sans:", "--mono:"])
+    "--focus:", "--signal-wash:", "--code-bg:", "--beacon-ink:", "--beacon-dot:", "--beacon-badge-ink:", "--sans:", "--mono:", "--popover:", "--float:", "--radius-card:", "--radius-sheet:",
+    "--size-base:", "--line-read:", "--space-4:", "--control-touch:", "--motion-panel:", "--ease:"])
     assert.ok(c.includes(name), name);
+  assert.match(c, /@media \(max-width: 719px\), \(max-height: 500px\) and \(pointer: coarse\) \{\n  :root \{\n    --size-read: 17px; --line-read: 24px;/);
 });
 
 test("tokens: the TS file is what the app imports: tokens, Scheme, Colors, attention()", () => {
@@ -52,5 +54,13 @@ test("tokens: every generated file in the tree is current", async () => {
   for (const [rel, body] of Object.entries(generate())) {
     const file = path.join(ROOT, rel);
     if (fs.existsSync(file)) assert.equal(fs.readFileSync(file, "utf8"), body, `${rel} is stale; run npm run tokens`);
+  }
+});
+
+test("tokens: every output names the root folder that must exist before it is written", async () => {
+  const { OUTPUTS, ROOTS } = await import("../scripts/gen-tokens");
+  for (const rel of Object.keys(OUTPUTS)) {
+    assert.ok(ROOTS[rel], rel);
+    assert.ok(rel.startsWith(ROOTS[rel] + "/"), `${rel} is under ${ROOTS[rel]}`);
   }
 });

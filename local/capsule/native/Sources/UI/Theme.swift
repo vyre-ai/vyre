@@ -72,4 +72,6 @@ public enum Theme {
     public static let subtitle = Font.system(size: 12, weight: .regular)
     public static let label = Font.system(size: 10.5, weight: .medium, design: .monospaced)
     public static let reply = Font.system(size: 14, weight: .regular)
+    /// One line of an answer (the reply font and its spacing), for scrolling by lines.
+    public static let readLine: CGFloat = 20
 }

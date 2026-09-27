@@ -19,5 +19,8 @@
       {"id": "rename", "text": "Run `vyre relay rename <id> alex iphone` so the device list says which phone is which.", "surfaces": ["cli"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "command": "vyre relay rename <id> <name>", "docs": "reference/cli.md#vyre-relay"},
       {"id": "off", "text": "Run `vyre relay off` to stop the relay; paired devices stay paired for when you run `vyre relay on`.", "surfaces": ["cli"], "level": "power", "trigger": "idle", "since": "0.1.0", "command": "vyre relay off", "docs": "reference/cli.md#vyre-relay"}
     ]
-  }
+  },
+  "settings": [
+    {"key": "relay.web_expiry_days", "group": "devices", "label": "Web links through the relay last (days)", "type": "int", "min": 1, "max": 365, "default": 30, "levels": ["account"], "apply": "live", "store": {"config": "relay.web_expiry_days"}}
+  ]
 }

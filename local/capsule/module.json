@@ -19,5 +19,8 @@
       {"id": "clipboard", "text": "Type `clip` to get back something you copied earlier. `⏎` puts it on the clipboard for `⌘V`.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0", "docs": "using/capsule.md#find-something-on-this-mac"},
       {"id": "watch-thread", "text": "Type `tell me when the intake thread is done` and a notification comes when it finishes, stops or asks.", "surfaces": ["capsule"], "level": "power", "trigger": "idle", "since": "0.1.0"}
     ]
-  }
+  },
+  "settings": [
+    {"key": "capsule.autostart", "group": "devices", "label": "Start the Capsule at login", "type": "bool", "default": false, "levels": ["account"], "apply": "restart", "store": {"config": "capsule.autostart"}}
+  ]
 }
