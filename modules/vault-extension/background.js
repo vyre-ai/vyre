@@ -15,13 +15,22 @@
 //   - inline.js (opt-in, or once per keyboard fill) may ask for names, a fill, a code or a save
 //     for its own page only; which page is the browser's word (sender), never the message's.
 
-/* global chrome */
+/* global chrome, browser */
+
+// Chrome, Arc, Edge and Brave give `chrome`; Firefox gives `browser` (and a `chrome` alias). Every
+// call below is on `ext` and every one of them exists in both with promises, so one source runs in
+// both. Firefox has no storage.session.setAccessLevel (its session storage is closed to content
+// scripts already), so that call is guarded.
+const ext = /** @type {typeof chrome} */ (/** @type {any} */ (globalThis).browser ?? /** @type {any} */ (globalThis).chrome);
 
 const DEFAULT_URL = "http://127.0.0.1:7788";
 /** @type {{ session: string, expires: number } | null} */
 let mem = null;
 
-try { chrome.storage.session.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" }); } catch { /* older Chrome: already the default */ }
+try {
+  const set = ext.storage.session.setAccessLevel;
+  if (typeof set === "function") Promise.resolve(set.call(ext.storage.session, { accessLevel: "TRUSTED_CONTEXTS" })).catch(() => {});
+} catch { /* older Chrome: already the default; Firefox: has no such call */ }
 
 /** The addresses the manifest's CSP lets this worker reach. Anything else is refused up front. */
 function allowedUrl(u) {
@@ -35,21 +44,21 @@ function allowedUrl(u) {
 }
 
 async function settings() {
-  const s = await chrome.storage.local.get(["url", "device", "token", "deviceName"]);
+  const s = await ext.storage.local.get(["url", "device", "token", "deviceName"]);
   return { url: s.url || DEFAULT_URL, device: s.device || null, token: s.token || null, deviceName: s.deviceName || null };
 }
 
 async function getSession() {
   if (mem && mem.expires > Date.now()) return mem;
-  const s = await chrome.storage.session.get(["session", "expires"]);
+  const s = await ext.storage.session.get(["session", "expires"]);
   mem = s.session && s.expires > Date.now() ? { session: s.session, expires: s.expires } : null;
   return mem;
 }
 
 async function setSession(session, expires) {
   mem = session ? { session, expires } : null;
-  if (session) await chrome.storage.session.set({ session, expires });
-  else await chrome.storage.session.remove(["session", "expires"]);
+  if (session) await ext.storage.session.set({ session, expires });
+  else await ext.storage.session.remove(["session", "expires"]);
 }
 
 /**
@@ -76,14 +85,14 @@ async function api(method, route, body, { session = false } = {}) {
   try { out = await res.json(); } catch { return { error: { code: "bad_response", message: "vyred answered with something that is not JSON" } }; }
   if (out && out.error) {
     if (out.error.code === "session_expired" || out.error.code === "session_required") await setSession(null);
-    if (out.error.code === "revoked" || out.error.code === "unauthorized") { await setSession(null); await chrome.storage.local.remove(["device", "token", "deviceName"]); }
+    if (out.error.code === "revoked" || out.error.code === "unauthorized") { await setSession(null); await ext.storage.local.remove(["device", "token", "deviceName"]); }
   }
   return out;
 }
 
 /** The active tab and its origin, which activeTab grants once the person clicks the action. */
 async function activeTab() {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const [tab] = await ext.tabs.query({ active: true, currentWindow: true });
   if (!tab || !tab.id || !tab.url) return null;
   let o = null;
   try { const u = new URL(tab.url); if (u.protocol === "https:" || u.protocol === "http:") o = u.origin; } catch { /* not a web page */ }
@@ -105,8 +114,8 @@ async function state() {
 
 /** Run fill.js in a tab's top frame and call one of its functions with `arg`. */
 async function inject(tabId, fn, arg) {
-  await chrome.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: ["fill.js"] });
-  const [res] = await chrome.scripting.executeScript({
+  await ext.scripting.executeScript({ target: { tabId, frameIds: [0] }, files: ["fill.js"] });
+  const [res] = await ext.scripting.executeScript({
     target: { tabId, frameIds: [0] },
     func: (f, c) => /** @type {any} */ (globalThis)[f](c),
     args: [fn, arg],
@@ -157,15 +166,15 @@ const PENDING_MS = 2 * 60_000;
 const pending = new Map();
 
 async function inlineOn() {
-  try { return (await chrome.scripting.getRegisteredContentScripts({ ids: [INLINE_ID] })).length > 0; } catch { return false; }
+  try { return (await ext.scripting.getRegisteredContentScripts({ ids: [INLINE_ID] })).length > 0; } catch { return false; }
 }
 
 async function setInline(on) {
   if (on) {
-    if (!(await chrome.permissions.contains({ origins: PAGES }))) return { error: { code: "no_permission", message: "the browser did not allow suggestions on pages" } };
-    if (!(await inlineOn())) await chrome.scripting.registerContentScripts([{ id: INLINE_ID, matches: PAGES, js: ["inline.js"], runAt: "document_idle", allFrames: false, persistAcrossSessions: true }]);
+    if (!(await ext.permissions.contains({ origins: PAGES }))) return { error: { code: "no_permission", message: "the browser did not allow suggestions on pages" } };
+    if (!(await inlineOn())) await ext.scripting.registerContentScripts([{ id: INLINE_ID, matches: PAGES, js: ["inline.js"], runAt: "document_idle", allFrames: false, persistAcrossSessions: true }]);
   } else if (await inlineOn()) {
-    await chrome.scripting.unregisterContentScripts({ ids: [INLINE_ID] });
+    await ext.scripting.unregisterContentScripts({ ids: [INLINE_ID] });
   }
   return { data: { inline: await inlineOn() } };
 }
@@ -214,10 +223,10 @@ async function inline(msg, page) {
   }
 }
 
-chrome.tabs.onRemoved.addListener(id => { pending.delete(id); });
+ext.tabs.onRemoved.addListener(id => { pending.delete(id); });
 
 // The keyboard fill: one login fills at once; several open the chooser on the page.
-chrome.commands.onCommand.addListener(async command => {
+ext.commands.onCommand.addListener(async command => {
   if (command !== "fill-login") return;
   const tab = await activeTab();
   if (!tab) return;
@@ -225,8 +234,8 @@ chrome.commands.onCommand.addListener(async command => {
   if (m.error || !m.data.logins.length) return;
   if (m.data.logins.length === 1) { await fillInto(tab, m.data.logins[0].name); return; }
   try {
-    await chrome.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, files: ["inline.js"] });
-    await chrome.tabs.sendMessage(tab.id, { type: "show-chooser" }, { frameId: 0 });
+    await ext.scripting.executeScript({ target: { tabId: tab.id, frameIds: [0] }, files: ["inline.js"] });
+    await ext.tabs.sendMessage(tab.id, { type: "show-chooser" }, { frameId: 0 });
   } catch { /* a page the browser does not let extensions touch */ }
 });
 
@@ -238,14 +247,14 @@ async function route(msg) {
       const o = allowedUrl(msg.url);
       if (!o) return { error: { code: "bad_url", message: "use http://127.0.0.1:<port>, http://localhost:<port> or your https://<you>.vyre.run address" } };
       const old = await settings();
-      await chrome.storage.local.set({ url: o });
-      if (old.url !== o) { await setSession(null); await chrome.storage.local.remove(["device", "token", "deviceName"]); }
+      await ext.storage.local.set({ url: o });
+      if (old.url !== o) { await setSession(null); await ext.storage.local.remove(["device", "token", "deviceName"]); }
       return { data: { url: o } };
     }
     case "pair": {
       const r = await api("POST", "pair", { code: String(msg.code || ""), name: String(msg.name || "browser").slice(0, 64) });
       if (r.error) return r;
-      await chrome.storage.local.set({ device: r.data.device, token: r.data.token, deviceName: r.data.name });
+      await ext.storage.local.set({ device: r.data.device, token: r.data.token, deviceName: r.data.name });
       return { data: { device: r.data.device, name: r.data.name } };
     }
     case "unlock": {
@@ -270,7 +279,7 @@ async function route(msg) {
     case "inline-disable": return setInline(false);
     case "forget": {
       await setSession(null);
-      await chrome.storage.local.remove(["device", "token", "deviceName"]);
+      await ext.storage.local.remove(["device", "token", "deviceName"]);
       return { data: { forgotten: true } };
     }
     default: return { error: { code: "bad_message", message: "unknown request" } };
@@ -279,14 +288,14 @@ async function route(msg) {
 
 const INLINE_TYPES = ["inline-match", "inline-fill", "inline-otp", "inline-offer-save", "inline-pending", "inline-save", "inline-dismiss"];
 
-chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+ext.runtime.onMessage.addListener((msg, sender, reply) => {
   const failed = () => reply({ error: { code: "internal", message: "the extension failed" } });
   // The popup may ask for anything. Our own content script (inline.js, top frame only) may ask
   // for the inline requests, each for the page the browser says it is on. inline.js acts only
   // on trusted clicks, and a page's own scripts cannot reach chrome.runtime at all.
-  const fromPopup = sender.id === chrome.runtime.id && !sender.tab && typeof sender.url === "string" && sender.url.startsWith(chrome.runtime.getURL("popup.html"));
+  const fromPopup = sender.id === ext.runtime.id && !sender.tab && typeof sender.url === "string" && sender.url.startsWith(ext.runtime.getURL("popup.html"));
   if (fromPopup) { route(msg).then(reply, failed); return true; }
-  const page = sender.id === chrome.runtime.id ? pageOf(sender) : null;
+  const page = sender.id === ext.runtime.id ? pageOf(sender) : null;
   if (page && msg && INLINE_TYPES.includes(msg.type)) { inline(msg, page).then(reply, failed); return true; }
   reply({ error: { code: "refused", message: "not from the popup" } });
   return false;

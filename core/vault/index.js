@@ -23,6 +23,7 @@ import { callerKind } from "../modules/index.js";
 import { presence, quoted, list } from "./tools/presence.js";
 import * as account from "./tools/account.js";
 import * as historyTools from "./tools/history.js";
+import * as agentTools from "./tools/agents.js";
 
 export { presence };
 import * as shareTools from "./tools/share.js";
@@ -181,6 +182,8 @@ export default {
         const p = vault.pending();
         const g = p.grants.find(x => x.id === id);
         if (g) return `Let ${g.module}${g.watcher ? `/${g.watcher}` : ""} use ${quoted(g.name)} while you are away${vault.row(g.name)?.vault === "personal" ? "; this moves it out of your password-protected vault" : ""}`;
+        const ag = p.agentGrants.find(x => x.id === id);
+        if (ag) return vault.agents.summary(ag, () => ag.expires);
         const s = p.passes.find(x => x.id === id);
         if (s) return `Share ${list(s.items)} with ${s.holder}, ${s.mode}, until ${new Date(s.expires).toISOString().slice(0, 10)}`;
         return "";
@@ -284,6 +287,7 @@ export default {
 
     account.register({ ctx, vault, tool });
     historyTools.register({ ctx, vault, tool });
+    agentTools.register({ vault, tool });
 
     tool("vault.offboard", [...SURFACES, "mcp"], "Someone left: revoke every pass they hold and list what must be rotated.",
       obj({ person: str }, ["person"]), (input, { caller }) => vault.offboard(input, caller),

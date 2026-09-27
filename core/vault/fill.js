@@ -9,8 +9,12 @@
 //   - A web page never reaches it. Any request carrying an Origin that is not a browser
 //     extension is refused before anything else is read, so a page cannot drive it from script.
 //   - A device token alone reveals nothing. It lists names for a page; a value needs a session,
-//     and a session needs a person: a passphrase typed into the extension, or Touch ID through
-//     the Capsule helper.
+//     and a session needs a person: Touch ID (or another presence proof) through the Capsule
+//     helper, or, on a machine with no Touch ID, a passphrase typed into the extension.
+//   - A session is the fill window of ADR 0028, decision 5: it lasts 30 minutes from the proof
+//     that opened it and does not extend with use. `vault.fill.window` in config.json can make it
+//     shorter (minutes, 1 to 30), never longer. endAll() closes every window at once (sleep,
+//     screen lock, vault.lock).
 //   - A login fills only a page whose origin is one of its hosts, exactly: scheme, host and port.
 //     A lookalike host is the whole point of phishing, so there is no suffix or wildcard match.
 //   - Tokens, codes and the unlock passphrase are stored only as hashes, and nothing here ever
@@ -40,8 +44,8 @@ export const FILL_MIGRATION = `CREATE TABLE vault_devices (
 const ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
 const CODE_LEN = 8;
 const CODE_TTL_MS = 5 * 60_000;
-const IDLE_MS = 10 * 60_000;
-const MAX_SESSION_MS = 12 * 3600_000;
+/** The fill window (ADR 0028, decision 5): 30 minutes from the proof, and config may only shorten it. */
+export const FILL_WINDOW_MIN = 30;
 const FAIL_WINDOW_MS = 15 * 60_000;
 const MAX_UNLOCK_FAILS = 5;
 const MAX_PAIR_FAILS = 10;
@@ -73,6 +77,19 @@ function scrypt(pass, salt, o) {
     (e, k) => (e ? reject(e) : resolve(k))));
 }
 
+/**
+ * The fill window in milliseconds from config.json's `vault.fill.window` (minutes). Anything
+ * that is not a number gives the default; a number is clamped to 1..30, so config can shorten
+ * the window but never lengthen it.
+ * @param {any} config the whole config, or null
+ */
+export function fillWindowMs(config) {
+  const v = config && config.vault && config.vault.fill && typeof config.vault.fill === "object" ? config.vault.fill.window : undefined;
+  const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+  const min = Number.isFinite(n) ? Math.min(FILL_WINDOW_MIN, Math.max(1, n)) : FILL_WINDOW_MIN;
+  return Math.round(min * 60_000);
+}
+
 /** A code as people type it: case, spaces and dashes do not matter. */
 const normalCode = c => String(c ?? "").toUpperCase().replace(/[\s-]/g, "");
 
@@ -86,10 +103,13 @@ const ok = data => ({ status: 200, body: { data } });
 
 export class Fill {
   /**
-   * @param {{ vault: import("./vault.js").Vault, verifyVaultPassphrase?: (p: string) => Promise<boolean>, now?: () => number }} deps
+   * @param {{ vault: import("./vault.js").Vault, verifyVaultPassphrase?: (p: string) => Promise<boolean>, now?: () => number, config?: any }} deps
+   *   config: the whole config.json, for `vault.fill.window`.
    */
-  constructor({ vault, verifyVaultPassphrase, now = Date.now }) {
+  constructor({ vault, verifyVaultPassphrase, now = Date.now, config = null }) {
     this.vault = vault;
+    /** How long a session lasts from the proof that opened it. */
+    this.windowMs = fillWindowMs(config);
     this.db = vault.db;
     this.verifyVaultPassphrase = verifyVaultPassphrase;
     this.now = now;
@@ -149,6 +169,18 @@ export class Fill {
     return { ok: true, expires: s.expires };
   }
 
+  /**
+   * End every open session now: the Mac slept, its screen locked, or the vault was locked. The
+   * extension's next call finds its session gone and asks for a new proof.
+   * @param {string} [why] @returns {number} how many sessions ended
+   */
+  endAll(why = "lock") {
+    const ended = Number(this.db.prepare("DELETE FROM vault_sessions").run().changes);
+    this.pickup.clear();
+    if (ended) this.vault.audit("fill-lock", null, "vyred", true, `${why}: ${ended} sessions ended`);
+    return ended;
+  }
+
   /** Paired devices, with how many sessions each has open. Names and times only. */
   devices() {
     const t = this.now();
@@ -156,7 +188,7 @@ export class Fill {
     return {
       devices: rows.map(d => ({
         id: d.id, name: d.name, created: d.created, lastSeen: d.last_seen, revoked: d.revoked || null,
-        sessions: this.db.prepare("SELECT expires, last_used FROM vault_sessions WHERE device = ?").all(d.id)
+        sessions: this.db.prepare("SELECT created, expires FROM vault_sessions WHERE device = ?").all(d.id)
           .filter(s => this.live(s, t)).length,
       })),
     };
@@ -377,16 +409,20 @@ export class Fill {
     const t = this.now();
     const token = newToken();
     const id = newId("s_");
-    this.db.prepare("DELETE FROM vault_sessions WHERE device = ? AND (expires <= ? OR last_used <= ?)").run(d.id, t, t - IDLE_MS);
-    this.db.prepare("INSERT INTO vault_sessions (id, device, token_hash, created, expires, last_used) VALUES (?,?,?,?,?,?)").run(id, d.id, sha(token), t, t + MAX_SESSION_MS, t);
-    return { id, token, expires: Math.min(t + MAX_SESSION_MS, t + IDLE_MS) };
+    this.db.prepare("DELETE FROM vault_sessions WHERE device = ? AND (expires <= ? OR created <= ?)").run(d.id, t, t - this.windowMs);
+    this.db.prepare("INSERT INTO vault_sessions (id, device, token_hash, created, expires, last_used) VALUES (?,?,?,?,?,?)").run(id, d.id, sha(token), t, t + this.windowMs, t);
+    return { id, token, expires: t + this.windowMs };
   }
 
-  /** @param {{ expires: number, last_used: number }} s @param {number} t */
-  live(s, t) { return t < s.expires && t - s.last_used < IDLE_MS; }
+  /** @param {{ created: number, expires: number }} s @param {number} t */
+  live(s, t) { return t < this.expiry(s); }
 
-  /** When a session ends if nothing touches it: the idle limit or the hard cap, whichever comes first. */
-  expiry(s) { return Math.min(s.expires, s.last_used + IDLE_MS); }
+  /**
+   * When a session ends: its window from the proof. Use does not move it. A row written under an
+   * older, longer rule (or before the window was shortened) still ends at created + window.
+   * @param {{ created: number, expires: number }} s
+   */
+  expiry(s) { return Math.min(Number(s.expires), Number(s.created) + this.windowMs); }
 
   /**
    * The session a request names, for this device only.
@@ -399,6 +435,7 @@ export class Fill {
     const s = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_sessions WHERE token_hash = ? AND device = ?").get(hash, d.id));
     if (!s || !same(s.token_hash, hash)) return "expired";
     if (!this.live(s, this.now())) { this.db.prepare("DELETE FROM vault_sessions WHERE id = ?").run(s.id); return "expired"; }
+    // last_used is a record of the last use only. It no longer moves the session's end.
     if (touch) this.db.prepare("UPDATE vault_sessions SET last_used = ? WHERE id = ?").run(this.now(), s.id);
     return s;
   }
@@ -539,7 +576,7 @@ export const FILL_TOOLS = [
   { name: "vault.device.revoke", callers: null, method: "revokeDevice", input: obj({ id: str }, ["id"]),
     description: "Unpair a browser: its token and every session it holds stop working now." },
   { name: "vault.device.unlock", callers: ["cli", "local"], method: "unlockDevice", input: obj({ device: str }, ["device"]),
-    presence: (f, i) => `Unlock autofill in ${f.deviceById(i && i.device)?.name || "a paired browser"} for up to 12 hours`,
+    presence: (f, i) => `Unlock autofill in ${f.deviceById(i && i.device)?.name || "a paired browser"} for 30 minutes`,
     description: "Open an autofill session for a paired browser without a passphrase, after Touch ID. Returns no token." },
   { name: "vault.unlock-passphrase", callers: ["cli", "local"], method: "setUnlockPassphrase", input: obj({ passphrase: str }, ["passphrase"]),
     presence: () => "Set the passphrase that unlocks autofill in paired browsers",

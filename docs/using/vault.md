@@ -117,7 +117,8 @@ The Deck, the Capsule and the browser extension open a short **session** with on
 it lasts, reveal, copy and one-time codes do not ask again, except for cards, which ask every
 time. A session ends after 10 minutes idle or 12 hours at most, when the Mac sleeps or its screen
 locks, or on `vyre vault lock`. Set other limits in `config.json` under `vault.lock`, for example
-`{ "idle": "5m", "max": "8h" }`.
+`{ "idle": "5m", "max": "8h" }`. The browser extension's fill window is fixed instead: 30 minutes
+from the proof (see Autofill in the browser below).
 
 ## Let an agent, module or watcher use an item
 
@@ -226,14 +227,18 @@ The Chrome extension in `modules/vault-extension/` fills logins from your Vault.
 
 1. Set `vault.fill` in `config.json`, for example `{ "host": "127.0.0.1", "port": 7788 }` (the
    extension looks at `http://127.0.0.1:7788` unless you change it), and restart vyred.
-2. In `chrome://extensions`, turn on Developer mode and **Load unpacked** that folder.
+2. In `chrome://extensions` (Chrome, Arc, Edge, Brave), turn on Developer mode and **Load
+   unpacked** that folder. In Firefox 121 or later, open `about:debugging`, choose **Load
+   Temporary Add-on** and pick its `manifest.json`.
 3. Set the passphrase the extension asks for: `vyre vault unlock-passphrase`.
 4. Pair it: `vyre vault pair` prints an 8-character code that works once, for 5 minutes. Type it
    into the extension.
 
 On a login page, unlock with the passphrase (or Touch ID through the Capsule) and choose **Fill**.
 Only logins whose hosts include the page's exact origin (scheme, host and port) are offered, so a
-lookalike domain gets nothing. An unlock lasts 10 minutes without a fill, 12 hours at most.
+lookalike domain gets nothing. An unlock lasts 30 minutes from the proof, and filling does not
+extend it; `vault.fill.window` in `config.json` (minutes, 1 to 30) makes it shorter. The same
+extension loads in Firefox; see `modules/vault-extension/README.md`.
 `vyre vault devices` lists paired browsers; `vyre vault devices revoke <id>` ends one at once. The
 design is in [ADR 0010](../adr/0010-vault-autofill.md).
 

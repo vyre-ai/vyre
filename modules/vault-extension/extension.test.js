@@ -14,13 +14,19 @@ import { fileURLToPath } from "node:url";
 import { open, migrate } from "../../core/store/index.js";
 import { Vault, MIGRATIONS } from "../../core/vault/vault.js";
 import { Fill, serveFill } from "../../core/vault/fill.js";
+import { build, forBrowser, packageFiles } from "./build.mjs";
 import { SCRATCH } from "../../test/scratch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const canary = () => `fixture-canary-${crypto.randomBytes(12).toString("hex")}`;
 const ID = "abcdefghijklmnopabcdefghijklmnop";
 
-async function setup(t) {
+/**
+ * @param {any} t
+ * @param {{ firefox?: boolean }} [o] firefox: background.js sees only a `browser` global and
+ *   moz-extension URLs, as in Firefox, with no `chrome` at all.
+ */
+async function setup(t, { firefox = false } = {}) {
   const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-ext-"));
   const db = open(path.join(tmp, "vyre.db"));
   migrate(db, "vault", MIGRATIONS);
@@ -48,7 +54,7 @@ async function setup(t) {
     setAccessLevel: () => {},
   });
   const chrome = {
-    runtime: { id: ID, getURL: p => `chrome-extension://${ID}/${p}`, onMessage: { addListener: fn => { listener = fn; } } },
+    runtime: { id: ID, getURL: p => `${firefox ? "moz-extension" : "chrome-extension"}://${ID}/${p}`, onMessage: { addListener: fn => { listener = fn; } } },
     storage: { local: store(local), session: store(sess) },
     tabs: { query: async () => [{ id: 7, url: "https://mail.example.com/login" }], onRemoved: { addListener: () => {} }, sendMessage: async () => {} },
     commands: { onCommand: { addListener: fn => { command = fn; } } },
@@ -58,12 +64,13 @@ async function setup(t) {
     },
     permissions: { contains: async () => true },
   };
-  vm.runInNewContext(fs.readFileSync(path.join(HERE, "background.js"), "utf8"), { chrome, fetch, URL, Date, console, setTimeout });
+  if (firefox) delete /** @type {any} */ (chrome.storage.session).setAccessLevel;
+  vm.runInNewContext(fs.readFileSync(path.join(HERE, "background.js"), "utf8"), { ...(firefox ? { browser: chrome } : { chrome }), fetch, URL, Date, console, setTimeout });
   /** Send one message as `sender`; resolve with the reply. */
   // Replies are made in the vm's realm; a JSON round trip gives plain objects to compare.
   const send = (msg, sender) => new Promise(resolve => { listener(msg, sender, r => resolve(JSON.parse(JSON.stringify(r)))); });
   const page = (url, frameId = 0, tab = 7) => ({ id: ID, tab: { id: tab, url }, frameId, origin: new URL(url).origin, url });
-  const popup = { id: ID, url: `chrome-extension://${ID}/popup.html` };
+  const popup = { id: ID, url: `${firefox ? "moz-extension" : "chrome-extension"}://${ID}/popup.html` };
   return { vault, send, page, popup, injected, pw, command: () => command };
 }
 
@@ -140,4 +147,79 @@ test("the manifest and scripts keep their promises", () => {
   assert.match(inline, /attachShadow\(\{ mode: "closed" \}\)/);
   assert.match(inline, /if \(!e\.isTrusted\) return;/);
   assert.ok(!/innerHTML/.test(inline), "text only, never markup from a page or vyred");
+});
+
+// ---- Firefox -------------------------------------------------------------------------------
+
+test("Firefox: background.js runs on `browser` alone, with moz-extension URLs, and fills the same", async t => {
+  const { send, page, popup, injected, command } = await setup(t, { firefox: true });
+  const st = await send({ type: "state" }, popup);
+  assert.equal(st.data.paired, true);
+  assert.equal(st.data.unlocked, true);
+  const f = await send({ type: "inline-fill", name: "example-mail" }, page("https://mail.example.com/login"));
+  assert.deepEqual(f.data.filled, ["password"]);
+  assert.equal(injected[0].fn, "vyreFill");
+  await command()("fill-login");
+  assert.equal(injected.length, 2);
+  assert.equal((await send({ type: "state" }, { id: ID, url: `chrome-extension://${ID}/popup.html` })).error.code, "refused",
+    "a popup URL from the other browser's scheme is not this extension's popup");
+});
+
+test("background.js makes no bare chrome.* call: everything goes through the one namespace", () => {
+  const code = fs.readFileSync(path.join(HERE, "background.js"), "utf8").split("\n")
+    .filter(l => !/^\s*(\/\/|\/\*|\*)/.test(l)).join("\n");
+  assert.doesNotMatch(code, /\bchrome\./, "use ext.*, which is browser in Firefox and chrome elsewhere");
+  assert.match(code, /globalThis\)\.browser \?\? \/\*\* @type \{any\} \*\/ \(globalThis\)\.chrome/);
+  // The one call Firefox lacks is looked up before it is made.
+  assert.match(code, /typeof set === "function"/);
+});
+
+test("one manifest loads in Chrome and Firefox; the build writes a clean one for each", () => {
+  const src = JSON.parse(fs.readFileSync(path.join(HERE, "manifest.json"), "utf8"));
+  assert.equal(src.background.service_worker, "background.js");
+  assert.deepEqual(src.background.scripts, ["background.js"]);
+  assert.equal(src.browser_specific_settings.gecko.id, "vault@vyre.sh");
+  assert.equal(src.browser_specific_settings.gecko.strict_min_version, "121.0");
+
+  const chrome = forBrowser(src, "chrome"), firefox = forBrowser(src, "firefox");
+  assert.deepEqual(chrome.background, { service_worker: "background.js" });
+  assert.equal(chrome.browser_specific_settings, undefined);
+  assert.deepEqual(firefox.background, { scripts: ["background.js"] }, "Firefox MV3 has no service_worker: an event page");
+  assert.equal(firefox.browser_specific_settings.gecko.id, "vault@vyre.sh");
+  assert.equal(firefox.minimum_chrome_version, undefined);
+  for (const k of ["manifest_version", "permissions", "host_permissions", "optional_host_permissions", "content_security_policy", "commands", "action", "version"])
+    assert.deepEqual(firefox[k], chrome[k], `${k} is the same in both`);
+  assert.equal(firefox.manifest_version, 3);
+  assert.deepEqual([...firefox.permissions].sort(), ["activeTab", "scripting", "storage"]);
+  assert.ok(!firefox.content_scripts);
+  assert.throws(() => forBrowser({ ...src, browser_specific_settings: undefined }, "firefox"), /gecko id/);
+
+  // No remote code: scripts only from the package, and no script, style or fetch of a remote URL.
+  const csp = firefox.content_security_policy.extension_pages;
+  assert.match(csp, /script-src 'self';/);
+  assert.doesNotMatch(csp, /unsafe-|script-src[^;]*https?:/);
+  const html = fs.readFileSync(path.join(HERE, "popup.html"), "utf8");
+  assert.doesNotMatch(html, /<script[^>]+src="(https?:)?\/\//);
+  assert.doesNotMatch(html, /<link[^>]+href="(https?:)?\/\//);
+  for (const f of packageFiles().filter(x => x.endsWith(".js"))) {
+    const js = fs.readFileSync(path.join(HERE, f), "utf8");
+    assert.doesNotMatch(js, /\beval\(|new Function\(|importScripts\(|\bimport\(/, f);
+    assert.doesNotMatch(js, /(src|href)\s*=\s*["'`]https?:/, f);
+  }
+});
+
+test("build.mjs writes dist/chrome and dist/firefox with every file the manifests name", () => {
+  const out = fs.mkdtempSync(path.join(SCRATCH, "vyre-ext-dist-"));
+  try {
+    const dirs = build(out);
+    for (const [target, d] of Object.entries(dirs)) {
+      const m = JSON.parse(fs.readFileSync(path.join(d, "manifest.json"), "utf8"));
+      const named = [m.action.default_popup, ...(m.background.scripts || [m.background.service_worker]), "fill.js", "inline.js", "popup.js", "popup.css"];
+      for (const f of named) assert.ok(fs.existsSync(path.join(d, f)), `${target}: ${f}`);
+      assert.ok(!fs.existsSync(path.join(d, "extension.test.js")), `${target}: no tests in the package`);
+      assert.ok(!fs.existsSync(path.join(d, "build.mjs")), `${target}: no build script in the package`);
+      assert.equal(fs.readFileSync(path.join(d, "background.js"), "utf8"), fs.readFileSync(path.join(HERE, "background.js"), "utf8"), "a plain copy");
+    }
+    assert.ok(JSON.parse(fs.readFileSync(path.join(dirs.firefox, "manifest.json"), "utf8")).browser_specific_settings.gecko.id);
+  } finally { fs.rmSync(out, { recursive: true, force: true }); }
 });

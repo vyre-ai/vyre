@@ -88,7 +88,11 @@
       "vault.account.status",
       "vault.history",
       "vault.revert",
-      "vault.migrate-key"
+      "vault.migrate-key",
+      "vault.agent.grant",
+      "vault.agent.grants",
+      "vault.agent.revoke",
+      "vault.uses"
     ]
   },
   "watches": {
@@ -123,7 +127,9 @@
       "vault.member-removed",
       "vault.key-rotated",
       "vault.sync-conflicted",
-      "vault.device-joined"
+      "vault.device-joined",
+      "vault.agent-granted",
+      "vault.agent-revoked"
     ]
   },
   "shows": {

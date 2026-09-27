@@ -11,3 +11,4 @@ __pycache__/
 box/Vyre-mac.sha256
 docs-site/
 build.json
+modules/vault-extension/dist/

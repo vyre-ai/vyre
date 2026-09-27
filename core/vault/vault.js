@@ -36,6 +36,7 @@ import { generate } from "./generate.js";
 import { Share, SHARE_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
+import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -84,6 +85,9 @@ export const MIGRATIONS = [
   // Made here now, with a mac column; tools/cli.js used to make them on the fly.
   `CREATE TABLE IF NOT EXISTS vault_ssh_keys (name TEXT PRIMARY KEY, type TEXT NOT NULL, fingerprint TEXT NOT NULL, public TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);
    CREATE TABLE IF NOT EXISTS vault_marks (name TEXT PRIMARY KEY, stale TEXT, at INTEGER NOT NULL, mac TEXT);`,
+  // ADR 0028, decision 2: agent logins, and where each use happened.
+  AGENT_GRANTS_MIGRATION,
+  AUDIT_WHERE_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -100,6 +104,7 @@ const PERSONAL_KINDS = ["login", "card", "note"];
 export const MACED = {
   vault_items: ["id", "name", "kind", "url", "hosts", "origin", "rotate", "vault", "ver", "apps", "reprompt", "relay"],
   vault_grants: ["id", "item", "module", "watcher", "status"],
+  vault_agent_grants: AGENT_GRANT_MACED,
   vault_passes: ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "methods", "paths", "expires", "status", "issued", "revoked"],
   vault_devices: ["id", "name", "token_hash", "revoked"],
   vault_history: ["id", "item", "ver", "name", "vault", "at", "by", "changed", "fh"],
@@ -230,6 +235,8 @@ export class Vault {
     this.shared = new Shared(this);
     /** This person's other devices: join, approve, and syncing items between them (devices.js). */
     this.devices = new Devices(this);
+    /** Agent logins (ADR 0028, decision 2). */
+    this.agents = new AgentGrants(this);
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
     /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
@@ -713,8 +720,12 @@ export class Vault {
   }
 
   grantedNames() {
-    return new Set(/** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grants WHERE status = 'active'").all())
-      .filter(g => this.rowOk("vault_grants", g)).map(g => String(g.item)));
+    const t = now();
+    // A login lent to an agent is filled while nobody is here, so it stays in the agent vault too.
+    const lent = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_agent_grants WHERE status = 'active' AND revoked IS NULL").all())
+      .filter(g => (g.expires == null || g.expires > t) && this.rowOk("vault_agent_grants", g)).map(g => String(g.item));
+    return new Set([...lent, .../** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grants WHERE status = 'active'").all())
+      .filter(g => this.rowOk("vault_grants", g)).map(g => String(g.item))]);
   }
 
   /** Move agent-vault items that belong in the personal vault there. Needs it unlocked. */
@@ -863,15 +874,18 @@ export class Vault {
 
   // ---- audit ----------------------------------------------------------------------------
 
-  audit(action, name, who, ok = true, why = null) {
-    this.db.prepare("INSERT INTO vault_audit (at, action, name, who, ok, why) VALUES (?,?,?,?,?,?)").run(now(), action, name ?? null, String(who), ok ? 1 : 0, why);
+  /** @param {{ origin?: string|null, surface?: string|null }} [where] where a use happened, for vault.uses */
+  audit(action, name, who, ok = true, why = null, where = {}) {
+    this.db.prepare("INSERT INTO vault_audit (at, action, name, who, ok, why, origin, surface) VALUES (?,?,?,?,?,?,?,?)")
+      .run(now(), action, name ?? null, String(who), ok ? 1 : 0, why, where.origin ?? null, where.surface ?? null);
   }
 
   auditTrail({ name, limit = 100 } = {}) {
     const rows = name
       ? this.db.prepare("SELECT * FROM vault_audit WHERE name = ? ORDER BY id DESC LIMIT ?").all(name, Math.min(1000, limit))
       : this.db.prepare("SELECT * FROM vault_audit ORDER BY id DESC LIMIT ?").all(Math.min(1000, limit));
-    return { entries: rows.map(r => ({ at: r.at, action: r.action, name: r.name, who: r.who, ok: Boolean(r.ok), why: r.why })) };
+    return { entries: rows.map(r => ({ at: r.at, action: r.action, name: r.name, who: r.who, ok: Boolean(r.ok), why: r.why,
+      ...(r.origin ? { origin: r.origin } : {}), ...(r.surface ? { surface: r.surface } : {}) })) };
   }
 
   // ---- items ----------------------------------------------------------------------------
@@ -1024,6 +1038,7 @@ export class Vault {
     this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_grants WHERE item = ?").run(name);
+    this.agents.revokeItem(name, who);
     this.audit("delete", name, who);
     this.emit("vault.item-deleted", { name });
     return { deleted: name };
@@ -1062,6 +1077,15 @@ export class Vault {
     this.emit(status === "active" ? "vault.granted" : "grant.requested", { name, module, ...(watcher ? { watcher } : {}) });
     return { grant: this.grantOut(g) };
   }
+
+  /**
+   * The agent grant in force for (agent, item, origin): active, unexpired and passing its MAC, or
+   * null. For vault.agent.fill (ADR 0028, decision 3), which checks it before every fill.
+   */
+  agentGrantFor(agent, item, origin) { return this.agents.grantFor(agent, item, origin); }
+
+  /** Write one use of an item to the audit trail, with its origin and surface (see agents.js). */
+  recordUse(u) { return this.agents.recordUse(u); }
 
   grantOut(g) { return { id: g.id, name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), status: g.status }; }
 
@@ -1392,12 +1416,18 @@ export class Vault {
     return {
       grants: this.db.prepare("SELECT * FROM vault_grants WHERE status='pending' ORDER BY at").all().filter(g => this.rowOk("vault_grants", g)).map(g => ({ ...this.grantOut(g), by: g.by, at: g.at })),
       passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().filter(p => this.rowOk("vault_passes", p)).map(p => ({ ...this.passOut(p), by: p.by })),
+      agentGrants: this.agents.pending(),
       ...this.share.requests(),
     };
   }
 
   async approve({ id }, caller) {
     await this.key();
+    if (String(id).startsWith("ag_")) {
+      const a = await this.agents.approve(String(id), caller);
+      if (a) return a;
+      throw new Error(`nothing pending with id ${id}`);
+    }
     const g = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE id=? AND status='pending'").get(id));
     if (g && this.rowOk("vault_grants", g)) {
       const item = this.row(g.item);

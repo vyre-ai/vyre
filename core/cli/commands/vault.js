@@ -432,12 +432,13 @@ async function revoke(args) {
 async function pending() {
   const r = await tool("vault.pending");
   if (r.error) return fail(r);
-  const { grants = [], passes = [], people = [], accepts = [] } = r.data;
-  if (!grants.length && !passes.length && !people.length && !accepts.length) { say(dim("  nothing waiting for approval")); return 0; }
+  const { grants = [], passes = [], people = [], accepts = [], agentGrants = [] } = r.data;
+  if (!grants.length && !passes.length && !people.length && !accepts.length && !agentGrants.length) { say(dim("  nothing waiting for approval")); return 0; }
   say("");
   for (const g of grants) say(`  ${beacon(g.id)}  grant ${bold(g.name)} to ${grantText(g)}`);
   for (const p of passes) say(`  ${beacon(p.id)}  ${p.mode || "relayed"} pass for ${bold(p.holder)}: ${(p.items || []).join(", ")}${p.expires ? dim(" · until " + day(p.expires)) : ""}`);
   for (const p of people) say(`  ${beacon(p.id)}  trust the card for ${bold(p.name)} ${dim("· fingerprint " + (p.fingerprint || "unreadable"))}`);
+  for (const g of agentGrants) say(`  ${beacon(g.id)}  let ${bold(g.agent)} sign in to ${g.origin} as ${bold(g.item)}${g.expires ? dim(" · until " + day(g.expires)) : ""}`);
   for (const a of accepts) say(`  ${beacon(a.id)}  accept a ${a.mode || ""} pass from ${bold(a.owner)}: ${(a.items || []).join(", ")}`);
   say(dim(`\n  vyre vault approve <id>\n`));
   return 0;
