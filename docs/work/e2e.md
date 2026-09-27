@@ -578,6 +578,11 @@ Done this session:
   ed8a5506 (on e5944433). main: work/e2e-safegit-main 60b3673b (on a26793cd, which had no HIGH).
   Both 10/10 safe-git + 5/5 boundaries on testbox. Sent to reviewer, integrator, lead.
 
+- connectors 0f0453b9 (on 69a72c7c) SIGNED OFF: my LOW (CLAUDE_CONFIG_DIR not moving
+  .claude.json) fixed correctly; Agents grant now server-side presence-gated, revoke stays
+  ungated. Verified independently on testbox: 65/65 (connections, deck connections, boundaries,
+  docs-check incl. the tools.md regen).
+
 Next: re-review federation's fix sha (the link.upload path guard HIGH + the MEDIUMs) once sent.
 
 ## Next
