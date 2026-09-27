@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: the box's compose files keep tini as PID 1
+
+- box-image.yml boots vyre through box/compose.yml (with its tailscale) and checks PID 1 is tini
+  and the log has no "not running as PID 1"; docker-api and egress (computers profile) are
+  created and inspected: no Docker init, the image's tini entrypoint. Lands with resilience's
+  compose change (no `init: true` on the vyre image's services); on a compose with it, this fails.
+
 #### CI: the box image is built and booted
 
 - .github/workflows/box-image.yml builds box/Dockerfile from the npm pack tarball, the context a
