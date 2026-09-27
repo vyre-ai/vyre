@@ -9,13 +9,13 @@ Mobile additions (ADR 0018): the `device` presence method, `surface: "ios"|"andr
 ## 0. Things that block a native phone today (read first)
 
 1. **Where the phone connects.** Only a **box** has a network listener. The tailnet listener lives in the `names` module, and that module runs with `roles: ["box"]` (`core/names/module.json:4`, `core/names/service.js:181-226`). A Mac vyred listens only on its unix socket. So the phone talks to the box over HTTPS on its ts.net/cert name. Every request from the phone arrives with caller **`tailnet:<login>`** (`service.js:225`). The router ignores `x-vyre-caller` when a listener has set the caller (`core/daemon/index.js:149`).
-2. **`callers` and the tailnet (fixed on work/mobile, ADR 0018).** `callerKind("tailnet:alex@example.com")` still returns the whole string (memory's guard relies on it), but a `callers` entry `"tailnet"` now matches any `tailnet:<login>` caller, in `Registry.call` and in `GET /v1/tools` (`callerAllowed`, `core/modules/index.js`). A bare `tailnet` label from the socket never matches. These tools list it:
+2. **`callers` and the tailnet (ADR 0002, ADR 0018).** `callerKind("tailnet:alex@example.com")` still returns the whole string (memory's guard relies on it). `callerAllowed` (`core/modules/index.js`, used by `Registry.call` and `GET /v1/tools`) lets the owner's device (`tailnet:<login>`, never `tailnet:agent:` or `tailnet-guest:`) use every tool whose `callers` list has `"deck"`: the phone is the owner, so what the Deck may use, it may. A `callers` entry `"tailnet"` opens a tool to the owner's devices without opening it to the Deck. A bare `tailnet` label from the socket never matches. Tools that list `"tailnet"` explicitly:
    - `gate.get`, `gate.approve`, `gate.reject`, `gate.revise` (`core/gate/index.js`)
    - `threads.answer` (`core/switchboard/index.js`)
    - every `push.*` tool (`core/push/index.js`, `PEOPLE`)
    - `vault.reveal`, `vault.copy`, `vault.session.open`, `vault.session.status` (`core/vault/tools/surfaces.js`) and `vault.totp` (`core/vault/index.js`)
 
-   Still refused to the phone (403 `denied`, and left out of `GET /v1/tools`): `vault.fill.native`, `agents.delete`, `link.pair/find/unpair`, and `memory.correct/uncorrect/merge/split` (on purpose, `memory/index.js`). The human-only ones above still need a proof: a phone without one gets 403 `presence_required`, not `denied` (`test/mobile-tailnet.test.js`).
+   Still refused to the phone (403 `denied`, and left out of `GET /v1/tools`): tools closed to the Deck too, such as `vault.fill.native` and `link.pair/find/unpair`. `memory.correct` and `agents.delete` are open to the Deck, so the phone gets them. The human-only ones still need a proof: a phone without one gets 403 `presence_required`, not `denied` (`test/mobile-tailnet.test.js`).
 3. **Deck parity gaps you should not copy.** `deck/js/needs.js:86-94` and `deck/chat/gate-item.js:55-63` call `gate.approve`, `gate.reject` and `threads.answer` **without** `{presence:true}`, so they always get `presence_required`. `deck/chat/gate-item.js:49` calls `gate.revise`, which `deck` may not call.
 
 ---
