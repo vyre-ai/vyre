@@ -386,6 +386,13 @@ Plan (to the lead before building):
   worktree ../vyre-e2e-safegit): lib/git/safe.js SAFE_GIT_ARGS + safeGitEnv + safeGitArgs(dir)
   (overrides repo-named filter/diff/merge drivers; status runs clean filters, log -p textconv).
   Planted-repo test + guard. testbox 484/0/14. Sent to reviewer. Slips: testbox runs at load 6.8/8.3.
+- safe-git reshaped per lead: lib/git-safe.js (gitSync/gitAsync) + guard (no file but it starts git; core/cli
+  aside). pre/rc: work/e2e-safegit 1c632637+9eb2ee32 (484/0/14). main hotfix: work/e2e-safegit-main
+  2f43126d (365/0/14; main has no envfiles.js). With reviewer; then integrator (cherry-pick-clean shas).
+- cohesion 1a8bf671 SIGNED OFF (agentClaim "(unnamed)"). TODO: fold daemon's AGENT_CLAIM after 1ff45c03.
+- teammates slice A 8b8f10a1/8806df79 OK; told to move core/team/git.js onto lib/git-safe.js.
+- 0.1.1 TODO (docs, ADR 0038): box->server words in core/link mac/box/transport, daemon :329.
+  statusline handed back.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
