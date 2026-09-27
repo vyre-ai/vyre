@@ -3,8 +3,8 @@
     "SessionStart": [{ "matcher": "startup|resume|clear|compact", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run.js\" brief", "timeout": 5 }] }],
     "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run.js\" enrich", "timeout": 5 }] }],
     "PreToolUse": [{ "matcher": ".*", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run.js\" rules", "timeout": 5 }] }],
-    "PostToolUse": [{ "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run.js\" learn", "timeout": 5 }] }],
-    "PostToolUseFailure": [{ "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run.js\" fail", "timeout": 5 }] }],
+    "PostToolUse": [{ "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|Agent|Task", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run.js\" learn", "timeout": 5 }] }],
+    "PostToolUseFailure": [{ "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|Agent|Task", "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run.js\" fail", "timeout": 5 }] }],
     "Stop": [{ "hooks": [{ "type": "command", "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/run.js\" stop", "timeout": 5 }] }]
   }
 }

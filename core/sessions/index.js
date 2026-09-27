@@ -99,12 +99,12 @@ export default {
       { type: "object", properties: { agent: str, agent_kind: str, project: str } },
       async i => prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
 
-    tool("sessions.models.get", "What each kind of session runs on: the model per purpose (chat, agent, project, capsule, job, memory, planner, learn) and per project, and where each comes from. An agent's own model (agents.update) wins over these.",
+    tool("sessions.models.get", "What each kind of session runs on: the model per purpose (chat, agent, project, teammate, capsule, job, memory, planner, learn, helper) and per project, and where each comes from. An agent's own model (agents.update) wins over these.",
       { type: "object", properties: {} },
       async () => ({ purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p })])),
         projects: Object.fromEntries(/** @type {any[]} */ (db.prepare("SELECT scope, model FROM sessions_models WHERE scope LIKE 'project:%'").all()).map(r => [String(r.scope).slice(8), String(r.model)])) }));
 
-    tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|capsule|job|memory|planner|learn>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next session.",
+    tool("sessions.models.set", "Set the model for a purpose (purpose:<chat|agent|project|teammate|capsule|job|memory|planner|learn|helper>) or a project (project:<slug>): an alias (opus, sonnet, haiku) or a full model id. model null removes the override. Applies from the next session.",
       { type: "object", required: ["scope"], properties: { scope: str, model: { type: ["string", "null"] } } },
       async (i, { caller }) => {
         const m = /^(purpose|project):([A-Za-z0-9._-]{1,64})$/.exec(String(i.scope || ""));

@@ -17,8 +17,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A subagent (Claude Code's Agent or Task tool) in a session Vyre runs on the Agent SDK waits for
   a subagent slot in an in-process PreToolUse hook (up to 10 minutes, then it is refused with the
   reason). The slot comes back when the Agent call ends, the turn ends or the session stops.
-  Sessions on the CLI runner and terminal sessions are not held yet (the plugin's PreToolUse
-  comes next).
+  Terminal sessions and sessions on the CLI runner take theirs through the plugin: harness.rules
+  refuses an Agent or Task call at once when there is no room, with its place in line (a hook
+  cannot wait); harness.learn (now also on Agent and Task in hooks.json) gives the slot back when
+  the call ends, and harness.stop at the turn's end.
+- Purposes `teammate` (opus) and `helper` (haiku) for ADR 0031.
 - The fake `claude` runs the host's PreToolUse hooks (hook_callback) before a tool, and has an
   Agent tool ("subagent <task>").
 

@@ -211,6 +211,22 @@ test("providers: a module adds one through its manifest, with no core change, an
   assert.match(none.error.message, /no session provider codex; this machine has claude, echo/);
 });
 
+test("slots: a terminal session's subagent takes a slot through the plugin's hooks, refused at once with its place when full", async t => {
+  const w = await boot(t, { sessions: { limits: { max_subagents: 1 } } });
+  const rules = (session, id) => w.tool("harness.rules", { tool_name: "Agent", tool_input: { description: "read the menu", prompt: "read the menu" }, session, tool_use_id: id, cwd: w.work }, "harness");
+  const s1 = "11111111-1111-4111-8111-111111111111", s2 = "22222222-2222-4222-8222-222222222222";
+  assert.equal((await rules(s1, "toolu_1")).data.decision, null, "room: it runs");
+  const held = (await rules(s2, "toolu_2")).data;
+  assert.equal(held.decision, "deny");
+  assert.match(held.reason, /number 1 in line/);
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 1);
+  await w.tool("harness.learn", { tool_name: "Agent", tool_input: {}, session: s1, tool_use_id: "toolu_1" }, "harness");
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 0, "the Agent call ending gives it back");
+  assert.equal((await rules(s2, "toolu_3")).data.decision, null, "and the next one runs");
+  await w.tool("harness.stop", { session: s2 }, "harness");
+  assert.equal((await w.tool("sessions.slots.status", {})).data.subagent.held, 0, "a turn's end gives back what is left");
+});
+
 // ------------------------------------------------------------ on either driver
 
 for (const driver of ["cli", "sdk"]) {
