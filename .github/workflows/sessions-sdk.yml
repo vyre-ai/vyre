@@ -1,0 +1,120 @@
+# The Agent SDK driver (ADR 0030). Vyre has no npm dependencies: core/sessions/sdk.js installs the
+# SDK on first use, pinned to its VERSION, so this workflow installs that version into a cache dir
+# keyed on VERSION and points VYRE_SESSIONS_DRIVER/VYRE_SESSIONS_SDK_DIR at it.
+#   driver: the SDK's JS only (--omit=optional), every session-running suite on the SDK driver
+#           against the fake claude.
+#   real:   the full install with the 231 MB bundled Claude Code, and the real-idle smoke: the
+#           binary starts and idles, no credentials, no API call. Only when sdk.js changes.
+# Skips while core/sessions/sdk.js is absent.
+name: sessions-sdk
+on:
+  push:
+    paths: ["core/sessions/**", "core/switchboard/**", "core/agents/**", "core/learn/**", "harness/**", "scripts/sessions-smoke.mjs", ".github/workflows/sessions-sdk.yml"]
+  pull_request:
+    paths: ["core/sessions/**", "core/switchboard/**", "core/agents/**", "core/learn/**", "harness/**", "scripts/sessions-smoke.mjs", ".github/workflows/sessions-sdk.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: sessions-sdk-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  VYRE_NO_DIALOGS: "1"
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+      real: ${{ steps.check.outputs.real }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - id: check
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ ! -f core/sessions/sdk.js ]; then echo "core/sessions/sdk.js is absent: skipping"; echo present=false >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo present=true >> "$GITHUB_OUTPUT"
+          real=true
+          if [ "${{ github.event_name }}" = push ] && git cat-file -e "$BEFORE" 2>/dev/null; then
+            git diff --quiet "$BEFORE" HEAD -- core/sessions/sdk.js scripts/sessions-smoke.mjs .github/workflows/sessions-sdk.yml && real=false
+          elif [ "${{ github.event_name }}" = push ]; then
+            git diff --quiet HEAD~1 HEAD -- core/sessions/sdk.js scripts/sessions-smoke.mjs .github/workflows/sessions-sdk.yml 2>/dev/null && real=false
+          fi
+          echo "real=$real" | tee -a "$GITHUB_OUTPUT"
+
+  driver:
+    needs: detect
+    if: needs.detect.outputs.present == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      # runner.temp is not available at job level.
+      - run: echo "D=$RUNNER_TEMP/sessions-sdk-js" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: v
+        run: echo "version=$(node -e 'import("./core/sessions/sdk.js").then(m=>process.stdout.write(m.VERSION))')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: ${{ env.D }}
+          key: sessions-sdk-js-${{ steps.v.outputs.version }}
+      - name: Install the SDK (JS only)
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$D" && cd "$D"
+          echo '{"private":true,"type":"module"}' > package.json
+          npm i --no-audit --no-fund --omit=dev --omit=optional --no-package-lock "@anthropic-ai/claude-agent-sdk@${{ steps.v.outputs.version }}"
+      - run: npm ci --no-audit --no-fund
+      - name: Session suites on the SDK driver, against the fake claude
+        env:
+          VYRE_SESSIONS_SDK_DIR: ${{ env.D }}
+          VYRE_SESSIONS_DRIVER: sdk
+        run: |
+          node --test --test-reporter=spec --test-timeout=120000 \
+            "core/sessions/*.test.js" "core/switchboard/*.test.js" "core/agents/*.test.js" "core/learn/*.test.js" "harness/**/*.test.js"
+
+  real:
+    needs: detect
+    if: needs.detect.outputs.present == 'true' && (needs.detect.outputs.real == 'true' || github.event_name != 'push')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      # runner.temp is not available at job level.
+      - run: echo "D=$RUNNER_TEMP/sessions-sdk-full" >> "$GITHUB_ENV"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - id: v
+        run: echo "version=$(node -e 'import("./core/sessions/sdk.js").then(m=>process.stdout.write(m.VERSION))')" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: ${{ env.D }}
+          key: sessions-sdk-full-${{ runner.os }}-${{ steps.v.outputs.version }}
+      - name: Install the SDK with the bundled Claude Code
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$D" && cd "$D"
+          echo '{"private":true,"type":"module"}' > package.json
+          npm i --no-audit --no-fund --omit=dev --no-package-lock "@anthropic-ai/claude-agent-sdk@${{ steps.v.outputs.version }}"
+      - name: The bundled Claude Code starts and idles
+        env:
+          VYRE_SESSIONS_SDK_DIR: ${{ env.D }}
+        run: |
+          bin="$D/node_modules/@anthropic-ai/claude-agent-sdk-linux-x64/claude"
+          test -x "$bin" || { echo "no bundled binary at $bin"; exit 1; }
+          du -h "$bin" | tee -a "$GITHUB_STEP_SUMMARY"
+          mkdir -p "$RUNNER_TEMP/home"
+          HOME="$RUNNER_TEMP/home" "$bin" --version </dev/null
+          if [ -f scripts/sessions-smoke.mjs ]; then
+            HOME="$RUNNER_TEMP/home" IDLE_MS=5000 timeout 300 node scripts/sessions-smoke.mjs </dev/null | tee "$RUNNER_TEMP/smoke.json"
+            node -e 'const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); console.log("smoke: " + JSON.stringify(j)); if (!j.spawned || !j.alive) process.exit(1)' "$RUNNER_TEMP/smoke.json" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "scripts/sessions-smoke.mjs not here yet: version check only"
+          fi

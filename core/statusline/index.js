@@ -22,11 +22,15 @@ const SHORT = { "waiting on your answer": "waits on you" };
 
 /**
  * The line from what the tools answered. Any part may be null (tool missing or failed).
- * @param {{ held?: any[]|null, asks?: any[]|null, link?: any, agents?: any[]|null }} parts
+ * `waiting` is waiting.count's answer, the one count push, the Capsule and the Deck show (asks,
+ * held drafts, ringing reminders, pairing requests); a vyred without the waiting module falls
+ * back to held drafts plus asks.
+ * @param {{ waiting?: { count?: number }|null, held?: any[]|null, asks?: any[]|null, link?: any, agents?: any[]|null }} parts
  */
-export function compose({ held, asks, link, agents }) {
+export function compose({ waiting, held, asks, link, agents }) {
   const bits = ["vyre"];
-  const need = (Array.isArray(held) ? held.length : 0) + (Array.isArray(asks) ? asks.length : 0);
+  const need = waiting && Number.isInteger(waiting.count) ? Number(waiting.count)
+    : (Array.isArray(held) ? held.length : 0) + (Array.isArray(asks) ? asks.length : 0);
   if (need) bits.push(`${need} need${need === 1 ? "s" : ""} you`);
   if (link && link.role === "local" && link.linked) bits.push(link.reachable ? "box ok" : "box away");
   const a = Array.isArray(agents) ? agents.find(x => x && x.kind === "assistant") : null;
@@ -46,9 +50,11 @@ export default {
     };
 
     const compute = async () => {
-      const [held, asks, link, agents] = await Promise.all([ask("gate.held"), ask("threads.asks"),
+      const [waiting, link, agents] = await Promise.all([ask("waiting.count"),
         ctx.config.role === "local" ? ask("link.status") : null, ask("agents.list")]);
-      return compose({ held, asks, link, agents });
+      // Only a vyred without waiting counts the two lists itself.
+      const [held, asks] = waiting ? [null, null] : await Promise.all([ask("gate.held"), ask("threads.asks")]);
+      return compose({ waiting, held, asks, link, agents });
     };
 
     /** Write the file only when the text changed, by rename, so the script never reads half a line. */

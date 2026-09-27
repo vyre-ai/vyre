@@ -3,7 +3,7 @@
 // with where each fact came from, one fact or thing at a time in the side panel, and the Lessons
 // tab. Board: DeckMemory. ADR 0007, decision 13.
 //
-// Everything here came from memory, so Recall gold marks the facts and their sources. Signal marks
+// Everything here came from memory, so facts and sources are --text-2 (no gold). Signal marks
 // only focus (the selected node's ring). Tools: memory.graph (one call, with the `since` cursor),
 // memory.facts, memory.why, memory.pin, memory.mute, memory.correct, memory.uncorrect,
 // projects.list; the Lessons tab is memory-lessons.js.

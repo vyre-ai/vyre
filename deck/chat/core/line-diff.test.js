@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildLineDiff, parseUnifiedDiff } from "./line-diff.js";
+import { buildLineDiff, parseUnifiedDiff, countLines, formatCounts, capLines, showAllLabel, MINUS } from "./line-diff.js";
 
 test("two strings: context, a changed pair with word segments, an added line", () => {
   const d = buildLineDiff("const total = 0;\nreturn total;", "const total = 10;\nreturn total;\n// Northwind");
@@ -71,4 +71,31 @@ test("a unified diff: a removed '-- x' or added '++ x' inside a hunk is a line, 
     ["remove", "-x"],
     ["add", "+y"],
   ]);
+});
+
+test("counts: added and removed lines, headers and context not counted, the true minus sign", () => {
+  const d = parseUnifiedDiff("@@ -1,3 +1,2 @@\n keep\n-a\n-b\n+c");
+  assert.deepEqual(countLines(d), { added: 1, removed: 2 });
+  assert.equal(MINUS, "\u2212");
+  assert.equal(formatCounts(countLines(d)), "+1 \u22122");
+  assert.equal(formatCounts({ added: 60, removed: 0 }), "+60");
+  assert.equal(formatCounts({ added: 0, removed: 4 }), "\u22124");
+  assert.equal(formatCounts(countLines([])), "+0");
+});
+
+test("the inline cap: 20 lines shown, the real total for Show all, headers free", () => {
+  const many = buildLineDiff("", Array.from({ length: 64 }, (_, i) => `row ${i}`).join("\n"));
+  const cut = capLines(many);
+  assert.equal(cut.shown.length, 20);
+  assert.equal(cut.total, 64);
+  assert.equal(cut.hidden, 44);
+  assert.equal(showAllLabel(cut.total), "Show all 64 lines");
+  assert.equal(showAllLabel(4200), "Show all 4,200 lines");
+  const fits = buildLineDiff("", Array.from({ length: 20 }, (_, i) => `r${i}`).join("\n"));
+  assert.deepEqual(capLines(fits), { shown: fits, total: 20, hidden: 0 });
+  const withHeaders = [{ type: "header", content: "@@ -1 +1 @@" }, ...many.slice(0, 25)];
+  const c2 = capLines(withHeaders);
+  assert.equal(c2.shown.length, 21, "the header rides along free");
+  assert.equal(c2.total, 25);
+  assert.equal(capLines(many, 0).hidden, 0, "cap 0 shows everything");
 });

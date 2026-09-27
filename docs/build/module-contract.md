@@ -44,6 +44,11 @@ A module is a folder with a `module.json` and an entry file. The loader in `core
 | `roles` | no | `box`, `local` or both; both when omitted. See [the box and the Mac](../concepts/box-and-mac.md) |
 | `requires` | no | modules that must be running before this one starts |
 | `main` | no | the entry file, default `index.js` |
+| `apiVersion` | no | the module API major it is written for; `1` today. The loader checks it from phase 1 of [ADR 0033](../adr/0033-hackable-vyre.md) |
+
+The published schema, with every key module API 1 adds, is
+`packages/module-sdk/manifest.schema.json`. `checkManifest()` in `packages/module-sdk/manifest.js`
+gives the same answer with no dependencies, and a test holds every manifest in the repo to it.
 
 ### The five verbs
 
@@ -55,7 +60,7 @@ A module is a folder with a `module.json` and an entry file. The loader in `core
 | `needs` | `vault` | vault items it fetches with `ctx.vault.fetch` |
 | `teaches` | `memory` | kinds of fact it hands the curator with `ctx.memory.teach` |
 
-`shows.deck`, `shows.capsule` and `shows.cli` are read by the surfaces through `GET /v1/modules`; the loader does not act on them.
+The loader does not act on `shows`. Surfaces read it through `GET /v1/modules`: the Capsule reads `shows.capsule` (`results:<tool>` and `action:<tool>` keys). The Deck lists modules in Settings but does not read `shows.deck` yet, and `vyre <module> <tool>` from `shows.cli` is not built; both come with the slots in ADR 0033.
 
 ## What the loader checks
 
@@ -117,7 +122,7 @@ export default {
 | `ctx.store.db` | the `node:sqlite` connection to `vyre.db`. Reads may join any table; write only your own. Nothing stops a write to another module's table, so this is a rule you keep, not one the loader checks |
 | `ctx.store.migrate(steps)` | run numbered SQL migrations, once each, recorded per module |
 | `ctx.log(msg, extra?)` | a line in vyred's log, prefixed with the module name |
-| `ctx.events` | `emit`, `on`, `since`, `prune`. See [tools and events](tools-and-events.md) |
+| `ctx.events` | `emit`, `on`, `since`, `latestId`, `prune`. `latestId()` is the id a read is current to, so a view that loads through a tool can follow the stream from it with no gap. See [tools and events](tools-and-events.md) |
 | `ctx.tool(name, def)` | register a tool. See below |
 | `ctx.call(tool, input)` | call another module's tool as `module:<name>` |
 | `ctx.remote(tool, input)` | on a Mac, call a tool on the paired box; `{ error: { code: "box_unreachable" } }` or `no_link` when it cannot |

@@ -84,6 +84,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
     private let host: CapsuleHost
     let model = SightModel()
     private var talker: Talker?
+    private var holdStart: Date?
     private var preparing = false, stopWanted = false
     /// Bumped on hide, so a press still waiting on voice.status never starts the mic afterwards.
     private var generation = 0
@@ -114,8 +115,14 @@ final class SightExtension: CapsuleExtension, SendAttaching {
     private var attachSeq = 0
     private var attachLatest: Task<SendAttachment?, Never>?
 
-    /// Screen context for the Capsule's box: read once per show, cleared on hide.
-    private(set) lazy var attacher = ScreenAttacher(vyred: host.vyred) { [weak self] in self?.host.log($0) }
+    /// Screen context for the Capsule's box: read once per show, cleared on hide. Every send
+    /// carries it while sharing is on (the default).
+    let sharing = ScreenSharing.standard()
+    private(set) lazy var attacher: ScreenAttacher = {
+        let a = ScreenAttacher(vyred: host.vyred) { [weak self] in self?.host.log($0) }
+        a.always = { [weak self] in self?.sharing.on ?? false }
+        return a
+    }()
 
     init(host: CapsuleHost) {
         self.host = host
@@ -188,17 +195,44 @@ final class SightExtension: CapsuleExtension, SendAttaching {
                     "Read the window in front and ask about it") { await $0.askScreen() },
             command("talk", "Talk", ["voice", "dictate", "speak", "mic"], "mic",
                     "Say it instead of typing (Option-Return)") { await $0.talk() },
+            sharing.on
+                ? command("share-screen-off", "Stop sharing the screen", ["screen", "sees", "context", "privacy", "share"], "eye.slash",
+                          "Asks carry the screen only when the words point at it") { $0.setSharing(false) }
+                : command("share-screen-on", "Share the screen with every ask", ["screen", "sees", "context", "share"], "eye",
+                          "Quick answers and do see the app, window and visible text") { $0.setSharing(true) },
         ]
         return list
+    }
+
+    func setSharing(_ on: Bool) -> ActionOutcome {
+        sharing.on = on
+        attacher.reset()
+        attacher.prime()
+        host.commandsChanged()
+        return .said(on ? "Asks see your screen again (the sees chip shows what goes)." : "Asks carry the screen only when your words point at it.")
     }
 
     var keyChords: [KeyShortcut] { [Self.talkChord] }
 
     func handle(chord: KeyShortcut, query: Query) -> Bool {
         guard chord == Self.talkChord else { return false }
+        // Held: talk while it is down (hold-to-talk). Tapped: talk until the next tap.
+        if talker == nil && !preparing { holdStart = Date() } else { holdStart = nil }
         toggleTalk()
         return true
     }
+
+    /// Return came up: a press held longer than a tap stops talking, as a walkie-talkie does.
+    func handleUp(key: String) -> Bool {
+        guard key == "return", let t0 = holdStart else { return false }
+        holdStart = nil
+        guard Date().timeIntervalSince(t0) >= Self.holdAfter, model.talking else { return false }
+        toggleTalk()
+        return true
+    }
+
+    /// Longer than this, the talk chord was held rather than tapped.
+    static let holdAfter: TimeInterval = 0.35
 
     func sidePanel(for item: ResultItem?) -> AnyView? {
         if let item, item.panel != Self.id { return nil }
@@ -380,6 +414,12 @@ final class SightExtension: CapsuleExtension, SendAttaching {
             guard gen == generation else { return }
             preparing = false
             let d = st.data as? [String: Any] ?? [:]
+            // A missing speech key is added right here, in the panel, then talk starts.
+            if st.error == nil, d["key"] as? Bool != true, let need = Self.keyNeed(d) {
+                model.talking = false; panel.talking = false
+                host.askCredential(need) { [weak self] in self?.toggleTalk(toPanel: toPanel) }
+                return
+            }
             if let why = Self.cannotTalk(st.error, d) {
                 model.talking = false; panel.talking = false
                 if talkToPanel { panel.line = why } else { model.line = why; host.say(why) }
@@ -392,14 +432,26 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         }
     }
 
+    /// The speech key to add, from voice.status: vault's need when it names one, else the item
+    /// voice reads for its provider. Nil when there is no vault to save it in.
+    nonisolated static func keyNeed(_ status: [String: Any]) -> CredentialNeed? {
+        guard !["no_vault", "not_granted"].contains(status["key_state"] as? String ?? "missing") else { return nil }
+        let provider = VJ.nonEmpty(status["provider"]) ?? "deepgram"
+        let name = ["deepgram": "Deepgram", "openai": "OpenAI", "elevenlabs": "ElevenLabs"][provider] ?? provider.capitalized
+        let need = (status["need"] as? [String: Any]).flatMap { VJ.nonEmpty($0["need"]) } ?? provider
+        return CredentialNeed(module: "voice", need: need, label: "\(name) key", fields: [.init(name: "value", label: "\(name) API key")],
+                              item: VJ.nonEmpty(status["item"]) ?? "voice-\(provider)-key",
+                              help: "Voice turns what you say into words in the box. Get a key from your \(name) account.")
+    }
+
     /// Why voice cannot start, from voice.status, or nil when it can.
     nonisolated static func cannotTalk(_ error: String?, _ status: [String: Any]) -> String? {
         if let e = error { return e.contains("no_such_tool") || e.contains("no such tool") ? "vyred has no voice module; it needs a vyred with local/voice" : e }
         if status["key"] as? Bool == true { return nil }
         switch status["key_state"] as? String {
-        case "not_granted": return "The speech key is saved but not granted to voice. Run: vyre voice key"
+        case "not_granted": return "The speech key is saved but voice may not use it yet. Allow it in the vault."
         case "no_vault": return "The vault is not available, so there is no speech key"
-        default: return "No speech key is saved. Run: vyre voice key"
+        default: return "No speech key is saved yet."
         }
     }
 
@@ -419,10 +471,10 @@ final class SightExtension: CapsuleExtension, SendAttaching {
             panel.talking = talkToPanel
         case .heard(let text):
             model.heard = text
-            put(text)
+            put(text, final: false)
         case .done(let text):
             model.talking = false; panel.talking = false; talker = nil
-            if text.isEmpty { say("Nothing heard") } else { model.heard = text; put(text) }
+            if text.isEmpty { say("Nothing heard"); if !talkToPanel { host.dictate("", final: true) } } else { model.heard = text; put(text, final: true) }
         case .failed(let why):
             model.talking = false; panel.talking = false; talker = nil
             model.line = why
@@ -430,7 +482,7 @@ final class SightExtension: CapsuleExtension, SendAttaching {
         }
     }
 
-    private func put(_ text: String) { if talkToPanel { panel.draft = text } else { host.setQuery(text) } }
+    private func put(_ text: String, final: Bool) { if talkToPanel { panel.draft = text } else { host.dictate(text, final: final) } }
     private func say(_ line: String) { if talkToPanel { panel.line = line } else { host.say(line) } }
 
     // MARK: -

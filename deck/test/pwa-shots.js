@@ -55,8 +55,20 @@ const SCREENS = [
   // The Capsule, tapped: Find as a full-height sheet.
   { name: "capsule-find", path: "/now", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
   { name: "capsule-find-paper", path: "/now", theme: "paper", script: `await wait(1500); await click('.cap-open'); await wait(900);`, expect: "/find", shell: "find" },
-  // The avatar: Settings in a sheet, over Now.
-  { name: "settings-sheet", path: "/now", script: `await click('.ph-avatar'); await waitFor('.sheet .set-sec', 6000); await wait(600);` },
+  // The avatar: the Places sheet over Now, and its Settings tile opens Settings pushed.
+  { name: "places-sheet", path: "/now", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(600);
+      if (document.querySelectorAll('.sheet-places .plc-tile').length !== 6) throw new Error('the Places sheet has not six tiles');` },
+  // Shift+F10 on the Planner tile keeps it as a fourth page: its label joins the header, and a
+  // tap on the label lands on the page, not pushed.
+  { name: "places-kept", path: "/now", expect: "/planner", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
+      const t = document.querySelector('.plc-tile[data-place=Planner]'); t.focus(); t.dispatchEvent(new KeyboardEvent('keydown', { key: 'F10', shiftKey: true, bubbles: true }));
+      if (t.getAttribute('aria-description') !== 'Pinned as a page') throw new Error('the tile does not say it is pinned');
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); await wait(600);
+      const labels = [...document.querySelectorAll('.ph-tab')].map(a => a.textContent).join(',');
+      if (labels !== 'Now,Chats,Agents,Planner') throw new Error('labels: ' + labels);
+      await click('.ph-tab[data-view=planner]'); await wait(1200);` },
+  { name: "settings-sheet", path: "/now", shell: "pushed", expect: "/settings", script: `await click('.ph-avatar'); await waitFor('.sheet-places .plc-tile', 6000); await wait(400);
+      await click('.plc-tile[data-place=Settings]'); await waitFor('.page:not(.away) .set-sec', 6000); await wait(600);` },
   { name: "find", path: "/find", shell: "find" },
   { name: "find-query", path: "/find?q=intake", wait: 2500, shell: "find" },
   { name: "find-command", path: "/find?q=tell%20intake%20to%20add%20a%20phone%20field", wait: 2500, shell: "find" },
@@ -93,7 +105,7 @@ const SCREENS = [
   { name: "offline", path: "/chat", offline: true },
   // A Mac asking to pair. link.pair.request only answers over the tailnet, so the world cannot
   // make one: link.pending's answer is stubbed in the page, and nothing else is.
-  { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `if (matchMedia("(max-width: 760px), (max-height: 500px) and (pointer: coarse)").matches) { await waitFor('.np-row[data-kind=pair] .np-main', 8000); await click('.np-row[data-kind=pair] .np-main'); await wait(700); }
+  { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `if (matchMedia("(max-width: 719px), (max-height: 500px) and (pointer: coarse)").matches) { await waitFor('.np-row[data-kind=pair] .np-main', 8000); await click('.np-row[data-kind=pair] .np-main'); await wait(700); }
       const i = document.querySelector('.pair-code'); if (!i) throw new Error("no pairing card"); i.value = "482"; i.dispatchEvent(new Event("input")); i.value = "482913"; i.dispatchEvent(new Event("input")); await wait(200);` },
   // Undo is honest: a denied ask is not sent while its toast shows, and Undo means it never is.
   // Then an approve from the row's real button goes at once, with no presence proof (no-nag).
@@ -104,20 +116,26 @@ const SCREENS = [
       const r = f.getBoundingClientRect(), y = r.top + r.height / 2, x = r.right - 40;
       const ev = (t, dx) => f.dispatchEvent(new PointerEvent(t, { pointerId: 9, clientX: x + dx, clientY: y, button: 0, bubbles: true, pointerType: "touch" }));
       ev("pointerdown", 0); await wait(30); ev("pointermove", -20); await wait(30); ev("pointermove", -130); await wait(30); ev("pointerup", -130); await wait(400);
-      if (!/Denied/.test(document.querySelector('.np-toast')?.textContent || "")) throw new Error("no Denied toast");
+      if (!/Denied/.test(document.querySelector('.toast')?.textContent || "")) throw new Error("no Denied toast");
       if (row.isConnected && row.offsetHeight > 2) throw new Error("the denied row did not collapse");
       if (sent.length) throw new Error("the deny went before its toast ended");
-      document.querySelector('.np-toast-undo').click(); await wait(4600);
+      document.querySelector('.toast-undo').click(); await wait(4600);
       if (sent.length) throw new Error("Undo did not stop the deny: " + JSON.stringify(sent));
       const back = document.querySelector('.np-row[data-kind=ask] .np-kb-b'); if (!back) throw new Error("the row did not come back after Undo");
       back.click(); await wait(1500);
       const a = sent.find(x => x.t === "threads.answer"); if (!a) throw new Error("the approve was not sent");
       if (a.proof) throw new Error("the approve asked for a presence proof");
-      if (!/Approved/.test(document.querySelector('.np-toast')?.textContent || "")) throw new Error("no Approved toast");` },
+      if (!/Approved/.test(document.querySelector('.toast')?.textContent || "")) throw new Error("no Approved toast");` },
   // Onboarding's history and devices steps (the phone shell is not part of onboarding).
   { name: "onboard-history", path: "/onboard#history", wait: 3000, noShell: true },
   { name: "onboard-devices", path: "/onboard#devices", wait: 3000, noShell: true },
   // No assistant yet (onboarding's first step skipped): agents.list answers without juno.
+  // The Glass mini card (js/glass-mini.js) from a stubbed sight: kit's computer is running.
+  { name: "now-glass-mini", path: "/now", wait: 3000, stub: {
+      "sight.targets": { targets: [{ target: "agent:kit", kind: "agent", label: "kit", live: true }] },
+      "sight.steps": { steps: [{ target: "agent:kit", action: "click", summary: "Clicked Compose in Mail", ok: true, at: 0 }] },
+      "sight.frame": { target: "agent:kit", image: "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI0ODAiIGhlaWdodD0iMzAwIj48cmVjdCB3aWR0aD0iNDgwIiBoZWlnaHQ9IjMwMCIgZmlsbD0iIzJiMjkyNiIvPjxyZWN0IHg9IjI0IiB5PSIyNCIgd2lkdGg9IjQzMiIgaGVpZ2h0PSIzNiIgcng9IjYiIGZpbGw9IiMzYTM3MzMiLz48dGV4dCB4PSI0MCIgeT0iNDgiIGZvbnQtZmFtaWx5PSJzYW5zLXNlcmlmIiBmb250LXNpemU9IjE2IiBmaWxsPSIjZjFlZWU2Ij5NYWlsOiBOZXcgbWVzc2FnZSB0byBkYW5hQGhhcmxvd2xlZ2FsLmNvbTwvdGV4dD48L3N2Zz4=", mime: "image/svg+xml", maxWidth: 480, at: 0 } },
+    script: `await waitFor('.gm-card img', 8000); if (!document.querySelector('.gm-card[aria-label="Open Glass for kit\\'s computer"]')) throw new Error('no card for kit');` },
   { name: "no-assistant-now", path: "/now", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   { name: "no-assistant-agents", path: "/agents", stub: { "agents.list": [{ name: "kit", kind: "agent", projects: ["harlow-legal"], status: "idle" }] } },
   // A cold launch from the home screen opens where the user left off, not at start_url, when
@@ -136,8 +154,8 @@ for (const dev of DEVICES) {
     try {
       // The notch and the home indicator, where this Chrome can emulate them.
       await tab.send("Emulation.setSafeAreaInsetsOverride", { insets: { top: dev.insets.top, topMax: dev.insets.top, bottom: dev.insets.bottom, bottomMax: dev.insets.bottom, left: 0, leftMax: 0, right: 0, rightMax: 0 } });
-      if (s.theme) { await tab.go(base + "/now", 300); await tab.run(`localStorage.setItem("vyre.theme", ${JSON.stringify(s.theme)}); localStorage.removeItem("vyre.last");`); }
-      else { await tab.go(base + "/now", 300); await tab.run(`localStorage.removeItem("vyre.theme"); localStorage.removeItem("vyre.last");`); }
+      if (s.theme) { await tab.go(base + "/now", 300); await tab.run(`localStorage.setItem("vyre.theme", ${JSON.stringify(s.theme)}); localStorage.removeItem("vyre.last"); localStorage.removeItem("vyre.pin");`); }
+      else { await tab.go(base + "/now", 300); await tab.run(`localStorage.removeItem("vyre.theme"); localStorage.removeItem("vyre.last"); localStorage.removeItem("vyre.pin");`); }
       if (s.stub) await tab.send("Page.addScriptToEvaluateOnNewDocument", { source: `(() => {
         const stub = ${JSON.stringify(s.stub)}, real = window.fetch;
         window.fetch = (u, o) => { const name = String(u).split("/v1/tools/")[1]; const d = name && stub[decodeURIComponent(name)];

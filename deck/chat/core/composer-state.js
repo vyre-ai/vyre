@@ -22,27 +22,21 @@
 
 // ---- models --------------------------------------------------------------------------------
 
-/** The aliases Claude Code takes, offered first. */
-export const MODEL_ALIASES = Object.freeze([
-  { id: "opus", label: "Opus", description: "The most capable" },
-  { id: "sonnet", label: "Sonnet", description: "Fast and capable" },
-  { id: "haiku", label: "Haiku", description: "The fastest" },
-]);
-
-/** The model's family name, never the vendor's: "claude-opus-4-5" reads "opus". @param {string|null|undefined} m */
+/** The model's family name, never the vendor's: a full Opus id reads as opus. @param {string|null|undefined} m */
 export const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.toLowerCase() || String(m).replace(/^claude-/i, "")) : null);
 
 /**
- * The model picker's rows. The box has no list of models (no sessions.models): the aliases, then
- * every other id it names, from sessions.models.get's per-purpose map ({purposes: {chat: {model},
- * ...}}, "Used for chat, agent") and this thread's own (thread.started, the record). "now" marks
- * the thread's model: the exact id, else its family's alias.
- * @param {{ current?: string|null, purposes?: any, seen?: (string|null|undefined)[] }} o
+ * The model picker's rows: the box's aliases (sessions.models.get's `aliases`, its one list), then
+ * every other id it names, from its per-purpose map ({purposes: {chat: {model}, ...}}, "Used for
+ * chat, agent") and this thread's own (thread.started, the record). "now" marks the thread's
+ * model: the exact id, else its family's alias. No list lives here (test/cohesion-drift.test.js).
+ * @param {{ current?: string|null, purposes?: any, aliases?: any, seen?: (string|null|undefined)[] }} o
  * @returns {{ id: string, label: string, description?: string, now: boolean }[]}
  */
 export function modelChoices(o = {}) {
   /** @type {Map<string, { id: string, label: string, description?: string, now: boolean }>} */
-  const rows = new Map(MODEL_ALIASES.map(m => [m.id, { ...m, now: false }]));
+  const aliases = Array.isArray(o.aliases) ? o.aliases.filter((/** @type {any} */ m) => m && typeof m.id === "string" && /^[a-z][a-z0-9-]{0,31}$/.test(m.id)) : [];
+  const rows = new Map(aliases.map((/** @type {any} */ m) => [m.id, { id: m.id, label: String(m.label || m.id), ...(m.description ? { description: String(m.description) } : {}), now: false }]));
   /** @type {Map<string, string[]>} */
   const uses = new Map();
   const purposes = o.purposes && typeof o.purposes === "object" ? o.purposes : {};
@@ -267,7 +261,7 @@ export function upAction(o) {
 
 /**
  * @typedef {{ do: "newline" } | { do: "none" } | { do: "pick" }
- *   | { do: "send", kind: DraftKind, mode: SendMode|null }} EnterAction
+ *   | { do: "send", kind: DraftKind, mode: SendMode|null } | { do: "refuse", why: "images-queue" }} EnterAction
  */
 
 /**
@@ -275,6 +269,8 @@ export function upAction(o) {
  * @param {{ text: string, running: boolean, shift?: boolean, alt?: boolean, meta?: boolean, ctrl?: boolean,
  *   queueToggle?: boolean, composing?: boolean, touch?: boolean, pickerOpen?: boolean, images?: number, button?: boolean, hold?: boolean }} o
  *   hold: the send button was long-pressed (the phone's way to queue).
+ *   A message with images is never queued (refused, why "images-queue"): the box keeps a queued
+ *   message's words only, so its images would be lost. It can be sent as a steer or after the turn.
  * @returns {EnterAction}
  */
 export function enterAction(o) {
@@ -290,8 +286,9 @@ export function enterAction(o) {
   const kind = draftKind(text);
   if (kind === "shell" || kind === "memory") return draftBody(text) ? { do: "send", kind, mode: null } : { do: "none" };
   if (!o.running) return { do: "send", kind, mode: null };
-  if (kind === "command") return { do: "send", kind, mode: "queue" };
+  if (kind === "command") return o.images && o.images > 0 ? { do: "refuse", why: "images-queue" } : { do: "send", kind, mode: "queue" };
   const queue = !!(o.alt || o.queueToggle || o.hold);
+  if (queue && o.images && o.images > 0) return { do: "refuse", why: "images-queue" };
   return { do: "send", kind, mode: queue ? "queue" : "steer" };
 }
 

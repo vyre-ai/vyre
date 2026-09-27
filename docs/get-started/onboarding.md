@@ -190,8 +190,9 @@ screen and stacked on a narrow one.
 **Pair this Mac**:
 
 1. **Install Vyre**: `npm i -g https://vyre.run/box/vyre.tgz` on the Mac.
-2. **Pair it with this box**: `vyre up` on the Mac. It finds the box on your tailnet and shows a
-   code.
+2. **Pair it with this box**: `vyre up` on the Mac. It finds the box on your tailnet, asks
+   whether to pair with it, and shows a code once you say yes (`vyre link pair <address>` does the
+   same without the question).
 3. A card appears here, "A Mac wants to pair:" and the Mac's name, with a field for **Code on that
    Mac**, **Approve** and **Deny**. Type the code, press **Approve**, and confirm with your
    passkey. The card counts down the request's ten minutes.
