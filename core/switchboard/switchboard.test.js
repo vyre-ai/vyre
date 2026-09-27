@@ -178,7 +178,8 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   }
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  const work = fs.mkdtempSync(path.join(root, "work-"));
+  // realpath: on the Mac the temp dir sits under /var, which vyred and fake claude see as /private/var.
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(root, "work-")));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   for (const [name, value] of Object.entries(vault || {})) {

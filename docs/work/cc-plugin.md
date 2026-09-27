@@ -94,13 +94,34 @@ Perf:
   (23d25ac): test/cc-plugin (the real planner through the copied plugin's MCP server: remind in
   2 hours, todo, list, agenda, a no-time reminder refused), core/about, test/harness,
   core/planner/planner, core/memory/personal/answer: 46/46. Again at e1bd6cb (main 964af29) with
-  memory-iq 9cec54f: 48/48. The integrator's failing trial was ddf4653, before the rewrite. This branch alone (stand-in): 15/15.
+  memory-iq 9cec54f: 48/48. With planner ee8c92e (bare times, the agent rule, bare "mcp" is the
+  user's session): 50/50. The integrator's failing trial was ddf4653, before the rewrite. This branch alone (stand-in): 15/15.
 - SessionStart hook with about.md, vyred down, 30 runs on the Mac (load 2.6): 43 ms median, 47 ms
   p95 net of the timer (bare node 21 ms). Imports are about 13 ms, 10 of them core/daemon/client.js.
 
+## Done: the plugin through the Agent SDK (27 Sep, ADR 0030 phase 2)
+
+- `scripts/cc-plugin-parity/parity.mjs` (testbox; header says how). One Claude Code binary (the
+  SDK's bundled 2.1.283), a fake Messages API, fresh temp HOME/config/Vyre home per mode, vyred up,
+  about.md written. Modes: terminal (`claude plugin install vyre@vyre`, `claude -p`), sdk
+  (`query()` with `plugins: [{ type: "local", path: harness }]`, settingSources user/project/local,
+  no allowedTools so every call reaches canUseTool), both (installed plugin + the SDK option).
+- Result, identical in all three: plugin `vyre` loaded, `plugin:vyre:vyre` connected, 220
+  `mcp__plugin_vyre_vyre__*` tools, /vyre and the 3 skills; about.md's text in the first API
+  request; system_echo and planner_add answer over MCP; the Write is recorded in harness_files;
+  hook runs brief 1, enrich 1, rules 4, learn 1, stop 1, MCP server 1 (both: no piece twice);
+  the vault Read is denied by PreToolUse and never reaches canUseTool.
+- Found and fixed on the way: with vyred up, that vault Read was NOT denied (in every mode, and
+  on main). The registry's floor refused `harness.rules` itself (its input holds the vault path),
+  and the hook read `denied` as no opinion. hook.js now runs the local floor on `denied`.
+  Test "a Read or a cat into the vault is denied" (failed before, passes now).
+- Tests on testbox: test/cc-plugin, test/harness, core/learn/learn, core/about: 74/74.
+- SessionStart hook after merging main ef51363, Mac, 30 runs: 40.8 ms median, 43.7 ms p95
+  (bare node 19.6 / 21.5). The fix touches only the rules piece.
+
 ## Doing
 
-- Nothing running. Waiting on memory-iq's answers (Needs) and the integrator's queue.
+- Nothing running. Waiting on memory-iq's bare-mcp gate (not on work/memory-iq 5a75b27 yet).
 
 ## Next
 
@@ -112,16 +133,21 @@ Perf:
 
 ## Needs from others
 
+- switchboard/sessions: on Linux (testbox, and so the box) /bin/sh is dash, which forks for
+  `sh -c 'node .../run.js brief'`, so the hook's parent is `/bin/sh`, not claude. threads.bind
+  refuses it ("not a running claude") and no session binds (0 rows in every parity mode), so the
+  MCP server cannot name the session its calls come from. Suggested fix, daemon side (no cost to
+  the hook): Sessions.bind accepts a pid that is `sh -c` whose parent is claude and binds that
+  parent. The Mac's /bin/sh execs, so it binds there.
+
 - memory-iq (shapes confirmed; memory.profile and memory.remember on 892b339): their gate refuses a
   bare "mcp" caller, which is the user's own Claude Code session. Told them; they will add it.
   Then add a combined test through the plugin for memory_answer and memory_remember.
-- planner: asked whether `at: "6pm"` alone and "6pm call ..." should parse (the lead thinks yes).
-  /vyre remind does not depend on it.
 - planner (settled 28 Sep): shapes adopted as merged; no {day, days} sugar needed. Told them a bare
   "mcp" caller is the user's own session (no label, may edit what it added); mcp:agent:<name> is
   an agent. Delivery of a due reminder: push + Capsule + Deck, not a Claude session. The agent
-  rule (free adds, silent ~200/hour cap, label only when not the user's or their assistant's) is
-  theirs to enforce; not yet in their code.
+  rule is in ee8c92e: anyone adds anything with no prompt; bare "mcp" has source "mcp" and no label;
+  `at` takes words ("6pm", "in 20 minutes"); agenda todos include overdue ones.
 - docs: parked text in work/docs docs/work/pending-cc-plugin.md, applied after c4a30dd/2d9a274 merge. Its
   "agents: 20 an hour, only a person edits" line is superseded: agents add freely (silent ~200/hour cap),
   labelled only when not the user's own assistant or session. Told docs.
