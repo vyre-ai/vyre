@@ -155,7 +155,10 @@ terminal, Glass, the relay and federation between boxes. Each rule has a test in
   nothing else. On stop, every live session ends with `thread.stopped` reason `restart` (the
   Switchboard's stopAll today, the session driver's `close("restart")` under ADR 0030), written
   before the streams close, so a surface replays it and says "the box restarted" instead of
-  spinning. Idle sessions lose nothing: the next send resumes them.
+  spinning. A vyred that crashed says the same on its next start, for every thread it finds
+  still marked live. Idle sessions lose nothing: the next send resumes them. A session closed for
+  idleness (`thread.stopped` reason `idle`, ADR 0030) is not an end either: surfaces show it as
+  resting, not stopped, and never as an error.
 - The durable terminal socket closes with code 1012 ("restarting"), so the client reattaches with
   `from` instead of ending.
 - The Deck's service worker swaps its shell as one versioned set, so a deploy never mixes old and

@@ -45,8 +45,8 @@ export function follow({ paths, open, onEvent, onReset, onState, cursor = null, 
   /** @type {any} */ let probe = null;
   let downSince = /** @type {number|null} */ (null);
 
-  const tell = (state, why) => onState?.({ state, path: paths[at] ?? null, attempt, why, since: downSince });
-  const move = n => { if (Number.isFinite(n) && (cursor === null || n > cursor)) { cursor = n; save?.(n); } };
+  const tell = (/** @type {StreamState["state"]} */ state, /** @type {string|undefined} */ why = undefined) => onState?.({ state, path: paths[at] ?? null, attempt, why, since: downSince });
+  const move = (/** @type {number} */ n) => { if (Number.isFinite(n) && (cursor === null || n > cursor)) { cursor = n; save?.(n); } };
 
   async function connect() {
     if (paused || stopped) return;
@@ -92,6 +92,7 @@ export function follow({ paths, open, onEvent, onReset, onState, cursor = null, 
     if (!paused && !stopped) down(why);
   }
 
+  /** @param {string} why */
   function down(why) {
     clearInterval(probe); probe = null;
     downSince ??= Date.now();

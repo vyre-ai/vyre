@@ -316,3 +316,13 @@ test("projects: a catalogue search costs one Recall call and no per-session path
   // algorithmic regression, not on load from other test suites running concurrently).
   assert.ok(ms < 2000, `a catalogue search over 2,000 sessions took ${Math.round(ms)}ms`);
 });
+
+test("projects: the catalogue says live for a session a terminal has open now, and false without the Switchboard", async () => {
+  const { withLive } = await import("./index.js");
+  const cat = { total: 2, sessions: [{ id: "a1" }, { id: "b2" }] };
+  const ctx = { call: async () => ({ data: { sessions: ["b2"] } }) };
+  assert.deepEqual((await withLive(ctx, cat)).sessions.map(s => [s.id, s.live]), [["a1", false], ["b2", true]]);
+  const gone = { call: async () => ({ error: { code: "no_such_tool", message: "no threads.live" } }) };
+  assert.deepEqual((await withLive(gone, cat)).sessions.map(s => s.live), [false, false]);
+  assert.equal((await withLive(gone, cat)).total, 2);
+});
