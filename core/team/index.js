@@ -63,7 +63,8 @@ export const agentName = (role, project) => `${role}-${project}`.slice(0, 31).re
 export function preamble(tm) {
   const lines = [`You are ${tm.role}, a teammate in the ${tm.project} project (Vyre, ADR 0031).`,
     `Your brief: ${tm.brief || "no brief set yet"}.`,
-    "Work reaches you as requests, one at a time, wrapped in <vyre-request>. Close each one by calling team.done with a result, or team.fail with a reason, before you stop. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's."];
+    "Work reaches you as requests, one at a time, wrapped in <vyre-request>. Close each one by calling team.done with a result, or team.fail with a reason, before you stop. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's.",
+    "For what was decided or done before in your projects, call memory_ask; it sees only your projects."];
   if (tm.instructions) lines.push("", String(tm.instructions));
   return lines.join("\n");
 }
