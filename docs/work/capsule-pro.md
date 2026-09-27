@@ -109,6 +109,52 @@ without editing Capsule files:
 - Sessions (61dd9dc): Esc uses threads.interrupt, thread.stopped idle is not a failure, busy is
   said in words, and the terminal-only "not one vyred runs" wording. Swift 284/284.
 
+## Real-Mac check for the native Capsule (the user, at the Mac, in their own terminal)
+
+Only what cannot be tested for them: the keychain, Touch ID, lock and sleep, the hot keys, a
+banner. About 20 minutes. Everything goes to the user's own address and nobody else. Before
+starting: this Vyre install is the user's own (not a temp home), a Gmail sender is connected
+(`vyre call gate.senders '{}'` lists `gmail`), and the Mac has Touch ID.
+Held test mail: `H='{"kind":"send","via":"gmail","to":"<your own address>","content":{"subject":"Vyre check N","body":"Capsule check."}}'`,
+then `vyre call gate.request "$H"` with N changed each time.
+
+1. **Install.** `vyre capsule install`. It says it builds on this Mac and downloads nothing,
+   then asks once whether to make a local signing identity. Say yes and type the Mac password
+   when macOS asks. Pass: "Signing identity: made ..." and "Capsule built".
+   `codesign -dv ~/.vyre/capsule/Vyre.app 2>&1 | grep Authority` shows `Vyre Local`.
+2. **Open.** `vyre capsule`. Press Option-Space in a full-screen app. Pass: the Capsule opens over
+   it, Esc closes it, and the menu bar mark's dot is green (grey means vyred is not up).
+3. **Control twice.** From the menu bar mark, turn on "Control twice" and allow Input Monitoring
+   in System Settings once. Pass: tapping Control twice toggles the Capsule, and `vyre doctor`
+   says so for the Capsule.
+4. **Enrolment.** Queue "Vyre check 1". In the Capsule press Up, open the held mail and press
+   Command-Return. The first time, vyred's own Touch ID dialog enrols the Capsule's key. Pass: one
+   system Touch ID prompt that names Vyre, then the step below.
+5. **Touch ID in the panel, cancelled.** The panel says "Confirm it's you" with "Send to <your
+   address>: Vyre check 1" and Touch ID drawn inside the panel. Press Esc. Pass: "Not approved.
+   Nothing was done. It is still held.", and no mail arrives.
+6. **Touch ID in the panel, approved.** Command-Return again and touch the sensor. Pass: the row
+   leaves the list and "Vyre check 1" arrives within a minute.
+7. **The session covers the next one.** Queue "Vyre check 2" and send it the same way within 30
+   minutes. Pass: no Touch ID at all, and the mail arrives.
+8. **Locking ends the session.** Lock the Mac (Control-Command-Q), unlock it, queue "Vyre check 3"
+   and send it. Pass: Touch ID is asked again. Do the same after closing the lid for a minute
+   (sleep).
+9. **A banner from the box.** `vyre timer 1m vyre check`. Hide the Capsule. The first time,
+   macOS asks to allow notifications: allow them. Pass: a banner at the top right after a minute,
+   with Done and Snooze. Press Done: it goes, and the Deck and phone show it answered.
+10. **An update keeps permissions.** Update Vyre (the next npm version, or `npm i -g` of the
+   branch), then `vyre capsule`. Pass: it rebuilds once ("Building the Capsule"), still
+   `Vyre Local` (step 1's command), and Control twice (step 3) works with no new permission
+   prompt.
+11. **Light while hidden.** Leave the Capsule hidden for a minute. Then run
+   `footprint $(pgrep -x Vyre) | grep phys_footprint:` and `ps -o %cpu= -p $(pgrep -x Vyre)`.
+   Pass: under 60 MB and under 0.1% (CI measured 24 MB and 0.07%).
+
+Afterwards: `vyre call gate.held '{}'` shows nothing left over. Discard anything that is, with the
+card's Discard button in the Capsule or `vyre call gate.reject '{"id":"<id>"}'`.
+If a step fails, note its number and what the screen said. Screenshots of the Capsule only.
+
 ## Next
 2. When sessions lands thread.state, thread.tool {call, status}, thread.turn and thread.usage:
    tool rows by call id, "idle" on @ session rows (VyreThread has no state yet), and "send now".
@@ -116,7 +162,7 @@ without editing Capsule files:
    projects.catalog rows carry it via fc7fa70).
 4. Local ring answers kept only in memory (PlannerBanners.unsent). Persist them to
    <home>/capsule/ if a quit before the box returns matters.
-5. Prove enrolment and the in-panel Touch ID with the user at the Mac.
+5. The real-Mac check above, when the user says go (the lead hands it over).
 
 ## Needs from others
 - capsule-now: its rules doc (docs/work/capsule-now.md) is not written yet; the lead asked the
