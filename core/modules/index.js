@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY } from "../presence/index.js";
+import * as config from "../config/index.js";
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
@@ -23,6 +24,21 @@ const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
 const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** Vyre's own modules are the ones shipped in the repo (core, local, modules); a home's never are. */
+const REPO_DIR = path.resolve(CORE_DIR, "..");
+const SHIPPED = ["core", "local", "modules"].map(x => path.join(REPO_DIR, x));
+/**
+ * Shipped with Vyre: a module folder directly in the repo's core/, local/ or modules/, and never
+ * one inside the home, even a dev home kept inside a checkout (VYRE_HOME=<repo>/.dev): a home
+ * module is the person's or a third party's, whatever folder it sits in (e2e review).
+ * @param {string} dir
+ */
+export const firstParty = dir => {
+  const d = path.resolve(dir);
+  if (!SHIPPED.includes(path.dirname(d))) return false;
+  const home = config.home();
+  return !(home !== REPO_DIR && (d + path.sep).startsWith(home + path.sep));
+};
 /**
  * The only caller labels a module may call under, and who may. A person's labels ("cli", "deck")
  * are never here: a module that could call as one would act as the person. The link on a Mac types
@@ -402,7 +418,11 @@ export class Registry {
     // A call that carries an Idempotency-Key runs once per key; a retry gets the first answer.
     // The key reaches the tool too, so a tool that hands work on can carry it (threads.send uses
     // it as the Agent SDK message uuid, ADR 0030), and a retry after a restart is still one turn.
-    const run = () => this.run(def, input, { ...meta, caller, ...(idempotencyKey ? { idempotencyKey } : {}) });
+    // meta.firstParty: the caller is one of Vyre's own modules, by the loader's one rule
+    // (firstParty above). Set here, over anything a caller passed, so no module can claim it.
+    const rec = String(caller).startsWith("module:") ? this.modules.get(String(caller).slice(7)) : null;
+    const fp = Boolean(rec && rec.dir && firstParty(rec.dir));
+    const run = () => this.run(def, input, { ...meta, caller, firstParty: fp, ...(idempotencyKey ? { idempotencyKey } : {}) });
     const result = idempotencyKey && this.idempotency ? await this.idempotency.once({ caller, tool, key: idempotencyKey, input }, run) : await run();
     // keep: the person asked that this proof also open a presence session on their device, so
     // the next sessionable call (another send) needs no second Touch ID or passkey. Only a strong

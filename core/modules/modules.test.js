@@ -2,7 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { validate, discover, order, checkInput, Registry, callerAllowed } from "./index.js";
+import { validate, discover, order, checkInput, Registry, callerAllowed, firstParty } from "./index.js";
+import { fileURLToPath } from "node:url";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
@@ -74,6 +75,25 @@ test("modules: a module installed into a home never calls as another caller, eve
       assert.match((await reg.call(`${name}.try`, { as })).data, /may not call/, `${name} as ${as}`);
     }
   }
+});
+
+test("modules: meta.firstParty is set by the registry, from the loader's firstParty rule", async t => {
+  // A module in a home asks another tool what it was told; a claimed firstParty is overwritten.
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.seen", { input: { type: "object" }, run: async (_, meta) => ({ firstParty: meta.firstParty, caller: meta.caller }) });
+    ctx.tool("notes.ask", { input: { type: "object" }, run: async () => (await ctx.call("notes.seen", {})).data });
+    return { async stop() {} };
+  } };`;
+  const reg = await registry(t, [["notes", { version: "0.1.0", does: { tools: ["notes.seen", "notes.ask"] } }, src]]);
+  assert.deepEqual((await reg.call("notes.ask", {})).data, { firstParty: false, caller: "module:notes" });
+  assert.equal((await reg.call("notes.seen", {}, "module:notes", { firstParty: true })).data.firstParty, false, "a claim is overwritten");
+  assert.equal((await reg.call("notes.seen", {}, "cli", { firstParty: true })).data.firstParty, false);
+  assert.equal((await reg.call("notes.seen", {}, "module:nobody", {})).data.firstParty, false);
+  // A module shipped in the repo's core/ is first party, by the same rule the loader uses.
+  const shipped = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "mail");
+  assert.equal(firstParty(shipped), true);
+  reg.modules.set("mail", { ...reg.modules.get("notes"), dir: shipped });
+  assert.equal((await reg.call("notes.seen", {}, "module:mail", {})).data.firstParty, true);
 });
 
 test("modules: a module that throws on start is failed, and the rest still run", async t => {
