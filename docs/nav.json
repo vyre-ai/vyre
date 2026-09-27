@@ -75,7 +75,8 @@
       "adr/0024-chat.md",
       "adr/0025-planner.md",
       "adr/0026-relay.md",
-      "adr/0029-resilience.md"
+      "adr/0029-resilience.md",
+      "adr/0031-teammates.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
