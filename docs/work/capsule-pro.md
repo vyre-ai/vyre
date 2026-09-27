@@ -114,7 +114,12 @@ The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, n
 1. app-design 305fc07b left: tip.md (tips.next, ⌘. dismisses), credential-sheet.md check
    against the row built, glass-mini.md step pill; "three recent items" on open (capsule.md).
 2. A held mail from "Write it" could open its card at once (today: words, then ↑).
-3. Vyre IQ over iq.ask {stream:true} when memory-iq lands it (stages, source chips ⌘1..⌘3, Not
+3. (0.1.1) memory-iq 6adfc4b6 spec (docs/design/iq-everywhere.md on work/memory-iq): memory.ask
+   {question, stream:true, id:"cap_<n>", context:{project}}; memory.thinking {id, stage} then
+   memory.answered; reply {answer, confidence, abstained, known[], sources[], via, limited?, message?}.
+   Draw answer, "confidence X · from N sessions", 3 sources (tap opens the turn); abstained: "Not
+   sure yet." + known + "Ask Claude instead"; limited: message verbatim. Old path only on
+   no_such_tool. Earlier note: Vyre IQ over iq.ask {stream:true} when memory-iq lands it (stages, source chips ⌘1..⌘3, Not
    sure, nothing found). [n] in replies linked to source rows (sessions 51eaa964).
 4. Cohesion glue as each lands on main: context.report on front-app switch, sight.now,
    suggest.query, waiting.list/count, sessions.models.resolve, connections (vault) and mail rows
