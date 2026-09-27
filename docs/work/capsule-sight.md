@@ -75,6 +75,13 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
     ./bin/vyre voice               # Enter to talk, Enter to stop, Ctrl-C to quit
 
 ## Needs from others
+- sessions (ADR 0030), agreed shapes, not landed yet (after the SDK default flip; sessions sends
+  the commit): thread.tool {id (= call), call, name, status running|completed|failed|canceled,
+  summary, turn}, running once then one final status; thread.state {state starting|idle|running|
+  waiting|stopped|failed, turn}; thread.turn {turn "<thread>:<n>", uuid, text}. Live in 33ae9e7:
+  thread.started carries provider, model, auth, purpose; thread.stopped reason "idle" means
+  resumable, not ended (the panel must not mark the tab closed), or "restart". threads.get keeps
+  today's shape for Claude sessions (history stays in the transcripts); later fields are additions.
 - LANDED: chat's recall.watch on work/chat 10604b9. Final shapes: recall.watch {session, from?, watch?}
   -> {watch:"w_<hex>", session, from|null, busy}; renew by passing watch (renewed:true); expires 3 min
   unrenewed, 30 min idle; not_found. recall.unwatch {watch} -> {watch, ended:true}. session.turn
