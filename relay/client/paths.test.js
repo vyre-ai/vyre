@@ -133,7 +133,10 @@ test("paths: on the relay, the direct path is probed every 60 s only while visib
   assert.deepEqual(got[1], ["6", "direct"]);
   const reopened = direct.calls.filter(c => c.path === "/v1/events/stream").at(-1);
   assert.equal(reopened?.last, "5", "the stream resumed from its cursor on the new path");
-  assert.equal(seen.filter(s => s.path === "/v1/events/stream").length, 1);
+  // The fake relay stream sends no heartbeats, so the 45 s stall check reopened it meanwhile; each
+  // reopen resumed from the cursor, and the replayed id 5 was dropped.
+  assert.deepEqual(seen.filter(s => s.path === "/v1/events/stream").slice(1).map(s => s.last), Array(seen.filter(s => s.path === "/v1/events/stream").length - 1).fill("5"));
+  assert.equal(got.filter(g => g[0] === "5").length, 1);
   await settle(() => relay.sockets.every(s => s.readyState === 3));
   assert.equal(/** @type {any} */ (paths.paths[1]).connection, null, "the relay channel is dropped once direct works");
   ev.close();
