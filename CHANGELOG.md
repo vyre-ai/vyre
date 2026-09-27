@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Appearance settings per device, from the hub
+
+- The appearance keys (theme, scheme, tokens) are set per device and kept in hub.json. The hub
+  runs appearance.check before it stores a change. appearance.tokens.get/.set and GET
+  /v1/appearance/theme are removed. vyred's /v1/theme and /theme.css?device= (through
+  appearance.resolve) are the only theme routes. An old stored tokens row is read for one release,
+  then dropped on the first change.
+
 #### Design specs for tips, the Glass mini-view and the shared pieces
 
 - New specs in docs/design/system/components: tip (one quiet line or chip from tips.next on every
