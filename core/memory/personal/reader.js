@@ -23,6 +23,7 @@ import { spawn } from "node:child_process";
 import { relOfRole, canonVehicle, ownText, CAR_NAMES } from "./extract.js";
 import { OBJ, KIN_RELS, DIETS, ANYONE, NAME } from "./model.js";
 import { KIN } from "./extract.js";
+import { userWords } from "./trust.js";
 
 const KIN_WORDS = new Set(Object.keys(KIN));
 /** Roles that name one person: an attribute of "the wife" is hers. */
@@ -419,7 +420,9 @@ export function createReader(deps) {
   let turnStmt = null;
   const turnQ = { get: (session, seq) => {
     if (!turnStmt) { try { turnStmt = db.prepare("SELECT text, role FROM recall_turns WHERE session = ? AND seq = ?"); } catch { return undefined; } }
-    return turnStmt.get(session, seq);
+    // The reader sees only the person's own words: no harness blocks (personal/trust.js).
+    const r = /** @type {any} */ (turnStmt.get(session, seq));
+    return r && r.role === "user" ? { ...r, text: userWords(String(r.text)) } : r;
   } };
   let timer = null, running = false, stopped = false, waiting = null;
 

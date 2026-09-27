@@ -108,14 +108,14 @@ test("personal store: someone else's facts stay out, and Claude's echo is weak",
   assert.ok(!juno || juno.confidence < 0.5);
 });
 
-test("personal store: subagent sessions count once, under their parent", async t => {
+test("personal store: a subagent's brief is another agent's words and teaches nothing", async t => {
   const p = S(["My wife Jordan says hi."]);
   const sub = S(["My wife Jordan says hi."], { parent: p.id });
   const other = S(["My wife Jordan is at Harlow Legal today."], { start: T0 + DAY });
   const { me } = world(t, [p, sub, other]);
   await all(me);
   const f = me.lookup({ subj: "wife", rel: "name" })[0];
-  assert.equal(f.mentions, 3);
+  assert.equal(f.mentions, 2);
   assert.equal(f.sessions, 2);
 });
 

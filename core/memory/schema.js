@@ -218,4 +218,9 @@ export const MIGRATIONS = [
   `CREATE TABLE memory_me_queue (session TEXT NOT NULL, seq INTEGER NOT NULL, ts INTEGER NOT NULL DEFAULT 0, hash TEXT NOT NULL, pri INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (session, seq)) WITHOUT ROWID;
   CREATE INDEX memory_me_queue_hash ON memory_me_queue (hash);
   CREATE TABLE memory_me_reads (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, facts TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
+  // Source trust (personal/trust.js, ADR 0034): which sessions may teach personal facts. Claude's
+  // words no longer do, and every session is read again under the new rules.
+  `CREATE TABLE memory_me_trust (session TEXT PRIMARY KEY, ok INTEGER NOT NULL, why TEXT, dev INTEGER NOT NULL DEFAULT 0, v INTEGER NOT NULL) WITHOUT ROWID;
+  DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told');
+  DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;`,
 ];
