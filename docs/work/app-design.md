@@ -52,6 +52,31 @@ Next: native-core's six asks for appearance (device level, call check, choicesFr
 settings.snapshot, /theme.css and /v1/theme from the daemon, GROUPS), then switch the keys to
 account + device and drop the tokens tool store. Then polish passes over the specs with each team.
 
+## Now (28 Sep, launch support)
+
+- Launch art done: Og, Social, ReadmeHero + -paper, boards + PNGs, both pass the audit clean.
+  Committed e95897c3. PNGs handed to launch at /tmp/launch-art-handoff/ (not copied into
+  vyre-launch/site — this Mac's filesystem is case-insensitive, `Og.png` collides with their
+  tracked `og.png`; told launch to rename on their side).
+- Visual review of launch's site against Design A (screenshots via testbox vyre-chrome,
+  site/index.html and site/404.html; onboard.html needs a live loopback server, static open
+  renders empty, not reviewed live):
+  - 404 page: clean, on-brand, no findings.
+  - Landing page (site/index.html, site/styles.css): systemic gold violation. `--recall: #EBC76B`
+    is the visual identity of the whole "It remembers, and shows you where from" section (the
+    recalled-answer card, the legend dot, `.gold` utility, 6+ uses in styles.css). Design A retired
+    gold entirely (tokens.md Retired names: "Gold is gone from the system") — a memory source
+    should be a plain source chip (1px --rule-strong), not a colour. This is the single biggest
+    finding; it's a redesign of that section's cards, not a token swap.
+  - deck/onboard/onboard.css: `.dev-off` and `.need` both set `background: var(--beacon-wash)`,
+    which was retired (Retired names table) and isn't even generated into deck/css/tokens.css
+    (grepped — not present), so it resolves to nothing. Retired names says use `--hover` where the
+    card needs a ground. Two-line fix.
+  - No other off-token colours found (grepped every hex in site/*, deck/onboard/*, install-box.sh
+    against tokens.json; everything else matches token values exactly).
+  - Sample world used correctly throughout (Harlow Legal, kit, juno, alex, Northwind Bakery).
+  - Findings sent to launch (msg_id 9bf64bab) with the handoff.
+
 ## Next
 
 - ADR 0033 theme overrides: validation built (scripts/lib/theme.js, `gen-tokens --validate`).
