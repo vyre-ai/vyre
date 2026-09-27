@@ -3,7 +3,7 @@ title: "ADR 0034: Vyre IQ"
 summary: One question in, one cited answer out, from every session the user has had, their personal facts and the people and projects graph, in one to three seconds, and "not sure, here's what I know" rather than a wrong answer.
 audience: builders, agents
 owner: memory-iq
-status: accepted
+status: stable
 ---
 
 # ADR 0034: Vyre IQ

@@ -15,7 +15,7 @@
 
 import crypto from "node:crypto";
 
-export const VERSION = 1;
+export const VERSION = 2;
 /** Told as an answer from here up; under it IQ abstains with what it knows. */
 export const SURE = 0.5;
 /** What one answer call may cost at most, in USD. */
@@ -25,6 +25,8 @@ export const SYSTEM = [
   "You answer one question about the user's own work and life from numbered passages of their past sessions with Claude Code.",
   "Use only the passages. Never guess, never use outside knowledge, and never answer from a passage that only proposes something the user later rejected or reversed: the newest decision wins.",
   "Reply with JSON only, no prose: {\"answer\": string|null, \"cite\": [numbers], \"confidence\": 0..1, \"abstain\": boolean, \"known\": [short facts from the passages that bear on the question]}.",
+  "Answer exactly what was asked: asked for a cause, give the cause, not the symptom; asked for a file, the file where it was fixed; asked what something was, what it turned out to be.",
+  "Each passage names its project folder. A question about one project is answered only from that project's passages.",
   "answer is one short sentence that uses the passages' own words for names, files, numbers and dates. cite lists the passages it stands on.",
   "If the passages do not answer the question, set abstain true and answer null, and put what they do say that bears on it in known.",
 ].join("\n");
@@ -32,7 +34,7 @@ export const SYSTEM = [
 /** The prompt for one question and its passages: numbered from 1, each with its session name and date. */
 export function askPrompt(question, passages) {
   const fence = s => String(s).replace(/<\/?passage[^>]*>/gi, "");
-  const body = passages.map((p, i) => `<passage n="${i + 1}" session="${fence(p.name || p.session)}" date="${p.ts ? new Date(p.ts).toISOString().slice(0, 10) : "unknown"}" role="${p.role}">\n${fence(String(p.text).slice(0, 1500))}\n</passage>`).join("\n");
+  const body = passages.map((p, i) => `<passage n="${i + 1}" project="${fence(p.cwd ? String(p.cwd).split("/").filter(Boolean).pop() : "unknown")}" session="${fence(p.name || p.session)}" date="${p.ts ? new Date(p.ts).toISOString().slice(0, 10) : "unknown"}" role="${p.role}">\n${fence(String(p.text).slice(0, 1500))}\n</passage>`).join("\n");
   return `${body}\n\nQuestion: ${fence(question)}`;
 }
 
