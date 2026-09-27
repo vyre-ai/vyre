@@ -27,10 +27,11 @@ async function until(fn, what, ms = 8_000) {
 
 /** A module with a write that counts itself in the event log, so the count survives restarts. */
 function chaosModule(root) {
-  writeModule(path.join(root, "modules"), "chaos", { does: { tools: ["chaos.add", "chaos.slow", "chaos.key"] }, watches: { emits: ["chaos.added"] } }, `export default { async start(ctx) {
+  writeModule(path.join(root, "modules"), "chaos", { does: { tools: ["chaos.add", "chaos.slow", "chaos.key", "chaos.read"] }, watches: { emits: ["chaos.added"] } }, `export default { async start(ctx) {
     ctx.tool("chaos.add", { input: { type: "object", properties: { n: { type: "number" } } }, run: async i => ctx.events.emit("chaos.added", { n: i.n }) && { n: i.n } });
     ctx.tool("chaos.slow", { input: { type: "object", properties: { ms: { type: "number" }, n: { type: "number" } } },
       run: async i => { await new Promise(r => setTimeout(r, i.ms)); ctx.events.emit("chaos.added", { n: i.n }); return { n: i.n }; } });
+    ctx.tool("chaos.read", { input: { type: "object", properties: {} }, run: async () => ({ last_event: ctx.events.latestId() }) });
     ctx.tool("chaos.key", { input: { type: "object", properties: {} }, run: async (i, meta) => ({ key: meta.idempotencyKey ?? null }) });
     return {};
   } };`);
@@ -148,6 +149,19 @@ test("R2: the tool sees the call's key, so it can hand it on as the SDK message 
   const call = node.caller(w.proxies[0].url);
   assert.deepEqual((await call("chaos.key", {}, "key-00000009")).data, { key: "key-00000009" });
   assert.deepEqual((await call("chaos.key", {})).data, { key: null });
+});
+
+test("R1: a read returns last_event from ctx.events.latestId, and following from it misses nothing", { timeout: 20_000 }, async t => {
+  const w = await world(t);
+  w.emit(1);
+  const call = node.caller(w.proxies[0].url);
+  const { last_event } = /** @type {any} */ ((await call("chaos.read", {})).data);
+  assert.equal(last_event, w.d.events.latestId());
+  w.emit(2);
+  const f = watch(w, { cursor: last_event });
+  t.after(() => f.s.stop());
+  await until(() => f.got.length === 1, "the event after the read");
+  assert.deepEqual(f.got, [2]);
 });
 
 test("R2: the same key with other input is refused, not run", { timeout: 20_000 }, async t => {

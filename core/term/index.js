@@ -57,6 +57,8 @@ const str = { type: "string" };
 const int = { type: "integer" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const PEOPLE = ["cli", "local", "deck", "capsule"];
+/** How long a terminal lost to a box update still answers terminal_closed, not not_found. */
+const GONE_MS = 24 * 60 * 60 * 1000;
 const SURFACE = /^(deck|phone|capsule|glass|cli):[A-Za-z0-9_-]{1,64}$/;
 const HOUR = 3_600_000;
 
@@ -123,6 +125,12 @@ export default {
     const runDir = path.join(ctx.paths.root, "run", "term");
     const tableFile = path.join(runDir, "terms.json");
     let saveTimer = null;
+    /**
+     * Terminals a previous vyred left whose shell is gone (the container was recreated by a deploy,
+     * or the machine restarted): kept a day so their screen hears why, not a bare not_found.
+     * @type {Map<string, { key: string, at: number }>}
+     */
+    const gone = new Map();
     const save = () => {
       if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
       const rows = [...terms.values()].filter(t => t.durable && !t.ended).map(t => ({
@@ -132,7 +140,8 @@ export default {
       try {
         fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
         const tmp = `${tableFile}.${process.pid}.tmp`;
-        fs.writeFileSync(tmp, JSON.stringify({ terms: rows }), { mode: 0o600 });
+        const lost = [...gone.entries()].map(([id, g]) => ({ id, key: g.key, at: g.at }));
+        fs.writeFileSync(tmp, JSON.stringify({ terms: rows, gone: lost }), { mode: 0o600 });
         fs.renameSync(tmp, tableFile);
       } catch (e) { ctx.log(`term table: ${/** @type {Error} */ (e).message}`); }
     };
@@ -221,11 +230,20 @@ export default {
     });
 
     // Pick up the durable terminals a previous vyred left running.
-    let table = [];
-    try { table = JSON.parse(fs.readFileSync(tableFile, "utf8")).terms || []; } catch {}
+    let table = [], lostBefore = [];
+    try { const f = JSON.parse(fs.readFileSync(tableFile, "utf8")); table = f.terms || []; lostBefore = f.gone || []; } catch {}
+    for (const g of Array.isArray(lostBefore) ? lostBefore : []) {
+      if (g && typeof g.id === "string" && typeof g.key === "string" && now() - Number(g.at) < GONE_MS) gone.set(g.id, { key: g.key, at: Number(g.at) });
+    }
+    /** A shell the box lost while vyred was down: say so once, on the log every screen replays. */
+    const lost = row => {
+      gone.set(row.id, { key: String(row.key), at: now() });
+      emit("term.closed", { term: row.id, reason: "box updated" });
+    };
     for (const row of Array.isArray(table) ? table : []) {
-      if (!row || typeof row.id !== "string" || typeof row.sock !== "string" || !fs.existsSync(row.sock)) continue;
-      if (!(await isMaster(Number(row.pid), row.sock))) { try { fs.unlinkSync(row.sock); } catch {} continue; }
+      if (!row || typeof row.id !== "string" || typeof row.sock !== "string") continue;
+      if (!fs.existsSync(row.sock)) { lost(row); continue; }
+      if (!(await isMaster(Number(row.pid), row.sock))) { try { fs.unlinkSync(row.sock); } catch {} lost(row); continue; }
       const t = blank(row.id, String(row.cwd), String(row.surface), String(row.key), Number(row.started) || now(), offsetOf(row.offset) ?? 0, true, row.sock);
       t.left = Number(row.left) || now();
       t.pty = new DtachPty({ sock: row.sock, cols: row.cols, rows: row.rows, adopt: { pid: Number(row.pid) }, onData: b => output(t, b), onExit: () => { end(t, "exited"); } });
@@ -269,6 +287,8 @@ export default {
         const surface = surfaceOf(i);
         const key = keyOf(caller, peer, surface);
         const t = terms.get(String(i.term));
+        const g = !t && gone.get(String(i.term));
+        if (g && g.key === key) throw fail("terminal_closed", "the box was updated and this terminal was closed; open a new one");
         if (!t || t.key !== key) throw fail("not_found", "no such terminal on this screen");
         if (!t.sockets.size) idleSoon(t, keepMs + ticketMs);
         return { ...issue(t, offsetOf(i.from)), cwd: t.cwd, cols: t.pty.cols, rows: t.pty.rows, durable: t.durable, offset: t.ring.end, oldest: t.ring.start };

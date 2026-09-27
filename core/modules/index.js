@@ -224,6 +224,9 @@ export class Registry {
         },
         on: (pattern, fn) => events.on(pattern, fn),
         since: (id, opts) => events.since(id, opts),
+        // The cursor a read is current to (ADR 0029 R1): a view that loads through a tool, then
+        // follows the stream from this id, has no gap.
+        latestId: () => events.latestId(),
         // Delete this module's own redundant events (see Events.prune): only types it declares
         // under watches.emits, and only rows it emitted itself.
         prune: (type, opts = {}) => {

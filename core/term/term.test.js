@@ -452,3 +452,26 @@ test("term: with a real dtach the shell survives a vyred stop and start, and fro
   assert.ok(!alive(pid), "the dtach master outlived the terminal");
   c2.sock.destroy();
 });
+
+test("term: a terminal the box lost while vyred was down (a deploy) answers terminal_closed and says so on the log", async t => {
+  const root = tempHome(t);
+  const dir = path.join(root, "run", "term");
+  fs.mkdirSync(dir, { recursive: true });
+  // What a vyred in the old container left: a table row whose socket and master went with it.
+  const key = `tailnet:alex|nLaptop|${DECK}`;
+  fs.writeFileSync(path.join(dir, "terms.json"), JSON.stringify({ terms: [{ id: "tlost", cwd: "/", surface: DECK, key, offset: 42, started: Date.now(),
+    pid: 999_999, sock: path.join(dir, "tlost.sock"), left: Date.now(), cols: 80, rows: 24 }] }));
+  const { reg, events, work, stop } = await registry(t, {}, { root });
+  const closed = events.since(0, { type: "term.closed", limit: 10 });
+  assert.deepEqual(closed.map(e => e.payload), [{ term: "tlost", reason: "box updated" }]);
+  const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } });
+  assert.equal(r.error?.code, "terminal_closed");
+  assert.match(r.error.message, /box was updated/);
+  // Another screen still learns nothing about it.
+  assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } })).error?.code, "not_found");
+  // And it is remembered across the next restart, without a second announcement.
+  await stop();
+  const again = await registry(t, {}, { root, work });
+  assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "terminal_closed");
+  assert.equal(again.events.since(0, { type: "term.closed", limit: 10 }).length, 1);
+});
