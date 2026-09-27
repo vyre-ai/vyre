@@ -93,6 +93,16 @@ Filled in as each lands.
   hero/demo keyboard hint rendered Option-Space as two chips instead of one chord (key-hint.md:
   modifiers first, no plus sign, one chip). app-design's nit, cheap enough to fix before the
   deadline rather than deferring.
+- The lead's last item: `.btn`, `.chip`, `.dtab` and `.lbl` were named as needing sentence case,
+  no uppercase. Checked each against its component doc before touching anything (receiving
+  feedback well means verifying, not just complying): button.md's own Gaps section names the
+  `.btn` mono-uppercase pattern as exactly wrong and gives the fix (Sans 13/18 weight 600,
+  sentence case); chip.md and tabs.md say the same for chips (12/16 weight 400) and tabs (13/18).
+  Fixed all three, plus `site/404.html`'s own stale copies of `.btn` and `.nav-links a`. Held
+  `.lbl` back: `docs/design/TOKENS.md` (status: stable) still documents that exact role, "Label
+  (engraved)", as mono/uppercase/`+0.16em`, and no component doc overrides it the way button.md
+  overrides `.btn`. Flagged below rather than changing ~15 eyebrow labels against the written
+  spec.
 
 ## Doing
 
@@ -103,6 +113,13 @@ Filled in as each lands.
 - Nothing blocking.
 
 ## Needs from others
+
+- lead: confirm whether `.lbl` (eyebrow/meta labels: "OPEN SOURCE · APACHE 2.0", "02 MEMORY",
+  "SENDS TO", section numbers, etc.) should also drop uppercase, or stay as documented in
+  TOKENS.md's "Label (engraved)" role. If it should change, that's a bigger, more visible pass
+  (~15 call sites across index.html/404.html/start) I'd rather do deliberately than rush before
+  the deadline on an assumption. Everything else from this ask (`.btn`/`.chip`/`.dtab`/
+  `.held-chip`) is done and verified against the current component docs.
 
 - lead: which of Vyre IQ, Capsule auto-answer, voice, "do" computer use and the settings hub are in the RC. Until answered, anything not on main shows "coming".
 - sessions: pending onboard changes, if any.
