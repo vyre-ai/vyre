@@ -143,6 +143,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   memory-iq d0b916b9 + 7ee03df6 (together). windows 8cd4722d cleared (with cac517d4 + 63156fe9).
 - connectors 21beb66b (lib/connectors move, shrinks the rc.2 freeze; mcp discover) AFTER e2e signs off;
   connectors will ping.
+- memory-iq batch 1 head 0a7ea3e7: fd7f57ab + 0a7ea3e7 cleared; e67ba34d (memory.card) HELD (MEDIUM: a
+  project agent's card lists other projects). Wait for the reviewer's cleared fix sha before taking the head.
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
