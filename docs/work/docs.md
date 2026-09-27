@@ -85,6 +85,19 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Pending page changes (apply when the code reaches main)
 
+- glass-live 67b85c0 (idle hand-back), HOLD until merged: glass.md gets "idle" as a fourth way a
+  take-over ends (after Hand back, the 90 s lease, the lease moving); config
+  `computers.handbackIdleMin` 0/2/5/15, default 5, set in Settings, Network, Glass hand-back;
+  owner-only `computers.handback.status` / `computers.handback.set {minutes}`; events
+  `computer.idle-warning {agent, surface, at}` 10 s before (`at: null` = input came in time),
+  `computer.handed-back` with why `idle` and `idle_ms`; thread line "Handed back to <agent> after
+  <n> min idle"; a pong keeps the lease but is not input. Regenerate reference.
+- resilience c8f5654 (ADR 0029 R4), HOLD until merged: a terminal with no viewer is kept for
+  `term.keep_hours` (12 h default), runs under dtach and survives a vyred restart, a deploy ends
+  it (term.closed reason "box updated"), term.attach takes from=<offset>. ADR 0024 line 47 ("ends
+  10 seconds after its last viewer leaves"): add a dated note pointing at ADR 0029 rather than
+  rewrite the record; update using/chat.md's terminal section and troubleshooting if it mentions it.
+
 - NEW USER DECISIONS (logout 3), apply as each lands on main:
   - ADR 0030: Agent SDK sessions are the default for every Vyre-started session (Chat, agents,
     Capsule, phone, planner/learn jobs); terminal `claude` stays plain; auth Mac=login,
