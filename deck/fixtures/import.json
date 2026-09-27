@@ -2,57 +2,80 @@
   "import.scan": {
     "sources": [
       {
-        "id": "claude-projects",
+        "id": "src_claude",
         "path": "~/.claude/projects",
         "kind": "claude",
         "sessions": 214,
         "bytes": 18900000,
         "from": "$ago:180d",
         "to": "$ago:1h",
-        "suggested": true
+        "folders": [
+          {
+            "cwd": "/Users/alex/Work/harlow-site",
+            "sessions": 96,
+            "bytes": 8100000,
+            "from": "$ago:170d",
+            "to": "$ago:1h",
+            "project": "harlow-legal",
+            "name": "Harlow Legal",
+            "suggested": true
+          },
+          {
+            "cwd": "/Users/alex/Work/northwind",
+            "sessions": 78,
+            "bytes": 6400000,
+            "from": "$ago:120d",
+            "to": "$ago:2d",
+            "project": "northwind-bakery",
+            "name": "Northwind Bakery",
+            "suggested": true
+          },
+          {
+            "cwd": "/Users/alex/Code/vyre",
+            "sessions": 40,
+            "bytes": 4400000,
+            "from": "$ago:90d",
+            "to": "$ago:3d",
+            "suggested": false,
+            "why": "work on Vyre itself"
+          }
+        ]
       },
       {
-        "id": "archive-2025",
+        "id": "src_archive",
         "path": "~/Archive/claude-2025",
         "kind": "archive",
         "sessions": 96,
         "bytes": 7400000,
         "from": "$ago:400d",
         "to": "$ago:190d",
-        "suggested": true
-      },
-      {
-        "id": "vyre-dev",
-        "path": "~/Code/vyre",
-        "kind": "folder",
-        "sessions": 41,
-        "bytes": 3100000,
-        "from": "$ago:90d",
-        "to": "$ago:2d",
-        "suggested": false,
-        "why": "looks like Vyre's own development"
+        "folders": [
+          {
+            "cwd": "/Users/alex/Work/harlow-site-old",
+            "sessions": 96,
+            "bytes": 7400000,
+            "from": "$ago:400d",
+            "to": "$ago:190d",
+            "project": "harlow-legal",
+            "name": "Harlow Legal",
+            "suggested": true
+          }
+        ]
       }
     ]
   },
   "import.plan": {
-    "plan": "plan-sample",
+    "plan": "plan_sample",
     "sessions": 310,
     "bytes": 26300000,
-    "folders": 2,
-    "box": "alex.vyre.run"
+    "folders": ["/Users/alex/Work/harlow-site", "/Users/alex/Work/northwind", "/Users/alex/Work/harlow-site-old"]
   },
   "import.start": { "started": true },
   "import.status": {
-    "stages": {
-      "upload": { "done": 310, "total": 310 },
-      "search": { "done": 310, "total": 310 },
-      "meaning": { "done": 180, "total": 310 },
-      "graph": { "done": 96, "total": 310 },
-      "facts": { "done": 22, "total": 310 }
-    },
-    "searchable_sessions": 310,
-    "people": 6,
-    "projects": 2,
-    "facts": 22
+    "search": { "done": 310, "total": 310 },
+    "meaning": { "done": 180, "total": 310 },
+    "graph": { "people": 6, "orgs": 2, "facts": 22, "sessions": 96 },
+    "personal": { "done": 40, "total": 96 },
+    "searchable_sessions": 310
   }
 }

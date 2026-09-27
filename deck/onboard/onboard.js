@@ -582,6 +582,10 @@ const SCREENS = {
   // pace with neither preselected), watch (live progress in three plain-language stages, and a
   // question box as soon as the first sessions are searchable). Every call degrades gracefully
   // (empty()'s missing-module message) if memory-iq's import.* tools are not running yet.
+  // Shapes are core/import/index.js's real ones (memory-iq, work/memory-iq 959e8e2f), not a
+  // guess: import.scan groups by source, each source's folders carry their own suggested/why;
+  // import.plan's `folders` is the array of folder paths, not a count; import.status has no
+  // "upload" stage and graph is a live count, not a done/total (docs/design/import.md).
   history(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Your history."),
@@ -590,12 +594,14 @@ const SCREENS = {
     col.append(body);
     attempt("onboard.history", { action: "start" });
 
-    /** @typedef {{ id: string, path: string, kind: string, sessions: number, bytes: number, from?: string, to?: string, suggested: boolean, why?: string }} Source */
-    /** Sources ticked for the plan; suggested ones start ticked, dev/Vyre folders start unticked. */
+    /** @typedef {{ cwd: string|null, sessions: number, bytes: number, from: number, to: number, project?: string, name?: string, suggested: boolean, why?: string }} Folder */
+    /** @typedef {{ id: string, path: string, kind: string, sessions: number, bytes: number, from?: number, to?: number, folders: Folder[] }} Source */
+    /** Folder cwds ticked for the plan (or the source path itself, for a folder with no cwd). Suggested folders start ticked, dev/Vyre/temp folders start unticked. */
     const picked = new Set();
     let pace = /** @type {"fast"|"gentle"|null} */ (null);
     let sync = false;
     const fmtBytes = n => n < 1e6 ? Math.round(n / 1e3) + " KB" : (n / 1e6).toFixed(1) + " MB";
+    const key = (/** @type {Source} */ src, /** @type {Folder} */ f) => f.cwd || src.path;
 
     const drawDiscover = async () => {
       const r = await attempt("import.scan");
@@ -606,21 +612,23 @@ const SCREENS = {
       }
       /** @type {Source[]} */
       const sources = r.data.sources || [];
-      for (const src of sources) if (src.suggested) picked.add(src.id);
+      for (const src of sources) for (const f of src.folders) if (f.suggested) picked.add(key(src, f));
       const syncFoot = () => s.foot({ label: "Continue", disabled: !picked.size, run: () => drawChoose(sources) });
       put(body,
         h("p", { class: "lbl" }, "What Vyre found"),
-        sources.length === 0
+        sources.length === 0 || sources.every(src => !src.folders.length)
           ? empty("No Claude Code sessions found on this machine yet. Start one with claude and come back.")
-          : h("div", { class: "rows" }, sources.map(src => {
-            const box = h("input", { type: "checkbox", checked: picked.has(src.id), onchange: (/** @type {any} */ e) => {
-              e.target.checked ? picked.add(src.id) : picked.delete(src.id); syncFoot(); } });
-            return h("label", { class: "pick" }, box,
-              h("span", { class: "x" },
-                h("span", { class: "ellipsis" }, src.path),
-                h("span", { class: "code ellipsis" }, `${plural(src.sessions, "session")} · ${fmtBytes(src.bytes)}`
-                  + (src.from ? ` · ${when(src.from)}–${when(src.to)}` : "") + (src.why ? ` · ${src.why}` : ""))));
-          })));
+          : sources.filter(src => src.folders.length).map(src => h("div", { style: { marginBottom: "16px" } },
+            h("p", { class: "small muted", style: { padding: "8px 0 0" } }, src.path),
+            h("div", { class: "rows" }, src.folders.map(f => {
+              const k = key(src, f);
+              const box = h("input", { type: "checkbox", checked: picked.has(k), onchange: (/** @type {any} */ e) => {
+                e.target.checked ? picked.add(k) : picked.delete(k); syncFoot(); } });
+              return h("label", { class: "pick" }, box,
+                h("span", { class: "x" },
+                  h("span", { class: "ellipsis" }, f.name || f.cwd || "unknown folder"),
+                  h("span", { class: "code ellipsis" }, `${plural(f.sessions, "session")} · ${fmtBytes(f.bytes)} · ${when(f.from)}–${when(f.to)}`
+                    + (f.why ? ` · ${f.why}` : "")))); })))));
       syncFoot();
     };
 
@@ -630,18 +638,20 @@ const SCREENS = {
       if (r.error) { put(body, empty("Could not build the plan. Try again.", r.error)); s.foot({ label: "Try again", run: () => drawChoose(sources) }); return; }
       const plan = r.data;
       const syncBox = h("input", { type: "checkbox", checked: sync, onchange: (/** @type {any} */ e) => { sync = e.target.checked; } });
-      const syncConfirm = () => s.foot({ label: "Import", disabled: !pace, run: () => start(plan) });
+      const syncConfirm = () => s.foot({ label: "Import", disabled: !pace, run: () => start(plan.plan) });
       const opt = (value, title, desc) => h("label", { class: value === pace ? "on" : "" },
         h("input", { type: "radio", name: "pace", value, checked: value === pace, onchange: () => { pace = value; syncConfirm(); } }),
         h("span", { class: "t" }, h("b", null, title), h("span", null, desc)));
       put(body,
         h("div", { class: "meter" }, h("span", { class: "big" },
-          `${plural(plan.sessions, "session")} · ${fmtBytes(plan.bytes)} · from ${plural(plan.folders, "folder")}, to your server`)),
+          `${plural(plan.sessions, "session")} · ${fmtBytes(plan.bytes)} · from ${plural(plan.folders.length, "folder")}, to your server`)),
         h("label", { class: "pick", style: { padding: "12px 0" } }, syncBox,
           h("span", { class: "x" }, h("span", null, "Keep them in sync"),
             h("span", { class: "code" }, "New sessions import automatically too, from now on."))),
         h("p", { class: "lbl", style: { marginTop: "12px" } }, "How fast"),
         h("div", { class: "choice", role: "radiogroup", "aria-label": "How fast Vyre reads" },
+          // TODO(memory-iq): import.plan is adding a per-pace estimate ({pace:{fast:{hours},
+          // gentle:{days}}}) and claude_keeps_days; switch these two lines to it once it ships.
           opt("fast", "Fast", "Done in a few hours. Uses more of today's Claude usage."),
           opt("gentle", "Gentle", "Spread over a few days.")),
         h("p", { class: "small muted", style: { marginTop: "12px" } },
@@ -649,20 +659,13 @@ const SCREENS = {
       syncConfirm();
     };
 
-    const start = async (plan) => {
+    const start = async (/** @type {string} */ plan) => {
       s.foot({ label: "Starting", disabled: true, run: () => {} });
       const r = await attempt("import.start", { plan, mode: sync ? "sync" : "once", pace });
       if (r.error) { put(body, empty("Could not start the import. Try again.", r.error)); s.foot({ label: "Try again", run: () => start(plan) }); return; }
       drawWatch();
     };
 
-    // Vyre IQ's own stages (docs/design/import.md), in plain language: upload and search make a
-    // session findable, meaning and graph make it understood, personal facts keep growing after.
-    const STAGES = [
-      { label: "Searchable now", keys: ["upload", "search"] },
-      { label: "Understood", keys: ["meaning", "graph"] },
-      { label: "The graph growing", keys: ["facts"] },
-    ];
     const drawWatch = () => {
       const list = h("ul", { class: "progress" });
       const ask = h("div");
@@ -673,13 +676,18 @@ const SCREENS = {
         const r = await attempt("import.status");
         if (r.error) return;
         const st = r.data;
-        const stages = st.stages || {};
-        put(list, STAGES.map(stage => {
-          const cells = stage.keys.map(k => stages[k]).filter(Boolean);
-          const done = cells.length > 0 && cells.every(c => c.total > 0 && c.done >= c.total);
-          const doing = cells.some(c => c.done > 0 || c.total > 0);
-          return progressRow(stage.label, done ? "done" : doing ? "doing" : "todo", null, undefined);
-        }));
+        // Vyre IQ's own stages, in plain language (memory-iq): search makes a session findable;
+        // meaning makes it understood (personal facts keep reading in the background for days,
+        // so they never gate this checkmark); graph keeps growing after, with no total to reach.
+        const state = c => !c || !(c.total > 0) ? "todo" : c.done >= c.total ? "done" : "doing";
+        const g = st.graph || {};
+        const personalNote = st.personal && st.personal.total > st.personal.done
+          ? `, still reading ${plural(st.personal.total - st.personal.done, "turn")} for personal facts` : "";
+        put(list,
+          progressRow("Searchable now", state(st.search), null, undefined),
+          progressRow("Understood", state(st.meaning), personalNote || null, undefined),
+          progressRow("The graph growing", g.sessions > 0 ? "doing" : "todo",
+            g.sessions > 0 ? `${plural(g.people, "person")} · ${plural(g.orgs, "org")} · ${plural(g.facts, "fact")}` : null, undefined));
         if (!asked && (st.searchable_sessions || 0) > 0) { asked = true; drawAsk(ask); }
       };
       poll();
