@@ -71,6 +71,13 @@ export default {
       },
     });
 
+    ctx.tool("presence.covered", {
+      internal: true,
+      description: "Whether the device a call came from (its tailnet peer; none for this machine) has a live presence session. The Gate and the Switchboard put it on held items and asks.",
+      input: obj({ peer: { type: "object" } }),
+      run: async ({ peer }) => ({ covered: presence.covered(peer || null) }),
+    });
+
     ctx.tool("presence.session.close", {
       description: "End a presence session now.",
       input: obj({ session: str }, ["session"]),

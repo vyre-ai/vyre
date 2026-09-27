@@ -20,8 +20,10 @@ import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
  * list with `presence: true` on a tool, never take away from it (principle 7).
  */
 export const HUMAN_ONLY = new Set([
-  // Floor rules 1 and 2: nothing goes out, and no permission is given, unseen.
-  "gate.approve", "gate.revise", "gate.reject", "threads.answer",
+  // Floor rule 1: nothing goes out unseen. Changing or discarding a held draft sends nothing, and
+  // answering Claude's permission questions is the person's own business (the no-nag rule), so
+  // gate.revise, gate.reject and threads.answer need a person caller and no proof.
+  "gate.approve",
   // Floor rule 8: every way a value, or the power to release one, leaves the vault.
   "vault.put", "vault.approve", "vault.unlock", "vault.offboard", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.delete", "vault.device.code", "vault.device.unlock",
@@ -48,7 +50,14 @@ export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session
  * one after another. The floor fixes this list; a tool must also say yes for the input at hand
  * (`presence.session(input)`), so an item that asks every time never rides a session.
  */
-export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
+export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", "gate.approve"]);
+
+/**
+ * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
+ * that declaration they ask every time. gate.approve asks only for what goes out as the user:
+ * sending, posting or paying (the no-nag rule).
+ */
+export const NARROWABLE = new Set(["gate.approve"]);
 
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (
@@ -214,12 +223,24 @@ export class Presence {
 
   /** Does this tool need a person? The floor's list, or the tool's own declaration. */
   required(tool, def, input) {
-    if (HUMAN_ONLY.has(tool)) return true;
     // A tool may ask only for some inputs (presence.when). Without the input (listing tools), it
     // counts as asking.
     const p = def && def.presence;
-    if (p && typeof p.when === "function" && input !== undefined) return Boolean(p.when(input));
-    return Boolean(p);
+    const when = p && typeof p.when === "function" && input !== undefined ? () => Boolean(p.when(input)) : null;
+    if (HUMAN_ONLY.has(tool)) return NARROWABLE.has(tool) && when ? when() : true;
+    return when ? when() : Boolean(p);
+  }
+
+  /**
+   * Is there a live presence session for this device (the tailnet peer, or none for this
+   * machine's own surfaces)? A surface shows "covered" and sends the session instead of asking.
+   * @param {any} peer
+   */
+  covered(peer) {
+    const now = this.now();
+    const id = peerId(peer);
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT peer FROM presence_sessions WHERE expires > ? AND last_used > ?").all(now, now - SESSION_IDLE));
+    return rows.some(r => (r.peer ?? null) === id);
   }
 
   /** What the person sees before proving anything. Never carries a control character. */

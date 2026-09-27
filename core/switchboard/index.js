@@ -780,9 +780,23 @@ export default {
         return mergeRows(ctx, sb.list(q), answers, { compare: (a, b) => (b.last || 0) - (a.last || 0) });
       });
 
+    // Every ask says what answering it takes: `presence: {required, covered}`. Answering is the
+    // person's own business (the no-nag rule), so required is false; covered says whether this
+    // device has a live presence session. Surfaces render from this, never from tool names.
+    const withPresence = async (asks, peer) => {
+      if (!asks.length) return asks;
+      const r = await ctx.call("presence.covered", peer ? { peer } : {});
+      const covered = Boolean(r.data && r.data.covered);
+      return asks.map(a => ({ ...a, presence: { required: false, covered } }));
+    };
+
     tool("threads.get", "One thread: its record, its open permission questions, and its recent events (since: an event id).",
       { type: "object", required: ["thread"], properties: { thread: str, since: { type: "integer" }, limit: { type: "integer" } } },
-      async (i, { caller }) => { guard(caller, "read sessions"); return sb.get(i.thread, i); });
+      async (i, { caller, peer }) => {
+        guard(caller, "read sessions");
+        const t = sb.get(i.thread, i);
+        return t && Array.isArray(t.asks) ? { ...t, asks: await withPresence(t.asks, peer) } : t;
+      });
 
     tool("threads.lease", "Take the keyboard of a thread for a surface. Always succeeds, and says who had it; the other surfaces go read-only.",
       { type: "object", required: ["thread"], properties: { thread: str, surface: str } },
@@ -794,7 +808,7 @@ export default {
 
     tool("threads.asks", "Permission questions waiting on the user, oldest first. A surface that reconnects reads these; events alone cannot say what is open now.",
       { type: "object", properties: { thread: str } },
-      async (i, { caller }) => { guard(caller, "read questions"); return sb.asks.open(i.thread).map(({ request_id, ...a }) => a); });
+      async (i, { caller, peer }) => { guard(caller, "read questions"); return withPresence(sb.asks.open(i.thread).map(({ request_id, ...a }) => a), peer); });
 
     tool("threads.answer", "Answer a permission question: allow or deny. Only a person's surface can answer; a model never approves a permission, its own or another session's.",
       { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny"] }, message: str, surface: str } },
@@ -802,10 +816,8 @@ export default {
       // A person's surfaces only. The loader refuses (code "denied") and hides the tool from every
       // other caller; callers is an allowlist, so "mcp" and "mcp:agent:<name>" are both out. The
       // Deck and the Capsule claim their own names over HTTP, so they are listed by name.
-      ["cli", "local", "module", "deck", "capsule"],
-      // And a person must be there right now (presence proof, ADR 0004): the summary is what they
-      // read in the Touch ID dialog or at the terminal before the answer goes through.
-      { presence: { summary: i => answerSummary(sb, i) } });
+      // No presence proof: answering is the person's own business (the no-nag rule).
+      ["cli", "local", "module", "deck", "capsule"]);
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },

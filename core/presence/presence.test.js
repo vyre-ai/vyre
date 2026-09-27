@@ -38,9 +38,10 @@ const codeFrom = text => /command: ([A-Z0-9]{6})/.exec(text)[1];
 const APPROVE = { tool: "gate.approve", input: { id: "a1" } };
 
 test("presence: the floor's list holds every human-only tool", () => {
-  for (const t of ["gate.approve", "gate.revise", "gate.reject", "threads.answer", "vault.put", "vault.approve", "vault.unlock",
+  for (const t of ["gate.revise", "gate.reject", "threads.answer"]) assert.ok(!HUMAN_ONLY.has(t), `${t}: sends nothing, needs no proof`);
+  for (const t of ["gate.approve", "vault.put", "vault.approve", "vault.unlock",
     "vault.offboard", "learn.accept", "learn.retire", "presence.enroll", "presence.remove", "presence.code"]) assert.ok(HUMAN_ONLY.has(t), t);
-  assert.ok(HUMAN_ONLY.size >= 13);
+  assert.ok(HUMAN_ONLY.size >= 10);
 });
 
 test("presence: canonical JSON sorts keys at every depth, and the hash follows it", () => {
@@ -297,7 +298,7 @@ test("presence: the box never takes a terminal code; its first passkey comes fro
   assert.equal((await p.verify({ tool: "presence.enroll", input: {}, caller: "tailnet:me@example.com", proof: { method: "code", code: other.code } })).ok, false, "no owner yet, no enrolment");
 });
 
-test("presence: a session proves reveal, copy and TOTP for a while, on one device, for items that allow it", async t => {
+test("presence: a session proves reveal, copy, TOTP and sends for a while, on one device, for items that allow it", async t => {
   const { p, tick } = setup(t);
   const def = { presence: { session: i => !i.reprompt } };
   assert.throws(() => p.openSession({ method: "tty" }), /only after/);
@@ -308,7 +309,8 @@ test("presence: a session proves reveal, copy and TOTP for a while, on one devic
   assert.equal((await p.verify({ ...reveal, proof, peer: { stableId: "laptop" } })).ok, false, "another device");
   assert.equal((await p.verify({ ...reveal, input: { name: "card", reprompt: true }, proof, peer: { stableId: "phone" } })).ok, false, "an item that asks every time");
   assert.equal((await p.verify({ ...reveal, def: { presence: true }, proof, peer: { stableId: "phone" } })).ok, false, "a tool that did not say yes");
-  assert.equal((await p.verify({ ...APPROVE, def, proof, peer: { stableId: "phone" } })).ok, false, "never an approval");
+  assert.equal((await p.verify({ ...APPROVE, def, proof, peer: { stableId: "phone" } })).ok, true, "a send the Gate says may ride it (the no-nag rule)");
+  assert.equal((await p.verify({ ...reveal, tool: "vault.delete", proof, peer: { stableId: "phone" } })).ok, false, "never a tool off the list");
   assert.equal((await p.verify({ ...reveal, proof: { ...proof, secret: "wrong" }, peer: { stableId: "phone" } })).ok, false);
   tick(6 * 60_000);
   assert.equal((await p.verify({ ...reveal, proof, peer: { stableId: "phone" } })).ok, false, "idle too long");
