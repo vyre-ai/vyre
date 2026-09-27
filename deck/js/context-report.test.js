@@ -52,7 +52,7 @@ test("reportContext: once per place, again on a return (focus and visibility cou
   W.fireW("focus");
   await tick();
   assert.equal(sent.length, 3, "one return, one report");
-  assert.deepEqual(Object.keys(sent[2][1]).sort(), ["project", "surface", "thread"], "never text, selection, a URL or a device");
+  assert.deepEqual(Object.keys(sent[2][1]).sort(), ["project", "surface", "thread"], "never text, selection or a URL; no device until the hub names one");
   stop();
 });
 
@@ -66,4 +66,12 @@ test("reportContext: a box without context is asked once", async () => {
   W.fireW("focus");
   await tick();
   assert.equal(asked, 1);
+});
+
+test("reportContext: the device settings.snapshot echoed goes with the report", async () => {
+  const sent = /** @type {any[]} */ ([]);
+  const W = world();
+  reportContext({ attempt: async (n, i) => { sent.push(i); return { data: {} }; }, surface: () => "phone", path: () => "/now", device: () => "tailnet:alex-phone", win: W.win, doc: W.doc });
+  await tick();
+  assert.deepEqual(sent, [{ surface: "phone", project: null, thread: null, device: "tailnet:alex-phone" }]);
 });

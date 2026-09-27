@@ -11,6 +11,10 @@
 // scheme chosen on this device (localStorage "vyre.theme"). The device is the hub's to resolve:
 // the Deck names one only when the snapshot said which (`device`), never inventing an id.
 
+/** The device the hub resolved for this Deck (settings.snapshot's `device`), or null before it said. */
+let hubDevice = /** @type {string | null} */ (null);
+export const deviceId = () => hubDevice;
+
 /** The stylesheet address for a device and rev. @param {{ device?: string | null, rev?: number | null }} at */
 export function themeHref({ device, rev } = {}) {
   const q = new URLSearchParams();
@@ -77,6 +81,7 @@ export function followTheme({ attempt, on, onResume, doc = document, media = q =
     const moved = d.rev !== at.rev || (d.device || null) !== at.device;
     at.rev = typeof d.rev === "number" ? d.rev : null;
     at.device = typeof d.device === "string" ? d.device : null;
+    hubDevice = at.device;
     at.scheme = d.values?.["appearance.scheme"];
     scheme();
     if (moved) link();

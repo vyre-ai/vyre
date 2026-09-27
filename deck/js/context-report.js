@@ -3,8 +3,8 @@
 // {surface: "deck" | "phone", project, thread} when the Deck lands on a page and when it comes back
 // to the front, so no other surface has to guess the project or the thread. Only the shape of
 // where they are, never what is on screen: no text, no selection, no field values, and no URL (the
-// path's project and thread are all it takes). The device is left to the box, which knows the
-// caller's own. Nothing polls: one report per page change or return, the same place twice sends
+// path's project and thread are all it takes). The device is the one settings.snapshot echoed
+// (js/theme-live.js deviceId), sent only once the hub has named it. Nothing polls: one report per page change or return, the same place twice sends
 // once, and a hidden page sends nothing. A box without context is not asked again.
 
 /** The project and thread a Deck path names, or nulls. @param {string} path */
@@ -21,14 +21,17 @@ export function placeOf(path) {
  * Report on navigation and on coming back. Returns stop().
  * @param {{
  *   attempt: (name: string, input?: Record<string, any>) => Promise<{ data?: any, error?: any }>,
- *   surface: () => "deck" | "phone", path?: () => string, win?: Window, doc?: Document,
+ *   surface: () => "deck" | "phone", path?: () => string, device?: () => string | null, win?: Window, doc?: Document,
  * }} deps
  */
-export function reportContext({ attempt, surface, path = () => location.pathname, win = window, doc = document }) {
+export function reportContext({ attempt, surface, path = () => location.pathname, device = () => null, win = window, doc = document }) {
   let off = false, last = "", lastAt = 0;
   const send = async (/** @type {boolean} */ again) => {
     if (off || doc.visibilityState === "hidden") return;
-    const input = { surface: surface(), ...placeOf(path()) };
+    // The device settings.snapshot echoed, when it did: the box names none for a tailnet caller,
+    // and push rings the device in use from it.
+    const d = device();
+    const input = { surface: surface(), ...placeOf(path()), ...(d ? { device: d } : {}) };
     const key = JSON.stringify(input);
     // A page change to the same place sends nothing; coming back to the front says it again.
     // focus and visibilitychange both fire on one return: that is one report.

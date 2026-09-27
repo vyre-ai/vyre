@@ -39,7 +39,7 @@ test("a line per running agent computer, never the Mac; a step moves it; a stopp
     on: (type, fn) => { subs.set(type, fn); return () => subs.delete(type); }, now: () => t,
   });
   await tick(); await tick();
-  assert.deepEqual(asked, ["sight.targets", "sight.steps agent:kit"], "only the live agent's last step is read");
+  assert.deepEqual(asked, ["sight.targets", "sight.steps agent:kit", "sight.frame agent:kit"], "only the live agent's last step and still are read");
   assert.equal(el.hidden, false);
   const pills = $$(el, ".gm-pill");
   assert.equal(pills.length, 1);
@@ -69,4 +69,41 @@ test("a box without sight shows nothing and is not asked again", async () => {
   await tick();
   assert.equal(n, 1);
   assert.equal(el.hidden, true);
+});
+
+test("the card: a still of the screen, read again on each of its steps and never on a timer; the shield pauses it", async () => {
+  /** @type {Record<string, any>} */
+  const box = { "sight.targets": { targets: [{ target: "agent:kit", kind: "agent", live: true }] }, "sight.steps": { steps: [] } };
+  let n = 0, shield = false;
+  /** @type {any[]} */ const widths = [];
+  box["sight.frame"] = (/** @type {any} */ i) => { n++; widths.push(i.maxWidth); return shield ? { $error: { code: "failed", message: "a person is signing in on kit's computer" } } : { image: "AAAA" + n, mime: "image/jpeg", at: n }; };
+  /** @type {Map<string, Function>} */ const subs = new Map();
+  const el = h("div", { hidden: true });
+  mountGlassMini(el, {
+    attempt: async (name, i) => { const a = typeof box[name] === "function" ? box[name](i) : box[name]; return a?.$error ? { error: a.$error } : { data: a }; },
+    on: (type, fn) => { subs.set(type, fn); return () => {}; }, width: () => 640,
+  });
+  await tick(); await tick(); await tick();
+  assert.equal(n, 1);
+  assert.deepEqual(widths, [640]);
+  const img = /** @type {any} */ (el.querySelector(".gm-frame img"));
+  assert.equal(img.getAttribute("src"), "data:image/jpeg;base64,AAAA1");
+  assert.equal(img.getAttribute("aria-hidden"), "true");
+  assert.match(text(el), /Live/);
+  await new Promise(r => setTimeout(r, 30));
+  assert.equal(n, 1, "no timer reads it again");
+  subs.get("sight.stepped")?.({ payload: { target: "agent:kit", summary: "Opened Mail", ok: true, at: Date.now() } });
+  await tick(); await tick();
+  assert.equal(n, 2);
+  shield = true;
+  subs.get("sight.stepped")?.({ payload: { target: "agent:kit", summary: "Clicked Sign in", ok: true, at: Date.now() } });
+  await tick(); await tick();
+  assert.match(text(el), /Picture paused while a person signs in/);
+  assert.doesNotMatch(text(el), /Live/);
+  assert.ok(el.querySelector(".gm-frame.paused img"), "the last still stays, dimmed");
+  shield = false;
+  subs.get("computer.*")?.({ type: "computer.unshielded" });
+  await tick(); await tick(); await tick();
+  assert.match(text(el), /Live/);
+  assert.doesNotMatch(text(el), /paused/);
 });

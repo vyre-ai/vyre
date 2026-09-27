@@ -61,7 +61,7 @@ export function phoneNow(ctx) {
   const memSec = h("section", { class: "np-sec np-mem-sec" });
   // What each agent's computer is doing now (sight, glass-mini.md), above Working; hidden while none runs.
   const glassMini = h("div", { class: "gm np-gm", hidden: true });
-  ctx.cleanup(mountGlassMini(glassMini, { attempt, on }));
+  ctx.cleanup(mountGlassMini(glassMini, { attempt, on, width: () => 640 }));
   put(ctx.root, h("div", { class: "now np" }, remind, needsSec, glassMini, workSec, memSec));
 
   // ---- the setup reminder -----------------------------------------------------------------

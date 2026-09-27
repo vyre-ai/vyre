@@ -13,8 +13,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   done), the agent, the step's own summary, its age or who holds the keyboard. It opens Glass for
   that computer ("Open Glass for kit's computer"); a polite live region says a new step at most
   once every 5 s. Nothing polls; a box without sight shows nothing.
-- This slice is the spec's pill variant on every width: no picture yet (it needs sight.frame
-  stills or a small view-only viewer). Tests: deck/js/glass-mini.test.js (3).
+- Each line is a card with a still of the agent's screen (sight.frame, 480 wide, 640 on a phone),
+  letterboxed 16:10 with the Live badge, read again on each of that computer's steps and never on
+  a timer. While a person signs in on it the picture pauses, dimmed ("Picture paused while a person
+  signs in"), until computer.unshielded. A box without sight.frame draws the pill. Tests:
+  deck/js/glass-mini.test.js (4).
+- context.report carries the device settings.snapshot echoed (js/theme-live.js deviceId), once the
+  hub has named it, so push can ring the device in use.
 
 #### The Deck tells context where the person is (ADR 0036 part 2)
 
