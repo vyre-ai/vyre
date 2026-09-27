@@ -102,9 +102,9 @@ const DECK_VIEWS_PAGE = "using/deck.md#what-is-on-each-view";
 // error there, so a page naming another one is stale. The rest take free words (a query, a name).
 const STRICT = new Set(["agents", "box", "capsule", "learn", "link", "name", "presence", "vault", "watchers"]);
 
-// Pages that legitimately name old or missing things: history, gaps and the spec. They are
-// indexed, but never fail the stale check.
-const HISTORY = [/^adr\//, /^changelog\.md$/, /^known-gaps\.md$/, /^architecture\/spec\.md$/];
+// Pages that legitimately name old or missing things: history, release notes (written before
+// the release lands), gaps and the spec. They are indexed, but never fail the stale check.
+const HISTORY = [/^adr\//, /^releases\//, /^changelog\.md$/, /^known-gaps\.md$/, /^architecture\/spec\.md$/];
 const GENERATED = /^reference\//;
 // A line carrying this comment is not checked, for a page that shows a stale name on purpose.
 const IGNORE = "<!-- terms: ignore -->";

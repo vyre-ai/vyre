@@ -6,11 +6,11 @@
       "get-started/install.md",
       "get-started/tailscale.md",
       "get-started/onboarding.md",
-      "get-started/first-day.md",
+      "using/first-hour.md", "get-started/first-day.md",
       "get-started/without-docker.md",
       "get-started/troubleshooting.md"
     ]},
-    { "title": "Using Vyre", "pages": [
+    {"title": "Releases", "pages": ["releases/0.1.0.md"]}, { "title": "Using Vyre", "pages": [
       "using/capsule.md",
       "using/deck.md",
       "using/chat.md",
