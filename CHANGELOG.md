@@ -1216,6 +1216,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Devices report their path (`relay.devices.path`). The box measures the relay round trip with a
   ping frame over the channel, on demand. A one-time code links a device to its tailnet node, so
   the list shows `path` (relay or direct), `rtt` and `node`, and `device.moved` fires on each switch.
+- `relay.device.presence` (internal, modules only): the presence key a relayed device enrolled at
+  pairing, so presence.person.start (ADR 0032) signs a relayed device in only with its own key.
 - Fixed: a box could stay off the relay until vyred restarted. On Node 22 a refused WebSocket
   fires only `error`, never `close`, and the relay link retried only on `close`. Now an error
   before open counts as a failed dial (handled once), and a control socket not ready in 30 s is

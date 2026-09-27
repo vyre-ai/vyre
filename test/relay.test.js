@@ -256,3 +256,12 @@ test("relay: a device reports its path; the box measures the relay round trip an
   assert.deepEqual(moves.map(m => m.path), ["relay", "direct"]);
   assert.equal((await d.registry.call("relay.devices.path", { path: "direct" }, "tailnet:alex@example.com", { peer: { ...node, stableId: "nOTHER" } })).error.code, "bad_input", "another node is not this device");
 });
+
+test("relay: relay.device.presence names the key a device enrolled, for modules only", async t => {
+  const { d } = await world(t);
+  const p = await phone(await firstPairing(d));
+  const id = p.reply.device;
+  assert.equal((await d.registry.call("relay.device.presence", { id }, "cli")).error.code, "no_such_tool", "not a surface's tool");
+  assert.deepEqual((await d.registry.call("relay.device.presence", { id }, "module:presence")).data, { key: null }, "paired without a presence key");
+  assert.deepEqual((await d.registry.call("relay.device.presence", { id: "nobody" }, "module:presence")).data, { key: null });
+});

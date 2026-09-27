@@ -399,6 +399,19 @@ export default {
       },
     });
 
+    // For presence.person.start (ADR 0032): the presence key this box enrolled when it paired a
+    // device, so a relayed device signs in only with its own key. Modules only; null for a device
+    // that is removed, unknown or paired without one.
+    ctx.tool("relay.device.presence", {
+      internal: true,
+      description: "The presence key id enrolled for a paired relay device, or null.",
+      input: obj({ id: str }, ["id"]),
+      run: async input => {
+        const row = /** @type {any} */ (db.prepare("SELECT presence_key FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(String(input.id)));
+        return { key: (row && row.presence_key) || null };
+      },
+    });
+
     ctx.tool("relay.devices.trust", {
       description: "Give a browser paired from the hosted web app the full powers of the owner's app (pairing devices, vault secrets), or take them back. Not callable from a web device that is not trusted.",
       input: obj({ id: str, trusted: { type: "boolean" } }, ["id", "trusted"]),
