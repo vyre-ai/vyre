@@ -92,7 +92,8 @@ export function privateSocketDir() {
  *   glass: { roots?: string[], egress: { enabled: boolean, sites: string[] } },
  *   computers: { tailnet: { enabled: boolean, tag: string }, [k: string]: any },
  *   hooks: { enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> },
- *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } } }} Config */
+ *   theme?: { colors?: { dark?: Record<string, string>, light?: Record<string, string> } },
+ *   term: { keep_hours: number, max?: number, shell?: string } }} Config */
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
 function defaults() {
@@ -113,6 +114,7 @@ function defaults() {
     computers: { tailnet: { enabled: false, tag: "tag:vyre-agent" } },
     // Off: no webhook listener until the owner turns it on and opens a route (core/hooks).
     hooks: { enabled: false, port: 7310, routes: {} },
+    term: { keep_hours: 12 },
   };
 }
 
@@ -137,6 +139,7 @@ export function load(root = home()) {
     glass: { ...d.glass, ...(user.glass || {}), egress: { ...d.glass.egress, ...((user.glass && user.glass.egress) || {}) } },
     computers: { ...d.computers, ...(user.computers || {}), tailnet: { ...d.computers.tailnet, ...((user.computers && user.computers.tailnet) || {}) } },
     hooks: { ...d.hooks, ...(user.hooks || {}) },
+    term: { ...d.term, ...(user.term || {}) },
   };
   c.projectsDir = untilde(c.projectsDir);
   c.roots = (c.roots || []).map(untilde);

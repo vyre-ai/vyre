@@ -2517,11 +2517,12 @@ What this machine is running: Vyre version and the commit it was built from, rol
 
 ### `term.attach`
 
-A fresh one-use ticket for a live terminal (after a reload or a dropped connection), for the screen that opened it.
+A fresh one-use ticket for a live terminal (after a reload, a dropped connection or a vyred restart), for the screen that opened it. With from, the stream replays exactly the bytes after that offset.
 
 - Input:
   - `surface` string, required
   - `term` string, required
+  - `from` integer
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `term.close`
@@ -2534,14 +2535,14 @@ End a terminal and everything it started.
 
 ### `term.list`
 
-The live terminals: id, folder, the screen that opened it, when, size and open connections.
+The live terminals: id, folder, the screen that opened it, when, size, open connections, bytes printed and whether each outlives a vyred restart.
 
 - Input: none
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ### `term.open`
 
-Open a terminal: the user's login shell in a folder, on this machine. Returns a one-use ticket (30 s) for the stream at path.
+Open a terminal: the user's login shell in a folder, on this machine. Returns a one-use ticket (30 s) for the stream at path, and whether the shell outlives a vyred restart (durable).
 
 - Input:
   - `cwd` string, required

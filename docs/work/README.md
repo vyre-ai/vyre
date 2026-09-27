@@ -53,3 +53,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0024 | chat | Chat: new sessions, the box's folders, a terminal in the browser, and questions |
 | 0025 | planner | The planner: time, alarms, reminders, todos, notes and a calendar on the box |
 | 0027 | mobile | One app: the phone, the box's web app and app.vyre.run from one Expo codebase |
+| 0029 | resilience | The resilience contract: every surface survives network outages |
