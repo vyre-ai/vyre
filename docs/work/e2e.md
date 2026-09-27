@@ -381,6 +381,11 @@ Plan (to the lead before building):
   worktree runs repo hooks / filter drivers / hooksPath the model can plant -> hooksPath=/dev/null,
   --no-verify, empty global/system config, refuse unexpected exec-capable config keys; test with a
   planted hook + smudge filter. Before slice B.
+- GIT CONFIG EXEC (rc.2 blocker): changes.js safe; vault gitState/gitWarnings ran ls-files/check-ignore
+  (run core.fsmonitor) in agent-writable folders. Fix work/e2e-safegit 1c632637 (off pre/rc 53c48267,
+  worktree ../vyre-e2e-safegit): lib/git/safe.js SAFE_GIT_ARGS + safeGitEnv + safeGitArgs(dir)
+  (overrides repo-named filter/diff/merge drivers; status runs clean filters, log -p textconv).
+  Planted-repo test + guard. testbox 484/0/14. Sent to reviewer. Slips: testbox runs at load 6.8/8.3.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
