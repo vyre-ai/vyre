@@ -27,6 +27,11 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   (real dtach), daemon and modules tests.
 
 ## Doing
+- CLI R2 (UNTESTED, testbox frozen for the integrator's suite): core/daemon/client.js write()
+  (Idempotency-Key per intent, retried through unreachable/timeout/restarting for 20 s); used by
+  `vyre threads send`, `threads answer` and the live screen's send. Test file
+  core/daemon/client-write.test.js. Run it (plus core/cli/*screen* and threads tests) when the
+  freeze lifts, then CHANGELOG and report.
 - Reporting to the lead; filing per-team fixes.
 
 ## Next
@@ -79,6 +84,7 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - vyred HTTP: 409 `idempotency_conflict`; 503 `restarting` with retry-after during drain.
 - Switchboard stopAll: `thread.stopped` reason `restart` (was `stopped`).
 - Module ctx: `ctx.events.latestId()`.
+- daemon client: new `write()`; CLI threads send/answer and the screen's send use it (polish-cli).
 - term: `term.closed` reason `box updated` at start for lost terminals; `term.attach` error code
   `terminal_closed`; terms.json gains `gone`.
 - box image: ENTRYPOINT tini, CMD core/daemon/loop.sh.
