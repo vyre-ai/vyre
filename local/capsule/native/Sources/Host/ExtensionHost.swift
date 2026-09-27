@@ -172,6 +172,8 @@ final class ExtensionHost: CapsuleHost {
         if isShown { say(body) } else { Notifier.shared.post(title: title, body: body) }
     }
 
+    func askCredential(_ need: CredentialNeed, saved: @escaping @MainActor () -> Void) { model.askCredential(need, saved: saved) }
+
     func log(_ message: String) { FileHandle.standardError.write(Data("capsule: \(message)\n".utf8)) }
 
     func sessionWindow(owner: String) -> SessionWindow {

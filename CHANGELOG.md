@@ -4,6 +4,108 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Mail rows in the Capsule (connectors 8be461a9)
+
+- A mail account to send from shows a pencil and a message an envelope; the sub is mail.find's
+  as written ("IMAP · alex@harlow.example · to dana@northwind-bakery.example"). "Write it" on an
+  account says "Waiting for you: Send from ... Nothing is sent until you send it from Needs you."
+  (mail.compose held it at the Gate), never "Done."; on a message it says its subject and sender.
+- `Sources/Vyred/ModuleProviders.swift`; `Tests/ModuleProvidersTests.swift`. Swift 325/325.
+
+#### The empty Capsule is compact: the input, what waits on you, the footer
+
+- app-design 305fc07b: with nothing typed the panel is the input, the waiting list ("Needs you",
+  the oldest three rows, only when something waits) and the footer (↑↓ Move, ⏎ Open, Esc Hide;
+  Esc Hide alone when nothing waits). ↑ or ↓ goes into the whole list at 560; ⏎ opens the oldest's
+  card. The one-line "N waiting on you" hint is gone. Offline and a passing line sit above the footer.
+- `Sources/UI/CapsuleView.swift`, `Sources/UI/AgentDeskView.swift`, `Sources/Agent/AgentPanelKeys.swift`;
+  `Tests/DesignATests.swift`. Swift 324/324.
+
+#### The Capsule opens to 560 in one step; a passing status lasts 2 s
+
+- app-design 305fc07b: from the compact bar, the first result or question takes the panel to its
+  560 in one 150 ms step (`Motion.reveal`, the token ease), at once under Reduce Motion; it never
+  resizes while text streams. A step already easing is not restarted by later redraws.
+- "Copied", "Taken back" and "Saved in the vault" show as the status line for 2 s, then go,
+  unless something newer was said (`CapsuleModel.flash`).
+- `Sources/Host/Panel.swift`, `Sources/Host/CapsuleModel.swift`; `Tests/DesignATests.swift`.
+
+#### `vyre ...` runs in the Capsule and draws what it says
+
+- The user's feedback: "run vyre voice" fell through to a memory answer. Words that start with
+  "vyre " (or "run vyre ") are now a command before anything else: one row, ⏎ runs it, and
+  nothing asks a model about them. It runs this vyred's own CLI by argv (never a shell) with
+  `--view` (polish-cli's JSON-line frames) and draws each frame natively: tables, cards, status
+  checks, a QR code, a prompt for what to add, an error with what to do next. The newest frame of
+  a kind replaces the last, so live verbs update in place. A CLI without --view gets one usage
+  exit, then one plain run with colour off. Esc ends a live verb; hiding the Capsule does too.
+- vyred's /v1/health says how to run its CLI (`cli`: node and bin/vyre in the same tree), so the
+  Capsule runs the same version as the vyred it talks to. `core/daemon/index.js` (one field, see
+  Changed contracts in docs/work/capsule-pro.md), `core/daemon/build.test.js`.
+- `Sources/Host/CommandRun.swift`, `Sources/UI/CommandRunView.swift`; `Tests/CommandRunTests.swift`
+  (a fake vyre script: frames, replace, qr/checks/table/error, the plain fallback, Esc).
+- Bare `vyre voice` shows voice's status here (the terminal's push-to-talk is Option-Return in
+  the Capsule); `vyre capsule` and `vyre voice --send` are not run from the Capsule and say why.
+
+#### A missing key is added in the panel, never through a terminal
+
+- The user's feedback: "No speech key is saved. Run: vyre voice key" is gone. With no speech
+  key, Option-Return shows "Add your Deepgram key" in the panel with a secure field; ⏎ saves it in
+  the vault as the person (Touch ID in the panel), then talk starts. Esc leaves it and says the
+  key is still missing. Kit: `CapsuleHost.askCredential(_:saved:)` and `CredentialNeed`, so any
+  extension can ask for its key the same way.
+- Saving uses vault.connect {module, need, fields} where vyred has it (ADR 0028 decision 9, its
+  field list and help from vault.need; an OAuth need's next call is made; a pending grant is
+  said), else vault.put then vault.grant, the pair `vyre voice key` makes. The typed value is
+  cleared after the one call, whatever it answers; a failure stays on the row under the field.
+- `Sources/Host/Credentials.swift`, `Sources/UI/CredentialView.swift`; `Tests/CredentialsTests.swift`,
+  `Tests/Sight/SightTests.swift`.
+- Tests hardened for loaded runners: the queued-session test says the hand-over again until heard,
+  and the screen test that hides mid-wait rests 500 ms (capsule-mac failed on it once).
+
+#### The Capsule always knows what is on screen
+
+- The user's feedback: quick answers and "do ..." carry the screen by default now, not only when
+  the words point at it. Every send from the box attaches the app, window, URL, selection and a
+  visible-text excerpt from screen.context (already redacted; the floor's blind places attach
+  nothing, a password field's value never). The chip reads "sees: Safari · <title>"; its x (or
+  ⌘⌫) leaves it off that send, and the "Stop sharing the screen" command turns it off until "Share
+  the screen with every ask" (kept in the app's own defaults; memory only under tests). Off, the
+  old rule applies: words that point at the screen, or a selection.
+- `Sources/Extensions/sight/ScreenAttach.swift` (ScreenSharing, decide always:),
+  `SightExtension.swift`; `Tests/Sight/ScreenAttachTests.swift`.
+- StreamPerfTests: the ask-on-pause is held off while the test streams by hand. On a slow runner
+  it fired, failed with no vyred and closed the panel, which was CI's "1 size change".
+
+#### ⌘⏎ means one thing: think deeper
+
+- ⌘⏎ on words that are not a question (two words or more) now thinks deeper too, instead of
+  starting computer use. Computer use starts only from "do ..." then ⏎. A row the user moved to
+  keeps its own ⌘⏎. `Sources/Host/AutoAsk.swift`; `Tests/AutoAskTests.swift`.
+- The pause test uses a 400 ms pause, so a slow CI machine's gap between two keys never reads as
+  rest (capsule-mac failed on it once).
+
+#### Capsule: Design A geometry, copy, sentence case, a keys-only footer
+
+- The open panel is 560 tall (the bar 56, a body of 472, the footer 32), radius `Radius.sheet`;
+  rows 44 (`Control.touch`), group headers 28, the footer 32. `Sources/UI/Theme.swift`,
+  `CapsuleLayout` in `Sources/UI/CapsuleView.swift`.
+- Every size, font and radius in the Capsule's own views comes from `Tokens.generated.swift`: the
+  field and answer prose 15/22, titles 13, meta 12, headers 12/16 semibold. No hand-typed sizes
+  left in `CapsuleView.swift`, `AgentDeskView.swift`, `AgentDirectView.swift`,
+  `AgentReplyView.swift`, `PresenceView.swift` or the menu-bar popover.
+- Sentence case: headers draw as written, not monospaced or caps; "Needs you", "Held for you",
+  "Vyre proposes", "Offline", "Direct", and sight's "Listening", "Heard", "On screen".
+- Groups draw Files, Apps, Commands, then the rest (`CapsuleModel.groupOrder`); the Section cases
+  (the Kit contract) are unchanged, and the top hit, answers and the ask rows keep their places.
+- Copy: "Ask Vyre, find, or run"; the answer card reads "Vyre IQ" and "quick" or "deeper" (the
+  model ⌘⏎ switches to) with no @ target, the target's name with one.
+- The footer holds keys only, four at most, by state (`CapsuleLayout.footerHints`); the result
+  count and the mark are gone. "Copied" and a confirm's question are one line above the footer.
+  The waiting list's and ⌘K's own key lines moved into the footer. D denies a focused ask
+  (`Sources/Agent/AgentPanelKeys.swift`).
+- `Tests/DesignATests.swift` (new); `Tests/ThemeTokensTests.swift` checks the sheet radius.
+
 #### The real Capsule hotkey, everywhere it was wrong
 
 - README.md, deck/onboard/onboard.js said "Control twice" as if it were the only way to open the

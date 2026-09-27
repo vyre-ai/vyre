@@ -141,7 +141,7 @@ public final class CapsuleModel: ObservableObject {
     /// pair of ids can make the same child id ("a:b" + "c" and "a" + "b:c" stay apart).
     nonisolated static func childID(_ parent: String, _ child: String) -> String { parent + "\u{0}" + child }
 
-    /// Chips for what extensions attach to this send ("with your screen"), and the ones the user
+    /// Chips for what extensions attach to this send ("sees: Safari · Northwind Bakery"), and the ones the user
     /// removed for it.
     @Published var attachments: [SendAttachment] = []
     private var removedAttachments = Set<String>()
@@ -151,6 +151,12 @@ public final class CapsuleModel: ObservableObject {
     @Published var memoryExpanded = false
     /// A human-only call waiting for the person to prove they are here (Presence.swift).
     @Published var presenceAsk: PresenceAsk?
+    /// "Add your Deepgram key": a module's missing key, asked for in the panel (Credentials.swift).
+    @Published var credentialAsk: CredentialAsk?
+    /// `vyre ...` run from the box, and what it said (CommandRun.swift).
+    @Published var commandRun: CommandRun?
+    /// The CLI to run instead of vyred's own (tests: a fake vyre).
+    var cliOverride: [String]?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 
@@ -234,6 +240,8 @@ public final class CapsuleModel: ObservableObject {
         frecency.flush()
         vyred.follower.setShown(false)
         attachTask?.cancel(); attachments = []; removedAttachments = []
+        // A live command ends with the Capsule; what it said stays for the next show.
+        if commandRun?.running == true { commandRun?.stop() }
         keeper.hidden(busy: reply.flatMap { $0.finished ? nil : $0.thread })
         desk.hidden()
         direct.close()
@@ -308,6 +316,15 @@ public final class CapsuleModel: ObservableObject {
         line = "Not approved. Nothing was done."
     }
 
+    /// A passing status with no row of its own ("Copied", "Taken back"): one line above the
+    /// footer for 2 s (capsule.md rule 3), unless something else was said meanwhile.
+    func flash(_ s: String, for seconds: Double = 2) {
+        line = s
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            MainActor.assumeIsolated { if self?.line == s { self?.line = nil } }
+        }
+    }
+
     /// Search again for the same words (an extension's commands changed).
     func refresh() { search() }
 
@@ -343,6 +360,15 @@ public final class CapsuleModel: ObservableObject {
             if c.kind == .app { attachments = [] } else { refreshAttachments(q.text, to: c.kind == .agent ? .agent : c.kind == .project ? .project : .thread) }
             return
         }
+        // A vyre command comes before anything else: one row, and nothing is asked about it.
+        if let argv = CLIRun.parse(q.text) {
+            autoTask?.cancel(); recallTask?.cancel(); memory = nil; attachments = []
+            partial = [:]
+            groups = [Group(section: .top, items: [commandRunItem(argv)])]
+            selected = 0
+            return
+        }
+        if commandRun?.running == false { commandRun = nil }
         refreshAttachments(q.text, to: .ask)
         recall(q.text, token: t)
         if q.normalized.isEmpty { autoTask?.cancel(); if autoKey != nil { dropAuto() }; partial = [:]; groups = []; selected = 0; return }
@@ -402,7 +428,7 @@ public final class CapsuleModel: ObservableObject {
         }
         var by: [Section: [ResultItem]] = [:]
         for r in all { by[r.section, default: []].append(r) }
-        for s in Section.allCases where s != .top {
+        for s in Self.groupOrder {
             if let rows = by[s], !rows.isEmpty { out.append(Group(section: s, items: Array(rows.prefix(s == .files ? 6 : 4)))) }
         }
         // Answers (calc) sit first: they are what the user typed, worked out.
@@ -419,6 +445,16 @@ public final class CapsuleModel: ObservableObject {
         // An answer at the top is what ⏎ acts on until the user moves into the results.
         if answerOnTop && !userMoved { selected = -1 }
     }
+
+    /// The order groups draw in (docs/design/system/capsule.md, "Search"): after the top hit and
+    /// the worked-out answers, Vyre's own, Files, Apps, Commands, then every other section (the
+    /// extensions' and providers') in the order Kit lists them. Only the draw order changes: the
+    /// Section cases and their names are the Kit contract and stay as they are. Where the words go
+    /// (the ask rows, AgentDestinations.swift) keeps its own place, first or last, below.
+    nonisolated static let groupOrder: [Section] = {
+        let lead: [Section] = [.answer, .vyre, .files, .documents, .apps, .commands]
+        return lead + Section.allCases.filter { $0 != .top && !lead.contains($0) }
+    }()
 
     /// Taildrop a file to the paired box (files.send). vyred's guard decides whether it may
     /// leave (secrets and dotfiles are refused), and its words are shown as they are.
@@ -691,7 +727,7 @@ public final class CapsuleModel: ObservableObject {
         guard let item = current, let s = item.copyText ?? (item.kind == "ask" ? nil : item.title) else { return false }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(s, forType: .string)
-        line = "Copied"
+        flash("Copied")
         return true
     }
 
@@ -909,7 +945,7 @@ extension CapsuleModel {
         guard reply?.thread == r.thread else { return }
         if !ids.isEmpty {
             if var x = reply { x = VyState.cancel(x); x.queued?.withdrawn = true; reply = x }
-            line = "Taken back. \(q.name) never got it."
+            flash("Taken back. \(q.name) never got it.")
         } else {
             reply?.queued?.delivered = true
             line = "Too late: \(q.name) already has it. Its reply shows here when its turn ends."
