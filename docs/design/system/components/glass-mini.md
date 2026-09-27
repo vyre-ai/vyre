@@ -39,9 +39,16 @@ second line, 12 `--text-2`.
 
 | Variant | Where | Frame | Picture |
 |---|---|---|---|
-| Card | Now, one per acting agent, under its agent row | 240 wide (desktop), the screen width minus 32, drawn outside any card (phone) | `sight.watch` live on desktop; `sight.frame` still every 2 s on the phone |
-| Header | a thread whose agent has a computer, under the thread's top bar, collapsible | 320 wide, right aligned | `sight.watch` live |
+| Card | Now, one per acting agent, under its agent row | 240 wide (desktop), the screen width minus 32, drawn outside any card (phone) | a `sight.frame` still, desktop and phone alike (Refresh, below) |
+| Header | a thread whose agent has a computer, under the thread's top bar, collapsible | 320 wide, right aligned | `sight.watch` live while the thread is open and shown; a still when hidden |
 | Pill | the Capsule, and the phone's thread when the frame is collapsed | no picture: a pill 28 tall (pill.md's shape) with the status mark and the step line at 13 `--text`, not pill.md's meta size | none |
+
+**Refresh (the light rule: nothing polls).** A still (`sight.frame`, a small JPEG) is fetched once
+when the card appears, and again only when `sight.stepped` arrives for that agent: its screen
+changes in a way worth showing only when it acts. With no new step the card keeps its last still
+and the step line shows the step's age ("2 min ago"). The live view (`sight.watch`) is only for the
+one view the person opened (the thread header, or a card they expanded), and it closes the moment
+that view is hidden, the window loses visibility or the phone locks. Never a timer.
 
 The Capsule never draws a picture of the user's own Mac (`sight.watch` answers `local_only`); for
 an agent's computer it shows the pill, and ⌘O opens Glass in the Deck.
@@ -95,7 +102,7 @@ Deck (work/pwa, work/chat)
 - [ ] Nothing built: the card on Now, the thread header frame, the tool row's Step link.
 
 App (work/mobile)
-- [ ] Nothing built: the card from `sight.frame` stills, the pill when collapsed.
+- [ ] Nothing built: the card from `sight.frame` stills refreshed on `sight.stepped`, the pill when collapsed.
 
 Capsule (work/capsule-pro)
 - [ ] Nothing built: the step pill for an agent's computer, ⌘O to Glass.
