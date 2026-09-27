@@ -20,7 +20,7 @@ import { translate, cut, clip, CAPS } from "./translate.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
-import { claudeHome } from "../config/index.js";
+import { claudeHome, transcriptFolders } from "../config/index.js";
 import { findSubreaper, groupAlive } from "../sessions/spawn.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
@@ -1550,7 +1550,7 @@ export default {
     };
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
-      transcripts: (ctx.config && ctx.config.transcripts) || [],
+      transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers,
