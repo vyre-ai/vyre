@@ -366,7 +366,7 @@ export function mountScreen(o) {
           if (p.surface === surface) tk.idled(p.idle_ms);
         } else addLog(`${p.surface === surface ? "You" : "The keyboard"} ${p.surface === surface ? "handed back" : "went back"} to ${name}.`);
         break;
-      case "computer.shielded": addLog(`${name} cannot see the page while someone signs in.`); break;
+      case "computer.shielded": addLog(p.reason === "fill" ? `The Vault is signing ${name} in; ${name} cannot see the page until it is done.` : `${name} cannot see the page while someone signs in.`); break;
       case "computer.unshielded": addLog(`${name} can see the page again${p.origin ? ` (${p.origin})` : ""}.`); break;
       case "glass.opened": if (p.surface !== surface) addLog(`Someone started watching from ${surfaceKind(p.surface)}.`); refresh(); return;
       case "glass.closed": refresh(); return;

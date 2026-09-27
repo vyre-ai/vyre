@@ -515,6 +515,23 @@ test("computers: idle hand-back is 5 min by default, the owner's to change, live
   assert.equal((await s.cli("computers.handback.set", { minutes: 0 })).data.minutes, 0);
 });
 
+test("computers: fill.begin and fill.end are the vault's only, and a take-over waits for a fill", async t => {
+  const s = await boot(t);
+  for (const as of [s.cli, s.kit, s.juno]) assert.equal((await as("computers.fill.begin", { agent: "kit", origin: "https://a.test" })).error.code, "no_such_tool");
+  const other = await s.d.registry.call("computers.fill.begin", { agent: "kit", origin: "https://a.test" }, "module:glass");
+  assert.equal(other.error.code, "denied");
+  // The fake driver's computerd does not answer /shield, so a real begin fails closed here; the
+  // fill itself is tested in fill.test.js. The vault reaches the tool and gets that answer.
+  const vault = await s.d.registry.call("computers.fill.begin", { agent: "kit", origin: "https://a.test" }, "module:vault");
+  assert.ok(vault.error, "a fill began with no computerd to cut the agent's sockets");
+  assert.equal(s.h.shield.has("kit"), false);
+  assert.equal((await s.d.registry.call("computers.fill.end", { agent: "kit", fill: "x" }, "module:vault")).data.ended, false);
+  s.h.fills.open.set("kit", { id: "f1", origin: "https://a.test", token: "t".repeat(43), since: 0, expires: 60_000, cancel: () => {} });
+  const take = await s.cli("computers.takeover", { agent: "kit", surface: "glass:laptop" });
+  assert.equal(take.error.code, "busy");
+  s.h.fills.open.delete("kit");
+});
+
 test("computers: node.agent is internal and for modules only, and knows no node that never joined", async t => {
   const s = await boot(t);
   assert.equal((await s.cli("computers.node.agent", { stableId: "nKit7CNTRL" })).error.code, "no_such_tool");
