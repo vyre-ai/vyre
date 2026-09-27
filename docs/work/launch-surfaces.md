@@ -8,6 +8,13 @@
 - `scripts/install-box.sh` terminal experience (look only; flags, exit codes and `VYRE_NO_UP=1` unchanged).
 - Look and copy of the onboard loopback pages (core/onboard). Logic stays with sessions.
 - Brand surfaces and easter eggs listed below.
+- 0.1.1 (lead, 28 Sep): the interactive import flow in onboarding: after a device pairs, show
+  discovered Claude Code sessions (counts, date ranges, projects, dev folders unticked), let the
+  person pick and confirm once, show live three-stage progress (searchable now / understood / the
+  graph growing), let them start using Vyre right away. Full owner this time, not look-only: the
+  step's state machine too. Use "server" and "devices", not "box"/"Mac" (see below: this wording
+  is net-new, not an in-progress rename elsewhere). Work with memory-iq, federation (owned by
+  tailnet, ADR 0021) and app-design. See "The import flow" below.
 
 ## Surfaces
 
@@ -29,6 +36,36 @@
 | Deck first run | pwa | spec to hand over |
 | Phone first run | mobile | spec to hand over |
 | Capsule first run | capsule-pro | spec to hand over |
+
+## The import flow (0.1.1)
+
+What exists today (researched before writing any code):
+
+- Onboarding already has a `history` step: `core/onboard/index.js` `STEPS` (server) and
+  `deck/onboard/onboard.js` `STEPS` (UI). The UI's `history` render already shows a session count,
+  a live progress bar, and a search/checkbox picker to build a project from picked sessions, the
+  closest existing analog, but it is post-hoc project-building, not a pre-import selection screen,
+  and has no dev-folder-unticked-by-default concept.
+- Federation (tailnet, ADR 0021, `core/link/` + `core/modules/federate.js`) already federates
+  session data across a paired device (`recall.sessions`, `projects.catalog` with a `machines`
+  param) and can answer session counts per source, but not yet a per-project/date-range breakdown
+  for a single newly-paired device, which this flow needs for the picker.
+  federation.md flags onboarding's history meter as a known gap: it reads only the local
+  `recall.status` today, ignoring a paired device's sessions.
+- memory-iq (ADR 0023, `core/memory/personal/*`) is personal-fact extraction today
+  (`memory.answer`), not a session-import/graph-progress signal. Nothing exists yet for
+  "searchable now / understood / the graph growing" as an onboarding-visible state machine.
+- "Server" and "devices" is new wording, not an in-progress rename: zero hits for it anywhere in
+  docs today. Scoping this rename to the import flow's own copy, not a repo-wide pass.
+- Reusable UI: `progressRow(label, state, note, since)` in `deck/onboard/onboard.js` already
+  renders a todo/doing/done/failed checklist row with a spinner/check and elapsed time: a
+  straight fit for the three progress stages, not built from scratch.
+
+Needed from others before building the state machine (asked, see Needs from others): a
+per-project/date-range session-discovery tool from federation/tailnet, and an import-progress
+signal (or the three stages modeled as onboard-local state, if memory-iq has no such signal yet)
+from memory-iq. Look/copy and the picker UI can start without waiting; the live-progress wiring
+needs an answer first.
 
 ## Easter eggs (for the lead's list; keep quiet publicly)
 
@@ -151,6 +188,15 @@ Filled in as each lands.
   canvas.json, e95897c3). Left launch's .html sources as-is rather than trying to reconcile two
   branches; worth cleaning up docs/brand/ to point at or drop in favour of the canvas boards once
   both branches are merged.
+- federation/tailnet (for the 0.1.1 import flow): a tool giving a per-project, per-date-range
+  breakdown of a newly-paired device's discovered Claude Code sessions (today's federated catalog
+  gives totals per source, not the breakdown the picker needs), with dev folders flagged so the
+  picker can leave them unticked by default.
+- memory-iq (for the 0.1.1 import flow): does an import-progress signal exist or is one planned
+  (searchable now / understood / the graph growing), or should onboarding model those three
+  stages itself against whatever memory-iq already emits (indexed count, embeddings done, etc.)?
+- app-design (for the 0.1.1 import flow): this is meant to be a delight moment: asked for a
+  board/spec for the picker screen and the three-stage progress display.
 
 ## Changed contracts
 
