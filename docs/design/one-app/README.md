@@ -2,7 +2,7 @@
 title: Vyre one app
 summary: One Expo app for the web, iOS and Android, with the Capsule and the CLI on the same tokens, and install with no Apple Developer account.
 audience: builders
-owner: app-design
+owner: mobile
 status: draft
 ---
 
@@ -67,9 +67,9 @@ Planner joins the desktop rail. On the phone it lives in Today on Now and in the
 | Platform | Default | Fallback | Advanced |
 |---|---|---|---|
 | iPhone | The installed web app from `https://vyre.<tailnet>.ts.net` over the Tailscale app | The same web app over the relay (app.vyre.run), no Tailscale on the phone | A native build sideloaded from the Mac with a free Apple ID: expires every 7 days, no push |
-| Android | The APK installed by `vyre phone add --android --usb` (or `--wireless`), self-updating from the box | Chrome's Install app (the web app) | The APK downloaded from the box (Google's unverified-developer flow applies from 30 Sep 2026 in four countries, worldwide in 2027) |
+| Android | The APK installed by `vyre phone add --android --usb` (or `--wireless`), self-updating from the box | Chrome's Install app (the web app) | The APK downloaded from the box (Google's unverified-developer flow applies from 30 Sep 2026 in four countries, worldwide in 2027) | <!-- terms: ignore -->
 
-The laptop runs the flow (Devices, Add your phone, or `vyre phone add`, a proposed CLI verb): pick
+The laptop runs the flow (Devices, Add your phone, or `vyre phone add`, a proposed CLI verb): pick <!-- terms: ignore -->
 the phone, join the network (Tailscale QR, or a single-use relay QR), open Vyre on the phone,
 install, then five live checks (reached the box, HTTPS, opened as an app, test notification,
 Face ID key). Pairing asks Touch ID once on the laptop.

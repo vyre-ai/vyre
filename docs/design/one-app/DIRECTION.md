@@ -2,8 +2,8 @@
 title: Vyre one app, the direction
 summary: Three directions for one app on every device, the recommendation, the smoothness bar and the install path, for the user to decide before the full sheet.
 audience: builders
-owner: app-design
-status: decided
+owner: mobile
+status: draft
 ---
 
 # Vyre one app: the direction
@@ -23,7 +23,7 @@ its own alerts, Vyre becomes five apps in one frame. The design job is to make t
 
 **A. Inbox first (recommended).** Home is Needs you: one list of everything waiting on you, of
 every kind, oldest first, answered in place (swipe on the phone, A and D on the desktop, a key in
-the Capsule, `vyre allow 2` in the CLI). Everything else is a place you go to: Chat, Agents,
+the Capsule, `vyre allow 2` in the CLI). Everything else is a place you go to: Chat, Agents, <!-- terms: ignore -->
 Planner, Vault, Devices. Sessions look like Paseo's inside Chat.
 - For: matches Vyre's promise (agents work, you decide); the same row everywhere; the phone is
   useful in ten seconds; the Gate, questions, grants and alarms share one habit.
@@ -134,7 +134,7 @@ Options:
    phone), one extra hop. The fallback when Tailscale is not on the phone. The hosted page must be
    pinned to the box's version so no new remote code enters the trust path.
 
-The flow runs from the laptop ("Add your phone" in Devices, or `vyre phone add`): pick the phone,
+The flow runs from the laptop ("Add your phone" in Devices, or `vyre phone add`): pick the phone, <!-- terms: ignore -->
 join the network (a QR for the Tailscale app, or a single-use relay QR), open Vyre on the phone,
 install it, then five live checks the laptop watches turn lime: reached the box, HTTPS works,
 opened as an app, test notification arrived, Face ID key saved. Android with a cable: `vyre
