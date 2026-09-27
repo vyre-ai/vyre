@@ -36,12 +36,19 @@ In the order `vyre help` lists them.
 | [`vyre context`](#vyre-context) | what a new thread in a project is told |
 | [`vyre pick`](#vyre-pick) | put threads into a project by hand |
 | [`vyre unpick`](#vyre-unpick) | take picked threads out of a project |
+| [`vyre agenda`](#vyre-agenda) | what is on today: alarms, reminders, events and todos due |
 | [`vyre agents`](#vyre-agents) | agents: list, create, update, ask, threads, usage, stop, delete |
 | [`vyre capsule`](#vyre-capsule) | the Mac command bar: Control twice, anywhere |
 | [`vyre memory`](#vyre-memory) | what memory holds, or everything about one thing |
 | [`vyre name`](#vyre-name) | this box's address: <you>.vyre.run |
+| [`vyre alarm`](#vyre-alarm) | set an alarm, list them, or turn one off |
 | [`vyre why`](#vyre-why) | the turns a fact came from |
 | [`vyre learn`](#vyre-learn) | the lessons Vyre learned from you, and what it proposed |
+| [`vyre timer`](#vyre-timer) | a timer that rings on every device |
+| [`vyre remind`](#vyre-remind) | a reminder at a time |
+| [`vyre todo`](#vyre-todo) | open todos by list; add and finish them |
+| [`vyre notes`](#vyre-notes) | notes, pinned first |
+| [`vyre snooze`](#vyre-snooze) | ring again later (9 minutes by default) |
 | [`vyre vault`](#vyre-vault) | credentials, sealed; shared by pass; used without being seen |
 | [`vyre watchers`](#vyre-watchers) | what the watchers are doing, and turning them on and off |
 | [`vyre connect`](#vyre-connect) | MCP servers and Google accounts Vyre can reach for you |
@@ -204,6 +211,14 @@ Take picked threads out of a project.
 vyre unpick <project> <thread>...
 ```
 
+### vyre agenda
+
+What is on today: alarms, reminders, events and todos due.
+
+```
+vyre agenda [today|tomorrow|YYYY-MM-DD] [--json]
+```
+
 ### vyre agents
 
 Agents: list, create, update, ask, threads, usage, stop, delete.
@@ -245,6 +260,17 @@ This box's address: <you>.vyre.run.
 vyre name [check <n>|claim <n>|ts.net|release] [--json]
 ```
 
+### vyre alarm
+
+Set an alarm, list them, or turn one off.
+
+```
+vyre alarm [7am|6:30 weekdays|off <id>] [--json]
+```
+
+vyre alarm 7am · vyre alarm 6:30 weekdays · vyre alarm (upcoming) · vyre alarm off <id>
+Times are the planner's zone (vyre agenda shows it). Alarms follow the zone when it changes.
+
 ### vyre why
 
 The turns a fact came from.
@@ -262,6 +288,53 @@ vyre learn [show|add|accept|retire|level|scope|relax|stats|signals|skills] [--js
 ```
 
 Also: `vyre lessons`.
+
+### vyre timer
+
+A timer that rings on every device.
+
+```
+vyre timer <length> [label] [--json]
+```
+
+vyre timer 10m · vyre timer 1h30m · vyre timer 25m bread
+
+### vyre remind
+
+A reminder at a time.
+
+```
+vyre remind <what> at|in <when> [--json]
+```
+
+vyre remind "call juno" at 6 · vyre remind me in 20 minutes to check the oven · vyre remind me tomorrow at 9 to email juno
+
+### vyre todo
+
+Open todos by list; add and finish them.
+
+```
+vyre todo [add <text>|done <id>] [--json]
+```
+
+vyre todo add buy flour !high · vyre todo add call kit by friday · vyre todo done <id>
+Priority: !low, !!, !high.
+
+### vyre notes
+
+Notes, pinned first.
+
+```
+vyre notes [add <text>|show <id>] [--json]
+```
+
+### vyre snooze
+
+Ring again later (9 minutes by default).
+
+```
+vyre snooze <id> [minutes] [--json]
+```
 
 ### vyre vault
 

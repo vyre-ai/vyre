@@ -10,7 +10,8 @@
 #
 # Steps, each skipped when there is nothing to do, so running it twice changes nothing:
 #   1. check out REF into a scratch worktree (never this checkout's working tree)
-#   2. scripts/build-site.sh: box files, vyre.tgz, SHA256SUMS, _redirects
+#   2. scripts/build-site.sh: box files, vyre.tgz, SHA256SUMS, _redirects (the Mac installs from
+#      npm and builds its Capsule there, so there is no Capsule zip)
 #   3. scripts/release-check.sh against that tree
 #   4. deploy site/ to Cloudflare Pages, unless vyre.run already serves the same SHA256SUMS
 #   5. scripts/release-check.sh --live, and a summary

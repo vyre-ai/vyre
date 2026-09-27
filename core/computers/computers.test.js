@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
+import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { FakeDriver } from "./driver/fake.js";
 
 const FAKE_CLAUDE = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "switchboard", "testing", "fake-claude.js");
@@ -23,7 +24,7 @@ fs.chmodSync(FAKE_CLAUDE, 0o755);
  * A vyred with the computers module on the fake driver, plus real agents "juno" (the assistant),
  * "kit" and "pax" (both computer: true), with a real thread launched for kit.
  * @param {any} t
- * @param {{ computers?: any, agents?: boolean, root?: string, glass?: any }} [o]
+ * @param {{ computers?: any, agents?: boolean, root?: string, glass?: any, presence?: any }} [o]
  */
 async function boot(t, o = {}) {
   const root = o.root || tempHome(t);
@@ -40,7 +41,7 @@ async function boot(t, o = {}) {
   t.after(() => { for (const [k, v] of Object.entries(prevEnv)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
   /** @type {string[]} */
   const logs = [];
-  const d = await start({ presence: present, root, log: (m, x) => logs.push(m + (x ? " " + JSON.stringify(x) : "")) });
+  const d = await start({ presence: o.presence || present, root, log: (m, x) => logs.push(m + (x ? " " + JSON.stringify(x) : "")) });
   let stopped = false;
   const stop = async () => { if (!stopped) { stopped = true; await d.stop(); } };
   t.after(stop);
@@ -212,6 +213,29 @@ test("computers: take-over through the lease, chatting that does not pause, and 
   assert.deepEqual(over.map(e => e.payload.surface), ["glass:laptop", "phone:pocket", "glass:laptop", "glass:laptop"]);
   assert.ok(over.every(e => e.thread === s.kitThread), "take-over events should carry the thread");
   assert.match((await s.cli("computers.takeover", { agent: "kit", surface: "cli" })).error.message, /person's screen/);
+});
+
+test("computers: the owner takes and hands back the keyboard with no passkey; an agent still cannot", async t => {
+  // The real rule for what needs a person (the floor's list, or the tool's own word), and a
+  // verifier that finds nobody: setup runs first, then every proof fails.
+  const gate = { on: false };
+  const nobody = {
+    required: (tool, def) => gate.on && (HUMAN_ONLY.has(tool) || Boolean(def && def.presence)),
+    verify: async () => ({ ok: false, message: "nobody proved anything", methods: [] }),
+    challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
+  };
+  const s = await boot(t, { presence: nobody });
+  gate.on = true;
+  for (const tool of ["computers.takeover", "computers.giveback"]) {
+    assert.ok(PERSON_ONLY.has(tool) && !HUMAN_ONLY.has(tool), `${tool} is person-only, not on the floor's list`);
+    assert.ok(!s.d.registry.tools.get(tool).presence, `${tool} does not declare presence`);
+  }
+  assert.equal((await s.cli("gate.approve", { id: "g1" })).error?.code, "presence_required", "the floor still holds");
+  assert.equal((await s.cli("computers.takeover", { agent: "kit", surface: "deck:laptop" })).data.surface, "deck:laptop");
+  assert.equal(s.h.keyboard.canType("kit", "deck:laptop"), true);
+  assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);
+  assert.match((await s.kit("computers.giveback", { surface: "deck:laptop" })).error.message, /is an agent, not a person's screen/);
+  assert.deepEqual((await s.cli("computers.giveback", { agent: "kit", surface: "deck:laptop" })).data, { agent: "kit", handed_back: true });
 });
 
 test("computers: an agent cannot claim a surface, so it cannot end someone else's take-over", async t => {

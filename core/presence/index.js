@@ -20,8 +20,10 @@ import { dialogsAllowed, NO_DIALOG } from "../config/dialogs.js";
  * list with `presence: true` on a tool, never take away from it (principle 7).
  */
 export const HUMAN_ONLY = new Set([
-  // Floor rules 1 and 2: nothing goes out, and no permission is given, unseen.
-  "gate.approve", "gate.revise", "gate.reject", "threads.answer",
+  // Floor rule 1: nothing goes out unseen. Changing or discarding a held draft sends nothing, and
+  // answering Claude's permission questions is the person's own business (the no-nag rule), so
+  // gate.revise, gate.reject and threads.answer need a person caller and no proof.
+  "gate.approve",
   // Floor rule 8: every way a value, or the power to release one, leaves the vault.
   "vault.put", "vault.approve", "vault.unlock", "vault.offboard", "vault.inject", "vault.totp",
   "vault.backup", "vault.restore", "vault.delete", "vault.device.code", "vault.device.unlock",
@@ -29,10 +31,8 @@ export const HUMAN_ONLY = new Set([
   "vault.session.open", "vault.export", "vault.kit",
   // What Claude is told in every later session: accepting, weakening and removing lessons and skills.
   "learn.accept", "learn.retire", "learn.relax", "learn.skill-install",
-  // Who an agent is, what it may spend and whose credentials it runs on.
-  "agents.create", "agents.update",
-  // A person's hands on an agent's computer, and a new machine joined to this one.
-  "computers.takeover", "computers.giveback", "link.pair.approve",
+  // A new machine joined to this one.
+  "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
   // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
   // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
@@ -43,6 +43,21 @@ export const HUMAN_ONLY = new Set([
   "computers.tailnet.set", "computers.egress.set",
 ]);
 
+/**
+ * The person's own actions that ask no proof, because the owner does them on their own screens and
+ * Vyre does not nag (ADR 0024, user rule 27 Sep): answering a session's ask, opening a terminal,
+ * making and changing agents, changing or discarding a held draft (gate.revise, gate.reject send
+ * nothing), and the owner's hands on an agent's computer (taking the keyboard pauses the agent,
+ * handing it back returns what it had). None sends, pays, pairs or releases a secret. The tools'
+ * caller checks keep models, agents and guests out (computers ownSurface, glass surfaceOf, the
+ * allowlists), the harness floor refuses a model's shell that names one of these, as it does the
+ * list above, and vyred refuses a socket call to one from any process under a `claude` or a
+ * thread's process (core/daemon/peer.js).
+ */
+export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach",
+  "agents.create", "agents.update", "gate.revise", "gate.reject",
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release"]);
+
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
 
 /**
@@ -50,7 +65,14 @@ export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session
  * one after another. The floor fixes this list; a tool must also say yes for the input at hand
  * (`presence.session(input)`), so an item that asks every time never rides a session.
  */
-export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp"]);
+export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", "gate.approve"]);
+
+/**
+ * Floor tools whose owner may say, per input, that no proof is needed (`presence.when`). Without
+ * that declaration they ask every time. gate.approve asks only for what goes out as the user:
+ * sending, posting, paying or deleting outside (the no-nag rule).
+ */
+export const NARROWABLE = new Set(["gate.approve"]);
 
 export const MIGRATIONS = [`
   CREATE TABLE presence_keys (
@@ -86,8 +108,10 @@ const CHALLENGE_TTL = 120_000;
 const CAPSULE_SKEW = 60_000;
 const COOL_DOWN = 30_000;
 const CODE_TTL = 10 * 60_000;
-const SESSION_IDLE = 5 * 60_000;
+// A session lasts 30 minutes from the proof, used or not (the no-nag rule: one proof covers
+// about 30 minutes on that device). There is no shorter idle cutoff inside that.
 const SESSION_MAX = 30 * 60_000;
+const SESSION_IDLE = SESSION_MAX;
 /** The proofs strong enough to open a session: hardware or a key the model cannot read. */
 const SESSION_FROM = new Set(["touchid", "capsule", "passkey"]);
 const MAX_OPEN = 64;
@@ -215,8 +239,25 @@ export class Presence {
   }
 
   /** Does this tool need a person? The floor's list, or the tool's own declaration. */
-  required(tool, def) {
-    return HUMAN_ONLY.has(tool) || Boolean(def && def.presence);
+  required(tool, def, input) {
+    // A tool may ask only for some inputs (presence.when). Without the input (listing tools), it
+    // counts as asking.
+    const p = def && def.presence;
+    const when = p && typeof p.when === "function" && input !== undefined ? () => Boolean(p.when(input)) : null;
+    if (HUMAN_ONLY.has(tool)) return NARROWABLE.has(tool) && when ? when() : true;
+    return when ? when() : Boolean(p);
+  }
+
+  /**
+   * Is there a live presence session for this device (the tailnet peer, or none for this
+   * machine's own surfaces)? A surface shows "covered" and sends the session instead of asking.
+   * @param {any} peer
+   */
+  covered(peer) {
+    const now = this.now();
+    const id = peerId(peer);
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT peer FROM presence_sessions WHERE expires > ? AND last_used > ?").all(now, now - SESSION_IDLE));
+    return rows.some(r => (r.peer ?? null) === id);
   }
 
   /** What the person sees before proving anything. Never carries a control character. */
@@ -434,7 +475,7 @@ export class Presence {
 
   /**
    * Open a short session after a strong proof. The secret is returned once and kept only as a
-   * hash; it lasts 5 minutes idle and 30 at most, and only on the device that opened it.
+   * hash; it lasts 30 minutes from the proof, and only on the device that opened it.
    * @param {{ method?: string, keyId?: string|null, peer?: any }} proved how the opening call was proved
    */
   openSession({ method, keyId = null, peer = null } = {}) {

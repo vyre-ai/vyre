@@ -76,10 +76,10 @@ for want in bin/vyre core/daemon/main.js core/cli/index.js harness/.claude-plugi
   grep -qx "$want" "$work/files" || fail "the tarball has no $want"
 done
 ok "has the bin, core, the Harness plugin, the Deck and the box installer"
-if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design|work)/|^local/capsule/native/(\.build|Tests)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
+if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design/boards|work|proposals)/|^docs/.*\.png$|^local/capsule/native/(\.build|Tests)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
   fail "the tarball carries the files above, which it should not"
 fi
-ok "no tests, fixtures, test helpers, design boards, build output or env files"
+ok "no tests, fixtures, test helpers, design boards, docs screenshots, build output or env files"
 node -e '
   const p = require(process.argv[1]);
   if (Object.keys(p.dependencies || {}).length) throw new Error("regular dependencies: " + Object.keys(p.dependencies));
@@ -95,7 +95,8 @@ vyre=$work/prefix/bin/vyre
 pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
 kb=$(du -sk "$work/prefix" | cut -f1)
-[ "$kb" -lt 10240 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency come back?)"
+[ ! -d "$pkg/node_modules" ] || fail "npm i -g installed dependencies: $(ls "$pkg/node_modules" | tr '\n' ' ')"
+[ "$kb" -lt 10240 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"
@@ -154,6 +155,16 @@ sh -n "$box/install-box.sh" || fail "install-box.sh does not parse"
 sh -n "$box/vyre" || fail "the box wrapper does not parse"
 ok "$(wc -l <"$box/SHA256SUMS" | tr -d ' ') files match SHA256SUMS; vyre.tgz is $version"
 grep -qx '/box /box/install-box.sh 200' "$repo/site/_redirects" || fail "site/_redirects does not send /box to install-box.sh"
+grep -qx '/download/mac /start#mac 302' "$repo/site/_redirects" || fail "site/_redirects does not send /download/mac to /start#mac"
+# The Capsule zip is retired: the Mac installs from npm and builds the Capsule there.
+if grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" >/dev/null 2>&1 || tar -tzf "$box/vyre.tgz" | grep -q '^package/box/Vyre-mac\.sha256$'; then
+  fail "the retired Capsule zip is still referenced: $(grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" 2>/dev/null | tr '\n' ' ')"
+fi
+# /start is served as committed: nothing between the checkout and the site rewrote it.
+if git -C "$repo" rev-parse --verify HEAD >/dev/null 2>&1; then
+  git -C "$repo" diff --quiet HEAD -- site/start || fail "site/start differs from what is committed"
+fi
+ok "_redirects sends /box and /download/mac; no Capsule zip; /start is as committed"
 
 if [ "$LIVE" = 1 ]; then
   step "live at $base"
@@ -172,6 +183,7 @@ if [ "$LIVE" = 1 ]; then
   [ "$code" = 200 ] || fail "$base/start answers $code"
   code=$(curl -s -o "$work/box-alias" -w '%{http_code}' "$base/box")
   { [ "$code" = 200 ] && cmp -s "$work/box-alias" "$box/install-box.sh"; } || fail "$base/box is not install-box.sh ($code)"
+  curl -fsSL "$base/start/" | cmp -s - "$repo/site/start/index.html" || fail "$base/start is not site/start/index.html"
   ok "every file is served byte for byte; install.sh, /start and 404 are right"
 fi
 

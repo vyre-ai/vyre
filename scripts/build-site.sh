@@ -17,8 +17,9 @@
 #                                 how the image is built from vyre.tgz while none is published
 #   site/box/vyre.tgz             `npm pack` of --src, until the package is on npm
 #   site/box/SHA256SUMS           sha256 of every file above, `sha256sum -c` format
-#   site/_redirects               /box to install-box.sh, and /download/mac (onboarding's
-#                                 Capsule link) to /start#mac
+#   site/_redirects               /box to install-box.sh, and /download/mac (onboarding's Capsule
+#                                 link) to /start#mac
+#   <src>/build.json              version, commit and dirty, for vyre status and /v1/health
 #
 # Deploy afterwards with:
 #   npx wrangler pages deploy site --project-name vyre-site --branch main
@@ -29,7 +30,7 @@ src=$here
 while [ $# -gt 0 ]; do
   case "$1" in
     --src) src=$(cd "$2" && pwd); shift ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,24p' "$0"; exit 0 ;;
     *) echo "build-site: unknown option $1" >&2; exit 1 ;;
   esac
   shift
@@ -58,11 +59,14 @@ cp "$src/scripts/install-box.sh" "$here/site/install.sh"
   printf '/download/mac /start#mac 302\n'
 } >"$here/site/_redirects"
 
+# A checksum an older build-site packed for the retired Capsule zip.
+rm -f "$src/box/Vyre-mac.sha256"
 # Which commit this is, so `vyre status`, /v1/health and system.info can say (core/daemon/build.js).
-# dirty ignores the files this script itself writes into --src. Gitignored there.
+# dirty ignores the files this script itself writes (site/_redirects, site/install.sh, site/box,
+# build.json), so a clean checkout stamps clean however often this runs.
 if git -C "$src" rev-parse --verify HEAD >/dev/null 2>&1; then
   commit=$(git -C "$src" rev-parse HEAD)
-  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no)" ]; then dirty=true; else dirty=false; fi
+  if [ -n "$(git -C "$src" status --porcelain --untracked-files=no -- . ':!site/_redirects' ':!site/install.sh' ':!site/box' ':!build.json' ':!box/Vyre-mac.sha256')" ]; then dirty=true; else dirty=false; fi
   printf '{"version":"%s","commit":"%s","dirty":%s}\n' \
     "$(node -p 'require(process.argv[1]).version' "$src/package.json")" "$commit" "$dirty" >"$src/build.json"
 else
@@ -78,8 +82,7 @@ node -e 'process.stdout.write(require(process.argv[1]).version + "\n")' "$src/pa
 
 (
   cd "$out"
-  find . -type f ! -name SHA256SUMS | sed 's|^\./||' | while read -r f; do sum "$f"; done \
-    | LC_ALL=C sort -k2 >SHA256SUMS
+  find . -type f ! -name SHA256SUMS | sed 's|^\./||' | while read -r f; do sum "$f"; done | LC_ALL=C sort -k2 >SHA256SUMS
 )
 
 echo "site/box:"

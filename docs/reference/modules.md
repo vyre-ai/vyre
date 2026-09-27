@@ -17,11 +17,12 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
+| [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 21 | 14 | cli, deck |
-| [`files`](#files) | `core/files` | `box`, `local` | 14 | 3 | capsule, cli, deck |
+| [`files`](#files) | `core/files` | `box`, `local` | 16 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 9 | 5 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
 | [`google`](#google) | `core/google` | `box`, `local` | 19 | 7 | capsule, cli, deck |
@@ -30,24 +31,37 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
-| [`link`](#link) | `core/link` | `box`, `local` | 18 | 5 | capsule, cli, deck |
+| [`link`](#link) | `core/link` | `box`, `local` | 19 | 12 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
 | [`memory`](#memory) | `core/memory` | `box`, `local` | 14 | 4 | capsule, cli, deck |
 | [`names`](#names) | `core/names` | `box` | 8 | 6 | cli |
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 6 | 4 | capsule, cli, deck |
+| [`planner`](#planner) | `core/planner` | `box`, `local` | 14 | 5 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 7 | 4 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
-| [`recall`](#recall) | `core/recall` | `box`, `local` | 7 | 1 | cli |
+| [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 22 | 13 | cli |
+| [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 23 | 13 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
+
+## about
+
+A few lines on who the user is, cached for every Claude Code session to start with.
+
+- Folder: `core/about`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#about)
+- Emits: no events
+- Shows on: cli
 
 ## agents
 
@@ -97,7 +111,7 @@ Find, look at and bring over files on this machine and the box, inside the folde
 - Folder: `core/files`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [14](tools.md#files)
+- Tools: [16](tools.md#files)
 - Emits: [3 events](events.md#files)
 - Shows on: capsule, cli, deck
 
@@ -189,8 +203,8 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Folder: `core/link`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [18](tools.md#link), 2 of them only for other modules
-- Emits: [5 events](events.md#link)
+- Tools: [19](tools.md#link), 2 of them only for other modules
+- Emits: [12 events](events.md#link)
 - Shows on: capsule, cli, deck
 
 ## mcp
@@ -242,12 +256,23 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Emits: [2 events](events.md#onboard)
 - Shows on: no surface
 
+## planner
+
+Alarms, timers, reminders, todos, notes and a calendar, kept on the box so something rings when the Mac is shut.
+
+- Folder: `core/planner`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [14](tools.md#planner)
+- Emits: [5 events](events.md#planner)
+- Shows on: capsule, cli, deck
+
 ## presence
 
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [6](tools.md#presence)
+- Tools: [7](tools.md#presence), 1 of them only for other modules
 - Emits: [4 events](events.md#presence)
 - Shows on: capsule, cli, deck
 
@@ -275,8 +300,8 @@ Who besides the owner the box's tailnet listener serves: guests from other tailn
 - Folder: `core/recall`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [7](tools.md#recall)
-- Emits: [1 events](events.md#recall)
+- Tools: [10](tools.md#recall)
+- Emits: [3 events](events.md#recall)
 - Shows on: cli
 
 ## screen
@@ -321,12 +346,22 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Emits: [1 events](events.md#system)
 - Shows on: cli
 
+## term
+
+- Folder: `core/term`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#term)
+- Emits: [2 events](events.md#term)
+- Shows on: no surface
+- Streams: `pty`
+
 ## threads
 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [22](tools.md#threads), 10 of them only for other modules
+- Tools: [23](tools.md#threads), 11 of them only for other modules
 - Emits: [13 events](events.md#threads)
 - Shows on: cli
 
