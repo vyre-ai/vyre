@@ -444,6 +444,48 @@
       "w": 2640,
       "h": 2000,
       "title": "Glass mini-view \u00b7 what the agent is doing now \u00b7 paper"
+    },
+    "Og.dc.html": {
+      "h": 630,
+      "title": "Launch \u00b7 og image for vyre.run",
+      "w": 1200,
+      "x": 0,
+      "y": 25900
+    },
+    "Social.dc.html": {
+      "h": 640,
+      "title": "Launch \u00b7 GitHub social preview",
+      "w": 1280,
+      "x": 1280,
+      "y": 25900
+    },
+    "ReadmeHero.dc.html": {
+      "h": 640,
+      "title": "Launch \u00b7 README hero",
+      "w": 1600,
+      "x": 2640,
+      "y": 25900
+    },
+    "Og-paper.dc.html": {
+      "h": 630,
+      "title": "Launch \u00b7 og image for vyre.run \u00b7 paper",
+      "w": 1200,
+      "x": 0,
+      "y": 26660
+    },
+    "Social-paper.dc.html": {
+      "h": 640,
+      "title": "Launch \u00b7 GitHub social preview \u00b7 paper",
+      "w": 1280,
+      "x": 1280,
+      "y": 26660
+    },
+    "ReadmeHero-paper.dc.html": {
+      "h": 640,
+      "title": "Launch \u00b7 README hero \u00b7 paper",
+      "w": 1600,
+      "x": 2640,
+      "y": 26660
     }
   },
   "createdOnFiles": {
@@ -546,6 +588,13 @@
       "text": "Tips and the Glass mini-view",
       "kind": "title1",
       "maxW": 5360
+    },
+    "launch": {
+      "x": 0,
+      "y": 25600,
+      "text": "Launch: og image, social preview, README hero",
+      "kind": "title1",
+      "maxW": 4240
     }
   },
   "order": [
@@ -611,7 +660,13 @@
     "TipLine.dc.html",
     "GlassMini.dc.html",
     "TipLine-paper.dc.html",
-    "GlassMini-paper.dc.html"
+    "GlassMini-paper.dc.html",
+    "Og.dc.html",
+    "Social.dc.html",
+    "ReadmeHero.dc.html",
+    "Og-paper.dc.html",
+    "Social-paper.dc.html",
+    "ReadmeHero-paper.dc.html"
   ],
   "pages": [],
   "title": "Vyre one app"

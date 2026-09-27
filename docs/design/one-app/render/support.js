@@ -181,7 +181,10 @@
       const hasText = [...el.childNodes].some(n => n.nodeType === 3 && n.nodeValue.trim());
       if (hasText) {
         const size = parseFloat(cs.fontSize), weight = +cs.fontWeight, fam = cs.fontFamily.split(",")[0].replace(/["']/g, "").trim();
-        if (!SIZES.includes(size)) out.add(`size ${size}px "${el.textContent.trim().slice(0, 30)}"`);
+        // Launch art only: a [data-display-type] element (the hero line of the og image, social
+        // preview and README hero) may set a display size above 28. Nothing else may.
+        const display = size > 28 && el.closest("[data-display-type]");
+        if (!SIZES.includes(size) && !display) out.add(`size ${size}px "${el.textContent.trim().slice(0, 30)}"`);
         if (!WEIGHTS.includes(weight)) out.add(`weight ${weight} "${el.textContent.trim().slice(0, 30)}"`);
         if (!FAMILIES.includes(fam)) out.add(`family ${fam}`);
         const c = rgb(cs.color); if (c && !ok.has(c)) out.add(`colour rgb(${c}) text "${el.textContent.trim().slice(0, 30)}"`);
