@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### scripts/rc-smoke.sh: the release smoke check
+
+- `scripts/rc-smoke.sh <vyre.tgz>` walks a release's path on a throwaway box built from the package,
+  with fakes only, and prints pass, FAIL or skip per step: install (install-box.sh --dry-run and the
+  image), vyred up, the Claude sign-in through onboard.claude with a fake `claude setup-token`, the
+  phone app at /app/, a memory question on the synthetic world answered with sources and one left
+  unanswered, mail held at the Gate, appearance.tokens changing /theme.css, and box/vyre's
+  `vyre update` to a fake next release and `--rollback` back (the vault survives both). The wrapper's
+  docker calls go through a shim that maps vyre:local and vyre:prev to the smoke's own names, so a
+  live box on the same server is never touched. box-deploy runs it before a redeploy.
+
 #### Not found is a 404, and `vyre link signin` says when it's done
 
 - An id that isn't there (gate.get, gate.approve and the rest on a held item; agents.* on an
