@@ -226,4 +226,11 @@ export const MIGRATIONS = [
   // Vyre IQ (core/memory/iq/ask.js): the model's reply to each exact answer prompt, kept by its
   // hash, so a question over the same passages is answered the same way and never paid twice.
   `CREATE TABLE memory_iq_asks (hash TEXT PRIMARY KEY, v INTEGER NOT NULL, at INTEGER NOT NULL, reply TEXT NOT NULL, usd REAL NOT NULL DEFAULT 0) WITHOUT ROWID;`,
+  // Correcting IQ where it appears (core/memory/iq/fix.js): the answers given, by id, the person's
+  // fixes (their local log: never exported), and the personal facts a fix says are not true.
+  `CREATE TABLE memory_iq_answers (id TEXT PRIMARY KEY, at INTEGER NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, via TEXT, facts TEXT NOT NULL, turns TEXT NOT NULL) WITHOUT ROWID;
+  CREATE TABLE memory_iq_fixes (id INTEGER PRIMARY KEY, at INTEGER NOT NULL, answer TEXT NOT NULL, qkey TEXT NOT NULL, question TEXT NOT NULL, kind TEXT NOT NULL,
+    action TEXT NOT NULL, old TEXT NOT NULL, text TEXT, facts TEXT NOT NULL, turns TEXT NOT NULL, who TEXT, told INTEGER, undone INTEGER);
+  CREATE INDEX memory_iq_fixes_qkey ON memory_iq_fixes (qkey);
+  CREATE TABLE memory_me_denied (fact TEXT NOT NULL, fix INTEGER NOT NULL, PRIMARY KEY (fact, fix)) WITHOUT ROWID;`,
 ];

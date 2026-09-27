@@ -92,10 +92,12 @@ export function checkAsk(reply, passages) {
 /**
  * @param {{ db: import("node:sqlite").DatabaseSync, answer: (i: any) => Promise<any>, retrieve: (i: any) => Promise<any>,
  *   runner?: ((r: { system: string, prompt: string, model: string, maxUsd: number }) => Promise<{ text: string, usd: number }>)|null,
- *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void } }} deps
+ *   model?: () => string, budget?: { allow: (usd: number) => boolean, charge: (usd: number) => void },
+ *   fixes?: ReturnType<typeof import("./fix.js").fixes>|null }} deps
+ *   fixes: the person's corrections (iq/fix.js); every answer gets an answer_id they can correct.
  *   runner: null means only kept replies are used (the evaluation's replay, or no model at all).
  */
-export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} } }) {
+export function asker({ db, answer, retrieve, runner = null, model = () => "haiku", budget = { allow: () => true, charge: () => {} }, fixes = null }) {
   const get = db.prepare("SELECT reply FROM memory_iq_asks WHERE hash = ?");
   const put = db.prepare("INSERT OR REPLACE INTO memory_iq_asks (hash, v, at, reply, usd) VALUES (?,?,?,?,?)");
 
@@ -106,20 +108,37 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
    */
   return async function ask({ question, project_cwds = [], personal: sees = false, thread = null, stage = () => {} }) {
     const t0 = performance.now();
-    const done = r => ({ answer: null, confidence: 0, abstained: true, known: [], sources: [], via: null, cost_usd: 0, ...r, latency_ms: Math.round(performance.now() - t0) });
     const q = String(question || "").trim();
+    const done = r => {
+      const out = { answer: null, confidence: 0, abstained: true, known: [], sources: [], via: null, cost_usd: 0, ...r, latency_ms: Math.round(performance.now() - t0) };
+      // An answer the person can correct where it appears, by this id.
+      // A "not sure" has one too: the person can type the answer IQ did not have.
+      if (fixes && q && out.via !== "corrected" && !out.limited) out.answer_id = fixes.issue({ question: q, answer: out.answer || "", via: out.via, facts: r.facts || [], sources: out.sources });
+      delete out.facts;
+      return out;
+    };
     if (!q) return done({});
     stage("understanding");
+    // 0. The person corrected this question's answer: their words win, at once.
+    const fix = fixes ? fixes.lookup(q) : null;
+    if (fix && fix.action === "replace") {
+      return done({ answer: fix.text, confidence: 1, abstained: false, via: "corrected",
+        sources: [{ session: `fix:${fix.id}`, seq: 0, name: "your correction", quote: String(fix.text), ts: fix.at }] });
+    }
+    // Said to be wrong: that answer is never given again for this question.
+    const notThis = fix && fix.action === "wrong" ? fix.old : null;
+    const refused = r => notThis && r.answer === notThis ? done({ via: "corrected", known: [`You said "${notThis}" is wrong.`], why: "corrected" }) : done(r);
     // 1. The fast path: a personal fact memory is sure of.
     if (sees) {
       const f = await answer({ q, project_cwds });
       if (f && f.answer && f.kind === "fact" && (f.confidence ?? 0) >= SURE && (f.facts?.length || f.sources?.length)) {
-        return done({ answer: f.answer, confidence: f.confidence, abstained: false, sources: f.sources || [], via: "fact" });
+        return refused({ answer: f.answer, confidence: f.confidence, abstained: false, sources: f.sources || [], via: "fact", facts: (f.facts || []).map(x => String(x.id)) });
       }
     }
     // 2. The passages.
     stage("searching");
-    const { passages } = await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread });
+    const forgotten = fixes ? fixes.forgotten() : new Set();
+    const passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
     if (!passages.length) return done({ via: "retrieval" });
     // 3. The answer, kept by the prompt's hash.
     const prompt = askPrompt(q, passages);
@@ -142,6 +161,6 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     const c = checkAsk(parseAsk(text), passages);
     if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why });
     const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).map(p => ({ session: p.session, seq: p.seq, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }));
-    return done({ answer: c.answer, confidence: c.confidence, abstained: false, known: c.known, sources, via: "retrieval", cost_usd: usd });
+    return refused({ answer: c.answer, confidence: c.confidence, abstained: false, known: c.known, sources, via: "retrieval", cost_usd: usd });
   };
 }

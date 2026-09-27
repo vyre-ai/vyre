@@ -28,6 +28,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   reading, checking) as each step starts and `memory.answered {id, abstained, limited}`. The id is
   the caller's, so a surface can show IQ thinking before the reply comes back. The events never
   carry the question or the answer. Its description now tells the assistant when to use it.
+- Correct Vyre IQ where it appears: every memory.ask answer (a "not sure" too) has an
+  `answer_id`, and `memory.correct {answer, action: wrong|replace|forget, object?}` fixes it with
+  no Touch ID. replace: the same question gets the person's words at once, and a personal answer
+  is told to memory, so other phrasings have it. wrong: that answer is never given to that
+  question again. forget: the facts and turns behind it never ground an answer again.
+  `memory.uncorrect {fix}` undoes one. The fixes are the person's local log
+  (`memory.corrections {answers: true}`, `memory.stats().iq`: "you corrected 3 answers this week",
+  by kind of question). CLI: `vyre memory fix <id> wrong | forget | "<the right answer>"`.
+  eval-iq --fix: correcting every wrong answer on the synthetic worlds makes each one right with
+  none regressed (open 20 of 20, sealed 38 of 38).
 - Predictive text knows the people and things memory knows: memory offers `memory.suggest` to
   suggest at start (and again on the new `suggest.ready` event), in the offer's `items` shape.
   Typing "my wi" suggests "wife" with "Juno" beside it, on the user's own surfaces only.

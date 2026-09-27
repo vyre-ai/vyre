@@ -75,6 +75,17 @@ test("memory ask: Vyre IQ answers from what the user said, with where; else not 
   assert.equal(j.via, "fact");
   assert.equal(j.abstained, false);
 
+  // Wrong? Fix it where it is shown, and the next ask has it.
+  assert.match(wife.out, /wrong\? vyre memory fix a_[0-9a-f]{16} wrong/);
+  const fixed = await vyre("memory", "fix", j.answer_id, "Your", "wife", "is", "Kit.");
+  assert.equal(fixed.code, 0, fixed.out);
+  assert.match(fixed.out, /remembered · what is my wife's name · undo with vyre memory fix undo 1/);
+  assert.match((await vyre("memory", "ask", "what is my wife's name")).out, /Your wife is Kit\.[\s\S]*you corrected this/);
+  assert.match((await vyre("memory", "fix")).out, /1 answer corrected this week · people 1/);
+  assert.equal((await vyre("memory", "fix", "undo", "1")).code, 0);
+  assert.match((await vyre("memory", "ask", "what is my wife's name")).out, /Juno/);
+  assert.equal((await vyre("memory", "fix", j.answer_id)).code, 2);
+
   // No model under node --test: a question only a session could answer is not sure.
   const unsure = await vyre("memory", "ask", "which port did the Northwind staging deploy use");
   assert.equal(unsure.code, 1, unsure.out);

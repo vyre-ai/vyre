@@ -113,3 +113,37 @@ test("memory module: suggest offers the names memory knows, with who a role is",
   items = (await call("suggest.query", { text: "call Jun", surface: "deck" }, { root })).data.items;
   assert.ok(items.some(x => x.source === "memory.suggest" && x.label === "Juno"), JSON.stringify(items));
 });
+
+test("memory module: an IQ answer corrected where it is shown is the answer next time, everywhere, and undoes", async t => {
+  const root = seeded(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await call("memory.curate", {}, { root });
+  await call("memory.remember", { text: "my wife is Jordan" }, { root });
+  const a = (await call("memory.ask", { question: "what is my wife's name?" }, { root })).data;
+  assert.match(a.answer, /Jordan/);
+  assert.equal(a.via, "fact");
+  assert.ok(a.answer_id);
+
+  const r = await call("memory.correct", { answer: a.answer_id, action: "replace", object: "Your wife is Juno." }, { root });
+  assert.equal(r.data.fix.action, "replace", JSON.stringify(r));
+  const same = (await call("memory.ask", { question: "What is my wife's name" }, { root })).data;
+  assert.equal(same.answer, "Your wife is Juno.");
+  assert.equal(same.via, "corrected");
+  // Another way of asking: the old fact is denied and the person's words were told to memory.
+  const other = (await call("memory.answer", { q: "who is my wife" }, { root })).data;
+  assert.match(String(other.answer), /Juno/, JSON.stringify(other));
+  assert.doesNotMatch(String(other.answer), /Jordan/);
+  const stats = (await call("memory.stats", {}, { root })).data;
+  assert.equal(stats.iq.corrected, 1);
+  assert.equal(stats.iq.by_kind.people, 1);
+  const log = (await call("memory.corrections", { answers: true }, { root })).data;
+  assert.equal(log.fixes[0].old, a.answer);
+
+  // An agent never corrects; a graph action with an answer is refused.
+  assert.equal((await call("memory.correct", { answer: a.answer_id, action: "confirm" }, { root })).error.code !== undefined, true);
+
+  await call("memory.uncorrect", { fix: r.data.fix.id }, { root });
+  assert.match((await call("memory.ask", { question: "what is my wife's name?" }, { root })).data.answer, /Jordan/, "undone, the fact is back");
+  assert.equal((await call("memory.stats", {}, { root })).data.iq.corrected, 0);
+});
