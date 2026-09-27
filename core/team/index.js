@@ -22,7 +22,8 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { callerKind } from "../modules/index.js";
-import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange } from "./git.js";
+import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange,
+  headSha, resetTo, mergeBranchIn, stillConflicted, compareAndSwap, detectTestCommand, runTests } from "./git.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE team_teammates (
@@ -50,6 +51,11 @@ export const MIGRATIONS = [
   // The teammate's notes hash when a request started running, so team.done can refuse to close
   // it when nothing has been written down since (ADR 0031 section 3).
   `ALTER TABLE team_requests ADD COLUMN notes_hash_at_start TEXT`,
+  // The integrator's own bookkeeping (ADR 0031 section 8): the project's own branch tip vyred
+  // itself last recorded (never read fresh from the ref at compare-and-swap time: a teammate's
+  // Bash can move any ref, so a worktree is not a security boundary), and the test command a
+  // merge runs before it may move main.
+  `ALTER TABLE team_teammates ADD COLUMN main_sha TEXT; ALTER TABLE team_teammates ADD COLUMN test_command TEXT`,
 ];
 
 const NAME = /^[a-z][a-z0-9-]{0,30}$/;
@@ -78,10 +84,15 @@ export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-([
  * writing, so they are untrusted data and belong in the first user turn, not the system prompt.
  * @param {any} tm
  */
+/** Reserved: every project's merge target (ADR 0031 section 8). Never a role a person names for anything else. */
+export const INTEGRATOR_ROLE = "integrator";
+
 export function preamble(tm) {
   const lines = [`You are ${tm.role}, a teammate in the ${tm.project} project (Vyre, ADR 0031).`,
     `Your brief: ${tm.brief || "no brief set yet"}.`,
-    "Work reaches you as requests, one at a time, wrapped in <vyre-request>. Close each one by calling team.done with a result, or team.fail with a reason, before you stop. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's.",
+    tm.role === INTEGRATOR_ROLE
+      ? "A merge request's own worktree may already have a real conflict in it, or a failing test, once you see it: read both sides, fix it with your own tools, then call team.merge (not team.done) to check and finish it. It is refused, saying why, while a conflict remains or the test command still fails; fix more and call it again. Give up on this one with team.fail. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's."
+      : "Work reaches you as requests, one at a time, wrapped in <vyre-request>. Close each one by calling team.done with a result, or team.fail with a reason, before you stop. Never call team.add, team.update, team.remove, team.share or any person-only tool: those are the person's.",
     "For what was decided or done before in your projects, call memory_ask; it sees only your projects."];
   if (tm.instructions) lines.push("", String(tm.instructions));
   return lines.join("\n");
@@ -126,7 +137,8 @@ export default {
       shared: JSON.parse(String(r.shared)), brief: r.brief == null ? null : String(r.brief),
       instructions: r.instructions == null ? null : String(r.instructions), model: String(r.model), helper_model: String(r.helper_model),
       tools: JSON.parse(String(r.tools)), isolation: String(r.isolation), thread: r.thread == null ? null : String(r.thread),
-      state: String(r.state), current_request: r.current_request == null ? null : String(r.current_request) });
+      state: String(r.state), current_request: r.current_request == null ? null : String(r.current_request),
+      main_sha: r.main_sha == null ? null : String(r.main_sha), test_command: r.test_command == null ? null : String(r.test_command) });
     const shapeR = r => r && ({ id: String(r.id), teammate: String(r.teammate), project: String(r.project),
       from_kind: String(r.from_kind), from: String(r.from_label), reply_to: r.reply_to == null ? null : String(r.reply_to),
       via: JSON.parse(String(r.via)), text: String(r.text), refs: JSON.parse(String(r.refs)), priority: String(r.priority),
@@ -276,6 +288,86 @@ export default {
       return { ok: true, info };
     };
 
+    /** Which teammate's branch a merge request is about, from its own text ("merge team/<role> ..."). */
+    const branchFromMergeText = text => { const m = /^merge (team\/[a-z][a-z0-9-]{0,30}) /.exec(text); return m ? m[1] : null; };
+
+    /**
+     * The integrator's own merge, mechanical and vyred's own act (section 8): reset its worktree
+     * to the main tip vyred itself last recorded (never the ref read fresh, so a moved ref is
+     * caught, not trusted), merge the teammate's branch in, run the project's test command, and
+     * only then fast-forward main with a compare-and-swap against that same recorded tip. A
+     * conflict or a failing test is not an error here: it is exactly the case the integrator's
+     * own session (with real reasoning, and its worktree left exactly as this attempt found it)
+     * exists for, so this hands back what it needs, not a thrown error.
+     */
+    const attemptMerge = async (integrator, req) => {
+      const branch = branchFromMergeText(req.text);
+      if (!branch) return { done: false, fatal: `not a merge request: ${req.text}` };
+      const info = await worktreeInfo(integrator);
+      if (!info) return { done: false, fatal: `could not find ${integrator.project}'s repo or its integrator's own worktree` };
+      if (!(await isOwnWorktree(info.repo, info.dir, info.branch))) {
+        return { done: false, fatal: `${info.dir} is not ${integrator.project}'s own ${info.branch} worktree any more; vyred will not merge into it` };
+      }
+      const recorded = integrator.main_sha || await headSha(info.repo, info.base);
+      if (!recorded) return { done: false, fatal: `${integrator.project}'s ${info.base} has no commit yet to merge onto` };
+      const reset = await resetTo(info.dir, recorded);
+      if (!reset.ok) return { done: false, fatal: `could not reset the integrator's worktree to ${info.base}: ${reset.stderr}` };
+      const merged = await mergeBranchIn(info.dir, branch);
+      if (!merged.ok) return { done: false, conflict: true, branch, mainSha: recorded, info,
+        detail: `merging ${branch} into ${info.base} conflicts:\n${merged.stderr}`.slice(0, 4000) };
+      if (integrator.test_command) {
+        const tested = await runTests(info.dir, integrator.test_command);
+        if (!tested.ok) return { done: false, testsFailed: true, branch, mainSha: recorded, info,
+          detail: `${integrator.test_command} failed after merging ${branch}:\n${(tested.stderr || tested.stdout)}`.slice(0, 4000) };
+      }
+      const newSha = await headSha(info.dir, "HEAD");
+      if (!newSha) return { done: false, fatal: "could not read the integrator's worktree HEAD after a clean merge" };
+      if (!(await compareAndSwap(info.repo, info.base, recorded, newSha))) {
+        // Someone or something moved `base` since vyred last recorded it (the person's own commit,
+        // or — a worktree is not a security boundary — a teammate's Bash). Resync and let the next
+        // attempt (the automatic one, or team.merge) try again from the real, current tip, rather
+        // than overwrite whatever is there now.
+        const fresh = await headSha(info.repo, info.base);
+        setTeammate(integrator.agent, { main_sha: fresh });
+        return { done: false, refMoved: true, detail: `${info.base} moved since vyred last recorded it; resynced and will try again` };
+      }
+      setTeammate(integrator.agent, { main_sha: newSha });
+      return { done: true, branch, base: info.base, from: recorded.slice(0, 7), to: newSha.slice(0, 7), testCommand: integrator.test_command, info };
+    };
+
+    /**
+     * team.merge, called by the integrator itself once it believes a conflict is resolved (its
+     * own worktree state, left exactly as it made it: never reset or re-merged here, unlike
+     * attemptMerge's first, automatic try). Checks that directly — no conflict markers left, the
+     * test command passing — then the same compare-and-swap fast-forward.
+     */
+    const finalizeMerge = async (integrator, req) => {
+      const branch = branchFromMergeText(req.text);
+      if (!branch) return { done: false, fatal: `not a merge request: ${req.text}` };
+      const info = await worktreeInfo(integrator);
+      if (!info) return { done: false, fatal: `could not find ${integrator.project}'s repo or its integrator's own worktree` };
+      if (!(await isOwnWorktree(info.repo, info.dir, info.branch))) {
+        return { done: false, fatal: `${info.dir} is not ${integrator.project}'s own ${info.branch} worktree any more; vyred will not merge into it` };
+      }
+      if (await stillConflicted(info.dir)) {
+        return { done: false, detail: "there are still unresolved conflicts (git diff --diff-filter=U); resolve them, git add them, and call team.merge again" };
+      }
+      const recorded = integrator.main_sha || await headSha(info.repo, info.base);
+      if (integrator.test_command) {
+        const tested = await runTests(info.dir, integrator.test_command);
+        if (!tested.ok) return { done: false, detail: `${integrator.test_command} still fails:\n${(tested.stderr || tested.stdout)}`.slice(0, 4000) };
+      }
+      const newSha = await headSha(info.dir, "HEAD");
+      if (!newSha) return { done: false, fatal: "could not read the integrator's worktree HEAD" };
+      if (!(await compareAndSwap(info.repo, info.base, recorded, newSha))) {
+        const fresh = await headSha(info.repo, info.base);
+        setTeammate(integrator.agent, { main_sha: fresh });
+        return { done: false, refMoved: true, detail: `${info.base} moved since vyred last recorded it; resynced, call team.merge again` };
+      }
+      setTeammate(integrator.agent, { main_sha: newSha });
+      return { done: true, branch, base: info.base, from: recorded.slice(0, 7), to: newSha.slice(0, 7), testCommand: integrator.test_command };
+    };
+
     const setTeammate = (agent, patch) => {
       const cur = { thread: undefined, state: undefined, current_request: undefined, ...patch };
       const sets = [], vals = [];
@@ -372,12 +464,42 @@ export default {
             .run(Date.now(), hash(noteCurrent(agent, "general")), req.id);
           setTeammate(agent, { current_request: req.id, state: "working" });
           ctx.events.emit("summon.started", { request: req.id, teammate: agent, project: req.project });
-          // Merging the project's own branch into a worktree-isolated teammate's before every
-          // request is vyred's own act, never the model's (ADR 0031 section 8), and happens
-          // before a slot is even taken: a conflict has nothing to do with concurrency, and
-          // should not cost this project one of its slots while it sits refused.
+          // The integrator's own merge is tried mechanically, by vyred, before its session is
+          // ever started: a clean merge with tests passing needs no reasoning at all, so no slot
+          // and no turn are spent on it. Only a conflict or a failing test reaches its session
+          // (below, the ordinary dispatch, with the detail in the wrapped prompt), and even then
+          // its worktree is left exactly as this attempt found it, ready for it to work on.
           let worktreeDir = null;
-          if (tm.isolation === "worktree") {
+          if (tm.role === INTEGRATOR_ROLE) {
+            const attempt = await attemptMerge(tm, req);
+            if (attempt.done) {
+              const closed = await finish(reqById(req.id), "done",
+                { result: `Merged ${attempt.branch} into ${attempt.base}, ${attempt.from}..${attempt.to}${attempt.testCommand ? ` (${attempt.testCommand} passed)` : ""}.` });
+              await release(closed || req);
+              continue;
+            }
+            if (attempt.fatal) {
+              const closed = await finish(reqById(req.id), "failed", { result: attempt.fatal });
+              await release(closed || req);
+              continue;
+            }
+            if (attempt.refMoved) {
+              // Not this request's fault: retried fresh, next time round the loop.
+              db.prepare("UPDATE team_requests SET state = 'queued', started_at = NULL WHERE id = ?").run(req.id);
+              await release(req);
+              continue;
+            }
+            // A real conflict or failing test: dispatch below, with `attempt.detail` in the
+            // prompt, so the integrator's own reasoning is spent only where it is actually needed;
+            // its worktree is exactly as attemptMerge left it (mid-conflict, or clean but failing
+            // tests), ready for its own Bash and Edit to work on.
+            req.text = `${req.text}\n\n${attempt.detail}`;
+            worktreeDir = attempt.info.dir;
+          } else if (tm.isolation === "worktree") {
+            // Merging the project's own branch into a worktree-isolated teammate's before every
+            // request is vyred's own act, never the model's (ADR 0031 section 8), and happens
+            // before a slot is even taken: a conflict has nothing to do with concurrency, and
+            // should not cost this project one of its slots while it sits refused.
             const merged = await mergeWorktree(tm);
             if (!merged.ok) {
               const closed = await finish(reqById(req.id), "failed", { result: merged.error });
@@ -450,9 +572,6 @@ export default {
 
     // ---------------------------------------------------------------- tools
 
-    /** Reserved: every project's merge target (ADR 0031 section 8). Never a role a person names for anything else. */
-    const INTEGRATOR_ROLE = "integrator";
-
     /**
      * The insert every teammate goes through, `team.add` and the integrator auto-created
      * alongside a project's first `isolation: worktree` teammate alike. Assumes its caller has
@@ -461,9 +580,9 @@ export default {
     const insertTeammate = i => {
       const agent = agentName(i.role, i.project);
       const now = Date.now();
-      db.prepare(`INSERT INTO team_teammates (agent, project, role, shared, brief, instructions, model, helper_model, tools, isolation, state, created_at, updated_at)
-        VALUES (?,?,?,?,?,?,?,?,?,?, 'asleep', ?,?)`).run(agent, i.project, i.role, "[]", i.brief || null, i.instructions || null,
-        i.model || "teammate", i.helper_model || "helper", JSON.stringify(i.tools || []), i.isolation || "folder", now, now);
+      db.prepare(`INSERT INTO team_teammates (agent, project, role, shared, brief, instructions, model, helper_model, tools, isolation, main_sha, test_command, state, created_at, updated_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?, 'asleep', ?,?)`).run(agent, i.project, i.role, "[]", i.brief || null, i.instructions || null,
+        i.model || "teammate", i.helper_model || "helper", JSON.stringify(i.tools || []), i.isolation || "folder", i.main_sha || null, i.test_command || null, now, now);
       ctx.events.emit("teammate.created", { agent, project: i.project, role: i.role });
       return byAgent(agent);
     };
@@ -504,7 +623,8 @@ export default {
             if (!byRole(i.project, INTEGRATOR_ROLE)) {
               const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
               if (iw.ok) insertTeammate({ project: i.project, role: INTEGRATOR_ROLE, isolation: "worktree",
-                brief: "Merges other teammates' finished work into this project's own branch once the tests pass." });
+                brief: "Merges other teammates' finished work into this project's own branch once the tests pass.",
+                main_sha: await headSha(repo, base), test_command: await detectTestCommand(repo) });
               else ctx.log?.(`team: ${i.project}'s integrator worktree failed, so it was not added: ${iw.stderr}`);
             }
           }
@@ -645,6 +765,19 @@ export default {
       run: async (i, meta) => {
         const r = ownRunning(meta, i.request);
         return finish(r, "failed", { result: i.reason });
+      },
+    });
+
+    ctx.tool("team.merge", {
+      description: "The integrator's own tool, once it believes it has resolved a merge conflict or fixed a failing test in its own worktree: checks that directly (no conflict markers left, the project's own test command passing), then fast-forwards the project's own branch with a compare-and-swap. Refused, saying which, while a conflict remains or the test command still fails; call it again after fixing more. request may be left out; defaults to the integrator's one running request.",
+      input: { type: "object", properties: { request: { type: "string" } } },
+      run: async (i, meta) => {
+        const r = ownRunning(meta, i.request);
+        const tm = byAgent(r.teammate);
+        if (!tm || tm.role !== INTEGRATOR_ROLE) throw Object.assign(new Error("team.merge is the integrator's own tool"), { code: "denied" });
+        const result = await finalizeMerge(tm, r);
+        if (!result.done) throw Object.assign(new Error(result.fatal || result.detail || "the merge is not ready yet"), { code: result.fatal ? "bad_input" : "denied" });
+        return finish(r, "done", { result: `Merged ${result.branch} into ${result.base}, ${result.from}..${result.to}${result.testCommand ? ` (${result.testCommand} passed)` : ""}.` });
       },
     });
 
