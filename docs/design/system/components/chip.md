@@ -46,9 +46,16 @@ the setting's value, before the control.
 **A surface grant** (the Connections card, card.md) is a filter chip, not a new kind: one chip per
 surface the connection can be used from: Capsule, Chat, Agents, Phone, the vault's real surfaces,
 never a made-up list. Leading icon the surface's own glyph, On meaning granted and Off meaning
-not. Tapping toggles the grant at once (no confirm, no sheet): this is the one place a filter
-chip's state is not a view filter but a real write, because the write is instant, single-step and
-undoable by tapping the chip again, the same bar draft-card.md sets for an in-place field edit.
+not. This is the one place a filter chip's state is not a view filter but a real write.
+
+Revoking (On to Off) is always one tap: no confirm, no proof, the same bar draft-card.md sets for
+an in-place field edit. Granting (Off to On) is one tap too, except Agents: handing a credential
+to an autonomous session is a vault write (the no-nag rule's own line: presence for vault
+secrets, pairing and send/post/pay), so the Agents chip asks for Touch ID or a passkey before it
+turns on, the same proof credential-sheet.md's Connect step uses. While a grant to Capsule, Chat
+or Phone can still be seen turning on, the chip shows the undo toast (toast.md, 4 s) instead of
+an in-place undo, since a grant is consequential enough to want the "Undo" word on screen, not
+just "tap it again". A refused proof leaves the Agents chip Off with no error, nothing granted.
 
 The source chip shows **only when the value is not the default**. Project beats Account beats
 the default. There is no "Default" chip and no "Not set" chip: a default value shows no chip.
@@ -73,6 +80,9 @@ Filter chip:
   clickable.
 - **Loading.** Chips draw at once from cache; counts fill in without the chip changing width
   (reserve two digits).
+- **Asking** (the Agents grant chip only, Off to On). The system Touch ID or Face ID prompt shows
+  at once on tap; the chip does not change state until it resolves. Confirmed: On, with the undo
+  toast. Refused: stays Off, nothing shown but the system's own cancel.
 
 Tags have no states. The source chip "Claude Code file" shows its path on hover or focus
 (desktop) and an "Open file" action on the row.

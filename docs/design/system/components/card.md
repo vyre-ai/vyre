@@ -50,9 +50,12 @@ and VyreDrive", and the Connections card on the Connections board (below).
      used, or the fix button when it needs one) right-aligned.
   2. **Granted to**, padding 0 16 12, wrapped: the label `--label`, then one filter chip
      (chip.md) per surface that can use this connection (Capsule, Chat, Agents, Phone: the
-     vault's real surfaces, never a made-up list), each with the surface's 12 icon leading. On
-     toggles the grant at once, no confirm; off revokes at once. A row that needs a fix (see
-     account-row.md States) skips this part and the footer: just the top row and its Sign in.
+     vault's real surfaces, never a made-up list), each with the surface's 12 icon leading.
+     Revoking (On to Off) is one tap, always, for every surface. Granting (Off to On) is one tap
+     with the undo toast for Capsule, Chat and Phone; the Agents chip asks Touch ID or a passkey
+     first (chip.md States, Asking), since that hands a credential to an autonomous session, the
+     same no-nag line as pairing and send/post/pay. A row that needs a fix (see account-row.md
+     States) skips this part and the footer: just the top row and its Sign in.
   3. **Footer**, `--rule` top border, padding 12 16: "Wrong account?" (steplink, opens the
      credential sheet to pick a different one for this need) on the left, "Connected 3 Jan" in
      `--label` on the right. Never a Revoke or Disconnect here: that lives on the individual
