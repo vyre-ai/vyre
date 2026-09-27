@@ -54,7 +54,9 @@ The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
   "Sentence case everywhere: titles, buttons, labels, menus. No caps labels and no letter-spaced
   mono captions"; TOKENS.md's older role is being retired). Changed to the meta step in Sans
   (12/16, no tracking), matching the rest of the file's `.progress .x span + span`. The text it
-  shows ("failed", or a timing string) was already sentence case.
+  shows ("failed", or a timing string) was already sentence case. Weight 600, not 400: the first
+  pass at this fix got the weight wrong; app-design's re-review caught it against the canon,
+  `docs/design/one-app/project/vyre.css`'s `.lbl`.
 
 #### Mail rows in the Capsule (connectors 8be461a9)
 
