@@ -69,10 +69,10 @@
   "vault.connections.list": [
     { "id": "cn_alex", "source": "google", "ref": "work", "provider": "google-oauth", "account": "alex@harlowlegal.com",
       "auth": "oauth", "label": "alex@harlowlegal.com", "capabilities": ["send_mail", "calendar"], "state": "ready",
-      "surfaces": ["capsule", "chat"], "uses": {}, "default": ["send_mail"], "last_used": "$ago:6m", "added": "$ago:9d" },
+      "surfaces": ["capsule", "chat", "phone"], "uses": {}, "default": ["send_mail"], "last_used": "$ago:6m", "added": "$ago:9d" },
     { "id": "cn_tracker", "source": "mcp", "ref": "tracker", "provider": "mcp", "account": "tracker",
       "auth": "env", "label": "Northwind Tracker MCP", "capabilities": ["other"], "state": "ready",
-      "surfaces": ["agents"], "uses": {}, "default": [], "last_used": "$ago:2h", "added": "$ago:20d" },
+      "surfaces": [], "uses": {}, "default": [], "last_used": "$ago:2h", "added": "$ago:20d" },
     { "id": "cn_appsscript", "source": "google-apps-script", "ref": "harlow", "provider": "google-apps-script", "account": "Apps Script",
       "auth": "env", "label": "Apps Script", "capabilities": ["send_mail"], "state": "needs_credential",
       "needs": [{ "module": "mail", "need": "google-apps-script" }], "surfaces": [], "uses": {}, "default": [], "last_used": null, "added": "$ago:1d" }

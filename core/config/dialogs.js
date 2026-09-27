@@ -51,16 +51,21 @@ export function claudeHome(root, env = process.env) {
 
 /**
  * Claude Code's `.claude.json` (MCP servers at user and local scope, onboarding state) for the
- * Vyre home at `root`. It sits beside `~/.claude`, not inside it, so this is its own function
- * rather than a path built from claudeHome(): the person's real one only for their own ~/.vyre;
- * any other home (a dev world, a demo, a temp home, a test) gets `<root>/claude.json`, empty until
- * a fixture puts one there, the same rule claudeHome follows for the folder next to it (e2e
- * review, 2026-09-28, after discover.js read os.homedir() directly).
+ * Vyre home at `root`. Ordinarily it sits beside `~/.claude`, not inside it, so this is its own
+ * function rather than a path built from claudeHome(); but when CLAUDE_CONFIG_DIR is set, Claude
+ * Code itself moves `.claude.json` inside that folder (not beside it), so this follows suit for
+ * the person's real ~/.vyre. Any other home (a dev world, a demo, a temp home, a test) gets
+ * `<root>/claude.json`, empty until a fixture puts one there, the same rule claudeHome follows for
+ * the folder next to it (e2e review, 2026-09-28, after discover.js read os.homedir() directly;
+ * corrected 2026-09-28, e2e LOW: CLAUDE_CONFIG_DIR does move .claude.json too).
  * @param {string} root @param {NodeJS.ProcessEnv} [env]
  */
 export function claudeJson(root, env = process.env) {
   if (env.VYRE_CLAUDE_HOME) return path.join(path.dirname(path.resolve(env.VYRE_CLAUDE_HOME.replace(/^~(?=$|\/)/, os.homedir()))), ".claude.json");
-  if (isRealHome(root)) return path.join(os.homedir(), ".claude.json");
+  if (isRealHome(root)) {
+    if (env.CLAUDE_CONFIG_DIR) return path.join(path.resolve(env.CLAUDE_CONFIG_DIR.replace(/^~(?=$|\/)/, os.homedir())), ".claude.json");
+    return path.join(os.homedir(), ".claude.json");
+  }
   return path.join(path.resolve(String(root)), "claude.json");
 }
 

@@ -24,8 +24,8 @@ test("claudeHome: ~/.claude only for the real ~/.vyre; any other home keeps its 
 test("claudeJson: ~/.claude.json only for the real ~/.vyre; any other home keeps its own, beside claudeHome's folder", () => {
   const real = realHome();
   assert.equal(claudeJson(real, {}), path.join(os.homedir(), ".claude.json"));
-  assert.equal(claudeJson(real, { CLAUDE_CONFIG_DIR: "/opt/cc" }), path.join(os.homedir(), ".claude.json"),
-    "CLAUDE_CONFIG_DIR redirects the settings folder, not .claude.json");
+  assert.equal(claudeJson(real, { CLAUDE_CONFIG_DIR: "/opt/cc" }), path.join("/opt/cc", ".claude.json"),
+    "CLAUDE_CONFIG_DIR moves .claude.json inside it too (e2e LOW, 2026-09-28), the same folder claudeHome names");
   const temp = path.join(os.tmpdir(), "vy-dev-home");
   assert.equal(claudeJson(temp, {}), path.join(temp, "claude.json"), "a dev or temp home, never the real .claude.json");
   assert.equal(claudeJson(temp, { CLAUDE_CONFIG_DIR: path.join(os.homedir(), ".claude") }), path.join(temp, "claude.json"),
