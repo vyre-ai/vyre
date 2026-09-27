@@ -18,7 +18,8 @@ import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
 import { build } from "./build.js";
 import { acquire } from "./lock.js";
-import { Presence, parse as parsePresence } from "../presence/index.js";
+import { Presence, PERSON_ONLY, parse as parsePresence } from "../presence/index.js";
+import { peerPid, insideClaude } from "./peer.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 
@@ -109,7 +110,7 @@ async function startLocked(opts, root, p, release) {
     fs.rmSync(p.socket, { force: true });
   }
 
-  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root }).catch(e => {
+  const server = http.createServer((req, res) => route(req, res, { registry, events, cfg, started, streams, root, socket: true }).catch(e => {
     send(res, 500, { error: { code: "internal", message: e.message } });
   }));
   server.on("upgrade", (req, socket, head) => upgrade(req, socket, head, socketCaller(req)));
@@ -172,7 +173,25 @@ export function socketCaller(req) {
   return !label || FORBIDDEN_LABEL.test(label) ? "anonymous" : label;
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root }, /** @type {Policy} */ policy = {}) {
+/** A model's own label: its tools' callers lists and the agent key already decide what it may do. */
+const MODEL_LABEL = /^(mcp|harness)(?=$|[\s:])/;
+
+/**
+ * Why a socket call to a person-only tool is refused, or null. The label is only a claim, so vyred
+ * asks the kernel which process connected (core/daemon/peer.js): from under a `claude`, or under a
+ * process vyred runs a thread in, it is a model's shell, however it names itself. Refused
+ * silently, never asked: there is nothing the person could prove here. Unknown means refused.
+ * @param {import("node:net").Socket} socket @param {any} registry
+ */
+async function fromClaude(socket, registry) {
+  const pid = await peerPid(socket);
+  if (!pid) return "vyred cannot tell which process is calling, so this person-only tool is refused";
+  const r = await registry.call("threads.pids", {}, "module:vyred");
+  const { inside } = insideClaude(pid, { threads: (r.data && r.data.pids) || [] });
+  return inside ? "this comes from inside a Claude session; only the person answers and approves, on their own screen" : null;
+}
+
+async function route(req, res, { registry, events, cfg, started, streams, root, socket = false }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -250,6 +269,10 @@ async function route(req, res, { registry, events, cfg, started, streams, root }
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
+    if (socket && PERSON_ONLY.has(name) && !MODEL_LABEL.test(caller)) {
+      const why = await fromClaude(req.socket, registry);
+      if (why) return send(res, 403, { error: { code: "denied", message: why } });
+    }
     const result = await registry.call(name, await body(req), caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]),
       keep: req.headers["x-vyre-presence-keep"] === "1" });
     // A session the proof opened goes back in a header, in the form x-vyre-presence takes.
