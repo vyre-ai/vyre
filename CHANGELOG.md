@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Status marks: one model on the Deck (Design A v1)
+
+- deck/js/status-mark.js draws the five status marks (needs you 8 solid attention dot, failed 12
+  crossed circle in `--text-2`, running 10 `--focus` ring with elapsed time, unread 8 solid,
+  done 8 hollow), the needs-you badge (18 tall, 1 to 99 then "99+", "3 need you"), the neutral
+  count and the path dot (direct `--focus`, relayed `--label` solid, none hollow). Styles in
+  deck/css/marks.css. Failed and relayed never take the attention colour or amber. `.dot.beacon`
+  and `.dot.health-*` are aliases; the rail's Now count is the badge; Settings' Network row, the
+  health dot and Connections' running and failed states use the marks.
+
 #### One button system in the Deck (Design A v1)
 
 - deck/css/buttons.css is the Deck's one button: primary, secondary, outline, ghost and hold, at

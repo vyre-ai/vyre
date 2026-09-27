@@ -251,6 +251,9 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 | Button | `.btn-ghost` ink `--text-2` and radius `--r-2`: now `--text` and `--radius-button` | buttons |
 | Button | `.sb` / `.sb-primary` second system (min 46, opacity disabled): folded in at 44 and 54 | buttons |
 | Icon button | `.ibtn` radius `--r-2`; no 44 size, no filled round, no busy | buttons |
+| Status mark | no running ring, crossed circle or hollow done dot in `deck.css` (css/marks.css, js/status-mark.js) | marks |
+| Status mark | relayed health dots used gold: now `--label` solid, and unknown is `--label` hollow | marks |
+| Status mark | rail count was violet mono text: the Now count is the 18 badge (99+, "3 need you") | marks |
 
 ## Needs from others
 - tailnet or names: a read of config `network.origins` (a field on system.info or names.status)
@@ -269,7 +272,7 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 
 ## Changed contracts
 - deck/onboard/index.html and deck/onboard/passkey/index.html link /css/buttons.css right after
-  deck.css (the onboarding pages use .btn, which moved there).
+  deck.css (the onboarding pages use .btn, which moved there), then /css/marks.css.
 - push.seen: optional `device` (string, at most 40), echoed in the push.seen event payload only
   when sent. The Deck (js/pwa.js) sends localStorage "vyre.push.device" (polish-cli asked).
 - Deck route /pair (a normal route; the SW serves index.html for it like any other).

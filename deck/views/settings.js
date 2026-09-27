@@ -16,6 +16,7 @@ import { pushState, subscribePush, unsubscribePush, enrollPasskey, passkeyState,
 import { icon, mark, wordmark } from "../js/icons.js";
 import { when, since, plural } from "../js/fmt.js";
 import { personStatus, signOutHere } from "../js/person.js";
+import { pathMark } from "../js/status-mark.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 import { linkLine, linkDot, handshakeLine, watchHealth } from "../js/health.js";
 import { shareAccess, accessWord, flip, perShare, unsafeLines, mountHint } from "../js/drive-rows.js";
@@ -274,7 +275,7 @@ function drawLink(el, ctx) {
     // No link module on this vyred: the row is left out rather than shown empty.
     if (!x) { put(el); return; }
     const shook = handshakeLine(x);
-    put(el, row("This device", h("span", { class: "set-inline" }, h("span", { class: `dot health-${linkDot(x)}` }),
+    put(el, row("This device", h("span", { class: "set-inline" }, pathMark(linkDot(x)),
       h("span", x.path === "unknown" ? { class: "muted" } : null, linkLine(x))),
       shook ? h("div", { class: "small faint" }, shook) : null));
   }));

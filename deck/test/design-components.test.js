@@ -1,6 +1,7 @@
 // @ts-check
 // The Deck-wide components of Design A v1 (docs/design/system/components): the one button system
-// in css/buttons.css, with the old class names kept as its aliases.
+// in css/buttons.css (the old class names kept as its aliases), the status marks (js/status-mark.js,
+// css/marks.css) and the one toast (js/toast.js).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -108,4 +109,77 @@ test("button.js: builds the variant and size, holds its width while busy, and gi
   assert.equal(b.querySelector(".button-label")?.textContent, "Send");
   assert.equal(button({ label: "Delete 214 files", variant: "hold" }).getAttribute("aria-description"), "Hold for 0.6 seconds");
   assert.equal(button({ label: "Cancel", variant: /** @type {any} */ ("danger") }).className, "button button-outline", "no variant outside the five");
+});
+
+// ---- status marks ----------------------------------------------------------------------------
+
+test("status-mark: the right mark for each status, most urgent first, named by its word", async () => {
+  const { install } = await import("./fake-dom.js");
+  install();
+  const { statusMark, statusOf, worst, ORDER, WORDS, elapsed } = await import("../js/status-mark.js");
+  assert.deepEqual([...ORDER], ["needs", "failed", "running", "unread", "done"]);
+  for (const s of ORDER) {
+    const m = statusMark(s);
+    assert.equal(m.className, `sm sm-${s}`);
+    assert.equal(m.getAttribute("role"), "img");
+    assert.equal(m.getAttribute("aria-label"), WORDS[s]);
+  }
+  assert.equal(WORDS.needs, "needs you");
+  // Session state words map onto the five.
+  assert.equal(statusOf("waiting"), "needs");
+  assert.equal(statusOf("starting"), "running");
+  assert.equal(statusOf("stopped"), "done");
+  assert.equal(statusOf("idle"), "done");
+  assert.equal(worst(["done", "running", "failed"]), "failed");
+  assert.equal(worst(["unread", "waiting"]), "needs");
+  assert.equal(worst([]), null);
+  // Running carries elapsed time; the word beside hides the mark.
+  const line = statusMark("running", { word: true, since: 0, now: 4 * 60_000 });
+  assert.equal(line.className, "st");
+  assert.equal(line.textContent, "running · 4m");
+  assert.equal(line.querySelector(".sm")?.getAttribute("aria-hidden"), "true");
+  assert.equal(statusMark("failed", { beside: true }).getAttribute("aria-hidden"), "true");
+  assert.deepEqual([elapsed(12_000), elapsed(4 * 60_000), elapsed(72 * 60_000)], ["12s", "4m", "1h 12m"]);
+});
+
+test("status-mark: the badge caps at 99+, says who waits, and hides at 0; path marks for direct, relayed and none", async () => {
+  const { install } = await import("./fake-dom.js");
+  install();
+  const { badge, count, pathMark } = await import("../js/status-mark.js");
+  const b = badge(3);
+  assert.equal(b.textContent, "3");
+  assert.equal(b.getAttribute("aria-label"), "3 need you");
+  badge(128, b);
+  assert.equal(b.textContent, "99+");
+  assert.equal(b.getAttribute("aria-label"), "more than 99 need you");
+  badge(0, b);
+  assert.equal(b.hidden, true);
+  assert.equal(count(214).className, "sm-count");
+  assert.equal(pathMark("direct").className, "sm sm-path-direct");
+  assert.equal(pathMark("relay").className, "sm sm-path-relayed");
+  assert.equal(pathMark("peer-relay").className, "sm sm-path-relayed");
+  assert.equal(pathMark("unknown").className, "sm sm-path-none");
+});
+
+test("status-mark: failed and relayed never take the attention colour or amber; marks never animate", () => {
+  const css = read("css/marks.css");
+  const bad = /--beacon|--recall|--signal\b|#EBC76B|violet|amber|gold/i;
+  for (const sel of [".sm-failed", ".sm-path-relayed", ".dot.health-relayed", ".sm-path-none", ".sm-count"]) {
+    const found = rules(css, sel);
+    assert.ok(found.length, `${sel} is drawn`);
+    for (const r of found) assert.doesNotMatch(r, bad, `${sel}: ${r}`);
+  }
+  decl(css, ".sm-failed", /width: 12px; height: 12px; border: 1\.5px solid var\(--text-2\)/);
+  decl(css, ".sm-running", /width: 10px; height: 10px; border: 1\.5px solid var\(--focus\); background: transparent/);
+  decl(css, ".sm-done", /box-shadow: inset 0 0 0 1\.5px var\(--label\)/);
+  decl(css, ".sm-unread", /background: var\(--text\)/);
+  decl(css, ".sm-needs", /width: 8px; height: 8px; background: var\(--beacon-dot\)/);
+  decl(css, ".sm-badge", /height: 18px; min-width: 18px; padding: 0 5px/);
+  assert.doesNotMatch(noComments(css), /animation|transition/);
+  // The old dots are aliases, and deck.css no longer paints a path amber.
+  decl(css, ".dot.beacon", /background: var\(--beacon-dot\)/);
+  decl(css, ".dot.health-relayed", /background: var\(--label\)/);
+  assert.doesNotMatch(noComments(read("css/deck.css")), /\.dot\.health-/);
+  assert.match(read("index.html"), /href="\/css\/buttons.css">\n\s*<link rel="stylesheet" href="\/css\/marks.css">/);
+  assert.match(read("sw.js"), /"\/css\/marks.css", "\/js\/status-mark.js"/);
 });

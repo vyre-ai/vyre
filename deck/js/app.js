@@ -26,6 +26,7 @@ import { isMac, machineChip } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
+import { badge } from "./status-mark.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -101,7 +102,7 @@ const pop = h("div", { class: "search-pop", id: "search-pop", role: "listbox", h
 const needsPill = link("/now", { class: "needs-pill", hidden: true }, h("span", { class: "dot beacon" }), h("span", null, ""));
 const avatar = link("/settings", { class: "avatar", "aria-label": "Settings and account" }, "");
 const railLinks = PLACES.map(p => link(p.href, { class: "rail-a", "data-view": p.view }, icon(p.icon), h("span", null, p.label),
-  p.view === "now" ? h("span", { class: "count", hidden: true }) : null));
+  p.view === "now" ? h("span", { class: "count sm-badge", hidden: true }) : null));
 const pins = h("div", { class: "rail-pins" });
 // A view fills this from ctx.rail(el) (e.g. Vault's places); cleared on every navigation, so a
 // view that does not use it leaves the rail exactly as Projects/Agents/etc. already look.
@@ -146,7 +147,7 @@ function drawNeeds(list) {
   needsPill.hidden = n === 0;
   put(/** @type {HTMLElement} */ (needsPill.lastChild), `${n} need${n === 1 ? "s" : ""} you`);
   const count = /** @type {HTMLElement | null} */ (railLinks[0].querySelector(".count"));
-  if (count) { count.hidden = n === 0; put(count, String(n)); }
+  if (count) badge(n, count);
   // The phone: the mark's dot takes the attention colour, and Now says how many.
   phHead.toggleAttribute("data-needs", n > 0);
   phLabels[0].setAttribute("aria-label", n ? `Now, ${n} need${n === 1 ? "s" : ""} you` : "Now");
