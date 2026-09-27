@@ -86,11 +86,13 @@ list any new edge for the lead; core/cli/qr.js -> deck/vendor/qrcode.js is pre-a
   2e6997dd -> ab34605c, teammates bc41402e -> b5934a4f.
 - Queued, not staged: e2e e5aaf881, e2e 9fc65458 (auto-pair), federation 98048454 (after sessions'
   review), tailnet a7365a99, mobile cb4e988c (regenerate tokens.ts), polish-cli 7d2f9c32, memory-iq
-  b220517b (new migration), relay ee067714 (already in 3b via 104ebcf7), pwa 459b181+ (its api.js
+  0616dc37 (NOT b220517b: that one hangs memory at start; new migration, memory.context, ADR 0034), relay ee067714 (already in 3b via 104ebcf7), pwa 459b181+ (its api.js
   replaces chat's stream section with onResume).
 - After batch 4: vault-next 115c5466 (migrations appended; ADR 0028 in nav between 0026 and 0029).
 - BLOCKED: native-core (77faf1e3 etc.) until e2e re-reviews the settings.set person-only and CALL_AS
   fixes; check the claude-code.md docs failure then. platform-settings-write e4515fb6 after it.
+- main: core/memory/rooms.test.js:227 fails (agents.create needs presence), per memory-iq. Check
+  on main and route (e2e person gate or sessions).
 - Rules learned: launch suites with setsid (e2e's orphan rule refuses a backgrounded shell);
   test/deck-contract.test.js in every targeted set; load under 8 before any testbox run.
 
