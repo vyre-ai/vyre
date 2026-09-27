@@ -30,6 +30,9 @@ const EVENTS = ["computer.taken-over", "computer.handed-back", "computer.idle-wa
 /** Is the box reaching this device through a relay? `link` is glass.open's { path, latencyMs }. */
 export const relayed = link => Boolean(link && (link.path === "relay" || link.path === "peer-relay"));
 
+/** "42 ms" from glass.open's link.latencyMs, taken when this screen was opened (not a live ping); "" if unknown. */
+export const latencyLabel = link => (link && Number.isFinite(link.latencyMs) ? `${Math.round(link.latencyMs)} ms` : "");
+
 /**
  * [quality, compression] for this device and link (ADR 0005 decision 1).
  * @param {boolean} phone @param {{ path?: string, latencyMs?: number|null } | null} [link]
@@ -122,7 +125,8 @@ export function mountScreen(o) {
     stage.classList.toggle("gl-held", tk.mine());
     stage.classList.toggle("gl-private", !!(tk.mine() && s.holder?.private));
     put(badge, conn === "live" ? [h("span", { class: "dot signal" }), tk.mine() ? "You have control" : "Live",
-      relayed(link) ? h("span", { class: "gl-badge-note", title: "The box reaches this device through a relay, so the screen sends fewer frames" }, "relayed") : null]
+      relayed(link) ? h("span", { class: "gl-badge-note", title: "The box reaches this device through a relay, so the screen sends fewer frames" }, "relayed") : null,
+      latencyLabel(link) ? h("span", { class: "gl-badge-note mono", title: "Round-trip time to the box when this screen opened" }, latencyLabel(link)) : null]
       : conn === "hidden" ? "Paused" : conn === "refused" || conn === "error" || conn === "ended" ? "Offline" : "Connecting");
     badge.classList.toggle("gl-badge-live", conn === "live");
     put(panelSize, conn === "live" ? `${s.width} × ${s.height}` : "");
