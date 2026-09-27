@@ -44,7 +44,8 @@ const needsProof = r => r?.error?.code === "presence_required";
  * @param {any} [input]
  * @param {{ root?: string, io?: PresenceIO, tty?: boolean, timeout?: number }} [opts] tty forces the terminal method.
  */
-export async function callAsPerson(tool, input = {}, { root = config.home(), io = realIO, tty = false, timeout } = {}) {
+export async function callAsPerson(tool, input = {}, { root, io = realIO, tty = false, timeout } = {}) {
+  // root stays undefined unless given, so inside a session the client uses its VYRE_SOCKET.
   const t = timeout ? { timeout } : {};
   const as = (/** @type {string} */ proof) => call(tool, input, { root, ...t, headers: { "x-vyre-presence": proof } });
   let r = await call(tool, input, { root, ...t });

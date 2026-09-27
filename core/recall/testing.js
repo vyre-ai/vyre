@@ -21,7 +21,7 @@ export function fakeEmbedder({ fail = false, same = {} } = {}) {
       if (fail) throw new Error("the model fell over");
       const v = new Float32Array(384);
       for (const raw of String(text).toLowerCase().match(/[a-z0-9]+/g) || []) {
-        const w = same[raw] || raw;
+        const w = Object.hasOwn(same, raw) ? same[raw] : raw;
         let h = 0;
         for (const ch of w) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
         v[h % 384] += 1;

@@ -11,7 +11,8 @@ status: draft
 `vyre` is Vyre in a terminal. Every command is a call to vyred, the daemon on your machine, so
 the terminal, the [Deck](deck.md) and the [Capsule](capsule.md) never disagree about what is
 true. This page is organised by task. Every command and its usage line is in the
-[CLI reference](../reference/cli.md); `vyre help` prints the same list.
+[CLI reference](../reference/cli.md); `vyre help` prints the same list, and `vyre help <command>`
+shows one command's usage and flags.
 
 ## Where to run it
 
@@ -207,7 +208,6 @@ For machine-readable output from a command, use `--json` where it exists: `vyre 
   would see it. `vyre vault put` prompts or reads stdin.
 - It will not approve anything for a script or for Claude's own shell. Approvals need a person at
   a terminal: a process with no terminal is refused.
-- `vyre help <command>` prints the whole list, not one command's help.
 
 ## Next
 

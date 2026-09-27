@@ -115,21 +115,75 @@ export function patchRows(hunks) {
   return out;
 }
 
+/** The inline variant's cap (a tool row, an ask card): this many lines, then "Show all N lines". */
+export const INLINE_CAP = 20;
+
+/** The true minus sign, for counts ("+12 \u22124"). */
+export const MINUS = "\u2212";
+
 /**
- * Rows as DOM: a grid of line number, sign and code per line. Added lines on the signal wash,
- * removed ones on the ash wash, struck through.
+ * Added and removed line counts of rows from lineDiff or patchRows.
+ * @param {any[]} rows @returns {{ added: number, removed: number }}
+ */
+export function rowCounts(rows) {
+  let added = 0, removed = 0;
+  for (const r of rows || []) { if (r.type === "+") added++; else if (r.type === "-") removed++; }
+  return { added, removed };
+}
+
+/**
+ * Counts as the tool row prints them: "+12 \u22124", "+60" (new file), "\u22123" (only removals).
+ * @param {{ added: number, removed: number }} c @returns {string}
+ */
+export function countsLabel({ added, removed }) {
+  const parts = [];
+  if (added || !removed) parts.push(`+${added || 0}`);
+  if (removed) parts.push(`${MINUS}${removed}`);
+  return parts.join(" ");
+}
+
+const WHAT = { "+": "added", "-": "removed", " ": "unchanged" };
+
+/** One row as DOM: line number, sign and text in a three-column grid, read as one labelled row. */
+function rowEl(r) {
+  if (r.type === "@") {
+    return h("div", { class: "cv-dl cv-dl-hunk", role: "row" },
+      h("span", { class: "cv-dl-n", "aria-hidden": "true" }), h("span", { class: "cv-dl-g", "aria-hidden": "true" }),
+      h("span", { class: "cv-dl-t", role: "cell" }, r.text));
+  }
+  const what = WHAT[r.type] || "unchanged";
+  return h("div", { class: "cv-dl" + (r.type === "-" ? " cv-dl-del" : r.type === "+" ? " cv-dl-add" : ""), role: "row",
+    "aria-label": `${what} line${r.n == null ? "" : " " + r.n}, ${r.text || "blank"}` },
+    h("span", { class: "cv-dl-n", "aria-hidden": "true" }, r.n == null ? "" : String(r.n)),
+    h("span", { class: "cv-dl-g", "aria-hidden": "true" }, r.type === " " ? "" : r.type),
+    h("span", { class: "cv-dl-t", role: "cell" }, r.text || " "));
+}
+
+/**
+ * Rows as DOM: a grid of line number, sign and code per line, the inline variant of diff.md.
+ * Added lines on the signal wash, removed ones on the neutral del wash, colour only in the fill.
+ * Past `cap` lines (hunk headers not counted) the rest waits behind a "Show all N lines" ghost
+ * button, N the real count; the rest is drawn only on that tap. `cap: 0` or Infinity draws all.
  * @param {any[]} rows from lineDiff or patchRows
+ * @param {{ cap?: number }} [opts]
  * @returns {HTMLElement}
  */
-export function renderRows(rows) {
+export function renderRows(rows, { cap = INLINE_CAP } = {}) {
+  const list = rows || [];
   const el = h("div", { class: "cv-diff" });
-  for (const r of rows) {
-    if (r.type === "@") { add(el, h("div", { class: "cv-dl cv-dl-hunk" }, h("span", { class: "cv-dl-n" }), h("span", { class: "cv-dl-g" }), h("span", { class: "cv-dl-t" }, r.text))); continue; }
-    add(el, h("div", { class: "cv-dl" + (r.type === "-" ? " cv-dl-del" : r.type === "+" ? " cv-dl-add" : "") },
-      h("span", { class: "cv-dl-n" }, r.n == null ? "" : String(r.n)),
-      h("span", { class: "cv-dl-g" }, r.type === " " ? "" : r.type),
-      h("span", { class: "cv-dl-t" }, r.text || " ")));
-  }
+  const body = h("div", { class: "cv-diff-rows", role: "table", "aria-label": "Diff", tabindex: "-1" });
+  add(el, body);
+  const total = list.filter(r => r.type !== "@").length;
+  let shown = 0, k = 0;
+  if (cap > 0 && total > cap) {
+    for (; k < list.length && shown < cap; k++) { if (list[k].type !== "@") shown++; add(body, rowEl(list[k])); }
+    const rest = list.slice(k);
+    add(el, h("button", { class: "btn btn-ghost btn-sm cv-diff-more", type: "button", onclick: () => {
+      for (const r of rest) add(body, rowEl(r));
+      el.replaceChildren(body);
+      /** @type {any} */ (body).focus?.({ preventScroll: true });
+    } }, `Show all ${total.toLocaleString("en-US")} lines`));
+  } else for (const r of list) add(body, rowEl(r));
   return el;
 }
 
@@ -137,6 +191,7 @@ export function renderRows(rows) {
  * A unified diff of two strings as DOM.
  * @param {string} before @param {string} after
  * @param {{ oldStart?: number|null, newStart?: number|null }} [at]
+ * @param {{ cap?: number }} [opts] see renderRows
  * @returns {HTMLElement}
  */
-export function renderUnified(before, after, at) { return renderRows(lineDiff(before, after, at)); }
+export function renderUnified(before, after, at, opts) { return renderRows(lineDiff(before, after, at), opts); }

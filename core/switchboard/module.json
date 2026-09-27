@@ -5,12 +5,24 @@
   "requires": [],
   "does": {
     "tools": ["threads.start", "threads.send", "threads.list", "threads.get", "threads.lease", "threads.release",
-      "threads.asks", "threads.answer", "threads.interrupt", "threads.mode", "threads.fork", "threads.rewind", "threads.model", "threads.commands", "threads.tasks", "threads.kill-task", "threads.thinking", "threads.shell", "threads.remember", "threads.unqueue", "threads.queue", "threads.edit", "threads.send-now", "threads.stop", "threads.launch", "threads.watch", "threads.unwatch",
+      "threads.asks", "threads.answer", "threads.interrupt", "threads.mode", "threads.fork", "threads.rewind", "threads.model", "threads.effort", "threads.quick", "threads.commands", "threads.tasks", "threads.kill-task", "threads.thinking", "threads.shell", "threads.remember", "threads.unqueue", "threads.queue", "threads.edit", "threads.send-now", "threads.stop", "threads.launch", "threads.watch", "threads.unwatch",
       "threads.claimed", "threads.contend", "threads.vouch", "threads.pids", "threads.bind", "threads.history", "threads.usage", "threads.notice", "threads.halt", "threads.inbox", "threads.replied", "threads.post", "threads.live"]
   },
   "watches": { "emits": ["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
-    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued", "mode.changed", "thread.turn", "thread.state", "thread.usage", "thread.steered", "thread.unqueued", "thread.rewound", "model.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"] },
+    "ask.raised", "ask.answered", "lease.changed", "thread.contended", "thread.watched", "thread.limit", "thread.queued", "mode.changed", "thread.turn", "thread.state", "thread.usage", "thread.steered", "thread.unqueued", "thread.rewound", "model.switched", "effort.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"] },
   "shows": { "cli": ["threads"] },
   "needs": { "vault": ["claude-setup-token", "anthropic-api-key"] },
-  "teaches": {}
+  "teaches": {
+    "tips": [
+      {"id": "stop-a-turn", "text": "Stop a running turn with `threads.interrupt`, as Escape does in Claude Code. The session stays for your next message.", "surfaces": ["chat", "deck", "cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#stop-a-turn"},
+      {"id": "take-keyboard", "text": "One surface holds a session's keyboard at a time. Press Take, or just start typing, to hold it here.", "surfaces": ["chat", "deck"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "docs": "using/chat.md#type-into-a-session"},
+      {"id": "answer-ask", "text": "Answer a headless thread's permission question from the terminal: `vyre threads answer <ask> allow`.", "surfaces": ["cli"], "level": "first-use", "trigger": "on-use", "since": "0.1.0", "command": "vyre threads answer <ask> allow", "docs": "using/projects-and-threads.md#headless-threads"},
+      {"id": "plan-mode", "text": "Put a session in plan mode with `threads.mode`: `plan` reads and plans only, `acceptEdits` edits without asking.", "surfaces": ["chat", "deck", "cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#permission-modes"},
+      {"id": "fork", "text": "Fork a session a terminal has open with `threads.fork`. The copy carries on and the terminal's session is never touched.", "surfaces": ["chat", "deck", "cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "docs": "using/sessions.md#your-existing-sessions"},
+      {"id": "headless-start", "text": "Start a thread that outlives every window with `vyre threads start --project harlow-legal` and a first message.", "surfaces": ["cli"], "level": "power", "trigger": "on-use", "since": "0.1.0", "command": "vyre threads start --project harlow-legal \"Summarise this week's invoices\"", "docs": "using/projects-and-threads.md#headless-threads"},
+      {"id": "watch", "text": "Follow a headless thread live from the terminal with `vyre threads watch 3f2a9c1e`.", "surfaces": ["cli"], "level": "discovery", "trigger": "never-used", "since": "0.1.0", "command": "vyre threads watch 3f2a9c1e", "docs": "using/projects-and-threads.md#headless-threads"},
+      {"id": "queued-for", "text": "A message to a session busy in your terminal waits, marked Queued for, and goes in when that turn ends.", "surfaces": ["chat", "phone"], "level": "first-use", "trigger": "idle", "since": "0.1.0", "docs": "using/chat.md#type-into-a-session"},
+      {"id": "person-answers", "text": "Only a person answers a permission question. A model never approves one, its own or another session's.", "surfaces": ["chat", "deck", "phone", "capsule", "cli"], "level": "discovery", "trigger": "idle", "since": "0.1.0", "docs": "using/projects-and-threads.md#headless-threads"}
+    ]
+  }
 }

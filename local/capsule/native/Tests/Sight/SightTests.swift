@@ -49,6 +49,9 @@ private final class SightHost: CapsuleHost {
     func hidePanel() {}
     func setQuery(_ text: String) { queries.append(text) }
     func say(_ line: String) { said.append(line) }
+    var needs: [CredentialNeed] = []
+    var onSaved: (@MainActor () -> Void)?
+    func askCredential(_ need: CredentialNeed, saved: @escaping @MainActor () -> Void) { needs.append(need); onSaved = saved }
     func stepAside() async -> Bool { false }
     func notify(title: String, body: String) { said.append(title) }
     func log(_ message: String) {}
@@ -207,10 +210,12 @@ let sightSuite = Suite("sight") { t in
         t.eq(ok, [true, true, true, true, true, true])
     }
 
-    t.test("talk: no key, or no voice module, is said before the mic starts") {
+    t.test("talk: no key asks for it in the panel (never a terminal command); no voice module is said") {
         t.eq(SightExtension.cannotTalk(nil, ["key": true]), nil)
-        t.eq(SightExtension.cannotTalk(nil, ["key": false, "key_state": "missing"]), "No speech key is saved. Run: vyre voice key")
-        t.eq(SightExtension.cannotTalk(nil, ["key": false, "key_state": "not_granted"]), "The speech key is saved but not granted to voice. Run: vyre voice key")
+        t.eq(SightExtension.cannotTalk(nil, ["key": false, "key_state": "missing"]), "No speech key is saved yet.")
+        t.eq(SightExtension.cannotTalk(nil, ["key": false, "key_state": "not_granted"]), "The speech key is saved but voice may not use it yet. Allow it in the vault.")
+        t.ok(SightExtension.keyNeed(["key_state": "not_granted"]) == nil && SightExtension.keyNeed(["key_state": "no_vault"]) == nil)
+        t.eq(SightExtension.keyNeed(["key_state": "missing", "provider": "deepgram", "item": "voice-deepgram-key", "need": ["module": "voice", "need": "deepgram"]])?.item, "voice-deepgram-key")
         t.eq(SightExtension.cannotTalk("no such tool: voice.status", [:]), "vyred has no voice module; it needs a vyred with local/voice")
         let mic = FakeMic()
         let said = t.wait { () -> [String] in
@@ -223,11 +228,11 @@ let sightSuite = Suite("sight") { t in
                 ext.toggleTalk()
                 return (host, ext)
             }
-            _ = await until { await MainActor.run { !host.said.isEmpty } }
+            _ = await until { await MainActor.run { !host.needs.isEmpty } }
             _ = ext
-            return await MainActor.run { host.said }
+            return await MainActor.run { host.needs.map { "\($0.module) \($0.need) \($0.label) \($0.item ?? "")" } + host.said }
         }
-        t.eq(said, ["No speech key is saved. Run: vyre voice key"])
+        t.eq(said, ["voice deepgram Deepgram key voice-deepgram-key"], "the key row, and nothing said about a terminal")
         t.ok(mic.onData == nil, "the mic never started")
     }
 

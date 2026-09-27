@@ -91,7 +91,8 @@ export function createClient({ url, token, timeout = DEFAULT_TIMEOUT, fetch: f =
     act: body => request("POST", "/act", body),
     /** @param {{ kind: "click", x: number, y: number, button?: string } | { kind: "key", keys: string } | { kind: "type", text: string }} body */
     input: body => request("POST", "/input", body),
-    /** @returns {Promise<Buffer>} */
-    screenshot: () => request("GET", "/screenshot", undefined, { binary: true, timeout: Math.max(timeout, 20_000) }),
+    /** @param {{ format?: "png"|"jpeg", width?: number }} [o] @returns {Promise<Buffer>} */
+    screenshot: (o = {}) => request("GET", "/screenshot" + (o.format === "jpeg" ? `?format=jpeg${Number.isInteger(o.width) ? `&width=${o.width}` : ""}` : ""),
+      undefined, { binary: true, timeout: Math.max(timeout, 20_000) }),
   };
 }

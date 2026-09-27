@@ -172,7 +172,11 @@ export default {
 
     const surfaceOf = input => {
       const s = String(input.surface || "");
-      if (!SURFACE.test(s)) throw fail("bad_input", "surface must name this screen, such as deck:<device> or phone:<device>");
+      if (!SURFACE.test(s)) {
+        // A bare kind ("cli") names no screen: two terminals would share one owner.
+        const bare = /^(deck|phone|capsule|glass|cli)$/.test(s) ? `; "${s}" needs a name after it, such as ${s}:${s === "cli" ? "<tty or pid>" : "<device>"}` : "";
+        throw fail("bad_input", `surface must name this screen as <kind>:<name>, the kind one of deck, phone, capsule, glass or cli (deck:<device>, cli:<tty>)${bare}`);
+      }
       return s;
     };
     /** Which screen is asking, as precisely as vyred verified it: caller, tailnet node, surface. */

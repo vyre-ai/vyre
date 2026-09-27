@@ -35,9 +35,9 @@ function inbox() {
 
 /**
  * The SDK's options for a launch. The same launch the CLI runner turns into flags (argsFor).
- * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
+ * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           system?: { mode: "append"|"replace", text: string }|null, append?: string|null, budgetUsd?: number|null,
- *           tools?: "none"|null, settings?: boolean, bin?: string|null, cwd: string, env: Record<string, string|undefined>, hooks?: any }} o
+ *           tools?: "none"|null, settings?: boolean, skippable?: boolean, effort?: string|null, ephemeral?: boolean, bin?: string|null, cwd: string, env: Record<string, string|undefined>, hooks?: any }} o
  */
 export function optionsFor(o) {
   const system = o.system && o.system.mode === "replace" && o.system.text
@@ -56,12 +56,17 @@ export function optionsFor(o) {
     ...(plugins.length ? { plugins } : {}),
     ...(o.tools === "none" ? { tools: [], strictMcpConfig: true } : {}),
     ...(o.model ? { model: o.model } : {}),
+    ...(o.effort ? { effort: /** @type {any} */ (o.effort) } : {}),
+    ...(o.mode ? { permissionMode: o.mode } : {}),
+    // "Doesn't ask" (bypassPermissions) may be switched on later: only with Vyre's plugin loaded.
+    ...(o.skippable ? { allowDangerouslySkipPermissions: true } : {}),
     ...(o.name && !o.resume ? { extraArgs: { name: o.name } } : {}),
     ...(typeof o.budgetUsd === "number" && o.budgetUsd > 0 ? { maxBudgetUsd: o.budgetUsd } : {}),
     ...(o.bin ? { pathToClaudeCodeExecutable: o.bin } : {}),
     ...(o.hooks ? { hooks: o.hooks } : {}),
     // File checkpoints, so a rewind can put the files back too (threads.rewind restore "code").
-    enableFileCheckpointing: true,
+    // An ephemeral session (threads.quick) writes nothing to disk: no transcript, no checkpoints.
+    ...(o.ephemeral ? { persistSession: false } : { enableFileCheckpointing: true }),
   };
 }
 
@@ -152,6 +157,7 @@ export function run(sdk, o) {
       if (subtype === "rewind_files") return q.rewindFiles(f.user_message_id, f.dry_run ? { dryRun: true } : undefined);
       if (subtype === "supported_commands") return { commands: await q.supportedCommands() };
       if (subtype === "stop_task") { await q.stopTask(f.task_id); return {}; }
+      if (subtype === "apply_flag_settings") { await q.applyFlagSettings(f.settings || {}); return {}; }
       if (subtype === "set_max_thinking_tokens") { await q.setMaxThinkingTokens(f.max_thinking_tokens ?? null); return {}; }
       throw new Error(`no ${subtype} on the Agent SDK driver`);
     },
