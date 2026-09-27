@@ -52,7 +52,7 @@ any of this). Step 2 is where the wording is introduced; every later step that r
 | 1 | Name Vyre, and set who you are | launch | S | mostly exists (`core/onboard`'s `you` step), terminology pass |
 | 2 | Pair this device with the server | launch, tailnet | S | mostly exists (`name`/`tailscale` steps), terminology pass |
 | 3 | Sign in to Claude, through the vault | launch, sessions, vault | S | mostly exists (`claude` step), wire to vault |
-| 4 | Import your sessions: discover, choose, watch Vyre IQ learn | memory-iq (leads), federation | M | spec'd: `docs/design/import.md` (work/memory-iq) |
+| 4 | Import your sessions: discover, choose, watch Vyre IQ learn | memory-iq (leads), federation | M | UI built, provisional: `docs/design/import.md` (work/memory-iq) |
 | 5 | Import your secrets, from several sources | vault (leads) | L | spec needed from vault; biggest of the eight |
 | 6 | Connect accounts: Google and email, MCP servers | vault, connectors | M | spec needed |
 | 7 | Your phone: pair it, swipe-to-approve | mobile | S | later, per the lead; stub/skippable for 0.1.1 |
@@ -60,14 +60,19 @@ any of this). Step 2 is where the wording is introduced; every later step that r
 
 ### Step 4: Import your sessions
 
-Full spec: `docs/design/import.md` on `work/memory-iq` (8702ab66). Three screens inside the step,
-exactly as memory-iq specced them: **Discover** (`import.scan`, sources with counts/date
-range/size/projects, dev and Vyre folders unticked with the reason, nothing leaves the device),
-**Choose** (`import.plan {include, exclude}`, "N sessions, X MB, these folders, to \<server\>",
-"Import these now" or "Keep them in sync", neither preselected, confirms with `import.start
-{plan, mode}`), **Watch it fill** (`import.status` for the resume case, `import.progress` events
-per stage; first searchable sessions show at once with a way to ask IQ right there). This step
-replaces today's "Your history" step rather than extending it.
+Full spec: `docs/design/import.md` on `work/memory-iq` (8702ab66). Built (`deck/onboard/onboard.js`
+`history()`, provisional pending memory-iq's real tool shapes): **Discover** (`import.scan`,
+sources with counts/date range/size, dev and Vyre folders unticked with the reason, nothing
+leaves the device), **Choose** (`import.plan {include}`, "N sessions, X MB, from these folders,
+to your server", a "Keep them in sync" checkbox unticked by default, a Fast/Gentle reading-pace
+choice with neither preselected, and the note that Claude Code keeps sessions 30 days so import
+now, Vyre never changes Claude Code's own settings; confirms with `import.start {plan, mode,
+pace}`), **Watch it fill** (`import.status`, polled every 5 s since the loopback's event stream
+carries only `onboard.*`, in three plain-language stages: Searchable now, Understood, The graph
+growing; a question box wired to `memory.answer` as soon as the first sessions are searchable).
+`import.start`'s `pace` field is new, not in memory-iq's original spec; flagged to them. This step
+replaces today's "Your history" step rather than extending it, keeping the step's id and CLI
+label ("Your history") unchanged so `test/journey.test.js`'s CLI-output assertion still holds.
 
 ### Step 5: Import your secrets
 

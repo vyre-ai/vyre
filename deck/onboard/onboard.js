@@ -576,104 +576,134 @@ const SCREENS = {
       h("p", { class: "small muted" }, "Point a domain you already own at this box instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the box's own configuration, then come back and reserve again.")));
   },
 
+  // Import your sessions: discover, choose, watch Vyre IQ learn (docs/design/import.md,
+  // memory-iq; docs/design/onboarding-v2.md step 4). Three phases in one step: discover (scan,
+  // nothing leaves the device), choose (a plan, "keep in sync" unticked, a Fast/Gentle reading
+  // pace with neither preselected), watch (live progress in three plain-language stages, and a
+  // question box as soon as the first sessions are searchable). Every call degrades gracefully
+  // (empty()'s missing-module message) if memory-iq's import.* tools are not running yet.
   history(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Your history."),
-      h("p", { class: "lead" }, "Vyre reads the Claude Code sessions already on this machine, so you can search every one and group them into projects. It keeps reading in the background, so carry on whenever you like."));
-    const meter = h("div", { class: "meter", "aria-live": "polite" });
-    const made = h("div", { class: "rows" });
-    const picker = h("div");
-    col.append(h("div", { class: "ob-panel" }, meter, h("div", { class: "lbl", style: { marginTop: "8px" } }, "Make your first projects"),
-      h("p", { class: "small muted", style: { marginTop: "-12px" } }, "A project is a client or a piece of work: pick the sessions that belong to it. A session can be in several."),
-      made, picker));
-    s.foot({ label: "Continue", run: s.next });
+      h("p", { class: "lead" }, "Vyre finds the Claude Code sessions already on this machine, so you can search and ask about your own work as soon as it reads them."));
+    const body = h("div", { class: "ob-panel" });
+    col.append(body);
     attempt("onboard.history", { action: "start" });
 
-    const drawMeter = async () => {
-      const r = await attempt("recall.status");
-      if (r.error) { put(meter, empty("Your history cannot be read yet. Continue, and it shows up in the Deck once Vyre can read it.", r.error)); return; }
-      const st = r.data;
-      const v = st.vectors || {};
-      const reading = !!st.indexing;
-      const pct = v.on && st.turns ? Math.round(100 * (v.embedded || 0) / st.turns) : 100;
-      const none = !reading && !st.sessions;
-      // A box starts with no sessions of its own: the Mac's arrive once it is paired, in step 6.
-      const box = state.status?.role === "box";
-      put(meter,
-        h("div", { class: "row" },
-          h("span", { class: "big" }, `${(st.sessions || 0).toLocaleString()} sessions`),
-          h("span", { class: "code" }, `${(st.turns || 0).toLocaleString()} turns`)),
-        none ? null : h("div", { class: "bar live" + (reading ? " moving" : ""), role: "progressbar", "aria-label": "Reading your history",
-          "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": reading ? false : String(pct) },
-          h("span", { style: { width: (reading ? 30 : pct) + "%" } })),
-        none
-          ? h("p", { class: "small muted" }, box
-            ? ["This box has no sessions of its own. Your Mac's sessions show up here once you pair it, right after setup. ",
-              h("a", { class: "link", href: "#devices", onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); toMac = true; goto(5); } }, "Pair your Mac")]
-            : "No Claude Code sessions found on this machine yet. Start one with claude and it shows up here.")
-          : h("div", { class: "row" },
-            h("span", { class: "small muted" }, reading ? "Reading sessions" : "Every session is searchable by what was said."),
-            h("span", { class: "code" }, v.on && st.sessions ? `${pct}% ranked by meaning` : reading ? "" : "full-text search")));
-      return st;
-    };
-    drawMeter();
-    // The loopback stream (before an owner exists) carries only onboard.* events, not the
-    // switchboard/Recall ones like session.indexed; core reports reading progress as
-    // onboard.stepped, and every() below covers the rest with a poll.
-    let t = 0;
-    const soon = () => { clearTimeout(t); t = window.setTimeout(drawMeter, 400); };
-    cleanup.push(on("onboard.stepped", soon));
-    cleanup.push(on("onboard.finished", soon));
-    every(drawMeter, 5000);
+    /** @typedef {{ id: string, path: string, kind: string, sessions: number, bytes: number, from?: string, to?: string, suggested: boolean, why?: string }} Source */
+    /** Sources ticked for the plan; suggested ones start ticked, dev/Vyre folders start unticked. */
+    const picked = new Set();
+    let pace = /** @type {"fast"|"gentle"|null} */ (null);
+    let sync = false;
+    const fmtBytes = n => n < 1e6 ? Math.round(n / 1e3) + " KB" : (n / 1e6).toFixed(1) + " MB";
 
-    /** Project names by slug, so the picker says "in Harlow Legal", not "in harlow-legal". */
-    const names = new Map();
-    const drawMade = async () => {
-      const r = await attempt("projects.list");
-      const list = r.data?.projects || [];
-      for (const p of list) names.set(p.slug, p.name);
-      put(made, list.map(p => h("div", { class: "made", style: { padding: "10px 0" } }, icon("projects"),
-        h("span", null, h("b", null, p.name), ` · ${plural(p.threads, "thread")}`))));
+    const drawDiscover = async () => {
+      const r = await attempt("import.scan");
+      if (r.error) {
+        put(body, empty("Your history cannot be read yet. Continue, and it shows up here once Vyre can read it.", r.error));
+        s.foot({ label: "Continue", run: s.next });
+        return;
+      }
+      /** @type {Source[]} */
+      const sources = r.data.sources || [];
+      for (const src of sources) if (src.suggested) picked.add(src.id);
+      const syncFoot = () => s.foot({ label: "Continue", disabled: !picked.size, run: () => drawChoose(sources) });
+      put(body,
+        h("p", { class: "lbl" }, "What Vyre found"),
+        sources.length === 0
+          ? empty("No Claude Code sessions found on this machine yet. Start one with claude and come back.")
+          : h("div", { class: "rows" }, sources.map(src => {
+            const box = h("input", { type: "checkbox", checked: picked.has(src.id), onchange: (/** @type {any} */ e) => {
+              e.target.checked ? picked.add(src.id) : picked.delete(src.id); syncFoot(); } });
+            return h("label", { class: "pick" }, box,
+              h("span", { class: "x" },
+                h("span", { class: "ellipsis" }, src.path),
+                h("span", { class: "code ellipsis" }, `${plural(src.sessions, "session")} · ${fmtBytes(src.bytes)}`
+                  + (src.from ? ` · ${when(src.from)}–${when(src.to)}` : "") + (src.why ? ` · ${src.why}` : ""))));
+          })));
+      syncFoot();
     };
 
-    // The picker: name, search, sessions with checkboxes, Make project.
-    const chosen = new Set();
-    const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Project name, e.g. Harlow Legal", "aria-label": "Project name", oninput: () => syncMake() }));
-    const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", type: "search", placeholder: "Search sessions by what was said", "aria-label": "Search sessions" }));
-    const list = h("div", { class: "list" });
-    const count = h("span", { class: "small muted" });
-    const makeBtn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn", onclick: async () => {
-      const r = await attempt("projects.create", { name: nameIn.value.trim(), threads: [...chosen] });
-      if (r.error) { put(count, String(r.error.message)); return; }
-      chosen.clear(); nameIn.value = ""; drawMade(); load(); syncMake();
-    } }, icon("plus", 14), "Make project"));
-    const syncMake = () => { makeBtn.disabled = !nameIn.value.trim() || !chosen.size; put(count, chosen.size ? plural(chosen.size, "session") + " picked" : "Pick sessions below"); };
-    let seq = 0;
-    const load = async () => {
-      const n = ++seq;
-      const r = await attempt("projects.catalog", { q: qIn.value.trim() || undefined, limit: 60 });
-      if (n !== seq) return;
-      if (r.error) { put(list, h("div", { style: { padding: "0 14px" } }, empty("The session list is not available yet. Continue, and make projects later in the Deck.", r.error))); return; }
-      const rows = r.data.sessions || [];
-      if (!rows.length) { put(list, h("div", { style: { padding: "0 14px" } }, empty(qIn.value ? "No session mentions that. Try a word you would have typed in it." : "No sessions yet. They show up here as Vyre reads them."))); return; }
-      put(list, rows.map(ses => {
-        const box = h("input", { type: "checkbox", checked: chosen.has(ses.id), onchange: (/** @type {any} */ e) => {
-          e.target.checked ? chosen.add(ses.id) : chosen.delete(ses.id); syncMake(); } });
-        return h("label", { class: "pick" }, box,
-          h("span", { class: "x" }, h("span", { class: "ellipsis" }, ses.label || ses.title || ses.id),
-            h("span", { class: "code ellipsis" }, base(ses.cwd), ses.projects?.length ? `  ·  in ${ses.projects.map(p => names.get(p) || p).join(", ")}` : "")),
-          h("span", { class: "w" }, when(ses.last)));
-      }));
+    const drawChoose = async (/** @type {Source[]} */ sources) => {
+      s.foot({ label: "Building your plan", disabled: true, run: () => {} });
+      const r = await attempt("import.plan", { include: [...picked] });
+      if (r.error) { put(body, empty("Could not build the plan. Try again.", r.error)); s.foot({ label: "Try again", run: () => drawChoose(sources) }); return; }
+      const plan = r.data;
+      const syncBox = h("input", { type: "checkbox", checked: sync, onchange: (/** @type {any} */ e) => { sync = e.target.checked; } });
+      const syncConfirm = () => s.foot({ label: "Import", disabled: !pace, run: () => start(plan) });
+      const opt = (value, title, desc) => h("label", { class: value === pace ? "on" : "" },
+        h("input", { type: "radio", name: "pace", value, checked: value === pace, onchange: () => { pace = value; syncConfirm(); } }),
+        h("span", { class: "t" }, h("b", null, title), h("span", null, desc)));
+      put(body,
+        h("div", { class: "meter" }, h("span", { class: "big" },
+          `${plural(plan.sessions, "session")} · ${fmtBytes(plan.bytes)} · from ${plural(plan.folders, "folder")}, to your server`)),
+        h("label", { class: "pick", style: { padding: "12px 0" } }, syncBox,
+          h("span", { class: "x" }, h("span", null, "Keep them in sync"),
+            h("span", { class: "code" }, "New sessions import automatically too, from now on."))),
+        h("p", { class: "lbl", style: { marginTop: "12px" } }, "How fast"),
+        h("div", { class: "choice", role: "radiogroup", "aria-label": "How fast Vyre reads" },
+          opt("fast", "Fast", "Done in a few hours. Uses more of today's Claude usage."),
+          opt("gentle", "Gentle", "Spread over a few days.")),
+        h("p", { class: "small muted", style: { marginTop: "12px" } },
+          "Claude Code keeps sessions for 30 days, so import now while they last. Vyre never changes Claude Code's own settings."));
+      syncConfirm();
     };
-    let qt = 0;
-    qIn.addEventListener("input", () => { clearTimeout(qt); qt = window.setTimeout(load, 250); });
-    put(picker, h("div", { class: "picker" },
-      h("div", { class: "bar-top" }, nameIn),
-      h("div", { class: "bar-top" }, qIn),
-      list,
-      h("div", { class: "bar-bottom" }, count, h("div", { style: { flexGrow: "1" } }), makeBtn)));
-    syncMake();
-    drawMade().then(load);
+
+    const start = async (plan) => {
+      s.foot({ label: "Starting", disabled: true, run: () => {} });
+      const r = await attempt("import.start", { plan, mode: sync ? "sync" : "once", pace });
+      if (r.error) { put(body, empty("Could not start the import. Try again.", r.error)); s.foot({ label: "Try again", run: () => start(plan) }); return; }
+      drawWatch();
+    };
+
+    // Vyre IQ's own stages (docs/design/import.md), in plain language: upload and search make a
+    // session findable, meaning and graph make it understood, personal facts keep growing after.
+    const STAGES = [
+      { label: "Searchable now", keys: ["upload", "search"] },
+      { label: "Understood", keys: ["meaning", "graph"] },
+      { label: "The graph growing", keys: ["facts"] },
+    ];
+    const drawWatch = () => {
+      const list = h("ul", { class: "progress" });
+      const ask = h("div");
+      put(body, h("p", { class: "lbl" }, "Reading your history"), list, ask);
+      s.foot({ label: "Continue", run: s.next });
+      let asked = false;
+      const poll = async () => {
+        const r = await attempt("import.status");
+        if (r.error) return;
+        const st = r.data;
+        const stages = st.stages || {};
+        put(list, STAGES.map(stage => {
+          const cells = stage.keys.map(k => stages[k]).filter(Boolean);
+          const done = cells.length > 0 && cells.every(c => c.total > 0 && c.done >= c.total);
+          const doing = cells.some(c => c.done > 0 || c.total > 0);
+          return progressRow(stage.label, done ? "done" : doing ? "doing" : "todo", null, undefined);
+        }));
+        if (!asked && (st.searchable_sessions || 0) > 0) { asked = true; drawAsk(ask); }
+      };
+      poll();
+      every(poll, 5000);
+    };
+
+    // "a way to ask IQ right there", as soon as the first sessions are searchable.
+    const drawAsk = (/** @type {HTMLElement} */ ask) => {
+      const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Ask about your own history", "aria-label": "Ask Vyre IQ" }));
+      const out = h("div", { class: "small muted", style: { marginTop: "8px" } });
+      const go = async () => {
+        const q = qIn.value.trim();
+        if (!q) return;
+        put(out, h("span", { class: "busy-inline faint" }, "Thinking…"));
+        const r = await attempt("memory.answer", { q });
+        put(out, r.error ? String(r.error.message) : (r.data.answer || "Nothing yet, try again in a moment."));
+      };
+      qIn.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+      put(ask, h("p", { class: "lbl", style: { marginTop: "16px" } }, "Ask it something"),
+        h("div", { class: "bar-top" }, qIn, h("button", { type: "button", class: "btn", onclick: go }, "Ask")),
+        out);
+    };
+
+    drawDiscover();
   },
 
   devices(col, s) {

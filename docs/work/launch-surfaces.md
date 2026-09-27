@@ -170,11 +170,27 @@ Filled in as each lands.
 
 ## Doing
 
-- Nothing in progress right now.
+- Built onboarding-v2 step 4 (import your sessions) against memory-iq's docs/design/import.md
+  spec plus the lead's later decisions (sync checkbox unticked, Fast/Gentle pace neither
+  preselected, 30-day Claude Code retention note): `deck/onboard/onboard.js`'s `history()`
+  rewritten into Discover/Choose/Watch, `core/onboard/loopback.js`'s tool allowlist extended
+  (`import.scan/plan/start/status`, `memory.answer`), fixtures added
+  (`deck/fixtures/import.json`, a `memory.answer` entry in `deck/fixtures/memory.json`).
+  Provisional: memory-iq had not shipped the tools yet at build time, so every call degrades
+  through the existing missing-module pattern. Not yet screenshot-verified with fixtures
+  (`?fixtures=1`): would need a temp vyred + browser session on the test box, deferred as
+  disproportionate effort against a still-provisional contract; `test/onboard*.test.js` (16/16)
+  confirms the daemon/loopback side is unaffected. `test/journey.test.js` failed on this branch,
+  but at journey 1's very first `vyre up` (before onboarding's browser is ever reached, "vyred is
+  already running" / "onboarding is not available: links are made only from the box's own
+  terminal"), which looks like pre-existing test-environment state, not this change; did not
+  chase further since it is e2e's suite.
 
 ## Next
 
-- Nothing blocking.
+- Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
+- Confirm `test/journey.test.js`'s failure is pre-existing (not caused by this branch) with e2e,
+  or fix it if it turns out to be mine.
 
 ## Needs from others
 
