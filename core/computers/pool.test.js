@@ -384,3 +384,12 @@ test("pool: a bad egress site list stops a new computer instead of making one th
   await assert.rejects(pool.checkout("kit", { thread: "th-1" }), /is not a hostname/);
   assert.equal(driver.containers.size, 0);
 });
+
+test("pool: a boot failure says so, with a short reason fit for Glass", async t => {
+  const { pool, driver } = setup(t);
+  driver.crashing.add("kit");
+  const e = await pool.checkout("kit").catch(x => x);
+  assert.equal(e.boot, true);
+  assert.equal(e.short, "kit's computer stopped as soon as it started (exit code 127)");
+  assert.ok(Buffer.byteLength(e.short) <= 123);
+});

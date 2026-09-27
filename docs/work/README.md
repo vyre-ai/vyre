@@ -27,6 +27,10 @@ Branch: work/<stream> · Worktree: ../vyre-<stream> · Owner session: <name>
 - <any change to a manifest, tool schema, event or API route that others use>
 ```
 
+## ADR numbers
+
+- 0019: docs (the docs.vyre.run site).
+
 ## Rules
 
 - Touch only the folders your workstream owns. Use another stream's work through `ctx` or the

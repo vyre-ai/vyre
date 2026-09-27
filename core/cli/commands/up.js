@@ -349,7 +349,7 @@ async function pair(box, tool, say) {
   }
   if (code) {
     say("");
-    say(`  Approve this Mac on your phone at ${signal(box)}`);
+    say(`  Approve this Mac on your phone at ${signal(box)}, or in the Deck on this Mac`);
     say(`  The Deck there names this Mac (${os.hostname()}) and asks for your passkey. Code: ${signal(code)}`);
     say(dim("  vyre link shows when it is done."));
     return "pending";

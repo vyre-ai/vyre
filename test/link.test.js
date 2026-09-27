@@ -70,9 +70,12 @@ test("link: a device that is not the owner is refused, and a Mac cannot approve 
 
   s.net.who = MAC;
   const p = (await s.macCall("link.pair", { box: s.address })).data;
-  // The Mac, over the tailnet, cannot approve its own request, even with the right code.
+  // The Mac, over the tailnet, cannot approve its own request with the right code alone, nor with
+  // a presence session (a proof made earlier): only a fresh passkey assertion on that Mac counts.
   const self = await s.boxCall("link.pair.approve", { code: p.code }, `tailnet:${OWNER}`, { peer: MAC });
-  assert.match(self.error.message, /cannot approve its own/);
+  assert.match(self.error.message, /cannot approve its own pairing without one/);
+  const session = await s.boxCall("link.pair.approve", { code: p.code }, `tailnet:${OWNER}`, { peer: MAC, presence: { method: "session" } });
+  assert.match(session.error.message, /cannot approve its own/);
   // Claude on the box through MCP cannot approve, and a tailnet caller without a known node cannot.
   assert.ok((await s.boxCall("link.pair.approve", { code: p.code }, "mcp")).error);
   assert.ok((await s.boxCall("link.pair.approve", { code: p.code }, `tailnet:${OWNER}`)).error);
@@ -84,6 +87,16 @@ test("link: a device that is not the owner is refused, and a Mac cannot approve 
   for (let i = 0; i < 4; i++) assert.match((await s.boxCall("link.pair.approve", { code: "000-000" === p.code ? "111-111" : "000-000" })).error.message, /no pairing request/);
   assert.match((await s.boxCall("link.pair.approve", { code: "000-000" === p.code ? "111-111" : "000-000" })).error.message, /too many wrong codes/);
   assert.equal((await s.boxCall("link.pending")).data.length, 0);
+
+  // With a fresh passkey but a wrong code, nothing is approved.
+  const r0 = (await s.macCall("link.pair", { box: s.address })).data;
+  const wrongCode = r0.code === "123-456" ? "654-321" : "123-456";
+  assert.match((await s.boxCall("link.pair.approve", { code: wrongCode }, `tailnet:${OWNER}`, { peer: MAC, presence: { method: "passkey" } })).error.message, /no pairing request/);
+  // A fresh passkey on the asking Mac and its code: a Mac-only owner can pair.
+  const mine = await s.boxCall("link.pair.approve", { code: r0.code }, `tailnet:${OWNER}`, { peer: MAC, presence: { method: "passkey" } });
+  assert.ok(!mine.error, JSON.stringify(mine.error));
+  await until(async () => (await s.macCall("link.status")).data.linked);
+  await s.macCall("link.unpair");
 
   // Another of the owner's devices may approve (the Deck on a phone).
   const q = (await s.macCall("link.pair", { box: s.address })).data;
@@ -315,6 +328,10 @@ test("link: link.health on the Mac is the box's node, and on the box the calling
   assert.equal(phone.data.latencyMs, 95);
   assert.equal(phone.data.lastHandshake, null, "never shook hands: null, not year one");
   assert.equal((await s.boxCall("link.health", { node: "nPHONE" }, "module:glass")).data.cached, true);
+  // Modules and the owner only: a guest, an agent's node, an agent at the box and another login are refused.
+  for (const caller of ["tailnet-guest:sam@harlow.example", "tailnet:agent:kit", "mcp agent:kit", "mcp", "anonymous", "tailnet:owner@example.com agent:kit"]) {
+    assert.match((await s.boxCall("link.health", { node: "nMAC" }, caller, { peer: MAC })).error.message, /owner and its modules only/, caller);
+  }
   // Nothing named and no calling node: unknown, with the reason.
   const bare = await s.boxCall("link.health");
   assert.equal(bare.data.path, "unknown");

@@ -86,12 +86,21 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   /** May this caller approve or deny request p? The box's terminal, or another of the owner's devices. */
-  const mayDecide = (p, meta) => {
+  /**
+   * May this caller decide request p? The box's terminal, another of the owner's devices, or the
+   * asking Mac itself when this very call carried a fresh passkey assertion: a person touched the
+   * owner's passkey on that device just now, which a model on the Mac cannot do. A presence
+   * session (a proof made earlier) is not enough for the Mac's own request. `fresh` is false for
+   * deny, which needs no proof.
+   */
+  const mayDecide = (p, meta, fresh = false) => {
     if (SOCKET.has(String(meta.caller))) return true;
     if (!tailnetLogin(meta.caller)) return false;
     const peer = peerOf(meta);
     // Without knowing which node is asking, a tailnet caller could be the Mac approving itself.
-    return Boolean(peer && peer.stableId && p.peer && p.peer.stableId && peer.stableId !== p.peer.stableId);
+    if (!(peer && peer.stableId && p.peer && p.peer.stableId)) return false;
+    if (peer.stableId !== p.peer.stableId) return true;
+    return fresh && Boolean(meta.presence && meta.presence.method === "passkey");
   };
 
   ctx.tool("link.pair.approve", {
@@ -115,7 +124,7 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         if (++wrong >= MAX_WRONG) { pending.clear(); wrong = 0; throw new Error("too many wrong codes; every pairing request was cancelled, start again from the Mac"); }
         throw new Error("no pairing request has that code (it may have expired)");
       }
-      if (!mayDecide(p, meta)) throw new Error("approve on the box itself, or from another of your devices; a Mac cannot approve its own pairing");
+      if (!mayDecide(p, meta, true)) throw new Error("approve with your passkey (Touch ID on this Mac, or on your phone); a Mac cannot approve its own pairing without one");
       wrong = 0;
       const key = crypto.randomBytes(32).toString("base64url"), id = crypto.randomUUID();
       db.prepare("INSERT INTO link_peers (id, name, login, node, stable_id, key_hash, paired_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
@@ -181,10 +190,23 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     run: async () => db.prepare("SELECT id, name, login, node, stable_id, paired_at, last_seen FROM link_peers ORDER BY paired_at").all(),
   });
 
+  /** Who may ask link.health: a module, the person at the box, or the owner over the tailnet. */
+  const healthCaller = caller => {
+    if (caller.startsWith("module:") || SOCKET.has(caller) || caller === "deck" || caller === "capsule") return true;
+    const login = tailnetLogin(caller);
+    if (!login || login.startsWith("agent:") || /\s/.test(login)) return false;
+    const owner = ctx.config.network && ctx.config.network.owner;
+    return !owner || login === owner;
+  };
+
   ctx.tool("link.health", {
     description: "How this box reaches a node right now: direct or relayed, latency, last handshake. By default the calling device; node: a paired Mac's node id. Checked at most once a minute per node.",
     input: { type: "object", properties: { node: { type: "string" } } },
     run: async ({ node }, meta) => {
+      // Modules and the owner only (lead's decision, 27 Sep 2026). A guest from another tailnet
+      // or an agent's own node learns nothing about how this box's links run, and neither does a
+      // tailnet login that is not the owner the names module serves.
+      if (!healthCaller(String(meta.caller))) throw new Error("link.health answers the box's owner and its modules only");
       const own = peerOf(meta);
       const asked = node ? String(node) : own && own.stableId ? String(own.stableId) : null;
       if (!asked) return unknown("say which node: a paired Mac's node id (vyre link peers)", now());

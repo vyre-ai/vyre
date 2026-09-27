@@ -1,4 +1,12 @@
-# ADR 0007 · Intelligence: the memory graph and the learning loop
+---
+title: ADR 0007: Intelligence: the memory graph and the learning loop
+summary: How project graphs are computed rather than filtered, and how the learning loop turns corrections into lessons that hooks enforce.
+audience: builders
+owner: docs
+status: stable
+---
+
+# ADR 0007: Intelligence: the memory graph and the learning loop
 
 Status: accepted, 26 Sep 2026 · Workstream: intelligence (memory + learning) · Spec: principles 1,
 7, 8 and 9; sections 5, 6, 7.4, 7.11, 8, 9 and 10 · Related: ADR 0004 (presence)

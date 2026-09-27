@@ -29,10 +29,24 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
 - Throwaway stack torn down (containers, volumes, networks); /srv/vyre-glass keeps compose.yml.
 
 ## Doing
-- Nothing. Waiting on the integrator to merge.
+- Nothing in flight. Branch pushed at c006e55 (boot-failure reason in Glass, 4001 close + Retry),
+  waiting for the integrator to merge.
 
 ## Next
-- After merge and redeploy, the user gives an agent a computer and opens Glass.
+1. When c006e55 is on main, SendMessage docs: they hold the new boot-failure text in
+   docs/work/docs.md "Pending page changes" until then.
+2. After the live box is redeployed, two read-only checks only (no agents or computers made):
+   `ssh <test-box> docker exec vyre-vyre-1 vyre call computers.limits '{}'` must not say
+   no_such_tool, and a WS upgrade with a bogus ticket to
+   https://<owner>.vyre.run/v1/streams/computers/glass?ticket=bogus must not be 404 (expect 403
+   or a 101 then close). Send docs any label changes.
+3. New user rule (lead, 27 Sep): no passkey for the owner taking or handing back the keyboard.
+   Touch ID/passkey only for pairing, vault secrets, and sending, posting or paying outside. So
+   take computers.takeover and computers.giveback out of presence HUMAN_ONLY for the owner
+   (core/presence/index.js is presence's file: change it through its contract and list it under
+   Changed contracts), keep the agent-caller refusal in ownSurface/surfaceOf, and drop the
+   passkey step from deck/glass/takeover.js for the owner. Check Sign in privately follows the
+   same rule. Tests, then tell docs (glass.md says both need a passkey).
 
 ## Needs from others
 - presence/security: tools with a `callers` list (e.g. agents.delete) are refused to the real
