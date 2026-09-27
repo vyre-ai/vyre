@@ -65,23 +65,31 @@ mobile and the Capsule (through their owners).
   contracts: relay.serve onEmergency, Vault.ticketFor (issue uses it), offboard ends emergency,
   unlockAccount refreshes. Full set: 548 pass, 0 fail, 14 skipped.
 
+- Every vault tool has a CLI verb (health, remind, history, revert, agent, uses, rotate --how);
+  core/cli/commands/vault-next.test.js drives the real bin/vyre.
+- Step 13 Android: modules/vault-android/ (Expo local module, Kotlin AutofillService + auth activity,
+  StrongBox device key); server: device-key unlock (challenge/unlock {signature}, MACed
+  vault_device_keys), `vyre vault pair --phone` codes (only they take a key / may omit Origin),
+  android://<pkg>@<sha256> matching for match/fill/otp. Sent to mobile to include. UNVERIFIED on
+  gradle/device.
+
 ## Doing
 
-- Step 13: the Android AutofillService (Kotlin, in the Expo APK: waiting on mobile's module layout),
-  Glass injection (step 9, waiting on computers.fill.begin/end), iOS/macOS providers (simulator/CI).
+- Full-suite run after 39f6f00b (waiting on testbox load). Then: iOS/macOS credential provider
+  targets (simulator/CI only), agent fill in Glass (waits on computers), a real-browser check of the
+  extension (waits on the lead: Mac free), Android CredentialProviderService (passkeys, Android 14).
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
 9. vault.agent.fill (M): waits on computers.fill.begin/end (glass-live/computers).
-13. Autofill (L): the Android AutofillService + CredentialProviderService (Kotlin) in the Expo APK
-   (waits on mobile's native module layout); iOS/macOS ASCredentialProvider targets built in the
+13. Autofill (L): Android CredentialProviderService (passkeys); iOS/macOS ASCredentialProvider targets built in the
    simulator/CI only (no Apple Developer team); a real-browser check of the extension (passkeys,
    cards) when the lead says the Mac is free.
 
 ## Needs from others
 
-- mobile: confirm ADR 0018 (native Swift + Kotlin) or the Expo "0027" the lead named; an app
-  group / keychain access group for a VyreAutofill extension target.
+- mobile: include modules/vault-android (sent 27 Sep), run its gradle unit tests + a device check;
+  an app group / keychain access group for an iOS VyreAutofill extension target.
 - computers (glass-live?): computers.fill.begin/end (internal), Chrome under its own uid, ptrace
   blocked, closing agent CDP websockets on begin.
 - capsule-pro: a credential provider extension target in the Capsule app (after Apple team).
