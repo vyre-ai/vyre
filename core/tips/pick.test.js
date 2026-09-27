@@ -113,3 +113,11 @@ test("tips: the same state always picks the same tip", () => {
   const s = base({ context: { idle: true } });
   assert.deepEqual(pick(s), pick(s));
 });
+
+test("tips: a surface's first open may show one discovery tip without idle, once", () => {
+  const r = pick(base({ context: { first: true } }));
+  assert.equal(id(r), "recall/try");
+  assert.equal(r.why, "welcome");
+  assert.equal(pick(base({ context: { first: true }, welcomed: true })).why, "none");
+  assert.equal(pick(base({ context: { first: true, busy: true } })).why, "busy");
+});

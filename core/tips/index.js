@@ -140,16 +140,19 @@ export default {
     };
 
     ctx.tool("tips.next", {
-      description: "The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in, idle when they have paused, busy while an ask, a prompt or a running turn is on screen. mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.",
+      description: "The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in, first on the surface's very first open (one welcome tip, once), idle when they have paused, busy while an ask, a prompt or a running turn is on screen. mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.",
       callers: PEOPLE,
       input: { type: "object", required: ["surface"], properties: {
         surface: surfaceIn, mark: { type: "boolean" },
-        context: { type: "object", properties: { module: str, idle: { type: "boolean" }, busy: { type: "boolean" } } } } },
+        context: { type: "object", properties: { module: str, idle: { type: "boolean" }, busy: { type: "boolean" }, first: { type: "boolean" } } } } },
       run: async ({ surface, context = {}, mark = false }) => {
         if (context.module) use(String(context.module));
         const s = state();
         const r = pick({ tips: all().tips, surface, context, now: now(), settings: await readSettings(), ...s,
+          welcomed: meta(`welcomed:${surface}`) !== null,
           running: t => runningOf(keyOf(t)), seenVersion: t => meta(`seen:${keyOf(t)}`) });
+        // The welcome is spent once offered, drawn or not: a surface's first open happens once.
+        if (context.first && meta(`welcomed:${surface}`) === null && r.why !== "busy" && r.why !== "off") setMeta(`welcomed:${surface}`, String(now()));
         if (!r.tip) return { tip: null, why: r.why };
         if (mark) markShown(r.tip, surface);
         return { tip: view(r.tip), why: r.why };
@@ -219,7 +222,7 @@ export default {
       callers: PEOPLE,
       input: { type: "object", properties: {} },
       run: async () => {
-        db.exec("DELETE FROM tips_shown; DELETE FROM tips_used; DELETE FROM tips_log;");
+        db.exec("DELETE FROM tips_shown; DELETE FROM tips_used; DELETE FROM tips_log; DELETE FROM tips_meta WHERE key LIKE 'welcomed:%';");
         return { reset: true };
       },
     });

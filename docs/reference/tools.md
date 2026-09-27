@@ -3556,12 +3556,13 @@ Every tip the running modules declare, with how often each was shown and whether
 
 ### `tips.next`
 
-The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in, idle when they have paused, busy while an ask, a prompt or a running turn is on screen. mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.
+The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in, first on the surface's very first open (one welcome tip, once), idle when they have paused, busy while an ask, a prompt or a running turn is on screen. mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.
 
 - Input:
   - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass", required
   - `context` object
     - `busy` boolean
+    - `first` boolean
     - `idle` boolean
     - `module` string
   - `mark` boolean

@@ -76,6 +76,9 @@ rules are in `core/tips/pick.js`, and every rule has a test.
 4. When `idle`: tips newer than the version the person last saw.
 5. When `idle`: `idle` tips about modules they use.
 
+On a surface's very first open (`context.first: true`), one `never-used` discovery tip may show
+without `idle`, once per surface, as a welcome. Every rule in step 1 still applies to it.
+
 Within a step, manifest order decides, so put your best tip first. A tip retires after two
 showings, when the person acts on it, or when they dismiss it.
 
@@ -83,7 +86,8 @@ showings, when the person acts on it, or when they dismiss it.
 
 A surface that shows tips does three things:
 
-- asks `tips.next` with the module in front of the person, `idle: true` after a pause, and
+- asks `tips.next` with the module in front of the person, `first: true` on its very first open,
+  `idle: true` after a pause, and
   `busy: true` while anything else wants their attention;
 - calls `tips.seen {id, surface}` when it draws the tip, and `tips.seen {id, surface, acted: true}`
   when they press Show me or run the command. The CLI passes `mark: true` to `tips.next` instead,

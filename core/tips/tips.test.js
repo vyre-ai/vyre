@@ -184,3 +184,12 @@ test("tips module: people's surfaces choose tips; an agent may only list them", 
   assert.equal((await w.call("tips.dismiss", { module: "recall" }, "mcp:agent:kit")).error.code, "denied");
   assert.ok((await w.call("tips.list", {}, "mcp:agent:kit")).data.tips.length);
 });
+
+test("tips module: the welcome tip is spent on a surface's first open, and not while busy", async t => {
+  const w = await world(t);
+  assert.equal((await w.call("tips.next", { surface: "phone", context: { first: true, busy: true } })).data.why, "busy");
+  assert.equal((await w.call("tips.next", { surface: "deck", context: { first: true } })).data.why, "welcome");
+  assert.equal((await w.call("tips.next", { surface: "deck", context: { first: true } })).data.why, "none");
+  await w.call("tips.reset");
+  assert.equal((await w.call("tips.next", { surface: "deck", context: { first: true } })).data.why, "welcome");
+});
