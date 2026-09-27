@@ -73,14 +73,15 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
 
 ## Doing
 
-- Session verbs (ADR 0030) on the sessions team's event model: asked sessions for the contract.
-  work/sessions 0bae485d has threads.interrupt and sessions.status/setup/prompt.*; queue edit,
-  take back and send now are still on their Next list.
-- Freeze over: main 9efbddc merged (378f8525); targeted run on testbox 334/336, the two docs
-  failures fixed after (a stale command name, a glob in this file).
+- Nothing in flight. a84d4180 pushed, ready for the integrator queue.
 
 ## Next
 
+- Session verbs follow-ups when work/sessions lands: threads.send `mode`, queued_id, a queue read,
+  the unqueue/edit/send_now/rewind tools, thread.turn/state/usage payloads (7 gaps sent to sessions).
+- If work/relay reaches main after us: point `vyre relay pair` (core/cli/commands/relay.js) at
+  terminal(qr(url)) from core/cli/qr.js and drop terminalQr and its test.
+- pwa's push.subscribed / push.delivered / push.seen {standalone}: wire them into phone.js checks.
 - Session verbs: start, send, send-now, queue edit/drop, stop/interrupt, take back, open in
   terminal, watch, all with --json, once sessions answers.
 - `vyre phone add`: the relay is the default (lead). Built against work/relay 0dfbd12 (path, rtt,
