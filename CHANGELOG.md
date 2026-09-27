@@ -23,7 +23,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Source trust holds in Vyre IQ's answers: a question about the user's own life is answered only
   from their own words in sessions trust keeps, never from Claude's turns, a reply, an injected
   block or dev talk; an answer that says who someone is to the user ("your wife Jordan") must stand
-  on those words too, or IQ abstains. The trust world through memory.ask (`eval-iq --world trust`):
+  on those words too, or IQ abstains. A session's name or folder never grounds a personal answer, a
+  session counts only once recall says a person started it, and each source says whose words it is
+  (role: user or assistant). The trust world through memory.ask (`eval-iq --world trust`):
   accuracy 1, confident-wrong 0.
 - Memory's model calls (the reader and Vyre IQ) run on the person's Claude login and never bill API
   dollars: ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are left out of their environment unless

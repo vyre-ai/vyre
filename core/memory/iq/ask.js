@@ -82,8 +82,10 @@ export function mustAppear(answer) {
 /**
  * Check a reply against the passages it was given. Returns the answer to give, or an abstention.
  * @param {any} reply @param {any[]} passages
+ * @param {{ header?: boolean }} [o]  header: false for a personal answer: a session's name or folder
+ *   is often Claude's or anyone's words, never the user's, so it proves nothing about their life
  */
-export function checkAsk(reply, passages) {
+export function checkAsk(reply, passages, { header: withHeader = true } = {}) {
   if (!reply || typeof reply !== "object") return { abstained: true, why: "no reply" };
   const known = Array.isArray(reply.known) ? reply.known.filter(x => typeof x === "string" && x.length <= 200).slice(0, 5) : [];
   if (reply.abstain || typeof reply.answer !== "string" || !reply.answer.trim()) return { abstained: true, known, why: "the model abstained" };
@@ -91,7 +93,7 @@ export function checkAsk(reply, passages) {
   if (!cite.length || cite.some(n => !Number.isInteger(n) || n < 1 || n > passages.length)) return { abstained: true, known, why: "a citation is not a passage given" };
   // What the model was shown for each cited passage: its words and its header (the project folder,
   // the session's name and the date), so "it went live on 2026-06-12" stands on the passage's date.
-  const text = norm(cite.map(n => passages[n - 1]).map(p => `${p.text}\n${p.reply ? `${p.reply.text}\n` : ""}${header(p).join("\n")}`).join("\n"));
+  const text = norm(cite.map(n => passages[n - 1]).map(p => `${p.text}\n${p.reply ? `${p.reply.text}\n` : ""}${withHeader ? header(p).join("\n") : ""}`).join("\n"));
   // A name of several words stands when each of its words is there ("Friday June" in "Friday, 12 June").
   const has = w => text.includes(norm(w)) || (/^[A-Z][^\s]*(?: [A-Z][^\s]*)+$/.test(w) && w.split(" ").every(x => text.includes(norm(x))));
   const missing = mustAppear(reply.answer).filter(w => !has(w));
@@ -155,7 +157,8 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     let passages = (await retrieve({ question: q, project_cwds, k: 8, personal: sees, thread })).passages.filter(p => !forgotten.has(`${p.session}:${p.seq}`));
     // Source trust (ADR 0034): a question about the user's life is answered only from their own
     // words in sessions trust keeps. Claude's turns, a reply, injected blocks and dev talk never count.
-    if (personalQ(q)) passages = passages.filter(p => p.role === "user" && trusted(p.session) && !devTalk(String(p.text)))
+    const mine = personalQ(q);
+    if (mine) passages = passages.filter(p => p.role === "user" && trusted(p.session) && !devTalk(String(p.text)))
       .map(p => ({ ...p, reply: undefined, text: userWords(String(p.text)) })).filter(p => p.text.trim());
     if (!passages.length) return done({ via: "retrieval" });
     // 3. The answer, kept by the prompt's hash.
@@ -176,18 +179,18 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     if (text == null) return done({ via: "retrieval", known: [], why: runner ? "the model did not answer" : "no model" });
     // 4. Code checks what it said.
     stage("checking");
-    let c = checkAsk(parseAsk(text), passages);
+    let c = checkAsk(parseAsk(text), passages, { header: !mine });
     // Who someone is to the user ("your wife Jordan") is a personal fact, whatever the question:
     // it stands only on the user's own words in a session trust keeps, never on Claude's.
     if (!c.abstained && TO_USER.test(String(c.answer))) {
       const own = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).filter(p => p.role === "user" && trusted(p.session) && !devTalk(String(p.text)))
         .map(p => ({ ...p, reply: undefined, text: userWords(String(p.text)) }));
-      const again = own.length ? checkAsk({ ...parseAsk(text), cite: own.map((_, i) => i + 1) }, own) : { abstained: true };
+      const again = own.length ? checkAsk({ ...parseAsk(text), cite: own.map((_, i) => i + 1) }, own, { header: false }) : { abstained: true };
       if (again.abstained) c = { abstained: true, known: c.known || [], why: "who someone is to you stands only on your own words" };
     }
     if (c.abstained) return done({ via: "retrieval", known: c.known || [], cost_usd: usd, why: c.why });
-    const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).flatMap(p => [{ session: p.session, seq: p.seq, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null },
-      ...(p.reply ? [{ session: p.session, seq: p.reply.seq, name: p.name, quote: String(p.reply.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }] : [])]);
+    const sources = /** @type {number[]} */ (c.cite).map(n => passages[n - 1]).flatMap(p => [{ session: p.session, seq: p.seq, role: p.role, name: p.name, quote: String(p.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null },
+      ...(p.reply ? [{ session: p.session, seq: p.reply.seq, role: "assistant", name: p.name, quote: String(p.reply.text).replace(/\s+/g, " ").slice(0, 200), ts: p.ts || null }] : [])]);
     return refused({ answer: c.answer, confidence: c.confidence, abstained: false, known: c.known, sources, via: "retrieval", cost_usd: usd });
   };
 }

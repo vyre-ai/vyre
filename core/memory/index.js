@@ -474,7 +474,8 @@ export default {
         return !p.word || new RegExp(`\\b${String(p.word).replace(/[^a-z]/g, "")}s?\\b`).test(t);
       },
       // A session source trust refused, or one a program started (a subagent, a headless run), never grounds a personal answer.
-      trusted: session => /** @type {any} */ (trustOf.get(session))?.ok !== 0 && /** @type {any} */ (humanOf()?.get(session))?.human !== 0,
+      // Fails closed (e2e, 28 Sep): a session counts only once recall says a person started it.
+      trusted: session => /** @type {any} */ (trustOf.get(session))?.ok !== 0 && /** @type {any} */ (humanOf()?.get(session))?.human === 1,
       runner: ctx.iqRunner !== undefined ? ctx.iqRunner : quick, model: () => modelFor(ctx.config),
       budget: {
         allow: usd => askSpent() + usd <= (Number(ctx.config.memory?.model?.askDailyUsd) >= 0 ? Number(ctx.config.memory.model.askDailyUsd) : ASK_DAILY_USD) + 1e-9,
