@@ -136,6 +136,19 @@ export function pathOf(url: string): string {
   return u.pathname + u.search;
 }
 
+/**
+ * The path and query the box sees for a request, which is what a proof signs. `url` is a path
+ * ("/v1/tools/x?y"), or a full URL under `base`, which may carry a prefix of its own (a relay
+ * route, "https://relay.example/<route>"): the prefix is the transport's, never signed.
+ */
+export function boxPath(url: string, base?: string): string {
+  const b = base?.replace(/\/+$/, "");
+  if (b && url.startsWith(b) && (url.length === b.length || url[b.length] === "/" || url[b.length] === "?")) {
+    return pathOf(url.slice(b.length) || "/");
+  }
+  return pathOf(url);
+}
+
 /** The string a request's proof signs. `body` is the raw body sent, "" for none. */
 export async function proofMessage(r: { method: string; path: string; body?: string; t: number | string; n: string }): Promise<string> {
   return `${r.method.toUpperCase()}\n${r.path}\n${await sha256b64url(r.body ?? "")}\n${r.t}\n${r.n}`;
@@ -174,11 +187,11 @@ export function cryptoKeySigner(k: CryptoKeyPair): Signer {
 /** The `x-vyre-proof` value for one request, signed by any Signer. */
 export async function proofWith(
   sign: (message: string) => Promise<Uint8Array>,
-  r: { method: string; url: string; body?: string; now?: number; nonce?: string },
+  r: { method: string; url: string; base?: string; body?: string; now?: number; nonce?: string },
 ): Promise<string> {
   const t = r.now ?? Date.now();
   const n = r.nonce ?? randomB64url(16);
-  const msg = await proofMessage({ method: r.method, path: pathOf(r.url), body: r.body, t, n });
+  const msg = await proofMessage({ method: r.method, path: boxPath(r.url, r.base), body: r.body, t, n });
   return `t=${t} n=${n} sig=${b64url(await sign(msg))}`;
 }
 
@@ -233,6 +246,30 @@ export function derToP1363(der: Uint8Array, size = 32): Uint8Array {
   return out;
 }
 
+const SPKI_P256 = fromHexPrefix("3059301306072a8648ce3d020106082a8648ce3d030107034200");
+
+function fromHexPrefix(h: string): Uint8Array {
+  const out = new Uint8Array(h.length / 2);
+  for (let i = 0; i < out.length; i++) out[i] = parseInt(h.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+/**
+ * A P-256 public key as base64url SPKI DER, what presence.enroll takes as `public_key` (alg -7),
+ * from the point's base64url x and y (32 bytes each; vyre-signer's ensureKey gives these).
+ */
+export function spkiFromXY(x: string, y: string): string {
+  const bx = fromB64url(x);
+  const by = fromB64url(y);
+  if (bx.length !== 32 || by.length !== 32) throw new Error("x and y must be 32-byte base64url coordinates");
+  const out = new Uint8Array(SPKI_P256.length + 65);
+  out.set(SPKI_P256);
+  out[SPKI_P256.length] = 4;
+  out.set(bx, SPKI_P256.length + 1);
+  out.set(by, SPKI_P256.length + 33);
+  return b64url(out);
+}
+
 /** The public JWK the box takes, from a P-256 point's base64url x and y (32 bytes each). */
 export function jwkFromXY(x: string, y: string): PublicJwk {
   if (fromB64url(x).length !== 32 || fromB64url(y).length !== 32) throw new Error("x and y must be 32-byte base64url coordinates");
@@ -281,7 +318,10 @@ export function memorySlot<T>(initial: T | null = null): Slot<T> {
 }
 
 export type PersonSession = {
-  /** The headers for one request: none until signed in. */
+  /**
+   * The headers for one request: none until signed in. `url` is the path and query relative to
+   * the box ("/v1/tools/x"), or a full URL at the box's origin.
+   */
   headers(method: string, url: string, body: string): Promise<Record<string, string>>;
   /** The box answered person_session_required: forget the token and sign in again. */
   required(): void;
@@ -346,7 +386,7 @@ export function personSession(o: {
     let signed: Record<string, string>;
     try {
       const k = await key();
-      signed = { authorization: `Vyre ${t}`, "x-vyre-proof": await proofWith(k.sign, { method, url, body, now: now(), nonce: o.nonce?.() }) };
+      signed = { authorization: `Vyre ${t}`, "x-vyre-proof": await proofWith(k.sign, { method, url, base: box, body, now: now(), nonce: o.nonce?.() }) };
     } catch {
       // The key is gone or refuses (a phone's keystore cleared, a browser's store wiped): the token
       // is worthless without it, so sign in again rather than stall every request on a throw.

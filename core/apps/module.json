@@ -1,0 +1,12 @@
+{
+  "name": "releases",
+  "version": "0.1.0",
+  "description": "The Android app from the box: CI's unsigned APK, signed with the owner's own key, served to the owner's devices at /apps/.",
+  "roles": ["box"],
+  "requires": ["vault"],
+  "does": { "tools": ["releases.cert"] },
+  "watches": { "emits": [] },
+  "shows": { "cli": [] },
+  "needs": { "vault": ["android-release-key"] },
+  "teaches": {}
+}

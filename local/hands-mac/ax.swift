@@ -1,4 +1,4 @@
-// ax — the accessibility helper behind Vyre's hands on macOS.
+// ax: the accessibility helper behind Vyre's hands on macOS.
 //
 // One request in, one JSON answer out. The request arrives as a JSON object on stdin rather
 // than in argv, because argv is readable by every process on the machine through `ps`, and a
@@ -15,6 +15,8 @@
 //
 // Commands (the "cmd" key):
 //   trust   is this process allowed to use the accessibility API
+//   where   which app and window a request would reach (bundle id, title, page origin), without
+//           reading anything in it, so the floor can be checked before a single value is read
 //   snap    the elements of an app's windows, bounded, with enough identity to find them again
 //   act     one action on the element at a path, after checking it is still the element meant
 //
@@ -55,6 +57,11 @@ func role(_ el: AXUIElement) -> String { str(el, kAXRoleAttribute as String) ?? 
 
 func clip(_ s: String, _ n: Int) -> String { s.count > n ? String(s.prefix(n)) + "…" : s }
 
+/// Stamped on every keystroke this helper posts ("VYRE" in ASCII). The overlay's stop keys skip
+/// events carrying it, so an agent sending Escape to its own target cannot stop itself, and a
+/// typed word cannot break the person's double Control.
+let VYRE_EVENT_MARK: Int64 = 0x5659_5245
+
 // ---------------------------------------------------------------- request
 
 let input = FileHandle.standardInput.readDataToEndOfFile()
@@ -94,7 +101,7 @@ if !AXIsProcessTrusted() {
 let SNAP_ATTRS: [String] = [
     "AXRole", "AXTitle", "AXDescription", "AXValue", "AXHelp", "AXPlaceholderValue", "AXLabel",
     "AXIdentifier", "AXRoleDescription", "AXSubrole", "AXDOMIdentifier",
-    "AXPosition", "AXSize", "AXEnabled", "AXFocused", "AXChildren",
+    "AXPosition", "AXSize", "AXEnabled", "AXFocused", "AXMain", "AXChildren",
 ]
 
 struct Props {
@@ -136,6 +143,8 @@ struct Props {
     var kids: [AXUIElement] { (v["AXChildren"] as? [AXUIElement]) ?? [] }
     var enabled: Bool { (v["AXEnabled"] as? Bool) ?? true }
     var isFocused: Bool { (v["AXFocused"] as? Bool) == true }
+    /// A window has no focus of its own; being the app's main window is the same idea for it.
+    var isMain: Bool { (v["AXMain"] as? Bool) == true }
     var secure: Bool { str("AXSubrole") == "AXSecureTextField" }
 
     /// The words a person would use for this control, taken ONLY from attributes that describe
@@ -200,6 +209,15 @@ func nameOf(_ p: Props) -> (String?, String?) {
     return (nil, nil)
 }
 
+/// The actions a control says it supports, by its own list. One more round trip per control,
+/// which is why snap asks only for actionable ones. Custom actions (Chromium publishes long
+/// "Name:...\nTarget:..." strings) are left out: nothing here can name them.
+func actionNames(_ el: AXUIElement) -> [String] {
+    var names: CFArray?
+    guard AXUIElementCopyActionNames(el, &names) == .success, let a = names as? [String] else { return [] }
+    return Array(a.filter { $0.hasPrefix("AX") && !$0.contains("\n") }.prefix(16))
+}
+
 // ---------------------------------------------------------------- app and windows
 
 func runningApps() -> [NSRunningApplication] {
@@ -227,8 +245,20 @@ func resolveApp() -> NSRunningApplication {
 }
 
 let running = resolveApp()
-let appName = running.localizedName ?? "?"
-let appEl = AXUIElementCreateApplication(running.processIdentifier)
+/// The pid asked for wins over what NSRunningApplication reports. For a process launched as a bare
+/// executable (no bundle), NSRunningApplication hands back a stub whose processIdentifier is -1,
+/// and an application element made from that is invalid: every read fails and the app looks
+/// windowless. A test window is exactly such a process.
+let targetPid: pid_t = {
+    if let pid = (req["pid"] as? NSNumber)?.int32Value {
+        if kill(pid, 0) != 0 { fail("no_app", "no running app has pid \(pid)") }
+        return pid
+    }
+    return running.processIdentifier
+}()
+let appEl = AXUIElementCreateApplication(targetPid)
+let appName = running.localizedName ?? str(appEl, kAXTitleAttribute as String) ?? "?"
+let bundleId = running.bundleIdentifier ?? ""
 // The unlock for Electron and Chromium, which report no windows without it. Harmless on
 // native apps, so unconditional.
 AXUIElementSetAttributeValue(appEl, "AXManualAccessibility" as CFString, kCFBooleanTrue)
@@ -257,7 +287,7 @@ func windows() -> [AXUIElement] {
 /// Window indices reorder the moment anything opens, raises or closes, so a path can silently
 /// point at a different document than it did a second ago. "window" matches by title instead,
 /// and is the safe way to address one window of a multi-window app.
-func roots() -> [AXUIElement] {
+func windowRoots() -> [AXUIElement] {
     let all = windows()
     if all.isEmpty { fail("no_window", "\(appName) has no windows open") }
     guard let want = req["window"] as? String, !want.isEmpty else { return all }
@@ -268,6 +298,47 @@ func roots() -> [AXUIElement] {
              all.map { str($0, kAXTitleAttribute as String) ?? "(untitled)" }.joined(separator: " | "))
     }
     return hits
+}
+
+/// The windows, then any menu the app has open. An open context menu is a child of the app, not
+/// of a window, so without this AXShowMenu could never be seen to work and its items could never
+/// be pressed. Menus go last so a window keeps its index whether or not a menu is open.
+func roots() -> [AXUIElement] {
+    let ws = windowRoots()
+    let kids = (attr(appEl, kAXChildrenAttribute as String) as? [AXUIElement]) ?? []
+    return ws + kids.filter { role($0) == "AXMenu" }
+}
+
+/// Browsers whose page origin the floor needs: the Deck and Glass are served from the box into
+/// an ordinary browser, and a window title alone cannot say a tab is one of them.
+let BROWSERS: Set<String> = [
+    "com.apple.Safari", "com.apple.SafariTechnologyPreview", "com.google.Chrome", "com.google.Chrome.canary",
+    "company.thebrowser.Browser", "com.microsoft.edgemac", "com.brave.Browser", "org.mozilla.firefox",
+    "org.chromium.Chromium", "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "com.kagi.kagimacOS",
+]
+
+/// The origin of the page in the front window, and only the origin: the floor compares origins,
+/// and a full URL can carry a search, a document id or a token that has no business leaving here.
+func pageOrigin(_ rs: [AXUIElement]) -> String? {
+    func originOf(_ raw: String) -> String? {
+        guard let c = URLComponents(string: raw), let scheme = c.scheme, ["http", "https"].contains(scheme),
+              let host = c.host else { return nil }
+        return "\(scheme)://\(host)" + (c.port.map { ":\($0)" } ?? "")
+    }
+    guard let w = rs.first else { return nil }
+    if let d = str(w, "AXDocument"), let o = originOf(d) { return o }
+    guard BROWSERS.contains(bundleId) else { return nil }
+    // Only roles and children are read on the way down, never a value or a title.
+    var q = [w], h = 0
+    while h < q.count && h < 400 {
+        let e = q[h]; h += 1
+        if role(e) == "AXWebArea", let u = attr(e, "AXURL") {
+            if CFGetTypeID(u) == CFURLGetTypeID() { return originOf((u as! URL).absoluteString) }
+            if let s = u as? String { return originOf(s) }
+        }
+        q += (attr(e, kAXChildrenAttribute as String) as? [AXUIElement]) ?? []
+    }
+    return nil
 }
 
 func windowTitle(_ rs: [AXUIElement]) -> String {
@@ -285,6 +356,17 @@ let ACTIONABLE: Set<String> = [
 ]
 let STRUCTURAL: Set<String> = ["AXToolbar", "AXGroup", "AXSplitGroup", "AXScrollArea", "AXOutline",
                                "AXTable", "AXTabGroup", "AXList"]
+
+// ---------------------------------------------------------------- where
+
+if cmd == "where" {
+    let rs = windowRoots()
+    var out: [String: Any] = ["app": appName, "pid": targetPid, "bundle": bundleId,
+                              "front": running.isActive, "window": windowTitle(rs)]
+    if let o = pageOrigin(rs) { out["origin"] = o }
+    emit(out)
+    exit(0)
+}
 
 // ---------------------------------------------------------------- snap
 
@@ -311,7 +393,16 @@ if cmd == "snap" {
         if visited > 20000 { break }
         let p = Props(el)
         let r = p.role
-        if ACTIONABLE.contains(r) {
+        if d == 0 && r == "AXWindow" {
+            // The window itself, so it can be raised and its frame known. Never its value.
+            var row: [String: Any] = ["path": path, "role": r, "enabled": true]
+            if let n = p.str("AXTitle") { row["name"] = clip(n, 120) }
+            if let f = p.frame { row["frame"] = f }
+            if p.isMain { row["focused"] = true }
+            let acts = actionNames(el)
+            if !acts.isEmpty { row["actions"] = acts }
+            out.append(row)
+        } else if ACTIONABLE.contains(r) {
             var row: [String: Any] = ["path": path, "role": r, "enabled": p.enabled]
             let (name, by) = nameOf(p)
             if let n = name { row["name"] = clip(n, 120) }
@@ -321,6 +412,8 @@ if cmd == "snap" {
             if !container.isEmpty { row["container"] = container }
             if let f = p.frame { row["frame"] = f }
             if p.isFocused { row["focused"] = true }
+            let acts = actionNames(el)
+            if !acts.isEmpty { row["actions"] = acts }
             // A secure field's contents are never read out, even when the app would allow it.
             if p.secure { row["secure"] = true }
             else if let v = p.str("AXValue") { row["value"] = clip(v, valueMax) }
@@ -345,12 +438,13 @@ if cmd == "snap" {
             for (j, k) in p.kids.enumerated() { queue.append((k, "\(path)/\(j)", d + 1, next)) }
         }
     }
-    emit([
-        "app": appName, "pid": running.processIdentifier, "front": running.isActive,
+    var head0: [String: Any] = ["app": appName, "pid": targetPid, "bundle": bundleId, "front": running.isActive]
+    if let o = pageOrigin(rs) { head0["origin"] = o }
+    emit(head0.merging([
         "window": windowTitle(rs), "elements": out, "texts": texts,
         // Said out loud, so a caller never mistakes a capped list for the whole window.
         "truncated": head < queue.count,
-    ])
+    ]) { a, _ in a })
     exit(0)
 }
 
@@ -359,6 +453,13 @@ if cmd == "snap" {
 if cmd == "act" {
     guard let path = req["path"] as? String else { fail("bad_request", "act needs a path") }
     let kind = req["kind"] as? String ?? ""
+    // Acts are pinned to the process the caller observed. Without a pid, "the frontmost app"
+    // would be read again here, and it can be a different app from the one that was checked.
+    guard req["pid"] is NSNumber else { fail("bad_request", "act needs the pid it observed") }
+    // A pid is reused once its app quits. The bundle id says it is still the same app.
+    if let want = req["bundle"] as? String, !want.isEmpty, want != bundleId {
+        fail("not_owner", "pid \(targetPid) now belongs to \(appName), not the app that was observed; nothing was done")
+    }
     let rs = roots()
     let idx = path.split(separator: "/").compactMap { Int($0) }
     guard let first = idx.first, first < rs.count else { fail("not_found", "no element at \(path)") }
@@ -367,6 +468,12 @@ if cmd == "act" {
         let ks = (attr(cur, kAXChildrenAttribute as String) as? [AXUIElement]) ?? []
         guard n < ks.count else { fail("not_found", "no element at \(path); the window changed") }
         cur = ks[n]
+    }
+    // The element must belong to the process that was checked. A path resolved through another
+    // process (a view hosted out of process) would send input somewhere nobody looked.
+    var owner: pid_t = 0
+    if AXUIElementGetPid(cur, &owner) != .success || owner != targetPid {
+        fail("not_owner", "the element at \(path) is not owned by pid \(targetPid); nothing was done")
     }
     let p = Props(cur)
     // The path came from an observation that may already be stale. Check that the element here
@@ -388,18 +495,24 @@ if cmd == "act" {
     func focus() -> AXError { AXUIElementSetAttributeValue(cur, kAXFocusedAttribute as CFString, kCFBooleanTrue) }
 
     /// Keystrokes go to the target process, not to whatever is frontmost, so they cannot land in
-    /// another app if the person switches windows mid-action.
+    /// another app if the person switches windows mid-action. There is deliberately no path in
+    /// this helper to a system-wide post (CGEvent.post to a tap): postToPid is the only sender.
+    /// A private event source keeps the person's real modifier state out of the events, and the
+    /// marker in the user-data field lets the overlay's stop keys ignore what Vyre itself typed.
+    let source = CGEventSource(stateID: .privateState)
     func post(_ key: CGKeyCode, _ flags: CGEventFlags, unicode: [UniChar]? = nil) -> Bool {
-        guard let down = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: true),
-              let up = CGEvent(keyboardEventSource: nil, virtualKey: key, keyDown: false) else { return false }
+        guard let down = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: true),
+              let up = CGEvent(keyboardEventSource: source, virtualKey: key, keyDown: false) else { return false }
         down.flags = flags; up.flags = flags
+        down.setIntegerValueField(.eventSourceUserData, value: VYRE_EVENT_MARK)
+        up.setIntegerValueField(.eventSourceUserData, value: VYRE_EVENT_MARK)
         if var u = unicode {
             down.keyboardSetUnicodeString(stringLength: u.count, unicodeString: &u)
             up.keyboardSetUnicodeString(stringLength: u.count, unicodeString: &u)
         }
-        down.postToPid(running.processIdentifier)
+        down.postToPid(targetPid)
         usleep(2000)
-        up.postToPid(running.processIdentifier)
+        up.postToPid(targetPid)
         usleep(2000)
         return true
     }
@@ -426,10 +539,35 @@ if cmd == "act" {
         err = AXUIElementSetAttributeValue(cur, kAXValueAttribute as CFString, v as CFTypeRef)
     case "focus":
         err = focus()
+    case "action":
+        // Only an action the control lists for itself. Asking for one it does not offer returns an
+        // error on some apps and silently does nothing on others, and the second is the dangerous one.
+        let allowed: Set<String> = ["AXShowMenu", "AXIncrement", "AXDecrement", "AXConfirm", "AXCancel",
+                                    "AXRaise", "AXPick", "AXScrollToVisible"]
+        guard let a = req["action"] as? String, allowed.contains(a) else {
+            fail("bad_request", "action must be one of " + allowed.sorted().joined(separator: ", "))
+        }
+        let offered = actionNames(cur)
+        if !offered.contains(a) {
+            fail("unsupported_action", "\"\(name ?? p.role)\" does not offer \(a) (it offers \(offered.isEmpty ? "none" : offered.joined(separator: ", "))); nothing was done")
+        }
+        err = AXUIElementPerformAction(cur, a as CFString)
     case "type":
         guard let v = req["value"] as? String else { fail("bad_request", "type needs a value") }
         err = focus()
+        // An app in the background has no key window, and a keystroke posted to its pid goes to
+        // the key window, so it is dropped. Inserting at the caret through AXSelectedText is the
+        // app's own text machinery, needs no key window and cannot reach another process. When
+        // the app is in front, real keystrokes are closer to what a person does (autocomplete,
+        // key handlers), so they go first there. Verification decides either way.
+        if err == .success && !running.isActive {
+            if AXUIElementSetAttributeValue(cur, kAXSelectedTextAttribute as CFString, v as CFTypeRef) == .success {
+                out["via"] = "insert"
+                break
+            }
+        }
         if err == .success {
+            out["via"] = "keys"
             let units = Array(v.utf16)
             // Chunked: one event carries at most about 20 UTF-16 units reliably.
             var i = 0
@@ -448,6 +586,11 @@ if cmd == "act" {
         guard let k = req["key"] as? String, let code = keys[k.lowercased()] else {
             fail("bad_request", "key must be one of " + keys.keys.sorted().joined(separator: ", "))
         }
+        // A key posted to a pid goes to its key window, and an app in the background has none, so
+        // the key would vanish while the act looked sent. Hands never raise an app themselves.
+        if !running.isActive {
+            fail("needs_front", "\(appName) is in the background, and a key only reaches the app in front. Nothing was done; press the control instead (for example the Send button)")
+        }
         var flags: CGEventFlags = []
         for m in (req["modifiers"] as? [String]) ?? [] {
             switch m.lowercased() {
@@ -461,7 +604,7 @@ if cmd == "act" {
         err = focus()
         if err == .success && !post(code, flags) { err = .failure }
     default:
-        fail("bad_request", "kind must be press, set, focus, type or key")
+        fail("bad_request", "kind must be press, set, focus, action, type or key")
     }
 
     // "acted" means only that the app accepted the message. It is not evidence that anything
@@ -474,4 +617,4 @@ if cmd == "act" {
     exit(0)
 }
 
-fail("bad_request", "unknown command \"\(cmd)\" (trust, snap, act)")
+fail("bad_request", "unknown command \"\(cmd)\" (trust, where, snap, act)")

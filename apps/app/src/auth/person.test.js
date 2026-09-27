@@ -140,3 +140,33 @@ test("person: a 401 person_session_required clears the token and signs in; the w
     c.stop();
   } finally { globalThis.fetch = real; }
 });
+
+test("person: a relay base with a route prefix still signs /v1/tools/x?y", { skip: !strip }, async () => {
+  const { boxPath, newKey, proofWith, proofMessage, fromB64url, personSession, memorySlot } = await load();
+  const RELAY = "https://relay.example.net/abcdefghijklmnopqrstuvwxyz";
+  assert.equal(boxPath(`${RELAY}/v1/tools/x?y`, RELAY), "/v1/tools/x?y");
+  assert.equal(boxPath(`${RELAY}/v1/tools/x?y`, RELAY + "/"), "/v1/tools/x?y");
+  assert.equal(boxPath("/v1/tools/x?y"), "/v1/tools/x?y", "a path is already the box's");
+  assert.equal(boxPath(`${BOX}/v1/tools/x?y`), "/v1/tools/x?y");
+  assert.equal(boxPath(`${RELAY}xyz/v1/tools/x`, RELAY), "/abcdefghijklmnopqrstuvwxyzxyz/v1/tools/x", "only a whole prefix is stripped");
+  const k = await newKey();
+  const check = async (/** @type {string} */ h) => {
+    const m = /^t=(\d+) n=([A-Za-z0-9_-]+) sig=([A-Za-z0-9_-]+)$/.exec(h);
+    assert.ok(m, h);
+    const msg = await proofMessage({ method: "POST", path: "/v1/tools/x?y", body: "{}", t: m[1], n: m[2] });
+    return crypto.subtle.verify({ name: "ECDSA", hash: "SHA-256" }, k.publicKey, fromB64url(m[3]), enc.encode(msg));
+  };
+  const sign = async (/** @type {string} */ m) => new Uint8Array(await crypto.subtle.sign({ name: "ECDSA", hash: "SHA-256" }, k.privateKey, enc.encode(m)));
+  assert.equal(await check(await proofWith(sign, { method: "POST", url: `${RELAY}/v1/tools/x?y`, base: RELAY, body: "{}" })), true);
+  const s = personSession({ box: RELAY, stores: { key: memorySlot(k), token: memorySlot("tok12345.secretsecretsecret12") }, signIn() {} });
+  assert.equal(await check((await s.headers("POST", `${RELAY}/v1/tools/x?y`, "{}"))["x-vyre-proof"]), true, "a full relay URL");
+  assert.equal(await check((await s.headers("POST", "/v1/tools/x?y", "{}"))["x-vyre-proof"]), true, "the box-relative path client.ts passes");
+});
+
+test("person: spkiFromXY is the SPKI DER WebCrypto exports for the same P-256 key", { skip: !strip }, async () => {
+  const { spkiFromXY, newKey, publicJwk, b64url } = await load();
+  const k = await newKey();
+  const { x, y } = await publicJwk(k.publicKey);
+  assert.equal(spkiFromXY(x, y), b64url(await crypto.subtle.exportKey("spki", k.publicKey)));
+  assert.throws(() => spkiFromXY("AAAA", y));
+});

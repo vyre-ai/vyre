@@ -7,7 +7,8 @@
 //     the same across retries, shown at once as sending, and leaves only on the box's answer.
 //   - reads: one call through the same caller (web.js caller), never queued, never thrown.
 // Headers for the person session at another origin (src/auth/person.ts) are added per request,
-// since each proof signs that request's method, path and body.
+// since each proof signs that request's method, path and body. The path signed is the box's own
+// ("/v1/tools/x"), never the transport's: a relay base carries a route prefix the box never sees.
 //
 // The engine is imported by relative path, not the @vyre/resilience alias, so the Node tests
 // can load this file as it is. The platform pieces come in through createClient (box.web.ts,
@@ -38,7 +39,8 @@ export type Caller = (base: string, o?: { headers?: Record<string, string>; time
 
 /** What a person session adds to a request, and what to do when the box asks for one. */
 export type Auth = {
-  headers(method: string, url: string, body: string): Promise<Record<string, string>>;
+  /** `path` is the path and query relative to the box, e.g. "/v1/tools/x". */
+  headers(method: string, path: string, body: string): Promise<Record<string, string>>;
   required(): void;
 };
 
@@ -51,7 +53,10 @@ export type OutboxChange = {
 };
 
 export type ClientDeps = {
-  /** The box's http(s) origin, e.g. "https://harlow.example.ts.net". */
+  /**
+   * The box's http(s) address, e.g. "https://harlow.example.ts.net". Over relay/client's paths it
+   * only names the box (the relay's base, route included); requests go through `open`/`caller`.
+   */
   base: string;
   /** Every path to the box in order of preference (LAN, tailnet, relay). Default: [base]. */
   paths?: string[];
@@ -96,8 +101,6 @@ export type Client = {
 
 const PERSON = "person_session_required";
 
-const join = (base: string, path: string) => base.replace(/\/+$/, "") + path;
-
 /** An idempotency key: a UUID where the runtime has one (Hermes does not), else 128 random bits. */
 export function newKey(): string {
   const c = globalThis.crypto;
@@ -124,9 +127,9 @@ export async function createClient(d: ClientDeps): Promise<Client> {
 
   /** One tool call, with this request's person headers. */
   async function once(tool: string, input: unknown, key: string, extra: Record<string, string>) {
-    const url = join(base, "/v1/tools/" + encodeURIComponent(tool));
+    const path = "/v1/tools/" + encodeURIComponent(tool);
     const body = JSON.stringify(input ?? {});
-    const headers = { ...extra, ...(auth ? await auth.headers("POST", url, body) : {}) };
+    const headers = { ...extra, ...(auth ? await auth.headers("POST", path, body) : {}) };
     return (await d.caller(base, { headers, timeoutMs })(tool, input, key)) as Result<unknown>;
   }
 
@@ -156,7 +159,7 @@ export async function createClient(d: ClientDeps): Promise<Client> {
 
   // The stream's transport, with the person headers on each GET (the health probe included).
   const open: Open = async (req) => {
-    const h = auth ? await auth.headers("GET", join(req.base, req.path), "") : {};
+    const h = auth ? await auth.headers("GET", req.path, "") : {};
     const r = await d.open({ ...req, headers: { ...req.headers, ...h } });
     // web.js open drops the body of an error, so any 401 on the stream with a token is taken as
     // the session lapsing; without auth a 401 is the box's to explain and the stream backs off.

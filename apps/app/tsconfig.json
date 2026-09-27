@@ -6,7 +6,8 @@
     "allowImportingTsExtensions": true,
     "paths": {
       "@vyre/resilience/*": ["../../core/resilience/*"],
-      "@vyre/chat-core/*": ["../../deck/chat/core/*"]
+      "@vyre/chat-core/*": ["../../deck/chat/core/*"],
+      "@vyre/relay-client/*": ["./src/types/relay-client/*"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", "expo-env.d.ts"]

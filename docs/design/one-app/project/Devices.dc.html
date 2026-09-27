@@ -18,7 +18,7 @@
     <div class="col" style="max-width: 1400px;">
       <span class="lbl">Key screen 6 · Devices, network and VyreDrive</span>
       <h1 class="t28 w6">Every device says how it reaches the box, what it holds, and how to take it away.</h1>
-      <p class="t15 t2">One list for the box, the Mac, the phones and the relay. Each row shows its path (Tailscale direct or relayed), when it was last seen and which keys it carries. The network and VyreDrive sit beside it, read from Tailscale, never written to it.</p>
+      <p class="t15 t2">One list for the box, the Mac, the phones and the relay. Each row shows its current path and the automatic switch (phones start on the relay and move to Tailscale when it answers), when it was last seen and which keys it carries. The network and VyreDrive sit beside it, read from Tailscale, never written to it.</p>
     </div>
   </div>
 
@@ -89,12 +89,12 @@
                     <span class="av av-40"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="4" y="1.5" width="8" height="13" rx="1.5"></rect><path d="M7 12.5h2"></path></svg></span>
                     <div class="col grow" style="gap: 2px;">
                       <div class="row" style="gap: 8px;"><span class="t15 w6 trunc">alex's iPhone</span></div>
-                      <span class="t2 trunc">Web app, installed from <span class="mono">vyre.harlow.ts.net</span> · push on</span>
+                      <span class="t2 trunc">Web app, paired through <span class="mono">app.vyre.run</span> · push on</span>
                       <span class="t12 t3 trunc">Holds a presence key (Face ID) · no vault session</span>
                     </div>
                     <div class="col" style="align-items: flex-end; gap: 4px; flex: none;">
-                      <span class="st"><span class="dot dot-run"></span>Tailscale · direct 18 ms</span>
-                      <span class="t12 t3">Seen 4 min ago</span>
+                      <span class="st"><span class="dot dot-run"></span>Tailscale now · direct 18 ms</span>
+                      <span class="t12 t3">Relay if it drops · seen 4 min ago</span>
                     </div>
                     <span class="ibtn ibtn-sm" aria-label="More"><svg class="ic" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.8"></circle><circle cx="8" cy="8" r="0.8"></circle><circle cx="12.5" cy="8" r="0.8"></circle></svg></span>
                   </div>
@@ -107,8 +107,8 @@
                       <span class="t12 t2 trunc">Holds a presence key (fingerprint) · no vault session</span>
                     </div>
                     <div class="col" style="align-items: flex-end; gap: 4px; flex: none;">
-                      <span class="st"><span class="dot"></span>Relay · via fra 80 ms</span>
-                      <span class="t12 t2">Seen 1 h ago</span>
+                      <span class="st"><span class="dot"></span>Relay now · Tailscale when reachable</span>
+                      <span class="t12 t2">via fra 80 ms · seen 1 h ago</span>
                     </div>
                     <span class="ibtn ibtn-sm" aria-label="More"><svg class="ic" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.8"></circle><circle cx="8" cy="8" r="0.8"></circle><circle cx="12.5" cy="8" r="0.8"></circle></svg></span>
                     <div class="row" style="flex: 1 0 100%; gap: 8px; padding: 12px 0 0 52px;">
@@ -123,8 +123,8 @@
                   <div class="li" style="align-items: flex-start; padding: 12px 16px; cursor: default;">
                     <span class="av av-40"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg></span>
                     <div class="col grow" style="gap: 2px;">
-                      <div class="row" style="gap: 8px;"><span class="t15 w6 trunc">Vyre relay · fra</span><span class="tag">Fallback</span></div>
-                      <span class="t2 trunc"><span class="mono">app.vyre.run</span> · carries sealed traffic when Tailscale is off</span>
+                      <div class="row" style="gap: 8px;"><span class="t15 w6 trunc">Vyre relay · fra</span><span class="tag">Always on</span></div>
+                      <span class="t2 trunc"><span class="mono">app.vyre.run</span> · every phone starts here, sealed end to end</span>
                       <span class="t12 t3 trunc">Holds nothing: it cannot read your data and keeps no keys</span>
                     </div>
                     <div class="col" style="align-items: flex-end; gap: 4px; flex: none;">
@@ -137,8 +137,8 @@
 
                 <div class="col" style="gap: 6px;">
                   <span class="lbl">Recent</span>
-                  <div class="row t12 t2" style="gap: 8px;"><span class="dot dot-run"></span><span class="grow trunc">alex's iPhone connected · Tailscale · direct 18 ms</span><span class="t3">14:32</span></div>
-                  <div class="row t12 t2" style="gap: 8px;"><span class="dot"></span><span class="grow trunc">alex's Pixel 8 fell back to the relay (Tailscale off on the phone)</span><span class="t3">13:10</span></div>
+                  <div class="row t12 t2" style="gap: 8px;"><span class="dot dot-run"></span><span class="grow trunc">alex's iPhone switched to Tailscale · direct 18 ms, was relay 80 ms</span><span class="t3">14:32</span></div>
+                  <div class="row t12 t2" style="gap: 8px;"><span class="dot"></span><span class="grow trunc">alex's Pixel 8 moved to the relay (Tailscale stopped answering)</span><span class="t3">13:10</span></div>
                 </div>
               </div>
 
@@ -146,11 +146,12 @@
                 <section class="card" aria-label="Network">
                   <div class="card-h"><svg class="ic t2" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg><span class="w6">Network</span><span class="st" style="margin-left: auto;"><span class="dot dot-run"></span>Healthy</span></div>
                   <div class="col" style="padding: 0 16px 12px;">
+                    <p class="t12 t2" style="padding-bottom: 8px;">Phones use the relay and switch to Tailscale when it answers.</p>
                     <div class="row" style="height: 30px; border-top: 1px solid var(--rule);"><span class="t3 grow">Tailscale</span><span>Connected · tailnet harlow</span></div>
                     <div class="row" style="height: 30px; border-top: 1px solid var(--rule);"><span class="t3 grow">MagicDNS</span><span>On</span></div>
                     <div class="row" style="height: 30px; border-top: 1px solid var(--rule);"><span class="t3 grow">HTTPS certificates</span><span>On · <span class="mono">*.ts.net</span></span></div>
                     <div class="row" style="height: 30px; border-top: 1px solid var(--rule);"><span class="t3 grow">Path health</span><span>3 direct · 1 relayed</span></div>
-                    <div class="row" style="height: 30px; border-top: 1px solid var(--rule);"><span class="t3 grow">Relay</span><span>On · used when Tailscale is off</span><span class="tog tog-on" role="switch" aria-checked="true"></span></div>
+                    <div class="row" style="height: 30px; border-top: 1px solid var(--rule);"><span class="t3 grow">Relay</span><span>On · phones start here</span><span class="tog tog-on" role="switch" aria-checked="true"></span></div>
                     <div class="col" style="gap: 6px; border-top: 1px solid var(--rule); padding-top: 10px;">
                       <div class="row" style="gap: 8px;"><span class="lbl grow">Exit node and Funnel</span><button class="btn btn-g btn-sm" type="button"><svg class="ic" viewBox="0 0 16 16"><rect x="5" y="5" width="9" height="9" rx="1.5"></rect><path d="M11 5V3.5A1.5 1.5 0 0 0 9.5 2h-6A1.5 1.5 0 0 0 2 3.5v6A1.5 1.5 0 0 0 3.5 11H5"></path></svg>Copy steps</button></div>
                       <p class="t12 t2">Vyre never changes your tailnet. Here are the steps; run them on the box yourself.</p>
@@ -194,8 +195,8 @@
               <span class="av av-40"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="4" y="1.5" width="8" height="13" rx="1.5"></rect><path d="M7 12.5h2"></path></svg></span>
               <div class="col grow" style="gap: 2px; min-width: 0;">
                 <div class="row" style="gap: 8px;"><span class="ttl trunc">alex's iPhone</span><span class="tag">This phone</span></div>
-                <span class="t13 t2 row" style="gap: 6px;"><span class="dot dot-run"></span>Tailscale · direct 18 ms to the box</span>
-                <span class="t12 t3">Web app · push on · Face ID key saved</span>
+                <span class="t13 t2 row" style="gap: 6px;"><span class="dot dot-run"></span>Tailscale now · direct 18 ms</span>
+                <span class="t12 t3">Relay if it drops · push on · Face ID key saved</span>
               </div>
             </div>
           </div>
@@ -203,10 +204,10 @@
           <div class="ph-card">
             <div class="ph-row" style="align-items: center;"><span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="4" rx="1"></rect><rect x="2" y="9" width="12" height="4" rx="1"></rect><path d="M4.5 5h.5M4.5 11h.5"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">the box</span><span class="t13 t2 trunc">Tailscale · up 6 days</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
             <div class="ph-row" style="align-items: center;"><span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><rect x="3" y="3" width="10" height="7" rx="1"></rect><path d="M1.5 12.5h13"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">alex's MacBook Pro</span><span class="t13 t2 trunc">Tailscale · direct · seen now</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
-            <div class="ph-row" style="align-items: center;"><span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><rect x="4" y="1.5" width="8" height="13" rx="1.5"></rect><path d="M7 12.5h2"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">alex's Pixel 8</span><span class="t13 t2 trunc">Relay via fra · update ready</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+            <div class="ph-row" style="align-items: center;"><span class="av av-32"><svg class="ic" viewBox="0 0 16 16"><rect x="4" y="1.5" width="8" height="13" rx="1.5"></rect><path d="M7 12.5h2"></path></svg></span><div class="col grow" style="min-width: 0;"><span class="t17 trunc">alex's Pixel 8</span><span class="t13 t2 trunc">Relay now · Tailscale when reachable</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
           </div>
           <div class="ph-card">
-            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg><div class="col grow" style="min-width: 0;"><span class="t17">Network</span><span class="t13 t2 trunc">Tailscale on · relay on</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
+            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg><div class="col grow" style="min-width: 0;"><span class="t17">Network</span><span class="t13 t2 trunc">Relay first · Tailscale when it answers</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
             <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M1.5 10.5l2.5-7h8l2.5 7v2h-13z"></path><path d="M1.5 10.5h13M11.5 12h.5"></path></svg><div class="col grow" style="min-width: 0;"><span class="t17">VyreDrive and Taildrop</span><span class="t13 t2 trunc">2 shares on the box</span></div><svg class="ic t3" viewBox="0 0 16 16"><path d="M6 3.5l4.5 4.5-4.5 4.5"></path></svg></div>
           </div>
           <button class="btn btn-p ph-btn-lg" type="button" style="width: 100%;"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"></path></svg>Add another device</button>
@@ -219,13 +220,13 @@
 
     <div class="anno">
       <span class="lbl">How it works</span>
-      <div class="anno-i"><span class="anno-n">1</span><span>Every row answers three questions: how it reaches the box (Tailscale direct, or the relay with its city and latency), when it was last seen, and which keys it holds.</span></div>
+      <div class="anno-i"><span class="anno-n">1</span><span>Every row answers three questions: how it reaches the box right now and what it switches to (phones: relay first, Tailscale when it answers), when it was last seen, and which keys it holds.</span></div>
       <div class="anno-i"><span class="anno-n">2</span><span>A lime dot is a direct path; a grey dot is relayed. The relay is listed as a device so you can see what it holds: nothing.</span></div>
       <div class="anno-i"><span class="anno-n">3</span><span>Remove is a Hold button that names the device. Removal is immediate: the presence key dies and sessions end. No undo, only re-pairing.</span></div>
       <div class="anno-i"><span class="anno-n">4</span><span>Network reads Tailscale and never writes to it. Exit node and Funnel come as steps you run, with Copy steps.</span></div>
       <div class="anno-i"><span class="anno-n">5</span><span>VyreDrive shares are read-only until you allow writes per share, mounted at <span class="mono">~/Vyre/Box/&lt;share&gt;</span>. Taildrop sends with <span class="mono">vyre send &lt;file&gt;</span>.</span></div>
       <div class="anno-i"><span class="anno-n">6</span><span>The phone's list is a pushed Settings screen. This phone sits on top with its own path, so "why is it slow" has an answer.</span></div>
-      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: checks stream in live and turn lime one by one, never a spinner wall. Rows paint from cache first, then the latency updates in place.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: checks stream in live and turn lime one by one, never a spinner wall. Rows paint from cache first, then the latency and the relay to Tailscale switch update in place, with no row jump.</span></div>
     </div>
 
   </div>

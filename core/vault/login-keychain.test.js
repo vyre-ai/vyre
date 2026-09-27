@@ -44,17 +44,12 @@ test("dialogs: a VYRE_HOME other than ~/.vyre never raises one", () => {
   assert.equal(isRealHome("/tmp/vy-deck-x"), false);
 });
 
-test("dialogs: VYRE_ALLOW_DIALOGS=1 opens a custom home, never under tests, and VYRE_NO_DIALOGS wins", async () => {
+test("dialogs: VYRE_ALLOW_DIALOGS=1 opens a custom home, never under tests, and VYRE_NO_DIALOGS wins", () => {
   const custom = { VYRE_HOME: "/Users/alex/vyre-home", VYRE_ALLOW_DIALOGS: "1" };
   assert.equal(dialogsAllowed(custom), true, "a deliberate custom home may raise one");
   assert.equal(dialogsAllowed({ ...custom, NODE_TEST_CONTEXT: "child" }), false, "never under tests");
   assert.equal(dialogsAllowed({ ...custom, VYRE_NO_DIALOGS: "1" }), false, "VYRE_NO_DIALOGS wins");
   assert.equal(dialogsAllowed({ VYRE_HOME: "/Users/alex/vyre-home", VYRE_ALLOW_DIALOGS: "yes" }), false, "only the exact value 1");
-  // The Capsule carries its own copy of the rule; it must agree.
-  const capsule = await import("../../local/capsule/lib/dialogs.js");
-  for (const env of [custom, { ...custom, NODE_TEST_CONTEXT: "child" }, { ...custom, VYRE_NO_DIALOGS: "1" }, { VYRE_HOME: "/tmp/vy-deck-x" }, {}]) {
-    assert.equal(capsule.dialogsAllowed(env), dialogsAllowed(env), JSON.stringify(env));
-  }
 });
 
 test("a temp home's vyred outside tests keeps its vault key in a file and never runs security", { timeout: 60_000 }, async t => {

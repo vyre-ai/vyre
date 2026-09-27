@@ -16,6 +16,8 @@ export function send<T = unknown>(tool: string, input?: Record<string, unknown>,
 /** Send a write waiting on presence again, with a proof bound to its exact input. */
 export function prove(key: string, presence: string): Promise<void>;
 export function disconnect(): Promise<void>;
+/** A hint the page may not outlive (push.seen on hide): keepalive on the web, one call on the phone. Never thrown. */
+export function beacon(tool: string, input: Record<string, unknown>): Promise<void>;
 /** Sign in as the person on this box. */
 export function signIn(): Promise<void>;
 /** End the person session on this box. */

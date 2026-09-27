@@ -101,7 +101,7 @@ services:
     depends_on:
       - tailscale
     restart: unless-stopped
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     user: "1000:1000"
     labels:
       run.vyre: "1"
@@ -146,7 +146,7 @@ services:
     command: ["node", "/opt/vyre/core/dockerproxy/main.js"]
     profiles: ["computers"]
     restart: unless-stopped
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     user: "1000:1000"
     group_add:
       - "${DOCKER_GID:-999}"

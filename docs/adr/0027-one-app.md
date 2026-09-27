@@ -147,10 +147,14 @@ A hosted page that could change under the user would be a way into every box. So
 
 ### 4a. The Android APK from the box
 
-CI builds an unsigned release APK and `android.json` (`version`, `versionCode`, `sha`,
-`sha256`, `size`, `minSdk`). The box signs it with the owner's own release key from the vault
-(made on the first `vyre phone add`, so updates install over each other) and serves
-`/apps/android.json` and `/apps/android/<file>.apk` to the owner's devices only.
+CI builds an unsigned release APK, `vyre-<version>-<sha7>.apk`, and `android.json` (`version`,
+`versionCode`, `sha`, `sha256`, `size`, `minSdk`, `built`, `file`). The box signs it (APK
+Signature Scheme v2 and v3, in plain JavaScript, so no JDK on the box; minSdk 24 or higher) with
+the owner's own release key: an EC P-256 key and a self-signed certificate the box makes the
+first time anything needs them and keeps in its vault, so updates install over each other. It
+serves `/apps/android.json` (with the signed file's `sha256` and `size`, and `cert_sha256`) and
+`/apps/android/<file>.apk` to the owner's devices only. If the key is lost, the box makes a new
+one, `cert_sha256` changes, and re-pairing the phone reinstalls the app.
 `vyre phone add --android --usb` checks the sha256 and installs over adb; the app checks the
 manifest on foreground, at most hourly, and offers the update through the system installer.
 

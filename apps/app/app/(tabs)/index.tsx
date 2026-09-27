@@ -10,6 +10,7 @@ import { useHidden, useNeeds, useNeedsFrom, useRefused } from "../../src/state/n
 import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
 import { List } from "../../src/ui/List";
+import { NotifyBar } from "../../src/ui/NotifyBar";
 import { Row, ROW_HEIGHT } from "../../src/ui/Row";
 import { Empty, Screen } from "../../src/ui/Screen";
 import { SignInBar } from "../../src/ui/SignInBar";
@@ -124,6 +125,7 @@ export default function Now() {
   return (
     <Screen title="Now">
       <SignInBar />
+      <NotifyBar />
       {header}
       {list.length === 0 ? (
         <Empty text={from === "none" ? " " : "Nothing needs you"} />

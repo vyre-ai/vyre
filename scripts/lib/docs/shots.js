@@ -21,13 +21,12 @@
 //   world    which sample world renders it: deck (the Deck, from deck/test/world.js), onboard
 //            (a fresh box in its onboarding, with fake tailscale and claude), fresh (that same box's
 //            Deck once its setup is finished, with no assistant yet), glass (a box with
-//            a folder of sample files open to Glass), capsule (the Capsule's own page, its bridge
-//            answered by the deck world's vyred)
-//   url      the route to open (deck, capsule), or the onboarding step (#you ... #devices)
+//            a folder of sample files open to Glass)
+//   url      the route to open (deck), or the onboarding step (#you ... #devices)
 //   width, height   the CSS viewport; the PNG is twice that (device scale 2). height "fit" grows
 //            the viewport until the Deck's view no longer scrolls, up to maxHeight.
 //   phone    true: a phone-sized touch viewport
-//   themes   ["light", "dark"], or ["dark"] for a surface with one look (onboarding, Capsule)
+//   themes   ["light", "dark"], or ["dark"] for a surface with one look (onboarding)
 //   script   JavaScript run in the page before the shot, as the body of an async function with
 //            wait(ms), until(expr, ms), click(selector), type(selector, text) and go(path)
 //   clip     a CSS selector: crop to that element (plus pad pixels) instead of the viewport
@@ -48,7 +47,6 @@ const NOW = ["deck/views/now.js", "deck/css/views/now.css", "deck/js/needs.js"];
 const PAIR = ["deck/js/pair.js", "deck/css/pair.css", "core/link/box.js"];
 const PHONE = ["deck/js/phone-setup.js", "deck/css/views/phone-setup.css"];
 const ONBOARD = ["deck/onboard/onboard.js", "deck/onboard/onboard.css", "deck/onboard/index.html", "deck/css/deck.css", "core/onboard/index.js"];
-const CAPSULE = ["local/capsule/app/capsule.html", "local/capsule/app/capsule.js", "local/capsule/app/capsule.css", "local/capsule/lib/bridge.js", "local/capsule/lib/route.js"];
 const BOTH = ["light", "dark"];
 
 // Page scripts. The held email is the gate item sent via "mail"; its id is new every run.
@@ -60,13 +58,6 @@ const HELD_EMAIL = `const r = await (await fetch("/v1/tools/gate.held", { method
 const SEARCH = `const s = document.querySelector("header input[type=search], header input");
   s.spellcheck = false; s.focus(); s.value = "harlow intake"; s.dispatchEvent(new Event("input", { bubbles: true }));
   await wait(1500);`;
-const CAP_TYPE = text => `await until('window.__capReady');
-  const box = document.getElementById("box");
-  box.focus(); box.value = ${JSON.stringify(text)}; box.setSelectionRange(box.value.length, box.value.length);
-  box.dispatchEvent(new Event("input", { bubbles: true }));
-  await wait(2500);`;
-
-const KEY = key => `document.getElementById("box").dispatchEvent(new KeyboardEvent("keydown", { key: ${JSON.stringify(key)}, bubbles: true, cancelable: true }));`;
 
 /** @type {any[]} */
 export const SHOTS = [
@@ -203,28 +194,6 @@ export const SHOTS = [
     shows: [...DECK, ...NOW, ...PAIR],
     alt: "The card on Now when a Mac asks to pair: alex-mbp, a field for the code the Mac shows, Approve and Deny.",
     page: "using/tailscale.md", heading: "Connect your Mac to the box" },
-
-  // ---- The Capsule ----
-  { name: "capsule-ask", dir: "using", world: "capsule", url: "/capsule.html", width: 728, height: 520, themes: ["dark"], clip: "#cap", pad: 24,
-    script: CAP_TYPE("harlow intake"), shows: [...CAPSULE, "local/capsule/lib/launcher.js"],
-    alt: "The Capsule with harlow intake typed: the Harlow intake thread in Harlow Legal, and the line to ask juno, your assistant.",
-    page: "using/capsule.md", heading: "Ask your assistant, or a model" },
-  { name: "capsule-mention", dir: "using", world: "capsule", url: "/capsule.html", width: 728, height: 520, themes: ["dark"], clip: "#cap", pad: 24,
-    script: CAP_TYPE("@ki"), shows: CAPSULE,
-    alt: "The Capsule completing @ki to kit, the agent, so what you type next goes to it.",
-    page: "using/capsule.md", heading: "Talk to an agent or a session" },
-  { name: "capsule-open", dir: "using", world: "capsule", url: "/capsule.html", width: 728, height: 520, themes: ["dark"], clip: "#cap", pad: 24,
-    script: `await until('window.__capReady'); await wait(1200);`, shows: CAPSULE,
-    alt: "The Capsule just opened: an empty box, and a line saying two things wait on you.",
-    page: "using/capsule.md", heading: "Install it" },
-  { name: "capsule-waiting", dir: "using", world: "capsule", url: "/capsule.html", width: 728, height: 520, themes: ["dark"], clip: "#cap", pad: 24,
-    script: `await until('window.__capReady'); await wait(800); ${KEY("ArrowUp")} await wait(1200);`, shows: CAPSULE,
-    alt: "The Capsule listing what waits on you: an email to dana@harlowlegal.com and a payment for Northwind Bakery, both held at the Gate.",
-    page: "using/capsule.md", heading: "Answer what is waiting on you" },
-  { name: "capsule-held", dir: "using", world: "capsule", url: "/capsule.html", width: 728, height: 720, themes: ["dark"], clip: "#cap", pad: 24,
-    script: `await until('window.__capReady'); await wait(800); ${KEY("ArrowUp")} await wait(1000); ${KEY("Enter")} await wait(2000);`, shows: CAPSULE,
-    alt: "The held email to Dana opened in the Capsule: click any line to change it, then Send or Discard, with why it was held.",
-    page: "using/capsule.md", heading: "Answer what is waiting on you" },
 ];
 
 /** CLI output is shown as text, not pictures: these are the commands docs-shots --cli prints from the sample world. */
