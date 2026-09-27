@@ -44,43 +44,44 @@ the contract in ADR 0025.
 - planner.ringing: what is ringing now, shaped like planner.fired, for surfaces that connect late.
 - Tests on the test box: 58 of 58 across core/planner, push, the Deck panel and the CLI.
 
+## Done (2026-09-27, session 3)
+- Agent rule (1437a6b): anyone adds alarms, timers, reminders, todos and notes with no prompt;
+  the person changes anything; an agent changes, finishes, snoozes, dismisses and deletes only
+  what it added (item.source === its source); agents never add events; settings stay the
+  person's. source is `cli`/`deck`/..., `mcp` (unnamed session), `agent:<name>`, `module:<name>`;
+  `added_by` (migration 3, source_name) is the agent's name unless it is the assistant (read from
+  agents.list, cached a minute) or an unnamed session. planner.added/fired/ringing carry
+  added_by; the Deck shows "from kit". Silent cap: 200 adds an hour per source, code `busy`.
+  A paired Mac forwards with `as { source, name }`, honoured only on a person's call; the old
+  Mac-side checks (kindOnBox) are gone.
+- One parser (1437a6b, subagent): parse.js returns { kind, title, at (ms), tz, duration?, repeat? }
+  plus the old fields add() reads, { ambiguous, reason }, or null; `kind` hint; the capsule-apps
+  router's rules and route.test.js time cases as fixtures (170f3dd). planner.parse is `local`:
+  answers on the Mac, never forwarded. add() refuses ambiguous text (code `ambiguous`); a
+  reminder at the current minute is accepted.
+- Push (b8089dc): `planner-ack` { kind, tag } once per pushed firing on planner.acked, normal
+  urgency; push.settings planner_label (off by default) adds the item's words as `body`.
+- deck/sw.js (d54d2c1, pwa's file, smallest change): planner-ack closes the tag and shows
+  nothing; `body` shown when present. Test in deck/test/pwa.test.js.
+- Docs (96df03a): docs/using/planner.md (draft, owner docs) in the nav; ADR 0025 front matter and
+  nav; reference regenerated. docs-check: only the 180 shots mtime warnings remain (not planner).
+- Presence: confirmed no planner tool is on presence HUMAN_ONLY and none declares presence.
+- cc-plugin's planner test (test/cc-plugin.test.js, real planner) passes against this branch.
+- Tests on the test box: 63 of 63 (core/planner/*, push, deck planner + pwa, CLI planner).
+- Perf (the test box, load average 16 to 19): CPU p95 0.00%, RSS mean 130.2 MB, max 155.7 MB
+  (budget 150; FAIL as before, at the budget's edge with or without the planner).
+
 ## Doing
-- Nothing in flight (session saved 2026-09-27). Resume from Next.
+- Nothing in flight. Resume from Next.
 
 ## Next
-1. Agent rule (the user's decision, replaces the lead's earlier one and slice 1's code): anyone,
-   person or agent, may add notes, reminders, todos AND alarms with no permission or Touch ID.
-   No visible limit; a silent runaway cap of about 200 adds an hour per agent. Store source =
-   caller; show it only when the caller is not the user or their own assistant/session (caller
-   `mcp:agent:<name>` whose kind isn't assistant); show the agent's real name. Editing,
-   completing, snoozing and deleting the person's own items: person-only, no prompt. Agents may
-   edit only items they added. Today's code (AGENT_KINDS, snooze person-only) must change; tests
-   for each rule.
-2. pwa asks: (a) confirm planner.done and planner.snooze are not on the presence list and work
-   from the SW with x-vyre-caller: deck; (b) on an ack, send a tiny push {kind: "planner-ack",
-   tag} so the SW closes that tag with no page open (content-free, ADR 0011 compatible);
-   (c) planner.get takes {firing} (it already does; tell pwa).
-3. capsule-apps: planner.parse is the single parser. (a) run planner.parse locally on a Mac,
-   never forwarded (pure, under 10 ms); only writes forward; (b) port their hardened rules from
-   origin work/capsule-apps local/apps/route.js (parseDuration number words and caps, fixed(),
-   reminderParts middle-of-sentence rule, "tonight at 12/1-4", current minute, "today" after
-   09:00, trailing "please") and reuse route.test.js cases as fixtures; (c) return {kind, title,
-   at (UTC ms), tz, duration?, repeat?} or {ambiguous, reason}; accept a `kind` hint. Then send
-   them branch and hash.
-4. cc-plugin: answer their contract. Real shapes: planner.add {text | kind+title, at (ISO, ms or
-   words via text), project?, thread?} returns the item {id, kind, title, at, ...}; planner.agenda
-   {from?, to?, next?, busy?} returns {tz, from, to, entries, todos}. Consider accepting their
-   {day, days} on agenda as sugar. Delivery of a due reminder: push + Capsule + Deck (planner.fired),
-   not a Claude session.
-5. Push label on lock screen: an opt-in setting, off by default (lead's default until the user
-   answers). Email/SMS fallback: later.
-6. After merge: draft docs/using/planner.md for docs (format in docs/CONTRIBUTING-DOCS.md on
-   work/docs; describe merged behaviour only; the new agent rule; no runaway-cap mention).
+1. Wait for answers from pwa, capsule-apps, cc-plugin (sent 2026-09-27).
+2. If the user wants it: CLI prints the parser's `reason` on ambiguous words (today: "not understood").
+3. Email/SMS fallback (later, needs the user's go and the Gate).
+4. Known limit: the planner-ack push is only sent for firings pushed since vyred started.
 
 ## Contracts owed
-- cc-plugin: confirm planner.add / planner.agenda shapes (Next 4).
-- capsule-apps: parse.js with their rules, local parse on the Mac, branch + hash (Next 3).
-- pwa: presence-list confirmation, planner-ack push, planner.get {firing} (Next 2).
+- None open. Sent: cc-plugin shapes, capsule-apps parse branch + hash, pwa presence + ack + label.
 
 ## Decisions made in slice 1 (not in the ADR text)
 - escalate_max counts rings after the first: 3 means 4 rings in all.
@@ -118,6 +119,12 @@ the contract in ADR 0025.
 - switchboard (push owner): the `planner` kind in core/push (listed under Changed contracts).
 
 ## Changed contracts
+- planner (own): agents add alarms and timers; snooze, dismiss and delete open to agents for
+  their own items; items gain added_by; planner.parse returns at (ms), tz, duration and
+  {ambiguous, reason}, takes kind, answers locally; forwarded calls carry `as`.
+- core/push (switchboard): planner-ack push; push.settings planner_label.
+- deck/sw.js (pwa): planner-ack closes the tag; body shown when present.
+- docs/nav.json (docs): using/planner.md and adr/0025-planner.md.
 - planner.agenda (own): a calendar entry's `source` is the Google account name, no longer
   "calendar"; entries gain start, all_day, where, url on planner entries too. ADR 0025 contract
   table updated. planner.fired for a calendar event adds `account` and `start`.
