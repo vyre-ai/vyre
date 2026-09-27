@@ -511,7 +511,7 @@ test("computers: idle hand-back is 5 min by default, the owner's to change, live
   s.clock.t += 10_000; await s.h.sweep();
   assert.deepEqual((await s.module("computers.may-act", { agent: "kit" })).data, { ok: true });
   const back = s.events().filter(e => e.type === "computer.handed-back");
-  assert.deepEqual(back.map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", why: "idle", idle_ms: 120_000 }]);
+  assert.deepEqual(back.map(e => e.payload), [{ agent: "kit", surface: "glass:laptop", why: "idle", by: "owner", device: "glass", reason: "idle", idle_ms: 120_000 }]);
   assert.equal((await s.cli("computers.handback.set", { minutes: 0 })).data.minutes, 0);
 });
 

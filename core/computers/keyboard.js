@@ -192,20 +192,28 @@ export class Keyboard extends EventEmitter {
     const t = this.takeovers.get(agent);
     if (!t) return;
     this.takeovers.delete(agent);
-    this.finish(agent, t, why);
+    this.finish(agent, t, why, undefined, how);
     if (how && t.thread) {
+      // Typed to the agent, so it names the owner from the agent's side; surfaces phrase the
+      // event's fields themselves ("Your take-over ended...").
       const from = t.surface.split(":")[0];
-      const text = how === "chat" ? `The take-over from ${from} ended when the thread moved to chat` : `The take-over from ${from} ended when the thread's lease was released`;
+      const text = how === "chat" ? `The owner's take-over (from ${from}) ended when the thread moved to chat` : `The owner's take-over (from ${from}) ended when the thread's lease was released`;
       Promise.resolve(this.call("threads.send", { thread: t.thread, text }))
         .then(r => { if (r && r.error && r.error.code !== "no_such_tool") this.log(`could not note the lease release in ${agent}'s thread: ${r.error.message}`); })
         .catch(() => {});
     }
   }
 
-  /** @param {Takeover} t @param {string} why @param {number} [idle] the idle setting, for why "idle" */
-  finish(agent, t, why, idle) {
+  /**
+   * @param {Takeover} t @param {string} why @param {number} [idle] the idle setting, for why "idle"
+   * @param {"chat"|"released"} [how] for why "lease released"
+   */
+  finish(agent, t, why, idle, how) {
     this.disarm(t);
-    const payload = why === "idle" ? { agent, surface: t.surface, why, idle_ms: idle } : { agent, surface: t.surface, why };
+    // Structured, for surfaces to phrase: who had it (only the owner can take over; guests and
+    // agents are refused), from what kind of device, and the reason in one word.
+    const reason = why === "gave back" ? "gave back" : why === "idle" ? "idle" : why === "lease expired" ? "expired" : how === "chat" ? "chat" : "released";
+    const payload = { agent, surface: t.surface, why, by: "owner", device: t.surface.split(":")[0], reason, ...(why === "idle" ? { idle_ms: idle } : {}) };
     this.send("computer.handed-back", payload, t.thread ? { thread: t.thread } : {});
     if (why === "idle" && t.thread) {
       const text = `Handed back to ${agent} after ${Math.round(Number(idle) / 60_000)} min idle`;
