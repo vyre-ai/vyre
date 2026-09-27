@@ -1,6 +1,6 @@
 ---
 title: Vyre phone
-summary: The design for Vyre on a phone, the PWA first and then the native apps, built on the Deck's tokens.
+summary: The design for Vyre on a phone, one Expo app for iOS, Android and the web, built on the Deck's tokens.
 audience: builders
 owner: mobile
 status: draft
@@ -8,8 +8,8 @@ status: draft
 
 # Vyre phone
 
-The design for Vyre on a phone: the PWA first, then the native iOS and Android apps. Both build
-from this file. Colours and type come from [TOKENS.md](TOKENS.md) and are pasted verbatim; this
+The design for Vyre on a phone: one Expo app (React Native) for iOS, Android and the web, like
+Paseo's (the user's decision, 2026-09-27; mobile leads ADR 0027). It builds from this file. Colours and type come from [TOKENS.md](TOKENS.md) and are pasted verbatim; this
 file adds only phone roles, sizes and behaviour. Desktop (the Deck) shares the same tokens and
 chat items, so a card looks the same on both.
 
@@ -103,11 +103,17 @@ Text on tints: on paper, `--label` measures 4.48:1 on `--recall-wash` and `--sig
 just under AA, so meta text on a tinted block uses `--text-2` instead. Input
 placeholders are `--label` at full opacity (browsers default to a lighter grey that fails).
 
-Theme follows the system (`prefers-color-scheme`), with Dark, Paper and System in Settings.
+Theme follows the system (`useColorScheme`), with Dark, Paper and System in Settings.
+
+Every token in this file is a plain value the Expo app takes as is: colours as hex or `rgba()`
+strings, sizes, line heights, radii and spacing as unitless numbers (px here are dp/pt), weights
+as the strings "400" and "600", tracking as a number of points (-0.015em at 22 is -0.33). The app
+keeps them in one `tokens.ts` with `dark` and `paper` objects under the role names without the
+dashes (`--text-2` is `text2`); nothing in it is computed from a CSS variable at runtime.
 
 ### Type
 
-Sans is Instrument Sans (400, 500, 600). Mono is JetBrains Mono (400, 500). Native apps bundle
+Sans is Instrument Sans (400, 500, 600). Mono is JetBrains Mono (400, 500). The app bundles
 both fonts and scale them with Dynamic Type (iOS) and font scale (Android); the sizes below are
 the default "Large" size.
 
@@ -133,7 +139,7 @@ the phone departs from TOKENS.md, for the native feel the user picked.
 ### Space, shape, lines
 
 - 4 px grid. Use 4, 8, 12, 16, 24, 32. Side gutter 16. Safe areas come from the device
-  (`env(safe-area-inset-*)`); the mockups use 59 top and 34 bottom.
+  (react-native-safe-area-context; `env(safe-area-inset-*)` on the web); the mockups use 59 top and 34 bottom.
 - Radii: chip 4, filter chip 8, code block 6 (inline) or 8 (sheet), card 10, button 10 (44 tall)
   or 12 (46 and 54 tall), segmented control 9 (segments 7), sheet 14 (top corners), agent tile 8
   (at 32 px) or 11 (at 40), chat bubble 18, the Capsule and round buttons fully round. Cards and
@@ -141,12 +147,15 @@ the phone departs from TOKENS.md, for the native feel the user picked.
 - Hairline 1 px `--rule` between rows; `--rule-strong` on card, input and outline-button borders.
 - One shadow, for things that float (the Capsule and sheets):
   dark `inset 0 1px 0 rgba(241,238,230,0.06), 0 24px 48px -24px rgba(0,0,0,0.6)`,
-  paper `0 24px 48px -24px rgba(20,19,17,0.28)`.
+  paper `0 24px 48px -24px rgba(20,19,17,0.28)`. In React Native: `boxShadow` with the same
+  string (new architecture), and `elevation: 12` as the Android fallback; drop the inset line
+  where `boxShadow` is not available.
 - No gradients, glows, or blur behind content. The Capsule and sheets are opaque `--panel`.
 - Icons: inline stroke SVG on a 24 grid, 1.5 stroke (1.7 at 26 px and above), round caps and
   joins, `currentColor`. Sizes 16, 20, 22, 26. The set the phone needs: back, more, plus, close,
   search, mic, send (arrow up), stop, check, face-id, terminal, eye, pause, clock, file, chat.
-- Touch targets are 44 x 44 at least, even where the drawing is smaller.
+- Touch targets are 44 x 44 at least, even where the drawing is smaller (`hitSlop` makes up the
+  difference, 8 on every side for a 28 px control).
 
 ## 3. The shell
 
@@ -168,7 +177,11 @@ the Capsule, opened.
   one in `--text`, the others in `--label`. The avatar (34 px circle, the owner's initial) on the
   right opens Settings as a sheet. On Agents the avatar's place holds "+" (new agent). The header
   does not collapse; it stays 48 tall.
-- **Pages** swipe left and right with the page label snapping under the finger. Tapping a label
+- **Pages** swipe left and right with the page label snapping under the finger. A swipe is a
+  page swipe once it moves 15 horizontally and more horizontally than vertically (so a list still
+  scrolls); it commits past a third of the width or at 500 pt/s, else springs back. Content that
+  scrolls sideways (a code block, filter chips) keeps the swipe while it can scroll. On the web
+  only a 32 px edge strip starts a page swipe, so text selection still works. Tapping a label
   jumps there. The app reopens on the page it was on, except that it opens on Now whenever
   something needs you.
 - **The Capsule** floats 12 from each side, sitting on the bottom safe area, 56 tall, `--panel`
@@ -313,12 +326,15 @@ Action area (8 between buttons, 34 bottom):
   `presence: {required, covered}` (owned by e2e, from presence's rules). The glyph and "with
   Face ID" show only when `required` is true and `covered` is false. The phone never guesses
   from the tool name.
-- A proof is the same box-verified check per ADR 0004 on every surface. The PWA uses a WebAuthn passkey assertion. The native apps use a device-key signature
+- A proof is the same box-verified check per ADR 0004 on every surface. The web build uses a WebAuthn passkey assertion. The iOS and Android builds use a device-key signature
   after Face ID or the fingerprint (ADR 0018): a P-256 key in the Secure Enclave or StrongBox,
   enrolled once through the Deck's passkey, signs the same message the Capsule signs, and the box
   checks it as method `device`. (A store app cannot assert passkeys for a self-hosted box's
   domain, so native never uses platform passkeys.) On success the sheet closes, the row
   collapses and the next item's row pulses once. On cancel nothing changes.
+- While the answer travels, the tapped button shows a spinner and both buttons are disabled.
+  If the box has not confirmed in 15 s, the sheet stays open with "Didn't reach your box. Try
+  again." in Meta `--text-2`, and nothing is lost.
 - Verbs: the Deck's gate card says Allow once / Always in <project> / Deny. The phone says
   "Approve" (the user's pick); both send the same decision, `allow`.
 
@@ -355,7 +371,16 @@ gap of more than an hour ("Today 12:01"):
   action and target ("Edited reports/q3.tsx", "Ran npm test"), the result on the right in
   `--label` ("+412 -38", "42 passed"). Tap expands the row in place: the full command, output
   (mono 12/19, 12 lines then "Show all"), or the diff.
-- **Streaming**: the reply grows in 17/24 with a 2 x 19 `--text` caret at the end.
+- **Streaming**: the reply grows in 17/24 with a 2 x 19 `--text` caret at the end. The box sends
+  text in bursts; the app reveals what it has over 150 ms at the display rate (at least one
+  character a frame), so the reply flows instead of jumping, and never lags more than 250 ms.
+- **Following**: the transcript is an inverted list, so it opens at the newest item. It follows
+  new items while you are within 32 of the bottom; scrolling up more than 24 stops following,
+  and a 44 px round "Jump to latest" button (`--panel`, `--rule-strong` border, a down chevron)
+  appears 12 above the composer on the right. Tapping it scrolls down and follows again. Older
+  items load as you come within 96 of the top.
+- **Tool runs**: three or more tool rows in a row collapse to one row ("Edited 4 files, ran 2
+  commands") that expands in place. A single failed row never collapses.
 - **Approval card (an ask in this session)**: `--panel` fill, `--rule-strong` border, no wash,
   radius 12, 14 padding, 10
   between parts. A 7 px `--beacon-dot` and "<agent> is waiting on you" in 13/600
@@ -371,7 +396,11 @@ Composer: a bar pinned above the keyboard or the bottom safe area, `--bg` fill, 
 8 x 12 padding: a 36 px round attach button (`--hover`, plus glyph), the input (38 tall, radius
 19, `--rule-strong` border, 17, placeholder "Message <agent>"), and a 36 px round button: send
 (arrow up, `--primary-bg`) once there is text, stop (an 11 px square on `--text`) while a reply
-streams. The Capsule is hidden in a pushed chat. Sending resumes the session here (the lease moves
+streams. The Capsule is hidden in a pushed chat. The composer rides the keyboard by a transform (not a
+relayout each frame), and the transcript gets the same bottom inset, so the last line stays in
+view. On iOS keyboard heights under 120 (the prediction bar alone) are ignored. The input grows
+to 6 lines, then scrolls. A fast flick down the transcript (over 1.5 pt/ms) closes the keyboard;
+a slow drag to read does not. Sending resumes the session here (the lease moves
 to this phone); if another surface holds it, one Meta line above the composer says who, and
 sending takes it.
 
@@ -435,7 +464,8 @@ Under the header, one Secondary `--label` line: "1 working, 1 idle".
 | Row collapse after an answer | Height to 0 over 180 ms ease-out, rows below move up |
 | Sheet open and close | iOS sheet presentation; page behind scales to 0.94 |
 | Expand a tool row or diff | 180 ms ease-out |
-| Page swipe | Follows the finger; snaps with a spring; label colour crossfades |
+| Page swipe | Follows the finger; settles in 220 ms, cubic-bezier(0.25, 0.1, 0.25, 1); label colour crossfades |
+| Long press on a row | 450 ms still (6 of slop) opens the row menu (Open, Archive, Rename), with a selection haptic |
 | Streaming | Tokens appear as they arrive, no fade; caret blinks at 1 s |
 | Open session highlight | `--match` fill on the target row, fades out over 1.2 s |
 | Attention dot on arrival | One pulse (scale 1 to 1.6 and back, 400 ms), then still |
@@ -443,16 +473,16 @@ Under the header, one Secondary `--label` line: "1 working, 1 idle".
 Reduce Motion: no scale behind sheets, no pulse, swipes and pages crossfade instead of slide.
 Nothing animates in the background.
 
-## 10. Haptics (native; the PWA uses none on iOS, and `navigator.vibrate(10)` on Android only for commits)
+## 10. Haptics (iOS and Android through expo-haptics; the web uses none on iOS, and `navigator.vibrate(10)` on Android only for commits)
 
-| Moment | iOS | Android |
-|---|---|---|
-| Swipe crosses the commit point | `UIImpactFeedbackGenerator(.medium)` | `CONFIRM` |
-| Approval or send succeeds | `UINotificationFeedbackGenerator(.success)` | `CONFIRM` |
-| Deny, discard | `.warning` | `REJECT` |
-| Page label snaps | `UISelectionFeedbackGenerator` | `CLOCK_TICK` |
-| Hold-to-talk starts and stops | `.soft` impact | `VIRTUAL_KEY` |
-| A new item needs you while the app is open | `.warning`, once, only if Now is on screen | `REJECT` |
+| Moment | expo-haptics |
+|---|---|
+| Swipe crosses the commit point | `impactAsync(Medium)` |
+| Approval or send succeeds | `notificationAsync(Success)` |
+| Deny, discard | `notificationAsync(Warning)` |
+| Page label snaps, long-press menu opens | `selectionAsync()` |
+| Hold-to-talk starts and stops | `impactAsync(Soft)` |
+| A new item needs you while the app is open | `notificationAsync(Warning)`, once, only if Now is on screen |
 
 ## 11. States
 
@@ -460,7 +490,17 @@ Nothing animates in the background.
   only; later refreshes keep the old content until the new arrives.
 - **Offline** (box unreachable): one line under the header, `--text-2`, "Can't reach your box.
   Showing what it said at 12:04.", with Retry. Actions that need the box are disabled with the
-  reason on press.
+  reason on press. The app keeps the last Now, chat list and open transcripts on the device, so
+  it opens with content even offline.
+- **Reconnecting**: a small pill under the header ("Reconnecting", then "Updating") with a
+  spinner, never a blocking screen, gone when the catch-up lands. Retries back off from 2 s to
+  60 s and stop while the app is in the background.
+- **Notifications**: a push only when something needs you (an ask, a held item, a question) or a
+  watched session finishes. None when you used Vyre on any surface in the last 3 minutes (the
+  box shows it in the open surface instead), none for an item already on your screen, and none
+  for errors. Tapping one opens the app on that item's detail sheet (also from a cold start).
+  No action buttons in the notification: an answer always happens in the app, where the
+  presence check can run.
 - **Mac away**: its sessions stay, read-only, with a machine chip; Open session still works.
 - **Empty pages**: one sentence and a way forward. Chats: "No sessions yet." plus the Capsule.
   Agents: "Only <assistant> so far." plus "New agent".
@@ -492,23 +532,24 @@ Nothing animates in the background.
   most 4 new lines a second.
 - Transcripts load the last 50 items and page backwards on scroll.
 
-## 14. What each build does
+## 14. What the build does
 
-**pwa** (deck/, the phone layout under 600 px):
+One Expo app (mobile leads; ADR 0027) for iOS, Android and the web. The pwa team's Deck phone
+layout (deck/, under 600 px) stays until the Expo web build replaces it. Order:
 
-1. Shell: header with pages, horizontal page swipe (scroll-snap), the Capsule; remove the tab
-   bar and the Projects tab.
-2. Now: the Needs you list with swipe and Undo, the Working card, From memory; move setup and the
-   first-passkey card out of Now into onboarding plus the one-row reminder.
-3. Detail sheet for ask, draft and question, with Open session.
+1. Shell: header with pages, the page swipe (react-native-gesture-handler and reanimated), the
+   Capsule.
+2. Now: the Needs you list with swipe and Undo, the Working card, From memory; setup lives in
+   onboarding plus the one-row reminder.
+3. Detail sheet for ask, draft and question, with Open session (@gorhom/bottom-sheet at a large
+   snap point; the native sheet presentation on iOS where the router offers it).
 4. Chat: nav bar, bubbles and agent messages, the tool-row box, the approval card, the composer
-   with stop.
+   with stop (react-native-keyboard-controller for the keyboard).
 5. Find as the Capsule sheet: search field, segmented scope, Ask, Run, From memory, Chats, Files.
 6. Agents: the working-agent card with its console, idle rows, Scheduled, and the live view.
 
-**mobile** (native iOS and Android): the same order, with platform sheets
-(`.presentationDetents([.large])`, Material bottom sheet), system swipe actions, the haptics in
-section 10, Dynamic Type, and the bundled fonts.
+Throughout: the haptics in section 10, Dynamic Type and font scale, the bundled fonts (expo-font),
+and the tokens from one `tokens.ts` (section 2).
 
 ## 15. Contracts
 

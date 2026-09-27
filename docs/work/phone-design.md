@@ -3,6 +3,12 @@
 Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: phone-design
 
 ## Done
+- Expo pivot (lead, 2026-09-27): phone.md now specs one Expo app for iOS, Android and web
+  (mobile leads ADR 0027). Tokens are plain values for one tokens.ts (section 2). Borrowed from
+  Paseo's app: page-swipe thresholds, inverted transcript with follow and Jump to latest,
+  paced streaming reveal, collapsed tool runs, keyboard by transform and flick-to-dismiss,
+  15 s answer timeout, long-press menu, reconnect pill, offline cache, push rules, expo-haptics.
+  Not borrowed: its 2 s host checks (breaks light by default) and its missing presence check.
 - docs/design/phone.md: the phone design. The user's pick (2026-09-27): Direction B's shell (no
   tab bar, swiped pages, the floating Capsule) with Direction A's screens (Chat, Find, Agents,
   the approval sheet), and A's grouped Needs you list with swipe and a detail sheet with Open
@@ -35,6 +41,9 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 3. Review pwa and mobile builds against phone.md as screenshots arrive.
 
 ## Needs from others
+- box / web-push owner (ADR 0011): phone.md section 11 Notifications asks for no push when the
+  owner used any surface in the last 3 minutes or the item is on screen, none for errors, and a
+  tap that opens the item's sheet (Paseo's rule). Confirm or say who owns it.
 - e2e: `presence: {required, covered}` on every ask and held item (lead decided 2026-09-27;
   a git push is an ordinary ask, no proof). phone.md section 5 reads it.
 - chat: the diff summary (detail.changes on Edit/Write asks; changes + totals on held pushes),
