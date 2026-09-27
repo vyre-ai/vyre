@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The cohesion drift list starts from batch 4's code
+
+- test/cohesion-drift.test.js freezes the model and policy copies batch 4 brought (the Deck's
+  settings keys, the Capsule's AutoAsk, the iOS app, the phone's person.ts) and lowers
+  AgentDestinations to 2; each surface should read sessions.models or presence instead.
+  docs/build/tips.md no longer spells `context.module`, which reads as a tool now that the
+  context module exists.
+
 #### Chat's Design A styles on pwa's tokens and phone query
 
 - deck/chat/chat.css, term.css and deck/css/views/settings-keys.css: the phone breakpoints use the

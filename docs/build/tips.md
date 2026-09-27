@@ -69,7 +69,7 @@ rules are in `core/tips/pick.js`, and every rule has a test.
 1. Nothing when tips are off, when `busy` is set (an ask, a draft waiting, a running turn, typing),
    within the gap since this surface's last tip (30 minutes by default), within two minutes of a
    tip on any surface, or once six were shown in 24 hours.
-2. Tips about `context.module` with trigger `on-use`: `first-use` while the person has used it
+2. Tips about the module named in the call's `context` with trigger `on-use`: `first-use` while the person has used it
    fewer than three times, then `power` first.
 3. When `idle`: `never-used` tips about modules they have not touched, starting with the module
    that went longest without a tip.
