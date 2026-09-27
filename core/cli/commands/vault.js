@@ -641,6 +641,102 @@ async function totp(args) {
   return 0;
 }
 
+/** `health [--breach]`: Watchtower, names and reasons; --breach adds the opt-in breach check. */
+async function healthCmd(args) {
+  let f;
+  try { f = flags(args, { boolean: ["breach"] }); } catch (e) { return oops(e.message); }
+  const r = await tool("vault.health", {});
+  if (r.error) return fail(r);
+  const items = r.data.items || [];
+  say(`  ${items.length ? beacon(plural(items.length, "item")) + " to look at" : signal("nothing to fix")} ${dim(`· ${r.data.checked} checked`)}`);
+  for (const it of items) say(`  ${bold(it.name)}  ${dim(it.kind)}  ${it.reasons.map(x => (x === "expired" || x === "reused" ? beacon(x) : x)).join(", ")}${it.group ? dim(` · shares a value with the others in ${it.group}`) : ""}`);
+  if (f.breach) {
+    const b = await tool("vault.breach.check", {});
+    if (b.error) return fail(b);
+    say(`  ${b.data.breached.length ? beacon(`${b.data.breached.length} found in known breaches`) : signal("none found in known breaches")} ${dim(`· ${b.data.checked} passwords, ${b.data.requests} lookups, only 5 characters of each hash sent`)}`);
+    for (const n of b.data.breached) say(`  ${bold(n)}  ${beacon("breached")} ${dim(`· vyre vault rotate ${n}`)}`);
+  }
+  if (items.length) say(dim("  the daily reminder adds these to your planner's Vault list · vyre vault remind runs it now"));
+  return 0;
+}
+
+/** `remind`: the daily reminder pass, now. */
+async function remindCmd() {
+  const r = await tool("vault.remind.run", {});
+  if (r.error) return fail(r);
+  if (r.data.planner === false) { say(dim("  no planner here, so no reminders · vyre vault health lists them")); return 0; }
+  say(`  ${signal(plural(r.data.added.length, "reminder"))} added ${dim(`· ${r.data.closed.length} closed as fixed`)}`);
+  return 0;
+}
+
+/** `history <name> [--field f]` and `revert <name> <version>`. */
+async function historyCmd(args) {
+  let f;
+  try { f = flags(args, { string: ["field"] }); } catch (e) { return oops(e.message); }
+  if (f._.length !== 1) return oops("vyre vault history <name> [--field password]");
+  const r = await tool("vault.history", { name: f._[0], ...(f.field ? { field: f.field } : {}) });
+  if (r.error) return fail(r);
+  for (const e of r.data.entries || []) {
+    say(`  ${bold("v" + e.version)}  ${dim(new Date(e.at).toISOString().replace("T", " ").slice(0, 16))}  ${e.changed.join(", ") || dim("created")}  ${dim("by " + e.by)}${e.current ? "  " + signal("current") : e.readable ? "" : dim("  (value no longer kept)")}`);
+  }
+  say(dim(`  vyre vault revert ${f._[0]} <version> puts one back as a new version`));
+  return 0;
+}
+
+async function revertCmd(args) {
+  if (args.length !== 2 || !/^\d+$/.test(args[1])) return oops("vyre vault revert <name> <version>");
+  const r = await tool("vault.revert", { name: args[0], version: Number(args[1]) });
+  if (r.error) return fail(r);
+  say(`  ${signal("reverted")} ${bold(args[0])} ${dim(`· version ${args[1]} is back, as a new version`)}`);
+  return 0;
+}
+
+/** `agent grant <agent> <item> <origin> [--expires 30d] | grants [--agent a] [--item i] | revoke <id>` (ADR 0028, decision 2). */
+async function agentCmd(args) {
+  const [sub, ...rest] = args;
+  let f;
+  try { f = flags(rest, { string: ["expires", "agent", "item"] }); } catch (e) { return oops(e.message); }
+  if (sub === "grant") {
+    if (f._.length !== 3) return oops("vyre vault agent grant <agent> <item> <origin> [--expires 30d]");
+    const [agent, item, o] = f._;
+    const r = await tool("vault.agent.grant", { agent, item, origin: o, ...(f.expires ? { expires: f.expires } : {}) });
+    if (r.error) return fail(r);
+    const g = r.data.grant || r.data;
+    say(`  ${signal(g.status === "pending" ? "waiting for approval" : "granted")} ${bold(agent)} signs in to ${o} as ${bold(item)} ${dim(g.expires ? `· until ${day(g.expires)}` : "")}`);
+    return 0;
+  }
+  if (sub === "grants" || sub === undefined) {
+    const r = await tool("vault.agent.grants", { ...(f.agent ? { agent: f.agent } : {}), ...(f.item ? { item: f.item } : {}) });
+    if (r.error) return fail(r);
+    const gs = r.data.grants || [];
+    if (!gs.length) { say(dim("  no agent logins · vyre vault agent grant <agent> <item> <origin>")); return 0; }
+    for (const g of gs) say(`  ${dim(g.id)}  ${bold(g.agent)} ${dim("→")} ${g.origin} as ${bold(g.item)}  ${g.status === "active" ? signal(g.status) : dim(g.status)} ${dim(`· used ${g.uses} time${g.uses === 1 ? "" : "s"}${g.lastUsed ? `, last ${day(g.lastUsed)}` : ""}${g.expires ? ` · until ${day(g.expires)}` : ""}`)}`);
+    return 0;
+  }
+  if (sub === "revoke") {
+    if (f._.length !== 1) return oops("vyre vault agent revoke <id>");
+    const r = await tool("vault.agent.revoke", { id: f._[0] });
+    if (r.error) return fail(r);
+    say(`  ${signal("revoked")} ${f._[0]}`);
+    return 0;
+  }
+  return oops(`vyre vault agent ${sub}: grant, grants or revoke`);
+}
+
+/** `uses [item] [--agent a] [--since 7d]`: every use, where and by whom. */
+async function usesCmd(args) {
+  let f;
+  try { f = flags(args, { string: ["agent", "since", "limit"] }); } catch (e) { return oops(e.message); }
+  let since;
+  if (f.since) { const m = /^(\d+)([hdw])$/.exec(f.since); since = m ? Date.now() - Number(m[1]) * { h: 3600_000, d: 86400_000, w: 7 * 86400_000 }[m[2]] : f.since; }
+  const r = await tool("vault.uses", { ...(f._[0] ? { item: f._[0] } : {}), ...(f.agent ? { agent: f.agent } : {}), ...(since ? { since } : {}), ...(f.limit ? { limit: Number(f.limit) } : {}) });
+  if (r.error) return fail(r);
+  const us = r.data.uses || [];
+  if (!us.length) { say(dim("  no uses yet")); return 0; }
+  for (const u of us) say(`  ${dim(new Date(u.at).toISOString().replace("T", " ").slice(0, 16))}  ${bold(u.item || "")}  ${u.who}${u.surface ? dim(` · ${u.surface}`) : ""}${u.origin ? dim(` · ${u.origin}`) : ""}  ${u.ok ? dim(u.action) : beacon(`${u.action} refused`)}`);
+  return 0;
+}
+
 /** `sweep <path>`: where the vault's values, and credentials it lacks, sit in plain text. */
 async function sweepCmd(args) {
   let f;
@@ -665,7 +761,13 @@ async function sweepCmd(args) {
 
 /** `rotate <name>`: a new credential at the provider, or its page and steps. */
 async function rotateCmd(args) {
-  if (args.length !== 1) return oops("vyre vault rotate <name>");
+  if (args.length === 2 && args[1] === "--how") {
+    const h = await tool("vault.rotation", { name: args[0] });
+    if (h.error) return fail(h);
+    say(h.data.auto ? `  ${bold(args[0])} ${dim(`· ${h.data.provider} rotates by itself: vyre vault rotate ${args[0]}`)}` : `  ${bold(args[0])} ${dim(`· ${h.data.provider || "no provider"}, by hand:`)} ${h.data.steps}${h.data.url ? `\n  ${h.data.url}` : ""}`);
+    return 0;
+  }
+  if (args.length !== 1) return oops("vyre vault rotate <name> [--how]");
   const r = await tool("vault.rotate", { name: args[0] });
   if (r.error) return fail(r);
   const d = r.data;
@@ -1403,7 +1505,11 @@ const HELP = [
   ["run [--env-file f] <item...> -- <command...>", "items as VAR=name.field, or KEY=vault://item/field lines; output scrubbed"],
   ["totp <name>", "the current code, and the next"],
   ["sweep [path] [--history] [--shell]", "where your secrets sit in plain text: files, git history, shell history; places and names only"],
-  ["rotate <name>", "a new credential at its provider (AWS, GitLab, Cloudflare, Google Cloud), or the page and steps"],
+  ["rotate <name> [--how]", "a new credential at its provider (AWS, GitLab, Cloudflare, Google Cloud), or the page and steps"],
+  ["health [--breach] | remind", "Watchtower: weak, reused, old, expiring; --breach checks known breaches; remind adds planner todos now"],
+  ["history <name> [--field f] | revert <name> <version>", "an item's versions, and putting one back"],
+  ["agent grant <agent> <item> <origin> [--expires 30d] | grants | revoke <id>", "lend one login to one agent for one site; it never reads it"],
+  ["uses [item] [--agent a] [--since 7d]", "every use: when, who, which site and surface, allowed or not"],
   ["codes [name...] | codes import <scanned code...> [--from f] [--preview]", "every one-time code, current and next; bring in a Google Authenticator export"],
   ["generate [--length n] [--words n] [--no-symbols] [name]", "a password; stored when named"],
   ["import <file|folder> [--preview] [--update-conflicts] [--rewrite] [--format f]", ".env files (a whole project), 1Password, Bitwarden, Chrome, Apple Passwords; --rewrite swaps .env values for vault:// refs"],
@@ -1452,7 +1558,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, health: healthCmd, remind: remindCmd, history: historyCmd, revert: revertCmd, agent: agentCmd, uses: usesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 export default {

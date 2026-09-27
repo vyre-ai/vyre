@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Every vault feature has a CLI verb
+
+- `vyre vault health [--breach]`, `remind`, `history <name>`, `revert <name> <version>`,
+  `agent grant|grants|revoke`, `uses [item] [--agent] [--since 7d]` and `rotate <name> --how`,
+  alongside `import <folder> --rewrite`, `codes`, `sweep`, `rotate`, `emergency` and `vyre run`.
+  Test: core/cli/commands/vault-next.test.js runs the real bin/vyre against a temp-home vyred.
+
 #### Emergency access: a verified contact can open your items after a wait you can stop
 
 - New `core/vault/emergency.js` and tools `vault.emergency.add`, `.refresh`, `.deny`, `.remove`,
