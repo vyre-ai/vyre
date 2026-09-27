@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The empty Capsule is compact: the input, what waits on you, the footer
+
+- app-design 305fc07b: with nothing typed the panel is the input, the waiting list ("Needs you",
+  the oldest three rows, only when something waits) and the footer (↑↓ Move, ⏎ Open, Esc Hide;
+  Esc Hide alone when nothing waits). ↑ or ↓ goes into the whole list at 560; ⏎ opens the oldest's
+  card. The one-line "N waiting on you" hint is gone. Offline and a passing line sit above the footer.
+- `Sources/UI/CapsuleView.swift`, `Sources/UI/AgentDeskView.swift`, `Sources/Agent/AgentPanelKeys.swift`;
+  `Tests/DesignATests.swift`. Swift 324/324.
+
 #### The Capsule opens to 560 in one step; a passing status lasts 2 s
 
 - app-design 305fc07b: from the compact bar, the first result or question takes the panel to its

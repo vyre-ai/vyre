@@ -8,6 +8,8 @@ import SwiftUI
 
 struct WaitingList: View {
     @ObservedObject var desk: Desk
+    /// How many rows to draw: the whole list, or the compact panel's few (none highlighted).
+    var limit = Theme.maxRows
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -17,7 +19,7 @@ struct WaitingList: View {
                 Text("oldest first").font(Theme.subtitle).foregroundColor(Theme.ash)
             }
             .padding(.horizontal, Theme.inset).frame(height: Theme.headerHeight, alignment: .bottom)
-            ForEach(Array(desk.waiting.prefix(Theme.maxRows).enumerated()), id: \.element.key) { i, w in
+            ForEach(Array(desk.waiting.prefix(limit).enumerated()), id: \.element.key) { i, w in
                 WaitingRow(w: w, selected: desk.highlighted?.key == w.key)
                     .contentShape(Rectangle())
                     .onTapGesture { desk.openCard(w) }
@@ -129,21 +131,6 @@ struct AgentButton: ButtonStyle {
     }
 }
 
-/// "2 waiting on you. Press ↑ to see them." under an empty box.
-struct WaitingHint: View {
-    @ObservedObject var desk: Desk
-    var body: some View {
-        let n = desk.waiting.count
-        HStack(spacing: 8) {
-            Circle().fill(desk.loud > 0 ? Theme.attention : Theme.ash).frame(width: 6, height: 6)
-            Text("\(n) waiting on you. Press ↑ to see \(n == 1 ? "it" : "them").").font(Theme.subtitle).foregroundColor(Theme.stone)
-            Spacer()
-        }
-        .padding(.horizontal, Theme.inset).frame(height: WaitingHint.height)
-    }
-    static let height: CGFloat = CapsuleLayout.lineHeight
-}
-
 /// Where the agent views sit in the panel's fixed area (CapsuleLayout in CapsuleView.swift).
 @MainActor enum AgentLayout {
     /// The list or a card takes the whole area while it is open.
@@ -155,8 +142,13 @@ struct WaitingHint: View {
     }
     /// Whether the agent half needs the area open.
     static func opens(_ m: CapsuleModel) -> Bool { deskShown(m) || directShown(m) }
-    /// One line under the bar when nothing else shows: offline, or what waits.
-    static func slim(_ m: CapsuleModel) -> Bool { !opens(m) && (m.offline || hintShown(m)) }
+    /// The rows of the waiting list the compact panel shows under an empty box.
+    static let compactRows = 3
+    /// The compact panel's agent half: the offline line, then the first few rows that wait.
+    static func compactHeight(_ m: CapsuleModel) -> CGFloat {
+        (m.offline ? OfflineBanner.height : 0)
+            + (hintShown(m) ? Theme.headerHeight + CGFloat(min(m.desk.waiting.count, compactRows)) * Theme.rowHeight : 0)
+    }
 
     @ViewBuilder static func desk(_ m: CapsuleModel) -> some View {
         if m.actionMenu.isOpen { ActionMenuView(menu: m.actionMenu) } else {
@@ -174,10 +166,10 @@ struct WaitingHint: View {
         if directShown(m) { DirectView(direct: m.direct, desk: m.desk); Rule() }
     }
 
-    /// The one line when the area is closed.
-    @ViewBuilder static func slimView(_ m: CapsuleModel) -> some View {
-        Rule()
-        if m.offline { OfflineBanner() } else { WaitingHint(desk: m.desk) }
+    /// Under the bar in the compact panel: offline, then what waits (compactHeight).
+    @ViewBuilder static func compact(_ m: CapsuleModel) -> some View {
+        if m.offline { OfflineBanner() }
+        if hintShown(m) { WaitingList(desk: m.desk, limit: compactRows) }
     }
 }
 

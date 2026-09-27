@@ -67,10 +67,14 @@ struct CapsuleView: View {
                 .frame(height: CapsuleLayout.area, alignment: .top)
                 .clipped()
                 .overlay(alignment: .top) { Rule() }
-            } else if let line = model.line, !line.isEmpty {
-                Rule(); lineView(line)
-            } else if AgentLayout.slim(model) {
-                AgentLayout.slimView(model)
+            } else {
+                // Compact (capsule.md): the input, what waits on you, a passing line, the footer.
+                VStack(spacing: 0) {
+                    AgentLayout.compact(model)
+                    if let line = model.line, !line.isEmpty { lineView(line) }
+                    footer
+                }
+                .overlay(alignment: .top) { Rule() }
             }
         }
         .frame(width: Theme.width, height: CapsuleLayout.panelHeight(model), alignment: .top)
@@ -319,12 +323,13 @@ enum CapsuleLayout {
     /// The open panel's height (560): the bar, the body and the footer.
     static var openHeight: CGFloat { Theme.barHeight + area }
 
-    /// The panel's height: the bar alone, the bar and a line, or the bar and the fixed area (560).
+    /// The panel's height: open, the bar and the fixed area (560); compact, the bar, what waits on
+    /// you (offline, up to three rows), a passing line, and the footer.
     @MainActor static func panelHeight(_ m: CapsuleModel) -> CGFloat {
         if isOpen(m) { return openHeight }
-        if let l = m.line, !l.isEmpty { return Theme.barHeight + 1 + lineHeight }
-        if AgentLayout.slim(m) { return Theme.barHeight + 1 + lineHeight }
-        return Theme.barHeight
+        var h = Theme.barHeight + AgentLayout.compactHeight(m) + footerHeight
+        if let l = m.line, !l.isEmpty { h += lineHeight }
+        return h
     }
 
     /// The status line above the footer: what was said ("Copied"), or what Enter again confirms.
@@ -431,6 +436,8 @@ enum CapsuleLayout {
             return [Hint("Ask", ["⏎"]), deeper] + openInVyre + [Hint("Clear", ["esc"])]
         }
         guard let item = m.current else {
+            // Nothing typed, with rows waiting under the box: ↑↓ into the list, ⏎ the oldest.
+            if AgentLayout.hintShown(m) { return [move, Hint("Open", ["⏎"]), Hint("Hide", ["esc"])] }
             return m.text.isEmpty && m.target == nil ? [Hint("Hide", ["esc"])] : [escText]
         }
         var out = [move]

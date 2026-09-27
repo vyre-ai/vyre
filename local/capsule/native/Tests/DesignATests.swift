@@ -44,7 +44,7 @@ let designASuite = Suite("design A") { t in
             return (CapsuleLayout.panelHeight(m), CapsuleLayout.panelHeight(snapModel([])), body - CapsuleLayout.body(m))
         }
         t.eq(open, 560, "open, the panel is 560")
-        t.eq(closed, 56, "closed, the bar alone")
+        t.eq(closed, 88, "compact with nothing waiting: the bar and the footer")
         t.eq(withLine, CapsuleLayout.lineHeight, "a status line takes its height from the body")
     }
 
@@ -187,6 +187,28 @@ let designASuite = Suite("design A") { t in
             return snapshot(results, "a1-results", dir: nil)
         }
         t.ok(ok)
+    }
+
+    t.test("empty, the panel is the input, what waits on you (three rows at most) and the footer") {
+        let r = MainActor.assumeIsolated { () -> [String] in
+            let m = snapModel([])
+            for i in 1...5 {
+                m.desk.heard(VyredEvent(id: i, type: "ask.raised", source: "x", thread: "t\(i)", project: nil, at: 1000 + i,
+                                        payload: ["ask": "a\(i)", "agent": "kit", "tool": "Bash", "summary": "run the Harlow Legal export \(i)"]))
+            }
+            let compact = CapsuleLayout.panelHeight(m), hints = hints(m)
+            picture(m, "a7-empty-waiting")
+            // ↑ opens the whole list at 560; the height changes between states only.
+            m.desk.openList()
+            let list = CapsuleLayout.panelHeight(m)
+            m.desk.mode = .none
+            let one = snapModel([])
+            one.desk.heard(VyredEvent(id: 1, type: "ask.raised", source: "x", thread: "t1", project: nil, at: 1000,
+                                      payload: ["ask": "a1", "agent": "kit", "tool": "Bash", "summary": "run the Harlow Legal export"]))
+            one.text = "sa"
+            return ["\(compact)", hints.joined(separator: ","), "\(list)", "\(AgentLayout.compactHeight(one))"]
+        }
+        t.eq(r, ["248.0", "↑↓ Move,⏎ Open,esc Hide", "560.0", "0.0"], "typing hides the waiting rows")
     }
 
     t.test("a passing status shows for its time, then goes; a newer line is kept") {

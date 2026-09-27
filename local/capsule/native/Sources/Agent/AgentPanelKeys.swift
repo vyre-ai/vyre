@@ -1,6 +1,7 @@
 // The keys of the waiting list and its cards, taken before the Capsule's own (Host/Panel.swift).
 //
-//   ↑ in an empty box            opens the list, when anything waits
+//   ↑ in an empty box            opens the list, when anything waits (↓ too, and ⏎ the oldest's
+//                                card, while the compact panel shows it)
 //   ⌘C in an empty box            copies the answer on screen
 //   ⌘K                            the highlighted row's verbs, to pick one (↑↓ ⏎, Esc back)
 //   Tab                           sends the words to the first destination, whatever is highlighted
@@ -34,6 +35,11 @@ extension PanelController {
         case .none:
             if e.keyCode == 126, f.isEmpty, model.text.isEmpty, model.target == nil, model.asked == nil, !desk.waiting.isEmpty {
                 desk.openList(); return true
+            }
+            // The compact panel shows what waits: ↓ goes into the list too, ⏎ opens the oldest.
+            if f.isEmpty, AgentLayout.hintShown(model), !CapsuleLayout.isOpen(model), let first = desk.waiting.first {
+                if e.keyCode == 125 { desk.openList(); return true }
+                if e.keyCode == 36 || e.keyCode == 76 { desk.openCard(first); return true }
             }
             // ⌘C under an answer, with nothing typed, copies the answer.
             if e.keyCode == 8, f == .command, model.text.isEmpty, model.copyReply() { return true }
