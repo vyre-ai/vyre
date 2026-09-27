@@ -15,7 +15,6 @@
 // this box knows and shown with every pairing notice.
 
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import * as config from "../config/index.js";
@@ -99,7 +98,9 @@ export default {
     let keys = null;
     const k = () => (keys = keys || loadKeys(ctx.paths.root));
     const route = () => routeId(k().route.pub);
-    const boxName = () => (ctx.config.network && ctx.config.network.name) || os.hostname().split(".")[0];
+    // The name the person gave the box, never the machine's hostname: it rides in QR codes and
+    // shows in screenshots.
+    const boxName = () => String((ctx.config.network && ctx.config.network.name) || ctx.config.name || "your box").slice(0, 64);
 
     /** One live pairing at a time: its secret's hash, when it ends, and whether it is the first device's. */
     /** @type {{ hash: Buffer, exp: number, first: boolean } | null} */

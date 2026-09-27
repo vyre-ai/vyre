@@ -265,3 +265,18 @@ test("relay: relay.device.presence names the key a device enrolled, for modules 
   assert.deepEqual((await d.registry.call("relay.device.presence", { id }, "module:presence")).data, { key: null }, "paired without a presence key");
   assert.deepEqual((await d.registry.call("relay.device.presence", { id: "nobody" }, "module:presence")).data, { key: null });
 });
+
+test("relay: the pairing offer names the box as configured, never the machine's hostname", async t => {
+  const relay = createRelay();
+  const url = await relay.listen();
+  t.after(() => relay.close());
+  for (const [cfg, want] of [[{ name: "Northwind Bakery" }, "Northwind Bakery"], [{}, "your box"]]) {
+    const root = tempHome(t);
+    fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", transcripts: [], ...cfg, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
+    const d = await start({ presence: lenient, root, log: () => {} });
+    t.after(() => d.stop());
+    const offer = /** @type {any} */ (parsePairUrl((await firstPairing(d))));
+    assert.equal(offer.name, want);
+    assert.notEqual(offer.name, (await import("node:os")).hostname().split(".")[0]);
+  }
+});
