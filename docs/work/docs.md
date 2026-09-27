@@ -66,20 +66,29 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
 
 ## Doing
 
-- Screenshot retake DONE on main ef51363 (6dc29f1): 52 files; glass-files passed (last run's miss
-  was load timing). Six new shots placed (settings-devices, settings-connections, deck-pair,
-  deck-new-box, phone-find, onboarding-ready). Found and fixed: the onboarding loopback link 403'd
-  `/theme.css` and `/fonts/*` (core/onboard/loopback.js assetPath, 331f719d, test in
-  test/onboard.test.js), so the first steps rendered unstyled; onboarding shots retaken after it.
-  deck/test/world.js: alex's folder is plainly `alex` (no temp name in shown paths).
-- Reference and index regenerated from a clean archive (e0537194). Docs tests on testbox: 79 run.
-- Then: redeploy the preview (`--branch preview`), head to the integrator.
-- Full retake DONE after the freeze on main 9efbddc0 (violet, VyreDrive, idle hand-back): 52 files,
-  0 failures, docs-check clean. Preview redeployed; head to the integrator.
-- Retake settings-connections after tailnet's VyreDrive rename (it says Taildrive).
+Stopped at the lead's wrap-up (27 Sep 2026). Nothing running. Head handed to the integrator
+(batch 4). Everything below is done; see "Still open" for what waits.
+
+- Full screenshot retake on main 9efbddc0 (violet, VyreDrive, idle hand-back): 52 files, 0
+  failures; six new shots placed. Docs tests 79/79 on testbox, docs-check clean, 73 pages.
+  Preview redeployed: https://preview.vyre-docs.pages.dev (8d9475ec).
+- Fixed on the way: the onboarding loopback link now serves `/theme.css` and `/fonts/*`
+  (core/onboard/loopback.js, test in test/onboard.test.js); the sample world's folder is `alex`.
+- Pages applied: Glass no passkey and idle hand-back; the Gate's 30-minute proof; /vyre planner
+  verbs; Chat's terminal on the box (kept 12 h); ADR 0024 note pointing at ADR 0029.
 - Shots commands: `uptime` on the test box first (wait while load > 8), rsync to
   ~/vyre-ci/docs-s, `DOCS_SHOTS_SHARP=~/vyre-ci/docs-s-tools CHROME=/usr/local/bin/vyre-chrome
   nice -n 15 node scripts/docs-shots [--only a,b]`, copy back the shots PNGs and docs/shots.json.
+
+## Still open
+
+- USER: the yes on the preview before production docs.vyre.run and the custom domain.
+- chat f964f8a, b85ab3f (Deck terminal offsets): rewrite using/chat.md's terminal section when it
+  lands on main (see Pending below).
+- pwa: the first-passkey card on Now says a passkey approves "answers" (stale under no-nag); sent
+  to pwa with suggested copy. Retake deck-now and deck-new-box when it lands.
+- New decisions to reflect as their code lands: ADR 0030 Agent SDK sessions, one-app, relay and
+  the hosted app, vault v2, CLI and phone first-class (Pending below).
 
 ## Next
 
