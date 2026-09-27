@@ -58,7 +58,7 @@ const typing = t => {
 };
 
 /**
- * @typedef {{ key: string, module?: string, group: string, label: string, help?: string, type: string, enum?: string[], choices?: number[],
+ * @typedef {{ key: string, module?: string, group: string, label: string, help?: string, type: string, enum?: string[], labels?: Record<string, string>, choices?: number[],
  *   min?: number, max?: number, levels: string[], apply: "live"|"session"|"restart", owner: "V"|"C", advanced?: boolean, default?: any,
  *   security?: "loosens", confirm?: true | { values: any[] }, loosens?: string }} Def
  * @typedef {Def & { value?: any, source?: string, account?: any, project?: any, available?: boolean, problem?: string }} Row
@@ -326,7 +326,7 @@ export async function drawKeys(el, ctx, deps = {}) {
         onclick: () => (kind === "set" ? doSet(value, { confirm: true, presence, asked: true }) : doReset({ presence, asked: true })) },
         "Confirm");
       put(r.ask,
-        h("div", { class: "sk-ask-text" }, h("span", null, sentence), p.data?.where ? h("code", { class: "sk-where" }, String(p.data.where)) : null),
+        h("div", { class: "sk-ask-text" }, h("span", null, sentence), /\.json\b|\//.test(String(p.data?.where || "")) ? h("code", { class: "sk-where" }, String(p.data.where)) : null),
         h("div", { class: "sk-ask-btns" }, ok, h("button", { type: "button", class: "btn btn-ghost btn-sm sk-no", onclick: () => cancel() }, "Cancel")));
       r.ask.hidden = false;
       r.el.classList.add("sk-asking");
@@ -488,7 +488,7 @@ export async function drawKeys(el, ctx, deps = {}) {
  */
 export function control(def, k) {
   if (def.type === "bool") return toggle(k);
-  if (def.type === "enum") return (def.enum || []).length <= 4 ? segment(def.enum || [], k) : select(def, def.enum || [], k);
+  if (def.type === "enum") return (def.enum || []).length <= 4 ? segment(def.enum || [], k, def.labels) : select(def, def.enum || [], k);
   if ((def.type === "int" || def.type === "number") && def.choices) return segment(def.choices, k);
   if (def.type === "int" || def.type === "number") return field(def, k, "number");
   if (def.type === "model") return model(def, k);
@@ -506,9 +506,9 @@ function toggle(k) {
 }
 
 /** @param {(string|number)[]} opts @param {Hooks} k */
-function segment(opts, k) {
+function segment(opts, k, labels = /** @type {Record<string, string>|undefined} */ (undefined)) {
   let cur = /** @type {any} */ (undefined);
-  const btns = opts.map(v => h("button", { type: "button", "aria-pressed": "false", "data-value": String(v), onclick: () => { if (v !== cur) k.save(v); } }, String(v)));
+  const btns = opts.map(v => h("button", { type: "button", "aria-pressed": "false", "data-value": String(v), onclick: () => { if (v !== cur) k.save(v); } }, (labels && labels[String(v)]) || String(v)));
   const seg = h("div", { class: "seg", role: "group", id: k.id, "aria-labelledby": k.labelId }, btns);
   return {
     el: seg, labelable: false,
@@ -517,11 +517,14 @@ function segment(opts, k) {
   };
 }
 
+/** An enum value in the declaration's own words (labels), or as it is. @param {Def} def @param {any} v */
+const word = (def, v) => (def.labels && def.labels[String(v)]) || String(v);
+
 /** @param {Def} def @param {string[]} opts @param {Hooks} k */
 function select(def, opts, k) {
   const sel = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select", id: k.id },
-    h("option", { value: "" }, def.default !== undefined ? `Default (${def.default})` : "Not set"),
-    opts.map(v => h("option", { value: v }, v))));
+    h("option", { value: "" }, def.default !== undefined ? `Default (${word(def, def.default)})` : "Not set"),
+    opts.map(v => h("option", { value: v }, word(def, v)))));
   let cur = /** @type {any} */ (undefined);
   sel.addEventListener("change", () => (sel.value === "" ? k.reset() : sel.value !== cur ? k.save(sel.value) : null));
   return { el: sel, labelable: true, set: v => { cur = v; sel.value = v == null ? "" : String(v); }, disable: off => { sel.disabled = off; } };

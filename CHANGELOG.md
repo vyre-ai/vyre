@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings shows modes in words, checked in a real browser
+
+- A setting's declaration may name `labels` for its enum values (core/config/settings.js checks
+  they name only its own values); sessions.mode reads "Asks first" ... "Doesn't ask" in the Deck,
+  the words the composer's chip uses.
+- The confirm row names where a change lands only when that is a file.
+- deck/test/settings-browser.js: a headless Chrome check on testbox of the confirm and proof flow
+  (a wider mode asks, Cancel writes nothing, Confirm saves, a loosening key with no proof is not
+  saved and says why). 7/7.
+
 #### An agent's Effort is kept
 
 - core/agents: agents.create and agents.update take effort (low, medium, high, xhigh, max; a new

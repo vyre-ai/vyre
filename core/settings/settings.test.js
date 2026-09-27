@@ -49,6 +49,15 @@ test("a manifest's settings are checked: prefix, type, levels, a config store is
   assert.equal(bad.length, 3, bad.join("; "));
 });
 
+test("an enum's labels name only its own values", () => {
+  const base = { key: "bakery.oven", label: "Oven", type: "enum", enum: ["gas", "wood"], levels: ["account"], apply: "live" };
+  assert.deepEqual(validateDecls("bakery", [{ ...base, labels: { gas: "Gas oven" } }]), []);
+  for (const labels of [{ coal: "Coal" }, { gas: "" }, ["Gas"], "Gas"]) {
+    assert.match(validateDecls("bakery", [{ ...base, labels }]).join(), /labels/, JSON.stringify(labels));
+  }
+  assert.match(validateDecls("bakery", [{ ...base, type: "string", labels: { gas: "Gas" } }]).join(), /labels/);
+});
+
 test("coerce reads CLI text and refuses what is out of range", () => {
   const idle = { key: "sessions.idle_minutes", type: "int", min: 1, max: 1440 };
   assert.equal(coerce(idle, "15"), 15);

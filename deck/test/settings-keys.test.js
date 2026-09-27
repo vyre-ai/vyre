@@ -29,7 +29,7 @@ const SCHEMA = {
     { key: "sessions.fast", module: "sessions", group: "models", label: "Fast mode", type: "bool", default: false, levels: ["account", "project"], apply: "session", owner: "V" },
     { key: "sessions.mode", module: "sessions", group: "permissions", label: "Permission mode new sessions start in", type: "enum",
       enum: ["default", "acceptEdits", "plan", "auto", "dontAsk", "bypassPermissions"], default: "default", levels: ["account", "project"], apply: "session", owner: "V",
-      confirm: { values: ["bypassPermissions", "dontAsk", "auto"] }, loosens: "New sessions will run tools without asking you first." },
+      labels: { default: "Asks first", bypassPermissions: "Doesn't ask" }, confirm: { values: ["bypassPermissions", "dontAsk", "auto"] }, loosens: "New sessions will run tools without asking you first." },
     { key: "sessions.allow", module: "sessions", group: "permissions", label: "Always allow", type: "list", levels: ["account", "project"], apply: "live", owner: "C",
       confirm: true, loosens: "Claude will run these without asking, here and in the terminal." },
     { key: "sessions.deny", module: "sessions", group: "permissions", label: "Always deny", type: "list", levels: ["account", "project"], apply: "live", owner: "C" },
@@ -347,6 +347,9 @@ test("settings keys: a confirm value previews, asks on its row, and Confirm send
   const { el } = await render(api);
   const row = rowOf(el, "sessions.mode");
   const sel = $(row, "select");
+  // the declaration's words, not the raw value; a value with none shows as it is
+  const words = $$(sel, "option").map(o => text(o));
+  assert.deepEqual([words[0], words.at(-1), words[3]], ["Default (Asks first)", "Doesn't ask", "plan"]);
   // a plain value saves with no question
   sel.value = "plan"; sel.dispatchEvent(new Event("change")); await tick();
   assert.equal(api.account["sessions.mode"], "plan");
@@ -358,7 +361,7 @@ test("settings keys: a confirm value previews, asks on its row, and Confirm send
   const ask = $(row, ".sk-ask");
   assert.equal(ask.hidden, false);
   assert.match(text(ask), /New sessions will run tools without asking you first\./);
-  assert.equal(text($(ask, ".sk-where")), "vyre", "where it lands, in mono");
+  assert.equal($(ask, ".sk-where"), null, "where it lands is shown only when it is a file");
   assert.equal(sel.value, "bypassPermissions", "the control shows what is being asked about");
   assert.equal(slot(el, "sessions.mode"), "", "the slot keeps quiet while asking");
   await $(ask, "button.sk-yes").click(); await tick();
