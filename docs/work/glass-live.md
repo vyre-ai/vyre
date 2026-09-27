@@ -131,6 +131,12 @@ and a fill's never replace each other.
    and after the chat deploy: build vyre/computer:glass-uid (never :0.1), run isolation.test.js
    (exec env and .boot unreadable), check file:// and chrome:// are blocked and a download lands
    in /home/agent/Downloads, tear down.
+0a. Vault agreed the fill contract (27 Sep) and asked for 5 tests. Covered: (1) begin denied to
+   non-vault callers (computers.test.js), (2) fill token /cdp-only and gone at end (computerd
+   index.test.js), (3) agent CDP 423 and FILLING (index.test.js, fill.test.js), (4) expiry fires
+   fill-ended "expired" (fill.test.js). Gaps to add: fill.end denied to non-vault callers; the
+   expiry test asserts computerd was told on:false (socket cut); fill.js logs checked for the
+   token; the event's origin trimmed to scheme://host[:port] (today it is the string passed in).
 0b. e2e MEDIUM: (3) dockerproxy refuses exec for a shielded agent, and the freezer re-sweeps every
    ~100 ms until cont; (4) on shield, computerd raises and focuses Chrome and unmaps untrusted
    top-level windows, remapping after; (5) take-over and fill require frozen:true; (6) Chrome on a
