@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: the one Expo app
+
+- .github/workflows/app.yml for apps/app (its own lockfile): typecheck and tests on every push;
+  the web export with its gzipped JS size in the run summary; an Android debug APK and a release
+  APK signed with prebuild's throwaway debug key; the iOS simulator build only when dispatched
+  with `ios: true`. No EAS, no Expo account. Skips until apps/app/package.json exists.
+
 #### CI: ready for the Agent SDK
 
 - .github/workflows/sessions-sdk.yml: installs the Agent SDK with its bundled Claude Code
