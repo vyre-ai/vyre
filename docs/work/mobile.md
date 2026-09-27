@@ -115,6 +115,15 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   chevron, your bubble hover fill, device-row proof names and tags, web swipe commits at 40%. The
   mobile checklist is app-design's teams.md "mobile" section (f0752612); next in its Start here
   order: 7, the shell (header labels and page swipe, floating Capsule, Places as a bottom sheet).
+- Batch 4 reds fixed on work/mobile-b4fix d66af88b (2f1ccfff + fixes; with the integrator):
+  world test signs in as the person, the world runs threads on the CLI runner and keeps alex outside
+  VYRE_HOME, Md.kt animateFloat import, iOS DetailFactRow. Android compileDebugKotlin and the iOS
+  simulator build pass on the Mac under the lock.
+- Swipe (06e9674b): pwa's release rule (src/ui/swipe.js: 100 px or a 0.5 px/ms fling past 24
+  commits, 40 to 100 rests open with a tappable action, under 40 closes). Web is pointer-driven now
+  (no scroll-snap); checked with mouse drags in headless Chrome against apps/test/world.js. ci's
+  perf job faked the swipe with scrollTo: told ci to drag instead.
+- HOLD (lead): Start-here item 7, the phone shell, until after the user's first iPhone run.
 - BLOCKER for the iPhone run (ci is fixing it, lead): main 53cd1326 has no apps/ (batch 4) and nothing packs
   apps/app/dist into vyre.tgz or the box image, so /app/ is 404 no_app on the box. Told the lead.
 
