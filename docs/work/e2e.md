@@ -210,12 +210,16 @@ Plan (to the lead before building):
 
 ## Doing (27 Sep, after logout 3)
 
-Audit reported to the lead (above); waiting for go on the person session and the two decisions
-(uid split on the box; Mac CLI person session). ADR 0030 notes sent to sessions. presence.since
-done. HIGH 2 fixed (link.call, this commit). Lead GO: a) person session, b) Capsule/Mac CLI
-person session through link, then the uid split on the box (tini -s meanwhile, sessions team),
-vault fill Origin pin + callers. Then the headscale run on the next deployed sha. Two switchboard.test.js cases fail on the
-Mac only on main too (/var vs /private/var), not ours.
+Done and pushed (628e2cd9): HIGH 2 link.call (50c3f13); a) person session over the tailnet
+(8ad92a73, fb097a3d); b) the Mac's person session `vyre link signin` (ab51b28f); vault fill
+Origin pin, allowlist, optional key binding, callers; peer check by pgid/sid; ADR 0032.
+Now: the uid split on the box (ADR 0032 part 3): a root spawner with only SETUID/SETGID/KILL,
+children as uid vyre-agent, stdio fds passed back; image user and /work group; compose. Contract
+sent to sessions (their driver spawns through it; spawn detached meanwhile).
+Next: the headscale run on the deployed sha (box on e671d35 per the lead's notes): onboarding,
+the Deck's first sign-in, `vyre link signin` from the stand-in Mac, and the earlier list.
+Waiting: tailnet's CORS sha (peer.origin, allowed headers); pwa's sign-in sheet and Settings
+list; vault team's extension key.
 
 ## Earlier (27 Sep, after the restart)
 
