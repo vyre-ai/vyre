@@ -17,6 +17,7 @@ test("agentOf, age and stepStatus", () => {
   assert.equal(age(1000, 2000), "now");
   assert.equal(age(0, 4000), "4 s");
   assert.equal(age(0, 120_000), "2 min");
+  assert.equal(age(0, 3 * 86_400_000), "3 d");
   assert.equal(stepStatus({ ok: true, at: 0 }, true, 5000), "running");
   assert.equal(stepStatus({ ok: true, at: 0 }, true, 60_000), "done");
   assert.equal(stepStatus({ ok: false, at: 0 }, true, 1000), "failed");

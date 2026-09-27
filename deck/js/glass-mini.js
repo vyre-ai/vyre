@@ -32,7 +32,9 @@ export function age(at, now) {
   if (s < 3) return "now";
   if (s < 60) return `${s} s`;
   const m = Math.round(s / 60);
-  return m < 60 ? `${m} min` : `${Math.round(m / 60)} h`;
+  if (m < 60) return `${m} min`;
+  const hr = Math.round(m / 60);
+  return hr < 48 ? `${hr} h` : `${Math.round(hr / 24)} d`;
 }
 
 /** A step's status mark: running while it is fresh on a live computer, else done or failed.
