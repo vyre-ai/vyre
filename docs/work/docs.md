@@ -76,6 +76,7 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   Resume: if the run finished, copy back docs/**/shots/*.png and docs/shots.json from
   ~/vyre-ci/docs-s, place new shots on pages, regen reference/index from a clean git archive, run
   the docs tests, redeploy preview (`--branch preview`), send the head to the integrator.
+- Glass boot-failure text applied (c006e55 on main).
 - a93dbcb: agents need no passkey (e6922da on main): using/agents.md, concepts/presence.md (the
   list now matches HUMAN_ONLY, plus presence.when).
 
@@ -89,16 +90,12 @@ unpublished), `scripts/build-docs`, `scripts/docs-check`, `scripts/gen-docs-refe
   secrets, and sending, posting or paying outside; one Touch ID lasts about 30 minutes. Pages
   change only when that code lands (presence.md, vault.md, memory.md, learning.md, glass.md,
   deck.md, troubleshooting, first-day, install, concepts/floor.md all describe presence prompts).
-- glass-live: using/glass.md "If a computer does not start" becomes: Glass shows "kit's computer
-  did not start", the reason (e.g. "kit's computer stopped as soon as it started (exit code 3)"),
-  then ". Press Restart computer on kit's page, then Retry. If it fails again, the box's log says
-  why." with a "Retry" button and an "Open kit's page" link; the panel says "Stopped". Retry starts
-  the same computer again; Restart computer makes a new one from the current image, so Restart first
-  when the box's software was fixed. Replaces the "connection dropped" text now on the page.
-  Keep the `vyre call computers.checkout '{"agent":"kit"}'` line as the way to see the full
-  reason on the box. Trigger: integrator merges work/glass-live c006e55.
-- cc-plugin c4a30dd + 2d9a274: planner rows, "Every session knows you", reminders; text in
-  docs/work/pending-cc-plugin.md.
+- glass-live dcb03ce (take-over, hand-back and Sign in privately ask for no passkey): when it
+  merges, glass.md step 2 (no passkey needed for Glass), Take over, hand-back, and Sign in
+  privately (just Sign in privately, then Start); concepts/presence.md moves computers.takeover
+  and computers.giveback to the new PERSON_ONLY list (no proof; agents, tailnet guests and
+  Claude's sessions still refused). Regenerate reference.
+- cc-plugin: the lead's final /vyre text is in docs/work/pending-cc-plugin.md; apply on merge.
 - planner: the planner team drafts docs/using/planner.md from merged code (alarms, timers,
   reminders, todos, notes, calendar sync, delivery to whichever device is up, what agents may do);
   docs edits it, adds it to nav under Using Vyre, links it from claude-code.md's /vyre rows.
