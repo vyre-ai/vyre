@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The docker-api bearer's folder exists in the image
+
+- box/Dockerfile makes /var/lib/vyre-secrets owned by vyre (1000), mode 700. Without it the new
+  docker-api-bearer volume mounted root-owned and vyred could not write the bearer, so the
+  computers module failed to start on a real stack. test/box-init.test.js holds the line.
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
