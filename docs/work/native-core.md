@@ -19,7 +19,9 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing
-- The native-bar harness (deck/test/native-bar/), fake bursty stream, testbox Chrome.
+- f9389d56 harness landed with first numbers (native-bar.md Results). Waiting on: chat (which of the
+  5 fixes they take), resilience (reconnect), sessions (names, rewind, settings.resolve), app-design
+  (Settings frame), harness subagent a52324e (budget 1 via Event Timing).
 
 ## Known follow-ups
 - Screenshots of Settings in one world (needs a Chrome run on testbox).
@@ -28,6 +30,9 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
 - docs-check fails on main already: docs/using/claude-code.md:107 settings.json.vyre-backup (cc-plugin/docs).
 - sessions must read settings.resolve at thread start (model.fallback, effort, permissions.mode,
   sessions.max_turns, sessions.budget_usd, sessions.checkpoints, fast).
+
+- Agent "Effort" (deck/views/agents.js:480) still saves nothing: needs an agents column or a
+  per-agent settings level; talk to whoever owns core/agents.
 
 ## Changed contracts
 - core/modules/index.js CALL_AS: settings may call as cli/local/deck/capsule.
