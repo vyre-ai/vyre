@@ -45,7 +45,17 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   796bdcb phone-design, 246af82 docs, f3b5e36 SPEC 5.2 ctx.call. Full suite at f3b5e36 on the
   test box: 1917 tests, 0 fail, exit 0.
 
-## Doing: the RC batch on pre/rc (2026-09-27 ~19:00 UTC)
+## Done: 0.1.0-rc.1 landed (2026-09-27 ~19:55 UTC)
+
+- main = ac60d3c5 (fast-forward from 68463d04). Not tagged: the tag is the lead's and ci's call.
+- Full suite on testbox at a435d516: 3765 tests, 3665 pass, 7 fail (up welcome 0.0.1, pwa keep
+  list, onboard.css raw tokens, voice usage exit, plugin version, thread.status), 3 todo. Fixed in
+  8ff0d6d5 + ac60d3c5; those files plus onboard, docs, hygiene and boundaries rerun green with
+  tmp-guard before/after clean.
+- rc.2 queue: vault-next (HELD for e2e's sign-off on the send_mail takeover fix) + connectors
+  8be461a9, launch 4d3b808f, then ci bumps to rc.2.
+
+## Earlier: the RC batch on pre/rc (2026-09-27 ~19:00 UTC)
 
 - Merged on pre/rc: native-core 6ccad201, platform e75a6a11 + settings-write d62792d0,
   app-design-hub 9a6abbcf, cohesion 0f4d1105, sessions db4af9c3 + 501ca3fc, memory-iq 1a76d383,
