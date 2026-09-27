@@ -109,6 +109,24 @@ test("events: onResume hears a reconnect and a reset, and events after a reset a
   off(); offR();
 });
 
+test("events: a tool call the box answers while the stream backs off reconnects it at once (budget 8)", async () => {
+  const last = () => streams[streams.length - 1];
+  last().push("retry: 2000\nid: 9\n\n");
+  await tick();
+  const before = streams.length;
+  last().end();
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(api.streamState?.state, "reconnecting");
+  assert.equal(streams.length, before, "still inside the first 250 ms wait");
+  box = () => ({ status: 200, body: { data: [] } });
+  await api.attempt("threads.list", {});
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(streams.length, before + 1, "the answer kicked the stream before its wait ran out");
+  last().push("retry: 2000\nid: 9\n\n");
+  await tick();
+  assert.equal(api.streamState?.state, "open");
+});
+
 test("idempotency: a write carries one key, the same on the retry after a sign-in; a read carries none", async () => {
   sent.length = 0;
   let signIns = 0;

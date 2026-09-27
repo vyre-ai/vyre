@@ -540,6 +540,101 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   budget holds the first 30 s from spawn under 200 MB. vyred kept the indexing pass's heap
   (about 160 MB) for some 20 s and then settled near 90 MB, so RSS max failed every run. Mean and
   max RSS still print. On testbox: settled 87.3 / 84.0 MB, startup peak 150.3 / 154.2 MB.
+#### The Deck's stream is back within a second of the box (native-core's budget 8)
+
+- deck/js/api.js follows the stream with short first waits: 250 ms, 500 ms, 1 s, then doubling to
+  60 s (was 2 s to 60 s). Any tool call the box answers while the stream is backing off
+  reconnects it at once: sockets cut in front of the box never fire "online". Measured before:
+  3.24 s from the box coming back to caught up.
+- The Reconnecting pill shows from attempt 4 (js/reconnect.js SHOW_FROM, about 2 s down, as
+  before), so the quick retries of a blip show nothing.
+
+#### What each agent's computer is doing now, on Now (glass-mini.md, ADR 0036)
+
+- deck/js/glass-mini.js draws one line per running agent computer on Now (desktop and phone),
+  from cohesion's sight: sight.targets (agents only, never the Mac), the last step from
+  sight.steps, then sight.stepped; a computer starting or stopping (computer.*) reads the targets
+  again. The line: the status mark (running while the step is fresh, failed with its why, else
+  done), the agent, the step's own summary, its age or who holds the keyboard. It opens Glass for
+  that computer ("Open Glass for kit's computer"); a polite live region says a new step at most
+  once every 5 s. Nothing polls; a box without sight shows nothing.
+- Each line is a card with a still of the agent's screen (sight.frame, 480 wide, 640 on a phone),
+  letterboxed 16:10 with the Live badge, read again on each of that computer's steps and never on
+  a timer. While a person signs in on it the picture pauses, dimmed ("Picture paused while a person
+  signs in"), until computer.unshielded. A box without sight.frame draws the pill. Tests:
+  deck/js/glass-mini.test.js (4).
+- context.report carries the device settings.snapshot echoed (js/theme-live.js deviceId), once the
+  hub has named it, so push can ring the device in use.
+
+#### The Deck tells context where the person is (ADR 0036 part 2)
+
+- deck/js/context-report.js calls context.report {surface: "deck" or "phone", project, thread}
+  when the Deck lands on a page (the path's project and thread) and when it comes back to the
+  front, once per place; never while hidden, never text, a selection, a URL or a device (the box
+  knows the caller's). A box without context is asked once. Tests: deck/js/context-report.test.js (3).
+
+#### Needs you reads cohesion's waiting (ADR 0036 decision 4)
+
+- deck/js/needs.js asks waiting.list beside the owners' reads. Where the box has it, the list is
+  exactly the asks and drafts waiting names (the owners' reads still give a draft's words and a
+  question's options; an ask not read yet shows from its title; a draft never shows before its
+  words are read), and waiting's `partial` reaches the views. needs.count() is waiting's count,
+  kept fresh by waiting.changed (app.js), and the rail badge, the top bar, the phone's Now label,
+  Now's title and the app icon all show it. Reminders and pairings count but draw where they do
+  today. A box without waiting keeps the old merge and the list's length.
+- A Mac session's ask whose waiting row has no answer tool (federation is after 0.1.0) reads
+  "Answer it on <mac>" with no buttons, and nothing is sent.
+- Tests: deck/js/needs-waiting.test.js (4).
+
+#### The Deck's four Deck-only colours are retired (app-design, tokens.md "Retired names")
+
+- --recall, --recall-ink, --recall-wash, --beacon-wash and --beacon-rule are gone from deck.css,
+  with their paper overrides. Design A has no gold, and violet is only for "needs you".
+- Memory's gold is --text-2: `.dot.recall`, the From memory headings, source links, the memory
+  map's fact dots and today's links. `.lbl.recall` ("From memory", "Recalled") is a source chip:
+  a 1 px --rule-strong edge, radius --radius-chip, padding 0 6px, --text-2, at the start.
+- Memory cards (.recalled, .memory-fact, .nsh-recall, .np-mem, .fd-pmem, .ask-hints) sit on
+  --hover; .fd-recall hover and .hi and the pressed Today button take --hover, and .fd-recall.hi's
+  inset ring is --rule-strong.
+- No violet fill anywhere: the top bar's .needs-pill is its --beacon-ink count alone. A card or
+  badge whose only edge was the wash keeps one in `1px solid var(--rule)` (.held, .need on Now
+  and in onboarding, .set-off, .dev-off, .gl-banner, .gl-msg-err, .cv-ask, .gate-badge,
+  .mem-beacon), a pixel off its padding so it keeps its size. Violet rules are --rule.
+- .diff-del takes the real --del-wash. .cv-ask-dot has no halo.
+- The terminal's ANSI yellow is its own literal (#EBC76B dark, #7E5B0C paper, chat/term.js): ANSI
+  colours are the terminal's, not tokens. Its connecting and waiting dot is --text-2.
+- deck/test/tokens.test.js fails on any of the five names in a Deck source.
+
+#### The Deck follows the settings hub's theme (ADR 0035)
+
+- deck/js/theme-live.js reads settings.snapshot at start and links /theme.css with this device
+  and the hub's rev (the device only when the snapshot names it). A settings.changed for an
+  appearance.* key of this device, or a reconnect whose rev moved, swaps the link: the new sheet
+  loads beside the old one, which goes once it has loaded, so there is no reload and no flash.
+  appearance.scheme sets paper or dark ("system" follows the OS). No polling.
+- A box without the hub (settings.snapshot unknown) keeps /theme.css and this device's own scheme,
+  and is not asked again. Tests: deck/js/theme-live.test.js (7).
+
+#### The phone's avatar opens the Places sheet, and a held place becomes a fourth page (Design A v1)
+
+- Under 720 px the header's avatar ("Places and account") opens the Places sheet in the Deck's one
+  sheet (js/sheet.js), a dialog named "Places" that fits its content: a head row (the avatar 34,
+  the owner's name 17/600 from system.info, the box's address at 12 `--label`, with the path and
+  its measured latency from link.health when it knows them, "vyre.harlow.ts.net · direct 12 ms"),
+  a 3 column grid of six tiles (Projects, Planner, Memory, Vault, Devices, Settings; the rail's
+  places and routes, js/places.js), and the hint "Long-press a tile to pin it as a fourth page."
+- A tap on a tile closes the sheet and opens the place pushed. Holding a tile 600 ms
+  (`--motion-hold`), or the context menu key or Shift+F10 on a focused one, keeps it as a fourth
+  page after Agents, or lets it go: its label joins the header and its page joins the pager. One
+  kept place at most (a new one replaces the old), kept per device in localStorage "vyre.pin".
+  Tiles are links whose description says "Long-press to pin as a page" or "Pinned as a page".
+- The header's labels scroll sideways when four do not fit, and never shrink; the current one
+  scrolls into sight.
+- Settings is the Settings tile: the Settings sheet (openSettings, `.ph-settings`) is gone, since
+  nothing else opened it.
+- deck/test/places.test.js covers the tiles, order, routes, the hold and its keyboard path, the
+  one-pin rule and storage; pwa-shots.js has places-sheet and places-kept screens, and
+  settings-sheet now reaches Settings through its tile.
 
 #### The Deck's rail is the 72 px icon rail (Design A v1)
 

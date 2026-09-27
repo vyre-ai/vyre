@@ -155,7 +155,7 @@
 .dev-ok, .dev-wait, .dev-off { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 20px; min-width: 0; }
 .dev-ok svg, .dev-off svg { flex-shrink: 0; margin-top: 3px; }
 .dev-ok b { font-weight: 500; overflow-wrap: anywhere; }
-.dev-off { padding: 10px 12px; background: var(--beacon-wash); border-radius: var(--radius-field, 8px); font-size: 13px; line-height: 18px; }
+.dev-off { padding: 9px 11px; border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); font-size: 13px; line-height: 18px; }
 .dev-off svg { margin-top: 1px; color: var(--beacon-ink); }
 .dev-off .code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
 .dev-wait { align-items: center; color: var(--text-2); }
@@ -175,7 +175,7 @@
 
 .notice { font-size: 13px; line-height: 18px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; }
 .notice svg { flex-shrink: 0; margin-top: 1px; color: var(--label); }
-.need { background: var(--beacon-wash); border-radius: var(--radius-card, 12px); padding: 14px 16px; font-size: 14px; line-height: 20px; }
+.need { border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); padding: 13px 15px; font-size: 14px; line-height: 20px; }
 .need .lbl { margin-bottom: 6px; }
 
 .ob-dots { display: none; }

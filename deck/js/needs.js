@@ -20,6 +20,14 @@
 //                                                 a box that does not forward: "Answer it on <mac>."
 //                                                 and every Mac item says so for the rest of the page
 
+// waiting (cohesion, ADR 0036 decision 4): where the box has it, waiting.list says what waits and
+// waiting.count, kept fresh by waiting.changed, is the one number every surface shows (the rail,
+// the top bar, the phone's Now label, the app icon). The owners' reads above still give each
+// draft's words and each question's options, which a waiting row only titles; the list is then
+// exactly the rows waiting names, and a row not read yet shows from its title. Reminders and
+// pairings count but draw where they do today (Planner, the pairing row on Now). An older box
+// without waiting: the merge above, and the count is the list's length.
+
 import { attempt, call, queue, snapshot } from "./api.js";
 import { holdMacAnswers, macAnswers } from "./need-rows.js";
 
@@ -34,7 +42,7 @@ export { macAnswers };
  *   thread: string|null, threadName: string|null, title: string, why: string, command?: string,
  *   gate?: Held, rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[],
  *   tool?: string, detail?: any, questions?: any[], destination?: string|null, anchor?: any, always_project?: string|null,
- *   presence?: { required?: boolean, covered?: boolean } | null, source?: string|null, machine?: string|null, node?: string|null }} Need
+ *   presence?: { required?: boolean, covered?: boolean } | null, source?: string|null, machine?: string|null, node?: string|null, answerOn?: string }} Need
  */
 
 /** @type {Need[]} */
@@ -42,6 +50,46 @@ let cache = [];
 const listeners = new Set();
 /** gate.get answers, by id: the content of a held item does not change while it is held. */
 const got = new Map();
+
+/** waiting's count, once it has said one; null: this box has no waiting (or has not answered). */
+let waitingCount = /** @type {number | null} */ (null);
+/** False once this box said it has no waiting.list: it is not asked again this page. */
+let hasWaiting = true;
+
+/** The one number: waiting's count where the box has it, else the list's length. */
+export const count = () => waitingCount ?? cache.length;
+
+/** waiting.changed {count, by_kind} (app.js passes it on): the count moves at once, the rows on the next load. @param {any} e */
+export function heardWaiting(e) {
+  const n = e?.payload?.count;
+  if (typeof n !== "number" || !Number.isFinite(n) || n < 0) return;
+  waitingCount = n;
+  tell();
+}
+
+/** waiting.list's ids for the rows the Deck draws here: an owner's id for each ask and draft.
+ * @param {any[]} rows @returns {Map<string, any>} owner id to its row */
+export function waitingIds(rows) {
+  const out = new Map();
+  for (const r of rows || []) {
+    if (!r || typeof r.id !== "string" || (r.kind !== "ask" && r.kind !== "draft")) continue;
+    const at = r.id.indexOf(":");
+    out.set(at >= 0 ? r.id.slice(at + 1) : r.id, r);
+  }
+  return out;
+}
+
+/** An ask waiting names that threads.asks did not give (yet), from its title alone. @param {any} r @param {string} id @returns {Need} */
+export function fromWaiting(r, id) {
+  const question = r.kind === "ask" && Array.isArray(r.answer?.fill) && r.answer.fill.includes("answers");
+  const kind = question ? "question" : "ask";
+  const mac = typeof r.machine === "string" && r.machine;
+  return { id, kind, at: typeof r.at === "number" ? r.at : 0, agent: null, project: r.project || null, projectName: null,
+    thread: r.thread || null, threadName: null, title: String(r.title || ""), why: String(r.detail || ""), command: kind === "ask" ? String(r.detail || "") : "",
+    options: question ? [{ label: "Answer", decision: "allow", primary: true }, { label: "Decline", decision: "deny" }]
+      : [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }],
+    ...(mac ? { source: "mac", machine: mac, node: null } : {}) };
+}
 
 /** Has a load from the box finished? Then a snapshot never replaces what it said. */
 let fresh = false;
@@ -63,7 +111,9 @@ const keep = () => { void snapshot.set("needs", cache.filter(n => n.kind !== "dr
 
 /** Load both lists. Missing tools count as nothing held; errors are kept for the views. */
 export async function load() {
-  const [held, asks, threads, projects] = await Promise.all([attempt("gate.held"), attempt("threads.asks"), attempt("threads.list"), attempt("projects.list")]);
+  const [held, asks, threads, projects, waiting] = await Promise.all([attempt("gate.held"), attempt("threads.asks"), attempt("threads.list"), attempt("projects.list"),
+    hasWaiting ? attempt("waiting.list", {}) : Promise.resolve({ data: null, error: null })]);
+  if (waiting.error?.code === "no_such_tool" || waiting.error?.code === "unknown_tool") { hasWaiting = false; waitingCount = null; }
   // The box is out of reach: the list keeps what it last showed, never goes empty (R3).
   if (held.error?.code === "offline" && asks.error?.code === "offline") return { items: cache, errors: { gate: held.error, threads: asks.error } };
   const thread = new Map((threads.data || []).map(t => [t.id, t]));
@@ -98,12 +148,26 @@ export async function load() {
   }
   for (const id of got.keys()) if (!(held.data || []).some(d => d.id === id)) got.delete(id);
   for (const a of asks.data || []) out.push(askNeed(a, names({ ...a, threadName: a.threadName || a.thread_name }), a.thread ? thread.get(a.thread) : null));
-  out.sort((x, y) => x.at - y.at);
-  cache = out;
+  /** @type {Need[]} */
+  let list = out;
+  const w = /** @type {any} */ (waiting.data);
+  if (w && Array.isArray(w.rows)) {
+    // waiting is the one list: what it names, from the owners' reads where they have it.
+    const want = waitingIds(w.rows);
+    list = out.filter(n => want.has(n.id));
+    // A Mac's ask the box cannot forward yet (answer.tool null): "Answer it on <mac>", no buttons.
+    for (const n of list) { const r = want.get(n.id); if (r?.answer && r.answer.tool == null) n.answerOn = r.answer.on || n.machine || "your Mac"; }
+    // An ask not read yet is answerable from its id; a draft is not shown before its words are read
+    // (Send sends what was seen), and the next gate.held load brings it.
+    for (const [id, r] of want) if (r.kind === "ask" && !r.answer?.fill?.includes("answers") && !list.some(n => n.id === id)) list.push(fromWaiting(r, id));
+    if (typeof w.count === "number") waitingCount = w.count;
+  }
+  list.sort((x, y) => x.at - y.at);
+  cache = list;
   fresh = true;
   if (!held.error && !asks.error) keep();
   tell();
-  return { items: out, errors: { gate: held.error || null, threads: asks.error || null } };
+  return { items: list, errors: { gate: held.error || null, threads: asks.error || null, ...(w?.partial?.length ? { partial: w.partial } : {}) } };
 }
 
 export const current = () => cache;
@@ -166,6 +230,7 @@ export async function answer(n, opt, edited) {
   if (n.source === "mac" && n.kind !== "draft") {
     const machine = n.machine || "your Mac";
     // A box that has shown it cannot forward: nothing is sent.
+    if (n.answerOn) throw Object.assign(new Error(`Answer it on ${n.answerOn}.`), { elsewhere: n.answerOn });
     if (!macAnswers()) throw Object.assign(new Error(`Answer it on ${machine}.`), { elsewhere: machine });
     // Straight to the box, not the outbox: the outbox would resend a timeout later, and an answer
     // that reaches the Mac long after is not one the person gave. "asked" as for a local ask.
@@ -190,6 +255,8 @@ export async function answer(n, opt, edited) {
     await queue("threads.answer", answerInput(n, opt), { presence: "asked" });
   }
   cache = cache.filter(x => x.id !== n.id);
+  // One fewer at once; waiting.changed confirms it (or corrects it) from the box.
+  if (waitingCount != null && waitingCount > 0) waitingCount--;
   got.delete(n.id);
   keep();
   tell();
@@ -197,7 +264,7 @@ export async function answer(n, opt, edited) {
 
 /** Every watcher hears the list, and the installed app's icon shows the count. */
 function tell() {
-  badge(cache.length);
+  badge(count());
   for (const fn of listeners) fn(cache);
 }
 

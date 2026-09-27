@@ -6,7 +6,7 @@ pre { margin: 0; padding: 12px 14px; border-radius: var(--radius-field, 8px); ba
 pre code { display: block; font-family: var(--mono); font-size: 13px; line-height: 20px; color: var(--text); white-space: pre; }
 
 .tok-keyword { color: var(--focus); }
-.tok-string { color: var(--recall-ink); }
+.tok-string { color: var(--text-2); }
 .tok-comment { color: var(--label); font-style: italic; }
 .tok-number { color: var(--beacon-ink); }
 .tok-function { color: var(--text); font-weight: 500; }
@@ -105,9 +105,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 /* Shapes matched to the Capsule's (capsule teammate, 2026-09-27): same tokens, same grid, same
    badge, so a held item or an ask looks the same wherever it appears. */
 
-.memory-fact { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--radius-field, 8px); background: var(--recall-wash);
+.memory-fact { display: flex; flex-direction: column; gap: 6px; padding: 10px 12px; border-radius: var(--radius-field, 8px); background: var(--hover);
   align-self: flex-start; max-width: 100%; }
-.memory-fact .lbl { color: var(--recall-ink); margin: 0; }
+.memory-fact .lbl { color: var(--text-2); margin: 0; }
 .memory-fact .fact { font-size: 13px; line-height: 18px; color: var(--text); }
 .memory-fact .sources { display: flex; flex-wrap: wrap; gap: 10px; }
 .memory-fact .source { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); }
@@ -120,8 +120,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .ask-card { background: var(--panel); border: 1px solid var(--rule); }
 .gate-row { display: flex; align-items: baseline; gap: 8px; }
 .gate-title, .ask-title { font-size: 15px; line-height: 20px; color: var(--text); flex-grow: 1; }
-.gate-badge { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 8px; border-radius: var(--radius-chip, 4px);
-  background: var(--beacon-wash); color: var(--beacon-ink); font-family: var(--mono); font-size: 11px; line-height: 14px;
+.gate-badge { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 7px; border-radius: var(--radius-chip, 4px);
+  border: 1px solid var(--rule); color: var(--beacon-ink); font-family: var(--mono); font-size: 11px; line-height: 14px;
   font-weight: 500; letter-spacing: 0.16em; text-transform: uppercase; flex-shrink: 0; white-space: nowrap; }
 .gate-grid { display: grid; grid-template-columns: max-content 1fr; gap: 6px 12px; align-items: baseline; }
 .gate-grid-row { display: contents; }
@@ -527,7 +527,7 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-q-review dt, .cv-q-done dt { color: var(--label); }
 .cv-q-review dd, .cv-q-done dd { margin: 0; color: var(--text); }
 
-/* Permission card: a beacon-wash block with a dot, no border and no stripe; what runs in a mono
+/* Permission card: a 1 px --rule edge with a violet dot, no fill and no stripe; what runs in a mono
    box, why in one line, then Allow once / Always in <project> / Deny. */
 .cv-ask.ask-card { padding: 0; gap: 8px; border: 1px solid var(--rule); border-radius: 12px; background: var(--panel); flex-shrink: 0; }
 .cv-ask > * { margin-left: 16px; margin-right: 16px; }
