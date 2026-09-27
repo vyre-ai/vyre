@@ -351,3 +351,16 @@ test("modules: declaredTips lists the teaches.tips of running modules, a home mo
   delete (/** @type {any} */ (globalThis).__tipsPeek);
   assert.deepEqual(list, [{ module: "bakery", version: "1.0.0", firstParty: false, tips: [tip] }]);
 });
+
+test("modules: first-party means shipped in the repo's core/, local/ or modules/, never a dev home inside the checkout", async t => {
+  const { firstParty } = await import("./index.js");
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "..");
+  const was = process.env.VYRE_HOME;
+  t.after(() => { if (was === undefined) delete process.env.VYRE_HOME; else process.env.VYRE_HOME = was; });
+  process.env.VYRE_HOME = path.join(repo, ".dev");
+  assert.equal(firstParty(path.join(repo, "core", "settings")), true);
+  assert.equal(firstParty(path.join(repo, "modules", "tips")), true);
+  assert.equal(firstParty(path.join(repo, ".dev", "modules", "bakery")), false, "a dev home's module");
+  assert.equal(firstParty(path.join(repo, "test", "fixtures", "oven")), false, "anywhere else in the checkout");
+  assert.equal(firstParty(path.join(repo, "core", "settings", "nested")), false, "only a folder directly in core/");
+});

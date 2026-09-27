@@ -19,6 +19,23 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing (after LOGOUT 4 resume, 2026-09-27)
+NOW: fa349d31 PUSHED + TESTED (targeted 146/146, daemon.test.js 21/21 alone). Hub steps 1-3, theme
+routes, secrets out of hub.json, Dark/Paper switch on appearance.scheme. Sent to integrator, e2e
+(review steps 2-3), platform (settings.write rebases), app-design (work/app-design-hub).
+Next: e2e review fixes; merge main (with f7226849) when the batch lands; ping mobile + pwa + sessions
+(settings.resolve sha) when on main; then Vault Connections entry (vault), composer suggest.query and
+model list from schema (cohesion), budget 8 rerun on pwa's sha, fling/cold open/send with chat.
+Testbox: single targeted runs allowed when uptime < 6, nice 15, --test-timeout, one at a time.
+
+LATEST (ac34c322, pushed): e2e signed off 3ae4fc93 (secret masking). Since then: no-passkey text
+in plain words (90617c03); ADR 0035 accepted (b95cc4dc); hub step 1 = hub.json with rev, live hand
+edits, pending asks, .bad on broken JSON, backup (243b016a); platform's validateDecls rules; e2e
+MEDIUMs fixed (98412a66); main 53cd1326 merged. 166/166 targeted + Chrome 7/7 on testbox.
+Next: hub step 2 (device and session levels, LEVELS gains them, settings.snapshot with device
+echo; default device = the caller's own), then step 3 (check/choicesFrom calls with 500 ms
+deadline), then the Deck following rev. Ping mobile after steps 1-2 land on main. Merge e2e's
+claudeHome switch when on main.
+
 DONE on resume: main 7880dfa6 merged (e9b22592); e2e HIGH 1 + HIGH 2 fixed (6fb87f4e: PERSON_ONLY
 settings.set/reset, agent labels refused, CALL_AS for settings limited to registry.settingTools());
 store limits merged (b172c2d0 + 67abc47f); sent e2e 62abf2cf for re-review. Waiting on e2e sign-off.
@@ -52,10 +69,7 @@ NOT stamped yet (ask sessions for field `t`, ms epoch).
 Answer app-design: check docs/design/system specs (work/app-design c4f9bb23) paths.
 
 ## Known follow-ups
-- Before 0.1.0 (e2e MEDIUMs, 27 Sep): (1) firstParty(dir) = under the repo's core/, local/ or
-  modules/, never under config.home() (a dev home inside a checkout); (2) confirm for sessions.env
-  and sessions.plugins, and for sessions.deny/ask when an entry is dropped (reset included);
-  (3) asPerson(): map tailnet:<login> to "deck" explicitly, throw on anything else.
+- DONE: e2e's three MEDIUMs (firstParty, drops/env/plugins confirm, asPerson).
 - Merge e2e's claudeHome switch (work/e2e-noclaude 32dc0956) once it is on main: settings'
   claudeDir becomes conf().claude_dir || claudeHome(ctx.paths.root).
 - Screenshots of Settings in one world (needs a Chrome run on testbox).

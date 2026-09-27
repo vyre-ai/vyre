@@ -101,7 +101,7 @@ try {
     await tab.run(`document.querySelector(${JSON.stringify(row(lockKey) + " .sk-yes")})?.click(); await wait(2500); return true;`);
     const lock = (await tool("settings.get", { key: lockKey })).data;
     const note = await tab.run(`const r = document.querySelector(${JSON.stringify(row(lockKey))}); return (r.querySelector(".sk-err")?.textContent || r.querySelector(".sk-slot")?.textContent || "").trim();`);
-    say("with no proof it is not saved, and the row says why", lock?.source !== "account" || lock?.value !== "8h", `value ${lock?.value} (${lock?.source}); row: "${note}"`);
+    say("with no proof it is not saved, and the row says why in plain words", (lock?.source !== "account" || lock?.value !== "8h") && /Add one in Settings/.test(note) && !/presence\./.test(note), `value ${lock?.value} (${lock?.source}); row: "${note}"`);
     await shot("lock-after", row(lockKey));
   }
   say("no page errors", tab.errors.length === 0, tab.errors.slice(0, 3).join(" | "));

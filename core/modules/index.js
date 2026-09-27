@@ -17,6 +17,7 @@ import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY } from "../presence/index.js";
 import { validateDecls } from "../config/settings.js";
+import * as config from "../config/index.js";
 
 /** Tools a tailnet device reaches without a person session: signing in, and the first passkey. */
 const PERSON_FREE = new Set(["presence.person.start", "presence.enroll"]);
@@ -26,7 +27,19 @@ const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 /** Vyre's own modules are the ones shipped in the repo (core, local, modules); a home's never are. */
 const REPO_DIR = path.resolve(CORE_DIR, "..");
-const firstParty = (/** @type {string} */ dir) => path.resolve(dir).startsWith(REPO_DIR + path.sep);
+const SHIPPED = ["core", "local", "modules"].map(x => path.join(REPO_DIR, x));
+/**
+ * Shipped with Vyre: a module folder directly in the repo's core/, local/ or modules/, and never
+ * one inside the home, even a dev home kept inside a checkout (VYRE_HOME=<repo>/.dev): a home
+ * module is the person's or a third party's, whatever folder it sits in (e2e review).
+ * @param {string} dir
+ */
+export const firstParty = dir => {
+  const d = path.resolve(dir);
+  if (!SHIPPED.includes(path.dirname(d))) return false;
+  const home = config.home();
+  return !(home !== REPO_DIR && (d + path.sep).startsWith(home + path.sep));
+};
 /**
  * The only caller labels a module may call under, and who may. A person's labels ("cli", "deck")
  * are never here: a module that could call as one would act as the person. The link on a Mac types

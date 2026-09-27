@@ -673,8 +673,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a temp or dev home.
 - Learn's skills take their Claude Code folder from claudeHome too, and still refuse to write under
   the account's own ~/.claude whatever the home.
+#### Theme route tests hold with or without the appearance module
 
-#### The box image builds again with the Agent SDK pin
+- core/settings/hub.test.js uses the shipped core/appearance when the tree has it, and a small
+  stand-in otherwise, plus app-design's real-tokens test (per-device radius and scheme); test/daemon.test.js checks the config-colours fallback with appearance off.
+
+#### The Deck's Dark/Paper switch is this device's appearance.scheme
 
 - box/Dockerfile read the SDK version by importing core/sessions/sdk.js on its own, and 8aed4887
   gave that file an import (config/dialogs.js), so the image build stopped at the SDK layer. The
@@ -709,6 +713,67 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   files. settings.changed carries `by: "module:<name>"` for these writes. What it returns for a
   secret key is masked (maskFor), the same as settings.get for anyone but the person. Reviewed by e2e before it
   lands.
+- deck/views/settings.js: with the hub and the appearance module, the switch also sets
+  appearance.scheme at device level (the device settings.snapshot resolved), so the device's other
+  surfaces follow; without them it stays in this browser as before.
+
+#### The settings hub, steps 2 and 3: device and session levels, snapshot, checks, theme routes
+
+- core/settings: settings.get, set and reset take device and session. A narrower level wins
+  (session, device, project, account, default); a device's value lives in hub.json's devices, a
+  session's in its module's own tools ("$session"). With no device named, the owner's device over
+  the tailnet or the relay reads its own.
+- settings.snapshot {project?, device?, session?}: every value in effect in one read, with rev,
+  sources, each level's own value, and the device it resolved.
+- A key's `check: {tool}` is asked before anything is stored, by tool or by hand, as the settings
+  module, with a 500 ms deadline; off or late, it refuses. `choicesFrom: {tool, read}` fills the
+  schema's choices at run time.
+- A thread's chip changing in sessions (model.switched, effort.switched, thinking.switched,
+  mode.changed) is also a session-level settings.changed with the next rev.
+- Secret keys never go into hub.json (e2e review, MEDIUM); a hand edit of one is named, not applied.
+- core/daemon: GET /theme.css?device= and GET /v1/theme?device= serve appearance.resolve's answer,
+  with the hub's rev as ETag and a 304 on If-None-Match; without the appearance module, the old
+  config colours. GROUPS gains appearance.
+- core/config/settings.js: levels device and session; a device-level key has no store.
+
+#### Settings' phone layout uses the shared phone query
+
+- deck/css/views/settings-keys.css: the phone block is dom.js PHONE_QUERY, so a sideways phone stays
+  a phone (batch 4, ci).
+
+#### Three loosening paths closed before 0.1.0 (e2e review, MEDIUM)
+
+- core/modules firstParty: a module is Vyre's own only when its folder sits directly in the repo's
+  core/, local/ or modules/, and never inside the home, so a dev home kept in a checkout
+  (VYRE_HOME=<repo>/.dev) gets no first-party rights for its modules.
+- sessions.env and sessions.plugins ask first (confirm: true). sessions.deny and sessions.ask ask
+  first when an entry is taken off, a reset included (confirm: { drops: true }); settings.reset
+  takes confirm. The Deck sends it after the row's Confirm.
+- core/settings asPerson: cli, local, deck and capsule pass as themselves, the owner's device as
+  the Deck, and anything else is refused rather than passing as the Deck.
+
+#### The settings hub file (ADR 0035, step 1)
+
+- core/settings/hub.js and core/settings: `<home>/hub.json` holds Vyre's own settings at account
+  and project level, made at first start from what is in effect and rewritten atomically on every
+  change. Every change adds 1 to the hub's rev (settings_meta); settings.changed carries it, plus
+  the new value for a key that isn't secret (null for a reset), and `by: "hub.json"` for a hand
+  edit.
+- A person's edit to hub.json is read live (a file watch, and a size or mtime check on each read,
+  no polling), checked like settings.set: a plain change applies; a bad value is kept out and named
+  on its row; one that needs a confirm or a proof waits as `pending` until the person sets it. A
+  file that isn't JSON is named in settings.schema's `hub`, and moved to hub.json.bad on the next
+  change. Sessions can't read or write it (the harness keeps it with Vyre's internals).
+- core/names/backup.js: hub.json is in `vyre backup` and restore.
+- core/config/settings.js validateDecls (platform's patch): device never with confirm or security,
+  session only with a tool store, check and choicesFrom name the module's own tools, choices is a
+  list of numbers. settings GROUPS gains "tips".
+
+#### Settings says where to add a passkey
+
+- deck/views/settings-keys.js: a loosening change refused for want of a passkey now reads "This
+  needs your passkey, and none is set up yet. Add one in Settings, Your devices, then try again.",
+  not the box's tool name. Tests in deck/test/settings-keys.test.js and settings-browser.js.
 
 #### A secret setting's values reach only the person
 
