@@ -205,6 +205,10 @@ event stream's first byte. Tear down afterwards.
   tailnet). agents.update: no presence; the same callers plus mcp, where only the assistant passes,
   and only for name, instructions, model, effort and description. Refusals are `denied` (403).
 - /v1/events/stream sends `: open` as its first body bytes.
+- PERSON_ONLY adds agents.create, agents.update, gate.revise, gate.reject. A socket call to a
+  PERSON_ONLY tool from under a `claude` or a thread process is refused `denied` (core/daemon/peer.js).
+  threads.answer refuses the ask's own thread. Internal tool threads.pids.
+- work/e2e now contains work/chat 2551cb9 (merged in 64a7d1d for PERSON_ONLY).
 - threads.asks, threads.get asks, gate.held, gate.get: each item has `presence: {required, covered}`.
   gate.revise, gate.reject, threads.answer: no presence. gate.approve: presence for send, spend
   and delete, sessionable. A presence session lasts 30 minutes from the proof. Request header `x-vyre-presence-keep: 1` + strong proof returns
