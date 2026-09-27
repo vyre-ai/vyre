@@ -1,6 +1,6 @@
 // @ts-check
-// The onboarding (spec section 1): six steps, one a screen, each skippable. The box workstream
-// owns the onboard.* tools; this file owns the screens. History uses Recall and Projects, which
+// The onboarding (spec section 1): six steps, one a screen, each skippable. The onboard
+// workstream owns the onboard.* tools; this file owns the screens. History uses Recall and Projects, which
 // are already on main. Board: docs/design/boards/Onboard.dc.html.
 
 import { h, put, empty } from "../js/dom.js";
@@ -147,8 +147,8 @@ function render() {
   if (state.statusError?.missing && i !== 4) {
     col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
       h("div", { class: "lbl beacon" }, "Setup is not running"),
-      "The box module is not running on this machine, so this step cannot finish here yet. Run ", h("code", null, "vyre up"),
-      " on the box, then reload this page. Until then, skip ahead to the steps that work."));
+      "The server module is not running on this machine, so this step cannot finish here yet. Run ", h("code", null, "vyre up"),
+      " on the server, then reload this page. Until then, skip ahead to the steps that work."));
   }
   // A new browser, or the link already used here: the loopback door refuses every onboard.* call
   // without the session `vyre up`'s link carries (core/onboard/loopback.js answers 403 "denied").
@@ -156,7 +156,7 @@ function render() {
     col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
       h("div", { class: "lbl beacon" }, "Open your setup link"),
       "This page needs the one-time link ", h("code", null, "vyre up"), " printed, opened in this browser. Run ", h("code", null, "vyre up"),
-      " on the box for a fresh link, then open it here."));
+      " on the server for a fresh link, then open it here."));
   }
   SCREENS[step.id](col, screen);
 }
@@ -284,7 +284,7 @@ const SCREENS = {
       const n = ++seq;
       const r = await attempt("onboard.name", { name: v, action: "check" });
       if (n !== seq) return;
-      if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the box module runs.")); }
+      if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the server module runs.")); }
       else if (r.error) put(status, String(r.error.message));
       // No vyre.run token (the usual box): the address is this machine's ts.net name, set up in step 4.
       else if (r.data.via === "ts.net" && r.data.available) { ok = true; put(status, h("span", { class: "faint" }, r.data.address ? `Your address will be ${r.data.address.replace(/^https:\/\//, "")}.` : "Your address will be on your tailnet, set up in step 4.")); }
@@ -573,7 +573,7 @@ const SCREENS = {
       if (!done(r.data) && rows.some((/** @type {any} */ x) => x.state === "doing")) watch();
     })();
     col.append(h("details", { class: "ob-collapse" }, h("summary", null, "Your own domain"),
-      h("p", { class: "small muted" }, "Point a domain you already own at this box instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the box's own configuration, then come back and reserve again.")));
+      h("p", { class: "small muted" }, "Point a domain you already own at this server instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the server's own configuration, then come back and reserve again.")));
   },
 
   // Import your sessions: discover, choose, watch Vyre IQ learn (docs/design/import.md,
@@ -729,7 +729,7 @@ const SCREENS = {
     col.classList.add("wide");
     col.append(
       h("h1", { class: "h1" }, "Your devices."),
-      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this box over your tailnet, and nothing else can. Last step, nearly there."));
+      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this server over your tailnet, and nothing else can. Last step, nearly there."));
 
     // Mac: install, `vyre up`, then approve the request it makes, in this card.
     const macState = h("div", { class: "dev-state", "aria-live": "polite" });
@@ -753,8 +753,8 @@ const SCREENS = {
       h("h2", { class: "h3", id: "dev-mac-h" }, "Pair this Mac"),
       h("ol", { class: "dev-steps" },
         devStep("1", "Install Vyre", command("npm i -g https://vyre.run/box/vyre.tgz")),
-        devStep("2", "Pair it with this box", command("vyre up"),
-          h("p", { class: "small muted" }, "It finds this box on your tailnet and shows a code. Type that code here to approve the Mac."))),
+        devStep("2", "Pair it with this server", command("vyre up"),
+          h("p", { class: "small muted" }, "It finds this server on your tailnet and shows a code. Type that code here to approve the Mac."))),
       macName ? null : pairs.el,
       macState);
     if (macName) pairs.stop();
