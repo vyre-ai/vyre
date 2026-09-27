@@ -228,7 +228,8 @@ Done this session:
   on testbox. NOT signed off: new HIGH, settings.get has no callers, so mcp and agents read
   sessions.env values (Claude Code's env, API keys). Asked for masked values for non-person
   callers plus a test. MEDIUMs sent: firstParty = "under the repo" (dev home in a checkout),
-  env/plugins/deny-removal without confirm, asPerson's "deck" fallback. Waiting on their sha.
+  env/plugins/deny-removal without confirm, asPerson's "deck" fallback. SIGNED OFF at 3ae4fc93
+  (env and hooks secret, masked for non-person callers; 63/63). MEDIUMs are theirs before 0.1.0.
 
 ~/.claude from a temp home (lead, 27 Sep): platform saw a fresh temp home report "107 facts about
 you". recall's readable() guards only under node --test, so a dev world read the real transcripts
