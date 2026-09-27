@@ -10,6 +10,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   The claim saved config.json after the temp home was removed, so tmp-guard failed the node job.
 - core/switchboard/switchboard.test.js: the Bash-redaction test builds its fake key at run time,
   so test/hygiene.test.js no longer reads it as a secret.
+- test/cohesion-drift.test.js: composer-state.js and settings-keys.js leave the models allowlist;
+  both read the box's model aliases now (native-core-composer).
 
 #### The install cap is 20 MB for 0.1.0
 
