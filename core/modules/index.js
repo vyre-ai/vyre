@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
+import { PERSON_ONLY } from "../presence/index.js";
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -332,8 +333,9 @@ export class Registry {
     if (Boolean(def.hook) !== (caller === "hook")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (!callerAllowed(def.callers, caller)) return { error: { code: "denied", message: `${tool} is not available to ${callerKind(caller)} callers` } };
     // A guest from another tailnet is never a person proving they are here, whatever proof it
-    // carries: presence is the owner's (ADR 0014 part 8). The router already hides these tools.
-    if (String(caller).startsWith("tailnet-guest:") && (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence)) {
+    // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
+    // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
+    if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
       return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
     }
     const problems = checkInput(def.input, input);

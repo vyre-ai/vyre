@@ -260,7 +260,6 @@ Hand the keyboard back to the agent.
   - `surface` string, required
   - `agent` string
 - Callers: any caller
-- Needs a person present.
 
 ### `computers.helper`
 
@@ -378,7 +377,6 @@ Take the keyboard of an agent's computer for a person's screen. The agent's hand
   - `surface` string, required
   - `agent` string
 - Callers: any caller
-- Needs a person present.
 
 ### `computers.watch`
 
@@ -728,7 +726,6 @@ Take the keyboard of an agent's computer for a person's screen; the agent's hand
   - `target` string, required
   - `private` boolean
 - Callers: any caller
-- Needs a person present.
 
 ### `glass.targets`
 

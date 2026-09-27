@@ -216,11 +216,10 @@ export default {
         const agent = await resolve(i, caller);
         if (!driver) throw new Error(NO_DRIVER);
         return keyboard.takeover(agent, await ownSurface(i, caller), caller);
-      }, { presence: { summary: i => `Take the keyboard of ${i && i.agent ? i.agent : "an agent"}'s computer` } });
+      });
 
     tool("computers.giveback", "Hand the keyboard back to the agent.", obj({ agent: str, surface: str }, ["surface"]),
-      async (i, { caller }) => keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller), caller),
-      { presence: { summary: i => `Hand ${i && i.agent ? i.agent : "an agent"}'s computer back` } });
+      async (i, { caller }) => keyboard.giveback(await resolve(i, caller), await ownSurface(i, caller), caller));
 
     tool("computers.watch", "A one-use ticket (30 s) to open an agent's screen in Glass. slow: the viewer's link is relayed or slow, so send fewer frames.",
       obj({ agent: str, surface: str, slow: { type: "boolean" } }, ["surface"]),

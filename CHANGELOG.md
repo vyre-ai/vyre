@@ -109,6 +109,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   refused (`core/names/service.test.js`), wrong Host and no session on loopback
   (`test/onboard.test.js`).
 
+#### Taking over an agent's computer asks for no passkey
+
+- The owner's take-over, hand-back and Sign in privately in Glass no longer ask for Touch ID or
+  a passkey (Touch ID stays for pairing, vault secrets, and sending, posting or paying outside).
+  `computers.takeover` and `computers.giveback` leave the floor's list; they, `glass.take` and
+  `glass.release` are on a new `PERSON_ONLY` list in `core/presence/index.js`. An agent is still
+  refused by the tools, a tailnet guest by the registry (`core/modules/index.js`), and Claude's
+  sessions by the harness (`core/harness/rules.js`). The Deck's "Confirm it's you" step is gone
+  (`deck/glass/takeover.js`). Tests: core/computers/computers.test.js, core/glass/glass.test.js,
+  core/harness/floor.test.js. ADR 0004 and 0005 amended.
 
 #### The site has no Capsule zip, and a clean checkout stamps clean
 
