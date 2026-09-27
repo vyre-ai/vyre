@@ -9,7 +9,12 @@
 //   - released (holder null): the take-over ends, "lease released";
 //   - moved to another person's screen (the laptop to the phone): the take-over moves with it;
 //   - moved to anything else: the person no longer has it, so it ends, "lease released";
-//   - unheard from for the lease's TTL: it ends, "lease expired". A closing lid ends it this way.
+//   - unheard from for the lease's TTL: it ends, "lease expired". A closing lid ends it this way;
+//   - no input from the holder for the owner's idle setting (config computers.handbackIdleMin:
+//     0 for off, or 2, 5 or 15 minutes; 5 by default): it ends, "idle". A pong keeps the lease
+//     but is not input, so a person who walked away from an open tab gets the agent back.
+//     `computer.idle-warning` goes out IDLE_WARN_MS before, and again with `at: null` if input
+//     comes in time.
 //
 // A lease change on a thread nobody took over is someone chatting with the agent. It changes
 // nothing here: if typing into a thread paused its hands, talking to an agent would stop it.
@@ -25,19 +30,30 @@ import { EventEmitter } from "node:events";
 /** The switchboard's lease TTL. A take-over unrenewed this long is over. */
 export const TTL = 90_000;
 
+/** The idle choices the owner can pick, in minutes. 0 is off. */
+export const IDLE_CHOICES = Object.freeze([0, 2, 5, 15]);
+export const IDLE_DEFAULT_MIN = 5;
+/** How long before an idle hand-back the holder is warned. */
+export const IDLE_WARN_MS = 10_000;
+
+/** The idle setting in ms from a config value: one of IDLE_CHOICES, else the default. */
+export const idleMsOf = min => (IDLE_CHOICES.includes(Number(min)) ? Number(min) : IDLE_DEFAULT_MIN) * 60_000;
+
 const SURFACE = /^(glass|deck|phone|capsule):[A-Za-z0-9._-]{1,64}$/;
 /** Is this a person's screen (as opposed to the CLI, the assistant or a module)? */
 export const isSurface = s => SURFACE.test(String(s || ""));
 
 /**
- * @typedef {{ surface: string, thread: string|null, since: number, beat: number, leased?: number, by?: string }} Takeover
+ * @typedef {{ surface: string, thread: string|null, since: number, beat: number, input: number, leased?: number, by?: string,
+ *   warned?: number, cancel?: (() => void) | null }} Takeover
  */
 
 export class Keyboard extends EventEmitter {
   /**
    * @param {{ pool: import("./pool.js").Pool, call: (tool: string, input: any) => Promise<any>,
    *   emit: (type: string, payload: any, where?: any) => any, on?: (pattern: string, fn: (e: any) => void) => () => void,
-   *   log?: (m: string) => void, now?: () => number }} deps
+   *   log?: (m: string) => void, now?: () => number, idleMs?: () => number,
+   *   schedule?: (fn: () => void, ms: number) => () => void }} deps
    */
   constructor(deps) {
     super();
@@ -46,6 +62,10 @@ export class Keyboard extends EventEmitter {
     this.send = deps.emit;
     this.log = deps.log || (() => {});
     this.now = deps.now || (() => deps.pool.now());
+    /** The idle setting, read live so a change needs no restart. 0 is off. */
+    this.idleMs = deps.idleMs || (() => idleMsOf(IDLE_DEFAULT_MIN));
+    // One timer per take-over, armed once per idle window rather than reset per keystroke.
+    this.schedule = deps.schedule || ((fn, ms) => { const t = setTimeout(fn, ms); t.unref?.(); return () => clearTimeout(t); });
     /** @type {Map<string, Takeover>} */
     this.takeovers = new Map();
     /** Threads whose lease we are moving ourselves: their lease.changed is our own echo. */
@@ -66,14 +86,16 @@ export class Keyboard extends EventEmitter {
    * A live sign from the holder's own stream (forwarded input, a pong) keeps its take-over alive
    * (ADR 0005, decision 2: the relay renews, never a client timer). Without it a person typing
    * steadily lost the keyboard 90 s after taking it. The thread's lease is renewed at most every
-   * 30 s. Synchronous from the caller's side: Glass calls it per message.
+   * 30 s. Synchronous from the caller's side: Glass calls it per message. `input` marks a
+   * keystroke or pointer event, which also resets the idle clock; a pong does not.
    * @returns {boolean} whether this surface still holds the keyboard
    */
-  renew(agent, surface) {
+  renew(agent, surface, input = false) {
     const t = this.takeovers.get(agent);
     if (!t || t.surface !== surface || this.holder(agent) !== surface) return false;
     const at = this.now();
     t.beat = at;
+    if (input) this.touched(agent, t, at);
     if (t.thread && at - (t.leased || t.since) >= 30_000) {
       t.leased = at;
       Promise.resolve(this.call("threads.lease", { thread: t.thread, surface }))
@@ -129,9 +151,12 @@ export class Keyboard extends EventEmitter {
     const t = this.takeovers.get(agent);
     if (t && t.surface === surface) {
       Object.assign(t, { beat: at, thread: leased, by: caller || t.by });
+      this.touched(agent, t, at);
       return { agent, surface, thread: leased, previous };
     }
-    this.takeovers.set(agent, { surface, thread: leased, since: at, beat: at, by: caller });
+    if (t) this.disarm(t);
+    this.takeovers.set(agent, { surface, thread: leased, since: at, beat: at, input: at, by: caller });
+    this.arm(agent);
     this.send("computer.taken-over", { agent, surface, thread: leased }, leased ? { thread: leased } : {});
     this.log(`${surface} took over ${agent}'s computer`);
     this.emit("changed", { agent, surface });
@@ -158,7 +183,7 @@ export class Keyboard extends EventEmitter {
     return { agent, handed_back: true };
   }
 
-  /** @param {"gave back"|"lease expired"|"lease released"} why */
+  /** @param {"gave back"|"lease expired"|"lease released"|"idle"} why */
   end(agent, why) {
     const t = this.takeovers.get(agent);
     if (!t) return;
@@ -166,9 +191,17 @@ export class Keyboard extends EventEmitter {
     this.finish(agent, t, why);
   }
 
-  /** @param {Takeover} t */
-  finish(agent, t, why) {
-    this.send("computer.handed-back", { agent, surface: t.surface, why }, t.thread ? { thread: t.thread } : {});
+  /** @param {Takeover} t @param {string} why @param {number} [idle] the idle setting, for why "idle" */
+  finish(agent, t, why, idle) {
+    this.disarm(t);
+    const payload = why === "idle" ? { agent, surface: t.surface, why, idle_ms: idle } : { agent, surface: t.surface, why };
+    this.send("computer.handed-back", payload, t.thread ? { thread: t.thread } : {});
+    if (why === "idle" && t.thread) {
+      const text = `Handed back to ${agent} after ${Math.round(Number(idle) / 60_000)} min idle`;
+      Promise.resolve(this.call("threads.send", { thread: t.thread, text }))
+        .then(r => { if (r && r.error && r.error.code !== "no_such_tool") this.log(`could not note the idle hand-back in ${agent}'s thread: ${r.error.message}`); })
+        .catch(() => {});
+    }
     this.log(`${agent}'s computer handed back by ${t.surface} (${why})`);
     // The idle clock starts now, not from the agent's last action before the take-over.
     this.pool.touch(agent);
@@ -188,6 +221,7 @@ export class Keyboard extends EventEmitter {
         // The lease moved this, not a verified computers.takeover call: nobody to bind giveback
         // to but the surface itself, same as before presence existed.
         Object.assign(t, { surface: String(holder), since: at, beat: at, by: undefined });
+        this.touched(agent, t, at);
         this.send("computer.taken-over", { agent, surface: t.surface, thread: t.thread }, { thread: t.thread });
         this.log(`${agent}'s take-over moved to ${t.surface}`);
         this.emit("changed", { agent, surface: t.surface });
@@ -210,10 +244,58 @@ export class Keyboard extends EventEmitter {
     return { ok: true };
   }
 
-  /** End every take-over past its TTL. */
-  sweep() {
-    for (const agent of [...this.takeovers.keys()]) this.holder(agent);
+  /** The holder acted: the idle clock restarts, and a warning already out is taken back. */
+  touched(agent, t, at) {
+    t.input = at;
+    if (t.warned) {
+      t.warned = 0;
+      this.send("computer.idle-warning", { agent, surface: t.surface, at: null }, t.thread ? { thread: t.thread } : {});
+    }
   }
 
-  stop() { this.off(); this.removeAllListeners(); }
+  /** @param {Takeover} t */
+  disarm(t) { if (t.cancel) { t.cancel(); t.cancel = null; } }
+
+  /** Arm the idle timer for the next moment worth looking: the warning, or the hand-back. */
+  arm(agent) {
+    const t = this.takeovers.get(agent);
+    if (!t) return;
+    this.disarm(t);
+    const idle = this.idleMs();
+    if (!idle) return;
+    const left = t.input + idle - this.now();
+    const wait = t.warned ? left : left - IDLE_WARN_MS;
+    t.cancel = this.schedule(() => { t.cancel = null; this.idleCheck(agent); }, Math.max(0, wait));
+  }
+
+  /** Warn, hand back, or re-arm, from the holder's last input and the live setting. */
+  idleCheck(agent) {
+    const t = this.takeovers.get(agent);
+    if (!t) return;
+    const idle = this.idleMs();
+    if (!idle) {
+      if (t.warned) this.touched(agent, t, t.input);
+      this.disarm(t);
+      return;
+    }
+    const left = t.input + idle - this.now();
+    if (left <= 0) {
+      this.takeovers.delete(agent);
+      if (t.thread) Promise.resolve(this.call("threads.release", { thread: t.thread, surface: t.surface })).catch(() => {});
+      this.finish(agent, t, "idle", idle);
+      return;
+    }
+    if (left <= IDLE_WARN_MS && !t.warned) {
+      t.warned = t.input + idle;
+      this.send("computer.idle-warning", { agent, surface: t.surface, at: t.warned }, t.thread ? { thread: t.thread } : {});
+    }
+    if (!t.cancel) this.arm(agent);
+  }
+
+  /** End every take-over past its TTL or its idle time. The idle timer is the clock; this is its backstop. */
+  sweep() {
+    for (const agent of [...this.takeovers.keys()]) if (this.holder(agent)) this.idleCheck(agent);
+  }
+
+  stop() { for (const t of this.takeovers.values()) this.disarm(t); this.off(); this.removeAllListeners(); }
 }

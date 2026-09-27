@@ -4,8 +4,8 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["memory.graph", "memory.facts", "memory.relevant", "memory.why", "memory.pin", "memory.mute", "memory.teach", "memory.curate", "memory.stats",
-    "memory.correct", "memory.corrections", "memory.uncorrect", "memory.merge", "memory.split"] },
-  "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split"] },
+    "memory.correct", "memory.corrections", "memory.uncorrect", "memory.merge", "memory.split", "memory.me", "memory.answer", "memory.profile", "memory.remember"] },
+  "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered"] },
   "shows": { "deck": ["panel:memory"], "capsule": ["answer:memory.relevant"], "cli": ["memory", "why"] },
   "needs": {},
   "teaches": {}

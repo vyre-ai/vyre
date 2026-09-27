@@ -90,7 +90,8 @@ async function main() {
     if (h.session_id && !down(r)) {
       const pid = process.ppid;
       const b = await call("threads.bind", { session: h.session_id, pid }, opts);
-      if (b.data && b.data.key) try { writeKey(paths(home()).sessions, pid, b.data); } catch {}
+      // The pid vyred bound: claude's, which is this hook's parent, or its parent when /bin/sh forked.
+      if (b.data && b.data.key) try { writeKey(paths(home()).sessions, Number(b.data.pid) || pid, b.data); } catch {}
     }
   } else if (piece === "enrich") {
     const prompt = String(h.prompt || "");
@@ -101,7 +102,10 @@ async function main() {
   } else if (piece === "rules") {
     const input = { ...base, tool_name: String(h.tool_name || ""), tool_input: h.tool_input || {}, ...(typeof h.tool_use_id === "string" ? { tool_use_id: h.tool_use_id } : {}), plugin_root };
     const r = await call("harness.rules", input, opts);
-    let v = r.data || (r.error && ["unreachable", "timeout", "no_such_tool"].includes(r.error.code)
+    // "denied": vyred's registry runs the floor on every call's input, so a call that reaches into
+    // the vault (the path is in tool_input) is refused before harness.rules looks. The floor here
+    // then decides, as it does when vyred is down.
+    let v = r.data || (r.error && ["unreachable", "timeout", "no_such_tool", "denied"].includes(r.error.code)
       ? rules({ tool: input.tool_name, input: input.tool_input, cwd: h.cwd }) : null);
     if (down(r) && v && !v.decision) v = offlineTool({ ...offline, tool: input.tool_name, input: input.tool_input, pluginRoot: plugin_root });
     if (v && v.decision) answer(EVENT.rules, { permissionDecision: v.decision, permissionDecisionReason: v.reason || "Vyre security floor" });

@@ -1,5 +1,5 @@
 /* docs.vyre.run demo widgets (demos.js). Linked only from pages with a `::: demo`.
-   The Capsule mock pastes its values from local/capsule/app/capsule.css and docs/design/TOKENS.md:
+   The Capsule mock took its values from the first Capsule's stylesheet and docs/design/TOKENS.md:
    the Capsule is a dark window in both site themes, as it is on the Mac. The onboarding slides
    use the site's own tokens, so they follow the theme. */
 

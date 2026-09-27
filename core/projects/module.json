@@ -9,7 +9,7 @@
       "projects.catalog", "projects.of", "projects.threads", "projects.context"
     ]
   },
-  "watches": { "emits": ["project.created", "project.changed", "thread.picked", "thread.unpicked"] },
+  "watches": { "emits": ["project.created", "project.changed", "thread.picked", "thread.unpicked", "projects.moved"] },
   "shows": { "cli": ["projects", "new", "open", "resume", "start", "context", "threads", "pick", "unpick"] },
   "needs": {},
   "teaches": {}

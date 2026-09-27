@@ -66,7 +66,7 @@ const WORLD = {
   "100.101.3.2": { login: null, tagged: true, node: "ci", stableId: "nCI", tags: ["tag:ci"], caps: {} },
 };
 
-function kinds({ guests = { enabled: true, people: { "sam@harlow.example": { tools: ["glass.open"] } } }, computers = { enabled: true, tag: "tag:vyre-agent" },
+function kinds({ guests = { enabled: true, people: { "sam@harlow.example": { tools: ["threads.list"] } } }, computers = { enabled: true, tag: "tag:vyre-agent" },
   agentOf = undefined } = {}) {
   return identifier({ whois: async ip => WORLD[ip] || null, selfIps: () => ["100.101.1.1"], owner: () => "alex@example.com",
     network: () => ({ guests }), agentNodes: () => computers, ...(agentOf ? { agentOf } : {}) });
@@ -92,7 +92,7 @@ test("identity: a person the policy grants vyre.run/cap/guest is a guest without
 });
 
 test("identity: with guests off, a listed or granted person is refused as before", async () => {
-  const id = kinds({ guests: { enabled: false, people: { "sam@harlow.example": { tools: ["glass.open"] } } } });
+  const id = kinds({ guests: { enabled: false, people: { "sam@harlow.example": { tools: ["threads.list"] } } } });
   for (const ip of ["100.101.2.7", "100.101.2.8"]) {
     const r = await id(ip);
     assert.deepEqual([r.ok, r.kind, r.why], [false, null, "not the owner"]);
