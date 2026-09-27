@@ -53,6 +53,33 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   a running Chrome (CDP); each asserts its chip or note, no sideways scroll and no page errors.
 - `pair()` in test/link-harness.js takes `boxName`, `macHost`, `heartbeat`, `boxConfig`, and
   `macTranscripts` as a list of sessions, and needs only `name` and `after` from its context.
+#### A box built from vyre.tgz ships the files in it, not stale ones
+
+- npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
+  and mtime match what it synced before, so an image built from a new vyre.tgz could keep old
+  files. The installer's unpack and `vyre update`'s refresh now touch the unpacked tree before
+  the build (`scripts/install-box.sh`, `box/vyre`). The test tarball is packed with 1985 mtimes,
+  as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
+  Found by box-deploy.
+
+#### Making or changing an agent needs a person
+
+- `agents.create` and `agents.update` set an agent's credentials, budget and scope, and nothing
+  asked who was calling. Both are on the floor's human-only list now: an agent is refused, and a
+  person proves presence (the passkey in the Deck, Touch ID or a typed code for `vyre agents`).
+  The Deck's New agent sheet, agent page, assistant card and Settings ask for the passkey.
+  `core/presence/index.js`, `core/cli/commands/agents.js`, `deck/views/agents.js`,
+  `deck/views/settings.js`, `deck/js/assistant-setup.js`; test/presence-bypass.test.js.
+
+#### `vyre box add` waits for the switch, and the pairing code for the passkey
+
+- It moved on as soon as the address served: it closed the tunnel, opened a second passkey tab and
+  printed the pairing code before the person pressed "Switch to", whose passkey link then came
+  over a closed tunnel, and the 10-minute code could run out before anyone could approve it.
+  onboard.status now says `arrived` once the owner reaches the address; box add keeps the tunnel
+  until then, opens no second passkey tab after a switch, makes the pairing code only once a
+  passkey exists, waits for the approval, and replaces a code that expires unapproved.
+  `core/cli/commands/box.js`, `core/onboard/index.js`.
 
 #### An assistant made with an API key uses it as one
 
@@ -343,8 +370,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The Deck's computer panel reads what `computers.get` returns (it was drawn from fixture fields
   no tool had: name, host, disk, network, rules). Glass's title state follows the computer as
   watching thaws it.
+- Glass says why a computer did not start. The relay closes the stream with 4001 and a short
+  reason ("kit's computer stopped as soon as it started (exit code 3)"), and Glass shows "kit's
+  computer did not start" with that reason, what to try (Restart computer on kit's page, then
+  Retry), a Retry button and a link to kit's page. It no longer retries a broken computer on its
+  own. Other checkout failures close with 1011 and Glass tries again as before.
 - `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
   required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
+#### link.health answers the owner and modules only
+
+- On the box, `link.health` refuses a guest from another tailnet, an agent's own node, an agent
+  at the box, MCP and any tailnet login that is not the box's owner. The Deck, the terminal and
+  modules such as Glass ask as before.
+
 #### Glass egress: fail closed, keys that survive restarts
 
 - The egress sidecar no longer sends a listed site out from the box when the Mac stops offering
