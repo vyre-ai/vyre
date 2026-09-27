@@ -112,7 +112,12 @@ async function handle(msg) {
       const tool = hit && "tool" in hit ? hit.tool : asked;
       // agents.ask waits for a whole turn of another session, which can take minutes.
       const session = sessionKey();
-      const r = await call(tool, scoped(tool, params?.arguments || {}), { caller: CALLER, session, timeout: tool === "agents.ask" ? 600_000 : 120_000 });
+      // Claude Code's own id for this tool call, so a tool's steps (a Glass step, a computer action)
+      // link back to the chat row that caused them (vyred reads it as meta.call on a session's paths).
+      const meta = params?._meta || {};
+      const callId = [meta["claudecode/toolUseId"], meta.toolUseId, meta.tool_use_id].find(v => typeof v === "string" && v);
+      const r = await call(tool, scoped(tool, params?.arguments || {}), { caller: CALLER, session, timeout: tool === "agents.ask" ? 600_000 : 120_000,
+        ...(callId ? { headers: { "x-vyre-call-id": callId } } : {}) });
       if (r.error) return { content: [{ type: "text", text: `${r.error.code}: ${r.error.message}` }], isError: true };
       return { content: [{ type: "text", text: typeof r.data === "string" ? r.data : JSON.stringify(r.data, null, 2) }], structuredContent: r.data && typeof r.data === "object" && !Array.isArray(r.data) ? r.data : undefined };
     }

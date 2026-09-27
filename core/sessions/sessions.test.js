@@ -758,6 +758,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!(await w.tool("threads.list", {})).data.some(r => r.name === "Vyre memory"), "not in a person's list");
     const launch = w.launches().filter(x => x.argv).at(-1).argv;
     assert.ok(launch.includes("--setting-sources") && !launch.includes("--plugin-dir"), "lean: no settings, no plugin");
+    assert.ok(launch.includes("--no-session-persistence"), "no transcript for Recall to index");
   });
 
   test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {
@@ -841,6 +842,10 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(back.payload.mode, "plan");
     const argv = (await until(() => w.launches().find(l => l.argv && l.argv.includes("plan")), "the resumed launch in plan mode")).argv;
     assert.equal(argv[argv.indexOf("--permission-mode") + 1], "plan");
+    // Let it finish before the home is removed: the resumed turn and the queued one after it.
+    await until(async () => (await w.events(th.id)).some(e => e.type === "thread.sent" && e.payload.via === "turn" && e.payload.queued === q.queued_id), "the queued message handed over");
+    await w.tool("threads.stop", { thread: th.id });
+    await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.status === "stopped", "the last stop");
   });
 
   test(`${driver}: subagents wait for a slot when the box or the project is full, then run`, { skip: driver === "cli" ? "subagent slots need the Agent SDK's in-process hooks" : skip }, async t => {

@@ -30,7 +30,7 @@ import { spawnSession, killGroup } from "../sessions/spawn.js";
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
  * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
- *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean, skippable?: boolean, effort?: string|null }} o
+ *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean, skippable?: boolean, effort?: string|null, ephemeral?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
@@ -44,6 +44,7 @@ export function argsFor(o) {
   if (o.settings === false) a.push("--setting-sources", "");
   if (o.model) a.push("--model", o.model);
   if (o.effort) a.push("--effort", o.effort);
+  if (o.ephemeral) a.push("--no-session-persistence");
   // "Doesn't ask" can be switched on later only if the launch allows it: with Vyre's plugin only.
   if (o.skippable) a.push("--allow-dangerously-skip-permissions");
   if (o.mode) a.push("--permission-mode", o.mode);

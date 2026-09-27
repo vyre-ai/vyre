@@ -279,6 +279,9 @@ export class Switchboard {
     this.loadSdk = null;
     /** @type {Map<number, number>} every session's process group, pgid -> sid, kept until the whole group is gone */
     this.groups = new Map();
+    /** Spare quick sessions being started (threads.quick), which a stop waits for; and whether vyred is stopping. */
+    this.starting = new Set();
+    this.closing = false;
     /** @type {Map<string, { path: string, close: () => Promise<void> }>} each live thread's own socket to vyred (deps.threadSocket) */
     this.socks = new Map();
     /** @type {Map<string, string>} the last status said per thread, for thread.state */
@@ -656,7 +659,9 @@ export class Switchboard {
     const mode = PERSON_MODES.includes(String(rec.mode)) && rec.mode !== "default" && (rec.mode !== BYPASS || withPlugin) ? rec.mode : null;
     // "Doesn't ask" asked of a session without the plugin: it starts asking instead, and says so.
     if (rec.mode === BYPASS && !withPlugin) this.db.prepare("UPDATE threads_runs SET mode = 'default' WHERE id = ?").run(id);
-    const lo = { id, hooks, mode, skippable: withPlugin, effort: o.effort || null, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    // A warm quick session (threads.quick) writes no transcript: nothing to resume, and nothing
+    // for Recall to find its prompt (another question's passages) in.
+    const lo = { id, hooks, mode, skippable: withPlugin, effort: o.effort || null, ephemeral: Boolean(o.quick), resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, withPlugin, mode: mode || "default", message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
@@ -1461,7 +1466,13 @@ export class Switchboard {
     });
     this.write(id, String(prompt));
     // The next question's session starts now, while this one answers.
-    this.spare(purpose, system, model).then(r => { if (this.spares.has(key)) this.stop(r.id).catch(() => {}); else this.spares.set(key, r.id); }).catch(e => this.deps.log(`threads: no spare ${purpose} session (${e.message})`));
+    if (!this.closing) {
+      const next = this.spare(purpose, system, model)
+        .then(r => { if (this.closing || this.spares.has(key)) return this.stop(r.id).catch(() => {}); this.spares.set(key, r.id); })
+        .catch(e => this.deps.log(`threads: no spare ${purpose} session (${e.message})`))
+        .finally(() => this.starting.delete(next));
+      this.starting.add(next);
+    }
     try {
       const r = /** @type {any} */ (await answer);
       return { ...r, warm, ms: Date.now() - t0, thread: id };
@@ -1689,6 +1700,9 @@ export class Switchboard {
 
   /** vyred is stopping: every live thread ends with reason "restart" (ADR 0029 R7), so a surface says why. */
   async stopAll() {
+    // No new spare starts, and one being started is waited for, so it is stopped with the rest.
+    this.closing = true;
+    await Promise.all([...this.starting]);
     for (const st of this.live.values()) if (!st.haltReason) st.haltReason = "restart";
     await Promise.all([...this.live.keys()].map(id => this.stop(id)));
     for (const id of [...this.socks.keys()]) this.closeSocket(id);
