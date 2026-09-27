@@ -19,6 +19,10 @@ Drawn on "Plan approval and modes, phone and desktop".
 | App | none | not built |
 | Capsule | none | not built |
 
+Built once: this card is built once in chat-core for the web (the Deck and the PWA) and Expo (the
+app), from this spec, and the Capsule mirrors the same spec in Swift. No surface draws its own
+version (cohesion, ADR 0036).
+
 ## Anatomy
 
 A neutral card: `--panel`, 1 px `--rule`, radius 12 (phone 10).

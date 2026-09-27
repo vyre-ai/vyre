@@ -32,6 +32,8 @@ type Props = {
 };
 
 const SIZE = { xs: tokens.control.xs, sm: tokens.control.sm, touch: tokens.control.touch } as const;
+/** The icon inside: 16 at 28 and 32, 20 at 44 (the composer circles, nav buttons, Back). */
+const GLYPH = { xs: tokens.icon.sizes[1], sm: tokens.icon.sizes[1], touch: tokens.icon.sizes[2] } as const;
 const RADIUS = { xs: tokens.radius.button, sm: tokens.radius.button, touch: tokens.radius.buttonTouch } as const;
 const web = Platform.OS === "web";
 
@@ -45,7 +47,7 @@ function look(p: Props, c: Palette, s: { disabled: boolean; hot: boolean }): { f
 }
 
 /**
- * A borderless square with one 16 icon (the icon-button spec), for actions frequent enough that a
+ * A borderless square with one icon (the icon-button spec), for actions frequent enough that a
  * word is noise. Never a visible label and never a destructive action (that is the hold Button).
  * On the phone a 28 or 32 drawing still takes a 44 hit area.
  */
@@ -94,7 +96,7 @@ export function IconButton(p: Props) {
       {(st) => {
         const hot = !disabled && (st.pressed || !!(st as { hovered?: boolean }).hovered);
         const l = look(p, color, { disabled: !!p.disabled, hot });
-        return busy ? <Spinner track={p.primary ? color.primaryHover : color.ruleStrong} arc={l.ink} still={reduced} /> : <Icon name={p.icon} color={l.ink} />;
+        return busy ? <Spinner track={p.primary ? color.primaryHover : color.ruleStrong} arc={l.ink} still={reduced} /> : <Icon name={p.icon} color={l.ink} size={GLYPH[size]} />;
       }}
     </Pressable>
   );

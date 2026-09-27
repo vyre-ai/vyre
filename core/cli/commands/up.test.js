@@ -409,7 +409,8 @@ test("up on a Mac, the very first time: the welcome, the three choices, and choi
   // --local stands in for a Mac's default role, so this runs the same on Linux.
   assert.equal(await up(["--local"], f.deps), 0);
   const text = f.text();
-  assert.match(text, /v·  Vyre is installed · 0\.0\.1/);
+  const { version } = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../../../package.json"), "utf8"));
+  assert.ok(text.includes(`v·  Vyre is installed · ${version}`), "the welcome names the package's version");
   assert.match(text, /Vyre runs Claude Code on a machine you own/);
   assert.ok(text.indexOf("Vyre is installed") < text.indexOf("Where should Vyre run?"), "the welcome comes first");
   assert.match(text, /1  On a server I can SSH to[\s\S]*2  On this Mac[\s\S]*3  I already set up a box/);

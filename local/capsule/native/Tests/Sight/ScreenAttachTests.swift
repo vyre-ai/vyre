@@ -97,15 +97,25 @@ let screenAttachSuite = Suite("screen attach") { t in
         let secure = ScreenSnapshot.from(context(selected: "hunter2", secure: true))!
         t.eq(secure.selection, nil)
         t.ok(!ScreenAttach.decide(words: "how many", light: secure))
+        // Sharing on (the default): every send carries it, still never in a blind place.
+        t.ok(ScreenAttach.decide(words: "how many", light: plain, always: true))
+        t.ok(!ScreenAttach.decide(words: "how many", light: blind, always: true))
+        let flips = MainActor.assumeIsolated { () -> [Bool] in
+            let off = ScreenSharing(defaults: nil)
+            let first = off.on
+            off.on = false
+            return [first, off.on]
+        }
+        t.eq(flips, [true, false], "on by default, and off when turned off")
         t.ok(!ScreenSnapshot.from(context(selected: "   \n "))!.hasSelection)
     }
 
     t.test("chip: app and window, long titles cut with an ellipsis, app alone without a title") {
-        t.eq(ScreenAttach.chip(ScreenSnapshot.from(context())!), "with your screen: Google Chrome \u{00B7} Northwind Bakery - Orders")
+        t.eq(ScreenAttach.chip(ScreenSnapshot.from(context())!), "sees: Google Chrome \u{00B7} Northwind Bakery - Orders")
         let long = ScreenAttach.chip(ScreenSnapshot.from(context(title: "Harlow Legal - Engagement letter for Northwind Bakery, second draft"))!)
         t.ok(long.hasSuffix("\u{2026}"), long)
-        t.eq(long.count, "with your screen: Google Chrome \u{00B7} ".count + 40)
-        t.eq(ScreenAttach.chip(ScreenSnapshot.from(context(app: "Notes", title: ""))!), "with your screen: Notes")
+        t.eq(long.count, "sees: Google Chrome \u{00B7} ".count + 40)
+        t.eq(ScreenAttach.chip(ScreenSnapshot.from(context(app: "Notes", title: ""))!), "sees: Notes")
     }
 
     t.test("body: app, window, URL, selection, a collapsed excerpt, no empty lines") {
@@ -158,11 +168,29 @@ let screenAttachSuite = Suite("screen attach") { t in
         t.eq(ScreenAttach.cleanURL("https://shop.example/keyboards?sort=price"), "https://shop.example/keyboards?sort=price")
     }
 
+    t.test("sharing on (the default): any words carry the screen, and the sees chip names it") {
+        let link = AttachLink()
+        link.answer("screen.context") { input in .success(context(text: (input["text"] as? Bool) == true ? PAGE : "")) }
+        let r = t.wait { @MainActor () -> [String] in
+            let (_, e) = ext(link)
+            e.capsuleWillShow(front: nil)
+            let a = await e.screenAttachment(for: "how many rolls")
+            let cmds = e.commands.map(\.title).filter { $0.contains("screen") && !$0.contains("Ask") }
+            _ = e.setSharing(false)
+            let after = e.commands.map(\.title).filter { $0.contains("screen") && !$0.contains("Ask") }
+            e.capsuleDidHide()
+            return [a?.chip ?? "nil", "\(a?.body.contains("two dozen rolls") == true)"] + cmds + after
+        }
+        t.eq(r, ["sees: Google Chrome \u{00B7} Northwind Bakery - Orders", "true", "Stop sharing the screen", "Share the screen with every ask"])
+    }
+
     t.test("extension: one light read on show, one full read on the first trigger, the same snapshot after") {
         let link = AttachLink()
         link.answer("screen.context") { input in .success(context(text: (input["text"] as? Bool) == true ? PAGE : "")) }
         let r = t.wait { @MainActor () -> [String] in
             let (_, e) = ext(link)
+            // Sharing off: only words that point at the screen attach it (on is the next test).
+            e.sharing.on = false
             e.capsuleWillShow(front: nil)
             var out: [String] = []
             let none = await e.screenAttachment(for: "how many rolls")
@@ -181,7 +209,7 @@ let screenAttachSuite = Suite("screen attach") { t in
         }
         t.eq(r?[0], "none true")
         t.eq(r?[1], "sight:screen")
-        t.eq(r?[2], "with your screen: Google Chrome \u{00B7} Northwind Bakery - Orders")
+        t.eq(r?[2], "sees: Google Chrome \u{00B7} Northwind Bakery - Orders")
         t.eq(r?[3], "com.google.Chrome")
         t.eq(r?[4], "same true")
         t.eq(r?[5], "reads [\"false\", \"true\"]")
@@ -222,6 +250,7 @@ let screenAttachSuite = Suite("screen attach") { t in
         let r = t.wait { @MainActor () -> [String] in
             let (_, e) = ext(link)
             e.attachDebounce = .milliseconds(30)
+            e.sharing.on = false
             e.capsuleWillShow(front: nil)
             var out: [String] = []
             let a = await e.attachment(for: "summarize this", to: .ask)
@@ -246,7 +275,7 @@ let screenAttachSuite = Suite("screen attach") { t in
             return out
         }
         t.eq(r?[0], "sight:screen")
-        t.eq(r?[1], "with your screen: Google Chrome \u{00B7} Northwind Bakery - Orders")
+        t.eq(r?[1], "sees: Google Chrome \u{00B7} Northwind Bakery - Orders")
         t.eq(r?[2], "icon true")
         t.eq(r?[3], "body true")
         t.eq(r?[4], "week true")
@@ -264,7 +293,8 @@ let screenAttachSuite = Suite("screen attach") { t in
             out.append("failure \(await f.attachment(for: "summarize this", to: .project) == nil)")
             // Hidden while waiting: the question answers nil and nothing is read afterwards.
             let late = AttachLink(); late.answer("screen.context") { input in .success(context(text: (input["text"] as? Bool) == true ? PAGE : "")) }
-            let (_, h) = ext(late); h.attachDebounce = .milliseconds(80); h.capsuleWillShow(front: nil)
+            // A rest long enough that a slow runner's 10 ms sleep never outlasts it.
+            let (_, h) = ext(late); h.attachDebounce = .milliseconds(500); h.capsuleWillShow(front: nil)
             async let pending = h.attachment(for: "summarize this", to: .ask)
             try? await Task.sleep(for: .milliseconds(10))
             h.capsuleDidHide()
@@ -308,7 +338,7 @@ let screenAttachSuite = Suite("screen attach") { t in
             out.append("no trigger \(p.chip == nil)")
             return out
         }
-        t.eq(r?[0], "with your screen: Google Chrome \u{00B7} Northwind Bakery - Orders")
+        t.eq(r?[0], "sees: Google Chrome \u{00B7} Northwind Bakery - Orders")
         t.eq(r?[1], "with true")
         t.eq(r?[2], "cleared true")
         t.eq(r?[3], "chip again true")

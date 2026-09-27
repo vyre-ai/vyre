@@ -370,8 +370,10 @@ test("daemon: system.info names the owner as onboarding saved them, for a device
   assert.deepEqual(info.assistant, { name: "juno" }, "replies are labelled with the assistant's name");
 });
 
-test("daemon: /theme.css serves config's theme.colors, read on every request", { timeout: 20_000 }, async t => {
+test("daemon: without the appearance module, /theme.css serves config's theme.colors, read on every request", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
+  // The fallback path: with appearance on, it answers instead (core/settings/hub.test.js).
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ modules: { disable: ["appearance"] } }));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
   const { socketPath } = await import("../core/config/index.js");

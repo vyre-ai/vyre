@@ -1,10 +1,10 @@
 {
   "name": "settings",
   "version": "0.1.0",
-  "description": "One way to read and change every setting, at account or project level, wherever it is kept.",
+  "description": "One way to read and change every setting, at account, project, device or session level, wherever it is kept.",
   "roles": ["box", "local"],
   "requires": [],
-  "does": { "tools": ["settings.schema", "settings.get", "settings.set", "settings.reset", "settings.resolve", "settings.write"] },
+  "does": { "tools": ["settings.schema", "settings.get", "settings.set", "settings.reset", "settings.resolve", "settings.snapshot", "settings.write"] },
   "watches": { "emits": ["settings.changed"] },
   "shows": { "deck": ["settings"], "cli": [] },
   "needs": {},

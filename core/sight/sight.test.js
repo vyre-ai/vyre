@@ -264,3 +264,21 @@ test("sight.watch: an agent's ticket from computers.watch; the Mac answers local
   assert.equal((await reg.call("sight.watch", { target: "mac" }, "cli")).error?.code, "local_only");
   assert.equal((await reg.call("sight.watch", { target: "agent:kit", surface: "glass:laptop" }, "mcp")).error?.code, "denied");
 });
+
+test("sight.frame: one small JPEG of an agent's screen with its last step; never the Mac", async t => {
+  const shotSrc = `export default { async start(ctx) {
+    ctx.tool("hands-desktop.screenshot", { run: async i => ({ image: Buffer.from(JSON.stringify(i)).toString("base64"), mime: i.format === "jpeg" ? "image/jpeg" : "image/png" }) });
+    return {};
+  } };`;
+  const { reg, events } = await world(t, [["hands-desktop", ["hands-desktop.screenshot"], ["desktop.acted"], shotSrc]]);
+  events.emit("hands-desktop", "desktop.acted", { agent: "kit", action: "press", summary: "Open", ok: true });
+  const f = data(await reg.call("sight.frame", { target: "agent:kit", maxWidth: 320 }, "deck"));
+  assert.equal(f.mime, "image/jpeg");
+  assert.deepEqual(JSON.parse(Buffer.from(f.image, "base64").toString()), { agent: "kit", format: "jpeg", maxWidth: 320 }, "asks hands-desktop for a scaled JPEG");
+  assert.equal(f.step.summary, "Open");
+  assert.equal(data(await reg.call("sight.frame", { target: "agent:kit" }, "deck")).maxWidth, 480, "480 wide by default");
+  assert.equal((await reg.call("sight.frame", { target: "mac" }, "deck")).error?.code, "local_only");
+  assert.equal((await reg.call("sight.frame", { target: "agent:kit" }, "mcp")).error?.code, "denied");
+  const none = await world(t, []);
+  assert.equal(data(await none.reg.call("sight.frame", { target: "agent:kit" }, "cli")).image, null);
+});

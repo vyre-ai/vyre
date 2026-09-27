@@ -306,6 +306,23 @@ test("a session closed for idleness is idle, not stopped", () => {
 
 // ---- steering, the queue, rewinds, modes, todos and tasks (the composer like Claude Code) ----
 
+test("a plain send: the words drawn at once with no marker, then the box's echo (its own uuid) is the same row", () => {
+  const s = createSession(T);
+  const drawn = localSend(s, { uuid: "deck-1", text: "Add the autumn specials", mode: "send", at: 1000 });
+  assert.deepEqual(keys(s), ["u:deck-1"]);
+  assert.ok(drawn.includes("u:deck-1"));
+  assert.equal(s.items.some(i => i.kind === "steer"), false, "no steer marker");
+  ev(s, "thread.sent", { text: "Add the autumn specials", surface: "deck", uuid: "box-1" }, { at: 1050 });
+  assert.equal(s.items.filter(i => i.kind === "user").length, 1, "the echo is the same message");
+  assert.equal(s.meta.uuids.get("box-1"), s.items[0].key, "known by the box's uuid now");
+  // A send that failed takes its row away.
+  const t = createSession(T);
+  localSend(t, { uuid: "deck-2", text: "Try again later", mode: "send" });
+  dropLocal(t, "deck-2");
+  assert.deepEqual(keys(t), []);
+  assert.deepEqual(localSend(t, { uuid: "deck-3", text: "x", mode: null }), [], "null draws nothing");
+});
+
 test("a steer: drawn on send, echoed via steer, moved to where it joined at the step counted here, and a re-read keeps one marker", () => {
   const s = createSession(T);
   ev(s, "thread.sent", { text: "Rebuild the Estate intake", uuid: "u-1" }, { at: 1000 });

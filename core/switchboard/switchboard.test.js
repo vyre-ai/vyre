@@ -1022,6 +1022,26 @@ test("switchboard: a question can be declined", async t => {
   assert.equal(of(s.got, id, "ask.answered")[0].payload.answers, undefined);
 });
 
+test("plan: the fake's ExitPlanMode ask carries the plan in its detail; allow starts building, deny keeps planning with the note", async t => {
+  const { root, work, tool } = await boot(t);
+  const got = responses(t, root);
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "plan", surface: "deck" })).data.id;
+  const a = await until(async () => (await tool("threads.asks", { thread: id })).data[0], "the plan ask");
+  assert.equal(a.tool, "ExitPlanMode");
+  assert.match(a.detail.input.plan, /^# Update the Northwind Bakery price list/);
+  assert.equal((await tool("threads.answer", { ask: a.id, decision: "deny", message: "Change the plan: tests first" })).data.answered, true);
+  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning"), "the reply");
+  assert.equal(said.payload.text, "I'll keep planning: Change the plan: tests first");
+  assert.equal(got()[0].behavior, "deny");
+  const id2 = (await tool("threads.start", { cwd: work, prompt: "plan", surface: "deck" })).data.id;
+  const b = await until(async () => (await tool("threads.asks", { thread: id2 })).data[0], "the second plan ask");
+  await tool("threads.answer", { ask: b.id, decision: "allow" });
+  const said2 = await until(() => of(s.got, id2, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning"), "the reply");
+  assert.equal(said2.payload.text, "Starting on the plan: the price list first.");
+});
+
 test("demo: Edit and Bash asks carry their detail, always hands back the suggestions, and the transcript is Claude Code's shape", async t => {
   const { root, work, tool } = await boot(t);
   const got = responses(t, root);
@@ -1258,4 +1278,13 @@ test("steer and queue while an ask is open: both are kept, threads.get shows the
   const took = of(s.got, id, "thread.text").find(e => e.payload.done && /took in: use the rye price too/.test(e.payload.text));
   assert.ok(took, "the steered words reached Claude in the running turn");
   assert.deepEqual((await tool("threads.queue", { thread: id }, "deck")).data.queued, []);
+});
+
+test("describe: a Bash ask's summary is redacted, as it is shown on every device", () => {
+  // Built at run time so the fake key does not trip the hygiene scan (test/hygiene.test.js).
+  const fake = ["sk", "ant", "api03", "abcdefghijklmnopqrstuvwxyz0123456789ABCD"].join("-");
+  const d = describe("Bash", { command: `curl -H "Authorization: Bearer ${fake}" https://example.com` });
+  assert.doesNotMatch(d.summary, /abcdefghijklmnopqrstuvwxyz0123/);
+  assert.match(d.summary, /^curl -H "Authorization: Bearer \[/);
+  assert.equal(describe("Bash", { command: "npm   test" }).summary, "npm test");
 });
