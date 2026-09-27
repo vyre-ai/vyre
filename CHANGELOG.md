@@ -4,11 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Deck design directions for the polish pass
+#### Deck design: Direction B, second pass
 
-- docs/design/deck-directions/ holds two directions for the Deck (A Instrument, B Studio) as
-  1440x900 mockups in dark and paper: Now, Chat, Agents, Projects, Vault and Settings. Design only,
-  no code change.
+- The user picked B. docs/design/deck-directions/ now holds B only, redone on a reduced system:
+  Instrument Sans plus JetBrains Mono for code, five sizes, two weights, eight neutrals, lime and
+  violet. New States board (loading, empty, error, offline, many items, long names, button and
+  held-item states, keyboard). docs/design/deck.md writes the system down.
+- `core/config/palette.js` drops recall gold and the beacon wash and rule, adds `del-wash`, sets
+  paper `hover` to #EEEAE2 (it equalled `panel`), and keeps teal as the one alternative
+  attention colour (`withAttention`). Its test checks teal too and that no other hue role comes
+  back; the deck.css match is a `todo` until the attention swap lands.
+- The render audit fails text off the five sizes, the two weights or the two families, and any
+  colour outside the palette.
 
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
