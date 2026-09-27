@@ -86,28 +86,57 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
-27 Sep 2026 (resumed): the WebSocket upgrade handler is done (f309059, below). The Mac-send
-loose ends are done on work/federation 5c247ce (docs/work/federation.md "Doing"). Rich Mac
-transcripts are done on work/federation-transcript 6731af9 (../vyre-federation-transcript, off
-work/chat, since recall.transcript is only there). Taildrive per-share access and the secrets scan are done (ea158df, under "Done"). Next: the
-projectsDir move to /work/projects (Next, item 2).
+27 Sep 2026 (resumed after logout 3, main ef51363 merged at 7036361). Done this session:
 
-Owner-only streams (f309059): the upgrade path already existed on main (ctx.upgrader in
-core/daemon/index.js, onUpgrade in core/names/service.js, from glass-live), but it let a guest
-listed for glass.open through. Now `onUpgrade` refuses any whois kind but "owner" (403), and
-core/onboard/loopback.js takes upgrades itself: non-loopback Host 421, no session 403, then 404
-(onboarding opens no streams). Test box, `nice -n 15`: core/names/service.test.js,
-test/onboard.test.js, core/names/identity.test.js, test/guests.test.js, test/hygiene.test.js,
-53 of 53. A mutation check (rule removed) fails both the guest and the agent assertion.
-Open question for the lead: GUEST_SAFE (core/names/guests.js) still offers guests glass.open,
-whose ticket now cannot be used over the tailnet. Drop glass.open from GUEST_SAFE, or let a
-guest's stream through for Glass only?
+- 1498c4a VyreDrive: users see the box shares as "VyreDrive (built on Tailscale's Taildrive)"
+  (tool descriptions, refusals, the Deck row, compose comment, docs; the anchor is now
+  `#vyredrive-the-box-folders-on-your-mac`). "Taildrive" stays only where it names Tailscale's
+  mechanism (drive:share, drive:access, tailscale.com/cap/drive, their docs link, "in alpha").
+  The share scan skips real node_modules, dist, .next, target, venv, .venv and .git/objects (not
+  counted toward SCAN_LIMIT) and flags a .git/config with a URL carrying user:pass or a token
+  before the host, or an extraheader with Authorization (an ssh URL with only a login name is not
+  a finding). files.drive.access moved HUMAN_ONLY to PERSON_ONLY. GUEST_SAFE is glass.close and
+  threads.list (glass.open dropped).
+- 387c671 CORS for the hosted app (`network.origins`, default `https://app.vyre.run`, exact
+  match) on the tailnet listener: owner only (a guest or agent node gets a plain 403 with no CORS
+  headers), preflight GET/POST with content-type, authorization, x-vyre-session, max-age 600, no
+  credentials, `Access-Control-Allow-Private-Network` when asked. `GET /v1/health` from the app
+  answers `{ reachable: true }` without vyred (the tailnet probe). Every other call and WebSocket
+  needs `deps.webSession(req, who)` (e2e fills it; none wired yet, so all refused with 401
+  `web_session_required`); the router gets `peer.origin` and `peer.webSession`.
+- 32cef89 (+ f094246) projectsDir: a box with /work and no projectsDir set uses /work/projects;
+  the first start moves homes from ~/Vyre/projects once (EXDEV copy across volumes), leaves a
+  link at each old folder (Claude transcripts are keyed by path), rewrites rows and markers,
+  records projects-moved.json and emits projects.moved. Docs updated.
 
-Shas waiting to merge:
-- work/tailnet f309059: owner-only streams, on top of bd833dc (egress fails closed, link.health
-  owner-only).
-- work/federation 2379a0c (../vyre-federation): sending to Mac sessions from the box, and
-  ctx.call `as` limited to core modules. Given to the integrator; chat merges it once frozen.
+Tests (test box, `nice -n 15`): the subagent's runs 241 of 242 (1 skipped) and 67 of 67 over
+drive, files, presence, guests, identity, hygiene, docs-build, fixtures, presence-bypass,
+presence-cli, harness, capsule launcher, deck/test, docs-check, docs-index, computers, glass,
+move; then 100 of 100 (service, identity, guests, onboard, hygiene, docs-build, config, move) and
+106 of 106 (projects, config, drive, docs-build, docs-check, docs-index, hygiene). A mutation
+check (owner and session rules removed) fails the CORS test. No perf change expected (no timers,
+one header check per request); perf-check not rerun.
+
+Phone path, tailscale#19147 (researched 27 Sep, no device): OPEN since 2026-03-27, iOS 26.4.x.
+Safari/Chrome show ERR_SSL_PROTOCOL_ERROR or "server not found" on *.ts.net while the 100.x
+address works. Not TLS: a DoH app or encrypted-DNS profile (DNSecure, NextDNS, Control D)
+overrides Tailscale's split resolver on iOS, so the name resolves publicly (to Funnel ingress when
+Funnel is on, hence the TLS-looking error) or not at all. Private Relay and Limit IP Tracking are
+not the cause. Related open iOS issues: #18889 and #19504 (tunnel drops every few minutes on iOS
+26.4, app 1.94 to 1.96.5), #13799 (On Demand does not trigger for ts.net names). Nothing on the Mac
+or in the Simulator can reproduce it (they use macOS's stack); only the server side can be
+checked (`openssl s_client ... -alpn h2,http/1.1`, `dig +short <box>.ts.net @1.1.1.1` must be
+empty). Risk: medium-high as the only phone path. Mitigations: keep Funnel off on the box (clean
+"not found" instead of a fake TLS error); the hosted app at app.vyre.run probes
+`https://<box>/v1/health` (built, above) and falls back to the relay, with help text naming the
+cause (Tailscale off, a DNS app, toggle Tailscale); a service worker on the ts.net origin shows a
+cached help page. Recommendation to the lead and app-design: relay as the always-works path and
+the tailnet as an automatic upgrade when the probe answers. The docs row is in
+docs/using/tailscale.md "When a device cannot connect".
+
+Waiting: e2e (the web-session rule and header names), relay (origin list, and whether the
+hosted app ever reaches the box through the relay), sessions (threads.answer contract for
+Mac-owned sessions, below).
 
 ## Next
 
@@ -131,10 +160,17 @@ The lead's earlier decisions of 27 Sep 2026, still to build in this order:
    guests, agent nodes, agents at the box, MCP, anonymous callers and any tailnet login that is not
    `network.owner`; test in test/link.test.js. Tests on the test box: link, link-federation,
    guests, health, glass, hygiene 33/33.
-2. **Taildrive:** (the first three bullets are done, under "Done")
-   - Move the box's `projectsDir` to `/work/projects`, with a migration that moves existing
-     projects out of `vyre-home` and rewrites the paths the projects module stores. Coordinate
-     with the projects workstream (docs/work/projects.md).
+2. **Taildrive:** done (projectsDir move 32cef89, under "Doing"). Verify on the first real
+   box start: the move across the vyre-home and vyre-work volumes, and Claude resuming a
+   session through the old-path link.
+
+0. **Federation, threads.answer for Mac-owned sessions** (ADR 0030 step 7, ADR 0021 v2),
+   proposed to sessions 27 Sep: the box checks a person caller, then forwards over the link with
+   an Ed25519 assertion { v, tool, mac, thread, ask, decision sha256, caller, device, iat, exp
+   +60 s, nonce } signed by a box link key the Mac pins at pairing (TOFU once for paired Macs).
+   The Mac accepts it for threads.answer on that ask only, once. Build on work/federation after
+   sessions confirms the ask id, the input shape, the already-answered outcome, and source:"mac"
+   on relayed ask events.
 3. **Taildrop:** the box stays a tagged server. The user step is the file-sharing grant to the
    box's tag (already under "Steps for the user"). Drop the "sign in as the owner" alternative.
 4. **Egress:**
@@ -202,13 +238,13 @@ only read-only checks on the test box.
   in deck/chat/session.js).
 - integrator: merge work/tailnet (this branch's tip) and work/federation 5c247ce.
 - e2e: re-run the egress checks on headscale (the list under "Verify on first real run").
-- lead, decision: the share scan walks node_modules and .git and stops at 20,000 entries, so
-  sharing `projects` (/work) with a few repos in it is refused as too big to check. Options: skip
-  node_modules (and .git objects, keeping .git/config) in the scan, or raise the cap. Recommend
-  skipping node_modules and .git/objects.
-- lead, decision: guests may be given glass.open (GUEST_SAFE), but tailnet streams are now the
-  owner's alone, so that ticket cannot be used. Drop glass.open from GUEST_SAFE, or let guests
-  through for Glass only.
+- e2e: the web-session rule for the hosted app: header name (proposed `x-vyre-session`), the
+  WebSocket form, the session-start route (must answer without a session), and a
+  `webSession(req, who)` to wire into names() in core/names/index.js.
+- relay: the hosted app's origin list (preview origins?) and whether it ever reaches the box
+  through the relay (then CORS must be answered there too).
+- sessions: confirm (a) to (d) of the threads.answer contract (Next 0).
+- lead, confirm: an ssh remote URL with only a login name (ssh://git@...) is not a secret finding.
 
 - vault: see the tailnet entry in docs/work/vault.md "Needs from others".
 - computers: review the Pacer (`glass.js`), the pool's egress remake and agent-node join, the
@@ -459,6 +495,15 @@ Listed by the area they touch, so the merge can go in order. Everything below is
   `computers.egress.status` gains `gate: { answers, allowed, reason } | { answers: false, why }`.
 - **perf-check** (scripts/perf-check): waits for `memory.curate` after indexing, before the idle
   window, so Memory's startup pass is not counted as idle work.
+- **names** (27 Sep): config `network.origins` (default `["https://app.vyre.run"]`); `names()`
+  takes `webSession`; the router's peer may carry `origin` and `webSession`; cross-origin
+  `GET /v1/health` answers `{ reachable: true }` in the listener; `401 web_session_required`.
+- **presence** (27 Sep): `files.drive.access` is PERSON_ONLY, no longer HUMAN_ONLY.
+- **names guests** (27 Sep): GUEST_SAFE drops `glass.open`.
+- **files** (27 Sep): the share scan's skips and `.git/config` check (`gitConfigCredential`).
+- **config/projects** (27 Sep): `workDir()`, `oldProjectsDir()`, `boxProjectsDir()`; a box's
+  default `projectsDir` is `/work/projects` when `/work` exists; `core/projects/move.js`,
+  event `projects.moved`, file `<vyre home>/projects-moved.json`.
 - **config**: defaults for `glass.egress`, `computers.tailnet`, `hooks`, `network.guests`.
 
 Suggested merge order: link and names, daemon and presence, vault, files, computers, watchers and

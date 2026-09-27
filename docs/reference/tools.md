@@ -488,7 +488,7 @@ The folders directly inside a folder (default: inside every root), or, with q, f
 
 ### `files.drive.access`
 
-Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with presence. Says when the tailscale container's /work mount must change to match.
+Make one of the box's shares read-only (ro) or read-write (rw) for the paired Mac. Owner only, with no proof asked; never an agent, a model or a guest. Says when the tailscale container's /work mount must change to match.
 
 - Input:
   - `mode` "ro" or "rw", required
@@ -497,14 +497,14 @@ Make one of the box's shares read-only (ro) or read-write (rw) for the paired Ma
 
 ### `files.drive.audit`
 
-Check the tailnet policy from the box's side: every online node the policy lets into Taildrive here that is not a paired Mac is a finding.
+Check the tailnet policy from the box's side: every online node the policy lets into this box's VyreDrive shares that is not a paired Mac is a finding.
 
 - Input: none
 - Callers: any caller
 
 ### `files.drive.local`
 
-Where a box file is on this Mac through a mounted Taildrive share, or null when no mounted share holds it.
+Where a box file is on this Mac through a mounted VyreDrive share, or null when no mounted share holds it.
 
 - Input:
   - `path` string, required
@@ -532,7 +532,7 @@ Open a mounted box share, or a file or folder in it, in Finder.
 
 ### `files.drive.share`
 
-Share one of the box's offered folders with the paired Mac over Taildrive. Owner only. Audits who else the tailnet policy lets in, right after.
+Share one of the box's offered folders with the paired Mac over VyreDrive. Owner only. Audits who else the tailnet policy lets in, right after.
 
 - Input:
   - `name` string, required
@@ -540,7 +540,7 @@ Share one of the box's offered folders with the paired Mac over Taildrive. Owner
 
 ### `files.drive.status`
 
-Whether this box may share folders over Taildrive, the shares it offers (config files.drive.shares), and what is shared now.
+VyreDrive (built on Tailscale's Taildrive) on the box: whether this box may share folders with the paired Mac, the shares it offers (config files.drive.shares), and what is shared now.
 
 - Input: none
 - Callers: any caller
@@ -556,7 +556,7 @@ Unmount one of the box's shared folders from this Mac.
 
 ### `files.drive.unshare`
 
-Stop sharing one of the box's folders over Taildrive. Owner only.
+Stop sharing one of the box's folders over VyreDrive. Owner only.
 
 - Input:
   - `name` string, required
@@ -564,7 +564,7 @@ Stop sharing one of the box's folders over Taildrive. Owner only.
 
 ### `files.drive.url`
 
-The WebDAV address of one of the box's Taildrive shares, as this Mac reaches it.
+The WebDAV address of one of the box's VyreDrive shares, as this Mac reaches it.
 
 - Input:
   - `share` string, required

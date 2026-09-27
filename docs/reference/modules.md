@@ -40,7 +40,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 7 | 4 | capsule, cli, deck |
-| [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
+| [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -291,7 +291,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [8](tools.md#projects)
-- Emits: [4 events](events.md#projects)
+- Emits: [5 events](events.md#projects)
 - Shows on: cli
 
 ## push

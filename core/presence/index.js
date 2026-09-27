@@ -37,8 +37,9 @@ export const HUMAN_ONLY = new Set([
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
   // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
   // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
-  // and the sites that leave through the owner's Mac.
-  "files.drive.share", "files.drive.unshare", "files.drive.access",
+  // and the sites that leave through the owner's Mac. Switching a share the owner already made
+  // between read-only and read-write is the owner's own (PERSON_ONLY below).
+  "files.drive.share", "files.drive.unshare",
   "network.guests.add", "network.guests.remove", "network.guests.enable",
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
@@ -49,15 +50,17 @@ export const HUMAN_ONLY = new Set([
  * Vyre does not nag (ADR 0024, user rule 27 Sep): answering a session's ask, opening a terminal,
  * making and changing agents, changing or discarding a held draft (gate.revise, gate.reject send
  * nothing), the owner's hands on an agent's computer (taking the keyboard pauses the agent,
- * handing it back returns what it had), and the user's own lessons. None sends, pays, pairs or
- * releases a secret. The tools' caller checks keep models, agents and guests out (computers
- * ownSurface, glass surfaceOf, the allowlists), the harness floor refuses a model's shell that
- * names one of these, as it does the list above, and vyred refuses a socket call to one from any
- * process under a `claude` or a thread's process (core/daemon/peer.js).
+ * handing it back returns what it had), the user's own lessons, and switching one of the box's
+ * VyreDrive shares between read-only and read-write (files.drive.access: the share already exists
+ * and reaches no one new). None sends, pays, pairs or releases a secret. The tools' caller checks
+ * keep models, agents and guests out (computers ownSurface, glass surfaceOf, drive's owner check,
+ * the allowlists), the harness floor refuses a model's shell that names one of these, as it does
+ * the list above, and vyred refuses a socket call to one from any process under a `claude` or a
+ * thread's process (core/daemon/peer.js).
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach", "gate.revise", "gate.reject",
   "agents.create", "agents.update",
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release",
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "files.drive.access",
   // The user's own lessons: accepting, relaxing and retiring (the no-nag rule).
   "learn.accept", "learn.retire", "learn.relax"]);
 

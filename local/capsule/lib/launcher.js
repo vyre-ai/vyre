@@ -300,8 +300,8 @@ export class Launcher {
   }
 
   /**
-   * Open a box file. When a Taildrive share holding it is mounted (files.drive.local), open it
-   * there, where edits land on the box. Otherwise pull a copy to this Mac (vyred puts it under
+   * Open a box file. When a VyreDrive share (Taildrive underneath) holding it is mounted
+   * (files.drive.local), open it there, where edits land on the box. Otherwise pull a copy to this Mac (vyred puts it under
    * its fetched folder) and open that.
    */
   async fetch(r) {

@@ -28,12 +28,12 @@ The floor keeps a fixed list in `core/presence/index.js` (`HUMAN_ONLY`). A modul
 
 - Sending: `gate.approve`.
 - Vault: `vault.put`, `vault.approve`, `vault.unlock`, `vault.offboard`, `vault.inject`, `vault.totp`, `vault.backup`, `vault.restore`, `vault.delete`, `vault.device.code`, `vault.device.unlock`, `vault.unlock-passphrase`, `vault.reveal`, `vault.copy`, `vault.resolve`, `vault.render`, `vault.session.open`, `vault.kit`.
-- Learning: `learn.accept`, `learn.retire`, `learn.relax`, `learn.skill-install`.
+- Learning: `learn.skill-install`.
 - Machines: `link.pair.approve`.
 - Presence itself: `presence.enroll`, `presence.remove`, `presence.code`, `presence.session.open`.
 - Who else reaches this box: `files.drive.share`, `files.drive.unshare`, `network.guests.add`, `network.guests.remove`, `network.guests.enable`, `hooks.enable`, `hooks.open`, `hooks.close`, `computers.tailnet.set`, `computers.egress.set`.
 
-Your own actions on your own screens ask for no proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making and changing agents (`agents.create`, `agents.update`), and taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`). Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
+Your own actions on your own screens ask for no proof (`PERSON_ONLY`): answering Claude's questions and permission asks (`threads.answer`), changing or discarding a held draft (`gate.revise`, `gate.reject`, which send nothing), opening a terminal (`term.open`, `term.attach`), making and changing agents (`agents.create`, `agents.update`), accepting, retiring and relaxing your lessons (`learn.accept`, `learn.retire`, `learn.relax`), taking an agent's computer and handing it back (`computers.takeover`, `computers.giveback`, `glass.take`, `glass.release`), and making one of the box's VyreDrive shares (built on Tailscale's Taildrive) read-only or read-write (`files.drive.access`). Only a person's surface can call them: agents and guests are refused, Claude's sessions cannot name them in a shell command, and vyred refuses a call to one from any process running under a Claude session.
 
 Your assistant may still change an agent's plain fields (name, instructions, model, effort, description) through Vyre's tools. See [Agents](../using/agents.md).
 

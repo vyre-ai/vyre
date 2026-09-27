@@ -225,7 +225,7 @@ const ENV_MEANING = {
   BOX_WAIT_MS: "How long `vyre box` waits for an install to finish. Default 65 minutes.",
   CAPSULE_BIN: "The folder holding the Capsule's native helpers.",
   CAPSULE_DRIVE: "In a development build, lets a script drive the Capsule.",
-  DRIVE_ACCESS: "`ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for Taildrive. `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change.",
+  DRIVE_ACCESS: "`ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change.",
   CAPSULE_LOG: "Writes the Capsule's log to stdout from a packaged build.",
   CAPSULE_TRACE_WAKE: "Times each wake of the Capsule.",
   CLAUDE_BIN: "The `claude` binary to run. Default `claude` on the PATH.",
@@ -488,7 +488,7 @@ const MEANING = {
   "theme.colors": "`{ dark: { token: colour }, light: { role: colour } }`, keys as on the design tokens page. A value that is not a plain CSS colour is ignored. Reload the Deck to see a change.",
   name: "This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`.",
   role: "`box` for the always-on server, `local` for a Mac. Decides which modules start.",
-  projectsDir: "The folder new projects are made in.",
+  projectsDir: "The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects`, so VyreDrive can share it; the first start there moves homes from `~/Vyre/projects` once, leaving links behind.",
   roots: "More folders to look in for projects.",
   me: "Who you are, so memory can tell your own people and domains from everyone else's.",
   "me.domains": "Domains that are yours.",
@@ -509,6 +509,7 @@ const MEANING = {
   "network.box": "On a Mac: the address of the box it is paired with.",
   "network.onboardPort": "The loopback port onboarding listens on. 7300 when unset.",
   "network.ownerSeen": "When the owner was first seen on the tailnet. Written by Vyre.",
+  "network.origins": "Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `[\"https://app.vyre.run\"]` when unset; `[]` turns it off. Each call but the reachability probe needs a web session.",
 };
 
 /** The fields of a JSDoc object type, top level only: [{ key, optional, type }]. */

@@ -275,13 +275,13 @@ Vyre checks what it can.
 
 | Feature | What it gives you | Vyre support |
 | --- | --- | --- |
-| [Taildrive](#taildrive-the-box-folders-on-your-mac) | the box's project folders in Finder | built, read-only; a per-share write switch is in progress |
+| [VyreDrive](#vyredrive-the-box-folders-on-your-mac) (built on Tailscale's Taildrive) | the box's project folders in Finder | built, read-only unless you make a share writable |
 | [Taildrop](#taildrop-send-files-to-the-box) | send a file from the Mac or phone to the box | built |
 | [Tailscale SSH](#tailscale-ssh-for-vyre-box-add) | `vyre box add` without SSH keys | built |
 | [Tailnet Lock](#tailnet-lock) | only devices you sign may join | built (Vyre reads it; you turn it on) |
 | [Egress through your Mac](#glass-egress-through-your-mac-exit-node) | chosen sites see your home address, not the server's | built, tested on a test tailnet only; renewal without expiry in progress |
 | [Vault grants](#vault-passes-authorized-by-the-policy) | the policy must also cover a vault pass | built |
-| [Guests](#guests-from-another-tailnet) | someone from another tailnet watches Glass | built |
+| [Guests](#guests-from-another-tailnet) | someone from another tailnet lists your threads | built |
 | [Agent nodes](#a-tailnet-node-for-each-agent) | each agent's computer is its own tailnet device | not live yet |
 | [Webhooks through Funnel](#webhooks-through-funnel) | signed webhooks from the internet | built |
 
@@ -320,12 +320,12 @@ Tagging the box removes its user and turns off its key expiry. The box keeps ser
 it already has (`vyre owner`). Tailscale's docs say Taildrop does not reach tagged devices; see
 [Taildrop](#taildrop-send-files-to-the-box).
 
-### Taildrive: the box folders on your Mac
+### VyreDrive: the box folders on your Mac
 
-Optional, off by default. Vyre support: built, read-only. A switch to make one share writable,
-behind your passkey, is in progress.
+Optional, off by default. Vyre support: built, read-only unless you make one share writable.
 
-The box shares only named folders (`projects` and `glass-files` by default, config
+VyreDrive (built on Tailscale's Taildrive) puts the box's folders on your Mac. The box shares only
+named folders (`projects` and `glass-files` by default, config
 `files.drive.shares`), and your Mac mounts them at `~/Vyre/Box/<share>` so Finder and the Capsule
 open box files in place. Taildrive is in alpha at Tailscale.
 
@@ -357,8 +357,10 @@ open box files in place. Taildrive is in alpha at Tailscale.
    ```
 
    Sharing needs your presence (`--tty` asks for a code). A folder with a `.env`, a key or a
-   `secrets` folder anywhere inside it is refused (`unsafe_share`, with what was found). The
-   audit lists any device besides a paired Mac that the policy lets in, and any shared folder a
+   `secrets` folder anywhere inside it is refused (`unsafe_share`, with what was found), and so
+   is a checkout whose `.git/config` holds a token in a remote URL or an `Authorization` header.
+   The check skips `node_modules`, `dist`, `.next`, `target`, `venv`, `.venv` and `.git/objects`.
+   The audit lists any device besides a paired Mac that the policy lets in, and any shared folder a
    secret has landed in since.
 
 3. Mount it on the Mac:
@@ -368,10 +370,11 @@ open box files in place. Taildrive is in alpha at Tailscale.
    ```
 
 To edit box files from Finder: `"access": "rw"` in the grant, then make that one share
-read-write on the box (it needs your presence too):
+read-write, from the box's terminal, the Capsule or your paired Mac. It asks for no proof, since
+the share already exists; an agent or a guest is refused:
 
 ```sh
-vyre call --tty files.drive.access '{"name":"projects","mode":"rw"}'
+vyre call files.drive.access '{"name":"projects","mode":"rw"}'
 ```
 
 Its answer says when the container's mount must change as well: `VYRE_DRIVE_ACCESS=rw` in
@@ -541,9 +544,9 @@ Whether a grant reaches a holder from another tailnet is not yet confirmed. If
 
 Optional, off by default. Vyre support: built.
 
-Someone outside your tailnet, for example `desk@harlowlegal.com`, can watch or open Glass
-sessions and list threads, and nothing else. Every other tool answers as if it did not exist, and
-a guest can never approve anything.
+Someone outside your tailnet, for example `desk@harlowlegal.com`, can list threads and close a
+Glass session, and nothing else. A guest cannot open or watch Glass: its streams are yours
+alone. Every other tool answers as if it did not exist, and a guest can never approve anything.
 
 1. In [Machines](https://login.tailscale.com/admin/machines), open the box's menu and choose
    **Share**. Under **Share by email**, add `desk@harlowlegal.com` and press **Share**. They accept
@@ -551,14 +554,14 @@ a guest can never approve anything.
 2. Tell Vyre which tools they may use, either in Vyre:
 
    ```sh
-   vyre call --tty network.guests.add '{"login":"desk@harlowlegal.com","tools":["glass.open","glass.close","threads.list"]}'
+   vyre call --tty network.guests.add '{"login":"desk@harlowlegal.com","tools":["threads.list"]}'
    ```
 
    or in the policy:
 
    ```json
    { "grants": [ { "src": ["desk@harlowlegal.com"], "dst": ["tag:vyre-box"], "ip": ["tcp:443"],
-       "app": { "vyre.run/cap/guest": [ { "tools": ["glass.open", "glass.close", "threads.list"] } ] } } ] }
+       "app": { "vyre.run/cap/guest": [ { "tools": ["threads.list"] } ] } } ] }
    ```
 
 3. Turn guests on, and see who would be served:

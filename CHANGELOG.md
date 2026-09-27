@@ -6,6 +6,36 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Planner: alarms ring on a device with the box out of reach (ADR 0029, R6)
 #### Apps: the planner is the one reader of time (ADR 0022, ADR 0025)
+#### A box keeps projects in /work/projects
+
+- On a box with a `/work` folder and no `projectsDir` in config.json, projects live in
+  `/work/projects`, where VyreDrive can share them. The first start moves homes out of
+  `~/Vyre/projects` once (copying across volumes), leaves a link at each old folder so Claude
+  sessions keyed by the old path still resume, rewrites the stored rows and markers, records the
+  outcome in `projects-moved.json`, and emits `projects.moved`. A Mac is unchanged.
+
+#### The hosted app may call the box from the owner's browser
+
+- The tailnet listener answers CORS for `https://app.vyre.run` (config `network.origins`), to the
+  owner only: an exact origin, GET and POST, no credentials, and Chrome's private-network ask.
+  `GET /v1/health` from it answers only `{ reachable: true }`; every other call and WebSocket
+  needs a web session (`deps.webSession`, e2e's rule), else `401 web_session_required`. The call
+  reaches the router with `peer.origin` and `peer.webSession`.
+- Tailscale docs: the iPhone DNS failure behind tailscale#19147 in "When a device cannot connect".
+
+#### VyreDrive: the name, a lighter secrets scan, no proof to switch a share, and no guest Glass
+
+- Users see the box shares as VyreDrive (built on Tailscale's Taildrive): tool descriptions, the
+  Deck row, docs. Tool names (`files.drive.*`) and config keys are unchanged.
+- The share scan skips real `node_modules`, `dist`, `.next`, `target`, `venv`, `.venv` folders
+  and `.git/objects`, which no longer count toward `SCAN_LIMIT`, and flags a `.git/config` holding
+  a credential (a remote URL with a user or token, or an `Authorization` extraheader).
+- `files.drive.access` moves from `HUMAN_ONLY` to `PERSON_ONLY`: the owner switches a share with
+  no proof; agents, models and guests are still refused.
+- `glass.open` is no longer guest-safe (`GUEST_SAFE` in `core/names/guests.js`): tailnet streams
+  are the owner's alone.
+
+#### vyred knows the box's Taildrive mount mode
 
 - apps.route reads no time itself any more: its duration, clock and reminder readers are gone
   from local/apps/route.js. The rules pick the app and the kind; `planner.parse` reads when, for
