@@ -407,6 +407,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Docs: new screenshots, no passkey in Glass, the /vyre planner verbs
 
+- deck/test/world.js: alex's sample folders sit in a folder plainly named alex, so shown paths read
+  .../alex/Work, not a temp name.
 - Screenshots retaken on main; six new ones placed (Settings devices and connections, the pairing
   card, a fresh box's Now, Find on a phone, the onboarding's last screen).
 - using/glass.md: take-over, hand-back and Sign in privately ask for no passkey. using/deck.md,
