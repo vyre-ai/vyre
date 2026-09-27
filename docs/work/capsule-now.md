@@ -91,17 +91,20 @@ them, one per fix.
 - Tailnet has my answers to its Mac-send design (sent 2026-09-27).
 
 ## Doing
-- 2026-09-27 after logout 3: main merged into both branches. Rule 9 (a queued reply follows its
-  own turn, live) in Electron (work/capsule-now ece665f) and native (work/capsule-agent a1621e8).
-  Rules 1 to 9 sent to the sessions team for owned sessions (queued ids, hand-over as
-  thread.sent{queued, turn} before the turn's first event, one turn for several rows, `turn` on
-  every thread event, a "send now" that acts on a queued row). Waiting for its answer and the
-  name of the send-now tool. Merge capsule-now before capsule-agent.
+- Nothing in flight. Stopped 2026-09-27 on the lead's word: the user is refocusing on the native
+  core. Final shas: work/capsule-now 8eece58+ (Electron rule 9, main merged), work/capsule-agent
+  42e8da0 (native rule 9, main merged). Merge capsule-now before capsule-agent.
+- sessions built rules 1 to 9 on work/sessions b8b1a0a7: `threads.send-now {thread, queued}`
+  (dash, not underscore), owned-session note "<name> is working on something..." with
+  busy:"working", `turn` on every turn event, thread.unqueued gains uuid and reason. When
+  sessions merges, keep ONE threads.unqueue (theirs supersedes the switchboard copy here).
 
 ## Next (open requests, in order)
 - threads.unqueue on the phone (mobile's, rule 8 is the spec).
-- Once sessions names it: Cmd-Enter on a queued reply = send now (owned sessions only; a terminal
-  session has no interrupt path). Then a live test against a real owned session on the fake.
+- Cmd-Enter on a queued reply calls `threads.send-now {thread, queued: queued_id}` (sessions
+  b8b1a0a7). {sent:false, note} for a terminal-busy session: show the note, stay queued. Then a
+  live test against an owned session on the fake. Keep the no-`turn` fallback for terminal
+  sessions (threads.replied carries no turn).
 - Terminal sessions could stream too, from recall.watch on the transcript (on main via chat
   46e68bc); only if the user wants it, since it reads the transcript while the Capsule is open.
 - The DM view (applyDm) has the same busy-turn mix-up for queued words: port rule 9 there.
