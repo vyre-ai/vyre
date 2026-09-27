@@ -169,7 +169,7 @@
 .np-wrow { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; text-decoration: none; color: var(--text); }
 .np-wrow + .np-wrow { border-top: 1px solid var(--rule); }
 .np-wrow:active { background: var(--hover); }
-.np-wrow .np-tile svg { color: var(--text-2); }
+.np-tile svg { color: var(--text-2); }
 .np-bar { height: 3px; margin-top: 8px; border-radius: 2px; background: var(--rule); overflow: hidden; }
 .np-bar > span { display: block; height: 100%; background: var(--text); border-radius: 2px; }
 

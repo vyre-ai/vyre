@@ -62,8 +62,11 @@ export function draftTitle(g) {
   if (!g) return "Send a message";
   if (g.kind === "spend") return `Spend through ${g.via || "a connector"}`;
   if (g.kind === "delete") return `Delete through ${g.via || "a connector"}`;
-  const name = g.toName ? String(g.toName).trim().split(/\s+/)[0] : (g.to || [])[0] || "";
-  const what = /mail/i.test(g.via || "") || (!g.via && /@/.test(name)) ? "email" : "message";
+  const first = String((g.to || [])[0] || "");
+  // No name from the Gate: the address's own name part, "dana@harlowlegal.com" as "Dana".
+  const local = /^([a-z]+)@/i.exec(first)?.[1];
+  const name = g.toName ? String(g.toName).trim().split(/\s+/)[0] : local ? local.charAt(0).toUpperCase() + local.slice(1) : first;
+  const what = /mail/i.test(g.via || "") || /@/.test(first) ? "email" : "message";
   return name ? `Send ${what} to ${name}` : `Send ${what}`;
 }
 
@@ -93,7 +96,10 @@ export function secondLine(n) {
 /** Line 3: "<agent> · <project>". @param {Item} n */
 export function thirdLine(n) {
   if (n.kind === "pair") return [n.pair?.node, n.pair?.login].filter(Boolean).join(" · ") || "A Mac asking to pair";
-  return [n.agent || (n.kind === "draft" ? "an agent" : "a session"), n.projectName || n.threadName].filter(Boolean).join(" · ");
+  // Without an agent, the session's own name says who asks.
+  const who = n.agent || n.threadName || (n.kind === "draft" ? "an agent" : "a session");
+  const where = n.projectName && n.projectName !== who ? n.projectName : n.agent && n.threadName ? n.threadName : null;
+  return [who, where].filter(Boolean).join(" · ");
 }
 
 /** "now", "12m", "3h", "2d": the row's time since it was held. */
@@ -198,7 +204,9 @@ export function factRows(n) {
   if (push?.branch) out.push({ label: "Branch", value: push.branch });
   const ch = changesLine({ totals: n.detail?.totals || n.totals, changes: n.detail?.changes || n.changes });
   if (ch) out.push({ label: "Changes", value: ch.files, counts: ch.counts });
-  if (n.destination && !push) out.push({ label: "Where", value: String(n.destination) });
+  // Where, unless the command block already says it (an Edit's file, a fetch's URL).
+  const shown = String(n.detail?.command || n.detail?.file || n.detail?.url || n.command || "");
+  if (n.destination && !push && String(n.destination) !== shown && !shown.includes(String(n.destination))) out.push({ label: "Where", value: String(n.destination) });
   if (n.rule) out.push({ label: "Held by", value: `Your rule: ${n.rule}` });
   return out;
 }

@@ -28,6 +28,7 @@ test("need-rows: a draft is a verb and a person", () => {
   assert.equal(draftTitle({ kind: "send", via: "slack", to: ["#ops"] }), "Send message to #ops");
   assert.equal(draftTitle({ kind: "spend", via: "stripe", to: [] }), "Spend through stripe");
   assert.equal(draftTitle(null), "Send a message");
+  assert.equal(draftTitle({ kind: "send", via: "mail", to: ["dana@harlowlegal.com"] }), "Send email to Dana");
 });
 
 test("need-rows: three lines by kind", () => {
@@ -41,6 +42,9 @@ test("need-rows: three lines by kind", () => {
   assert.equal(titleOf(q), "juno has a question");
   assert.equal(secondLine(q).text, "Which firm first?");
   assert.equal(thirdLine({ kind: "ask", at: NOW }), "a session");
+  // No agent: the session's own name, then the project.
+  assert.equal(thirdLine({ kind: "question", at: NOW, threadName: "Northwind menu page", projectName: "Northwind Bakery" }), "Northwind menu page · Northwind Bakery");
+  assert.equal(thirdLine({ kind: "ask", at: NOW, agent: "kit", threadName: "Q3 report" }), "kit · Q3 report");
 });
 
 test("need-rows: time since held, short and spoken", () => {
@@ -147,7 +151,9 @@ test("need-rows: held for, who asks, and fact rows", () => {
   assert.deepEqual(factRows({ kind: "ask", at: 0, detail: { command: "git push origin q3-report", totals: { files: 6, added: 412, removed: 38 } }, rule: "pushes ask first" }), [
     { label: "Remote", value: "origin" }, { label: "Branch", value: "q3-report" }, { label: "Changes", value: "6 files", counts: "+412 -38" },
     { label: "Held by", value: "Your rule: pushes ask first" }]);
-  assert.deepEqual(factRows({ kind: "ask", at: 0, command: "curl https://api.example.com", destination: "https://api.example.com" }), [{ label: "Where", value: "https://api.example.com" }]);
+  assert.deepEqual(factRows({ kind: "ask", at: 0, command: "node deploy.js", destination: "https://api.example.com" }), [{ label: "Where", value: "https://api.example.com" }]);
+  // An Edit's file is the command block already: no Where row saying it again.
+  assert.deepEqual(factRows({ kind: "ask", at: 0, detail: { file: "/home/alex/harlow/menu.md" }, destination: "/home/alex/harlow/menu.md" }), []);
 });
 
 /** Timers the test moves by hand. */

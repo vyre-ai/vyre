@@ -24,7 +24,7 @@ import { titleOf, heldFor, sheetWho, sessionHref, sheetPrimary, factRows, questi
 const NS = "http://www.w3.org/2000/svg";
 /**
  * The phone's glyphs, on a 24 grid with a 1.5 stroke (section 2).
- * @param {"face-id"|"check"|"x"|"send"|"right"|"history"|"chat"} name @param {number} [size]
+ * @param {"face-id"|"check"|"x"|"send"|"right"|"history"|"chat"|"terminal"} name @param {number} [size]
  */
 export function glyph(name, size = 16) {
   const D = {
@@ -35,6 +35,7 @@ export function glyph(name, size = 16) {
     send: ["M12 19V5M6 11l6-6 6 6"],
     right: ["M9.5 6l6 6-6 6"],
     history: ["M4.5 12a7.5 7.5 0 102.2-5.3L4.5 9", "M4.5 4.5V9H9", "M12 8v4.2l2.8 1.8"],
+    terminal: ["M3.5 5.5h17v13h-17z", "M7.5 10l2.5 2-2.5 2M12.5 15h4"],
     chat: ["M4 5.5h16v10.5h-8.5L7 19.5V16H4z"],
   };
   const svg = document.createElementNS(NS, "svg");
@@ -72,13 +73,13 @@ export function openNeedSheet(n, o) {
     build(body, close, { head, actions }) {
       const href = n.kind === "pair" ? null : sessionHref(n);
       put(head,
-        h("div", { class: "ns-who" },
-          h("div", { class: "ns-who-l" }, h("span", { class: "ns-tile", "aria-hidden": "true" }, n.kind === "pair" ? "m" : initial(n.agent || "?")), h("span", null, sheetWho(n))),
+        h("div", { class: "nsh-who" },
+          h("div", { class: "nsh-who-l" }, h("span", { class: "nsh-tile", "aria-hidden": "true" }, n.kind === "pair" ? "m" : n.agent ? initial(n.agent) : glyph("terminal", 14)), h("span", null, sheetWho(n))),
           h("button", { type: "button", class: "sheet-close", "aria-label": "Close", onclick: close }, closeGlyph(16))),
-        h("h2", { class: "sheet-title ns-title" }, title),
-        h("div", { class: "ns-held" },
-          h("span", { class: "ns-held-l" }, h("span", { class: "ns-dot", "aria-hidden": "true" }), n.kind === "pair" ? minutesLeft(n.pair?.expires) : heldFor(n.at)),
-          href ? h("a", { class: "ns-open", href, onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); close(); go(href); } }, "Open session", glyph("right", 16)) : null));
+        h("h2", { class: "sheet-title nsh-title" }, title),
+        h("div", { class: "nsh-held" },
+          h("span", { class: "nsh-held-l" }, h("span", { class: "nsh-dot", "aria-hidden": "true" }), n.kind === "pair" ? minutesLeft(n.pair?.expires) : heldFor(n.at)),
+          href ? h("a", { class: "nsh-open", href, onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); close(); go(href); } }, "Open session", glyph("right", 16)) : null));
       const ctl = { close, actions, body };
       if (n.kind === "draft") draftBody(n, o, ctl);
       else if (n.kind === "question") questionBody(n, o, ctl);
@@ -88,7 +89,7 @@ export function openNeedSheet(n, o) {
       if (n.kind !== "pair") offs.push(needs.watch(list => {
         if (list.some(x => x.id === n.id) || busy.has(n.id)) return;
         for (const b of actions.querySelectorAll("button")) /** @type {HTMLButtonElement} */ (b).disabled = true;
-        put(actions, h("p", { class: "ns-note", role: "status" }, "This was answered on another screen."));
+        put(actions, h("p", { class: "nsh-note", role: "status" }, "This was answered on another screen."));
       }));
     } });
   return s;
@@ -109,12 +110,12 @@ async function send(n, actions, status, run, ok) {
   busy.add(n.id);
   try { await run(); ok(); }
   catch (e) {
-    put(status, h("span", { class: "ns-failed" }, "failed"), h("span", null, problem(e)));
+    put(status, h("span", { class: "nsh-failed" }, "failed"), h("span", null, problem(e)));
     for (const b of buttons) b.disabled = false;
   } finally { busy.delete(n.id); }
 }
 
-const statusLine = () => h("p", { class: "ns-status", role: "status" });
+const statusLine = () => h("p", { class: "nsh-status", role: "status" });
 
 /** @param {any} n @param {Opts} o @param {{ close: () => void, actions: HTMLElement, body: HTMLElement }} c @param {(() => void)[]} offs */
 function askBody(n, o, { close, actions, body }, offs) {
@@ -123,10 +124,10 @@ function askBody(n, o, { close, actions, body }, offs) {
   const why = n.intent || n.why || "";
   const facts = factRows(n);
   put(body,
-    h("pre", { class: "ns-cmd" }, isShell ? h("span", { class: "ns-dollar", "aria-hidden": "true" }, "$ ") : null, cmd),
-    why ? [h("div", { class: "ns-lbl" }, `Why ${n.agent || "it"} wants to`), h("p", { class: "ns-why" }, why)] : null,
-    facts.length ? h("div", { class: "ns-facts" }, facts.map(f =>
-      h("div", { class: "ns-fact" }, h("span", null, f.label), h("span", null, f.value, f.counts ? h("span", { class: "ns-counts" }, f.counts) : null)))) : null);
+    h("pre", { class: "nsh-cmd" }, isShell ? h("span", { class: "nsh-dollar", "aria-hidden": "true" }, "$ ") : null, cmd),
+    why ? [h("div", { class: "nsh-lbl" }, `Why ${n.agent || "it"} wants to`), h("p", { class: "nsh-why" }, why)] : null,
+    facts.length ? h("div", { class: "nsh-facts" }, facts.map(f =>
+      h("div", { class: "nsh-fact" }, h("span", null, f.label), h("span", null, f.value, f.counts ? h("span", { class: "nsh-counts" }, f.counts) : null)))) : null);
 
   const status = statusLine();
   const done = (/** @type {Done} */ what) => () => { close(); o.onDone?.(what, n); };
@@ -165,21 +166,21 @@ function draftBody(n, o, { close, actions, body }) {
   const primary = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "sb sb-primary sb-full" }));
   const label = (/** @type {boolean} */ edited) => put(primary, glyph("face-id", 22), sheetPrimary(n, o.word, edited));
   // The final words, To through Body, each a real input that reads as text until tapped (js/editable.js).
-  const f = g.draft ? form(gateFields({ to: g.to, draft: g.draft }), { onchange: changed => label(changed), cls: "ns-form" }) : null;
+  const f = g.draft ? form(gateFields({ to: g.to, draft: g.draft }), { onchange: changed => label(changed), cls: "nsh-form" }) : null;
   label(false);
   const recalled = g.sources?.length ? g.sources : g.recalled ? [{ text: g.recalled }] : [];
   put(body,
-    g.error ? h("p", { class: "ns-status ns-sec" }, h("span", { class: "ns-failed" }, "failed"), h("span", null, `It came back held: ${problem(g.error)}`)) : null,
-    f ? f.el : h("div", { class: "ns-sec" },
-      g.summary ? h("p", { class: "ns-why" }, g.summary) : null,
-      h("p", { class: "ns-note", style: { marginTop: "8px" } }, "The full draft cannot be shown here, so it cannot be sent from here. Open it on the Deck or in the session.")),
-    recalled.length ? h("div", { class: "ns-recall" },
-      h("div", { class: "ns-recall-h" }, glyph("history", 14), "From memory"),
-      recalled.map((/** @type {any} */ x) => h("p", null, x.text, x.from ? h("span", { class: "ns-from" }, x.from) : null))) : null);
+    g.error ? h("p", { class: "nsh-status nsh-sec" }, h("span", { class: "nsh-failed" }, "failed"), h("span", null, `It came back held: ${problem(g.error)}`)) : null,
+    f ? f.el : h("div", { class: "nsh-sec" },
+      g.summary ? h("p", { class: "nsh-why" }, g.summary) : null,
+      h("p", { class: "nsh-note", style: { marginTop: "8px" } }, "The full draft cannot be shown here, so it cannot be sent from here. Open it on the Deck or in the session.")),
+    recalled.length ? h("div", { class: "nsh-recall" },
+      h("div", { class: "nsh-recall-h" }, glyph("history", 14), "From memory"),
+      recalled.map((/** @type {any} */ x) => h("p", null, x.text, x.from ? h("span", { class: "nsh-from" }, x.from) : null))) : null);
   if (!f) primary.disabled = true;
   primary.addEventListener("click", () => {
     const bad = f?.error();
-    if (bad) { put(status, h("span", { class: "ns-failed" }, "failed"), h("span", null, bad)); return; }
+    if (bad) { put(status, h("span", { class: "nsh-failed" }, "failed"), h("span", null, bad)); return; }
     const edited = f && f.changed() ? f.edited() : null;
     send(n, actions, status, () => needs.answer(n, { label: "Send", decision: "approve" }, edited), () => { close(); o.onDone?.("send", n); });
   });
@@ -195,18 +196,18 @@ function questionBody(n, o, { close, actions, body }) {
   const answer = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "sb sb-primary sb-full", disabled: true }, "Answer"));
   const ready = () => { answer.disabled = !qs.length || !questionAnswers(qs, picked, typed); };
   put(body, qs.map((q, i) => {
-    const rows = h("div", { class: "ns-choices", role: q.multiSelect ? "group" : "radiogroup", "aria-label": q.question });
-    const other = /** @type {HTMLInputElement} */ (h("input", { type: "text", class: "ns-other", placeholder: "Something else", "aria-label": `Something else: ${q.question}`,
+    const rows = h("div", { class: "nsh-choices", role: q.multiSelect ? "group" : "radiogroup", "aria-label": q.question });
+    const other = /** @type {HTMLInputElement} */ (h("input", { type: "text", class: "nsh-other", placeholder: "Something else", "aria-label": `Something else: ${q.question}`,
       autocomplete: "off", enterkeyhint: "done" }));
     const choices = (q.options || []).map(opt => {
-      const b = h("button", { type: "button", class: "ns-choice", role: q.multiSelect ? "checkbox" : "radio", "aria-checked": "false" },
-        h("span", { class: "ns-choice-t" }, opt.label), opt.description ? h("span", { class: "ns-choice-n" }, opt.description) : null);
+      const b = h("button", { type: "button", class: "nsh-choice", role: q.multiSelect ? "checkbox" : "radio", "aria-checked": "false" },
+        h("span", { class: "nsh-choice-t" }, opt.label), opt.description ? h("span", { class: "nsh-choice-n" }, opt.description) : null);
       b.addEventListener("click", () => {
         const set = picked.get(i) || new Set();
         if (q.multiSelect) { if (set.has(opt.label)) set.delete(opt.label); else set.add(opt.label); }
         else { set.clear(); set.add(opt.label); other.value = ""; typed.delete(i); other.classList.remove("has-text"); }
         picked.set(i, set);
-        for (const c of choices) c.setAttribute("aria-checked", String(set.has(c.querySelector(".ns-choice-t")?.textContent || "")));
+        for (const c of choices) c.setAttribute("aria-checked", String(set.has(c.querySelector(".nsh-choice-t")?.textContent || "")));
         ready();
       });
       return b;
@@ -219,7 +220,7 @@ function questionBody(n, o, { close, actions, body }) {
       ready();
     });
     put(rows, choices, other);
-    return h("div", null, h("p", { class: "ns-q" }, q.question), rows);
+    return h("div", null, h("p", { class: "nsh-q" }, q.question), rows);
   }));
   answer.addEventListener("click", () => {
     const answers = questionAnswers(qs, picked, typed);
@@ -232,8 +233,8 @@ function questionBody(n, o, { close, actions, body }) {
 /** A Mac asking to pair: pair.js's own card (the code, Approve with the passkey, Deny). */
 function pairBody(/** @type {any} */ n, /** @type {Opts} */ o, /** @type {{ close: () => void, actions: HTMLElement, body: HTMLElement }} */ { close, body }) {
   const card = pairCard(n.pair, { onPaired: r => { setTimeout(close, 900); o.onPaired?.(r.name); } });
-  put(body, h("div", { class: "ns-pair" },
-    h("p", { class: "ns-why" }, "Type the code shown on that Mac. Approving it proves it is you with your passkey."), card));
+  put(body, h("div", { class: "nsh-pair" },
+    h("p", { class: "nsh-why" }, "Type the code shown on that Mac. Approving it proves it is you with your passkey."), card));
   const code = /** @type {HTMLElement | null} */ (card.querySelector(".pair-code"));
   requestAnimationFrame(() => code?.focus({ preventScroll: true }));
 }

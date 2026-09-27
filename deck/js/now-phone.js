@@ -273,7 +273,7 @@ export function phoneNow(ctx) {
     let cur = n;
     const update = (/** @type {any} */ x) => {
       cur = x;
-      put(tile, x.kind === "pair" ? "m" : initial(x.agent || "?"));
+      put(tile, x.kind === "pair" ? "m" : x.agent ? initial(x.agent) : glyph("terminal", 18));
       put(t1, titleOf(x));
       put(time, ago(x.at));
       const l2 = secondLine(x);
