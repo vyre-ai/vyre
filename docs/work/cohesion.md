@@ -52,7 +52,7 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 ## Needs from others
 - platform (accepted, P1): meta.call from X-Vyre-Call-Id; registry.status() use counts {calls, lastUsed}; commands.list; events.catalog.
 - DONE by cohesion (lead's call, owners stopped): acted-event fields and the chrome query strip, c362505b.
-- vault: `default` (per capability) and `last_used` on vault.connections.list rows, for app-design's account row (asked).
+- vault: YES in its 9b sha: default_for via vault.connections.update, is_default with a capability filter, last_used (stamped on allowed, 1/min), list sorted default > last_used > label. suggest: rank accounts in that order (already list order).
 - mobile: per-tool policy flags (human_only, sessionable) on /v1/tools rows (platform or presence).
 - mobile: wants sight.frame (a still JPEG per step) for the relay? Needs a resize in computerd.
 - computers: `sight.watch` calls computers.watch as module:sight, so ownSurface (core/computers/index.js:154)
