@@ -164,5 +164,11 @@
     }
   },
   "needs": {},
-  "teaches": {}
+  "teaches": {},
+  "settings": [
+    {"key": "vault.lock_idle", "group": "vault", "label": "Lock after idle", "help": "Like 10m or 1h.", "type": "string", "default": "10m", "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.idle"}},
+    {"key": "vault.lock_max", "group": "vault", "label": "Lock after at most", "type": "string", "default": "12h", "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.max"}},
+    {"key": "vault.lock_on_sleep", "group": "vault", "label": "Lock when the Mac sleeps", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.onSleep"}},
+    {"key": "vault.lock_on_screen_lock", "group": "vault", "label": "Lock when the screen locks", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "security": "loosens", "loosens": "Your vault stays unlocked for longer.", "store": {"config": "vault.lock.onScreenLock"}}
+  ]
 }

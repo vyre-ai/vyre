@@ -8,5 +8,8 @@
   "watches": { "emits": ["capsule.requested", "capsule.hotkey"] },
   "shows": { "capsule": [], "cli": ["capsule"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {},
+  "settings": [
+    {"key": "capsule.autostart", "group": "devices", "label": "Start the Capsule at login", "type": "bool", "default": false, "levels": ["account"], "apply": "restart", "store": {"config": "capsule.autostart"}}
+  ]
 }

@@ -2929,8 +2929,10 @@ Remove a setting's value at one level, so the level below (account, then default
 - Input:
   - `key` string, required
   - `level` "account" or "project"
+  - `preview` boolean
   - `project` string
 - Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ### `settings.resolve`
 
@@ -2942,21 +2944,24 @@ The Vyre-owned values a session starting now in this project should use, as {key
 
 ### `settings.schema`
 
-Every setting Vyre has: key, group, label, type and choices, the levels it may be set at (account, project), when a change applies (live, next session, restart), and whether Claude Code's own files hold it (owner C).
+Every setting the running modules declare: key, owning module, group, label, type and choices, the levels it may be set at (account, project), when a change applies (live, next session, restart), whether Claude Code's own files hold it (owner C), and whether changing it loosens security (a proof) or needs a confirm.
 
 - Input: none
 - Callers: any caller
 
 ### `settings.set`
 
-Change a setting at account level, or for one project (give project). The value is checked against the setting's type. Returns the value now in effect.
+Change a setting at account level, or for one project (give project). The value is checked against the setting's type. preview: true returns what would change and writes nothing. A key that widens what Claude may do needs confirm: true; one that loosens security needs a presence proof. Returns the value now in effect.
 
 - Input:
   - `key` string, required
   - `value` any, required
+  - `confirm` boolean
   - `level` "account" or "project"
+  - `preview` boolean
   - `project` string
 - Callers: `capsule`, `cli`, `deck`, `local`
+- Needs a person present.
 
 ## sideview
 

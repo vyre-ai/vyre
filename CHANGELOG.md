@@ -6,6 +6,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### One way to change every setting: core/settings and vyre config
 
+- Modules declare their own settings in module.json ("settings": key, group, label, type, levels,
+  apply, default, and where the value lives); core/config/settings.js (kernel) checks the
+  declarations, the values and the stores, and settings serves only running modules' keys, so a
+  module switched off takes its rows with it. Every key starts with its module's name
+  (sessions.mode, push.watch, planner.event_lead, vault.lock_idle, ...).
+- settings.set: a key that widens what Claude may do without asking (sessions.allow,
+  sessions.folders, sessions.hooks, a mode of bypassPermissions, dontAsk or auto) needs
+  confirm: true; a key that loosens security (vault lock) needs a fresh presence proof; preview:
+  true says what would change and where, and writes nothing. Bypass itself needs no proof (the
+  user's decision). The first write to a Claude Code settings file keeps it as .vyre-backup.
+
 - core/settings: a registry of every setting (models per purpose, effort, permission mode and rules,
   sessions, teammates' limits, notifications, planner, memory, vault lock, files, terminal, tools)
   with tools settings.schema, settings.get, settings.set, settings.reset, settings.resolve

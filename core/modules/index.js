@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { migrate } from "../store/index.js";
 import { Idempotency } from "./idempotency.js";
 import { PERSON_ONLY } from "../presence/index.js";
+import { validateDecls } from "../config/settings.js";
 
 const NAME = /^[a-z][a-z0-9-]{1,40}$/;
 /** Vyre's own modules live here; a module installed into a home never does. */
@@ -48,6 +49,7 @@ export function validate(m) {
     else if (!t.startsWith(m.name + ".")) out.push(`tool "${t}" must start with "${m.name}."`);
   }
   for (const e of (m.watches && m.watches.emits) || []) if (!/^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/.test(e)) out.push(`event "${e}" must look like noun.past-verb`);
+  out.push(...validateDecls(String(m.name), m.settings));
   // Session providers (ADR 0030): drivers the Switchboard can run a session on, besides Claude.
   const providers = m.does && m.does.providers;
   if (providers !== undefined && (!Array.isArray(providers) || providers.some(p => !NAME.test(String(p))))) out.push("does.providers must be a list of lowercase names");
@@ -227,6 +229,10 @@ export class Registry {
     const declared = new Set((m.does && m.does.tools) || []);
     return {
       name: m.name, config, paths,
+      // Every running module's declared settings (module.json "settings"), for the settings
+      // module to serve. Manifests are public; a module switched off takes its settings with it.
+      declaredSettings: () => [...this.modules.entries()].filter(([, r]) => r.state === "running" && r.manifest && Array.isArray(r.manifest.settings))
+        .flatMap(([name, r]) => r.manifest.settings.map(d => ({ ...d, module: name }))),
       // The module's namespace in vyre.db: migrations are bound to its name, so its tables must
       // carry that name. Reads may join any table; writes to another module's tables go through
       // that module's tools.

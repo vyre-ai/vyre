@@ -7,5 +7,9 @@
   "watches": { "emits": ["term.opened", "term.closed"] },
   "shows": { "streams": ["pty"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {},
+  "settings": [
+    {"key": "term.keep_hours", "group": "files", "label": "Keep closed terminals for (hours)", "type": "int", "min": 0, "max": 168, "default": 12, "levels": ["account"], "apply": "restart", "store": {"config": "term.keep_hours"}},
+    {"key": "term.max", "group": "files", "label": "Terminals open at once", "type": "int", "min": 1, "max": 64, "default": 8, "levels": ["account"], "apply": "restart", "store": {"config": "term.max"}}
+  ]
 }
