@@ -30,12 +30,29 @@ import fs from "node:fs";
 import path from "node:path";
 import readline from "node:readline";
 
-const argv = process.argv.slice(2);
-// The CLI passes "--flag value"; the Agent SDK passes "--flag=value". Both are read.
-const flag = n => { const i = argv.indexOf(n); if (i >= 0) return argv[i + 1]; const eq = argv.find(a => a.startsWith(n + "=")); return eq ? eq.slice(n.length + 1) : undefined; };
+// The CLI passes "--flag value"; the Agent SDK passes "--flag=value". The log and every check
+// below read one form: "--flag=value" is split in two.
+const argv = process.argv.slice(2).flatMap(a => (/^--[a-z-]+=/.test(a) ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]));
+const flag = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
 const session = flag("--session-id") || flag("--resume") || "no-session";
 const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription" : process.env.ANTHROPIC_API_KEY ? "api-key" : "ambient";
-if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv, auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null, projects: process.env.VYRE_PROJECTS || null }) + "\n");
+/**
+ * One line per launch. Written at the initialize request, which both the runner and the Agent SDK
+ * send first, because the SDK sends there what the CLI takes as flags: those are added to argv as
+ * the flags they stand for, so a test reads one launch the same way from either driver.
+ */
+let logged = false;
+function logLaunch(init = {}) {
+  if (logged || !process.env.FAKE_CLAUDE_LOG) return;
+  logged = true;
+  const extra = [];
+  if (typeof init.appendSystemPrompt === "string") extra.push("--append-system-prompt", init.appendSystemPrompt);
+  if (typeof init.systemPrompt === "string") extra.push("--system-prompt", init.systemPrompt);
+  else if (Array.isArray(init.systemPrompt)) extra.push("--system-prompt", init.systemPrompt.join("\n"));
+  fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv: [...argv, ...extra], auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null,
+    projects: process.env.VYRE_PROJECTS || null, driver: process.env.CLAUDE_CODE_ENTRYPOINT === "sdk-ts" || init.sdkMcpServers || init.hooks ? "sdk" : "cli" }) + "\n");
+}
+setTimeout(() => logLaunch(), 1000).unref();                               // no initialize at all: log anyway
 
 const out = o => process.stdout.write(JSON.stringify(o) + "\n");
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -254,7 +271,15 @@ async function turn(prompt) {
 let queue = Promise.resolve();
 readline.createInterface({ input: process.stdin }).on("line", line => {
   let m; try { m = JSON.parse(line); } catch { return; }
+  // Interrupt, as Claude Code does it: every open permission question is withdrawn (and reads as
+  // declined), and the turn ends.
+  if (m.type === "control_request" && m.request?.subtype === "interrupt") {
+    for (const [rid, w] of waiting) { waiting.delete(rid); out({ type: "control_cancel_request", request_id: rid }); w({ behavior: "deny", message: "Interrupted." }); }
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
   if (m.type === "control_request" && m.request?.subtype === "initialize") {
+    logLaunch(m.request);
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     out({ type: "system", subtype: "init", session_id: session, cwd: process.cwd(), model: MODEL, tools: ["Read", "Edit", "Write", "Bash", "TodoWrite", "AskUserQuestion"] });
     return;

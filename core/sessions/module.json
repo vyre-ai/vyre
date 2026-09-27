@@ -1,0 +1,12 @@
+{
+  "name": "sessions",
+  "version": "0.1.0",
+  "description": "How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's status and install, and the system prompt at three levels, versioned.",
+  "roles": ["box", "local"],
+  "requires": [],
+  "does": { "tools": ["sessions.status", "sessions.setup", "sessions.prompt.get", "sessions.prompt.set", "sessions.prompt.history", "sessions.prompt.revert", "sessions.prompt.preview", "sessions.prompt.compose"] },
+  "watches": { "emits": ["prompt.changed"] },
+  "shows": { "cli": [] },
+  "needs": {},
+  "teaches": {}
+}

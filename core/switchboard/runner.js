@@ -22,14 +22,15 @@
 import { spawn } from "node:child_process";
 
 /**
- * The command line for a headless session.
+ * The command line for a headless session. `system` is the composed system prompt (ADR 0030):
+ * appended to Claude Code's own, or replacing it; without it, `append` is appended as before.
  * `tools: "none"` is `--tools ""` (no built-in tools) and `--strict-mcp-config` with no config
  * (no MCP servers). `settings: false` is `--setting-sources ""`: none of the user's settings,
  * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
  * @param {{ id: string, resume?: boolean, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
- *           append?: string|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
+ *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
@@ -40,7 +41,8 @@ export function argsFor(o) {
   if (o.settings === false) a.push("--setting-sources", "");
   if (o.model) a.push("--model", o.model);
   if (o.name && !o.resume) a.push("-n", o.name);
-  if (o.append) a.push("--append-system-prompt", o.append);
+  if (o.system && o.system.text) a.push(o.system.mode === "replace" ? "--system-prompt" : "--append-system-prompt", o.system.text);
+  else if (o.append) a.push("--append-system-prompt", o.append);
   if (typeof o.budgetUsd === "number" && o.budgetUsd > 0) a.push("--max-budget-usd", o.budgetUsd.toFixed(2));
   return a;
 }
@@ -101,6 +103,8 @@ export function run(o) {
     pid: child.pid,
     write,
     get alive() { return !exited; },
+    /** Stop the current turn (as Escape does); the session stays. */
+    interrupt() { write({ type: "control_request", request_id: `vyre-int-${Date.now()}`, request: { subtype: "interrupt" } }); return Promise.resolve(); },
     /** End it: close stdin (Claude Code finishes and exits), then TERM, then KILL. */
     stop(grace = 3000) {
       return new Promise(resolve => {

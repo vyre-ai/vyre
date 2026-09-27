@@ -18,6 +18,9 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
 import { argsFor, userLine, answerLine, run as defaultRun } from "./runner.js";
+import { run as runOnSdk } from "../sessions/claude.js";
+import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
+import { load as loadSdk, install as installSdk, installed as sdkInstalled } from "../sessions/sdk.js";
 import { Leases } from "./lease.js";
 import { Asks } from "./asks.js";
 import { editChanges, pushDir, pushChanges } from "./changes.js";
@@ -69,6 +72,8 @@ export const MIGRATIONS = [
   // is about (Claude Code's tool_use_id) and the id of its ask.raised event.
   `ALTER TABLE threads_asks ADD COLUMN tool_use_id TEXT;
    ALTER TABLE threads_asks ADD COLUMN event INTEGER;`,
+  // Which driver runs a thread (ADR 0030): "sdk" (the Claude Agent SDK) or "cli" (runner.js).
+  `ALTER TABLE threads_runs ADD COLUMN driver TEXT;`,
 ];
 
 /**
@@ -174,7 +179,9 @@ export class Switchboard {
    * @param {{ db: import("node:sqlite").DatabaseSync, emit: (type: string, payload: any, where?: any) => any,
    *           call: (tool: string, input: any) => Promise<any>, root: string, log: (m: string) => void,
    *           prune?: (thread: string, before: number) => void, run?: typeof defaultRun, bin?: string,
-   *           transcripts?: string[], naming?: (id: string, ours: number[]) => number[], isClaude?: (pid: number) => boolean }} deps
+   *           transcripts?: string[], naming?: (id: string, ours: number[]) => number[], isClaude?: (pid: number) => boolean,
+   *           sdk?: { module: any, bin: string|null }|null, idleMs?: number, maxLive?: number,
+   *           auth?: (o: { agent?: string|null }) => Promise<{ auth: string, env?: Record<string,string>, fallback?: any }|null> }} deps
    */
   constructor(deps) {
     this.deps = deps;
@@ -192,6 +199,8 @@ export class Switchboard {
     this.live = new Map();
     this.run = deps.run || defaultRun;
     this.bin = deps.bin || process.env.VYRE_CLAUDE_BIN || "claude";
+    /** The Agent SDK, once loaded (ADR 0030); null runs threads on the CLI runner. */
+    this.sdk = deps.sdk || null;
     /** @type {Set<{ timer: any, run: () => void }>} delta prunes waiting out their grace */
     this.prunes = new Set();
     /** Sessions bound by their SessionStart hook, so an MCP call can say which one it is from (sessions.js). */
@@ -246,7 +255,7 @@ export class Switchboard {
     const r = /** @type {any} */ (this.db.prepare("SELECT * FROM threads_runs WHERE id = ?").get(id));
     if (!r) return null;
     const holder = this.leases.holder(id);
-    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model,
+    return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -305,6 +314,14 @@ export class Switchboard {
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
+    await this.room(id);
+    // A thread no agent runs gets this machine's own Claude credential (sessions.auth): the
+    // vault's setup token on a box, Claude Code's login on a Mac. An agent brings its own.
+    if (!o.agent && !(o.env && (o.env.CLAUDE_CODE_OAUTH_TOKEN || o.env.ANTHROPIC_API_KEY)) && this.deps.auth) {
+      const a = await this.deps.auth({ agent: null }).catch(e => { this.deps.log(`threads: ${e.message}; using this machine's own Claude login`); return null; });
+      if (a && a.env) { o = { ...o, env: { ...(o.env || {}), ...a.env }, ...(a.fallback && !o.fallback ? { fallback: a.fallback } : {}) }; this.db.prepare("UPDATE threads_runs SET auth = ? WHERE id = ?").run(a.auth, id); }
+    }
+    o = { ...o, system: await this.systemPrompt(rec, o) };
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
     const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume) };
     this.emit("thread.started", payload, id, rec.project);
@@ -316,6 +333,67 @@ export class Switchboard {
       else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
     }
     return this.record(id);
+  }
+
+  /**
+   * The system prompt for a launch: the levels a person edited (assistant, agent, project;
+   * sessions.prompt.*) around Vyre's own launch text. Without the sessions module it is that
+   * text alone, as before.
+   */
+  async systemPrompt(rec, o) {
+    // A job (no settings, no plugin: Learning's distillation) is told only what its launch says.
+    if (o.settings === false) return o.append ? { mode: "append", text: String(o.append) } : null;
+    const kind = o.agent_kind || (rec.agent ? this.kindOf(rec.agent) : null);
+    try {
+      const input = Object.fromEntries(Object.entries({ agent: rec.agent, agent_kind: kind, project: rec.project, append: o.append }).filter(([, v]) => v));
+      const r = await this.deps.call("sessions.prompt.compose", input);
+      if (r && r.error && r.error.code !== "no_such_tool") this.deps.log(`threads: the system prompt could not be composed (${r.error.message}); using Vyre's own`);
+      if (r && r.data && typeof r.data.text === "string") return { mode: r.data.mode === "replace" ? "replace" : "append", text: r.data.text };
+    } catch {}
+    return o.append ? { mode: "append", text: String(o.append) } : null;
+  }
+
+  /**
+   * Room for one more process (sessions.max_live): the longest-idle thread nobody is looking at
+   * is closed to make it; when every one is busy, the start is refused.
+   */
+  async room(id) {
+    const max = Number(this.deps.maxLive) || 0;
+    if (!max || this.live.has(id) || this.live.size < max) return;
+    const idle = [...this.live.entries()].filter(([t, st]) => this.closable(t, st)).sort((a, b) => a[1].touched - b[1].touched);
+    if (!idle.length) throw Object.assign(new Error(`${max} sessions are already running on this machine (sessions.max_live), all busy; stop one or try again when one finishes`), { code: "busy" });
+    await this.close(idle[0][0], idle[0][1], "idle");
+  }
+
+  /** May this live thread be closed for idleness: no turn running, nothing asked, nobody at its keyboard or waiting on it. */
+  closable(id, st) {
+    if (st.stopping || st.switching || st.launch.once) return false;
+    const r = /** @type {any} */ (this.db.prepare("SELECT status FROM threads_runs WHERE id = ?").get(id));
+    if (!r || r.status !== "idle") return false;
+    if (this.asks.open(id).length || this.leases.holder(id)) return false;
+    return !this.db.prepare("SELECT 1 FROM threads_watches WHERE thread = ? LIMIT 1").get(id);
+  }
+
+  /** Close a live thread's process, saying why; its transcript stays and threads.send resumes it. */
+  async close(id, st, reason) {
+    st.haltReason = reason;
+    st.stopping = true;
+    await st.proc.stop();
+  }
+
+  /** Something happened in a thread: its idle clock starts again (sessions.idle_minutes). */
+  touch(id, st) {
+    st.touched = Date.now();
+    const ms = Number(this.deps.idleMs) || 0;
+    if (!ms) return;
+    if (st.idle) clearTimeout(st.idle);
+    st.idle = setTimeout(() => {
+      st.idle = null;
+      if (this.live.get(id) !== st) return;
+      if (this.closable(id, st)) this.close(id, st, "idle").catch(() => {});
+      else this.touch(id, st);                                           // busy or watched: look again later
+    }, ms);
+    st.idle.unref?.();
   }
 
   spawn(id, o) {
@@ -336,16 +414,19 @@ export class Switchboard {
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
-    const args = argsFor({ id, resume: o.resume, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
-      append: o.append, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined });
-    const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null };
+    const lo = { id, resume: o.resume, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+      append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
+    const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null };
     this.live.set(id, state);
-    state.proc = this.run({
-      bin: this.bin, args, cwd: rec.cwd, env,
-      onMessage: m => this.onMessage(id, state, m),
-      onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr),
-    });
-    this.set(id, { status: "starting", pid: state.proc.pid || null, stopped_reason: null });
+    const on = { onMessage: m => { this.touch(id, state); if (!state.pidSet && state.proc && state.proc.pid) { state.pidSet = true; this.set(id, { pid: state.proc.pid }); } this.onMessage(id, state, m); }, onExit: (code, signal, stderr) => this.onExit(id, state, code, signal, stderr) };
+    // The Agent SDK when it is loaded (ADR 0030), else the CLI runner: the same protocol, so the
+    // same stream reaches onMessage either way.
+    const driver = this.sdk ? "sdk" : "cli";
+    state.proc = this.sdk
+      ? runOnSdk(this.sdk.module, { ...lo, bin: this.deps.bin || process.env.VYRE_CLAUDE_BIN || this.sdk.bin, cwd: rec.cwd, env, ...on })
+      : this.run({ bin: this.bin, args: argsFor(lo), cwd: rec.cwd, env, ...on });
+    this.set(id, { status: "starting", pid: state.proc.pid || null, stopped_reason: null, driver });
+    this.touch(id, state);
   }
 
   onMessage(id, st, m) {
@@ -512,6 +593,7 @@ export class Switchboard {
 
   onExit(id, st, code, signal, stderr) {
     this.flush(id, st);
+    if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);
     const reason = st.haltReason || (st.done ? "done" : st.stopping ? "stopped" : code === 0 ? "exited" : `exited ${code ?? signal}${stderr ? ": " + cut(stderr, 160) : ""}`);
@@ -536,6 +618,7 @@ export class Switchboard {
 
   write(id, text) {
     const st = this.live.get(id);
+    this.touch(id, st);
     st.lastPrompt = text;
     st.proc.write(userLine(text, id));
     this.set(id, { status: "working" });
@@ -763,6 +846,15 @@ export class Switchboard {
     return { sent: { answers: sent }, shown };
   }
 
+  /** Stop the turn a thread is running; the thread stays and takes the next message. */
+  async interrupt(id) {
+    const st = this.live.get(id);
+    if (!st) return { thread: id, interrupted: false, note: "not running" };
+    if (st.proc.interrupt) await st.proc.interrupt();
+    else st.proc.write({ type: "control_request", request_id: `vyre-int-${Date.now()}`, request: { subtype: "interrupt" } });
+    return { thread: id, interrupted: true };
+  }
+
   async stop(id) {
     const st = this.live.get(id);
     if (!st) return { thread: id, stopped: false, note: "not running" };
@@ -914,13 +1006,42 @@ export const queuesFor = caller => {
 export default {
   async start(ctx) {
     ctx.store.migrate(MIGRATIONS);
+    const root = ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "";
+    const cfg = sessionsConfig(ctx.config);
+    /** This machine's own Claude credential for threads no agent runs (ADR 0030, "Auth"). */
+    // The vault is asked only when a credential was put there for this (onboarding's Claude step,
+    // or sessions.auth set on purpose), so a machine without one never touches the vault.
+    const chosen = Boolean(ctx.config && ((ctx.config.sessions && ctx.config.sessions.auth) || (ctx.config.onboard && ctx.config.onboard.claude)));
+    const auth = async () => {
+      if (cfg.auth === "login" || !ctx.vault || !chosen) return null;
+      const fetch = async kind => { const v = await ctx.vault.fetch(CREDENTIALS[kind]); if (!v) throw new Error(`the vault has no ${CREDENTIALS[kind]}`); return String(v); };
+      if (cfg.auth === "api-key") return { auth: "api-key", env: { ANTHROPIC_API_KEY: await fetch("api-key") } };
+      const out = { auth: "subscription", env: { CLAUDE_CODE_OAUTH_TOKEN: await fetch("setup-token") } };
+      try { return { ...out, fallback: { env: { ANTHROPIC_API_KEY: await fetch("api-key") } } }; } catch { return out; }
+    };
     const sb = new Switchboard({
-      db: ctx.store.db, call: ctx.call, root: ctx.paths ? ctx.paths.root : process.env.VYRE_HOME || "",
+      db: ctx.store.db, call: ctx.call, root,
       transcripts: (ctx.config && ctx.config.transcripts) || [],
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
+      idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth,
     });
     sb.recover();
+    // The Agent SDK driver (ADR 0030): loaded now when installed, else installed in the
+    // background while threads run on the CLI runner, and used from the next thread on.
+    if (cfg.driver === "sdk") {
+      const dir = sdkDir(root, cfg);
+      const use = async () => {
+        const module = await loadSdk(dir);
+        if (module) sb.sdk = { module, bin: claudeBin(dir, cfg) };
+        else ctx.log(`threads: the Claude Agent SDK in ${dir} did not load; threads run on the CLI`);
+      };
+      if (sdkInstalled(dir, { bundled: cfg.claude === "bundled" })) await use();
+      else if (cfg.install) {
+        ctx.log(`threads: installing the Claude Agent SDK into ${dir}; threads run on the CLI until it is ready`);
+        installSdk(dir, { bundled: cfg.claude === "bundled" }).then(r => (r.why ? ctx.log(`threads: ${r.why}`) : use())).catch(() => {});
+      }
+    }
 
     /**
      * Guard every tool. Inside an agent's own thread (caller mcp:agent:<name>) only the assistant
@@ -1051,6 +1172,10 @@ export default {
     tool("threads.unwatch", "Stop waiting on a watch.",
       { type: "object", required: ["watch"], properties: { watch: str } },
       async (i, { caller }) => { guard(caller, "watch sessions"); return sb.unwatch(i.watch); });
+
+    tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message; open questions of that turn are cancelled.",
+      { type: "object", required: ["thread"], properties: { thread: str } },
+      async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); });
 
     tool("threads.stop", "Stop a headless thread. Its transcript stays; threads.send resumes it.",
       { type: "object", required: ["thread"], properties: { thread: str } },
