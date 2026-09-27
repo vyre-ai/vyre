@@ -329,6 +329,9 @@ Plan (to the lead before building):
 - memory.today (read df22ca0c + 3d08288a; f03e2a3a does not exist): OK for 0.1.1 after MEDIUM:
   evidence must hold in userWords (pasted blocks) + trust row + not devTalk/Vyre folder (answered
   yes). LOW: last-session line uses the Claude-written name.
+- teammates be21345a (steps 2/3, read): threadRecord fix and release-on-finished good. MEDIUM:
+  rotation puts notes + last results raw into the SYSTEM append -> move to first prompt, fenced,
+  neutralized, capped. LOW: thread.finished can fire during launch's awaits -> stuck slot.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
