@@ -108,7 +108,9 @@ function openChannel(o) {
       const reason = (e && e.reason) || `closed ${e && e.code}`;
       if (side) side.gone(reason); else fail(reason);
     };
-    ws.onerror = () => {};
+    // On Node 22 a refused WebSocket fires only `error`, never `close`: before the socket opens,
+    // that is a failed dial, so the backoff runs now rather than after the handshake timeout.
+    ws.onerror = () => { if (!side) { fail("could not reach the relay"); try { ws.close(); } catch {} } };
   });
 }
 

@@ -64,20 +64,15 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - testbox: `core/relay`, `relay/**`, `test/relay.test.js` 93/93; docs tests 50/50.
 
 ## Doing
+- Redial bug FIXED (lead asked during the pause): link.js and client.js treat a pre-open
+  `error` as a failed dial; 30 s dial timer in link.js. resilience's two chaos todos pass with
+  the fix (their branch + this fix, 54/54); they flip the todos on their branch.
 - PAUSED (lead, 27 Sep 2026): the user is refocusing on the native core. 4d58d4b is in batch 3b.
   Nothing in flight; everything is pushed. The Cloudflare deploy stays deferred until the lead
   says the phone spike or the hosted app needs a live relay (check the vyre.run zone is on
   Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
-00. BUG (resilience chaos, work/resilience 3fa95a3, test/chaos/relay.test.js todos): on Node 22 a
-   refused WebSocket fires only `error`, never `close`. `core/relay/link.js` retries only from
-   onclose (control and data sockets), so a retry during a relay outage stops the box retrying
-   until vyred restarts; `relay/client/client.js` openChannel swallows onerror, so a dead relay
-   costs the full 15 s handshake timeout. Fix: error before open = failed dial, schedule retry,
-   `settled` guard against a later close; a dial timer in link.js. Then flip the two todos
-   ("the box's relay link comes back after an outage longer than its first retry", "kit redials
-   within its backoff..."). Asked the lead whether to fix during the pause.
 0. PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
    (a) at web pairing, the loader makes a passkey with rpId app.vyre.run and sends it in the
    hello; admit() passes it to presence for enrollment bound to the device id; (b) the loader
