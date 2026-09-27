@@ -384,3 +384,29 @@ test("planner: at in words is the next such time in the item's zone", async t =>
   assert.equal((await w.call("planner.add", { kind: "reminder", title: "x", at: "banana" })).error.code, "bad_input");
   assert.equal((await w.ok("planner.add", { kind: "reminder", title: "ISO still", at: "2026-09-24T20:00:00+05:00" })).at, Z(2026, 9, 24, 15));
 });
+
+test("planner: an idle planner never asks Intl for a zone (ICU's zone data is about 8 MB)", async () => {
+  // A fresh process, since time.js keeps its formatters: start the planner on an empty store, let
+  // its scheduler tick, then add an alarm, counting zoned Intl formatters made on the way.
+  const { execFileSync } = await import("node:child_process");
+  const script = `
+    const Real = Intl.DateTimeFormat; let zoned = 0;
+    Intl.DateTimeFormat = function (l, o) { if (o && o.timeZone) zoned++; return new Real(l, o); };
+    const { DatabaseSync } = await import("node:sqlite");
+    const { migrate } = await import(${JSON.stringify(new URL("../store/index.js", import.meta.url).href)});
+    const planner = (await import(${JSON.stringify(new URL("./index.js", import.meta.url).href)})).default;
+    const db = new DatabaseSync(":memory:");
+    db.exec("CREATE TABLE _migrations (module TEXT NOT NULL, version INTEGER NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (module, version))");
+    const tools = new Map();
+    const h = await planner.start({ name: "planner", config: { role: "box", planner: { timezone: "Asia/Karachi" } }, paths: { root: "/idle" },
+      store: { db, migrate: s => migrate(db, "planner", s) }, log: () => {}, events: { emit: () => {}, on: () => () => {} },
+      tool: (n, d) => tools.set(n, d), call: async t => t === "google.accounts" ? { data: [] } : { error: { code: "x" } }, remote: async () => ({}) });
+    await tools.get("planner.list").run({}, { caller: "cli" });
+    const idle = zoned;
+    await tools.get("planner.add").run({ kind: "alarm", wall: "07:00" }, { caller: "cli" });
+    console.log(JSON.stringify({ idle, after: zoned }));
+    await h.stop();`;
+  const out = JSON.parse(execFileSync(process.execPath, ["--no-warnings", "--input-type=module", "-e", script], { encoding: "utf8" }).trim());
+  assert.equal(out.idle, 0, "nothing zoned while idle");
+  assert.ok(out.after > 0, "a zone is read once there is something to place");
+});

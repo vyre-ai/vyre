@@ -62,12 +62,16 @@ export default {
     const role = ctx.config && ctx.config.role === "box" ? "box" : "local";
     const parser = await loadParser(ctx.log);
 
-    const defaults = () => ({
-      timezone: (ctx.config && ctx.config.planner && validZone(ctx.config.planner.timezone) && String(ctx.config.planner.timezone)) || systemZone(),
-      escalate_after: 5, escalate_max: 3, event_lead: 10,
-    });
+    // The zone is read only when something needs it: the first zoned Intl call loads ICU's time
+    // zone data (about 8 MB of RSS), which an idle planner never needs.
+    let zone = /** @type {string|null} */ (null);
+    const defaultZone = () => zone ??= (ctx.config && ctx.config.planner && validZone(ctx.config.planner.timezone) && String(ctx.config.planner.timezone)) || systemZone();
     /** @returns {import("./scheduler.js").Settings} */
-    const settings = () => ({ ...defaults(), ...(st.state.get("settings") || {}) });
+    const settings = () => {
+      const { timezone, ...kept } = st.state.get("settings") || {};
+      const out = /** @type {any} */ ({ escalate_after: 5, escalate_max: 3, event_lead: 10, ...kept });
+      return Object.defineProperty(out, "timezone", { enumerable: true, get: () => timezone || defaultZone() });
+    };
 
     const emit = (type, payload, item) => {
       try { ctx.events.emit(type, payload, { ...(item && item.project ? { project: item.project } : {}), ...(item && item.thread ? { thread: item.thread } : {}) }); }
