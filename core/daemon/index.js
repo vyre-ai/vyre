@@ -284,7 +284,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     // half of its key for a bearer session. The one call from another origin that needs none.
     let b;
     try { b = await body(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
-    const r = people ? people.exchange({ code: String(b.code || ""), verifier: String(b.verifier || ""), key: b.key, node: nodeId || "" }) : { error: { code: "denied", message: "no person sessions here" } };
+    const r = people ? people.exchange({ code: String(b.code || ""), verifier: String(b.verifier || ""), key: b.key, node: nodeId || "", origin: policy.peer && /** @type {any} */ (policy.peer).origin || null }) : { error: { code: "denied", message: "no person sessions here" } };
     if (r.data) events.emit("presence", "presence.signed-in", { id: r.data.id, node: policy.peer && policy.peer.node, app: true });
     return send(res, r.error ? (r.error.code === "bad_input" ? 400 : 403) : 200, r);
   }

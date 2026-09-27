@@ -267,7 +267,7 @@ event stream's first byte. Tear down afterwards.
   `x-vyre-proof: t=<ms> n=<nonce> sig=<b64url>` (ES256 P1363 over
   `METHOD\npath?query\nsha256b64url(body)\nt\nn`). 401 `person_session_required`. Exempt:
   presence.person.start and presence.enroll. Routes POST /v1/person/token {code, verifier, key},
-  POST /v1/person/end. Tools presence.person.start {cc?, label?} (HUMAN_ONLY), .status, .sessions,
+  POST /v1/person/end. Tools presence.person.start {cc?, return?, label?} (with cc, return must be an allowed https origin, network.origins; the answer carries redirect) (HUMAN_ONLY), .status, .sessions,
   .revoke (PERSON_ONLY). Events presence.signed-in, presence.signed-out. A request tailnet marks
   cross-origin (peer.origin) is refused without a session. Tests standing in for a signed-in Deck
   pass `person: { id, kind }` in meta.

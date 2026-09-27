@@ -78,14 +78,29 @@ export default {
 
     ctx.tool("presence.person.start", {
       description: "Sign this browser in as the person for 30 days (90 at most), on this device only, with a passkey. The Deck gets a cookie; with cc (a PKCE S256 challenge) the answer is a one-time code the hosted app trades at /v1/person/token.",
-      presence: { summary: async input => input.cc ? "Sign the Vyre app in on this device for 30 days" : "Sign this browser in for 30 days" },
+      presence: { summary: async input => {
+        if (!input.cc) return "Sign this browser in for 30 days";
+        let at = "an app";
+        try { at = new URL(String(input.return || "")).host; } catch {}
+        return `Sign ${at} in on this device for 30 days`;
+      } },
       callers: ["deck", "capsule"],
-      input: obj({ cc: str, label: str }),
+      input: obj({ cc: str, return: str, label: str }),
       run: async (input, meta) => {
         if (!meta.presence) throw new Error("a person session opens from a person's proof");
         const node = nodeOf(meta);
         const label = input.label || (meta.peer && meta.peer.node) || null;
-        if (input.cc) return { kind: "code", ...people.code({ node, cc: input.cc, label }) };
+        if (input.cc) {
+          // The code goes back only to an app this box allows (network.origins), never to a page
+          // that names itself: that page would hold the verifier and trade the code for the person.
+          let back;
+          try { back = new URL(String(input.return || "")); } catch { throw Object.assign(new Error("return must be the app's address"), { code: "bad_input" }); }
+          const allowed = ((ctx.config.network || {}).origins || ["https://app.vyre.run"]).map(String);
+          if (back.protocol !== "https:" || !allowed.includes(back.origin)) throw Object.assign(new Error(`${back.origin} is not an app this box signs in to`), { code: "denied" });
+          const c = people.code({ node, cc: input.cc, origin: back.origin, label });
+          back.searchParams.set("code", c.code);
+          return { kind: "code", code: c.code, expires: c.expires, redirect: back.href };
+        }
         const s = people.start({ node, kind: "cookie", label });
         ctx.events.emit("presence.signed-in", { id: s.id, node: label });
         return { kind: "cookie", id: s.id, token: s.token, expires: s.expires };

@@ -120,6 +120,7 @@ export const MIGRATIONS = [`
     hash TEXT PRIMARY KEY,
     cc TEXT NOT NULL,
     node TEXT NOT NULL,
+    origin TEXT NOT NULL,
     label TEXT,
     expires INTEGER NOT NULL
   );

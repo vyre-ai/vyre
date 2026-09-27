@@ -293,6 +293,24 @@ export function signIn() {
   return signing;
 }
 
+/**
+ * The hosted app's hop: a one-time code for the app at `return`, bound to its PKCE challenge.
+ * Resolves to { code, expires, redirect }; the page goes to redirect. Throws an ApiError.
+ * @param {{ cc: string, return: string, label?: string }} input
+ */
+export async function personCode(input) {
+  const tool = "presence.person.start";
+  const proof = await presenceProof(tool, input);
+  let body;
+  try {
+    const res = await rawFetch("/v1/tools/" + tool, { method: "POST", body: JSON.stringify(input),
+      headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": proof, ...headers } });
+    body = await res.json().catch(() => null);
+  } catch { throw new ApiError("offline", "The box did not answer.", tool); }
+  if (!body || body.error || !body.data || !body.data.redirect) throw new ApiError(body?.error?.code || "denied", body?.error?.message || "Signing in did not work.", tool, body?.error);
+  return body.data;
+}
+
 /** @type {typeof fetch} */
 const rawFetch = typeof window !== "undefined" && typeof window.fetch === "function" ? window.fetch.bind(window) : (...a) => fetch(...a);
 if (typeof window !== "undefined" && typeof window.fetch === "function" && !(/** @type {any} */ (window.fetch)).vyrePerson) {

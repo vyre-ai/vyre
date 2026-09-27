@@ -39,6 +39,9 @@ async function box(t) {
   const d = await start({ presence: lenient, root, log: () => {} });
   t.after(() => d.stop());
   const ctx = d.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
+  // Stands in for tailnet's CORS step, which marks a request from an allowed app origin on the peer.
+  const handler = ctx.handler;
+  ctx.handler = policy => { const h = handler(policy); return (req, res, caller, peer) => h(req, res, caller, req.headers["x-test-origin"] ? { ...peer, origin: req.headers["x-test-origin"] } : peer); };
   const svc = names({ ctx, ts: { whois: async ip => WHO[ip] || null, status: async () => ({}) }, save: p => config.save(p, root, d.config),
     certs: { load: () => null, save: () => {} }, dns: async () => ({}), issue: async () => ({}) });
   t.after(() => svc.close());
@@ -114,18 +117,31 @@ test("person: the hosted app gets a code on the box's page, trades it with PKCE 
   const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
   const key = publicKey.export({ format: "jwk" });
 
-  const c = await call(PHONE_IP, "presence.person.start", { cc, label: "Vyre app" }, { "x-vyre-presence": "passkey id=x" });
+  const APP = "https://app.vyre.run";
+  const back = { return: `${APP}/signed-in?x=1` };
+  const app = { "x-test-origin": APP };
+  // The code goes back only to an allowed app, never to a page that names itself.
+  for (const bad of ["https://evil.example/cb", "http://app.vyre.run/cb", "not a url"]) {
+    const r = await call(PHONE_IP, "presence.person.start", { cc, return: bad }, { "x-vyre-presence": "passkey id=x" });
+    assert.ok(["denied", "bad_input"].includes(r.error && r.error.code), `${bad}: ${JSON.stringify(r)}`);
+  }
+  const c = await call(PHONE_IP, "presence.person.start", { cc, label: "Vyre app", ...back }, { "x-vyre-presence": "passkey id=x" });
   assert.equal(c.data.kind, "code");
+  assert.equal(c.data.redirect, `${APP}/signed-in?x=1&code=${c.data.code}`);
   assert.equal(c.headers["set-cookie"], undefined, "no cookie for the app");
 
   // The code is bound to its node and its verifier, and is used once.
-  assert.equal((await send(MAC_IP, "POST", "/v1/person/token", { code: c.data.code, verifier, key })).error.code, "denied");
-  const c2 = await call(PHONE_IP, "presence.person.start", { cc }, { "x-vyre-presence": "passkey id=x" });
-  assert.equal((await send(PHONE_IP, "POST", "/v1/person/token", { code: c2.data.code, verifier: "wrong", key })).error.code, "denied");
-  const c3 = await call(PHONE_IP, "presence.person.start", { cc }, { "x-vyre-presence": "passkey id=x" });
-  const tok = await send(PHONE_IP, "POST", "/v1/person/token", { code: c3.data.code, verifier, key });
+  assert.equal((await send(MAC_IP, "POST", "/v1/person/token", { code: c.data.code, verifier, key }, app)).error.code, "denied");
+  const c2 = await call(PHONE_IP, "presence.person.start", { cc, ...back }, { "x-vyre-presence": "passkey id=x" });
+  assert.equal((await send(PHONE_IP, "POST", "/v1/person/token", { code: c2.data.code, verifier: "wrong", key }, app)).error.code, "denied");
+  const c4 = await call(PHONE_IP, "presence.person.start", { cc, ...back }, { "x-vyre-presence": "passkey id=x" });
+  assert.equal((await send(PHONE_IP, "POST", "/v1/person/token", { code: c4.data.code, verifier, key })).error.code, "denied", "only the app it was made for trades it");
+  const c3 = await call(PHONE_IP, "presence.person.start", { cc, ...back }, { "x-vyre-presence": "passkey id=x" });
+  const tok = await send(PHONE_IP, "POST", "/v1/person/token", { code: c3.data.code, verifier, key }, app);
   assert.equal(tok.status, 200, JSON.stringify(tok));
-  assert.equal((await send(PHONE_IP, "POST", "/v1/person/token", { code: c3.data.code, verifier, key })).error.code, "denied", "used once");
+  assert.equal((await send(PHONE_IP, "POST", "/v1/person/token", { code: c3.data.code, verifier, key }, app)).error.code, "denied", "used once");
+  // From the app's origin, nothing works without the session.
+  assert.equal((await call(PHONE_IP, "agents.list", {}, app)).status, 401);
 
   const sign = (tool, input, { t = Date.now(), n = crypto.randomBytes(12).toString("base64url"), k = privateKey } = {}) => {
     const raw = JSON.stringify(input);

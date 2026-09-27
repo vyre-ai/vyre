@@ -15,6 +15,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (`authorization: Vyre <token>`, `x-vyre-proof: t n sig`). POST /v1/person/end signs out;
   `presence.person.sessions`, `presence.person.revoke` and `presence.person.status` list, revoke
   and check. The Deck signs in by itself the first time a call needs it. core/presence/person.js.
+- The hosted app's code goes back only to an allowed app (`network.origins`, default
+  https://app.vyre.run), with `return` checked by the box and the code bound to that origin. The
+  box's own sign-in page is /person/signin?cc=..&return=.. (plain; pwa styles it).
 
 #### Security: the person's actions never ride the link
 

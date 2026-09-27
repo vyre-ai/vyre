@@ -94,27 +94,30 @@ export class PersonSessions {
   /**
    * A one-time code for the hosted app, bound to the PKCE challenge and this node. The sign-in
    * page on the box hands it back to the app, which trades it at /v1/person/token.
-   * @param {{ node: string, cc: string, label?: string|null }} o
+   * The code is also bound to the app's origin, which the caller has checked against the allowed
+   * list: only that origin may trade it.
+   * @param {{ node: string, cc: string, origin: string, label?: string|null }} o
    */
-  code({ node, cc, label = null }) {
+  code({ node, cc, origin, label = null }) {
     if (!node) throw Object.assign(new Error("a person session is made on a tailnet device, and this request has none"), { code: "denied" });
     if (!/^[A-Za-z0-9_-]{43}$/.test(String(cc))) throw Object.assign(new Error("cc must be a base64url SHA-256 (PKCE S256)"), { code: "bad_input" });
     const code = b64url(24);
     this.db.prepare("DELETE FROM presence_person_codes WHERE expires <= ?").run(this.now());
-    this.db.prepare("INSERT INTO presence_person_codes (hash, cc, node, label, expires) VALUES (?,?,?,?,?)")
-      .run(hash(code), String(cc), node, label ? String(label).slice(0, 80) : null, this.now() + CODE_TTL);
+    this.db.prepare("INSERT INTO presence_person_codes (hash, cc, node, origin, label, expires) VALUES (?,?,?,?,?,?)")
+      .run(hash(code), String(cc), node, String(origin), label ? String(label).slice(0, 80) : null, this.now() + CODE_TTL);
     return { code, expires: this.now() + CODE_TTL };
   }
 
   /**
    * Trade a code, its PKCE verifier and the app's public key for a bearer session. Used once.
-   * @param {{ code: string, verifier: string, key: any, node: string }} o
+   * @param {{ code: string, verifier: string, key: any, node: string, origin: string|null }} o
    */
-  exchange({ code, verifier, key, node }) {
+  exchange({ code, verifier, key, node, origin }) {
     const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_person_codes WHERE hash = ?").get(hash(code || "")));
     if (row) this.db.prepare("DELETE FROM presence_person_codes WHERE hash = ?").run(row.hash);
     if (!row || row.expires <= this.now()) return { error: { code: "denied", message: "that sign-in code is used or expired; sign in again" } };
     if (row.node !== node) return { error: { code: "denied", message: "that sign-in code was made on another device" } };
+    if (!origin || row.origin !== origin) return { error: { code: "denied", message: "that sign-in code is for another app" } };
     const cc = crypto.createHash("sha256").update(String(verifier || "")).digest("base64url");
     if (!same(cc, row.cc)) return { error: { code: "denied", message: "the verifier does not match the sign-in" } };
     if (!key || key.kty !== "EC" || key.crv !== "P-256" || typeof key.x !== "string" || typeof key.y !== "string" || key.d) {
