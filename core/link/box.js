@@ -190,10 +190,23 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
     run: async () => db.prepare("SELECT id, name, login, node, stable_id, paired_at, last_seen FROM link_peers ORDER BY paired_at").all(),
   });
 
+  /** Who may ask link.health: a module, the person at the box, or the owner over the tailnet. */
+  const healthCaller = caller => {
+    if (caller.startsWith("module:") || SOCKET.has(caller) || caller === "deck" || caller === "capsule") return true;
+    const login = tailnetLogin(caller);
+    if (!login || login.startsWith("agent:") || /\s/.test(login)) return false;
+    const owner = ctx.config.network && ctx.config.network.owner;
+    return !owner || login === owner;
+  };
+
   ctx.tool("link.health", {
     description: "How this box reaches a node right now: direct or relayed, latency, last handshake. By default the calling device; node: a paired Mac's node id. Checked at most once a minute per node.",
     input: { type: "object", properties: { node: { type: "string" } } },
     run: async ({ node }, meta) => {
+      // Modules and the owner only (lead's decision, 27 Sep 2026). A guest from another tailnet
+      // or an agent's own node learns nothing about how this box's links run, and neither does a
+      // tailnet login that is not the owner the names module serves.
+      if (!healthCaller(String(meta.caller))) throw new Error("link.health answers the box's owner and its modules only");
       const own = peerOf(meta);
       const asked = node ? String(node) : own && own.stableId ? String(own.stableId) : null;
       if (!asked) return unknown("say which node: a paired Mac's node id (vyre link peers)", now());

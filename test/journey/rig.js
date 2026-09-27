@@ -177,6 +177,18 @@ export async function makeRig(o = {}) {
     macConfig: () => readJson(d("mac", ".vyre", "config.json")),
     boxConfig: () => readJson(d("srv", "home", ".vyre", "config.json")),
     macTailscale: mode => fs.writeFileSync(rig.state.mac, JSON.stringify({ mode })),
+    /**
+     * The person made their first passkey at the box's address (WebAuthn, which no harness can
+     * do): the row the box's presence.enroll would write, in the box's own store.
+     */
+    boxPasskey: async () => {
+      const { DatabaseSync } = await import("node:sqlite");
+      const db = new DatabaseSync(d("srv", "home", ".vyre", "vyre.db"));
+      try {
+        db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, rp_id, created) VALUES (?, 'passkey', 'alex phone', ?, -7, ?, ?)")
+          .run(crypto.randomBytes(16).toString("base64url"), crypto.randomBytes(32).toString("base64url"), TS_NAME, Date.now());
+      } finally { db.close(); }
+    },
     /** The person finished Tailscale's sign-in in the browser. */
     boxSignedIn: () => fs.writeFileSync(rig.state.box, JSON.stringify(BOX_RUNNING)),
 

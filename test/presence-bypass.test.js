@@ -200,3 +200,26 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   assert.ok(ok.data, JSON.stringify(ok));
   assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
 });
+
+test("bypass: making or changing an agent (its credentials and budget) needs a person", async t => {
+  const b = await box(t);
+  const make = { name: "kit", kind: "agent", auth: { vault: "claude-setup-token", budget_usd: 5 } };
+  // An agent, through its MCP server, is refused whatever it claims.
+  for (const caller of ["mcp", "mcp:agent:juno"]) {
+    const r = await raw(b.socket, "/v1/tools/agents.create", make, { "x-vyre-caller": caller });
+    assert.equal(r.status, 403, caller);
+  }
+  // A person's surface without a proof is refused for want of one.
+  for (const caller of ["cli", "deck", "capsule"]) {
+    const r = await raw(b.socket, "/v1/tools/agents.create", make, { "x-vyre-caller": caller });
+    assert.equal(r.status, 403, caller);
+    assert.equal(r.body.error.code, "presence_required", caller);
+  }
+  assert.deepEqual((await call("agents.list", {}, { root: b.root, caller: "cli" })).data, [], "nothing was made");
+  // With a proof, it is made, and changing its budget asks again.
+  assert.ok((await b.person("agents.create", make)).data, "a person may make one");
+  const raise = { name: "kit", auth: { vault: "claude-setup-token", budget_usd: 500 } };
+  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "cli" })).body.error.code, "presence_required");
+  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "mcp:agent:kit" })).status, 403);
+  assert.ok((await b.person("agents.update", raise)).data, "a person may change it");
+});
