@@ -246,6 +246,34 @@
       "w": 2400,
       "h": 1200,
       "title": "The Mac Capsule and the CLI \u00b7 paper"
+    },
+    "Takeover.dc.html": {
+      "x": 10140,
+      "y": 9720,
+      "w": 2700,
+      "h": 1500,
+      "title": "Glass: take-over and hand-back states"
+    },
+    "Takeover-paper.dc.html": {
+      "x": 10140,
+      "y": 12170,
+      "w": 2700,
+      "h": 1500,
+      "title": "Glass: take-over and hand-back states \u00b7 paper"
+    },
+    "Presence.dc.html": {
+      "x": 12920,
+      "y": 9720,
+      "w": 2660,
+      "h": 1120,
+      "title": "Presence: sign in once, prove it rarely"
+    },
+    "Presence-paper.dc.html": {
+      "x": 12920,
+      "y": 12170,
+      "w": 2660,
+      "h": 1120,
+      "title": "Presence: sign in once, prove it rarely \u00b7 paper"
     }
   },
   "createdOnFiles": {
@@ -306,17 +334,17 @@
     "more": {
       "x": 0,
       "y": 9420,
-      "text": "States, install without an Apple account, the Capsule and the CLI",
+      "text": "States, install, the Capsule and CLI, Glass take-over, presence",
       "kind": "title1",
-      "maxW": 10060,
+      "maxW": 15580,
       "w": 240
     },
     "more2": {
       "x": 0,
       "y": 11870,
-      "text": "States, install, Capsule \u00b7 paper",
+      "text": "States, install, Capsule, take-over, presence \u00b7 paper",
       "kind": "title1",
-      "maxW": 10060,
+      "maxW": 15580,
       "w": 240
     }
   },
@@ -352,10 +380,14 @@
     "InstallLaptop.dc.html",
     "InstallPhones.dc.html",
     "Capsule.dc.html",
+    "Takeover.dc.html",
+    "Presence.dc.html",
     "States-paper.dc.html",
     "InstallLaptop-paper.dc.html",
     "InstallPhones-paper.dc.html",
-    "Capsule-paper.dc.html"
+    "Capsule-paper.dc.html",
+    "Takeover-paper.dc.html",
+    "Presence-paper.dc.html"
   ],
   "pages": [],
   "title": "Vyre one app"
