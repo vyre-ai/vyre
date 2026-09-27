@@ -40,6 +40,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (active teammates, subagents), a box-wide ceiling, a fair queue and a usage-aware pause. The
   user's decisions: an integrator teammate auto-merges green branches, teammates can be shared
   with other projects or assigned to the assistant, Balanced is the default preset.
+#### Apps: Slack replies in threads, and a Slack send is never posted twice (ADR 0022, ADR 0029)
+
+- Slack `reply {to, thread, text}` answers in a thread (the server's reply tool, or its post tool
+  with `thread_ts`), held at the Gate like a send. `recent {to, thread?}` lists a channel's
+  messages or a thread's replies with their ts, newest first, to pick a thread from.
+- The same words to the same place already waiting at the Gate are that item again (`again:
+  true`), so a retried apps.act, from an outbox or after a lost answer, never holds a second post.
+- A Slack server that does not answer is code `unreachable` (an outbox retries it), never "no
+  channel called #general".
+- An approval whose answer was lost when the server dropped mid-send may have posted. `sent {to,
+  text, thread?, since}` reads Slack for those words since the item was held. The Capsule asks it
+  when gate.approve comes back failed, and before approving an item whose earlier approval failed
+  (`tried`): "It went out" when it did, otherwise the message waits at the Gate and Enter tries it
+  again. The Capsule no longer reads a failed approval as sent.
+
 #### Apps: Slack messages through the MCP hub, held at the Gate (ADR 0022, slice 3)
 
 - "slack #general: the ovens are in", "tell juno on slack ..." and the Capsule's @Slack now send
