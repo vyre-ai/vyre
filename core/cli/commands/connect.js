@@ -21,7 +21,7 @@ import { dialogsAllowed } from "../../config/dialogs.js";
 import { callAsPerson } from "../presence.js";
 import { flags } from "../../vault/cli-io.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail as kitFail, failTool } from "../kit.js";
+import { json, emit, fail as kitFail, failTool, usage } from "../kit.js";
 
 const USAGE = "vyre connect list|add|remove|test";
 const HELP = [
@@ -374,7 +374,7 @@ async function kindOf(name) {
 async function target(rest, verb) {
   let [kind, name] = rest;
   if (kind !== "mcp" && kind !== "google") { name = kind; kind = undefined; }
-  if (!name || rest.length > (kind ? 2 : 1)) return { code: oops(`vyre connect ${verb} [mcp|google] <name>`) };
+  if (!name || rest.length > (kind ? 2 : 1)) return { code: usage(`vyre connect ${verb} needs one name`, `vyre connect ${verb} [mcp|google] <name> · vyre connect list shows them`) };
   if (!kind) {
     const k = await kindOf(name);
     if (k.error) return { code: fail(k.error) };

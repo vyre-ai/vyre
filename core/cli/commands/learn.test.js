@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../../daemon/index.js";
+import { open } from "../../store/index.js";
 import { tempHome, present } from "../../../test/helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
@@ -80,4 +81,46 @@ test("learn --json: show, stats, signals, skills, level and scope print one JSON
   const human = await run(root, ["learn", "show", "9"]);
   assert.equal(human.out.trim(), "no lesson 9");
   assert.match((await run(root, ["learn", "stats"])).out, /never use em dashes|Never use em dashes/);
+});
+
+test("learn skills: dismiss says no to a proposed skill, retire removes an installed one's file", async t => {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", transcripts: [], vault: { keystore: "file" }, modules: { disable: ["recall", "memory"] } }));
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  // Two proposed skills, as learn's own propose() writes them after three clean sessions.
+  const db = open(path.join(root, "vyre.db"));
+  const put = db.prepare(`INSERT INTO learn_skills (name, scope, status, body, hash, path, source, sessions, created, updated)
+    VALUES (?, '"all"', 'proposed', ?, NULL, NULL, '{"kind":"template"}', 3, ?, ?)`);
+  for (const name of ["learned-ship", "learned-bake"]) put.run(name, `---\nname: ${name}\ndescription: Use when ${name.slice(8)}ing.\n---\n\n1. Do it.\n`, Date.now(), Date.now());
+  db.close();
+  const vyre = (...args) => run(root, args);
+
+  const listed = JSON.parse((await vyre("learn", "skills", "--json")).out);
+  assert.deepEqual(listed.skills.map(s => [s.id, s.status]), [[1, "proposed"], [2, "proposed"]]);
+
+  const dismissed = await vyre("learn", "skills", "dismiss", "1");
+  assert.equal(dismissed.code, 0, dismissed.out + dismissed.err);
+  assert.match(dismissed.out, /dismissed skill 1/);
+  const again = await vyre("learn", "skills", "dismiss", "1", "--json");
+  assert.equal(again.code, 1);
+  assert.match(JSON.parse(again.out).error.message, /skill 1 is dismissed/);
+
+  const installed = JSON.parse((await vyre("learn", "skills", "install", "2", "--agent", "kit", "--json")).out);
+  assert.equal(installed.status, "installed");
+  assert.ok(installed.path.startsWith(fs.realpathSync(root)) || installed.path.startsWith(root), installed.path);
+  assert.ok(fs.existsSync(installed.path));
+  const retired = JSON.parse((await vyre("learn", "skills", "retire", "2", "--json")).out);
+  assert.equal(retired.status, "retired");
+  assert.equal(fs.existsSync(installed.path), false, "retiring removes the skill's file");
+  assert.match((await vyre("learn", "skills", "retire", "2")).err + (await vyre("learn", "skills", "retire", "2")).out, /skill 2 is retired/);
+
+  const shown = JSON.parse((await vyre("learn", "skills", "show", "1", "--json")).out);
+  assert.equal(shown.status, "dismissed");
+
+  const noId = await vyre("learn", "skills", "retire");
+  assert.equal(noId.code, 2);
+  assert.match(noId.out + noId.err, /vyre learn skills retire <id>/);
+  assert.match(noId.out + noId.err, /vyre learn lists them with their numbers/);
+  assert.equal((await vyre("learn", "skills", "dismiss", "x")).code, 2);
 });

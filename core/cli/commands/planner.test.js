@@ -277,3 +277,43 @@ test("planner cli: ringing lists what rings, and dismiss stops it", async t => {
   assert.match(none.out, /next: vyre ringing lists what rings/);
   assert.match((await vyre("help")).out, /vyre ringing[\s\S]*vyre dismiss/);
 });
+
+test("planner cli: timer rm and remind rm delete their own kind, answer --json, and refuse a missing or wrong id", async t => {
+  const { vyre, tool } = await world(t);
+  const tm = idIn((await vyre("timer", "10m", "bread")).out);
+  const rm = idIn((await vyre("remind", "call juno", "at", "6")).out);
+  const other = idIn((await vyre("timer", "25m", "rye")).out);
+
+  // No id: a usage mistake, with the command that shows one.
+  const bare = await vyre("timer", "rm");
+  assert.equal(bare.code, 2, bare.out);
+  assert.match(bare.out, /vyre timer rm needs a timer's id/);
+  assert.match(bare.out, /next: vyre timer rm i_\.\.\./);
+  const bareR = await vyre("remind", "rm");
+  assert.equal(bareR.code, 2, bareR.out);
+  assert.match(bareR.out, /next: vyre remind rm i_\.\.\./);
+
+  // A reminder's id given to timer rm is refused, and the reminder stays.
+  const wrong = await vyre("timer", "rm", rm);
+  assert.equal(wrong.code, 1);
+  assert.match(wrong.out, /is a reminder, not a timer/);
+  assert.match(wrong.out, new RegExp(`next: vyre remind rm ${rm}`));
+  assert.equal((await tool("planner.get", { item: rm })).data.item.kind, "reminder");
+
+  const gone = await vyre("timer", "rm", tm);
+  assert.equal(gone.code, 0, gone.out);
+  assert.match(gone.out, new RegExp(`deleted bread\\s+${tm}`));
+  assert.deepEqual(JSON.parse((await vyre("timer", "list", "--json")).out).timers.map(x => x.id), [other], "only the other timer is left");
+
+  const rj = await vyre("remind", "delete", rm, "--json");
+  assert.equal(rj.code, 0, rj.out);
+  const d = JSON.parse(rj.out);
+  assert.equal(d.removed, rm);
+  assert.ok(d.restore_until > NOW, "it can be restored for a while");
+  assert.match((await vyre("remind", "list")).out, /no reminders set/);
+  // A second rm is harmless: the reminder stays deleted, and nothing else is.
+  const again = await vyre("remind", "rm", rm, "--json");
+  assert.equal(again.code, 0, again.out);
+  assert.ok(JSON.parse(again.out).deleted_at);
+  assert.deepEqual(JSON.parse((await vyre("timer", "list", "--json")).out).timers.map(x => x.id), [other]);
+});

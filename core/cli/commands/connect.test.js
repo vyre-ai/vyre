@@ -351,3 +351,30 @@ test("connect: an empty stdin that is not a terminal does not cancel; the loopba
   assert.match(r.out, /added home alex@example\.com/);
   assert.match(r.out, /ok home/);
 });
+
+test("connect rm: the short name for remove, a usage mistake without a name, and a second rm finds nothing", async t => {
+  const v = await vyred(t);
+  const added = await vyre(v.root, ["connect", "add", "mcp", "northwind", "--", process.execPath, FAKE, "--stdio"]);
+  assert.equal(added.code, 0, added.all);
+
+  const bare = await vyre(v.root, ["connect", "rm"]);
+  assert.equal(bare.code, 2, bare.all);
+  assert.match(bare.all, /vyre connect remove needs one name/);
+  assert.match(bare.all, /next: vyre connect remove \[mcp\|google\] <name> · vyre connect list shows them/);
+  const extra = await vyre(v.root, ["connect", "rm", "mcp", "northwind", "juno", "--json"]);
+  assert.equal(extra.code, 2);
+  assert.equal(JSON.parse(extra.out).error.code, "bad_input");
+  assert.equal((await vyre(v.root, ["connect", "test"])).code, 2, "test shares the same check");
+  assert.deepEqual(JSON.parse((await vyre(v.root, ["connect", "--json"])).out).mcp.map(s => s.name), ["northwind"], "nothing was removed");
+
+  const gone = await vyre(v.root, ["connect", "rm", "mcp", "northwind", "--json"]);
+  assert.equal(gone.code, 0, gone.all);
+  const g = JSON.parse(gone.out);
+  assert.equal(g.kind, "mcp");
+  assert.equal(g.name, "northwind");
+  assert.deepEqual(JSON.parse((await vyre(v.root, ["connect", "list", "--json"])).out).mcp, []);
+
+  const again = await vyre(v.root, ["connect", "rm", "northwind"]);
+  assert.equal(again.code, 1);
+  assert.match(again.out, /nothing connected is named northwind · vyre connect list/);
+});

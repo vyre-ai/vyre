@@ -74,10 +74,49 @@ process.exit(1);
   assert.deepEqual(JSON.parse((await vyre("hooks", "--json")).out).routes, []);
 
   const bad = await vyre("hooks", "close", "--json");
-  assert.equal(bad.code, 1);
+  assert.equal(bad.code, 2, "a usage mistake");
   assert.equal(JSON.parse(bad.out).error.code, "bad_input");
   assert.match((await vyre("hooks", "close")).out, /vyre hooks \[status/);
   const refused = await vyre("hooks", "open", "Not A Name", "--scheme", "github", "--secret", "x", "--json");
   assert.equal(refused.code, 1);
   assert.equal(JSON.parse(refused.out).error.code, "bad_input");
+});
+
+test("hooks: on starts the listener on 127.0.0.1, list shows it, off stops it; a verb it does not know prints the usage", async t => {
+  const root = tempHome(t);
+  // Never the real tailscale: a fake that knows nothing.
+  const bin = path.join(root, "ts", "tailscale");
+  fs.mkdirSync(path.dirname(bin));
+  fs.writeFileSync(bin, "#!/usr/bin/env node\nprocess.exit(1);\n", { mode: 0o755 });
+  const prev = process.env.VYRE_TAILSCALE_BIN;
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  t.after(() => { if (prev === undefined) delete process.env.VYRE_TAILSCALE_BIN; else process.env.VYRE_TAILSCALE_BIN = prev; });
+  // Port 0: the listener takes any free port on 127.0.0.1, never a fixed one.
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" },
+    hooks: { port: 0 }, modules: { disable: ["recall", "memory", "learn"] } }));
+  const d = await start({ root, presence: present, log: () => {} });
+  t.after(() => d.stop());
+  const vyre = (/** @type {string[]} */ ...args) => run(root, args);
+
+  const on = await vyre("hooks", "on");
+  assert.equal(on.code, 0, on.out);
+  assert.match(on.out, /listener on 127\.0\.0\.1:\d+/);
+  const lj = JSON.parse((await vyre("hooks", "list", "--json")).out);
+  assert.equal(lj.enabled, true);
+  assert.equal(lj.listening, true);
+  assert.equal(lj.host, "127.0.0.1");
+  assert.ok(lj.port > 0, "a real port once listening");
+  assert.match((await vyre("hooks", "list")).out, /listener on 127\.0\.0\.1:\d+[\s\S]*no routes open/);
+
+  const off = JSON.parse((await vyre("hooks", "off", "--json")).out);
+  assert.equal(off.listening, false);
+  assert.equal(off.enabled, false);
+  const human = await vyre("hooks", "list");
+  assert.match(human.out, /listener off/);
+
+  // A usage mistake: exit 2, the usage line and where to read more.
+  const frob = await vyre("hooks", "frob");
+  assert.equal(frob.code, 2);
+  assert.match(frob.out, /vyre hooks \[status\|on\|off\|open/);
+  assert.match(frob.out, /vyre help hooks/);
 });

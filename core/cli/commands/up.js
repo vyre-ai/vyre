@@ -15,7 +15,7 @@ import { request, call } from "../../daemon/client.js";
 import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, failTool, usage } from "../kit.js";
+import { json, emit, fail, failTool, usage } from "../kit.js";
 import * as config from "../../config/index.js";
 import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
@@ -512,7 +512,10 @@ export default [
       const { flags, rest } = parse(args);
       if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
       try { await restore({ root: config.home(), file: path.resolve(rest[0]), force: Boolean(flags.force) }); }
-      catch (e) { out(beacon("  " + /** @type {Error} */ (e).message)); return 1; }
+      catch (e) {
+        const m = String(/** @type {Error} */ (e).message);
+        return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
+      }
       out("  restored · vyre up to start");
       return 0;
     },
@@ -536,10 +539,19 @@ export default [
   },
   {
     name: "owner", order: 31, hidden: true, usage: "vyre owner <tailscale login>", summary: "the one Tailscale login this box serves",
-    async run([login]) {
-      if (!login) { const s = await call("names.status"); out(`  ${s.data ? s.data.owner || "no owner yet" : s.error.message}`); return 0; }
+    async run(args) {
+      // --json is a flag, never a login: `vyre owner --json` once made "--json" the owner.
+      const [login] = args.filter(a => a !== "--json");
+      if (!login) {
+        const s = await call("names.status");
+        if (s.error) return failTool(s.error);
+        if (json()) return emit({ owner: s.data.owner || null });
+        out(`  ${s.data.owner || "no owner yet"}`);
+        return 0;
+      }
       const r = await call("names.owner", { login });
       if (r.error) return failTool(r.error);
+      if (json()) return emit(r.data);
       out(`  owner: ${signal(login)}`);
       return 0;
     },

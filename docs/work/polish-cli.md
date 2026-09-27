@@ -78,7 +78,18 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   chat parity verbs. Parity verbs run live against main's sessions tools (the test now requires
   them). `vyre relay pair` uses core/cli/qr.js; phone tests post push receipts. Targeted runs on
   testbox: 158/160 then 17/17 phone, 18/18 threads-sessions, 99/99 consistency+docs+presence.
-- Compile phase: a verb-by-verb test and help audit of core/cli/commands/*.
+- Compile phase: verb audit done; tests added for about 60 verbs (5 test commits + 1). Still
+  untested: agents update/stop/delete/threads, threads stop/edit/send-now/fork/lease/release/
+  list/show (the subagent hit a usage limit before these). Usage lines leave out many verbs
+  handled in run() (threads names 6 of 28): a usage/help pass is next.
+- Vault usage slips still exit 1 (its documented older codes); left for the vault owners.
+- Link bugs for the link team: link.signin's loopback server outlives the module stop (up to
+  10 min); a second `vyre link pair` leaves the first request listed as waiting on the box.
+- New asks (lead, user): stable documented --json for every verb (rows, statuses, QR payloads,
+  prompts as data) and `vyre commands --json` for the Capsule's autocomplete, with capsule-pro;
+  then docs' dim tip line after a command (tips.next, work/docs d960197d); e2e's statusline
+  switch to config.claudeHome once work/e2e-noclaude 32dc0956 lands (plus a temp-home test);
+  cohesion's plan items 5 to 7 (docs/design/cohesion.md on work/cohesion 199120b5).
 
 ## Next
 
