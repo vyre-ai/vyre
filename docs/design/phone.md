@@ -91,6 +91,9 @@ Errors and destructive actions carry no colour:
   hold, and a haptic at the end). The safe choice ("Keep it") is never the primary fill either.
   Deny and Discard on a held item are not destructive (the item can be held again, and Discard
   has Undo), so they are ordinary secondary buttons.
+  A held Gate delete of outside data (mail, files, posts) uses the same outline button with the
+  count ("Delete 12 emails"). Its second step is Face ID when the proof runs, or the 0.6 s hold
+  when the device is covered, never both.
 
 Buttons, the same three kinds as the Deck:
 
