@@ -73,6 +73,10 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
   Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
+- e2e decision: the pairing presence key is the phone's biometric-bound key (vyre.human). Optional
+  hardening: if the hello's presenceKey carries `biometric: true`, admit() refuses one without it.
+  Untrusted web devices stay blocked from vault reveal/copy by WEB_DENY even though e2e e5aaf88
+  lets presence sessions serve them for device:<id>.
 - From mobile (apps/app on work/mobile 24e2091a wires relay/client), for when relay resumes:
   (1) README: say createPaths takes `fetch` (RN needs expo/fetch to stream); (2) a `randomBytes`
   option for paths.js newKey() (Hermes has no getRandomValues); (3) a start-on-the-relay mode:
