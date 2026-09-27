@@ -81,7 +81,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_COMPUTERS_NETWORK` | The Docker network agent computers join. Default `vyre-computers`. | `core/dockerproxy/main.js` |
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
-| `VYRE_DRIVE_ACCESS` | `ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for Taildrive. `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change. | `core/files/drive.js` |
+| `VYRE_DRIVE_ACCESS` | `ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change. | `core/files/drive.js` |
 | `VYRE_EGRESS_GATE_HOST` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_GATE_PORT` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_GATE_STATUS` | Not described yet. | `core/computers/egress.js` |

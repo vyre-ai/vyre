@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### VyreDrive: the name, a lighter secrets scan, no proof to switch a share, and no guest Glass
+
+- Users see the box shares as VyreDrive (built on Tailscale's Taildrive): tool descriptions, the
+  Deck row, docs. Tool names (`files.drive.*`) and config keys are unchanged.
+- The share scan skips real `node_modules`, `dist`, `.next`, `target`, `venv`, `.venv` folders
+  and `.git/objects`, which no longer count toward `SCAN_LIMIT`, and flags a `.git/config` holding
+  a credential (a remote URL with a user or token, or an `Authorization` extraheader).
+- `files.drive.access` moves from `HUMAN_ONLY` to `PERSON_ONLY`: the owner switches a share with
+  no proof; agents, models and guests are still refused.
+- `glass.open` is no longer guest-safe (`GUEST_SAFE` in `core/names/guests.js`): tailnet streams
+  are the owner's alone.
+
 #### vyred knows the box's Taildrive mount mode
 
 - The vyre service gets `VYRE_DRIVE_ACCESS` (default `ro`), the same value the tailscale service

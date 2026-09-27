@@ -66,9 +66,9 @@ services:
     volumes:
       - tailscale-state:/var/lib/tailscale
       - tailscale-sock:/var/run/tailscale
-      # Taildrive (core/files/drive.js). tailscaled serves a shared folder itself, from this
-      # container, so the folder must be here at the same path as in the vyre service, or the
-      # share points at nothing. Only /work: the projects share and Glass's box folders
+      # VyreDrive (built on Tailscale's Taildrive; core/files/drive.js). tailscaled serves a
+      # shared folder itself, from this container, so the folder must be here at the same path
+      # as in the vyre service, or the share points at nothing. Only /work: the projects share and Glass's box folders
       # (glass.roots) are chosen inside it. vyre-home is never mounted here, since it holds the
       # vault and Claude's sign-in, and a share serves every file under its folder.
       #

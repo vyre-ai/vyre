@@ -136,11 +136,12 @@ More in [Troubleshooting](../get-started/troubleshooting.md) and
 
 ## Optional Tailscale features
 
-Each is off until you turn it on, and Vyre works fully without them: Taildrive (the box's project
-folders on your Mac, read-only), Taildrop (`vyre send` a file to the box), Tailscale SSH for
+Each is off until you turn it on, and Vyre works fully without them: VyreDrive (built on
+Tailscale's Taildrive: the box's project folders on your Mac, read-only unless you make a share
+writable), Taildrop (`vyre send` a file to the box), Tailscale SSH for
 `vyre box add`, Tailnet Lock (Vyre reads it; you turn it on), Glass egress through your Mac as an
-exit node, vault passes that also need a policy grant, guests from another tailnet watching
-Glass, and signed webhooks through Funnel. A tailnet node for each agent's computer is not live
+exit node, vault passes that also need a policy grant, guests from another tailnet listing
+your threads, and signed webhooks through Funnel. A tailnet node for each agent's computer is not live
 yet. How to set up each one, with the policy entries it needs:
 [Optional: more of Tailscale in Vyre](../get-started/tailscale.md#optional-more-of-tailscale-in-vyre).
 The reasons behind them are in [ADR 0014](../adr/0014-tailnet.md).

@@ -225,7 +225,7 @@ const ENV_MEANING = {
   BOX_WAIT_MS: "How long `vyre box` waits for an install to finish. Default 65 minutes.",
   CAPSULE_BIN: "The folder holding the Capsule's native helpers.",
   CAPSULE_DRIVE: "In a development build, lets a script drive the Capsule.",
-  DRIVE_ACCESS: "`ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for Taildrive. `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change.",
+  DRIVE_ACCESS: "`ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change.",
   CAPSULE_LOG: "Writes the Capsule's log to stdout from a packaged build.",
   CAPSULE_TRACE_WAKE: "Times each wake of the Capsule.",
   CLAUDE_BIN: "The `claude` binary to run. Default `claude` on the PATH.",
