@@ -89,7 +89,7 @@ without editing Capsule files:
   fix, the extension seam, `@` targets: see CHANGELOG.
 
 ## Doing
-- Waiting on capsule-mac CI for the integrator's green sha.
+- Nothing blocking. Everything through faa6bcf is on main (c8fb9aae, CI 36316457268 green).
 
 ## Footprint: met (2026-09-27)
 - CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use

@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: capsule-mac runs when the Capsule's check or CLI changes
+
+- capsule-mac.yml also triggers on scripts/capsule-native-check.mjs and core/cli/commands/capsule*,
+  which it runs; a change there alone used to need a manual dispatch.
+
 #### The answer eval runs without the Electron Capsule
 
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
