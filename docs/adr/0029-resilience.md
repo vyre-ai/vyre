@@ -3,7 +3,7 @@ title: ADR 0029: The resilience contract
 summary: What every Vyre surface does when the network blips, a lid closes or the box restarts, so an outage is boring.
 audience: builders
 owner: resilience
-status: proposed
+status: draft
 ---
 
 # ADR 0029: The resilience contract
@@ -41,9 +41,12 @@ terminal, Glass, the relay and federation between boxes. Each rule has a test in
   therefore still resumes from where it was, never from `latest`.
 - `since=latest` is resolved once, by the server, into a number the client then holds. A client
   never sends `latest` on a reconnect.
-- If a client's cursor is older than what the log still holds for its filter (a prune went past
-  it), the stream sends `event: reset` with the oldest id it has. The client reloads its state
-  through tools and follows from there. A gap is always either replayed or announced, never silent.
+- The log is never trimmed at its head (only a turn's partial text is pruned, once its whole text
+  is stored), so any cursor the box handed out can be replayed. A cursor ahead of the log (the
+  box's store was reset, or the client followed another box) cannot: the stream sends a
+  `stream.reset` event, shaped like any other event, whose id is the one to follow from. The
+  client sets its cursor to it, reloads its state through tools and follows from there. A gap is
+  always either replayed or announced, never silent.
 - Clients drop any event whose id is at or below the last one they applied (no doubles), and
   persist the cursor so a cold start resumes too.
 - A client treats 45 s without a byte (three missed heartbeats) as a dead stream and reconnects.
@@ -56,11 +59,17 @@ terminal, Glass, the relay and federation between boxes. Each rule has a test in
   and `ctx.remote`, the key rides in meta). One key per intent: a retry reuses it.
 - vyred keeps `(caller, tool, key) -> (input hash, result)` for 24 h, in the registry, around the
   tool's `run`. A repeat with the same input gets the stored result back without running the tool
-  again. A repeat with different input is refused with `idempotency_conflict`. A call still
-  running answers `in_progress`, and the client retries it later. Only successes and the tool's
-  own refusals are stored; a transport failure is not.
+  again, marked `replayed: true`. A repeat with different input is refused with a 409
+  `idempotency_conflict`. A repeat that arrives while the first is still running waits for that
+  same run and gets its answer. Successes and the tool's own coded refusals are stored; a crash
+  (`failed`) is not, so it can be retried. Checks run before the lookup as before (rules,
+  presence), so a replay never answers a caller the tool itself would have refused.
+- A restart that kills vyred mid-run loses the in-memory "running" mark, and the retry runs the
+  tool again. Tools whose writes cannot be repeated safely make their own write and the key's
+  record in one transaction (a later step; none needs it yet).
 - Tools that refuse a second attempt today (`threads.answer`, `gate.approve`, `gate.reject`)
-  return the earlier outcome as a success when the key matches, so a retry reads as done.
+  should return the earlier outcome as a success, so a retry that comes without a key (or after
+  the key's day) still reads as done.
 - Every device keeps an outbox in durable storage (IndexedDB in the Deck, SQLite or MMKV in the
   app, a file in the CLI and the Capsule). Sends, answers, approvals, notes and todos go into it
   first, with their key, and show at once as "sending". The outbox drains in order when the box

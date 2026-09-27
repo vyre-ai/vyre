@@ -241,3 +241,18 @@ test("R3: a paused stream closes and resume() picks up from the cursor", { timeo
   await until(() => f.got.length === 2, "the events missed while paused");
   assert.deepEqual(f.got, [1, 2]);
 });
+
+test("R1, R7: the CLI's live screen stream comes back after a vyred restart and misses nothing", { timeout: 30_000 }, async t => {
+  const { stream } = await import("../../core/cli/screen/live.js");
+  const w = await world(t);
+  const got = [];
+  let opens = 0;
+  const s = stream({ root: w.root, onOpen: () => opens++, onEvent: e => { if (e.type === "thread.text") got.push(e.payload.n); } });
+  t.after(() => s.stop());
+  await until(() => opens === 1, "the first open");
+  await w.restart();
+  w.emit(1);
+  await until(() => got.length === 1, "an event after the restart", 12_000);
+  assert.deepEqual(got, [1]);
+  assert.ok(opens >= 2, "the screen was told to refresh on reopen");
+});
