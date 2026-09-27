@@ -65,6 +65,24 @@ test("policy: allows the capAdd escape hatch when configured, and nothing beside
   assert.equal(allowCreate(body, CONFIG).ok, false);
 });
 
+test("policy: SETUID and SETGID pass with no capAdd configured; the browser volume is pinned like the home", async t => {
+  const body = await realBody(t);
+  assert.deepEqual(body.HostConfig.CapAdd, ["SETUID", "SETGID"]);
+  assert.deepEqual(allowCreate(body, CONFIG), { ok: true });
+  assert.equal(body.HostConfig.Mounts[1].Source, "run.vyre.computers-browser-kit");
+  assert.equal(body.HostConfig.Mounts[1].Target, "/var/lib/vyre");
+  const pax = await mutate(t, b => { b.HostConfig.Mounts[1].Source = "run.vyre.computers-browser-pax"; return b; });
+  assert.equal(allowCreate(pax, CONFIG).ok, false, "another agent's browser volume");
+  const home = await mutate(t, b => { b.HostConfig.Mounts[1].Source = "run.vyre.computers-home-kit"; return b; });
+  assert.equal(allowCreate(home, CONFIG).ok, false, "the agent's home mounted where the browser profile goes");
+  const swapped = await mutate(t, b => { b.HostConfig.Mounts.reverse(); return b; });
+  assert.equal(allowCreate(swapped, CONFIG).ok, false);
+  const one = await mutate(t, b => { b.HostConfig.Mounts.pop(); return b; });
+  assert.equal(allowCreate(one, CONFIG).ok, false, "an old one-volume body");
+  const unlabeled = await mutate(t, b => { b.HostConfig.Mounts[1].VolumeOptions.Labels = {}; return b; });
+  assert.equal(allowCreate(unlabeled, CONFIG).ok, false);
+});
+
 test("policy: never a forbidden capability, even if a box misconfigures capAdd to ask for one", async t => {
   const body = await realBody(t, { capAdd: ["SYS_ADMIN"] });
   for (const cap of ["SYS_ADMIN", "SYS_PTRACE", "SYS_MODULE", "NET_ADMIN", "DAC_READ_SEARCH", "SYS_RAWIO"]) {

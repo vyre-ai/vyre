@@ -256,8 +256,13 @@ test("dockerproxy: a container without computer labels is refused, whatever the 
 
 test("dockerproxy: exec on a computer passes; exec start on a non-computer's exec is refused", async t => {
   const p = await proxy(t);
-  const c = await p.call("POST", "/v1.43/containers/kitfull0001/exec", { AttachStdout: true, AttachStderr: true, Cmd: ["id", "-u"] });
+  const c = await p.call("POST", "/v1.43/containers/kitfull0001/exec", { AttachStdout: true, AttachStderr: true, Cmd: ["id", "-u"], User: "1000:1000" });
   assert.equal(c.status, 201, c.text);
+  // A computer starts as root to switch users, so an exec with no User would be root in it; and
+  // vyre's uid runs computerd and Chrome. Only the agent's own uid is allowed.
+  assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["id"] })).status, 403, "no User");
+  assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["id"], User: "1001:1001" })).status, 403, "vyre's uid");
+  assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["id"], User: "agent" })).status, 403, "a name, not the uid");
   assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["sh"], Privileged: true })).status, 403);
   assert.equal((await p.call("POST", "/v1.43/containers/kitfull0001/exec", { Cmd: ["sh"], User: "0" })).status, 403);
   const s = await p.call("POST", "/v1.43/exec/ex1/start", { Detach: false, Tty: false });
