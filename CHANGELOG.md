@@ -1086,6 +1086,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (the Registry's callerAllowed), never a guest.
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- vyred's entry (core/daemon/main.js) takes SIGTERM and SIGINT before it loads: a stop while it
+  is still starting waits for start, drains and exits 0, instead of dying by the signal (143).
+  core/daemon/loop.sh passes on vyred's own exit code when a stop's trapped `wait` returns 143.
+  Found by e2e; tests in core/daemon/main.test.js and loop.test.js.
 - term: one socket owns a terminal's size (the first to attach). `{"t":"take"}` moves it; size
   frames from other sockets are kept, not applied; when the owner leaves, the oldest socket left
   takes over at the size it last asked for. Sockets on the offset protocol hear

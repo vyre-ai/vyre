@@ -32,19 +32,31 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   (real dtach), daemon and modules tests.
 
 ## Doing
-- Waiting on relay (redial fixes, paused by the lead) and chat (Take size client on the new frames).
+- Paused (lead, native-core refocus). ab4fdc4d is in batch 3b. Resume on the lead's word.
 
 ## Next
-1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
-2. R6 chaos test, once work/planner 3c75e47 is on main (not yet at b1dbb49). Planner's spec:
-   key = planner-<item>-<Math.floor(due/1000)>; planner.upcoming omits moments answered or
-   ringing and returns last_event; done/snooze/dismiss {key} on an unrung moment records it
-   answered, the box never rings it, planner.acked carries unrung:true; a repeat of the key
-   returns {already:true}; the push tag and planner-ack tag equal the key. Test: a device takes
-   upcoming, goes offline (proxy partition), answers from its outbox by key, comes back; the box
-   never rings it, one planner.acked, and a retried answer is {already:true}.
-3. `last_event` on threads.get, planner.list and Needs reads (R1), with their owners.
-4. A 30 min perf check of an idle durable terminal and of the stream client (scripts/perf-check).
+1. Relay fixed the redial bugs in work/relay fe94ed13 (batch 3b; relay ran this file with the
+   todos removed: 54/54). Once fe94ed13 is on main, merge main and flip the two `todo` tests in test/chaos/relay.test.js
+   ("kit redials within its backoff...", "the box's relay link comes back after an outage
+   longer than its first retry") to real tests and run the file twice on testbox.
+2. Idle durable terminal perf check: one dtach terminal open and idle for 30 min on testbox
+   (scripts/perf-check, nice 15, load under 8): RSS and CPU of vyred, the dtach master and the
+   shell; plus the stream client idle (heartbeats only). Put the numbers here.
+3. `last_event` on reads (R1): threads.get and the Needs read (sessions, pwa) return
+   `ctx.events.latestId()` as `last_event`, as planner.list/upcoming already do; add a chaos test
+   (read, then follow from last_event, nothing missed) once they land.
+4. pwa and mobile adopting web.js (outbox, cursor, cache, lifecycle; over(createPaths().fetch)
+   for the phone): chaos tests against their clients when they ask.
+5. mobile asks (work/mobile 3dd724c5, src/state/answers.ts; not urgent): outbox.js
+   `cancel(key)`: drop an entry not yet handed to the transport and return true; false if it
+   is in flight or done. Optional `add(tool, input, { holdMs })`: persisted at once, delivered
+   after holdMs unless cancelled, so a 4 s Undo on the approve swipe can put the answer in the
+   outbox the moment it commits (a killed app still sends it). Keep lifecycle's flush on hide
+   delivering held entries early only if mobile wants that; ask.
+6. Done: e2e's start-up SIGTERM (main.js handlers before load) and loop.sh exit-code fixes,
+   tested (main.test.js fails on the old main.js). One init confirmed by e2e (work/e2e c8e00e7b).
+7. After batch 3 deploys: confirm on the live box that PID 1 is tini (ci smoke asserts it) and
+   that a vyred restart keeps an open terminal.
 
 ## Audit (27 Sep 2026)
 - R1: Deck, iOS, Android and the Mac link reconnect with since=latest if they drop before the
