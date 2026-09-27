@@ -143,14 +143,20 @@ export function mountComposer(opts) {
 
   // ---- the chips under the box ------------------------------------------------------------
 
+  let chipSig = "";
   function drawChips() {
     const kind = draftKind(ta.value);
     ta.placeholder = machine ? "Message this session"
       : busy ? `Steer ${opts.name?.() || "the session"}, or Alt+Enter to queue for after` : "Message this session";
     root.setAttribute("data-mode", kind);
-    if (!rich()) { chips.hidden = true; chips.replaceChildren(); return; }
+    if (!rich()) { chips.hidden = true; chips.replaceChildren(); chipSig = ""; return; }
     chips.hidden = false;
     const s = /** @type {import("./core/session-state.js").Session} */ (S);
+    // Called on every keystroke: rebuilt only when something it shows changed.
+    const sig = JSON.stringify([kind, busy, queueToggle, scope, s.mode, s.model, s.thinking,
+      ["threads.model", "threads.mode", "threads.thinking", "threads.shell"].map(off), kind === "shell" ? opts.cwd?.() : null]);
+    if (sig === chipSig) return;
+    chipSig = sig;
     const chip = (/** @type {string} */ cls, /** @type {string} */ tool, /** @type {string} */ title, /** @type {() => void} */ fn, /** @type {any[]} */ ...kids) =>
       h("button", { class: "btn btn-ghost btn-sm composer-chip " + cls, type: "button", disabled: off(tool), title: off(tool) ? NEEDS_UPDATE : title, onclick: fn }, ...kids);
     const label = kindLabel(kind);

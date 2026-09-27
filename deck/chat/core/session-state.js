@@ -124,11 +124,17 @@ function nextBlock(s, kind, message) {
   return n;
 }
 
-/** Streaming text is done, and tools still running are canceled: nothing more is coming. @param {Session} s @param {Set<string>} out */
+/**
+ * Streaming text is done, and tools still running are canceled: nothing more is coming. A steer
+ * still "steering" was taken by the turn that just ended (a box without thread.steered never
+ * says when), so it reads as steered, without a step.
+ * @param {Session} s @param {Set<string>} out
+ */
 function settle(s, out) {
   for (const it of s.items) {
     if ((it.kind === "text" || it.kind === "reasoning") && it.streaming) { it.streaming = false; out.add(it.key); }
     if (it.kind === "tool" && it.status === "running") { it.status = "canceled"; out.add(it.key); }
+    if (it.kind === "steer" && it.pending) { it.pending = false; out.add(it.key); }
   }
 }
 

@@ -1088,10 +1088,10 @@ export function mountSession(container, opts) {
     if (opts.shown && !opts.shown()) return;
     const t = /** @type {any} */ (e.target);
     if (editable(t)) return; // the composer (its own keys), the "Other" field, the deny reason: their own keys
+    if (t && (t.tagName === "BUTTON" || t.tagName === "A") && (e.key === "Enter" || e.key === " ")) return; // the focused control's own press
     if (rewind && rewind.key(e)) { e.preventDefault(); return; }
     // Ctrl+O, Ctrl+B, Alt+T and the like: the composer's page-wide keys, never a card's.
     if (e.metaKey || e.ctrlKey || e.altKey) { if (composer.key(e)) e.preventDefault(); return; }
-    if (t && (t.tagName === "BUTTON" || t.tagName === "A") && (e.key === "Enter" || e.key === " ")) return; // the focused control's own press
     const card = cardFor(t);
     if (card && card.onKey(e)) { e.preventDefault(); return; }
     // Esc stops (Esc Esc rewinds), Shift+Tab the next mode: the same keys as in the box.

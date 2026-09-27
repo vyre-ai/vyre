@@ -370,6 +370,10 @@ test("a failed send takes back what was drawn; an echo without a uuid is the wor
   assert.equal(s.items.filter(i => i.kind === "user").length, 1);
   assert.equal(s.byKey.get("u:u-10").confirmed, true);
   assert.deepEqual(localSend(s, { uuid: "u-11", text: "x", mode: null }), [], "an idle send draws nothing: thread.sent does");
+  // A box that never says thread.steered: the turn's end says it was taken.
+  assert.equal(s.byKey.get("steer:u-10").pending, true);
+  assert.ok(ev(s, "thread.finished", { ok: true }).includes("steer:u-10"));
+  assert.deepEqual([s.byKey.get("steer:u-10").pending, s.byKey.get("steer:u-10").step], [false, null]);
 });
 
 test("a rewind drops that message and everything after it, and a re-read does not bring them back", () => {
