@@ -7,12 +7,14 @@
       {
         "name": "projects",
         "path": "/work/projects",
+        "access": "ro",
         "shared": true,
         "mounted": true
       },
       {
         "name": "glass-files",
         "path": "/work/glass-files",
+        "access": "ro",
         "shared": false,
         "mounted": false
       }
@@ -27,6 +29,14 @@
   "files.drive.audit": {
     "ok": false,
     "checked": 4,
+    "unsafe": [
+      {
+        "share": "projects",
+        "found": [
+          "northwind-bakery/.env"
+        ]
+      }
+    ],
     "findings": [
       {
         "node": "alex-phone.tail0000.ts.net",

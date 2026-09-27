@@ -137,6 +137,10 @@ export default {
         id: t.id, cwd: t.cwd, surface: t.surface, key: t.key, offset: t.ring.end, started: t.started,
         pid: t.pty.pid, sock: t.sock, left: t.sockets.size && !stopping ? null : t.left ?? now(), cols: t.pty.cols, rows: t.pty.rows,
       }));
+      // A home that is gone stays gone: never make one back to write an empty table into.
+      if (!fs.existsSync(ctx.paths.root)) return;
+      // Nothing to hand over and no table yet: nothing to write.
+      if (!rows.length && !gone.size && !fs.existsSync(tableFile)) return;
       try {
         fs.mkdirSync(runDir, { recursive: true, mode: 0o700 });
         const tmp = `${tableFile}.${process.pid}.tmp`;

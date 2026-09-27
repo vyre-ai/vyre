@@ -21,7 +21,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | --- | --- | --- | --- |
 | `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`. |
 | `role` | `'box'\|'local'` | `"local" on macOS, "box" elsewhere` | `box` for the always-on server, `local` for a Mac. Decides which modules start. |
-| `projectsDir` | `string` | `"~/Vyre/projects"` | The folder new projects are made in. |
+| `projectsDir` | `string` | `"~/Vyre/projects"` | The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects`, so VyreDrive can share it; the first start there moves homes from `~/Vyre/projects` once, leaving links behind. |
 | `roots` | `string[]` | `[]` | More folders to look in for projects. |
 | `me` | `object` | see below | Who you are, so memory can tell your own people and domains from everyone else's. |
 | `me.domains` | `string[]` | `[]` | Domains that are yours. |
@@ -52,6 +52,7 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | `network.box` | `string` | unset | On a Mac: the address of the box it is paired with. |
 | `network.onboardPort` | `number` | unset | The loopback port onboarding listens on. 7300 when unset. |
 | `network.ownerSeen` | `string` | unset | When the owner was first seen on the tailnet. Written by Vyre. |
+| `network.origins` | `string[]` | unset | Other sites whose pages may call this box from the owner's browser, with CORS: Vyre's hosted app. `["https://app.vyre.run"]` when unset; `[]` turns it off. Each call but the reachability probe needs a web session. |
 | `network.guests` | `{ enabled: boolean, people: Record<string, { tools: string[] }> }` | unset | Not described yet. |
 
 Modules keep their own settings under a key named after them (`vault`, `recall`, `learn`, and so on). Their pages describe them.
@@ -82,6 +83,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_COMPUTERS_NETWORK` | The Docker network agent computers join. Default `vyre-computers`. | `core/dockerproxy/main.js` |
 | `VYRE_DEBUG` | Not described yet. | `core/cli/index.js` |
 | `VYRE_DOCKER_PROXY_PORT` | The port the Docker proxy listens on. Default 2375. | `core/dockerproxy/main.js` |
+| `VYRE_DRIVE_ACCESS` | `ro` (default) or `rw`: how box/compose.yml mounts `/work` into the tailscale container for VyreDrive (built on Tailscale's Taildrive). `rw` only while some share is rw (`files.drive.access`). When vyred sees it too, `files.drive.access` can tell whether the mount must change. | `core/files/drive.js` |
 | `VYRE_DTACH_BIN` | The `dtach` binary terminals run under so they outlive a vyred restart. Default `dtach` on the PATH. Empty: plain terminals that end with vyred. | `core/term/dtach.js` |
 | `VYRE_EGRESS_GATE_HOST` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_EGRESS_GATE_PORT` | Not described yet. | `core/computers/egressgate.js` |
@@ -96,6 +98,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
+| `VYRE_OLD_PROJECTS_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
 | `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/box.js`, `core/cli/commands/up.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
@@ -106,6 +109,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |
+| `VYRE_WORK_DIR` | Not described yet. | `core/config/index.js` |
 | `VYRE_WRAPPER` | Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`. | `core/cli/commands/box.js` |
 
 ### Set by Vyre

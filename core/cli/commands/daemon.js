@@ -32,9 +32,13 @@ export default [
       const d = h.data;
       // A first index, or the first model download, is the one slow thing a fresh install does.
       const recall = progressLine((await call("recall.status")).data);
-      if (json()) return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}) });
+      // What memory knows about the user, and the model pass's spend; absent when memory is.
+      const personal = (await call("memory.stats").catch(() => null))?.data?.personal;
+      const mem = memoryLine(personal);
+      if (json()) return emit({ running: true, ...d, ...(recall ? { note: recall, recall } : {}), ...(mem ? { memory: personal } : {}) });
       out(`  vyred ${signal("running")} ${dim(`· ${label(d)} · ${d.role} · pid ${d.pid} · up ${Math.round(d.uptime / 1000)}s`)}`);
       out(`  ${d.modules.running} modules running${d.modules.failed ? beacon(` · ${d.modules.failed} failed (vyre modules)`) : ""}`);
+      if (mem) out(`  ${mem}`);
       if (recall) out(dim(`  ${recall}`));
       return 0;
     },
@@ -85,6 +89,25 @@ export default [
     },
   },
 ];
+
+/**
+ * The memory line of vyre status, from memory.stats' `personal` field: "memory   412 facts about
+ * you, model pass $0.02 of $0.05 today". null when memory said nothing usable.
+ * @param {any} p
+ */
+export function memoryLine(p) {
+  if (!p || typeof p !== "object") return null;
+  const n = Number(p.current ?? p.facts);
+  if (!Number.isFinite(n)) return null;
+  let line = `memory   ${n} ${n === 1 ? "fact" : "facts"} about you`;
+  const m = p.model;
+  const usd = x => `$${Number(x).toFixed(2)}`;
+  if (m && typeof m === "object") {
+    if (m.on === false) line += ", model pass off";
+    else if (Number.isFinite(Number(m.today_usd)) && Number.isFinite(Number(m.cap_usd))) line += `, model pass ${usd(m.today_usd)} of ${usd(m.cap_usd)} today`;
+  }
+  return line;
+}
 
 /** Exit code for a call's error. bad_input is still 1 here: vyre call has always exited 1 on a tool's error. */
 function failCode(error) {

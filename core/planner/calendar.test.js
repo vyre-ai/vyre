@@ -196,7 +196,7 @@ test("calendar: a timed event rings once, event_lead before its start, however o
   await w.advance(1000);
   assert.equal(w.fired.length, 1);
   const f = w.fired[0];
-  assert.deepEqual({ ...f, firing: "x" }, { at: start - 10 * MIN, firing: "x", item: rowId("alex", "e1"), kind: "event", title: "Call juno",
+  assert.deepEqual({ ...f, firing: "x" }, { at: start - 10 * MIN, firing: "x", key: `planner-${rowId("alex", "e1")}-${(start - 10 * MIN) / 1000}`, item: rowId("alex", "e1"), kind: "event", title: "Call juno",
     due: start - 10 * MIN, ring: 1, missed: false, actions: ["done", "snooze"], account: "alex", start });
   // Synced again (by hand and by the timer), renamed with the same start: no second ring.
   google.accounts.get("alex")[0].title = "Call juno about Northwind Bakery";
@@ -312,4 +312,31 @@ test("calendar: create makes the planner's own event, or goes through google.cal
   assert.equal(asked.held, "g_3");
   assert.equal(google.held.length, 2);
   assert.ok((await w.ok("planner.calendar.sync", {}, kit)).accounts.includes("alex"), "agents may sync");
+});
+
+test("calendar: upcoming carries the calendar's rings; one answered by key on a device never rings on the box", async t => {
+  const google = fakeGoogle();
+  const a = T0 + 2 * HOUR, b = T0 + 3 * HOUR;
+  google.add("alex", [
+    { id: "e1", title: "Call juno", start: iso(a), end: iso(a + 30 * MIN) },
+    { id: "e2", title: "Harlow Legal review", start: iso(b), end: iso(b + 30 * MIN) },
+    { id: "d1", title: "kit's birthday", start: "2026-09-24", end: "2026-09-25" },
+  ]);
+  const w = await world(t, { google });
+  const moved = [];
+  w.events.on("planner.schedule", e => moved.push(e.payload.reason));
+  await w.ok("planner.calendar.sync");
+  const up = await w.ok("planner.upcoming");
+  const K = (ev, due) => `planner-${rowId("alex", ev)}-${due / 1000}`;
+  assert.deepEqual(up.entries.map(e => [e.key, e.kind, e.account, e.start]), [[K("e1", a - 10 * MIN), "event", "alex", a], [K("e2", b - 10 * MIN), "event", "alex", b]]);
+  await w.ok("planner.dismiss", { key: K("e1", a - 10 * MIN) });
+  assert.equal(w.acked.at(-1).unrung, true);
+  await w.advance(4 * HOUR);
+  assert.deepEqual(w.fired.map(f => f.key), [K("e2", b - 10 * MIN)], "only the one nobody answered rang");
+  const before = moved.length;
+  await w.ok("planner.calendar.sync");
+  assert.equal(moved.length, before, "a sync that changed nothing is quiet");
+  google.accounts.get("alex").push({ id: "e3", title: "Northwind Bakery", start: iso(T0 + DAY), end: iso(T0 + DAY + HOUR) });
+  await w.ok("planner.calendar.sync");
+  assert.deepEqual(moved.slice(before), ["calendar"], "a sync that changed the copy says the schedule moved");
 });

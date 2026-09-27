@@ -332,7 +332,7 @@ export class Registry {
    *   input is not verified and must not be treated as if it were. `proof` is the presence proof
    *   the request carried, checked here and not passed on.
    */
-  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, idempotencyKey = undefined, ...meta } = {}) {
+  async call(tool, input = {}, caller = "unknown", { proof = null, keep = false, terminal = null, idempotencyKey = undefined, ...meta } = {}) {
     const def = this.tools.get(tool);
     if (!def) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
     if (def.internal && !String(caller).startsWith("module:")) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
@@ -354,7 +354,7 @@ export class Registry {
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
     if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
-      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null });
+      const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null, terminal: typeof terminal === "string" ? terminal : null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.
       meta = { ...meta, presence: { method: v.method, keyId: v.keyId ?? null } };

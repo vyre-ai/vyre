@@ -41,7 +41,10 @@ project's own repository.
 ```
 
 Paths are relative to the home folder. New projects are made in `projectsDir` (default
-`~/Vyre/projects`), and Vyre also looks for markers under `roots`. Sessions come from the folders
+`~/Vyre/projects`; on a box, `/work/projects`, which VyreDrive can share to your Mac), and Vyre
+also looks for markers under `roots`. A box that kept projects in `~/Vyre/projects` moves them to
+`/work/projects` once, on its first start, and leaves a link at each old folder so older sessions
+still resume. Sessions come from the folders
 in `transcripts` (default `~/.claude/projects` and `~/.claude/projects-archive`). See
 [configuration](../reference/config.md).
 
