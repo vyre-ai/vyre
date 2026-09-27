@@ -43,6 +43,7 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
+- X-Vyre-Call-Id from the MCP server: committed, test written, NOT yet run (testbox held for the integrator's batch 4).
 - Lead's list done through 7. Compile phase next: the promised items below, then docs + polish.
 
 ## Next
