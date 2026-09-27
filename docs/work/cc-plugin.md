@@ -101,7 +101,14 @@ Perf:
 
 ## Doing
 
-- Nothing running. Waiting on memory-iq's answers (Needs) and the integrator's queue.
+- ADR 0030 phase 2 parity (29 Sep): `scripts/cc-plugin-parity/parity.mjs` runs the plugin two ways
+  (installed + `claude -p`, and the Agent SDK's `plugins` option) plus both at once, on one real
+  Claude Code binary (the SDK's bundled 2.1.283) against a fake Messages API, temp homes, vyred up.
+  Compares init (plugin, MCP connected, tools, /vyre), about.md in the first request, the tool
+  results (system_echo, planner_add, Write, a floor-denied Read), hook runs per piece, the pid
+  bind and the Write in vyred. Run on testbox (see the file's header).
+- SessionStart hook after merging main ef51363, Mac, 30 runs: 40.8 ms median, 43.7 ms p95
+  (bare node 19.6 / 21.5).
 
 ## Next
 
