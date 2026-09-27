@@ -122,6 +122,13 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
+## Doing (28 Sep, import)
+- 0.1.1 flagship, led here: discover, import and build the graph in onboarding. Design:
+  docs/design/import.md; ADR 0008 amendment item 5a (one-time import). Next: build import.scan /
+  import.plan on the device and import.status / import.progress on the box; owners contacted
+  (federation, launch, app-design, e2e).
+- rc.2: e2e signed off work/memory-iq-rc2 aaf4fcb5; handed to the integrator.
+
 ## Doing (28 Sep, later)
 - Sealed IQ 0.62 -> 0.80 (confident-wrong 6 -> 5), open 0.778 -> 0.878, from two failure classes
   found on the open world only (eval-iq --explain): the check refused answers grounded in the
