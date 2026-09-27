@@ -323,6 +323,9 @@ Plan (to the lead before building):
   in 41 s at main a3a844e4 and pre/rc a79851dc; 47/47 under a fake claude parent. Mac peer check
   ~27 ms per connection (peerPid 3 ms + ps ancestry 24 ms). Asked teammates for machine, command,
   output. Not an rc.2 blocker. CLOSED: teammates confirmed they ran it on the Mac inside Claude Code.
+- memory-iq rc.2 58397f56 (source trust, read): OK after MEDIUM: header (session name, folder)
+  counts as evidence on the personal paths -> drop it there. LOW: trusted() fails open on missing
+  rows; sources lack role. f199928d LOWs on agent corrections confirmed (read). memory.today next.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
