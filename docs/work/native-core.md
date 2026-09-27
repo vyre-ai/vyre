@@ -25,6 +25,9 @@ store limits merged (b172c2d0 + 67abc47f); sent e2e 62abf2cf for re-review. Wait
 Also done on resume: typing lag (e91f970c, composer grow via field-sizing; budget 1 passes 24 ms at
 2,000 rows), scroll jump re-measured (fixed on work/chat 553017a1, 0 px), reconnect 1.5 s still
 (pwa/resilience), agent Effort saved (87fb03d7), ADR 0035 the settings hub drafted (docs/adr/0035).
+Deck confirm/proof checked in real Chrome (57a59f86, deck/test/settings-browser.js 7/7; enum labels,
+where only for files). Open defects seen: the no-passkey error reads as dev text ("enroll one with
+presence.enroll"); fling (budget 6) 67 ms p95; open cold (7) 2.4 s; send to row (9) 102 ms.
 Next: coordinate ADR 0035 with app-design, platform, pwa, mobile, capsule-pro, sessions; build
 step 1 (hub.json store) once the lead OKs the ADR; Deck confirm/proof check in a real browser.
 Older list (kept for reference):
