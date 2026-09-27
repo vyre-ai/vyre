@@ -71,6 +71,11 @@ the contract in ADR 0025.
 - Perf (the test box, load average 16 to 19): CPU p95 0.00%, RSS mean 130.2 MB, max 155.7 MB
   (budget 150; FAIL as before, at the budget's edge with or without the planner).
 
+## Done (2026-09-27, session 3, later)
+- at in words (the lead's ask): "6pm", "tomorrow at 9", "7:30", "in 20 minutes" through the
+  parser, read in the item's zone; Date.parse only with a year. parse reads "6pm call Harlow
+  Legal" as a reminder. 65 of 65 on the test box. Main merged (650a1e5).
+
 ## Doing
 - Nothing in flight. Resume from Next.
 

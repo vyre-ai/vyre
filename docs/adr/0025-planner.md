@@ -85,7 +85,9 @@ the Deck in a browser. Every surface should be able to add, snooze and finish th
 13. **Natural language: one parser.** `planner.parse` (core/planner/parse.js) turns "alarm 7am",
     "timer 10 min", "remind me to call the printer at 6" into `{ kind, title, at (UTC ms), tz,
     duration?, repeat? }`, `{ ambiguous, reason }` when the words cannot be placed, or null. It
-    takes `kind` as a hint and holds the Capsule's apps router's tested time rules. It is pure and
+    takes `kind` as a hint and holds the Capsule's apps router's tested time rules. A time said
+    first ("6pm call Harlow Legal") is a reminder. planner.add's `at` takes the same words ("6pm",
+    "tomorrow at 9", "in 20 minutes"), read in the item's zone. It is pure and
     answers on the Mac where it is asked, never forwarded to the box; only writes forward. Apple
     Clock, Notes and Reminders become optional adapters in the Capsule, not the default.
 

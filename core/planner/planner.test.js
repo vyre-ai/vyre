@@ -372,3 +372,15 @@ test("planner: words become items through parse.js, when it is there", async t =
   const note = await w.ok("planner.add", { text: "juno's bakery order is 40 rolls", kind: "note" }, "mcp");
   assert.equal(note.kind, "note");
 });
+
+test("planner: at in words is the next such time in the item's zone", async t => {
+  const w = await world(t);
+  const six = await w.ok("planner.add", { kind: "reminder", title: "Call Harlow Legal", at: "6pm" });
+  assert.deepEqual([six.at, six.wall, six.date], [Z(2026, 9, 24, 13), "18:00", "2026-09-24"], "today's 6pm in Karachi");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "Email juno", at: "tomorrow at 9" })).at, Z(2026, 9, 25, 4));
+  assert.equal((await w.ok("planner.add", { kind: "alarm", at: "7:30" })).at, Z(2026, 9, 24, 14, 30), "the next 7:30");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "Oven", at: "in 20 minutes" })).at, T0 + 20 * MIN);
+  assert.equal((await w.ok("planner.add", { text: "call kit", kind: "reminder", at: "6pm" })).at, Z(2026, 9, 24, 13), "cc-plugin's shape");
+  assert.equal((await w.call("planner.add", { kind: "reminder", title: "x", at: "banana" })).error.code, "bad_input");
+  assert.equal((await w.ok("planner.add", { kind: "reminder", title: "ISO still", at: "2026-09-24T20:00:00+05:00" })).at, Z(2026, 9, 24, 15));
+});
