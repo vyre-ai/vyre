@@ -489,6 +489,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 /* A Mac session's cards: where to answer, in place of the buttons. */
 .cv-elsewhere { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: var(--text-2); }
 .cv-q > .cv-elsewhere, .cv-q > .cv-q-review { margin: 0 16px 14px; }
+/* A Mac session's card that answers from here: where the answer runs, small, beside the title. */
+.cv-on-mac { display: inline-flex; align-items: center; gap: 4px; margin-left: auto; font-size: 12px; line-height: 16px; color: var(--text-2); white-space: nowrap; }
+.cv-mac-step { flex-wrap: wrap; align-items: center; }
 
 /* The permission card's diff summary: "Changed files +188 -133", opening to a row per file.
    Additions take the positive colour, removals stay neutral (never red). */

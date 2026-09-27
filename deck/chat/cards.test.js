@@ -30,7 +30,10 @@ function vyred(answers = {}) {
     const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
     const input = JSON.parse(o.body);
     calls.push({ tool, input, presence: !!o.headers["x-vyre-presence"] });
-    const a = tool in answers ? answers[tool] : { ok: true };
+    // An answer may be a function of the input; { $error } is a refusal.
+    const a0 = tool in answers ? answers[tool] : { ok: true };
+    const a = typeof a0 === "function" ? a0(input, !!o.headers["x-vyre-presence"]) : a0;
+    if (a && a.$error) return { status: 409, statusText: "", json: async () => ({ error: a.$error }) };
     return { status: 200, statusText: "", json: async () => ({ data: a }) };
   });
   return { calls, of: t => calls.filter(c => c.tool === t) };
@@ -241,4 +244,105 @@ test("permission card: a single-file Edit keeps its inline diff with the summary
     detail: { command: "git push", changes: [], totals: { files: 0, added: 0, removed: 0 } } });
   assert.equal($(empty, ".cv-changes"), null);
   assert.equal($(askCard({ id: "ask_n3", tool: "Bash", kind: "permission", reason: null }), ".cv-changes"), null, "no detail at all");
+});
+
+// ---- a Mac session's ask, answered from here (federation v2) -----------------------------------------
+
+const MACHINE = "alex's MacBook Pro";
+const macAsk = (id) => ({ ...structuredClone(fx.asks[1]), id, machine: MACHINE, node: "nMacStable1" });
+const btn = (card, re) => $$(card, "button").find(b => re.test(text(b)));
+
+test("Mac ask: the usual buttons, 'on <mac>', and threads.answer carries the machine", async () => {
+  const api = vyred({ "threads.answer": { ask: "ask_m1", answered: true, source: "mac", machine: MACHINE } });
+  const card = askCard(macAsk("ask_m1"));
+  assert.match(text(card), /on alex's MacBook Pro/);
+  assert.doesNotMatch(text(card), /Answer it on/);
+  assert.ok(btn(card, /Allow once/) && btn(card, /Deny/));
+  assert.equal(card.isOpen(), true);
+  card.onKey(key("Enter"));
+  await settle();
+  assert.deepEqual(api.of("threads.answer")[0].input, { ask: "ask_m1", decision: "allow", surface: "deck", machine: MACHINE });
+  assert.equal(api.of("threads.answer")[0].presence, false);
+  assert.match(text(card), /Allowed once/);
+
+  const q = questionCard({ ...structuredClone(fx.asks[0]), id: "ask_m2", questions: [fx.asks[0].questions[0]], machine: MACHINE, node: "nMacStable1" });
+  assert.match(text(q), /on alex's MacBook Pro/);
+  await btn(q, /^Decline$/).click();
+  await settle();
+  assert.deepEqual(api.of("threads.answer")[1].input, { ask: "ask_m2", decision: "deny", surface: "deck", machine: MACHINE });
+});
+
+test("Mac ask refused: person_session_required shows the passkey sign-in, which sends again with a proof", async () => {
+  const api = vyred({ "threads.answer": (_i, proved) => proved ? { answered: true, source: "mac", machine: MACHINE }
+    : { $error: { code: "person_session_required", message: "answering a Mac's ask is the person's own action: sign in on this device with your passkey first" } } });
+  const card = askCard(macAsk("ask_m3"));
+  card.onKey(key("Enter"));
+  await settle();
+  assert.match(text(card), /Sign in on this device with your passkey to answer asks on alex's MacBook Pro/);
+  assert.match(text(card), /Add a passkey on this phone/);
+  assert.equal(card.isOpen(), true, "the card stays open");
+  await btn(card, /Sign in with your passkey/).click();
+  await settle();
+  const [first, again] = api.of("threads.answer");
+  assert.equal(first.presence, false);
+  assert.equal(again.presence, true, "the sign-in step is the passkey proof");
+  assert.deepEqual(again.input, first.input);
+  assert.match(text(card), /Allowed once/);
+});
+
+test("Mac ask refused: presence_required asks for a passkey or Touch ID and keeps the decision and reason", async () => {
+  const api = vyred({ "threads.answer": (_i, proved) => proved ? { answered: true }
+    : { $error: { code: "presence_required", message: "this ask approves a protected action: prove you are here (passkey or Touch ID) to answer it" } } });
+  const card = askCard(macAsk("ask_m4"));
+  card.onKey(key("Escape"));
+  const why = /** @type {any} */ ($(card, "input.cv-why"));
+  why.value = "Not to kit yet";
+  why.dispatchEvent(Object.assign(new Event("input"), { target: why }));
+  why.dispatchEvent(Object.assign(new Event("keydown"), { key: "Enter", target: why, preventDefault() {} }));
+  await settle();
+  assert.match(text(card), /Prove it is you first/);
+  assert.doesNotMatch(text(card), /Denied/);
+  await btn(card, /Use passkey or Touch ID/).click();
+  await settle();
+  const again = api.of("threads.answer")[1];
+  assert.equal(again.presence, true);
+  assert.deepEqual(again.input, { ask: "ask_m4", decision: "deny", surface: "deck", message: "Not to kit yet", machine: MACHINE });
+  assert.match(text(card), /Denied/);
+});
+
+test("Mac ask refused: mac_offline and timeout say so with Try again; the card stays open", async () => {
+  const errs = [
+    { $error: { code: "mac_offline", message: "alex's MacBook Pro is offline; your answer was not sent" } },
+    { $error: { code: "timeout", message: "alex's MacBook Pro did not answer in time; your answer may not have reached it" } },
+    { answered: true },
+  ];
+  const api = vyred({ "threads.answer": () => errs.shift() });
+  const q = questionCard({ ...structuredClone(fx.asks[0]), id: "ask_m5", questions: [fx.asks[0].questions[0]], machine: MACHINE, node: "nMacStable1" });
+  q.onKey(key("1"));
+  await settle();
+  assert.match(text(q), /alex's MacBook Pro is offline; your answer was not sent/);
+  assert.equal(q.isOpen(), true);
+  assert.ok(btn(q, /^Submit/), "the buttons stay");
+  await btn(q, /^Try again$/).click();
+  await settle();
+  assert.match(text(q), /did not answer in time; your answer may not have reached it/);
+  assert.equal(q.isOpen(), true);
+  await btn(q, /^Try again$/).click();
+  await settle();
+  assert.equal(api.of("threads.answer").length, 3);
+  assert.ok(api.of("threads.answer").every(c => c.input.machine === MACHINE && c.presence === false));
+  assert.match(text(q), /Answered/);
+});
+
+test("Mac refusals, by code: which step each needs, and when 'no ask' means the box cannot forward", async () => {
+  const { macRefusal } = await import("./presence.js");
+  assert.equal(macRefusal({ code: "person_session_required" }), "sign_in");
+  assert.equal(macRefusal({ code: "presence_required" }), "presence");
+  assert.equal(macRefusal({ code: "mac_offline" }), "retry");
+  assert.equal(macRefusal({ code: "timeout" }), "retry");
+  assert.equal(macRefusal({ code: "no_such_tool" }), "held");
+  assert.equal(macRefusal({ code: "bad_input" }), "held");
+  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, {}), "held", "an older box, an ask it never relayed");
+  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, { node: "nMacStable1" }), null, "a relayed ask: the Mac's own final answer");
+  assert.equal(macRefusal({ code: "denied", message: "pair again" }, { node: "nMacStable1" }), null);
 });

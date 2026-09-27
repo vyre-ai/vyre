@@ -8,6 +8,8 @@
 // Keys: A (or Enter) allows once, D denies at once, Esc opens Deny with a reason. No passkey: answering
 // is the owner's own action (ADR 0024, no nagging). Once answered, here or on another screen (session.js calls .answered on ask.answered),
 // the card loses its buttons and says what was decided; a failure says why and gives them back.
+// A Mac session's ask (ask.machine) has the same buttons, sends `machine` with the answer, and says
+// "on <machine>"; its refusals (sign in, passkey, offline, timeout) are presence.js macProblem's.
 //
 // ask.raised carries no detail, so the card is drawn from the event first and filled in by
 // .update() once session.js has read threads.asks.
@@ -16,7 +18,7 @@ import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
-import { problemLine } from "./presence.js";
+import { problemLine, macHeld, macLabel, macProblem } from "./presence.js";
 import { renderUnified } from "./lib/diff.js";
 import { outputEl, kvGrid } from "./blocks.js";
 import { langOf } from "./lib/blocks.js";
@@ -114,8 +116,10 @@ export function changesRow(d, view) {
 
 /**
  * @param {{ id: string, tool: string, summary?: string|null, destination?: string|null, reason?: string|null, agent?: string|null,
- *   kind?: string, detail?: any, always?: boolean, always_project?: string|null, elsewhere?: string|null }} ask
- * elsewhere: the machine the session runs on, when answers cannot go there from here (the paired Mac).
+ *   kind?: string, detail?: any, always?: boolean, always_project?: string|null, machine?: string|null, node?: string|null, elsewhere?: string|null }} ask
+ * machine: the paired Mac the session runs on; the answer goes there (threads.answer's `machine`) and
+ * the card says "on <machine>". elsewhere: set once the box has shown it cannot forward answers, so
+ * the card says "Answer it on <mac>" with no buttons (presence.js macHeld).
  * @returns {HTMLElement & { update: (a: any) => void, answered: (decision: string, answers?: any, from?: { where: string, at?: number|null }|null) => void,
  *   onKey: (e: KeyboardEvent) => boolean, isOpen: () => boolean }}
  * answered's `from`: the screen that answered, when it was another one ("Answered from the Capsule · 14:31").
@@ -124,29 +128,34 @@ export function askCard(ask) {
   const el = /** @type {any} */ (h("div", { class: "ask-card cv-ask", tabindex: "-1" }));
   el._kind = "card";
   const state = { busy: false, decided: /** @type {string|null} */ (null), error: /** @type {any} */ (null), denying: false, why: "",
-    from: /** @type {{ where: string, at?: number|null }|null} */ (null) };
+    from: /** @type {{ where: string, at?: number|null }|null} */ (null), again: /** @type {(o: { presence?: boolean }) => void} */ (() => {}) };
   const who = ask.agent || "Vyre";
   const changesView = { open: false };
 
-  const answer = async (decision, extra = {}) => {
+  /** @param {string} decision @param {Record<string, any>} [extra] @param {{ presence?: boolean }} [opts] a passkey proof first (a Mac's refusal asked for one) */
+  const answer = async (decision, extra = {}, opts = {}) => {
     if (state.busy || state.decided) return;
     state.busy = true; state.error = null; draw();
-    const input = { ask: ask.id, decision, surface: "deck", ...extra, ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}) };
-    const r = await attempt("threads.answer", input);
+    const input = { ask: ask.id, decision, surface: "deck", ...extra, ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}),
+      ...(ask.machine ? { machine: ask.machine } : {}) };
+    const r = await attempt("threads.answer", input, opts.presence ? { presence: true } : {});
     state.busy = false;
-    if (r.error) state.error = r.error; else state.decided = decision;
+    if (!r.error) state.decided = decision;
+    else if (!macHeld(ask, r.error)) { state.error = r.error; state.again = o => answer(decision, extra, { ...opts, ...o }); }
     draw();
   };
+  const problem = () => state.error ? (ask.machine ? macProblem(state.error, ask.machine, ask, state.again) : problemLine(state.error)) : null;
 
   function draw() {
-    const title = h("div", { class: "gate-row cv-ask-top" }, h("span", { class: "cv-ask-dot", "aria-hidden": "true" }), h("span", { class: "ask-title" }, `${who} wants to ${askVerb(ask)}`));
+    const title = h("div", { class: "gate-row cv-ask-top" }, h("span", { class: "cv-ask-dot", "aria-hidden": "true" }), h("span", { class: "ask-title" }, `${who} wants to ${askVerb(ask)}`),
+      ask.machine && !ask.elsewhere ? macLabel(ask.machine) : null);
     if (state.decided) {
       put(el, title, h("div", { class: "gate-resolved" }, icon(state.decided === "deny" || state.decided === "cancelled" ? "close" : "check", 14), WORDS[state.decided] || state.decided),
         fromLine(state.from));
       el.classList.add("answered");
       return;
     }
-    // A session on the paired Mac: answers are not forwarded, so the card says where to answer.
+    // A session on the paired Mac, and a box that cannot forward the answer: the card says where to answer.
     if (ask.elsewhere) {
       put(el, title, h("div", { class: "cv-ask-what" }, what(ask)),
         ask.reason ? h("div", { class: "gate-note cv-ask-why" }, String(ask.reason)) : null,
@@ -172,7 +181,7 @@ export function askCard(ask) {
         alwaysBtn(),
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: () => { state.denying = true; draw(); } }, "Deny", h("span", { class: "kbd" }, "D")),
       ),
-      state.error ? problemLine(state.error) : null,
+      problem(),
     );
     if (whyInput) whyInput.focus?.();
   }

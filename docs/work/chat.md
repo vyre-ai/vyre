@@ -198,6 +198,7 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
 - Gaps for sessions: threads.interrupt is on work/sessions only (the Deck falls back);
   threads.edit, threads.unqueue, threads.send {now} are nowhere; thread.queued needs `uuid` for rows
   to act on; ask.answered `by` is a surface, not a device ("alex's iPhone" needs a device name).
+- Mac asks answered from the Deck (federation v2, untested: testbox held): buttons + "on <mac>", threads.answer carries `machine`; person_session_required / presence_required reuse api.js's passkey proof, mac_offline / timeout retry; no box flag exists, so an unknown/unsupported refusal (or "no ask" on an unrelayed ask) falls back to "Answer it on <mac>" for the page.
 
 ## Composer like Claude Code (27 Sep, TESTBOX FREEZE: tests written, not run)
 - deck/chat/core/composer-state.js (draft mode by first character, @ at the caret, history ring,

@@ -39,8 +39,8 @@
 // A allows once, D denies, Enter, Esc, arrows, space and 1-9 as the cards define. Keys are heard
 // only while this page is on screen.
 //
-// Kept from before: Mac sessions (source "mac": sends carry the machine, an offline chip, cards
-// say "Answer it on <machine>"), gate items, memory facts after their turn, notices, day rules,
+// Kept from before: Mac sessions (source "mac": sends and answers carry the machine, an offline
+// chip, cards say "on <machine>", or "Answer it on <machine>" on a box that cannot forward), gate items, memory facts after their turn, notices, day rules,
 // the Raw toggle (the same items printed the way the terminal prints them), "Load earlier", the
 // Jump to latest pill, deep links from Needs (?at, ?ask, ?tool). An older box without
 // recall.transcript gets the earlier view (recall.thread turns and thread.* events), unchanged.
@@ -59,6 +59,7 @@ import { healthDot } from "../js/health.js";
 import { gateCard } from "./gate-item.js";
 import { askCard } from "./ask-item.js";
 import { questionCard } from "./question.js";
+import { macAnswersHeld } from "./presence.js";
 import { mountComposer } from "./composer.js";
 import { duration, elapsed, toolTitle } from "./lib/blocks.js";
 import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
@@ -592,7 +593,14 @@ export function mountSession(container, opts) {
   function askData(id, it) {
     const info = askInfo.get(id) || {};
     return { id, tool: it?.tool ?? info.tool ?? null, summary: it?.summary ?? info.summary ?? null, kind: info.kind || it?.askKind || "permission",
-      ...info, agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : {}) };
+      ...info, agent: agentName(), ...macOf(info) };
+  }
+  /** A Mac session's ask: answered from here with its machine (the relayed event's, else the row's),
+   * unless this box has shown it cannot forward answers (presence.js macAnswersHeld). */
+  function macOf(info) {
+    if (info.source !== "mac" && !isMac(where)) return {};
+    const machine = info.machine || macName();
+    return { machine, ...(macAnswersHeld() ? { elsewhere: machine } : {}) };
   }
   function askEl(it) {
     const full = askData(it.ask, it);
@@ -1065,7 +1073,10 @@ export function mountSession(container, opts) {
     }
     if (e.type === "thread.stopped") { timeline.append(h("div", { class: "turn-foot" }, icon("terminal", 12), "session stopped" + (p.reason ? ": " + p.reason : ""))); return; }
     if (e.type === "ask.raised") {
-      upsertAsk({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, kind: p.kind, questions: p.questions });
+      // A relayed Mac ask carries source "mac", machine and node (the Mac's stableId); threads.asks on the box does not list it.
+      upsertAsk({ id: p.ask, tool: p.tool, summary: p.summary, destination: p.destination, reason: p.reason, kind: p.kind, questions: p.questions,
+        ...(p.source === "mac" ? { source: "mac", machine: p.machine || macName(), node: p.node ?? null,
+          ...Object.fromEntries(["detail", "always", "always_project"].filter(k => p[k] !== undefined).map(k => [k, p[k]])) } : {}) });
       fetchAsks();
       return;
     }
@@ -1081,7 +1092,8 @@ export function mountSession(container, opts) {
   }
   /** The earlier view's cards: appended, then filled in. */
   function legacyAsk(a) {
-    const full = { ...askInfo.get(a.id), agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : {}) };
+    const info = askInfo.get(a.id) || {};
+    const full = { ...info, agent: agentName(), ...macOf(info) };
     let el = cards.get(a.id);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return; }
     el = /** @type {any} */ (a.kind === "question" ? questionCard(full) : askCard(full));

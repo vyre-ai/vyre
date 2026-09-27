@@ -1,7 +1,8 @@
 // @ts-check
 // A session on the paired Mac, in the fake DOM with a fake box and event stream: it has a
 // composer whose sends carry the machine, the lease line says where it is and what is queued (no
-// Take), an offline Mac keeps the words and says so, cards say "Answer it on", and the reply's
+// Take), an offline Mac keeps the words and says so, cards answer with the machine (and fall back to
+// "Answer it on" when the box cannot forward it), and the reply's
 // live rows give way to the Mac's blocks (recall.transcript, source "mac") so nothing shows twice. Sample world only.
 
 import { test } from "node:test";
@@ -47,6 +48,7 @@ const turns = [
   { seq: 5, role: "assistant", ts: T0 + 5000, text: "Saturday slots are in." },
 ];
 let have = 2;
+/** @type {any} */ let answerErr = null;
 const calls = [];
 /** @type {any[]} */ const sends = [];
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
@@ -72,6 +74,7 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   }
   if (tool === "system.info") return ok({ assistant: { name: "juno" }, owner: { name: "alex" } });
   if (tool === "threads.asks") return ok([]);
+  if (tool === "threads.answer" && answerErr) return { status: 409, statusText: "", json: async () => ({ error: answerErr }) };
   return ok({});
 });
 const wait = (ms = 15) => new Promise(r => setTimeout(r, ms));
@@ -149,13 +152,38 @@ test("an offline Mac keeps the words, says so, offers Try again and chips the he
   assert.doesNotMatch(text($(box, ".session-head")), /offline/, "a send that went through clears the chip");
 });
 
-test("cards on a Mac session say where to answer and have no buttons", async () => {
-  emit("ask.raised", { ask: "ask_m1", kind: "permission", tool: "Bash", summary: "npm run deploy" });
-  emit("ask.raised", { ask: "ask_m2", kind: "question", tool: "AskUserQuestion", questions: [{ question: "Which slots?", header: "Slots", options: [{ label: "Mornings" }, { label: "All day" }] }] });
+test("cards on a Mac session: the usual buttons, 'on alex-mac', and the answer carries the machine", async () => {
+  emit("ask.raised", { ask: "ask_m1", kind: "permission", tool: "Bash", summary: "npm run deploy", node: "nMacStable1" });
+  emit("ask.raised", { ask: "ask_m2", kind: "question", tool: "AskUserQuestion", node: "nMacStable1", questions: [{ question: "Which slots?", header: "Slots", options: [{ label: "Mornings" }, { label: "All day" }] }] });
   await wait();
-  for (const c of [$(box, ".cv-ask"), $(box, ".cv-q")]) {
-    assert.match(text(c), /Answer it on alex-mac/);
-    assert.equal($$(c, "button").length, 0);
-    assert.equal(c.isOpen(), false);
+  const ask = $(box, ".cv-ask"), q = $(box, ".cv-q");
+  for (const c of [ask, q]) {
+    assert.match(text(c), /on alex-mac/);
+    assert.doesNotMatch(text(c), /Answer it on/);
+    assert.ok($$(c, "button").length > 0);
+    assert.equal(c.isOpen(), true);
   }
+  await $$(ask, "button").find(b => /Allow once/.test(text(b))).click();
+  await wait();
+  const c = calls.filter(x => x.tool === "threads.answer").at(-1);
+  assert.deepEqual(c.input, { ask: "ask_m1", decision: "allow", surface: "deck", machine: "alex-mac" });
+  assert.match(text(ask), /Allowed once/);
+});
+
+// Last: the fallback is remembered for the page.
+test("a box that cannot forward the answer: the card falls back to 'Answer it on alex-mac', and so do later ones", async () => {
+  answerErr = { code: "bad_input", message: "machine: not allowed" };
+  const q = $(box, ".cv-q");
+  await $$(q, "button").find(b => text(b) === "Decline").click();
+  await wait();
+  assert.equal(calls.filter(x => x.tool === "threads.answer").at(-1).input.machine, "alex-mac");
+  assert.match(text(q), /Answer it on alex-mac/);
+  assert.equal($$(q, "button").length, 0);
+  assert.equal(q.isOpen(), false);
+  // An older box ignores `machine` and does not have an ask it never relayed: "no ask <id>" means the same.
+  emit("ask.raised", { ask: "ask_m3", kind: "permission", tool: "Bash", summary: "npm test" });
+  await wait();
+  const later = $$(box, ".cv-ask").at(-1);
+  assert.match(text(later), /Answer it on alex-mac/);
+  assert.equal($$(later, "button").length, 0);
 });
