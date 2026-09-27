@@ -23,11 +23,6 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   using/chat.md, concepts/presence.md: only a send, payment or deletion asks, and one proof covers
   30 minutes. using/claude-code.md: `/vyre todo`, `remind`, `agenda`, `remember`, `lesson`.
 
-#### The box image builds again
-
-- box/Dockerfile read the SDK's pinned version by loading core/sessions/sdk.js on its own, which
-  now imports core/config/dialogs.js, so the image build failed. The name and version live in
-  core/sessions/sdk-pin.js, which has no imports; sdk.js re-exports them.
 #### ADR 0033: Hackable Vyre (accepted), and the module SDK's first piece
 
 - docs/adr/0033-hackable-vyre.md: a versioned module API (apiVersion, a manifest schema, the v1
@@ -46,6 +41,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Docs drift: SPEC's `requires` example named the store and events (never modules), its entry file
   imported a type that didn't exist, `ctx.events.latestId` was undocumented, and module-contract
   said the Deck reads `shows.deck` (it doesn't yet).
+
 #### Memory reads your turns with the fast model, once each
 
 - The reader (core/memory/personal/reader.js) sends every user turn of a few words to the fast
@@ -88,6 +84,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A home other than ~/.vyre never talks to a real box (not even to check it answers) unless
   VYRE_ALLOW_REAL_BOX=1; VYRE_ALLOW_DIALOGS=1 no longer counts for boxes. A box on this machine's
   loopback (a dev world) is always fine.
+
 #### The terminal matches the Deck composer: model, thinking, !, #, images, rewind, tasks
 
 - `vyre threads model | thinking | commands | shell | remember [--scope project|user|local] |
@@ -172,6 +169,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   runs in such a login. `core/presence/index.js` (`TERMINAL_WINDOWED`, `windowNotice`),
   `core/daemon/index.js` (atTerminal), `core/daemon/peer.js` (`loginOf`, `tmuxClients`),
   `core/vault/index.js` (the audit row), `docs/concepts/presence.md`, `docs/adr/0004-presence.md`.
+
+#### The box image builds again with the Agent SDK pin
+
+- box/Dockerfile read the SDK version by importing core/sessions/sdk.js on its own, and 8aed4887
+  gave that file an import (config/dialogs.js), so the image build stopped at the SDK layer. The
+  pin now lives in core/sessions/sdk-pin.js, which imports nothing; sdk.js re-exports it, and a
+  test copies the file the Dockerfile names on its own and imports it.
 
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
@@ -308,6 +312,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   tool event. Given the changed keys it regroups from the row before the first change and stops
   at the first old row boundary past the last one; unchanged rows stay the same objects.
   groupItems stays the pure full pass, and a test checks both agree on random sequences.
+
 #### Design system: Design A v1, frozen
 
 - docs/design/system/ is the design system of record: tokens, layout and navigation, copy, the
@@ -772,6 +777,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
   (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
 - test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+
 #### Scripts: the fake Messages API is a module
 
 - scripts/cc-plugin-parity/fake-api.mjs exports `fakeApi(steps, { isMain })`, for driving a real
@@ -782,6 +788,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 
 - test/cc-plugin.test.js: memory-iq's bare-mcp gate is on main, so the remember-then-answer test
   no longer skips.
+
 #### ADR 0031: project teammates (draft)
 
 - docs/adr/0031-teammates.md: persistent, project-bound agents with durable notes, a serial inbox
@@ -790,6 +797,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   (active teammates, subagents), a box-wide ceiling, a fair queue and a usage-aware pause. The
   user's decisions: an integrator teammate auto-merges green branches, teammates can be shared
   with other projects or assigned to the assistant, Balanced is the default preset.
+
 #### Apps: WhatsApp through its own window (ADR 0022, slice 4)
 
 - "whatsapp juno: running late" and the Capsule's @WhatsApp send through WhatsApp for Mac with
@@ -850,6 +858,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - apps.targets for Slack lists live channels (#name) and real people (no bots, no deactivated
   accounts). "Which app?" offers Slack as an app Vyre sends through only when a Slack server is
   in the hub.
+
 #### /pair: finishing `vyre phone add --tailscale-only` on the phone
 
 - A new Deck route, /pair, on one screen: the code the laptop shows (XXXX-XXXX, dash optional)
@@ -1292,6 +1301,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - Permission cards: A allows once, D denies. An ask answered on another screen says so
   ("Answered from the Capsule · 14:31").
 - deck/sw.js SHELL keeps the new modules. Tests in deck/chat/session.test.js and core tests.
+
 #### A stopped vyred leaves a removed home removed
 
 - core/term: the terminal table is not written when the home is gone, or when there is nothing to
@@ -1299,7 +1309,9 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   (and the home) again (core/vault/stop.test.js).
 
 #### Planner: alarms ring on a device with the box out of reach (ADR 0029, R6)
+
 #### Apps: the planner is the one reader of time (ADR 0022, ADR 0025)
+
 #### A box keeps projects in /work/projects
 
 - Projects on a box: nothing moves on its own. A new box (no homes in `~/Vyre/projects`) keeps
@@ -1384,6 +1396,19 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - planner.parse reads a time said first as a reminder: "6pm call Harlow Legal", "at 6:30 pick up
   juno". Only a time that cannot be a count leads (am/pm, a colon, noon), so "3 apples" is not one.
 
+#### The CLI gets the same 30-minute window for the vault as the Deck
+
+- `vyre vault get --reveal`, copy, one-time codes, approve and grant asked for a proof on every
+  call from a terminal. Now one Touch ID (or a Capsule or passkey proof) from a login terminal
+  covers that terminal's vault.reveal, vault.copy, vault.totp, vault.approve and vault.grant for
+  30 minutes, for items that do not ask every time. Nothing is written to disk: vyred keeps the
+  terminal in memory, named from the kernel (the socket peer's pid, its controlling terminal, and
+  `who`'s login list), gated on the peer ancestry check, so a process under `claude`, a detached
+  process, or a tmux/script pty never rides it. A terminal code proves one call and opens no
+  window. `core/presence/index.js` (`terminal` in verify), `core/daemon/index.js` (atTerminal),
+  `core/daemon/peer.js` (`controllingTty`), `core/modules/index.js`, `docs/concepts/presence.md`,
+  tests in `core/presence/presence.test.js`, `test/presence-cli.test.js`, `test/peer.test.js`.
+
 #### Memory and lesson changes ask nothing; vault sessions cover grants on the Deck; the Mac update line works
 
 - `vyre memory correct`, `merge` and `split` asked for the code on the terminal (or Touch ID) on
@@ -1425,6 +1450,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   this terminal or Touch ID (callAsPerson); from a Mac through the link, the Deck at the box's
   address asks for the passkey, and `vyre assistant` says so. The home screen tests start vyred
   with the test verifier, since they make an agent.
+
 #### Memory answers the user's own Claude Code session
 
 - A bare `mcp` caller (Vyre's MCP server with no agent: the user's own Claude Code session), and
@@ -1448,6 +1474,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - `memory.answer` also takes `question` as another name for `q`. The three tools share one gate:
   the user's surfaces, their tailnet devices, modules, and the assistant or an agent granted
   every project. A project's agent is refused.
+
 #### The switchboard tests pass on the Mac
 
 - core/switchboard/switchboard.test.js: the work folder is realpath'd, so the Mac's /var and
@@ -1458,6 +1485,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - core/google/module.test.js: "one call, one 401, one retry" counts the test's own calendar reads.
   The planner's calendar mirror also reads a window on google.added, which made it 4, not 3, on
   every run since the planner merge.
+
 #### Glass: an idle take-over goes back to the agent
 
 - core/computers/keyboard.js: a take-over with no input from its holder for the owner's idle
@@ -1471,6 +1499,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   so a running take-over follows a change).
 - Deck: the control bar counts down "Handing back to <agent> in N s"; the hand-back says why.
   Settings, Network: a "Glass hand-back" choice.
+
 #### presence.since: when this device last proved presence
 
 - presence.covered returns `{ covered, since, expires }` (ms since the epoch, null when no live
@@ -1482,6 +1511,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - Any person action on the socket is traced (a presence-needing tool or a presence header, not
   only PERSON_ONLY), an ancestry vyred cannot read to the top is refused, and macOS reads `ps`
   once per check. The peer fd is passed by number so the person's keep-alive connection survives.
+
 #### Presence: the device method, a phone's own key
 
 - core/presence: a seventh method, `device`. A phone's P-256 key (Secure Enclave or StrongBox,
@@ -1490,6 +1520,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   nonce set with the Capsule. It opens a presence session. Migration 3 widens
   `presence_keys.kind`. For the native Android build and relay `device:<id>` callers (ADR 0026,
   ADR 0027). ADR 0004 addendum; tests in core/presence/presence.test.js.
+
 #### CI: the native Capsule check cannot hang the job
 
 - scripts/capsule-native-check.mjs: the detail block (footprint, vmmap, heap) had landed inside
@@ -1594,6 +1625,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - "Waiting on you" is violet (`Theme.attention`, #B8A4FF), as on the Deck and the phone: the list
   label, dots, selected bar, source label, the hint under an empty box, and the menu-bar mark's
   dot. The Electron Capsule's waiting label, dot, badge and tray dot match (`--attention`).
+
 #### Apps in the native Capsule: `@App`, then who, then Enter twice to send (ADR 0022)
 
 - A new extension, `Sources/Extensions/apps/AppsExtension.swift`, puts every Mac app behind `@`,
@@ -1636,6 +1668,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   `refreshesMentions`; several run side by side. `mentionPicked(_:context:)` is told once per pick. Every addition has a default, so
   existing extensions are unchanged. `Sources/Kit/Extension.swift`, `Sources/Host/`,
   `Sources/UI/CapsuleView.swift`, `Tests/ExtensionNestTests.swift`.
+
 #### The box's alarms and reminders ring on the Mac
 
 - The native Capsule keeps /v1/link/events open (hidden too: a timer on the box has to ring
@@ -1805,6 +1838,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   under the bar. Hot keys: ⌥Space with no permission, Control twice once Input Monitoring is
   allowed (asked only from the menu-bar item). `local/capsule/native/Sources/Host`, `Sources/UI`.
 - Fixed a race in the apps scan: a waiting refresh now waits out a scan already running.
+
 #### The side view's terminal tabs follow live
 
 - capsule-sight: a terminal tab in the side view follows its session through chat's
@@ -1861,6 +1895,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   `voice.status` returns the built mic helper's path. Push-to-talk opens its stream through
   `VyredLink.stream`, the Capsule's own WebSocket client.
 - screen: the fake-helper tests pass `platform: "darwin"` so they run off the Mac.
+
 #### Tokens: one JSON, rendered for the Capsule, the app and the Deck
 
 - deck/css/tokens.css now carries the whole scale, not only colours: --size-*/--line-* for the
@@ -1905,6 +1940,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   for plan approval and modes (ADR 0030), projects, memory and lessons, settings and first run;
   the session board follows ADR 0030 (provider chip, Stop, queued words with take back and send
   now); every key screen states how it meets the smoothness bar.
+
 #### Tests: the plugin's MCP calls go one at a time
 
 - test/cc-plugin.test.js's `mcp()` helper sent every request at once. The server answers calls
@@ -1988,6 +2024,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   waits 180 s; with `--json` a send's preview goes to stderr before the proof; an unknown flag
   or `--app` without a name exits 2. apps.setup also admits the owner's devices over the tailnet
   (the Registry's callerAllowed), never a guest.
+
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
 - vyred's entry (core/daemon/main.js) takes SIGTERM and SIGINT before it loads: a stop while it
@@ -2054,6 +2091,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   while hidden. `outbox()` keeps writes made offline and delivers them in order, once.
 - `test/chaos/`: vyred behind fault proxies (drop, partition, refuse, delay, cut mid-event, two
   paths, restart), with a test per rule of ADR 0029.
+
 #### The switchboard tests pass on the Mac
 
 - core/switchboard/switchboard.test.js: the work folder is realpath'd, so the Mac's /var and
@@ -2064,6 +2102,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - core/google/module.test.js: "one call, one 401, one retry" counts the test's own calendar reads.
   The planner's calendar mirror also reads a window on google.added, which made it 4, not 3, on
   every run since the planner merge.
+
 #### Harness: a Read or a cat into the vault is denied with vyred up, not waved through
 
 - vyred's registry runs the floor on every call's input, so `harness.rules` for a tool call that
@@ -2074,6 +2113,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   SDK's `plugins` option (ADR 0030 phase 2), and both at once, on one Claude Code binary against a
   fake Messages API. The three match: the MCP server, 220 tools, /vyre, about.md in the first
   request, each hook once, the floor's deny before `canUseTool`.
+
 #### The relay: reach the box with a QR code, no Tailscale (ADR 0026, in progress)
 
 - A new box module, `relay` (core/relay/), off until the first pairing. The box dials out to a
@@ -2137,6 +2177,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   the relay unchanged.
 - ADR 0026 accepted. It gains section 10, the hosted web app at app.vyre.run, and its trust
   mitigations, and section 2 now matches the code (4429, the ticket, text pings).
+
 #### Onboarding: the first steps load the theme and fonts
 
 - core/onboard/loopback.js serves `/theme.css` and `/fonts/*` on the loopback onboarding link,
@@ -2247,6 +2288,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   finished, Reminder, Starting soon, Todo due), path /planner/<firing>, tag planner-<firing> and
   actions done and snooze, at high urgency. The label never crosses the push service. Alarms and
   timers ring through quiet hours; reminders and todos wait.
+
 #### `vyre capsule install` builds the Capsule on the Mac
 
 - vyre.run no longer serves `Vyre-mac.zip`, so the download would have failed. `vyre capsule
@@ -2255,6 +2297,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   `capsule-install.js`, its test and `VYRE_DOWNLOAD_BASE`/`VYRE_APPS_DIR` are gone (capsule-pro's
   native build replaces this path when it merges). docs/using/capsule.md and
   docs/get-started/install.md say so; the reference is regenerated.
+
 #### The box reads a Mac session as blocks
 
 - `recall.transcript` on the box, for the person, reads a session the box does not have from the
@@ -2354,6 +2397,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   a running Chrome (CDP); each asserts its chip or note, no sideways scroll and no page errors.
 - `pair()` in test/link-harness.js takes `boxName`, `macHost`, `heartbeat`, `boxConfig`, and
   `macTranscripts` as a list of sessions, and needs only `name` and `after` from its context.
+
 #### vyred knows the box's Taildrive mount mode
 
 - The vyre service gets `VYRE_DRIVE_ACCESS` (default `ro`), the same value the tailscale service
@@ -2414,6 +2458,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   sessions by the harness (`core/harness/rules.js`). The Deck's "Confirm it's you" step is gone
   (`deck/glass/takeover.js`). Tests: core/computers/computers.test.js, core/glass/glass.test.js,
   core/harness/floor.test.js. ADR 0004 and 0005 amended.
+
 #### Every Claude Code session knows the user
 
 - `core/about`: keeps `<home>/about.md`, a few lines on the user (name, assistant, busiest projects
@@ -2440,7 +2485,9 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
   brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
   still fetches the zip until capsule-pro retires it.
+
 #### "Needs you" is violet everywhere
+
 #### Esc takes back a message still queued for a terminal session
 
 - In the Electron Capsule, Esc on a queued reply calls `threads.unqueue` for that message
@@ -2577,6 +2624,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   waits 180 s; with `--json` a send's preview goes to stderr before the proof; an unknown flag
   or `--app` without a name exits 2. apps.setup also admits the owner's devices over the tailnet
   (the Registry's callerAllowed), never a guest.
+
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
 - npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
@@ -2659,6 +2707,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   GitHub's node 24 runner.
 - A switchboard test compared a thread's status across two reads while it could still be
   starting; it now waits until the thread has started.
+
 #### `vyre vault` and `vyre memory` ask for the person, as `vyre learn` does
 
 - `vyre vault put/grant/get --copy/...` and `vyre memory correct/merge/split/uncorrect/pin/mute`
@@ -2740,6 +2789,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   timeout and reports `magicDNS` and `certDomains`; new tool `capsule.report {ok, message}`
   emits `capsule.hotkey`, for the Capsule app to say whether Control twice works (TCC holds
   Vyre.app responsible, so only the app can know).
+
 #### Handing the keyboard back needs no passkey
 
 - `glass.release` asked for a passkey, so a person in control had to prove presence again just
@@ -2764,6 +2814,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   replaces an earlier candidate while no address serves.
 - The address step says up front that it can take about a minute, and the line in progress shows
   its elapsed seconds. Starting Claude's and Tailscale's sign-in say they take a few seconds.
+
 #### The phone app switches tabs in one frame
 
 - Pages stay mounted: leaving a screen hides it (laid out, inert) instead of tearing it down, so
@@ -2783,6 +2834,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   fail over 100 ms.
 - The owner's phone over the tailnet queues for a session busy in the terminal, and an agent's
   tailnet node does not (queuesFor in core/switchboard).
+
 #### The phone's design
 
 - docs/design/phone.md sets the phone app's design for the PWA and the native apps: no tab bar,
@@ -2863,6 +2915,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   home and a context that only records: no child processes, no listeners, no fetch, no keychain.
 - The hygiene rules (forbidden names, the secret pattern) moved to `scripts/lib/hygiene.js`,
   shared by `test/hygiene.test.js` (unchanged behaviour) and docs-check.
+
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
@@ -2911,6 +2964,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   agent reaches `vault.reveal` at all. `core/vault/surfaces.test.js`.
 - `test/onboard.test.js` closes each connection, so a request after a vyred restart on the same
   port never rides a socket the old vyred closed (an intermittent "other side closed").
+
 #### Glass and agents' computers, live (work/glass-live)
 
 - Giving an agent a computer from the Deck works. `agents.update` names its agent by `name` or
@@ -2940,6 +2994,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   own. Other checkout failures close with 1011 and Glass tries again as before.
 - `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
   required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
+
 #### link.health answers the owner and modules only
 
 - On the box, `link.health` refuses a guest from another tailnet, an agent's own node, an agent
@@ -3111,6 +3166,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   delegation list, and requires its own tokens with the right scope on Calendar and Gmail calls.
   A fake that accepted anything would hide the bugs that matter here, such as a read token used
   to send.
+
 #### Vyre installs as a Claude Code plugin, and shows its line in every session
 
 - `.claude-plugin/marketplace.json`: the marketplace `vyre`, one plugin `vyre` from `./harness`.
@@ -3149,6 +3205,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - Docs and comments call the test server "the test box", the prototype's folder "the
   prototype's bin/", and the firm in a memory note Harlow, before the repo goes public (docs and
   comments only).
+
 #### The Deck installs on a phone as an app
 
 - Add to Home Screen gives a full-screen app: a manifest with maskable icons, an Apple touch
@@ -3234,6 +3291,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   the test box. A failed install leaves no half-written tree, says why, and `--setup` tries again. New
   config keys `recall.embedder` (where it goes) and `recall.npm`.
 - `scripts/release-check.sh` now fails on any optional dependency and on an install over 10 MB.
+
 #### The box reads the paired Mac through the link
 
 - The link runs box to Mac as well, with no port open on the Mac. While paired, the Mac holds one
@@ -3313,6 +3371,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   (`vyre call` through the host wrapper, `test/journey/rig.js` terminal), since the harness cannot
   reach the address as the owner. The fake box tailscale now names this account as its operator,
   so the journey also runs on Linux. Journeys 1 to 6 pass together, three runs in a row, on the test box.
+
 #### Tailnet: more of Tailscale, and still never a change to the tailnet (ADR 0014)
 
 - Vyre now knows how the box and a device reach each other. `link.health` says whether the
@@ -3376,6 +3435,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   a file to the box with option-return.
 - `scripts/perf-check` waits for Memory's startup pass to finish before it measures idle, so a
   slow start on a loaded host is no longer counted as idle CPU.
+
 #### The Capsule answers from memory, and messages a session busy in a terminal
 
 - Quick answers read the memory on screen. When the "From memory" box shows facts or session quotes
@@ -3409,6 +3469,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   activates so typing reaches the panel over a normal app. `local/capsule/lib/present.js`;
   `scripts/capsule-spaces/run.js` checks it against a throwaway full-screen window and runs only
   with `VYRE_FULLSCREEN_OK=1`.
+
 #### The Claude sign-in code is submitted
 
 - Onboarding step 2 typed the pasted code and Enter into `claude setup-token` in one write.
@@ -3455,6 +3516,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
 - `core/vault/login-keychain.test.js`: a temp-home vyred outside tests, with a fake `security` and
   `osascript` that record calls, keeps its key in a file, builds no keychain helper and calls
   neither; a temp home that asks for the keychain is refused; the world scripts set the flags.
+
 #### e2e: a real install walked from main
 
 - The onboarding page kept Continue off on step 1 whenever the box had no vyre.run zone token,
@@ -3463,6 +3525,7 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   same `input` style as the assistant's.
 - `vyre up` waited 5s for a first vyred to answer and then said it did not start, while it was
   still starting (6s on a loaded Mac). It waits up to 15s now.
+
 #### Chat lists your Claude Code sessions and follows them live
 
 - Chat lists every Claude Code session on this machine (`projects.catalog`, from the transcripts)
