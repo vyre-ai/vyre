@@ -81,8 +81,12 @@ below a pid in `threads.pids` and the ancestry check still sees them.
 vyred itself runs without privileges, so it cannot change uid. A small spawner, root in the
 container with every capability dropped but SETUID, SETGID and KILL, listens on a socket only
 uid `vyre` can open, starts a given command as `vyre-agent` in a fixed environment, and passes
-its stdio back. It starts nothing else. The sessions team's driver spawns through it
-(spawnClaudeCodeProcess).
+its stdio back as connections. It starts nothing else. The sessions team's driver spawns through
+it (spawnClaudeCodeProcess, core/spawner/client.js). Its socket sits in /run/vyre, root:vyre
+2750, so it takes vyred's group with no capability to chown, and vyre-agent cannot enter. vyred
+runs with umask 002 so the agent can change what it writes in /work; its own files take group
+vyre, which the agent is not in. `vyre` in the container drops from root to vyre by itself.
+scripts/e2e-split/check.sh proves it in a throwaway container.
 
 ### 4. On the Mac, the residual is accepted
 

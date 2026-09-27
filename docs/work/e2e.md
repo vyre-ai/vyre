@@ -213,9 +213,10 @@ Plan (to the lead before building):
 Done and pushed (628e2cd9): HIGH 2 link.call (50c3f13); a) person session over the tailnet
 (8ad92a73, fb097a3d); b) the Mac's person session `vyre link signin` (ab51b28f); vault fill
 Origin pin, allowlist, optional key binding, callers; peer check by pgid/sid; ADR 0032.
-Now: the uid split on the box (ADR 0032 part 3): a root spawner with only SETUID/SETGID/KILL,
-children as uid vyre-agent, stdio fds passed back; image user and /work group; compose. Contract
-sent to sessions (their driver spawns through it; spawn detached meanwhile).
+The uid split on the box is built (core/spawner, image, compose), 15/15 in
+scripts/e2e-split/check.sh on testbox. Waiting on sessions to spawn through spawnAsAgent on the
+box (and detached meanwhile). Deploy note: the vyre service becomes 0:0 with 3 caps; the box
+wrapper keeps working (vyre re-execs as vyre).
 Next: the headscale run on the deployed sha (box on e671d35 per the lead's notes): onboarding,
 the Deck's first sign-in, `vyre link signin` from the stand-in Mac, and the earlier list.
 Waiting: tailnet's CORS sha (peer.origin, allowed headers); pwa's sign-in sheet and Settings
@@ -264,6 +265,12 @@ event stream's first byte. Tear down afterwards.
 - vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
+
+- core/spawner: spawnAsAgent(argv, { env, cwd }) -> ChildProcess-like (pid, stdin, stdout, stderr,
+  kill, exit). VYRE_SPAWNER_SOCKET (/run/vyre/spawner.sock), VYRE_SPAWNER_ALLOW (extra programs,
+  colon-separated). Image: users vyre (1000), vyre-agent (1001), group vyre-work (1002); CMD is
+  core/spawner/main.js. compose: vyre service user 0:0, cap_add SETUID SETGID KILL, volume
+  vyre-agent-home.
 
 - link: link.signin / link.signout (callers cli, local, capsule), link.status.signedIn,
   events link.signed-in / link.signed-out. remote() carries PERSON_ONLY tools with the Mac's

@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Security: the uid split on the box (ADR 0032 part 3)
+
+- The box container's first process is the spawner (core/spawner), root with only SETUID,
+  SETGID and KILL. It runs vyred as uid vyre (umask 002) and, when vyred asks over
+  /run/vyre/spawner.sock (root:vyre, 2750, so vyre-agent cannot enter), starts a Vyre-owned
+  session's claude as uid vyre-agent under tini as a subreaper, in /work, with a cut-down
+  environment, handing stdio back as connections (core/spawner/client.js spawnAsAgent). Only
+  allowed programs start. vyre-agent cannot open vyred's socket or enter /home/vyre (now 700).
+- /work is shared through the vyre-work group (2775, setgid); an older volume is converted once
+  on start, as vyre. vyre-agent's home is its own volume (vyre-agent-home), readable by vyred.
+- `vyre` inside the container drops from root to uid vyre by itself, so `docker compose exec`
+  and the healthcheck work as before. compose.yml: the vyre service runs as 0:0 with
+  cap_drop ALL and no-new-privileges. The image gains tini.
+- .dockerignore lets scripts/postinstall.mjs through: `docker build -f box/Dockerfile .` from a
+  checkout failed at npm ci since the postinstall landed.
+- scripts/e2e-split/check.sh: 15 checks in a throwaway container (uids, homes, sockets, /work,
+  environment, refusals, an old volume, a clean stop).
+
 #### Security: a Mac's person session; the fill listener's pairing
 
 - `vyre link signin` (link.signin, link.signout): the Mac's command line and Capsule answer asks

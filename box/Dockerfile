@@ -9,7 +9,7 @@ LABEL run.vyre="1" \
       org.opencontainers.image.source="https://github.com/vyre-ai/vyre"
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps \
+ && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps tini \
  && rm -rf /var/lib/apt/lists/*
 
 # The tailscale CLI only. tailscaled runs in the tailscale container; the CLI talks to it
@@ -24,6 +24,16 @@ RUN usermod -l vyre -d /home/vyre -m node \
  && groupmod -n vyre node \
  && mkdir -p /work \
  && chown 1000:1000 /work
+# The split (ADR 0032): Vyre-owned Claude sessions run as vyre-agent, which cannot open vyred's
+# socket or read /home/vyre. Projects in /work are shared through the vyre-work group.
+RUN groupadd -g 1002 vyre-work \
+ && groupadd -g 1001 vyre-agent \
+ && useradd -u 1001 -g 1001 -G vyre-work -m -d /home/vyre-agent -s /bin/sh vyre-agent \
+ && usermod -aG vyre-work vyre \
+ && chown 1000:1002 /work && chmod 2775 /work \
+ && chmod 700 /home/vyre \
+ && chown 1001:1002 /home/vyre-agent && chmod 2750 /home/vyre-agent \
+ && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre
 
 # Everything .dockerignore lets through: package files, bin, core, harness, docs, LICENSE,
 # README.md, and deck, modules and local when they exist.
@@ -42,4 +52,5 @@ ENV VYRE_HOME=/home/vyre/.vyre \
 USER vyre
 WORKDIR /home/vyre
 
-CMD ["node", "/opt/vyre/core/daemon/main.js"]
+# As root (compose), this is the spawner, which runs vyred as vyre; as vyre, vyred itself.
+CMD ["node", "/opt/vyre/core/spawner/main.js"]
