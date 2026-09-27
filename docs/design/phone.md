@@ -9,8 +9,10 @@ status: draft
 # Vyre phone
 
 The design for Vyre on a phone: one Expo app (React Native) for iOS, Android and the web, like
-Paseo's (the user's decision, 2026-09-27; mobile leads ADR 0027). It builds from this file. Colours and type come from [TOKENS.md](TOKENS.md) and are pasted verbatim; this
-file adds only phone roles, sizes and behaviour. Desktop (the Deck) shares the same tokens and
+Paseo's (the user's decision, 2026-09-27; mobile leads ADR 0027). It builds from this file.
+Colours and type are the Deck's reduced system (deck-design's second pass, docs/design/deck.md
+on work/deck-design e1428b1), pasted verbatim; this file adds only phone roles, sizes and
+behaviour. Desktop (the Deck) shares the same tokens and
 chat items, so a card looks the same on both.
 
 Decision (2026-09-27): Direction B's shell (no tab bar, pages you swipe between, the floating
@@ -49,35 +51,36 @@ docs/design/deck-directions/vyre.css), so a phone view and a Deck view read the 
 |---|---|---|---|
 | `--bg` | #0E0D0C | #F4F1EA | Page ground |
 | `--panel` | #161513 | #FBFAF6 | Cards, sheets, the Capsule |
-| `--hover` | #1E1C1A | rgba(20,19,17,0.045) | Agent tiles, pressed rows, the Deny reveal |
+| `--hover` | #1E1C1A | #EEEAE2 | Agent tiles, pressed rows, the Deny reveal, secondary buttons |
 | `--rule` | #2B2926 | #DCD7CC | Hairlines between rows |
 | `--rule-strong` | #3A3733 | #C9C3B7 | Card and input borders, outline buttons |
 | `--text` | #F1EEE6 | #141311 | Primary text |
 | `--text-2` | #B3AEA4 | #4A463F | Secondary text |
 | `--label` | #8C877D | #6B665D | Labels, meta, placeholders. Smallest text colour allowed |
-| `--primary-bg` / `--primary-ink` | #C6F36B / #0E0D0C | #141311 / #F4F1EA | The one primary button per view |
+| `--primary-bg` / `--primary-ink` | #C6F36B / #0E0D0C | #141311 / #F4F1EA | The one primary button per view; also the count on a `--beacon-dot` badge |
+| `--primary-hover` | #D4F88A | #4A463F | The primary while pressed |
 | `--focus` | #C6F36B | #46700C | Focus ring |
 | `--signal-wash` | rgba(198,243,107,0.12) | rgba(70,112,12,0.10) | The Ask row in Find, added diff lines |
 | `--match` (phone) | rgba(198,243,107,0.20) | rgba(70,112,12,0.16) | Search match highlight, the Open session flash |
-| `--beacon-ink` / `--beacon-dot` | #B8A4FF / #B8A4FF | #5B3FC4 / #5B3FC4 | Attention: needs you. Nothing else |
-| `--beacon-wash` | rgba(184,164,255,0.12) | rgba(91,63,196,0.08) | Not used on the phone: held, ask and question cards are neutral |
-| `--beacon-badge-ink` (phone) | #0E0D0C | #F4F1EA | Count text on a `--beacon-dot` badge |
-| `--recall` | #EBC76B | #7E5B0C | Came from memory |
-| `--recall-wash` | rgba(235,199,107,0.10) | rgba(126,91,12,0.08) | Behind a recalled block |
+| `--beacon-ink` / `--beacon-dot` | #B8A4FF / #B8A4FF | #5B3FC4 / #5B3FC4 | Attention: needs you. A dot, a label or a count badge, nothing else |
 | `--del-wash` | rgba(140,135,125,0.14) | rgba(107,102,93,0.10) | Deleted diff lines, with `--text-2` text (`--label` is 4.49:1 there) |
-| `--code-bg` | rgba(14,13,12,0.55) | rgba(20,19,17,0.04) | Command blocks, the live console |
+| `--code-bg` | #121110 | #F0EDE5 | Command blocks, the live console |
 | `--mark-wire` / `--mark-dot` | #F1EEE6 / #C6F36B | #141311 / #141311 | The mark |
 | `--scrim` (phone) | rgba(0,0,0,0.62) | rgba(20,19,17,0.34) | Behind a sheet |
 
-**No coral or red, anywhere** (the user's rule). The attention colour ("needs you") keeps the
-`--beacon-*` names but is violet, deck-design's recommendation; teal is the only alternative
-(honey is out, the user's rule). Swapping it is one line per theme: change the three `--beacon-*`
-values. Every pair above passes WCAG AA.
+The whole palette is neutrals, one accent (lime: primary actions, focus, running, added lines)
+and one attention colour. **No coral or red, no gold, no other hue** (the user's rules). The
+attention colour ("needs you") keeps the `--beacon-*` names and is violet; teal (#5FD4C4 dark,
+#0B6E66 paper) is the only alternative (honey is out). Swapping it is one line per theme: change
+the two `--beacon-*` values. There is no beacon wash or beacon rule. Every pair above passes
+WCAG AA.
 
 The mark's dot is Signal (dark) or Ink (paper) when nothing is waiting, and the attention colour
 when anything needs you. A deleted line in a diff is `--text-2` on `--del-wash`, never attention.
 
-The attention colour is only ever a dot and a label ("kit is waiting on you", "Held 4 min").
+The attention colour is only ever a dot, a label ("kit is waiting on you", "Held 4 min") or a
+count badge (`--primary-ink` on `--beacon-dot`: 9.1:1 dark, 6.3:1 paper), never a fill, border
+or wash.
 Held, ask and question cards are neutral: `--panel` with a `--rule-strong` border, no wash.
 
 Errors and destructive actions carry no colour:
@@ -101,9 +104,12 @@ Buttons, the same three kinds as the Deck:
   One per view.
 - **Secondary**: `--text` on `--hover`, `--rule-strong` border.
 - **Ghost** (text-only, like "Details" or "Open session"): full `--text`, 600, never `--text-2`.
+  Cancel, Deny, Discard and Later are always ghosts.
 
-Text on tints: on paper, `--label` measures 4.48:1 on `--recall-wash` and `--signal-wash`,
-just under AA, so meta text on a tinted block uses `--text-2` instead. Input
+Order in any action area: primary, then secondary, then the ghost. All labels sentence case, 600.
+
+Text on tints: on paper, `--label` measures 4.48:1 on `--signal-wash`, just under AA, so meta
+text on any wash steps up to `--text-2`. Input
 placeholders are `--label` at full opacity (browsers default to a lighter grey that fails).
 
 Theme follows the system (`useColorScheme`), with Dark, Paper and System in Settings.
@@ -116,28 +122,31 @@ dashes (`--text-2` is `text2`); nothing in it is computed from a CSS variable at
 
 ### Type
 
-Sans is Instrument Sans (400, 500, 600). Mono is JetBrains Mono (400, 500). The app bundles
-both fonts and scale them with Dynamic Type (iOS) and font scale (Android); the sizes below are
-the default "Large" size.
+Two families, two weights. Instrument Sans for everything; JetBrains Mono only for commands,
+code, paths, IDs and keys, at 12 or 13. Weights 400 and 600, nothing else. No uppercase and no
+letter-spaced caps anywhere.
+
+The scale is the Deck's five steps, 12/16, 13/18, 15/22, 20/26 and 28/34, with the phone's +2 on
+the 15 and 20 steps (for iOS body size and no zoom on focus). So the phone uses exactly five
+sizes: **12/16, 13/18, 17/24, 22/28, 28/34.** 12, 13 and 28 are shared with the Deck. The app
+bundles both fonts (expo-font) and scales them with Dynamic Type (iOS) and font scale (Android);
+these are the default "Large" size.
 
 | Role | Family | Size / line | Weight | Tracking | Use |
 |---|---|---|---|---|---|
-| Page | Sans | 22 / 28 | 600 | -0.015em | The page labels in the header (Now, Chats, Agents) |
-| Sheet title | Sans | 26 / 32 | 600 | -0.015em | The detail sheet's title |
-| Section | Sans | 20 / 25 | 600 | 0 | Section headers on Now |
-| Group | Sans | 17 / 22 | 600 | 0 | Group headers in Find and Agents; chat nav title; agent names |
-| Row title | Sans | 16 / 21 | 600 | 0 | Rows in cards |
-| Lead | Sans | 17 / 24 | 400 | 0 | Chat messages, a question's text (shared with the Deck) |
-| Input | Sans | 17 / 22 | 400 | 0 | Search and composer text (never under 16: no iOS zoom) |
-| Secondary | Sans | 15 / 20 | 400 | 0 | Row second lines, fact rows |
-| Meta | Sans | 13 / 18 | 400 | 0 | "kit · Harlow Legal", times, hints |
-| Micro | Sans | 12 / 16 | 400 | 0 | Chat nav subtitle, tags (shared with the Deck) |
-| Button | Sans | 15 / 20 (17 on the 54 tall primary) | 600 | 0 | Every button label, sentence case |
-| Command | Mono | 14 / 20 in blocks, 13 / 18 in rows | 400 | 0 | Commands |
-| Log | Mono | 12 / 19 (13 / 18 in tool rows) | 400 | 0 | Live console, tool rows, diffs |
+| Sheet title | Sans | 28 / 34 | 600 | -0.015em | The detail sheet's title |
+| Page | Sans | 22 / 28 | 600 | -0.01em | The page labels in the header (Now, Chats, Agents) |
+| Row title | Sans | 17 / 24 | 600 | 0 | Rows in cards, section headers on Now, group headers, the chat nav title, agent names |
+| Lead | Sans | 17 / 24 | 400 | 0 | Chat messages, a question's text, the agent's reason, fact rows |
+| Input | Sans | 17 / 24 | 400 | 0 | Search and composer text (never under 16: no iOS zoom) |
+| Button | Sans | 17 / 24 | 600 | 0 | Every button label, sentence case (13 / 18 on the swipe reveals and chips) |
+| Secondary | Sans | 13 / 18 | 400 | 0 | Row second lines, facts under a card, `--text-2` |
+| Label | Sans | 12 / 16 | 600 | 0 | Small labels ("Why kit wants to", "From memory"), sentence case, `--label` |
+| Meta | Sans | 12 / 16 | 400 | 0 | "kit · Harlow Legal", times, hints, tags |
+| Code | Mono | 13 / 18 | 400 | 0 | Commands in blocks and rows, paths, counts |
+| Log | Mono | 12 / 16 | 400 | 0 | Live console, command output, diffs |
 
-Buttons are sentence-case sans on the phone, not the Deck's mono uppercase: it is the one place
-the phone departs from TOKENS.md, for the native feel the user picked.
+Buttons are sentence-case sans, the same as the Deck's second pass.
 
 ### Space, shape, lines
 
@@ -201,15 +210,15 @@ the Capsule, opened.
 
 ## 4. Now
 
-Sections have sentence-case headers in Section type (20/25, 600) with the count on the right in
-Secondary `--label`, 24 above and 8 below. Cards are `--panel`, `--rule` border, radius 10, with
+Sections have sentence-case headers in Row title (17/24, 600) with the count on the right in
+Meta `--label`, 24 above and 8 below. Cards are `--panel`, `--rule` border, radius 10, with
 hairlines between rows. Any section with nothing in it is left out, except as noted.
 
 ### Needs you
 
 Header: an 8 px `--beacon-dot`, then "Needs you", count on the right. One card holds a row per
-item, oldest first. Under the card, one Meta line in `--label`: "Swipe right to approve with Face
-ID, left to deny." Show the hint until the user has swiped once, then drop it.
+item, oldest first. Under the card, one Meta line in `--label`: "Swipe right to approve, left to
+deny." Show the hint until the user has swiped once, then drop it.
 
 The row:
 
@@ -259,9 +268,10 @@ Header "Working" and count. One card, a row per running session:
 
 ### From memory
 
-One `--recall-wash` block, radius 10, 12 x 14 padding: a 14 px history glyph and "From memory"
-in 13/600 `--recall`, then what memory learned today or what is due soon, in 15/21 `--text`. Tap
-opens the fact in Find with its source.
+One neutral card row (`--panel`, `--rule` border, radius 10, 12 x 14 padding, no wash): the
+memory stack icon (20, `--text-2`), what memory learned today or what is due soon in Lead
+`--text`, and its source in Meta `--text-2` ("From memory · your call with Dana, Tue"). Tap opens
+the fact in Find with its source.
 
 ### Setup and pairing
 
@@ -282,9 +292,9 @@ Header (every kind):
 
 - Row 1: a 22 px agent tile and "<agent> asks · <project>" in Meta `--text-2` on the left; a 30
   px round close button (`--hover`, `--rule` border, x glyph) on the right.
-- Title in Sheet title (26/32, 600, -0.015em), 12 above.
-- Row 3: a 7 px `--beacon-dot` and "Held 4 min" in 15/20 `--beacon-ink` on the left; **Open
-  session** with a chevron on the right, 15/600 `--text`, 44 tall.
+- Title in Sheet title (28/34, 600, -0.015em), 12 above.
+- Row 3: a 7 px `--beacon-dot` and "Held 4 min" in Label `--beacon-ink` on the left; **Open
+  session** (a ghost) with a chevron on the right, 17/600 `--text`, 44 tall.
 
 **Open session** opens the exact session this came from in Chat, scrolled to the moment it was
 raised: the matching tool row or message is centred and flashes `--match` for 1.2 s. The sheet
@@ -293,16 +303,16 @@ and the chat header says the Mac is away.
 
 Body by kind:
 
-- **Ask (a tool call).** The command in a mono block (`--code-bg` on dark, `--bg` on paper,
-  `--rule` border, radius 8, 12 x 14 padding, 14/20, `$` in `--label`). Then "Why <agent> wants
-  to" in 13/600 `--label` and the agent's reason in 16/23. Then fact rows between hairlines, label
-  on the left in 15 `--label`, value on the right in 15 `--text`: Remote, Branch, Changes ("6
-  files +412 -38", counts in 13 mono `--text-2`), Held by ("Your rule: pushes ask first"). Tap
+- **Ask (a tool call).** The command in a mono block (`--code-bg`, `--rule` border, radius 8,
+  12 x 14 padding, Code 13/18, `$` in `--label`). Then "Why <agent> wants to" in Label and the
+  agent's reason in Lead. Then fact rows between hairlines, label on the left in Lead `--label`,
+  value on the right in Lead `--text`: Remote, Branch, Changes ("6
+  files +412 -38", counts in Code `--text-2`), Held by ("Your rule: pushes ask first"). Tap
   Changes to expand the files, each with its counts; tap a file for its diff (+ lines on
   `--signal-wash`, - lines on `--del-wash` with `--text-2` text).
 - **Draft (held at the Gate).** To, Subject and Body edit in place: tap into them. There is no
   Edit button, and the only actions are Send and Discard (the same editing as the Deck,
-  js/editable.js). The sources it drew from, if any, in a `--recall-wash` block. An edit changes
+  js/editable.js). The sources it drew from, if any, as neutral rows with the memory stack icon. An edit changes
   the primary to "Send edited".
 - **Question.** The question in Lead type, then the choices as full-width rows (radius 10,
   `--rule-strong` border, 52 tall, the choice in Row title and its note in Meta). Tap a choice
@@ -312,14 +322,14 @@ Body by kind:
 Action area (8 between buttons, 34 bottom):
 
 - Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: "Approve", one tap (asks
-  are always `required: false`). Under it, two secondary buttons side by side, 46 tall, radius
-  12: "Always in <project>" (approves and writes the rule) and "Deny". Where
-  `ask.always_project` is null, Deny takes the full width.
+  are always `required: false`). Under it, two secondary buttons stacked, 46 tall,
+  radius 12: "Always in <project>" (secondary: approves and writes the rule), then "Deny" (a
+  ghost). Where `ask.always_project` is null, only Deny sits under the primary.
 - Held item at the Gate (a send, spend or delete of outside data): the primary follows the three presence states below,
   "Send with Face ID" (22 px glyph; "with Touch ID", "with fingerprint", "with passkey" by
-  device) only when not covered; "Discard" secondary, never a proof. Drafts are held sends.
+  device) only when not covered; "Discard" a ghost, never a proof. Drafts are held sends.
   Nothing else.
-- Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" secondary. No
+- Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" a ghost. No
   proof.
 - When Face ID shows (the no-nag rule): only for pairing a device, reading or using a vault
   secret, outbound actions (messages, posts, emails, payments), and deleting outside data (mail,
@@ -355,7 +365,7 @@ Action area (8 between buttons, 34 bottom):
 
 ### The list (page)
 
-Project filter chips across the top (All, then each project), 30 tall, radius 8, 13/600: the
+Project filter chips across the top (All, then each project), 30 tall, radius 8, Button 13/18: the
 selected one `--text` fill with `--bg` text, the others `--rule-strong` outline with `--text-2`
 text. This replaces the old Projects tab. Below, one card of rows, newest first:
 
@@ -368,7 +378,7 @@ text. This replaces the old Projects tab. Below, one card of rows, newest first:
 ### A session (pushed)
 
 Nav bar, 52 tall under the safe area, hairline below, three columns: "< Chats" (17) on the left;
-the session name (Title) centred with "<agent> · <project>" under it in 12/16 `--label`; a 44 px
+the session name (Row title) centred with "<agent> · <project>" under it in Meta `--label`; a 44 px
 more button on the right (rename, watch, stop, archive). The header does not show the page labels;
 the edge swipe goes back.
 
@@ -376,14 +386,14 @@ The transcript, 16 side padding, 14 between items, a centred Meta `--label` time
 gap of more than an hour ("Today 12:01"):
 
 - **You**: a bubble on the right, max 290 wide, `--hover` fill, `--rule` border, radius
-  18 18 6 18, 10 x 14 padding, 17/22.
-- **Agent**: no bubble. A 24 px tile and the author in 13/600 `--text-2` (the assistant's name,
-  or the agent's name; "Vyre" only when none is known), then the text in 17/24.
+  18 18 6 18, 10 x 14 padding, Lead 17/24.
+- **Agent**: no bubble. A 24 px tile and the author in Label `--text-2` (the assistant's name,
+  or the agent's name; "Vyre" only when none is known), then the text in Lead 17/24.
 - **Tool rows**: grouped in one box, `--rule` border, radius 10, hairlines between rows. One row
-  each, 9 x 12 padding, mono 13/18: a 16 px check (done) or spinner (running) in `--label`, the
+  each, 9 x 12 padding, Code 13/18: a 16 px check (done) or spinner (running) in `--label`, the
   action and target ("Edited reports/q3.tsx", "Ran npm test"), the result on the right in
   `--label` ("+412 -38", "42 passed"). Tap expands the row in place: the full command, output
-  (mono 12/19, 12 lines then "Show all"), or the diff.
+  (Log 12/16, 12 lines then "Show all"), or the diff.
 - **Streaming**: the reply grows in 17/24 with a 2 x 19 `--text` caret at the end. The box sends
   text in bursts; the app reveals what it has over 150 ms at the display rate (at least one
   character a frame), so the reply flows instead of jumping, and never lags more than 250 ms.
@@ -396,14 +406,15 @@ gap of more than an hour ("Today 12:01"):
   commands") that expands in place. A single failed row never collapses.
 - **Approval card (an ask in this session)**: `--panel` fill, `--rule-strong` border, no wash,
   radius 12, 14 padding, 10
-  between parts. A 7 px `--beacon-dot` and "<agent> is waiting on you" in 13/600
-  `--beacon-ink`, "Details" on the right, a ghost in 13/600 `--text` (opens the detail sheet). The command
-  in a mono block (`--bg`, radius 6, 10 x 12, 14/20). One Meta `--text-2` line of facts ("3
-  commits · 6 files · harlow-legal/reports"). Then Deny (secondary) and Approve (primary, with the Face ID
-  glyph only when `presence.required` is true and `covered` false) side by side, 44 tall, radius 10, 15/600. Answered, it shrinks to one Meta line:
+  between parts. A 7 px `--beacon-dot` and "<agent> is waiting on you" in Label
+  `--beacon-ink`, "Details" on the right, a ghost in Button 13/18 `--text` (opens the detail sheet). The command
+  in a mono block (`--code-bg`, radius 6, 10 x 12, Code 13/18). One Meta `--text-2` line of facts ("3
+  commits · 6 files · harlow-legal/reports"). Then Deny (a ghost) and Approve (primary, with the Face ID
+  glyph only when `presence.required` is true and `covered` false) side by side, 44 tall, radius 10, Button 17/24. Answered, it shrinks to one Meta line:
   "Approved by you, 12:07".
 - **Question card**: the same card with the choices as rows inside it.
-- **Recalled**: a "From memory" `--recall-wash` block when memory fed the reply.
+- **Recalled**: a neutral row when memory fed the reply: the memory stack icon, "From memory"
+  in Label `--text-2` and the source in Meta, no wash.
 
 Composer: a bar pinned above the keyboard or the bottom safe area, `--bg` fill, hairline above,
 8 x 12 padding: a 36 px round attach button (`--hover`, plus glyph), the input (38 tall, radius
@@ -425,7 +436,7 @@ A full-height sheet, 16 side padding, 12 between blocks:
   magnifier in `--label`, 17 text, a clear button) and "Done" (17) on the right.
 - A segmented control: All, Chats, Files, Memory, Run. 32 tall, radius 9, `--hover` track with
   a `--rule` border, 2 inset; the selected segment `--bg` with a `--rule-strong` border and
-  13/600 text, the others 13 `--text-2`.
+  13/18 600 text, the others 13/18 `--text-2`.
 
 Results as the user types:
 
@@ -434,12 +445,12 @@ Results as the user types:
    assistant, pushed as a chat.
 2. **Run**: a card of matching commands (the Deck's Find grammar: `@kit ...`, `tell <session> to
    ...`, `watch <session>`, "New session on ..."): a terminal glyph, the plain-words action in
-   Row title with matches on `--match`, the command it will run in mono 12 `--label` below.
-3. **From memory**: the `--recall-wash` block, the fact with matches on `--match`, source and
-   date in 12 `--label` below.
-4. **Chats**: header in 17/600, then a card of sessions: name (Row title), the snippet (Secondary,
+   Row title with matches on `--match`, the command it will run in Log 12/16 `--label` below.
+3. **From memory**: neutral rows with the memory stack icon, the fact with matches on
+   `--match`, source and date in Meta `--text-2` below.
+4. **Chats**: header in Row title, then a card of sessions: name (Row title), the snippet (Secondary,
    one line, matches on `--match`), "<project> · <date>" (Meta).
-5. **Files**: from the paired Macs, when they are online: file glyph, path in mono 14, "<repo> ·
+5. **Files**: from the paired Macs, when they are online: file glyph, path in Code 13/18, "<repo> ·
    <Mac>" in Meta. One Meta line says so when the Macs are away.
 
 Empty query: recent searches and the four most recent sessions. Search waits 150 ms after the
@@ -447,24 +458,24 @@ last keystroke and cancels the previous request.
 
 ## 8. Agents
 
-Under the header, one Secondary `--label` line: "1 working, 1 idle".
+Under the header, one Meta `--label` line: "1 working, 1 idle".
 
 - **Working agent card** (`--panel`, radius 10, 14 padding, 12 between parts):
-  - A 40 px tile (radius 11), the name in 17/600, and under it a 7 px `--text` dot with a 3 px
-    `--rule` ring and "Working on <session>" in 13 `--text-2`; elapsed time in 13 mono `--label`
+  - A 40 px tile (radius 11), the name in Row title, and under it a 7 px `--text` dot with a 3 px
+    `--rule` ring and "Working on <session>" in Secondary `--text-2`; elapsed time in Code `--label`
     on the right.
-  - The live console: `--code-bg` / `--bg`, `--rule` border, radius 8, 10 x 12, mono 12/19
+  - The live console: `--code-bg`, `--rule` border, radius 8, 10 x 12, Log 12/16
     `--text-2`, the last 3 lines (the command in `--label`), a block caret on the last.
-  - "Step 3 of 5" in 13 `--text-2` and a 3 px progress bar filling the rest of the row.
+  - "Step 3 of 5" in Secondary `--text-2` and a 3 px progress bar filling the rest of the row.
   - Watch (eye glyph) and Pause (pause glyph) secondary buttons side by side, 40 tall, radius 10,
-    15/600.
-  - The projects it may work in as chips: 13, 3 x 8 padding, radius 4, `--rule-strong` border,
+    Button 17/24.
+  - The projects it may work in as chips: Meta 12/16, 3 x 8 padding, radius 4, `--rule-strong` border,
     `--text-2`.
-- **Idle agent**: one card row, 40 px tile, the name in 17/600 with a role tag ("Assistant", 12,
-  radius 4, outline) and "Idle · sees every project" in 13 `--label`, a chevron. Tap opens the
+- **Idle agent**: one card row, 40 px tile, the name in Row title with a role tag ("Assistant", Meta,
+  radius 4, outline) and "Idle · sees every project" in Secondary `--label`, a chevron. Tap opens the
   agent.
-- **Scheduled**: header in 17/600, then a card of rows: a clock glyph (22, `--label`), the job in
-  16 and "<agent> · <cadence>" in 13 `--label`, "in 14h" on the right in 13 `--label`.
+- **Scheduled**: header in Row title, then a card of rows: a clock glyph (22, `--label`), the job in
+  Lead and "<agent> · <cadence>" in Secondary `--label`, "in 14h" on the right in Meta `--label`.
 - **Watch** pushes the live view: the full console, scrollable, with the session's tool rows,
   and the same approval card when it asks.
 
