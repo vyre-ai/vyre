@@ -22,10 +22,10 @@ Full assessment, with the file-level inventory: `docs/design/windows-plan.md`.
 
 ## Decision
 
-Windows PCs and Macs are **devices**. The **server** is Linux only, a bare Linux machine, or a
-Linux VM, including one inside WSL2 on a Windows PC. There is no Windows server and no Windows
-Capsule; "the box" as a name for the server is retired in new copy in favor of "server", and a
-Windows PC is never asked to be one.
+Windows PCs and Macs are **devices**; the **server** is Linux only, a bare Linux machine or a
+Linux VM, including one inside WSL2 on a Windows PC (words per ADR 0038, terminology; link added
+once it merges). There is no Windows server and no Windows Capsule, and a Windows PC is never
+asked to be one.
 
 Four tiers, cheapest first:
 
@@ -61,11 +61,13 @@ Four tiers, cheapest first:
 
 ## Consequences
 
-- A Windows device that hits a Capsule-only surface (`vyre capsule`, or a tool a Mac-only module
-  owns, like `vyre sideview`/`vyre voice`/`vyre hands`) gets a plain "not on this device" answer,
-  not silence or a crash. `vyre capsule` already said this cleanly; the module-tool path answers
-  with the daemon's generic "no such tool here", which is enough for 0.1.x but is not the same
-  polish, worth revisiting once Tier C exists and there is a real Windows equivalent to point to.
+- `vyre capsule` already said "not on this device, only macOS" before this ADR, at the CLI level,
+  with no vyred needed. `local/sideview` already said the same at the module level (its own
+  `SideviewError`, once vyred starts). `local/voice`'s push-to-talk (`vyre voice talk`) did not:
+  it printed "vyre-mic is not built. Build it with: sh build.sh" on every non-Mac device, telling
+  someone to build a Swift binary that cannot exist on their device. Fixed to say plainly that
+  push-to-talk needs the Capsule's mic and is macOS only (`local/voice/talk.js`). `vyre voice
+  status` and `vyre voice key` were never Mac-only to begin with and are untouched.
 - Tier B is undertested until someone runs it on real Windows hardware; `windows-latest` CI
   proves the Node suite, not WSL2 or Docker Desktop itself.
 - Every future Windows-only module (`local/hands-win`, `local/screen-win`, a `vault` backend for

@@ -8,10 +8,10 @@ status: draft
 
 # Windows
 
-A Windows PC is a **device**, the same idea as a Mac or a phone: something you use Vyre from. The
-**server** is Linux only, and today that means a Linux machine or a Linux VM, including one
-inside WSL2 on a Windows PC (below). There is no native Windows server and no Windows Capsule yet;
-both are 0.2 work (see [ADR 0037](../adr/0037-windows.md)).
+"Server" and "device" are defined in ADR 0038 (terminology; link added once it merges); in short,
+a Windows PC is a device, same as a Mac or a phone, and the server is Linux only, including one
+inside WSL2 on a Windows PC (below). There is no native Windows server and no Windows Capsule
+yet; both are 0.2 work (see [ADR 0037](../adr/0037-windows.md)).
 
 ## As a device, against a server
 
