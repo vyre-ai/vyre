@@ -21,9 +21,9 @@ switched off without breaking the rest.
   can be frozen.
 
 `test/boundaries.test.js` scans every runtime `.js`, `.mjs` and `.cjs` file under `core/`,
-`local/`, `modules/` and `lib/` for relative imports (static, dynamic and `require`). Tests, `testing/`
-folders and fixtures are out of scope, since a test may reach into what it tests. The test fails
-on:
+`local/`, `modules/` and `lib/` for relative imports (static, dynamic and `require`). Tests,
+`testing/` folders and fixtures are out of scope, since a test may reach into what it tests. The
+test fails on:
 
 - an import into another part that is not in its allowlist, or a new file behind a frozen edge;
 - an allowlist entry that nothing imports any more (the list only shrinks);
