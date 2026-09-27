@@ -211,10 +211,11 @@ Plan (to the lead before building):
 
 ## Doing (27 Sep, after logout 3)
 
-Deploy blocker done: work/e2e 21ac4910 to the integrator (spawnAsAgent wiring, the split OFF by
-default per the lead's (c), sessions.spawner / VYRE_SESSIONS_SPAWNER; check.sh passes both ways).
-Next: the headscale gate on the candidate sha box-deploy forwards (setup in /srv/vyre-e2e;
-run1/run2/run3 plus the person-session checks). pwa takes its api.js at merge (keep personCode).
+Handed to the integrator: bb0415f8 on main fb1ed1d1 (the floor follows symlinks, `..` and hard
+links; the per-thread socket efb02b2c; phone fixes e5aaf881). Waiting: box-deploy's candidate
+sha for the headscale gate (setup in /srv/vyre-e2e: run1.sh, run2.sh <link>, run3.sh, then the
+person-session checks); sessions wiring VYRE_SOCKET, then the split on.
+
 
 
 /srv/vyre-e2e; `./run1.sh`, `./run2.sh <link>`, `./run3.sh`, then the person-session checks in
