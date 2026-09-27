@@ -45,6 +45,12 @@ belong to another team. Map: docs/design/cohesion.md (19 ranked items, approved 
   decided attach is person-only (09ac1d0f): a preview, then one confirm, no Touch ID; an agent may
   suggest attaching, never call the tool. Cohesion's part on item 19 is done; needs federation and
   memory-iq to settle the router's exact contract and the graph mechanics next.
+- Interaction and cohesion pass over every 0.1.1 plan (capsule-pro, vault, glass, memory-iq,
+  teammates, federation, windows, sessions/chat), from the lead, worked with app-design.
+  docs/design/interaction.md (93cf1e8d): one interaction language, citing DIRECTION.md and
+  system/components rather than duplicating; top 3 upgrades per team; five cross-team seams, each
+  with one fix. Sent the lead a summary under 35 lines, not messaging owning teams yet per the
+  lead's instruction.
 - SAVED for restart. Integrator has 0f4d1105 (release candidate; supersedes f5cd36f7): glue modules,
   drift test, hands privacy fix (e2e signed off), sight.frame, context view/now {surface}, Mac asks,
   suggest account ranking, Chrome teardown fix. testbox: 156 targeted pass; hands-chrome 8/8 on
