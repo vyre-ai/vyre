@@ -18,17 +18,10 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
 - 2026-09-27: audits of sessions, chat, settings and Paseo (findings in the gap list sent to the
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
-## Doing (at logout 4, 2026-09-27)
-BLOCKING the branch (e2e must re-review; branch merges only after sign-off):
-1. e2e HIGH 1: add "settings.set" and "settings.reset" to PERSON_ONLY (core/presence/index.js);
-   refuse callers matching /(?:^|[\s:])agent:/ in both run()s. Tests: refused for mcp,
-   mcp:agent:kit, "cli agent:kit", anonymous; tailnet without person session 401
-   person_session_required; socket from under claude 403 (test/peer.test.js helper).
-2. e2e HIGH 2: scope CALL_AS to each core key's declared setter tool (not the whole label);
-   check the tool in ctx.call. Test: CALL_AS refuses a tool outside the setter list.
-3. platform store limits: merge work/platform-store-limits (one commit on 390ff807; 40/40):
-   third-party modules may not use claude stores, config paths must start "<module>.", tool
-   stores only their own tools called as module:settings. Then send e2e the sha.
+## Doing (after LOGOUT 4 resume, 2026-09-27)
+DONE on resume: main 7880dfa6 merged (e9b22592); e2e HIGH 1 + HIGH 2 fixed (6fb87f4e: PERSON_ONLY
+settings.set/reset, agent labels refused, CALL_AS for settings limited to registry.settingTools());
+store limits merged (b172c2d0 + 67abc47f); sent e2e 62abf2cf for re-review. Waiting on e2e sign-off.
 After that:
 4. Typing lag: my tree's 2,000-row paint p95 48 ms (> 33) from composer.js:70 grow() over an
    unwindowed timeline. Rebase composer work on chat c26f868 (chat handed composer.js,
