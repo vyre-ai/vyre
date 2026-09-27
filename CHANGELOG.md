@@ -150,6 +150,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (`person_session_required`): the box took them as the owner's device, so a model on the Mac
   could answer its own ask on the box. The socket's person check now looks at the tool link.call
   carries. The Mac CLI gets them back through a Mac person session (next).
+
+#### Chat: the stream resumes, and long replies stay smooth
+
+- Reconnect (deck/js/api.js, ADR 0029 R1): the shared stream hears `stream.reset` and lowers its
+  cursor to vyred's id, so events after a box's log reset are no longer all dropped as seen. A
+  stream the browser gave up on (CLOSED) is opened again from the last id seen, 1 s doubling to
+  30 s, only while the page is visible. `onResume(fn)` tells a view the stream came back or was
+  reset; the session view then re-reads threads.get (events since the last one applied),
+  threads.asks and the transcript from `next`, merged through session-state, so nothing is missing
+  or shown twice.
+- Stick to the bottom (window-view.js createStick, after Paseo's web stream): a ResizeObserver on
+  the scroller and every mounted row, and at most one frame per burst setting scrollTop, replace
+  reading scrollHeight around every live event and scrolling on every reveal frame. Only the
+  reader's intent detaches (an upward wheel, PageUp / ArrowUp / Home, a touch drag, the
+  scrollbar, within 100 ms of the scroll); within 1 px of the bottom sticks again. The windowed
+  view's anchoring and the Jump to latest pill are kept.
+- Live text (live-text.js): finished blocks are rendered once and frozen; only the block being
+  written re-parses each frame. Block ends are found by a line scan that resumes where it
+  stopped, so a long open code fence is no longer scanned quadratically (settledEnd is linear). A
+  code block shows plain text while its fence is open and is highlighted once, when it closes.
+- Pace (core/pace.js, after Paseo's text-reveal): each frame reveals ceil(backlog * dt / 150 ms)
+  characters, at least one, at most once per 60 Hz frame; a stall counts as 250 ms at most. The
+  pacer's API is unchanged (maxLagMs still reads as the horizon); live-text draws nothing on a
+  faster display's extra frames.
+- Grouping (core/grouping.js createGrouper): the session view no longer folds every item on each
+  tool event. Given the changed keys it regroups from the row before the first change and stops
+  at the first old row boundary past the last one; unchanged rows stay the same objects.
+  groupItems stays the pure full pass, and a test checks both agree on random sequences.
 #### Sessions: the Agent SDK is the default driver (ADR 0030)
 
 - `sessions.driver` defaults to `sdk`: every session Vyre starts (Chat, agents, the Capsule, the

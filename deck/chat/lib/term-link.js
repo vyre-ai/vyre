@@ -188,3 +188,94 @@ export function remember(list, entry, max = 16) {
   const rows = Array.isArray(list) ? list.filter(r => r && typeof r.term === "string" && r.term !== entry.term) : [];
   return [entry, ...rows].slice(0, max);
 }
+
+// Who sizes the terminal (core/term/index.js "Size"). The first socket to attach owns the size;
+// only its {"t":"size"} resizes the shell. The box tells a socket that attached with from= (or
+// sent take) {"t":"size",cols,rows,"owner":bool} after the "at", on every change of size or owner,
+// and in answer to a size it sent without owning it. A box that never sends one behaves as before:
+// this screen fits and sends its size, and there is no Take size.
+
+/**
+ * What this screen knows about the size: whether the box has said anything (`known`), whether
+ * this socket owns it, the box's size, and the size this screen last sent on this socket.
+ * @typedef {{ cols: number, rows: number }} Dims
+ * @typedef {{ known: boolean, owner: boolean, cols: number, rows: number, sent: Dims|null }} Sizing
+ */
+
+/** Nothing heard yet: fit and send, as a box without size frames expects. @type {Sizing} */
+export const unsized = Object.freeze({ known: false, owner: true, cols: 0, rows: 0, sent: null });
+
+/** A fresh socket: the box has no size from it yet, so the next fit sends again. @param {Sizing} s @returns {Sizing} */
+export const sizeReopened = s => ({ ...s, sent: null });
+
+/** A positive whole number, or null. @param {any} v */
+const dim = v => (typeof v === "number" && Number.isSafeInteger(v) && v > 0 ? v : null);
+/** @param {Dims|null|undefined} a @param {Dims|null|undefined} b */
+const same = (a, b) => Boolean(a && b && a.cols === b.cols && a.rows === b.rows);
+/** @param {Dims} d @returns {{ t: "size", cols: number, rows: number }} */
+const sizeMsg = d => ({ t: "size", cols: d.cols, rows: d.rows });
+
+/**
+ * The size this screen's xterm is drawn at: its own fitted size while it owns the size (or the box
+ * never said), else the owner's, scaled to fit (letterbox), never reflowed.
+ * @param {Sizing} s @param {Dims} fitted @returns {Dims}
+ */
+export const drawAt = (s, fitted) => (s.known && !s.owner ? { cols: s.cols, rows: s.rows } : { cols: fitted.cols, rows: fitted.rows });
+
+/** Is this screen watching another's size (show "Watching at ... · Take size")? @param {Sizing} s */
+export const watching = s => s.known && !s.owner;
+
+/**
+ * This screen was fitted (a resize, or the stream went live). It sends its fitted size: an owner's
+ * resizes the shell, anyone else's is kept by the box as the size it would like (applied if it
+ * becomes owner). Nothing when that size was already sent on this socket.
+ * @param {Sizing} s @param {Dims|null|undefined} fitted
+ * @returns {{ state: Sizing, send: { t: "size", cols: number, rows: number } | null }}
+ */
+export function onFit(s, fitted) {
+  if (!fitted || !dim(fitted.cols) || !dim(fitted.rows) || same(s.sent, fitted)) return { state: s, send: null };
+  const d = { cols: fitted.cols, rows: fitted.rows };
+  return { state: { ...s, sent: d }, send: sizeMsg(d) };
+}
+
+/**
+ * A {"t":"size"} from the box. owner:false: watch at its size. owner:true: this screen owns it;
+ * when the box's size is not this screen's (it just became owner at a size it asked for earlier),
+ * send the fitted size, once, so a box that clamps it cannot start a loop.
+ * @param {Sizing} s @param {any} m @param {Dims|null|undefined} fitted
+ * @returns {{ state: Sizing, send: { t: "size", cols: number, rows: number } | null }}
+ */
+export function onSizeFrame(s, m, fitted) {
+  const cols = dim(m?.cols), rows = dim(m?.rows);
+  if (!m || m.t !== "size" || cols === null || rows === null || typeof m.owner !== "boolean") return { state: s, send: null };
+  const next = { ...s, known: true, owner: m.owner, cols, rows };
+  if (!m.owner || !fitted || same(fitted, { cols, rows })) return { state: next, send: null };
+  return onFit(next, fitted);
+}
+
+/**
+ * Take size: this screen owns it from now, at its fitted size (or, not yet measured, at the size
+ * it last asked for).
+ * @param {Sizing} s @param {Dims|null|undefined} fitted
+ * @returns {{ state: Sizing, send: { t: "take", cols?: number, rows?: number } }}
+ */
+export function takeSize(s, fitted) {
+  if (!fitted || !dim(fitted.cols) || !dim(fitted.rows)) return { state: s, send: { t: "take" } };
+  const d = { cols: fitted.cols, rows: fitted.rows };
+  return { state: { ...s, sent: d }, send: { t: "take", cols: d.cols, rows: d.rows } };
+}
+
+/** "Watching at 120x40". @param {Sizing} s */
+export const watchLabel = s => `Watching at ${s.cols}x${s.rows}`;
+
+/**
+ * Letterbox: the scale (never above 1) and offsets that fit a drawn terminal of `drawn` pixels in
+ * a `box`, centred.
+ * @param {{ w: number, h: number }} drawn @param {{ w: number, h: number }} box
+ * @returns {{ scale: number, x: number, y: number }}
+ */
+export function letterbox(drawn, box) {
+  if (!(drawn.w > 0 && drawn.h > 0 && box.w > 0 && box.h > 0)) return { scale: 1, x: 0, y: 0 };
+  const scale = Math.min(1, box.w / drawn.w, box.h / drawn.h);
+  return { scale, x: Math.max(0, Math.floor((box.w - drawn.w * scale) / 2)), y: Math.max(0, Math.floor((box.h - drawn.h * scale) / 2)) };
+}

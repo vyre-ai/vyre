@@ -340,10 +340,24 @@ export async function modules() {
 // One EventSource for the whole Deck, shared by every view. Views load their state through tools
 // and then follow events, so the stream starts at the newest event (since=latest) rather than
 // replaying the log. After that, EventSource resumes by Last-Event-ID on its own.
+//
+// Resuming (ADR 0029 R1): vyred sends `stream.reset` when the cursor it was given is ahead of its
+// log (its store was reset, or this tab followed another box). Its id is the one to follow from,
+// lower than anything seen, so lastSeen drops to it; without that every later event would be
+// dropped as already seen. A stream the browser gave up on (CLOSED: a 403, a proxy that closed
+// it for good) is opened again here, 1 s doubling to 30 s, only while the page is visible, from
+// the last id seen. Each time the stream comes back, or is reset, onResume's listeners hear it,
+// so a view reloads what it may have missed through tools.
 /** @type {EventSource | null} */
 let source = null;
 let lastSeen = 0;
+let opened = false;
+let retryMs = 1000;
+/** @type {any} */ let retryTimer = null;
+let waitingVisible = false;
 const subs = new Set();
+/** @type {Set<(why: "reconnect"|"reset", from?: number) => void>} */
+const resumeSubs = new Set();
 // The SSE "event:" line carries the type, and named events never reach onmessage, so every type
 // a view may want is listened for by name.
 const known = new Set(["thread.started", "thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped",
@@ -351,7 +365,8 @@ const known = new Set(["thread.started", "thread.sent", "thread.text", "thread.t
   "thread.picked", "thread.unpicked", "tool.held", "turn.completed", "file.touched",
   "gate.held", "gate.released", "gate.failed", "gate.rejected",
   "lesson.proposed", "lesson.learned", "lesson.caught", "lesson.broken", "lesson.escalated", "lesson.retired",
-  "onboard.stepped", "onboard.finished", "vault.item-added", "vault.granted", "vault.revoked", "pass.created", "pass.revoked"]);
+  "onboard.stepped", "onboard.finished", "vault.item-added", "vault.granted", "vault.revoked", "pass.created", "pass.revoked",
+  "stream.reset"]);
 
 /**
  * Listen to vyred's events. type is "thread.text", "thread.*" or "*"; a prefix type hears only
@@ -362,25 +377,98 @@ const known = new Set(["thread.started", "thread.sent", "thread.text", "thread.t
 export function on(type, fn) {
   const sub = { type, fn };
   subs.add(sub);
-  if (!type.includes("*") && !known.has(type)) { known.add(type); source?.addEventListener(type, deliver); }
-  if (!source && typeof EventSource !== "undefined") {
-    // An EventSource cannot send headers, so the onboarding session rides as ?s=.
-    const s = headers["x-vyre-onboard"];
-    source = new EventSource("/v1/events/stream?since=latest" + (s ? `&s=${encodeURIComponent(s)}` : ""));
-    for (const t of known) source.addEventListener(t, deliver);
-    source.addEventListener("open", () => reach(true));
-    // EventSource retries on its own; CLOSED means it gave up (a 403, say), CONNECTING a lost box.
-    source.addEventListener("error", () => { if (source && source.readyState !== EventSource.OPEN) reach(false); });
-  }
+  if (!type.includes("*") && !known.has(type)) { known.add(type); source?.addEventListener(type, heard); }
+  if (!source && !retryTimer && !waitingVisible) connect();
   return () => { subs.delete(sub); };
+}
+
+/**
+ * Hear the stream come back after a drop ("reconnect") or vyred say its log is behind this tab's
+ * cursor ("reset", with the id vyred follows from): reload through tools. Returns an unsubscribe.
+ * @param {(why: "reconnect"|"reset", from?: number) => void} fn
+ */
+export function onResume(fn) {
+  resumeSubs.add(fn);
+  return () => { resumeSubs.delete(fn); };
+}
+
+/** @param {"reconnect"|"reset"} why @param {number} [from] */
+function resumed(why, from) {
+  for (const fn of resumeSubs) { try { fn(why, from); } catch (err) { console.error(err); } }
+}
+
+const pageVisible = () => { try { return typeof document === "undefined" || document.visibilityState !== "hidden"; } catch { return true; } };
+const CLOSED = () => (typeof EventSource !== "undefined" && typeof EventSource.CLOSED === "number" ? EventSource.CLOSED : 2);
+
+function connect() {
+  if (typeof EventSource === "undefined") return;
+  // An EventSource cannot send headers, so the onboarding session rides as ?s=. A reopened stream
+  // resumes from the last id seen; the first starts at the newest event.
+  const s = headers["x-vyre-onboard"];
+  const since = lastSeen > 0 ? String(lastSeen) : "latest";
+  const es = source = new EventSource(`/v1/events/stream?since=${since}` + (s ? `&s=${encodeURIComponent(s)}` : ""));
+  for (const t of known) es.addEventListener(t, heard);
+  es.addEventListener("open", () => {
+    if (es !== source) return;
+    reach(true);
+    retryMs = 1000;
+    if (opened) resumed("reconnect");
+    opened = true;
+  });
+  // EventSource retries on its own; CLOSED means it gave up (a 403, say), CONNECTING a lost box.
+  es.addEventListener("error", () => {
+    if (es !== source) return;
+    if (es.readyState !== (typeof EventSource.OPEN === "number" ? EventSource.OPEN : 1)) reach(false);
+    if (es.readyState === CLOSED()) { try { es.close?.(); } catch {} source = null; later(); }
+  });
+}
+
+/** Open the stream again after a backoff, and only while the page is visible. */
+function later() {
+  if (retryTimer || waitingVisible) return;
+  if (!pageVisible()) { waitVisible(); return; }
+  const ms = retryMs;
+  retryMs = Math.min(retryMs * 2, 30_000);
+  retryTimer = setTimeout(() => {
+    retryTimer = null;
+    if (source) return;
+    if (!pageVisible()) { waitVisible(); return; }
+    connect();
+  }, ms);
+}
+
+function waitVisible() {
+  if (waitingVisible || typeof document === "undefined" || !document.addEventListener) return;
+  waitingVisible = true;
+  const back = () => {
+    if (!pageVisible()) return;
+    document.removeEventListener("visibilitychange", back);
+    waitingVisible = false;
+    if (!source) { retryMs = 1000; connect(); }
+  };
+  document.addEventListener("visibilitychange", back);
+}
+
+/** An event from the stream in use; one from a stream given up on (and replaced) is not delivered. @param {MessageEvent} m */
+function heard(m) {
+  const from = /** @type {any} */ (m)?.currentTarget ?? /** @type {any} */ (m)?.target;
+  if (from && source && from !== source) return;
+  deliver(m);
 }
 
 /** @param {MessageEvent} m */
 function deliver(m) {
   let e;
   try { e = JSON.parse(m.data); } catch { return; }
-  if (e.id <= lastSeen) return;
-  lastSeen = e.id;
+  const id = Number(e.id);
+  if (e.type === "stream.reset") {
+    // Follow from vyred's id, lower than what this tab saw: anything after it is new.
+    if (Number.isFinite(id)) lastSeen = id;
+    resumed("reset", Number.isFinite(id) ? id : undefined);
+    return;
+  }
+  if (id <= lastSeen) return;
+  lastSeen = id;
   for (const s of subs) {
     const t = s.type;
     if (t === "*" || t === e.type || (t.endsWith(".*") && e.type.startsWith(t.slice(0, -1)))) {

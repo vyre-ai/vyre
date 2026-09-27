@@ -53,7 +53,7 @@
 // Nothing here uses innerHTML: text is untrusted, so it goes through lib/markdown.js or text nodes.
 
 import { h, put, empty } from "../js/dom.js";
-import { attempt, on } from "../js/api.js";
+import { attempt, on, onResume } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
 import { healthDot } from "../js/health.js";
@@ -71,9 +71,8 @@ import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints,
 import { CAPS, NEEDS_UPDATE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
 import { todoPin, tasksTray } from "./tray.js";
-import { groupItems } from "./core/grouping.js";
-import { isAtBottom } from "./core/window.js";
-import { createWindowView } from "./window-view.js";
+import { createGrouper } from "./core/grouping.js";
+import { createWindowView, createStick } from "./window-view.js";
 
 const PAGE = 400;
 const MAC_PAGE = 80;
@@ -141,15 +140,20 @@ export function mountSession(container, opts) {
   const stop = { at: 0, via: /** @type {"interrupt"|"stop"|null} */ (null), busy: false, error: /** @type {string|null} */ (null) };
 
   const timeline = h("div", { class: "thread-view cv-timeline" });
-  let following = true;
   const jump = h("button", { class: "jump-latest", type: "button", hidden: true, onclick: () => toBottom() }, icon("chevron", 12), "Jump to latest");
-  timeline.addEventListener("scroll", () => {
-    following = isAtBottom(timeline.scrollTop, timeline.clientHeight, timeline.scrollHeight);
-    if (following) jump.hidden = true;
-    win.schedule(true);
-  }, { passive: true });
+  /**
+   * Stuck to the bottom (window-view.js createStick): a ResizeObserver on the rows keeps the tail
+   * in view, one frame per burst, with no layout read per event; only the reader's own upward
+   * scroll detaches, and coming back to the bottom sticks again.
+   */
+  const stick = createStick(timeline, {
+    onStick: () => win.follow(),
+    onChange: stuck => { if (stuck) jump.hidden = true; },
+    onGrowDetached: () => { jump.hidden = false; },
+  });
+  timeline.addEventListener("scroll", () => win.schedule(true), { passive: true });
   /** Long sessions mount only the rows near the viewport (window-view.js); the bottom anchor is kept there. */
-  const win = createWindowView(timeline, { following: () => following, onUnmount: (k, el) => unmounted(k, el) });
+  const win = createWindowView(timeline, { following: () => stick.stuck, onUnmount: (k, el) => unmounted(k, el), resize: stick });
   const head = h("div", { class: "session-head" });
   const leaseBar = h("div", { class: "lease-bar" });
   const queuedBox = h("div", { class: "cv-queued", role: "status", hidden: true });
@@ -488,7 +492,7 @@ export function mountSession(container, opts) {
     // What loads above keeps the reading position: the row at the top of the viewport is put back
     // from the new offsets (window-view.js), windowed or not, after this line has gone too.
     const keep = win.anchor();
-    applyBlocks(S, older);
+    for (const k of applyBlocks(S, older)) changedKeys.add(k);
     layout();
     pin.set(S.todos);
     tray.set(S.tasks);
@@ -547,7 +551,8 @@ export function mountSession(container, opts) {
         /** @type {any} */ (el)._who = who;
         return el;
       }
-      case "text": { const el = textItemRow(it.at, { visible, onGrow: () => { if (following) toBottom(); } }); el.sync(it); return el; }
+      // A growing reply is heard by the resize observer; without one, a frame is asked for (coalesced).
+      case "text": { const el = textItemRow(it.at, { visible, onGrow: stick.observing ? undefined : () => stick.poke() }); el.sync(it); return el; }
       case "reasoning": return thinkingRow(it.text, it.at, thinkLabel(it));
       case "tool": return toolCard(asBlock(it));
       case "turn": return turnRow(asBlock(it));
@@ -721,7 +726,9 @@ export function mountSession(container, opts) {
    */
   function layout() {
     if (mode !== "blocks") return;
-    const rows = groupItems(S.items);
+    // Only the runs the changed keys touch are grouped again (core/grouping.js createGrouper).
+    const rows = grouper.rows(S.items, changedKeys);
+    changedKeys.clear();
     runOf.clear();
     /** @type {import("./window-view.js").Row[]} */
     const want = [];
@@ -816,9 +823,13 @@ export function mountSession(container, opts) {
     }, 1000);
   }
 
+  /** Items changed since the last layout, for the incremental grouping. */
+  const grouper = createGrouper();
+  const changedKeys = new Set();
   /** Changed keys from session-state: rows patched in place; the order laid out again only when a row came, went or moved. */
   function patch(keys) {
     if (!keys.length) return;
+    for (const k of keys) changedKeys.add(k);
     let order = false;
     for (const k of keys) {
       if (k === "@session") { if (booted) drawHead(); continue; }
@@ -864,11 +875,9 @@ export function mountSession(container, opts) {
         const r = await transcript({ from: next });
         if (r.error) break;
         if (r.data.session && recorded.on) { recorded.session = r.data.session; drawHead(); }
-        const n = timeline.scrollHeight;
         patch(applyBlocks(S, r.data.blocks));
-        if (r.data.blocks.length) layout();
+        if (r.data.blocks.length) { layout(); grew(); }
         next = r.data.next ?? next;
-        if (timeline.scrollHeight !== n) grew();
         if (r.data.blocks.length >= page()) reading.again = true;
       } while (reading.again);
     } finally { reading.busy = false; }
@@ -1149,10 +1158,10 @@ export function mountSession(container, opts) {
     if (mode !== "blocks") return legacyRows.get(key.replace(/^t:/, "tool:")) || null;
     const rk = runOf.get(key);
     if (rk && !openRuns.has(rk)) { openRuns.add(rk); runEls.get(rk)?.draw(); }
-    const was = following;
-    following = false;
+    const was = stick.stuck;
+    stick.detach();
     const row = win.reveal(rk || key);
-    if (!row) { following = was; return els.get(key) || null; }
+    if (!row) { if (was) stick.stick(); return els.get(key) || null; }
     return els.get(key) || row;
   }
   /** Scroll to the linked row and flash it: an ask's card (or its anchored tool call), a tool call, else the first row at or after `at`. */
@@ -1173,7 +1182,7 @@ export function mountSession(container, opts) {
       else for (const n of timeline.children) { if (n._ts && n._ts >= want.at) { el = n; break; } }
     }
     if (!el) return;
-    following = false;
+    stick.detach();
     el.scrollIntoView?.({ block: "center" });
     el.classList.add("cv-flash");
     setTimeout(() => el.classList.remove("cv-flash"), FLASH_MS);
@@ -1181,8 +1190,14 @@ export function mountSession(container, opts) {
 
   // ---- shared pieces ------------------------------------------------------------------------
 
-  function toBottom() { following = true; win.follow(); timeline.scrollTop = timeline.scrollHeight; jump.hidden = true; }
-  function grew() { if (following) toBottom(); else jump.hidden = false; }
+  /** To the bottom now, and stuck there (Jump to latest, open, a sent message). */
+  function toBottom() { stick.stick(); jump.hidden = true; }
+  /**
+   * Something was added. The resize observer hears the rows window-view mounts; the earlier view
+   * appends its own rows, and without an observer nothing hears them: one frame is asked for,
+   * which sticks or, detached, shows the pill when the content grew. No layout read here.
+   */
+  function grew() { if (mode === "legacy" || !stick.observing) stick.poke(); }
 
   function noticeMsg(text, at) {
     return h("div", { class: "gate-note cv-notice" }, icon("clock", 12), " ", text, " ", h("span", { class: "msg-when" }, clock(at)));
@@ -1215,14 +1230,16 @@ export function mountSession(container, opts) {
   async function fetchMemory() {
     const r = await attempt("memory.facts", { thread, ...(record.current?.project ? { room: record.current.project } : {}), limit: 50 });
     if (r.error || !r.data || !r.data.facts) return;
-    const n = timeline.scrollHeight;
+    let added = false;
     for (const f of r.data.facts) {
       if (shownFacts.has(f.id)) continue;
       shownFacts.add(f.id);
       insertFact(f);
+      added = true;
     }
+    if (!added) return;
     layout();
-    if (timeline.scrollHeight !== n) grew();
+    grew();
   }
 
   boot();
@@ -1232,11 +1249,63 @@ export function mountSession(container, opts) {
   function onLive(e) {
     if (e.thread !== thread) return;
     if (!booted) { early.push(e); return; }
-    const n = timeline.scrollHeight;
     onEvent(e, true);
-    if (e.type === "thread.sent") toBottom(); else if (timeline.scrollHeight !== n) grew();
+    if (e.type === "thread.sent") toBottom(); else grew();
   }
+  /**
+   * The stream came back after a drop, or vyred reset it (its log is behind this tab's cursor,
+   * ADR 0029 R1): read again what may have been missed. threads.get's events since the last one
+   * applied (the queue, the state, live items), threads.asks, and the transcript from `next`,
+   * each merged through session-state, which drops an event id it applied already and swaps a
+   * live item for its block under the same key, so nothing is missing or shown twice. A reset's
+   * ids start again below what this view saw, so its floor drops to vyred's.
+   */
+  const resuming = { busy: false, again: false, reset: /** @type {number|null} */ (null) };
+  async function resume(/** @type {"reconnect"|"reset"} */ why, /** @type {number|undefined} */ from) {
+    if (why === "reset" && typeof from === "number" && Number.isFinite(from)) {
+      resuming.reset = resuming.reset == null ? from : Math.min(resuming.reset, from);
+      if (S.meta.lastId > from) S.meta.lastId = from;
+    }
+    if (!booted) return;
+    if (resuming.busy) { resuming.again = true; return; }
+    resuming.busy = true;
+    try {
+      do {
+        resuming.again = false;
+        await reread();
+      } while (resuming.again);
+    } finally { resuming.busy = false; resuming.reset = null; }
+  }
+  async function reread() {
+    if (mode !== "blocks") {
+      fetchAsks();
+      if (recorded.on || isMac(where)) await readMoreLegacy();
+      return;
+    }
+    if (switchboard() && !recorded.on && !isMac(where)) {
+      const since = resuming.reset != null ? resuming.reset : Number.isFinite(S.meta.lastId) ? S.meta.lastId : 0;
+      const r = await attempt("threads.get", { thread, since, limit: 500 });
+      if (!r.error && r.data) {
+        const data = /** @type {any} */ (r.data);
+        if (data.thread) {
+          record.current = data.thread;
+          const st = data.thread.state || STATUS[data.thread.status];
+          // A state word the events will not repeat: the record's, unless an event said it since.
+          if (st && !(data.events || []).some(e => e.type === "thread.state")) S.state = st;
+        }
+        replaying = true;
+        try { for (const e of data.events || []) if (!e.thread || e.thread === thread) onEvent(e, false); } finally { replaying = false; }
+        for (const a of data.asks || []) upsertAsk(a);
+        drawHead();
+        drawQueued();
+        grew();
+      }
+    }
+    await Promise.all([fetchAsks(), refresh()]);
+  }
+
   const offs = [
+    onResume((why, from) => { resume(why, from); }),
     on("thread.*", onLive),
     // Not a thread.* name: heard on its own.
     on("mode.changed", onLive),
@@ -1272,7 +1341,7 @@ export function mountSession(container, opts) {
   window.addEventListener("deck:kb", onKb);
   offs.push(() => { container.removeEventListener("focusin", onFocus); window.removeEventListener("deck:kb", onKb); });
   return () => {
-    health.stop(); for (const off of offs) off(); composer.stop();
+    health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop();
     document.removeEventListener("keydown", onKey);
     document.removeEventListener("visibilitychange", onVisible);
     if (rawTimer) clearTimeout(rawTimer);

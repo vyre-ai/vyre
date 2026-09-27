@@ -173,8 +173,14 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
 ## Doing (27 Sep, after logout 3)
+- Chat smoothness (27 Sep, all five committed, untested: testbox held, node --check only): 1 reconnect
+  (api.js stream.reset + CLOSED retry + onResume, session re-read on resume; api.js change to tell pwa),
+  2 stick to bottom (window-view.js createStick, ResizeObserver), 3 frozen live-text blocks + linear
+  settledEnd + highlight on close, 4 paced reveal (Paseo text-reveal), 5 incremental grouping.
+  Next: run deck/chat tests on testbox (api-stream, live-text, grouping, pace, session, window new/changed).
 New direction: ADR 0030 (Agent SDK sessions are the default) and Direction A (docs/design/one-app on
 work/app-design, Session board). Chat is a native chat over Vyre's event stream; the terminal stays.
+- Take size back in the Deck terminal (27 Sep) against resilience's core/term size owner (ab4fdc4d).
 - Done this session: fb22bad (pre-logout WIP committed), 231221b merged main ef51363, 7f49979 diff
   summary on the permission card (changesRow, exported for pwa's needs.js), b20fec2 live text keys
   (message, block) equal the transcript's (verified against one real Claude Code 2.1.268 run on
