@@ -153,12 +153,13 @@
                     <span style="width: 16px; flex: none;"></span>
                   </div>
                   <div class="row" style="align-items: flex-start; gap: 10px; padding: 9px 14px; border-top: 1px solid var(--rule);">
+                    <svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 5.8-1.1"></path></svg>
+                    <div class="col grow" style="gap: 2px;"><div class="row" style="gap: 8px;"><span class="w6 grow">Doesn't ask</span><span class="mono t12 t3">bypass</span></div><span class="t12 t2">Runs without asking. Only you turn it on.</span></div>
                     <span style="width: 16px; flex: none;"></span>
-                    <span class="t12 t2 grow">Want fewer asks? Use Edits allowed and answer asks with Always in Harlow Legal.</span>
                   </div>
                   <div class="row" style="align-items: flex-start; gap: 8px; padding: 10px 14px 12px; border-top: 1px solid var(--rule);">
                     <svg class="ic ic-12 t3" viewBox="0 0 16 16" style="margin-top: 2px;"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>
-                    <span class="t12 t2">In every mode the floor still refuses things like <span class="mono">rm -rf /</span>, and the Gate still holds sends, payments and deletes outside.</span>
+                    <span class="t12 t2">The floor and the Gate apply in every mode, Doesn't ask too: sends, posts and payments are still held for you, and protected files are still refused.</span>
                   </div>
                 </div>
               </div>
@@ -246,12 +247,13 @@
             <span class="mono t12 t3" style="margin-top: 4px;">acceptEdits</span>
           </div>
           <div class="row" style="align-items: flex-start; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--rule);">
-            <span style="width: 20px; flex: none;"></span>
-            <span class="t13 t2 grow">Want fewer asks? Use Edits allowed and answer asks with Always in Harlow Legal.</span>
+            <svg class="ic ic-20 t2" viewBox="0 0 16 16" style="margin-top: 2px;"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 5.8-1.1"></path></svg>
+            <div class="col grow" style="gap: 2px;"><span class="t17 w6">Doesn't ask</span><span class="t13 t2">Runs without asking. Only you turn it on.</span></div>
+            <span class="mono t12 t3" style="margin-top: 4px;">bypass</span>
           </div>
           <div class="row" style="align-items: flex-start; gap: 10px; padding: 12px 16px 48px; border-top: 1px solid var(--rule);">
             <svg class="ic t2" viewBox="0 0 16 16" style="margin-top: 1px;"><path d="M8 1.5l5.5 2v4c0 3.5-2.4 6-5.5 7-3.1-1-5.5-3.5-5.5-7v-4z"></path></svg>
-            <span class="t13 t2">The floor and the Gate apply in every mode: <span class="mono t12">rm -rf /</span> is always refused, and sends, payments and deletes outside still wait for you.</span>
+            <span class="t13 t2">The floor and the Gate still apply in Doesn't ask: sends, posts and payments are still held for you, and protected files are still refused.</span>
           </div>
         </div>
         <div class="home-ind" style="z-index: 8;"></div>
@@ -263,9 +265,9 @@
       <div class="anno-i"><span class="anno-n">1</span><span>Asks come in four kinds: permission, question, plan and mode (ADR 0030). ExitPlanMode is a plan: a neutral card at the tail and the row "kit has a plan to approve" in Needs. Answer either one and the other resolves.</span></div>
       <div class="anno-i"><span class="anno-n">2</span><span>The plan renders as a short document: a title, numbered steps with paths in mono, what it will not touch, and the files it expects to change with neutral counts.</span></div>
       <div class="anno-i"><span class="anno-n">3</span><span>Start building (⌘⏎) allows the plan and sets the mode to go on in: Asks first by default, or Edits allowed. Revise (R) opens the reply field prefilled "Change the plan: " and kit stays in Plan first. Keep planning declines with no note.</span></div>
-      <div class="anno-i"><span class="anno-n">4</span><span>Modes in plain words, the provider's name in mono. Claude: plan, default, acceptEdits. Codex maps its sandbox and approval policy to the same three (read-only, on-request, workspace-write) and a row with no match says so.</span></div>
-      <div class="anno-i"><span class="anno-n">5</span><span>Three modes only. Running with no asks is refused by design, so the popover and the sheet point to Edits allowed plus Always in the project. The floor and the Gate hold in every mode.</span></div>
-      <div class="anno-i"><span class="anno-n">6</span><span>Phone: steps fold after four, the composer tucks away while a plan waits, and the buttons stack with Start building at 54. ⇧Tab cycles modes on any keyboard.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Four modes in plain words, the provider's name in mono. Claude: plan, default, acceptEdits, bypass. Codex maps its sandbox and approval policy to the same four (read-only, on-request, workspace-write, full access) and a row with no match says so.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Doesn't ask is a plain row: no hold, no Face ID. Only you switch into it, here or with ⇧Tab; agents and Claude's own sessions never can. Its chip turns inverse, calm, no banner. Vyre's floor and the Gate still apply: sends, posts and payments are held for you, protected files refused.</span></div>
+      <div class="anno-i"><span class="anno-n">6</span><span>Phone: steps fold after four, the composer tucks away while a plan waits, and the buttons stack with Start building at 54. ⇧Tab cycles the four modes on any keyboard.</span></div>
       <div class="anno-i"><span class="anno-n">7</span><span>Smooth: Start building flips the card to "Building · Asks first" on the commit frame; the answer rides the outbox. A mode change is optimistic: the chip updates at once and reverts with a line if the box refuses.</span></div>
     </div>
 
