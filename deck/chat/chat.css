@@ -489,3 +489,19 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 /* A Mac session's cards: where to answer, in place of the buttons. */
 .cv-elsewhere { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 18px; color: var(--text-2); }
 .cv-q > .cv-elsewhere, .cv-q > .cv-q-review { margin: 0 16px 14px; }
+
+/* The permission card's diff summary: "Changed files +188 -133", opening to a row per file.
+   Additions take the positive colour, removals stay neutral (never red). */
+.cv-changes { display: flex; flex-direction: column; min-width: 0; border: 1px solid var(--rule); border-radius: 6px; background: var(--bg); }
+.cv-ch-head { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 30px; padding: 4px 10px; border: 0; background: none; cursor: pointer; font: inherit; font-size: 12px; color: var(--text); text-align: left; }
+.cv-ch-head svg { flex-shrink: 0; color: var(--label); transform: rotate(-90deg); transition: transform 120ms; }
+.cv-ch-head[aria-expanded="true"] svg { transform: none; }
+.cv-ch-head:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 6px; }
+.cv-ch-label { flex: 1; min-width: 0; }
+.cv-ch-counts { display: inline-flex; gap: 6px; flex-shrink: 0; font-family: var(--mono); font-size: 12px; }
+.cv-ch-add { color: var(--signal-ink-text, var(--focus)); }
+.cv-ch-del, .cv-ch-bin { color: var(--label); }
+.cv-ch-list { display: flex; flex-direction: column; border-top: 1px solid var(--rule); padding: 4px 0; }
+.cv-ch-row { display: flex; align-items: center; gap: 10px; padding: 2px 10px 2px 28px; min-width: 0; }
+.cv-ch-file { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+.cv-ch-more { padding: 2px 10px 2px 28px; font-size: 12px; color: var(--label); }

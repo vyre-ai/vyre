@@ -70,6 +70,40 @@ function what(ask) {
   }
 }
 
+const MINUS = "\u2212";
+
+/**
+ * The diff summary (detail.changes, detail.totals, detail.truncated from the switchboard): a
+ * "Changed files +188 -133" row that opens to one row per file. Additions in the positive
+ * colour, removals neutral, never red. Null when the ask carries no changes.
+ * @param {any} d the ask's detail
+ * @param {{ open: boolean }} view whether the per-file rows show; kept across redraws
+ */
+export function changesRow(d, view) {
+  const rows = Array.isArray(d?.changes) ? d.changes : [];
+  if (!rows.length) return null;
+  const sum = (k) => rows.reduce((n, r) => n + (r.binary ? 0 : Number(r[k]) || 0), 0);
+  const t = d.totals || {};
+  const files = Number(t.files) || rows.length;
+  const added = t.added ?? sum("added"), removed = t.removed ?? sum("removed");
+  const counts = (a, r) => [h("span", { class: "cv-ch-add" }, `+${a}`), h("span", { class: "cv-ch-del" }, `${MINUS}${r}`)];
+  const wrap = h("div", { class: "cv-changes" });
+  const draw = () => {
+    const head = h("button", { class: "cv-ch-head", type: "button", "aria-expanded": String(view.open), onclick: () => { view.open = !view.open; draw(); } },
+      icon("chevron", 12),
+      h("span", { class: "cv-ch-label", title: `${files} ${files === 1 ? "file" : "files"}` }, files === 1 ? "Changed file" : "Changed files"),
+      h("span", { class: "cv-ch-counts" }, ...counts(added, removed)));
+    const list = view.open ? h("div", { class: "cv-ch-list" },
+      ...rows.map(r => h("div", { class: "cv-ch-row" },
+        h("span", { class: "cv-ch-file", title: String(r.file || "") }, String(r.file || "")),
+        h("span", { class: "cv-ch-counts" }, ...(r.binary ? [h("span", { class: "cv-ch-bin" }, "binary")] : counts(Number(r.added) || 0, Number(r.removed) || 0))))),
+      d.truncated && files > rows.length ? h("div", { class: "cv-ch-more" }, `and ${files - rows.length} more`) : null) : null;
+    put(wrap, head, list);
+  };
+  draw();
+  return wrap;
+}
+
 /**
  * @param {{ id: string, tool: string, summary?: string|null, destination?: string|null, reason?: string|null, agent?: string|null,
  *   kind?: string, detail?: any, always?: boolean, always_project?: string|null, elsewhere?: string|null }} ask
@@ -81,6 +115,7 @@ export function askCard(ask) {
   el._kind = "card";
   const state = { busy: false, decided: /** @type {string|null} */ (null), error: /** @type {any} */ (null), denying: false, why: "" };
   const who = ask.agent || "Vyre";
+  const changesView = { open: false };
 
   const answer = async (decision, extra = {}) => {
     if (state.busy || state.decided) return;
@@ -103,6 +138,7 @@ export function askCard(ask) {
     if (ask.elsewhere) {
       put(el, title, h("div", { class: "cv-ask-what" }, what(ask)),
         ask.reason ? h("div", { class: "gate-note cv-ask-why" }, String(ask.reason)) : null,
+        changesRow(ask.detail, changesView),
         h("div", { class: "cv-elsewhere" }, icon("laptop", 12), `Answer it on ${ask.elsewhere}`));
       return;
     }
@@ -115,6 +151,7 @@ export function askCard(ask) {
     put(el, title,
       h("div", { class: "cv-ask-what" }, what(ask)),
       ask.reason ? h("div", { class: "gate-note cv-ask-why" }, String(ask.reason)) : null,
+      changesRow(ask.detail, changesView),
       state.denying ? h("div", { class: "cv-deny-row" }, whyInput,
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: () => answer("deny") }, "Deny"),
         h("button", { class: "btn btn-ghost btn-sm", disabled: state.busy, onclick: () => { state.denying = false; draw(); } }, "Back"))
