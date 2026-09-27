@@ -111,8 +111,11 @@ test("a web page Origin is refused; the extension Origin gets CORS for itself on
   const ext = await call("GET status", null, { ...bearer(token), origin: EXT });
   assert.equal(ext.status, 200);
   assert.equal(ext.headers.get("access-control-allow-origin"), EXT);
-  const moz = await call("GET status", null, { ...bearer(token), origin: "moz-extension://0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0" });
-  assert.equal(moz.status, 200);
+  // Another extension gets CORS for itself, and never this one's token: a paired Origin is kept.
+  const MOZ = "moz-extension://0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0";
+  const moz = await call("GET status", null, { ...bearer(token), origin: MOZ });
+  assert.equal(moz.status, 401);
+  assert.equal(moz.headers.get("access-control-allow-origin"), MOZ);
 });
 
 test("OPTIONS preflight answers the extension and refuses a page", async t => {

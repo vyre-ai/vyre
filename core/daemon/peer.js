@@ -62,24 +62,27 @@ function readPeerPid(socket) {
  * A way to look up one process: its parent and command line, or null. On Linux, /proc/<pid>/stat
  * and cmdline. On macOS, one `ps -A` read up front (ps asks the kernel through sysctl), so a walk
  * costs one process however deep it goes.
- * @returns {(pid: number) => { ppid: number, args: string } | null}
+ * pgid and sid (Linux) say which process group and session the process runs in: an orphan keeps
+ * them when its parent ends, so a thread spawned as its own group still owns what it left behind.
+ * @returns {(pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null}
  */
 export function processTable() {
   if (process.platform === "linux") return pid => {
     try {
       const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
       // The command name is in parentheses and may hold spaces; the parent pid follows the state.
-      const ppid = Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
+      const f = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      const ppid = Number(f[1]);
       const args = fs.readFileSync(`/proc/${pid}/cmdline`, "utf8").split("\0").filter(Boolean).join(" ");
-      return Number.isInteger(ppid) ? { ppid, args } : null;
+      return Number.isInteger(ppid) ? { ppid, args, pgid: Number(f[2]), sid: Number(f[3]) } : null;
     } catch { return null; }
   };
-  /** @type {Map<number, { ppid: number, args: string }>} */
+  /** @type {Map<number, { ppid: number, args: string, pgid: number }>} */
   const rows = new Map();
   try {
-    for (const line of execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,args="], { encoding: "utf8", timeout: 3000, maxBuffer: 16 << 20 }).split("\n")) {
-      const m = /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(line);
-      if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), args: m[3] });
+    for (const line of execFileSync("ps", ["-A", "-ww", "-o", "pid=,ppid=,pgid=,args="], { encoding: "utf8", timeout: 3000, maxBuffer: 16 << 20 }).split("\n")) {
+      const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+      if (m) rows.set(Number(m[1]), { ppid: Number(m[2]), pgid: Number(m[3]), args: m[4] });
     }
   } catch {}
   return pid => rows.get(pid) || null;
@@ -114,10 +117,14 @@ export function ancestry(pid, look, stop = () => false) {
  * A person's shell under tmux or sshd has no claude above it. vyred's own process and its
  * ancestors are not the caller's. Unknown when the chain cannot be read to the top.
  * @param {number} pid
- * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string } | null, self?: number }} [o]
+ * @param {{ threads?: number[], look?: (pid: number) => { ppid: number, args: string, pgid?: number, sid?: number } | null, self?: number }} [o]
  * @returns {{ inside: boolean, by?: number, unknown?: boolean }}
  */
 export function insideClaude(pid, { threads = [], look = processTable(), self = process.pid } = {}) {
+  // A thread vyred spawned as its own process group (or session) keeps whatever it leaves behind:
+  // an orphan's parent becomes init, but its group and session stay the thread's.
+  const own = look(pid);
+  if (own) for (const g of [own.pgid, own.sid]) if (g && g > 1 && g !== process.pid && threads.includes(g)) return { inside: true, by: g };
   const mine = new Set(ancestry(self, look).chain.map(p => p.pid));
   const { chain, complete } = ancestry(pid, look, p => mine.has(p));
   for (const p of chain) if (threads.includes(p.pid) || claudeCommand(p.args)) return { inside: true, by: p.pid };

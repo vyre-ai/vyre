@@ -371,7 +371,7 @@ vyre hooks [status|on|off|open|close] [name]
 Pair this Mac with your box, or approve a Mac on the box.
 
 ```
-vyre link [pair|approve|deny|unpair] [--json]
+vyre link [pair|approve|deny|unpair|signin|signout] [--json]
 ```
 
 ### vyre send

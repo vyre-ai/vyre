@@ -51,3 +51,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0020 | cc-plugin | Vyre as an installable Claude Code plugin, and the status line |
 | 0024 | chat | Chat: new sessions, the box's folders, a terminal in the browser, and questions |
 | 0025 | planner | The planner: time, alarms, reminders, todos, notes and a calendar on the box |
+| 0032 | e2e | The person and the device |

@@ -16,6 +16,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   paired extension's Origin is kept and another extension's is refused; an extension that sends
   an ES256 `key` when it pairs must sign every request (`x-vyre-proof`), so a copied token is not
   enough. vault.devices and vault.device.revoke are the person's surfaces only.
+- The socket's person check also catches an orphan by its process group or session: a thread
+  vyred spawns as its own group keeps what it leaves behind after its parent ends. ADR 0032, the
+  person and the device.
 
 #### Security: the person session over the tailnet
 
