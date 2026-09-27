@@ -317,3 +317,76 @@ test("modules: the owner's Deck at the box's tailnet address may use what the De
   assert.equal(callerAllowed(deck, "mcp:agent:kit"), false);
   assert.equal(callerAllowed(null, "anonymous"), true);
 });
+
+test("modules: a use is a tool that ran for a person, a surface or a model; refusals, modules and hooks are not", async t => {
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { input: { type: "object", properties: { fail: { type: "boolean" } } },
+      run: async ({ fail }) => { if (fail) throw new Error("no"); return { ok: true }; } });
+    ctx.tool("notes.inside", { callers: ["module"], run: async () => ({ ok: true }) });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", { ...good, does: { tools: ["notes.add", "notes.inside"] } }, src]]);
+  t.after(() => reg.stop());
+  const use = () => reg.status().find(m => m.name === "notes").use;
+  assert.deepEqual(use(), { calls: 0, lastUsed: null });
+  assert.equal(reg.flushTimer, null, "nothing is scheduled while nothing was used");
+  await reg.call("notes.add", {}, "cli");
+  await reg.call("notes.add", { fail: true }, "mcp:agent:kit");
+  await reg.call("notes.add", { fail: "yes" }, "cli");
+  await reg.call("notes.inside", {}, "cli");
+  await reg.call("notes.add", {}, "module:planner");
+  const u = use();
+  assert.equal(u.calls, 2, "a success and an error count; bad input, a denied caller and a module do not");
+  assert.ok(u.lastUsed && Math.abs(Date.now() - u.lastUsed) < 5000);
+  assert.ok(reg.flushTimer, "the first change arms one write");
+  assert.equal(/** @type {any} */ (reg.flushTimer).hasRef(), false, "and it never keeps vyred awake");
+});
+
+test("modules: use counts are written at stop and read back by the next registry", async t => {
+  const home = tempHome(t);
+  const root = path.join(home, "mods");
+  writeModule(root, "notes", good, echo);
+  const db = open(path.join(home, "vyre.db"));
+  t.after(() => db.close());
+  const make = async () => {
+    const reg = new Registry({ db, events: new Events(db), config: { role: "local" }, log: () => {} });
+    await reg.start(discover([root]), { role: "local" });
+    return reg;
+  };
+  const a = await make();
+  await a.call("notes.add", { text: "a" }, "cli");
+  await a.call("notes.add", { text: "b" }, "deck");
+  assert.equal(db.prepare("SELECT COUNT(*) n FROM modules_use").get().n, 0, "not written on every call");
+  await a.stop();
+  assert.equal(a.flushTimer, null);
+  const row = db.prepare("SELECT calls, last_used FROM modules_use WHERE module = 'notes'").get();
+  assert.equal(row.calls, 2);
+  const b = await make();
+  t.after(() => b.stop());
+  assert.equal(b.status().find(m => m.name === "notes").use.calls, 2);
+  assert.equal(b.status().find(m => m.name === "notes").use.lastUsed, Number(row.last_used));
+});
+
+test("modules: status rows carry what a manifest declares for the surfaces, and ctx.modules reads a copy", async t => {
+  const manifest = { ...good, does: { tools: ["notes.add"], commands: [{ verb: "add", tool: "notes.add", summary: "add a note", args: ["text"] }],
+    connections: "notes.add", suggest: "notes.add" }, shows: { notices: ["note-late"] } };
+  const src = `export default { async start(ctx) {
+    ctx.tool("notes.add", { run: async () => {
+      const rows = ctx.modules.status();
+      rows[0].name = "changed";
+      return { rows, tools: ctx.modules.tools("cli").map(t => t.name) };
+    } });
+    return {};
+  } };`;
+  const reg = await registry(t, [["notes", manifest, src]]);
+  const row = reg.status().find(m => m.name === "notes");
+  assert.deepEqual(row.commands, manifest.does.commands);
+  assert.equal(row.connections, "notes.add");
+  assert.equal(row.suggest, "notes.add");
+  assert.deepEqual(row.notices, ["note-late"]);
+  assert.deepEqual(row.emits, ["note.added"]);
+  assert.deepEqual(row.shows, { notices: ["note-late"] });
+  const r = await reg.call("notes.add", {}, "cli");
+  assert.deepEqual(r.data.tools, ["notes.add"]);
+  assert.equal(reg.status()[0].name, "notes", "a module's edit to its copy changes nothing");
+});

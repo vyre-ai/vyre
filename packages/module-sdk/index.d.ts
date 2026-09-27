@@ -163,6 +163,8 @@ export interface CallMeta {
   /** How a person proved presence for this call, when the tool needed it. Never the proof. */
   presence?: { method: string; keyId: string | null };
   idempotencyKey?: string;
+  /** The chat's id for this tool call, on a session's own paths only. Unverified: for linking, never for a decision. */
+  call?: string;
   [k: string]: unknown;
 }
 
@@ -212,6 +214,25 @@ export interface ModuleEvents {
 
 // ---- The context ------------------------------------------------------------------------------
 
+/** One row of GET /v1/modules, which ctx.modules.status() also returns. */
+export interface ModuleStatus {
+  name: string;
+  version?: string;
+  state: "pending" | "running" | "off" | "failed" | "invalid";
+  error?: string;
+  shows?: Manifest["shows"];
+  commands?: NonNullable<Manifest["does"]>["commands"];
+  connections?: ToolName;
+  suggest?: ToolName;
+  notices?: string[];
+  emits?: EventType[];
+  /** Calls to its tools from people, surfaces and models (never modules or webhooks). lastUsed is ms since the epoch. */
+  use: { calls: number; lastUsed: number | null };
+}
+
+/** A tool as GET /v1/tools lists it to a caller. */
+export interface ToolListing { name: ToolName; module: string; description: string; input: InputSchema; presence?: true }
+
 export interface ModuleLog {
   (message: string, extra?: unknown): void;
   /** @planned */ info(message: string, extra?: unknown): void;
@@ -232,6 +253,8 @@ export interface ModuleContext {
   /** Register a tool declared under does.tools. */
   tool<I = any, O = any>(name: ToolName, def: ToolDef<I, O>): void;
   events: ModuleEvents;
+  /** Read only: every module's status row (a copy), and the tools a given caller may use. */
+  readonly modules: { status(): ModuleStatus[]; tools(caller?: Caller): ToolListing[] };
   /** @planned This module's own settings, resolved project over account over default. */
   settings: {
     get<T = unknown>(key: string, opts?: { project?: string }): Promise<T>;

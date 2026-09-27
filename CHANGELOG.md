@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Module API phase 1, the part that needs no settings (ADR 0033, cohesion's ADR 0036)
+
+- vyred passes a chat's tool call id to the tool as `meta.call`, from the X-Vyre-Call-Id header,
+  only on a session's own paths (its thread socket, or a call bound to a thread by its agent or
+  session key), and only when it looks like an id. It's a claim for linking a Glass step to its
+  chat row; no tool decides anything on it. Nothing sends the header yet: sessions will.
+- registry.status() rows gain `use: { calls, lastUsed }`, counting tools a person or an agent ran
+  (not module-to-module calls, not hooks). The counts are kept in memory and written to the
+  `modules_use` table at most once a minute and at stop, so they survive a restart. Rows also
+  carry the manifest's `commands`, `connections`, `suggest`, `notices` and `emits` when declared.
+- `ctx.modules.status()` and `ctx.modules.tools(caller?)`: read-only views of the same rows and
+  tool lists GET /v1/modules and /v1/tools give.
+- New first-party modules, each one switchable off: `commands` (commands.list {surface?}: every
+  does.commands verb the caller can run) and `events` in core/event-catalog (events.catalog: every
+  type the running modules emit, plus aliases kept for one release, none today).
+
 #### The manifest schema follows ADR 0035 (the settings hub)
 
 - A setting may declare the `device` and `session` levels, `check: { tool }` (asked before a value
