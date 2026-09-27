@@ -9,6 +9,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - ⌘⏎ on words that are not a question (two words or more) now thinks deeper too, instead of
   starting computer use. Computer use starts only from "do ..." then ⏎. A row the user moved to
   keeps its own ⌘⏎. `Sources/Host/AutoAsk.swift`; `Tests/AutoAskTests.swift`.
+- The pause test uses a 400 ms pause, so a slow CI machine's gap between two keys never reads as
+  rest (capsule-mac failed on it once).
 
 #### The Capsule no longer answers personal questions itself
 
