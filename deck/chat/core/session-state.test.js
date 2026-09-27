@@ -626,6 +626,21 @@ test("reasoning is keyed r:<message>:<block>, text m:<message>:<block>: the same
   assert.ok(keys(s).every(k => !k.startsWith("m:") || s.byKey.get(k).kind === "text"));
 });
 
+test("thread.thinking (sessions db44749b) is the same reasoning row as thread.text kind reasoning, keyed r:, never m:", () => {
+  const s = createSession(T);
+  ev(s, "thread.sent", { text: "Check the Northwind invoice" });
+  assert.deepEqual(ev(s, "thread.thinking", { message: "msg_k", block: 0, delta: "Totals first, " }), ["r:msg_k:0"]);
+  ev(s, "thread.text", { message: "msg_k", block: 0, delta: "On it." });
+  ev(s, "thread.thinking", { message: "msg_k", block: 0, delta: "then tax." });
+  assert.deepEqual([s.byKey.get("r:msg_k:0").kind, s.byKey.get("r:msg_k:0").text, s.byKey.get("r:msg_k:0").streaming], ["reasoning", "Totals first, then tax.", true]);
+  ev(s, "thread.thinking", { message: "msg_k", block: 0, text: "Totals first, then tax.", done: true });
+  assert.equal(s.byKey.get("r:msg_k:0").streaming, false);
+  assert.equal(s.byKey.get("m:msg_k:0").text, "On it.", "the text is its own row");
+  // The older shape lands on the same row.
+  ev(s, "thread.text", { message: "msg_k", block: 0, kind: "reasoning", text: "Totals first, then tax.", done: true });
+  assert.deepEqual(keys(s).slice(1), ["r:msg_k:0", "m:msg_k:0"]);
+});
+
 test("images: the send draws its count, and thread.sent {images} gives it to the message", () => {
   const s = createSession(T);
   ev(s, "thread.sent", { text: "What is wrong in this screenshot?", uuid: "img-1", surface: "deck", images: 2 });

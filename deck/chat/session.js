@@ -95,7 +95,7 @@ const readHideThinking = () => { try { return localStorage.getItem(THINK_KEY) ==
  * shared stream listen (thread.* only hears the names it knows).
  */
 const MORE_EVENTS = ["thread.state", "thread.turn", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
-  "thread.model", "thread.task", "thread.shell", "thread.remembered", "thread.usage", "thread.limit"];
+  "thread.model", "thread.thinking", "thread.task", "thread.shell", "thread.remembered", "thread.usage", "thread.limit"];
 const editable = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
 const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", codex: "Codex", acp: "ACP" });
 const BUSY = new Set(["starting", "running", "waiting"]);

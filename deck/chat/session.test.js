@@ -613,7 +613,7 @@ test("the box's background tasks, thinking, ! and # and pasted images, on their 
   await wait();
   assert.equal(text(chip()), "Thinking off");
   // A reasoning delta and a text delta of one message are two rows.
-  at("thread.text", { message: "msg_th", block: 0, kind: "reasoning", delta: "The total rounds twice." });
+  at("thread.thinking", { message: "msg_th", block: 0, delta: "The total rounds twice." });
   at("thread.text", { message: "msg_th", block: 1, delta: "Found the rounding." });
   await wait(40);
   // Two rows: the thought (folded, its words in its body) and the reply.

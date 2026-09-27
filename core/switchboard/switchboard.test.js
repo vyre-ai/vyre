@@ -72,15 +72,19 @@ test("translate: text keys (message, block) count content blocks across the line
   const fix = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "transcripts", "fixtures");
   const tr = keyed();
   let message = "";
-  // Text keys are compared with text keys, reasoning (thinking, kind "reasoning") with reasoning:
-  // a box that streams thinking (sessions 034c71e5) adds reasoning keys, never text ones.
+  // Text keys are compared with text keys, reasoning with reasoning: a box that streams thinking
+  // adds reasoning keys (thread.thinking, or thread.text kind "reasoning" on sessions 034c71e5),
+  // never text ones.
   const done = [], partial = [], rdone = [], rpartial = [];
   for (const line of fs.readFileSync(path.join(fix, "split.stream.jsonl"), "utf8").split("\n").filter(Boolean)) {
     const t = tr(JSON.parse(line));
     if (t.message !== undefined) message = t.message;
     if (t.delta) partial.push(`${message}#${t.block}`);
     if (t.reasoning) rpartial.push(`${message}#${t.block}`);
-    for (const e of t.events) if (e.type === "thread.text") (e.payload.kind === "reasoning" ? rdone : done).push(`${e.payload.message}#${e.payload.block}`);
+    for (const e of t.events) {
+      if (e.type === "thread.thinking" || (e.type === "thread.text" && e.payload.kind === "reasoning")) rdone.push(`${e.payload.message}#${e.payload.block}`);
+      else if (e.type === "thread.text") done.push(`${e.payload.message}#${e.payload.block}`);
+    }
   }
   // msg_03A is thinking, text, tool_use, text (one line each); msg_03B is one text.
   const want = ["msg_03A#1", "msg_03A#3", "msg_03B#0"];
@@ -1045,7 +1049,7 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   assert.deepEqual(bash.detail, { command: "npm test", description: "Run the menu tests" });
   assert.equal(bash.always, true);
   await tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
-  const reply = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning"), "the reply");
+  const reply = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
   assert.match(reply.payload.text, /^## Autumn specials/);
   assert.match(reply.payload.text, /```sh\nnpm test/);
 

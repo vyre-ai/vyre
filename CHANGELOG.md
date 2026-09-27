@@ -6,7 +6,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Chat: images, ! shell, # memory, thinking and background tasks on the box's real shapes
 
-Wires sessions 034c71e5 in deck/chat.
+Wires sessions 034c71e5 and db44749b (thinking as its own event) in deck/chat.
 - caps.js: threads.shell, threads.remember, threads.thinking, threads.tasks and threads.kill-task
   are live (SESSION_TOOLS); NOT_OFFERED is empty. threads.tasks' answer (asked when a session
   opens) says it for images, "!", "#", thinking and Stop (RELEASE_034, LINKED), so an older box
@@ -21,14 +21,17 @@ Wires sessions 034c71e5 in deck/chat.
 - "#": threads.remember {thread, text, scope} answers {scope, file}: the note names the file;
   thread.remembered is a notice in the timeline.
 - Thinking: threads.thinking {thread, on} ({thinking: null, note} when not running puts the chip
-  back); thinking.switched moves the chip (thread.thinking is gone). Reasoning rows from
-  thread.text kind "reasoning" are keyed r:<message>:<block>, apart from text's m:.
+  back); thinking.switched moves the chip. Reasoning rows from thread.thinking {message, block,
+  delta | text + done} (and 034c71e5's thread.text kind "reasoning", the same row) are keyed
+  r:<message>:<block>, apart from text's m:.
 - Background tasks: thread.task merges only the fields each event carries (kind and title from
   the start, summary and error at the end; stopped reads killed); threads.tasks seeds the tray;
   Stop sends threads.kill-task {thread, task} (was {id}). The tray says done, failed or stopped
   and the summary.
 - Tests: the live-key tests in core/switchboard and core/transcripts compare text keys with text
-  keys and reasoning with reasoning, so they pass with or without thinking deltas.
+  keys and reasoning (thread.thinking, or kind "reasoning") with reasoning, so they pass with or
+  without thinking deltas. The stuck-scroll window tests wait for the reveal and the stick frame,
+  not a fixed 60 ms, so a loaded machine does not fail them.
   test/chat-sessions-contract: the 034c71e5 tools and events are AHEAD (remove when on main),
   and their payload keys are checked on both sides, strictly once core has them.
 

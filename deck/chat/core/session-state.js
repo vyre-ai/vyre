@@ -54,9 +54,10 @@
 // model is model.switched {model} (threads.model), model.changed {model} on older boxes (a
 // model.changed with a scope is sessions.models.set's per-purpose default, not this thread's).
 //
-// Sessions 034c71e5: thinking is thread.text {kind: "reasoning"} (deltas and whole, keyed
-// r:<message>:<block>, never the text's m:<message>:<block>; the box flushes a step's reasoning
-// before its text) and thinking.switched {on} (threads.thinking). thread.sent {images: n} counts a
+// Sessions 034c71e5 and db44749b: thinking is thread.thinking {message, block, delta | text +
+// done} (db44749b; 034c71e5 said thread.text {kind: "reasoning"}, read the same), keyed
+// r:<message>:<block>, never the text's m:<message>:<block> (the box flushes a step's thinking
+// before its text); thinking.switched {on} is threads.thinking's on/off. thread.sent {images: n} counts a
 // message's pasted images. thread.shell {command, code, output} is a "!" line run by the person
 // (the answer to threads.shell carries the same, uncut), and its output goes to Claude at the
 // front of the next message as <bash-input>/<bash-stdout>/<bash-stderr> blocks, which a
@@ -1047,6 +1048,8 @@ export function applyEvent(s, e) {
       break;
     }
     case "thread.text": onText(s, p, at, e, out); break;
+    // Thinking as its own event: the same row as thread.text kind "reasoning".
+    case "thread.thinking": onText(s, { ...p, kind: "reasoning", notice: undefined }, at, e, out); break;
     case "thread.tool": onTool(s, p, at, out); break;
     case "ask.raised": case "ask.answered": case "ask.cancelled": onAsk(s, e.type, p, at, out); break;
     case "thread.usage":

@@ -54,10 +54,10 @@ const LEGACY_EVENTS = new Set(["ask.cancelled"]);
 // one, every check on it is strict (AHEAD only excuses absence).
 // Ships with sessions 034c71e5 (images on threads.send, threads.shell, threads.remember,
 // threads.thinking, threads.tasks, threads.kill-task; thread.task, thinking.switched,
-// thread.shell, thread.remembered); remove when on main.
+// thread.shell, thread.remembered) and db44749b (thread.thinking); remove when on main.
 const AHEAD_TOOLS = new Set(["threads.model", "threads.commands",
   "threads.shell", "threads.remember", "threads.thinking", "threads.tasks", "threads.kill-task"]);
-const AHEAD_EVENTS = new Set(["model.switched", "thread.task", "thinking.switched", "thread.shell", "thread.remembered"]);
+const AHEAD_EVENTS = new Set(["model.switched", "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"]);
 
 test("the sessions layer is on this tree (merge pre/3a first)", () => {
   assert.ok(serverTools.has("threads.send"), "core registers threads.send");
@@ -90,7 +90,7 @@ test("chat hears every session event the sessions layer emits", () => {
   const needed = ["thread.started", "thread.turn", "thread.text", "thread.tool", "thread.finished", "thread.stopped", "thread.state",
     "thread.usage", "thread.limit", "thread.sent", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
     "ask.raised", "ask.answered", "mode.changed", "model.changed", "model.switched",
-    "thread.task", "thinking.switched", "thread.shell", "thread.remembered"];
+    "thread.task", "thread.thinking", "thinking.switched", "thread.shell", "thread.remembered"];
   for (const e of needed) {
     assert.ok(serverEvents.has(e) || AHEAD_EVENTS.has(e), `the server no longer emits ${e}: update this test and chat together`);
     assert.ok(chatEvents.has(e), `chat does not listen for ${e}`);
@@ -154,6 +154,7 @@ test("sessions 034c71e5's shapes: images, ! shell, # memory, thinking, backgroun
   assert.match(view, /"threads\.kill-task", \{ thread, task: t\.id \}/, "threads.kill-task {thread, task}");
   assert.match(view, /"threads\.tasks", \{ thread \}/, "threads.tasks {thread}");
   assert.match(st, /p\.kind === "reasoning" \? "reasoning"/, "chat keys reasoning apart from text");
+  assert.match(st, /case "thread\.thinking": onText\(s, \{ \.\.\.p, kind: "reasoning"/, "thread.thinking is a reasoning row");
   assert.match(st, /prefix = kind === "reasoning" \? "r" : "m"/, "reasoning is r:<message>:<block>, text m:<message>:<block>");
   for (const f of ["summary", "background", "call", "error"]) assert.match(st, new RegExp(`p\\.${f}\\b`), `chat reads thread.task's ${f}`);
   assert.match(st, /p\.code/, "chat reads thread.shell's code");
@@ -176,5 +177,6 @@ test("sessions 034c71e5's shapes: images, ! shell, # memory, thinking, backgroun
   assert.match(sb, /tasks: st && st\.tasks \?/, "threads.tasks answers {tasks}");
   for (const f of ["kind:", "title:", "call:", "background:", "summary:", "error:"]) assert.ok(tr.includes(f), `thread.task has ${f}`);
   assert.match(tr, /"killed"/, "a stopped task is killed");
-  assert.match(sb + tr, /kind: "reasoning"/, "thinking is thread.text kind reasoning");
+  // Thinking: thread.thinking (db44749b) or, on 034c71e5, thread.text kind "reasoning".
+  assert.match(sb + tr, /"thread\.thinking", \{ message:|type: "thread\.thinking", payload: \{ message: id, block, text:|kind: "reasoning"/, "thinking carries message and block");
 });

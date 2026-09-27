@@ -247,8 +247,9 @@ const keyed = () => {
 };
 
 /**
- * The live keys of a stream, text apart from reasoning (thread.text kind "reasoning", which a box
- * that streams thinking adds): text keys are compared with text keys, reasoning with reasoning.
+ * The live keys of a stream, text apart from reasoning (thread.thinking, or thread.text kind
+ * "reasoning" on sessions 034c71e5, which a box that streams thinking adds): text keys are
+ * compared with text keys, reasoning with reasoning.
  */
 function liveKeys(/** @type {string} */ file) {
   const tr = keyed();
@@ -259,7 +260,10 @@ function liveKeys(/** @type {string} */ file) {
     if (t.message !== undefined) message = t.message;
     if (t.delta) deltas.set(`${message}#${t.block}`, (deltas.get(`${message}#${t.block}`) || "") + t.delta);
     if (t.reasoning) rdeltas.set(`${message}#${t.block}`, (rdeltas.get(`${message}#${t.block}`) || "") + t.reasoning);
-    for (const e of t.events) if (e.type === "thread.text") (e.payload.kind === "reasoning" ? rdone : done).push(e.payload);
+    for (const e of t.events) {
+      if (e.type === "thread.thinking" || (e.type === "thread.text" && e.payload.kind === "reasoning")) rdone.push(e.payload);
+      else if (e.type === "thread.text") done.push(e.payload);
+    }
   }
   return { done, deltas, rdone, rdeltas };
 }
