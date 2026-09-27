@@ -75,8 +75,10 @@ RUN groupadd -g 1000 agent \
 
 # Chromium's own password saving is off by policy: the Vault is the only store (ADR 0005, decision 3).
 # No extensions of any kind: one would run in the same page as a password the Vault fills.
+# DevTools stay allowed: DeveloperToolsAvailability 2 also refuses CDP attach ("Not allowed"), which
+# is how the agent's hands and the Vault fill work; the agent already has CDP through its hands.
 RUN mkdir -p /etc/chromium/policies/managed \
-    && printf '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false, "ExtensionInstallBlocklist": ["*"], "DeveloperToolsAvailability": 2}\n' \
+    && printf '{"PasswordManagerEnabled": false, "AutofillAddressEnabled": false, "AutofillCreditCardEnabled": false, "ExtensionInstallBlocklist": ["*"]}\n' \
        > /etc/chromium/policies/managed/vyre.json
 
 # root-owned and read-only (the root filesystem is read-only too): neither user can change them.
