@@ -54,3 +54,11 @@ test("tokens: every generated file in the tree is current", async () => {
     if (fs.existsSync(file)) assert.equal(fs.readFileSync(file, "utf8"), body, `${rel} is stale; run npm run tokens`);
   }
 });
+
+test("tokens: every output names the root folder that must exist before it is written", async () => {
+  const { OUTPUTS, ROOTS } = await import("../scripts/gen-tokens");
+  for (const rel of Object.keys(OUTPUTS)) {
+    assert.ok(ROOTS[rel], rel);
+    assert.ok(rel.startsWith(ROOTS[rel] + "/"), `${rel} is under ${ROOTS[rel]}`);
+  }
+});
