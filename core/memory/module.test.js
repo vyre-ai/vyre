@@ -179,7 +179,7 @@ test("memory module: the person corrects from their phone only with a person ses
   assert.equal(undo.data?.fix?.undone > 0, true, JSON.stringify(undo));
 });
 
-test("memory module: a device's synced sessions revoked: recall, graph, facts and IQ's caches forget them", async t => {
+test("memory module: unpairing a device keeps what came from it; the person's delete forgets it all", async t => {
   const { writeTranscripts } = await import("../../test/fixtures/corpus.js");
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ me: { domains: ["riverastudio.com"] }, vault: { keystore: "file" }, modules: { disable: ["learn"] } }));
@@ -193,10 +193,20 @@ test("memory module: a device's synced sessions revoked: recall, graph, facts an
   assert.equal((await call("memory.facts", { about: "Harlow" }, { root })).data.about?.label, "Harlow Legal");
   await call("memory.ask", { question: "who works at Harlow Legal?" }, { root });
 
-  // Federation deletes the files, then says so; memory and Recall forget everything they made.
+  // Unpaired (or replaced, or lost): nothing goes. The data is the person's, not the device's.
+  d.events.emit("link", "sync.revoked", { machine: "mac-1" });
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal((await call("recall.status", {}, { root })).data.sessions, SESSIONS.length, "unpairing deleted sessions");
+  assert.equal((await call("memory.facts", { about: "Harlow" }, { root })).data.about?.label, "Harlow Legal");
+  // The preview for "Delete everything that came from mac-1", in counts; a model never sees it.
+  const preview = (await call("memory.device", { machine: "mac-1" }, { root })).data;
+  assert.equal(preview.sessions, SESSIONS.length);
+  assert.ok(preview.turns > 0 && preview.facts > 0 && preview.people > 0, JSON.stringify(preview));
+  assert.equal((await d.registry.call("memory.device", { machine: "mac-1" }, "mcp")).error?.code, "denied");
+  // The person deletes: federation deletes the files, then says so; memory and Recall forget the rest.
   fs.rmSync(synced, { recursive: true, force: true });
   const done = new Promise(resolve => { const off = d.events.on("memory.forgot", e => { off(); resolve(e.payload); }); });
-  d.events.emit("link", "sync.revoked", { machine: "mac-1" });
+  d.events.emit("link", "sync.deleted", { machine: "mac-1" });
   const out = await done;
   assert.equal(out.sessions, SESSIONS.length);
   assert.equal((await call("recall.status", {}, { root })).data.sessions, 0);
@@ -205,5 +215,5 @@ test("memory module: a device's synced sessions revoked: recall, graph, facts an
   t.after(() => db.close());
   for (const table of ["memory_iq_asks", "memory_evidence", "memory_me_claims"]) assert.equal(db.prepare(`SELECT COUNT(*) n FROM ${table}`).get().n, 0, table);
   // A name that is not a machine's forgets nothing.
-  d.events.emit("link", "sync.revoked", { machine: "../../etc" });
+  d.events.emit("link", "sync.deleted", { machine: "../../etc" });
 });

@@ -32,10 +32,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the user's life, never evidence, never cited. The trust world asked again pointing at a screen
   that says "your wife is Jordan" (`eval-iq --world trust --screen`): accuracy 1, confident-wrong 0.
 - A paired device's synced sessions (ADR 0008, amendment): Recall reads `<home>/synced/<machine>/`
-  as it reads Claude Code's own folder, and `sync.revoked {machine}` makes memory forget
-  everything derived from that device (personal claims and reads, graph evidence, IQ answers and
-  kept replies) and Recall forget its sessions (`recall.forget`), then says how much went
-  (`memory.forgot`). import.scan never offers the synced folder as this device's own.
+  as it reads Claude Code's own folder. What came from a device is the person's: unpairing,
+  replacing or losing it deletes nothing. When the person deletes "everything that came from
+  <device>" (`sync.deleted {machine}`), memory forgets everything derived from it (personal claims
+  and reads, graph evidence, IQ answers, kept replies and corrections) and Recall forgets its
+  sessions (`recall.forget`), then says how much went (`memory.forgot`). `memory.device {machine}`
+  is the preview, in counts. import.scan never offers the synced folder as this device's own.
 - Import, first part (docs/design/import.md): `import.scan {folders?}` lists this device's Claude Code
   sessions by source (projects, the archive, folders the person adds) and by the folder each ran
   in, with counts, sizes and dates, and suggests only the person's own work (never work on Vyre

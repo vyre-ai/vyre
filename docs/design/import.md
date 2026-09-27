@@ -67,8 +67,13 @@ events and the graph.
   (`sync.sessions.<machine>.on`) with the plan's hash, so a changed plan needs new consent, and
   hands the plan to federation's `sync.send` (module-only). "fast" sizes a one-time reading pool
   to the estimate; "gentle" keeps the daily cap.
-- `import.stop {}` stops sending. `import.cancel {}` stops and deletes the partial import the same
-  way revoking the device does (ADR 0008, amendment item 5).
+- `import.stop {}` stops sending and deletes nothing. `import.cancel {}` stops and deletes the
+  partial import the same way the person's delete does (e2e).
+- What came from a device is the person's (ADR 0008, amendment item 5): unpairing, replacing or
+  losing the device, or turning sync off, deletes nothing. "Delete everything that came from
+  <device>" is the person's own action, with a preview (`memory.device { machine }`: sessions,
+  turns, facts, people and orgs only it supports) and one confirm; federation deletes the files
+  and emits `sync.deleted { machine }`, and memory and Recall forget everything derived.
 ### On the server (owner: memory-iq)
 
 - Ingest: federation lands files in `<home>/synced/<machine>/`. Recall reads that root like any
@@ -96,7 +101,7 @@ events and the graph.
 e2e's conditions for the import (28 Sep), on top of ADR 0008's: caps on the scan and first lines
 only; nothing but folders and counts in a plan; exclusions applied before listing; the server refuses
 files unless its own record of the switch is on for that machine, and consent carries the plan's
-hash; cancel deletes the partial import like revoke; the secret scrub runs at ingest, before
+hash; cancel deletes the partial import like the person's delete; the secret scrub runs at ingest, before
 indexing, with the quarantined count shown to the person; the machine on every derived row,
 IQ caches and fixes included; and no agent sees or starts a scan, a plan or progress.
 
@@ -104,8 +109,8 @@ The same rules as session sync (ADR 0008, amendment "session sync to the server"
 one-time import too: per device, off by default, turned on only by a person with a person
 session, excluded folders never leave the device, the server names the machine from the verified
 peer and keeps its own copy of the switch, the secret scrub runs at ingest, trust is the lower of
-the folder rule and `mac-sync`, and revoking or unpairing deletes everything that device sent and
-everything derived from it. Discovery reads metadata only and sends nothing. e2e reviews the scan,
+the folder rule and `mac-sync`, and a person-chosen delete removes everything that device sent and
+everything derived from it; unpairing alone deletes nothing. Discovery reads metadata only and sends nothing. e2e reviews the scan,
 the confirm screen's wording and the ingest.
 
 ## Graph opportunities
@@ -128,7 +133,7 @@ What the imported history makes possible, largest value for the size first.
 | Piece | Owner | Size | 0.1.1 |
 |---|---|---|---|
 | import.scan, import.plan, import.start, import.stop on the device | memory-iq (+ federation for start) | M | yes |
-| Upload channel, cursor, consent record, delete on revoke | federation | L | if federation lands it; else local-only import |
+| Upload channel, cursor, consent record, the person's delete | federation | L | if federation lands it; else local-only import |
 | Server ingest: synced root, machine on every derived row, `import.status`, `import.progress`, `memory.graph-grew` | memory-iq | M | yes |
 | Onboarding and install steps (discover, choose, watch it fill) | launch | M | yes |
 | Import screen and graph view designs | app-design | M | yes |

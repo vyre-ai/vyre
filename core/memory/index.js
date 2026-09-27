@@ -159,13 +159,20 @@ export default {
       if (p.rewritten && p.session) { curator.reset(String(p.session)); personal.reset(String(p.session)); }
       soon();
     });
-    // A device's synced sessions revoked (ADR 0008 amendment; e2e's condition): everything derived
-    // from them goes, then Recall forgets them. Federation has already deleted the files.
-    const forgetMachine = async machine => {
+    // What came from a device belongs to the person, not the device (the user, 28 Sep): unpairing,
+    // replacing or losing a device, or turning its sync off, deletes nothing. Deleting is its own
+    // action the person takes ("Delete everything that came from <device>"): federation deletes the
+    // files and says sync.deleted, and memory forgets everything derived from them here, then
+    // Recall forgets the sessions. Every derived row keeps its machine so that stays possible.
+    const deviceSessions = machine => {
       const m = String(machine || "");
-      if (!/^[A-Za-z0-9._-]{1,80}$/.test(m) || !ctx.paths?.root || !personal.hasRecall()) return { machine: m, sessions: 0 };
-      const db = ctx.store.db, dir = path.join(ctx.paths.root, "synced", m) + path.sep;
-      const ids = /** @type {any[]} */ (db.prepare("SELECT id FROM recall_sessions WHERE substr(file, 1, ?) = ?").all(dir.length, dir)).map(r => String(r.id));
+      if (!/^[A-Za-z0-9._-]{1,80}$/.test(m) || !ctx.paths?.root || !personal.hasRecall()) return { m, ids: [] };
+      const dir = path.join(ctx.paths.root, "synced", m) + path.sep;
+      return { m, ids: /** @type {any[]} */ (ctx.store.db.prepare("SELECT id FROM recall_sessions WHERE substr(file, 1, ?) = ?").all(dir.length, dir)).map(r => String(r.id)) };
+    };
+    const forgetMachine = async machine => {
+      const { m, ids } = deviceSessions(machine);
+      const db = ctx.store.db;
       if (!ids.length) return { machine: m, sessions: 0 };
       // The model's reads are kept by the text's hash: the hashes come from the turns, before they go.
       const hashes = new Set();
@@ -200,7 +207,7 @@ export default {
       ctx.events.emit("memory.forgot", out);
       return out;
     };
-    const revokedOff = ctx.events.on("sync.revoked", e => { forgetMachine(e.payload?.machine).catch(err => ctx.log(`forgetting a revoked device failed: ${err.message}`)); });
+    const revokedOff = ctx.events.on("sync.deleted", e => { forgetMachine(e.payload?.machine).catch(err => ctx.log(`forgetting a deleted device's sessions failed: ${err.message}`)); });
 
     // A project made, changed or a thread picked changes the rooms.
     const offs = ["project.created", "project.changed", "thread.picked", "thread.unpicked"].map(type => ctx.events.on(type, () => { roomsStale = true; soon(); }));
@@ -928,6 +935,26 @@ export default {
         for (const l of lines) { if (n + l.length > 300) break; out.push(l); n += l.length + 1; }
         return { lines: out };
       },
+    });
+    // The preview for "Delete everything that came from <device>": what would go, in counts.
+    ctx.tool("memory.device", {
+      description: "What came from one paired device's synced sessions, in counts, for the preview before the person deletes it: { machine, sessions, turns, facts, people, orgs }. Unpairing never deletes; deleting is the person's own action through federation, and memory forgets on sync.deleted.",
+      input: { type: "object", required: ["machine"], properties: { machine: { type: "string" } } },
+      run: readerOnly(async ({ machine }) => {
+        const { m, ids } = deviceSessions(machine);
+        const db = ctx.store.db;
+        if (!ids.length) return { machine: m, sessions: 0, turns: 0, facts: 0, people: 0, orgs: 0 };
+        const list = JSON.stringify(ids);
+        const one = (sql) => Number(/** @type {any} */ (db.prepare(sql).get(list))?.n || 0);
+        // Graph nodes and facts no other session supports: what deleting would take away.
+        const only = `SELECT e.id, e.src FROM memory_edges e WHERE e.room = '*' AND e.rel != 'mentioned_in'
+          AND EXISTS (SELECT 1 FROM memory_evidence v WHERE v.edge = e.id AND v.session IN (SELECT value FROM json_each(?1)))
+          AND NOT EXISTS (SELECT 1 FROM memory_evidence v WHERE v.edge = e.id AND v.session NOT IN (SELECT value FROM json_each(?1)))`;
+        const nodes = kind => Number(/** @type {any} */ (db.prepare(`SELECT COUNT(DISTINCT n.id) n FROM memory_nodes n WHERE n.kind = ? AND n.id IN (SELECT e.src FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id WHERE v.session IN (SELECT value FROM json_each(?)))
+          AND n.id NOT IN (SELECT e.src FROM memory_edges e JOIN memory_evidence v ON v.edge = e.id WHERE v.session NOT IN (SELECT value FROM json_each(?)))`).get(kind, list, list))?.n || 0);
+        return { machine: m, sessions: ids.length, turns: one("SELECT COUNT(*) n FROM recall_turns WHERE session IN (SELECT value FROM json_each(?))"),
+          facts: Number(/** @type {any} */ (db.prepare(`SELECT COUNT(*) n FROM (${only})`).get(list))?.n || 0), people: nodes("person"), orgs: nodes("org") };
+      }, "memory.device"),
     });
     ctx.tool("memory.stats", {
       description: "How much memory holds: nodes, edges, facts, evidence, by kind and role, and the last curator run.",
