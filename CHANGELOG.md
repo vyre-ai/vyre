@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck's palette comes from the generated tokens
+
+- The Deck, onboarding and the passkey page link /css/tokens.css (made by scripts/gen-tokens from
+  docs/design/one-app/tokens.json) before deck.css, and the service worker keeps it at install.
+  deck.css no longer keeps its own copy of the roles tokens.css defines (--bg, --panel, --hover,
+  --rule, --rule-strong, --text, --text-2, --label, --primary-*, --focus, --signal-wash,
+  --beacon-ink, --beacon-dot, --beacon-badge-ink, --code-bg, --mark-dot, --sans, --mono), and
+  --light-top is the tokens' --float.
+- The Deck now matches the app where the two differed: the paper hover is #EEEAE2, code blocks are
+  #121110 (dark) and #F0EDE5 (paper), and the paper panel shadow is the app's. THEME_COLORS in
+  core/config/theme.js follows.
+- deck.css keeps what has no token yet: the swatches some drawings use in both themes (--graphite,
+  --carbon, --raised, --ash, --stone, --bone, --signal, --signal-hover, --signal-ink, --beacon),
+  recall (--recall, --recall-wash, --recall-ink), --beacon-wash, --beacon-rule, --popover and the
+  radii.
+- Config's theme.colors still wins: /theme.css loads last under the same selectors, and a dark
+  swatch override (graphite, bone, signal and the rest) is also written to the roles it used to
+  drive, unless config names the role itself.
+- deck/test/tokens.test.js checks the link order, the SW list, that every colour var() in deck.css
+  is defined, that deck.css does not redeclare a token, and that tokens.css is current. The
+  palette test in core/config no longer needs its todo.
+
 #### A phone turned sideways keeps the phone layout
 
 - Every phone media query in the Deck's CSS is now `(max-width: 760px), (max-height: 500px) and
