@@ -360,3 +360,9 @@ test("pwa ios: a row swipe moves only the face's transform, once a frame, promot
   assert.doesNotMatch(css, /\.np-face \{[^}]*will-change/, "no layer for every row at rest");
   assert.match(css, /\.np-face\.np-drag, \.np-face\.np-spring \{ will-change: transform; \}/);
 });
+
+test("pwa: the Deck's worker leaves /app/ to the one app's own worker", () => {
+  const sw = read("sw.js");
+  assert.match(sw, /if \(url\.pathname === "\/app" \|\| url\.pathname\.startsWith\("\/app\/"\)\) return;/);
+  assert.ok(sw.indexOf('startsWith("/app/")') < sw.indexOf("e.respondWith((async"), "checked before the Deck answers from its cache");
+});

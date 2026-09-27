@@ -148,6 +148,9 @@ self.addEventListener("fetch", e => {
     // Every other tool call, read or write: untouched, network only. No cache, ever.
     return;
   }
+  // /app/ is the one app's own export with its own worker (scope /app/): never answer for it,
+  // or a first visit there would get the Deck's shell.
+  if (url.pathname === "/app" || url.pathname.startsWith("/app/")) return;
   if (e.request.method !== "GET" || url.pathname.startsWith("/v1/") || url.pathname.startsWith("/fixtures/") || url.pathname.startsWith("/onboard")) return;
   // The Deck's own files: from the cache at once, and fetched behind it so the next launch has
   // whatever changed (stale-while-revalidate). A phone on the tailnet would otherwise wait a round

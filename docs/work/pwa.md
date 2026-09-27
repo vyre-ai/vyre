@@ -135,8 +135,34 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   at every width, touch-action/callout, content-visibility on long lists, Send reads "Send" while
   covered. SW cache vyre-deck-7. Row swipes stay JS transforms (rAF, will-change only while
   dragged); a scroll-snap row is a proposal for the lead (needs a real-iPhone spike).
-- Doing: D. tailnet's UI findings (asked them), then the SW version skew. The shots'
-  now-sheet-question needs a CHAT_DEMO=1 world (it is not a regression).
+- Done since: c281be8 build-stamped sw.js (release lands on the next launch); a222fa4 passkey
+  card copy (lead); deck/sw.js ignores /app/ (for the one app's own worker).
+- QUEUE (from teammates, 2026-09-27; testbox: targeted runs only, uptime < 8, no worlds or
+  Chrome without asking the lead):
+  1. tailnet's UI findings (work/tailnet 23c7cda, deck/views/settings.js): per-share access +
+     ro/rw switch (files.drive.access {name, mode} -> mount.step cmd), `unsafe` secrets warning
+     per share, `--tty` on every HUMAN_ONLY command hint, no Glass for guests (GUEST_SAFE =
+     threads.list), optional Network row "Hosted app" (network.origins), no Approve on an ask
+     whose thread has source "mac".
+  2. e2e person session (work/e2e 8ad92a73): 401 person_session_required -> "Sign in on this
+     device for 30 days" sheet then retry (replaces e2e's stopgap in api.js, signIn exported);
+     Settings list presence.person.sessions with Revoke (presence.person.revoke {id}); restyle
+     /person/signin; call signIn() after the first passkey in onboarding. presence.since on
+     items: "confirmed 12 min ago".
+  3. tokens: app-design's scripts/gen-tokens --css (work/app-design 99820a16) -> deck
+     tokens.css with --check; move the Deck palette to it; tell app-design the properties.
+  4. mobile one-app spike (ADR 0027 on work/mobile 999ce4f): pwa owns the /app/ route in
+     vyred, its SW (scope /app/, precache from apps/app/dist/precache.json), manifest, iOS shell,
+     keyboard inset, push reuse, IndexedDB cache (use resilience's core/resilience/web.js
+     cacheStore). Plan the push subscription move when /app/ becomes /.
+  5. phone add checks (polish-cli, relay): push.subscribed event, push.delivered receipt,
+     a Deck /pair screen. Proposal sent to polish-cli.
+  6. relay (work/relay): Settings Devices from relay.devices.list, the device.paired notice on
+     every surface ("Alex's iPhone was added, just now. Not you? Remove it"), device.moved.
+  7. vault board shapes (work/vault-next 50012ae7) when the Deck vault board is built.
+  8. resilience web.js (work/resilience 276f916): outbox for every send/answer, one quiet
+     Reconnecting pill, open offline from cache.
+  - Asked the lead to bring e2e, tailnet and app-design branches to main before 1 to 3.
 
 ## Next
 - SW version skew: a release lands on the second launch; register sw.js with the build commit.
