@@ -61,6 +61,7 @@ import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
 import { healthDot } from "../js/health.js";
 import { gateCard } from "./gate-item.js";
+import { mountTip } from "./tip-line.js";
 import { planCard } from "./plan-card.js";
 import { isPlanAsk } from "./core/plan.js";
 import { askCard } from "./ask-item.js";
@@ -160,6 +161,8 @@ export function mountSession(container, opts) {
   /** Long sessions mount only the rows near the viewport (window-view.js); the bottom anchor is kept there. */
   const win = createWindowView(timeline, { following: () => stick.stuck, onUnmount: (k, el) => unmounted(k, el), resize: stick });
   const head = h("div", { class: "session-head" });
+  /** The composer hint line's tip (tip-line.js), once the view has opened. @type {ReturnType<typeof mountTip>|null} */
+  let tip = null;
   const leaseBar = h("div", { class: "lease-bar" });
   const queuedBox = h("div", { class: "cv-queued", role: "status", hidden: true });
   const record = { current: /** @type {any} */ (null) };
@@ -284,6 +287,9 @@ export function mountSession(container, opts) {
     }
     booted = true;
     report();
+    // The tip on the composer's hint line (tip-line.js): hidden while a turn runs or a card waits.
+    if (!recorded.on && !tip) tip = mountTip(composer.tipSlot, { busy: () => busy() || [...cards.values()].some(c => c.isOpen?.() && c.parentNode),
+      empty: () => !composer.value().trim(), input: composer.input, visible });
     layout();
     drawHead();
     drawQueued();
@@ -359,6 +365,7 @@ export function mountSession(container, opts) {
       health.el,
     );
     composer.setBusy(busy());
+    tip?.sync();
     // A Mac session: the keyboard is the Mac's own (the lease is not forwarded), so no Take.
     if (isMac(where)) { put(leaseBar, icon("laptop", 12), h("span", { class: "lease-note" }, `On ${macName()}` + (mac.queued ? ` · Queued for ${mac.name || "this session"}` : ""))); return; }
     const idleClosed = sb && S.state === "idle" && S.stopped === "idle";
@@ -1431,7 +1438,7 @@ export function mountSession(container, opts) {
   window.addEventListener("deck:kb", onKb);
   offs.push(() => { container.removeEventListener("focusin", onFocus); window.removeEventListener("deck:kb", onKb); });
   return () => {
-    health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop();
+    health.stop(); for (const off of offs) off(); composer.stop(); stick.stop(); win.stop(); tip?.stop();
     document.removeEventListener("keydown", onKey);
     document.removeEventListener("visibilitychange", onVisible);
     if (rawTimer) clearTimeout(rawTimer);

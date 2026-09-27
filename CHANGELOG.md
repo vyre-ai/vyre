@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: the plan card, tips on the composer line, and the open thread reported
+
+- Plan card (plan-card.md): Claude Code's ExitPlanMode ask is a plan to approve. The card shows the
+  plan's title, its numbered steps, what it will not touch and the files it expects (only what the
+  plan says, read by deck/chat/core/plan.js, DOM-free for the app), and "Then continue in" Asks
+  first | Edits allowed. Start building (Cmd/Ctrl+Enter) allows it, then sets that mode; Revise (R)
+  sends "Change the plan: ..." back as a deny with those words, so it keeps planning; Keep planning
+  declines with no note. On a phone the steps fold after four and the files to one row. The fake
+  claude has a `plan` prompt, and the sample world a third live session with one.
+- Tips (tip.md): one tip from tips.next on the left of the composer's hint line, only while the
+  composer is empty and nothing runs or waits; Show me copies its command or opens its docs page,
+  the x dismisses it, a right click hides the module's tips. Asked on open and once per idle minute.
+- A new session starts in context.now's project when none is given; an open thread is reported with
+  context.report {surface: "chat", view: "chat", thread, cwd, project}.
+
 #### Chat: a sent message shows at once
 
 A plain send (the session idle) waited for the box before its words appeared (116 ms in the

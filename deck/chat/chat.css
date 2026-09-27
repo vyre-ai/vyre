@@ -808,3 +808,20 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
   .cv-plan-actions > [data-act="start"] { grid-column: 1 / -1; min-height: 54px; }
   .cv-plan-actions > .btn:not([data-act="start"]) { min-height: 44px; }
 }
+
+/* The tip on the composer's hint line (tip.md, tip-line.js): left, the key hints right. Muted,
+   never the attention colour, never in the tab order; gone while anything else wants you. */
+.composer-hint { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.composer-keys { margin-left: auto; flex-shrink: 0; }
+.composer-tip { min-width: 0; flex: 1 1 auto; }
+.composer-tip[hidden] { display: none; }
+.cv-tip { display: flex; align-items: center; gap: 8px; min-height: 28px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--label);
+  animation: cv-tip-in 150ms ease-out; }
+.cv-tip-icon { display: inline-flex; flex-shrink: 0; }
+.cv-tip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-tip-code { font-family: var(--mono); font-size: 12px; color: var(--text-2); }
+.cv-tip-key { margin: 0 2px; }
+.cv-tip-show { flex-shrink: 0; height: 24px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.cv-tip-x { flex-shrink: 0; width: 24px; height: 24px; color: var(--label); }
+@keyframes cv-tip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cv-tip { animation: none; } }

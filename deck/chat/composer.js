@@ -137,7 +137,9 @@ export function mountComposer(opts) {
   let busyName = "";
   function drawQueued() { opts.onQueue?.(waiting.size, busyName); }
   const note = h("div", { class: "composer-note", role: "status" });
-  const hint = h("div", { class: "composer-hint" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"]));
+  // The tip sits on the left of the hint line, the key hints stay on the right (tip.md; chat's tip-line.js fills it).
+  const tipSlot = h("div", { class: "composer-tip", hidden: true });
+  const hint = h("div", { class: "composer-hint" }, tipSlot, h("span", { class: "composer-keys" }, keysLine(["Enter", "to send"], ["Shift+Enter", "new line"], ["/", "commands"], ["@", "files"], ["!", "shell"], ["#", "memory"])));
   const root = h("div", { class: "composer" }, note, thumbs, wrap, chips, hint);
 
   function grow() { ta.style.height = "auto"; ta.style.height = Math.min(200, ta.scrollHeight || 0) + "px"; }
@@ -618,7 +620,7 @@ export function mountComposer(opts) {
   drawChips();
 
   return {
-    el: root, key, editQueued, draw: drawChips, value: () => String(ta.value ?? ""),
+    el: root, key, editQueued, draw: drawChips, value: () => String(ta.value ?? ""), tipSlot, input: ta,
     focus: () => ta.focus(),
     setMachine: m => { machine = m || null; drawChips(); },
     setBusy: v => {
