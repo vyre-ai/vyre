@@ -31,8 +31,8 @@ export const HUMAN_ONLY = new Set([
   "learn.accept", "learn.retire", "learn.relax", "learn.skill-install",
   // Who an agent is, what it may spend and whose credentials it runs on.
   "agents.create", "agents.update",
-  // A person's hands on an agent's computer, and a new machine joined to this one.
-  "computers.takeover", "computers.giveback", "link.pair.approve",
+  // A new machine joined to this one.
+  "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
   // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
   // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
@@ -42,6 +42,15 @@ export const HUMAN_ONLY = new Set([
   "hooks.enable", "hooks.open", "hooks.close",
   "computers.tailnet.set", "computers.egress.set",
 ]);
+
+/**
+ * Tools only a person calls, but with no proof: the owner's hands on an agent's computer. Taking
+ * the keyboard pauses an agent and handing it back returns what it had; neither sends, pays,
+ * pairs or releases a secret, so the owner is never asked for Touch ID or a passkey for them
+ * (user rule, 27 Sep). The tools refuse an agent's caller themselves (computers ownSurface, glass
+ * surfaceOf), and the harness refuses them to Claude's sessions as it does the floor's list.
+ */
+export const PERSON_ONLY = new Set(["computers.takeover", "computers.giveback", "glass.take", "glass.release"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
 

@@ -27,26 +27,20 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
 - perf-check (the test box, host load 6.9): CPU p95 0.00%, RSS mean 116.4 MB, max 149.7 MB, no timer
   under 60 s. The only new wait is the boot check (250 ms steps, only while a computer starts).
 - Throwaway stack torn down (containers, volumes, networks); /srv/vyre-glass keeps compose.yml.
+- c006e55 merged to main (d3ed622); docs told (27 Sep).
+- No passkey for the owner's take-over, hand-back or Sign in privately (user rule, 27 Sep).
+  `PERSON_ONLY` in presence; agents, tailnet guests and Claude's sessions still refused.
+  Tests (testbox, targeted, 14 files): 186 run, 180 pass, 0 fail, 6 skipped.
 
 ## Doing
-- Nothing in flight. Branch pushed at c006e55 (boot-failure reason in Glass, 4001 close + Retry),
-  waiting for the integrator to merge.
+- Nothing in flight. Waiting for the next live-box deploy.
 
 ## Next
-1. When c006e55 is on main, SendMessage docs: they hold the new boot-failure text in
-   docs/work/docs.md "Pending page changes" until then.
-2. After the live box is redeployed, two read-only checks only (no agents or computers made):
+1. After the live box is redeployed, two read-only checks only (no agents or computers made):
    `ssh <test-box> docker exec vyre-vyre-1 vyre call computers.limits '{}'` must not say
    no_such_tool, and a WS upgrade with a bogus ticket to
    https://<owner>.vyre.run/v1/streams/computers/glass?ticket=bogus must not be 404 (expect 403
    or a 101 then close). Send docs any label changes.
-3. New user rule (lead, 27 Sep): no passkey for the owner taking or handing back the keyboard.
-   Touch ID/passkey only for pairing, vault secrets, and sending, posting or paying outside. So
-   take computers.takeover and computers.giveback out of presence HUMAN_ONLY for the owner
-   (core/presence/index.js is presence's file: change it through its contract and list it under
-   Changed contracts), keep the agent-caller refusal in ownSurface/surfaceOf, and drop the
-   passkey step from deck/glass/takeover.js for the owner. Check Sign in privately follows the
-   same rule. Tests, then tell docs (glass.md says both need a passkey).
 
 ## Needs from others
 - presence/security: tools with a `callers` list (e.g. agents.delete) are refused to the real
@@ -61,3 +55,8 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
 - Inspection (driver) may carry `exitCode`. Pool config `computers.bootMs` (default 30000).
 - Module context: `ctx.upgrader(policy)` returns `(req, socket, head, caller) => void`.
 - Migration 4 on computers_computers: `cpus REAL`, `memory_mb INTEGER`.
+- presence (core/presence/index.js): `computers.takeover` and `computers.giveback` left
+  HUMAN_ONLY; new export `PERSON_ONLY` (those two plus `glass.take`, `glass.release`).
+  `computers.takeover`, `computers.giveback` and `glass.take` no longer declare `presence`.
+- registry (core/modules/index.js): a `tailnet-guest:` caller is refused PERSON_ONLY tools.
+- harness rules (core/harness/rules.js): `vyre call <PERSON_ONLY tool>` is denied like the floor's list.

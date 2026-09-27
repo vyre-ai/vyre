@@ -230,7 +230,9 @@ export default {
         takes.set(agent, { surface, since, private: shielded || Boolean(prev && prev.surface === surface && prev.private) });
         emit("glass.taken", { target: i.target, surface, private: shielded });
         return { target: i.target, surface, since, private: shielded };
-      }, { presence: { summary: i => `Take the keyboard of ${String(i.target).replace(/^computer:/, "")}'s computer${i.private ? " to sign in privately" : ""}` } });
+        // No presence, private or not (core/presence PERSON_ONLY): the owner is never asked for a
+        // passkey to take the keyboard. An agent still cannot take a person's screen (surfaceOf).
+      });
 
     tool("glass.release", "Hand the keyboard back to the agent. note: a line for the agent's thread about what changed.",
       obj({ target: str, surface: str, note: str }, ["target", "surface"]), async (i, { caller }) => {
@@ -251,7 +253,7 @@ export default {
         return { released: true, held_ms: held };
         // No presence: giving the agent its keyboard back only returns what it had, and a person
         // at the Deck must never be stuck in control. An agent still cannot call it for a person's
-        // surface (surfaceOf), and takeover keeps its passkey.
+        // surface (surfaceOf).
       });
 
     /**

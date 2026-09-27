@@ -18,7 +18,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { socketPath } from "../config/index.js";
-import { HUMAN_ONLY } from "../presence/index.js";
+import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
 import { ownerOverTailnet } from "../modules/index.js";
 import { flatten, words, dynamic, globReaches } from "./shell.js";
 
@@ -106,7 +106,7 @@ const HUMAN_VERBS = { gate: ["approve", "revise", "reject"], threads: ["answer"]
   vault: ["put", "approve", "unlock", "offboard", "run", "inject", "backup", "restore", "pair", "export", "kit", "delete", "reveal", "copy", "totp"],
   learn: ["accept", "retire", "relax", "skill"], computers: ["takeover", "giveback"], link: ["approve"] };
 const isVyre = w => path.basename(w) === "vyre" || /\/bin\/vyre(\.js)?$/.test(w);
-const isHumanPair = (a, b) => a === "presence" || (HUMAN_VERBS[a] || []).includes(b) || (a === "call" && HUMAN_ONLY.has(b));
+const isHumanPair = (a, b) => a === "presence" || (HUMAN_VERBS[a] || []).includes(b) || (a === "call" && (HUMAN_ONLY.has(b) || PERSON_ONLY.has(b)));
 /** Vyre's files by name, wherever they are: the store, its journal, the socket, the pid file. */
 const INTERNAL_FILE = /(^|\/)(vyre\.db(-wal|-shm|-journal)?|vyred\.(sock|pid))$/;
 /** Ways to talk to a unix socket without Vyre's client. */
@@ -141,7 +141,7 @@ function shellRoutes(command, { vyreHome, cwd, userHome }) {
   if (w.some((x, i) => isVyre(x) && w[i + 1] === "box" && w[i + 2] === "add")) return ask1("This installs Vyre on a server with your SSH login and pairs it with this Mac.");
   // `vyre vault get|read --reveal` prints a value.
   if (w.some(isVyre) && w.includes("vault") && w.some(x => /^(get|read)$/.test(x)) && w.includes("--reveal")) return deny1("Vault values stay off every screen. " + APPROVALS);
-  const named = [...HUMAN_ONLY].some(t => flat.includes(t));
+  const named = [...HUMAN_ONLY, ...PERSON_ONLY].some(t => flat.includes(t));
   if (named && (w.some(isVyre) || /\/v1\/tools\b/.test(flat) || SOCKET_CLIENT.test(flat))) return deny1(APPROVALS);
 
   // A vyre command, or a word the shell fills in, followed by a human-only noun and verb.
