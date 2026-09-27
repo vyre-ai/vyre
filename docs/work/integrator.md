@@ -60,21 +60,17 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   c8fb9aae (batch 2: relay, native Capsule, resilience, tokens, docs; eval said.js),
   fb1ed1d1 (3a: sessions 4311fca5 with the SDK default, chat fb0694d, chat contract 6182766).
 
-## Doing (2026-09-27 16:30 UTC)
+## Doing (2026-09-27 16:35 UTC)
 
-- BATCH 4 on main 53cd1326: pre/batch4b 91f34bae, pushed as work/integrator-b4c. As listed
-  before, plus docs f89e0fad, memory-iq 0f0c17a2 (model.js removal confirmed), sessions 51eaa964,
-  chat 5d91f833, edges frozen (de3c1e9e, the lead's wording), 91f34bae (module-sdk schema/types
-  for secret, labels, tip topics, declaredTips; docs-check knows ci; mobile.md quoting).
-- Full suite on the test box at 91f34bae: 3384 tests, 3292 pass, 8 fail, 81 skipped. Routed:
-  native-core (settings.js:97 reads <home>/.claude/settings.json in a temp home; settings-keys.css
-  bare 760px), chat (pwa.test ios content-visibility + keyboard follow asserts; term.js 760px),
-  mobile (apps/test/world.test.js person_session_required), platform (system.test.js box/vyre
-  update curls). Known: journey --json todo; memory p95 5.03 ms (load flake).
-- Each owner branches off 91f34bae and sends a sha; merge them, targeted rerun, then land on main.
-- Out of this batch: capsule-pro 1f0c408f (capsule-mac pending; CapsuleModelTests:176 red is
-  theirs), pwa (no sha), cohesion f5cd36f7 (awaiting the lead), federation (after 0.1.0),
-  sessions 501ca3fc (held for e2e).
+- BATCH 4 on main 53cd1326: pre/batch4b f7226849, pushed as work/integrator-b4d. Since b4c:
+  polish-cli 4bc5c14b, chat 0f5402c6, pwa 2a577ede, capsule-pro 170dac3b, cohesion f5cd36f7,
+  docs 68aea2f9, mobile 8bc3b5b1 + 48f84c63, ci 7cea2fa6. Fixes: d49d535e (chat/term/settings-keys
+  CSS on the 719 phone query and radius roles), cdd4b768 (cohesion drift list frozen at batch 4),
+  f7226849 (settings claudeDir = claudeHome(root)).
+- Full suite queued on the test box (int-b4-run.sh, log ~/vyre-ci/int-b4b.log, END at the end).
+- Open: platform's box/vyre update curls on a checkout build (system.test.js:522); sessions'
+  sdk-driver fix (d7924a1d?) asked. Then targeted rerun, land on main, push, report.
+- Out: federation (after 0.1.0), sessions 501ca3fc (held), native-core hub step 1 (next batch).
 
 ## Needs from others
 
