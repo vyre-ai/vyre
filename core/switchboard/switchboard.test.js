@@ -277,6 +277,8 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   await until(() => fs.existsSync(target), "the file the answer allowed");
   assert.deepEqual((await tool("threads.asks", { thread: id })).data, []);
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny" })).data.answered, false, "an answered ask stays answered");
+  assert.deepEqual((await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" })).data,
+    { ask: raised.payload.ask, answered: true, decision: "allow", already: true }, "the same answer again is the earlier outcome (ADR 0029 R2)");
 
   // The lease: the other surface is read-only until it takes the keyboard.
   const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "phone" })).data;

@@ -29,13 +29,14 @@ import { spawnSession, killGroup } from "../sessions/spawn.js";
  * hooks or CLAUDE.md files. Not `--bare`, which also skips keychain reads, and with them a
  * subscription's login.
  * `plugins` are more plugin folders after the Harness (`plugin`): learned skills, or a job's own.
- * @param {{ id: string, resume?: boolean, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
+ * @param {{ id: string, resume?: boolean, forkFrom?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           append?: string|null, system?: { mode: "append"|"replace", text: string }|null, budgetUsd?: number|null, tools?: "none"|null, settings?: boolean }} o
  */
 export function argsFor(o) {
   const a = ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--include-partial-messages", "--verbose",
     "--permission-prompts", "host", "--permission-prompt-tool", "stdio"];
-  a.push(...(o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
+  // A fork continues another session's conversation as a new one, with the id given here.
+  a.push(...(o.forkFrom ? ["--resume", o.forkFrom, "--fork-session", "--session-id", o.id] : o.resume ? ["--resume", o.id] : ["--session-id", o.id]));
   for (const dir of [o.plugin, ...(o.plugins || [])]) if (dir) a.push("--plugin-dir", dir);
   if (o.tools === "none") a.push("--tools", "", "--strict-mcp-config");
   if (o.settings === false) a.push("--setting-sources", "");

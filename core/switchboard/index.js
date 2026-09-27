@@ -337,6 +337,12 @@ export class Switchboard {
       const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
       if (row && row.opts) o = { ...JSON.parse(String(row.opts)), ...o };
     } else {
+      // A fork starts where another session is (ADR 0030, "Adopting existing sessions"): its
+      // folder and project, a new id, and never the other session's process or transcript.
+      if (o.fork) {
+        const src = this.record(o.fork) || await this.adopt(o.fork);
+        o = { ...o, cwd: src.cwd, project: undefined, forkFrom: src.id, name: o.name || `${src.name || String(src.id).slice(0, 8)} (fork)` };
+      }
       const w = await this.where(o);
       id = crypto.randomUUID();
       const now = Date.now();
@@ -371,7 +377,7 @@ export class Switchboard {
     this.spawn(id, { ...o, cwd: rec.cwd, resume: Boolean(o.resume) });
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
-    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume),
+    const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}),
       provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose };
     this.emit("thread.started", payload, id, rec.project);
     // The surface that started it gets the keyboard. A prompt given at launch by a module (an
@@ -463,7 +469,7 @@ export class Switchboard {
     const rec = this.must(id);
     // Learned skills load with the Harness; a job without the plugin gets only what it names.
     const plugins = [...(o.plugin === false ? [] : learnedDirs(this.deps.root, rec.project, rec.agent)), ...(o.plugins || [])];
-    const lo = { id, resume: o.resume, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    const lo = { id, resume: o.resume, forkFrom: o.forkFrom || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null };
     this.live.set(id, state);
@@ -850,6 +856,9 @@ export class Switchboard {
   async answer(askId, decision, by, message, answers, scope) {
     const a = this.asks.get(askId);
     if (!a) throw new Error(`no ask ${askId}`);
+    // The same answer again (a retry after a lost response, a forward from the box) is the earlier
+    // outcome, not a failure (ADR 0029 R2). A different one is refused: the first answer stands.
+    if (a.state === "answered" && a.decision === decision) return { ask: askId, answered: true, decision, already: true };
     if (a.state !== "open") return { ask: askId, answered: false, note: `already ${a.state}${a.decision ? " (" + a.decision + ")" : ""}` };
     const st = this.live.get(a.thread);
     if (!st) { this.closeAsk(a, "cancelled", "thread stopped"); return { ask: askId, answered: false, note: "the thread has stopped" }; }
@@ -1277,6 +1286,10 @@ export default {
     tool("threads.interrupt", "Stop the turn a thread is running, as Escape does in Claude Code. The thread stays and takes the next message; open questions of that turn are cancelled.",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "interrupt sessions"); return sb.interrupt(i.thread); });
+
+    tool("threads.fork", "Continue a session as a copy: a new thread with the same conversation so far, in the same folder, that the original never sees. For a session busy in a terminal, the way to carry on from here without two keyboards on one transcript.",
+      { type: "object", required: ["thread"], properties: { thread: str, prompt: str, name: str, surface: str } },
+      async (i, { caller }) => { guard(caller, "fork sessions"); return sb.launch({ fork: i.thread, prompt: i.prompt, name: i.name, surface: surfaceOf(i, caller) }); });
 
     tool("threads.mode", "Put a running thread in a permission mode, as Shift+Tab does in Claude Code: default (ask), acceptEdits (edits without asking) or plan (read and plan only). Only a person's surface can; bypassPermissions is never offered.",
       { type: "object", required: ["thread", "mode"], properties: { thread: str, mode: { type: "string", enum: MODES } } },

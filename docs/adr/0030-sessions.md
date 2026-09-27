@@ -110,67 +110,62 @@ other.**
 ### 1. The session and event model
 
 A session is a `threads_runs` row, as today: `id` (for Claude, the Claude session id, known
-before the process starts), `provider`, `cwd`, `project`, `agent`, `auth`, `state`, and the
-launch options a resume reuses. A **turn** is one user message and everything until the provider
-says it is done. Turn ids are Vyre's (`<thread>:<n>`), so they survive a resume.
+before the process starts), `provider`, `driver`, `purpose`, `model`, `cwd`, `project`, `agent`,
+`auth`, `status`, and the launch options a resume reuses. A **turn** is one user message and
+everything until the provider says it is done. Turn ids are Vyre's (`<thread>:<n>`), so they
+survive a resume.
 
 States: `starting`, `idle`, `running`, `waiting` (an ask is open), `stopped`, `failed`. A
 session is `idle` with no process at all once it has been closed for idleness (section 7).
 
-Drivers emit these events. The Switchboard puts each on the bus under the names surfaces already
-use, adding fields rather than renaming:
+The bus events, agreed with chat, capsule-now and capsule-sight (27 Sep). Existing names keep
+their meaning and gain fields; every event carries `thread` and, once step 6 lands, `turn`.
+A surface that sees a field absent behaves as before.
 
-| Driver event | Bus event | Payload (beyond `thread`, `turn`, `at`) |
+| Event | Payload (beyond `thread`, `turn`) | State |
 |---|---|---|
-| `session.started` | `thread.started` | `provider`, `model`, `cwd`, `resumed` |
-| `turn.started` | `thread.turn` (new) | `text` (the user message, redacted), `uuid` |
-| `text.delta` | `thread.text` | `text`, `done`; throttled to 50 ms as today |
-| `reasoning.delta` | `thread.text` with `kind: "reasoning"` | as above |
-| `tool.call` | `thread.tool` | `call`, `name`, `status` (`running`, `completed`, `failed`, `canceled`), `summary` |
-| `ask.raised` | `ask.raised` | small, as today: `ask`, `kind` (`permission`, `question`, `plan`, `mode`), `tool` |
-| `ask.resolved` | `ask.answered` or `ask.cancelled` | `ask`, `decision` |
-| `usage` | written to `threads_turns`, and `thread.usage` (new) | tokens, cost, context used |
-| `limit` | `thread.limit` | the provider's rate-limit info |
-| `turn.completed` | `thread.finished` | `result`, `cost`, `tokens` |
-| `turn.failed` | `thread.finished` with `error` | `code`, `message` |
-| `turn.canceled` | `thread.finished` with `canceled: true` | `reason` (`interrupt`, `restart`) |
-| `turn.queued` | `thread.queued` | `uuid`, `text` |
-| `state` | `thread.state` (new) | `state` |
-| `session.closed` | `thread.stopped` | `reason` (`stop`, `idle`, `restart`, `exit`, `crash`) |
+| `thread.started` | `provider`, `model`, `auth`, `purpose`, `cwd`, `resumed` (the chip: "Claude · opus · subscription") | live |
+| `thread.turn` | `turn` (`<thread>:<n>`), `uuid` (the SDK user message uuid, equal to the transcript line's), `text` | step 6 |
+| `thread.text` | `message`, `block` (the content block index; key `message:block`), `delta` or `text` + `done`, `kind: "reasoning"` for thinking | `block`: step 6 |
+| `thread.tool` | `id` (= `call` during the migration), `call`, `name`, `status` (`running` once, then `completed`, `failed` or `canceled` once), `summary` | step 6 |
+| `ask.raised`, `ask.answered` | as today; `ask.answered` with `decision: "cancelled"` for a withdrawn question | live |
+| `thread.sent` | `text`, `surface`, `uuid`, `via`: `steer` (joined the running turn), `turn` (handed over at a turn's end), `now` (a queued row sent at once); `queued` for a queue row | `via`: step 6 |
+| `thread.steered` | `uuid`: Claude Code took the steered message in at a step (the delivered-at-step marker) | step 6 |
+| `thread.queued` | `queued` (the `threads_inbox` row id), `uuid`, `text`, `surface`; re-emitted with the same ids for an edit | live, `uuid` step 6 |
+| `thread.unqueued` | `queued`, `uuid`, `reason: "taken"` | step 6 |
+| `thread.rewound` | `uuid` (the user message rewound to), `fork` (the new thread id) | parity |
+| `mode.changed` | `mode` (`default`, `acceptEdits`, `plan`) | live |
+| `thread.state` | `state` | step 6 |
+| `thread.usage` | `tokens`, `cost_usd`, `context: { used, max }` | step 6 |
+| `thread.limit` | the provider's rate-limit info | live |
+| `thread.finished` | `ok`, `cost_usd`, `tokens`; `error`; `canceled: true, reason: "interrupt"` | `canceled`: step 6 |
+| `thread.stopped` | `reason`: `stopped`, `idle` (resumable), `restart`, `done`, `exited ...` | live |
 
 Full detail (tool inputs, question options, diffs) stays in rows and in the transcript, never in
 events, as today: events are small and carry no credentials and no raw tool input.
 
-### 2. The driver interface
+### 2. The provider contract
+
+What was built (core/sessions/conformance.js has the contract and its test):
 
 ```js
-// core/sessions/router.js
-/** @typedef {{ id: string, cwd: string, resume?: boolean, append?: string, model?: string,
- *    auth: Auth, plugins?: string[], tools?: "none"|null, settings?: boolean, budgetUsd?: number,
- *    mcp?: Record<string, any>, hooks?: any, floor: Floor }} StartOptions */
-export interface Provider {
-  id: "claude" | "codex" | `acp:${string}`;
-  capabilities: { streaming, resume, fork, interrupt, steer, questions, modes, inProcessTools, transcripts };
-  available(): Promise<{ ok: boolean, why?: string }>;
-  start(o: StartOptions): Promise<Session>;          // new or resume, by o.resume
-  sessions?(cwd?: string): Promise<SessionInfo[]>;   // provider-native sessions, for adoption
-}
-export interface Session {
-  readonly id: string; readonly pid: number | null; readonly state: State;
-  send(text: string, o?: { uuid?: string, now?: boolean }): { uuid: string, queued: boolean };
-  unqueue(uuid: string): boolean;                    // a queued message not yet handed over
-  answer(ask: string, a: Answer): boolean;           // resolves a pending canUseTool
-  interrupt(): Promise<void>;
-  setMode?(mode: string): Promise<void>; setModel?(model: string): Promise<void>;
-  fork?(): Promise<string>;                          // a new session id from this one
-  subscribe(fn: (e: SessionEvent) => void): () => void;
-  close(reason: string): Promise<void>;              // ends the process, keeps the transcript
-}
+// A provider: Claude (built in: core/sessions/providers.js), or one a module adds.
+{ id: "claude", capabilities: { streaming, resume, interrupt, modes, questions, transcripts },
+  run(o) -> { pid, alive, write(obj), stop(grace), interrupt(), setMode?(mode) } }
+// o: { id, resume, cwd, env, model, system: {mode, text}, name, budgetUsd, tools, settings,
+//      plugin, plugins, subreaper, uid, gid, onSpawn({pid, pgid, sid}), onMessage(m), onExit(code, signal, stderr) }
 ```
 
-The router picks a provider (the thread's, else the project's, else the default), and an auth
-(section 4). The Switchboard keeps everything above it: rows, leases, the inbox, the bus, asks,
-the lease and the peer check. Nothing outside `core/sessions` imports a driver.
+`write` takes a user turn or the answer to a permission question; `onMessage` gives the session's
+wire messages (system init, text deltas, assistant and user blocks, `can_use_tool` requests and
+their cancellation, rate limits, a result per turn). The Claude driver speaks this natively; a
+Codex or ACP driver translates to it, as Paseo's providers translate to its timeline. Every
+process a provider starts goes through `core/sessions/spawn.js`, so the security of section 8
+holds for every provider.
+
+The Switchboard keeps everything above the provider: rows, leases, the queue, the bus, asks, the
+floor before asks, and the peer check. Nothing outside `core/sessions` and the Switchboard imports
+a driver.
 
 ### 3. The Claude driver, on the Agent SDK
 
@@ -199,11 +194,15 @@ the lease and the peer check. Nothing outside `core/sessions` imports a driver.
   the driver (`mcp:agent:<name>` or `mcp:thread:<id>`), and to in-process hooks for SessionStart,
   UserPromptSubmit, PreToolUse and Stop. That removes the socket hop, the `ps` tty check and the
   key file for owned sessions. The plugin stays for terminal sessions.
-- **Queue, unqueue, edit.** Words sent during a turn wait in Vyre's queue (`threads_inbox`), not
-  in the SDK, and are handed over when the turn ends; until then they can be taken back or
-  edited. "Send now" is a separate action: it hands the message to the SDK with
-  `priority: "next"` so Claude reads it at its next step. (The SDK has no public way to take a
-  queued message back, which is why the default queue is ours.)
+- **Steering is the default** (the user, 27 Sep: Chat must feel like Claude Code in the
+  terminal). A message sent while a turn runs joins THAT turn at Claude's next step: it goes to
+  the SDK with `priority: "next"`, `thread.sent {via: "steer"}` says so, and `thread.steered`
+  marks the step where Claude took it in. The explicit alternative, "after this turn"
+  (`threads.send {mode: "queue"}`), waits in Vyre's queue (`threads_inbox`), where it can be
+  taken back (`threads.unqueue`) or edited (`threads.edit`) until it is handed over at the turn's
+  end, and promoted with `threads.send_now`. The SDK has no public way to take a steered message
+  back, which is why the editable queue is ours. A session live in a terminal always queues
+  (section 11).
 - **Interrupt** is `query.interrupt()`: open asks for that turn are cancelled first, the turn
   ends as `turn.canceled`, and the stale `result` after it is dropped.
 - **Resume and fork.** Resume is a new `query()` with `resume: id` on the same transcript, which
@@ -216,38 +215,49 @@ the lease and the peer check. Nothing outside `core/sessions` imports a driver.
 
 The user reports that Anthropic's 15 June update paused the change to how the Agent SDK is
 billed, so SDK sessions draw on the subscription today. The terms still say "unless previously
-approved", so auth is a per-session choice, not a build-time one:
+approved", so auth is a per-machine setting (`sessions.auth`), not a build-time one:
 
 | Mode | Where the secret lives | What the child gets |
 |---|---|---|
 | `login` | Claude Code's own login on that machine (keychain on the Mac, `~/.claude` on the box) | nothing; the child reads it |
-| `setup-token` | the vault, `claude-setup-token`, granted to `sessions` | `CLAUDE_CODE_OAUTH_TOKEN` |
-| `api-key` | the vault, `anthropic-api-key`, granted to `sessions` | `ANTHROPIC_API_KEY` |
+| `setup-token` | the vault, `claude-setup-token`, granted to `threads` | `CLAUDE_CODE_OAUTH_TOKEN` |
+| `api-key` | the vault, `anthropic-api-key`, granted to `threads` | `ANTHROPIC_API_KEY` |
 
-The default is `setup-token` when the vault holds one, else `login`. The limit fallback
-(`rate_limit_event` rejected) switches a thread from `setup-token` or `login` to `api-key` by
-recreating the query with `resume`, as today. A token is released from the vault per process,
-lives only in that child's env, and never reaches an event, a row or a log. This closes the
-box's open need: every owned session, not only an agent's, gets the vault's credential.
+Approved defaults: the box uses `setup-token`, the Mac `login`, and an API key in the vault is the
+fallback when the subscription's limit is reached (the thread is resumed on it, as before). The
+vault is asked only once onboarding stored a token or `sessions.auth` is set, so a machine without
+one never touches it. A token lives only in that child's env and never reaches an event, a row or
+a log. An agent brings its own credentials, as before.
 
-### 5. Codex and ACP
+### 5. More providers, later, as modules
+
+Claude only for now (the user, 27 Sep). The router is ready for Codex, ChatGPT and ACP agents to
+arrive later as separate modules, with no core change:
+
+- A module declares `"does": { "providers": ["codex"] }` and calls `ctx.provider("codex", driver)`
+  in its start. The registry refuses an undeclared or duplicate name.
+- `threads.start { provider: "codex" }` runs a session on it; the record says `provider` and
+  `driver`; an unknown provider is refused with the list this machine has.
+- The driver must pass `conform()` (core/sessions/conformance.js): a turn streams with the
+  session's id, a permission question reaches the tool once allowed, an interrupt withdraws a
+  question and the session outlives it, stop takes the whole process group, a resume keeps the id,
+  and `onSpawn` reports pid, group and session before the first message. The CLI runner and the
+  SDK driver pass it; a sample module's provider runs a session end to end (core/sessions/sessions.test.js).
+
+The sketches stay for when they are built:
 
 - **Codex** runs `codex app-server` (JSON-RPC over stdio): `thread/start` or `thread/resume`,
   `turn/start`, `turn/steer`, `turn/interrupt`; `item/*` notifications become text, reasoning
-  and tool events; `item/commandExecution/requestApproval` and `item/fileChange/requestApproval`
-  become asks of kind `permission` answered `accept` or `decline`; user-input requests become
+  and tool messages; `item/commandExecution/requestApproval` and `item/fileChange/requestApproval`
+  become `can_use_tool` questions answered `accept` or `decline`; user-input requests become
   questions. Modes map to Codex's approval policy and sandbox pairs. Auth: `login` (ChatGPT
-  sign-in) or `api-key` (`openai-api-key` in the vault). Its transcripts live in
-  `~/.codex/sessions`, which `core/transcripts` does not read yet.
+  sign-in) or `api-key` (`openai-api-key` in the vault).
 - **ACP** is one generic driver over `@agentclientprotocol/sdk`: `session/new` or
   `session/load`, `session/prompt`, `session/update` mapped like Paseo's table,
-  `session/request_permission` as an ask whose options become the ask's buttons, and `cancel`.
-  File-system capabilities are off; the agent uses its own tools under the floor where it can be
-  applied, and under the Gate always. An ACP agent is configured by command and args.
-- **Transcripts for providers that are not Claude.** Recall, memory and the rich view index
-  Claude transcripts. For other providers the Switchboard writes the session's timeline
-  (turns, text, tool calls, asks) to a `threads_items` table from the driver's events, and
-  `core/transcripts` reads it as one more source. Claude keeps its own files as the authority.
+  `session/request_permission` as a question whose options become the ask's buttons, `cancel`.
+- **Transcripts for providers that are not Claude.** The Switchboard writes their timeline to a
+  `threads_items` table from the wire messages, and `core/transcripts` reads it as one more
+  source. Claude keeps its own files as the authority.
 
 ### 6. Resilience, relay and federation
 
@@ -297,35 +307,121 @@ So an idle owned session is not free. Rules:
 
 ### 8. Security
 
-- **The floor** runs before anyone is asked, in `canUseTool` for owned sessions and in the
-  PreToolUse hook for terminal sessions (and for owned ones while they keep the plugin). The
-  plugin's own floor stays in place for tool calls `canUseTool` never sees (allowed by rules).
-- **Agents never approve.** `Session.answer` is reachable only from `threads.answer`, which is
-  PERSON_ONLY, refuses agent and MCP callers, and refuses a call traced to the ask's own thread.
-  In-process MCP tools (phase 3) never include `threads.answer`, `gate.approve` or any other
-  PERSON_ONLY or HUMAN_ONLY tool, and their caller is set by the driver, never by the tool's input.
-- **The peer ancestry check.** The driver reports each child's pid; `threads.pids` returns them,
-  so a process started by any owned session (a Bash command, an MCP server) is refused a
-  PERSON_ONLY call, as it is today. The child's executable is named `claude`, which
-  `claudeCommand` already matches.
+Reviewed by e2e (27 Sep); the three blocking notes are built and tested before the default flip.
+
+- **Orphans and the peer check** (blocking 1). Every session process, on every driver and
+  provider, is spawned by `core/sessions/spawn.js`: detached (it leads a new process group and
+  session), under `tini -s` where installed (the box image has it), so a model's Bash that
+  detaches (`nohup ... &`, `setsid`, a double fork) reparents to tini and its ancestry still leads
+  to a session process. pid, pgid and sid are recorded synchronously at spawn, before the process
+  can run a tool, and `threads.pids` returns `{ pids, pgids, sids }`, a group listed until its
+  last process is gone. e2e refuses a person-only call from any process whose group or session
+  matches. A stop kills the whole group. Next (e2e with sessions): on the box, sessions run as a
+  separate uid that cannot open vyred's socket (`sessions.uid`, `sessions.gid` are already passed
+  to spawn), with their Vyre tools through the in-process MCP of phase 3.
+- **Permission files** (blocking 2). A tool call that a settings rule allows never reaches
+  `canUseTool`, so a model that writes its own `.claude/settings.local.json` would escape every
+  ask. The floor (rule 1, core/harness/rules.js) denies a session's writes, by file tools or Bash
+  write forms, to `settings.json` and `settings.local.json` in any `.claude` folder, `.claude.json`,
+  `.mcp.json`, `managed-settings.json` and settings files under `$CLAUDE_CONFIG_DIR`. The PreToolUse
+  floor stays on for rule-allowed calls, and the Switchboard also runs the floor before putting
+  any question to the person: what it denies is refused with a notice, never asked.
+- **Modes** (blocking 3). Only a person changes a session's permission mode: `threads.mode`
+  (default, acceptEdits, plan; PERSON_ONLY; refused from the session's own thread). An answer's
+  `updatedPermissions` is filtered (`safePermissions`): a switch to bypassPermissions or any mode
+  Vyre does not offer is dropped, whoever answers. Nothing else calls `setPermissionMode`, and
+  `allowDangerouslySkipPermissions` is never set.
+- **Agents never approve.** `threads.answer` is PERSON_ONLY, refuses agent and MCP callers, and
+  refuses a call traced to the ask's own thread. In-process MCP tools (phase 3) never include a
+  PERSON_ONLY or HUMAN_ONLY tool, and their caller (`mcp:thread:<id>`, `mcp:agent:<name>`, both
+  "mcp" to the registry) is set by the driver, never by the tool's input. Editing a system prompt
+  or a model (`sessions.prompt.set`, `revert`, `sessions.models.set`) is PERSON_ONLY too.
 - **MCP trust.** `canUseTool`'s `mcpServer.source` says whether a tool is ours (`sdk`) or from
   configuration; decisions key on it, never on the tool name.
-- **Setting sources.** Owned sessions load `user`, `project` and `local` settings by default, as
-  a terminal session does, so the user's own permission rules and hooks apply. Learning jobs and
-  lean threads pass `[]`, as `--setting-sources ""` does today.
+- **Setting sources.** Owned sessions load `user`, `project` and `local` settings, as a terminal
+  session does, so the user's own rules and hooks apply. Jobs pass `[]`.
+- **Still open** (e2e's "should"): the floor re-checks an answer's final `updatedInput` (with the
+  queue and edit work); whether Claude Code's Bash children inherit `CLAUDE_CODE_OAUTH_TOKEN` is to
+  be measured against a fake Messages API (if they do, the box moves to `login` or an
+  `apiKeyHelper`); owner tailnet nodes are treated as the person over HTTP until e2e's HTTP person
+  session lands, so Mac-owned sessions stay behind that.
 
-### 9. Spec changes
+### 9. Models per purpose
+
+The user, 27 Sep: Opus for real work, a faster, cheaper model for quick answers and background
+jobs. Each session has a purpose (`chat`, `agent`, `project`, `capsule`, `job`, `memory`,
+`planner`, `learn`), given by the caller or inferred (a lean or one-shot thread is a `job`, an
+agent's is `agent`, one in a project is `project`, else `chat`). The model is, in order: an
+explicit one (a launch, an agent's own model), the project's override, the purpose's override set
+from a surface (`sessions.models.set`, person-only), `sessions.models` in config, and the default:
+`opus` for chat, agent and project, `haiku` for the rest. `sessions.models.get` shows the map and
+where each comes from; `thread.started` carries the model for the chip.
+
+### 10. Adopting existing sessions
+
+The user asked how existing sessions work with Chat on the SDK. There is no conversion:
+
+- **One list.** The Deck and the phone list every session: history from the transcripts
+  (`projects.catalog`, `recall.transcript`) and the live ones from `threads.list`, each with a
+  source badge: terminal, Vyre, Mac or box.
+- **The first message resumes it through the SDK.** A message from Chat to a session Vyre did not
+  start adopts it (`adopt.js` makes the record) and resumes it with `resume: <id>` in the
+  transcript's own folder, on the machine that owns it: a Mac session on the Mac, with the
+  installed `claude`. From then on it is a Vyre-owned session: the assistant's system prompt,
+  `canUseTool` and its asks, steering and the queue.
+- **One writer.** If the session is live in a terminal (bound by the hook, `claude --resume` in
+  `ps`, or a transcript write in the last 30 seconds: `openElsewhere`), the message is QUEUED by
+  default and handed over at that terminal turn's end, as today. Chat offers FORK
+  (`forkSession`: continue as a copy, a new thread) instead. Vyre takes the session over only
+  once the terminal has exited. Never two writers on one transcript.
+- **No duplicates.** Live turns and history are matched by Claude's message id (and the user
+  message `uuid`), so a turn seen live and then read from the transcript is one row.
+- **Open in terminal** is `claude --resume <id>` for any session, where it ran. For a session
+  vyred is running, `vyre resume` hands it over first: an idle one is closed; one mid-turn or
+  waiting on a question is left alone.
+- **Older transcripts.** A transcript an older Claude Code wrote resumes as it would in the
+  terminal; the transcript reader already tolerates older line shapes.
+
+### 11. Parity with Claude Code in the terminal
+
+The user, 27 Sep: Chat must feel exactly like Claude Code in the terminal. What each behaviour
+takes, and who provides it:
+
+| Behaviour | In the SDK | Ours |
+|---|---|---|
+| Steering: a message sent while working joins the turn at the next step | streaming input, `priority: "next"` | the default for send while busy; `thread.sent {via: "steer"}`, `thread.steered` |
+| Esc interrupts at once | `query.interrupt()` | `threads.interrupt`; open asks cancelled; `thread.finished {canceled}` |
+| Double Esc rewinds to an earlier message | `resumeSessionAt`, `forkSession`, `rewindFiles` (with file checkpointing) | `threads.rewind {thread, uuid}`, `thread.rewound`; the message list as rewind points |
+| Shift+Tab modes (default, acceptEdits, plan) | `setPermissionMode` | `threads.mode`, person-only, never bypass |
+| Slash commands, the user's own and plugins' | `supportedCommands()`; a `/command` sent as a user message | the list for the composer's menu |
+| @file mentions | none (text) | the composer's picker, inserting the path |
+| `!` shell | none | a Bash call the session makes, or the Deck's terminal |
+| `#` add to memory | none | `memory.remember` from the composer |
+| Image paste | image content blocks in a user message | the composer's paste, sent as blocks |
+| The thinking display | thinking blocks, `stream_event` thinking deltas | `thread.text {kind: "reasoning"}` |
+| Todos | TodoWrite tool calls | the todo card from `thread.tool` |
+| Background tasks | `backgroundTasks()`, `stopTask()`, task notifications | a task list on the thread |
+| Compact | `/compact` as a user message; compaction status messages | a compact action and its marker |
+| Model switch | `setModel()` | the chip's picker (sessions.models for defaults) |
+| Up to recall or edit the last message | none | the composer's history; editing a sent message is a rewind |
+
+`threads.edit` and `threads.unqueue` act on queued rows only; editing a message Claude already
+has is a rewind to it.
+
+### 12. Spec changes
 
 - Principle 1 becomes "public Claude Code surfaces only: the plugin system, documented CLI flags
   and the Claude Agent SDK". The risk note about `--permission-prompt-tool stdio` goes: the SDK
   owns that flag.
 - Section 10's "Every Vyre session is a real Claude Code session: in a terminal, or headless
   under the Switchboard" gains "or another provider's session, through the router".
+- Principle 8 (light by default) gains: an idle session is closed after `sessions.idle_minutes`.
 
 ## Migration
 
-In order. Each step ships behind `sessions.driver` (`cli` or `sdk`, default `cli` until step 3
-passes the full suite and a week of use on the box), and nothing changes for surfaces until
+In order. Steps 1 to 3 shipped behind `sessions.driver`; the default becomes `sdk` as soon as the
+full suite is green on it (days, not a long dual run), and the CLI runner then stays only for the
+window before the SDK is installed. Nothing changes for surfaces until
 step 6.
 
 1. **sessions** (new `core/sessions`): the router, the Claude driver, the fake-claude test path
@@ -376,24 +472,23 @@ With the fake child, the active and idle numbers were: host 83 MB and 0.5 percen
 
 ## Risks and open questions
 
-For the user:
+Decided by the user (27 Sep): auth (box setup-token, Mac login, API key fallback), the bundled
+Claude Code on the box and the installed one on the Mac, idle close at 10 minutes and a cap of 6
+on the box (both configurable), Capsule sessions where the work lives (quick asks to the box
+assistant, Mac project folders Mac-owned), steering as the default, Opus for work and a fast model
+for quick answers and jobs, Claude as the only provider for now.
 
-1. **Billing terms.** SDK sessions on a subscription rest on the paused 15 June change. If it
-   resumes, owned sessions need `api-key`, or `login` if a subscription login in the child still
-   counts as Claude Code. Auth is swappable for this reason; which default do you want?
-2. **The 231 MB binary.** The SDK bundles its own Claude Code. Use it (a pinned pair, one more
-   copy on disk) or point at the installed `claude` (one copy, but the SDK and CLI versions can
-   drift)? Recommendation: the bundled one on the box, the installed one on the Mac so owned and
-   terminal sessions run the same version there.
-3. **Idle policy.** Close after 10 minutes and a cap of 6 live sessions on the box: right?
-4. **Mac sessions.** Should the Mac's vyred own sessions started from the Capsule on the Mac
-   (asks come to Vyre, answerable from the phone once step 7 lands), or should Capsule sessions
-   start on the box by default?
+Still open:
 
-For us:
-
-- The SDK is pre-1.0 and changes weekly; pin it and run the fake-backed suite on each bump.
-- A resumed session must not be open in a terminal at the same time: the second-writer check
-  (`claim.js`) stays and applies to owned sessions too.
+- **Billing terms.** SDK sessions on a subscription rest on the paused 15 June change. If it
+  resumes, the box moves to `api-key`, or `login` if a subscription login in the child still
+  counts as Claude Code. `sessions.auth` makes that one setting.
+- **Credentials in Bash** (section 8, "still open").
+- **Floor rule 8 and agents' folders.** The floor treats all of VYRE_HOME except `watchers/` and
+  `modules/` as Vyre's own state, so an agent without a project, which runs in
+  `<home>/agents/<name>`, cannot write files in its own folder. e2e decides.
+- **Mac-owned sessions** wait for e2e's HTTP person session and tailnet's signed answer forward
+  (migration step 7).
+- The SDK is pre-1.0 and changes weekly; it is pinned in `core/sessions/sdk.js`, and a bump runs
+  the switchboard and sessions suites on the SDK driver first.
 - The plugin inside an owned session and in-process hooks must never both run the same piece.
-- `ExitPlanMode` and mode switches need a surface design before phase 3.

@@ -54,11 +54,11 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   const root = tempHome(t);
   const log = path.join(root, "claude.log");
   const saved = { VYRE_CLAUDE_BIN: process.env.VYRE_CLAUDE_BIN, FAKE_CLAUDE_LOG: process.env.FAKE_CLAUDE_LOG,
-    VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSIONS_SDK_DIR: process.env.VYRE_SESSIONS_SDK_DIR };
-  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, FAKE_CLAUDE_LOG: log, VYRE_SESSIONS_DRIVER: driver });
+    VYRE_SESSIONS_DRIVER: process.env.VYRE_SESSIONS_DRIVER, VYRE_SESSIONS_SDK_DIR: process.env.VYRE_SESSIONS_SDK_DIR, FAKE_CLAUDE_TRANSCRIPTS: process.env.FAKE_CLAUDE_TRANSCRIPTS };
+  const transcripts = path.join(root, "transcripts");
+  Object.assign(process.env, { VYRE_CLAUDE_BIN: FAKE, FAKE_CLAUDE_LOG: log, VYRE_SESSIONS_DRIVER: driver, FAKE_CLAUDE_TRANSCRIPTS: transcripts });
   if (SDK) process.env.VYRE_SESSIONS_SDK_DIR = SDK;
   t.after(() => { for (const [k, v] of Object.entries(saved)) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } });
-  const transcripts = path.join(root, "transcripts");
   fs.mkdirSync(transcripts);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role, transcripts: [transcripts],
     sessions: { install: false, ...sessions }, ...(Object.keys(vault).length ? { vault: { keystore: "file" } } : {}) }));
@@ -84,7 +84,27 @@ async function boot(t, { driver = "cli", sessions = {}, vault = {}, role = "box"
   const events = async id => (await tool("threads.get", { thread: id, limit: 500 })).data.events;
   const finished = async (id, n = 1) => until(async () => (await events(id)).filter(e => e.type === "thread.finished").length >= n, `turn ${n} of ${id.slice(0, 8)}`);
   const said = async id => (await events(id)).filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice).map(e => e.payload.text);
-  return { root, d, work, tool, launches, events, finished, said };
+  return { root, d, work, tool, launches, events, finished, said, transcripts };
+}
+
+/**
+ * A session a terminal `claude` wrote, as an older Claude Code left it: a summary line, no
+ * entrypoint, version 1.0.40. `ageMs` 0 is a session busy in a terminal right now.
+ */
+function terminalSession(transcripts, cwd, { ageMs = 120_000, id = crypto.randomUUID() } = {}) {
+  const dir = path.join(transcripts, cwd.replace(/[^A-Za-z0-9]/g, "-"));
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `${id}.jsonl`);
+  const base = { sessionId: id, cwd, version: "1.0.40", userType: "external", isSidechain: false };
+  fs.writeFileSync(file, [
+    { type: "summary", summary: "Northwind Bakery menu", leafUuid: "u2" },
+    { ...base, type: "user", uuid: "u1", parentUuid: null, timestamp: new Date(Date.now() - ageMs).toISOString(), message: { role: "user", content: "start the menu for Northwind Bakery" } },
+    { ...base, type: "assistant", uuid: "u2", parentUuid: "u1", timestamp: new Date(Date.now() - ageMs).toISOString(),
+      message: { id: "msg_old_1", role: "assistant", model: "claude-3-5-sonnet", content: [{ type: "text", text: "Started the menu." }] } },
+  ].map(l => JSON.stringify(l)).join("\n") + "\n");
+  const when = (Date.now() - ageMs) / 1000;
+  fs.utimesSync(file, when, when);
+  return { id, file };
 }
 
 // ------------------------------------------------------------ pure parts
@@ -388,6 +408,48 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(e.model, "haiku", "an explicit model wins");
     const map = (await w.tool("sessions.models.get", {})).data;
     assert.deepEqual([map.purposes.chat.model, map.purposes.memory.model, map.purposes.capsule.model, map.projects["harlow-legal"]], ["opus", "haiku", "claude-haiku-4-5", "sonnet"]);
+  });
+
+  test(`${driver}: a session a terminal started, by an older Claude Code, is resumed through Vyre on the first message, once in the list`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const old = terminalSession(w.transcripts, w.work);
+    const r = (await w.tool("threads.send", { thread: old.id, text: "carry on", surface: "deck" })).data;
+    assert.deepEqual(r, { sent: true, thread: old.id });
+    await w.finished(old.id);
+    const rec = (await w.tool("threads.get", { thread: old.id })).data.thread;
+    assert.deepEqual([rec.driver, rec.cwd], [driver, w.work], "resumed by Vyre, in the transcript's own folder");
+    const argv = w.launches().at(-1).argv;
+    assert.equal(argv[argv.indexOf("--resume") + 1], old.id);
+    assert.deepEqual(await w.said(old.id), ["echo: carry on"]);
+    const lines = fs.readFileSync(old.file, "utf8").trim().split("\n").map(l => JSON.parse(l));
+    assert.equal(lines[0].type, "summary", "the old lines are kept as they were");
+    assert.ok(lines.some(l => l.type === "user" && l.message.content === "carry on"), "the new turn is in the same transcript");
+    // One row per session, and the live text keys to the transcript's own message id.
+    assert.equal((await w.tool("threads.list", {})).data.filter(x => x.id === old.id).length, 1);
+    const live = (await w.events(old.id)).find(e => e.type === "thread.text" && e.payload.done).payload.message;
+    assert.ok(lines.some(l => l.type === "assistant" && l.message.id === live), "live and history share the message id");
+  });
+
+  test(`${driver}: a session live in a terminal is queued, never typed into, and a fork carries on as a copy`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const busy = terminalSession(w.transcripts, w.work, { ageMs: 0 });
+    const before = fs.readFileSync(busy.file, "utf8");
+    const q = (await w.tool("threads.send", { thread: busy.id, text: "add the autumn specials", surface: "deck" })).data;
+    assert.equal(q.queued, true);
+    assert.equal(q.busy, "terminal");
+    assert.ok(!w.launches().some(l => l.argv && l.argv.includes(busy.id)), "no second writer was started");
+    const f = (await w.tool("threads.fork", { thread: busy.id, prompt: "from here", surface: "deck" })).data;
+    assert.notEqual(f.id, busy.id);
+    await w.finished(f.id);
+    const argv = w.launches().at(-1).argv;
+    assert.equal(argv[argv.indexOf("--resume") + 1], busy.id);
+    assert.ok(argv.includes("--fork-session"));
+    assert.equal(argv[argv.indexOf("--session-id") + 1], f.id);
+    assert.equal((await w.events(f.id)).find(e => e.type === "thread.started").payload.forked_from, busy.id);
+    assert.deepEqual(await w.said(f.id), ["echo: from here"]);
+    assert.equal(fs.readFileSync(busy.file, "utf8"), before, "the original transcript is untouched");
+    const copy = fs.readFileSync(path.join(path.dirname(busy.file), `${f.id}.jsonl`), "utf8");
+    assert.match(copy, /start the menu for Northwind Bakery/, "the fork starts with the conversation so far");
   });
 
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {

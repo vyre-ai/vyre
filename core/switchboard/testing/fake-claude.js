@@ -66,6 +66,14 @@ const MODEL = flag("--model") || "fake-model";
 // ------------------------------------------------------------ transcript lines, as Claude Code writes them
 
 const TX = process.env.FAKE_CLAUDE_TRANSCRIPTS;
+// A fork (--resume <from> --fork-session --session-id <new>) starts with the other session's
+// lines, under its own id, as Claude Code does. The original is not touched.
+if (TX && argv.includes("--fork-session")) {
+  const dir = path.join(TX, process.cwd().replace(/[^A-Za-z0-9]/g, "-"));
+  const from = path.join(dir, `${flag("--resume")}.jsonl`);
+  if (fs.existsSync(from)) fs.writeFileSync(path.join(dir, `${session}.jsonl`), fs.readFileSync(from, "utf8").split("\n").filter(Boolean)
+    .map(l => { try { return JSON.stringify({ ...JSON.parse(l), sessionId: session }); } catch { return l; } }).join("\n") + "\n");
+}
 /** @type {string|null} */
 let parent = null;
 function tx(type, message, extra = {}) {

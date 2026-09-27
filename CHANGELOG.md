@@ -4,6 +4,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: adopting existing sessions, fork, and ADR 0030's settled contract
+
+- `threads.fork {thread, prompt?, name?}`: a new thread that carries on another session's
+  conversation as a copy, in its folder, never touching its process or transcript (the CLI's
+  `--resume <id> --fork-session --session-id <new>`, the SDK's `forkSession`). `thread.started`
+  says `forked_from`. For a session busy in a terminal, the way to go on without two writers.
+- Adopting: a session a terminal started (an older Claude Code's transcript included) is resumed
+  through Vyre on the first message from Chat, in its own folder, and stays one row; a session
+  live in a terminal is queued, never typed into. Tested on both drivers.
+- `threads.answer` with the same decision again returns the earlier outcome
+  (`{answered: true, already: true}`, ADR 0029 R2); a different one is still refused.
+- ADR 0030: the event contract agreed with chat, capsule-now and capsule-sight; the provider
+  contract as built; steering as the default with the queue as the alternative; security as
+  built for e2e's blockers; models per purpose; adopting existing sessions; the parity list with
+  Claude Code in the terminal (SDK-native or ours); decided and open questions.
+- The fake `claude` copies the source transcript on a fork.
+
 #### Sessions: security before the flip, models per purpose, providers as modules (ADR 0030)
 
 - Security (e2e's blockers). core/sessions/spawn.js spawns every session process, on either
