@@ -93,7 +93,8 @@ mobile and the Capsule (through their owners).
 5. The real-browser extension check on TESTBOX: headless Chrome, temp --user-data-dir, local
    fixture pages only, after the integrator's run and under load 8.
 6. vault.agent.fill against glass-live's final computers.fill contract (agreed; wiring after native
-   core).
+   core). Pass the grant's ORIGIN (scheme://host[:port]) to computers.fill.begin, never a URL:
+   glass-live does not trim it yet.
 7. Android: the device check (mobile), and the CredentialProviderService (not started; the
    subagent wrote nothing). Tell mobile the sha on any module change: their copy is not linked.
 8. Apple: parked until after native core; then mobile (iOS app) and capsule-pro (Capsule) add the
