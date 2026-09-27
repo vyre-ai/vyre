@@ -117,27 +117,18 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
-## Doing (SAVED 27 Sep, before a restart)
-- RC handed to the integrator: work/memory-iq 1a76d383, the leak fix via e2e's transcriptFolders
-  (88c90d56 merged; recall readable() wraps it), source trust, memory.retrieve/ask/suggest,
-  recall.search {prefix}, eval-iq and the iq worlds, and ADR 0034 amended (status stable). After
-  it: 7b48652d, memory.ask's cap at $0.50/day, with limited plus a message at the cap (the lead
-  asked for this in the next RC). Tests at 1a76d383: 319 + 71 pass on testbox. ask.test.js's new
-  cap assertions have NOT run yet.
-- The open-world memory.ask re-record with prompt v2 (ask.js VERSION 2) was running on testbox
-  (the test box's memory-iq copy, `node scripts/eval-iq.js --world open --answer --record`) and was stopped
-  for the restart. Rerun that command: it keeps the replies already recorded. Then scp
-  test/eval/asks/open.json back and commit it. v1 numbers: accuracy 0.722, confident-wrong 7
-  (4 of them over-literal golds, now widened), abstained 0.40, ungrounded 0, inconsistent 0, about
-  $0.003 a question.
-- Scores (replayed reads): personal 1.0, heldout 1.0, blind 0.959, fresh 0.76, trust 1.0,
-  sealed 0.551 with 7 confident wrong (was 0.577 with 6). Two sealed answers were lost because
-  Claude's words no longer count. Not tuned on sealed.
-- Retrieval (memory.retrieve, real MiniLM): recall@8 open 0.833, sealed 0.638. Graph expansion
-  adds 0 on both, but the graph stays (a pillar). Dense weight stays 0.25 (lead). Sealed stays sealed.
-- memory.ask runs on sessions' threads.quick (work/sessions db4af9c3, lands after batch 4), else
-  `claude -p`. threads.quick sessions write no transcript (sessions c6663f14), and <home>/quick is
-  skipped as a second guard.
+## Doing (28 Sep)
+- Merged main (e79eb5c6). Open-world v2 re-record finished: all 90 replies kept in
+  test/eval/asks/open.json (ce980557). v2 open: accuracy 0.778, confident-wrong 1, abstained 0.411,
+  ungrounded 0, inconsistent 0. v1 re-recorded the same day on the same golds: 0.767, 2 CW,
+  p50/p95 3.8/4.4 s via claude -p, $0.0032 a question. One question apart: not a measured win.
+- A/B on sealed (recorded blind, scores only) running on testbox: ~/vyre-ci/iq-ab-sealed-v1.txt
+  (from ~/vyre-ci/memory-iq-v1, prompt v1) then iq-ab-sealed-v2.txt (~/vyre-ci/memory-iq), marker
+  ~/vyre-ci/iq-ab-done. Do not open test/eval/asks/sealed.json.
+- IQ everywhere: docs/design/iq-everywhere.md (surfaces, ranked gaps, owner specs). Built here:
+  memory.ask stream + caller id + memory.thinking/answered (6adfc4b6), `vyre memory ask` on
+  memory.ask (6adfc4b6), memory.suggest offered to suggest + suggest.ready (f50c5f21). All 0.1.1
+  unless the lead says otherwise.
 
 ## Next
 - Finish the v2 re-record, report accuracy and cost to the lead, commit asks/open.json, and hand
@@ -159,5 +150,7 @@ facts are not a project's.
   memory curator's background pass, in bounded batches that yield.
 
 ## Changed contracts
+- core/suggest/index.js emits `suggest.ready` at the end of start (module.json emits it), so a module that started first offers again. memory.suggest also returns `items` (suggest.offer's shape).
+- memory.ask takes `stream` and `id`; events memory.thinking {id, stage} and memory.answered {id, abstained, limited}.
 - core/recall/index.js readable(folders, root, env): the person's ~/.claude only for the real ~/.vyre (or VYRE_ALLOW_REAL_TRANSCRIPTS=1). New tool memory.retrieve. Table memory_me_trust. Config memory.personal.skipCwds.
 - New tools `memory.answer`, `memory.profile`, `memory.remember` (see above); event `memory.remembered`; table `memory_me_told`. New table family `memory_me_*` (memory's own).
