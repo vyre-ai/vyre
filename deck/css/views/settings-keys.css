@@ -1,0 +1,128 @@
+/* Settings, the registry's keys (deck/views/settings-keys.js), per design A's settings row
+   (docs/design/system/components/settings-row.md). Role tokens only: no colour of its own, no
+   violet and no red. The --radius-* tokens come with design A's tokens.css; until that lands the
+   old radii stand in. */
+
+.sk-top { display: flex; flex-direction: column; gap: 6px; padding-top: 48px; }
+.sk-intro { max-width: 620px; font-size: 12px; line-height: 16px; color: var(--label); }
+.sk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 12px; padding: 12px 0; border-bottom: 1px solid var(--rule);
+  position: sticky; top: 0; z-index: 2; background: var(--bg); }
+.sk-bar .seg { flex-shrink: 0; }
+.sk-find, .sk-proj { height: 32px; font-size: 13px; border-radius: var(--radius-field, var(--r-2)); }
+.sk-find { flex: 1 1 200px; min-width: 0; width: auto; }
+.sk-status:not(:empty) { padding-top: 8px; }
+.sk-sec { padding-top: 32px; }
+.sk-none { padding-top: 16px; }
+
+/* Project scope: the keys kept per account are hidden, and this says so. */
+.sk-acct-only { margin: 8px 0 0; font-size: 12px; line-height: 16px; color: var(--label); }
+.sk-link { border: none; background: none; padding: 0; font: inherit; color: var(--text); text-decoration: underline;
+  text-underline-offset: 2px; cursor: pointer; border-radius: var(--radius-chip, var(--r-1)); }
+.sk-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* The restart banner: a quiet fill, never a colour. */
+.sk-banner { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-height: 40px; margin-top: 12px;
+  padding: 8px 12px 8px 16px; border-radius: var(--radius-card, var(--r-3)); background: var(--hover); }
+.sk-banner[hidden] { display: none; }
+.sk-banner-fact { font-size: 13px; line-height: 18px; font-weight: 600; color: var(--text); }
+.sk-banner-detail { font-size: 12px; line-height: 16px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The row: text, the reserved slot, the control. */
+.set-row.sk-row { display: grid; grid-template-columns: minmax(0, 1fr) 184px minmax(168px, max-content); gap: 4px 12px;
+  align-items: center; min-height: 56px; padding: 8px 16px; margin: 0 -16px; border-radius: var(--radius-card, var(--r-3));
+  scroll-margin-top: 72px; transition: background 160ms; }
+.set-row.sk-row[hidden] { display: none; }
+.sk-row:hover { background: var(--hover); }
+.sk-row:focus { outline: none; }
+.sk-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.sk-row.sk-wide { grid-template-columns: minmax(0, 1fr) 184px; }
+.sk-row.sk-wide .sk-v { grid-column: 1 / -1; }
+.sk-k { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sk-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.sk-label { font-size: 13px; line-height: 18px; font-weight: 400; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.sk-src { flex-shrink: 0; display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border-radius: var(--radius-chip, var(--r-1));
+  background: var(--hover); color: var(--text-2); font-size: 12px; line-height: 16px; cursor: default; }
+.sk-row:hover .sk-src { background: var(--rule); }
+.sk-desc { display: flex; flex-wrap: wrap; gap: 0 6px; font-size: 12px; line-height: 16px; color: var(--label); }
+.sk-desc:empty { display: none; }
+.sk-help { max-width: 420px; }
+.sk-help + .sk-apply::before { content: "\00B7"; margin-right: 6px; }
+.sk-key { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); overflow-wrap: anywhere; }
+.sk-note:not(:empty) { display: flex; flex-direction: column; gap: 2px; font-size: 12px; line-height: 16px; }
+.sk-why { color: var(--label); }
+.sk-problem, .sk-err, .sk-bad { color: var(--text); }
+.sk-failed { font-weight: 600; }
+
+/* The reserved slot: always laid out, so Saved, Reset and Undo never move anything. */
+.sk-slot { display: flex; align-items: center; justify-content: flex-end; gap: 6px; min-height: 28px; min-width: 0;
+  font-size: 12px; line-height: 16px; color: var(--text-2); }
+.sk-slot .btn-sm { height: 28px; padding: 0 8px; font-size: 12px; color: var(--text); border-radius: var(--radius-button, var(--r-2)); }
+.sk-slot .btn-sm:hover { background: var(--hover); }
+.sk-row:hover .sk-slot .btn-sm:hover { background: var(--rule); }
+.sk-was { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sk-saved::before { content: "\2713"; margin-right: 4px; }
+/* The reset ghost shows on hover or focus, and always where there is no hover. */
+.sk-row:not(:hover):not(:focus-within) .sk-reset { visibility: hidden; }
+@media (hover: none) { .sk-row .sk-reset { visibility: visible; } }
+
+.sk-v { min-width: 0; }
+.sk-ctl { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; max-width: 100%; min-height: 32px; }
+.sk-wide .sk-ctl { justify-content: flex-start; }
+.sk-ctl .seg { margin-top: 0; height: 32px; align-items: center; background: var(--hover); border-color: transparent; }
+.sk-ctl .seg button { height: 28px; }
+.sk-ctl .input, .sk-input { height: 32px; font-size: 13px; background: var(--bg); border-radius: var(--radius-field, var(--r-2)); }
+.sk-input { max-width: 320px; }
+.sk-ctl select.input { width: auto; min-width: 168px; }
+.sk-num { width: 120px; }
+.sk-model { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.sk-other { width: 220px; }
+.sk-dim .sk-label { color: var(--label); }
+.sk-dim .sk-ctl :disabled { color: var(--label); }
+.sk-hi { background: var(--hover); }
+
+/* The confirm line: what changes and where, then Confirm or Cancel. */
+.sk-ask { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px;
+  padding: 10px 12px; border-radius: var(--radius-card, var(--r-3)); background: var(--panel); border: 1px solid var(--rule); }
+.sk-ask[hidden] { display: none; }
+.sk-ask-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 13px; line-height: 18px; color: var(--text); }
+.sk-where { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); overflow-wrap: anywhere; }
+.sk-ask-btns { display: flex; gap: 8px; flex-shrink: 0; }
+.sk-ask-btns .btn-sm { height: 32px; padding: 0 12px; border-radius: var(--radius-button, var(--r-2)); }
+.sk-ask-btns .btn-ghost { color: var(--text); }
+
+.sk-list { display: flex; flex-direction: column; gap: 8px; min-width: 0; max-width: 100%; }
+.sk-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sk-chip { max-width: 100%; }
+.sk-chip .mono { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.sk-x { border: none; background: transparent; color: var(--label); cursor: pointer; width: 20px; height: 20px; padding: 0;
+  border-radius: var(--radius-chip, var(--r-1)); font-size: 14px; line-height: 20px; }
+.sk-x:hover { color: var(--text); background: var(--hover); }
+.sk-add-row { display: flex; gap: 8px; align-items: center; max-width: 100%; }
+.sk-add-row .btn-sm { height: 32px; border-radius: var(--radius-button, var(--r-2)); }
+.sk-obj { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 520px; }
+.sk-json { font-family: var(--mono); font-size: 12px; line-height: 18px; width: 100%; background: var(--bg); border-radius: var(--radius-field, var(--r-2)); }
+
+/* Phone: label and control on one line, the reserved line under them, every target 44. */
+@media (max-width: 760px) {
+  .sk-top { padding-top: 40px; }
+  .sk-bar { position: static; }
+  .sk-find, .sk-proj { height: 44px; font-size: 16px; }
+  .sk-find { max-width: 100%; width: 100%; }
+  .set-row.sk-row { grid-template-columns: minmax(0, 1fr) auto; margin: 0; padding: 8px 0; }
+  .sk-row .sk-k { grid-column: 1; grid-row: 1; }
+  .sk-row .sk-v { grid-column: 2; grid-row: 1; }
+  .sk-row .sk-slot { grid-column: 1 / -1; grid-row: 2; justify-content: flex-start; min-height: 44px; }
+  .sk-row.sk-wide .sk-v { grid-column: 1 / -1; grid-row: 2; }
+  .sk-row.sk-wide .sk-slot { grid-row: 3; }
+  .sk-label { font-size: 17px; line-height: 24px; white-space: normal; }
+  .sk-desc, .sk-note { font-size: 13px; line-height: 18px; }
+  .sk-ctl, .sk-ctl .seg { min-height: 44px; }
+  .sk-ctl .seg button { height: 38px; }
+  .sk-ctl .input, .sk-input, .sk-other { height: 44px; font-size: 16px; max-width: 100%; }
+  .sk-ctl select.input { min-width: 0; }
+  .sk-slot .btn-sm, .sk-ask-btns .btn-sm, .sk-add-row .btn-sm { height: 44px; }
+  .sk-row .sk-reset { visibility: visible; }
+  .sk-ctl .seg { max-width: 100%; overflow-x: auto; }
+  .sk-ask-btns { width: 100%; }
+  .sk-ask-btns .btn-sm { flex: 1; }
+}

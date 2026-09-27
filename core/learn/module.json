@@ -9,5 +9,8 @@
     "lesson.dormant", "lesson.allowed", "skill.proposed", "skill.installed", "skill.retired", "distill.finished"] },
   "shows": { "deck": ["panel:memory/lessons"], "capsule": ["waiting:lesson.proposed"], "cli": ["learn"] },
   "needs": {},
-  "teaches": { "memory": ["preference"] }
+  "teaches": { "memory": ["preference"] },
+  "settings": [
+    {"key": "learn.distill_daily", "group": "memory", "label": "Lessons distilled per day", "type": "int", "min": 0, "max": 50, "default": 6, "levels": ["account"], "apply": "restart", "store": {"config": "learn.distill.daily"}}
+  ]
 }

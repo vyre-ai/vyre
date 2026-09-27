@@ -100,6 +100,12 @@ test("peer: a person-only call from under a claude is refused silently; the same
   assert.match(inside.body.error.message, /inside a Claude session/);
   const answer = await client(dir, socket, "threads.answer", { ask: "0123456789abcdef01", decision: "allow" }, { underClaude: true });
   assert.equal(answer.body.error.code, "denied");
+  // Every setting is the person's own too: a model's Bash never changes one, confirm or not.
+  for (const [tool, input] of [["settings.set", { key: "sessions.mode", value: "bypassPermissions", confirm: true }], ["settings.reset", { key: "sessions.mode" }]]) {
+    const r = await client(dir, socket, tool, input, { underClaude: true });
+    assert.equal(r.status, 403, `${tool}: ${JSON.stringify(r)}`);
+    assert.match(r.body.error.message, /inside a Claude session/);
+  }
   assert.ok(!(await d.registry.call("agents.list", {}, "cli")).data.some(a => a.name === "kit"), "nothing was made");
 
   const outside = await client(dir, socket, "agents.create", { name: "kit" });

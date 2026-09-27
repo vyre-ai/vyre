@@ -47,6 +47,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 15 | 5 | cli |
+| [`settings`](#settings) | `core/settings` | `box`, `local` | 5 | 1 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
@@ -363,6 +364,17 @@ How the sessions Vyre starts run (ADR 0030): the Claude Agent SDK driver's statu
 - Tools: [15](tools.md#sessions), 3 of them only for other modules
 - Emits: [5 events](events.md#sessions)
 - Shows on: cli
+
+## settings
+
+One way to read and change every setting, at account or project level, wherever it is kept.
+
+- Folder: `core/settings`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [5](tools.md#settings), 1 of them only for other modules
+- Emits: [1 events](events.md#settings)
+- Shows on: cli, deck
 
 ## sideview
 

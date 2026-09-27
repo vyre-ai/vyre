@@ -248,6 +248,111 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   added to the Home Screen opens at /app/ with no query. On the web, Settings has a Performance
   meter row that turns it on or off from inside the installed app.
 
+#### A secret setting's values reach only the person
+
+- core/settings: a declaration may say `secret: true` (sessions.env and sessions.hooks do).
+  settings.get then shows its names but masks its values ("•••• set") for any caller that isn't
+  the person: MCP, agent labels, a module, or the owner's device over the tailnet or the relay
+  without a person session. The one helper, maskFor(d, value), is exported for settings.write.
+  settings.resolve stays internal (modules only), and no value is ever logged or put in an event
+  (e2e review, HIGH).
+
+#### Settings shows modes in words, checked in a real browser
+
+- A setting's declaration may name `labels` for its enum values (core/config/settings.js checks
+  they name only its own values); sessions.mode reads "Asks first" ... "Doesn't ask" in the Deck,
+  the words the composer's chip uses.
+- The confirm row names where a change lands only when that is a file.
+- deck/test/settings-browser.js: a headless Chrome check on testbox of the confirm and proof flow
+  (a wider mode asks, Cancel writes nothing, Confirm saves, a loosening key with no proof is not
+  saved and says why). 7/7.
+
+#### An agent's Effort is kept
+
+- core/agents: agents.create and agents.update take effort (low, medium, high, xhigh, max; a new
+  effort column), agents.list shows it, and the agent's threads are launched with it. The Deck's
+  Effort buttons on an agent's page saved nothing before. Test in core/agents/effort.test.js.
+- core/switchboard threads.launch accepts effort. Applying it to the SDK session is sessions' work.
+
+#### The composer no longer lays out the page on every key
+
+- deck/chat/composer.js: the message box sizes itself with CSS field-sizing where the browser has
+  it, and otherwise measures once a frame, resetting its height only when the text got shorter.
+  deck/chat/chat.css: the composer is layout-contained. Test in deck/chat/session.test.js.
+- docs/design/native-bar.md: a re-run. Typing passes at 2,000 rows (24 ms to paint); the scroll
+  jump is fixed on work/chat; reconnect still takes 1.5 s.
+
+#### Only a person changes a setting, and settings speaks for them only to setting tools
+
+- core/presence: settings.set and settings.reset are person-only. A model never gets them, a
+  model's Bash on the socket is refused (403), and the owner's device over the tailnet or the relay
+  needs the person's session (401 person_session_required). `confirm: true` is not proof of a
+  person: it only says the person saw what widens.
+- core/settings: a caller labelled as an agent ("cli agent:kit", "mcp:agent:kit") is refused
+  whatever surface it rides on.
+- core/modules: settings may pass the person on (CALL_AS) only to the getter and setter tools that
+  first-party modules name in their settings, never to any other tool (e2e review, 2 HIGH).
+- docs/using/claude-code.md: the backup file is described without a stale name.
+
+#### A home module's settings stay inside its own rows
+
+- core/config/settings.js validateDecls and core/modules validate: a module from outside Vyre (not
+  shipped in the repo) may keep a setting in its own tools only, a config.json path must start with
+  its name, and Claude Code's files are refused; the module is invalid otherwise. A person's change
+  to a setting carries the person's authority, so a store that reached further let a harmless
+  label drive another tool as the person, write any config path, or widen Claude Code's
+  permissions (found in ADR 0033 work, confirmed by e2e).
+- read and write call a home module's tool store as the settings module, never as the person.
+  declaredSettings tags each declaration with firstParty from the loader, after the manifest's own
+  fields, so a manifest can't claim it.
+
+#### One way to change every setting: core/settings and vyre config
+
+- Modules declare their own settings in module.json ("settings": key, group, label, type, levels,
+  apply, default, and where the value lives); core/config/settings.js (kernel) checks the
+  declarations, the values and the stores, and settings serves only running modules' keys, so a
+  module switched off takes its rows with it. Every key starts with its module's name
+  (sessions.mode, push.watch, planner.event_lead, vault.lock_idle, ...).
+- settings.set: a key that widens what Claude may do without asking (sessions.allow,
+  sessions.folders, sessions.hooks, a mode of bypassPermissions, dontAsk or auto) needs
+  confirm: true; a key that loosens security (vault lock) needs a fresh presence proof; preview:
+  true says what would change and where, and writes nothing. Bypass itself needs no proof (the
+  user's decision). The first write to a Claude Code settings file keeps it as .vyre-backup.
+- Deck Settings: a change that widens what Claude may do is previewed on its row (what changes,
+  where it lands, Confirm or Cancel); a loosening key goes through the Deck's passkey proof.
+- Deck Settings rows follow design A: a source chip only when not the default, "Next session" or
+  "After restart" in the description, one reserved slot for Saved, a named reset and a 4 s Undo; a
+  banner counts changes that apply after restart; Project scope hides account-only keys; J/K and /.
+
+- core/settings: a registry of every setting (models per purpose, effort, permission mode and rules,
+  sessions, teammates' limits, notifications, planner, memory, vault lock, files, terminal, tools)
+  with tools settings.schema, settings.get, settings.set, settings.reset, settings.resolve
+  (modules only) and one settings.changed event. A project's value beats the account's, which beats
+  the default; settings.get says which one is in effect.
+- Keys stay where they lived: config.json, another module's own tool (push, planner, sessions
+  models), Claude Code's settings files for permission rules, env, hooks and plugins (account:
+  ~/.claude/settings.json; project: .claude/settings.local.json), and a new settings_values table
+  for keys that had no home. A broken Claude Code file is never written over.
+- `vyre config list|get|set|reset [--project <slug>] [--account] [--json]`.
+- core/modules: settings may pass a person's change on to another module's tool as that person
+  (CALL_AS), so person-only tools stay person-only.
+- docs/design/settings-inventory.md and docs/design/native-bar.md.
+- Deck Settings draws every key in the registry, one section per group under "Sessions and
+  Claude": switches, segments, selects, numbers, text, a model picker with Other, chip lists and
+  JSON for objects, with Show advanced and a find box (deck/views/settings-keys.js).
+- A Level switch (Account or Project, with a project picker) says where a change is written; each
+  row says where its value comes from, whether a Claude Code file holds it, and when it applies.
+  Keys that can't be set at that level, or whose module is off, are dimmed with the reason.
+- Settings save as you go and show before the box answers; a refused change goes back and says
+  why on its row. settings.changed refreshes only its row, so another device's change shows live.
+- /settings#<group> and ?key=<key> open a group or one highlighted setting; below 1180 px a select
+  replaces the hidden section rail.
+- Settings > Notifications gains the planner kind (alarms, timers, reminders) and the lock-screen
+  words switch; the registry's Notifications group stays out of the Deck so it isn't shown twice.
+- deck/test/native-bar: the native bar harness. A seeded bursty fake stream, 40 and 2,000-row
+  transcripts, and in-page measures for keystrokes, first token, pacing, layout shift, scroll,
+  open, reconnect, send, Esc and idle timers, plus a pty terminal comparison. First numbers in
+  docs/design/native-bar.md.
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or

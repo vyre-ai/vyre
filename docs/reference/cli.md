@@ -25,6 +25,7 @@ In the order `vyre help` lists them.
 | [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
 | [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
+| [`vyre config`](#vyre-config) | every setting, at account or project level (the Deck's Settings, in the terminal) |
 | [`vyre projects`](#vyre-projects) | every project; on a box, move moves the homes to /work/projects |
 | [`vyre recall`](#vyre-recall) | search every session for what was said (vyre recall eval <file> to measure it) |
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
@@ -134,6 +135,14 @@ Is it running, and what is it running.
 
 ```
 vyre status [--json]
+```
+
+### vyre config
+
+Every setting, at account or project level (the Deck's Settings, in the terminal).
+
+```
+vyre config [list [group]|get <key>|set <key> <value>|reset <key>] [--project <slug>] [--account] [--json]
 ```
 
 ### vyre projects

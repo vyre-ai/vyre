@@ -70,7 +70,10 @@ export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach"
   // mode or a model, its own least of all.
   "sessions.prompt.set", "sessions.prompt.revert", "threads.mode", "sessions.models.set", "sessions.limits.set", "threads.shell", "threads.remember",
   // Signing a browser or app out (core/presence/person.js).
-  "presence.person.revoke"]);
+  "presence.person.revoke",
+  // Every setting is the person's own: a model never changes one, and settings relays the
+  // person to the owning module's setter (e2e review, HIGH 1).
+  "settings.set", "settings.reset"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "device", "passkey", "code", "session"];
 

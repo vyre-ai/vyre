@@ -11,6 +11,11 @@
   text-decoration: none; }
 .set-nav-a:hover { color: var(--text); background: var(--hover); }
 .set-nav-a[aria-current="true"] { color: var(--text); }
+.set-nav { max-height: calc(100vh - 72px); overflow-y: auto; }
+.set-nav-grp:not(:empty) { display: flex; flex-direction: column; gap: 2px; padding: 12px 0 12px; }
+.set-nav-h { padding: 4px 10px 6px; color: var(--label); }
+/* Under 1180 px the rail is hidden and this select jumps to a section. */
+.set-jump { display: none; margin-top: 8px; width: 100%; max-width: 520px; }
 
 .set-top { display: flex; flex-direction: column; gap: 6px; padding-bottom: 8px; }
 .set-top p { max-width: 620px; }
@@ -85,6 +90,7 @@
 
 @media (max-width: 1180px) {
   .set-nav { display: none; }
+  .set-jump { display: block; }
 }
 @media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .set-wrap { padding: 12px 16px 32px; }

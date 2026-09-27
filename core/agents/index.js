@@ -29,7 +29,12 @@ export const MIGRATIONS = [
    );
    CREATE TABLE agents_spend (thread TEXT NOT NULL, agent TEXT NOT NULL, at INTEGER NOT NULL, usd REAL NOT NULL);
    CREATE INDEX agents_spend_agent ON agents_spend (agent);`,
+  // How hard the agent thinks (the Deck's Effort). Empty is the model's own default.
+  `ALTER TABLE agents_agents ADD COLUMN effort TEXT`,
 ];
+
+/** The agent's thinking effort, as sessions.effort names it. */
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
 const NAME = /^[a-z][a-z0-9-]{1,30}$/;
 /** How long agents.ask waits for a reply before handing back what it has. */
@@ -69,7 +74,7 @@ export default {
 
     const shape = r => r && ({ name: String(r.name), kind: String(r.kind), projects: JSON.parse(String(r.projects)), auth: JSON.parse(String(r.auth)),
       instructions: r.instructions == null ? null : String(r.instructions), skills: JSON.parse(String(r.skills)), computer: Boolean(r.computer),
-      model: r.model == null ? null : String(r.model), thread: r.thread == null ? null : String(r.thread) });
+      model: r.model == null ? null : String(r.model), effort: r.effort == null ? null : String(r.effort), thread: r.thread == null ? null : String(r.thread) });
     const get = name => shape(db.prepare("SELECT * FROM agents_agents WHERE name = ?").get(name));
     const must = name => { const a = get(name); if (!a) throw Object.assign(new Error(`no agent ${name}`), { code: "not_found" }); return a; };
     const spent = name => Number(/** @type {any} */ (db.prepare("SELECT COALESCE(SUM(usd), 0) AS s FROM agents_spend WHERE agent = ?").get(name)).s);
@@ -167,7 +172,7 @@ export default {
       const input = { agent: a.name, agent_kind: a.kind, auth: creds.auth, append: preamble(a), scope: await scope(a),
         ...(creds.env ? { env: creds.env } : {}), ...(creds.fallback ? { fallback: creds.fallback } : {}),
         ...(creds.budget_usd != null ? { budget_usd: creds.budget_usd } : {}), ...(a.model ? { model: a.model } : {}),
-        ...(prompt ? { prompt } : {}) };
+        ...(a.effort ? { effort: a.effort } : {}), ...(prompt ? { prompt } : {}) };
       const t = resume ? await use("threads.launch", { ...input, resume }) : await use("threads.launch", { ...input, ...(await workdir(a)), name: a.name });
       db.prepare("UPDATE agents_agents SET thread = ?, updated_at = ? WHERE name = ?").run(t.id, Date.now(), a.name);
       return t;
@@ -184,7 +189,7 @@ export default {
     };
 
     const fields = { kind: { type: "string", enum: ["assistant", "agent"] }, projects: {}, instructions: { type: "string" },
-      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, model: { type: "string" },
+      skills: { type: "array", items: { type: "string" } }, computer: { type: "boolean" }, model: { type: "string" }, effort: { type: "string", enum: EFFORTS },
       auth: { type: "object", properties: { vault: { type: "string" }, fallback: { type: "string" }, budget_usd: { type: "number" } } } };
 
     const checkProjects = p => {
@@ -204,7 +209,7 @@ export default {
       run: async (_, { caller }) => {
         guard(caller, "list agents");
         const rows = db.prepare("SELECT * FROM agents_agents ORDER BY kind = 'assistant' DESC, name").all().map(shape);
-        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, computer: a.computer,
+        return Promise.all(rows.map(async a => ({ name: a.name, kind: a.kind, projects: a.projects, model: a.model, effort: a.effort, computer: a.computer,
           // The Deck's agent page shows and edits the job from this list.
           instructions: a.instructions,
           auth: a.auth.vault ? "subscription" : a.auth.fallback ? "api-key" : "ambient", ...(await status(a)) })));
@@ -225,15 +230,15 @@ export default {
         checkProjects(i.projects);
         const projects = kind === "assistant" ? "*" : i.projects ?? [];
         const now = Date.now();
-        db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, created_at, updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
-          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, now, now);
+        db.prepare(`INSERT INTO agents_agents (name, kind, projects, auth, instructions, skills, computer, model, effort, created_at, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(i.name, kind, JSON.stringify(projects), JSON.stringify(i.auth || {}), i.instructions || null,
+          JSON.stringify(i.skills || []), i.computer ? 1 : 0, i.model || null, i.effort || null, now, now);
         return get(i.name);
       },
     });
 
     ctx.tool("agents.update", {
-      description: "Change an agent (name it by name or agent): its projects, credentials, instructions, skills, computer or model. Takes effect on its next thread.",
+      description: "Change an agent (name it by name or agent): its projects, credentials, instructions, skills, computer, model or effort. Takes effect on its next thread.",
       // Every other agents.* tool names its agent `agent`, so update takes that too; the Deck's
       // "Give a computer" sent it and got "input.name is required".
       input: { type: "object", properties: { name: { type: "string" }, agent: { type: "string" }, ...fields } },
@@ -255,9 +260,9 @@ export default {
         if (i.kind && i.kind !== a.kind) throw new Error("an agent's kind is fixed when it is made");
         if (a.kind === "assistant" && i.projects !== undefined && i.projects !== "*") throw new Error("the assistant sees every project");
         const next = { ...a, ...Object.fromEntries(Object.entries(i).filter(([k, v]) => v !== undefined && k !== "name" && k !== "agent")) };
-        db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, updated_at = ? WHERE name = ?`)
+        db.prepare(`UPDATE agents_agents SET projects = ?, auth = ?, instructions = ?, skills = ?, computer = ?, model = ?, effort = ?, updated_at = ? WHERE name = ?`)
           .run(JSON.stringify(next.projects), JSON.stringify(next.auth || {}), next.instructions || null, JSON.stringify(next.skills || []),
-            next.computer ? 1 : 0, next.model || null, Date.now(), a.name);
+            next.computer ? 1 : 0, next.model || null, next.effort || null, Date.now(), a.name);
         return get(a.name);
       },
     });

@@ -681,3 +681,33 @@ test("the box's background tasks, thinking, ! and # and pasted images, on their 
   ta.value = "";
   stop6();
 });
+
+test("the composer grows with its text once a frame, and a key on a line that fits sets no height", async () => {
+  const box7 = new El("div");
+  doc.body.append(box7);
+  const stop7 = mountSession(box7, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  const ta = /** @type {any} */ ($(box7, "textarea"));
+  const type = (/** @type {string} */ v) => { ta.value = v; ta.dispatchEvent(new Event("input")); };
+  let reads = 0, sh = 32;
+  Object.defineProperty(ta, "scrollHeight", { configurable: true, get: () => { reads++; return sh; } });
+  Object.defineProperty(ta, "clientHeight", { configurable: true, get: () => Number.parseInt(ta.style.height, 10) || 32 });
+  ta.style.height = "";
+  for (const v of ["H", "Ha", "Har", "Harl"]) type(v);
+  await wait(30);
+  assert.equal(ta.style.height, "", "a line that fits sets no height");
+  assert.equal(reads, 1, "four keys in one frame measure once");
+  sh = 72;
+  type("Harlow Legal\nNorthwind Bakery\njuno");
+  await wait(30);
+  assert.equal(ta.style.height, "72px", "more lines grow the box");
+  sh = 400;
+  type("x".repeat(2000));
+  await wait(30);
+  assert.equal(ta.style.height, "200px", "never past 200 px, then it scrolls");
+  sh = 32;
+  type("");
+  await wait(30);
+  assert.equal(ta.style.height, "32px", "shorter text shrinks it back");
+  stop7();
+});

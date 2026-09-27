@@ -7,5 +7,8 @@
   "watches": { "emits": ["mcp.added", "mcp.updated", "mcp.removed", "mcp.started", "mcp.stopped", "mcp.failed", "mcp.refreshed", "mcp.called", "mcp.held"] },
   "shows": { "deck": ["settings:connections"], "cli": ["connect"] },
   "needs": { "vault": ["per-connection"] },
-  "teaches": {}
+  "teaches": {},
+  "settings": [
+    {"key": "mcp.idle", "group": "tools", "label": "Stop an unused MCP server after (minutes)", "type": "int", "min": 1, "max": 1440, "default": 10, "levels": ["account"], "apply": "restart", "store": {"config": "mcp.idle"}}
+  ]
 }

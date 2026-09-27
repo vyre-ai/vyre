@@ -8,5 +8,9 @@
   "watches": { "emits": ["memory.curated", "memory.corrected", "memory.merged", "memory.split", "memory.remembered", "memory.profile-changed"] },
   "shows": { "deck": ["panel:memory"], "capsule": ["answer:memory.relevant"], "cli": ["memory", "why"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {},
+  "settings": [
+    {"key": "memory.model", "group": "memory", "label": "Use a model to learn facts", "type": "bool", "default": true, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.on"}},
+    {"key": "memory.daily_usd", "group": "memory", "label": "Memory spend per day (USD)", "type": "number", "min": 0, "default": 0.05, "levels": ["account"], "apply": "restart", "store": {"config": "memory.model.dailyUsd"}}
+  ]
 }

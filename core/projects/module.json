@@ -12,5 +12,8 @@
   "watches": { "emits": ["project.created", "project.changed", "thread.picked", "thread.unpicked", "projects.moved"] },
   "shows": { "cli": ["projects", "new", "open", "resume", "start", "context", "threads", "pick", "unpick"] },
   "needs": {},
-  "teaches": {}
+  "teaches": {},
+  "settings": [
+    {"key": "projects.folder", "group": "files", "label": "Where new projects go", "type": "string", "levels": ["account"], "apply": "restart", "store": {"config": "projectsDir"}}
+  ]
 }

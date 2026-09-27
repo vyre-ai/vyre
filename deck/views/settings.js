@@ -8,7 +8,9 @@
 // agents.update (switchboard), link.health (link), files.drive.status, files.drive.audit and files.drive.access (files), hooks.list and hooks.status (hooks),
 // network.guests.list (network), computers.tailnet.status, computers.egress.status and computers.handback.status/set (computers), recall.status, recall.index, memory.stats, memory.curate,
 // learn.lessons, learn.edit, learn.retire (learning), system.info, and GET /v1/modules.
-// Connections is drawn by views/connections.js (the connectors workstream, ADR 0016).
+// Connections is drawn by views/connections.js (the connectors workstream, ADR 0016). The registry's
+// settings (settings.schema, settings.get/set/reset) are drawn by views/settings-keys.js, one section
+// per group under "Sessions and Claude"; ?key=<key> scrolls to one and highlights it.
 
 import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt, modules, canProve } from "../js/api.js";
@@ -59,19 +61,30 @@ export default async function settings(ctx) {
     return h("section", { class: "set-sec", id, "aria-labelledby": id + "-h" }, secHead(id, label), body[id]);
   });
 
-  const navLinks = SECTIONS.map(([id, label]) => h("a", { href: "#" + id, class: "set-nav-a", "data-sec": id,
-    onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); jump(id, true); } }, label));
+  const navLink = (id, label) => h("a", { href: "#" + id, class: "set-nav-a", "data-sec": id,
+    onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); jump(id, true); } }, label);
+  const navLinks = SECTIONS.map(([id, label]) => navLink(id, label));
+  // The registry's settings (views/settings-keys.js) get their own sections after Claude Code,
+  // under one heading in the rail, once settings.schema says which groups there are.
+  const keysBody = h("div", { class: "set-keys" });
+  const keysNav = h("div", { class: "set-nav-grp" });
+  const at = SECTIONS.findIndex(([id]) => id === "claude") + 1;
+  // Under 1180 px the rail is hidden; a select at the top jumps instead.
+  const jumpSel = /** @type {HTMLSelectElement} */ (h("select", { class: "input set-select set-jump", "aria-label": "Go to a section" },
+    SECTIONS.map(([id, label]) => h("option", { value: id }, label))));
+  jumpSel.addEventListener("change", () => jump(jumpSel.value, true));
 
   put(ctx.root, h("div", { class: "set" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "set-wrap" },
-      h("nav", { class: "set-nav", "aria-label": "Settings sections" }, navLinks),
+      h("nav", { class: "set-nav", "aria-label": "Settings sections" }, navLinks.slice(0, at), keysNav, navLinks.slice(at)),
       h("div", { class: "set-col" },
         h("header", { class: "set-top" },
           h("h1", { class: "h2" }, "Settings"),
-          h("p", { class: "muted" }, "Everything the setup did, and everything it skipped. Each part can be finished here or with a vyre command.")),
-        secs))));
+          h("p", { class: "muted" }, "Everything the setup did, and everything it skipped. Each part can be finished here or with a vyre command."),
+          jumpSel),
+        secs.slice(0, at), keysBody, secs.slice(at)))));
 
   // #section: scroll there without a history entry (a hash navigation would re-run the router).
   const jump = (id, record) => {
@@ -81,33 +94,50 @@ export default async function settings(ctx) {
     el.scrollIntoView({ block: "start" });
     mark_(id);
   };
-  const mark_ = id => { for (const a of navLinks) a.getAttribute("data-sec") === id ? a.setAttribute("aria-current", "true") : a.removeAttribute("aria-current"); };
+  const mark_ = id => {
+    for (const a of ctx.root.querySelectorAll(".set-nav-a")) a.getAttribute("data-sec") === id ? a.setAttribute("aria-current", "true") : a.removeAttribute("aria-current");
+    if (jumpSel.value !== id && [...jumpSel.querySelectorAll("option")].some(o => o.value === id)) jumpSel.value = id;
+  };
   const spy = () => {
     const top = ctx.root.getBoundingClientRect().top + 80;
+    const all = [...ctx.root.querySelectorAll(".set-sec")].filter(s => !s.hidden);
     let cur = SECTIONS[0][0];
-    for (const s of secs) if (s.getBoundingClientRect().top <= top) cur = s.id;
-    if (ctx.root.scrollTop + ctx.root.clientHeight >= ctx.root.scrollHeight - 4) cur = SECTIONS[SECTIONS.length - 1][0];
+    for (const s of all) if (s.getBoundingClientRect().top <= top) cur = s.id;
+    if (ctx.root.scrollTop + ctx.root.clientHeight >= ctx.root.scrollHeight - 4 && all.length) cur = all[all.length - 1].id;
     mark_(cur);
   };
   ctx.root.addEventListener("scroll", spy, { passive: true });
   ctx.cleanup(() => ctx.root.removeEventListener("scroll", spy));
   mark_(SECTIONS[0][0]);
 
+  /** @type {{ reveal: (key: string) => boolean } | null} */
+  let keys = null;
   const loads = [
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
     // Imported on its own, so a problem in that file shows here and never blanks Settings.
     import("./connections.js").then(m => m.drawConnections(body.connections, ctx)).catch(e => put(body.connections, empty("Connections did not load.", e))),
+    import("./settings-keys.js").then(m => m.drawKeys(keysBody, ctx, { taken: new Set(SECTIONS.map(([id]) => id)), skip: new Set(["notifications"]) })).then(k => {
+      keys = k;
+      if (!k.groups.length || !ctx.alive()) return;
+      put(keysNav, h("div", { class: "set-nav-h lbl" }, "Sessions and Claude"), k.groups.map(g => navLink(g.id, g.label)));
+      const og = h("optgroup", { label: "Sessions and Claude" }, k.groups.map(g => h("option", { value: g.id }, g.label)));
+      const after = jumpSel.querySelector(`option[value="claude"]`);
+      if (after && after.nextSibling) jumpSel.insertBefore(og, after.nextSibling); else jumpSel.append(og);
+    }).catch(e => put(keysBody, empty("Sessions and Claude settings did not load.", e))),
     drawNetwork(body.network, ctx), drawDevices(body.devices), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
   // A push notification's path is a query (?section=lessons, a plain fetchable link), not a hash.
+  // ?key=<key> goes to one of the registry's settings and highlights it.
   const hash = location.hash.slice(1) || ctx.query.get("section") || "";
-  if (hash && SECTIONS.some(([id]) => id === hash)) {
-    jump(hash, false);
-    await Promise.all(loads);
-    if (ctx.alive()) jump(hash, false);
-  } else await Promise.all(loads);
+  const known = () => hash && /^[A-Za-z0-9_-]+$/.test(hash) && ctx.root.querySelector("#" + CSS.escape(hash));
+  if (known()) jump(hash, false);
+  await Promise.all(loads);
+  if (!ctx.alive()) return;
+  const key = ctx.query.get("key");
+  if (key && keys && keys.reveal(key)) return;
+  if (known()) jump(hash, false);
 }
 
 function secHead(id, label) {
@@ -781,14 +811,17 @@ async function drawNotifications(el, ctx) {
       ? { start: start.value, end: end.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : null });
     syncQuiet();
     for (const el2 of [quietOn, start, end]) el2.addEventListener("change", () => { syncQuiet(); saveQuiet(); });
-    const KINDS = [["ask", "Permission questions"], ["draft", "Held drafts"], ["watch", "Threads you're watching"], ["lesson", "Lessons"]];
+    const KINDS = [["ask", "Permission questions"], ["draft", "Held drafts"], ["watch", "Threads you're watching"], ["lesson", "Lessons"],
+      ["planner", "Alarms, timers and reminders"]];
+    const words = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: s.planner_label === true,
+      onchange: () => attempt("push.settings", { planner_label: words.checked }) }));
     put(settingsBox, h("div", { class: "rows" },
       row("Quiet hours", quietOn, start, h("span", { class: "small faint" }, "to"), end)),
       h("div", { class: "rows" }, KINDS.map(([k, label]) => {
         const box = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: s.kinds?.[k] !== false,
           onchange: () => attempt("push.settings", { kinds: { [k]: box.checked } }) }));
         return row(label, box);
-      })),
+      }), row("Show a reminder's own words on the lock screen", words)),
       sub ? foot(h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
         put(st, "Sending."); const t = await attempt("push.test");
         put(st, t.error ? errText(t.error) : t.data?.sent ? "Sent." : "Not sent.");
