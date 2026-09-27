@@ -109,7 +109,7 @@ The default address is your tailnet's name, `https://vyre.<tailnet>.ts.net`, and
 ```
 cp /srv/vyre/vyre.env.example /srv/vyre/vyre.env
 chmod 600 /srv/vyre/vyre.env
-nano /srv/vyre/vyre.env      # uncomment CLOUDFLARE_vyre_token= and paste the token
+nano /srv/vyre/vyre.env      # uncomment CLOUDFLARE_VYRE_TOKEN= and paste the token
 vyre update                  # recreates the vyre container so it reads the file
 ```
 

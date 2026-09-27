@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A Cloudflare zone token for vyre.run was never read: the env var name had a typo
+
+- core/names/index.js's `hasToken()` checked `process.env.CLOUDFLARE_vyre_token` (mixed case);
+  every other place that names it (`box/vyre.env.example`, the docs, `test/onboard.test.js`) uses
+  `CLOUDFLARE_VYRE_TOKEN`. A box owner who set the token exactly as the example env file and the
+  docs say to would never have it read: `zone` stayed false, `onboard.name` never offered a
+  vyre.run name, and there was nothing to say why. Fixed: the code now reads
+  `CLOUDFLARE_VYRE_TOKEN`; the docs that quoted the old casing (ADR 0002, ADR 0008,
+  concepts/box-and-mac, concepts/tailnet, get-started/onboarding, get-started/troubleshooting,
+  work/box) are corrected to match. The vault item name (`cloudflare-vyre-token`) is unrelated and
+  unchanged.
+- test/onboard.test.js:265 ("with a token it is vyre.run") failed in CI on this: after
+  `freeZone()` sets `CLOUDFLARE_VYRE_TOKEN`, `onboard.status`'s `detail.name.via` stayed "ts.net"
+  because the token was never actually read.
+
 #### vyred's git never runs a folder's own commands
 
 - A repo's config and hooks belong to whoever can write the folder. `git ls-files` and `git
