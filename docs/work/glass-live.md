@@ -50,6 +50,16 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
   - Contract proposed to vault (fill.begin {agent, origin} -> {fill, cdpUrl, token, expires};
     fill.end {agent, fill, target?}; 60 s limit; events computer.fill-began/-ended). No reply yet.
   - e2e told (security review of the uid split).
+  - 5bc1bb59: agent processes SIGSTOPped while any shield is up (root freezer on fd 9, fluxbox now vyre).
+  - 88284ac0: untrusted-X prototype (cookie-only Xvnc, +extension SECURITY, agent gets an untrusted
+    cookie at /run/vyre-x/agent.xauth). e2e reviewing.
+  - computerd mux rework committed (332a2679).
+  - AFTER THE FREEZE, in order: unit tests (core/computers/image/computerd/*.test.js,
+    modules/hands-chrome/*.test.js, core/computers/driver/*.test.js, core/dockerproxy/*.test.js,
+    core/computers/{fill,shield,keyboard,computers}.test.js); build the image on /srv/vyre-glass and
+    run isolation.test.js with VYRE_COMPUTER_CONTAINER (+ VYRE_COMPUTERD_TOKEN); confirm
+    DeveloperToolsAvailability 2 does not block the pipe, SECURITY ext exists, xauth timeout 0 holds,
+    Chrome on the pipe works; Glass + hands-chrome end to end; then the live box read-only checks.
 - Idle hand-back done (67b85c0, pushed). Live box on b1dbb49b: my two read-only checks wait for the freeze.
 
 ## Next
