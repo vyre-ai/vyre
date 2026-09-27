@@ -6,7 +6,10 @@
 //
 // A held item is edited in place (js/editable.js) and answered with Send or Discard. Send is
 // gate.approve {id, edited?}, where edited holds only the fields the user changed; Discard is
-// gate.reject. An ask is answered allow or deny: threads.answer takes no edited input.
+// gate.reject. An ask is answered allow, deny or always (with scope "project" when the ask names
+// always_project): threads.answer takes no edited input. A question (threads.asks kind
+// "question") is its own kind here, answered allow with `answers`, or deny to decline.
+// Only Send proves presence; every answer is the owner's own act (the no-nag rule).
 
 import { attempt, call } from "./api.js";
 
@@ -14,9 +17,12 @@ import { attempt, call } from "./api.js";
  * @typedef {{ label: string, decision: string, primary?: boolean }} Option
  * @typedef {{ kind: "send"|"spend"|"delete", via: string, to: string[], summary: string, draft: Record<string, any> | null,
  *   error: any, sources: { text: string, from?: string }[], recalled?: string, toName?: string }} Held
- * @typedef {{ id: string, kind: "draft"|"ask", at: number, agent: string|null, project: string|null, projectName: string|null,
+ * @typedef {{ label: string, decision: string, primary?: boolean, answers?: Record<string, string> }} Answer
+ * @typedef {{ id: string, kind: "draft"|"ask"|"question", at: number, agent: string|null, project: string|null, projectName: string|null,
  *   thread: string|null, threadName: string|null, title: string, why: string, command?: string,
- *   gate?: Held, rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[] }} Need
+ *   gate?: Held, rule?: string, intent?: string, details?: { label: string, value: string }[], options: Option[],
+ *   tool?: string, detail?: any, questions?: any[], destination?: string|null, anchor?: any, always_project?: string|null,
+ *   presence?: { required?: boolean, covered?: boolean } | null, source?: string|null, machine?: string|null }} Need
  */
 
 /** @type {Need[]} */
@@ -48,7 +54,9 @@ export async function load() {
     const to = [d.to].flat().filter(Boolean).map(String);
     const who = full.data?.toName || to.join(", ");
     const verb = d.kind === "send" ? `wrote to ${who}` : d.kind === "spend" ? `wants to spend through ${d.via}` : `wants to delete through ${d.via}`;
-    out.push({ id: d.id, kind: "draft", at: d.at, ...n, thread: d.thread || null,
+    out.push({ id: d.id, kind: "draft", at: d.at, ...n, thread: d.thread || null, anchor: d.anchor || null,
+      // What answering takes, as the box says it (gate.held, gate.get): {required, covered}.
+      presence: d.presence || full.data?.presence || null,
       title: `${n.agent || "An agent"} ${verb}. It is held at the Gate.`, why: d.why || "",
       // full.data?.error is the item's own stored error (a previous Send was approved and the
       // sender failed); full.error is a failure to read the item at all (gate.get itself refused).
@@ -58,16 +66,28 @@ export async function load() {
   }
   for (const id of got.keys()) if (!(held.data || []).some(d => d.id === id)) got.delete(id);
   for (const a of asks.data || []) {
-    const n = names(a);
-    out.push({ id: a.id, kind: "ask", at: a.at, ...n, thread: a.thread || null,
-      title: a.title || `May ${n.agent || "this session"} run ${a.tool}?`, command: a.command || a.summary || a.tool,
+    const n = names({ ...a, threadName: a.threadName || a.thread_name });
+    // A session on the paired Mac (the ask, or its thread in threads.list, says source "mac"):
+    // answers are not forwarded there, so the item carries no options and says where to answer.
+    const t = a.thread ? thread.get(a.thread) : null;
+    const mac = a.source === "mac" || t?.source === "mac";
+    const base = { id: a.id, at: a.at, ...n, thread: a.thread || null, anchor: a.anchor || null, tool: a.tool || "", presence: a.presence || null,
       why: a.why || a.reason || (a.rule ? `Caught by your rule “${a.rule}”.` : ""), rule: a.rule, intent: a.intent || "",
+      ...(mac ? { source: "mac", machine: a.machine || t?.machine || null } : {}) };
+    if (a.kind === "question") {
+      out.push({ ...base, kind: "question", title: `${n.agent || "A session"} has a question`, questions: Array.isArray(a.questions) ? a.questions : [],
+        command: a.summary || "", options: mac ? [] : [{ label: "Answer", decision: "allow", primary: true }, { label: "Decline", decision: "deny" }] });
+      continue;
+    }
+    out.push({ ...base, kind: "ask",
+      title: a.title || `May ${n.agent || "this session"} run ${a.tool}?`, command: a.command || a.summary || a.tool,
+      detail: a.detail || null, destination: a.destination ?? null, always_project: a.always_project || null,
       details: a.details || (a.destination ? [{ label: "Where", value: a.destination }] : []),
-      options: [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }] });
+      options: mac ? [] : [{ label: "Allow once", decision: "allow", primary: true }, { label: "Deny", decision: "deny" }] });
   }
   out.sort((x, y) => x.at - y.at);
   cache = out;
-  for (const fn of listeners) fn(cache);
+  tell();
   return { items: out, errors: { gate: held.error || null, threads: asks.error || null } };
 }
 
@@ -78,13 +98,17 @@ export function watch(fn) { listeners.add(fn); return () => listeners.delete(fn)
 
 /**
  * Answer one. For a held item, approve sends what is shown: `edited` carries the changed fields
- * (from editable.js), or is left out when nothing changed. For an ask, allow or deny.
- * @param {Need} n @param {Option} opt @param {Record<string, any> | null} [edited]
+ * (from editable.js), or is left out when nothing changed. For an ask, allow, deny or always
+ * ("Always in <project>": scope project, only when the ask names always_project). For a
+ * question, allow with opt.answers, or deny to decline.
+ * @param {Need} n @param {Answer} opt @param {Record<string, any> | null} [edited]
  */
 export async function answer(n, opt, edited) {
+  // A Mac session's ask is answered on that Mac; nothing here sends one.
+  if (n.source === "mac" && n.kind !== "draft") throw new Error(`Answer it on ${n.machine || "your Mac"}.`);
   if (n.kind === "draft") {
-    // A held item is human-only (core/presence HUMAN_ONLY): the passkey proves a person.
-    if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: true });
+    // Sending goes outside as the person, so it proves presence; discarding is the owner's own act.
+    if (opt.decision === "reject") await call("gate.reject", { id: n.id }, { presence: "asked" });
     else {
       const r = await call("gate.approve", edited ? { id: n.id, edited } : { id: n.id }, { presence: true });
       // Approved, but the sender failed: the item stays held and can be sent again. gate.js keeps
@@ -92,10 +116,48 @@ export async function answer(n, opt, edited) {
       if (r && r.state === "failed") { got.delete(n.id); throw Object.assign(new Error(r.error || "the sender failed; it is still held"), { failed: true }); }
     }
   } else {
-    // An ask is the owner's own answer and needs no passkey (ADR 0024, no nagging).
-    await call("threads.answer", { ask: n.id, decision: opt.decision === "always" ? "allow" : opt.decision, surface: "deck" });
+    await call("threads.answer", answerInput(n, opt), { presence: "asked" });
   }
   cache = cache.filter(x => x.id !== n.id);
   got.delete(n.id);
+  tell();
+}
+
+/** Every watcher hears the list, and the installed app's icon shows the count. */
+function tell() {
+  badge(cache.length);
   for (const fn of listeners) fn(cache);
+}
+
+let badged = -1;
+/**
+ * The count on the home-screen icon, only in the installed app (a browser tab has no icon of its
+ * own), only when it changes, and quietly nothing where the browser has no badge.
+ * @param {number} n
+ */
+export function badge(n) {
+  if (n === badged) return;
+  const nav = /** @type {any} */ (typeof navigator !== "undefined" ? navigator : null);
+  if (!nav || typeof nav.setAppBadge !== "function") return;
+  let installed = false;
+  try { installed = nav.standalone === true || (typeof matchMedia === "function" && matchMedia("(display-mode: standalone)").matches); } catch {}
+  if (!installed) return;
+  badged = n;
+  try { const p = n > 0 ? nav.setAppBadge(n) : nav.clearAppBadge?.(); p?.catch?.(() => {}); } catch {}
+}
+
+/**
+ * threads.answer's input for one answer (section 15 contracts).
+ * @param {Pick<Need, "id"|"kind"|"always_project">} n @param {Pick<Answer, "decision"|"answers">} opt
+ */
+export function answerInput(n, opt) {
+  /** @type {Record<string, any>} */
+  const input = { ask: n.id, decision: opt.decision, surface: "deck" };
+  if (opt.decision === "always") {
+    // "Always in <project>" writes the rule to that project only; with no project on offer the
+    // switchboard's own "always" is what Claude Code suggested.
+    if (n.always_project) input.scope = "project";
+  }
+  if (n.kind === "question" && opt.decision === "allow") input.answers = opt.answers || {};
+  return input;
 }

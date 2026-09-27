@@ -77,7 +77,10 @@
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .progress .st .busy { animation: none; border-color: var(--text); } }
 
-.address-big { font-family: var(--mono); font-size: 36px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em; word-break: break-all; }
+/* Breaks only after a dot (onboard.js puts a <wbr> there), never inside a label; a label wider
+   than the panel scrolls rather than splitting. */
+.address-big { font-family: var(--mono); font-size: 36px; line-height: 44px; font-weight: 500; letter-spacing: -0.03em;
+  overflow-wrap: normal; word-break: keep-all; overflow-x: auto; }
 .address-big i { font-style: normal; color: var(--label); }
 
 .meter { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3); }
@@ -162,6 +165,11 @@
 .dev-card .pair-list { margin-bottom: 0; }
 .dev-card .pair-form { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 .dev-card .pair-actions .btn { flex: 1 1 0; }
+/* Nothing in a card is wider than the card: a long Mac name wraps, a button never sticks out. */
+.dev-card .btn { max-width: 100%; }
+.dev-card .pair-card, .dev-card .pair-title { min-width: 0; }
+.dev-card .pair-title > span { min-width: 0; overflow-wrap: anywhere; }
+.dev-card > .code, .dev-steps .code { overflow-wrap: anywhere; }
 .dev-card .pair-list:not(:empty) + .dev-state { display: none; }
 @media (prefers-reduced-motion: reduce) { .dev-wait .busy { animation: none; border-color: var(--text); } }
 

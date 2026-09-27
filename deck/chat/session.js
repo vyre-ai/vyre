@@ -675,7 +675,8 @@ export function mountSession(container, opts) {
   /** A question or a permission ask, drawn once and filled in as more of it is read. */
   function upsertAsk(a) {
     const key = "ask:" + a.id;
-    const full = { ...a, agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : {}) };
+    // A Mac session's ask (its thread, or the ask itself, says source "mac"): no answer controls here.
+    const full = { ...a, agent: agentName(), ...(isMac(where) ? { elsewhere: macName() } : isMac(a) ? { elsewhere: a.machine || macName() } : {}) };
     let el = rows.get(key);
     if (el) { el.update(full); el._ask = { ...el._ask, ...full }; return el; }
     el = a.kind === "question" ? questionCard(full) : askCard(full);
@@ -816,6 +817,21 @@ export function mountSession(container, opts) {
     on("memory.curated", () => fetchMemory()),
     on("session.indexed", e => { if ((e.thread || e.payload?.session) !== thread) return; if (mode === "blocks") refresh(); else readMoreLegacy(); }),
   ];
+  // The phone keyboard (js/keyboard.js) lifted or dropped the composer, and the transcript's
+  // bottom padding (chat.css) moved with it: scroll by as much, in the same frame, so the lines
+  // above the composer stay put. Following the bottom, stay at the bottom.
+  let pad = -1;
+  const padNow = () => parseFloat(getComputedStyle(timeline).paddingBottom) || 0;
+  const onFocus = () => { if (pad < 0) pad = padNow(); };
+  const onKb = () => {
+    if (!timeline.isConnected) return;
+    const p = padNow();
+    if (following) toBottom(); else if (pad >= 0) timeline.scrollTop += p - pad;
+    pad = p;
+  };
+  container.addEventListener("focusin", onFocus);
+  window.addEventListener("deck:kb", onKb);
+  offs.push(() => { container.removeEventListener("focusin", onFocus); window.removeEventListener("deck:kb", onKb); });
   return () => { health.stop(); for (const off of offs) off(); composer.stop(); document.removeEventListener("keydown", onKey); if (rawTimer) clearTimeout(rawTimer); };
 }
 

@@ -61,6 +61,160 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   accounts). "Which app?" offers Slack as an app Vyre sends through only when a Slack server is
   in the hub.
 
+#### vyred serves the one app at /app/, with its own service worker and manifest
+
+- GET /app/* serves the web export in apps/app/dist as a single-page app (any route that is not
+  a file gets index.html; /app is a 301 to /app/; no dist is 404 `no_app`). Hashed files under
+  /app/_expo/static/ are cached for a year as immutable, everything else is no-cache, with the
+  Deck's CSP and nosniff. Nothing outside dist is served.
+- GET /app/sw.js is made by vyred from core/daemon/app-sw.js and dist/precache.json (its /app/
+  files and build). Scope /app/: it precaches the export, answers navigations with the cached
+  shell, never touches /v1/ or the Deck's caches, and shows pushes the way deck/sw.js does with
+  paths under /app/.
+- GET /app/manifest.webmanifest is the export's own, else one scoped to /app/ in the Deck's colours
+  and icons. core/daemon/app.test.js (7 tests).
+
+#### Push: live checks for `vyre phone add` (push.subscribed, push.delivered, push.seen)
+
+- push.subscribe emits `push.subscribed` { device, label, service }, where service is the push
+  service's hostname; never the endpoint or keys.
+- push.test takes `receipt: true`: a one-time nonce rides in the test payload and comes back in
+  the result. The Deck's worker posts it to the new tool `push.receipt` { receipt } once the
+  notification shows, which emits `push.delivered` { receipt, device } (device null when push.test
+  named none). A receipt is good once, for 10 minutes, the newest 50 kept in memory; anything else
+  is `unknown_receipt`. Same callers as push.subscribe.
+- push.seen takes `standalone: true` from an installed Deck and emits `push.seen` { surface,
+  standalone } at most once per surface in 10 minutes. The Deck's worker cache is now vyre-deck-8.
+
+#### Settings shows each VyreDrive share's own access and secrets; a Mac session's ask has no Approve
+
+- Settings > Network > VyreDrive shows each share's access (a share that does not say takes the
+  box's old global `access`) and, on a box with `files.drive.access`, a per-share switch between
+  read only and read and write. The switch is the owner's own act, sent without proof; when the
+  answer's `mount.change` is true the row shows `mount.step` as a command and "Remount on your
+  Mac". A box without the tool never shows the switch. Words live in deck/js/drive-rows.js.
+- `unsafe` from files.drive.audit and the drive.exposed event becomes one violet line per share:
+  "projects has secrets inside: .env, .git/config", or why it could not be checked.
+- Every printed `vyre call` hint for a human-only tool carries `--tty`, including
+  `files.drive.share`. The guest example grants `threads.list`, not Glass.
+- An ask or question whose thread (or the ask itself) says `source: "mac"` carries no options in
+  deck/js/needs.js, and `needs.answer` refuses it. Now, the Needs page, the phone rows (no swipe,
+  only Open), the detail sheet and the project thread say "Answer it on <mac>" in place of the
+  buttons.
+
+#### An installed phone runs a new release from its next launch, not the one after
+
+- deck/sw.js carries `const BUILD`, which vyred fills with the build it runs as it serves the
+  file (`swWithBuild` in core/daemon/build.js: the commit, or the version). Every release is a new
+  service worker with a new cache, and the Deck registers it with `updateViaCache: "none"`, so
+  the browser checks on every launch. When the new worker takes over, the page reloads at once if
+  nobody has touched it yet, and otherwise the next time it is hidden. Before, the Deck's files
+  came from the cache first and a release showed only on the second launch.
+  Test in core/daemon/build.test.js.
+
+#### The phone app: a fixed shell, the keyboard inset, safe areas, taps without delay, and Send says just "Send" while covered
+
+- One fixed shell on the phone (`deck/css/deck.css`): `position: fixed; inset: 0` at `100dvh`
+  (100vh first as the fallback), `html, body { overflow: hidden }`, so the app never rubber-bands
+  as a whole and iOS has nothing to scroll when a field takes focus. Only pages, lists and sheets
+  scroll, each with `overscroll-behavior: contain`.
+- The keyboard (`deck/js/keyboard.js`, started by `pwa.start()`): one passive `visualViewport`
+  resize/scroll listener, attached only while a text field has focus on a phone, coalesced to one
+  write a frame. It sets `--kb` (innerHeight minus the visual viewport's height and offsetTop,
+  floored at 0, 0 when pinch zoomed) and `data-kb` on `<html>`, takes back iOS's pan of the whole
+  page, and fires `deck:kb { kb, delta }` on window. Chat's composer and lease line move up by
+  `transform` (`--kb-lift`, the part the home indicator does not already cover), the transcript's
+  bottom padding grows by as much and `chat/session.js` scrolls it along in the same frame (or
+  stays at the bottom when following). A sheet stops at the keyboard (`bottom: var(--kb)`); any
+  other page gets room to scroll a field above it, and a field left under the keys is scrolled
+  into view inside its own scroller, never the page.
+- No field under 16 px on the phone (inputs, textareas, selects, contenteditable), so iOS never
+  zooms; the fields drawn bigger (Find, the sheet's fields, the pair code) keep their size.
+- Safe areas: the shell's top, left and right insets now apply at every width (an iPad or a phone
+  turned sideways is over 760 wide; `env()` is 0 on a desktop browser, so nothing moves there),
+  and sheets keep clear of a side notch and, with no actions row, of the home indicator.
+- Taps: `touch-action: manipulation` on links, buttons and controls; no callout or selection on
+  the header, the Capsule, rows and sheet handles; text still selects in messages, code and fields.
+- `content-visibility: auto` with a remembered `contain-intrinsic-size` on transcript rows older
+  than the newest 40 (so the bottom is always exact), the Chat list's rows and Find's results.
+- Now's row swipe: the face's transform is written at most once a frame (`requestAnimationFrame`),
+  and `will-change: transform` is set only while a row is dragged or springing, not on every row.
+- The Send sheet says "Send" (or "Approve" for a spend) without the Face ID mark while a presence
+  session covers the draft, the same check as the "covers sends until" line, and redraws on
+  `deck:presence` (`sheetPrimary(n, word, edited, covered)`). The held card in Chat already said
+  "Send".
+- Service worker cache `vyre-deck-7` (keeps `/js/keyboard.js`). Tests: 10 new in
+  `deck/test/pwa.test.js` (the CSS rules, the `--kb` math, the listener on a fake window), one in
+  `deck/js/need-rows.test.js`.
+
+#### The phone app: one passkey covers the next sends, the icon shows what waits, and it says when it is looked at
+
+- Presence session on the Deck (`deck/js/api.js`): a passkey proof for a sessionable tool
+  (`gate.approve`, `vault.reveal`, `vault.copy`, `vault.totp`) sends `x-vyre-presence-keep: 1`
+  and keeps the box's `x-vyre-presence-session` in memory and in localStorage
+  (`vyre.presence.session`, dropped when expired, never trusted past 30 minutes). The next such
+  call sends `x-vyre-presence: session id=<id> secret=<secret>` and asks for no passkey; a
+  `presence_required` refusal forgets it and asks for the passkey. New exports
+  `presenceCovered()`, `coveredUntil(presence)` and the `deck:presence` window event; `call()`
+  takes `keepalive`.
+- The Send sheet on the phone and the held card in Chat say "Face ID covers sends until 14:32"
+  (the device's own word) while covered, and nothing otherwise. The item's `presence: {required,
+  covered}` from the box wins; `needs.js` now carries it on each item.
+- `push.seen { surface, visible }` from the Deck (`deck/js/pwa.js`): at launch when visible, on
+  every visibility change (hidden goes with `keepalive`), and on the first tap or key after a
+  minute without a report. Passive listeners, no timer; a box without the tool is ignored.
+- The service worker (`vyre-deck-6`) shows a silent "Answered." notification for a `planner-ack`
+  push and then closes every notification with that tag, since WebKit drops a subscription whose
+  pushes show nothing. An `ask` or `draft` push also puts a dot on the app icon.
+- The installed app's icon carries the Needs count (`setAppBadge`, cleared at zero), only in
+  standalone mode, feature-detected.
+
+#### Push is for "needs you" only, and waits while you are at a screen
+
+- New tool `push.seen` (`surface`, `visible`): surfaces call it when shown, when hidden, and on
+  the first input after a minute of none. An ask, a held draft or a watched thread that arrives
+  within 3 minutes of it is held until 3 minutes after the last call, then sent (quiet hours and
+  kinds checked again). One unref'd timer, only while something is held; at most 200 held.
+- A held ask answered (`ask.answered`) or a held draft resolved (`gate.released`,
+  `gate.rejected`, `gate.revised`, `gate.failed`) is dropped and never pushed.
+- Planner rings still push at once. Lessons are off by default (`push.settings` kinds lesson
+  turns them on). ADR 0011 has an amendment.
+
+#### Now on the phone: Needs you with swipe and Undo, and a detail sheet for each item
+
+- Under 760 px Now is its own layout (deck/js/now-phone.js): a one-row setup reminder in place of
+  the setup cards, then Needs you (asks, held drafts, questions and Macs asking to pair, oldest
+  first, one card), Working (steps this turn and the latest one) and From memory.
+- A row swipes. Right approves an ask at once, with no passkey (the owner's own act); on a draft
+  it opens the sheet on the final words, and only Send there asks for Face ID. Left denies or
+  discards after a 4 s Undo toast, and Undo means nothing was sent. A question's left swipe is
+  Later: hidden on this phone for an hour. Every swipe action is also a real button.
+- The detail sheet (deck/js/need-sheet.js, deck/css/sheet.css): who asks and where, Held for,
+  Open session into the exact moment in Chat (?at=&ask=&tool=), the command and its facts, the
+  draft's fields edited in place, the question's choices, and Always in <project> when the ask
+  offers one (threads.answer decision always, scope project).
+- needs.js carries questions as their own kind, anchors, always_project and a question's answers.
+  A push notification's /needs/:id opens Now with that item's sheet on a phone.
+
+#### The phone app switches tabs in one frame
+
+- Pages stay mounted: leaving a screen hides it (laid out, inert) instead of tearing it down, so
+  going back shows it as it was, scrolled where it was, still following its events. Up to eight
+  are kept; Glass and the Vault never are. A view can ask to refresh on a revisit (ctx.onShow).
+- On a phone the five tabs are made while it is idle after launch, so the first tap on each is a
+  revisit. Tapping the tab you are on scrolls it to the top.
+- A Chat session opens from what the list already knew, reads only its last 60 turns (Show
+  earlier reads more), and Back returns to the list as it was. The Chat list draws the last one
+  this phone saw at once, then the box's.
+- The fonts are served from the box (deck/fonts, OFL), not Google, and the service worker answers
+  the Deck's own files from its cache and refreshes them behind (stale-while-revalidate).
+- The first screen no longer waits on onboard.status.
+- Measured on the test box, iPhone size, CPU 4x slower, 60 ms to the box: a tab switch 40 to 90 ms
+  (was 150 to 400), a revisit about 30 ms (was up to 190), Back in Chat about 20 ms, opening a
+  session 100 to 250 ms. `deck/test/pwa-perf.js` and `pwa-perf.test.js` (runs where CDP is set)
+  fail over 100 ms.
+- The owner's phone over the tailnet queues for a session busy in the terminal, and an agent's
+  tailnet node does not (queuesFor in core/switchboard).
 #### The design docs stay out of the package
 
 - package.json: docs/design (boards, one-app, specs) is no longer in the npm package; nothing at

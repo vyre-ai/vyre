@@ -8,10 +8,19 @@ import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
 import { since } from "../js/fmt.js";
+import { wantSheet } from "../js/now-phone.js";
+import { elsewhere } from "../js/need-rows.js";
 
 /** @param {any} ctx */
 export default async function view(ctx) {
   const id = ctx.params.id;
+  // A phone (a push notification's tap lands here): Now, with this item's detail sheet open.
+  if (matchMedia("(max-width: 760px)").matches) {
+    wantSheet(id);
+    history.replaceState(history.state, "", "/now");
+    window.dispatchEvent(new Event("deck:navigate"));
+    return;
+  }
   const draw = () => {
     const n = needs.current().find(x => x.id === id);
     if (!n) return put(ctx.root, h("div", { class: "nd" }, top(null),
@@ -71,10 +80,12 @@ function ask(n) {
   const where = [n.projectName, n.threadName].filter(Boolean).join(" / ");
   const status = h("p", { class: "small muted nd-status", role: "status" });
   const buttons = h("div", { class: "nd-actions" });
-  const opts = [...n.options];
+  const mac = elsewhere(n);
+  const opts = mac ? [] : [...n.options];
   // "Always" becomes a rule in this project (Learning); offered only when the ask is in one.
-  if (n.project && !opts.some(o => o.decision === "always")) opts.splice(Math.max(1, opts.length - 1), 0, { label: "Always in this project", decision: "always" });
-  put(buttons, actions(n, buttons, status, opts.map((o, i) => ({ opt: o, cls: i === 0 ? "btn-primary" : "" }))));
+  if (!mac && n.project && !opts.some(o => o.decision === "always")) opts.splice(Math.max(1, opts.length - 1), 0, { label: "Always in this project", decision: "always" });
+  // A Mac session's ask is answered on that Mac: the line in place of the buttons.
+  put(buttons, mac ? h("p", { class: "small muted" }, `Answer it on ${mac}`) : actions(n, buttons, status, opts.map((o, i) => ({ opt: o, cls: i === 0 ? "btn-primary" : "" }))));
   const threadHref = n.thread ? (n.project ? `/projects/${encodeURIComponent(n.project)}/${encodeURIComponent(n.thread)}` : `/threads/${encodeURIComponent(n.thread)}`) : null;
   return h("div", { class: "nd" }, top(n),
     h("p", { class: "nd-who" }, h("b", null, n.agent || "A session"), ` asks${where ? ", in " + where : ""}`),

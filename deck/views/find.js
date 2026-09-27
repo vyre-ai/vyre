@@ -21,19 +21,31 @@
 // into a session (threads.send) and watches it; "watch <session>" and "tell me when <session> is
 // done" watch it (threads.watch, notify: "deck"). A line under the box says what Enter will do,
 // and the matching sessions are listed so a tap picks another one.
+//
+// On a phone (under 760 px, docs/design/phone.md section 7) this is the Capsule opened: the shell
+// shows it as a full-height sheet, and this view draws its content. A top row with the box and
+// Done (back to where the sheet came from), a segmented scope (All, Chats, Files, Memory, Run),
+// then Ask, Run (the grammar above as plain-words rows, the command in mono under each), From
+// memory, Chats and Files. An empty box shows the last 8 searches (localStorage, per phone) and
+// the four most recent sessions. The layout is picked at render and redrawn when the width
+// crosses 760 px; the desktop column is unchanged.
 
-import { h, put, link, empty, go } from "../js/dom.js";
+import { h, put, link, empty, go, back } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
-import { when, base } from "../js/fmt.js";
+import { when, base, initial } from "../js/fmt.js";
 import { mergeSessions, title } from "../chat/lib/sessions.js";
 import { threadHref, projectHref } from "../chat/lib/routes.js";
-import { parseCommand, plan } from "../js/commands.js";
+import { parseCommand, plan, rankSessions } from "../js/commands.js";
 import { machineChip } from "../js/machine.js";
 
 const SHOW = 5;
 const MIN = 2;
-const DEBOUNCE_MS = 180;
+const DEBOUNCE_MS = 150;
+const PHONE = "(max-width: 760px)";
+const RECENT_KEY = "vyre.find.recent";
+const RECENT_MAX = 8;
+const SCOPES = [["all", "All"], ["chats", "Chats"], ["files", "Files"], ["memory", "Memory"], ["run", "Run"]];
 const FILE_ICON = { folder: "projects", code: "terminal", text: "lines" };
 
 const why = err => err?.missing
@@ -53,6 +65,34 @@ function parent(p) {
   return segs.length > 3 ? "…/" + segs.slice(-2).join("/") : dir;
 }
 
+/** The searches kept on this phone, newest first. Storage can be missing or refuse; then none. */
+function recentGet() {
+  try {
+    const v = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+    return Array.isArray(v) ? v.filter(x => typeof x === "string" && x).slice(0, RECENT_MAX) : [];
+  } catch { return []; }
+}
+function recentAdd(/** @type {string} */ q) {
+  try {
+    const l = [q, ...recentGet().filter(x => x.toLowerCase() !== q.toLowerCase())].slice(0, RECENT_MAX);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(l));
+  } catch {}
+}
+
+/** Text with the query's words marked. Text nodes only, never markup. */
+function hl(text, q) {
+  const s = String(text || "");
+  const ws = words(q).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (!ws.length) return s;
+  return s.split(new RegExp(`(${ws.join("|")})`, "i")).map((part, i) => i % 2 ? h("mark", { class: "fd-m" }, part) : part);
+}
+
+/** "~/work/site/app/page.tsx", a path kept readable on a phone. */
+const home = p => String(p || "").replace(/^\/(Users|home)\/[^/]+/, "~");
+
+/** The typed words as a question. */
+const asQuestion = q => /[?.!]$/.test(q) ? q : q + "?";
+
 /** A recall snippet, its «» marks as highlighted spans. Text only, never markup. */
 function snippet(s) {
   return String(s || "").split(/[«»]/).map((part, i) => i % 2 ? h("mark", { class: "fd-m" }, part) : part);
@@ -63,12 +103,50 @@ export default async function find(ctx) {
   const input = /** @type {HTMLInputElement} */ (h("input", { id: "fd-in", class: "fd-in", type: "search", enterkeyhint: "search",
     autocomplete: "off", autocapitalize: "off", spellcheck: "false", placeholder: "Find or ask", "aria-label": "Find or ask",
     role: "combobox", "aria-controls": "fd-list", "aria-expanded": "true", "aria-autocomplete": "list" }));
-  const form = h("form", { class: "fd-form", role: "search" }, h("span", { class: "fd-glass", "aria-hidden": "true" }, icon("search", 18)), input);
+  // The clear button shows only on the phone (find.css), and only with words in the box.
+  const clear = h("button", { type: "button", class: "fd-clear", "aria-label": "Clear", hidden: true,
+    onclick: () => { input.value = ""; input.dispatchEvent(new Event("input")); input.focus(); } }, icon("close", 16));
+  const form = h("form", { class: "fd-form", role: "search" }, h("span", { class: "fd-glass", "aria-hidden": "true" }, icon("search", 18)), input, clear);
   const list = h("div", { id: "fd-list", class: "fd-list", role: "listbox", "aria-label": "Results" });
   const answer = h("section", { class: "fd-answer", "aria-live": "polite", hidden: true });
   const planLine = h("div", { class: "fd-plan small", role: "status" });
-  put(ctx.root, h("div", { class: "fd" }, h("div", { class: "fd-bar" }, form, planLine), list));
-  input.focus();
+
+  // ---- phone or desktop: picked at render, redrawn when the width crosses 760 px ---------------
+  const mq = matchMedia(PHONE);
+  let phone = mq.matches;
+  /** The phone's segmented scope. */
+  let scope = "all";
+  const seg = h("div", { class: "fd-seg", role: "group", "aria-label": "Search in" });
+  const drawSeg = () => put(seg, SCOPES.map(([k, label]) => h("button", { type: "button", class: "fd-segb", "aria-pressed": String(scope === k),
+    onclick: () => { scope = k; drawSeg(); draw(); } }, label)));
+  drawSeg();
+  const done = h("button", { type: "button", class: "fd-done", onclick: () => back("/now") }, "Done");
+  function placeholder() {
+    const p = phone ? `Ask ${who()}, find, or run` : "Find or ask";
+    input.placeholder = p;
+    input.setAttribute("aria-label", p);
+  }
+  function frame() {
+    phone = mq.matches;
+    placeholder();
+    put(ctx.root, phone
+      ? h("div", { class: "fd fd-phone" }, h("div", { class: "fd-bar" }, h("div", { class: "fd-top" }, form, done), seg, planLine), list)
+      : h("div", { class: "fd" }, h("div", { class: "fd-bar" }, form, planLine), list));
+  }
+  const onWidth = () => {
+    if (mq.matches === phone) return;
+    const focused = document.activeElement === input;
+    frame();
+    draw();
+    if (focused) input.focus();
+  };
+  mq.addEventListener("change", onWidth);
+  ctx.cleanup(() => mq.removeEventListener("change", onWidth));
+  // A tapped result keeps the words in Recent searches.
+  list.addEventListener("click", e => {
+    const t = /** @type {HTMLElement} */ (e.target);
+    if (cur.q.length >= MIN && t.closest?.("[data-row]") && !t.closest("[data-recent]")) recentAdd(cur.q);
+  }, true);
 
   // ---- what is loaded once --------------------------------------------------------------
   const base_ = { agents: /** @type {any[]} */ ([]), rows: /** @type {any[]} */ ([]), projects: /** @type {any[]} */ ([]),
@@ -83,6 +161,8 @@ export default async function find(ctx) {
   const expanded = new Set();
   /** @type {any} */ let asking = null;
   /** @type {HTMLElement | null} */ let sheet = null;
+  frame();
+  input.focus();
 
   const rowsNow = () => /** @type {HTMLElement[]} */ ([...list.querySelectorAll("[data-row]")]);
   function mark() {
@@ -119,7 +199,8 @@ export default async function find(ctx) {
   }
 
   // ---- sections -------------------------------------------------------------------------
-  function sessionRows(q) {
+  /** Sessions that match: by name first, then what recall found in their words. */
+  function sessionHits(q) {
     const ws = words(q), byId = new Map(base_.rows.map(r => [r.id, r])), seen = new Set(), out = [];
     const add = s => { seen.add(s.id); out.push(s); };
     const from = (/** @type {any} */ r) => r && r.source === "mac" ? { source: "mac", machine: r.machine } : {};
@@ -129,7 +210,12 @@ export default async function find(ctx) {
       const r = byId.get(x.session);
       add({ id: x.session, title: r ? title(r) : x.name || x.title || String(x.session).slice(0, 8), snip: x.snippet, project: r?.project || null, cwd: r?.cwd || x.cwd, ts: x.ts || r?.last, ...from(r || x) });
     }
-    return out.map(s => row({ href: threadHref({ id: s.id, project: s.project }), glyph: icon("chat", 16) },
+    return out;
+  }
+  const projectOf = s => s.project ? base_.names.get(s.project) || s.project : base(s.cwd);
+
+  function sessionRows(q) {
+    return sessionHits(q).map(s => row({ href: threadHref({ id: s.id, project: s.project }), glyph: icon("chat", 16) },
       [titled(s.title, s), s.snip ? h("span", { class: "fd-snip" }, snippet(s.snip)) : null,
         line([s.project ? base_.names.get(s.project) || s.project : base(s.cwd), when(s.ts)].filter(Boolean).join(" · "), "fd-sub")]));
   }
@@ -305,8 +391,157 @@ export default async function find(ctx) {
     else put(body, h("div", { class: "small muted" }, d?.note ? `No preview: ${d.note}.` : "No preview for this file."));
   }
 
+  // ---- the phone: the Capsule, opened (docs/design/phone.md section 7) ------------------------
+  /** A card row: a button or a link, in the list's keyboard order. */
+  function prow({ href, onclick, cls = "", label }, ...kids) {
+    const props = { class: "fd-prow " + cls, "data-row": "", role: "option", "aria-selected": "false", ...(label ? { "aria-label": label } : {}) };
+    return href ? link(href, props, kids) : h("button", { type: "button", ...props, onclick }, kids);
+  }
+  const chev = () => h("span", { class: "fd-chev", "aria-hidden": "true" }, icon("right", 16));
+  const group = (label, ...kids) => h("section", { class: "fd-group", "aria-label": label }, h("h2", { class: "fd-gh" }, label), kids);
+  const more = (key, n) => h("button", { type: "button", class: "fd-more", onclick: () => { expanded.add(key); draw(); } }, `Show all ${n}`);
+
+  function phoneAsk(q) {
+    const card = h("div", { class: "fd-card" },
+      prow({ onclick: () => askNow(q), cls: "fd-askrow", label: `Ask ${who()}: ${q}` },
+        h("span", { class: "fd-tile", "aria-hidden": "true" }, initial(assistant()?.name || "v")),
+        h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, `Ask ${who()}`), h("span", { class: "fd-r2" }, asQuestion(q))),
+        chev()));
+    if (asking) card.append(answer);
+    return card;
+  }
+
+  /**
+   * What the grammar can do with the words, as plain-words rows with the command under each.
+   * A parsed command comes first (one row per session it could mean); plain words offer the
+   * sessions they name to watch, and an agent named first to ask.
+   * @returns {{ act: string, line: string, pick?: any, cmd?: any, fill?: string }[]}
+   */
+  function runItems(q) {
+    const c = cmd;
+    const t = r => title(r);
+    if (c.kind === "agent") return [{ act: `Ask ${c.agent}: ${c.text}`, line: `@${c.agent} ${c.text}` }];
+    if (c.kind === "drive") return c.candidates.slice(0, 4).map(r => ({ act: `Tell ${t(r)} to ${c.text}`, line: `tell ${t(r)} to ${c.text}`, pick: r }));
+    if (c.kind === "watch") return c.candidates.slice(0, 4).map(r => ({
+      act: c.until === "asks" ? `Tell me when ${t(r)} asks` : c.until === "finished" ? `Tell me when ${t(r)} is done` : `Watch ${t(r)}`,
+      line: c.until === "asks" ? `tell me when ${t(r)} asks` : c.until === "finished" ? `tell me when ${t(r)} is done` : `watch ${t(r)}`, pick: r }));
+    const out = [];
+    // "@ki" or "kit write the ad": the agents it could mean.
+    const at = /^@(\S*)$/.exec(q);
+    const first = /^(\S+)\s+([\s\S]+)$/.exec(q);
+    if (at) for (const a of base_.agents.filter(a => a.name.toLowerCase().startsWith(at[1].toLowerCase())).slice(0, 3))
+      out.push({ act: `Ask ${a.name}`, line: `@${a.name} …`, fill: `@${a.name} ` });
+    else if (first) {
+      const a = base_.agents.find(x => x.name.toLowerCase() === first[1].toLowerCase());
+      if (a) out.push({ act: `Ask ${a.name}: ${first[2]}`, line: `@${a.name} ${first[2]}`, cmd: { kind: "agent", agent: a.name, text: first[2].trim() } });
+    }
+    if (q.length >= MIN) for (const r of rankSessions(q, base_.rows, title).slice(0, 2)) {
+      out.push({ act: `Watch ${t(r)}`, line: `watch ${t(r)}`, pick: r, cmd: { kind: "watch", query: q, until: "either", candidates: [r] } });
+      out.push({ act: `Tell me when ${t(r)} is done`, line: `tell me when ${t(r)} is done`, pick: r, cmd: { kind: "watch", query: q, until: "finished", candidates: [r] } });
+    }
+    return out.slice(0, 4);
+  }
+
+  function phoneRun(q) {
+    const items = runItems(q);
+    if (!items.length) {
+      if (scope !== "run") return null;
+      const a = base_.agents.find(x => x.kind !== "assistant")?.name || who();
+      return h("p", { class: "fd-pnote" }, `No command matches. Try @${a} and a task, tell <session> to …, or watch <session>.`);
+    }
+    return group("Run", h("div", { class: "fd-card" }, items.map(it => prow({ cls: "fd-run", label: `${it.act}. Runs ${it.line}`, onclick: () => {
+      if (it.fill) { input.value = it.fill; input.dispatchEvent(new Event("input")); input.focus(); return; }
+      if (it.cmd) cmd = it.cmd;
+      if (it.pick) chosen = it.pick;
+      recentAdd(q);
+      runCommand();
+    } }, h("span", { class: "fd-glyph", "aria-hidden": "true" }, icon("terminal", 20)),
+      h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, hl(it.act, q)), h("span", { class: "fd-cmd" }, it.line))))));
+  }
+
+  function phoneMemory(q) {
+    const facts = (Array.isArray(cur.memory?.data) ? cur.memory.data : []).filter(f => f && f.text);
+    if (!facts.length) return null;
+    return h("section", { class: "fd-pmem", "aria-label": "From memory" },
+      h("div", { class: "fd-pmem-h" }, icon("memory", 14), "From memory"),
+      facts.slice(0, 3).map(f => link(`/memory?q=${encodeURIComponent(q)}`, { class: "fd-pfact", "data-row": "", role: "option", "aria-selected": "false" },
+        h("span", { class: "fd-pfact-t" }, hl(f.text, q)),
+        h("span", { class: "fd-pfact-s" }, [f.ref?.name || f.source, when(f.at || f.ts || f.updated || f.created)].filter(Boolean).join(" · ")))));
+  }
+
+  function phoneChats(q) {
+    const hits = sessionHits(q);
+    if (!hits.length) return null;
+    const open = expanded.has("sessions");
+    return group("Chats", h("div", { class: "fd-card" }, (open ? hits : hits.slice(0, SHOW)).map(s =>
+      prow({ href: threadHref({ id: s.id, project: s.project }) },
+        h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, hl(s.title, q)),
+          s.snip ? h("span", { class: "fd-r2" }, snippet(s.snip)) : null,
+          h("span", { class: "fd-meta" }, [projectOf(s), when(s.ts)].filter(Boolean).join(" · "))),
+        chev()))),
+      hits.length > SHOW && !open ? more("sessions", hits.length) : null);
+  }
+
+  function phoneFiles() {
+    const d = cur.files?.data;
+    if (!d) return null;
+    const results = Array.isArray(d.results) ? d.results : [];
+    // One line when the Macs are away: their files are the ones missing.
+    const away = !results.some(f => f.source === "mac")
+      ? h("p", { class: "fd-pnote" }, "Your Macs are away. Files on them show here when they are back.") : null;
+    if (!results.length) return scope === "files" || away ? away : null;
+    const open = expanded.has("files");
+    return group("Files", h("div", { class: "fd-card" }, (open ? results : results.slice(0, SHOW)).map(f =>
+      prow({ onclick: () => openFile(f), label: `${f.name}, ${home(f.path)}` },
+        h("span", { class: "fd-glyph", "aria-hidden": "true" }, icon(FILE_ICON[f.kind] || "file", 20)),
+        h("span", { class: "fd-main" }, h("span", { class: "fd-path" }, home(f.path) || f.name),
+          h("span", { class: "fd-meta" }, [f.repo || base(parent(f.path)), f.machine || f.host || (f.source === "mac" ? "Mac" : "box")].filter(Boolean).join(" · ")))))),
+      results.length > SHOW && !open ? more("files", results.length) : null, away);
+  }
+
+  function drawPhone() {
+    const q = cur.q;
+    if (!q) return drawPhoneIdle();
+    const long = q.length >= MIN;
+    const all = scope === "all";
+    const blocks = [
+      all ? phoneAsk(q) : null,
+      all || scope === "run" ? phoneRun(q) : null,
+      long && (all || scope === "memory") ? phoneMemory(q) : null,
+      long && (all || scope === "chats") ? phoneChats(q) : null,
+      long && (all || scope === "files") ? phoneFiles() : null,
+    ].filter(Boolean);
+    const missing = new Map();
+    for (const [label, r, sc] of [["Chats were not searched.", cur.recall, "chats"], ["Files were not searched.", cur.files, "files"], ["Memory was not searched.", cur.memory, "memory"]]) {
+      if ((all || scope === sc) && r?.error && !missing.has(r.error.module)) missing.set(r.error.module, empty(label, r.error));
+    }
+    const wanted = all ? [cur.recall, cur.files, cur.memory] : scope === "chats" ? [cur.recall] : scope === "files" ? [cur.files] : scope === "memory" ? [cur.memory] : [];
+    const pending = long && wanted.some(r => !r);
+    const nothing = !blocks.length && !pending && !missing.size
+      ? h("p", { class: "fd-pnote" }, long ? `Nothing in ${SCOPES.find(([k]) => k === scope)?.[1] || "here"} matches.` : "Keep typing to search.") : null;
+    put(list, blocks, pending ? h("p", { class: "fd-pnote" }, "Looking…") : null, nothing, [...missing.values()]);
+    mark();
+  }
+
+  function drawPhoneIdle() {
+    const recent = recentGet();
+    const sessions = base_.rows.filter(r => r.human || r.live).slice(0, 4);
+    put(list,
+      recent.length ? group("Recent searches", h("div", { class: "fd-card" }, recent.map(q => h("button", { type: "button", class: "fd-prow fd-recent", "data-row": "", "data-recent": "",
+        role: "option", "aria-selected": "false", onclick: () => { input.value = q; input.dispatchEvent(new Event("input")); input.focus(); } },
+        h("span", { class: "fd-glyph", "aria-hidden": "true" }, icon("search", 20)), h("span", { class: "fd-main" }, h("span", { class: "fd-r1" }, q)))))) : null,
+      sessions.length ? group("Recent", h("div", { class: "fd-card" }, sessions.map(r => prow({ href: threadHref(r) },
+        h("span", { class: "fd-main" }, h("span", { class: "fd-rt" }, title(r)),
+          h("span", { class: "fd-meta" }, [projectOf(r), when(r.last)].filter(Boolean).join(" · "))),
+        chev())))) : null,
+      !base_.loaded ? h("p", { class: "fd-pnote" }, "Reading your sessions…") : null,
+      base_.loaded ? base_.errs.map(([label, err]) => empty(label, err)) : null);
+    mark();
+  }
+
   // ---- drawing --------------------------------------------------------------------------
   function drawIdle() {
+    if (phone) return drawPhoneIdle();
     const recent = base_.rows.filter(r => r.human || r.live).slice(0, SHOW);
     put(list,
       recent.length ? section("recent", "Recent", recent.map(r => row({ href: threadHref(r), glyph: icon("chat", 16) },
@@ -320,6 +555,7 @@ export default async function find(ctx) {
   }
 
   function draw() {
+    if (phone) return drawPhone();
     const q = cur.q;
     if (!q) return drawIdle();
     const long = q.length >= MIN;
@@ -351,6 +587,7 @@ export default async function find(ctx) {
   // ---- searching ------------------------------------------------------------------------
   function run(q) {
     const n = ++seq;
+    clear.hidden = !input.value;
     if (q !== cur.q) { expanded.clear(); hi = -1; }
     cur = { q, n };
     draw();
@@ -364,6 +601,7 @@ export default async function find(ctx) {
   input.addEventListener("input", () => {
     clearTimeout(timer);
     done_ = "";
+    clear.hidden = !input.value;
     readCommand(input.value);
     const q = input.value.trim();
     if (!q) { run(""); return; }
@@ -393,6 +631,7 @@ export default async function find(ctx) {
     clearTimeout(timer);
     const q = input.value.trim();
     if (!q) return;
+    if (q.length >= MIN) recentAdd(q);
     if (q !== cur.q) run(q);
     readCommand(q);
     if (cmd.kind !== "ask") { runCommand(); return; }
@@ -415,6 +654,7 @@ export default async function find(ctx) {
   // for the catalogue and the agents, the lists this screen leans on.
   base_.errs = [["Recent sessions are not available.", cat.error], ["Agents are not available.", al.error]].filter(([, e]) => e);
   base_.loaded = true;
+  placeholder();
   readCommand(input.value);
   draw();
 }

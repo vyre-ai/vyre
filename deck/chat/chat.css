@@ -210,6 +210,16 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
      padding for the tab bar and the offline line, if any): header, timeline (the one scroller), composer. */
   .chat-session { height: 100%; }
   .thread-view { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+  /* The keyboard (js/keyboard.js): the composer and the line above it ride up on the compositor,
+     and the transcript's foot grows by as much in the same frame (session.js scrolls it along),
+     so no line jumps. --kb-lift is in deck.css. */
+  :root[data-kb] .chat-session > :is(.lease-bar, .composer) { transform: translateY(calc(-1 * var(--kb-lift))); }
+  :root[data-kb] .chat-session .thread-view { padding-bottom: calc(24px + var(--kb-lift)); }
+  :root[data-kb] .chat-session .jump-latest { bottom: calc(12px + var(--kb-lift)); }
+  /* A long session: the rows well above the last 40 skip layout and paint until they near the
+     screen, and keep the size they last had. The newest 40 always draw, so the bottom is exact. */
+  .cv-timeline > :nth-last-child(n+41) { content-visibility: auto; contain-intrinsic-size: auto 96px; }
+  .rows > .thread-row { content-visibility: auto; contain-intrinsic-size: auto 72px; }
 
   /* Thumb targets: 44px for Back and Send, 56px session rows, the whole row one link. */
   .session-back { width: 44px; height: 44px; margin-left: -10px; }

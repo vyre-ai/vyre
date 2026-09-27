@@ -41,7 +41,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 15 | 6 | capsule, cli, deck |
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 7 | 4 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 5 | cli |
-| [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
+| [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 12 | 5 | capsule, cli, deck |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
@@ -303,8 +303,8 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/push`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [6](tools.md#push)
-- Emits: no events
+- Tools: [8](tools.md#push)
+- Emits: [3 events](events.md#push)
 - Shows on: capsule, cli, deck
 - Needs vault: `push-vapid`
 

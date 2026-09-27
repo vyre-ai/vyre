@@ -16,7 +16,8 @@ import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
 import { Registry, discover } from "../modules/index.js";
-import { build } from "./build.js";
+import { build, swWithBuild } from "./build.js";
+import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, SESSIONABLE, parse as parsePresence } from "../presence/index.js";
 import { peerPid, insideClaude, controllingTty } from "./peer.js";
@@ -376,6 +377,8 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
     return res.end(themeCss((config.load(root).theme || {}).colors));
   }
+  // The one app (ADR 0027), beside the Deck until it takes over /.
+  if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) return serveApp(res, url.pathname);
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
   return send(res, 404, { error: { code: "not_found", message: `${req.method} ${url.pathname}` } });
 }
@@ -435,7 +438,8 @@ function stream(req, res, url, events, streams) {
 }
 
 const TYPES = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".css": "text/css", ".json": "application/json",
-  ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json" };
+  ".svg": "image/svg+xml", ".png": "image/png", ".woff2": "font/woff2", ".ico": "image/x-icon", ".webmanifest": "application/manifest+json",
+  ".ttf": "font/ttf", ".map": "application/json" };
 
 /**
  * The Deck: static files from deck/ in the repo (the deck workstream builds them). Paths that
@@ -460,6 +464,9 @@ function serveDeck(res, pathname) {
     if (wantsShell && file !== shell) { try { buf = fs.readFileSync(shell); } catch {} }
     if (!buf) return send(res, 404, { error: { code: "no_deck", message: "the Deck is not built on this machine" } });
   }
+  // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
+  // at once (deck/sw.js BUILD).
+  if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
   res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache",
     "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" });
   res.end(buf);

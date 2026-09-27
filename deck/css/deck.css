@@ -46,7 +46,11 @@
 html, body { margin: 0; height: 100%; }
 /* The shell never rubber-bands or pulls to refresh; only the view scrolls, and it stops at its ends. */
 html, body { overscroll-behavior: none; }
-:root { --tabbar-h: 76px; --tabbar-total: calc(var(--tabbar-h) - 18px + max(18px, env(safe-area-inset-bottom))); -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+/* The phone's Capsule floats on the bottom safe area (12 from the edge where there is none); a page
+   leaves room for it (56 tall, 16 clear above it) so the last row is never under it. */
+:root { --cap-h: 56px; --cap-bottom: max(12px, env(safe-area-inset-bottom)); --cap-clear: calc(var(--cap-h) + 16px + var(--cap-bottom));
+  --mark-dot: var(--signal); -webkit-tap-highlight-color: transparent; -webkit-text-size-adjust: 100%; }
+:root[data-theme="paper"] { --mark-dot: var(--text); }
 body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15px; line-height: 22px;
   -webkit-font-smoothing: antialiased; }
 button, input, textarea, select { font: inherit; color: inherit; }
@@ -143,10 +147,17 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 
 /* Shell */
 .shell { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
+/* Installed on an iPad or a phone turned sideways (both can be over 760 wide), the shell keeps
+   clear of the status bar and the notch. env() is 0 on a desktop browser: nothing moves there. */
+.shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
 .top { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid var(--rule); }
 .brand { width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; }
 .address { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid var(--rule);
-  border-radius: var(--r-2); font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 0; max-width: 460px; }
+  border-radius: var(--r-2); font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 1; min-width: 0; max-width: 460px;
+  white-space: nowrap; overflow: hidden; }
+/* One line: a long thread path ends in an ellipsis instead of wrapping the pill. */
+.address > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.address > svg { flex-shrink: 0; }
 .address b { font-weight: 400; color: var(--text); }
 .search { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; width: 420px; min-width: 160px;
   padding: 0 8px 0 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-2); color: var(--label); flex-shrink: 1; }
@@ -180,43 +191,146 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
    kept page comes back where it was. */
 .page { position: absolute; inset: 0; overflow: auto; overscroll-behavior-y: contain; -webkit-overflow-scrolling: touch; }
 .page.away { visibility: hidden; content-visibility: hidden; pointer-events: none; }
-.tabbar { display: none; }
+/* The phone's shell (js/app.js, js/capsule.js): not drawn on a wide screen. */
+.ph-head, .pager, .capsule, .cap-rise { display: none; }
 
 /* The box is not answering: one line above the view, never over it (js/pwa.js). */
+/* A fact, not an alarm (docs/design/phone.md section 11): --text-2 on the ground, no attention colour. */
 .reach { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 12px 6px 16px; flex-shrink: 0;
-  background: var(--beacon-wash); color: var(--text); font-size: 13px; line-height: 18px; border-bottom: 1px solid var(--beacon-rule); }
+  background: var(--bg); color: var(--text-2); font-size: 13px; line-height: 18px; border-bottom: 1px solid var(--rule); }
+.reach .dot { background: var(--label); }
 .reach-text { flex-grow: 1; min-width: 0; }
 /* Pull to find: a hint that grows in from the top while the finger pulls (js/pwa.js). */
 .pull { display: none; }
 
-/* Phone: the Deck at 360px and up. The rail becomes a bottom tab bar (PhoneNow). */
+/* Phone: the Deck at 320px and up (docs/design/phone.md section 3). No rail and no tab bar: a 48
+   tall header with the three page labels, the pages side by side in a pager, the Capsule floating
+   at the bottom, and every other address pushed over them. The shell's mode is #deck[data-at]:
+   page, pushed or find (js/app.js). */
 @media (max-width: 760px) {
   .top { display: none; }
   .rail { display: none; }
-  /* Installed, the page runs under the status bar and the home indicator (viewport-fit=cover):
-     the shell keeps clear of both, and of the notch in landscape. */
-  .shell { padding-top: env(safe-area-inset-top); padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
-  /* --tabbar-total is the bar with the home indicator under it: the safe area stands in for the
-     bar's own 18px of bottom padding when it is taller. */
-  .page { padding-bottom: calc(var(--tabbar-total) + 8px); }
-  .tabbar { display: flex; position: fixed; left: 0; right: 0; bottom: 0; height: var(--tabbar-total);
-    padding: 8px calc(8px + env(safe-area-inset-right)) max(18px, env(safe-area-inset-bottom)) calc(8px + env(safe-area-inset-left));
-    background: var(--bg); border-top: 1px solid var(--rule); z-index: 30; }
-  .tabbar a { -webkit-touch-callout: none; user-select: none; }
+  /* One fixed shell (one-app DIRECTION.md, "Smooth"): the app never moves as a whole, so the page
+     cannot rubber-band and iOS has nothing to scroll when a field takes focus. Only the pages,
+     lists and sheets inside scroll, each stopping at its own ends. Installed, the page runs under
+     the status bar and the home indicator (viewport-fit=cover); the shell keeps clear of both,
+     and of the notch in landscape (the padding above). */
+  html, body { overflow: hidden; }
+  .shell { position: fixed; inset: 0; height: 100vh; height: 100dvh; overflow: hidden; }
+
+  /* Taps: no 300 ms wait for a double tap, no callout or selection on the chrome and on rows;
+     text still selects in messages, code and fields. */
+  :where(a, button, input, select, textarea, label, summary, [role="button"], [role="option"], [role="radio"], [role="checkbox"]) { touch-action: manipulation; }
+  :where(a, button, .ph-head, .capsule, .reach, .pull, .np-row, .thread-row, .fd-row, .sheet-grab, .sheet-head) {
+    -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
+  :where(.cv-text, .cv-text *, .cv-user-text, .msg-body, pre, code, .nsh-cmd, .nsh-why, .gate-body, .gate-val, input, textarea, [contenteditable]) {
+    -webkit-touch-callout: default; -webkit-user-select: text; user-select: text; }
+
+  /* No field under 16 px: iOS zooms the whole app into a smaller one when it takes focus. The
+     ones drawn bigger keep their size. */
+  :where(input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="color"], [type="file"]),
+    textarea, select, [contenteditable]:not([contenteditable="false"])) { font-size: 16px !important; }
+  .pair-card .pair-code { font-size: 20px !important; }
+  .fd-in, .nsh-other, .nsh-form .ed-in:not(.ed-mono), .nsh-pair .pair-card .pair-code { font-size: 17px !important; }
+
+  /* The keyboard (js/keyboard.js sets --kb and data-kb while it is up). A page leaves room to
+     scroll a field above it; Chat's composer and a sheet move up by it (chat.css, sheet.css).
+     --kb-lift is the part of it the home indicator's inset does not already cover. */
+  :root { --kb: 0px; --kb-lift: max(0px, calc(var(--kb) - env(safe-area-inset-bottom, 0px))); }
+  :root[data-kb] .page:not(:has(> .chat-session)) { padding-bottom: calc(var(--kb) + 16px); }
+  /* The header replaces each view's own phone heading. */
+  .phone-head { display: none; }
+
+  /* Header: the mark, Now Chats Agents in Page type, the avatar (or "+" on Agents). It never collapses. */
+  .ph-head { display: flex; align-items: center; gap: 12px; height: 48px; flex-shrink: 0; padding: 0 12px 0 16px; background: var(--bg); position: relative; z-index: 3; }
+  .ph-mark { display: inline-flex; flex-shrink: 0; }
+  .ph-mark circle { fill: var(--mark-dot) !important; }
+  .ph-head[data-needs] .ph-mark circle { fill: var(--beacon-dot) !important; }
+  .ph-tabs { display: flex; align-items: center; gap: 16px; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .ph-tabs::-webkit-scrollbar { display: none; }
+  .ph-tab { display: inline-flex; align-items: center; min-height: 44px; font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em;
+    color: var(--label); text-decoration: none; white-space: nowrap; transition: color 160ms ease-out; -webkit-touch-callout: none; user-select: none; }
+  .ph-tab[aria-current="page"] { color: var(--text); }
+  .ph-grow { flex-grow: 1; }
+  .ph-avatar, .ph-plus { width: 44px; height: 44px; margin-right: -5px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
+    padding: 0; border: none; background: transparent; color: var(--text); cursor: pointer; }
+  .ph-initial { width: 34px; height: 34px; border-radius: 17px; display: inline-flex; align-items: center; justify-content: center;
+    background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text); font-size: 15px; line-height: 20px; font-weight: 600; }
+  .ph-back { display: none; align-items: center; gap: 2px; height: 44px; margin-left: -8px; padding: 0 8px 0 2px; border: none; background: transparent;
+    color: var(--text); font-size: 17px; line-height: 22px; cursor: pointer; }
+  #deck[data-at="pushed"] .ph-back { display: inline-flex; }
+  #deck[data-at="pushed"] :is(.ph-mark, .ph-tabs, .ph-avatar, .ph-plus) { display: none; }
+  #deck[data-at="pushed"][data-own-back] .ph-head, #deck[data-at="find"] .ph-head { display: none; }
+
+  /* The pager: the three pages side by side, native scroll that snaps a page at a time. */
+  .pager { display: flex; position: absolute; inset: 0; z-index: 1; overflow-x: auto; overflow-y: hidden; scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain; scrollbar-width: none; }
+  .pager::-webkit-scrollbar { display: none; }
+  /* A touch that began in a row that swipes, a field or a sideways scroller: the pager holds still. */
+  .pager.locked { overflow-x: hidden; }
+  .pager-slot { flex: 0 0 100%; position: relative; height: 100%; scroll-snap-align: start; scroll-snap-stop: always; }
+  /* The pages beside the current one stay drawn, so a swipe shows them as they were. They are
+     still inert and aria-hidden, and their views see ctx.shown() false. */
+  .pager .page.away { visibility: visible; content-visibility: visible; }
+  .pager .page { padding-bottom: var(--cap-clear); }
+  /* Rows that swipe (Needs you) take the horizontal pan themselves. */
+  [data-swipe] { touch-action: pan-y; }
+  #deck:not([data-at="page"]) .pager { overflow-x: hidden; }
+
+  /* Pushed screens and Find sit over the pager, opaque. */
+  .view > .page { z-index: 2; background: var(--bg); padding-bottom: env(safe-area-inset-bottom); }
+  .view > .page.away { z-index: 0 !important; }
+  .view > .page[data-page="find"] { top: 8px; background: var(--panel); border-radius: 14px 14px 0 0; box-shadow: var(--light-top); }
+  .ph-push { animation: ph-push 300ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .ph-pop { animation: ph-pop 240ms cubic-bezier(0.4, 0, 0.6, 1) forwards; }
+  .ph-rise { animation: ph-rise 320ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .ph-sink { animation: ph-sink 240ms cubic-bezier(0.4, 0, 0.6, 1) forwards; }
+  .ph-fade { animation: ph-fade 180ms ease-out; }
+  .ph-settle { transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+  .ph-drag { box-shadow: var(--light-top); }
+
+  /* The Capsule: 12 from each side, on the bottom safe area, 56 tall, opaque, fully round. */
+  .capsule { display: flex; align-items: center; gap: 4px; position: fixed; z-index: 4; height: var(--cap-h); padding: 0 8px 0 0;
+    left: calc(12px + env(safe-area-inset-left)); right: calc(12px + env(safe-area-inset-right)); bottom: var(--cap-bottom);
+    background: var(--panel); border: 1px solid var(--rule-strong); border-radius: 999px; box-shadow: var(--light-top); touch-action: none; }
+  #deck:not([data-at="page"]) .capsule { display: none; }
+  .cap-open { flex: 1; min-width: 0; height: 100%; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 18px; border: none; background: transparent;
+    color: var(--label); font-size: 17px; line-height: 22px; text-align: left; cursor: text; border-radius: 999px; -webkit-touch-callout: none; user-select: none; }
+  .cap-mark { display: inline-flex; flex-shrink: 0; }
+  .cap-mark circle { fill: var(--mark-dot) !important; }
+  #deck:has(.ph-head[data-needs]) .cap-mark circle { fill: var(--beacon-dot) !important; }
+  .capsule.listening .cap-open { color: var(--text); }
+  .cap-mic { width: 40px; height: 40px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; padding: 0; border-radius: 20px;
+    border: 1px solid var(--rule-strong); background: var(--hover); color: var(--text); cursor: pointer; touch-action: none; -webkit-touch-callout: none; user-select: none; }
+  .capsule.listening .cap-mic { background: var(--primary-bg); border-color: var(--primary-bg); color: var(--primary-ink); }
+  /* Raises the keyboard in the same tap that opens Find; Find's own box takes it over. */
+  .cap-proxy { position: fixed; bottom: 0; left: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; font-size: 16px; pointer-events: none; }
+  /* A drag up on the Capsule: Find's sheet follows the finger. */
+  .cap-rise { display: block; position: fixed; z-index: 5; left: 0; right: 0; bottom: 0; top: calc(env(safe-area-inset-top) + 8px);
+    background: var(--panel); border-radius: 14px 14px 0 0; box-shadow: var(--light-top); transform: translateY(100%); pointer-events: none; }
+  .cap-rise.going { transition: transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
   .pull { display: flex; align-items: center; justify-content: center; gap: 8px; height: 0; overflow: hidden;
-    position: fixed; top: env(safe-area-inset-top); left: 0; right: 0; z-index: 25; background: var(--bg); border-bottom: 1px solid transparent;
-    font-family: var(--mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--label); }
+    position: fixed; top: calc(env(safe-area-inset-top) + 48px); left: 0; right: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid transparent;
+    font-size: 13px; line-height: 18px; color: var(--label); }
   .pull.on { height: calc(var(--pull, 0) * 44px); opacity: var(--pull, 0); border-bottom-color: var(--rule); }
   .pull.ready { color: var(--text); }
-  .tabbar a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; text-decoration: none; color: var(--label);
-    font-family: var(--mono); font-size: 10px; line-height: 12px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; position: relative; }
-  .tabbar a[aria-current="page"] { color: var(--text); }
-  .tabbar .badge { position: absolute; top: -6px; left: calc(50% + 4px); min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
-    background: var(--beacon-dot); color: var(--beacon-badge-ink); font-size: 10px; line-height: 16px; letter-spacing: 0; text-align: center; }
-  .phone-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 16px 0; }
+  .reach { position: relative; z-index: 3; font-size: 15px; line-height: 20px; }
+  .reach .btn { height: 44px; padding: 0 8px; font-family: var(--sans); font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--text); }
+  /* Settings, from the avatar, inside a sheet: the sheet's title stands in for the page's. */
+  .ph-settings .set-top h1 { display: none; }
 }
-/* Five tabs at 320px: the labels keep their size and lose some tracking. */
-@media (max-width: 360px) { .tabbar { padding-left: 4px; padding-right: 4px; } .tabbar a { letter-spacing: 0.06em; } }
+@keyframes ph-push { from { transform: translateX(100%); } }
+@keyframes ph-pop { to { transform: translateX(100%); } }
+@keyframes ph-rise { from { transform: translateY(100%); } }
+@keyframes ph-sink { to { transform: translateY(100%); } }
+@keyframes ph-fade { from { opacity: 0; } }
+/* Reduce Motion: pages and pushed screens crossfade; nothing slides (js/app.js picks ph-fade). */
+@media (prefers-reduced-motion: reduce) {
+  .pager { overflow-x: hidden; scroll-behavior: auto; }
+  .ph-tab { transition: none; }
+  .cap-rise.going, .ph-settle { transition: none; }
+}
 @media (min-width: 761px) { .phone-head { display: none; } }
 @media (max-width: 1100px) { .address { display: none; } }
 
@@ -233,3 +347,14 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .ed-in:hover { border-bottom-color: var(--rule); }
 .ed-in:focus, .ed-in:focus-visible { outline: none; border-bottom-color: var(--focus); }
 .ed-dirty .ed-lbl::after { content: " ·"; color: var(--text-2); }
+
+/* The one action an empty state offers, in place (js/empty-actions.js). */
+.ea { margin-top: 10px; }
+.ea-form, .ea-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.ea-in { flex: 1 1 180px; width: auto; min-width: 0; max-width: 320px; }
+.ea-in.ea-wide { flex-basis: 100%; max-width: none; height: auto; padding: 8px 12px; }
+@media (max-width: 760px) {
+  .ea .btn { min-height: 44px; }
+  .ea .input:not(.ea-wide) { height: 44px; }
+  .ea-in { max-width: none; }
+}
