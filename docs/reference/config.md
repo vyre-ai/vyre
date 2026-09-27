@@ -114,6 +114,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js` |
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
+| `VYRE_THREAD_SOCKETS` | Not described yet. | `core/daemon/threadsock.js` |
 | `VYRE_TILE_BIN` | Not described yet. | `local/sideview/index.js` |
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |
 | `VYRE_UID` | Not described yet. | `core/spawner/main.js` |

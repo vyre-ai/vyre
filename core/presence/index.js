@@ -92,18 +92,17 @@ export const SESSIONABLE = new Set(["vault.reveal", "vault.copy", "vault.totp", 
 export const NARROWABLE = new Set(["gate.approve"]);
 
 /**
- * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet)
- * and the Capsule. The CLI rides its own window instead, bound to the login terminal vyred saw
- * (`terminal`, see Presence.verify): the CLI is a first-class surface, and a secret on disk is
- * something a model could read.
- * TODO(e2e): the tailnet owner counts by node identity today, which a script on the paired Mac can
- * borrow. When e2e's Deck web-session rule lands (docs/work/e2e.md, the HTTP listener audit), a
- * tailnet caller must also carry that web session.
+ * Who a session may prove a vault tool for: the Deck (locally, or as the owner over the tailnet),
+ * a device paired over the relay (`device:<id>`), and the Capsule. The CLI rides its own window
+ * instead, bound to the login terminal vyred saw (`terminal`, see Presence.verify): the CLI is a
+ * first-class surface, and a secret on disk is something a model could read. A tailnet or relayed
+ * caller reaches a HUMAN_ONLY tool only with a person session as well (ADR 0032; the registry's
+ * gate runs first), so a script on that device cannot borrow the node's identity here.
  */
 const vaultSessionCaller = caller => {
   const c = String(caller || "");
   if (/(?:^|[\s:])agent:/.test(c)) return false;
-  return c.startsWith("tailnet:") || c === "deck" || c === "capsule";
+  return c.startsWith("tailnet:") || /^device:[a-z2-7]{16}$/.test(c) || c === "deck" || c === "capsule";
 };
 
 /** How long one proof covers a terminal's SESSIONABLE calls: as long as a session. */
@@ -243,7 +242,7 @@ const normal = code => String(code || "").toUpperCase().replace(/[\s-]/g, "");
 const peerId = peer => (peer && (peer.stableId || peer.node) ? String(peer.stableId || peer.node) : null);
 const spki = b64 => crypto.createPublicKey({ key: Buffer.from(String(b64), "base64url"), format: "der", type: "spki" });
 /** A signing key's id is its fingerprint, so one key cannot be enrolled twice. */
-const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from(String(b64), "base64url")).digest("base64url").slice(0, 22);
+export const fingerprint = b64 => crypto.createHash("sha256").update(Buffer.from(String(b64), "base64url")).digest("base64url").slice(0, 22);
 /**
  * The keys that sign a call themselves, the same message and rules for each: the Capsule's
  * Ed25519 key, and a phone's P-256 key held in its Secure Enclave or StrongBox (ADR 0018).

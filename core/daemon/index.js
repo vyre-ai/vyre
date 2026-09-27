@@ -20,7 +20,7 @@ import { Registry, discover, ownerDevice } from "../modules/index.js";
 import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
-import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, parse as parsePresence } from "../presence/index.js";
+import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, fingerprint, parse as parsePresence } from "../presence/index.js";
 import { peerPid, insideClaude, controllingTty } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
@@ -187,7 +187,7 @@ async function body(req) {
 }
 
 /**
- * @typedef {{ caller?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
+ * @typedef {{ caller?: string, thread?: string, agent?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
  *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string|null,
  *   tags?: string[], caps?: Record<string, any[]>, kind?: "owner"|"guest"|"agent", agent?: string, origin?: string } }} Policy
  * A policy from a module's listener: the caller it established, which tools and paths it may reach,
@@ -283,6 +283,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // The tailnet peer a network listener established (node, stableId, login) rides here too.
   /** @type {{ thread?: string, agent?: string, peer?: any, person?: { id: string, kind: string } }} */
   const via = policy.peer ? { peer: policy.peer } : {};
+  // A session's own socket (core/daemon/threadsock.js): vyred bound the thread and the agent when
+  // it opened it, so neither is read from the call, and no key is asked for.
+  if (policy.thread) { via.thread = String(policy.thread); if (policy.agent) via.agent = String(policy.agent); }
   // The person, not only their device (core/presence/person.js, ADR 0032). A node signed in as the
   // owner over the tailnet, and a paired device over the relay (`device:<id>`), are the owner's
   // devices; the person is a browser or app holding a person session made on that one device
@@ -320,7 +323,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (agentNode && !(said && policy.peer && policy.peer.agent === said[1])) {
     return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
   }
-  if (said) {
+  if (policy.thread) {
+    // Bound above; a key or a session claim on this socket changes nothing.
+  } else if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });
@@ -372,7 +377,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
         const k = registry.deps.presence.enroll({ kind: "device", name: `${/** @type {any} */ (r).label || "phone"} (biometric)`, public_key: spki, alg: -7 });
         events.emit("presence", "presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
         r.data.human = { key: k.id };
-      } catch (e) { r.data.human = { error: /** @type {Error} */ (e).message }; }
+      } catch (e) {
+        // The same key signing in again: it is enrolled already, under its fingerprint.
+        const spki = crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: h.x, y: h.y }, format: "jwk" }).export({ format: "der", type: "spki" }).toString("base64url");
+        r.data.human = /already enrolled/.test(/** @type {Error} */ (e).message) ? { key: fingerprint(spki) } : { error: /** @type {Error} */ (e).message };
+      }
     }
     const out = { ...(r.data ? { data: r.data } : {}), ...(r.error ? { error: r.error } : {}) };
     return send(res, r.error ? (r.error.code === "bad_input" ? 400 : 403) : 200, out);

@@ -6,6 +6,35 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Sessions: concurrency slots for teammates and subagents (the user's usage control)
 
+#### The floor follows links
+
+- Every write target is checked as named and as the kernel walks it: a symlink anywhere on the
+  way, and `..` after one (`x/../settings.json` where x links into `.claude`), are resolved with
+  realpath(3) from the raw string; a file not there yet by its folder's real path. This covers
+  rule 1 (Claude Code's settings, .mcp.json, ~/.claude.json) and rule 8 (VYRE_HOME, other agents'
+  folders), for the file tools and Bash write forms. A write to an existing file with more than
+  one link is compared by inode with the settings files and with VYRE_HOME outside the places a
+  model may work; a hard link to one of them is refused. It runs in the PreToolUse floor, so it
+  holds in every permission mode, bypassPermissions included.
+
+#### One socket per Vyre-owned session (ADR 0030 phase 3, option A)
+
+- core/daemon/threadsock.js: `openThreadSocket({ handler: ctx.handler, thread, agent, pids, dir })`
+  opens a socket for one session, at a random name in /run/vyre-threads (vyre:vyre-work, 2710:
+  the agent can pass through, not list). vyred binds the caller (`mcp:thread:<id>`,
+  `harness:thread:<id>`, or `mcp:agent:<name>` / `harness:agent:<name>`; the client picks only
+  mcp or harness), the thread and the agent, and asks for no key; the kernel's peer pid must belong
+  to the session (its process, group, session or a descendant); person-only and human-only tools
+  and presence routes are refused. `close()` removes it. The router takes `thread` and `agent`
+  from a listener's policy.
+
+#### Phones over the relay: vault sessions, and the same key signing in again
+
+- A presence session serves vault reveal and copy for a device paired over the relay
+  (`device:<id>`) as it does for the Deck over the tailnet; the person session gate runs first.
+- The native trade with a biometric key that is enrolled already answers `human: { key }` with
+  its id (the key's fingerprint), not an error.
+
 #### The uid split, wired: sessions start through the spawner on the box
 
 - Off by default: `sessions.spawner` is "off" until ADR 0030 phase 3 (sessions reach Vyre's tools
@@ -151,6 +180,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   could answer its own ask on the box. The socket's person check now looks at the tool link.call
   carries. The Mac CLI gets them back through a Mac person session (next).
 
+#### Sessions: concurrency slots for teammates and subagents (the user's usage control)
+
 #### Chat: the stream resumes, and long replies stay smooth
 
 - Reconnect (deck/js/api.js, ADR 0029 R1): the shared stream hears `stream.reset` and lowers its
@@ -178,6 +209,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   tool event. Given the changed keys it regroups from the row before the first change and stops
   at the first old row boundary past the last one; unchanged rows stay the same objects.
   groupItems stays the pure full pass, and a test checks both agree on random sequences.
+
+#### Sessions: a retried send is the same message; the queue and the mode can be read
+
+- `threads.send` takes the caller's Idempotency-Key (ADR 0029 R2, resilience's `keyUuid`) as the
+  message's uuid. A send whose uuid was already handed to Claude Code (new table `threads_sent`)
+  or queued answers `{sent: true, already: true}` and starts nothing, even after a restart.
+- `threads.queue {thread}`: the words queued and not handed over yet (queued, uuid, text, surface, at).
+- Thread records carry `mode` (default, acceptEdits, plan), kept by `threads.mode`.
+
 #### Sessions: the Agent SDK is the default driver (ADR 0030)
 
 - `sessions.driver` defaults to `sdk`: every session Vyre starts (Chat, agents, the Capsule, the

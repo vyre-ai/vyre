@@ -30,6 +30,8 @@ VW=$(docker exec -u vyre "$C" sh -c 'cat /proc/$(pgrep -f core/daemon/main.js | 
 echo "$VW" | grep -q 0002 && ok "vyred's umask is 002" || no "vyred umask: $VW"
 [ "$(x stat -c %a /home/vyre)" = 700 ] && ok "/home/vyre is 700" || no "/home/vyre is $(x stat -c %a /home/vyre)"
 [ "$(x stat -c %G /work)" = vyre-work ] && ok "/work belongs to vyre-work" || no "/work group $(x stat -c %G /work)"
+[ "$(x stat -c %U:%G:%a /run/vyre-threads)" = vyre:vyre-work:2710 ] && ok "sessions' sockets live where the agent can pass but not list" || no "/run/vyre-threads: $(x stat -c %U:%G:%a /run/vyre-threads)"
+docker exec -u vyre-agent "$C" ls /run/vyre-threads >/dev/null 2>&1 && no "vyre-agent can list /run/vyre-threads" || ok "vyre-agent cannot list sessions' sockets"
 
 # One child through the spawner, as vyred would start it.
 OUT=$(docker exec -u vyre -w /opt/vyre "$C" node -e '
