@@ -210,17 +210,22 @@ Plan (to the lead before building):
 
 ## Doing (27 Sep, after logout 3)
 
-Done and pushed (628e2cd9): HIGH 2 link.call (50c3f13); a) person session over the tailnet
-(8ad92a73, fb097a3d); b) the Mac's person session `vyre link signin` (ab51b28f); vault fill
-Origin pin, allowlist, optional key binding, callers; peer check by pgid/sid; ADR 0032.
-The uid split on the box is built (core/spawner, image, compose), 15/15 in
-scripts/e2e-split/check.sh on testbox. Waiting on sessions to spawn through spawnAsAgent on the
-box (and detached meanwhile). Deploy note: the vyre service becomes 0:0 with 3 caps; the box
-wrapper keeps working (vyre re-execs as vyre).
-Next: the headscale run on the deployed sha (box on e671d35 per the lead's notes): onboarding,
-the Deck's first sign-in, `vyre link signin` from the stand-in Mac, and the earlier list.
-Waiting: tailnet's CORS sha (peer.origin, allowed headers); pwa's sign-in sheet and Settings
-list; vault team's extension key.
+Done and pushed (d1ba721e): HIGH 2 link.call; a) person session; b) `vyre link signin`; vault
+fill; peer check by pgid and by orphans outside their own group; the uid split (core/spawner,
+image, compose; scripts/e2e-split/check.sh 15/15); ADR 0032.
+
+Headscale run of THIS branch (27 Sep, torn down after; CA and setup files kept in /srv/vyre-e2e):
+onboarding to the Deck; a curl from the Mac node gets 401 person_session_required for
+agents.create and term.open while reads pass; the Deck's first person action signs in with the
+passkey by itself (cookie invisible to the page) and goes through; Vault seal with passkey;
+the Mac pairs; `vyre link signin` opens /person/signin, the passkey, the loopback, "signed in
+until 10/27"; the Mac CLI updates an agent on the box; a call under a claude on the Mac and its
+nohup orphan are refused; a made-up bearer is refused. Found and fixed: the service worker served
+the Deck shell for /person/signin. Harness note: a passkey cloned to the phone makes the Mac's
+counter go backwards; bump the Mac's signCount before reusing it.
+
+Next: the same run against the lead's deployed sha. Waiting: tailnet's CORS sha; pwa's sign-in
+sheet; sessions calling spawnAsAgent (and spawning detached); vault's extension key.
 
 ## Earlier (27 Sep, after the restart)
 
