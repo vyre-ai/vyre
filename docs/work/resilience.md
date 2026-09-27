@@ -23,17 +23,13 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   ends terminals and says so (term.closed "box updated", term.attach terminal_closed). Term
   sidecar that survives deploys: backlog.
 - ctx.events.latestId() for modules (planner.upcoming's last_event).
-- Tests on testbox (27 Sep, after main b1dbb49): 189 pass, 0 fail. Earlier: 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
+- CLI write() with idempotency keys (threads send/answer, screen send); sse.js split-CRLF fix;
+  strict-tsc JSDoc. c8f5654 is on main (15e82dd, with the integrator's term save() fix).
+- Tests on testbox (27 Sep, after main 15e82dd): 145 targeted pass, 0 fail. Earlier: 189 pass, 0 fail. Earlier: 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
   (real dtach), daemon and modules tests.
 
 ## Doing
-- CLI R2 (UNTESTED, testbox frozen for the integrator's suite): core/daemon/client.js write()
-  (Idempotency-Key per intent, retried through unreachable/timeout/restarting for 20 s); used by
-  `vyre threads send`, `threads answer` and the live screen's send. Test file
-  core/daemon/client-write.test.js. Run it (plus core/cli/*screen* and threads tests) when the
-  freeze lifts, then CHANGELOG and report.
-- Also untested: sse.js holds a trailing \r (split CRLF bug from mobile); core/resilience/sse.test.js.
-- Reporting to the lead; filing per-team fixes.
+- Waiting on planner 3c75e47 for the R6 chaos test; helping pwa and mobile adopt web.js.
 
 ## Next
 1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
