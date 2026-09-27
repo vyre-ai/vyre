@@ -69,7 +69,7 @@ function capture(t) {
  * @param {{ current?: string, versions?: string[], minFrom?: Record<string, string>, serve?: (p: string) => string | Buffer | undefined,
  *   healthy?: boolean, tty?: boolean, answers?: string[], stamped?: boolean }} [o]
  */
-async function world(t, { current = "0.1.0", versions = ["0.1.0", "0.2.0"], minFrom = {}, serve = () => undefined, healthy = true, tty = false, answers = [], stamped = true } = {}) {
+async function world(t, { current = "0.1.0", versions = ["0.1.0", "0.2.0"], minFrom = {}, serve = () => undefined, healthy = true, tty = false, answers = [], stamped = true, tips = null } = {}) {
   const home = tempHome(t);
   config.save({ role: "local" });
   const fixtures = path.join(home, ".fixtures");
@@ -103,7 +103,7 @@ async function world(t, { current = "0.1.0", versions = ["0.1.0", "0.2.0"], minF
   const npm = path.join(home, "npm");
   fs.writeFileSync(npm, `#!/bin/sh\necho "$@" >> "${npmLog}"\nif [ -f "${home}/npm.fail" ] && echo "$3" | grep -q "$(cat "${home}/npm.fail")"; then echo "npm ERR! boom" >&2; exit 1; fi\nexit 0\n`, { mode: 0o755 });
 
-  const calls = { bring: [], waitFor: [], restore: [], stop: 0, asked: [] };
+  const calls = { bring: [], waitFor: [], restore: [], stop: 0, asked: [], tools: [] };
   const { lines, json } = capture(t);
   const from = lines.length;
   t.after(() => setJson(false));
@@ -115,6 +115,7 @@ async function world(t, { current = "0.1.0", versions = ["0.1.0", "0.2.0"], minF
     waitFor: async (version, ms, commit) => { calls.waitFor.push({ version, commit }); return healthy || calls.waitFor.length > 1 ? { version } : null; },
     restore: async o => { calls.restore.push(o); return { restored: ["vyre.db"] }; },
     stop: async () => { calls.stop++; return { ok: true, wasRunning: true }; },
+    call: async (tool, input) => { calls.tools.push({ tool, input }); return tips ? { data: { tips } } : { error: { code: "no_tool" } }; },
     io: { tty, ask: async q => { calls.asked.push(q); return answerQueue.shift() ?? ""; } },
     window: 1000,
   };
@@ -193,6 +194,17 @@ test("update: installs, restarts through bring, waits for health, and keeps two 
   assert.equal(w.calls.restore.length, 0, "a healthy update never restores data");
   assert.match(w.text(), /what 0\.2\.0 changed/);
   assert.match(w.text(), /updated.*0\.1\.0 → 0\.2\.0/);
+});
+
+test("update: after a healthy update it prints up to five New lines from tips.whatsnew; no tips module is fine", async t => {
+  const many = Array.from({ length: 7 }, (_, i) => ({ id: `t${i}`, since: "0.2.0", text: `tip ${i} for alex` }));
+  const w = await world(t, { tips: many });
+  assert.equal(await update(["--yes"], w.deps), 0, w.text());
+  assert.deepEqual(w.calls.tools, [{ tool: "tips.whatsnew", input: { since: "0.1.0" } }]);
+  assert.equal((w.text().match(/New in 0\.2\.0/g) || []).length, 5);
+  const off = await world(t);
+  assert.equal(await update(["--yes"], off.deps), 0, off.text());
+  assert.doesNotMatch(off.text(), /New in/);
 });
 
 test("update: prune keeps the two newest and the running one", t => {

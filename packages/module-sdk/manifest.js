@@ -56,6 +56,7 @@ export function checkSchema(schema, value, where = "manifest", root = schema) {
   const out = [];
   if (typeof value === "string") {
     if (schema.minLength !== undefined && value.length < schema.minLength) out.push(say("is too short"));
+    if (schema.maxLength !== undefined && value.length > schema.maxLength) out.push(say("is too long"));
     if (schema.pattern && !new RegExp(schema.pattern).test(value)) out.push(say(`must match ${schema.pattern}`));
   }
   if (typeof value === "number") {
@@ -108,6 +109,7 @@ export function checkManifest(m, { firstParty = false } = {}) {
     ...Object.entries(TYPES.object(does.hooks) ? does.hooks : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.hooks.${k}`, t])),
     ...Object.entries(TYPES.object(does.senders) ? does.senders : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.senders.${k}`, t])),
     ...(Array.isArray(does.commands) ? does.commands : []).map((c, i) => /** @type {[string, any]} */ ([`does.commands[${i}]`, c && c.tool])),
+    ...["connections", "suggest"].filter(k => does[k] !== undefined).map(k => /** @type {[string, any]} */ ([`does.${k}`, does[k]])),
     ...Object.entries(TYPES.object(does.apps) ? does.apps : {}).flatMap(([app, a]) =>
       Object.entries(TYPES.object(a) && TYPES.object(a.actions) ? a.actions : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.apps.${app}.actions.${k}`, t]))),
   ];
@@ -128,6 +130,13 @@ export function checkManifest(m, { firstParty = false } = {}) {
       const name = TYPES.object(t[side]) ? t[side].tool : undefined;
       if (typeof name === "string" && !tools.includes(name)) out.push(`setting ${s.key}: store.tool.${side} must be one of this module's own tools`);
     }
+  }
+  // Tips are found by id, so an id names one tip in its module.
+  const tipIds = new Set();
+  for (const t of TYPES.object(m.teaches) && Array.isArray(m.teaches.tips) ? m.teaches.tips : []) {
+    if (!t || typeof t.id !== "string") continue;
+    if (tipIds.has(t.id)) out.push(`tip "${t.id}" is declared twice`);
+    tipIds.add(t.id);
   }
   // A replacement registers the original's tools, so it carries the original's name; replaces
   // says so out loud, since a duplicate name without it is refused.

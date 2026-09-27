@@ -20,6 +20,7 @@ import * as config from "../../config/index.js";
 import { REPO } from "../../daemon/index.js";
 import { build } from "../../daemon/build.js";
 import { stop } from "../daemonctl.js";
+import { call } from "../../daemon/client.js";
 import { backup, restore } from "../../names/backup.js";
 import { bring, waitFor, terminal } from "./up.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -34,7 +35,7 @@ const USAGE = "vyre update [--check] [--channel stable|beta] [--to <version>] [-
  * @typedef {{ tty: boolean, ask(q: string): Promise<string> }} IO
  * @typedef {{ home?: string, api?: string, npm?: string, repo?: string, build?: () => import("../../daemon/build.js").Build,
  *   bring?: typeof bring, waitFor?: typeof waitFor, backup?: typeof backup, restore?: typeof restore, stop?: typeof stop,
- *   io?: IO, supervisor?: string, window?: number }} Deps
+ *   call?: typeof call, io?: IO, supervisor?: string, window?: number }} Deps
  */
 
 /** Fetch with a time limit, as the one client Vyre is to GitHub. */
@@ -166,7 +167,7 @@ export async function update(args, deps = {}) {
     home, say, flags, current: mine.version, role: cfg.role,
     npm: deps.npm || process.env.VYRE_NPM_BIN || "npm",
     bring: deps.bring || bring, waitFor: deps.waitFor || waitFor,
-    backup: deps.backup || backup, restore: deps.restore || restore, stop: deps.stop || stop,
+    backup: deps.backup || backup, restore: deps.restore || restore, stop: deps.stop || stop, call: deps.call || call,
     io: deps.io || terminal, window: deps.window ?? 60_000,
   };
   if (flags.rollback) return rollback(ctx);
@@ -279,11 +280,25 @@ async function install(ctx, releases, target, channel) {
 
   // Healthy: from here on nothing restores the data by itself.
   const removed = prune(home, target.version);
-  if (json()) return emit({ updated: true, from: current, to: target.version, channel, backup: file, removed });
+  const fresh = await whatsNew(ctx, current);
+  if (json()) return emit({ updated: true, from: current, to: target.version, channel, backup: file, removed, new: fresh });
   out(`  ${signal("updated")} ${current} → ${target.version} ${dim("· vyred answering")}`);
+  for (const t of fresh) out(`  ${bold("New in " + t.since)} ${t.text}`);
   out(dim(`  backup from before it: ${file}`));
   if (prev) out(dim(`  vyre update --rollback puts ${current} back`));
   return EXIT.OK;
+}
+
+/**
+ * Up to five tips the new version brought, from the tips module (tips.whatsnew). When tips is off
+ * or says nothing, there are none: the update never fails over a tip.
+ * @returns {Promise<{ since: string, text: string }[]>}
+ */
+async function whatsNew(ctx, since) {
+  let r;
+  try { r = await ctx.call("tips.whatsnew", { since }); } catch { return []; }
+  const rows = r && !r.error && r.data && Array.isArray(r.data.tips) ? r.data.tips : Array.isArray(r && r.data) ? r.data : [];
+  return rows.filter(t => t && typeof t.text === "string" && typeof t.since === "string").slice(0, 5).map(t => ({ since: t.since, text: t.text }));
 }
 
 /** `--rollback`: the previous kept release goes back; the data stays unless --restore-data. */

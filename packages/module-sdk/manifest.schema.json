@@ -30,6 +30,8 @@
       "properties": {
         "tools": { "type": "array", "items": { "$ref": "#/$defs/tool" }, "uniqueItems": true },
         "providers": { "type": "array", "items": { "$ref": "#/$defs/moduleName" }, "uniqueItems": true, "description": "Session drivers (ADR 0030)." },
+        "connections": { "$ref": "#/$defs/tool", "x-status": "planned", "description": "The tool that returns this module's connection rows for the connections module (docs/design/cohesion.md). One of this module's own tools." },
+        "suggest": { "$ref": "#/$defs/tool", "x-status": "planned", "description": "The tool that answers suggest.query for this module, inside a 25 ms deadline. One of this module's own tools." },
         "hooks": {
           "type": "object", "x-status": "planned",
           "description": "Harness points this module contributes to, each served by one of its tools. pretool may only tighten a verdict.",
@@ -91,7 +93,8 @@
           ]
         },
         "cli": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true },
-        "streams": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true }
+        "streams": { "type": "array", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true },
+        "notices": { "type": "array", "x-status": "planned", "items": { "$ref": "#/$defs/word" }, "uniqueItems": true, "description": "Notice kinds it raises, rendered from needs.list by push, the Capsule, the Deck and the phone, instead of a fixed map." }
       }
     },
     "settings": {
@@ -122,11 +125,30 @@
             "type": "object", "required": ["level", "file"], "additionalProperties": false,
             "properties": { "level": { "enum": ["account", "project", "agent"] }, "file": { "type": "string", "pattern": "^[^/].*\\.md$", "x-message": "must be a relative path to a .md file" } }
           }
+        },
+        "tips": {
+          "type": "array", "x-status": "planned", "description": "Short tips the tips module shows on each surface.",
+          "items": {
+            "type": "object", "required": ["id", "text", "surfaces", "level", "trigger", "since"], "additionalProperties": false, "patternProperties": { "^x-": {} },
+            "properties": {
+              "id": { "type": "string", "pattern": "^[a-z0-9-]+$", "x-message": "must be lowercase letters, digits and dashes" },
+              "text": { "type": "string", "minLength": 1, "maxLength": 140, "pattern": "^[^\\u2014\\u00a7]*$", "x-message": "must be 1 to 140 characters with no em dash or section sign" },
+              "surfaces": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/surface" } },
+              "level": { "enum": ["first-use", "power", "discovery"] },
+              "trigger": { "enum": ["on-use", "idle", "never-used", "after-update"] },
+              "since": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$", "x-message": "must be a version like 0.1.0" },
+              "key": { "type": "string", "minLength": 1 },
+              "command": { "type": "string", "minLength": 1 },
+              "docs": { "type": "string", "pattern": "^[^/#][^#]*\\.md(#[A-Za-z0-9-]+)?$", "x-message": "must be a relative path to a .md file, with an optional #anchor" },
+              "about": { "$ref": "#/$defs/surface" }
+            }
+          }
         }
       }
     }
   },
   "$defs": {
+    "surface": { "enum": ["capsule", "deck", "chat", "phone", "cli", "glass"] },
     "moduleName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,40}$", "x-message": "must be lowercase letters, digits and dashes" },
     "word": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "x-message": "must be lowercase letters, digits and dashes" },
     "tool": { "type": "string", "pattern": "^[a-z][a-z0-9-]*\\.[a-z][a-z0-9.-]*$", "x-message": "must look like module.verb" },

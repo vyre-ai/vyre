@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Manifest keys for cohesion and tips
+
+- packages/module-sdk/manifest.schema.json (all planned): `does.connections` and `does.suggest`
+  name one of the module's own tools for the cohesion glue modules; `shows.notices` lists the
+  notice kinds a module raises, so push needs no fixed map; `teaches.tips` holds short tips
+  (id, text of at most 140 characters with no em dash, surfaces, level, trigger, since, and
+  optional key, command, docs, about). The checker learns maxLength and refuses a tip id declared
+  twice; index.d.ts gains Tip and Surface.
+- `vyre update` asks tips.whatsnew {since} after a healthy update and prints up to five
+  "New in <version>" lines. With the tips module off it prints none and still succeeds.
+
 #### `vyre update` on the Mac and the box, with backup and rollback (ADR 0033, phase 2)
 
 - `vyre update` (new, in Box care): reads GitHub Releases for the channel (`update.channel` or

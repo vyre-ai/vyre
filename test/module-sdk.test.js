@@ -34,9 +34,11 @@ const full = () => ({
     senders: { "bakery-fax": "bakery.send" },
     apps: { oven: { app: "Oven", bundleIds: ["com.example.oven"], actions: { order: "bakery.order" } } },
     commands: [{ verb: "orders", tool: "bakery.orders", summary: "today's orders", args: ["day"] }],
+    connections: "bakery.orders",
+    suggest: "bakery.orders",
   },
   watches: { emits: ["order.placed"], on: ["planner.*", "order.placed"] },
-  shows: { deck: ["now:bakery.orders", "renderer:bakery.orders", "settings"], capsule: { "results:bakery.orders": { title: "Orders" } }, cli: ["bakery"], streams: [] },
+  shows: { deck: ["now:bakery.orders", "renderer:bakery.orders", "settings"], capsule: { "results:bakery.orders": { title: "Orders" } }, cli: ["bakery"], streams: [], notices: ["order-late"] },
   settings: [
     { key: "bakery.opens", group: "bakery", label: "Opening hour", type: "int", min: 0, max: 23, default: 7, levels: ["account", "project"], apply: "live" },
     { key: "bakery.fax", label: "Fax orders", type: "bool", levels: ["account"], apply: "live", security: "loosens", loosens: "outbound fax", confirm: { values: [true] }, store: { config: "bakery.fax" } },
@@ -44,7 +46,9 @@ const full = () => ({
     { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session" },
   ],
   needs: { vault: ["bakery-api-key"], tools: ["planner.*", "memory.answer"], network: ["api.example.com", "*.example.org:8443"], slots: ["now"] },
-  teaches: { memory: ["order.habit"], prompt: [{ level: "project", file: "prompt/bakery.md" }] },
+  teaches: { memory: ["order.habit"], prompt: [{ level: "project", file: "prompt/bakery.md" }],
+    tips: [{ id: "orders-today", text: "Type vyre bakery orders to see today's orders.", surfaces: ["cli", "capsule"], level: "discovery",
+      trigger: "never-used", since: "0.1.0", command: "vyre bakery orders", docs: "using/cli.md#orders", about: "cli" }] },
   "x-bakery": { anything: true },
 });
 
@@ -98,6 +102,17 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   has(bad(m => { m.settings[0].apply = "never"; }), /apply must be one of live, session, restart/);
   has(bad(m => { m.replaces = "memory"; }), /a replacement takes the name of the module it replaces/);
   has(bad(m => { m.teaches.prompt[0].file = "/etc/passwd"; }), /must be a relative path to a \.md file/);
+  has(bad(m => { m.does.connections = "bakery.gone"; }), /does\.connections names bakery\.gone, which is not under does\.tools/);
+  has(bad(m => { m.does.suggest = "memory.answer"; }), /does\.suggest names memory\.answer/);
+  has(bad(m => { m.shows.notices.push("Late!"); }), /notices\[1\] must be lowercase letters/);
+  has(bad(m => { m.teaches.tips[0].text = "x".repeat(141); }), /must be 1 to 140 characters/);
+  has(bad(m => { m.teaches.tips[0].text = "Orders \u2014 today"; }), /no em dash/);
+  has(bad(m => { m.teaches.tips[0].surfaces = ["watch"]; }), /surfaces\[0\] must be one of capsule/);
+  has(bad(m => { m.teaches.tips[0].trigger = "always"; }), /trigger must be one of on-use/);
+  has(bad(m => { m.teaches.tips[0].docs = "/etc/x.md"; }), /optional #anchor/);
+  has(bad(m => { m.teaches.tips[0].since = "soon"; }), /must be a version like 0\.1\.0/);
+  has(bad(m => { delete m.teaches.tips[0].level; }), /tips\[0\]\.level is required/);
+  has(bad(m => { m.teaches.tips.push({ ...m.teaches.tips[0] }); }), /tip "orders-today" is declared twice/);
   has(bad(m => { m.roles = ["cloud"]; }), /roles\[0\] must be one of box, local/);
   has(bad(m => { m.requires = "projects"; }), /requires must be/);
   assert.deepEqual(bad(m => { m.name = "memory"; m.replaces = "memory"; m.does = { tools: ["memory.answer"] }; m.settings = []; }), []);
