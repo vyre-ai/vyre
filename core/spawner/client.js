@@ -22,9 +22,10 @@ const connect = socket => new Promise((resolve, reject) => {
 
 /**
  * Start argv as the agent. Resolves once the child runs, with its handle.
- * @param {string[]} argv @param {{ env?: Record<string, string|undefined>, cwd?: string, socket?: string }} [o]
+ * @param {string[]} argv @param {{ env?: Record<string, string|undefined>, cwd?: string, fd3?: string, socket?: string }} [o]
+ *   fd3: written once to the child's fd 3 (an API key, CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR=3)
  */
-export async function spawnAsAgent(argv, { env = {}, cwd, socket = SOCKET } = {}) {
+export async function spawnAsAgent(argv, { env = {}, cwd, fd3, socket = SOCKET } = {}) {
   const control = /** @type {net.Socket} */ (await connect(socket));
   const lines = [];
   /** @type {((l: any) => void) | null} */
@@ -47,7 +48,7 @@ export async function spawnAsAgent(argv, { env = {}, cwd, socket = SOCKET } = {}
   const next = () => new Promise(r => { if (lines.length) r(lines.shift()); else waiting = r; });
   control.on("error", e => proc.emit("error", e));
 
-  control.write(JSON.stringify({ op: "spawn", argv, env, cwd }) + "\n");
+  control.write(JSON.stringify({ op: "spawn", argv, env, cwd, ...(typeof fd3 === "string" ? { fd3 } : {}) }) + "\n");
   const first = await next();
   if (first.error || !first.id) { control.destroy(); throw new Error(`spawner: ${first.error || "no answer"}`); }
   const stdio = /** @type {net.Socket} */ (await connect(socket));

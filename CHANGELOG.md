@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The uid split, wired: sessions start through the spawner on the box
+
+- core/sessions/spawn.js starts every session through the box's spawner when its socket is there
+  (as uid vyre-agent, under the spawner's `tini -s`, its own group and session), and directly
+  elsewhere. The handle looks like a ChildProcess at once; the pid, group and session reach
+  onSpawn before anything written to stdin does; the API key goes on fd 3 (the spawner writes it
+  there), never in the environment; kill goes to the spawner, which signals the whole group. An
+  agent's folder under VYRE_HOME maps to the same place in the agent's own home, which the spawner
+  makes as the agent. The spawner allows the Agent SDK's bundled Claude Code binary. The runner's
+  pid is a getter.
+- scripts/e2e-split/check.sh adds: a session runs as vyre-agent in its own home with the key on
+  fd 3 only, cannot reach vyred's socket, and the SDK's binary runs through the spawner.
+
 #### The Mac proves human-only actions to its box (Secure Enclave)
 
 - `vyre link signin` also makes a P-256 key in the Mac's Secure Enclave (core/link/se, CryptoKit,
