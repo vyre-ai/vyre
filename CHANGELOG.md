@@ -12,6 +12,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - push.settings `planner_label` (off by default) adds the item's own words as the planner
   notification's `body`, for the lock screen. Off, nothing the user typed is in the payload.
   Tests in core/push/push.test.js.
+- deck/sw.js (pwa owns it; the smallest change): a `planner-ack` push closes the notification
+  with that tag and shows nothing, and a push's `body` is shown when present. Test in
+  deck/test/pwa.test.js.
 
 #### The planner: anyone adds alarms, reminders, todos and notes; one parser, answered on the Mac
 
