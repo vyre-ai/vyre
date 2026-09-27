@@ -13,6 +13,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { clip, CAPS } from "./translate.js";
+import { safeGitArgs, safeGitEnv } from "../../lib/git/safe.js";
 
 /** Past this many lines on either side (after the common ends are trimmed), count all removed and all added. */
 export const DIFF_LINES = 2000;
@@ -210,9 +211,9 @@ function git(dir, args, deadline) {
   const ms = deadline - Date.now();
   if (ms <= 0) return Promise.resolve(null);
   return new Promise(resolve => {
-    execFile("git", ["-c", "protocol.allow=never", "-c", "core.fsmonitor=false", "-C", dir, ...args], {
+    execFile("git", [...safeGitArgs(dir), "-C", dir, ...args], {
       timeout: ms, killSignal: "SIGKILL", maxBuffer: 16 * 1024 * 1024, windowsHide: true,
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", GIT_NO_LAZY_FETCH: "1", GIT_OPTIONAL_LOCKS: "0", GIT_PAGER: "cat", PAGER: "cat", LC_ALL: "C", GIT_ASKPASS: "", SSH_ASKPASS: "" },
+      env: safeGitEnv(),
     }, (err, stdout) => resolve(err ? null : String(stdout)));
   });
 }

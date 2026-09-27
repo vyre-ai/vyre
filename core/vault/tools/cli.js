@@ -24,6 +24,7 @@ import { parseRequest, requestOrigin, candidates, formatResponse } from "../git.
 import { parsePrivate, generateKey, TYPES as SSH_TYPES } from "../ssh/keys.js";
 import { SshAgent, listen, LEASE_MS } from "../ssh/agent.js";
 import { defaultField } from "../kinds.js";
+import { safeGitArgs, safeGitEnv } from "../../../lib/git/safe.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
@@ -137,7 +138,7 @@ export async function register({ ctx, vault }) {
   /** Is this path tracked by git, or in a work tree without being ignored? Words for a warning. */
   const gitWarnings = file => {
     const dir = path.dirname(file), base = path.basename(file);
-    const git = args => { try { execFileSync("git", ["-C", dir, ...args], { stdio: "ignore", timeout: 5000 }); return true; } catch { return false; } };
+    const git = args => { try { execFileSync("git", [...safeGitArgs(dir), "-C", dir, ...args], { stdio: "ignore", timeout: 5000, env: safeGitEnv() }); return true; } catch { return false; } };
     if (!git(["rev-parse", "--is-inside-work-tree"])) return [];
     if (git(["ls-files", "--error-unmatch", "--", base])) return [`${file} is tracked by git: the values will be committed with it · git rm --cached it and add it to .gitignore`];
     if (!git(["check-ignore", "-q", "--", base])) return [`${file} is inside a git work tree and not ignored · add it to .gitignore`];

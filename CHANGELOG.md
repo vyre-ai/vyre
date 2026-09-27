@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyred's git never runs a folder's own commands
+
+- A repo's config and hooks belong to whoever can write the folder. `git ls-files` and `git
+  check-ignore` run a planted core.fsmonitor, and the vault ran both, without guards, in the folder
+  of an .env it imported or a file it rendered: on the box, an agent could run code as vyred's own
+  user. lib/git/safe.js is the one way vyred runs git now (no fsmonitor, no hooks, no pager, no
+  external diff, no network, no global or system config, and every filter driver the repo names
+  overridden to cat, since `status` runs clean filters), used by the vault's checks, the build
+  stamp and the switchboard's push summary. test/safe-git.test.js plants an fsmonitor, textconv,
+  filter drivers and hooks, and checks that every git call vyred makes goes through it.
+
 #### On a Mac, the caller check no longer leaves vyred's socket blocking
 
 - vyred reads who is on a socket with a small perl child that gets the connection as fd 3. On

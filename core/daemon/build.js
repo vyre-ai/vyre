@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { safeGitArgs, safeGitEnv } from "../../lib/git/safe.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 
@@ -27,7 +28,7 @@ export function build(repo = REPO) {
     b = { version, commit: typeof s.commit === "string" ? s.commit : null, dirty: typeof s.dirty === "boolean" ? s.dirty : null, stamped: true };
   } catch {
     if (fs.existsSync(path.join(repo, ".git"))) {
-      const git = (/** @type {string[]} */ ...a) => execFileSync("git", ["-C", repo, ...a], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"] }).trim();
+      const git = (/** @type {string[]} */ ...a) => execFileSync("git", [...safeGitArgs(repo), "-C", repo, ...a], { encoding: "utf8", timeout: 3000, stdio: ["ignore", "pipe", "ignore"], env: safeGitEnv() }).trim();
       try { b = { version, commit: git("rev-parse", "HEAD"), dirty: git("status", "--porcelain", "--untracked-files=no") !== "" }; } catch { /* no git on PATH */ }
     }
   }

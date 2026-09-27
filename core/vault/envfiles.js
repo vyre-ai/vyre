@@ -18,6 +18,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { classify } from "./detect.js";
 import { isRef, templateRefs } from "./refs.js";
+import { safeGitArgs, safeGitEnv } from "../../lib/git/safe.js";
 
 /**
  * @typedef {{ key: string, value: string, start: number, end: number, exported: boolean }} Entry
@@ -225,7 +226,7 @@ export function gitState(file) {
   const dir = path.dirname(file);
   /** @param {string[]} args */
   const ok = args => {
-    try { execFileSync("git", ["-C", dir, ...args], { stdio: "ignore", timeout: 3000 }); return true; } catch { return false; }
+    try { execFileSync("git", [...safeGitArgs(dir), "-C", dir, ...args], { stdio: "ignore", timeout: 3000, env: safeGitEnv() }); return true; } catch { return false; }
   };
   if (!ok(["rev-parse", "--is-inside-work-tree"])) return null;
   return { tracked: ok(["ls-files", "--error-unmatch", "--", path.basename(file)]), ignored: ok(["check-ignore", "-q", "--", path.basename(file)]) };
