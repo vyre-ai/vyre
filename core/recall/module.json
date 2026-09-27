@@ -4,7 +4,7 @@
   "roles": ["box", "local"],
   "requires": [],
   "does": { "tools": ["recall.search", "recall.thread", "recall.transcript", "recall.watch", "recall.unwatch", "recall.sessions", "recall.index", "recall.status", "recall.setup", "recall.eval"] },
-  "watches": { "emits": ["session.indexed", "session.turn", "session.state"] },
+  "watches": { "emits": ["session.indexed", "session.turn", "session.state", "recall.embedded"] },
   "shows": { "cli": ["recall", "index"] },
   "needs": {},
   "teaches": {

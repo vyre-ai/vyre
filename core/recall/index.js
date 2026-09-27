@@ -180,7 +180,10 @@ export default {
             if (g && await g.check()) break;
             const e = await embedder();
             if (!e || stopped) break;
-            const r = await indexer.vectorize(e, { stopped: () => stopped || paused(), pace: paced });
+            // How far embedding has got, for an import's progress: at most every 2 s, and at the end.
+            let said = 0;
+            const r = await indexer.vectorize(e, { stopped: () => stopped || paused(), pace: paced,
+              onProgress: (done, total) => { const t = Date.now(); if (done < total && t - said < 2000) return; said = t; ctx.events.emit("recall.embedded", { done, total }); } });
             if (r.turns) ctx.log(`embedded ${r.turns} turns into ${r.chunks} vectors in ${r.ms}ms`);
           } while (vec.again && !stopped);
           // Build the dense index now, in the background, so the first search does not pay for it.

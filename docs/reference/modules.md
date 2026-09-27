@@ -35,7 +35,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
-| [`import`](#import) | `core/import` | `box`, `local` | 3 | 0 | cli |
+| [`import`](#import) | `core/import` | `box`, `local` | 3 | 1 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
@@ -47,7 +47,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`presence`](#presence) | `core/presence` | `box`, `local` | 11 | 6 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 9 | 5 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 8 | 3 | capsule, cli, deck |
-| [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
+| [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 4 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 13 | 5 | capsule, cli, deck |
 | [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
@@ -274,7 +274,7 @@ Discover this device's Claude Code sessions, choose what to import, and follow t
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [3](tools.md#import)
-- Emits: no events
+- Emits: [1 events](events.md#import)
 - Shows on: cli
 
 ## learn
@@ -401,7 +401,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Runs on: `box`, `local`
 - Requires: none
 - Tools: [10](tools.md#recall)
-- Emits: [3 events](events.md#recall)
+- Emits: [4 events](events.md#recall)
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 

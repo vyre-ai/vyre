@@ -31,7 +31,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   in, with counts, sizes and dates, and suggests only the person's own work (never work on Vyre
   itself, Vyre's own sessions or temporary folders). It reads file names, sizes, times and each
   session's folder, never a turn, and a model cannot call it. `import.plan {include, exclude?}`
-  says exactly what an import would take; `import.status` gives each stage's progress.
+  says exactly what an import would take; `import.status` gives each stage's progress, and the
+  `import.progress` event says so as it happens (after Recall indexes or embeds and after memory's
+  passes, at most every 2 s, counts only). Recall emits `recall.embedded {done, total}`.
 - Sessions start knowing the project: `memory.today {room | project_cwds, session?}` gives the
   project's last session and what memory learned about it this week (at most 300 characters, no
   model, no personal facts), and the session brief adds it under "Lately in this project", marked

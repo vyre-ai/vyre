@@ -87,7 +87,10 @@ export default {
       description: "How far the import has got, stage by stage: search (sessions indexed), meaning (turns embedded), graph (people, orgs and facts so far) and personal facts (turns read and waiting). Each { done, total }. Counts only, read when asked.",
       input: { type: "object", properties: {} },
       callers: [...PEOPLE, "module"],
-      run: async () => {
+      run: async () => statusNow(),
+    });
+    /** Each stage's counts, from Recall and memory. */
+    async function statusNow() {
         const [rs, ms] = await Promise.all([ctx.call("recall.status", {}), ctx.call("memory.stats", {})]);
         const r = rs?.data || {}, m = ms?.data || {};
         const stage = (done, total) => ({ done: Number(done) || 0, total: Math.max(Number(total) || 0, Number(done) || 0) });
@@ -99,9 +102,25 @@ export default {
           personal: stage(read.read_turns, Number(read.read_turns || 0) + Number(read.waiting_turns || 0)),
           searchable_sessions: Number(r.sessions) || 0,
         };
-      },
-    });
+    }
 
-    return { async stop() { plans.clear(); last = null; } };
+    // Progress as it happens (import.progress): after Recall indexes or embeds and after memory's
+    // passes, at most every 2 s, only when a count moved. Counts only, never names or text. No
+    // polling: with nothing happening, nothing is sent.
+    let timer = null, said = "";
+    const tell = async () => {
+      timer = null;
+      try {
+        const s = await statusNow();
+        const key = JSON.stringify(s);
+        if (key === said) return;
+        said = key;
+        ctx.events.emit("import.progress", s);
+      } catch { /* a module is not running: nothing to say */ }
+    };
+    const soon = () => { if (!timer) { timer = setTimeout(tell, 2000); timer.unref?.(); } };
+    const offs = ["session.indexed", "recall.embedded", "memory.curated"].map(type => ctx.events.on(type, soon));
+
+    return { async stop() { for (const o of offs) o(); if (timer) clearTimeout(timer); plans.clear(); last = null; } };
   },
 };
