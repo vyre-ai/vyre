@@ -6,7 +6,7 @@
 import { call } from "../../daemon/client.js";
 import { callAsPerson } from "../presence.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail as kitFail, failTool } from "../kit.js";
+import { json, emit, failTool, usage } from "../kit.js";
 
 const USAGE = "vyre hooks [status|on|off|open <name> --scheme hmac-sha256|github|stripe --secret <vault item> [--header <name>]|close <name>]";
 const fail = r => {
@@ -15,8 +15,8 @@ const fail = r => {
   out(down ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
   return 1;
 };
-/** The usage line, as a failure (a JSON error under --json). */
-const bad = () => { if (json()) return kitFail(USAGE, { code: "bad_input" }); out(`  ${USAGE}`); return 1; };
+/** The usage line, as a usage mistake: exit 2, a JSON error under --json. */
+const bad = () => usage(USAGE, "vyre help hooks");
 /** --key value pairs after the positional name. */
 const flags = args => {
   const o = {};
