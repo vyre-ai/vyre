@@ -332,6 +332,7 @@ Plan (to the lead before building):
 - teammates be21345a (steps 2/3, read): threadRecord fix and release-on-finished good. MEDIUM:
   rotation puts notes + last results raw into the SYSTEM append -> move to first prompt, fenced,
   neutralized, capped. LOW: thread.finished can fire during launch's awaits -> stuck slot.
+- memory-iq-rc2 aaf4fcb5 SIGNED OFF for rc.2 (header not evidence on personal paths; human === 1; roles on sources). Last e2e item for rc.2.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
