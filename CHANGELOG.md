@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### MCP: discover the servers Claude Code already knows about (ADR 0016, mcp-native gap 1)
+
+- New `core/mcp/discover.js`: reads (never writes) Claude Code's own `.mcp.json` (project scope,
+  walked from cwd to the filesystem root), `~/.claude.json` (user scope, and `projects[path]` for
+  local scope) and a plugin's own `.mcp.json`, normalized to the hub's server shape. `undiscovered`
+  diffs against the hub's known names. Bad JSON or an unreadable file answers no rows, never
+  throws. No wiring into `mcp.add` or the Deck yet (next: multi-account grouping, gap 2).
+- Boundaries allowlist (`test/boundaries.test.js`, `docs/architecture/boundaries.md`) updated to
+  match connectors' already-shipped edges: `core/google`, `core/mail` and `core/mcp` each import
+  `core/connectors/behalf.js` (on_behalf) and mail's `message.js`; main's allowlist froze before
+  these landed.
+
 #### Mail: send an email from any connected account (ADR 0016 decision 8)
 
 - New module `mail` (core/mail): `mail.accounts`, `mail.send`, `mail.search`, `mail.read`,
