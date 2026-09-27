@@ -21,7 +21,9 @@ Apple Developer account. Absorbs deck-design and phone-design.
 
 ## Doing
 
-- Nothing in flight.
+- Waiting on the user's direction pick (lead asked for direction first, 27 Sep). Brief:
+  docs/design/one-app/DIRECTION.md; boards Directions and Smooth lead the canvas. The other boards
+  are sketches of direction A and get redone once the user decides.
 
 ## Next
 
