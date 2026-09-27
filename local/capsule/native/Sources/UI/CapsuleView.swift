@@ -165,13 +165,15 @@ struct CapsuleView: View {
             // Before the answer is in, what memory said is the answer so far; once it is in, the
             // answer already uses it, so it folds into one line under the answer.
             if let m = model.askedMemory, model.replyText.isEmpty { MemoryLine(memory: m, expanded: $model.memoryExpanded, inset: false) }
+            // Tool calls, collapsed to one line each, newest three; a row changes in place.
+            if let tools = model.reply?.tools, !tools.isEmpty { ToolRows(tools: tools) }
             if let q = model.reply?.queued, !q.withdrawn {
                 Label(q.delivered ? "Handed over to \(q.name). Its answer comes when this turn ends." : "Queued for \(q.name): it gets this when its current turn ends.",
                       systemImage: q.delivered ? "checkmark.circle" : "clock")
                     .font(Theme.subtitle).foregroundColor(Theme.stone)
             }
             if !model.replyText.isEmpty {
-                Text(markdown(model.replyText))
+                Text(markdown(model.shownReplyText))
                     .font(Theme.reply).foregroundColor(Theme.bone)
                     .lineSpacing(3)
                     .textSelection(.enabled)
@@ -198,10 +200,16 @@ struct CapsuleView: View {
         guard let r = model.reply else { return "" }
         if let q = r.queued, !q.delivered, !r.finished { return "queued" }
         if r.queued?.withdrawn == true { return "taken back" }
-        if !r.finished { return model.replyText.isEmpty ? "thinking" : "answering" }
-        var parts = [r.ok == false ? "stopped" : "done"]
+        if !r.finished {
+            // thread.state (ADR 0030): an open ask is the status model's "needs you".
+            if r.state == "waiting" { return Theme.status("needsYou")?.word ?? "needs you" }
+            if r.state == "starting" { return "starting" }
+            return model.replyText.isEmpty ? "thinking" : "answering"
+        }
+        var parts = [r.state == "failed" || (r.ok == false && r.error != "stopped") ? "failed" : r.ok == false ? "stopped" : "done"]
         if let m = r.model { parts.insert(m, at: 0) }
         if let c = r.cost { parts.append(String(format: "$%.3f", c)) }
+        if r.idle { parts.append("idle") }
         return parts.joined(separator: " · ")
     }
 
@@ -355,6 +363,41 @@ struct KeyCap: View {
             .frame(minWidth: 17, minHeight: 17).padding(.horizontal, 2)
             .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(Theme.raised))
             .overlay(RoundedRectangle(cornerRadius: 4, style: .continuous).strokeBorder(Theme.ruleStrong, lineWidth: 1))
+    }
+}
+
+/// A turn's tool calls as one quiet line each: a mark, what it does, and its status word. The
+/// newest three show; older ones are counted. Rows keep their place as their status changes.
+struct ToolRows: View {
+    let tools: [ReplyTool]
+
+    var body: some View {
+        let shown = tools.suffix(3)
+        VStack(alignment: .leading, spacing: 3) {
+            if tools.count > shown.count {
+                Text("\(tools.count - shown.count) earlier").font(Theme.label).foregroundColor(Theme.ash)
+            }
+            ForEach(shown, id: \.id) { t in
+                HStack(spacing: 6) {
+                    Image(systemName: Self.symbol(t.status)).font(.system(size: 10, weight: .medium)).foregroundColor(Self.tint(t.status))
+                    Text(t.summary).font(Theme.subtitle).foregroundColor(Theme.stone).lineLimit(1).truncationMode(.middle)
+                    Spacer(minLength: 8)
+                    Text(Self.word(t.status)).font(Theme.label).foregroundColor(Theme.ash)
+                }
+                .frame(height: 16)
+            }
+        }
+        .animation(nil, value: tools)
+    }
+
+    static func word(_ s: ToolStatus) -> String {
+        switch s { case .running: return "running"; case .completed: return "done"; case .failed: return "failed"; case .canceled: return "canceled" }
+    }
+    static func symbol(_ s: ToolStatus) -> String {
+        switch s { case .running: return "circle.dotted"; case .completed: return "circle"; case .failed: return "xmark.circle"; case .canceled: return "minus.circle" }
+    }
+    static func tint(_ s: ToolStatus) -> Color {
+        switch s { case .running: return Theme.signal; case .completed: return Theme.ash; case .failed: return Theme.stone; case .canceled: return Theme.ash }
     }
 }
 

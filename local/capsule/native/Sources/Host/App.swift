@@ -15,6 +15,7 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
     var extensions: ExtensionHost!
     let hotkeys = Hotkeys()
     var menuBar: MenuBarItem?
+    let menuActions = MenuActions()
     lazy var health = Health(vyred: vyred)
     lazy var presence = CapsulePresence(home: home, vyred: vyred)
     /// The box's alarms and reminders ringing here, from /v1/link/events (Planner.swift).
@@ -43,6 +44,15 @@ final class CapsuleApp: NSObject, NSApplicationDelegate {
         extensions.panel = panel
         panel.extensions = extensions
         extensions.load(extensionTypes)
+        // The standard shortcuts need a main menu to live in (MainMenu.swift); never shown.
+        menuActions.hide = { [weak self] in self?.panel.hide() }
+        menuActions.settings = { [weak self] in self?.panel.hide(); self?.menuBar?.open() }
+        menuActions.find = { [weak self] in
+            guard let p = self?.panel else { return }
+            p.focus.count += 1
+            DispatchQueue.main.async { NSApp.sendAction(#selector(NSText.selectAll(_:)), to: p.panel.firstResponder, from: nil) }
+        }
+        NSApp.mainMenu = MainMenu.make(menuActions)
         // VYRE_CAPSULE_HEADLESS=1: no hot keys and no menu-bar item, for footprint checks that
         // must not take the user's keys or add a second mark to his menu bar.
         let headless = ProcessInfo.processInfo.environment["VYRE_CAPSULE_HEADLESS"] == "1"

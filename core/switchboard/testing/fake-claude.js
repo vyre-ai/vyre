@@ -8,6 +8,7 @@
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
 //   "bash <command>" asks permission for Bash with that command, and runs nothing
 //   "subagent[-slow] <task>"  runs Claude Code's Agent tool (after the host's PreToolUse hooks)
+//   "background <cmd>"  starts a background task (task_started) that runs until stop_task
 //   "fail"          a turn that ends in an error result
 //   "orphan"        leaves a `sleep 4` in its process group, then exits on its own
 //   "settings"      asks to Write its own .claude/settings.local.json with allow Bash(*)
@@ -65,7 +66,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let n = 0;
 /** @type {Map<string, (r: any) => void>} */
 const waiting = new Map();
-const MODEL = flag("--model") || "fake-model";
+let MODEL = flag("--model") || "fake-model";
+/** The slash commands it offers, as Claude Code lists them in init and in the initialize answer. */
+const COMMANDS = [{ name: "compact", description: "Clear the conversation but keep a summary", argumentHint: "<instructions>" },
+  { name: "review", description: "Review a pull request", argumentHint: "" }];
+/**
+ * Files its "write" turns changed, with what was there before and the user message that led to
+ * it: its file checkpoints, for a rewind_files request.
+ * @type {{ uuid: string|null, file: string, before: string|null }[]}
+ */
+const changed = [];
+let turnUuid = null;
+/** Background tasks still running. @type {Map<string, boolean>} */
+const tasks = new Map();
 
 // ------------------------------------------------------------ transcript lines, as Claude Code writes them
 
@@ -123,7 +136,8 @@ async function say(text) {
     out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: piece } }, session_id: session, parent_tool_use_id: null });
     await sleep(2);
   }
-  out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }] }, session_id: session, parent_tool_use_id: null,
+  out({ type: "assistant", message: { id, role: "assistant", model: MODEL, content: [{ type: "text", text }],
+    usage: { input_tokens: 12, cache_read_input_tokens: 2400, cache_creation_input_tokens: 40, output_tokens: Math.ceil(text.length / 4) } }, session_id: session, parent_tool_use_id: null,
     ...(stamp ? { user_message_uuid: stamp } : {}) });
 }
 
@@ -220,11 +234,15 @@ let spent = 0;
 const result = (ok, text, cost = 0.001) => out({ type: "result", subtype: ok ? "success" : "error_during_execution", is_error: !ok, result: text,
   total_cost_usd: (spent = Math.round((spent + cost) * 1e6) / 1e6), duration_ms: 5, num_turns: 1, stop_reason: "end_turn", session_id: session,
   usage: { input_tokens: 10, output_tokens: String(text).length, cache_read_input_tokens: 100, cache_creation_input_tokens: 50 },
+  modelUsage: { [MODEL]: { inputTokens: 10, outputTokens: String(text).length, cacheReadInputTokens: 100, cacheCreationInputTokens: 50, contextWindow: 200000 } },
   ...(took.length ? { user_message_uuids: took } : {}),
   // An error result lists its errors, as Claude Code's does (the Agent SDK reads them).
   ...(ok ? {} : { errors: [String(text)] }) });
 
 async function turn(prompt, uuid = null) {
+  // A message with pasted images is blocks: the words, and how many images came with them.
+  const blocks = Array.isArray(prompt) ? prompt : null;
+  if (blocks) prompt = blocks.filter(b => b && b.type === "text").map(b => b.text).join("\n") + (blocks.some(b => b && b.type === "image") ? ` (+${blocks.filter(b => b && b.type === "image").length} images)` : "");
   const p = String(prompt).trim();
   // A user line's uuid is the message's own when the host gave one, as Claude Code keeps it.
   tx("user", { role: "user", content: String(prompt) }, uuid ? { uuid } : {});
@@ -232,7 +250,7 @@ async function turn(prompt, uuid = null) {
     const file = path.resolve(p.slice(6).trim());
     const { allowed } = await useTool("Write", { file_path: file, content: "hi" }, { ask: true,
       suggestions: [{ type: "setMode", mode: "acceptEdits", destination: "session" }],
-      run: i => { fs.writeFileSync(file, String(i.content)); return { content: `File created successfully at: ${file}` }; } });
+      run: i => { changed.push({ uuid: turnUuid, file, before: fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null }); fs.writeFileSync(file, String(i.content)); return { content: `File created successfully at: ${file}` }; } });
     await say(allowed ? "Wrote it." : "I was not allowed to.");
     return result(true, allowed ? "Wrote it." : "I was not allowed to.");
   }
@@ -341,6 +359,15 @@ async function turn(prompt, uuid = null) {
     await say(text);
     return result(true, text);
   }
+  // A background task (Bash with run_in_background): it runs until it is stopped.
+  const bg = /^background (.+)$/i.exec(p);
+  if (bg) {
+    const task = `task_${++n}`;
+    tasks.set(task, true);
+    out({ type: "system", subtype: "task_started", task_id: task, description: bg[1], task_type: "local_bash", is_backgrounded: true, uuid: crypto.randomUUID(), session_id: session });
+    await say(`started ${task} in the background`);
+    return result(true, `started ${task} in the background`);
+  }
   if (/^fail$/i.test(p)) { await say("Trying."); return result(false, "API Error: 500 the fake broke on purpose", 0); }
   if (/^lowlimit$/i.test(p)) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "seven_day", resetsAt: 1790000000, utilization: 0.27 } });
@@ -365,6 +392,33 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
+  if (m.type === "control_request" && m.request?.subtype === "stop_task") {
+    const id = String(m.request.task_id);
+    const had = tasks.delete(id);
+    if (had) out({ type: "system", subtype: "task_notification", task_id: id, status: "stopped", output_file: "", summary: "stopped by the user", uuid: crypto.randomUUID(), session_id: session });
+    out({ type: "control_response", response: had ? { subtype: "success", request_id: m.request_id, response: {} } : { subtype: "error", request_id: m.request_id, error: `no task ${id}` } });
+    return;
+  }
+  if (m.type === "control_request" && m.request?.subtype === "set_max_thinking_tokens") {
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ thinking: m.request.max_thinking_tokens }) + "\n");
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
+  if (m.type === "control_request" && m.request?.subtype === "set_model") {
+    MODEL = String(m.request.model || MODEL);
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ model: MODEL }) + "\n");
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
+  // Put back what the writes since that user message changed, newest first.
+  if (m.type === "control_request" && m.request?.subtype === "rewind_files") {
+    const at = changed.findIndex(c => c.uuid === m.request.user_message_id);
+    const undo = at < 0 ? [] : changed.splice(at).reverse();
+    for (const c of undo) { if (c.before === null) fs.rmSync(c.file, { force: true }); else fs.writeFileSync(c.file, c.before); }
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id,
+      response: at < 0 ? { canRewind: false, error: "no checkpoint for that message" } : { canRewind: true, filesChanged: [...new Set(undo.map(c => c.file))] } } });
+    return;
+  }
   if (m.type === "control_request" && m.request?.subtype === "set_permission_mode") {
     if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ mode: m.request.mode }) + "\n");
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
@@ -373,8 +427,9 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
   if (m.type === "control_request" && m.request?.subtype === "initialize") {
     logLaunch(m.request);
     preHooks = (m.request.hooks && m.request.hooks.PreToolUse) || [];
-    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
-    out({ type: "system", subtype: "init", session_id: session, cwd: process.cwd(), model: MODEL, tools: ["Read", "Edit", "Write", "Bash", "TodoWrite", "AskUserQuestion"] });
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: { commands: COMMANDS } } });
+    out({ type: "system", subtype: "init", session_id: session, cwd: process.cwd(), model: MODEL, tools: ["Read", "Edit", "Write", "Bash", "TodoWrite", "AskUserQuestion"],
+      slash_commands: COMMANDS.map(c => c.name) });
     return;
   }
   if (m.type === "control_response") {
@@ -392,6 +447,7 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     if (m.priority === "next" && busy) { folds.push({ uuid: m.uuid || null, text: String(text) }); return; }
     queue = queue.then(async () => {
       busy = true; took = m.uuid ? [m.uuid] : [];
+      turnUuid = m.uuid || null;
       try { await turn(text, m.uuid || null); } finally { busy = false; }
       // Steered words the turn never reached (an interrupt, a turn with no reply left) run next.
       if (folds.length) { const f = folds; folds = []; queue = queue.then(async () => { busy = true; took = f.map(x => x.uuid).filter(Boolean); try { await turn(f.map(x => x.text).join("\n\n")); } finally { busy = false; } }); }

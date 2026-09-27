@@ -24,10 +24,14 @@ test("pwa perf: tabs, revisits and Chat paint within budget", { skip: !process.e
     world.stdout.on("data", d => { if (String(d).includes("deck world:")) { clearTimeout(timer); resolve(null); } });
   });
   await new Promise(r => setTimeout(r, 3000)); // the first Recall pass
-  const run = spawn(process.execPath, [path.join(HERE, "pwa-perf.js"), `http://127.0.0.1:${port}`], { env: process.env, stdio: ["ignore", "pipe", "inherit"] });
-  let out = "";
-  run.stdout.on("data", d => { out += d; });
-  const code = await new Promise(r => run.on("exit", r));
-  t.diagnostic(out.trim().split("\n").at(-1) || "");
+  // The test box is shared, so one noisy run is tried again once; two over budget fail.
+  let out = "", code = 1;
+  for (let attempt = 0; attempt < 2 && code !== 0; attempt++) {
+    const run = spawn(process.execPath, [path.join(HERE, "pwa-perf.js"), `http://127.0.0.1:${port}`], { env: process.env, stdio: ["ignore", "pipe", "inherit"] });
+    out = "";
+    run.stdout.on("data", d => { out += d; });
+    code = await new Promise(r => run.on("exit", r));
+    t.diagnostic(`run ${attempt + 1}: ${out.trim().split("\n").at(-1) || ""}`);
+  }
   assert.equal(code, 0, out);
 });

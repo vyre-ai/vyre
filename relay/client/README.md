@@ -33,7 +33,27 @@ The repo does not depend on @noble; see the top of `noble.js` for the imports.
 
 - `indexedDbKeyStore()`: the web. The `CryptoKey` structured-clones into IndexedDB and stays non-extractable.
 - `memoryKeyStore()`: tests, or a session that should forget its key.
-- Native: write one on `expo-secure-store` (base64url the private bytes).
+- Native (the lead's choice: @noble, key in secure-store; the Secure Enclave cannot hold X25519):
+
+```js
+import * as SecureStore from "expo-secure-store";
+import { base64url, fromBase64url } from "<repo>/relay/client/bytes.js";
+
+const crypto = nobleCrypto({ x25519, sha256, hmac, gcm, randomBytes });   // randomBytes from vyre-signer
+const keyStore = {
+  async get() {
+    const raw = await SecureStore.getItemAsync("vyre.relay.key");
+    return raw ? crypto.importKeyPair(fromBase64url(raw)) : null;
+  },
+  async set(k) {
+    await SecureStore.setItemAsync("vyre.relay.key", base64url(k.privateKey),
+      { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
+  },
+};
+```
+
+  `WHEN_UNLOCKED_THIS_DEVICE_ONLY` keeps the key out of backups and off other devices, so a
+  restored phone pairs again rather than carrying the old device's identity.
 
 ## API
 
@@ -43,6 +63,7 @@ const box = await pair(scannedUrl, { name: "alex's phone", presenceKey, keyStore
 // -> { relay, route, box, name, device, presence }
 
 const conn = connect({ ...box, keyStore, crypto });   // WebSocket defaults to globalThis.WebSocket
+// The hosted web app also passes about: { kind: "web", release, manifest } to pair() and connect().
 conn.onstate = s => {};                               // "connecting" | "open" | "offline"
 const res = await conn.fetch("/v1/tools/notes.add", { method: "POST", body: JSON.stringify({ text: "hi" }) });
 res.status; res.headers.get("content-type"); await res.json();   // or text(), or for await (const c of res.body)

@@ -242,3 +242,56 @@ test("floor: settings files under CLAUDE_CONFIG_DIR are the person's too", t => 
   assert.equal(file("Write", { file_path: "/home/sam/cc-config/notes.md", content: "" }), null);
   assert.equal(bash(`cat /home/sam/cc-config/settings.json`), null);
 });
+
+test("floor: an agent's session works in its own folder under VYRE_HOME, and nowhere else there", () => {
+  const as = (tool, input, agent) => rules({ tool, input, cwd: "/home/sam/.vyre/agents/kit", home: HOME, userHome: USER, agent }).decision;
+  // kit's own folder: files and shell alike.
+  assert.equal(as("Write", { file_path: "/home/sam/.vyre/agents/kit/notes/orders.md", content: "" }, "kit"), null);
+  assert.equal(as("Edit", { file_path: "/home/sam/.vyre/agents/kit/draft.md", old_string: "a", new_string: "b" }, "kit"), null);
+  assert.equal(as("Bash", { command: "ls /home/sam/.vyre/agents/kit && cat ./draft.md > /home/sam/.vyre/agents/kit/out.md" }, "kit"), null);
+  assert.equal(as("Glob", { pattern: "**/*.md", path: "/home/sam/.vyre/agents/kit" }, "kit"), null);
+  // Another agent's folder, the vault, the config, the store, and wildcards above its folder.
+  for (const [tool, input] of [["Write", { file_path: "/home/sam/.vyre/agents/juno/notes.md", content: "" }],
+    ["Read", { file_path: "/home/sam/.vyre/config.json" }], ["Read", { file_path: "/home/sam/.vyre/vault/items.json" }],
+    ["Bash", { command: "cat /home/sam/.vyre/agents/juno/notes.md" }], ["Bash", { command: "cat /home/sam/.vyre/agents/*/notes.md" }],
+    ["Bash", { command: "cp /home/sam/.vyre/vyre.db /tmp/x" }], ["Write", { file_path: "/home/sam/.vyre/agents/kit/../juno/x.md", content: "" }]]) {
+    assert.equal(as(tool, input, "kit"), "deny", `${tool} ${JSON.stringify(input)}`);
+  }
+  // Without a vouched agent, the folder is internal as before.
+  assert.equal(as("Write", { file_path: "/home/sam/.vyre/agents/kit/notes/orders.md", content: "" }, null), "deny");
+});
+
+test("floor: a symlink, `..` after one, or a hard link cannot carry a write into settings or Vyre's state", t => {
+  const S = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-links-")));
+  t.after(() => fs.rmSync(S, { recursive: true, force: true }));
+  const proj = path.join(S, "proj"), VH = path.join(S, "vh"), U = path.join(S, "u");
+  for (const d of [path.join(proj, ".claude", "sub"), path.join(VH, "watchers"), path.join(VH, "agents", "kit"), U]) fs.mkdirSync(d, { recursive: true });
+  fs.writeFileSync(path.join(proj, ".claude", "settings.json"), "{}");
+  fs.writeFileSync(path.join(VH, "config.json"), "{}");
+  fs.writeFileSync(path.join(proj, "plain.md"), "x");
+  fs.symlinkSync(path.join(proj, ".claude", "settings.json"), path.join(proj, "notes.json"));
+  fs.symlinkSync(path.join(proj, ".claude", "sub"), path.join(proj, "x"));
+  fs.symlinkSync(path.join(proj, ".claude"), path.join(proj, "c"));
+  fs.symlinkSync(VH, path.join(proj, "v"));
+  fs.symlinkSync(path.join(VH, "watchers"), path.join(proj, "y"));
+  fs.linkSync(path.join(VH, "config.json"), path.join(proj, "cfg.json"));
+  fs.linkSync(path.join(proj, ".claude", "settings.json"), path.join(proj, "s.json"));
+  fs.linkSync(path.join(proj, "plain.md"), path.join(proj, "plain-too.md"));
+  const f = (tool, input) => rules({ tool, input, cwd: proj, home: VH, userHome: U }).decision;
+  const sh = command => rules({ tool: "Bash", input: { command }, cwd: proj, home: VH, userHome: U }).decision;
+
+  for (const p of ["notes.json", "x/../settings.json", "c/settings.local.json", "v/config.json", "y/../config.json", "cfg.json", "s.json"]) {
+    assert.equal(f("Write", { file_path: p, content: "{}" }), "deny", `Write ${p}`);
+    assert.equal(f("Edit", { file_path: `${proj}/${p}`, old_string: "a", new_string: "b" }), "deny", `Edit ${p}`);
+  }
+  for (const c of ["echo '{}' > notes.json", "echo x > x/../settings.local.json", "echo x > v/config.json", "echo x > y/../config.json",
+    "echo x >> cfg.json", "sed -i s/a/b/ s.json", "cp /tmp/open.json c/settings.json", "tee s.json < /dev/null"]) {
+    assert.equal(sh(c), "deny", c);
+  }
+  // Ordinary files, a hard link between two of them, and the watchers folder through its link, pass.
+  assert.equal(f("Write", { file_path: "plain.md", content: "y" }), null);
+  assert.equal(f("Write", { file_path: "plain-too.md", content: "y" }), null);
+  assert.equal(f("Write", { file_path: "y/notes.md", content: "y" }), null);
+  assert.equal(sh("echo y > plain-too.md"), null);
+  assert.equal(sh("cat notes.json"), null, "reading settings through a link is fine");
+});
