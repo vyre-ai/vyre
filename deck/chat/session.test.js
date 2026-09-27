@@ -101,6 +101,34 @@ const res = {
   next: 2,
   asks: /** @type {any[]} */ ([]),
 };
+// The fifth session: reopened while an Edit waits on Allow, after the person steered a message
+// and queued another (the screenshot run's shape: threads.get holds both, the transcript neither).
+const REOPEN = "6a7b8c9d-reopen-thread";
+const reopen = {
+  thread: { id: REOPEN, name: "Northwind specials", cwd: "/home/alex/work/northwind", status: "waiting", holder: "deck", agent: null },
+  events: [
+    { id: 1, type: "thread.sent", thread: REOPEN, at: T0, payload: { text: "demo", surface: "deck", uuid: "u-demo" } },
+    { id: 2, type: "thread.turn", thread: REOPEN, at: T0, payload: { turn: `${REOPEN}:1`, uuid: "u-demo", text: "demo" } },
+    // An earlier steer Claude took in, and a queued row taken back: neither is pending now.
+    { id: 3, type: "thread.sent", thread: REOPEN, at: T0 + 100, payload: { text: "read the menu first", surface: "deck", uuid: "s-old", via: "steer" } },
+    { id: 4, type: "thread.steered", thread: REOPEN, at: T0 + 200, payload: { uuid: "s-old", step: 0 } },
+    { id: 5, type: "thread.queued", thread: REOPEN, at: T0 + 300, payload: { queued: 3, uuid: "q-old", text: "never mind", surface: "deck" } },
+    { id: 6, type: "thread.unqueued", thread: REOPEN, at: T0 + 400, payload: { queued: 3, uuid: "q-old", reason: "taken" } },
+    { id: 7, type: "thread.tool", thread: REOPEN, at: T0 + 1000, payload: { call: "toolu_e", id: "toolu_e", tool: "Edit", name: "Edit", phase: "started", status: "running", summary: "Edit menu.md" } },
+    { id: 8, type: "ask.raised", thread: REOPEN, at: T0 + 1100, payload: { ask: "ask_e", kind: "permission", tool: "Edit", summary: "menu.md", tool_use_id: "toolu_e" } },
+    { id: 9, type: "thread.state", thread: REOPEN, at: T0 + 1100, payload: { state: "waiting" } },
+    { id: 10, type: "thread.sent", thread: REOPEN, at: T0 + 2000, payload: { text: "use the rye price too", surface: "deck", uuid: "s-new", via: "steer" } },
+    { id: 11, type: "thread.queued", thread: REOPEN, at: T0 + 3000, payload: { queued: 5, uuid: "q-new", text: "then check the hours", surface: "deck" } },
+  ],
+  asks: [{ id: "ask_e", thread: REOPEN, kind: "permission", tool: "Edit", summary: "menu.md", destination: "/home/alex/work/northwind/menu.md", always: true,
+    anchor: { tool_use_id: "toolu_e", event: 8 }, detail: { file: "/home/alex/work/northwind/menu.md", old: "- Summer berry tart, 5.00", new: "- Pumpkin loaf, 5.50" } }],
+  blocks: [
+    { seq: 0, kind: "user", ts: T0, text: "demo" },
+    { seq: 1, kind: "user", ts: T0 + 100, text: "read the menu first", steered: true },
+    { seq: 2, kind: "tool", ts: T0 + 1000, id: "toolu_e", tool: "Edit", input: { file_path: "/home/alex/work/northwind/menu.md", old_string: "- Summer berry tart, 5.00", new_string: "- Pumpkin loaf, 5.50" } },
+    { seq: 2, kind: "turn", ts: T0, open: true },
+  ],
+};
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
   const input = JSON.parse(o.body);
@@ -116,6 +144,13 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
       const from = input.from ?? 0;
       data = { session: { id: RES, cwd: "/home/alex/work/northwind" }, blocks: res.blocks.filter(b => b.seq >= from), next: res.next, first: 0 };
     } else if (tool === "threads.asks") data = res.asks;
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
+  if (input.thread === REOPEN || input.session === REOPEN) {
+    if (tool === "threads.get") data = { thread: reopen.thread, events: reopen.events.filter(e => e.id > (input.since ?? 0)), asks: reopen.asks };
+    else if (tool === "recall.transcript") data = { session: { id: REOPEN, cwd: reopen.thread.cwd }, blocks: reopen.blocks.filter(b => b.seq >= (input.from ?? 0)), next: 3, first: 0 };
+    else if (tool === "threads.asks") data = reopen.asks;
     else data = tool === "memory.facts" ? { facts: [] } : {};
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
@@ -680,4 +715,36 @@ test("the box's background tasks, thinking, ! and # and pasted images, on their 
   assert.equal(calls.filter(c => c.tool === "threads.shell").length, before, "never called");
   ta.value = "";
   stop6();
+});
+
+test("reopened while an Edit waits on Allow: the pending steer and the queued row come back from threads.get; the state word is waiting", async () => {
+  const box5 = new El("div");
+  doc.body.append(box5);
+  const stop5 = mountSession(box5, { thread: REOPEN, project: null, onBack() {} });
+  await wait(30);
+  assert.match(text($(box5, ".cv-state")), /^waiting$/, "an open ask: waiting on you");
+  assert.ok($(box5, ".cv-ask"), "the ask is still there");
+  // The steer: its words and a "Steering" marker, since Claude has not taken them in yet.
+  const steers = $$(box5, ".cv-steer");
+  assert.equal(steers.length, 2, "the old steer (taken in) and the new one (pending)");
+  assert.match(text(steers.at(-1)).trim(), /^Steering · joins at the next step$/);
+  assert.match(text($$(box5, ".cv-user").at(-1)), /use the rye price too/);
+  assert.equal($$(box5, ".cv-user").filter(u => /read the menu first/.test(text(u))).length, 1, "the taken-in steer is the transcript's, once");
+  // The queue: the row still waiting, not the one taken back.
+  assert.equal($(box5, ".cv-queued").hidden, false);
+  const rows = $$(box5, ".cv-queued-row");
+  assert.equal(rows.length, 1);
+  assert.match(text(rows[0]), /then check the hours/);
+  assert.equal($(rows[0], ".cv-q-edit").disabled, false, "the row has its id (5)");
+  // The answer, then Claude takes the steer in and hands the queued words over: each once.
+  const ev = (type, payload) => emit(type, payload, REOPEN);
+  ev("ask.answered", { ask: "ask_e", decision: "allow", by: "deck" });
+  ev("thread.steered", { uuid: "s-new", step: 1 });
+  assert.match(text($$(box5, ".cv-steer").at(-1)).trim(), /^Steered at step 1/);
+  ev("thread.finished", { ok: true });
+  ev("thread.sent", { text: "then check the hours", surface: "deck", queued: 5, uuid: "q-new", via: "turn" });
+  assert.equal($(box5, ".cv-queued").hidden, true);
+  assert.equal($$(box5, ".cv-user").filter(u => /use the rye price too/.test(text(u))).length, 1);
+  assert.equal($$(box5, ".cv-user").filter(u => /then check the hours/.test(text(u))).length, 1);
+  stop5();
 });

@@ -1201,3 +1201,46 @@ test("switchboard: a push ask and a Write ask carry the Changes row in threads.a
   assert.deepEqual(w.detail.totals, { files: 1, added: 1, removed: 2 });
   await tool("threads.stop", { thread: id });
 });
+
+test("steer and queue while an ask is open: both are kept, threads.get shows them, and each reaches Claude after the answer", async t => {
+  const { root, work, tool } = await boot(t);
+  const s = sse(root);
+  t.after(() => s.close());
+  const id = (await tool("threads.start", { cwd: work, prompt: "demo", surface: "deck" })).data.id;
+  const edit = await until(async () => (await tool("threads.asks", { thread: id })).data.find(a => a.tool === "Edit"), "the Edit ask");
+  assert.equal((await tool("threads.get", { thread: id })).data.thread.status, "waiting");
+
+  const steer = (await tool("threads.send", { thread: id, text: "use the rye price too", surface: "deck" }, "deck")).data;
+  assert.equal(steer.sent, true, JSON.stringify(steer));
+  assert.equal(steer.steered, true, JSON.stringify(steer));
+  const queued = (await tool("threads.send", { thread: id, text: "then check the hours", surface: "deck", mode: "queue" }, "deck")).data;
+  assert.equal(queued.queued, true, JSON.stringify(queued));
+  assert.ok(Number.isInteger(queued.queued_id), JSON.stringify(queued));
+
+  // Reopened while the ask is still open: everything a surface reads to rebuild the rows.
+  const got = (await tool("threads.get", { thread: id, since: 0 })).data;
+  assert.equal(got.thread.status, "waiting");
+  assert.equal(got.asks.length, 1);
+  const sentSteer = got.events.find(e => e.type === "thread.sent" && e.payload.via === "steer");
+  assert.ok(sentSteer, "thread.sent via steer is in threads.get");
+  assert.equal(sentSteer.payload.uuid, steer.uuid);
+  assert.equal(sentSteer.payload.text, "use the rye price too");
+  assert.equal(got.events.some(e => e.type === "thread.steered"), false, "not taken in while the turn is blocked");
+  const q = got.events.find(e => e.type === "thread.queued");
+  assert.ok(q, "thread.queued is in threads.get");
+  assert.deepEqual([q.payload.queued, q.payload.text], [queued.queued_id, "then check the hours"]);
+  assert.deepEqual((await tool("threads.queue", { thread: id }, "deck")).data.queued.map(r => r.queued), [queued.queued_id]);
+
+  // The answer: the steer is taken in at the turn's next step, the queued words are the next turn.
+  await tool("threads.answer", { ask: edit.id, decision: "allow", surface: "deck" });
+  const bash = await until(async () => (await tool("threads.asks", { thread: id })).data.find(a => a.tool === "Bash"), "the Bash ask");
+  await tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
+  const steered = await until(() => of(s.got, id, "thread.steered")[0], "thread.steered");
+  assert.equal(steered.payload.uuid, steer.uuid);
+  const handed = await until(() => of(s.got, id, "thread.sent").find(e => e.payload.via === "turn"), "the queued words handed over");
+  assert.equal(handed.payload.queued, queued.queued_id);
+  await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && /echo: then check the hours/.test(e.payload.text)), "the queued turn's reply");
+  const took = of(s.got, id, "thread.text").find(e => e.payload.done && /took in: use the rye price too/.test(e.payload.text));
+  assert.ok(took, "the steered words reached Claude in the running turn");
+  assert.deepEqual((await tool("threads.queue", { thread: id }, "deck")).data.queued, []);
+});

@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: a session reopened while an ask is open keeps its steer and its queued row
+
+A steer or a queued message sent while an Edit waited on Allow vanished from the view on reopen.
+The box kept both (threads.get has thread.sent via steer and thread.queued; the words reach
+Claude after the answer, on the cli and sdk drivers alike); the view read only thread.finished
+and gates from threads.get's events once the transcript had blocks, and the transcript holds
+neither.
+- session-state.js: pendingEvents(events) picks the rows still queued (no thread.unqueued, no
+  thread.sent naming them) and the steers not taken in (no thread.steered, no turn end since).
+- session.js: on open, those are applied after the transcript's blocks, so the "Steering" marker
+  and the queued row come back with their ids.
+- core/switchboard test: steer and queue while an ask is open, both kept and delivered.
+
 #### Chat: images, ! shell, # memory, thinking and background tasks on the box's real shapes
 
 Wires sessions 034c71e5 and db44749b (thinking as its own event) in deck/chat.
