@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings stays inside a temp home, and its phone layout uses the shared query
+
+- core/settings: Claude Code's account folder comes from claudeHome(root) (core/config), so a temp
+  or dev home never reads or writes the person's own ~/.claude.
+- deck/css/views/settings-keys.css: the phone block uses dom.js PHONE_QUERY, so a sideways phone
+  stays a phone.
+
 #### Batch 4 fits together: the module schema knows settings' secret and labels, and tips' about
 
 - packages/module-sdk: a setting may say `secret` (masked, native-core) and `labels` (one label
