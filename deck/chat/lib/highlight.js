@@ -1,7 +1,7 @@
 // @ts-check
 // A tokenizer for code blocks, not a parser. Fast enough to run on every fenced block in a
 // thread, and safe on anything: it never throws, never backtracks catastrophically (every
-// pattern is linear in input length), and never returns markup — just {text, cls} runs for
+// pattern is linear in input length), and never returns markup: just {text, cls} runs for
 // markdown.js to turn into spans with h(). Unknown languages get no color, not a crash.
 
 /** @typedef {{ text: string, cls: string|null }} Token */

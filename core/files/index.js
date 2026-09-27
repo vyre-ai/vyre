@@ -23,6 +23,7 @@ import { classify, KINDS } from "./kinds.js";
 import { defaults, walk } from "./search.js";
 import { drop } from "./drop.js";
 import { drive } from "./drive.js";
+import { dirs } from "./dirs.js";
 
 const run = promisify(execFile);
 const KIB = 1024, MIB = 1024 * KIB, GIB = 1024 * MIB;
@@ -91,6 +92,7 @@ export default {
         const link = ["box_unreachable", "no_link", "unreachable", "timeout", "not_box"].includes(e.code);
         throw Object.assign(new Error(link ? `the box is not reachable (${e.code})` : e.message), { code: link ? "box_unreachable" : e.code });
       }
+      if (Array.isArray(r && r.data)) return r.data;
       return { ...(r && r.data), source: "box" };
     }
 
@@ -315,6 +317,8 @@ export default {
     const dropped = drop(ctx, { role, g, cfg });
     // Taildrive: the box's chosen folders, mounted on the paired Mac (drive.js).
     drive(ctx, { role, guard: g, roots });
+    // The folders, for a new session or a terminal (dirs.js).
+    dirs(ctx, { role, g, target, forward });
 
     return { async stop() { await dropped.stop(); } };
   },
