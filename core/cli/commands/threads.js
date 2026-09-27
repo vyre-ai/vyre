@@ -22,10 +22,10 @@ import { untilde } from "../../config/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import catalogue, { parse, up, resume } from "./projects.js";
 import { editText, toolError, PURPOSES } from "./sessions.js";
-import { json, emit, fail as kitFail, usage } from "../kit.js";
+import { json, emit, fail as kitFail, usage, viewing, EXIT } from "../kit.js";
 
 const SURFACE = "cli:" + process.pid;
-const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop",
+export const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop",
   "interrupt", "mode", "rewind", "fork", "open", "queue", "take-back", "edit", "send-now",
   "model", "thinking", "commands", "shell", "remember", "tasks", "kill-task"];
 /** Subcommands whose words are free text (what is sent or run), so their flags are read by hand. */
@@ -97,6 +97,26 @@ async function queueOf(thread) {
 }
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 const tail = (s, n) => { const t = String(s || ""); return t.length > n ? "…" + t.slice(t.length - n + 1) : t; };
+
+// ------------------------------------------------------------ how --view draws them (core/cli/view.js)
+
+/** A thread's status as a card's state. */
+const stateOf = st => (st === "idle" ? "ok" : st === "stopped" ? "off" : st === "failed" ? "failed" : "wait");
+/** threads.list's rows as a table: the columns a person reads, the id kept to act on. @param {any[]} ts */
+export const threadTable = ts => ({ kind: "table", title: "Threads", empty: "No headless threads in the last day",
+  columns: [{ key: "name", label: "Thread" }, { key: "status", label: "Status" }, { key: "holder", label: "Keyboard" }, { key: "agent", label: "Agent" }, { key: "asks", label: "Asks" }, { key: "id", label: "Id" }],
+  rows: ts.map(t => ({ id: t.id, name: t.name || tail(t.cwd, 40), status: t.status, holder: t.holder || "", agent: t.agent || "", asks: t.asks || 0 })) });
+/** threads.get's answer as a card: the record, with how many events and asks came with it. @param {any} g */
+export const threadCard = g => {
+  const t = g.thread || {};
+  const last = (g.events || []).at(-1);
+  return { kind: "card", title: t.name || tail(t.cwd, 40), state: stateOf(t.status), fields: [
+    { label: "Id", value: t.id }, { label: "Status", value: t.status || "" }, { label: "Model", value: t.model || "" },
+    { label: "Keyboard", value: t.holder || "free" }, { label: "Agent", value: t.agent || "" }, { label: "Folder", value: t.cwd || "" },
+    { label: "Events", value: `${(g.events || []).length}${last ? ", the last " + last.id : ""}` }, { label: "Open asks", value: String((g.asks || []).length) }] };
+};
+/** A one-thread setting (mode, model) as a card. */
+const settingCard = (title, thread, value) => ({ kind: "card", title, fields: [{ label: "Thread", value: thread }, { label: title, value: value ?? "not known yet" }] });
 
 /** The catalogue command this one stands in front of. Exported so a test can see delegation lands there. */
 export function catalogueCommand() {
@@ -706,7 +726,8 @@ const run = {
     const { flags } = parse(args, FLAGS.list);
     const ts = await tool("threads.list", { ...(flags.agent ? { agent: flags.agent } : {}), ...(flags.all ? { all: true } : {}) });
     if (!ts) return 1;
-    if (json()) { emit(ts); return 0; }
+    // --json: [{ id, name, cwd, status, holder, agent, asks, project, ... }] (threads.list's rows)
+    if (json()) { emit(ts, threadTable(ts)); return 0; }
     if (!ts.length) { out(dim("  no headless threads in the last day · vyre threads start, or --all")); return 0; }
     ts.forEach(row);
     return 0;
@@ -715,7 +736,8 @@ const run = {
   async watch(args) {
     const f = await resolveThread(args[0]);
     if ("error" in f) return missed(f);
-    if (json()) { const g = await tool("threads.get", { thread: f.id, limit: 100 }); if (!g) return 1; emit(g); return 0; }
+    // --json: threads.get's { thread, asks, events } once; a surface follows the events stream itself.
+    if (json()) { const g = await tool("threads.get", { thread: f.id, limit: 100 }); if (!g) return 1; emit(g, threadCard(g)); return 0; }
     return watch(f.id);
   },
 
@@ -727,7 +749,8 @@ const run = {
     for (const k of ["since", "limit"]) if (flags[k] !== undefined && !/^\d+$/.test(flags[k])) return usage(`--${k} takes a whole number`, "vyre help threads");
     const g = await tool("threads.get", { thread: f.id, limit: flags.limit ? Number(flags.limit) : 100, ...(flags.since ? { since: Number(flags.since) } : {}) });
     if (!g) return 1;
-    if (json()) { emit(g); return 0; }
+    // --json: { thread, asks: [ask], events: [{ id, type, at, payload }] }
+    if (json()) { emit(g, threadCard(g)); return 0; }
     const t = g.thread;
     out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), t.status, t.model, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
     const streamed = new Set();
@@ -767,7 +790,8 @@ const run = {
       if (!g) return 1;
       const last = (g.events || []).filter(e => e.type === "mode.changed").at(-1);
       const mode = g.thread.mode || (last && last.payload.mode) || "default";
-      if (json()) { emit({ thread: f.id, mode }); return 0; }
+      // --json: { thread, mode }
+      if (json()) { emit({ thread: f.id, mode }, settingCard("Mode", f.id, mode)); return 0; }
       out(`  mode: ${signal(mode)} ${dim(`· vyre threads mode ${id8(f.id)} ${MODES.join("|")}`)}`);
       return 0;
     }
@@ -797,6 +821,14 @@ const run = {
       if (!g) return 1;
       const turns = rewindTurns(g.events);
       if (!which) {
+        // --view: the picker as a prompt frame; the surface runs args with the number added.
+        // --json: [{ n, uuid, text, at }] (the messages to go back to, oldest first)
+        if (viewing()) {
+          if (!turns.length) { emit(turns, { kind: "text", lines: ["No messages to rewind to in the thread's last 1000 events"] }); return 0; }
+          emit(turns, { kind: "prompt", name: "turn", label: "Rewind to which message?", choices: turns.map(t => String(t.n)),
+            args: ["threads", "rewind", id8(f.id), ...(flags.restore ? ["--restore", flags.restore] : [])] });
+          return EXIT.USAGE;
+        }
         if (json()) { emit(turns); return 0; }
         if (!turns.length) { out(dim("  no messages to rewind to in the thread's last 1000 events")); return 0; }
         for (const t of turns) out(`  ${beacon(String(t.n).padStart(2))}  ${dim(id8(t.uuid))}  ${cut(t.text, 90)}`);
@@ -847,7 +879,8 @@ const run = {
       const g = await tool("threads.get", { thread: f.id, limit: 1000 });
       if (!g) return 1;
       const model = modelOf(g);
-      if (json()) { emit({ thread: f.id, model }); return 0; }
+      // --json: { thread, model } (model null until the session has run)
+      if (json()) { emit({ thread: f.id, model }, settingCard("Model", f.id, model)); return 0; }
       out(`  model: ${model ? signal(model) : dim("not known yet (it shows once the session runs)")} ${dim(`· vyre threads model ${id8(f.id)} opus|sonnet|haiku`)}`);
       return 0;
     }
@@ -878,7 +911,13 @@ const run = {
     if ("error" in f) return missed(f);
     const r = await tool("threads.commands", { thread: f.id });
     if (!r) return 1;
-    if (json()) { emit(r); return 0; }
+    // --json: { commands: [{ name, description, argumentHint }], note? }
+    if (json()) {
+      emit(r, { kind: "table", title: "Slash commands", empty: r.note || "No slash commands",
+        columns: [{ key: "name", label: "Command" }, { key: "argumentHint", label: "Takes" }, { key: "description", label: "What it does" }],
+        rows: (r.commands || []).map(c => ({ name: "/" + String(c.name).replace(/^\//, ""), argumentHint: c.argumentHint || "", description: c.description || "" })) });
+      return 0;
+    }
     const list = /** @type {any[]} */ (r.commands || []);
     if (!list.length) { out(dim(`  ${r.note || "no slash commands"}`)); return 0; }
     const name = c => "/" + String(c.name).replace(/^\//, "");
@@ -917,7 +956,13 @@ const run = {
     if ("error" in f) return missed(f);
     const r = await tool("threads.tasks", { thread: f.id });
     if (!r) return 1;
-    if (json()) { emit(r); return 0; }
+    // --json: { tasks: [{ id, kind, status, title, summary?, error? }], note? }
+    if (json()) {
+      emit(r, { kind: "table", title: "Background tasks", empty: r.note || "No background tasks",
+        columns: [{ key: "id", label: "Task" }, { key: "status", label: "Status" }, { key: "kind", label: "Kind" }, { key: "title", label: "What" }],
+        rows: (r.tasks || []).map(t => ({ id: t.id, status: t.status || "running", kind: t.kind || "", title: t.title || "" })) });
+      return 0;
+    }
     const list = /** @type {any[]} */ (r.tasks || []);
     if (!list.length) { out(dim(`  no background tasks${r.note ? " · " + r.note : ""}`)); return 0; }
     for (const t of list) {
@@ -961,6 +1006,8 @@ const run = {
 
   /** Open the thread in `claude` in this terminal, where it ran (vyre resume hands it over). */
   async open(args) {
+    // It hands this terminal to Claude Code: a surface drawing frames has no terminal to give.
+    if (viewing()) return kitFail("vyre threads open runs Claude Code in a terminal", { code: "no_terminal", exit: EXIT.PRESENCE, next: `run it in your own terminal, or follow it here: vyre threads watch ${args[0] || "<thread>"}` });
     const f = await resolveThread(args[0]);
     if ("error" in f) return missed(f);
     const g = await tool("threads.get", { thread: f.id, limit: 1 });
@@ -985,7 +1032,13 @@ const run = {
     if ("error" in f) return missed(f);
     const list = await queueOf(f.id);
     if (!list) return 1;
-    if (json()) { emit(list.rows); return 0; }
+    // --json: [{ queued, text, surface, at }] (what waits for the turn to end)
+    if (json()) {
+      emit(list.rows, { kind: "table", title: "Queued", empty: "Nothing is queued",
+        columns: [{ key: "queued", label: "Queued" }, { key: "text", label: "Message" }, { key: "surface", label: "From" }],
+        rows: list.rows.map(q => ({ queued: q.queued, text: cut(q.text, 200), surface: q.surface || "" })) });
+      return 0;
+    }
     if (!list.rows.length) { out(dim("  nothing is queued")); return 0; }
     for (const q of list.rows) out(`  ${beacon(String(q.queued))}  ${cut(q.text, 90)}${q.surface ? dim("  " + q.surface) : ""}`);
     out(dim(`  ${list.fromEvents ? "from the thread's last 1000 events · " : ""}take-back, edit or send-now <thread> <queued>`));
@@ -1002,6 +1055,14 @@ const run = {
     if ("error" in f) return missed(f);
     let text = words.join(" ");
     if (!text) {
+      // A surface has no editor to open: it asks for the words and runs args with them added.
+      if (viewing()) {
+        const list = await queueOf(f.id);
+        if (!list) return 1;
+        const was = list.rows.find(q => String(q.queued) === qid);
+        emit({ thread: f.id, queued: queuedArg(qid), current: was ? was.text : "" }, { kind: "prompt", name: "text", label: `The new words for queued ${qid}`, args: ["threads", "edit", id8(f.id), qid] });
+        return EXIT.USAGE;
+      }
       if (json()) return usage("vyre threads edit needs the new text with --json");
       const list = await queueOf(f.id);
       if (!list) return 1;
@@ -1048,7 +1109,14 @@ const run = {
     }
     const list = await tool("threads.asks", input);
     if (!list) return 1;
-    if (json()) { emit(list); return 0; }
+    // --json: [{ id, kind, thread, thread_name, agent, tool, summary, destination, questions?, always, presence, ... }]
+    if (json()) {
+      emit(list, { kind: "table", title: "Waiting on you", empty: "Nothing is waiting on you",
+        columns: [{ key: "who", label: "Who" }, { key: "kind", label: "Kind" }, { key: "what", label: "Asks" }, { key: "id", label: "Ask" }],
+        rows: list.map(a => ({ id: a.id, thread: a.thread, who: a.agent || a.thread_name || id8(a.thread), kind: a.kind || "permission",
+          what: a.kind === "question" ? cut(((a.questions || [])[0] || {}).question, 120) : cut(`${a.tool}: ${a.summary || ""}`, 120) })) });
+      return 0;
+    }
     if (!list.length) { out(dim("  nothing is waiting on you")); return 0; }
     for (const a of list) {
       out(`  ${beacon(a.id)}  ${dim(id8(a.thread))}  ${a.tool}: ${cut(a.summary, 60)}${a.destination ? dim(" -> " + a.destination) : ""}`);
@@ -1082,9 +1150,28 @@ const run = {
       if (decision === "deny") Object.assign(input, { decision: "deny" });
       else {
         // Free words after the ask answer a question with one question: `answer <id> Warm crust`.
-        const given = { pick: flags.pick || [], answer: [...(flags.answer || []), ...(!decisionWord && word !== undefined ? [[word, ...words].join(" ")] : [])] };
+        // With several, they answer the first one still without an answer, which is how a
+        // surface answers a prompt frame one question at a time.
+        const free = !decisionWord && word !== undefined ? [word, ...words].join(" ") : null;
+        const several = (a.questions || []).length > 1;
+        const given = { pick: flags.pick || [], answer: [...(flags.answer || []), ...(free !== null && !several ? [free] : [])] };
         let got;
-        try { got = answersFrom(a.questions || [], given); } catch (e) { return usage(/** @type {Error} */ (e).message, `vyre threads answer ${id8(f.id)} --pick N`); }
+        try {
+          got = answersFrom(a.questions || [], given);
+          if (free !== null && several) {
+            if (!got.missing.length) throw new Error(`every question has an answer already; "${cut(free, 40)}" is one too many`);
+            got.answers[got.missing[0].question] = answerFor(got.missing[0], free);
+            got.missing = got.missing.slice(1);
+          }
+        } catch (e) { return usage(/** @type {Error} */ (e).message, `vyre threads answer ${id8(f.id)} --pick N`); }
+        if (got.missing.length && viewing()) {
+          // The next question as a prompt frame: its options as choices, the answers so far kept.
+          const q = got.missing[0];
+          const kept = (a.questions || []).flatMap((x, i) => (x.question in got.answers ? ["--answer", `${i + 1}=${got.answers[x.question]}`] : []));
+          emit({ ask: f.id, question: q.question, header: q.header || null, multiSelect: Boolean(q.multiSelect), options: (q.options || []).map(o => o.label), answers: got.answers },
+            { kind: "prompt", name: "answer", label: q.question, choices: (q.options || []).map(o => o.label), args: ["threads", "answer", f.id, ...kept] });
+          return EXIT.USAGE;
+        }
         if (got.missing.length) {
           if (!interactive) return usage(`${got.missing.length === 1 ? "a question has" : got.missing.length + " questions have"} no answer: ${got.missing.map(q => q.header || cut(q.question, 40)).join(", ")}`,
             `vyre threads answer ${id8(f.id)} --pick N (one per question), or --answer "Q=choice"; deny declines`);
@@ -1102,6 +1189,13 @@ const run = {
           if (t === "n" || t === "no") { decision = "deny"; break; }
           if (a.always && (t === "a" || t === "always")) { decision = "always"; break; }
         }
+      }
+      if (!decision && viewing() && a) {
+        // The decision as a prompt frame: allow, deny, and always where it is on offer.
+        emit({ ask: f.id, tool: a.tool, summary: a.summary || "", destination: a.destination || null, always: Boolean(a.always) },
+          { kind: "prompt", name: "decision", label: `Allow ${a.tool}: ${cut(a.summary, 160)}?`, choices: ["allow", "deny", ...(a.always ? ["always"] : [])],
+            args: ["threads", "answer", f.id, ...(message ? ["--message", message] : [])] });
+        return EXIT.USAGE;
       }
       if (!decision) return usage("vyre threads answer <ask> allow|deny|always [message]", "vyre threads asks lists the open ones");
       if (flags.scope && decision !== "always") return usage("--scope project goes with always");
@@ -1214,8 +1308,44 @@ export function sendArgs(args) {
   return { how, ref, words: args.slice(i), raw, images, error };
 }
 
+/**
+ * Every verb run() takes, for `vyre commands --json` (core/cli/verbs.js). The catalogue's own
+ * words (search, --project, --all) are in ./projects.js's threads, which the listing joins to this.
+ */
+const VERBS = [
+  { verb: "start", summary: "a new session vyred owns", usage: `[<prompt...>] [--cwd d] [--project p] [--name n] [--model m] [--purpose ${PURPOSES.join("|")}] [--provider p]` },
+  { verb: "send", summary: "type into a thread: mid-turn it joins the turn; ! runs it, # remembers it", usage: "<thread> <text...> [--queue] [--steer] [--image file] [--raw]" },
+  { verb: "list", aliases: ["ls"], summary: "the headless threads of the last day", usage: "[--all] [--agent a]", read: true },
+  { verb: "get", aliases: ["show"], summary: "one read: the record, open asks and events", usage: "<thread> [--since id] [--limit n]", read: true },
+  { verb: "watch", summary: "follow a thread live; reconnects on its own", usage: "<thread>", read: true, live: true },
+  { verb: "queue", summary: "what is queued and not yet handed over", usage: "<thread>", read: true },
+  { verb: "take-back", summary: "take a queued message back", usage: "<thread> <queued>" },
+  { verb: "send-now", summary: "hand a queued message over now", usage: "<thread> <queued>" },
+  { verb: "edit", summary: "change a queued message (no text: $EDITOR, or a prompt)", usage: "<thread> <queued> [<text...>]" },
+  { verb: "interrupt", summary: "stop the turn (Escape); the session stays", usage: "<thread>" },
+  { verb: "mode", summary: "say or set the permission mode", usage: `<thread> [${MODES.join("|")}]`,
+    args: [{ name: "thread", required: true }, { name: "mode", required: false, choices: MODES }] },
+  { verb: "model", summary: "say or switch the model (/model)", usage: "<thread> [model]" },
+  { verb: "thinking", summary: "thinking on or off", usage: "<thread> on|off" },
+  { verb: "rewind", summary: "go back to a message (double Esc); no message: which ones", usage: `<thread> [message] [--restore ${RESTORE.join("|")}]` },
+  { verb: "fork", summary: "a new session from this one's history", usage: "<thread> [<prompt...>]" },
+  { verb: "shell", summary: "run a line in the thread's folder (! mode)", usage: "<thread> <command...>" },
+  { verb: "remember", summary: "a line for CLAUDE.md (# mode)", usage: `<thread> <text...> [--scope ${SCOPES.join("|")}]` },
+  { verb: "tasks", summary: "its background tasks: shells and subagents", usage: "<thread>", read: true },
+  { verb: "kill-task", summary: "stop a background task", usage: "<thread> <task>" },
+  { verb: "commands", summary: "the slash commands the session offers", usage: "<thread>", read: true },
+  { verb: "open", summary: "open it in claude in this terminal (needs a terminal)", usage: "<thread>" },
+  { verb: "lease", summary: "take the keyboard for this terminal", usage: "<thread>" },
+  { verb: "release", summary: "give the keyboard back", usage: "<thread>" },
+  { verb: "asks", summary: "questions and permissions waiting on you", usage: "[thread]", read: true },
+  { verb: "answer", summary: "answer an ask: allow, deny, always, or a question's answers", usage: "<ask> [allow|deny|always] [<message...>] [--always] [--scope project] [--pick n] [--answer <q=choice>] [--message m]" },
+  { verb: "stop", summary: "end its process; the transcript stays", usage: "<thread>" },
+];
+
 export default {
-  name: "threads", order: 22, usage: "vyre threads start|send|watch|answer|interrupt|stop … [--json]",
+  name: "threads", order: 22,
+  usage: "vyre threads start|send|list|get|watch|queue|take-back|send-now|edit|interrupt|mode|model|thinking|rewind|fork|shell|remember|tasks|kill-task|commands|open|lease|release|asks|answer|stop … [--json]",
+  verbs: VERBS,
   summary: "sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, model, rewind, shell, tasks, open, asks, answer, stop (anything else searches sessions)",
   help: [
     "Running a session vyred owns:",
@@ -1227,10 +1357,11 @@ export default {
     `  vyre threads send <thread> --image F [text]       with a picture (.png .jpg .gif .webp, ${IMAGES.mb} MB, ${IMAGES.count} at most)`,
     "  vyre threads send <thread> \"!ls\"                  a leading ! runs it (shell), # remembers it; --raw sends as typed",
     "  vyre threads send <thread> /compact               a slash command; vyre threads commands <thread> lists them",
+    "  vyre threads list [--all] [--agent A]             the headless threads of the last day (ls)",
     "  vyre threads queue <thread>                       what is queued and not yet handed over",
     "  vyre threads take-back|send-now <thread> <queued> take a queued message back, or hand it over now",
     "  vyre threads edit <thread> <queued> [text]        change it (no text: $EDITOR)",
-    "  vyre threads get <thread> [--since ID] [--limit N]  one read: the record, open asks, events",
+    "  vyre threads get <thread> [--since ID] [--limit N]  one read: the record, open asks, events (show)",
     "  vyre threads watch <thread>                       follow it live; reconnects on its own",
     "  vyre threads interrupt <thread>                   stop the turn (Escape); the session stays",
     "  vyre threads fork <thread> [prompt]               a new session from this one's history",
@@ -1246,11 +1377,13 @@ export default {
     "  vyre threads remember <thread> <text> [--scope project|user|local]   a line for CLAUDE.md (# mode)",
     "  vyre threads tasks <thread>                       its background tasks (shells, subagents)",
     "  vyre threads kill-task <thread> <task>            stop one",
+    "  vyre threads commands <thread>                    the slash commands the running session offers",
+    "  vyre threads lease|release <thread>               take the keyboard for this terminal, or give it back",
     "  vyre threads open <thread>                        open it in claude here (vyred lets go of an idle one)",
     "  vyre threads stop <thread>                        end its process; the transcript stays",
     "  Setting a mode is refused from inside Claude Code: use the Deck or a plain terminal.",
     "",
-    "Answering an ask (vyre needs and vyre threads asks list them):",
+    "Answering an ask (vyre needs and vyre threads asks [thread] list them):",
     "  vyre threads answer <ask> allow|deny [message]    a permission, once",
     "  vyre threads answer <ask> always [--scope project]  allow, and stop asking (where offered)",
     "  vyre threads answer <ask> --pick 2                 a question: option 2 (1,3 for several)",
@@ -1258,6 +1391,9 @@ export default {
     "                                                    that match no option are your own answer",
     "  vyre threads answer <ask>                          in your terminal: shows it and asks",
     "  vyre threads answer <ask> deny [message]           declines a question",
+    "",
+    "--json prints each verb's data; --view prints it as frames a surface draws (a picker is a prompt frame).",
+    "Anything else (a search, --project P, --all) searches every session: vyre threads search <words>."
   ].join("\n"),
   /** @param {string[]} args */
   async run(args) {
