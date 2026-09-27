@@ -679,6 +679,59 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok((await w.events(th.id)).some(e => e.type === "thread.sent" && e.payload.via === "now" && e.payload.queued === d.queued_id));
   });
 
+  test(`${driver}: a queued message keeps its images, and a steer a stop cut off comes back first on resume`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const png = { media_type: "image/png", data: Buffer.from("fake png of the Northwind menu").toString("base64") };
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const q = (await w.tool("threads.send", { thread: th.id, text: "then look at this", surface: "deck", mode: "queue", images: [png] })).data;
+    assert.equal(q.queued, true);
+    assert.ok((await w.events(th.id)).some(e => e.type === "thread.queued" && e.payload.images === 1));
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 2);
+    assert.equal((await w.said(th.id)).at(-1), "echo: then look at this (+1 images)", "the images went with the words");
+
+    // A steer sent while a question waits, then a stop before Claude took it in.
+    await w.tool("threads.send", { thread: th.id, text: "bash npm run build", surface: "deck" });
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the second ask");
+    const st = (await w.tool("threads.send", { thread: th.id, text: "and check this one", surface: "deck", images: [png] })).data;
+    assert.equal(st.steered, true);
+    await w.tool("threads.stop", { thread: th.id });
+    await until(async () => (await w.tool("threads.get", { thread: th.id })).data.thread.status === "stopped", "the stop");
+    // The next message resumes it: the cut-off steer runs first, with its image.
+    await w.tool("threads.send", { thread: th.id, text: "hello", surface: "deck" });
+    await until(async () => (await w.said(th.id)).includes("echo: and check this one (+1 images)"), "the restored steer to run");
+    const ev = await w.events(th.id);
+    assert.ok(ev.some(e => e.type === "thread.sent" && e.payload.via === "restored" && e.payload.uuid === st.uuid));
+  });
+
+  test(`${driver}: effort, as /effort: at start, live, kept over a resume, and with a send; a person's only`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "hello", surface: "deck", effort: "high" })).data;
+    await w.finished(th.id);
+    let argv = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(argv[argv.indexOf("--effort") + 1], "high");
+    assert.equal((await w.events(th.id)).find(e => e.type === "thread.started").payload.effort, "high");
+    assert.equal((await w.tool("threads.start", { cwd: w.work, prompt: "hello", effort: "huge" })).error.code, "bad_input");
+    assert.equal((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "mcp")).error.code, "denied");
+    assert.deepEqual((await w.tool("threads.effort", { thread: th.id, effort: "low" }, "deck")).data, { thread: th.id, effort: "low" });
+    await until(() => w.launches().some(l => l.effort === "low"), "the effort to reach Claude Code");
+    assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.effort, "low");
+    assert.ok((await w.events(th.id)).some(e => e.type === "effort.switched" && e.payload.effort === "low"));
+    await w.tool("threads.stop", { thread: th.id });
+    await w.tool("threads.send", { thread: th.id, text: "hello", surface: "deck" });
+    await w.finished(th.id, 2);
+    argv = w.launches().filter(x => x.argv).at(-1).argv;
+    assert.equal(argv[argv.indexOf("--effort") + 1], "low", "a resume keeps it");
+    // The Capsule's Cmd-Return: deeper, on the same thread, in one send.
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", model: "opus", effort: "max" }, "mcp")).error.code, "denied");
+    assert.equal((await w.tool("threads.send", { thread: th.id, text: "deeper", surface: "deck", model: "sonnet", effort: "max" }, "deck")).data.sent, true);
+    await w.finished(th.id, 3);
+    const rec = (await w.tool("threads.get", { thread: th.id })).data.thread;
+    assert.deepEqual([rec.model, rec.effort], ["sonnet", "max"]);
+    assert.ok(w.launches().some(l => l.model === "sonnet") && w.launches().some(l => l.effort === "max"));
+  });
+
   test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {
     const w = await boot(t, { driver });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;

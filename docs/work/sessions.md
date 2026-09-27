@@ -35,16 +35,18 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   project default, plugin required, in-process floor on the SDK, answers never grant it.
 - cohesion catches: Bash ask summary redacted; asks rows keep project.
 
+- Effort (threads.start/launch effort, threads.effort, effort.switched), threads.send
+  {model, effort} for Cmd-Return; queued images kept; steers persisted (threads_steers) and
+  restored on resume.
+
 ## Doing
-- Next: agent Effort in the SDK (native-core 87fb03d7 passes `effort` to threads.launch).
+- Next: warm background session for purpose "memory" (Vyre IQ latency), then the usage pause.
 
 ## Next
 - Promised (after the queue): settings.resolve at start (effort, mode, max_turns, budget_usd,
   checkpoints, fast); server `t` on thread.text; threads.effort + settings.changed level
   session (ADR 0035); thread.status event; context.now in enrich/capsule; brief adds planner
   agenda, needs, connections (cohesion); tool_use id on call meta once kernel has the field.
-4. Bugs: queued sends drop images; persist pending steers (st.steers is memory only).
-5. threads.send model/effort for the Capsule's Cmd-Return (or confirm threads.model covers it).
 6. A warm background session for purpose "memory" (Vyre IQ latency).
 7. Usage pause per auth for teammate starts and subagents.
 Then the compile phase: tests for every piece, docs, polish.

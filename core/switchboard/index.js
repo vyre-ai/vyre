@@ -99,7 +99,17 @@ export const MIGRATIONS = [
   // What a queued item is: a person's message, or a teammate's result (ADR 0031), which waits for
   // the turn to end and never steers.
   `ALTER TABLE threads_inbox ADD COLUMN kind TEXT;`,
+  // A queued message's pasted images (JSON), handed over with its words; and steered messages not
+  // folded in yet, so a stop or a restart does not lose them: they run first when it comes back.
+  `ALTER TABLE threads_inbox ADD COLUMN images TEXT;
+   CREATE TABLE threads_steers (uuid TEXT PRIMARY KEY, thread TEXT NOT NULL, text TEXT NOT NULL, images TEXT, at INTEGER NOT NULL);
+   CREATE INDEX threads_steers_thread ON threads_steers (thread);`,
 ];
+
+/** Images kept as JSON (a queued or steered message's), or null. @param {any} v */
+const imagesJson = v => (Array.isArray(v) && v.length ? JSON.stringify(v) : null);
+/** @param {any} v @returns {{ media_type: string, data: string }[]|null} */
+const imagesFrom = v => { try { const a = v ? JSON.parse(String(v)) : null; return Array.isArray(a) && a.length ? a : null; } catch { return null; } };
 
 /**
  * An "always in <project>" rule, as Claude Code takes it in updatedPermissions. Claude Code's own
@@ -170,7 +180,13 @@ export const LIMIT_NOTICE_AT = 0.8;
 const WATCHED = { "thread.finished": "finished", "ask.raised": "asked", "thread.stopped": "stopped" };
 
 /** Launch options kept with a thread and reused on every resume. */
-const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose"];
+const KEPT = ["plugin", "plugins", "tools", "settings", "once", "provider", "purpose", "effort"];
+
+/** Reasoning effort, as /effort takes it (the Agent SDK's EffortLevel). */
+export const EFFORTS = ["low", "medium", "high", "xhigh", "max"];
+const effortOf = (/** @type {any} */ v) => { if (v == null || v === "") return null; if (!EFFORTS.includes(String(v))) throw Object.assign(new Error(`effort must be one of ${EFFORTS.join(", ")}`), { code: "bad_input" }); return String(v); };
+/** The saved launch options of a thread (threads_runs.opts). */
+const optsOf = (/** @type {any} */ r) => { try { return r && r.opts ? JSON.parse(String(r.opts)) : {}; } catch { return {}; } };
 
 /** The kind of session a launch is, when the caller does not say: it picks the model (sessions.models). */
 export function purposeOf(o, project) {
@@ -332,7 +348,7 @@ export class Switchboard {
     if (!r) return null;
     const holder = this.leases.holder(id);
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default",
+      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -380,6 +396,7 @@ export class Switchboard {
    */
   async launch(o) {
     let id, rec;
+    if (o.effort !== undefined) o = { ...o, effort: effortOf(o.effort) || undefined };
     if (o.lean) o = { ...o, plugin: false, tools: "none", settings: false };
     if (o.resume) {
       rec = this.must(o.resume);
@@ -441,11 +458,13 @@ export class Switchboard {
     const fresh = this.must(id);
     // What a surface's chip says: "Claude · opus · subscription".
     const payload = { name: rec.name, cwd: rec.cwd, project: rec.project, agent: rec.agent, headless: true, resumed: Boolean(o.resume), ...(o.forkFrom ? { forked_from: o.forkFrom } : {}), mode: fresh.mode,
-      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
+      provider: fresh.provider, model: fresh.model, auth: fresh.auth, purpose: fresh.purpose, effort: fresh.effort, ...(o.system && o.system.version ? { prompt: o.system.version } : {}) };
     this.emit("thread.started", payload, id, rec.project);
     // The surface that started it gets the keyboard. A prompt given at launch by a module (an
     // agent asked something) is typed without taking the lease, so no surface is locked out.
     if (o.surface) this.lease(id, o.surface);
+    // A resume first hands over what was steered in and never taken (a stop or a restart mid-turn).
+    if (o.resume) this.restoreSteers(id);
     if (o.prompt) {
       if (o.surface) await this.send(id, o.prompt, o.surface);
       else { this.write(id, o.prompt); this.emit("thread.sent", { text: cut(o.prompt, 2000), surface: o.agent ? `agent:${o.agent}` : null }, id, rec.project); }
@@ -633,7 +652,7 @@ export class Switchboard {
     const mode = PERSON_MODES.includes(String(rec.mode)) && rec.mode !== "default" && (rec.mode !== BYPASS || withPlugin) ? rec.mode : null;
     // "Doesn't ask" asked of a session without the plugin: it starts asking instead, and says so.
     if (rec.mode === BYPASS && !withPlugin) this.db.prepare("UPDATE threads_runs SET mode = 'default' WHERE id = ?").run(id);
-    const lo = { id, hooks, mode, skippable: withPlugin, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    const lo = { id, hooks, mode, skippable: withPlugin, effort: o.effort || null, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, withPlugin, mode: mode || "default", message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
@@ -672,7 +691,7 @@ export class Switchboard {
     }
     // Steered messages Claude Code took in at a step.
     // step: how many tool calls the turn had finished when Claude took the words in.
-    for (const u of t.folded || []) if (st.steers.delete(u)) this.emit("thread.steered", { uuid: u, step: st.steps || 0 }, id, project);
+    for (const u of t.folded || []) if (st.steers.delete(u)) { this.db.prepare("DELETE FROM threads_steers WHERE uuid = ?").run(u); this.emit("thread.steered", { uuid: u, step: st.steps || 0 }, id, project); }
     if (t.reasoning) {
       if (typeof t.block === "number" && t.block !== st.pendingBlock) { this.flush(id, st); st.pendingBlock = t.block; }
       st.rpending = (st.rpending || "") + t.reasoning;
@@ -917,6 +936,7 @@ export class Switchboard {
     st.lastPrompt = text;
     if (steer) {
       st.steers.set(uuid, String(text));
+      this.db.prepare("INSERT OR REPLACE INTO threads_steers (uuid, thread, text, images, at) VALUES (?,?,?,?,?)").run(uuid, id, String(text), imagesJson(images), Date.now());
       st.proc.write(userLine(text, id, { uuid, priority: "next", ...(images ? { images } : {}) }));
       return { uuid, turn: st.turn };
     }
@@ -946,20 +966,36 @@ export class Switchboard {
     if (st.steers.size) {
       const [[uuid, text], ...rest] = [...st.steers.entries()];
       st.steers.clear();
+      this.db.prepare("DELETE FROM threads_steers WHERE thread = ?").run(id);
       st.turn = `${id}:${++st.turnNo}`;
       st.ord.clear();
       this.set(id, { status: "working" });
       this.emit("thread.turn", { turn: st.turn, uuid, text: cut([text, ...rest.map(r => r[1])].join("\n\n"), 2000), steered: true }, id, project);
       return;
     }
-    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT id, text, surface, uuid, kind, images FROM threads_inbox WHERE thread = ? AND delivered_at IS NULL ORDER BY id").all(id));
     if (!rows.length) return;
     const now = Date.now();
     const mark = this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'turn' WHERE id = ? AND delivered_at IS NULL");
     const taken = rows.filter(r => mark.run(now, r.id).changes);
     if (!taken.length) return;
     for (const r of taken) this.emit("thread.sent", { text: cut(r.text, 2000), surface: r.surface, queued: Number(r.id), uuid: r.uuid || null, via: "turn", ...(r.kind ? { kind: r.kind } : {}) }, id, project);
-    this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID() });
+    const images = taken.flatMap(r => imagesFrom(r.images) || []);
+    this.write(id, taken.map(r => r.text).join("\n\n"), { uuid: taken[0].uuid || crypto.randomUUID(), images: images.length ? images : null });
+  }
+
+  /**
+   * Steered words a stopped process never took in (st.steers lived only in its memory): after a
+   * resume they run first, as one turn, with their images. Emits thread.sent via "restored".
+   */
+  restoreSteers(id) {
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT uuid, text, images FROM threads_steers WHERE thread = ? ORDER BY at").all(id));
+    if (!rows.length || !this.live.has(id)) return;
+    this.db.prepare("DELETE FROM threads_steers WHERE thread = ?").run(id);
+    const rec = this.record(id);
+    for (const r of rows) this.emit("thread.sent", { text: cut(r.text, 2000), surface: null, uuid: r.uuid, via: "restored" }, id, rec ? rec.project : null);
+    const images = rows.flatMap(r => imagesFrom(r.images) || []);
+    this.write(id, rows.map(r => r.text).join("\n\n"), { uuid: rows[0].uuid, images: images.length ? images : null });
   }
 
   /**
@@ -1051,7 +1087,7 @@ export class Switchboard {
     // While a turn runs: steer into it (the default, as Claude Code does), or queue for after it.
     const st = this.live.get(id);
     const busy = Boolean(st && st.turn) && ["working", "waiting"].includes(String(this.must(id).status));
-    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind });
+    if (busy && mode === "queue") return this.queue(id, text, surface, null, { owned: true, uuid, kind, images });
     if (busy) {
       const w = this.write(id, text, { steer: true, ...(uuid ? { uuid } : {}), images });
       this.emit("thread.sent", { text: cut(text, 2000), surface, uuid: w.uuid, via: "steer" }, id, rec.project);
@@ -1092,11 +1128,13 @@ export class Switchboard {
    * the surface holding the keyboard when that is why (a send with `wait`).
    * @param {string} id @param {string} text @param {string} surface @param {string} [holder]
    */
-  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined } = {}) {
+  queue(id, text, surface, holder, { owned = false, uuid = crypto.randomUUID(), kind = undefined, images = /** @type {any} */ (null) } = {}) {
     const rec = this.must(id);
-    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind) VALUES (?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null);
+    // A session open elsewhere takes queued words through its hooks, which carry text only.
+    if (images && images.length && !owned) throw Object.assign(new Error("images cannot wait for a session open in a terminal; send them when it is free here"), { code: "bad_input" });
+    const r = this.db.prepare("INSERT INTO threads_inbox (thread, text, surface, at, uuid, kind, images) VALUES (?,?,?,?,?,?,?)").run(id, String(text), surface, Date.now(), uuid, kind || null, imagesJson(images));
     const queued = Number(r.lastInsertRowid);
-    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}) }, id, rec.project);
+    this.emit("thread.queued", { queued, uuid, text: cut(text, 2000), surface, ...(kind ? { kind } : {}), ...(images && images.length ? { images: images.length } : {}) }, id, rec.project);
     const name = rec.name || id.slice(0, 8);
     // A session Vyre runs is never called a terminal (it is working, and the words go in after).
     if (owned) return { sent: false, queued: true, queued_id: queued, uuid, thread: id, name, busy: "working",
@@ -1147,12 +1185,12 @@ export class Switchboard {
     const rec = this.must(id);
     const st = this.live.get(id);
     if (!st) return { sent: false, note: "This session is not running here; its words are handed over when its terminal's turn ends." };
-    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
+    const row = /** @type {any} */ (this.db.prepare("SELECT id, text, surface, uuid, images FROM threads_inbox WHERE thread = ? AND id = ? AND delivered_at IS NULL").get(id, Number(queued)));
     if (!row || !this.db.prepare("UPDATE threads_inbox SET delivered_at = ?, via = 'now' WHERE id = ? AND delivered_at IS NULL").run(Date.now(), row.id).changes) {
       return { sent: false, note: "That message was already handed over, or was never queued here." };
     }
     const uuid = row.uuid || crypto.randomUUID();
-    const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn) });
+    const w = this.write(id, row.text, { uuid, steer: Boolean(st.turn), images: imagesFrom(row.images) });
     this.emit("thread.sent", { text: cut(row.text, 2000), surface: row.surface, queued: Number(row.id), uuid, via: "now" }, id, rec.project);
     return { sent: true, thread: id, queued: Number(row.id), uuid, turn: w.turn };
   }
@@ -1365,6 +1403,25 @@ export class Switchboard {
     this.db.prepare("UPDATE threads_runs SET model = ? WHERE id = ?").run(String(model), id);
     this.emit("model.switched", { model: String(model), live: Boolean(st) }, id, rec.project);
     return { thread: id, model: String(model), ...(st ? {} : { note: "applies when the thread next runs" }) };
+  }
+
+  /**
+   * Set a thread's reasoning effort, as /effort does: a running thread at once (the SDK's flag
+   * settings), a stopped one when it next runs. Kept with the thread's launch, so a resume keeps it.
+   * @param {string} id @param {string|null} effort null goes back to the model's default
+   */
+  async switchEffort(id, effort) {
+    const e = effortOf(effort);
+    const rec = this.must(id);
+    const st = this.live.get(id);
+    if (st && st.proc.control) await st.proc.control("apply_flag_settings", { settings: { effortLevel: e } });
+    const row = /** @type {any} */ (this.db.prepare("SELECT opts FROM threads_runs WHERE id = ?").get(id));
+    const kept = optsOf(row);
+    if (e) kept.effort = e; else delete kept.effort;
+    this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
+    if (st) st.launch = { ...st.launch, effort: e || undefined };
+    this.emit("effort.switched", { effort: e, live: Boolean(st) }, id, rec.project);
+    return { thread: id, effort: e, ...(st ? {} : { note: "applies when the thread next runs" }) };
   }
 
   /** A running thread's background tasks (shell commands and subagents), newest last. */
@@ -1698,6 +1755,7 @@ export default {
       { type: "object", properties: { project: str, cwd: str, prompt: str, name: str, model: str, surface: str, append: str,
         purpose: { type: "string", enum: ["chat", "agent", "project", "teammate", "capsule", "job", "memory", "planner", "learn", "helper"], description: "What kind of session: picks its model (sessions.models.get). Default: chat, or project in a project." },
         provider: { type: "string", description: "The session provider: claude (the default), or one a module added." },
+        effort: { type: "string", enum: EFFORTS, description: "Reasoning effort, as /effort: low, medium, high, xhigh or max. Default: the model's own." },
         lean: { type: "boolean", description: "A one-question thread: no Vyre plugin, no tools, no MCP servers, none of the user's settings. Cheap to start." } } },
       async (i, { caller }) => { guard(caller, "start sessions"); return sb.launch({ ...i, surface: surfaceOf(i, caller) }); });
 
@@ -1734,7 +1792,9 @@ export default {
       { type: "object", required: ["thread", "text"], properties: { thread: str, text: str, surface: str, machine: str,
         mode: { type: "string", enum: ["steer", "queue"], description: "While a turn runs: steer (the default) joins it at Claude's next step, as in Claude Code; queue waits for the turn to end, and can be taken back or edited until then." },
         images: { type: "array", items: { type: "object", required: ["media_type", "data"], properties: { media_type: { type: "string", enum: IMAGE_TYPES }, data: str } },
-          description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` } } },
+          description: `Pasted images, base64: at most ${IMAGES.count}, ${IMAGES.mb} MB each.` },
+        model: { type: "string", description: "Switch the thread to this model first (as threads.model): the Capsule's Cmd-Return, deeper. A person's surface only." },
+        effort: { type: "string", enum: EFFORTS, description: "Set this effort first (as threads.effort). A person's surface only." } } },
       // Only a person's words are queued for a session open in a terminal: a model's are refused.
       async (i, { caller, idempotencyKey }) => {
         guard(caller, "type into sessions");
@@ -1743,6 +1803,10 @@ export default {
           const mac = await sendToMac(i, caller);
           if (mac) return mac;
         }
+        if ((i.model || i.effort) && !queuesFor(caller)) throw Object.assign(new Error("only a person's surface switches a session's model or effort"), { code: "denied" });
+        const had = (i.model || i.effort) ? sb.record(i.thread) : null;
+        if (i.model && had && had.model !== i.model) await sb.switchModel(i.thread, i.model);
+        if (i.effort && had && had.effort !== i.effort) await sb.switchEffort(i.thread, i.effort);
         return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer", images: imagesOf(i.images),
           ...(idempotencyKey ? { uuid: keyUuid(String(caller || ""), String(idempotencyKey)) } : {}) });
       });
@@ -1871,6 +1935,14 @@ export default {
         return sb.switchModel(i.thread, i.model);
       });
 
+    tool("threads.effort", "Set a thread's reasoning effort, as /effort does in Claude Code: low, medium, high, xhigh or max (the model's own limits apply); none goes back to the model's default. A running thread changes at once; a stopped one when it next runs.",
+      { type: "object", required: ["thread"], properties: { thread: str, effort: { type: "string", enum: EFFORTS } } },
+      async (i, { caller }) => {
+        guard(caller, "set effort");
+        if (!queuesFor(caller)) throw Object.assign(new Error("only a person's surface sets a session's effort"), { code: "denied" });
+        return sb.switchEffort(i.thread, i.effort ?? null);
+      });
+
     tool("threads.commands", "The slash commands a running thread offers (Claude Code's own, the user's and the project's, and plugins'), for a composer's / menu. Send one as a message, e.g. \"/compact\".",
       { type: "object", required: ["thread"], properties: { thread: str } },
       async (i, { caller }) => { guard(caller, "read sessions"); return sb.commands(i.thread); });
@@ -1938,6 +2010,7 @@ export default {
       description: "Start or resume a thread for an agent, with its credentials set only in that child.", internal: true,
       input: { type: "object", properties: { cwd: str, project: str, prompt: str, name: str, model: str, surface: str, resume: str,
         agent: str, agent_kind: str, auth: str, append: str, budget_usd: { type: "number" }, purpose: str, provider: str, env: { type: "object" }, fallback: { type: "object" }, scope: { type: "object" },
+        effort: { type: "string", enum: EFFORTS },
         // For jobs (Learning's distillation): no plugin, so the job's own prompt never reaches the
         // hooks; no tools; none of the user's settings; and stop after the first answer.
         plugins: { type: "array", items: str }, plugin: { type: "boolean" }, tools: { type: "string", enum: ["none", "default"] }, settings: { type: "boolean" }, once: { type: "boolean" }, lean: { type: "boolean" } } },

@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: effort, deeper sends, queued images, steers that survive a stop
+
+- Effort, as /effort: `threads.start`/`threads.launch {effort}` (low, medium, high, xhigh, max;
+  core/agents passes each agent's saved Effort), `--effort` on the CLI and `effort` on the Agent
+  SDK; `threads.effort {thread, effort}` changes a running thread at once (flag settings) and is
+  kept over a resume. Event `effort.switched`; the record and `thread.started` say `effort`.
+- `threads.send {model, effort}` switches first, for the Capsule's Cmd-Return on the same thread
+  (a person's surface only).
+- Fixed: a message queued for after the turn (`mode: "queue"`) dropped its pasted images; they
+  are kept with it and go with the words (send-now too). Images cannot wait for a session open in
+  a terminal (its hooks carry text only): refused with `bad_input`.
+- Fixed: steered words lived only in memory (st.steers), so a stop or a restart lost them. They
+  are kept (threads_steers) until Claude Code takes them in, and a resume runs any left first,
+  as one turn with their images (`thread.sent` via `restored`).
+
 #### Sessions: "Doesn't ask" (bypassPermissions), the person's own
 
 - `threads.mode` takes `bypassPermissions` ("Doesn't ask"), from a person's surface only, with no

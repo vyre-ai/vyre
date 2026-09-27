@@ -445,6 +445,11 @@ readline.createInterface({ input: process.stdin }).on("line", line => {
     out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
     return;
   }
+  if (m.type === "control_request" && m.request?.subtype === "apply_flag_settings") {
+    if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ effort: m.request.settings ? m.request.settings.effortLevel ?? null : null }) + "\n");
+    out({ type: "control_response", response: { subtype: "success", request_id: m.request_id, response: {} } });
+    return;
+  }
   if (m.type === "control_request" && m.request?.subtype === "set_model") {
     MODEL = String(m.request.model || MODEL);
     if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ model: MODEL }) + "\n");
