@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Plugin: remember, then answer, from the user's own Claude Code session
+
+- test/cc-plugin.test.js: `memory_remember` then `memory_answer` through the copied plugin's MCP
+  server as bare "mcp" (the user's own session), from a project folder too; an agent's session
+  (VYRE_AGENT) is refused both. Skips, saying why, until memory-iq's gate (6f2c57c) is in the tree.
+
 #### Harness: a Read or a cat into the vault is denied with vyred up, not waved through
 
 - vyred's registry runs the floor on every call's input, so `harness.rules` for a tool call that

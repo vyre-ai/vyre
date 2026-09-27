@@ -232,6 +232,36 @@ test(`planner: ${REAL_PLANNER ? "the planner's" : "a stand-in planner's"} tools 
   assert.equal(replies.get(6).result.isError, true, "a reminder with no time is refused, and Claude sees it");
 });
 
+// /vyre remember, then a question, from the user's own Claude Code session (bare "mcp"), through
+// the copied plugin's MCP server. An agent's session is refused both. Needs memory-iq's gate
+// (6f2c57c); until it is in the tree the test says so and skips.
+test("memory: the user's own session remembers a fact and is answered from it; an agent's session is refused", async t => {
+  const { cache, env } = install(t, { withVyre: true });
+  const root = tempHome(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const gate = await d.registry.call("memory.answer", { q: "who is my wife" }, "mcp");
+  if ((gate.error && gate.error.code === "denied") || !d.registry.listTools("mcp").some(x => x.name === "memory.remember")) return t.skip("memory-iq's bare-mcp gate (6f2c57c) is not in this tree");
+  const call = (id, name, args) => ({ jsonrpc: "2.0", id, method: "tools/call", params: { name, arguments: args } });
+  const out = (replies, id) => { const r = replies.get(id).result; assert.ok(!r.isError, r.content[0].text); return JSON.parse(r.content[0].text); };
+  const own = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+    call(3, "memory_remember", { text: "My wife is Jordan." })], 3);
+  const names = own.get(2).result.tools.map(x => x.name);
+  for (const n of ["memory_remember", "memory_answer"]) assert.ok(names.includes(n), n);
+  assert.ok(out(own, 3).facts.length > 0, "the fact is kept at once");
+  // A fresh server, as the next question would be: the answer comes from vyred, not the process.
+  const ask = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root }, [INIT,
+    call(2, "memory_answer", { q: "who is my wife" }), call(3, "memory_answer", { q: "who is my wife", project_cwds: ["/home/alex/Work/harlow-site"] })], 3);
+  assert.equal(out(ask, 2).answer, "Your wife is Jordan.");
+  assert.equal(out(ask, 3).answer, "Your wife is Jordan.", "from inside a project folder too");
+  const agent = await mcp(path.join(cache, "mcp", "run.js"), { ...env, VYRE_HOME: root, VYRE_AGENT: "kit" }, [INIT,
+    call(2, "memory_remember", { text: "My brother is Max." }), call(3, "memory_answer", { q: "who is my wife" })], 3);
+  for (const id of [2, 3]) {
+    const r = agent.get(id);
+    assert.ok(r.error || r.result.isError, `an agent's session is refused: ${JSON.stringify(r).slice(0, 200)}`);
+  }
+});
+
 test("commands: /vyre covers todo, remind, agenda, remember and lesson", () => {
   const md = fs.readFileSync(path.join(PLUGIN, "commands", "vyre.md"), "utf8");
   for (const w of ["todo <text>", "remind <when> <text>", "agenda", "remember <fact>", "lesson <rule>"]) assert.ok(md.includes("`" + w), w);
