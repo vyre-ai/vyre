@@ -56,23 +56,23 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - 7e46854 bridge passes Idempotency-Key (+ bridge.test.js); a replaced box (4409) waits 5 min.
 - ADR 0026 accepted, section 10 "The hosted web app" (app.vyre.run, 7 trust mitigations),
   pairing notice, sections 2-4 and 8 synced with the code, 0029/0030 tie-ins.
-- testbox: `core/relay`, `relay/**`, `test/relay.test.js` 89/89.
+- WebSocket streams through the bridge (core/relay/wsclient.js): upgrade via ctx.upgrader as
+  `device:<id>`, pings answered by the bridge, one whole message per data frame.
+- testbox: `core/relay`, `relay/**`, `test/relay.test.js` 91/91.
 
 ## Doing
 - Nothing in flight. Reported to the lead.
 
 ## Next
-1. WebSocket streams through the bridge (Glass): one whole message per data frame, never split
-   by Stream.write (the client already sends it that way).
-2. Box side of section 10: `kind: "web"` in the hello and relay_devices, the web-device limits
+1. Box side of section 10: `kind: "web"` in the hello and relay_devices, the web-device limits
    (no pair.start, no vault reveal/export), 30-day expiry, build check against published
    releases, the pairing notice to every surface.
-3. relay/app/: the app.vyre.run host (CSP, SRI, signed release manifest, pinning service
+2. relay/app/: the app.vyre.run host (CSP, SRI, signed release manifest, pinning service
    worker) and vyre.run/pair forwarding the fragment. Build comes from mobile.
-4. `vyre relay` CLI (status, pair with a terminal QR, devices).
-5. Onboarding card and Settings, Devices (with deck-design / docs owners).
-6. perf-check numbers for the idle box with the relay on.
-7. First real Cloudflare deploy: approved spend ($5/mo), but ASK THE LEAD before deploying.
+3. `vyre relay` CLI (status, pair with a terminal QR, devices).
+4. Onboarding card and Settings, Devices (with deck-design / docs owners).
+5. perf-check numbers for the idle box with the relay on.
+6. First real Cloudflare deploy: approved spend ($5/mo), but ASK THE LEAD before deploying.
 
 ## Needs from others
 - tailnet: CORS on vyred for https://app.vyre.run (the /v1/health probe and API calls), or

@@ -141,14 +141,14 @@ export default {
       return { v: 1, box: { name: boxName() }, device: id };
     }
 
-    let handle = null;
+    let handle = null, upgrade = null;
     function onchannel(channel, { reply }) {
       const id = String(reply.device);
       const row = /** @type {any} */ (db.prepare("SELECT name FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) { channel.close(4401, "device removed"); return; }
       if (!handle) handle = ctx.handler({});
       const peer = { node: row.name, stableId: id, login: null, tags: [], caps: {}, kind: "device" };
-      bridge(channel, { handler: handle, caller: `device:${id}`, peer, log: m => ctx.log(m) });
+      bridge(channel, { handler: handle, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);
