@@ -47,6 +47,8 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 
 - Local, unpushed (waiting for the testbox hold to lift, then one targeted run and push as a finished sha): 9d9354f8 PLANNED renames, 7d548e64 + b5145ee1 Render in polish-cli shapes (flat prompt). Tell polish-cli when pushed.
 
+- RC from platform: work/platform e75a6a11 (402/0/16) + settings-write d62792d0 (on native-core fa349d31; 81/81; hub.json secret test; now runs the check tool like change(); e2e glancing). Both with the integrator.
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
