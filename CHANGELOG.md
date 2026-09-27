@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Needs you reads cohesion's waiting (ADR 0036 decision 4)
+
+- deck/js/needs.js asks waiting.list beside the owners' reads. Where the box has it, the list is
+  exactly the asks and drafts waiting names (the owners' reads still give a draft's words and a
+  question's options; an ask not read yet shows from its title; a draft never shows before its
+  words are read), and waiting's `partial` reaches the views. needs.count() is waiting's count,
+  kept fresh by waiting.changed (app.js), and the rail badge, the top bar, the phone's Now label,
+  Now's title and the app icon all show it. Reminders and pairings count but draw where they do
+  today. A box without waiting keeps the old merge and the list's length.
+- A Mac session's ask whose waiting row has no answer tool (federation is after 0.1.0) reads
+  "Answer it on <mac>" with no buttons, and nothing is sent.
+- Tests: deck/js/needs-waiting.test.js (4).
+
 #### The Deck's four Deck-only colours are retired (app-design, tokens.md "Retired names")
 
 - --recall, --recall-ink, --recall-wash, --beacon-wash and --beacon-rule are gone from deck.css,

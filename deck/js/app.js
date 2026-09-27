@@ -158,8 +158,9 @@ put(deck,
       h("div", { class: "panes" }, side, view))),
   cap.el);
 
-function drawNeeds(list) {
-  const n = list.length;
+function drawNeeds() {
+  // waiting's one count where the box has it (reminders and pairings included), else the list's.
+  const n = needs.count();
   needsPill.hidden = n === 0;
   put(/** @type {HTMLElement} */ (needsPill.lastChild), `${n} need${n === 1 ? "s" : ""} you`);
   railEl.setNeeds(n);
@@ -793,6 +794,7 @@ window.addEventListener("deck:navigate", route);
   // needs.hear keeps each raised ask until answered, so a push's /needs/<ask> opens even before the list has it.
   for (const t of ["ask.raised", "ask.answered", "ask.cancelled"]) on(t, e => { needs.hear(e); if (t !== "ask.cancelled") needs.load(); });
   for (const t of ["gate.held", "gate.released", "gate.failed", "gate.rejected"]) on(t, () => needs.load());
+  on("waiting.changed", e => needs.heardWaiting(e));
   on("project.*", drawRail);
 })();
 

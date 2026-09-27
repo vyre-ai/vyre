@@ -77,10 +77,10 @@ export default async function now(ctx) {
   // Offline read of the last Now state: only counts, a name and a timestamp, never a held item's
   // words or destination (the service worker already refuses to cache /v1/ for the same reason).
   const SNAP_KEY = "vyre.now.snapshot";
-  const saveSnapshot = () => { try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(), needs: needs.current().length, running })); } catch {} };
+  const saveSnapshot = () => { try { localStorage.setItem(SNAP_KEY, JSON.stringify({ at: Date.now(), needs: needs.count(), running })); } catch {} };
   const loadSnapshot = () => { try { return JSON.parse(localStorage.getItem(SNAP_KEY) || "null"); } catch { return null; } };
   const say = () => {
-    const n = needs.current().length;
+    const n = needs.count();
     put(title, n ? `${things(n)} need${n === 1 ? "s" : ""} you.` : "Nothing needs you.");
     const r = running ? `${count(running)} thread${running === 1 ? " is" : "s are"} running on ${running === 1 ? "its" : "their"} own.` : "Nothing is running.";
     put(sub, n ? `${r} Nothing else is waiting on you.` : r);
