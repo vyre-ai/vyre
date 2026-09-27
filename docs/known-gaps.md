@@ -17,9 +17,9 @@ change that closes it.
 
 The Deck approves a pairing: Now, and the **Your devices** step of onboarding, show each Mac that
 asks, with a field for the code on the Mac's screen, **Approve** (with your passkey) and **Deny**.
-The box refuses an approval that comes from the Mac that is asking (`link.pair.approve`: "a Mac
-cannot approve its own pairing"), and on a box only a passkey from the Deck proves presence, so
-`vyre link approve` on the box cannot do it either. A Mac's own browser is on the tailnet as that
+The server refuses an approval that comes from the Mac that is asking (`link.pair.approve`: "a Mac
+cannot approve its own pairing"), and on a server only a passkey from the Deck proves presence, so
+`vyre link approve` on the server cannot do it either. A Mac's own browser is on the tailnet as that
 Mac, so the Deck open on the Mac being paired cannot approve it, although the onboarding step
 says to type the code there.
 
@@ -29,4 +29,4 @@ iPhone when iCloud Keychain is on. With only the Mac, a pairing cannot be approv
 
 Owner: deck with link (a decision for the lead). Pages: [install](get-started/install.md),
 [onboarding](get-started/onboarding.md), [troubleshooting](get-started/troubleshooting.md),
-[the box and the Mac](concepts/box-and-mac.md), [Tailscale](using/tailscale.md).
+[the server and devices](concepts/box-and-mac.md), [Tailscale](using/tailscale.md).

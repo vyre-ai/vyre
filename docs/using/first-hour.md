@@ -34,7 +34,7 @@ onboarding: you, Claude Code, Tailscale, your address, your passkey, your histor
 
 In onboarding's **Claude Code** step, choose **Your Claude subscription**, then **Sign in with
 Claude**. A browser tab asks you to approve; paste the code it shows back into onboarding. The
-token goes straight into the vault, sealed on the box: you never copy it into a terminal or a
+token goes straight into the vault, sealed at the source: you never copy it into a terminal or a
 file. An Anthropic API key is the other choice on the same screen.
 
 Skipped it? Deck **Settings**, **Claude Code**, **Re-connect** brings the same step back.
@@ -49,18 +49,18 @@ Skipped it? Deck **Settings**, **Claude Code**, **Re-connect** brings the same s
 ## 3. Pair your phone (4 minutes)
 
 1. Install Tailscale on the phone and sign in with the same account as the Mac.
-2. Scan the QR code on onboarding's **Your devices** step, or open your box's address with `/now`
+2. Scan the QR code on onboarding's **Your devices** step, or open your Vyre address with `/now`
    at the end.
 3. Add it to the home screen: on an iPhone, Share, then **Add to Home Screen**; on Android, the
    browser menu, then **Install app**.
 4. Open it from the icon and turn on notifications when Now offers them.
 
-If the box runs on a server, your Mac also asks to pair. The phone's Now shows "A Mac wants to
+If Vyre runs on a server, your Mac also asks to pair. The phone's Now shows "A Mac wants to
 pair" with a code: type the code the Mac printed, press **Approve**, and confirm with Face ID.
 A Mac can't approve itself, which is why the phone comes first
 ([known gaps](../known-gaps.md)).
 
-**Check:** on the Mac, `vyre link` says "linked to" and names your box.
+**Check:** on the Mac, `vyre link` says "linked to" and names your server.
 
 ## 4. Ask the Capsule (3 minutes)
 
@@ -112,7 +112,7 @@ screen. Press `Esc` to stop it at once. Anything that sends, pays or deletes sti
 
 ## 7. Open Deck Settings (1 minute)
 
-Open the Deck (your box's address, or the phone icon) and go to **Settings**. Every section has
+Open the Deck (your Vyre address, or the phone icon) and go to **Settings**. Every section has
 its own link, so `/settings#devices` jumps straight to your devices. Look at **Your devices**,
 **Notifications** (quiet hours) and **Security** (your passkeys).
 
@@ -124,7 +124,7 @@ its own link, so `/settings#devices` jumps straight to your devices. Look at **Y
 
 **Settings**, **Appearance** switches this browser between Dark and Paper.
 
-To change a colour on every device, add a `theme` block to `config.json` on the box and reload
+To change a colour on every device, add a `theme` block to `config.json` on the server and reload
 the Deck. For example, a different accent in the dark theme:
 
 ```json

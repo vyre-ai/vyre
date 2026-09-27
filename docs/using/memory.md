@@ -47,7 +47,7 @@ the matching words in gold:
 Resume a hit with `claude --resume <id>`, or `vyre resume <thread>` to open it with its project's
 brief.
 
-In the Deck, the search box at the top (Command-K) runs the same search:
+In the Deck, the search field at the top (Command-K) runs the same search:
 
 ![The Deck's search for harlow intake: matching turns from the Harlow sessions, each with its session, project and date](shots/deck-search.png)
 
@@ -76,22 +76,23 @@ With no query, `vyre recall` says how much is indexed and whether search can ran
 
 Elsewhere:
 
-- **Deck**: the search box in the header searches every session; a hit opens the thread.
+- **Deck**: the search field in the header searches every session; a hit opens the thread.
 - **Capsule**: press Control twice and ask; when memory can answer, the answer shows in gold with
   its sources.
 - **Claude**: `/vyre recall <query>` inside a session, or the `recall.search` and `recall.thread`
   tools. An agent's search is held to its own projects' folders.
 
-### Search your Mac's sessions from the box
+<a id="search-your-macs-sessions-from-the-box"></a>
+### Search your Mac's sessions from the server
 
-On a box with a paired Mac, your own searches (`vyre recall` on the box, the Deck's search box)
-also ask the Mac, and its hits come back in the same list. In the Deck each Mac hit carries a chip
-with the Mac's name. Opening one reads its turns from the Mac. The box does not index or store
-the Mac's sessions, and an offline Mac only means its hits are missing. Agents and MCP clients
-search the box's own sessions only. The decision is [ADR 0021](../adr/0021-box-reads-the-mac.md).
+On a server with a paired Mac, your own searches (`vyre recall` on the server, the Deck's search
+field) also ask the Mac, and its hits come back in the same list. In the Deck each Mac hit carries
+a chip with the Mac's name. Opening one reads its turns from the Mac. The server does not index or
+store the Mac's sessions, and an offline Mac only means its hits are missing. Agents and MCP
+clients search the server's own sessions only. The decision is [ADR 0021](../adr/0021-box-reads-the-mac.md).
 
-Memory's facts come from the sessions indexed on the machine itself, so the box's graph holds no
-facts from the Mac's sessions.
+Memory's facts come from the sessions indexed on the machine itself, so the server's graph holds
+no facts from the Mac's sessions.
 
 ## See what memory holds
 

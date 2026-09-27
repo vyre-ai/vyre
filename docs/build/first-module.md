@@ -75,7 +75,7 @@ Save this as `module.json` in the folder:
 - `does.tools` lists every tool the module registers. Registering one that is not listed fails
   the module.
 - `watches.emits` lists every event it emits. Emitting one that is not listed throws.
-- `roles` says where it runs: on the box, on the Mac, or both. Both is the default.
+- `roles` says where it runs: on the server, on the Mac, or both. Both is the default.
 - `settings` declares `bake.unit` in the settings registry's shape.
 
 > [!NOTE] Coming in phase 1
@@ -197,7 +197,7 @@ find the package. Node ignores it.
 
 ## 5. Start vyred and see the module
 
-Start vyred in the throwaway home. `--json` keeps `vyre up` on a Mac from asking where your box
+Start vyred in the throwaway home. `--json` keeps `vyre up` on a Mac from asking where your server
 runs:
 
 ```console

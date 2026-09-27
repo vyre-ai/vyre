@@ -100,8 +100,8 @@ vyre vault read vault://stripe-live/value   # one field alone on stdout, for $(.
 The terminal asks for Touch ID (or your Mac password). After you cancel, the next request waits
 30 seconds.
 ::: tab On a server
-A terminal on the box cannot prove presence: the box has no Touch ID, and it does not accept a
-terminal code. There, only a passkey from the Deck proves you are there. Use the Deck, or your
+A terminal on the server cannot prove presence: the server has no Touch ID, and it does not accept
+a terminal code. There, only a passkey from the Deck proves you are there. Use the Deck, or your
 Mac.
 :::
 
@@ -197,7 +197,7 @@ own Vyre.
 
 A pass is one of two kinds:
 
-- **Relayed** (the default): the value never leaves your box. Dana's calls go through your Vyre
+- **Relayed** (the default): the value never leaves your server. Dana's calls go through your Vyre
   over Tailscale with `vyre vault relay` (`vault.relay`), your Vyre adds the value, and revoking
   ends her access at once. `--host`, `--method` and `--path` on `vyre vault pass create` narrow
   what her calls may reach.

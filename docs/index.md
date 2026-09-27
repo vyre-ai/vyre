@@ -8,7 +8,7 @@ status: stable
 
 # Vyre docs
 
-Vyre runs Claude Code on a machine you own and adds what Claude Code leaves out. Your sessions run on a server you control (the box), so untrusted code never touches your laptop and you can reach them from anywhere. Vyre sorts those sessions into projects and threads, remembers what was said across all of them, and marks in gold anything that came from memory rather than a model. You can launch agents that run on your own Claude subscription or an API key with a budget, each with its own computer. A built-in vault lets agents use credentials nobody sees. Tailscale puts it all at your own private address, reachable only from your devices. Vyre is not a fork or a wrapper: it plugs into Claude Code as a plugin, and improves when Claude Code does. The full statement is [Section 1 of the spec](architecture/spec.md#1-what-vyre-is).
+Vyre runs Claude Code on a machine you own and adds what Claude Code leaves out. Your sessions run on a server you control, so untrusted code never touches your laptop and you can reach them from anywhere. Vyre sorts those sessions into projects and threads, remembers what was said across all of them, and marks in gold anything that came from memory rather than a model. You can launch agents that run on your own Claude subscription or an API key with a budget, each with its own computer. A built-in vault lets agents use credentials nobody sees. Tailscale puts it all at your own private address, reachable only from your devices. Vyre is not a fork or a wrapper: it plugs into Claude Code as a plugin, and improves when Claude Code does. The full statement is [Section 1 of the spec](architecture/spec.md#1-what-vyre-is).
 
 ## Start here
 
@@ -32,12 +32,12 @@ Vyre is not on npm yet, so the package comes from vyre.run. `vyre up` asks where
 | Section | For | What is in it |
 | --- | --- | --- |
 | [Get started](get-started/install.md) | users | Install, onboarding, the first day, fixes for common failures. |
-| [Using Vyre](using/capsule.md) | users | One page per surface and feature: the Capsule, the Deck, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, Tailscale, the phone, looking after the box. |
-| [Concepts](concepts/box-and-mac.md) | users, builders | The ideas the rest leans on: the box and the Mac, the tailnet, presence, the security floor, modules. |
+| [Using Vyre](using/capsule.md) | users | One page per surface and feature: the Capsule, the Deck, Chat, the CLI, projects and threads, agents, the vault, memory, watchers, connectors, Tailscale, the phone, looking after the server. |
+| [Concepts](concepts/box-and-mac.md) | users, builders | The ideas the rest leans on: the server and devices, the tailnet, presence, the security floor, modules. |
 | [Build on Vyre](build/module-contract.md) | builders, agents | The module contract, tools and events, writing a module, the MCP hub. |
 | [Reference](reference/cli.md) | everyone | Generated from the code: every [command](reference/cli.md), [tool](reference/tools.md), [event](reference/events.md), [config key](reference/config.md) and [module](reference/modules.md). |
 | [Architecture](architecture/index.md) | builders, operators | Layers, surfaces, the repository, the [spec](architecture/spec.md), [performance](architecture/performance.md), and the decision records. |
-| [Security](security/index.md) | operators, builders | The floor, how the vault seals values, who can reach the box, container hardening, how to report a problem. |
+| [Security](security/index.md) | operators, builders | The floor, how the vault seals values, who can reach the server, container hardening, how to report a problem. |
 | [Contributing](contributing/index.md) | builders | Repository layout, engineering rules, [tests](contributing/testing.md), and [how to write these docs](CONTRIBUTING-DOCS.md). |
 | [Changelog](changelog.md) | everyone | What changed, newest first. |
 

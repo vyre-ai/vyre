@@ -52,8 +52,8 @@ What it gates on:
 | CPU, p95 of the samples | under 0.5% |
 | CPU, sustained: the highest mean over any 5 consecutive samples (7.5 s) | under 1% |
 | Heap used after a full GC at the end of the idle window (`scripts/lib/gc-hook.mjs`, on every Node) | under 50 MB |
-| RSS, settled: the highest of the last 8 samples, once they sit within 3 MB (the window runs on to 120 s until they do), on the Node the box ships | under 150 MB |
-| RSS, startup peak: the highest in the first 30 s from spawn, indexing included, on the Node the box ships | under 200 MB |
+| RSS, settled: the highest of the last 8 samples, once they sit within 3 MB (the window runs on to 120 s until they do), on the Node the server ships | under 150 MB |
+| RSS, startup peak: the highest in the first 30 s from spawn, indexing included, on the Node the server ships | under 200 MB |
 | Fastest recurring timer (a `setInterval`, or a `setTimeout` seen 3 or more times) | 60 s or slower |
 
 Mean and max CPU, mean and max RSS, and RSS after the GC are printed but do not gate. After the

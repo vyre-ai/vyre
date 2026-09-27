@@ -157,7 +157,7 @@ Known gap). Any of them may carry a title after the marker:
 > Turn on HTTPS for your tailnet, then press Check again.
 ```
 
-`> [!SNAG]` is an "If this happens" box: the title (required) is what the reader sees, the body is
+`> [!SNAG]` is an "If this happens" callout: the title (required) is what the reader sees, the body is
 what to do. It is never collapsed, and its title makes an anchor like a heading does, so
 [troubleshooting](get-started/troubleshooting.md) can link to `#the-page-says-not-found`:
 
@@ -186,7 +186,7 @@ alt text that says what the screen shows.
 If `onboarding-tailscale.dark.png` sits beside it, the dark theme shows that file instead. The
 build reads each PNG's width and height from the file, so the page does not jump as shots load.
 
-Shots are taken, not drawn. `npm run docs:shots` (on the test box, never the Mac) starts the sample
+Shots are taken, not drawn. `npm run docs:shots` (on the test server, never the Mac) starts the sample
 world in a temp home and captures every shot listed in `scripts/lib/docs/shots.js`, in light and
 dark, with `CHROME` pointing at a headless Chrome. Each entry there names the source files the
 shot shows. `docs/shots.json` records a hash of those files at capture time, and docs-check fails a
@@ -298,7 +298,7 @@ node scripts/build-docs --out DIR    # somewhere else
 `scripts/build-docs` empties the output folder, then writes:
 
 - each page as HTML at its pretty URL, and its Markdown source beside it at the same path with `.md`, front matter kept and includes spliced;
-- `search-index.json` for the search box: one item per page intro, heading and `[!SNAG]`, each with
+- `search-index.json` for the search field: one item per page intro, heading and `[!SNAG]`, each with
   its anchor, so a result jumps to the section. Press `/` to search;
 - `llms.txt`, an index of every page by section with its `.md` link and summary, and `llms-full.txt`, every page's Markdown in nav order in one file;
 - `sitemap.xml`, `robots.txt`, `404.html`, `favicon.svg`;

@@ -76,11 +76,11 @@ Enforced:
 
 ## 9. The Capsule works offline for your own Mac
 
-Enforced: the Capsule's launcher (apps, files, settings, the calculator) runs from the Mac alone, with vyred down and no network. On the Mac, calls to the box fail fast with `box_unreachable` while the box is away, so nothing waits on it.
+Enforced: the Capsule's launcher (apps, files, settings, the calculator) runs from the Mac alone, with vyred down and no network. On the Mac, calls to the server fail fast with `box_unreachable` while the server is away, so nothing waits on it.
 
 ## What the floor does not cover
 
-Root on the box, and anyone who can reach its Docker socket. Code that runs as you and rewrites Vyre itself. A filter over shell text can be dodged by a determined enough command, which is why the human-only actions rest on [presence](presence.md), not on the Harness filter alone.
+Root on the server, and anyone who can reach its Docker socket. Code that runs as you and rewrites Vyre itself. A filter over shell text can be dodged by a determined enough command, which is why the human-only actions rest on [presence](presence.md), not on the Harness filter alone.
 
 ## Next
 

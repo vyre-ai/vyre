@@ -63,4 +63,4 @@ A module runs inside vyred, as you, with access to the store. Install only code 
 - [The module contract](../build/module-contract.md): the manifest and `ctx`.
 - [Tools and events](../build/tools-and-events.md): a worked example.
 - [Writing a module](../build/writing-a-module.md).
-- [The box and the Mac](box-and-mac.md): which modules run where.
+- [The server and devices](box-and-mac.md): which modules run where.

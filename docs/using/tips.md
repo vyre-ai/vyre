@@ -20,7 +20,7 @@ A tip is one short line with the key or command in it, like this:
 
 | Surface | Where | When |
 | --- | --- | --- |
-| Capsule | a dim line under the empty box | when you open it and pause |
+| Capsule | a dim line under the empty prompt field | when you open it and pause |
 | Deck and Chat | a small chip at the foot of the view | while you use that view, or when you pause |
 | Phone | a line in the Places sheet | when you open it |
 | CLI | one dim `tip:` line after a command finishes | after an interactive command that worked |
