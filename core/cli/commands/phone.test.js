@@ -14,7 +14,7 @@ import { PassThrough } from "node:stream";
 import { start } from "../../daemon/index.js";
 import { call } from "../../daemon/client.js";
 import { Presence } from "../../presence/index.js";
-import { setJson } from "../kit.js";
+import { setJson, setView } from "../kit.js";
 import { strip } from "../style.js";
 import { tempHome } from "../../../test/helpers.js";
 import phone, { add, android, listPhones, remove, testPush, evaluate, adbDevices, appManifest } from "./phone.js";
@@ -493,4 +493,53 @@ test("phone add --json: a box that serves the Android app adds its address; the 
   const odd = /** @type {any} */ (async () => ({ ok: true, json: async () => ({ ...good(), file: "../../etc/x.apk" }) }));
   assert.deepEqual(await appManifest(srv.base, odd), { missing: true }, "a file name with a path in it");
   assert.equal((await appManifest(srv.base, /** @type {any} */ (async () => { throw new Error("offline"); }))).error, "offline");
+});
+
+test("phone: vyre commands lists every verb run() handles, with aliases and flags", async () => {
+  const { listing } = await import("./commands.js");
+  const verbs = (await listing({ only: "phone" })).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => [v.verb, v.aliases || []]), [["add", ["pair"]], ["list", ["ls"]], ["remove", ["rm"]], ["test", []]]);
+  const addVerb = verbs.find(v => v.verb === "add");
+  assert.deepEqual(addVerb.flags.map(f => f.name), ["iphone", "android", "tailscale-only", "usb", "wireless", "relay"], "every flag run() parses");
+  assert.deepEqual([addVerb.live, addVerb.person], [true, true]);
+  assert.deepEqual(verbs.find(v => v.verb === "remove").args, [{ name: "id", required: true, repeat: true }]);
+  assert.equal(verbs.find(v => v.verb === "list").read, true);
+});
+
+test("phone add --view: a qr frame with the --json data, then a checks frame per change until the phone is ready; stdin is never read", async t => {
+  const { root, svc, io } = await box(t);
+  const deck = (tool, input = {}, headers = {}) => call(tool, input, { root, caller: "deck", headers });
+  const lines = capture(t);
+  setView("phone add");
+  t.after(() => setView(null));
+  const stdin = t.mock.method(process.stdin, "on");
+  // No input and no tty given: under --view the command decides those itself.
+  const run = add({}, { io, life: 20_000, fetch: noApp });
+  const frames = () => lines.filter(l => l.startsWith('{"v":1')).map(l => JSON.parse(l));
+  const first = await until(() => frames()[0], "the qr frame");
+  assert.equal(first.cmd, "phone add");
+  assert.equal(first.view.kind, "qr");
+  assert.equal(first.view.text, BOX + "/");
+  assert.equal(first.view.text, first.data.url);
+  assert.match(first.view.caption, /When it asks for a code, type [A-Z0-9]{4}-[A-Z0-9]{4}/);
+  assert.deepEqual(Object.keys(first.data), ["box", "phone", "network", "url", "code", "expires", "install", "tailscale", "relay", "checks"], "the same value --json prints");
+  const waiting = await until(() => frames().find(f => f.view.kind === "checks"), "the first checks frame");
+  assert.deepEqual(waiting.view.items.map(c => [c.id, c.state]), [["reached", "wait"], ["https", "wait"], ["app", "wait"], ["push", "wait"], ["passkey", "wait"]]);
+  assert.equal(waiting.data, null);
+
+  // The phone subscribes: push.subscribed makes it look at once, and a new frame says it reached the box.
+  await deck("push.subscribe", { subscription: subscription(`${svc.base}/push/view-phone`), label: "kit's Android" });
+  await until(() => svc.got.includes("/push/view-phone"), "the test notification");
+  await until(() => frames().some(f => f.view.kind === "checks" && f.view.items[0].state === "ok"), "reached, in a frame");
+  await shows(svc, root, "/push/view-phone");
+  const { publicKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const key = await deck("presence.enroll", { kind: "passkey", name: "kit's Android", public_key: publicKey.export({ type: "spki", format: "der" }).toString("base64url"),
+    alg: -7, rp_id: "vyre.tail0000.ts.net", credential_id: crypto.randomBytes(16).toString("base64url") }, { "x-vyre-presence": `code code=${first.data.code}` });
+  assert.ok(key.data, JSON.stringify(key));
+  assert.equal(await run, 0);
+  const checks = frames().filter(f => f.view.kind === "checks");
+  const seen = checks.map(f => JSON.stringify(f.view.items));
+  assert.equal(new Set(seen).size, seen.length, "a frame only when something changed");
+  assert.deepEqual(checks.at(-1).view.items.map(c => [c.id, c.state]), [["reached", "ok"], ["https", "ok"], ["app", "unknown"], ["push", "ok"], ["passkey", "ok"]]);
+  assert.equal(stdin.mock.calls.filter(c => c.arguments[0] === "data").length, 0, "nothing listened on stdin");
 });

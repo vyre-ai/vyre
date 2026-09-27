@@ -360,6 +360,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A home other than ~/.vyre never talks to a real box (not even to check it answers) unless
   VYRE_ALLOW_REAL_BOX=1; VYRE_ALLOW_DIALOGS=1 no longer counts for boxes. A box on this machine's
   loopback (a dev world) is always fine.
+#### Surfaces can run any vyre verb and draw its answer (--view, vyre commands --json)
+
+- `vyre <verb> --view` prints JSON-line frames `{v:1, cmd, view, data}` and a done frame with the
+  exit code: table, card, text, qr, checks, prompt and error views, `data` exactly what --json
+  prints. Nothing is read from stdin under --view: a verb that needs an answer exits 2 with a
+  prompt frame that says where the answer goes (word, flag, stdin, confirm). QR codes (phone add,
+  relay pair, vault kit) are qr frames and live checks (phone add, doctor) are checks frames.
+  docs/reference/cli-json.md.
+- `vyre commands [--all] [<name>] [--json]`: every command and verb with its arguments and flags,
+  read from the command files (works before vyre up), for the Capsule's autocomplete.
+- Every command lists its verbs; usage lines and help now name all of them (threads named 6 of
+  28, vault only `<command>`). --json on every verb of capsule, connect, hooks, mcp, sideview,
+  voice, statusline, apps and assistant. `vyre link status`, `vyre name status` and
+  `vyre threads search` are words of their own now.
+- One dim `tip:` line on stderr after a command that worked, at an interactive terminal only
+  (tips.next from the tips module; never with --json, CI=1, VYRE_NO_TIPS=1, or after up, down,
+  tips). A vyred without tips shows none.
+- The status line's waiting count reads waiting.count when vyred has it.
+- term.open's refusal of a bare surface says what is missing (`cli` needs a name: `cli:<tty>`).
+- Fixes found on the way: connect's sign-in no longer passes a grant still waiting for approval;
+  link approve/deny/unpair/signout and restore print JSON under --json.
+
 #### Every CLI verb has a test (compile phase), and four small fixes they found
 
 - New tests for vault ls/pending/approve/revoke/share/move/kit/migrate-key, presence keys/remove,

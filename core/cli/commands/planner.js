@@ -6,7 +6,7 @@
 
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail, failTool, usage } from "../kit.js";
+import { json, emit, fail, failTool, usage, viewing } from "../kit.js";
 
 const EXIT_FAILED = 1;
 
@@ -59,6 +59,16 @@ async function zone() {
 
 /** Words and --json apart. */
 const words = args => args.filter(a => a !== "--json");
+
+/** `set` before more words is the verb a surface calls; `vyre alarm set 7am` is `vyre alarm 7am`. */
+const unset = w => (w[0] === "set" && w.length > 1 ? w.slice(1) : w);
+
+/** A timed item's row for a table: a readable time in the planner's zone, and its id to act on. */
+const timedRow = (x, tz) => {
+  const t = x.next_fire ?? x.at;
+  return { id: x.id, when: t != null ? when(t, tz) : "", repeat: x.repeat ? repeatWords(x.repeat) : "once", title: x.title || "" };
+};
+const TIMED_COLUMNS = [{ key: "when", label: "When" }, { key: "repeat", label: "Repeats" }, { key: "title", label: "Label" }, { key: "id", label: "Id" }];
 
 /** Try each text with planner.parse; the first that reads as `kind` (with a time, when `timed`). */
 async function readAs(kind, texts, timed = true) {
@@ -144,7 +154,7 @@ const lengthWords = ms => {
 // ---- alarm ------------------------------------------------------------------------------------
 
 async function alarm(args) {
-  const w = words(args);
+  const w = unset(words(args));
   if (!w.length || w[0] === "list" || w[0] === "ls") return listAlarms();
   if (w[0] === "off") {
     if (!w[1]) return usage("vyre alarm off needs an alarm's id", "vyre alarm lists them");
@@ -195,7 +205,8 @@ async function listAlarms() {
   if (z.error) return failTool(z.error);
   const tz = /** @type {string} */ (z.tz);
   const rows = r.data.filter(a => (a.next_fire ?? a.at) != null).sort((a, b) => (a.next_fire ?? a.at) - (b.next_fire ?? b.at));
-  if (json()) return emit({ tz, alarms: rows });
+  // --json: { tz, alarms: [item] }
+  if (json()) return emit({ tz, alarms: rows }, viewing() ? { kind: "table", title: `Alarms · ${tz}`, columns: TIMED_COLUMNS, rows: rows.map(a => timedRow(a, tz)), empty: "No alarms set" } : undefined);
   if (!rows.length) { out(dim("  no alarms set · vyre alarm 7am sets one")); return 0; }
   for (const a of rows) {
     const t = a.next_fire ?? a.at;
@@ -210,7 +221,7 @@ async function listAlarms() {
 // ---- timer ------------------------------------------------------------------------------------
 
 async function timer(args) {
-  const w = words(args);
+  const w = unset(words(args));
   if (!w.length) return usage("vyre timer needs a length", "vyre timer 10m, vyre timer 25m bread");
   if (w[0] === "list" || w[0] === "ls") return listTimed("timer");
   if ((w[0] === "rm" || w[0] === "delete") && (isId(w[1]) || w.length === 1)) return removeItem("timer", w[1]);
@@ -255,7 +266,11 @@ async function listTimed(kind) {
   if (z.error) return failTool(z.error);
   const tz = /** @type {string} */ (z.tz);
   const rows = r.data.filter(a => (a.next_fire ?? a.at) != null).sort((a, b) => (a.next_fire ?? a.at) - (b.next_fire ?? b.at));
-  if (json()) return emit({ tz, [kind + "s"]: rows });
+  // --json: { tz, timers: [item] } or { tz, reminders: [item] }
+  if (json()) {
+    const title = `${kind === "timer" ? "Timers" : "Reminders"} · ${tz}`;
+    return emit({ tz, [kind + "s"]: rows }, viewing() ? { kind: "table", title, columns: TIMED_COLUMNS, rows: rows.map(x => timedRow(x, tz)), empty: `No ${kind}s set` } : undefined);
+  }
   const cmd = NAMES[kind][1];
   if (!rows.length) { out(dim(`  no ${kind}s set · vyre ${cmd} ${kind === "timer" ? "10m" : '"call juno" at 6'} sets one`)); return 0; }
   for (const x of rows) setLine(kind, x, tz);
@@ -266,7 +281,7 @@ async function listTimed(kind) {
 // ---- remind -----------------------------------------------------------------------------------
 
 async function remind(args) {
-  const w = words(args);
+  const w = unset(words(args));
   if (!w.length) return usage("vyre remind needs what and when", `vyre remind "call juno" at 6 · vyre remind me in 20 minutes to check the oven`);
   if ((w[0] === "list" || w[0] === "ls") && w.length === 1) return listTimed("reminder");
   if ((w[0] === "rm" || w[0] === "delete") && (isId(w[1]) || w.length === 1)) return removeItem("reminder", w[1]);
@@ -362,7 +377,11 @@ async function listTodos() {
   const names = [...lists.keys()].sort((a, b) => (a === "" ? -1 : b === "" ? 1 : a.localeCompare(b)));
   const order = (a, b) => b.priority - a.priority || (a.due || "9999").localeCompare(b.due || "9999") || a.created - b.created;
   const groups = names.map(n => ({ list: n || null, todos: /** @type {any[]} */ (lists.get(n)).sort(order) }));
-  if (json()) return emit({ lists: groups });
+  // --json: { lists: [{ list, todos: [item] }] }
+  if (json()) {
+    const rows = groups.flatMap(g => g.todos.map(t => ({ id: t.id, title: t.title, priority: PRIORITY[t.priority] || "", due: t.due ? dueDay(t.due) : "", list: g.list || "" })));
+    return emit({ lists: groups }, viewing() ? { kind: "table", title: "Todos", columns: [{ key: "title", label: "Todo" }, { key: "priority", label: "Priority" }, { key: "due", label: "Due" }, { key: "list", label: "List" }], rows, empty: "Nothing to do" } : undefined);
+  }
   if (!groups.length) { out(dim("  nothing to do · vyre todo add <text> adds one")); return 0; }
   for (const g of groups) {
     out(`\n  ${bold(g.list || "todo")} ${dim(String(g.todos.length))}`);
@@ -390,10 +409,16 @@ async function notes(args) {
     if (!rest[0]) return usage("vyre notes show needs a note's id", "vyre notes lists them");
     const r = await call("planner.get", { item: rest[0] });
     if (r.error) return failTool(r.error);
-    if (json()) return emit(r.data);
     const n = r.data.item;
+    // --json: { item }
+    if (json() && !viewing()) return emit(r.data);
     const z = await zone();
     const tz = z.tz || "UTC";
+    if (json()) {
+      const fields = [n.pinned ? { label: "Pinned", value: "yes" } : null, n.body ? { label: "Note", value: String(n.body) } : null, n.tags && n.tags.length ? { label: "Tags", value: n.tags.map(x => "#" + x).join(" ") } : null,
+        { label: "Updated", value: when(n.updated, tz) }, { label: "Id", value: n.id }].filter(Boolean);
+      return emit(r.data, { kind: "card", title: n.title, fields });
+    }
     out(`\n  ${n.pinned ? signal("pinned ") : ""}${bold(n.title)}`);
     if (n.body) out("\n" + String(n.body).split("\n").map(l => "  " + l).join("\n"));
     const facts = [n.tags && n.tags.length ? n.tags.map(x => "#" + x).join(" ") : "", "updated " + when(n.updated, tz), n.id].filter(Boolean);
@@ -416,7 +441,14 @@ async function listNotes() {
   const r = await call("planner.list", { kind: "note", limit: 500 });
   if (r.error) return failTool(r.error);
   const rows = [...r.data].sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updated - a.updated);
-  if (json()) return emit(rows);
+  // --json: [item], pinned first then latest
+  if (json()) {
+    if (!viewing()) return emit(rows);
+    const z = await zone();
+    const tz = z.tz || "UTC";
+    return emit(rows, { kind: "table", title: "Notes", columns: [{ key: "title", label: "Note" }, { key: "pinned", label: "Pinned" }, { key: "updated", label: "Updated" }, { key: "id", label: "Id" }],
+      rows: rows.map(n => ({ id: n.id, title: n.title, pinned: n.pinned ? "pinned" : "", updated: when(n.updated, tz) })), empty: "No notes yet" });
+  }
   if (!rows.length) { out(dim("  no notes yet · vyre notes add <text> adds one")); return 0; }
   for (const n of rows) {
     const title = n.title.length > 70 ? n.title.slice(0, 69) + "…" : n.title;
@@ -428,7 +460,10 @@ async function listNotes() {
 // ---- agenda -----------------------------------------------------------------------------------
 
 async function agenda(args) {
-  const [which] = words(args);
+  const w = words(args);
+  // `on <date>` is the verb a surface calls; the bare date keeps working.
+  if (w[0] === "on" && !w[1]) return usage("vyre agenda on needs a day", "vyre agenda on 2026-10-01");
+  const which = w[0] === "on" ? w[1] : w[0];
   let input = {};
   if (which === "tomorrow") {
     const today = await call("planner.agenda", {});
@@ -437,17 +472,27 @@ async function agenda(args) {
     const d = dateIn(today.data.from + 36 * 3_600_000, today.data.tz);
     input = { from: d, to: d };
   } else if (which && /^\d{4}-\d{2}-\d{2}$/.test(which)) input = { from: which, to: which };
-  else if (which && which !== "today") return usage(`vyre agenda ${which}: not a day`, "vyre agenda, vyre agenda tomorrow, vyre agenda 2026-10-01");
+  else if (which && which !== "today") return usage(`vyre agenda ${which}: not a day`, "vyre agenda, vyre agenda tomorrow, vyre agenda on 2026-10-01");
   const r = await call("planner.agenda", input);
   if (r.error) return failTool(r.error);
-  if (json()) return emit(r.data);
   const { tz, from, entries, todos } = r.data;
   const label = which === "tomorrow" ? "tomorrow" : which && which !== "today" ? "" : "today";
+  // --json: { tz, from, to, entries: [entry], todos: [item] }
+  if (json()) {
+    if (!viewing()) return emit(r.data);
+    const rows = [
+      ...entries.map(e => ({ id: e.item, time: entryTime(e, tz), kind: e.source !== "planner" ? "calendar" : e.kind, title: e.title,
+        note: [e.repeat ? "repeats" : "", e.snoozed ? "snoozed" : "", e.state && e.state !== "open" ? e.state : "", e.where || ""].filter(Boolean).join(" · ") })),
+      ...todos.map(t => ({ id: t.id, time: "due", kind: "todo", title: t.title, note: t.priority ? PRIORITY[t.priority] : "" })),
+    ];
+    return emit(r.data, { kind: "table", title: [day(from, tz), label, tz].filter(Boolean).join(" · "),
+      columns: [{ key: "time", label: "Time" }, { key: "kind", label: "What" }, { key: "title", label: "Title" }, { key: "note", label: "Note" }], rows, empty: `Nothing on ${label || "that day"}` });
+  }
   out(`\n  ${bold(day(from, tz))} ${dim([label, tz].filter(Boolean).join(" · "))}`);
   if (!entries.length && !todos.length) { out(dim(`  nothing on ${label || "that day"}\n`)); return 0; }
   if (entries.length) out("");
   for (const e of entries) {
-    const time = e.all_day ? "all day" : e.end ? `${clock(e.at, tz)}-${clock(e.end, tz)}` : clock(e.at, tz);
+    const time = entryTime(e, tz);
     const kind = e.source !== "planner" ? "calendar" : e.kind;
     const facts = [e.repeat ? "repeats" : "", e.snoozed ? "snoozed" : "", e.state && e.state !== "open" ? e.state : "", e.where || ""].filter(Boolean).join(" · ");
     out(`  ${bold(time.padEnd(11))} ${dim(kind.padEnd(9))} ${e.title}${facts ? dim("  " + facts) : ""}`);
@@ -459,6 +504,9 @@ async function agenda(args) {
   out("");
   return 0;
 }
+
+/** "all day", "09:00-10:00", "07:00". */
+const entryTime = (e, tz) => (e.all_day ? "all day" : e.end ? `${clock(e.at, tz)}-${clock(e.end, tz)}` : clock(e.at, tz));
 
 // ---- snooze -----------------------------------------------------------------------------------
 
@@ -482,7 +530,15 @@ async function snooze(args) {
 async function ringing() {
   const r = await call("planner.ringing", {});
   if (r.error) return failTool(r.error);
-  if (json()) return emit(r.data);
+  // --json: [firing], shaped like planner.fired
+  if (json()) {
+    if (!viewing()) return emit(r.data);
+    const z = await zone();
+    const tz = z.tz || "UTC";
+    return emit(r.data, { kind: "table", title: "Ringing", columns: [{ key: "kind", label: "What" }, { key: "due", label: "Due" }, { key: "title", label: "Title" }, { key: "note", label: "Note" }],
+      rows: r.data.map(f => ({ id: f.firing, item: f.item, kind: f.kind, due: clock(f.due, tz), title: f.title,
+        note: [f.ring > 1 ? `rung ${f.ring} times` : "", f.missed ? "missed" : "", f.added_by ? `from ${f.added_by}` : ""].filter(Boolean).join(" · ") })), empty: "Nothing is ringing" });
+  }
   if (!r.data.length) { out(dim("  nothing is ringing")); return 0; }
   const z = await zone();
   const tz = z.tz || "UTC";
@@ -506,17 +562,61 @@ async function dismiss(args) {
   return 0;
 }
 
+/** The verbs each kind shares: list, and edit and rm by id. */
+const LIST = what => ({ verb: "list", aliases: ["ls"], summary: `the ${what}, soonest first`, usage: "", read: true });
+const RM = what => ({ verb: "rm", aliases: ["delete"], summary: `delete a ${what}`, usage: "<id>" });
+
 export default [
-  { name: "agenda", order: 30, usage: "vyre agenda [today|tomorrow|YYYY-MM-DD] [--json]", summary: "what is on today: alarms, reminders, events and todos due", run: agenda },
-  { name: "alarm", order: 31, usage: "vyre alarm [7am|6:30 weekdays|off <id>|edit <id> <time>|rm <id>] [--json]", summary: "set an alarm, list them, change, turn off or delete one", run: alarm,
-    help: "vyre alarm 7am · vyre alarm 6:30 weekdays · vyre alarm (upcoming) · vyre alarm off <id>\nvyre alarm edit <id> 8am (a repeating alarm keeps its days unless you name new ones) · vyre alarm rm <id>\nTimes are the planner's zone (vyre agenda shows it). Alarms follow the zone when it changes." },
-  { name: "timer", order: 32, usage: "vyre timer <length> [label]|list|edit <id> <length>|rm <id> [--json]", summary: "a timer that rings on every device", run: timer,
-    help: "vyre timer 10m · vyre timer 1h30m · vyre timer 25m bread · vyre timer list\nvyre timer edit <id> 15m (it starts again from now) · vyre timer rm <id>" },
-  { name: "remind", order: 33, usage: "vyre remind <what> at|in <when>|list|edit <id> <what and when>|rm <id> [--json]", summary: "a reminder at a time", run: remind,
-    help: "vyre remind \"call juno\" at 6 · vyre remind me in 20 minutes to check the oven · vyre remind me tomorrow at 9 to email juno\nvyre remind list · vyre remind edit <id> \"call juno\" at 7 (words without a time keep the time) · vyre remind rm <id>" },
-  { name: "todo", order: 34, usage: "vyre todo [add <text>|done <id>|edit <id> <text>|rm <id>] [--json]", summary: "open todos by list; add, change, finish and delete them", run: todo,
-    help: "vyre todo add buy flour !high · vyre todo add call kit by friday · vyre todo done <id>\nvyre todo edit <id> buy rye flour !! · vyre todo rm <id>\nPriority: !low, !!, !high." },
-  { name: "notes", order: 35, usage: "vyre notes [add <text>|show <id>|edit <id> <text>|rm <id>] [--json]", summary: "notes, pinned first", run: notes },
+  { name: "agenda", order: 30, usage: "vyre agenda [today|tomorrow|on <date>] [--json]", summary: "what is on today: alarms, reminders, events and todos due", run: agenda,
+    help: "vyre agenda (today) · vyre agenda tomorrow · vyre agenda on 2026-10-01 (vyre agenda 2026-10-01 too)\nTimes are the planner's zone.",
+    verbs: [
+      { verb: "today", summary: "what is on today (the default)", usage: "", read: true },
+      { verb: "tomorrow", summary: "what is on tomorrow", usage: "", read: true },
+      { verb: "on", summary: "what is on a day", usage: "<date>", read: true },
+    ] },
+  { name: "alarm", order: 31, usage: "vyre alarm [list|set <time...>|off <id>|edit <id> <time...>|rm <id>] [--json]", summary: "set an alarm, list them, change, turn off or delete one", run: alarm,
+    help: "vyre alarm 7am (or vyre alarm set 7am) · vyre alarm 6:30 weekdays · vyre alarm (upcoming, or vyre alarm list) · vyre alarm off <id>\nvyre alarm edit <id> 8am (a repeating alarm keeps its days unless you name new ones) · vyre alarm rm <id>\nTimes are the planner's zone (vyre agenda shows it). Alarms follow the zone when it changes.",
+    verbs: [
+      { ...LIST("alarms set"), summary: "the alarms set, soonest first (the default)" },
+      { verb: "set", summary: "set an alarm: 7am, 6:30 weekdays", usage: "<time...>" },
+      { verb: "off", summary: "turn an alarm off", usage: "<id>" },
+      { verb: "edit", summary: "a new time, label or rule; a repeating alarm keeps its days", usage: "<id> <time...>" },
+      RM("alarm"),
+    ] },
+  { name: "timer", order: 32, usage: "vyre timer [list|set <length> [label...]|edit <id> <length> [label...]|rm <id>] [--json]", summary: "a timer that rings on every device", run: timer,
+    help: "vyre timer 10m (or vyre timer set 10m) · vyre timer 1h30m · vyre timer 25m bread · vyre timer list\nvyre timer edit <id> 15m (it starts again from now) · vyre timer rm <id>",
+    verbs: [
+      LIST("timers running"),
+      { verb: "set", summary: "start a timer: 10m, 25m bread", usage: "<length> [label...]" },
+      { verb: "edit", summary: "a new length; it starts again from now", usage: "<id> <length> [label...]" },
+      RM("timer"),
+    ] },
+  { name: "remind", order: 33, usage: "vyre remind [list|set <words...>|edit <id> <words...>|rm <id>] [--json]", summary: "a reminder at a time", run: remind,
+    help: "vyre remind \"call juno\" at 6 (or vyre remind set ...) · vyre remind me in 20 minutes to check the oven · vyre remind me tomorrow at 9 to email juno\nvyre remind list · vyre remind edit <id> \"call juno\" at 7 (words without a time keep the time) · vyre remind rm <id>",
+    verbs: [
+      LIST("reminders set"),
+      { verb: "set", summary: "a reminder: what and when, \"call juno\" at 6", usage: "<words...>" },
+      { verb: "edit", summary: "new words; a new time when they say one", usage: "<id> <words...>" },
+      RM("reminder"),
+    ] },
+  { name: "todo", order: 34, usage: "vyre todo [list|add <text...>|done <id>|edit <id> <text...>|rm <id>] [--json]", summary: "open todos by list; add, change, finish and delete them", run: todo,
+    help: "vyre todo (or vyre todo list) · vyre todo add buy flour !high · vyre todo add call kit by friday · vyre todo done <id>\nvyre todo edit <id> buy rye flour !! · vyre todo rm <id>\nPriority: !low, !!, !high.",
+    verbs: [
+      { verb: "list", aliases: ["ls"], summary: "open todos by list, highest priority first (the default)", usage: "", read: true },
+      { verb: "add", summary: "a todo; !high, by friday and a list are read from the words", usage: "<text...>" },
+      { verb: "done", summary: "finish a todo", usage: "<id>" },
+      { verb: "edit", summary: "new words; priority, due day and list change only when said", usage: "<id> <text...>" },
+      RM("todo"),
+    ] },
+  { name: "notes", order: 35, usage: "vyre notes [list|add <text...>|show <id>|edit <id> <text...>|rm <id>] [--json]", summary: "notes, pinned first", run: notes,
+    help: "vyre notes (or vyre notes list) · vyre notes add kit prefers mornings · vyre notes show <id>\nvyre notes edit <id> kit prefers afternoons · vyre notes rm <id>",
+    verbs: [
+      { verb: "list", aliases: ["ls"], summary: "notes, pinned first (the default)", usage: "", read: true },
+      { verb: "add", summary: "a note", usage: "<text...>" },
+      { verb: "show", summary: "one note in full", usage: "<id>", read: true },
+      { verb: "edit", summary: "a note's new text", usage: "<id> <text...>" },
+      RM("note"),
+    ] },
   { name: "snooze", order: 36, usage: "vyre snooze <id> [minutes] [--json]", summary: "ring again later (9 minutes by default)", run: snooze },
   { name: "ringing", order: 37, usage: "vyre ringing [--json]", summary: "what is ringing now: alarms, timers and reminders", run: ringing },
   { name: "dismiss", order: 38, usage: "vyre dismiss <id> [--json]", summary: "stop a ringing alarm, timer or reminder without finishing a todo", run: dismiss,

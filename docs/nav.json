@@ -47,6 +47,7 @@
     ]},
     { "title": "Reference", "pages": [
       "reference/cli.md",
+      "reference/cli-json.md",
       "reference/tools.md",
       "reference/events.md",
       "reference/config.md",
