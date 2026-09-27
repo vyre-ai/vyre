@@ -315,6 +315,37 @@ For a team, `vyre vault vaults create <name>` makes a shared vault and
 `vyre vault members invite <vault> <person>` adds people to it. Its items appear as
 `<vault>/<item>`.
 
+## Emergency access
+
+Emergency access lets someone you trust open your items if something happens to you. They have
+to ask, and then wait. You can stop it any time before the wait runs out. In this example Juno is
+Alex's emergency contact.
+
+1. Swap cards and verify fingerprints, as for a pass. Emergency access needs a verified card: a
+   card that was only pinned, or whose key changed, is refused.
+2. Alex keeps emergency access for Juno:
+
+   ```
+   vyre vault emergency add juno --wait 7d
+   ```
+
+   The wait is 1 to 30 days (7 by default). Without `--item`, it covers every item except ssh
+   keys and passkeys. Alex's Vyre seals those items to Juno's key and keeps them in escrow. Neither
+   Alex's box nor Juno can open them alone.
+3. When Juno needs them, Juno runs `vyre vault emergency request alex`. Alex gets a todo in the
+   Vault list of the planner: "juno asked for emergency access: it opens on <date> unless you
+   deny it".
+4. Alex can stop it with `vyre vault emergency deny juno`. Juno may ask again, and the wait
+   starts again.
+5. After the wait, `vyre vault emergency status alex` on Juno's Vyre takes the items in, the same
+   way a sealed pass does.
+
+The escrow is a snapshot. It is rebuilt when you unlock your personal vault, at most once a day,
+and `vyre vault emergency refresh` rebuilds it now. `vyre vault emergency list` shows each
+contact, the wait and where a request stands. `vyre vault emergency remove juno` ends it and
+deletes the escrow. Once items are released, Juno holds copies, so rotate them if that was not
+what you wanted.
+
 ## Autofill in the browser
 
 The Chrome extension in `modules/vault-extension/` fills logins from your Vault.

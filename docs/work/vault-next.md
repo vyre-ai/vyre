@@ -59,14 +59,21 @@ mobile and the Capsule (through their owners).
   country selects), inline chooser, popup section. Gap: payment-provider iframes.
 - Full set on testbox: 539 pass, 0 fail, 14 skipped.
 
+- Step 12 emergency access (core/vault/emergency.js): an escrowed sealed-pass ticket (AES-GCM, key
+  in the agent vault), contact requests over the relay (/v1/emergency), released after the wait
+  unless denied; refresh on unlock (daily at most); CLI `vyre vault emergency ...`. Changed
+  contracts: relay.serve onEmergency, Vault.ticketFor (issue uses it), offboard ends emergency,
+  unlockAccount refreshes. Full set: 548 pass, 0 fail, 14 skipped.
+
 ## Doing
 
-- Step 12 emergency access; then 13 (Android AutofillService in the Expo APK, with mobile).
+- Step 13: the Android AutofillService (Kotlin, in the Expo APK: waiting on mobile's module layout),
+  Glass injection (step 9, waiting on computers.fill.begin/end), iOS/macOS providers (simulator/CI).
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
 9. vault.agent.fill (M, needs computers).
-11. Cards + addresses (M). 12. Emergency access (M). 13. Autofill: extension, Android service,
+11. Cards + addresses (M). 13. Autofill: extension, Android service,
    Glass, simulator-only iOS/macOS providers (L).
 
 ## Needs from others

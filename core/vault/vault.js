@@ -40,6 +40,7 @@ import { Share, SHARE_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
 import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
+import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -96,6 +97,8 @@ export const MIGRATIONS = [
   `ALTER TABLE vault_items ADD COLUMN details TEXT NOT NULL DEFAULT '{}';`,
   // ADR 0028, decision 4: which Watchtower reasons already have a planner todo.
   REMIND_MIGRATION,
+  // ADR 0028, decision 8: emergency access, a sealed ticket in escrow behind a waiting period.
+  EMERGENCY_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
@@ -119,6 +122,8 @@ export const MACED = {
   // marks that say a login must be rotated. Keyed by item name, made by tools/cli.js.
   vault_ssh_keys: ["name", "type", "fingerprint", "public"],
   vault_marks: ["name", "stale"],
+  // Who may ask for emergency access, how long they wait, and where each request stands.
+  vault_emergency: EMERGENCY_MACED,
 };
 /** The key column of each MACed table, where it is not `id`. */
 const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name" };
@@ -297,6 +302,8 @@ export class Vault {
     this.devices = new Devices(this);
     /** Agent logins (ADR 0028, decision 2). */
     this.agents = new AgentGrants(this);
+    /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */
+    this.emergency = new Emergency(this);
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
     /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
@@ -650,6 +657,9 @@ export class Vault {
     this.recoverStaged();
     const moved = await this.migratePersonal();
     await this.sealRelayRules();
+    // Emergency tickets are snapshots; an unlock is when every personal item can be opened, so
+    // they are rebuilt here, at most once a day each. A failure is audited, never an unlock error.
+    await this.emergency.autoRefresh(who).catch(() => {});
     this.audit("account-unlock", null, who, true, [method === "touchid" ? "touch id" : null, moved ? `${moved} items moved into the personal vault` : null].filter(Boolean).join(", ") || null);
     this.emit("vault.unlocked", { vault: PERSONAL });
     return { unlocked: true, acct, method };
@@ -1494,25 +1504,36 @@ export class Vault {
     const p = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(id));
     const person = this.share.trusted(p.holder);
     if (person.sign !== p.holder_sign || person.box !== p.holder_box) throw new Error(`${p.holder}'s key changed after this pass was asked for · create it again`);
-    const me = await this.identity();
     if (!this.rowOk("vault_passes", p)) throw new Error(`pass ${id} failed its check and is ignored`);
     const items = json(p.items, []);
-    /** @type {any} */
-    const ticket = { pass: p.id, owner: this.name, relay: this.relayUrl || "", ownerSign: me.sign.public, ownerCard: (await this.share.myCard()).card,
-      holder: p.holder, holderSign: p.holder_sign, items, mode: p.mode, expires: p.expires };
-    if (p.mode === "sealed") {
-      ticket.sealed = {};
-      for (const n of items) {
-        const r = this.mustRow(n);
-        ticket.sealed[n] = sealFor(p.holder_box, { kind: r.kind, description: r.description, fields: await this.fields(r), url: r.url, hosts: json(r.hosts, []) }, `vyre:pass:v1:${p.id}:${n}`, "pass");
-      }
-    } else if (!this.relayUrl) {
-      throw new Error("this Vyre has no relay address, so a relayed pass cannot reach it · set vault.relay in config.json");
-    }
+    if (p.mode !== "sealed" && !this.relayUrl) throw new Error("this Vyre has no relay address, so a relayed pass cannot reach it · set vault.relay in config.json");
+    const ticket = await this.ticketFor({ pass: p.id, holder: p.holder, holderSign: p.holder_sign, holderBox: p.holder_box, items, mode: p.mode, expires: p.expires });
     this.db.prepare("UPDATE vault_passes SET issued=? WHERE id=?").run(now(), id);
     this.sign("vault_passes", id);
     this.emit("pass.created", { pass: p.id, holder: p.holder, items, mode: p.mode });
-    return { pass: this.passOut(p), ticket: relay.encodeTicket(ticket, me.sign.private) };
+    return { pass: this.passOut(p), ticket };
+  }
+
+  /**
+   * A signed ticket for one holder. A sealed one carries each item sealed to the holder's box key
+   * under `vyre:pass:v1:<pass>:<item>`, which is what accept() opens. Pass issue and emergency
+   * access (emergency.js) both build their tickets here, so the two can never drift apart.
+   * @param {{ pass: string, holder: string, holderSign: string, holderBox: string, items: string[], mode: "relayed"|"sealed", expires: number|null }} t
+   * @returns {Promise<string>}
+   */
+  async ticketFor({ pass, holder, holderSign, holderBox, items, mode, expires }) {
+    const me = await this.identity();
+    /** @type {any} */
+    const ticket = { pass, owner: this.name, relay: this.relayUrl || "", ownerSign: me.sign.public, ownerCard: (await this.share.myCard()).card,
+      holder, holderSign, items, mode, expires };
+    if (mode === "sealed") {
+      ticket.sealed = {};
+      for (const n of items) {
+        const r = this.mustRow(n);
+        ticket.sealed[n] = sealFor(holderBox, { kind: r.kind, description: r.description, fields: await this.fields(r), url: r.url, hosts: json(r.hosts, []) }, `vyre:pass:v1:${pass}:${n}`, "pass");
+      }
+    }
+    return relay.encodeTicket(ticket, me.sign.private);
   }
 
   pending() {
@@ -1595,7 +1616,9 @@ export class Vault {
     // Shared vaults first, while their pinned key is still known: out of every vault this Vyre
     // can administer, with a new key there and every item they could read flagged.
     const shared = await this.shared.removeEverywhere(known ? known.sign : null, person, caller);
-    if (!all.length && !known && !shared.vaults.length) throw new Error(`no one called ${person} holds anything`);
+    // Emergency access they could ask for ends too; its escrow is deleted.
+    const emergency = this.emergency.removeAll(person, caller);
+    if (!all.length && !known && !shared.vaults.length && !emergency) throw new Error(`no one called ${person} holds anything`);
     const revoked = [], rotate = new Set(shared.rotate);
     for (const p of all) {
       if (!p.revoked) {
@@ -1609,7 +1632,7 @@ export class Vault {
     this.db.prepare("DELETE FROM vault_people WHERE name=?").run(person);
     this.audit("offboard", null, caller, true, `${person}: ${revoked.length} passes, ${rotate.size} to rotate`);
     this.emit("person.offboarded", { person, revoked: revoked.length, rotate: rotate.size });
-    return { person, revoked, rotate: [...rotate].sort(), ...(shared.vaults.length ? { vaults: shared.vaults } : {}) };
+    return { person, revoked, rotate: [...rotate].sort(), ...(shared.vaults.length ? { vaults: shared.vaults } : {}), ...(emergency ? { emergency: true } : {}) };
   }
 
   /**

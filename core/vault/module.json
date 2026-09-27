@@ -38,6 +38,13 @@
       "vault.pass.revoke",
       "vault.pass.accept",
       "vault.relay",
+      "vault.emergency.add",
+      "vault.emergency.refresh",
+      "vault.emergency.deny",
+      "vault.emergency.remove",
+      "vault.emergency.list",
+      "vault.emergency.request",
+      "vault.emergency.status",
       "vault.offboard",
       "vault.backup",
       "vault.restore",
@@ -135,7 +142,12 @@
       "vault.sync-conflicted",
       "vault.device-joined",
       "vault.agent-granted",
-      "vault.agent-revoked"
+      "vault.agent-revoked",
+      "vault.emergency-added",
+      "vault.emergency-requested",
+      "vault.emergency-released",
+      "vault.emergency-denied",
+      "vault.emergency-removed"
     ]
   },
   "shows": {

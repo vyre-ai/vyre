@@ -312,6 +312,43 @@ macOS extension is built but not installed. Android has no such gate.
   prf/largeBlob extensions, the Android Credential Manager provider, and the iOS/macOS providers
   (simulator and CI only until there is an Apple Developer team).
 
+### 8. Emergency access (built 27 Sep 2026)
+
+A verified contact can reach the owner's items after a waiting period the owner can stop.
+core/vault/emergency.js holds both sides.
+
+- `vault.emergency.add {person, wait?, items?}`, person present. The person must be pinned and
+  verified by fingerprint in share.js; a card that was only pinned, or whose key changed, is
+  refused. The wait is 1d to 30d, 7d by default. Items default to every agent and personal item
+  except `ssh-key` and `passkey`.
+- The vault builds the sealed-pass ticket for that person with the same code a sealed pass uses
+  (`Vault.ticketFor`, factored out of `issue`), then escrows it: the ticket bytes under a fresh
+  random 32-byte key with AES-256-GCM (aad `vyre:emergency:v1:<id>`) in
+  `<vault>/emergency/<id>.bin`, mode 0600, and the key sealed in the agent vault as an internal
+  record (`emk_<id>`, bound to the grant's MACed refresh time), not an item. The box alone holds
+  ciphertext sealed to the contact's key; the contact alone has no ticket.
+- `vault_emergency(id, person, wait_ms, items, created, refreshed, requested, denied, released,
+  removed, mac)` is MACed like the other grant rows.
+- Refresh: `vault.emergency.refresh` (person present), and on every account unlock for grants not
+  refreshed in the last day and not yet released. A refresh never changes the request state.
+- The contact runs `vault.emergency.request {owner}` and `vault.emergency.status {owner}`, both
+  person present. Each sends an envelope signed with the contact's device key under the tag
+  `vyre:emergency:v1` (audience, timestamp and nonce, as a sync envelope) to the owner's relay
+  listener at `POST /v1/emergency`.
+- The listener finds the sender by the signing key among verified people with live emergency
+  access; anyone else gets the unknown-pass refusal and at most one audit row a minute. A
+  `request` with none open sets `requested`, emits `vault.emergency-requested {person, opens}`,
+  writes an audit row and adds a planner todo in the Vault list. A `status` after
+  `requested + wait`, not denied or removed, opens the escrow, checks the ticket is for the
+  sender's key, sets `released`, and returns the ticket; before that it returns the state and
+  when it opens. The contact's side accepts the ticket through `accept()`, so the items land as
+  a sealed pass's do.
+- `vault.emergency.deny` (closes the request, or a release, and sets `denied`),
+  `vault.emergency.remove` (deletes the escrow and the key record) and `vault.emergency.list`
+  need no presence: taking access away never does. `vault.offboard` removes emergency access too.
+- Audit rows, events and todos carry names, the wait and dates. Never a value, the escrow key or
+  the ticket.
+
 ## Order of work
 
 1. This ADR.

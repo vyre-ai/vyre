@@ -80,7 +80,8 @@ export default {
           if (!byWhois) return vault.onRelay(env, meta);
           return vault.onRelay(env, whoisMeta(meta, await byWhois(meta.remoteAddress)));
         },
-        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)) });
+        onSync: env => (String(env && env.vault).startsWith("device:") ? vault.devices.onSync(env) : vault.shared.onSync(env)),
+        onEmergency: env => vault.emergency.onRequest(env) });
       vault.relayUrl = opts.relay.url ? String(opts.relay.url) : listener.url;
       ctx.log(`vault relay listening on ${listener.url}`);
     }
@@ -306,6 +307,29 @@ export default {
     tool("vault.relay", ["cli", "local", "mcp", "module"], "Use an item someone relayed to you: put {{vault}} (or {{vault.<field>}}) in a header or the body, and their Vyre adds the value.",
       obj({ item: str, owner: str, request: obj({ method: str, url: str, headers: { type: "object" }, body: str }, ["url"]) }, ["item", "request"]),
       (input, { caller }) => vault.relayOut(input, caller));
+
+    // Emergency access (ADR 0028, decision 8). Adding and refreshing open every item, and the
+    // contact's status call may take them in, so those need a person; deny and remove never do.
+    if (ctx.call) vault.emergency.call = (name, input) => ctx.call(name, input);
+    const who = p => String(p ?? "").slice(0, 64);
+    tool("vault.emergency.add", SURFACES, "Keep emergency access for a verified contact: they can ask, and after the wait (7d by default, 1d to 30d) the items open to them unless you deny it. Every item except ssh keys and passkeys unless `items` names some.",
+      obj({ person: str, wait: str, items: strs }, ["person"]), (input, { caller }) => vault.emergency.add(input, caller),
+      presence("Keep emergency access for someone", ({ person, wait, items }) => who(person) && `Let ${who(person)} open ${Array.isArray(items) && items.length ? list(items) : "every item except ssh keys and passkeys"} ${String(wait || "7d").slice(0, 8)} after they ask, unless you deny it`));
+    tool("vault.emergency.refresh", SURFACES, "Rebuild the escrowed emergency ticket for one contact or all, so items added since are in it. It happens on its own at most once a day when the personal vault is unlocked.",
+      obj({ person: str }), (input, { caller }) => vault.emergency.refresh(input, caller),
+      presence("Rebuild emergency access", ({ person }) => `Seal every emergency item again for ${who(person) || "each emergency contact"}`));
+    tool("vault.emergency.deny", null, "Close an emergency request (or a release) from a contact. They may ask again, and wait again.",
+      obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.deny(input, caller));
+    tool("vault.emergency.remove", null, "End a contact's emergency access and delete its escrow.",
+      obj({ person: str }, ["person"]), (input, { caller }) => vault.emergency.remove(input, caller));
+    tool("vault.emergency.list", null, "Emergency contacts: the wait, where a request stands and when it opens. Names only.",
+      obj({}), () => vault.emergency.list());
+    tool("vault.emergency.request", SURFACES, "Ask an owner who named you as an emergency contact for access. It opens after their wait unless they deny it.",
+      obj({ owner: str }, ["owner"]), (input, { caller }) => vault.emergency.request(input, caller),
+      presence("Ask for emergency access", ({ owner }) => who(owner) && `Ask ${who(owner)} for emergency access to their vault`));
+    tool("vault.emergency.status", SURFACES, "Where an emergency request to an owner stands; once it has opened, the items are taken into this vault.",
+      obj({ owner: str }, ["owner"]), (input, { caller }) => vault.emergency.status(input, caller),
+      presence("Check emergency access", ({ owner }) => who(owner) && `Check emergency access with ${who(owner)}, and take their items in if it has opened`));
 
     account.register({ ctx, vault, tool });
     historyTools.register({ ctx, vault, tool });

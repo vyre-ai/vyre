@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Emergency access: a verified contact can open your items after a wait you can stop
+
+- New `core/vault/emergency.js` and tools `vault.emergency.add`, `.refresh`, `.deny`, `.remove`,
+  `.list`, `.request` and `.status`; `vyre vault emergency ...` in the CLI. The owner names a
+  verified contact; the vault builds the sealed-pass ticket for them and escrows it (AES-256-GCM
+  file in `<vault>/emergency/`, its key sealed in the agent vault). The contact asks over the
+  owner's relay listener at the new `POST /v1/emergency`; the owner gets an event, an audit row
+  and a planner todo; after the wait (1d to 30d, 7d default) and without a deny, status releases
+  the ticket and the contact's vault accepts it like a sealed pass.
+- New table `vault_emergency`, MACed. The escrow refreshes on account unlock at most once a day.
+  `vault.offboard` also removes emergency access.
+- relay.js: `emergencyEnvelope`/`checkEmergency` (tag `vyre:emergency:v1`), `serve({ onEmergency })`.
+  vault.js: `ticketFor()` factored out of `issue()`, shared by passes and emergency access.
+- ADR 0028 decision 8; docs/using/vault.md "Emergency access". Tests:
+  core/vault/emergency.test.js.
+
 #### Card and address autofill: `/v1/fill/cards`, `card.fill` and `address.fill`, and the extension fills checkout and address forms
 
 - New `core/vault/fill-cards.js` routes and `modules/vault-extension/cards.js` field detection (autocomplete tokens, then English name/label heuristics, split expiry and country selects); popup "Cards and addresses", inline "Fill card: ..." on trusted clicks; a card (reprompt by default) fills only within 60 seconds of a proof, and no value reaches an audit row.

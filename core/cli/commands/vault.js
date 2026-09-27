@@ -1093,6 +1093,60 @@ async function pass(args) {
   return oops(`vyre vault pass ${sub}: create, list, revoke or accept`);
 }
 
+/** `emergency ...`: a verified contact can open your items after a wait you can stop (ADR 0028, decision 8). */
+async function emergency(args) {
+  const [sub, ...rest] = args;
+  const stateWords = c => c.state === "waiting" ? beacon(`asked · opens ${day(c.opens)}`) : c.state === "released" ? beacon("released") : c.state === "denied" ? dim("denied") : signal("standby");
+  if (sub === "add") {
+    let f;
+    try { f = flags(rest, { string: ["wait"], list: ["item"] }); } catch (e) { return oops(e.message); }
+    if (f._.length !== 1) return oops("vyre vault emergency add <person> [--wait 7d] [--item n ...]");
+    const r = await tool("vault.emergency.add", { person: f._[0], ...(f.wait ? { wait: f.wait } : {}), ...(f.item.length ? { items: f.item } : {}) });
+    if (r.error) return fail(r);
+    const e = r.data.emergency;
+    say(`  ${signal("emergency")} ${bold(e.person)} can ask; it opens ${e.wait} after they ask unless you deny it ${dim(`· ${plural(r.data.escrowed.length, "item")} sealed to them`)}`);
+    say(dim("  they run: vyre vault emergency request <you>"));
+    return 0;
+  }
+  if (sub === "list" || sub === undefined) {
+    const r = await tool("vault.emergency.list");
+    if (r.error) return fail(r);
+    if (!r.data.contacts.length) { say(dim("  no emergency contacts · vyre vault emergency add <person>")); return 0; }
+    say("");
+    for (const c of r.data.contacts) say(`  ${bold(c.person)}  ${dim("wait " + c.wait)}  ${stateWords(c)}  ${dim(Array.isArray(c.items) ? c.items.join(", ") : c.items)}`);
+    say("");
+    return 0;
+  }
+  if (sub === "deny" || sub === "remove") {
+    if (rest.length !== 1) return oops(`vyre vault emergency ${sub} <person>`);
+    const r = await tool(`vault.emergency.${sub}`, { person: rest[0] });
+    if (r.error) return fail(r);
+    say(sub === "deny" ? `  ${signal("denied")} ${bold(rest[0])} ${dim("· they may ask again, and wait again")}` : `  ${signal("removed")} ${bold(rest[0])} ${dim("· the escrow is deleted")}`);
+    if (r.data.warning) say(beacon(`  ${r.data.warning}`));
+    return 0;
+  }
+  if (sub === "refresh") {
+    if (rest.length > 1) return oops("vyre vault emergency refresh [person]");
+    const r = await tool("vault.emergency.refresh", rest.length ? { person: rest[0] } : {});
+    if (r.error) return fail(r);
+    for (const x of r.data.refreshed) say(`  ${signal("refreshed")} ${bold(x.person)} ${dim(`· ${plural(x.items, "item")}`)}`);
+    if (!r.data.refreshed.length) say(dim("  no emergency contacts"));
+    return 0;
+  }
+  if (sub === "request" || sub === "status") {
+    if (rest.length !== 1) return oops(`vyre vault emergency ${sub} <owner>`);
+    const r = await tool(`vault.emergency.${sub}`, { owner: rest[0] });
+    if (r.error) return fail(r);
+    const d = r.data;
+    if (d.state === "waiting") say(`  ${beacon("waiting")} ${bold(d.owner)}'s items open on ${day(d.opens)} unless they deny it`);
+    else if (d.state === "released") say(`  ${signal("released")} from ${bold(d.owner)}: ${(d.added || d.items || []).join(", ")}${d.already ? dim(" · already here") : ""}`);
+    else if (d.state === "denied") say(`  ${dim("denied")} ${bold(d.owner)} closed the request ${dim("· you may ask again")}`);
+    else say(dim(`  ${d.owner} named you as an emergency contact; nothing asked yet · vyre vault emergency request ${d.owner}`));
+    return 0;
+  }
+  return oops(`vyre vault emergency ${sub}: add, list, deny, remove, refresh, request or status`);
+}
+
 async function offboard(args) {
   const person = args.join(" ").trim();
   if (!person) return oops("vyre vault offboard <person>");
@@ -1367,6 +1421,7 @@ const HELP = [
   ["pass list | pass revoke <id> | pass accept <ticket>", ""],
   ["relay <item> <url> [--header 'Name: {{vault}}'] [--data d]", "use an item relayed to you; the value is added on its owner's box"],
   ["offboard <person>", "revoke everything they hold, list what to rotate"],
+  ["emergency add <person> [--wait 7d] [--item n ...] | list | deny <person> | remove <person> | refresh | request <owner> | status <owner>", "a verified contact can open your items after a wait you can stop"],
   ["account create | unlock [--touchid] | lock | enroll-touchid | status", "the password (and Touch ID) for your personal vault"],
   ["unlock | lock", "for the passphrase keystore"],
   ["migrate-key", "after an update: move the keychain key to this build (macOS may ask you to allow it)"],
@@ -1397,7 +1452,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, "migrate-key": migrateKey, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, emergency, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 export default {
