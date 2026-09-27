@@ -19,7 +19,7 @@ dc up -d mac phone-ts phone >/dev/null 2>&1; sleep 14
 (CDP_PORT=19223 CTL_PORT=19301 nohup node drive.mjs > drive-phone.log 2>&1 & echo $! > drive-phone.pid); sleep 2
 curl -s -X POST 127.0.0.1:19301/webauthn >/dev/null
 curl -s -X POST 127.0.0.1:19300/export | python3 -c "import sys,json;print(json.dumps({\"credentials\":json.load(sys.stdin)[\"ok\"]}))" | curl -s -X POST 127.0.0.1:19301/import -d @- >/dev/null
-OUT=$(timeout 40 docker compose --profile mac exec -T mac sh -c "timeout 30 vyre up </dev/null 2>&1"); echo "$OUT" | sed -n 2,3p
+OUT=$(timeout 40 docker compose --profile mac exec -T mac sh -c "timeout 30 vyre up --connect https://vyre.tail0000.ts.net </dev/null 2>&1"); echo "$OUT" | sed -n 2,3p
 CODE=$(echo "$OUT" | grep -o "Code: [0-9-]*" | cut -d" " -f2)
 echo "== the Mac own browser cannot approve itself"
 $S "const api=await import(\"/js/api.js\");try{return JSON.stringify(await api.call(\"link.pair.approve\",{code:\"$CODE\"},{presence:true}))}catch(e){return \"refused: \"+e.message}"

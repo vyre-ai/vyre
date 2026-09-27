@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre up` never asks a box to pair on its own
+
+- `vyre up` on a Mac sends a box a pairing request only when the person asked for that box:
+  `--connect <address>` (onboarding's "I already set up a box" too), a yes to its question on a
+  terminal, or `vyre link pair`. A box named in config, or the one found on the tailnet, gets
+  nothing just because Vyre started; `vyre up` says how to pair instead.
+- A home other than ~/.vyre never talks to a real box (not even to check it answers) unless
+  VYRE_ALLOW_REAL_BOX=1; VYRE_ALLOW_DIALOGS=1 no longer counts for boxes. A box on this machine's
+  loopback (a dev world) is always fine.
+
 #### The floor follows links
 
 - Every write target is checked as named and as the kernel walks it: a symlink anywhere on the
