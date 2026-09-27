@@ -9,8 +9,15 @@
 // stays usable. A reason that has gone away (the password was changed, the PAT renewed) marks its
 // todo done. A todo the person dismissed stays quiet until the reason changes. The planner is
 // reached through ctx.call; without it nothing happens and Watchtower still shows the list.
+//
+// The breach check rides the same daily timer, at most once a week, and only when a person opted
+// in (vault.breach: "ask" in config.json) - the same gate vault.breach.check asks presence for.
+// A scheduled run asks nobody (there is nobody to ask): opting in in config is the person's
+// standing answer, same as scheduleReminders itself running with no per-day approval.
 
-import { judge } from "./health.js";
+import { judge, breachCheck } from "./health.js";
+
+export const BREACH_EVERY_MS = 7 * 86400_000;
 
 export const REMIND_MIGRATION = `CREATE TABLE IF NOT EXISTS vault_reminders (
    name TEXT NOT NULL, reason TEXT NOT NULL, planner TEXT, state TEXT NOT NULL DEFAULT 'open', at INTEGER NOT NULL,
@@ -147,7 +154,59 @@ export function nextRun(last, now) {
  * @param {{ log?: (m: string) => void, clock?: () => number, local?: boolean }} [opts] local: a Mac, which
  *   leaves reminders to its box when it is paired with one, so a person is not told twice
  */
-export function scheduleReminders(vault, call, { log = () => {}, clock = Date.now, local = false } = {}) {
+/**
+ * Every login's password against known breaches, k-anonymously. Same shape vault.breach.check
+ * uses; this is the version a scheduled run makes, with no person there to see it happen.
+ * @param {import("./vault.js").Vault} vault @param {{ fetch: typeof globalThis.fetch }} deps
+ * @returns {Promise<string[]>} names
+ */
+async function scheduledBreachCheck(vault, { fetch }) {
+  const rows = /** @type {any[]} */ (vault.db.prepare("SELECT * FROM vault_items WHERE kind = 'login' ORDER BY name").all());
+  const entries = [];
+  for (const r of rows) {
+    if (!vault.rowOk("vault_items", r)) continue;
+    try { const f = await vault.fields(r); if (f.password) entries.push({ name: r.name, password: f.password }); } catch {}
+  }
+  return (await breachCheck(entries, { fetch })).breached;
+}
+
+const lastBreach = vault => { const r = /** @type {any} */ (vault.db.prepare("SELECT at FROM vault_jobs WHERE name = 'breach'").get()); return r ? Number(r.at) : null; };
+
+/**
+ * One tick: the opted-in weekly breach check (if due), then the daily reminder run. Split out of
+ * scheduleReminders so a test can call it without waiting on a real timer.
+ * @param {import("./vault.js").Vault} vault @param {(tool: string, input: any) => Promise<any>} call
+ * @param {{ log?: (m: string) => void, clock?: () => number, local?: boolean,
+ *   breach?: { enabled: boolean, fetch: typeof globalThis.fetch, everyMs?: number } }} [opts] local: a Mac,
+ *   which leaves reminders to its box when it is paired with one, so a person is not told twice.
+ *   breach: opted in (vault.breach: "ask") runs the check at most once a week, folded into the
+ *   same daily timer rather than a second one (principle 8).
+ */
+export async function remindTick(vault, call, { log = () => {}, clock = Date.now, local = false, breach } = {}) {
+  const paired = local && Boolean((await call("link.status", {}))?.data?.linked);
+  let breached = [];
+  if (!paired && breach && breach.enabled) {
+    const due = clock() - (lastBreach(vault) ?? -Infinity) >= (breach.everyMs || BREACH_EVERY_MS);
+    if (due) {
+      try {
+        breached = await scheduledBreachCheck(vault, { fetch: breach.fetch });
+        vault.db.prepare("INSERT OR REPLACE INTO vault_jobs (name, at) VALUES ('breach', ?)").run(clock());
+      } catch (e) { log(`vault: breach check skipped this week (${/** @type {Error} */ (e).message})`); }
+    }
+  }
+  const r = paired ? { added: [], closed: [] } : await remindRun(vault, call, { now: clock(), breached });
+  if (r.added.length || r.closed.length) log(`vault: ${r.added.length} reminders added, ${r.closed.length} closed`);
+  return { ...r, breached };
+}
+
+/**
+ * @param {import("./vault.js").Vault} vault
+ * @param {(tool: string, input: any) => Promise<any>} call
+ * @param {{ log?: (m: string) => void, clock?: () => number, local?: boolean,
+ *   breach?: { enabled: boolean, fetch: typeof globalThis.fetch, everyMs?: number } }} [opts]
+ */
+export function scheduleReminders(vault, call, opts = {}) {
+  const { clock = Date.now } = opts;
   /** @type {NodeJS.Timeout | null} */
   let timer = null;
   let stopped = false;
@@ -156,10 +215,8 @@ export function scheduleReminders(vault, call, { log = () => {}, clock = Date.no
     if (stopped) return;
     const wait = Math.max(60_000, nextRun(lastRun(), clock()) - clock());
     timer = setTimeout(async () => {
-      try {
-        const paired = local && Boolean((await call("link.status", {}))?.data?.linked);
-        const r = paired ? { added: [], closed: [] } : await remindRun(vault, call); if (r.added.length || r.closed.length) log(`vault: ${r.added.length} reminders added, ${r.closed.length} closed`); }
-      catch (e) { log(`vault: reminders skipped today (${/** @type {Error} */ (e).message})`); }
+      try { await remindTick(vault, call, opts); }
+      catch (e) { (opts.log || (() => {}))(`vault: reminders skipped today (${/** @type {Error} */ (e).message})`); }
       arm();
     }, Math.min(wait, 2 ** 31 - 1));
     timer.unref?.();

@@ -370,10 +370,14 @@ export default {
       obj({}), async () => remindRun(vault, call));
     rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
     const reminders = opts.reminders === false || !ctx.call ? { stop() {} }
-      : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box") });
+      : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box"),
+        // The same opt-in vault.breach.check asks presence for; a scheduled run has nobody to
+        // ask, so config is the person's standing answer (ADR 0028).
+        breach: { enabled: opts.breach === "ask", fetch: globalThis.fetch } });
 
     return {
       ssh: cli.ssh,
+      vault,
       async stop() {
         reminders.stop();
         await conns.stop();
