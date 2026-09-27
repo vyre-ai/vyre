@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawn, execFile } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { tempHome, upPresent } from "./helpers.js";
+import { tempHome } from "./helpers.js";
 
 const BIN = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "vyre");
 const vyre = (args, env) => new Promise(resolve =>
@@ -81,13 +81,8 @@ test("assistant: none yet says the command; a name makes it as onboarding does; 
   const none = await vyre(["assistant"], env);
   assert.equal(none.code, 0, none.out);
   assert.match(none.out, /no assistant yet[\s\S]*vyre assistant Juno/);
-  // Making an agent needs the person: without a terminal (an agent's Bash) it is refused.
-  const refused = await vyre(["assistant", "Juno"], env);
-  assert.equal(refused.code, 3, refused.out);
-  assert.match(refused.out, /needs a person at a terminal/);
-  // With a person present (the test verifier), it is made.
-  await vyre(["down"], env);
-  assert.equal((await upPresent(env.VYRE_HOME)).code, 0);
+  // Making an agent is the person's own (PERSON_ONLY): no proof asked. vyred refuses it only from a
+  // process under a Claude session (core/daemon/peer.js), which this test is not.
   const made = await vyre(["assistant", "Juno"], env);
   assert.equal(made.code, 0, made.out);
   assert.match(made.out, /made your assistant Juno \(juno\)/);
