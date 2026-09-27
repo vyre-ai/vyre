@@ -832,15 +832,22 @@ const SCREENS = {
     syncFoot();
   },
 
-  // Stub (lead, 29 Sep): federation is drafting the options (what to sync, how, where it shows
-  // up, agent access per folder, conflicts) with the user; nothing to choose yet.
+  // The user's decisions (the lead, 29 Sep, docs/design/drive-onboarding.md e69a544a): files on
+  // demand by default, a what-to-sync folder picker with sizes, per-folder agent access, a
+  // receive-files switch, no quota. Federation's own doc is candid about what that needs versus
+  // what exists: on-demand mounting is real (files.drive.share/mount); the picker, per-folder
+  // access and files.receive as a UI toggle are not built (M/M/S); the "watch it appear on your
+  // other device" celebration needs the phone app and a Capsule drop target, neither of which
+  // exist, so it can't be the real celebration yet either. Still a stub UI-wise, but with the
+  // decided design named accurately rather than a placeholder line, so it reads like a described
+  // plan, not a guess.
   drive(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Vyre Drive."),
-      h("p", { class: "lead" }, "Your files, synced to every device: drag one in on your Mac, and watch it show up on your phone."));
+      h("p", { class: "lead" }, "Your files, mounted on demand: nothing downloads until you open it. Pick which folders, who can reach them, whether this device can receive what the server sends you, and watch a file you drop in show up wherever you look next."));
     col.append(h("div", { class: "need" },
       h("div", { class: "lbl" }, "Coming soon"),
-      "This step isn't built yet. Skip it for now."));
+      "This step isn't built yet: the folder picker, per-folder access and the receive switch all need work that hasn't landed. Skip it for now, and share a folder from the CLI or the Deck in the meantime."));
     s.foot({ label: "Continue", run: s.next });
   },
 
