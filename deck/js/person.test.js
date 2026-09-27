@@ -141,3 +141,13 @@ test("person: the sheet names what carries on after sign-in, and says nothing fo
   assert.equal(carryOn(/** @type {any} */ ({ tool: "vault.reveal" })), null);
   assert.equal(carryOn(undefined), null);
 });
+
+test("person: api.js exports signIn and personCode for the /person/signin page; personCode sends only cc, return and label", async () => {
+  const api = await import("./api.js");
+  assert.equal(typeof api.signIn, "function");
+  assert.equal(typeof api.personCode, "function");
+  const person = await import("./person.js");
+  assert.equal(person.signIn, api.signIn, "person.js re-exports the one signIn");
+  const src = (await import("node:fs")).readFileSync(new URL("./api.js", import.meta.url), "utf8");
+  assert.match(src, /for \(const k of \/\*\* @type \{const\} \*\/ \(\["cc", "return", "label"\]\)\)/);
+});

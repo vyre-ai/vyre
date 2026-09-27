@@ -20,16 +20,11 @@
 // Nothing here polls.
 
 import { h, put } from "./dom.js";
-import { call, attempt, endPerson, setPersonHandler, ApiError } from "./api.js";
+import { attempt, endPerson, setPersonHandler, signIn, ApiError } from "./api.js";
 import { openSheet } from "./sheet.js";
 
-/** Sign in on this device with a passkey. Resolves to { kind, id, expires }; throws an ApiError.
- * @returns {Promise<{ kind: string, id: string, expires: number }>} */
-export async function signIn() {
-  const r = await call("presence.person.start", {}, { presence: true });
-  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:person", { detail: r || null }));
-  return r;
-}
+// signIn lives in api.js (deck/person/signin/signin.js imports it from there too).
+export { signIn };
 
 /** The one sheet on screen, shared by every call that is waiting for it. @type {Promise<void> | null} */
 let pending = null;

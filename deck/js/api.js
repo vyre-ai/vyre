@@ -257,6 +257,31 @@ export async function endPerson() {
   } catch { return false; }
 }
 
+/**
+ * Sign in on this device with a passkey (presence.person.start {}): the box sets the person
+ * session cookie. Fires window "deck:person". Call it from a tap. js/person.js wraps it in the
+ * sheet; deck/person/signin/signin.js calls it directly.
+ * @returns {Promise<{ kind: string, id: string, expires: number }>}
+ */
+export async function signIn() {
+  const r = await call("presence.person.start", {}, { presence: true });
+  if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:person", { detail: r || null }));
+  return r;
+}
+
+/**
+ * A one-time sign-in code for another place (the hosted app's hop, or `vyre link signin`'s
+ * loopback return): presence.person.start with that input, proved by a passkey bound to it.
+ * Resolves to { code, expires, redirect }. deck/person/signin/signin.js uses it (team e2e).
+ * @param {{ cc?: string, return?: string, label?: string }} opts
+ */
+export async function personCode(opts = {}) {
+  /** @type {Record<string, string>} */
+  const input = {};
+  for (const k of /** @type {const} */ (["cc", "return", "label"])) if (typeof opts[k] === "string" && opts[k]) input[k] = opts[k];
+  return call("presence.person.start", input, { presence: true });
+}
+
 /** @param {string} tool @param {Record<string, any>} input @returns {Promise<string>} the x-vyre-presence header value */
 async function presenceProof(tool, input) {
   if (!canProve()) throw new ApiError("no_passkey", "This browser cannot use a passkey. Open the Deck in Safari or Chrome over your tailnet.", tool);

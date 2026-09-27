@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The sign-in page's imports live in api.js
+
+- deck/js/api.js exports `signIn()` (presence.person.start {} with a passkey; fires "deck:person")
+  and `personCode({cc, return, label})` (a one-time code for the hosted app's hop and `vyre link
+  signin`, resolving to {code, expires, redirect}), which deck/person/signin/signin.js imports.
+  js/person.js re-exports the same signIn for the sheet.
+
 #### The Deck's stream tells views when it came back or was reset
 
 - `onResume(fn)` in deck/js/api.js: fn("reconnect") when the stream opens again after a drop, and
