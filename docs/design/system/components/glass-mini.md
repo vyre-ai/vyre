@@ -39,14 +39,15 @@ second line, 12 `--text-2`.
 
 | Variant | Where | Frame | Picture |
 |---|---|---|---|
-| Card | Now, one per acting agent, under its agent row | 240 wide (desktop), the screen width minus 32, drawn outside any card (phone) | a `sight.frame` still, desktop and phone alike (Refresh, below) |
+| Card | Now, one per acting agent, under its agent row | 240 wide (desktop), the screen width minus 32, drawn outside any card (phone) | a `sight.frame` still on each step (at most one per 2 s), desktop and phone alike (Refresh, below) |
 | Header | a thread whose agent has a computer, under the thread's top bar, collapsible | 320 wide, right aligned | `sight.watch` live while the thread is open and shown; a still when hidden |
 | Pill | the Capsule, and the phone's thread when the frame is collapsed | no picture: a pill 28 tall (pill.md's shape) with the status mark and the step line at 13 `--text`, not pill.md's meta size | none |
 
 **Refresh (the light rule: nothing polls).** A still (`sight.frame`, a small JPEG) is fetched once
 when the card appears, and again only when `sight.stepped` arrives for that agent: its screen
 changes in a way worth showing only when it acts. With no new step the card keeps its last still
-and the step line shows the step's age ("2 min ago"). The live view (`sight.watch`) is only for the
+and the step line shows the step's age ("2 min ago"). Steps that come faster than one per 2 s share one fetch;
+nothing is fetched while the card is off screen or the app is in the background. The live view (`sight.watch`) is only for the
 one view the person opened (the thread header, or a card they expanded), and it closes the moment
 that view is hidden, the window loses visibility or the phone locks. Never a timer.
 
@@ -103,6 +104,8 @@ Deck (work/pwa, work/chat)
 
 App (work/mobile)
 - [ ] Nothing built: the card from `sight.frame` stills refreshed on `sight.stepped`, the pill when collapsed.
+- [ ] The phone has no Glass screen yet: tapping the card opens the step's thread, or does nothing
+      when the step has no thread. Glass on the phone replaces this.
 
 Capsule (work/capsule-pro)
 - [ ] Nothing built: the step pill for an agent's computer, ⌘O to Glass.
