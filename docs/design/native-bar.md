@@ -1,3 +1,11 @@
+---
+title: The native bar
+summary: Budgets that say when Vyre chat is as quick as the terminal, and how the harness measures them.
+audience: builders
+owner: native-core
+status: draft
+---
+
 # The native bar
 
 Chat has to feel as quick as the Claude Code terminal. These budgets say what "quick" means, and the

@@ -1,3 +1,11 @@
+---
+title: Settings inventory
+summary: Every setting in Vyre and Claude Code, the level it is set at, where it lives, and its control.
+audience: builders
+owner: native-core
+status: draft
+---
+
 # Settings inventory
 
 Every option a person can set in Vyre, where it lives, and where you change it. The rule: nothing is
@@ -58,19 +66,19 @@ Code files). SDK = the query() option or Query method.
 
 | Option | SDK | Own | Lv | Default | Today | UI today | CLI today |
 |---|---|---|---|---|---|---|---|
-| Model | `model`, `setModel()` live | V | S A P G, plus per purpose | opus for chat, agent, project; haiku for capsule, job, memory, planner, learn | `sessions.models.<purpose>` in config.json; `sessions_models` for `purpose:`/`project:` overrides; agent row | agents.js model select only | `vyre sessions models` (polish-cli), `vyre call sessions.models.set` |
+| Model | `model`, `setModel()` live | V | S A P G, plus per purpose | opus for chat, agent, project; haiku for capsule, job, memory, planner, learn | `sessions.models.<purpose>` in config.json; `sessions_models` for `purpose:`/`project:` overrides; agent row | agents.js model select only | `vyre sessions models` (polish-cli), `vyre call sessions.models.set` | <!-- terms: ignore -->
 | Model per purpose | (resolves `model`) | V | A P | as above | same | none | same |
 | Fallback model | `fallbackModel` | V | A P G | none | not passed | none | none |
 | Effort / thinking | `effort` (low, medium, high, xhigh, max), `thinking`, `setMaxThinkingTokens()` | V | S A P G | model default | not passed; agent "Effort" select is saved nowhere (bug) | agents.js (broken) | none |
 | Show thinking | (translate keeps reasoning) | V | A | shown folded | dropped by the driver | none | none |
 | Fast mode | `applyFlagSettings({fastMode})` | V | S A P | off | not passed | none | none |
-| Permission mode | `permissionMode`, `setPermissionMode()` live | V | S A P G | default | only live via `threads.mode`; lost on resume | Shift+Tab chip (chat branch) | none |
+| Permission mode | `permissionMode`, `setPermissionMode()` live | V | S A P G | default | only live via `threads.mode`; lost on resume | Shift+Tab chip (chat branch) | none | <!-- terms: ignore -->
 | Modes offered | default, acceptEdits, plan, auto, dontAsk, bypassPermissions | V | A | first three; bypass behind a confirm | first three only | none | none |
 | Allow rules | `allowedTools` / `permissions.allow` | C | A P | none | Claude Code files; "Always in project" writes settings.local.json | Ask card "Always" only | none |
 | Deny rules | `disallowedTools` / `permissions.deny` | C | A P G | none | Claude Code files | none | none |
 | Ask rules | `permissions.ask` | C | A P | none | Claude Code files | none | none |
 | Additional folders | `additionalDirectories` / `permissions.additionalDirectories` | C, V per session | S A P | none | not passed | none | none |
-| System prompt | `systemPrompt` preset `claude_code` + append, or replace | V | A (assistant) P G | append, empty | `sessions_prompts`, versioned | none | `vyre sessions prompt` (polish-cli) |
+| System prompt | `systemPrompt` preset `claude_code` + append, or replace | V | A (assistant) P G | append, empty | `sessions_prompts`, versioned | none | `vyre sessions prompt` (polish-cli) | <!-- terms: ignore -->
 | Plan mode instructions | `planModeInstructions` | V | A P | none | not passed | none | none |
 | Output style | `outputStyle` in settings | C | A P | default | Claude Code files | none | none |
 | CLAUDE.md memory | files | C | A (`~/.claude/CLAUDE.md`) P (`CLAUDE.md`, `CLAUDE.local.md`) | none | files | none | none |
@@ -81,7 +89,7 @@ Code files). SDK = the query() option or Query method.
 | Env for sessions | `env` / settings `env` | C | A P | vyred env copy (should be built from nothing, ADR 0030) | full process.env copy | none | none |
 | Max turns | `maxTurns` | V | A P G | unlimited for chat; set for jobs | not passed | none | none |
 | Budget per session | `maxBudgetUsd` | V | A P G | none for chat; agent `budget_usd` | agent row | agents.js | `vyre call agents.update` |
-| Auth mode | env `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / login | V | A (per machine) | Mac login, box setup-token, API key fallback | `sessions.auth` in config.json | none | `vyre sessions setup` (polish-cli) |
+| Auth mode | env `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` / login | V | A (per machine) | Mac login, box setup-token, API key fallback | `sessions.auth` in config.json | none | `vyre sessions setup` (polish-cli) | <!-- terms: ignore -->
 | Provider | driver router (`claude` now; codex, acp later) | V | A P G | claude | `sessions.driver`/providers | none | none |
 | Claude binary | `pathToClaudeCodeExecutable` | V | A (per machine) | box bundled, Mac installed | `sessions.claude` | none | none |
 | File checkpoints (rewind) | `enableFileCheckpointing`, `rewindFiles()` | V | A | on | not passed | none | none |

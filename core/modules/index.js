@@ -26,7 +26,8 @@ const CORE_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
  * into a session for the person at the box as "link:box" (docs/adr/0021-box-reads-the-mac.md).
  * @type {Record<string, string[]>}
  */
-const CALL_AS = { link: ["link:box"] };
+// settings passes a person's change on to the module that keeps the value, as that person.
+const CALL_AS = { link: ["link:box"], settings: ["cli", "local", "deck", "capsule"] };
 const TOOL = /^[a-z][a-z0-9-]*\.[a-z][a-z0-9.-]*$/;
 const VERBS = ["does", "watches", "shows", "needs", "teaches"];
 

@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One way to change every setting: core/settings and vyre config
+
+- core/settings: a registry of every setting (models per purpose, effort, permission mode and rules,
+  sessions, teammates' limits, notifications, planner, memory, vault lock, files, terminal, tools)
+  with tools settings.schema, settings.get, settings.set, settings.reset, settings.resolve
+  (modules only) and one settings.changed event. A project's value beats the account's, which beats
+  the default; settings.get says which one is in effect.
+- Keys stay where they lived: config.json, another module's own tool (push, planner, sessions
+  models), Claude Code's settings files for permission rules, env, hooks and plugins (account:
+  ~/.claude/settings.json; project: .claude/settings.local.json), and a new settings_values table
+  for keys that had no home. A broken Claude Code file is never written over.
+- `vyre config list|get|set|reset [--project <slug>] [--account] [--json]`.
+- core/modules: settings may pass a person's change on to another module's tool as that person
+  (CALL_AS), so person-only tools stay person-only.
+- docs/design/settings-inventory.md and docs/design/native-bar.md.
+
 #### The answer eval runs without the Electron Capsule
 
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
