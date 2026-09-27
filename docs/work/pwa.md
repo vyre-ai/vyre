@@ -137,6 +137,12 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   dragged); a scroll-snap row is a proposal for the lead (needs a real-iPhone spike).
 - Done since: c281be8 build-stamped sw.js (release lands on the next launch); a222fa4 passkey
   card copy (lead); deck/sw.js ignores /app/ (for the one app's own worker).
+- Done since the queue: 49cefab tailnet findings 1-4 and 6 (5 skipped: no tool reads
+  network.origins); 1cf2662 merged main 9efbddc (249/249 targeted); 0c2ee51 push.subscribed,
+  push.test receipts + push.receipt -> push.delivered, push.seen standalone event (for `vyre
+  phone add`); 501b0d1 /app/ serving + /app/sw.js + manifest. Pushed work/pwa.
+- Waiting: the lead on e2e 8ad92a73 and app-design 99820a16 reaching main (items 2 and 3);
+  polish-cli on what /pair shows; mobile on precache.json.
 - QUEUE (from teammates, 2026-09-27; testbox: targeted runs only, uptime < 8, no worlds or
   Chrome without asking the lead):
   1. DONE (see the commit "fix(deck): VyreDrive per-share access..."). Skipped the "Hosted app"
