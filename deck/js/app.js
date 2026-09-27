@@ -14,7 +14,7 @@
 //   ctx.alive()  false once the user has left, for guarding late async work
 // Views never touch the shell; they reach vyred only through js/api.js.
 
-import { h, put, link, go, back, empty } from "./dom.js";
+import { h, put, link, go, back, empty, isPhone, PHONE_QUERY } from "./dom.js";
 import { attempt, on, fromFixtures, fixturesOn } from "./api.js";
 import { icon, mark, wordmark } from "./icons.js";
 import * as needs from "./needs.js";
@@ -269,7 +269,7 @@ function drop(/** @type {string} */ key) {
   p.page.remove();
 }
 
-const phone = () => matchMedia("(max-width: 760px)").matches;
+const phone = () => isPhone();
 const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 // ---- the phone's modes ----------------------------------------------------------------------
@@ -278,7 +278,7 @@ const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 // "pushed": any other address, slid in from the right over the pager with a back chevron (or the
 //   view's own back, see OWN_BACK), no labels and no Capsule.
 // "find": the Capsule opened, a full-height sheet risen from the bottom, no header and no Capsule.
-// "desk": wider than 760 px; none of the above applies.
+// "desk": not the phone layout (wider than 760 px, and not a sideways phone); none of the above applies.
 
 /** Pushed screens that draw their own back control, so the shell's back row stays out of the way. */
 function ownBack(/** @type {string} */ name, /** @type {Record<string, string>} */ params) {
@@ -582,8 +582,8 @@ const edgeEnd = (/** @type {TouchEvent} */ e) => {
 view.addEventListener("touchend", edgeEnd, { passive: true });
 view.addEventListener("touchcancel", edgeEnd, { passive: true });
 
-// Crossing 760 px (a rotation, a window resize): the three pages move into or out of the pager.
-matchMedia("(max-width: 760px)").addEventListener("change", () => {
+// Crossing into or out of the phone layout (a rotation, a window resize): the three pages move into or out of the pager.
+matchMedia(PHONE_QUERY).addEventListener("change", () => {
   for (const [k, p] of pages) place(k, p.page);
   route();
 });

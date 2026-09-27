@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A phone turned sideways keeps the phone layout
+
+- Every phone media query in the Deck's CSS is now `(max-width: 760px), (max-height: 500px) and
+  (pointer: coarse)`: narrow windows and short, wide touch screens get the phone shell, a short
+  desktop window keeps the desk. The few desk-only blocks (min-width: 761px) use the matching
+  complement, so the two never overlap or leave a gap.
+- The JS asks the same question in one place: `PHONE_QUERY` and `isPhone()` in deck/js/dom.js,
+  used by the shell's rotation listener, the keyboard watcher, pwa.js, phone setup and the Now,
+  Needs, Memory, Find and Agents views. Sideways, the shell, the Capsule and sheets keep clear of
+  the notch with the left and right safe-area insets.
+- deck/test/pwa.test.js checks that no CSS file under deck/ keeps a bare 760px phone query and
+  that the JS takes the helper from dom.js.
+
 #### vyred serves the one app at /app/, with its own service worker and manifest
 
 - GET /app/* serves the web export in apps/app/dist as a single-page app (any route that is not

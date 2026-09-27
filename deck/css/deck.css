@@ -207,7 +207,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
    tall header with the three page labels, the pages side by side in a pager, the Capsule floating
    at the bottom, and every other address pushed over them. The shell's mode is #deck[data-at]:
    page, pushed or find (js/app.js). */
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .top { display: none; }
   .rail { display: none; }
   /* One fixed shell (one-app DIRECTION.md, "Smooth"): the app never moves as a whole, so the page
@@ -331,7 +331,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   .ph-tab { transition: none; }
   .cap-rise.going, .ph-settle { transition: none; }
 }
-@media (min-width: 761px) { .phone-head { display: none; } }
+@media (min-width: 761px) and (min-height: 501px), (min-width: 761px) and (pointer: fine), (min-width: 761px) and (pointer: none) { .phone-head { display: none; } }
 @media (max-width: 1100px) { .address { display: none; } }
 
 /* Held content edited in place (js/editable.js): text until focused, then a subtle underline.
@@ -353,7 +353,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .ea-form, .ea-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .ea-in { flex: 1 1 180px; width: auto; min-width: 0; max-width: 320px; }
 .ea-in.ea-wide { flex-basis: 100%; max-width: none; height: auto; padding: 8px 12px; }
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .ea .btn { min-height: 44px; }
   .ea .input:not(.ea-wide) { height: 44px; }
   .ea-in { max-width: none; }

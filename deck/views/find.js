@@ -30,7 +30,7 @@
 // the four most recent sessions. The layout is picked at render and redrawn when the width
 // crosses 760 px; the desktop column is unchanged.
 
-import { h, put, link, empty, go, back } from "../js/dom.js";
+import { h, put, link, empty, go, back, PHONE_QUERY } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when, base, initial } from "../js/fmt.js";
@@ -42,7 +42,6 @@ import { machineChip } from "../js/machine.js";
 const SHOW = 5;
 const MIN = 2;
 const DEBOUNCE_MS = 150;
-const PHONE = "(max-width: 760px)";
 const RECENT_KEY = "vyre.find.recent";
 const RECENT_MAX = 8;
 const SCOPES = [["all", "All"], ["chats", "Chats"], ["files", "Files"], ["memory", "Memory"], ["run", "Run"]];
@@ -112,7 +111,7 @@ export default async function find(ctx) {
   const planLine = h("div", { class: "fd-plan small", role: "status" });
 
   // ---- phone or desktop: picked at render, redrawn when the width crosses 760 px ---------------
-  const mq = matchMedia(PHONE);
+  const mq = matchMedia(PHONE_QUERY);
   let phone = mq.matches;
   /** The phone's segmented scope. */
   let scope = "all";

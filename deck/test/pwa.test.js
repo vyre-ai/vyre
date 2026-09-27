@@ -67,10 +67,10 @@ test("pwa: the service worker caches no tool call but its two offline reads", ()
 
 // ---- the phone shell (docs/design/phone.md section 3) ---------------------------------------
 
-/** The rules inside deck.css's phone block (max-width: 760px), the one that starts the shell. */
+/** The rules inside deck.css's phone block (PHONE_QUERY), the one that starts the shell. */
 function phoneCss() {
   const css = read("css/deck.css");
-  const at = css.indexOf("@media (max-width: 760px) {\n  .top { display: none; }");
+  const at = css.indexOf("@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {\n  .top { display: none; }");
   assert.ok(at > 0, "the phone block in deck.css");
   let depth = 0, i = css.indexOf("{", at);
   for (let j = i; j < css.length; j++) { if (css[j] === "{") depth++; else if (css[j] === "}" && --depth === 0) return css.slice(i, j); }
@@ -264,11 +264,11 @@ test("pwa ios: one fixed shell at 100dvh, no page rubber band, no 100vh without 
 test("pwa ios: safe areas on the shell (sideways too), the Capsule and sheets; viewport-fit=cover", () => {
   assert.match(read("index.html"), /name="viewport" content="[^"]*viewport-fit=cover/);
   const deck = read("css/deck.css");
-  // Outside the phone block, so an iPad or a phone turned sideways (over 760 wide) keeps clear too.
+  // Outside the phone block, so an installed iPad keeps clear too; a sideways phone is in the phone block.
   assert.match(deck, /^\.shell \{ padding-top: env\(safe-area-inset-top\); padding-left: env\(safe-area-inset-left\); padding-right: env\(safe-area-inset-right\); \}/m);
   assert.match(phoneCss(), /\.capsule \{[^}]*left: calc\(12px \+ env\(safe-area-inset-left\)\); right: calc\(12px \+ env\(safe-area-inset-right\)\)/);
   assert.match(deck, /--cap-bottom: max\(12px, env\(safe-area-inset-bottom\)\)/);
-  const sheet = block(read("css/sheet.css"), "@media (max-width: 760px) {\n  /* Sideways");
+  const sheet = block(read("css/sheet.css"), "@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {\n  /* Sideways");
   assert.match(sheet, /\.sheet \{ padding-left: env\(safe-area-inset-left, 0px\); padding-right: env\(safe-area-inset-right, 0px\); \}/);
   assert.match(read("css/sheet.css"), /\.sheet \{[^}]*top: calc\(env\(safe-area-inset-top, 0px\) \+ 10px\)/);
   assert.match(read("css/sheet.css"), /\.sheet-actions \{[^}]*env\(safe-area-inset-bottom, 0px\)/);
@@ -377,7 +377,7 @@ test("pwa ios: long lists and the transcript skip off-screen rows; the newest 40
   const chat = read("chat/chat.css");
   assert.match(chat, /\.cv-timeline > :nth-last-child\(n\+41\) \{ content-visibility: auto; contain-intrinsic-size: auto 96px; \}/);
   assert.match(chat, /\.rows > \.thread-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
-  assert.match(block(read("css/views/find.css"), "@media (max-width: 760px) {"), /\.fd-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
+  assert.match(block(read("css/views/find.css"), "@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {"), /\.fd-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
 });
 
 test("pwa ios: a row swipe moves only the face's transform, once a frame, promoted only while it moves", () => {
@@ -393,4 +393,71 @@ test("pwa: the Deck's worker leaves /app/ to the one app's own worker", () => {
   const sw = read("sw.js");
   assert.match(sw, /if \(url\.pathname === "\/app" \|\| url\.pathname\.startsWith\("\/app\/"\)\) return;/);
   assert.ok(sw.indexOf('startsWith("/app/")') < sw.indexOf("e.respondWith((async"), "checked before the Deck answers from its cache");
+});
+
+// ---- a phone turned sideways stays a phone ---------------------------------------------------
+
+/** Every .css file under deck/, vendor code aside. */
+function cssFiles(/** @type {string} */ dir = DECK) {
+  /** @type {string[]} */ const out = [];
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === "vendor" || e.name === "node_modules") continue;
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) out.push(...cssFiles(p));
+    else if (e.name.endsWith(".css")) out.push(p);
+  }
+  return out;
+}
+
+test("pwa sideways: every CSS phone query also takes a short, wide touch screen, and its complement matches", async () => {
+  const { PHONE_QUERY } = await import("../js/dom.js");
+  assert.equal(PHONE_QUERY, "(max-width: 760px), (max-height: 500px) and (pointer: coarse)");
+  const NOT_PHONE = "(min-width: 761px) and (min-height: 501px), (min-width: 761px) and (pointer: fine), (min-width: 761px) and (pointer: none)";
+  let phone = 0;
+  for (const f of cssFiles()) {
+    const rel = path.relative(DECK, f);
+    for (const m of fs.readFileSync(f, "utf8").matchAll(/@media ([^{]*)\{/g)) {
+      const q = m[1].trim();
+      if (/760px|761px/.test(q)) {
+        assert.ok(q === PHONE_QUERY || q === NOT_PHONE, `${rel}: "@media ${q}" is a bare width query; use the phone query`);
+        if (q === PHONE_QUERY) phone++;
+      }
+    }
+  }
+  assert.ok(phone > 20, "the phone blocks were found");
+});
+
+test("pwa sideways: the JS asks the phone question only through dom.js isPhone / PHONE_QUERY", () => {
+  const dirs = ["js", "views", "chat", "onboard"];
+  let users = 0;
+  for (const d of dirs) {
+    const walk = (/** @type {string} */ dir) => {
+      for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+        const p = path.join(dir, e.name);
+        if (e.isDirectory()) { if (e.name !== "vendor") walk(p); continue; }
+        if (!e.name.endsWith(".js") || e.name.endsWith(".test.js")) continue;
+        const src = fs.readFileSync(p, "utf8");
+        const rel = path.relative(DECK, p);
+        if (rel === path.join("js", "dom.js")) continue;
+        assert.doesNotMatch(src, /["'`]\(max-width: 760px\)/, `${rel} spells the phone query itself`);
+        if (/\b(isPhone|PHONE_QUERY)\b/.test(src)) {
+          assert.match(src, /import \{[^}]*\b(isPhone|PHONE_QUERY)\b[^}]*\} from "(\.\/|\.\.\/js\/)dom\.js"/, `${rel} takes the helper from dom.js`);
+          users++;
+        }
+      }
+    };
+    const root = path.join(DECK, d);
+    if (fs.existsSync(root)) walk(root);
+  }
+  assert.ok(users >= 9, `the phone checks use the helper (${users})`);
+  const app = read("js/app.js");
+  assert.match(app, /matchMedia\(PHONE_QUERY\)\.addEventListener\("change"/, "the rotation listener uses the same query");
+});
+
+test("pwa sideways: isPhone asks matchMedia the one query and is false without matchMedia", async () => {
+  const { isPhone, PHONE_QUERY } = await import("../js/dom.js");
+  /** @type {string[]} */ const asked = [];
+  assert.equal(isPhone({ matchMedia: (/** @type {string} */ q) => { asked.push(q); return { matches: true }; } }), true);
+  assert.deepEqual(asked, [PHONE_QUERY]);
+  assert.equal(isPhone({}), false);
 });

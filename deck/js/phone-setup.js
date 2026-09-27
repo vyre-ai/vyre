@@ -18,12 +18,12 @@
 //
 // Nothing here polls. The card redraws on its own actions and on the browser's install events.
 
-import { h, put } from "./dom.js";
+import { h, put, isPhone } from "./dom.js";
 import { attempt, canProve, callWithCode } from "./api.js";
 import { standalone, ios } from "./pwa.js";
 import { icon } from "./icons.js";
 
-const phone = () => matchMedia("(max-width: 760px)").matches;
+const phone = () => isPhone();
 const android = () => /Android/.test(navigator.userAgent);
 const store = (() => { try { return window.localStorage; } catch { return null; } })();
 const get = (/** @type {string} */ k) => { try { return store?.getItem(k) ?? null; } catch { return null; } };

@@ -3,7 +3,7 @@
 // (PhoneDraft). The phone opens these from Now; on a desktop they read as a centred column.
 // Floor rules 1 and 2: the user sees the final words and where they go before anything is sent.
 
-import { h, put, link, go } from "../js/dom.js";
+import { h, put, link, go, isPhone } from "../js/dom.js";
 import { icon } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
@@ -15,7 +15,7 @@ import { elsewhere } from "../js/need-rows.js";
 export default async function view(ctx) {
   const id = ctx.params.id;
   // A phone (a push notification's tap lands here): Now, with this item's detail sheet open.
-  if (matchMedia("(max-width: 760px)").matches) {
+  if (isPhone()) {
     wantSheet(id);
     history.replaceState(history.state, "", "/now");
     window.dispatchEvent(new Event("deck:navigate"));
