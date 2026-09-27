@@ -106,13 +106,24 @@ Agents, tailnet guests and Claude's sessions can't open one.
 A terminal belongs to the screen that opened it; another device can't pick it up. It outlives
 your connection:
 
-- Close the tab or lose the network, and the shell keeps running. Come back and the Deck
-  reconnects, showing the last 64 KB it printed. Keys typed while the link is down are not sent.
+- Close the tab or lose the network, and the shell keeps running. Come back and the Deck picks
+  up where it left off, with its own scrollback: the box sends only what this screen missed. The
+  box keeps the newest 1 MB of output; if more than that went by while you were away, a dim line
+  says how much output was not kept, and the rest follows.
+- Keys you type while the link is down are held, up to 4 KB, and sent once the terminal has
+  caught up. The screen dims until then. Past 4 KB it says which keys were not kept.
 - With nobody looking at it, it is kept for 12 hours, then ended. Change that with the config
   key `term.keep_hours`.
-- On a box, the shell survives vyred restarting. Updating the box ends it, and the terminal says
-  "the box was updated and this terminal was closed; open a new one".
+- On a box, the shell survives vyred restarting, and the screen reattaches at once. Updating the
+  box ends it: the terminal says "The box was updated and this terminal was closed." with a
+  button, **Open a new terminal here**, for a new one in the same folder.
 - Typing `exit` ends it at once.
+
+When the same terminal is open in two windows, the first one sets its size. The other draws at
+that size, scaled to fit, and says "Watching at" the size, with **Take size** to size the
+terminal to that window instead.
+
+On a phone, a key bar under the terminal gives Esc, Tab, Ctrl, Alt, the arrows and Paste.
 
 On a Mac, the terminal ends when vyred stops.
 

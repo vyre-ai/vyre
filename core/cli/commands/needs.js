@@ -85,6 +85,12 @@ export async function load() {
 
 const LABEL = { draft: "draft", permission: "ask", question: "question" };
 
+/** The list as a table for --view: each row ends with the command that answers it. @param {Need[]} rows */
+export const table = rows => ({ kind: "table", title: rows.length ? `${rows.length} waiting on you` : "Waiting on you",
+  columns: [{ key: "short", label: "Id" }, { key: "kind", label: "What" }, { key: "age", label: "Waited" }, { key: "summary", label: "Summary" },
+    { key: "source", label: "From" }, { key: "next", label: "Answer with" }],
+  rows, empty: "Nothing is waiting on you" });
+
 /** One need as two lines: what and from where, then the command. */
 export function show(/** @type {Need} */ n) {
   out(`  ${beacon(n.short)}  ${String(LABEL[n.kind]).padEnd(8)} ${dim(n.age.padStart(3))}  ${cut(n.summary, 70)}`);
@@ -94,6 +100,8 @@ export function show(/** @type {Need} */ n) {
 export default {
   name: "needs", order: 10, usage: "vyre needs [--json]",
   summary: "everything waiting on you: held drafts and open asks, newest first, each with the command that answers it",
+  // No verbs: it takes no words. Each row names the gate or threads verb that answers it.
+  verbs: [],
   help: [
     "One list of what waits on you: drafts held at the Gate and the asks (permissions and questions)",
     "your sessions raised. Each row has a short id, what it is, how long it has waited, where it came",
@@ -110,7 +118,7 @@ export default {
     if (!(await up())) return 5;
     const rows = await load();
     if (!rows) return 1;
-    if (json()) return emit(rows);
+    if (json()) return emit(rows, table(rows));
     if (!rows.length) { out(dim("  nothing is waiting on you")); return 0; }
     out(`  ${bold(String(rows.length))} waiting on you`);
     rows.forEach(show);

@@ -172,7 +172,20 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
-## Doing (27 Sep, after logout 4)
+## Doing (27 Sep, evening)
+- UNTESTED (testbox held by the lead until batch 4 reports): 00b7a269 plan card (deck/chat/plan-card.js,
+  core/plan.js parser, fake claude `plan`, world's third live session, chat-shots 8-plan, switchboard
+  test), 942047c2 cohesion 1 (context.report on open, context.now project default), a3e31c67 tips
+  on the composer hint line (tip-line.js; composer.js tipSlot/input, sw.js SHELL adds three files),
+  de2c8adc cohesion 9 (nav refresh on thread.status, agents.changed). FIRST when testbox frees:
+  `node --test "deck/chat/**/*.test.js" "deck/test/*.test.js" "core/switchboard/**/*.test.js"`,
+  then chat-shots --only plan and a desk/phone look at the tip, then send the integrator the tip sha.
+- Cohesion 5 (the / menu merges commands.list, Render cards) waits on platform P1's sha from cohesion.
+- Plan card deviation: Revise writes in the card (not the composer, native-core's). Needs row "kit has
+  a plan to approve" is pwa's deck/js/needs.js. Docs base for tip Show me: https://docs.vyre.run/ (ask docs).
+- Perf still open: fling p95 (profile: forced layouts in window-view update), cold open 1.1 s.
+
+## Earlier (27 Sep, after logout 4)
 - Done this session: 19c287db merge main 7880dfa6; 553017a1 scroll jump (content-visibility
   placeholder collapsed the just-finished reply; native-bar budget 5 now 0 px, CLS 0; phone keyboard
   lift read an undefined `following`); 0293db20 question card never cut off + ask/question cards to
@@ -188,7 +201,12 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
 - Open from the 13: #5 phone composer and #6 queued row are native-core's. Spaces collapse in
   Instrument Sans in headless Chrome on the phone shots ("Nooneis typing"): not chat CSS, report to
   pwa/app-design. Raw view still prints absolute paths (Claude Code prints relative ones).
-- Next (lead): with native-core, fling p95 67 ms, cold open 2.4 s, send-to-row 102 ms. Then, once
+- Perf: send-to-row fixed (ba8ffb45, 16 ms). Fling: the profile (Profiler during budget 6) had 2.2 s in
+  getBoundingClientRect (two forced layouts per scroll frame in window-view update), 350 ms clock(),
+  290 ms icon parsing; the last two are cached. A "quick" scroll pass (skip the post-mount measure)
+  measured worse (66 ms) under testbox load 10, so it was reverted; re-measure when load < 8.
+  Cold open 1.1 s (budget 1 s) not looked at yet.
+- Next (lead): with native-core, fling p95 and cold open. Then, once
   the lead OKs new work: cohesion items 1, 5, 9 (context.report on open, / merges commands.list, one
   nav catalog); docs tips.next chip; plan card (spec, not built).
 
@@ -266,6 +284,8 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
 - tailnet: WebSocket upgrade fix (owned by tailnet, per the lead).
 
 ## Changed contracts
+- deck/js/icons.js icon() parses once per name and size and clones; deck/js/fmt.js clock() keeps one
+  Intl.DateTimeFormat (pwa's files; the fling profile showed 290 ms parsing icons, 350 ms in clock()).
 - deck/test/pwa.test.js (pwa's): two pins follow chat's changes: the keyboard lift reads stick.stuck, and
   transcript rows carry no content-visibility (windowed instead).
 - threads.answer: `answers`, decision `always`. threads.asks / ask.raised: `kind`, `questions`,

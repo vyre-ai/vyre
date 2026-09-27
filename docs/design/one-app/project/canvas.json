@@ -360,6 +360,90 @@
       "w": 2700,
       "h": 1260,
       "title": "Devices: trusting a browser for the vault \u00b7 paper"
+    },
+    "CapsuleSearch.dc.html": {
+      "h": 1090,
+      "title": "Capsule \u00b7 search, the first keystroke",
+      "w": 2504,
+      "x": 0,
+      "y": 17860
+    },
+    "CapsuleIQ.dc.html": {
+      "h": 1440,
+      "title": "Capsule \u00b7 Vyre IQ answers",
+      "w": 2504,
+      "x": 2584,
+      "y": 17860
+    },
+    "CapsuleLong.dc.html": {
+      "h": 1480,
+      "title": "Capsule \u00b7 a long answer grows, then scrolls",
+      "w": 2504,
+      "x": 5168,
+      "y": 17860
+    },
+    "CapsuleDo.dc.html": {
+      "h": 1440,
+      "title": "Capsule \u00b7 voice and computer use",
+      "w": 2504,
+      "x": 7752,
+      "y": 17860
+    },
+    "CapsuleSearch-paper.dc.html": {
+      "h": 1090,
+      "title": "Capsule \u00b7 search, the first keystroke \u00b7 paper",
+      "w": 2504,
+      "x": 0,
+      "y": 19460
+    },
+    "CapsuleIQ-paper.dc.html": {
+      "h": 1440,
+      "title": "Capsule \u00b7 Vyre IQ answers \u00b7 paper",
+      "w": 2504,
+      "x": 2584,
+      "y": 19460
+    },
+    "CapsuleLong-paper.dc.html": {
+      "h": 1480,
+      "title": "Capsule \u00b7 a long answer grows, then scrolls \u00b7 paper",
+      "w": 2504,
+      "x": 5168,
+      "y": 19460
+    },
+    "CapsuleDo-paper.dc.html": {
+      "h": 1440,
+      "title": "Capsule \u00b7 voice and computer use \u00b7 paper",
+      "w": 2504,
+      "x": 7752,
+      "y": 19460
+    },
+    "TipLine.dc.html": {
+      "x": 0,
+      "y": 21360,
+      "w": 2640,
+      "h": 1900,
+      "title": "Tips \u00b7 one quiet line on every surface"
+    },
+    "GlassMini.dc.html": {
+      "x": 2720,
+      "y": 21360,
+      "w": 2640,
+      "h": 2000,
+      "title": "Glass mini-view \u00b7 what the agent is doing now"
+    },
+    "TipLine-paper.dc.html": {
+      "x": 0,
+      "y": 23480,
+      "w": 2640,
+      "h": 1900,
+      "title": "Tips \u00b7 one quiet line on every surface \u00b7 paper"
+    },
+    "GlassMini-paper.dc.html": {
+      "x": 2720,
+      "y": 23480,
+      "w": 2640,
+      "h": 2000,
+      "title": "Glass mini-view \u00b7 what the agent is doing now \u00b7 paper"
     }
   },
   "createdOnFiles": {
@@ -448,6 +532,20 @@
       "text": "Teammates \u00b7 paper",
       "kind": "title1",
       "maxW": 8000
+    },
+    "capsuleA": {
+      "x": 0,
+      "y": 17560,
+      "text": "The Capsule, redesigned (Design A)",
+      "kind": "title1",
+      "maxW": 10256
+    },
+    "tipsGlass": {
+      "x": 0,
+      "y": 21060,
+      "text": "Tips and the Glass mini-view",
+      "kind": "title1",
+      "maxW": 5360
     }
   },
   "order": [
@@ -501,7 +599,19 @@
     "Limits.dc.html",
     "Teammates-paper.dc.html",
     "TeammatesNeeds-paper.dc.html",
-    "Limits-paper.dc.html"
+    "Limits-paper.dc.html",
+    "CapsuleSearch.dc.html",
+    "CapsuleIQ.dc.html",
+    "CapsuleLong.dc.html",
+    "CapsuleDo.dc.html",
+    "CapsuleSearch-paper.dc.html",
+    "CapsuleIQ-paper.dc.html",
+    "CapsuleLong-paper.dc.html",
+    "CapsuleDo-paper.dc.html",
+    "TipLine.dc.html",
+    "GlassMini.dc.html",
+    "TipLine-paper.dc.html",
+    "GlassMini-paper.dc.html"
   ],
   "pages": [],
   "title": "Vyre one app"

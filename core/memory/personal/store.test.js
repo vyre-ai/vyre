@@ -93,7 +93,8 @@ test("personal store: a sold car no longer holds; a make alone is the model said
   const volvo = owns.find(f => f.object.startsWith("Volvo"));
   const tesla = owns.find(f => f.object === "Tesla Model 3");
   assert.equal(volvo?.object, "Volvo XC90");
-  assert.equal(volvo?.mentions, 2, "the passing mention is the same car");
+  // Owned, serviced, and sold: selling it says it was the user's too.
+  assert.equal(volvo?.mentions, 3, "the passing mention and the sale are the same car");
   assert.equal(volvo?.current, false);
   assert.equal(tesla?.current, true);
   assert.equal(me.entity("my car")?.id, "vehicle:Tesla Model 3");

@@ -18,12 +18,18 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { VERSION } from "../daemon/index.js";
-import { out, dim, bold, beacon } from "./style.js";
-import { EXIT, UsageError, closest, setJson, wantsJson, fail, usage } from "./kit.js";
+import { out, dim, bold, beacon, err as errPaint } from "./style.js";
+import { EXIT, UsageError, closest, setJson, wantsJson, wantsView, setView, emit, fail, usage } from "./kit.js";
+import { done, verbWords, textLines } from "./view.js";
 
+const errDim = s => errPaint.dim(s);
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "commands");
 
-/** @typedef {{ name: string, aliases?: string[], summary: string, usage?: string, help?: string | (() => number | Promise<number>), order?: number, hidden?: boolean, run(args: string[]): Promise<number> }} Command */
+/** @typedef {{ name: string, aliases?: string[], summary: string, usage?: string, help?: string | (() => number | Promise<number>), order?: number, hidden?: boolean, secret?: boolean, run(args: string[]): Promise<number> }} Command */
+// `hidden` leaves a command out of `vyre help`, but docs/reference/cli.md still documents it
+// under "Not listed by vyre help" (box service-manager commands, setup and recovery). `secret`
+// additionally leaves it out of every generated doc (scripts/lib/docs/reference.js), for the
+// rare command that is meant to stay found only by typing it.
 
 /** @returns {Promise<Command[]>} */
 export async function commands() {
@@ -37,7 +43,7 @@ export async function commands() {
 }
 
 /** Where each command sits in `vyre help`. A command not named here goes under "More". */
-const GROUPS = [
+export const GROUPS = [
   ["Start and connect", ["up", "status", "down", "box", "name", "link", "phone", "capsule"]],
   ["Projects and sessions", ["projects", "new", "open", "threads", "sessions", "resume", "start", "context", "pick", "unpick"]],
   ["Waiting on you", ["needs", "gate"]],
@@ -46,7 +52,7 @@ const GROUPS = [
   ["Memory", ["recall", "index", "memory", "why", "learn"]],
   ["Vault and presence", ["vault", "presence"]],
   ["Box care", ["update", "backup", "restore"]],
-  ["Under the hood", ["modules", "tools", "call", "tips"]],
+  ["Under the hood", ["modules", "module", "tools", "call", "commands", "tips"]],
 ];
 
 const usageOf = c => c.usage || `vyre ${c.name}`;
@@ -120,12 +126,56 @@ export async function main(argv) {
   const c = all.find(x => x.name === want || (x.aliases || []).includes(want));
   if (!c) return unknown(all, want);
   if (asksHelp(rest)) return helpFor(all, c.name);
-  setJson(wantsJson(rest));
+  if (wantsView(rest)) return viewRun(c, rest);
+  const asJson = wantsJson(rest);
+  setJson(asJson);
+  const code = await runOne(c, rest);
+  if (code === EXIT.OK && !asJson && tipsWanted(c.name)) await tip(/** @type {any} */ (c).module || c.name);
+  return code;
+}
+
+/** Commands a tip never follows: starting and stopping vyred, and the tips themselves. */
+const NO_TIPS = new Set(["up", "down", "tips", "daemon", "commands"]);
+
+/**
+ * Whether one dim tip line may follow this run: a person at an interactive terminal, not a
+ * script, CI or a pipe, and not turned off (VYRE_NO_TIPS=1; tips.enabled in the tips module).
+ * @param {string} name @param {NodeJS.ProcessEnv} [env] @param {{ out?: boolean, err?: boolean }} [tty]
+ */
+export function tipsWanted(name, env = process.env, tty = { out: Boolean(process.stdout.isTTY), err: Boolean(process.stderr.isTTY) }) {
+  if (NO_TIPS.has(name)) return false;
+  if (env.CI || env.VYRE_NO_TIPS === "1" || env.VYRE_NO_TIPS === "true") return false;
+  return Boolean(tty.out && tty.err);
+}
+
+/**
+ * One dim "tip: ..." line on stderr from the tips module (tips.next), when it has one. The
+ * module keeps the rate (30 minutes a surface, 6 a day), so asking every time is fine. It never
+ * waits long: 150 ms, and a vyred that is not running answers at once.
+ * @param {string} module
+ * @param {(tool: string, input: any, o: any) => Promise<any>} [ask]
+ */
+export async function tip(module, ask) {
+  try {
+    const callTool = ask || (await import("../daemon/client.js")).call;
+    const r = await callTool("tips.next", { surface: "cli", context: { module }, mark: true }, { timeout: 150 });
+    const text = r && r.data && (r.data.tip ? r.data.tip.text : r.data.text);
+    if (typeof text !== "string" || !text.trim()) return null;
+    const line = "tip: " + text.replace(/`([^`]*)`/g, "$1").replace(/\s+/g, " ").trim();
+    process.stderr.write(errDim(line) + "\n");
+    return line;
+  } catch {
+    return null;
+  }
+}
+
+/** @param {Command} c @param {string[]} args */
+async function runOne(c, args) {
   // A promise a command forgot to await still must not print a trace.
   const late = err => { process.exitCode = crashed(c.name, err); };
   process.on("unhandledRejection", late);
   try {
-    const code = await c.run(rest);
+    const code = await c.run(args);
     return typeof code === "number" ? code : EXIT.OK;
   } catch (err) {
     return crashed(c.name, err);
@@ -133,4 +183,40 @@ export async function main(argv) {
     process.off("unhandledRejection", late);
     setJson(false);
   }
+}
+
+/**
+ * `--view`: the verb runs in JSON mode and every line out is a frame (core/cli/view.js). What it
+ * prints for a person instead (a verb with no JSON) comes out as one text frame, without colour.
+ * Nothing is read from stdin: a verb that would ask says what to add to the command instead.
+ * @param {Command} c @param {string[]} rest
+ */
+export async function viewRun(c, rest) {
+  const at = rest.indexOf("--");
+  const head = (at < 0 ? rest : rest.slice(0, at)).filter(a => a !== "--view");
+  const args = [...(head.includes("--json") ? head : [...head, "--json"]), ...(at < 0 ? [] : rest.slice(at))];
+  setView(verbWords(c.name, head), [c.name, ...(at < 0 ? head : [...head, ...rest.slice(at)]).filter(a => a !== "--json")]);
+  const write = process.stdout.write.bind(process.stdout);
+  /** @type {string[]} */
+  const text = [];
+  process.stdout.write = /** @type {any} */ ((chunk, ...more) => {
+    const s = typeof chunk === "string" ? chunk : Buffer.from(chunk).toString();
+    if (s.startsWith('{"v":1,')) return write(chunk, ...more);
+    text.push(s);
+    const cb = more.find(m => typeof m === "function");
+    if (cb) cb();
+    return true;
+  });
+  let code = EXIT.FAILED;
+  try {
+    code = await runOne(c, args);
+  } finally {
+    const lines = textLines(text);
+    if (lines.length) emit(null, { kind: "text", lines });
+    process.stdout.write = write;
+    write(JSON.stringify(done(code)) + "\n");
+    setView(null);
+    setJson(false);
+  }
+  return code;
 }

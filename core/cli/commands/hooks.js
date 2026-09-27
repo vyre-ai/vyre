@@ -8,7 +8,17 @@ import { callAsPerson } from "../presence.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { json, emit, failTool, usage } from "../kit.js";
 
-const USAGE = "vyre hooks [status|on|off|open <name> --scheme hmac-sha256|github|stripe --secret <vault item> [--header <name>]|close <name>]";
+const USAGE = "vyre hooks [list|status|on|off|open <name> --scheme hmac-sha256|github|stripe --secret <vault item> [--header <name>]|close <name>]";
+
+/** Every verb run() handles, for `vyre commands --json`; run() refuses any other word. */
+export const VERBS = [
+  { verb: "list", summary: "the listener and each open route, with its recent deliveries", usage: "[--json]", read: true },
+  { verb: "status", summary: "what Funnel publishes, next to what is open, and what to fix", usage: "[--json]", read: true },
+  { verb: "on", summary: "start the webhook listener", usage: "[--json]", person: true },
+  { verb: "off", summary: "stop the webhook listener", usage: "[--json]", person: true },
+  { verb: "open", summary: "open one route, checked with a secret from the vault", usage: "<name> --scheme hmac-sha256|github|stripe --secret <item> [--header <name>] [--json]", person: true },
+  { verb: "close", summary: "close one route; vyred answers 404 there", usage: "<name> [--json]", person: true },
+];
 const fail = r => {
   if (json()) return failTool(r.error);
   const down = ["unreachable", "timeout"].includes(r.error.code);
@@ -56,7 +66,8 @@ async function status() {
 }
 
 export default {
-  name: "hooks", order: 45, usage: "vyre hooks [status|on|off|open|close] [name] [--json]", summary: "webhooks from the internet through Funnel, one route at a time",
+  name: "hooks", order: 45, usage: "vyre hooks [list|status|on|off|open <name>|close <name>] [--json]", summary: "webhooks from the internet through Funnel, one route at a time",
+  verbs: VERBS,
   async run(args) {
     const [verb = "list", ...rest] = args.filter(a => a !== "--json");
     if (verb === "list") return list();

@@ -59,6 +59,12 @@ process.exit(1);
   assert.match(list.out, /\/hooks\/northwind-orders\s+github/);
   const lj = JSON.parse((await vyre("hooks", "list", "--json")).out);
   assert.deepEqual(lj.routes.map(r => r.path), ["/hooks/northwind-orders"]);
+  // --view: the routes as a table, the data exactly what --json printed.
+  const lv = (await vyre("hooks", "list", "--view")).out.trim().split("\n").map(l => JSON.parse(l));
+  assert.deepEqual([lv[0].v, lv[0].cmd, lv[0].view.kind], [1, "hooks list", "table"]);
+  assert.deepEqual(lv[0].view.rows.map(r => r.path), ["/hooks/northwind-orders"]);
+  assert.deepEqual(lv[0].data.routes.map(r => r.path), lj.routes.map(r => r.path));
+  assert.deepEqual(lv.at(-1), { v: 1, done: true, exit: 0 });
 
   const st = await vyre("hooks", "status");
   assert.equal(st.code, 0, st.out);
@@ -76,7 +82,7 @@ process.exit(1);
   const bad = await vyre("hooks", "close", "--json");
   assert.equal(bad.code, 2, "a usage mistake");
   assert.equal(JSON.parse(bad.out).error.code, "bad_input");
-  assert.match((await vyre("hooks", "close")).out, /vyre hooks \[status/);
+  assert.match((await vyre("hooks", "close")).out, /vyre hooks \[list\|status/);
   const refused = await vyre("hooks", "open", "Not A Name", "--scheme", "github", "--secret", "x", "--json");
   assert.equal(refused.code, 1);
   assert.equal(JSON.parse(refused.out).error.code, "bad_input");
@@ -117,6 +123,29 @@ test("hooks: on starts the listener on 127.0.0.1, list shows it, off stops it; a
   // A usage mistake: exit 2, the usage line and where to read more.
   const frob = await vyre("hooks", "frob");
   assert.equal(frob.code, 2);
-  assert.match(frob.out, /vyre hooks \[status\|on\|off\|open/);
+  assert.match(frob.out, /vyre hooks \[list\|status\|on\|off\|open/);
   assert.match(frob.out, /vyre help hooks/);
+});
+
+test("hooks: vyre commands lists every verb run() handles, and run() refuses any other", async t => {
+  const root = tempHome(t);
+  const d = JSON.parse((await run(root, ["commands", "hooks", "--json"])).out);
+  const verbs = d.commands[0].verbs;
+  assert.deepEqual(verbs.map(v => v.verb), ["list", "status", "on", "off", "open", "close"]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["list", "status"]);
+  assert.deepEqual(verbs.filter(v => v.person).map(v => v.verb), ["on", "off", "open", "close"]);
+  const open = verbs.find(v => v.verb === "open");
+  assert.deepEqual(open.args, [{ name: "name", required: true }]);
+  assert.deepEqual(open.flags.find(f => f.name === "scheme"), { name: "scheme", value: "choice", choices: ["hmac-sha256", "github", "stripe"] });
+  assert.match(d.commands[0].usage, /\[list\|status\|on\|off\|open <name>\|close <name>\]/);
+  // A verb it does not know is refused before vyred is asked anything (none runs here).
+  const bad = await run(root, ["hooks", "frob", "--json"]);
+  assert.equal(bad.code, 2);
+  assert.equal(JSON.parse(bad.out).error.code, "bad_input");
+  // A read with no vyred: exit 5 and an error frame under --view.
+  const down = await run(root, ["hooks", "status", "--view"]);
+  assert.equal(down.code, 5);
+  const f = down.out.trim().split("\n").map(l => JSON.parse(l));
+  assert.deepEqual([f[0].view.kind, f[0].view.code], ["error", "unreachable"]);
+  assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 5 });
 });

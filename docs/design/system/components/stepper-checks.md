@@ -37,7 +37,7 @@ run" (Onboarding).
    running ring; heading 20/600 ("Checking alex's iPhone"); one line 13 `--text-2`.
 6. **QR block**: 168 square, radius 12, padding 12, always `#FFFFFF` with black modules in both
    themes (the one fixed colour, for cameras). Beside it: the instruction 13 and one alternative
-   12 `--label`. Under it the code in the current-code style of otp ("7KQM-4P2X", mono 28/600: the code's 8 characters in two groups of four) and
+   12 `--label`. Under it the code in the current-code style of otp ("7KQM-4P2X", mono 28/600: the code's 8 characters in two groups of four, from ABCDEFGHJKMNPQRSTUVWXYZ23456789 with no 0, O, 1, I or L; single use, valid 10 min; typed case-insensitive, spaces and the hyphen ignored) and
    its status ("Used 14:31" with the ok mark).
 7. **Optional path card** (`path`): 1 px `--rule`, radius 12, `--panel`, padding 16, gap 10;
    title 15/600 with a "Recommended" tag; body 12 `--text-2`; its own QR; "Skip for now"
@@ -102,7 +102,7 @@ reload, no prompt. Reduced motion: marks swap without the morph.
 
 Deck (work/pwa, main)
 - [ ] No laptop "Add your phone" sheet in Devices; no relay QR step and no optional Tailscale step.
-- [ ] Board: the Install boards draw a 6-character "7KQ-M4P"; the code (`pair-steps.js`) is 8 characters, XXXX-XXXX, and the code wins. Redraw the boards.
+- [x] Board: the Install boards drew a 6-character "7KQ-M4P"; they now draw "7KQM-4P2X" in the sheet and the terminal, matching the code (8 characters, XXXX-XXXX).
 - [ ] `phone-setup.js` is a three-step card on Now (install, notifications, passkey), not the five live checks.
 
 App (work/mobile)

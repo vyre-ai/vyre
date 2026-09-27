@@ -78,6 +78,9 @@ func burstyStream(thread: String = "t1", turn: String = "t1:1") -> [(Double, Str
     func pump(_ ms: Double) { RunLoop.main.run(until: Date().addingTimeInterval(ms / 1000)) }
     func paintNow() { pc.host.layoutSubtreeIfNeeded(); pc.panel.displayIfNeeded() }
 
+    // The answer is set up by hand below: the box's own ask-on-pause must not fire mid-stream
+    // (on a slow runner it did, failed with no vyred, and closed the panel: one size change).
+    model.autoDelay = 3600
     model.text = "summarize the menu"
     model.asked = "summarize the menu"
     model.reply = Reply(thread: "t1")

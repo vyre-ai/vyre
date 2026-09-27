@@ -1,5 +1,6 @@
-import type { ReactElement } from "react";
+import { useMemo, type ReactElement } from "react";
 import { FlatList, Platform, ScrollView, type ListRenderItemInfo, type StyleProp, type ViewStyle } from "react-native";
+import { ScrollSignal, createScrollSignal } from "./scroll-signal";
 
 /** At or below this many rows everything is mounted (chat core window.js, THRESHOLD); above, the list is virtualized. */
 export const VIRTUAL_ABOVE = 100;
@@ -24,31 +25,39 @@ const inner = Platform.OS === "web" ? ({ overscrollBehavior: "contain" } as unkn
  * much waits.
  */
 export function List<T>({ items, keyOf, render, rowHeight, header, footer, style }: Props<T>) {
+  // Views inside (the Glass card) hear each scroll to learn when they leave the screen.
+  const signal = useMemo(createScrollSignal, []);
+  const scroll = { onScroll: signal.emit, scrollEventThrottle: 100 };
   if (items.length <= VIRTUAL_ABOVE) {
     return (
-      <ScrollView style={[{ flex: 1 }, inner, style]}>
-        {header}
-        {items.map((it) => (
-          <ListKey key={keyOf(it)}>{render(it)}</ListKey>
-        ))}
-        {footer}
-      </ScrollView>
+      <ScrollSignal.Provider value={signal}>
+        <ScrollView style={[{ flex: 1 }, inner, style]} {...scroll}>
+          {header}
+          {items.map((it) => (
+            <ListKey key={keyOf(it)}>{render(it)}</ListKey>
+          ))}
+          {footer}
+        </ScrollView>
+      </ScrollSignal.Provider>
     );
   }
   return (
-    <FlatList
-      style={[{ flex: 1 }, inner, style]}
-      data={items as T[]}
-      keyExtractor={keyOf}
-      renderItem={({ item }: ListRenderItemInfo<T>) => render(item)}
-      getItemLayout={(_, i) => ({ length: rowHeight, offset: rowHeight * i, index: i })}
-      ListHeaderComponent={header}
-      ListFooterComponent={footer}
-      initialNumToRender={14}
-      maxToRenderPerBatch={14}
-      windowSize={5}
-      removeClippedSubviews={Platform.OS !== "web"}
-    />
+    <ScrollSignal.Provider value={signal}>
+      <FlatList
+        {...scroll}
+        style={[{ flex: 1 }, inner, style]}
+        data={items as T[]}
+        keyExtractor={keyOf}
+        renderItem={({ item }: ListRenderItemInfo<T>) => render(item)}
+        getItemLayout={(_, i) => ({ length: rowHeight, offset: rowHeight * i, index: i })}
+        ListHeaderComponent={header}
+        ListFooterComponent={footer}
+        initialNumToRender={14}
+        maxToRenderPerBatch={14}
+        windowSize={5}
+        removeClippedSubviews={Platform.OS !== "web"}
+      />
+    </ScrollSignal.Provider>
   );
 }
 
