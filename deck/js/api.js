@@ -525,17 +525,5 @@ export async function personCode(input) {
 
 /** @type {typeof fetch} */
 const rawFetch = typeof window !== "undefined" && typeof window.fetch === "function" ? window.fetch.bind(window) : (...a) => fetch(...a);
-if (typeof window !== "undefined" && typeof window.fetch === "function" && !(/** @type {any} */ (window.fetch)).vyrePerson) {
-  const wrapped = async (/** @type {any} */ input, /** @type {any} */ init) => {
-    const res = await rawFetch(input, init);
-    if (res.status !== 401) return res;
-    const url = typeof input === "string" ? input : String(input && input.url || "");
-    if (!url.includes("/v1/tools/") || url.includes("presence.person.start")) return res;
-    const b = await res.clone().json().catch(() => null);
-    if (!b || !b.error || b.error.code !== "person_session_required" || !canProve()) return res;
-    try { await signIn(); } catch { return res; }
-    return rawFetch(input, init);
-  };
-  /** @type {any} */ (wrapped).vyrePerson = true;
-  window.fetch = /** @type {any} */ (wrapped);
-}
+// A box that wants a person session answers person_session_required; call() hands that to the
+// handler js/person.js sets (setPersonHandler), which signs in and retries once. fetch is not wrapped.
