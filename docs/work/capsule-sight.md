@@ -77,6 +77,8 @@ Branch: work/capsule-sight · Worktree: ../vyre-capsule-sight · ADR 0015 (claim
     ./bin/vyre voice               # Enter to talk, Enter to stop, Ctrl-C to quit
 
 ## Needs from others
+- Gaps closed on work/sessions d12171cc (batch 3a): thread.tool status "canceled" for calls a turn
+  left open (phase stays); thread.state carries turn and has "failed" {turn, error}, then idle.
 - LANDED on work/sessions b8b1a0a7 (not main yet), final shapes, which differ from the agreed ones above:
   thread.tool {id (= call), call, tool, name, phase started|done, status running|completed|failed
   (no canceled), block, summary, destination, turn}; thread.state {state starting|running|waiting|
