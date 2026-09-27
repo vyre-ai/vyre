@@ -521,6 +521,10 @@ Listed by the area they touch, so the merge can go in order. Everything below is
 - **names** (27 Sep): config `network.origins` (default `["https://app.vyre.run"]`); `names()`
   takes `webSession`; the router's peer may carry `origin` and `webSession`; cross-origin
   `GET /v1/health` answers `{ reachable: true }` in the listener; `401 web_session_required`.
+- **deck** (27 Sep, pwa's file): deck/views/settings.js, the Network share row is titled
+  "VyreDrive" and its line reads "VyreDrive (built on Tailscale's Taildrive) opens your box's
+  folders in Finder on your Mac." (was "...open in Finder on your Mac through Taildrive."), in
+  both the on and off states (1498c4a).
 - **presence** (27 Sep): `files.drive.access` is PERSON_ONLY, no longer HUMAN_ONLY.
 - **names guests** (27 Sep): GUEST_SAFE drops `glass.open`.
 - **files** (27 Sep): the share scan's skips and `.git/config` check (`gitConfigCredential`).
