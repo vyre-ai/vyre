@@ -30,8 +30,17 @@ function fakeBin(dir, name, out) {
 async function chrome(t, dir) {
   const profile = fs.mkdtempSync(path.join(dir, "chrome-"));
   const child = spawn(CHROME_BIN, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run",
-    "--no-default-browser-check", "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
-  t.after(async () => { child.kill(); await sleep(300); });
+    "--no-default-browser-check", "--window-size=1280,900", "about:blank"], { stdio: "ignore", detached: true });
+  // Chrome writes its profile until it exits, and tempHome's own cleanup may already have run:
+  // wait for the exit, then remove the profile, or a late write brings the home back.
+  t.after(async () => {
+    // The whole group: Chrome's helpers outlive the browser and keep writing the profile.
+    const gone = child.exitCode === null ? Promise.race([new Promise(r => child.once("exit", r)), sleep(3000)]) : null;
+    try { process.kill(-(/** @type {number} */ (child.pid)), "SIGKILL"); } catch { try { child.kill("SIGKILL"); } catch {} }
+    await gone;
+    try { fs.rmSync(profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch {}
+    try { fs.rmdirSync(dir); } catch {} // only when tempHome already removed the rest
+  });
   let port = 0;
   for (let i = 0; i < 100 && !port; i++) {
     await sleep(100);
@@ -83,6 +92,9 @@ test("onboard page: step 1 takes a name on a box with no vyre.run token, and say
     const link = await call("onboard.link", {}, { root });
     assert.ok(link.data, JSON.stringify(link.error));
     const page = await chrome(t, root);
+    // Last, after vyred's stop and Chrome's exit: tempHome's own cleanup runs first (after-hooks
+    // run in the order they were added), and the late writes of both brought the home back.
+    t.after(() => fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }));
     await page.send("Page.enable");
     await page.send("Page.navigate", { url: link.data.url });
     await page.until(`document.querySelector("#name")`, "the name field");

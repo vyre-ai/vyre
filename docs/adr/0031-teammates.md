@@ -424,8 +424,9 @@ exists.
 The live-process cap of ADR 0030 (6 on the box) is separate and still applies: it bounds memory.
 The slots here bound usage.
 
-**The limits** (project settings `team.max_active` and `team.max_subagents`, plus box-wide
-`limits.max_active_teammates` and `limits.max_subagents`):
+**The limits** (per project through `sessions.limits.set {project, max_active, max_subagents}`,
+person-only; box-wide in config as `sessions.limits.max_active_teammates` and
+`sessions.limits.max_subagents`):
 
 | Preset | Active teammates | Subagents at once | Peak usage, in Opus sessions | For |
 |---|---|---|---|---|
@@ -513,7 +514,10 @@ Changes elsewhere, each through its contract:
 - **agents:** kind `teammate`; `agents.ask` on a teammate becomes a `team.ask`; a teammate's
   thread is launched with the team append.
 - **sessions and switchboard:** the slot ledger of section 14 (`sessions.slots`: take, release,
-  queue, with `slot.taken`, `slot.released` and `slot.queued` events), the Task-tool hold in
+  release-owner, status; a teammate slot is held from `summon.started` to `summon.finished` with
+  owner = the request id; `slot.taken`, `slot.released` and `slot.queued` events); results posted
+  with `threads.post {thread, text, kind: "teammate-result", from}`; context from
+  `thread.usage.context.share`; the Task-tool hold in
   `canUseTool`, SubagentStop release, the per-auth usage state from `thread.limit`, and the pause;
   `threads_inbox` accepts a `teammate-result` item; the in-process
   MCP server includes `team.*` for sessions in a project; the SessionStart `compact` hook

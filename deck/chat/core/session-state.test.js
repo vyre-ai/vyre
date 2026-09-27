@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind, filesNote, contextLabel,
+import { createSession, applyEvent, pendingEvents, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind, filesNote, contextLabel,
   splitShells, seedTasks } from "./session-state.js";
 
 const T = "th-harlow";
@@ -796,4 +796,30 @@ test("thread.usage keeps the context; model.switched moves the model, and a scop
   assert.equal(s.model, "haiku");
   assert.deepEqual(ev(s, "model.changed", { model: "sonnet" }), ["@session"], "an older box's thread model");
   assert.equal(s.model, "sonnet");
+});
+
+test("pendingEvents: the rows still queued and the steers not taken in, from threads.get's events, without their ids", () => {
+  const ev = [
+    { id: 1, type: "thread.sent", payload: { text: "demo", uuid: "u0" } },
+    { id: 2, type: "thread.sent", payload: { text: "read it first", uuid: "s0", via: "steer" } },
+    { id: 3, type: "thread.steered", payload: { uuid: "s0" } },
+    { id: 4, type: "thread.queued", payload: { queued: 3, uuid: "q3", text: "never mind" } },
+    { id: 5, type: "thread.unqueued", payload: { queued: 3, uuid: "q3", reason: "taken" } },
+    { id: 6, type: "thread.queued", payload: { queued: 4, uuid: "q4", text: "old words" } },
+    { id: 7, type: "thread.sent", payload: { queued: 4, uuid: "q4", via: "turn" } },
+    { id: 8, type: "thread.sent", payload: { text: "lost at a turn end", uuid: "s1", via: "steer" } },
+    { id: 9, type: "thread.finished", payload: { ok: true } },
+    { id: 10, type: "thread.sent", payload: { text: "use the rye price too", uuid: "s2", via: "steer" } },
+    { id: 11, type: "thread.queued", payload: { queued: 5, uuid: "q5", text: "then check the hours" } },
+    { id: 12, type: "thread.queued", payload: { queued: 5, uuid: "q5", text: "then check the opening hours", edited: true } },
+  ];
+  const got = pendingEvents(ev);
+  assert.deepEqual(got.map(e => [e.type, e.payload.uuid]), [["thread.sent", "s2"], ["thread.queued", "q5"], ["thread.queued", "q5"]]);
+  assert.ok(got.every(e => e.id === undefined), "no ids: the view's cursor is already past them");
+  const s = createSession("t1");
+  for (const e of got) applyEvent(s, e);
+  assert.deepEqual(s.queued.map(q => [q.queued, q.text]), [[5, "then check the opening hours"]]);
+  const marker = s.items.find(it => it.kind === "steer");
+  assert.equal(marker && marker.pending, true);
+  assert.deepEqual(pendingEvents([...ev, { id: 13, type: "thread.steered", payload: { uuid: "s2" } }, { id: 14, type: "thread.sent", payload: { queued: 5, via: "turn" } }]), []);
 });
