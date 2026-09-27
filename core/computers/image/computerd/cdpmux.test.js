@@ -384,3 +384,53 @@ test("cdpmux: the agent may not dump cookies, open file:// or chrome:// pages, o
   const fsid = (await fill.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
   assert.notEqual((await fill.call("Network.getCookies", {}, fsid)).error?.code, -32000, "the fill client is not refused");
 });
+
+test("cdpmux: the agent cannot attach a local file to a page -- setFileInputFiles is refused outright, and a drag is refused only when it carries files (e2e review, HIGH 1)", async () => {
+  const { mux, fake } = world();
+  const agent = client(mux, "agent"), fill = client(mux, "fill");
+  const sid = (await agent.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
+  for (const files of [["/var/lib/vyre/.boot"], ["/var/lib/vyre/chromium/Default/Cookies"], []]) {
+    assert.equal((await agent.call("DOM.setFileInputFiles", { files, nodeId: 1 }, sid)).error.code, -32000, `setFileInputFiles ${JSON.stringify(files)}`);
+  }
+  assert.equal((await agent.call("Input.dispatchDragEvent", { type: "drop", x: 1, y: 1, data: { items: [], files: ["/var/lib/vyre/.boot"] } }, sid)).error.code, -32000,
+    "a drop carrying files");
+  assert.notEqual((await agent.call("Input.dispatchDragEvent", { type: "dragEnter", x: 1, y: 1, data: { items: [], files: [] } }, sid)).error?.code, -32000,
+    "a drag with an empty files list (no attachment) is unaffected");
+  assert.notEqual((await agent.call("Input.dispatchDragEvent", { type: "dragEnter", x: 1, y: 1, data: { items: [] } }, sid)).error?.code, -32000,
+    "a drag with no files field at all -- reordering within a page -- is unaffected");
+  assert.ok(!fake.seen.some(s => s.method === "DOM.setFileInputFiles"), "a file attachment reached Chrome");
+  assert.ok(!fake.seen.some(s => s.method === "Input.dispatchDragEvent" && s.params?.data?.files?.length), "a file-carrying drag reached Chrome");
+  // Neither is fenced for the vault's fill client (it opens its own pages, never the agent's).
+  const fsid = (await fill.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
+  assert.notEqual((await fill.call("DOM.setFileInputFiles", { files: ["/var/lib/vyre/.boot"], nodeId: 1 }, fsid)).error?.code, -32000);
+});
+
+test("cdpmux: Cookie and Set-Cookie never reach the agent in a Network/Fetch event, whatever case Chrome sent them in; every other header does (e2e review, MEDIUM 4)", async () => {
+  const { mux, fake } = world();
+  const agent = client(mux, "agent"), fill = client(mux, "fill");
+  const asid = (await agent.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
+  const fsid = (await fill.call("Target.attachToTarget", { targetId: "T1", flatten: true })).result.sessionId;
+
+  fake.emit(asid, "Network.requestWillBeSentExtraInfo", { requestId: "r1", headers: { Cookie: "sid=abc", "User-Agent": "x" } });
+  const reqInfo = (await agent.waitFor(m => m.method === "Network.requestWillBeSentExtraInfo")).params;
+  assert.equal(reqInfo.headers.Cookie, undefined);
+  assert.equal(reqInfo.headers["User-Agent"], "x", "a non-cookie header still arrives");
+
+  fake.emit(asid, "Network.responseReceivedExtraInfo", { requestId: "r1", headers: { "set-cookie": "sid=abc; HttpOnly", "Content-Type": "text/html" } });
+  const resInfo = (await agent.waitFor(m => m.method === "Network.responseReceivedExtraInfo")).params;
+  assert.equal(resInfo.headers["set-cookie"], undefined);
+  assert.equal(resInfo.headers["Content-Type"], "text/html");
+
+  fake.emit(asid, "Fetch.requestPaused", { requestId: "f1", request: { url: "https://a.test", headers: { COOKIE: "sid=abc", Accept: "*/*" } },
+    responseHeaders: [{ name: "Set-Cookie", value: "sid=abc" }, { name: "Content-Length", value: "3" }] });
+  const paused = (await agent.waitFor(m => m.method === "Fetch.requestPaused")).params;
+  assert.equal(paused.request.headers.COOKIE, undefined);
+  assert.equal(paused.request.headers.Accept, "*/*");
+  assert.deepEqual(paused.responseHeaders, [{ name: "Content-Length", value: "3" }]);
+
+  // The vault's fill client is not held to this: it opens its own sign-in pages and needs to see
+  // what it sent.
+  fake.emit(fsid, "Network.requestWillBeSentExtraInfo", { requestId: "r2", headers: { Cookie: "sid=abc" } });
+  const fillInfo = (await fill.waitFor(m => m.method === "Network.requestWillBeSentExtraInfo")).params;
+  assert.equal(fillInfo.headers.Cookie, "sid=abc");
+});
