@@ -49,6 +49,35 @@
     });
   });
 
+  // Install tabs: Linux box / Mac / What it needs. One group can appear more than once on the
+  // page (the hero and the end-of-page install both use it), so this wires every `.itabs` found.
+  document.querySelectorAll('.itabs').forEach((tabs) => {
+    const tabEls = [...tabs.querySelectorAll('.itab')];
+    const select = (tab) => {
+      tabEls.forEach((t) => {
+        const on = t === tab;
+        t.setAttribute('aria-selected', String(on));
+        t.tabIndex = on ? 0 : -1;
+        const panel = document.getElementById(t.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !on;
+      });
+    };
+    tabs.addEventListener('click', (e) => {
+      const tab = e.target.closest('.itab');
+      if (tab) select(tab);
+    });
+    tabs.addEventListener('keydown', (e) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+      const at = tabEls.indexOf(document.activeElement);
+      if (at < 0) return;
+      e.preventDefault();
+      const next = e.key === 'ArrowLeft' ? Math.max(0, at - 1) : e.key === 'ArrowRight' ? Math.min(tabEls.length - 1, at + 1)
+        : e.key === 'Home' ? 0 : tabEls.length - 1;
+      tabEls[next].focus();
+      select(tabEls[next]);
+    });
+  });
+
   // The demo.
   const demo = document.getElementById('demo');
   if (!demo || typeof demo.showModal !== 'function') return;

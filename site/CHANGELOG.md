@@ -22,6 +22,11 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
   reopening.
 - Fixed the `npm install -g vyre` bug in `README.md`: 0.1.0 has no npm package; the quickstart now
   matches install.sh and this page (curl installer, or the Mac npm-tgz line).
+- Fixed the install tabs (Linux box / Mac / What it needs): `.ipanel`'s own `display: flex`
+  outranked the browser's default `[hidden] { display: none }`, so all three panels showed at
+  once on load, and nothing wired the tabs' clicks in the first place (`app.js` had no listener
+  for `.itabs`). Screenshot-verified on testbox with `vyre-chrome --headless=new`: the Mac and
+  What-it-needs panels are hidden until their tab is picked.
 
 ### The first landing page (2026-09-26)
 

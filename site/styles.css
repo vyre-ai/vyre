@@ -127,6 +127,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .itab[aria-selected="true"]::after { content: ""; position: absolute; left: 12px; right: 12px; bottom: -1px; height: 2px; background: var(--signal); border-radius: 1px; }
 .itab:focus-visible { outline-offset: -2px; }
 .ipanel { padding: 16px 20px; font-size: 14px; line-height: 21px; color: var(--stone); display: flex; flex-direction: column; gap: 10px; }
+.ipanel[hidden] { display: none; }
 .ipanel:focus-visible { outline-offset: -2px; }
 .ipanel code { color: var(--bone); }
 .mini-cmd { display: flex; align-items: center; gap: 10px; padding: 6px 6px 6px 12px; border: 1px solid var(--rule); border-radius: var(--r-2); background: var(--graphite); }
