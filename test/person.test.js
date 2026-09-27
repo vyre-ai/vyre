@@ -30,6 +30,8 @@ const lenient = {
   challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
   covered: () => false,
   coverage: () => ({ covered: false, since: null, expires: null }),
+  enrolled: /** @type {any[]} */ ([]),
+  enroll(k) { this.enrolled.push(k); return { id: `kh${this.enrolled.length}`, kind: k.kind, name: k.name }; },
 };
 
 async function box(t) {
@@ -222,8 +224,9 @@ test("person: the native app returns to vyre:// and must sign the trade with the
   const key = publicKey.export({ format: "jwk" });
   assert.equal((await call(PHONE_IP, "presence.person.start", { cc, return: "vyre://elsewhere/x" }, { "x-vyre-presence": "passkey id=x" })).error.code, "denied");
   const code = async () => (await call(PHONE_IP, "presence.person.start", { cc, return: "vyre://person/signin" }, { "x-vyre-presence": "passkey id=x" })).data.code;
+  const human = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "jwk" });
   const trade = (c, k = privateKey, extra = {}) => {
-    const body = { code: c, verifier, key };
+    const body = { code: c, verifier, key, human };
     const t2 = Date.now(), n = crypto.randomBytes(12).toString("base64url");
     const sig = crypto.sign("sha256", Buffer.from(signed({ method: "POST", path: "/v1/person/token", raw: JSON.stringify(body), t: t2, n })), { key: k, dsaEncoding: "ieee-p1363" }).toString("base64url");
     return send(PHONE_IP, "POST", "/v1/person/token", body, { "x-vyre-proof": `t=${t2} n=${n} sig=${sig}`, ...extra });
@@ -232,7 +235,14 @@ test("person: the native app returns to vyre:// and must sign the trade with the
   const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
   assert.equal((await trade(await code(), other)).error.code, "denied", "signed by another key");
   assert.equal((await trade(await code(), privateKey, { "x-test-origin": "https://app.vyre.run" })).error.code, "denied", "a web page cannot trade a native code");
+  const before = lenient.enrolled.length;
   const ok = await trade(await code());
   assert.equal(ok.status, 200, JSON.stringify(ok));
+  // The biometric key rides the trade: enrolled as a device presence key, for HUMAN_ONLY proofs.
+  assert.match(ok.data.human.key, /^kh\d+$/);
+  const k = lenient.enrolled[lenient.enrolled.length - 1];
+  assert.equal(lenient.enrolled.length, before + 1);
+  assert.deepEqual([k.kind, k.alg], ["device", -7]);
+  assert.equal(crypto.createPublicKey({ key: Buffer.from(k.public_key, "base64url"), format: "der", type: "spki" }).export({ format: "jwk" }).x, human.x);
   assert.match(ok.data.token, /^[\w-]+\.[\w-]+$/);
 });

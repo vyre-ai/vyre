@@ -6,6 +6,7 @@
 // nowhere else. Networking over Tailscale is layered on later by the names module; the socket
 // is always the local way in and never leaves the machine.
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
@@ -358,7 +359,21 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     const r = people ? people.exchange({ code: String(b.code || ""), verifier: String(b.verifier || ""), key: b.key, node: nodeId || "", origin: policy.peer && /** @type {any} */ (policy.peer).origin || null,
       request: { headers: req.headers, method: req.method || "POST", path: url.pathname + url.search, raw } }) : { error: { code: "denied", message: "no person sessions here" } };
     if (r.data) events.emit("presence", "presence.signed-in", { id: r.data.id, node: policy.peer && policy.peer.node, app: true });
-    return send(res, r.error ? (r.error.code === "bad_input" ? 400 : 403) : 200, r);
+    // The native app's biometric key (vyre.human): enrolled as a device presence key with the
+    // sign-in it rides on (a passkey on the box's page, moments ago), so its HUMAN_ONLY proofs
+    // (x-vyre-presence `device ...`, the same 30-minute session as Touch ID) need no passkey.
+    const h = b.human;
+    if (r.data && /** @type {any} */ (r).native && h && h.kty === "EC" && h.crv === "P-256" && typeof h.x === "string" && typeof h.y === "string" && !h.d
+      && !(b.key && h.x === b.key.x && h.y === b.key.y) && registry.deps.presence && typeof registry.deps.presence.enroll === "function") {
+      try {
+        const spki = crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: h.x, y: h.y }, format: "jwk" }).export({ format: "der", type: "spki" }).toString("base64url");
+        const k = registry.deps.presence.enroll({ kind: "device", name: `${/** @type {any} */ (r).label || "phone"} (biometric)`, public_key: spki, alg: -7 });
+        events.emit("presence", "presence.enrolled", { id: k.id, kind: k.kind, name: k.name });
+        r.data.human = { key: k.id };
+      } catch (e) { r.data.human = { error: /** @type {Error} */ (e).message }; }
+    }
+    const out = { ...(r.data ? { data: r.data } : {}), ...(r.error ? { error: r.error } : {}) };
+    return send(res, r.error ? (r.error.code === "bad_input" ? 400 : 403) : 200, out);
   }
   if (device && req.method === "POST" && url.pathname === "/v1/person/end") {
     if (person) { people.revoke(person.id); events.emit("presence", "presence.signed-out", { id: person.id }); }
