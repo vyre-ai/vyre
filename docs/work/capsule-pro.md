@@ -88,41 +88,34 @@ without editing Capsule files:
 - Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
   fix, the extension seam, `@` targets: see CHANGELOG.
 
-## Doing (saved at logout 4, 2026-09-27)
-Branch tip 996a7ee8 (pushed). Swift 297/297. Built today: shortcuts (⌘A etc.), session events and
-the paced reveal, auto-answer and the follow-up box, voice and computer use (see CHANGELOG).
+## Doing (session 5, 2026-09-27, after logout 4)
+Merged main 7880dfa6 (b3c63eb5). Done this session: the answer card grows, then scrolls (540d55ba,
+c1a9223f: keys, follow, thumb, Jump to latest, no empty headings, whole-row results); ⌘⏎ in the
+same thread with threads.model + threads.thinking (f7e7fb52). Swift 304/304.
+Now: app-design's capsule.md (vyre-app-design docs/design/system/capsule.md, 6f8ae52f), in tasks:
+T1 geometry, copy, sentence case, footer states; T2 voice and computer-use surfaces, layered Esc.
+Blocked: Vyre IQ iq.ask (memory-iq not on main); the hub theme (/v1/appearance/theme, not on main).
 
-The TRIAL is left RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
-- trial vyred pid 58916 (`node core/daemon/main.js` from this worktree)
-- trial Capsule pid 13018 (this worktree's .build/Vyre.app, launched with
-  `open -n --env VYRE_HOME=/private/tmp/claude-501/vyre-try --env VYRE_ALLOW_DIALOGS=1 <app>`)
+The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
+- trial vyred pid 58916 (`node core/daemon/main.js` from this worktree, started before the merge,
+  so it has no threads.model: ⌘⏎ falls back to a new thread until it restarts; its config points
+  at the real box and a restart may make a pairing request, so ask the lead first)
+- trial Capsule relaunched on each new build: `open -n -g --env VYRE_HOME=/private/tmp/claude-501/vyre-try --env VYRE_ALLOW_DIALOGS=1 local/capsule/native/.build/Vyre.app`
+  (find the pid with `pgrep -f vyre-capsule-pro/local/capsule/native/.build/Vyre.app`)
 - Stop: quit from the menu-bar mark ("Quit Vyre Capsule"), then
-  `VYRE_HOME=/private/tmp/claude-501/vyre-try vyre down` (from this worktree: `node bin/vyre down`).
-- Its config points at the real box; `vyre up` there makes a pairing request (deny it).
+  `VYRE_HOME=/private/tmp/claude-501/vyre-try node bin/vyre down`.
 - The real Vyre (global npm 0.0.1, vyred 60055, ~/.vyre) is untouched.
 
 ## Next
-1. USER BUG, TOP PRIORITY. (a) The answer area clips mid-line in a fixed box with no scroll. Make
-   the answer card grow to the panel's max height, then scroll: trackpad, and ⌘↑/⌘↓ and
-   PageUp/PageDown while the box keeps focus. Never clip mid-line. Auto-follow the stream unless
-   the user scrolled up. Add a snapshot test with a long answer. Today the answer at the top is
-   capped at 200 pt and `.clipped()` (CapsuleView `answer.frame(maxHeight: 200)`), and answerAlone
-   scrolls without keys. (b) The "SEND TO" and "COMMANDS" headings render with no rows: hide
-   empty sections.
-2. ⌘⏎ Think deeper: switch the SAME thread with sessions' threads.model and thinking on (db44749b,
-   batch 3b) once it is on main, instead of the new-thread fallback in AutoAsk.deeper().
-3. Design A: app-design's docs/design/system/capsule-mac.md (work/app-design c4f9bb23) and
-   capsule.md when it lands. In their order: every token from Tokens.generated.swift (sizes,
-   fonts, motion; no 10.5/11.5/14/22 and no gold literal); violet and gold misuse; one button system
-   (lime primary, 28/32, busy and disabled); duplicates (one turn renderer, one selected
-   marker); 44 pt rows; sentence case; the presence line; Always in <project> on the ask card.
-4. The settings hub (native-core): read /v1/theme and settings at launch, repaint on
-   settings.changed, and keep Theme.swift as the offline fallback only.
-5. The real-Vyre install after tonight's deploy, through the normal update path (the lead
-   arranges it with the user); then the 11-step real-Mac check below.
-6. "idle" on @ session rows from threads.list `status`. Persist PlannerBanners.unsent.
-7. Voice and computer use first-class are built; the live checks need the user (speech key in the
-   trial via `vyre voice key deepgram`, and the Microphone, Accessibility and Screen Recording grants).
+1. capsule.md T1 and T2 (above), then the rest of its Gaps list that is not blocked.
+2. Vyre IQ: iq.ask {stream: true} when memory-iq lands it: stages, source chips ⌘1..⌘3, "Not sure"
+   with known, nothing found.
+3. The settings hub (native-core, app-design appearance): GET /v1/appearance/theme at launch,
+   repaint on appearance.changed; Tokens.generated.swift as the offline fallback only.
+4. The real-Vyre install after tonight's deploy, only with the lead's go; then the 11-step check.
+5. "idle" on @ session rows from threads.list `status`. Persist PlannerBanners.unsent.
+6. Voice and computer use live checks need the user (speech key, Mic / Accessibility / Screen
+   Recording grants).
 
 ## Footprint: met (2026-09-27)
 - CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use
