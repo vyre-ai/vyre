@@ -293,7 +293,8 @@ let screenAttachSuite = Suite("screen attach") { t in
             out.append("failure \(await f.attachment(for: "summarize this", to: .project) == nil)")
             // Hidden while waiting: the question answers nil and nothing is read afterwards.
             let late = AttachLink(); late.answer("screen.context") { input in .success(context(text: (input["text"] as? Bool) == true ? PAGE : "")) }
-            let (_, h) = ext(late); h.attachDebounce = .milliseconds(80); h.capsuleWillShow(front: nil)
+            // A rest long enough that a slow runner's 10 ms sleep never outlasts it.
+            let (_, h) = ext(late); h.attachDebounce = .milliseconds(500); h.capsuleWillShow(front: nil)
             async let pending = h.attachment(for: "summarize this", to: .ask)
             try? await Task.sleep(for: .milliseconds(10))
             h.capsuleDidHide()

@@ -31,6 +31,8 @@ struct CapsuleView: View {
                 VStack(spacing: 0) {
                     if let a = model.presenceAsk {
                         PresenceView(ask: a, hasTouchID: LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: nil))
+                    } else if let c = model.credentialAsk {
+                        CredentialView(ask: c) { Task { await model.saveCredential() } }
                     } else if AgentLayout.deskShown(model) {
                         // What waits on the user (the list, a card) or ⌘K takes the whole area (Agent/).
                         AgentLayout.desk(model)
@@ -307,7 +309,7 @@ enum CapsuleLayout {
     static let lineHeight: CGFloat = Tokens.Control.sm
 
     @MainActor static func isOpen(_ m: CapsuleModel) -> Bool {
-        m.presenceAsk != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
+        m.presenceAsk != nil || m.credentialAsk != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
     }
 
     /// The panel's height: the bar alone, the bar and a line, or the bar and the fixed area (560).
@@ -388,6 +390,7 @@ enum CapsuleLayout {
         let openInVyre: [Hint] = m.reply.map { !$0.thread.isEmpty } == true ? [Hint("Open in Vyre", ["⌘", "O"])] : []
         let escText = Hint(m.text.isEmpty ? "Hide" : "Clear", ["esc"])
         if m.presenceAsk != nil { return [Hint("Cancel", ["esc"])] }
+        if let c = m.credentialAsk { return c.saving ? [] : [Hint("Save in the vault", ["⏎"]), Hint("Cancel", ["esc"])] }
         if m.actionMenu.isOpen { return [move, Hint("Run", ["⏎"]), Hint("Back", ["esc"])] }
         switch m.desk.mode {
         case .list:

@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A missing key is added in the panel, never through a terminal
+
+- The user's feedback: "No speech key is saved. Run: vyre voice key" is gone. With no speech
+  key, Option-Return shows "Add your Deepgram key" in the panel with a secure field; ⏎ saves it in
+  the vault as the person (Touch ID in the panel), then talk starts. Esc leaves it and says the
+  key is still missing. Kit: `CapsuleHost.askCredential(_:saved:)` and `CredentialNeed`, so any
+  extension can ask for its key the same way.
+- Saving uses vault.connect {module, need, fields} where vyred has it (ADR 0028 decision 9, its
+  field list and help from vault.need; an OAuth need's next call is made; a pending grant is
+  said), else vault.put then vault.grant, the pair `vyre voice key` makes. The typed value is
+  cleared after the one call, whatever it answers; a failure stays on the row under the field.
+- `Sources/Host/Credentials.swift`, `Sources/UI/CredentialView.swift`; `Tests/CredentialsTests.swift`,
+  `Tests/Sight/SightTests.swift`.
+- Tests hardened for loaded runners: the queued-session test says the hand-over again until heard,
+  and the screen test that hides mid-wait rests 500 ms (capsule-mac failed on it once).
+
 #### The Capsule always knows what is on screen
 
 - The user's feedback: quick answers and "do ..." carry the screen by default now, not only when

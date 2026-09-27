@@ -151,6 +151,8 @@ public final class CapsuleModel: ObservableObject {
     @Published var memoryExpanded = false
     /// A human-only call waiting for the person to prove they are here (Presence.swift).
     @Published var presenceAsk: PresenceAsk?
+    /// "Add your Deepgram key": a module's missing key, asked for in the panel (Credentials.swift).
+    @Published var credentialAsk: CredentialAsk?
     /// Bumped when an extension shows or hides its panel, so the view draws it again.
     @Published var panelTick = 0
 

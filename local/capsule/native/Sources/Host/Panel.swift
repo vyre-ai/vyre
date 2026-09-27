@@ -214,6 +214,7 @@ final class PanelController: NSObject, NSWindowDelegate {
         switch e.keyCode {
         case 53: // escape
             if model.presenceAsk != nil { model.cancelPresence(); return true }
+            if model.credentialAsk != nil { model.cancelCredential(); return true }
             if model.confirming != nil { model.confirming = nil; model.line = nil; return true }
             if let r = model.reply, !r.finished { model.stopReply(); return true }
             // An answer on screen, or the follow-up box: back to plain search. The next Esc hides.
@@ -247,6 +248,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         case 126 where !e.modifierFlags.contains(.command) && !shift && !e.modifierFlags.contains(.option): model.move(-1); return true
         case 36, 76: // return; a held key is one press, so a held Enter never confirms what it showed
             if e.isARepeat { return true }
+            // A key being added: ⏎ saves it (the field's own submit does the same).
+            if model.credentialAsk != nil { Task { await model.saveCredential() }; return true }
             // A question: ⏎ asks (or keeps the answer and opens the follow-up box), ⌘⏎ thinks deeper.
             if !shift, model.handleReturn(command: cmd) { return true }
             if cmd || shift { return model.run(shortcut: KeyShortcut("return", command: cmd, shift: shift)) }
