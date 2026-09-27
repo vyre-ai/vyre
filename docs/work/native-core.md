@@ -38,6 +38,35 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
 - core/modules/index.js CALL_AS: settings may call as cli/local/deck/capsule.
 - scripts/lib/docs/check.js OWNERS: + native-core.
 
+## Paseo mapping (start from Paseo, improve a little)
+
+Source: reference/paseo (Apache 2.0). Anything ported carries: "Portions derived from Paseo,
+Copyright (c) 2025-present Mohamed Boudra, Apache License 2.0" (NOTICE is on main).
+Read: root AGENTS.md, docs/architecture, agent-stream-performance, timeline-sync, design,
+coding-standards, testing, qa, product, glossary, forms, data-model, agent-lifecycle, permissions,
+public-docs/configuration and agent-profiles, plus the code below.
+
+| Piece | How Paseo does it | We reuse / port | Our improvement |
+|---|---|---|---|
+| Stream coalescing | server agent-stream-coalescer.ts: 60 ms window, leading + trailing flush, same-message text joined, tool finish flushes at once | port the coalescer into the switchboard/sessions (ours is a flat 50 ms flush) | first delta always leading-edge; server timestamp `t` on thread.text so the native bar measures box-to-screen |
+| Client commit | session-stream-reducers.ts: one commit per rAF, raced by a 48 ms timer | port the scheduler into deck/chat (chat owns) | none needed |
+| Paced reveal | text-reveal.ts: ceil(backlog*dt/150), 60 Hz cap, grapheme-safe, first sight whole, snap at end | port verbatim into deck/chat/core/pace.js (chat) | same rules shared with the Capsule (Swift) and the app, one spec |
+| Incremental markdown | split-markdown-blocks.ts + presentation.ts: re-parse only the tail block, rows `${id}:block:n` | port split-markdown-blocks; adapt: frozen DOM nodes, tail innerHTML only | code blocks highlighted once, on close |
+| Transcript list | tanstack virtual past 100 rows, last 20 mounted, height estimates, bottom-anchor-controller (sticky/detached, intent-only detach) | adapt: our window-view + Paseo's intent-only detach rule (chat) | measured by native-bar budget 5 (no jump while scrolled up) |
+| Tool rows, diffs | ToolCallDetail union, Claude tool-call mapper, diff-layout.ts, 64 KiB output cap | port the mapper shape server-side (sessions) and diff-layout (chat) | tool input streams live (thread.tool carries input + capped output) |
+| Asks, questions, plan | question-form-card-core.ts (pure); a pending permission turns queue into interrupt | port question-form-card-core; copy the rule | one ask card across Deck, app, Capsule and the Needs list |
+| Composer | send behaviour steer/queue/interrupt (default steer), Cmd+Enter the other; queue pills with edit/send now; drafts every 200 ms; attachments; / and @ autocomplete | port input/state.ts rules, file-mention and command autocomplete; drafts to localStorage | up-arrow history (Paseo has none); @ scoped to the session folder; hidden chips for missing tools |
+| Stop | interrupt idempotent, cancel UI turn first, withdraw unread steers, 3 s timeout | port the rules (sessions + chat) | "Stopping" painted on keydown (budget 10) |
+| Rewind | enableFileCheckpointing; rewindFiles; conversation via forkSession(upToMessageId); menu from capability flags (conversation, files, both) | port rewind.ts semantics (sessions has rewind with restore now) and the three-item menu | the rewound prompt returns to the composer; checkpoints are a setting (sessions.checkpoints) |
+| Model, mode, thinking | setModel, setPermissionMode live; thinking change says "applies next turn" | port the setter semantics | per-purpose model map in Settings |
+| Resume, reconnect | epoch + seq, drop stale, gap fetch until hasNewer false, cache tail then reconcile | follow() on work/pwa already has cursor + reset (resilience) | nothing new: measure it (budget 8) |
+| Settings | three tiers: daemon config.json (zod, strict), per-project paseo.json (mtime revision guard), client prefs (zod .catch per field); screens from SettingsCard/Row/Section; provider options have no UI | adapt: the tiers become levels (account, project) plus per-device prefs; the Row shape | every option has a UI and a CLI (`vyre config`); modules declare settings in their manifest; each row says where the value comes from; Claude Code's own files shared with the terminal; confirm/proof for loosening |
+| Perf | agent-stream-smoothness spec: CV < 2, p95 gap < 250 ms, seeded bursty mock | adapted as deck/test/native-bar | more budgets (keys, reconnect, send, Esc, scroll), and a terminal comparison |
+| Docs | AGENTS.md "writing docs", coding-standards, glossary with forbidden synonyms | propose to docs: a glossary for Steer, Queue, Rewind, Mode | |
+
+Built new only where Paseo has nothing: up-arrow recall, settings levels with a source per row and
+Claude Code file sharing, the terminal comparison in the harness.
+
 ## Next (1-week plan)
 1. Day 1-2: core/settings registry + adapters, `settings.*` tools, `settings.changed`,
    `vyre config`. Tests in a temp home.
