@@ -58,7 +58,7 @@ function parse(src) {
 
 /** The Lead mark. dot: "signal" (default), "beacon" for needs-you, "ink" on paper. */
 export function mark(size = 20, dot = "signal") {
-  const fill = dot === "beacon" ? "var(--beacon-dot)" : dot === "ink" ? "var(--text)" : "var(--signal)";
+  const fill = dot === "beacon" ? "var(--beacon-dot)" : dot === "ink" ? "var(--text)" : "var(--focus)";
   const m = parse(`<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3.5 5.5L12 19.5L17.96 9.69" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><circle cx="20.5" cy="5.5" r="2.3"/></svg>`);
   const c = /** @type {SVGElement} */ (m.querySelector("circle"));
   c.style.fill = fill;

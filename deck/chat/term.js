@@ -115,7 +115,7 @@ function theme() {
     cursor: v("--focus", "#C6F36B"), cursorAccent: v("--panel", "#161513"),
     selectionBackground: v("--rule-strong", "#3A3733"),
     red: v("--beacon-ink", "#B8A4FF"), brightRed: v("--beacon-dot", "#B8A4FF"),
-    green: v("--focus", "#C6F36B"), brightGreen: v("--signal-hover", "#D4F88A"),
+    green: v("--focus", "#C6F36B"), brightGreen: v("--focus", "#C6F36B"),
     yellow: v("--recall-ink", "#EBC76B"), brightYellow: v("--recall", "#EBC76B"),
     brightBlack: v("--label", "#8C877D"),
   };

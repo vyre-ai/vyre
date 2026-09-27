@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck paints with token roles only (Design A v1)
+
+- deck.css no longer defines --graphite, --carbon, --raised, --ash, --stone, --bone, --signal,
+  --signal-hover, --signal-ink, --beacon or --r-1 to --r-4. Their uses in deck/ moved to the
+  roles in tokens.css: lime marks, rings, carets, dots and accent text are `--focus`, fills are
+  `--primary-*`, a sheet's backdrop is `--scrim`. The Agents Computer preview keeps its fixed
+  dark drawing under `--swatch-*`, defined once in deck.css.
+- Radii are `--radius-chip` (4), `--radius-button` and `--radius-field` (8, was 6),
+  `--radius-card` (12, was 10) and `--radius-sheet` (14), each with its value as a fallback
+  until app-design's radius tokens land in tokens.css.
+- --recall*, --beacon-wash and --beacon-rule stay in deck.css, grouped as Deck-only until they
+  have a role.
+- On paper, the chat view's lime (running states, links, keyword colour, live dots, the caret),
+  Memory's ring, the terminal's live dot and the Lead mark's dot now take paper's `--focus`
+  green instead of staying dark-theme lime.
+- deck/test/tokens.test.js fails if a raw name comes back anywhere under deck/, if deck.css
+  defines a radius token, or if a swatch is used outside the Computer preview.
+
 #### The Deck's phone switch point is 720 (Design A v1)
 
 - The phone query is now `(max-width: 719px), (max-height: 500px) and (pointer: coarse)` and the

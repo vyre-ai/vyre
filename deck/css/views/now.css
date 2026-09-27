@@ -9,7 +9,7 @@
 /* No assistant yet: the Create your assistant card (js/assistant-setup.js) stands in for the line.
    The same rules are in agents.css, since each view loads only its own stylesheet. */
 .now-assistant.has-card { font-size: inherit; line-height: inherit; color: var(--text); margin-top: 8px; }
-.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--r-3); background: var(--panel); }
+.asst-card { padding: 20px 24px 18px; border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px); background: var(--panel); }
 .asst-title { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; margin: 0; color: var(--text); }
 .asst-lede { margin: 4px 0 0; font-size: 14px; line-height: 20px; }
 .asst-form { display: flex; flex-direction: column; gap: 6px; margin-top: 16px; max-width: 480px; }
@@ -31,7 +31,7 @@
 .need { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; padding: 16px 20px; }
 .need-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
 .need h3 { font-size: 17px; line-height: 24px; font-weight: 600; }
-.need-cmd { font-size: 15px; font-weight: 500; padding: 1px 6px; border-radius: var(--r-1); background: var(--code-bg); }
+.need-cmd { font-size: 15px; font-weight: 500; padding: 1px 6px; border-radius: var(--radius-chip, 4px); background: var(--code-bg); }
 .need-why { margin-top: 4px; font-size: 14px; line-height: 20px; color: var(--text-2); }
 /* Send was approved and the sender failed: still needs the user, so it takes the Beacon colour. */
 .need-error { margin-top: 0; color: var(--beacon-ink); }

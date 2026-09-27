@@ -14,15 +14,14 @@
      tokens.css, generated from docs/design/one-app/tokens.json and linked before this file. Paper
      swaps them there. What follows has no token yet. */
 
-  /* Swatches a few drawings use in both themes (a terminal preview stays graphite on paper). */
-  --graphite: #0E0D0C; --carbon: #161513; --raised: #1E1C1A;
-  --ash: #8C877D; --stone: #B3AEA4; --bone: #F1EEE6;
-  --signal: #C6F36B; --signal-hover: #D4F88A; --signal-ink: #0E0D0C;
-  --recall: #EBC76B; --recall-wash: rgba(235,199,107,0.10);
-  --beacon: #B8A4FF; --beacon-wash: rgba(184,164,255,0.12); --beacon-rule: rgba(184,164,255,0.28);
-  --recall-ink: var(--recall);
+  /* Fixed swatches for a drawing that stays dark in both themes: the Agents Computer preview
+     (css/views/agents.css), whose terminal stays graphite on paper. Not a role; nothing else uses them. */
+  --swatch-graphite: #0E0D0C; --swatch-raised: #1E1C1A; --swatch-ash: #8C877D; --swatch-stone: #B3AEA4;
 
-  --r-1: 4px; --r-2: 6px; --r-3: 10px; --r-4: 14px;
+  /* Deck-only, no token yet: asked of app-design. */
+  --recall: #EBC76B; --recall-wash: rgba(235,199,107,0.10); --recall-ink: var(--recall);
+  --beacon-wash: rgba(184,164,255,0.12); --beacon-rule: rgba(184,164,255,0.28);
+
   --light-top: var(--float);
   --popover: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);
 }
@@ -71,23 +70,23 @@ code, .mono { font-family: var(--mono); }
 .link.quiet { text-decoration-color: transparent; }
 .link.quiet:hover { text-decoration-color: var(--rule-strong); }
 .kbd { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--rule-strong);
-  border-radius: var(--r-1); font-family: var(--mono); font-size: 11px; color: var(--label); }
-.input { height: 40px; width: 100%; padding: 0 12px; border-radius: var(--r-2); border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-chip, 4px); font-family: var(--mono); font-size: 11px; color: var(--label); }
+.input { height: 40px; width: 100%; padding: 0 12px; border-radius: var(--radius-field, 8px); border: 1px solid var(--rule-strong);
   background: var(--panel); color: var(--text); font-size: 15px; outline: none; }
 .input:focus { border-color: var(--focus); }
 .input::placeholder { color: var(--label); }
 textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height: 22px; }
 .chip { display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 8px; border: 1px solid var(--rule-strong);
-  border-radius: var(--r-1); font-size: 13px; line-height: 18px; color: var(--text); }
+  border-radius: var(--radius-chip, 4px); font-size: 13px; line-height: 18px; color: var(--text); }
 .tag { display: inline-flex; align-items: center; height: 20px; padding: 0 6px; border: 1px solid var(--rule-strong);
-  border-radius: var(--r-1); font-family: var(--mono); font-size: 11px; color: var(--text-2); }
+  border-radius: var(--radius-chip, 4px); font-family: var(--mono); font-size: 11px; color: var(--text-2); }
 /* A row from the paired Mac (js/machine.js), and a Mac that is away: quieter, dashed. */
 .tag.machine { flex-shrink: 0; max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tag.machine.off { color: var(--label); border-style: dashed; max-width: none; }
 .machine-offline { display: inline-flex; flex-wrap: wrap; gap: 6px; }
 .readonly-note { color: var(--label); font-size: 13px; line-height: 18px; }
 .initial { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r-1); background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text);
+  border-radius: var(--radius-chip, 4px); background: var(--hover); border: 1px solid var(--rule-strong); color: var(--text);
   font-family: var(--mono); font-size: 11px; font-weight: 500; }
 .sw { position: relative; width: 34px; height: 20px; border-radius: 10px; border: none; padding: 0; cursor: pointer; flex-shrink: 0;
   background: var(--rule-strong); }
@@ -100,7 +99,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 /* .dot.beacon (needs you) and the path dots .dot.health-* (deck/js/health.js) are drawn in css/marks.css. */
 .bar { height: 4px; border-radius: 2px; background: var(--rule); overflow: hidden; }
 .bar > span { display: block; height: 100%; background: var(--text); transition: width 200ms linear; }
-.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--r-2); padding: 2px; gap: 2px; }
+.seg { display: inline-flex; border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); padding: 2px; gap: 2px; }
 .seg button { height: 26px; padding: 0 12px; border: none; border-radius: 4px; background: transparent; color: var(--text-2);
   font-size: 13px; cursor: pointer; }
 .seg button[aria-pressed="true"] { background: var(--hover); color: var(--text); }
@@ -110,8 +109,8 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .rows > *:last-child { border-bottom: none; }
 .section-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 12px;
   border-bottom: 1px solid var(--rule); }
-.recalled { background: var(--recall-wash); border-radius: var(--r-3); padding: 12px 14px; }
-.held { background: var(--beacon-wash); border-radius: var(--r-3); }
+.recalled { background: var(--recall-wash); border-radius: var(--radius-card, 12px); padding: 12px 14px; }
+.held { background: var(--beacon-wash); border-radius: var(--radius-card, 12px); }
 .empty { padding: 20px 0; color: var(--text-2); font-size: 14px; line-height: 20px; }
 .empty .code { display: block; margin-top: 6px; }
 .fixture-note { font-family: var(--mono); font-size: 11px; color: var(--label); }
@@ -124,19 +123,19 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .top { height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 0; border-bottom: 1px solid var(--rule); }
 .brand { width: 216px; height: 48px; flex-shrink: 0; display: flex; align-items: center; gap: 10px; padding-left: 20px; text-decoration: none; }
 .address { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border: 1px solid var(--rule);
-  border-radius: var(--r-2); font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 1; min-width: 0; max-width: 460px;
+  border-radius: var(--radius-field, 8px); font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--label); flex-shrink: 1; min-width: 0; max-width: 460px;
   white-space: nowrap; overflow: hidden; }
 /* One line: a long thread path ends in an ellipsis instead of wrapping the pill. */
 .address > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .address > svg { flex-shrink: 0; }
 .address b { font-weight: 400; color: var(--text); }
 .search { position: relative; display: flex; align-items: center; gap: 10px; height: 32px; width: 420px; min-width: 160px;
-  padding: 0 8px 0 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-2); color: var(--label); flex-shrink: 1; }
+  padding: 0 8px 0 12px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-field, 8px); color: var(--label); flex-shrink: 1; }
 .search input { flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; color: var(--text); font-size: 13px; }
 .search input::placeholder { color: var(--label); }
 .search-pop { position: absolute; top: 38px; left: -1px; right: -1px; background: var(--panel); border: 1px solid var(--rule-strong);
-  border-radius: var(--r-3); box-shadow: var(--popover); max-height: 420px; overflow: auto; z-index: 20; padding: 6px; }
-.search-pop a { display: block; padding: 8px 10px; border-radius: var(--r-2); text-decoration: none; }
+  border-radius: var(--radius-card, 12px); box-shadow: var(--popover); max-height: 420px; overflow: auto; z-index: 20; padding: 6px; }
+.search-pop a { display: block; padding: 8px 10px; border-radius: var(--radius-field, 8px); text-decoration: none; }
 .search-pop a:hover, .search-pop a.on { background: var(--hover); }
 .needs-pill { display: flex; align-items: center; gap: 8px; height: 28px; padding: 0 12px; border-radius: 14px; background: var(--beacon-wash);
   color: var(--beacon-ink); text-decoration: none; font-size: 13px; line-height: 18px; font-weight: 500; white-space: nowrap; }
@@ -145,7 +144,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
   display: inline-flex; align-items: center; justify-content: center; }
 .body { flex-grow: 1; min-height: 0; display: flex; }
 .rail { width: 216px; flex-shrink: 0; display: flex; flex-direction: column; padding: 16px 12px; border-right: 1px solid var(--rule); overflow: auto; }
-.rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 10px; border-radius: var(--r-2); color: var(--text-2);
+.rail-a { display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 10px; border-radius: var(--radius-field, 8px); color: var(--text-2);
   text-decoration: none; font-size: 14px; line-height: 20px; }
 .rail-a:hover, .rail-a[aria-current="page"] { background: var(--hover); color: var(--text); }
 .rail-a .count { margin-left: auto; font-family: var(--mono); font-size: 11px; line-height: 14px; color: var(--beacon-ink); }
@@ -153,7 +152,7 @@ textarea.input { height: auto; padding: 10px 12px; resize: vertical; line-height
 .rail-pins { display: flex; flex-direction: column; gap: 2px; margin-top: 28px; padding-top: 16px; border-top: 1px solid var(--rule); }
 /* A view's own rail content (ctx.rail), e.g. Vault's places. Empty and invisible until filled. */
 .rail-lower:not(:empty) { display: flex; flex-direction: column; gap: 2px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--rule); }
-.pin-a { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: var(--r-2); color: var(--text-2);
+.pin-a { display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 10px; border-radius: var(--radius-field, 8px); color: var(--text-2);
   text-decoration: none; font-size: 13px; line-height: 18px; }
 .pin-a:hover, .pin-a[aria-current="page"] { background: var(--hover); color: var(--text); }
 .pin-a .sq { width: 6px; height: 6px; border: 1px solid var(--label); border-radius: 1px; flex-shrink: 0; }

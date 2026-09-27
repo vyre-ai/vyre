@@ -7,7 +7,7 @@
 .set-col { width: 760px; min-width: 0; max-width: 100%; }
 .set-nav { width: 184px; flex-shrink: 0; position: sticky; top: 36px; align-self: flex-start; display: flex; flex-direction: column; gap: 2px;
   padding-top: 124px; }
-.set-nav-a { display: block; padding: 6px 10px; border-radius: var(--r-2); font-size: 13px; line-height: 18px; color: var(--label);
+.set-nav-a { display: block; padding: 6px 10px; border-radius: var(--radius-field, 8px); font-size: 13px; line-height: 18px; color: var(--label);
   text-decoration: none; }
 .set-nav-a:hover { color: var(--text); background: var(--hover); }
 .set-nav-a[aria-current="true"] { color: var(--text); }
@@ -40,7 +40,7 @@
 .set-lock-steps code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
 /* A command the person runs themselves, with its copy button; lists inside a row; a finding. */
 .set-cmd { display: flex; align-items: flex-start; gap: 6px; max-width: 100%; margin-top: 2px; }
-.set-cmd code { flex: 1 1 auto; min-width: 0; padding: 5px 8px; border-radius: var(--r-1); background: var(--code-bg); font-size: 12px; line-height: 18px; }
+.set-cmd code { flex: 1 1 auto; min-width: 0; padding: 5px 8px; border-radius: var(--radius-chip, 4px); background: var(--code-bg); font-size: 12px; line-height: 18px; }
 .set-cmd .ibtn { width: 28px; height: 28px; }
 .set-plain { list-style: none; margin: 2px 0; padding: 0; display: flex; flex-direction: column; gap: 6px; min-width: 0; max-width: 100%; }
 .set-warn { color: var(--beacon-ink); }
@@ -53,7 +53,7 @@
 /* Setup: the onboarding's step list, one row per step. */
 .set-step { display: flex; align-items: center; gap: 14px; min-height: 60px; padding: 10px 0; }
 .set-check { width: 22px; height: 22px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  border: 1px solid var(--rule-strong); border-radius: var(--r-1); color: var(--text-2); }
+  border: 1px solid var(--rule-strong); border-radius: var(--radius-chip, 4px); color: var(--text-2); }
 .set-check.done { color: var(--text); }
 .set-step-main { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .set-step-title { display: flex; align-items: baseline; gap: 12px; font-size: 14px; line-height: 20px; }
@@ -102,5 +102,5 @@
 }
 
 /* Your devices: a phone or tablet Tailscale reports offline. */
-.set-off { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 8px 12px; background: var(--beacon-wash); border-radius: var(--r-2); max-width: 520px; }
+.set-off { display: flex; align-items: flex-start; gap: 8px; margin-top: 4px; padding: 8px 12px; background: var(--beacon-wash); border-radius: var(--radius-field, 8px); max-width: 520px; }
 .set-off svg { flex-shrink: 0; margin-top: 1px; color: var(--beacon-ink); }

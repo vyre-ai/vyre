@@ -2,13 +2,13 @@
    when a terminal opens. Deck tokens only; xterm's colours come from the same tokens in term.js. */
 
 .term { display: flex; flex-direction: column; height: 100%; min-height: 320px; background: var(--panel);
-  border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+  border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); overflow: hidden; }
 .term-head { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 8px 0 4px; border-bottom: 1px solid var(--rule); flex-shrink: 0; }
 .term-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .term-where { font-family: var(--mono); font-size: 13px; color: var(--text); }
 .term-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .term-dot { background: var(--label); }
-.term[data-state="live"] .term-dot { background: var(--signal); }
+.term[data-state="live"] .term-dot { background: var(--focus); }
 .term[data-state="connecting"] .term-dot, .term[data-state="waiting"] .term-dot { background: var(--recall); }
 .term[data-state="error"] .term-dot, .term[data-state="blocked"] .term-dot, .term[data-state="gone"] .term-dot { background: var(--beacon-dot); }
 .term-note { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px; font-size: 13px; color: var(--text-2);
@@ -33,7 +33,7 @@
 /* The key bar: shown on touch screens, where there is no Esc, Tab, Ctrl or arrows. */
 .term-keys { display: none; gap: 6px; padding: 6px 8px calc(6px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--rule);
   overflow-x: auto; flex-shrink: 0; scrollbar-width: none; }
-.term-key { flex: 0 0 auto; min-width: 44px; height: 36px; padding: 0 10px; border: 1px solid var(--rule); border-radius: var(--r-2, 6px);
+.term-key { flex: 0 0 auto; min-width: 44px; height: 36px; padding: 0 10px; border: 1px solid var(--rule); border-radius: var(--radius-button, 8px);
   background: var(--hover); color: var(--text); font-family: var(--mono); font-size: 13px; touch-action: manipulation; }
 .term-key[aria-pressed="true"] { background: var(--focus); color: var(--panel); border-color: var(--focus); }
 .term[data-state="blocked"] .term-keys, .term[data-state="ended"] .term-keys, .term[data-state="gone"] .term-keys { display: none; }
