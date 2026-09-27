@@ -23,14 +23,13 @@ import { parseRequest, requestOrigin, candidates, formatResponse } from "../git.
 import { parsePrivate, generateKey, TYPES as SSH_TYPES } from "../ssh/keys.js";
 import { SshAgent, listen, LEASE_MS } from "../ssh/agent.js";
 import { gitSync } from "../../../lib/git-safe.js";
+import { defaultField } from "../../../lib/vault-kinds/kinds.js";
 
 const PEOPLE = ["cli", "local"];
 const str = { type: "string" };
 const strs = { type: "array", items: { type: "string" } };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 
-/** The field a kind hands over when a reference names none (matches vault.js). */
-const DEFAULT_FIELD = { secret: "value", "api-key": "value", login: "password", card: "number", note: "text", "env-set": null, "ssh-key": "private" };
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const HISTORY_KEEP = 10;
 
@@ -85,12 +84,13 @@ export async function register({ ctx, vault }) {
   /** One field's value from opened fields; `otp` is the current code when there is no otp field. */
   const pick = (r, f, field) => {
     if (r.kind === "ssh-key" && (field || "private") === "private") throw new Error(`${r.name} is an ssh key; its private half never leaves vyred · use the ssh agent`);
+    if (r.kind === "passkey" && (field || "private_key") === "private_key") throw new Error(`${r.name} is a passkey; its private key never leaves vyred`);
     if (field === "otp" && !("otp" in f)) {
       if (!f.totp) throw new Error(`${r.name} has no one-time password`);
       return totp(f.totp).code;
     }
-    const want = field || DEFAULT_FIELD[r.kind];
-    if (!want) throw new Error(`${r.name} is an env-set; name the field: vault://${r.name}/<FIELD>`);
+    const want = field || defaultField(r.kind, Object.keys(f));
+    if (!want) throw new Error(`${r.name} is ${r.kind === "env-set" ? "an env-set" : `a ${r.kind}`}; name the field: vault://${r.name}/<FIELD>`);
     if (!(want in f)) throw new Error(`${r.name} has no field ${want}`);
     return f[want];
   };

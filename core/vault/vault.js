@@ -29,13 +29,19 @@ import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
-import { parseFile as parseImport, merge as mergeImport } from "./import.js";
-import { FILL_MIGRATION } from "./fill.js";
+import { parseFile as parseImport, plan as planImport } from "./import.js";
+import { REMIND_MIGRATION } from "./remind.js";
+import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "../../lib/vault-kinds/kinds.js";
+import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfiles.js";
+import { FILL_MIGRATION, FILL_KEY_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
 import { Share, SHARE_MIGRATIONS } from "./share.js";
 import { Shared, SHARED_MIGRATIONS } from "./shared.js";
 import { Devices, DEVICE_MIGRATIONS } from "./devices.js";
+import { AgentGrants, AGENT_GRANTS_MIGRATION, AUDIT_WHERE_MIGRATION, AGENT_GRANT_MACED } from "./agents.js";
+import { Emergency, EMERGENCY_MIGRATION, EMERGENCY_MACED } from "./emergency.js";
+import { CONNECTIONS_MIGRATION, CONNECTIONS_PICKER_MIGRATION, CONNECTION_MACED } from "./connections.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE vault_items (
@@ -84,13 +90,28 @@ export const MIGRATIONS = [
   // Made here now, with a mac column; tools/cli.js used to make them on the fly.
   `CREATE TABLE IF NOT EXISTS vault_ssh_keys (name TEXT PRIMARY KEY, type TEXT NOT NULL, fingerprint TEXT NOT NULL, public TEXT NOT NULL, at INTEGER NOT NULL, mac TEXT);
    CREATE TABLE IF NOT EXISTS vault_marks (name TEXT PRIMARY KEY, stale TEXT, at INTEGER NOT NULL, mac TEXT);`,
+  // ADR 0028, decision 2: agent logins, and where each use happened.
+  AGENT_GRANTS_MIGRATION,
+  AUDIT_WHERE_MIGRATION,
+  // ADR 0028: typed credentials. What the list shows beside a name (a PAT's scopes and expiry,
+  // the provider); listable, so neither sealed nor MACed, and never a value.
+  `ALTER TABLE vault_items ADD COLUMN details TEXT NOT NULL DEFAULT '{}';`,
+  // ADR 0028, decision 4: which Watchtower reasons already have a planner todo.
+  REMIND_MIGRATION,
+  // ADR 0028, decision 8: emergency access, a sealed ticket in escrow behind a waiting period.
+  EMERGENCY_MIGRATION,
+  // ADR 0028, decision 5: a phone's device key opens a fill window.
+  FILL_KEY_MIGRATION,
+  // ADR 0028, decision 9b: connections, and which surfaces may use each.
+  CONNECTIONS_MIGRATION,
+  // The account picker's ranking: the default per capability, and when each was last used.
+  CONNECTIONS_PICKER_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
 export const AGENTS = "agents", PERSONAL = "personal";
 const KV = 1;
 /** What goes in the personal vault once there is an account: these kinds, and anything with a TOTP seed. */
-const PERSONAL_KINDS = ["login", "card", "note"];
 
 /**
  * The columns of each row that decide what a value may do: where it goes, who may have it, and
@@ -100,16 +121,23 @@ const PERSONAL_KINDS = ["login", "card", "note"];
 export const MACED = {
   vault_items: ["id", "name", "kind", "url", "hosts", "origin", "rotate", "vault", "ver", "apps", "reprompt", "relay"],
   vault_grants: ["id", "item", "module", "watcher", "status"],
+  vault_agent_grants: AGENT_GRANT_MACED,
   vault_passes: ["id", "holder", "holder_sign", "holder_box", "holder_login", "items", "mode", "hosts", "methods", "paths", "expires", "status", "issued", "revoked"],
   vault_devices: ["id", "name", "token_hash", "revoked"],
+  // A phone's device key, which opens a fill window (fill.js).
+  vault_device_keys: ["device", "key"],
   vault_history: ["id", "item", "ver", "name", "vault", "at", "by", "changed", "fh"],
   // The ssh agent's record of each key's public half (what a signing prompt names), and the
   // marks that say a login must be rotated. Keyed by item name, made by tools/cli.js.
   vault_ssh_keys: ["name", "type", "fingerprint", "public"],
   vault_marks: ["name", "stale"],
+  // Who may ask for emergency access, how long they wait, and where each request stands.
+  vault_emergency: EMERGENCY_MACED,
+  // Which connection a row is, what it can do, and which surfaces may use it (ADR 0028, 9b).
+  vault_connections: CONNECTION_MACED,
 };
 /** The key column of each MACed table, where it is not `id`. */
-const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name" };
+const KEY_COL = { vault_ssh_keys: "name", vault_marks: "name", vault_device_keys: "device" };
 /** Tables MACed after the v2 upgrade: their rows from before are signed once, then checked. */
 const LATE_MACED = ["vault_ssh_keys", "vault_marks"];
 
@@ -132,13 +160,10 @@ const vkAad = (cls, kv, acct = "") => `vyre:vk:v2:${cls}:${acct ? acct + ":" : "
 const locked = message => Object.assign(new Error(message), { code: "locked" });
 const isShared = cls => String(cls || "").startsWith("shared:");
 
-export const KINDS = ["secret", "api-key", "login", "card", "note", "env-set", "ssh-key"];
+export { KINDS };
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MODULE = /^[a-z][a-z0-9-]{1,40}$/;
 const PERSON = /^[A-Za-z0-9][A-Za-z0-9 ._@-]{0,63}$/;
-/** The field a kind hands over when nobody names one. env-set has none: name the variable. */
-// ssh-key has none either: its private half is used by vyred's ssh agent and never handed out.
-const DEFAULT_FIELD = { secret: "value", "api-key": "value", login: "password", card: "number", note: "text", "env-set": null, "ssh-key": null };
 const MAX_VALUE = 64 * 1024;
 const IDENTITY = "identity";
 /** The device identity is sealed in the agent vault at a fixed version: it is written once, or by a restore. */
@@ -146,6 +171,10 @@ const IDENTITY_AT = { vault: "agents", kv: 1, id: IDENTITY, ver: 1, name: IDENTI
 
 const now = () => Date.now();
 const newId = () => crypto.randomBytes(9).toString("base64url");
+// Binds an import preview to the file it read. Random per process and never stored, so a token is
+// not forgeable from vyre.db and says nothing about the file's contents (ADR 0028, decision 1).
+const IMPORT_TOKEN_KEY = crypto.randomBytes(32);
+const IMPORT_KINDS = ["login", "note", "card", "secret", "api-key", "env-set", "authenticator", "address", "identity", "wifi"];
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 /** A caller's kind, as the registry sees it. */
@@ -166,6 +195,74 @@ export function parseExpiry(v, from = now()) {
 /** An origin ("https://api.example.com") from anything that parses as an http(s) URL. */
 export function origin(u) {
   try { const x = new URL(String(u)); return ["http:", "https:"].includes(x.protocol) ? x.origin : null; } catch { return null; }
+}
+
+/** The token for an import file: an HMAC, under a per-process key, of its SHA-256 and size. @param {Buffer} bytes */
+function importToken(bytes) {
+  const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+  return crypto.createHmac("sha256", IMPORT_TOKEN_KEY).update(`${digest}:${bytes.length}`).digest("base64url");
+}
+
+/**
+ * Read every .env file in a folder (or one .env file) for an import. The token binds to each
+ * file's path and bytes, so any file changing, appearing or going away since the preview is
+ * refused. Names that two files would share get -2, -3 here, before the vault's own renames.
+ * @param {string} root
+ */
+function scanEnv(root) {
+  const found = findEnvFiles(root);
+  const isFile = found.files.length === 1 && found.files[0] === root;
+  const h = crypto.createHash("sha256");
+  const items = [], skipped = [], envFiles = [];
+  const names = new Set();
+  for (const f of found.files) {
+    const bytes = fs.readFileSync(f);
+    h.update(`${f}\0${crypto.createHash("sha256").update(bytes).digest("hex")}\0`);
+    const r = readEnv(bytes.toString("utf8"), isFile ? { file: f } : { file: f, root });
+    let item = r.item;
+    if (item) {
+      let name = item.name;
+      for (let n = 2; names.has(name); n++) name = `${item.name.slice(0, 120)}-${n}`;
+      names.add(name);
+      item = { ...item, name };
+      items.push(item);
+    }
+    for (const s of r.skipped) skipped.push(`${path.basename(f)}: ${s}`);
+    envFiles.push({ path: f, item: item ? item.name : null, secrets: item ? Object.keys(item.fields) : [], vars: r.vars, kept: r.kept,
+      git: gitState(f), state: item ? "add" : "nothing" });
+  }
+  for (const f of found.large) skipped.push(`${f}: larger than 1 MB`);
+  const token = importToken(Buffer.from(h.digest("hex") + ":" + found.files.length));
+  return { token, envFiles, parsed: { format: /** @type {const} */ ("env"), items, skipped, templates: found.templates, truncated: found.truncated } };
+}
+
+/** What a preview shows for one .env file: names, types and git state, never a value. */
+const envFileOut = f => ({ file: f.path, item: f.item, state: f.state, vars: f.vars, kept: f.kept, ...(f.git ? { git: f.git } : {}) });
+
+/** Replace a file in one step, keeping its mode. No copy of the old contents is left behind. */
+function writeAtomic(file, text) {
+  const mode = fs.statSync(file).mode & 0o777;
+  const tmp = path.join(path.dirname(file), `.${path.basename(file)}.vyre-${crypto.randomBytes(4).toString("hex")}`);
+  try {
+    fs.writeFileSync(tmp, text, { mode, flag: "wx" });
+    fs.renameSync(tmp, file);
+  } catch (e) { try { fs.rmSync(tmp, { force: true }); } catch {} throw e; }
+}
+
+/** The next step after an import, in words the person can act on. */
+function importAdvice(p, envFiles, rewrite, rewritten, committed) {
+  if (!envFiles) return `Delete ${p} now. It still holds every value in plain text, and nothing needs it again.`;
+  const parts = [];
+  if (rewrite && rewritten.length) parts.push(`${rewritten.length === 1 ? "The file now holds" : `${rewritten.length} files now hold`} vault references. Run your app with vyre run -- <command> in its folder.`);
+  else parts.push("The .env files still hold their values. Import again with rewrite to swap them for vault references, or delete them.");
+  if (committed.length) parts.push(`${committed.length === 1 ? "One file is" : `${committed.length} files are`} committed to git, so the old values stay in its history: change them at the provider.`);
+  return parts.join(" ");
+}
+
+/** @param {string} a @param {string} b */
+function sameToken(a, b) {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
 export class Vault {
@@ -214,6 +311,10 @@ export class Vault {
     this.shared = new Shared(this);
     /** This person's other devices: join, approve, and syncing items between them (devices.js). */
     this.devices = new Devices(this);
+    /** Agent logins (ADR 0028, decision 2). */
+    this.agents = new AgentGrants(this);
+    /** Emergency access: a sealed ticket in escrow, released after a wait (ADR 0028, decision 8). */
+    this.emergency = new Emergency(this);
     /** Set by index.js once the relay listener is up. */
     this.relayUrl = opts.relay && opts.relay.url ? String(opts.relay.url) : null;
     /** "tailscale": the relay listener sits behind tailscale serve and trusts its identity header. */
@@ -567,6 +668,9 @@ export class Vault {
     this.recoverStaged();
     const moved = await this.migratePersonal();
     await this.sealRelayRules();
+    // Emergency tickets are snapshots; an unlock is when every personal item can be opened, so
+    // they are rebuilt here, at most once a day each. A failure is audited, never an unlock error.
+    await this.emergency.autoRefresh(who).catch(() => {});
     this.audit("account-unlock", null, who, true, [method === "touchid" ? "touch id" : null, moved ? `${moved} items moved into the personal vault` : null].filter(Boolean).join(", ") || null);
     this.emit("vault.unlocked", { vault: PERSONAL });
     return { unlocked: true, acct, method };
@@ -697,8 +801,12 @@ export class Vault {
   }
 
   grantedNames() {
-    return new Set(/** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grants WHERE status = 'active'").all())
-      .filter(g => this.rowOk("vault_grants", g)).map(g => String(g.item)));
+    const t = now();
+    // A login lent to an agent is filled while nobody is here, so it stays in the agent vault too.
+    const lent = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_agent_grants WHERE status = 'active' AND revoked IS NULL").all())
+      .filter(g => (g.expires == null || g.expires > t) && this.rowOk("vault_agent_grants", g)).map(g => String(g.item));
+    return new Set([...lent, .../** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_grants WHERE status = 'active'").all())
+      .filter(g => this.rowOk("vault_grants", g)).map(g => String(g.item))]);
   }
 
   /** Move agent-vault items that belong in the personal vault there. Needs it unlocked. */
@@ -847,15 +955,18 @@ export class Vault {
 
   // ---- audit ----------------------------------------------------------------------------
 
-  audit(action, name, who, ok = true, why = null) {
-    this.db.prepare("INSERT INTO vault_audit (at, action, name, who, ok, why) VALUES (?,?,?,?,?,?)").run(now(), action, name ?? null, String(who), ok ? 1 : 0, why);
+  /** @param {{ origin?: string|null, surface?: string|null }} [where] where a use happened, for vault.uses */
+  audit(action, name, who, ok = true, why = null, where = {}) {
+    this.db.prepare("INSERT INTO vault_audit (at, action, name, who, ok, why, origin, surface) VALUES (?,?,?,?,?,?,?,?)")
+      .run(now(), action, name ?? null, String(who), ok ? 1 : 0, why, where.origin ?? null, where.surface ?? null);
   }
 
   auditTrail({ name, limit = 100 } = {}) {
     const rows = name
       ? this.db.prepare("SELECT * FROM vault_audit WHERE name = ? ORDER BY id DESC LIMIT ?").all(name, Math.min(1000, limit))
       : this.db.prepare("SELECT * FROM vault_audit ORDER BY id DESC LIMIT ?").all(Math.min(1000, limit));
-    return { entries: rows.map(r => ({ at: r.at, action: r.action, name: r.name, who: r.who, ok: Boolean(r.ok), why: r.why })) };
+    return { entries: rows.map(r => ({ at: r.at, action: r.action, name: r.name, who: r.who, ok: Boolean(r.ok), why: r.why,
+      ...(r.origin ? { origin: r.origin } : {}), ...(r.surface ? { surface: r.surface } : {}) })) };
   }
 
   // ---- items ----------------------------------------------------------------------------
@@ -920,7 +1031,7 @@ export class Vault {
    * Add or replace an item. The fields arrive from the CLI's hidden prompt, an import file or a
    * sealed pass; the tool layer refuses them from Claude.
    */
-  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt, relay: relayRules }, who) {
+  async put({ name, kind = "secret", description = "", fields, url, hosts, origin: from, apps, reprompt, relay: relayRules, details }, who) {
     if (!NAME.test(String(name || ""))) throw new Error("a name is letters, digits, dot, dash and underscore, up to 128");
     if (!KINDS.includes(kind)) throw new Error(`kind must be one of ${KINDS.join(", ")}`);
     if (!fields || typeof fields !== "object" || Array.isArray(fields)) throw new Error("fields must be an object");
@@ -932,9 +1043,11 @@ export class Vault {
       if (v.length > MAX_VALUE) throw new Error(`field ${k} is larger than 64 KB`);
       clean[k] = v;
     }
-    const need = DEFAULT_FIELD[kind];
-    if (need && !(need in clean) && !(kind === "login" && clean.username)) throw new Error(`a ${kind} needs a ${need}`);
+    checkFields(kind, clean);
     if (!Object.keys(clean).length) throw new Error("an item needs at least one field");
+    // An expiry may be written as "90d" or a date, as grants' are.
+    const given = cleanDetails(details && typeof details === "object" && typeof details.expires === "string" && details.expires
+      ? { ...details, expires: parseExpiry(details.expires) } : details);
     if (kind === "env-set") for (const k of Object.keys(clean)) if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(k)) throw new Error(`env-set field ${k} is not an environment variable name`);
     const u = url ? String(url) : null;
     let h = Array.isArray(hosts) ? hosts.map(origin) : [];
@@ -961,14 +1074,16 @@ export class Vault {
     writeSealed(this.dir, id + STAGED, sealItemV2(k, this.at(next), { meta: this.meta(next), fields: clean }));
     const t = now();
     const hist = await this.historyStep(raw, old, next, clean, who, t);
+    // Details the caller left out are kept from before, then filled from the fields.
+    const det = JSON.stringify({ ...derivedDetails(kind, clean), ...(old ? json(old.details, {}) : {}), ...given });
     this.tx(() => {
       if (raw) {
         // Putting an item again is how it is rotated, so the rotate mark goes.
-        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=?, relay=? WHERE id=?")
-          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, next.relay, id);
+        this.db.prepare("UPDATE vault_items SET kind=?, description=?, fields=?, url=?, hosts=?, origin=?, rotate=NULL, updated=?, ver=?, vault=?, apps=?, reprompt=?, relay=?, details=? WHERE id=?")
+          .run(kind, String(description || (old && old.description) || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || (old && old.origin) || null, t, next.ver, cls, next.apps, next.reprompt, next.relay, det, id);
       } else {
-        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt, relay) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
-          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt, next.relay);
+        this.db.prepare("INSERT INTO vault_items (id, name, kind, description, fields, url, hosts, origin, created, updated, ver, vault, apps, reprompt, relay, details) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+          .run(id, name, kind, String(description || ""), JSON.stringify(Object.keys(clean)), u, next.hosts, from || null, t, t, next.ver, cls, next.apps, next.reprompt, next.relay, det);
       }
       this.sign("vault_items", id);
       hist.commit();
@@ -990,6 +1105,7 @@ export class Vault {
         name: r.name, kind: r.kind, description: r.description, fields: json(r.fields, []),
         ...(r.url ? { url: r.url } : {}), hosts: json(r.hosts, []), rotate: Boolean(r.rotate), ...(r.rotate ? { why: r.rotate } : {}),
         ...(r.origin ? { origin: r.origin } : {}), updated: r.updated, vault: r.vault || AGENTS,
+        ...(r.details && r.details !== "{}" ? { details: json(r.details, {}) } : {}),
         grants: grants.filter(g => g.item === r.name).map(g => ({ module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}) })),
       }));
     const personal = this.hasAccount() ? (this.pvk ? "unlocked" : "locked") : "none";
@@ -1008,6 +1124,7 @@ export class Vault {
     this.db.prepare("DELETE FROM vault_history WHERE item = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_items WHERE id = ?").run(r.id);
     this.db.prepare("DELETE FROM vault_grants WHERE item = ?").run(name);
+    this.agents.revokeItem(name, who);
     this.audit("delete", name, who);
     this.emit("vault.item-deleted", { name });
     return { deleted: name };
@@ -1047,6 +1164,15 @@ export class Vault {
     return { grant: this.grantOut(g) };
   }
 
+  /**
+   * The agent grant in force for (agent, item, origin): active, unexpired and passing its MAC, or
+   * null. For vault.agent.fill (ADR 0028, decision 3), which checks it before every fill.
+   */
+  agentGrantFor(agent, item, origin) { return this.agents.grantFor(agent, item, origin); }
+
+  /** Write one use of an item to the audit trail, with its origin and surface (see agents.js). */
+  recordUse(u) { return this.agents.recordUse(u); }
+
   grantOut(g) { return { id: g.id, name: g.item, module: g.module, ...(g.watcher ? { watcher: g.watcher } : {}), status: g.status }; }
 
   revoke({ name, module, watcher }, caller) {
@@ -1076,9 +1202,10 @@ export class Vault {
     const r = this.row(name);
     if (!r) { this.audit("release", name, who, false, "no such item"); throw new Error(`no item named ${name}`); }
     if (r.kind === "ssh-key") { this.audit("release", name, who, false, "ssh key"); throw new Error(`${name} is an ssh key; it signs through the vault's ssh agent and is never handed out`); }
+    if (r.kind === "passkey") { this.audit("release", name, who, false, "passkey"); throw new Error(`${name} is a passkey; it signs inside the vault and is never handed out`); }
     const f = await this.fields(r);
-    const want = field || DEFAULT_FIELD[r.kind];
-    if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is an env-set; name the field you want`); }
+    const want = field || defaultField(r.kind, json(r.fields, []));
+    if (!want) { this.audit("release", name, who, false, "no field named"); throw new Error(`${name} is ${r.kind === "env-set" ? "an env-set" : `a ${r.kind}`}; name the field you want`); }
     if (!(want in f)) { this.audit("release", name, who, false, `no field ${want}`); throw new Error(`${name} has no field ${want}`); }
     this.audit("release", name, who, true, field ? `field ${field}` : null);
     this.emit("vault.released", { name, module: mod, ...(watcher ? { watcher } : {}) });
@@ -1092,10 +1219,11 @@ export class Vault {
       const r = this.row(it.name);
       if (!r) { this.audit("inject", it.name, caller, false, "no such item"); throw new Error(`no item named ${it.name}`); }
       if (r.kind === "ssh-key") throw new Error(`${it.name} is an ssh key; it signs through the vault's ssh agent and is never handed out`);
+      if (r.kind === "passkey") throw new Error(`${it.name} is a passkey; it signs inside the vault and is never handed out`);
       const f = await this.fields(r);
       if (r.kind === "env-set" && !it.field) Object.assign(env, f);
       else {
-        const want = it.field || DEFAULT_FIELD[r.kind];
+        const want = it.field || defaultField(r.kind, json(r.fields, []));
         if (!want || !(want in f)) throw new Error(`${it.name} has no field ${want || "(name one)"}`);
         env[it.env || envName(it.name)] = f[want];
       }
@@ -1117,8 +1245,10 @@ export class Vault {
     const f = await this.fields(r);
     if (!f.totp) throw new Error(`${name} has no one-time password`);
     const c = totp(f.totp);
+    // The next code too, so a code about to roll over is never a guess (ADR 0028).
+    const next = totp(f.totp, { at: Date.now() + c.remaining * 1000 }).code;
     this.audit("totp", name, caller);
-    return { code: c.code, period: c.period, remaining: c.remaining };
+    return { code: c.code, next, period: c.period, remaining: c.remaining };
   }
 
   async generate({ length, words, symbols, name, description }, caller) {
@@ -1136,24 +1266,125 @@ export class Vault {
     return { bits: g.bits, stored: name };
   }
 
-  /** Read an export file and add what is new. The file is left as it is; the user deletes it. */
-  async import({ file, format }, caller) {
+  /**
+   * Read an export file, parse it, and plan it against what is already here (ADR 0028,
+   * decision 1). Existing logins are opened to compare origin, username and password, so the
+   * personal vault must be open. Nothing returned here leaves this class with a value in it.
+   */
+  async importPlan({ file, format }) {
     const p = path.resolve(String(file));
     const st = fs.statSync(p);
-    if (!st.isFile()) throw new Error(`${p} is not a file`);
-    if (st.size > 20 * 1024 * 1024) throw new Error(`${p} is larger than 20 MB`);
-    const parsed = parseImport(fs.readFileSync(p), { format, filename: path.basename(p) });
-    if (parsed.error) throw new Error(parsed.error);
-    const existing = this.db.prepare("SELECT name FROM vault_items").all().map(r => String(r.name));
-    const { add, duplicate } = mergeImport(existing, parsed.items);
-    const added = [], skipped = [...parsed.skipped];
-    for (const it of add) {
-      try { await this.put({ ...it, origin: `import:${parsed.format}` }, caller); added.push(it.name); }
+    let token, parsed, envFiles = null;
+    if (st.isDirectory() || (st.isFile() && (format === "env" || (!format && isEnvName(path.basename(p)))))) {
+      // A folder is scanned for .env files, and a .env file is read the same way, so both can be
+      // rewritten to references afterwards (ADR 0028, decision 1).
+      ({ token, parsed, envFiles } = scanEnv(p));
+    } else {
+      if (!st.isFile()) throw new Error(`${p} is not a file or a folder`);
+      if (st.size > 20 * 1024 * 1024) throw new Error(`${p} is larger than 20 MB`);
+      const bytes = fs.readFileSync(p);
+      token = importToken(bytes);
+      parsed = parseImport(bytes, { format, filename: path.basename(p) });
+      if (parsed.error) throw new Error(parsed.error);
+    }
+    await this.key();
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items").all());
+    if (!this.pvk && rows.some(r => r.kind === "login" && r.vault === PERSONAL))
+      throw locked("your personal vault is locked, and an import compares against the logins in it · vyre vault account unlock");
+    /** @type {import("./import.js").Existing[]} */
+    const existing = [];
+    for (const r of rows) {
+      const e = { name: String(r.name), kind: String(r.kind) };
+      if ((r.kind === "login" || (r.kind === "env-set" && envFiles)) && this.rowOk("vault_items", r)) {
+        try {
+          const f = await this.fields(r);
+          if (r.kind === "env-set") Object.assign(e, { fields: f });
+          else {
+            const o = json(r.hosts, [])[0] || (r.url ? origin(r.url) : "") || "";
+            Object.assign(e, { origin: o, username: f.username ?? "", password: f.password ?? "" });
+          }
+        } catch (err) {
+          if (/** @type {any} */ (err).code === "locked") throw err;
+          // An item that does not open is judged by its name alone.
+        }
+      }
+      existing.push(e);
+    }
+    const plan = planImport(existing, parsed.items);
+    if (envFiles) {
+      // A file's item may have been renamed around a name already taken; its references follow.
+      const to = new Map(plan.renamed.map(r => [r.from, r.to]));
+      const state = new Map([...plan.add.map(i => [i.name, "add"]), ...plan.same.map(n => [n, "same"]), ...plan.conflicts.map(c => [c.name, "conflict"])]);
+      for (const f of envFiles) if (f.item) { f.state = state.get(f.item) ?? "add"; f.item = to.get(f.item) ?? f.item; }
+    }
+    return { p, token, parsed, plan, envFiles };
+  }
+
+  /** What an import would do: names and counts, never a value, plus a token bound to the file. */
+  async importPreview({ file, format }, caller) {
+    const { token, parsed, plan, envFiles } = await this.importPlan({ file, format });
+    const counts = Object.fromEntries(IMPORT_KINDS.map(k => [k, 0]));
+    for (const it of parsed.items) if (it.kind in counts) counts[it.kind]++;
+    this.audit("import-preview", null, caller, true, `${parsed.format}: ${parsed.items.length} items, ${plan.add.length} new, ${plan.same.length} same, ${plan.conflicts.length} conflicts`);
+    return {
+      format: parsed.format, token, counts,
+      add: plan.add.map(i => i.name), same: plan.same,
+      conflicts: plan.conflicts.map(c => ({ name: c.name, existing: c.existing })),
+      renamed: plan.renamed, skipped: parsed.skipped,
+      ...(envFiles ? { files: envFiles.map(envFileOut), templates: parsed.templates, ...(parsed.truncated ? { truncated: true } : {}) } : {}),
+    };
+  }
+
+  /**
+   * Read an export file and add what is new. With a token from importPreview, a file that changed
+   * since is refused. A conflict is skipped, or with conflicts "update" put into the existing
+   * item as a new version, so history keeps the old password. The file is left as it is; the
+   * user deletes it.
+   */
+  async import({ file, format, token, conflicts = "skip", rewrite = false }, caller) {
+    if (conflicts !== "skip" && conflicts !== "update") throw new Error(`conflicts is "skip" or "update"`);
+    const { p, token: current, parsed, plan, envFiles } = await this.importPlan({ file, format });
+    if (rewrite && !envFiles) throw new Error("rewrite is for .env files and folders of them");
+    if (token !== undefined && token !== null && !sameToken(String(token), current)) throw new Error("the file changed since the preview; preview it again");
+    const from = `import:${parsed.format}`;
+    const added = [], updated = [], skipped = [...parsed.skipped];
+    for (const it of plan.add) {
+      try { await this.put({ ...it, origin: from }, caller); added.push(it.name); }
       catch (e) { skipped.push(`${it.name}: ${/** @type {Error} */ (e).message}`); }
     }
-    this.audit("import", null, caller, true, `${parsed.format}: ${added.length} added from ${path.basename(p)}`);
-    return { format: parsed.format, added, duplicate, skipped,
-      advice: `Delete ${p} now. It still holds every value in plain text, and nothing needs it again.` };
+    const conflicted = [];
+    for (const c of plan.conflicts) {
+      if (conflicts !== "update") { conflicted.push(c.name); continue; }
+      const r = this.row(c.existing);
+      if (!r) { skipped.push(`${c.name}: ${c.existing} is no longer here`); continue; }
+      try {
+        // Fields the export lacks (a TOTP seed added here, say) are kept; the export's win.
+        const kept = await this.fields(r);
+        await this.put({ ...c.item, name: c.existing, description: r.description, fields: { ...kept, ...c.item.fields }, origin: from }, caller);
+        updated.push(c.existing);
+      } catch (e) { skipped.push(`${c.name}: ${/** @type {Error} */ (e).message}`); }
+    }
+    // The rewrite follows the import: a file is rewritten only when every value it held is now in
+    // the vault under the name its references use, so a skipped conflict leaves its file alone.
+    const rewritten = [], left = [];
+    if (rewrite && envFiles) {
+      const stored = new Set([...added, ...updated, ...plan.same]);
+      for (const f of envFiles) {
+        if (!f.item) continue;
+        if (!stored.has(f.item)) { left.push(f.path); continue; }
+        try { writeAtomic(f.path, rewriteEnv(fs.readFileSync(f.path, "utf8"), f.item, f.secrets)); rewritten.push(f.path); }
+        catch { left.push(f.path); }
+      }
+    }
+    this.audit("import", null, caller, true,
+      `${parsed.format}: ${added.length} added, ${updated.length} updated, ${plan.same.length} same, ${conflicted.length} conflicts skipped, ${plan.renamed.length} renamed, ${skipped.length} not imported` +
+      (rewrite ? `, ${rewritten.length} files rewritten` : ""));
+    const committed = envFiles ? envFiles.filter(f => f.item && f.git && f.git.tracked).map(f => f.path) : [];
+    return { format: parsed.format, added, updated, same: plan.same, conflicts: conflicted, renamed: plan.renamed, skipped,
+      // Older callers read `duplicate`: everything that was here already.
+      duplicate: [...plan.same, ...conflicted],
+      ...(envFiles ? { rewritten, ...(rewrite ? { unchanged: left } : {}), ...(committed.length ? { committed } : {}) } : {}),
+      advice: importAdvice(p, envFiles, rewrite, rewritten, committed) };
   }
 
   // ---- identity -------------------------------------------------------------------------
@@ -1284,37 +1515,54 @@ export class Vault {
     const p = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_passes WHERE id=?").get(id));
     const person = this.share.trusted(p.holder);
     if (person.sign !== p.holder_sign || person.box !== p.holder_box) throw new Error(`${p.holder}'s key changed after this pass was asked for · create it again`);
-    const me = await this.identity();
     if (!this.rowOk("vault_passes", p)) throw new Error(`pass ${id} failed its check and is ignored`);
     const items = json(p.items, []);
-    /** @type {any} */
-    const ticket = { pass: p.id, owner: this.name, relay: this.relayUrl || "", ownerSign: me.sign.public, ownerCard: (await this.share.myCard()).card,
-      holder: p.holder, holderSign: p.holder_sign, items, mode: p.mode, expires: p.expires };
-    if (p.mode === "sealed") {
-      ticket.sealed = {};
-      for (const n of items) {
-        const r = this.mustRow(n);
-        ticket.sealed[n] = sealFor(p.holder_box, { kind: r.kind, description: r.description, fields: await this.fields(r), url: r.url, hosts: json(r.hosts, []) }, `vyre:pass:v1:${p.id}:${n}`, "pass");
-      }
-    } else if (!this.relayUrl) {
-      throw new Error("this Vyre has no relay address, so a relayed pass cannot reach it · set vault.relay in config.json");
-    }
+    if (p.mode !== "sealed" && !this.relayUrl) throw new Error("this Vyre has no relay address, so a relayed pass cannot reach it · set vault.relay in config.json");
+    const ticket = await this.ticketFor({ pass: p.id, holder: p.holder, holderSign: p.holder_sign, holderBox: p.holder_box, items, mode: p.mode, expires: p.expires });
     this.db.prepare("UPDATE vault_passes SET issued=? WHERE id=?").run(now(), id);
     this.sign("vault_passes", id);
     this.emit("pass.created", { pass: p.id, holder: p.holder, items, mode: p.mode });
-    return { pass: this.passOut(p), ticket: relay.encodeTicket(ticket, me.sign.private) };
+    return { pass: this.passOut(p), ticket };
+  }
+
+  /**
+   * A signed ticket for one holder. A sealed one carries each item sealed to the holder's box key
+   * under `vyre:pass:v1:<pass>:<item>`, which is what accept() opens. Pass issue and emergency
+   * access (emergency.js) both build their tickets here, so the two can never drift apart.
+   * @param {{ pass: string, holder: string, holderSign: string, holderBox: string, items: string[], mode: "relayed"|"sealed", expires: number|null }} t
+   * @returns {Promise<string>}
+   */
+  async ticketFor({ pass, holder, holderSign, holderBox, items, mode, expires }) {
+    const me = await this.identity();
+    /** @type {any} */
+    const ticket = { pass, owner: this.name, relay: this.relayUrl || "", ownerSign: me.sign.public, ownerCard: (await this.share.myCard()).card,
+      holder, holderSign, items, mode, expires };
+    if (mode === "sealed") {
+      ticket.sealed = {};
+      for (const n of items) {
+        const r = this.mustRow(n);
+        ticket.sealed[n] = sealFor(holderBox, { kind: r.kind, description: r.description, fields: await this.fields(r), url: r.url, hosts: json(r.hosts, []) }, `vyre:pass:v1:${pass}:${n}`, "pass");
+      }
+    }
+    return relay.encodeTicket(ticket, me.sign.private);
   }
 
   pending() {
     return {
       grants: this.db.prepare("SELECT * FROM vault_grants WHERE status='pending' ORDER BY at").all().filter(g => this.rowOk("vault_grants", g)).map(g => ({ ...this.grantOut(g), by: g.by, at: g.at })),
       passes: this.db.prepare("SELECT * FROM vault_passes WHERE status='pending' AND revoked IS NULL ORDER BY created").all().filter(p => this.rowOk("vault_passes", p)).map(p => ({ ...this.passOut(p), by: p.by })),
+      agentGrants: this.agents.pending(),
       ...this.share.requests(),
     };
   }
 
   async approve({ id }, caller) {
     await this.key();
+    if (String(id).startsWith("ag_")) {
+      const a = await this.agents.approve(String(id), caller);
+      if (a) return a;
+      throw new Error(`nothing pending with id ${id}`);
+    }
     const g = /** @type {any} */ (this.db.prepare("SELECT * FROM vault_grants WHERE id=? AND status='pending'").get(id));
     if (g && this.rowOk("vault_grants", g)) {
       const item = this.row(g.item);
@@ -1379,7 +1627,9 @@ export class Vault {
     // Shared vaults first, while their pinned key is still known: out of every vault this Vyre
     // can administer, with a new key there and every item they could read flagged.
     const shared = await this.shared.removeEverywhere(known ? known.sign : null, person, caller);
-    if (!all.length && !known && !shared.vaults.length) throw new Error(`no one called ${person} holds anything`);
+    // Emergency access they could ask for ends too; its escrow is deleted.
+    const emergency = this.emergency.removeAll(person, caller);
+    if (!all.length && !known && !shared.vaults.length && !emergency) throw new Error(`no one called ${person} holds anything`);
     const revoked = [], rotate = new Set(shared.rotate);
     for (const p of all) {
       if (!p.revoked) {
@@ -1393,7 +1643,7 @@ export class Vault {
     this.db.prepare("DELETE FROM vault_people WHERE name=?").run(person);
     this.audit("offboard", null, caller, true, `${person}: ${revoked.length} passes, ${rotate.size} to rotate`);
     this.emit("person.offboarded", { person, revoked: revoked.length, rotate: rotate.size });
-    return { person, revoked, rotate: [...rotate].sort(), ...(shared.vaults.length ? { vaults: shared.vaults } : {}) };
+    return { person, revoked, rotate: [...rotate].sort(), ...(shared.vaults.length ? { vaults: shared.vaults } : {}), ...(emergency ? { emergency: true } : {}) };
   }
 
   /**
@@ -1436,7 +1686,7 @@ export class Vault {
     if (narrow) return refuse(narrow);
     const f = await this.fields(r);
     let sub;
-    try { sub = relay.substitute(env.request, f, DEFAULT_FIELD[r.kind], this.share.relayRules(r)); }
+    try { sub = relay.substitute(env.request, f, defaultField(r.kind, json(r.fields, [])), this.share.relayRules(r)); }
     catch (e) { return refuse(/** @type {Error} */ (e).message); }
     let res;
     try { res = await relay.send(sub.request); }

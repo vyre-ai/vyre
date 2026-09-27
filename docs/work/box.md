@@ -23,7 +23,7 @@ user's own tailnet, with HTTPS and no separate login.
   `registry.call`. Only the box's owner (config `network.owner`, a Tailscale login) is served.
 - **Names.** `<you>.vyre.run` is an A record at the tailnet IP (DNS only, never proxied). For now
   it is created with the user's Cloudflare API token scoped to the vyre.run zone
-  (`CLOUDFLARE_VYRE_TOKEN`; the user adds it to their own env; never ask for it in chat, never
+  (`CLOUDFLARE_vyre_token`; the user adds it to their own env; never ask for it in chat, never
   use a global API key). Design the later hosted name directory (claim a name, prove tailnet
   ownership) in the ADR, and don't build it yet.
 - **Certificates.** Let's Encrypt by DNS-01 against Cloudflare, with renewal. Or `tailscale cert`
@@ -94,7 +94,7 @@ certificate, and from off the tailnet it does not resolve to anything reachable.
   Make the assistant at `onboard.finish` once `agents.create` exists.
 - gate: approvals should require a `tailnet:*` caller, since socket callers include Claude's own
   processes (ADR 0002, caller classes).
-- user: a Linux box on the tailnet (not the development Mac), `CLOUDFLARE_VYRE_TOKEN` in its `~/.vyre/env`,
+- user: a Linux box on the tailnet (not the development Mac), `CLOUDFLARE_vyre_token` in its `~/.vyre/env`,
   and the name to claim.
 
 ## Changed contracts

@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import os from "node:os";
 import path from "node:path";
 import fs from "node:fs";
-import { claudeHome, realHome, transcriptFolders } from "./dialogs.js";
+import { claudeHome, claudeJson, realHome, transcriptFolders } from "./dialogs.js";
 import { load } from "./index.js";
 import { tempHome } from "../../test/helpers.js";
 
@@ -19,6 +19,18 @@ test("claudeHome: ~/.claude only for the real ~/.vyre; any other home keeps its 
   assert.equal(claudeHome(temp, { CLAUDE_CONFIG_DIR: path.join(os.homedir(), ".claude") }), path.join(temp, "claude"),
     "an inherited CLAUDE_CONFIG_DIR is not an opt-in");
   assert.equal(claudeHome(temp, { VYRE_CLAUDE_HOME: "/srv/cc" }), "/srv/cc", "named outright");
+});
+
+test("claudeJson: ~/.claude.json only for the real ~/.vyre; any other home keeps its own, beside claudeHome's folder", () => {
+  const real = realHome();
+  assert.equal(claudeJson(real, {}), path.join(os.homedir(), ".claude.json"));
+  assert.equal(claudeJson(real, { CLAUDE_CONFIG_DIR: "/opt/cc" }), path.join("/opt/cc", ".claude.json"),
+    "CLAUDE_CONFIG_DIR moves .claude.json inside it too (e2e LOW, 2026-09-28), the same folder claudeHome names");
+  const temp = path.join(os.tmpdir(), "vy-dev-home");
+  assert.equal(claudeJson(temp, {}), path.join(temp, "claude.json"), "a dev or temp home, never the real .claude.json");
+  assert.equal(claudeJson(temp, { CLAUDE_CONFIG_DIR: path.join(os.homedir(), ".claude") }), path.join(temp, "claude.json"),
+    "an inherited CLAUDE_CONFIG_DIR is not an opt-in");
+  assert.equal(claudeJson(temp, { VYRE_CLAUDE_HOME: "/srv/cc" }), "/srv/.claude.json", "named outright, beside the named folder");
 });
 
 test("claudeHome: a temp home's default transcripts are inside it", t => {

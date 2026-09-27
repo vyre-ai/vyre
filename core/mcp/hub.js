@@ -342,7 +342,7 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
 
 /**
  * @typedef {{ person: boolean, agent: string|null, thread: string|null }} Who
- * @typedef {{ db: import("node:sqlite").DatabaseSync, creds: import("../connectors/auth.js").Credentials,
+ * @typedef {{ db: import("node:sqlite").DatabaseSync, creds: import("../../lib/connectors/auth.js").Credentials,
  *   connect: typeof import("./client.js").connect, emit: (type: string, payload: any, where?: any) => any,
  *   log?: (m: string) => void, now?: () => number,
  *   offer?: (server: string) => Promise<void>,
@@ -565,8 +565,10 @@ export class Hub {
 
   /**
    * A model's (or anyone's) call. Scope is checked here, whatever was listed; a read runs, an
-   * outward call is held at the Gate and nothing reaches the server.
-   * @param {{ server?: string, tool?: string, name?: string, arguments?: any }} input @param {Who} who
+   * outward call is held at the Gate and nothing reaches the server. `hold` (module callers only,
+   * checked in index.js) holds even a read, for a module such as mail whose call always acts as
+   * the person outside, whatever the tool's name or mode says.
+   * @param {{ server?: string, tool?: string, name?: string, arguments?: any, hold?: boolean }} input @param {Who} who
    */
   async call(input, who) {
     let server = input.server, tool = input.tool;
@@ -589,6 +591,7 @@ export class Hub {
     }
     if (!t) throw fail("not_found", `${r.name} has no tool ${String(tool).slice(0, 80)} that is on`);
     if (t.outward) return this.hold(r, t, args, who, memo);
+    if (input.hold === true) return this.hold(r, { ...t, kind: t.kind || "send" }, args, who, memo);
     return this.run(r.name, t.tool, args, { agent: who.agent });
   }
 

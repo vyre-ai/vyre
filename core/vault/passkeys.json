@@ -1,0 +1,12 @@
+{
+  "about": "Well-known sites that accept a passkey instead of a password. Bundled so Watchtower never asks the network. Registrable domains only.",
+  "domains": [
+    "adobe.com", "amazon.com", "apple.com", "binance.com", "bitwarden.com", "cloudflare.com",
+    "coinbase.com", "discord.com", "docker.com", "docusign.com", "dropbox.com", "ebay.com",
+    "facebook.com", "github.com", "gitlab.com", "gmail.com", "google.com", "instagram.com",
+    "kraken.com", "linear.app", "live.com", "microsoft.com", "namecheap.com", "nintendo.com",
+    "notion.so", "office.com", "okta.com", "outlook.com", "paypal.com", "reddit.com",
+    "robinhood.com", "salesforce.com", "shopify.com", "stripe.com", "tiktok.com", "twitter.com",
+    "uber.com", "whatsapp.com", "x.com", "yahoo.com", "zoho.com"
+  ]
+}

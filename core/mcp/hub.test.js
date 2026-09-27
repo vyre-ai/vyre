@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
-import { Credentials } from "../connectors/auth.js";
+import { Credentials } from "../../lib/connectors/auth.js";
 import { McpError } from "./client.js";
 import { Hub, MIGRATIONS, MAX_NAME, aggregate, classify, normalize, target, looksSecret, whoFrom, checkUrl, sends } from "./hub.js";
 
