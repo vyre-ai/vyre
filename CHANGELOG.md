@@ -9,7 +9,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - capsule-apps (7b08a18): gate.approve answers a failed send as data (state "failed"), which the
   Capsule showed as "Sent". AppsWordsProvider.approveHeld, used by the @App path and the words
   row, now asks apps.act Slack "sent" after a failure or before retrying one that failed: "It
-  went out" when it did, otherwise it stays at the Gate and Enter tries again.
+  went out" when it did, otherwise it stays at the Gate and Enter tries again. 95aad5f: a post
+  found to have gone out is settled at the Gate (gate.settle, from work/capsule-apps; a vyred
+  without it answers no_such_tool and the item stays held), and reached "no" skips the check.
 
 #### CI: capsule-mac runs when the Capsule's check or CLI changes
 

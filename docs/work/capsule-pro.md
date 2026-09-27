@@ -89,7 +89,11 @@ without editing Capsule files:
   fix, the extension seam, `@` targets: see CHANGELOG.
 
 ## Doing
-- Nothing blocking. Everything through faa6bcf is on main (c8fb9aae, CI 36316457268 green).
+- Paused (lead, 2026-09-27): the user is refocusing on the native core. Final branch sha is the
+  tip of work/capsule-pro, which carries main c8fb9aae plus the CI trigger paths (9078985), the
+  real-Mac check doc (b9b7b67), and capsule-apps-native 7b08a18 and 95aad5f (Swift 285/285).
+  capsule-mac CI run 36317665732 is on 58a2c49. Next wake: the real-Mac check (below), or
+  sessions' thread.state / thread.tool events (Next 2).
 
 ## Footprint: met (2026-09-27)
 - CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use
