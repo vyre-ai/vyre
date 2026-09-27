@@ -49,6 +49,21 @@ export function claudeHome(root, env = process.env) {
   return path.join(path.resolve(String(root)), "claude");
 }
 
+/**
+ * Claude Code's `.claude.json` (MCP servers at user and local scope, onboarding state) for the
+ * Vyre home at `root`. It sits beside `~/.claude`, not inside it, so this is its own function
+ * rather than a path built from claudeHome(): the person's real one only for their own ~/.vyre;
+ * any other home (a dev world, a demo, a temp home, a test) gets `<root>/claude.json`, empty until
+ * a fixture puts one there, the same rule claudeHome follows for the folder next to it (e2e
+ * review, 2026-09-28, after discover.js read os.homedir() directly).
+ * @param {string} root @param {NodeJS.ProcessEnv} [env]
+ */
+export function claudeJson(root, env = process.env) {
+  if (env.VYRE_CLAUDE_HOME) return path.join(path.dirname(path.resolve(env.VYRE_CLAUDE_HOME.replace(/^~(?=$|\/)/, os.homedir()))), ".claude.json");
+  if (isRealHome(root)) return path.join(os.homedir(), ".claude.json");
+  return path.join(path.resolve(String(root)), "claude.json");
+}
+
 const untilde = (/** @type {string} */ p) => String(p).replace(/^~(?=$|\/)/, os.homedir());
 
 /**

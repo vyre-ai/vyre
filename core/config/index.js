@@ -9,9 +9,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { claudeHome, transcriptFolders } from "./dialogs.js";
+import { claudeHome, claudeJson, transcriptFolders } from "./dialogs.js";
 
-export { claudeHome, transcriptFolders };
+export { claudeHome, claudeJson, transcriptFolders };
 
 /** Resolve a leading ~ against the home directory. */
 export function untilde(p) {
