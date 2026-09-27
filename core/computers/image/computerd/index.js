@@ -235,7 +235,7 @@ function readBody(req) {
 // ---- Chrome, over its pipe -------------------------------------------------------------
 
 /** Logs name methods and count things; cdpmux never hands this a message's contents. */
-const mux = new CdpMux({ log: line => console.log(line), downloads: process.env.AGENT_DOWNLOADS || path.join(process.env.COMPUTERD_FS_ROOT || "/home/agent", "Downloads") });
+const mux = new CdpMux({ log: line => console.log(line), ...(process.env.AGENT_DOWNLOADS ? { downloads: process.env.AGENT_DOWNLOADS } : {}) });
 /** @type {import("node:child_process").ChildProcess|null} */
 let chrome = null;
 let stopping = false;
