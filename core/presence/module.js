@@ -62,13 +62,20 @@ export default {
     });
 
     ctx.tool("presence.session.open", {
-      description: "After one strong proof (Touch ID, the Capsule or a passkey), a secret that proves presence for revealing, copying and TOTP codes for 5 minutes idle, 30 at most, on this device only.",
+      description: "After one strong proof (Touch ID, the Capsule or a passkey), a secret that proves presence for revealing, copying, TOTP codes and sends at the Gate for 30 minutes, on this device only.",
       presence: { summary: async () => "Keep revealing and copying vault items for up to 30 minutes on this device" },
       input: obj({}),
       run: async (_, meta) => {
         if (!meta.presence) throw new Error("a session opens from a person's proof, not from a module");
         return presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer });
       },
+    });
+
+    ctx.tool("presence.covered", {
+      internal: true,
+      description: "Whether the device a call came from (its tailnet peer; none for this machine) has a live presence session. The Gate and the Switchboard put it on held items and asks.",
+      input: obj({ peer: { type: "object" } }),
+      run: async ({ peer }) => ({ covered: presence.covered(peer || null) }),
     });
 
     ctx.tool("presence.session.close", {

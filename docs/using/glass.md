@@ -135,16 +135,26 @@ then appear in the panel. Only you or your assistant can change limits, never th
 
 ## If a computer does not start
 
-If Glass keeps showing "The connection dropped. Trying again in N s." (it retries, backing off to
-30 seconds) and the Computer panel says Stopped, the computer's software failed to start. To see
-why, run this on the box:
+When an agent's computer fails as it boots, Glass stops trying and says so, and the Computer
+panel says Stopped:
+
+```output
+kit's computer did not start
+kit's computer stopped as soon as it started (exit code 3). Press Restart computer on kit's page, then Retry. If it fails again, the box's log says why.
+```
+
+Under it are **Retry** and **Open kit's page**. Retry starts the same computer again. **Restart
+computer** on kit's page makes a new one from the current image, so press it first when the box's
+software was fixed, then Retry.
+
+To see the full reason, run this on the box:
 
 ```sh
 vyre call computers.checkout '{"agent":"kit"}'
 ```
 
 ```output
-kit's computer stopped as soon as it started (exit code 1); its image (vyre/computer:0.1) may be broken: see docker logs vyre-computer-kit on the box
+kit's computer stopped as soon as it started (exit code 3); its image (vyre/computer:0.1) may be broken: see docker logs vyre-computer-kit on the box
 ```
 
 The same message is in vyred's log on the box. Run the `docker logs` command it names for the
