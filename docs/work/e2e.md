@@ -303,6 +303,12 @@ Plan (to the lead before building):
   get --loop` into ~/Vyre/inbox (takes over Taildrop); make it opt-in. LOW: callers "module".
   Lead's rule: security sign-offs need a read of the diff, every commit in the sha.
   e8302dce (nonces persisted, read: OK). Still blocked on files.deliver (opt-in receiver, no module caller) or a split.
+- memory-iq f49f7b02 (agent corrections from the person's words, 0.1.1): read; NOT signed off.
+  HIGH: heard() is word containment only (any "not" = wrong/forget; value words anywhere = replace)
+  -> need target words, freshness (latest turn / 10 min), per-turn and per-thread caps. MEDIUM:
+  suggestion caps, plain() on accept, visible Undo row. Answered: threads.said by:"person" must
+  exclude tool_result, isMeta, isSidechain, hook/skill/command text, ! output, inbox posts, non-
+  person sends; internal only. Suggestions expire (14 d or when the fact changes).
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
