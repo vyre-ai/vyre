@@ -6,6 +6,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Sessions: `vyre call` inside a session, and a shorter tool list
 
+- A thread records the surface that started it: `origin` on its record (threads.get/list), so
+  the vault can tell a Capsule thread from a chat one.
 - Fixed: `vyre call` from a session's Bash said vyred was not running: callAsPerson pinned the
   home's root, so the client never used the session's own socket (VYRE_SOCKET).
 - The plugin's MCP server no longer offers a session the person's own tools (PERSON_ONLY and

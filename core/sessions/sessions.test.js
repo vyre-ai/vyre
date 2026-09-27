@@ -522,6 +522,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal(l.max_thinking, "0", "thinking off");
     const started = (await w.events(q.id)).find(e => e.type === "thread.started").payload;
     assert.equal(started.prompt, "capsule@1");
+    assert.equal((await w.tool("threads.get", { thread: q.id })).data.thread.origin, "capsule", "the thread says the Capsule started it");
 
     // A person's own version at scope capsule, versioned; an agent never edits it.
     assert.equal((await w.tool("sessions.prompt.set", { scope: "capsule", text: "Call alex by name." }, "mcp")).error.code, "denied");

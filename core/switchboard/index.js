@@ -350,7 +350,7 @@ export class Switchboard {
     if (!r) return null;
     const holder = this.leases.holder(id);
     return { id: r.id, name: r.name, cwd: r.cwd, project: r.project, agent: r.agent, status: r.status, model: r.model, driver: r.driver || null,
-      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null,
+      provider: r.provider || "claude", purpose: r.purpose || null, mode: r.mode || "default", effort: optsOf(r).effort || null, origin: optsOf(r).origin || null,
       auth: r.auth, started: r.started_at, last: r.last_at, cost_usd: r.cost_usd, turns: r.turns,
       holder: holder ? holder.surface : null, asks: this.asks.open(id).length, ...(r.stopped_reason ? { stopped_reason: r.stopped_reason } : {}) };
   }
@@ -441,6 +441,8 @@ export class Switchboard {
       const kept = Object.fromEntries(KEPT.filter(k => o[k] !== undefined).map(k => [k, o[k]]));
       // A quick answer keeps its facts, so a follow-up after an idle close is answered from them too.
       if (o.purpose === "capsule" && o.append) kept.append = String(o.append).slice(0, 20000);
+      // The surface that started it (the Capsule, the Deck, a phone): threads.get says it as origin.
+      if (o.surface) kept.origin = String(o.surface).slice(0, 80);
       if (Object.keys(kept).length) this.db.prepare("UPDATE threads_runs SET opts = ? WHERE id = ?").run(JSON.stringify(kept), id);
       rec = this.must(id);
     }
