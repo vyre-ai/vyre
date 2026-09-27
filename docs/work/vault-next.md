@@ -100,7 +100,17 @@ mobile and the Capsule (through their owners).
 
 ## Doing
 
-- Nothing. 9b done; waiting on connectors to register google, mcp and mail rows and call allowed.
+- SAVED 27 Sep (restart). Branch head = this commit on work/vault-next (pushed). 9b built: connections
+  (4d43906e..6cf9a99f), picker default/last_used (0539a392), thread origin -> surface (d7f09589), merge main
+  53cd1326 (9450f5e1), ctx.modules.status() rename for platform b7bbf5d8 (5d7cbd07).
+- NOT YET TESTED on testbox: 9450f5e1 run was stopped at save; 5d7cbd07 never run. On resume: one targeted run
+  (nice 15, uptime < 6) of core/vault, core/modules, core/cli/commands, local/voice, core/mcp, core/google,
+  test/docs-*, test/hygiene*. If green, send the sha to integrator AND connectors: lands together with
+  work/connectors 84f630c9 (e2e signed off).
+- Handed off: work/vault-9a f4272358 (pushed, integrator has it; loader diff superseded by platform b7bbf5d8,
+  take platform's core/modules at merge).
+- Waiting on: capsule-pro (inline field + chooser), native-core (hub entry), sessions (threads needs.credentials
+  after 9a on main; review of the Claude sign-in change).
 
 ## Next (in order, when resumed)
 
