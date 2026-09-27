@@ -117,7 +117,16 @@ The lead approved and assigned owners. Tracking each:
   hands-desktop.resolveAgent only matched the narrower "mcp:agent:" shape). testbox: 340/340. Left
   core/daemon/index.js's own copy alone - e2e's work/e2e-agentclaim (1ff45c03) touches that same
   file and I didn't want to risk a conflict with work still landing; flagged for e2e/integrator to
-  fold in after. Sent to e2e for review.
+  fold in after. e2e review found a MEDIUM: agentClaim returned "" for an empty/odd name ("cli
+  agent:"), which every caller's `if (claim)` read as no claim at all - trusted fully instead of
+  refused, since the daemon's socket vouch (which does catch this) never runs for an in-process
+  caller. Lead: this makes it an rc.2 candidate (real holes closed), not 0.1.1; fix now, base on
+  pre/rc if clean. Fixed in 1a8bf671: returns "(unnamed)" instead, fails closed everywhere. New
+  tests for "cli agent:kit"/"mcp agent:kit" (space form) and the empty-name case in both
+  modules.test.js and guests.test.js. testbox 340/340 again. pre/rc (60fdcd07) doesn't have my
+  agentClaim work yet, only a tracking note in integrator.md - handing the sha to e2e and the
+  integrator to fold in, not rebasing myself since pre/rc has independently diverged on some of
+  the same files (core/modules' credential validation). Sent to e2e and the integrator.
 - **6 (chat's project-picker UI, first end-to-end check on restart):** added to the paused-teams
   hand-over note below.
 
