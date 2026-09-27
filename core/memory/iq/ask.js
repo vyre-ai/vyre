@@ -18,6 +18,10 @@ import crypto from "node:crypto";
 export const VERSION = 2;
 /** Told as an answer from here up; under it IQ abstains with what it knows. */
 export const SURE = 0.5;
+/** The default daily cap on questions, in USD (config.memory.model.askDailyUsd): about 150 a day. */
+export const ASK_DAILY_USD = 0.5;
+/** What a surface shows when the cap is reached: never a silent failure. */
+export const LIMIT_MESSAGE = "Vyre IQ's daily limit is reached, change it in Settings";
 /** What one answer call may cost at most, in USD. */
 export const MAX_USD = 0.02;
 
@@ -117,7 +121,8 @@ export function asker({ db, answer, retrieve, runner = null, model = () => "haik
     const prompt = askPrompt(q, passages);
     const hash = askHash(prompt);
     let text = /** @type {any} */ (get.get(hash))?.reply ?? null, usd = 0;
-    if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "today's question budget is spent" });
+    // The day's cap is reached: say so, with where to change it, and never answer quietly with nothing.
+    if (text == null && runner && !budget.allow(MAX_USD)) return done({ via: "retrieval", why: "daily limit", limited: true, message: LIMIT_MESSAGE });
     if (text == null && runner) {
       try {
         const r = await runner({ system: SYSTEM, prompt, model: model(), maxUsd: MAX_USD });
