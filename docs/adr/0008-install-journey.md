@@ -171,6 +171,9 @@ or an API key. The credential goes into the vault as `claude-setup-token` or
    `vyre capsule install` downloads `Vyre-mac.zip` for this version from `vyre.run/box/`,
    checks it against `SHA256SUMS`, and unpacks it to `~/Applications/Vyre.app` (never
    `/Applications`, never with sudo).
+   *Superseded:* there is no zip any more. The Capsule is the native app (ADR 0017), and
+   `vyre capsule install` builds it on the Mac from the npm package, into
+   `~/.vyre/capsule/Vyre.app`. See [Capsule](../using/capsule.md#install-it).
 6. **The phone.** Two QR codes side by side: Tailscale's app, and the address's `/now`. The
    line under them names the login to sign in with.
 
@@ -247,4 +250,4 @@ On the Mac: `npm i -g vyre@latest && vyre up` upgrades (`vyre up` restarts an ol
 | `onboard.finish` creating the assistant and greeting; `onboard.you` without `names.check`; ts.net as the default in `onboard.name`, with the HTTPS-off check | box |
 | The finish screen (greeting, three ticks, Open Vyre), two QR codes, "Turn on HTTPS", the Mac card, the history wording | deck |
 | `link.pair`, `link.find`, `link.status`, `ctx.remote`, offline behaviour | link |
-| `vyre.run/box` alias, `Vyre-mac.zip` and `SHA256SUMS`, GETTING-STARTED linking JOURNEY | release |
+| `vyre.run/box` alias, `Vyre-mac.zip` (since dropped: the Mac builds the Capsule) and `SHA256SUMS`, GETTING-STARTED linking JOURNEY | release |

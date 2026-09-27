@@ -1,0 +1,12 @@
+{
+  "name": "voice",
+  "version": "0.1.0",
+  "description": "Push-to-talk for the Capsule: streams the mic to a speech provider and relays the words back, with optional spoken replies.",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["voice.status", "voice.settings", "voice.speak"] },
+  "watches": { "emits": [] },
+  "shows": { "capsule": ["settings:voice"], "streams": ["listen"] },
+  "needs": { "vault": ["voice-deepgram-key", "voice-openai-key", "voice-elevenlabs-key"] },
+  "teaches": {}
+}

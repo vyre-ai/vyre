@@ -1,0 +1,27 @@
+# The Vyre relay on Cloudflare (ADR 0026, section 2). No account id here: wrangler takes it from
+# the logged-in account at deploy. Deploying needs the lead's approval.
+name = "vyre-relay"
+main = "index.js"
+compatibility_date = "2026-09-01"
+
+# Set at deploy, lead approval required.
+# routes = [{ pattern = "relay.vyre.run/*", zone_name = "vyre.run" }]
+
+[[durable_objects.bindings]]
+name = "ROUTES"
+class_name = "RouteRelay"
+
+# The free plan needs SQLite-backed Durable Objects.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["RouteRelay"]
+
+# Per-address limiting for /v1/device. Optional: without it the per-route caps in the DO are the
+# only limit, and a rate limiting rule on /v1/device is set on the zone instead. Set at deploy.
+# [[ratelimits]]
+# name = "DEVICE_LIMITER"
+# namespace_id = "1001"
+# simple = { limit = 30, period = 60 }
+
+[observability]
+enabled = true

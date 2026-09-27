@@ -81,7 +81,7 @@
                 <div class="col" style="margin-top: auto; padding: 12px 16px; gap: 8px; border-top: 1px solid var(--rule);">
                   <span class="lbl">Computer states</span>
                   <div class="row t12 t2" style="gap: 14px;"><span class="st"><span class="ring"></span>running</span><span class="st"><svg class="ic ic-12" viewBox="0 0 16 16"><path d="M5.5 3.5v9M10.5 3.5v9"></path></svg>frozen</span><span class="st"><span class="dot"></span>stopped</span><span class="st"><span class="dot dot-idle"></span>none</span></div>
-                  <span class="t12 t3">Frozen about 1 min after nobody watches. Opening Glass wakes it in a second.</span>
+                  <span class="t12 t3">Frees its screen after about a minute with nobody watching, freezes 15 s later. Opening Glass wakes it in a second.</span>
                 </div>
               </div>
 
@@ -98,31 +98,35 @@
                   <span class="t13 t2 grow trunc">Watching kit's screen. Nothing you do here reaches it until you take over.</span>
                 </div>
                 <div class="row" style="gap: 16px; align-items: flex-start;">
-                  <div class="glass" style="width: 624px; height: 390px; flex: none;">
+                  <div class="glass" style="width: 560px; height: 350px; flex: none;">
                     <div class="glass-bar"><i style="width: 8px; height: 8px; border-radius: 4px; background: var(--rule-strong); display: inline-block;"></i><i style="width: 8px; height: 8px; border-radius: 4px; background: var(--rule-strong); display: inline-block;"></i><span class="mono t12 t3 grow trunc" style="text-align: center;">staging.harlow.test/intake/estate</span></div>
-                    <div class="col" style="padding: 20px 28px; gap: 14px;">
+                    <div class="col" style="padding: 16px 24px; gap: 12px;">
                       <span class="t15 w6">Harlow Legal intake · staging</span>
                       <div class="row" style="gap: 8px;"><span class="gl-block" style="height: 6px; width: 90px; background: var(--rule-strong);"></span><span class="gl-block" style="height: 6px; width: 90px; background: var(--rule-strong);"></span><span class="gl-block" style="height: 6px; width: 90px;"></span><span class="gl-block" style="height: 6px; width: 90px;"></span></div>
                       <span class="gl-line" style="width: 38%;"></span>
                       <div class="row" style="gap: 12px;"><div class="col grow" style="gap: 6px;"><span class="gl-line" style="width: 40%; height: 6px;"></span><span class="gl-block" style="height: 30px;"></span></div><div class="col grow" style="gap: 6px;"><span class="gl-line" style="width: 50%; height: 6px;"></span><span class="gl-block" style="height: 30px;"></span></div></div>
                       <div class="col" style="gap: 6px;"><span class="gl-line" style="width: 24%; height: 6px;"></span><span class="gl-block" style="height: 30px; box-shadow: inset 0 0 0 1px var(--focus);"></span></div>
-                      <div class="col" style="gap: 6px;"><span class="gl-line" style="width: 30%; height: 6px;"></span><span class="gl-block" style="height: 64px;"></span></div>
+                      <div class="col" style="gap: 6px;"><span class="gl-line" style="width: 30%; height: 6px;"></span><span class="gl-block" style="height: 48px;"></span></div>
                       <div class="row" style="gap: 10px;"><span class="gl-block" style="height: 30px; width: 110px; background: var(--rule-strong);"></span><span class="gl-block" style="height: 30px; width: 80px;"></span></div>
                     </div>
-                    <span class="cursor-ai" style="left: 250px; top: 238px;"></span>
-                    <span class="tag" style="position: absolute; left: 266px; top: 252px; background: var(--panel); color: var(--text);">kit</span>
+                    <span class="cursor-ai" style="left: 230px; top: 214px;"></span>
+                    <span class="tag" style="position: absolute; left: 246px; top: 228px; background: var(--panel); color: var(--text);">kit</span>
                   </div>
-                  <div class="col grow" style="gap: 14px; min-width: 0;">
-                    <div class="col" style="gap: 6px;"><span class="lbl">Watching</span><span class="t13 trunc">you and your phone</span><span class="t12 t3">2 of 4 viewers</span></div>
-                    <div class="col" style="gap: 6px;"><span class="lbl">Link</span><span class="st"><span class="dot dot-run"></span>direct · 30 fps</span><span class="t12 t3">A slow link shows relayed and drops to 5 fps.</span></div>
-                    <div class="col" style="gap: 6px;"><span class="lbl">Computer</span><span class="t13 t2">2 cores · 3 GB</span><span class="t13 t2">Chrome, desktop, terminal</span></div>
-                    <div class="col" style="gap: 6px;"><span class="lbl">Keys</span><div class="row t12 t3" style="gap: 6px;"><span class="kbd">T</span>take over</div><div class="row t12 t3" style="gap: 6px;"><span class="kbd">⌃⏎</span>hand back</div></div>
-                    <button class="btn btn-g btn-sm" type="button" style="align-self: flex-start; margin-left: -10px;"><svg class="ic" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"></rect></svg>Stop computer</button>
+                  <div class="col grow" style="gap: 12px; min-width: 0;">
+                    <div class="col" style="gap: 4px;"><span class="lbl">Watching</span><span class="t13 trunc">you and your phone</span><span class="t12 t3">Screens 1 of 2 in use</span></div>
+                    <div class="col" style="gap: 4px;"><span class="lbl">Link</span><span class="st"><span class="dot dot-run"></span>direct · 30 fps</span><span class="t12 t3">A slow link shows relayed and drops to 5 fps.</span></div>
+                    <div class="col" style="gap: 6px;"><span class="lbl">Limits</span>
+                      <div class="row" style="gap: 8px;"><div class="inp" style="width: 52px; height: 28px; justify-content: center;">2</div><span class="t13 t2 grow">cores</span><span class="t12 t3">1 to 16</span></div>
+                      <div class="row" style="gap: 8px;"><div class="inp" style="width: 52px; height: 28px; justify-content: center;">3</div><span class="t13 t2 grow">GB memory</span><span class="t12 t3">1 to 64</span></div>
+                      <span class="t12 t3">Applies at the next restart.</span>
+                    </div>
+                    <div class="row" style="gap: 6px;"><button class="btn btn-s btn-sm" type="button"><svg class="ic" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9M13.5 2.5v3h-3"></path></svg>Restart</button><button class="btn btn-g btn-sm" type="button"><svg class="ic" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"></rect></svg>Stop</button></div>
+                    <div class="col" style="gap: 4px;"><span class="lbl">Keys</span><div class="row t12 t3" style="gap: 6px;"><span class="kbd">T</span>take over<span class="kbd" style="margin-left: 6px;">⌃⏎</span>hand back</div></div>
                   </div>
                 </div>
                 <div class="col" style="gap: 2px;">
                   <div class="row" style="gap: 8px; height: 20px;"><span class="lbl grow">Activity</span><span class="t12 t3">Open session</span></div>
-                  <div class="trow"><svg class="ic" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg><span class="trunc grow">alex took over from phone for 2m 14s · handed back · to fix the date picker</span><span class="t12 t3">14:12</span></div>
+                  <div class="trow"><svg class="ic" viewBox="0 0 16 16"><path d="M5.5 8V3.5a1 1 0 0 1 2 0V7M7.5 7V2.5a1 1 0 0 1 2 0V7M9.5 7V3.5a1 1 0 0 1 2 0V9c0 3-1.8 5-4.3 5C5 14 4 12.7 3 11L2 9.2a1 1 0 0 1 1.7-1L5.5 10"></path></svg><span class="trunc grow">alex gave the keyboard back after 2m 14s · note: fixed the date picker</span><span class="t12 t3">14:12</span></div>
                   <div class="trow"><svg class="ic" viewBox="0 0 16 16"><circle cx="8" cy="8" r="6"></circle><path d="M2 8h12M8 2c1.8 1.8 2.5 3.8 2.5 6S9.8 12.2 8 14M8 2C6.2 3.8 5.5 5.8 5.5 8S6.2 12.2 8 14"></path></svg><span>Opened</span><span class="mono trunc grow">staging.harlow.test/intake/estate</span><span class="t12 t3">14:14</span></div>
                   <div class="trow"><svg class="ic" viewBox="0 0 16 16"><path d="M4 1.5h5l3 3v10H4z"></path><path d="M9 1.5v3h3"></path></svg><span class="trunc grow">Filled the probate step · 6 fields</span><span class="t12 t3">14:15</span></div>
                   <div class="trow"><span class="spin"></span><span>Clicking</span><span class="mono trunc grow">Next: review</span><span class="t12 t2">0:04</span></div>
@@ -214,10 +218,11 @@
             <span class="ring" style="position: absolute; left: 172px; top: 104px; width: 22px; height: 22px; border-radius: 11px; border-top: 0;"></span>
           </div>
           <p class="t13 t2">Tap to click · long press for right click · two fingers scroll · pinch zoom</p>
-          <div class="row" style="gap: 10px;"><button class="btn btn-s ph-btn" type="button" style="flex: 1;">Keyboard</button><button class="btn btn-s ph-btn" type="button" style="flex: 1;"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="5" cy="11" r="2.5"></circle><path d="M6.8 9.2l6.2-6.2M11 5l2 2M9.5 6.5l1.5 1.5"></path></svg>Fill a login</button></div>
+          <button class="btn btn-s ph-btn" type="button">Keyboard</button>
+          <p class="t13 t2">For a password, hand back and use Sign in privately, which cuts it.</p>
           <div class="ph-card">
             <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><path d="M1.5 8s2.5-4.5 6.5-4.5S14.5 8 14.5 8s-2.5 4.5-6.5 4.5S1.5 8 1.5 8z"></path><circle cx="8" cy="8" r="2"></circle></svg><div class="col grow" style="min-width: 0;"><span class="t17">kit is paused</span><span class="t13 t2">It sees your changes when you hand back.</span></div></div>
-            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg><div class="col grow" style="min-width: 0;"><span class="t17 trunc">You and alex's MacBook Pro</span><span class="t13 t2">are watching · 2 of 4</span></div></div>
+            <div class="ph-row" style="align-items: center;"><svg class="ic ic-20 t2" viewBox="0 0 16 16"><rect x="1.5" y="3" width="9" height="7" rx="1"></rect><path d="M4 13h4"></path><rect x="11" y="5.5" width="3.5" height="8" rx="0.8"></rect></svg><div class="col grow" style="min-width: 0;"><span class="t17 trunc">You and alex's MacBook Pro</span><span class="t13 t2">are watching · screens 1 of 2 in use</span></div></div>
           </div>
           <p class="t12 t3">Control returns to kit on Hand back, after 5 min idle, or when this screen stays hidden past 90 s.</p>
         </div>
@@ -228,11 +233,11 @@
 
     <div class="anno">
       <span class="lbl">How it works</span>
-      <div class="anno-i"><span class="anno-n">1</span><span>Each agent has its own computer: a container on the box with a desktop, Chrome and a terminal (2 cores · 3 GB · 1440×900). None shows "Give juno a computer".</span></div>
-      <div class="anno-i"><span class="anno-n">2</span><span>States: running, frozen (about 1 min after nobody watches, wakes on open), stopped, none. Frozen costs nothing and keeps the tabs.</span></div>
-      <div class="anno-i"><span class="anno-n">3</span><span>Glass has four jobs: Watch (default, read only), Take over (the one primary, T), Sign in privately, Files. Up to 4 viewers at once.</span></div>
-      <div class="anno-i"><span class="anno-n">4</span><span>Take over pauses kit. Control comes back on Hand back (⌃⏎), after 5 min idle, or when the tab hides past its 90 s lease. The thread gets a note: who, how long, why it ended.</span></div>
-      <div class="anno-i"><span class="anno-n">5</span><span>Sign in privately is a shielded take over: kit can neither see nor act. Pick a login and Vyre fills it into the remote Chrome; releasing it asks Face ID once for 30 min.</span></div>
+      <div class="anno-i"><span class="anno-n">1</span><span>Each agent has its own computer: a container on the box with a desktop, Chrome and a terminal (2 cores · 3 GB · 1440×900). None shows "Give juno a computer", which asks for no passkey. Restart and Limits (1 to 16 cores, 1 to 64 GB) sit on the panel.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>States: running, frozen, stopped, none. Frees its screen after about a minute with nobody watching, freezes 15 s later; opening wakes it. Frozen keeps the tabs.</span></div>
+      <div class="anno-i"><span class="anno-n">3</span><span>Glass has four jobs: Watch (default, read only), Take over (the one primary, T), Sign in privately, Files. No viewer cap: the cap is screens, 2 computers checked out at once.</span></div>
+      <div class="anno-i"><span class="anno-n">4</span><span>Take over pauses kit. Control comes back on Hand back (⌃⏎), after 5 min idle (Settings, Network, Glass hand-back; a chip warns 10 s before), or when the tab hides past its 90 s lease. The thread says who, how long, why.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Sign in privately is a shielded take-over: kit can neither see nor act, so Fill a login lives only there. Take over, hand back and Sign in privately ask no passkey; agents are refused them outright.</span></div>
       <div class="anno-i"><span class="anno-n">6</span><span>A slow link says relayed and drops to 5 fps rather than freezing. New agent is an outline so Take over stays the page's one primary.</span></div>
       <div class="anno-i"><span class="anno-n">7</span><span>Smooth: Glass frames draw to a canvas, never as images in the DOM. Watching pauses when the tab or page hides, and a relayed link drops to 5 fps instead of stuttering.</span></div>
     </div>
