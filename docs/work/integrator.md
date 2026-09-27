@@ -66,6 +66,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   for the reviewer. safe-git: pre/rc work/e2e-safegit 9efb1851, main work/e2e-safegit-main a26793cd (NOT 9eb2ee32/2f43126d); land only when the reviewer clears THESE heads.
   Land 0f17b106 the moment it is cleared (do not wait for e2e's crash-loop follow-up, its own sha later).
   box-deploy confirms computers.list works and docker-api is stable after the redeploy.
+  work/docker-api-hotfix (cohesion b54d2521) is DROPPED by the lead: never land it.
 - rc.2 candidate, NOT gating: cohesion agentClaim parser (5ef364c3 + fix sha) once e2e AND reviewer sign
   off the fix sha. If glass is ready first, land without it.
 - rc.2 waits on: glass (14f1824c HELD by reviewer, 2 HIGH; take only a sha reviewer signs off). Was also e2e's fix
