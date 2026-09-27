@@ -272,4 +272,41 @@ let appsExtensionSuite = Suite("apps extension") { t in
         }
         t.eq(out, .failed("The apps module is not on this Vyre yet."))
     }
+
+    t.test("words without @: only app-like words are asked about, and each route is one row") {
+        t.ok(AppsWordsProvider.looksLikeApps("timer 10 min")); t.ok(AppsWordsProvider.looksLikeApps("10 min"))
+        t.ok(AppsWordsProvider.looksLikeApps("remind me to call juno at 6")); t.ok(AppsWordsProvider.looksLikeApps("WhatsApp juno: hi"))
+        t.ok(!AppsWordsProvider.looksLikeApps("northwind bakery hours")); t.ok(!AppsWordsProvider.looksLikeApps("tim"))
+        let l = link(route: { i in
+            let text = i["text"] as? String ?? ""
+            if text.hasPrefix("timer") { return ["app": "Planner", "action": "add", "args": ["text": text, "kind": "timer"], "sends": false, "said": "Timer for 10 minutes"] }
+            if text.hasPrefix("whatsapp") { return ["app": "WhatsApp", "action": "send", "args": ["to": "kit", "text": "hi"], "sends": true, "said": "WhatsApp → kit: hi"] }
+            if text.hasPrefix("tell") { return ["ambiguous": true, "reason": "which app?", "ask": "Which app?", "text": "hi", "action": "send", "needs": ["app": [["name": "WhatsApp"], ["name": "Messages"]]]] }
+            return ["ambiguous": true, "reason": "remind you of what?"]
+        })
+        l.answer("apps.act") { _ in .success(["said": "Timer set for 10 minutes"]) }
+        let p = AppsWordsProvider(vyred: l)
+        let r = t.wait { () -> [String] in
+            var out: [String] = []
+            for q in ["timer 10 min", "whatsapp kit: hi", "tell kit hi", "remind me to", "northwind bakery hours"] {
+                let rows = await p.results(for: Query(q))
+                out.append(rows.map { "\($0.title)|\($0.subtitle)|\($0.actions.first?.confirm ?? "-")" }.joined(separator: ";"))
+            }
+            let timer = await p.results(for: Query("timer 10 min"))[0]
+            let done = await timer.actions[0].run(timer, ActionContext(query: Query("")))
+            let send = await p.results(for: Query("whatsapp kit: hi"))[0]
+            let sent = await send.actions[0].run(send, ActionContext(query: Query("")))
+            out.append("\(done)"); out.append("\(sent)")
+            return out
+        }
+        t.eq(r?[0], "Timer for 10 minutes|Vyre's planner|-", "no confirm for the person's own timer")
+        t.eq(r?[1], "WhatsApp → kit: hi|sends as you, through WhatsApp|WhatsApp → kit: hi · Enter again to send")
+        t.eq(r?[2], "Which app?|WhatsApp, Messages|-")
+        t.eq(r?[3], "", "half-typed words: no row")
+        t.eq(r?[4], "", "not app words: nothing asked")
+        t.eq(r?[5], "said(\"Timer set for 10 minutes\")")
+        t.eq(r?[6], "said(\"Sent to kit\")")
+        t.eq(l.calls("apps.route").count, 6, "northwind bakery hours never reached vyred")
+        t.eq(l.trail.filter { $0.hasPrefix("apps.send") }, ["apps.send+proof"])
+    }
 }

@@ -12,6 +12,7 @@
 //     proof, or, for an action held at the Gate (Slack), approves the held item with gate.approve.
 //   - When the app or who is unclear, the answer is a question with "Did you mean ...?" and the
 //     candidates, never nothing.
+//   - Words typed without `@` ("timer 10 min") get one row through apps.route (AppsWords.swift).
 // Nothing polls and nothing runs while the Capsule is hidden; a preview is forgotten on hide.
 
 import AppKit
@@ -103,6 +104,10 @@ final class AppsExtension: CapsuleExtension {
     private var generation = 0
     /// A route or a send in flight: another Enter meanwhile is not a second Enter.
     private var busy = false
+
+    /// The row for words typed without `@` (AppsWords.swift).
+    private lazy var words = AppsWordsProvider(vyred: host.vyred)
+    var providers: [ResultProvider] { [words] }
 
     init(host: CapsuleHost) { self.host = host }
 

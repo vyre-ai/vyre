@@ -25,6 +25,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   in the panel (`isARepeat` is ignored).
 - An unclear app or recipient is a question under the box ("Who should get this? Did you mean
   Ammi jee on WhatsApp? Type @ to pick."), never nothing.
+- Words typed without `@` get a row too (`AppsWords.swift`): words that start like an app phrase
+  ("timer 10 min", "remind me to call juno at 6", "whatsapp kit: hi") go to `apps.route`, and what
+  it places is one row ("Timer for 10 minutes · Vyre's planner"). Enter runs the person's own
+  things at once; a row that sends uses the Capsule's confirm ("Enter again to send", forgotten on
+  any key) and then `apps.send` with the proof. An unclear app or recipient is a row that asks.
+  Other words never leave the Capsule, and half-typed ones show no row.
 
 #### `@` inside an app (native Capsule)
 
