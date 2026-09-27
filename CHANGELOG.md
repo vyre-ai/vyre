@@ -4,6 +4,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: the box image is built and booted on every change to it
+
+- .github/workflows/box-image.yml (from ci 0f804c11): builds the image from the npm pack, boots
+  vyre through box/compose.yml (with its tailscale), checks PID 1 is tini and the log has no "not
+  running as PID 1", that vyred answers health, restarts through loop.sh and drains on stop;
+  docker-api and egress (computers profile) are created and inspected: no Docker init. Lands with
+  resilience's compose change (no `init: true` on the vyre image's services).
+
 #### CI: capsule-mac runs when the Capsule's check or CLI changes
 
 - capsule-mac.yml also triggers on scripts/capsule-native-check.mjs and core/cli/commands/capsule*,
