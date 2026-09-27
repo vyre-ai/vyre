@@ -1,4 +1,12 @@
-# ADR 0015 · Screen context, Mac computer use, the side view and voice
+---
+title: ADR 0015: Screen context, Mac computer use, the side view and voice
+summary: How a session sees the screen, drives Chrome and Mac apps visibly, takes the user's voice, and lays out the side view, and the lines each of those never crosses.
+audience: builders
+owner: capsule-sight
+status: stable
+---
+
+# ADR 0015: Screen context, Mac computer use, the side view and voice
 
 Status: accepted, 27 Sep 2026 · Workstream: capsule-sight · Brief: team/briefs/sideview-layout.md
 
