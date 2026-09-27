@@ -56,6 +56,7 @@ export function mountScreen(o) {
   let gen = 0, backoff = 1, retry = 0, session = /** @type {string|null} */ (null);
   let detachInput = () => {};
   let zoom = /** @type {ReturnType<typeof pinchZoom> | null} */ (null);
+  let fit = true;   // Deck only: true fits the whole remote desktop to the window (scaleViewport); false is 1:1, scrollable.
   let conn = "connecting";   // connecting | live | hidden | waiting | refused | ended | error | noscreen
   /** @type {{ path: string, latencyMs: number|null } | null} how the box reaches this device, from glass.open */
   let link = null;
@@ -76,9 +77,13 @@ export function mountScreen(o) {
   const over = h("div", { class: "gl-over" });
   const badge = h("div", { class: "gl-badge mono" });
   const panelSize = h("span", { class: "faint" });
+  // Deck only: 1:1 shows the remote desktop at its own resolution (scrollable) instead of
+  // squeezed to fit the window. Phone keeps pinch-zoom (zoomReset below) for the same job.
+  const scaleBtn = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => { fit = !fit; applyScale(); draw(); } }, "1:1");
+  const screenEl = h("div", { class: "gl-screen" }, zoomView, snap, over);
   const stage = h("div", { class: "gl-stage", role: "img", "aria-label": `Live view of ${name}'s screen` },
-    h("div", { class: "gl-panel mono" }, h("span", { class: "gl-panel-me" }, `${name}@box-${name}`), h("span", { style: { flexGrow: "1" } }), panelSize),
-    h("div", { class: "gl-screen" }, zoomView, snap, over), badge);
+    h("div", { class: "gl-panel mono" }, h("span", { class: "gl-panel-me" }, `${name}@box-${name}`), h("span", { style: { flexGrow: "1" } }), scaleBtn, panelSize),
+    screenEl, badge);
   const bar = h("div", { class: "gl-barslot" });
   const notice = h("div", { class: "gl-noticeslot", "aria-live": "polite" });
   const caption = h("div", { class: "gl-caption" });
@@ -187,6 +192,16 @@ export function mountScreen(o) {
       h("div", { class: "gl-over-t" }, t), d ? h("div", { class: "gl-over-d small" }, d) : null, retryBtn, restart));
   }
 
+  /** Deck only: reflect `fit` onto the live RFB session and the screen's CSS. A no-op on the
+   * phone (which has no scaleBtn to click) and while there is no live session (applied on connect). */
+  function applyScale() {
+    screenEl.classList.toggle("gl-1to1", !phone && !fit);
+    scaleBtn.textContent = fit ? "1:1" : "Fit";
+    if (!rfb) return;
+    rfb.scaleViewport = fit;
+    rfb.clipViewport = !fit;
+  }
+
   function applyHolding() {
     detachInput(); detachInput = () => {};
     if (!rfb) return;
@@ -260,9 +275,9 @@ export function mountScreen(o) {
     // The relay does not take QEMU extended key events (ADR 0005): keysyms only, from event.key.
     try { Object.defineProperty(r2, "_qemuExtKeyEventSupported", { get: () => false, set: () => {}, configurable: true }); } catch {}
     r2.viewOnly = true;
-    r2.scaleViewport = true;
+    r2.scaleViewport = fit;
     r2.resizeSession = false;
-    r2.clipViewport = false;
+    r2.clipViewport = !fit;
     r2.focusOnClick = !phone;
     r2.background = "transparent";
     const [q, c] = levels(phone, link);
@@ -276,7 +291,7 @@ export function mountScreen(o) {
       if (rfb !== r2) return;
       backoff = 1; conn = "live"; why = "";
       snap.hidden = true;
-      applyHolding(); draw();
+      applyScale(); applyHolding(); draw();
     });
     r2.addEventListener("disconnect", (/** @type {any} */ e) => {
       if (rfb !== r2) return;   // we closed it on purpose
@@ -393,6 +408,7 @@ export function mountScreen(o) {
     applyHolding(); draw();
   });
 
+  applyScale();
   draw();
   if (s.visible()) connect(); else { conn = "hidden"; draw(); }
 
