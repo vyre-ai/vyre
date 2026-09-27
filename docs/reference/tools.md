@@ -1419,7 +1419,7 @@ The listener, the open routes, and what Tailscale Funnel is publishing from this
 
 ### `import.plan`
 
-Exactly what an import of these folders would take: { plan, sessions, bytes, folders }. include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.
+Exactly what an import of these folders would take: { plan, sessions, bytes, folders, pace: { turns, usd, fast: { hours }, gentle: { days } } } (pace: how long understanding them would take at each speed; search works at once either way). include and exclude are folders sessions ran in (as import.scan lists them) or whole sources (their path); run import.scan first. The plan is kept for 30 minutes, for the confirm screen.
 
 - Input:
   - `include` list of string, required
@@ -1428,7 +1428,7 @@ Exactly what an import of these folders would take: { plan, sessions, bytes, fol
 
 ### `import.scan`
 
-The Claude Code sessions on this device, by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (work on Vyre itself, Vyre's own sessions and temporary folders are not). Reads file names, sizes, times and each session's folder only; nothing leaves the device. folders: more folders to look in (absolute paths).
+The Claude Code sessions on this device, by source and by the folder each ran in: counts, sizes, dates, the project each folder belongs to, and which are suggested for import (Vyre's own sessions and temporary folders are not). Work on Vyre itself, folders the person excluded, and credential folders (~/.ssh and the like) are left out before anything is listed (left_out counts them). Reads file names, sizes, times and each session's folder only, within caps (capped says one was hit); nothing leaves the device. claude_keeps_days: how long Claude Code keeps sessions here. folders: more folders to look in (absolute paths).
 
 - Input:
   - `folders` list of string
