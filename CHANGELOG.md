@@ -13,6 +13,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   tests hung on the Mac). The child now sets O_NONBLOCK back first. A peer vyred should be able to
   read but cannot (perl failed or timed out) no longer keeps a surface's label: it counts as a
   model's, so a stall never reopens the forged label. test/peer.test.js has the large answer.
+- The peer is read by /usr/bin/perl with an empty environment, never a perl from vyred's PATH or one
+  PERL5OPT/PERL5LIB could load code into (a model's shell shares that user's PATH and env). vyred
+  also sets its socket non-blocking again itself when the check ends, so a check that never ran its
+  first line (a failed exec, a kill) cannot leave vyred blocking either.
 
 #### main's node job green again: install-box.sh passes shellcheck; the side view test has no read race
 

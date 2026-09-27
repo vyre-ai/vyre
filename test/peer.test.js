@@ -214,6 +214,63 @@ console.log("ok");
   assert.match(r.out, /ok/);
 });
 
+/** Run a small module in its own node, so a stall is a timeout here, not a hung test runner. */
+function isolated(t, root, name, source, ms = 30_000) {
+  const js = path.join(root, name);
+  fs.writeFileSync(js, source);
+  return new Promise(res => {
+    const c = spawn(process.execPath, [js], { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, VYRE_NO_DIALOGS: "1" } });
+    let out = "";
+    c.stdout.on("data", d => (out += d));
+    c.stderr.on("data", d => (out += d));
+    const timer = setTimeout(() => c.kill("SIGKILL"), ms);
+    c.on("close", code => { clearTimeout(timer); res({ code, out }); });
+  });
+}
+const PEER = JSON.stringify(path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "core/daemon/peer.js"));
+
+test("peer: a perl earlier in PATH, or PERL5OPT and PERL5LIB, never reads the peer", { skip: !["darwin", "linux"].includes(process.platform) }, async t => {
+  const root = tempHome(t);
+  // A fake perl first in PATH, and a module PERL5OPT would load into the real one: both say pid 1.
+  const bin = path.join(root, "bin"); fs.mkdirSync(bin);
+  fs.writeFileSync(path.join(bin, "perl"), "#!/bin/sh\necho 1\n", { mode: 0o755 });
+  fs.writeFileSync(path.join(root, "Fake.pm"), "package Fake; BEGIN { print 1; exit 0 } 1;\n");
+  const r = await isolated(t, root, "path.mjs", `
+import net from "node:net"; import path from "node:path";
+process.env.PATH = ${JSON.stringify(bin)} + ":" + process.env.PATH;
+process.env.PERL5OPT = "-MFake"; process.env.PERL5LIB = ${JSON.stringify(root)};
+const { readPeerPid } = await import(${PEER});
+const sock = path.join(${JSON.stringify(root)}, "p.sock");
+const srv = net.createServer(async s => { console.log("pid", await readPeerPid(s), "self", process.pid); s.end(); srv.close(); });
+srv.listen(sock, () => net.connect(sock));
+`);
+  const m = /pid (\S+) self (\d+)/.exec(r.out);
+  assert.ok(m, r.out);
+  assert.equal(m[1], m[2], "the real /usr/bin/perl read this process as the peer, not the planted one's 1");
+});
+
+test("peer: a check that fails before its first line still leaves vyred's socket non-blocking", { skip: !["darwin", "linux"].includes(process.platform) }, async t => {
+  const root = tempHome(t);
+  // A program in perl's place that exits at once: it never restores O_NONBLOCK itself. The server
+  // then writes far more than a socket buffer holds while its in-process reader waits 300 ms; a
+  // blocking socket would stall this process for good, a non-blocking one lets the timer run.
+  const r = await isolated(t, root, "fail.mjs", `
+import net from "node:net"; import path from "node:path";
+const { readPeerPid } = await import(${PEER});
+const sock = path.join(${JSON.stringify(root)}, "f.sock");
+let ticked = false;
+const srv = net.createServer(async s => {
+  console.log("peer", await readPeerPid(s, { bin: "/bin/sh", args: ["-c", "exit 5"] }));
+  setTimeout(() => { ticked = true; }, 50);
+  s.write(Buffer.alloc(16 * 1024 * 1024), () => { console.log("written ticked", ticked); s.end(); srv.close(); });
+});
+srv.listen(sock, () => { const c = net.connect(sock); c.pause(); setTimeout(() => c.resume(), 300); c.on("data", () => {}); });
+`, 20_000);
+  assert.equal(r.code, 0, `stalled: ${r.out}`);
+  assert.match(r.out, /peer null/);
+  assert.match(r.out, /written ticked true/, "the event loop ran while the large write waited");
+});
+
 test("peer: a detached process has no controlling terminal, whatever it says", async () => {
   const child = spawn(process.execPath, ["-e", "setTimeout(() => {}, 2000)"], { detached: true, stdio: "ignore" });
   await new Promise(r => setTimeout(r, 200));
