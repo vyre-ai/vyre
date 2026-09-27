@@ -53,15 +53,31 @@ async function resolveAgent(input, caller, call) {
 
 /** @type {{ start(ctx: any): Promise<any> }} */
 /**
- * A string with every URL in it cut to origin and path: no query, fragment or credentials. Cut to
- * one line of at most 200 characters.
+ * A URL's origin and path, with no query, fragment or login, and any long token-shaped path
+ * segment (a reset or magic link, a signed download) replaced by an ellipsis. Works on what URL()
+ * refuses too: everything from the first ? or # goes whatever else the string holds.
+ * @param {string} u
+ */
+export function bareUrl(u) {
+  const cut = String(u).split(/[?#]/)[0];
+  let head, path;
+  try { const x = new URL(cut); head = `${x.protocol}//${x.host}`; path = x.pathname; }
+  catch {
+    const m = /^([a-z][a-z0-9+.-]*:\/\/)(?:[^/@]*@)?([^/]*)(.*)$/i.exec(cut);
+    head = m ? m[1] + m[2] : cut; path = m ? m[3] : "";
+  }
+  return head + path.replace(/\/[A-Za-z0-9_-]{20,}(?=\/|$)/g, "/\u2026");
+}
+
+/**
+ * Words about an action, cut to one line of at most 200 characters, with every URL in them made
+ * bare (bareUrl). A URL runs to the next whitespace, quotes included, so a quote cannot end it
+ * early and leave its query behind.
  * @param {unknown} text
  */
 export function scrub(text) {
   const one = String(text ?? "").replace(/\s+/g, " ").trim();
-  const cut = one.replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi, u => {
-    try { const x = new URL(u); return `${x.protocol}//${x.host}${x.pathname}`; } catch { return u.split(/[?#]/)[0]; }
-  });
+  const cut = one.replace(/\b[a-z][a-z0-9+.-]*:\/\/\S+/gi, bareUrl);
   return cut.length > 200 ? cut.slice(0, 199) + "\u2026" : cut;
 }
 
@@ -144,11 +160,11 @@ export default {
           await cdp.send("Page.navigate", { url }, sessionId);
           await loaded;
         } catch (e) {
-          act_(meta, agent, "open", false, /** @type {Error} */ (e).message, { summary: url });
+          act_(meta, agent, "open", false, /** @type {Error} */ (e).message, { summary: bareUrl(url) });
           throw e;
         }
         const snap = await perceive(cdp, sessionId);
-        act_(meta, agent, "open", true, undefined, { summary: url });
+        act_(meta, agent, "open", true, undefined, { summary: bareUrl(url) });
         return { ok: true, title: snap.title, url: snap.url };
       });
 

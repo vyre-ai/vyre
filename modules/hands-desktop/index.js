@@ -15,10 +15,13 @@
 // client.js already scrubs it from every error string it raises, and nothing here holds it
 // past the one client it was built for.
 
+import { callerKind } from "../../core/modules/index.js";
 import { createClient } from "./client.js";
 import * as snapshot from "./snapshot.js";
 import * as act from "./act.js";
 
+/** Callers that are the person at one of their own surfaces, who may say which thread a step is for. */
+const PERSON_SURFACES = new Set(["cli", "local", "deck", "capsule"]);
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
 const AGENT = /^[a-z][a-z0-9-]{0,40}$/;
@@ -150,9 +153,11 @@ export default {
           decide: decideFor({ name: i.name, role: i.role }),
           click: clickWith(client, agent)(actionName, i.value),
         });
-        // The thread vyred verified wins over one the input names; the call links the step to
-        // the chat row that asked for it (ADR 0036). One line each, never a value typed.
-        const thread = meta.thread ? String(meta.thread) : i.thread ? String(i.thread) : null;
+        // The thread is the one vyred traced the call to. A person's own surface may name one; any
+        // other caller naming a thread would put its steps in someone else's chat (e2e review).
+        // The call links the step to the chat row that asked for it (ADR 0036), as a link only.
+        const kind = callerKind(caller);
+        const thread = meta.thread ? String(meta.thread) : i.thread && PERSON_SURFACES.has(kind) ? String(i.thread) : null;
         const line = (/** @type {unknown} */ x) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, 200);
         ctx.events.emit("desktop.acted",
           { agent, action: actionName, summary: line(i.name), ok: result.ok, ...(i.app ? { app: line(i.app) } : {}),

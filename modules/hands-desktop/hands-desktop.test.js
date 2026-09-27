@@ -214,8 +214,10 @@ test("hands-desktop: act presses a uniquely-named control and verifies the windo
   assert.equal(events[0].payload.ok, false);
   assert.equal(events[1].payload.agent, "kit");
   assert.equal(events[1].payload.ok, true);
-  assert.equal(events[1].thread, s.kitThread);
-  assert.equal(events[1].payload.thread, s.kitThread);
+  // The input named a thread, but an agent's call that vyred did not trace to one cannot put
+  // its steps in a thread's chat (e2e review): only vyred's meta or a person's surface may.
+  assert.equal(events[1].thread, null);
+  assert.equal(events[1].payload.thread, undefined);
   assert.ok(!JSON.stringify(events[1].payload).includes("report.txt"), "never the value typed");
 
   // The thread vyred verified and the tool call id reach the event, for Glass to link the step.

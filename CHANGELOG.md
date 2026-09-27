@@ -20,8 +20,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - Privacy: `chrome.acted` put the full URL of `chrome.open`, query and fragment included, into
   the event store, which every module reads; sign-in links and tokens live there. Every
   chrome.acted summary and reason now keeps a URL's origin and path only, and a click or type that
-  matched nothing names the selector's role and name instead of its raw JSON.
-- `chrome.acted`, `desktop.acted` and `hands.acted` carry the `thread` vyred verified and the
+  matched nothing names the selector's role and name instead of its raw JSON. A URL runs to the
+  next whitespace, so a quote cannot end it early; everything from the first ? or # goes even when
+  URL() refuses the string; and a token-shaped path segment (20 or more letters, digits, - or _:
+  reset and magic links, signed downloads) becomes an ellipsis. chrome.open's summary is built from
+  the parsed URL, never the model's raw words.
+- `chrome.acted`, `desktop.acted` and `hands.acted` carry the `thread` vyred verified (a thread an
+  input names counts only from a person's own surface) and the
   tool `call` id (from the call's meta, once platform passes it), scoped to that thread, so Glass
   and chat can tie a step to the row that asked for it (ADR 0036). `chrome.acted` and
   `desktop.acted` also name the `app`; `hands.acted` names the `agent` and says `why` when a step
