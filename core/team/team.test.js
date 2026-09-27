@@ -564,3 +564,111 @@ test("a folder already at <repo>-<role> that is not this repo's own worktree is 
   await assert.rejects(() => tool("team.add", { project: project.slug, role: "design", isolation: "worktree" }),
     e => { assert.match(e.message, /not this repo's own team\/design worktree/); return true; });
 });
+
+// --- step 4, slice B (2026-09-28): the integrator's own merge, mechanical then, if it must, model-driven
+
+/** A teammate's own request text that produces a real commit on its branch, no conflict with main. */
+async function commitOnDesign(repo, name = "form.md", text = "a calmer form\n") {
+  const dir = worktreePath(repo, "design");
+  fs.writeFileSync(path.join(dir, name), text);
+  git(dir, ["add", "."]);
+  git(dir, ["commit", "-q", "-m", name]);
+}
+
+const setTestCommand = (root, agent, command) => {
+  const db = openStore(paths(root).db);
+  db.prepare("UPDATE team_teammates SET test_command = ? WHERE agent = ?").run(command, agent);
+  db.close();
+};
+
+test("the integrator's own merge is automatic and spends no session, when there is nothing to test", async t => {
+  const { tool, root, project, repo, launches } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  await commitOnDesign(repo);
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  const integratorAgent = /** @type {any} */ (openStore(paths(root).db).prepare("SELECT agent FROM team_teammates WHERE project = ? AND role = 'integrator'").get(project.slug)).agent;
+  const merge = await until(async () => {
+    const db = openStore(paths(root).db);
+    const row = /** @type {any} */ (db.prepare("SELECT * FROM team_requests WHERE teammate = ? ORDER BY created_at DESC LIMIT 1").get(integratorAgent));
+    db.close();
+    return row && row.state !== "queued" && row.state !== "running" ? row : null;
+  }, "the merge to finish");
+  assert.equal(merge.state, "done");
+  assert.match(merge.result, /^Merged team\/design into main/);
+  assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "merge team/design"); // main really moved
+  assert.ok(!launches().some(l => l.agent === integratorAgent), "no session should have been needed");
+});
+
+test("the integrator's own merge waits for a passing test command, then is still automatic", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
+  setTestCommand(root, integrator.agent, "true"); // a real, fast, always-passing command
+  await commitOnDesign(repo);
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  const merge = await until(async () => {
+    const db = openStore(paths(root).db);
+    const row = /** @type {any} */ (db.prepare("SELECT * FROM team_requests WHERE teammate = ? ORDER BY created_at DESC LIMIT 1").get(integrator.agent));
+    db.close();
+    return row && row.state !== "queued" && row.state !== "running" ? row : null;
+  }, "the merge to finish");
+  assert.equal(merge.state, "done");
+  assert.match(merge.result, /true passed/);
+});
+
+test("a failing test command holds the merge for the integrator's own session, and never moves main", async t => {
+  const { tool, root, project, repo, launches } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
+  setTestCommand(root, integrator.agent, "false"); // a real, fast, always-failing command
+  await commitOnDesign(repo);
+  await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"done","notes":"unchanged","reason":"test"}' });
+  const merge = await until(async () => {
+    const db = openStore(paths(root).db);
+    const row = /** @type {any} */ (db.prepare("SELECT * FROM team_requests WHERE teammate = ? ORDER BY created_at DESC LIMIT 1").get(integrator.agent));
+    db.close();
+    return row && row.state !== "queued" ? row : null;
+  }, "the merge request to be picked up");
+  assert.equal(merge.state, "running"); // held for the integrator's own turn, not auto-closed
+  assert.ok(launches().some(l => l.agent === integrator.agent), "the integrator's own session should have been started");
+  await until(async () => (await tool("team.status", { request: merge.id })).state === "failed", "the held turn to end (nothing fixed it) and auto-fail");
+  assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "first"); // never moved past the original commit
+});
+
+test("team.merge is refused, saying so, while its own test command still fails", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
+  setTestCommand(root, integrator.agent, "false");
+  await commitOnDesign(repo);
+  // A hand-made merge request (not the automatic one queueMergeIfNeeded would send) whose own
+  // text asks the integrator's turn to call team.merge itself, the way it would once it believed
+  // it had fixed things: attemptMerge's own failure detail is appended after this, so the line
+  // this test cares about is found and run before that detail ever is.
+  const range = `${git(repo, ["rev-parse", "--short", "main"]).trim()}..${git(worktreePath(repo, "design"), ["rev-parse", "--short", "team/design"]).trim()}`;
+  const ask = await tool("team.ask", { to: "integrator", project: project.slug, wait: true,
+    text: `merge team/design ${range}, from request r_test\nvyre team.merge {}` });
+  assert.equal(ask.state, "failed"); // team.merge's own refusal, then the turn ends with nothing having fixed it
+  assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "first");
+});
+
+test("a real merge conflict is left for the integrator, not cleaned up, and team.merge refuses while it remains", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  const integrator = (await tool("team.list", { project: project.slug })).find(r => r.role === "integrator");
+  const dir = worktreePath(repo, "design");
+  fs.writeFileSync(path.join(dir, "README.md"), "changed by design\n");
+  git(dir, ["commit", "-q", "-am", "design's own change"]);
+  fs.writeFileSync(path.join(repo, "README.md"), "changed by main\n");
+  git(repo, ["commit", "-q", "-am", "main's own change"]);
+  const range = `${git(repo, ["rev-parse", "--short", "main"]).trim()}..${git(dir, ["rev-parse", "--short", "team/design"]).trim()}`;
+  const ask = await tool("team.ask", { to: "integrator", project: project.slug, wait: true,
+    text: `merge team/design ${range}, from request r_test\nvyre team.merge {}` });
+  assert.equal(ask.state, "failed"); // team.merge refused: the conflict is still there
+  const integratorDir = worktreePath(repo, "integrator");
+  const conflicted = git(integratorDir, ["diff", "--name-only", "--diff-filter=U"]).trim();
+  assert.equal(conflicted, "README.md", "the conflict must still be there for the integrator to work on, not aborted");
+  assert.equal(git(repo, ["log", "--format=%s", "-1", "main"]).trim(), "main's own change"); // never moved
+});

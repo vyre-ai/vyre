@@ -167,3 +167,72 @@ export async function shaRange(repo, branch, base) {
   if (!from.ok || !to.ok) return null;
   return { from: from.stdout.trim().slice(0, 7), to: to.stdout.trim().slice(0, 7) };
 }
+
+/** The commit a ref currently names, or null. */
+export async function headSha(dir, ref) {
+  const r = await git(dir, ["rev-parse", "--verify", "--end-of-options", ref]);
+  return r.ok ? r.stdout.trim() : null;
+}
+
+/**
+ * The integrator's own worktree, reset to `mainSha` (section 8: "reset to main before each
+ * merge"), discarding whatever it held from a previous attempt. Vyred's own act.
+ */
+export async function resetTo(worktreeDir, sha) {
+  const bad = await unsafeConfig(worktreeDir);
+  if (bad.length) return refuse(bad, "reset the integrator's worktree");
+  return git(worktreeDir, ["reset", "--hard", "--end-of-options", sha]);
+}
+
+/**
+ * Merge a teammate's own branch into the integrator's current checkout (already reset to main's
+ * tip). Unlike mergeBaseIn, a conflict is left exactly as git leaves it (MERGE_HEAD, the
+ * conflicted files with their markers): resolving it is the integrator's own session's job
+ * (section 8, "resolves conflicts itself when it can, reading both sides"), not something to
+ * clean up before it ever sees it.
+ */
+export function mergeBranchIn(worktreeDir, branch) {
+  return unsafeConfig(worktreeDir).then(bad => bad.length ? refuse(bad, "merge")
+    : git(worktreeDir, ["merge", "--no-verify", "--no-edit", "-m", `merge ${branch}`, "--end-of-options", branch], { env: VYRED }));
+}
+
+/** True once every conflict marker from a failed merge is gone (the integrator's own edits resolved it, and it was `git add`ed). */
+export async function stillConflicted(worktreeDir) {
+  const r = await git(worktreeDir, ["diff", "--name-only", "--diff-filter=U"]);
+  return r.ok && r.stdout.trim().length > 0;
+}
+
+/**
+ * Move `ref` from `fromSha` to `toSha`, only if it still names `fromSha` right now: a
+ * compare-and-swap (section 8), so a `ref` moved by anything else since vyred last read it (a
+ * teammate's own Bash can write the shared .git; a worktree is not a security boundary) fails
+ * this instead of being silently overwritten. `fromSha` must be a value vyred itself recorded,
+ * never read fresh from the ref it is about to swap — that would defeat the whole check.
+ */
+export async function compareAndSwap(repo, ref, fromSha, toSha) {
+  return (await git(repo, ["update-ref", `refs/heads/${ref}`, toSha, fromSha])).ok;
+}
+
+/** A project's own test command, guessed from what is in its repo. null when none is obvious: no tests are run, and a merge needs only a clean merge. */
+export async function detectTestCommand(repo) {
+  try { if (JSON.parse(fs.readFileSync(path.join(repo, "package.json"), "utf8")).scripts?.test) return "npm test"; } catch {}
+  if (fs.existsSync(path.join(repo, "pytest.ini")) || fs.existsSync(path.join(repo, "setup.cfg"))) return "pytest";
+  if (fs.existsSync(path.join(repo, "go.mod"))) return "go test ./...";
+  if (fs.existsSync(path.join(repo, "Cargo.toml"))) return "cargo test";
+  return null;
+}
+
+/**
+ * Run a project's own test command in `dir`. No shell (the command is split on plain spaces, its
+ * first word run directly): a project's test command is its own declared, editable setting, not
+ * untrusted repo content, but this still never hands anything to `/bin/sh`.
+ * @param {string} dir @param {string} command @param {number} [ms]
+ */
+export function runTests(dir, command, ms = 180_000) {
+  const [cmd, ...args] = String(command).trim().split(/\s+/);
+  return new Promise(resolve => {
+    execFile(cmd, args, { cwd: dir, timeout: ms, killSignal: "SIGKILL", maxBuffer: 16 * 1024 * 1024, windowsHide: true,
+      env: { ...process.env, CI: "1" } },
+    (err, stdout, stderr) => resolve({ ok: !err, stdout: String(stdout), stderr: String(stderr || (err ? err.message : "")) }));
+  });
+}
