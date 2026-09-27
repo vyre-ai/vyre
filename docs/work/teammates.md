@@ -35,11 +35,11 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 - sessions: the purpose map (`models.purposes`, purposes `teammate` and `helper`); a
   `teammate-result` item kind in `threads_inbox`; `team.*` in the phase 3 in-process MCP server;
   SessionStart `compact` re-injection hook.
-- app-design: the project Limits settings screen (sent 2026-09-27).
-- app-design: the Agents place tabs (Now, Inbox, Results, Notes, Setup), the summon box, the
-  Needs kinds "New teammate", "Merge", "Stuck".
+- app-design: DONE (work/app-design 99820a16, canvas https://claude.ai/artifact/Ap7uKGmbiEs4wM44iSyi1X,
+  row "Teammates (ADR 0031)"): Agents place, Needs kinds, Limits. Reviewed and approved; asked for
+  a "box full" reason on waiting rows and "On another project's request" instead of a client name.
 - vault: `vault.agent.grant` on a teammate's agent name; revoke on removal; a `project` column on
-  `vault_agent_grants`, checked on release for shared teammates.
+  `vault_agent_grants`, checked on release for shared teammates (the lead told vault).
 
 ## Changed contracts
 - None yet (design only). Proposed: module `team`, tables `agents_teammates`, `team_requests`,
