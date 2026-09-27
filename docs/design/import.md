@@ -160,8 +160,8 @@ without a server, or the server's own sessions), and "Send to your server" arriv
 1. After the first import, should "Keep them in sync" be offered on the same screen, unticked (the
    proposal), or only later in Settings?
 2. How fast should personal facts be read the first time? At the default pace a long history takes
-   days of background reading on the subscription. A bigger one-time backfill pool finishes in
-   hours, and counts against the plan's usage limits, not dollars.
+   days of background reading on the subscription. (Decided: the person's choice; fast reads bigger
+   batches within the plan's normal limits, never a paid allowance.)
 3. Claude Code deletes session files after 30 days by default (`cleanupPeriodDays`). Should
    onboarding offer to keep them longer? That writes to the person's own Claude Code settings,
    so it would ask first.
