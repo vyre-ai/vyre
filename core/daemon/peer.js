@@ -16,10 +16,17 @@ import fs from "node:fs";
 import { spawn, execFileSync } from "node:child_process";
 import { claudeCommand } from "../switchboard/sessions.js";
 
+// The child gets vyred's own connection as fd 3, and a file's O_NONBLOCK is shared by every copy of
+// it. On macOS libuv clears it for the child, which left vyred's socket blocking: the next large
+// write stalled vyred's whole event loop behind a slow reader, and deadlocked when the reader was
+// vyred itself (an in-process client). So each script sets it back first, before anything else.
+const NONBLOCK = 'use Fcntl; open(my $s, "+<&=", 3) or exit 2; fcntl($s, F_SETFL, fcntl($s, F_GETFL, 0) | O_NONBLOCK) or exit 4;';
 const PERL = {
-  darwin: 'open(my $s, "+<&=", 3) or exit 2; my $v = getsockopt($s, 0, 2) or exit 3; print unpack("i", $v);',
-  linux: 'use Socket; open(my $s, "+<&=", 3) or exit 2; my $v = getsockopt($s, SOL_SOCKET, SO_PEERCRED) or exit 3; print((unpack("iii", $v))[0]);',
+  darwin: `${NONBLOCK} my $v = getsockopt($s, 0, 2) or exit 3; print unpack("i", $v);`,
+  linux: `use Socket; ${NONBLOCK} my $v = getsockopt($s, SOL_SOCKET, SO_PEERCRED) or exit 3; print((unpack("iii", $v))[0]);`,
 };
+/** Whether this platform can say who is on a socket at all (peerPid is null there, not a failure). */
+export const canReadPeers = Boolean(PERL[/** @type {"darwin"|"linux"} */ (process.platform)]);
 
 /** @type {WeakMap<object, Promise<number|null>>} */
 const cache = new WeakMap();

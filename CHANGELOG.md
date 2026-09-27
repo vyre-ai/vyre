@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### On a Mac, the caller check no longer leaves vyred's socket blocking
+
+- vyred reads who is on a socket with a small perl child that gets the connection as fd 3. On
+  macOS libuv clears O_NONBLOCK for the child, and that flag is shared with vyred's own copy, so
+  after the check vyred's socket blocked: the next large answer (the tool list) stalled vyred's
+  whole event loop behind a slow reader, and deadlocked with an in-process client (switchboard's
+  tests hung on the Mac). The child now sets O_NONBLOCK back first. A peer vyred should be able to
+  read but cannot (perl failed or timed out) no longer keeps a surface's label: it counts as a
+  model's, so a stall never reopens the forged label. test/peer.test.js has the large answer.
+
 #### main's node job green again: install-box.sh passes shellcheck; the side view test has no read race
 
 - scripts/install-box.sh: the colour escapes and the step counter brace their variables
