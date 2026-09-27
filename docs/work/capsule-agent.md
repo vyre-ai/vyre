@@ -83,8 +83,8 @@ lines each in capsule-pro's `Host/CapsuleModel.swift`, `Host/App.swift`, `Host/P
   A destructive confirm line is Bone.
 
 ## Needs from others
-- deck-design: docs/design/TOKENS.md still names Beacon #FF7A59 / #E5532F (lines 24, 87, 105,
-  149); it is theirs to change to the violet attention token.
+- deck-design: docs/design/TOKENS.md named the retired Beacon colour; done in deck-design 36d5a5b
+  (violet attention token).
 
 ## Tests
 - 2026-09-27 through the build lock: "capsule model" 6 (the new Esc test among them), "agent" 26,
