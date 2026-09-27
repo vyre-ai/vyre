@@ -148,6 +148,18 @@ export default {
       run: async () => ({ cert_sha256: (await ownerKey()).cert_sha256, subject: `CN=Vyre ${box}` }),
     });
 
+    ctx.tool("releases.sign", {
+      description: "Sign the Android release now in the release folder (CI's unsigned APK named by android.json) with the owner's key, so the first download is instant. `vyre update` calls it after it places a new build. Idempotent.",
+      callers: ["cli", "local", "module"],
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const m = readManifest();
+        if (!m) throw Object.assign(new Error("no Android release on this box yet"), { code: "no_release" });
+        const s = await signed(m);
+        return { file: m.file, version: m.version, versionCode: m.versionCode, sha256: s.sha256, size: s.size, cert_sha256: (await ownerKey()).cert_sha256 };
+      },
+    });
+
     ctx.route("android", async (req, res, { caller, url }) => {
       // A guest or anyone who is not the owner learns nothing about what is here.
       if (!ownerDevice(caller)) return fail(res, 404, "not_found", url.pathname);

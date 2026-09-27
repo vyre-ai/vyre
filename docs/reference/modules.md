@@ -44,7 +44,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`relay`](#relay) | `core/relay` | `box` | 12 | 5 | capsule, cli, deck |
-| [`releases`](#releases) | `core/apps` | `box` | 1 | 0 | cli |
+| [`releases`](#releases) | `core/apps` | `box` | 2 | 0 | cli |
 | [`screen`](#screen) | `local/screen-mac` | `local` | 2 | 0 | none |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
@@ -336,7 +336,7 @@ The Android app from the box: CI's unsigned APK, signed with the owner's own key
 - Folder: `core/apps`, version 0.1.0
 - Runs on: `box`
 - Requires: `vault`
-- Tools: [1](tools.md#releases)
+- Tools: [2](tools.md#releases)
 - Emits: no events
 - Shows on: cli
 - Needs vault: `android-release-key`

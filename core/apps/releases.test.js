@@ -137,3 +137,17 @@ test("a build that does not match its manifest is refused, and a lost key makes 
   fs.rmSync(path.join(b.dir, "android.json"));
   assert.equal(JSON.parse((await b.get("/v1/releases/android")).body.toString()).error.code, "no_release");
 });
+
+test("releases.sign signs the placed build ahead of the first download, for `vyre update`", async t => {
+  const b = await box(t);
+  const r = await b.d().registry.call("releases.sign", {}, "cli");
+  assert.ok(r.data, JSON.stringify(r));
+  assert.equal(r.data.file, FILE);
+  assert.ok(fs.existsSync(path.join(b.dir, `signed-${FILE}`)), "signed before anyone asked");
+  const man = JSON.parse((await b.get("/v1/releases/android")).body.toString());
+  assert.equal(r.data.sha256, man.sha256);
+  assert.equal(r.data.cert_sha256, man.cert_sha256);
+  assert.equal((await b.d().registry.call("releases.sign", {}, "mcp")).error.code, "denied");
+  fs.rmSync(path.join(b.dir, "android.json"));
+  assert.equal((await b.d().registry.call("releases.sign", {}, "cli")).error.code, "no_release");
+});

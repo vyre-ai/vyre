@@ -16,6 +16,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   /v1/releases/android?file=<file> (the APK). The one-line /apps/ mapping in core/daemon is gone.
 - testIDs for ci's perf job (tab-now, tab-chats, tab-agents, now-row, now-row-swipe, transcript).
 - A placeholder icon (a lime dot on the dark background) so device builds are not blocked.
+- releases.sign (cli, local, module): signs the placed Android build now, for `vyre update`.
 
 #### One app: the relay path, pairing, the /app/ worker hooks; the box signs the Android APK
 
