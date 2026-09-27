@@ -9,6 +9,7 @@
 import { extractPersonal, CONF, KIN, SINGULAR, SINGLE_VALUED, TIME_VARYING, relOfRole } from "./extract.js";
 import { signal, turnHash } from "./reader.js";
 import { ordinary } from "./words.js";
+import { sessionTrust, userWords, devTalk, DEV_TURNS, TRUST_VERSION } from "./trust.js";
 import { MIGRATIONS } from "../schema.js";
 import { migrate } from "../../store/index.js";
 
@@ -45,10 +46,12 @@ const keyOf = ref => ref.slice(ref.indexOf(":") + 1);
 export class Personal {
   /**
    * @param {import("node:sqlite").DatabaseSync} db
-   * @param {{ log?: (m: string) => void, now?: () => number }} [opts]
+   * @param {{ log?: (m: string) => void, now?: () => number, trust?: () => { scratch?: string|null, skip?: string[] } }} [opts]
+   *   trust: the Capsule's ask folder and the folders the user left out (personal/trust.js)
    */
   constructor(db, opts = {}) {
     this.db = db;
+    this.trustOpts = opts.trust || (() => ({}));
     this.log = opts.log || (() => {});
     this.now = opts.now || (() => Date.now());
     migrate(db, "memory", MIGRATIONS);
@@ -71,7 +74,7 @@ export class Personal {
 
   /** Forget what was read from one session (its transcript was rewritten, or is gone). */
   reset(session) {
-    this.tx(() => { for (const t of ["memory_me_claims", "memory_me_cues", "memory_me_cursor", "memory_me_queue"]) this.db.prepare(`DELETE FROM ${t} WHERE session = ?`).run(session); });
+    this.tx(() => { for (const t of ["memory_me_claims", "memory_me_cues", "memory_me_cursor", "memory_me_queue", "memory_me_trust"]) this.db.prepare(`DELETE FROM ${t} WHERE session = ?`).run(session); });
     // A rewritten transcript can reuse rowids: the cached scan is no longer to be trusted.
     this.idx.clear(); this.hw = 0;
     this.dirty = true;
@@ -87,10 +90,16 @@ export class Personal {
     const db = this.db;
     if (full) {
       // Claims a model added stay: they are keyed to turns that did not change.
-      this.tx(() => db.exec("DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told'); DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;"));
+      this.tx(() => db.exec("DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told'); DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor; DELETE FROM memory_me_trust;"));
       this.dirty = true;
     }
-    const recall = new Map(db.prepare("SELECT id, turns FROM recall_sessions ORDER BY started, id").all().map(r => [String(r.id), Number(r.turns)]));
+    const rowsS = db.prepare("SELECT id, turns, cwd, human, parent, name, title FROM recall_sessions ORDER BY started, id").all();
+    const recall = new Map(rowsS.map(r => [String(r.id), Number(r.turns)]));
+    // Source trust: a session read under older rules is read again.
+    const trust = new Map(db.prepare("SELECT session, ok, why, dev, v FROM memory_me_trust").all().map(r => [String(r.session), { ok: Number(r.ok) === 1, why: r.why == null ? null : String(r.why), dev: Number(r.dev), v: Number(r.v) }]));
+    for (const [s, t] of trust) if (t.v < TRUST_VERSION) { this.reset(s); trust.delete(s); }
+    const topts = this.trustOpts() || {};
+    const meta = new Map(rowsS.map(r => [String(r.id), sessionTrust(/** @type {any} */ ({ ...r, human: Number(r.human) }), topts)]));
     const cursor = new Map(db.prepare("SELECT session, upto, focus FROM memory_me_cursor").all().map(r => [String(r.session), { upto: Number(r.upto), focus: r.focus ? String(r.focus) : null }]));
     // Gone from Recall, or shrunk (rewritten, seq restarted): read again from the start.
     for (const [s, c] of cursor) if (!recall.has(s) || /** @type {number} */ (recall.get(s)) < c.upto) { this.reset(s); cursor.delete(s); }
@@ -109,6 +118,9 @@ export class Personal {
     // A user turn with a personal signal waits for the reader (./reader.js), keyed by its text.
     const enqueue = db.prepare("INSERT INTO memory_me_queue (session, seq, ts, hash, pri) VALUES (?,?,?,?,?) ON CONFLICT DO UPDATE SET ts = excluded.ts, hash = excluded.hash, pri = excluded.pri");
     const done = db.prepare("INSERT INTO memory_me_cursor (session, upto, at, focus) VALUES (?,?,?,?) ON CONFLICT DO UPDATE SET upto = excluded.upto, at = excluded.at, focus = excluded.focus");
+    const setTrust = db.prepare("INSERT INTO memory_me_trust (session, ok, why, dev, v) VALUES (?,?,?,?,?) ON CONFLICT DO UPDATE SET ok = excluded.ok, why = excluded.why, dev = excluded.dev, v = excluded.v");
+    const dropClaims = db.prepare("DELETE FROM memory_me_claims WHERE session = ? AND method != 'told'");
+    const dropQueue = db.prepare("DELETE FROM memory_me_queue WHERE session = ?");
     let turns = 0, claims = 0, more = false;
     // One transaction per batch, not per session: a commit per session was most of a first
     // pass's time.
@@ -119,17 +131,29 @@ export class Personal {
         const take = list.slice(0, limit - turns);
         const all = take.length === list.length;
         let focus = cursor.get(session)?.focus ? safeJson(cursor.get(session)?.focus) : null;
+        const m = /** @type {{ ok: boolean, why: string|null }} */ (meta.get(session));
+        const tr = trust.get(session) || { ok: m.ok, why: m.why, dev: 0, v: TRUST_VERSION };
         for (const { rowid, seq } of take) {
+          // Only the user's own words teach personal facts, and never in a session that is a
+          // program's, the Capsule's, Vyre's own, or about building memory (personal/trust.js).
+          if (!tr.ok) break;
           const t = text.get(rowid);
           if (!t) continue;       // deleted since the scan: gone, not an error
+          if (String(t.role) !== "user") continue;
+          const own = userWords(String(t.text));
+          if (devTalk(own)) {
+            if (++tr.dev >= DEV_TURNS) { tr.ok = false; tr.why = "about memory"; dropClaims.run(session); dropQueue.run(session); this.dirty = true; }
+            continue;
+          }
           const ts = Number(t.ts) || 0;
-          const r = extractPersonal(String(t.text), { role: String(t.role), prev: focus });
+          const r = extractPersonal(own, { role: "user", prev: focus });
           focus = r.focus;
           for (const c of r.claims) { addClaim.run(session, seq, ts, c.subj, c.rel, c.obj, c.conf, c.method); claims++; }
           for (const q of r.cues) addCue.run(session, seq, ts, q);
-          const pri = String(t.role) === "user" ? signal(String(t.text), known) : 0;
-          if (pri) enqueue.run(session, seq, ts, turnHash(String(t.text)), pri);
+          const pri = signal(own, known);
+          if (pri) enqueue.run(session, seq, ts, turnHash(own), pri);
         }
+        setTrust.run(session, tr.ok ? 1 : 0, tr.why, tr.dev, TRUST_VERSION);
         const upto = all ? /** @type {number} */ (recall.get(session)) : take[take.length - 1].seq + 1;
         done.run(session, upto, this.now(), focus ? JSON.stringify(focus) : null);
         turns += take.length;
@@ -153,12 +177,13 @@ export class Personal {
    */
   requeue(names) {
     if (!this.hasRecall()) return 0;
-    const find = this.db.prepare("SELECT session, seq, ts, text FROM recall_turns WHERE role = 'user' AND lower(text) LIKE ? LIMIT 2000");
+    const find = this.db.prepare("SELECT t.session, t.seq, t.ts, t.text FROM recall_turns t JOIN memory_me_trust r ON r.session = t.session AND r.ok = 1 WHERE t.role = 'user' AND lower(t.text) LIKE ? LIMIT 2000");
     const put = this.db.prepare("INSERT INTO memory_me_queue (session, seq, ts, hash, pri) VALUES (?,?,?,?,2) ON CONFLICT DO UPDATE SET pri = 2");
     let n = 0;
     this.tx(() => {
       for (const name of names) for (const r of /** @type {any[]} */ (find.all(`%${name}%`))) {
-        const text = String(r.text);
+        const text = userWords(String(r.text));
+        if (devTalk(text)) continue;
         if (!new RegExp(`\\b${name}\\b`, "i").test(text) || signal(text, new Set([name])) !== 2) continue;
         n += Number(put.run(String(r.session), Number(r.seq), Number(r.ts) || 0, turnHash(text)).changes);
       }
@@ -258,7 +283,9 @@ export class Personal {
     if (!this.dirty && !force) return { changed: false };
     this.dirty = false;
     const db = this.db;
-    const claims = db.prepare("SELECT session, seq, ts, subj, rel, obj, conf, method FROM memory_me_claims").all()
+    // A session found untrusted after some of its claims were kept (a model's, read earlier) adds nothing.
+    const claims = db.prepare(`SELECT c.session, c.seq, c.ts, c.subj, c.rel, c.obj, c.conf, c.method FROM memory_me_claims c
+      LEFT JOIN memory_me_trust r ON r.session = c.session WHERE r.ok IS NOT 0 AND c.method != 'assistant'`).all()
       .map(r => ({ session: String(r.session), seq: Number(r.seq), ts: Number(r.ts) || 0, subj: String(r.subj), rel: String(r.rel), obj: String(r.obj), conf: Number(r.conf), method: String(r.method || "rule") }));
     const turnOf = c => `${c.session}\u0000${c.seq}`;
 

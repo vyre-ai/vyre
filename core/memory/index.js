@@ -32,7 +32,11 @@ export default {
     const curator = new Curator(ctx.store.db, { me: ctx.config.me, log: ctx.log, relations: ctx.config.memory?.relations });
     const graph = new Graph(ctx.store.db, curator);
     // Personal facts (docs/work/memory-iq.md): read after each curator pass, in batches that yield.
-    const personal = new Personal(ctx.store.db, { log: ctx.log });
+    // Source trust (personal/trust.js): never the Capsule's own asks, nor folders the user left out
+    // in config.memory.personal.skipCwds.
+    const askDir = ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null;
+    const personal = new Personal(ctx.store.db, { log: ctx.log,
+      trust: () => ({ scratch: askDir, skip: Array.isArray(ctx.config.memory?.personal?.skipCwds) ? ctx.config.memory.personal.skipCwds.map(String) : [] }) });
     /** Read every unread turn for personal facts, then derive if anything changed. */
     // memory.profile-changed: the about-you lines moved, so a session rebuilds its note on resume.
     // Counts only; the lines themselves are read with memory.profile.

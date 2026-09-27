@@ -15,12 +15,18 @@
 // states that relation ("my dentist is ...") may answer it. No model calls, ever.
 
 import { KIN, relOfRole } from "./extract.js";
+import { sessionTrust, userWords, devTalk } from "./trust.js";
+import { KIN_RELS } from "./model.js";
 
 /** A said line (the user's own words, turned to "you") is worth at most this. */
 export const SAID_MAX = 0.45;
 /** Answer from here up; say "maybe" from MAYBE; say nothing under it. */
 export const SURE = 0.5;
 export const MAYBE = 0.3;
+/** Questions about who someone is to the user, and their names: a wrong one is the worst answer. */
+export const PEOPLE_SURE = 0.75;
+const PEOPLE_Q = (p, facts) => p.kind === "kin" || (p.kind === "of" && String(p.rel).startsWith("kin:")) || (p.kind === "birthday" && !p.who?.me)
+  || (p.kind === "who" && facts.some(x => KIN_RELS.has(x.rel)));
 /** Sources given without asking: cheap, and enough to show where it came from. */
 const SOURCES = 3;
 const SOURCES_ASKED = 10;
@@ -342,7 +348,17 @@ const hasWord = (text, w) => new RegExp(`(^|[^a-z0-9])${esc(w)}($|[^a-z0-9])`, "
 export function answerer({ personal, graph = null, db, me = null, call = null, scratch = null }) {
   const hasTable = name => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE name = ?").get(name));
   const turnQ = () => hasTable("recall_turns") ? db.prepare("SELECT text, role, ts FROM recall_turns WHERE session = ? AND seq = ?") : null;
-  const sessQ = () => hasTable("recall_sessions") ? db.prepare("SELECT name, title FROM recall_sessions WHERE id = ?") : null;
+  const sessQ = () => hasTable("recall_sessions") ? db.prepare("SELECT name, title, cwd, human, parent FROM recall_sessions WHERE id = ?") : null;
+  const trustQ = () => hasTable("memory_me_trust") ? db.prepare("SELECT ok FROM memory_me_trust WHERE session = ?") : null;
+  /** A said line may come only from a session that may teach personal facts (personal/trust.js). */
+  const trusted = h => {
+    const id = String(h.session);
+    const row = /** @type {any} */ (trustQ()?.get(id));
+    if (row && Number(row.ok) === 0) return false;
+    const sn = /** @type {any} */ (sessQ()?.get(id));
+    const s = sn ? { ...sn, human: Number(sn.human) } : { cwd: h.cwd, human: h.human, parent: h.parent, name: h.name, title: h.title };
+    return sessionTrust(s, { scratch }).ok;
+  };
 
   /** The sentence of a turn that names what the answer says, else its start. */
   const quoteOf = (text, keys) => {
@@ -756,8 +772,9 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
       const hits = Array.isArray(r?.data) ? r.data : r?.data?.hits || [];
       for (const h of hits) {
         if (h.role === "assistant") continue;
-        if (/^Capsule: /.test(String(h.name || h.title || "")) || (scratch && h.cwd && String(h.cwd).startsWith(scratch))) continue;
-        const text = String(h.text || h.snippet || "").replace(/[«»]/g, "");
+        if (!trusted(h)) continue;
+        const text = userWords(String(h.text || h.snippet || "").replace(/[«»]/g, ""));
+        if (devTalk(text)) continue;
         const nt = normalize(text);
         if (qf.split(" ").length >= 3 && nt.includes(qf)) continue;   // the question itself, asked before
         for (const s of text.split(/(?<=[.!?])\s+|\n+/).map(x => x.trim())) {
@@ -838,8 +855,11 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
     if (p) {
       const f = byFact(p);
       if (f && f.conf >= MAYBE) {
-        const conf = round(f.conf);
-        const line = conf >= SURE ? f.line : "Maybe " + f.line.replace(/^Yes, /, "").replace(/^(Your|You|you)\b/, w => w.toLowerCase());
+        // Who someone is to the user is held to a higher bar: under it, a "maybe" with a
+        // confidence under SURE, so no surface shows it as an answer.
+        const bar = PEOPLE_Q(p, f.facts) ? PEOPLE_SURE : SURE;
+        const conf = round(f.conf >= bar ? f.conf : Math.min(f.conf, SURE - 0.05));
+        const line = f.conf >= bar ? f.line : "Maybe " + f.line.replace(/^Yes, /, "").replace(/^(Your|You|you)\b/, w => w.toLowerCase());
         const from = f.sessions ?? (f.facts.length ? Math.max(...f.facts.map(x => x.sessions)) : 0);
         return done({ answer: line, confidence: conf, kind: "fact", from, facts: f.facts.map(factOut), sources: sourcesOf(f.facts, n), via: "fact" });
       }

@@ -20,6 +20,8 @@
 //            body, and not to be read by whoever tunes the rules
 //   node scripts/eval-answer.js --world sealed  the second sealed world (test/fixtures/personal-sealed.js
 //            and test/eval/answer-sealed.json), written the same way; no --facts, --claims or --ask
+//   node scripts/eval-answer.js --world trust  source trust (test/fixtures/personal-trust.js): the
+//            user's own words against dev sessions, subagents, injected blocks and Claude's words
 //
 // Exits non-zero when memory.answer misses the bar: overall 0.9 or more, no confident wrong
 // answer, p95 under 150 ms.
@@ -51,6 +53,7 @@ import * as heldout from "../test/fixtures/personal-heldout.js";
 import * as blind from "../test/fixtures/personal-blind.js";
 import * as fresh from "../test/fixtures/personal-fresh.js";
 import * as sealed from "../test/fixtures/personal-sealed.js";
+import * as trust from "../test/fixtures/personal-trust.js";
 import { search, thread } from "../core/recall/search.js";
 import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
@@ -64,6 +67,7 @@ export const HELDOUT_GOLD_FILE = path.join(ROOT, "test/eval/answer-heldout.json"
 export const BLIND_GOLD_FILE = path.join(ROOT, "test/eval/answer-blind.json");
 export const FRESH_GOLD_FILE = path.join(ROOT, "test/eval/answer-fresh.json");
 export const SEALED_GOLD_FILE = path.join(ROOT, "test/eval/answer-sealed.json");
+export const TRUST_GOLD_FILE = path.join(ROOT, "test/eval/answer-trust.json");
 
 /**
  * The worlds the evaluation knows: the one the rules were written against, and a held-out one.
@@ -75,6 +79,8 @@ export const WORLDS = {
   blind: () => ({ gold: JSON.parse(fs.readFileSync(BLIND_GOLD_FILE, "utf8")), sessions: blind.BLIND_SESSIONS, me: blind.ME, now: blind.NOW, scratch: blind.SCRATCH }),
   fresh: () => ({ gold: JSON.parse(fs.readFileSync(FRESH_GOLD_FILE, "utf8")), sessions: fresh.FRESH_SESSIONS, me: fresh.ME, now: fresh.NOW, scratch: fresh.SCRATCH }),
   sealed: () => ({ gold: JSON.parse(fs.readFileSync(SEALED_GOLD_FILE, "utf8")), sessions: sealed.SEALED_SESSIONS, me: sealed.ME, now: sealed.NOW, scratch: sealed.SCRATCH }),
+  // Source trust: only the user's own words teach personal facts (ADR 0034, the "Jordan" trap).
+  trust: () => ({ gold: JSON.parse(fs.readFileSync(TRUST_GOLD_FILE, "utf8")), sessions: trust.TRUST_SESSIONS, me: trust.ME, now: trust.NOW, scratch: trust.SCRATCH }),
 };
 /** An answer at this confidence or more is one the user is told as a fact. */
 export const CONFIDENT = 0.5;
@@ -103,12 +109,19 @@ const pct = (xs, q) => { if (!xs.length) return null; const s = [...xs].sort((a,
  * @param {{ q: string, expect: string[]|null, kind: string }[]} questions
  * @param {{ answer: string|null, confidence: number|null, ms: number }[]} got
  */
+/** What must not change between two asks of the same question: everything but the time taken. */
+export const stable = r => JSON.stringify({ a: r.answer ?? null, c: r.confidence ?? null, f: (r.facts || []).map(x => x.id ?? null), s: (r.sources || []).map(x => `${x.session}:${x.seq}`) });
+
+/** Grounded or abstain (ADR 0034): an answer told as a fact names the facts or turns it came from. */
+const grounded = r => Boolean((r.facts && r.facts.length) || (r.sources && r.sources.length) || r.from === 0 && r.kind === "fact");
+
 export function score(questions, got) {
-  let known = 0, right = 0, unknown = 0, silent = 0, confidentWrong = 0;
+  let known = 0, right = 0, unknown = 0, silent = 0, confidentWrong = 0, ungrounded = 0;
   const failures = [];
   questions.forEach((g, i) => {
     const r = got[i];
     const conf = typeof r.confidence === "number" ? r.confidence : 0;
+    if (r.answer && conf >= CONFIDENT && !grounded(r)) ungrounded++;
     if (g.expect) {
       known++;
       const ok = correct(r.answer, g.expect);
@@ -132,6 +145,7 @@ export function score(questions, got) {
     precision_at_1: round(known ? right / known : null),
     no_answer_accuracy: round(unknown ? silent / unknown : null),
     confident_wrong: confidentWrong,
+    ungrounded,
     overall: round(questions.length ? (right + silent) / questions.length : null),
     p50_ms: round(pct(ms, 0.5)),
     p95_ms: round(pct(ms, 0.95)),
@@ -332,7 +346,13 @@ export async function runEval(opts = {}) {
       if (!fn) { results[name] = { supported: false, reason: `the memory module has no ${name === "answer" ? "memory.answer" : name} tool yet` }; continue; }
       const got = [];
       for (const g of questions) got.push(await fn(g.q));
-      results[name] = { supported: true, ...score(questions, got), answers: questions.map((g, i) => ({ q: g.q, answer: got[i].answer, confidence: round(got[i].confidence), via: got[i].via ?? null, basis: got[i].basis ?? [] })) };
+      // Determinism (ADR 0034): the same question over the same facts gives the same answer,
+      // confidence and sources, every time. Asked twice more.
+      let inconsistent = 0;
+      if (name === "answer") for (let k = 0; k < 2; k++) for (let i = 0; i < questions.length; i++) {
+        if (stable(await fn(questions[i].q)) !== stable(got[i])) inconsistent++;
+      }
+      results[name] = { supported: true, ...score(questions, got), inconsistent, answers: questions.map((g, i) => ({ q: g.q, answer: got[i].answer, confidence: round(got[i].confidence), via: got[i].via ?? null, basis: got[i].basis ?? [] })) };
     }
     return { world, answerers: results };
   } finally {
@@ -358,6 +378,8 @@ function print(r) {
     out.push(`  precision@1         ${a.precision_at_1}`);
     out.push(`  no-answer accuracy  ${a.no_answer_accuracy}`);
     out.push(`  confident-wrong     ${a.confident_wrong}`);
+    if (a.ungrounded != null) out.push(`  ungrounded          ${a.ungrounded}`);
+    if (a.inconsistent != null && name === "answer") out.push(`  inconsistent        ${a.inconsistent} (each question asked three times)`);
     out.push(`  overall             ${a.overall}`);
     out.push(`  latency p50/p95     ${a.p50_ms} / ${a.p95_ms} ms`);
     out.push(`  failures (${a.failures.length}):`);
@@ -370,7 +392,7 @@ function print(r) {
 }
 
 /** The bar memory.answer must clear (test/eval/answer-eval.test.js holds it too). */
-export const BAR = { overall: 0.9, confident_wrong: 0, p95_ms: 150 };
+export const BAR = { overall: 0.9, confident_wrong: 0, p95_ms: 150, ungrounded: 0, inconsistent: 0 };
 
 /** Why the answer bar fails, or [] when it holds. */
 export function barFailures(a) {
@@ -379,6 +401,8 @@ export function barFailures(a) {
   if (!(a.overall >= BAR.overall)) out.push(`overall ${a.overall} is under ${BAR.overall}`);
   if (a.confident_wrong > BAR.confident_wrong) out.push(`${a.confident_wrong} confident wrong answer(s)`);
   if (!(a.p95_ms < BAR.p95_ms)) out.push(`p95 ${a.p95_ms} ms is not under ${BAR.p95_ms} ms`);
+  if (a.ungrounded > BAR.ungrounded) out.push(`${a.ungrounded} answer(s) told as fact with no fact or turn behind them`);
+  if (a.inconsistent > BAR.inconsistent) out.push(`${a.inconsistent} answer(s) changed when asked again`);
   return out;
 }
 
