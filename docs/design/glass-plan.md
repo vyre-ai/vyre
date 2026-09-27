@@ -114,9 +114,18 @@ still leak:
    `maxWidth`, for the resting tile, refetched on the next `sight.stepped` rather than a timer.
    Replaces the "reconnect without a black flash" item below 1:1 — this is now that item's
    implementation, not a separate one.
-4. **Fit and zoom** (S): the `Fit` button and pinch zoom exist; add a `1:1` toggle next to it and
-   retina-aware canvas sizing (devicePixelRatio into scaleViewport math) — currently unclear if
-   the canvas accounts for DPR, likely blurry on Retina today.
+4. **Fit and zoom** (S, DONE): a Deck `1:1` toggle shipped (f5fe3f1f), verified by the harness.
+   **DPR sizing is NOT the S fix this plan assumed** — corrected 28 Sep after actually reading
+   `vendor/novnc/core/display.js`. noVNC's canvas backing store (`canvas.width`/`height`) already
+   equals the remote framebuffer's real pixel size; `scaleViewport` only sets the canvas's CSS
+   `style.width/height` to fit the container, via `_rescale`. So the canvas is not "DPR-unaware"
+   in a way a client-side multiply fixes: on a 2x Retina screen, a 1024x768 remote desktop shown
+   at ~1024 CSS px wide really is only 1024 physical pixels' worth of data, upscaled by the
+   browser regardless of any canvas-sizing change here. The only way to a sharper Retina picture
+   is more source pixels — the container's Xvnc running at a higher resolution than today's
+   config default — which is a real tradeoff (more bytes over the relay for every viewer, not
+   just Retina ones) and a computers/pool decision, not a glass client patch. Downgraded from S
+   to a design question; not doing a cosmetic canvas-size change that would not actually help.
 5. **Latency/fps targets + measurement** (S to define, M to instrument): propose p95 input-to-
    paint under 150ms on Tailscale-direct / 300ms over relay, sustained 24fps minimum during
    active use, under 5% dropped frames over a 10s window — matching the smoothness bar Design A
@@ -148,11 +157,14 @@ work/glass-live behind it.
   function with a unit test (`watch.test.js`), rendered next to the connection badge. It is an
   open-time snapshot today, not the closed loop cohesion asked for (item 1 above) — that part is
   still open.
-- **1:1 zoom toggle, DPR-aware canvas sizing, sight.frame reconnect still** — written up, not yet
-  coded. Was blocked on `deck/glass` having no test harness for `mountScreen`'s RFB/DOM wiring;
-  the lead's call was to build that harness first rather than land untested changes in the same
-  file the security review just went through. Built (section 8, `deck/test/glass-browser.js`,
-  8/8 on testbox), so these three are now unblocked and next.
+- **1:1 zoom toggle** — done (f5fe3f1f): a `1:1`/`Fit` button on Deck's panel, `rfb.scaleViewport`/
+  `clipViewport` flipped, `.gl-1to1` in `glass.css` (a fixed-height scrollable box instead of the
+  aspect-ratio one). Verified: harness click-and-check plus a real screenshot. Was blocked on
+  `deck/glass` having no test harness for `mountScreen`'s RFB/DOM wiring; built one first
+  (section 8, `deck/test/glass-browser.js`, 9/9 on testbox including this toggle).
+- **DPR-aware canvas sizing** — downgraded from an S fix to a design question (section 4, item 4):
+  not a client-side patch, needs a decision on Xvnc's container resolution.
+- **sight.frame reconnect still** — next.
 
 ## 6. Tests that improve UX (measurable)
 
@@ -236,8 +248,8 @@ already takes as `scale`, so this is wiring, not new capability).
 | Close the latency badge's loop (continuous sampling, one event) | S/M | glass | top-2, cohesion's interaction pass |
 | Native full screen: Deck control (missing entirely — harness found it), phone iOS fallback, Mac window in the Capsule | L | glass + capsule-pro | top-2, the user's literal ask; scope corrected 28 Sep |
 | Reconnect still + resting-tile preview via sight.frame | S | glass + cohesion | agreed, harness ready to verify it |
-| 1:1 zoom toggle | S | glass | unblocked, harness in place |
-| DPR-aware canvas sizing | S | glass | unblocked; needs a devicePixelRatio-scaled screenshot check added to the harness first |
+| 1:1 zoom toggle | S | glass | done, f5fe3f1f, 9/9 on testbox |
+| Decide Xvnc's container resolution vs. viewer DPI (was "DPR-aware canvas sizing") | M, decision first | glass + computers | rescoped 28 Sep — not a client patch, real bytes-over-the-wire tradeoff |
 | Two-way clipboard while shielded | M | glass + computers | |
 | IME-aware input testing/fix | M | glass | |
 | fps/latency instrumentation + CI budgets | M | glass + e2e | shares the sampling loop above |
