@@ -1,0 +1,88 @@
+// @ts-check
+// import: discovery reads metadata only, suggests what is the person's own work, and a plan says
+// exactly what an import would take. A real vyred on a temp home with fixture sessions.
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { start } from "../daemon/index.js";
+import { call } from "../daemon/client.js";
+import { tempHome } from "../../test/helpers.js";
+import { cwdOf, notSuggested } from "./scan.js";
+
+const DAY = 86_400_000, T0 = Date.parse("2026-06-01T08:00:00Z");
+
+/** A session file as Claude Code writes it: a first entry with the folder, then turns. */
+function session(dir, id, cwd, day, turns = 2) {
+  fs.mkdirSync(dir, { recursive: true });
+  const lines = [{ type: "summary", summary: "x" }, { type: "user", cwd, sessionId: id, message: { role: "user", content: "SECRET-TURN-TEXT the intake form" } }];
+  for (let i = 1; i < turns; i++) lines.push({ type: "assistant", cwd, message: { role: "assistant", content: "ok" } });
+  const f = path.join(dir, `${id}.jsonl`);
+  fs.writeFileSync(f, lines.map(l => JSON.stringify(l)).join("\n") + "\n");
+  const t = new Date(T0 + day * DAY);
+  fs.utimesSync(f, t, t);
+  return f;
+}
+
+function world(t) {
+  const root = tempHome(t);
+  const projects = path.join(root, "claude", "projects");
+  session(path.join(projects, "-home-alex-Work-harlow-site"), "11111111-0000-4000-8000-000000000001", "/home/alex/Work/harlow-site", 1);
+  session(path.join(projects, "-home-alex-Work-harlow-site"), "11111111-0000-4000-8000-000000000002", "/home/alex/Work/harlow-site", 5, 6);
+  session(path.join(projects, "-home-alex-Work-northwind"), "11111111-0000-4000-8000-000000000003", "/home/alex/Work/northwind", 9);
+  session(path.join(projects, "-home-alex-Code-vyre-memory-iq"), "11111111-0000-4000-8000-000000000004", "/home/alex/Code/vyre-memory-iq", 12);
+  session(path.join(projects, "-tmp-scratch"), "11111111-0000-4000-8000-000000000005", "/tmp/scratch", 13);
+  // An archive kept by the person: one session also still in projects (counted once), one only here.
+  const archive = path.join(root, "claude", "projects-archive");
+  session(path.join(archive, "-home-alex-Work-harlow-site"), "11111111-0000-4000-8000-000000000001", "/home/alex/Work/harlow-site", 1);
+  session(path.join(archive, "-home-alex-Work-harlow-site"), "11111111-0000-4000-8000-000000000006", "/home/alex/Work/harlow-site", 0.5);
+  // A folder the person adds, with a session two levels down and a symlink that is never followed.
+  const extra = path.join(root, "old-laptop");
+  session(path.join(extra, "backup", "sessions"), "11111111-0000-4000-8000-000000000007", "/home/alex/Work/northwind", 20);
+  fs.symlinkSync(projects, path.join(extra, "link-to-projects"));
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ vault: { keystore: "file" }, modules: { disable: ["learn"] } }));
+  return { root, extra };
+}
+
+test("import scan: sessions by source and folder, dev and temporary folders unticked, no turn text read", async t => {
+  const { root, extra } = world(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const r = await call("import.scan", { folders: [extra] }, { root });
+  assert.ok(!r.error, JSON.stringify(r));
+  const [projects, archive, added] = r.data.sources;
+  assert.equal(projects.kind, "claude");
+  assert.equal(projects.sessions, 5);
+  assert.equal(archive.kind, "archive");
+  assert.equal(archive.sessions, 1, "a session in both folders is counted once");
+  assert.equal(added.kind, "folder");
+  assert.equal(added.sessions, 1, "a symlink is never followed");
+  const harlow = projects.folders.find(f => f.cwd === "/home/alex/Work/harlow-site");
+  assert.deepEqual([harlow.sessions, harlow.suggested, harlow.from, harlow.to], [2, true, T0 + DAY, T0 + 5 * DAY]);
+  assert.equal(projects.folders.find(f => f.cwd.includes("vyre-memory-iq")).why, "work on Vyre itself");
+  assert.equal(projects.folders.find(f => f.cwd === "/tmp/scratch").why, "a temporary folder");
+  assert.doesNotMatch(JSON.stringify(r.data), /SECRET-TURN-TEXT/, "a turn's text left the scan");
+  // A model is never shown the person's disk.
+  assert.equal((await d.registry.call("import.scan", {}, "mcp")).error?.code, "denied");
+
+  // The plan: exactly the chosen folders, minus what was excluded.
+  const p = (await call("import.plan", { include: ["/home/alex/Work"], exclude: ["/home/alex/Work/northwind"] }, { root })).data;
+  assert.equal(p.sessions, 3, JSON.stringify(p));
+  assert.deepEqual(p.folders, ["/home/alex/Work/harlow-site"]);
+  assert.match(p.plan, /^plan_[0-9a-f]{12}$/);
+  const whole = (await call("import.plan", { include: [extra] }, { root })).data;
+  assert.equal(whole.sessions, 1, "a whole source by its path");
+
+  const s = (await call("import.status", {}, { root })).data;
+  assert.deepEqual(Object.keys(s).sort(), ["graph", "meaning", "personal", "search", "searchable_sessions"]);
+  assert.ok(s.search.total >= s.search.done);
+});
+
+test("import scan: the folder a session ran in comes from its first lines; unknown when it is not there", t => {
+  const dir = path.join(tempHome(t), "s");
+  assert.equal(cwdOf(session(dir, "a", "/home/alex/Work/x", 0)), "/home/alex/Work/x");
+  fs.writeFileSync(path.join(dir, "b.jsonl"), "not json\n");
+  assert.equal(cwdOf(path.join(dir, "b.jsonl")), null);
+  assert.equal(notSuggested(null), "the folder it ran in is unknown");
+  assert.equal(notSuggested("/home/alex/.vyre/quick/memory", { quick: "/home/alex/.vyre/quick" }), "Vyre's own quick sessions");
+});

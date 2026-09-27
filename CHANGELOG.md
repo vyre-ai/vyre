@@ -26,6 +26,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (role: user or assistant). The trust
   world through memory.ask (`eval-iq --world trust`): accuracy 1, confident-wrong 0, the "Jordan"
   trap refused.
+- Import, first part (docs/design/import.md): `import.scan {folders?}` lists this device's Claude Code
+  sessions by source (projects, the archive, folders the person adds) and by the folder each ran
+  in, with counts, sizes and dates, and suggests only the person's own work (never work on Vyre
+  itself, Vyre's own sessions or temporary folders). It reads file names, sizes, times and each
+  session's folder, never a turn, and a model cannot call it. `import.plan {include, exclude?}`
+  says exactly what an import would take; `import.status` gives each stage's progress.
 - Sessions start knowing the project: `memory.today {room | project_cwds, session?}` gives the
   project's last session and what memory learned about it this week (at most 300 characters, no
   model, no personal facts), and the session brief adds it under "Lately in this project", marked

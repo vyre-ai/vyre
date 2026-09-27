@@ -35,6 +35,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`hands-desktop`](#hands-desktop) | `modules/hands-desktop` | `box` | 4 | 1 | capsule, cli, deck |
 | [`harness`](#harness) | `core/harness` | `box`, `local` | 6 | 4 | cli |
 | [`hooks`](#hooks) | `core/hooks` | `box` | 6 | 3 | capsule, cli, deck |
+| [`import`](#import) | `core/import` | `box`, `local` | 3 | 0 | cli |
 | [`learn`](#learn) | `core/learn` | `box`, `local` | 15 | 13 | capsule, cli, deck |
 | [`link`](#link) | `core/link` | `box`, `local` | 21 | 14 | capsule, cli, deck |
 | [`mcp`](#mcp) | `core/mcp` | `box`, `local` | 9 | 9 | cli, deck |
@@ -264,6 +265,17 @@ Inbound webhooks from the public internet through Tailscale Funnel: one route at
 - Shows on: capsule, cli, deck
 - Needs vault: `per-route`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## import
+
+Discover this device's Claude Code sessions, choose what to import, and follow the import stage by stage (docs/design/import.md).
+
+- Folder: `core/import`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#import)
+- Emits: no events
+- Shows on: cli
 
 ## learn
 

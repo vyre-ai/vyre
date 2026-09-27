@@ -108,9 +108,9 @@ What the imported history makes possible, largest value for the size first.
 
 | Piece | Owner | Size | 0.1.1 |
 |---|---|---|---|
-| `import.scan`, `import.plan`, `import.start`, `import.stop` on the device | memory-iq (+ federation for start) | M | yes |
+| import.scan, import.plan, import.start, import.stop on the device | memory-iq (+ federation for start) | M | yes |
 | Upload channel, cursor, consent record, delete on revoke | federation | L | if federation lands it; else local-only import |
-| Box ingest: synced root, machine on every derived row, `import.status`, `import.progress`, memory.graph-grew (proposed) | memory-iq | M | yes |
+| Box ingest: synced root, machine on every derived row, import.status, import.progress, memory.graph-grew (proposed) | memory-iq | M | yes |
 | Onboarding and install steps (discover, choose, watch it fill) | launch | M | yes |
 | Import screen and graph view designs | app-design | M | yes |
 | Live graph view | Deck | M | relaunch after 0.1.1 unless the Deck is free |
