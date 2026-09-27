@@ -388,3 +388,66 @@ function deliver(m) {
     }
   }
 }
+
+// ---- the person session (core/presence/person.js) ---------------------------------------------
+// Over the tailnet the box takes this browser's node as the owner's device, not as the person: a
+// person's own action (answering an ask, approving, a terminal, a vault secret) answers 401
+// person_session_required until this browser signs in with a passkey, once per ~30 days. The box
+// sets an HttpOnly cookie, so no script on the page, or on the machine through a curl, holds it.
+// Every call that meets that answer, from any part of the Deck (some fetch on their own), signs
+// in and is sent once more; the call itself was refused before any proof on it was spent.
+
+/** @type {Promise<void> | null} */
+let signing = null;
+
+/** Sign this browser in as the person: one passkey, then the box's cookie. Throws an ApiError. */
+export function signIn() {
+  if (!signing) signing = (async () => {
+    const tool = "presence.person.start";
+    const proof = await presenceProof(tool, {});
+    let body;
+    try {
+      const res = await rawFetch("/v1/tools/" + tool, { method: "POST", body: "{}",
+        headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": proof, ...headers } });
+      body = await res.json().catch(() => null);
+    } catch { throw new ApiError("offline", "The box did not answer.", tool); }
+    if (!body || body.error) throw new ApiError(body?.error?.code || "denied", body?.error?.message || "Signing in did not work.", tool, body?.error);
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("deck:person", { detail: true }));
+  })().finally(() => { signing = null; });
+  return signing;
+}
+
+/**
+ * The hosted app's hop: a one-time code for the app at `return`, bound to its PKCE challenge.
+ * Resolves to { code, expires, redirect }; the page goes to redirect. Throws an ApiError.
+ * @param {{ cc: string, return: string, label?: string }} input
+ */
+export async function personCode(input) {
+  const tool = "presence.person.start";
+  const proof = await presenceProof(tool, input);
+  let body;
+  try {
+    const res = await rawFetch("/v1/tools/" + tool, { method: "POST", body: JSON.stringify(input),
+      headers: { "content-type": "application/json", "x-vyre-caller": "deck", "x-vyre-presence": proof, ...headers } });
+    body = await res.json().catch(() => null);
+  } catch { throw new ApiError("offline", "The box did not answer.", tool); }
+  if (!body || body.error || !body.data || !body.data.redirect) throw new ApiError(body?.error?.code || "denied", body?.error?.message || "Signing in did not work.", tool, body?.error);
+  return body.data;
+}
+
+/** @type {typeof fetch} */
+const rawFetch = typeof window !== "undefined" && typeof window.fetch === "function" ? window.fetch.bind(window) : (...a) => fetch(...a);
+if (typeof window !== "undefined" && typeof window.fetch === "function" && !(/** @type {any} */ (window.fetch)).vyrePerson) {
+  const wrapped = async (/** @type {any} */ input, /** @type {any} */ init) => {
+    const res = await rawFetch(input, init);
+    if (res.status !== 401) return res;
+    const url = typeof input === "string" ? input : String(input && input.url || "");
+    if (!url.includes("/v1/tools/") || url.includes("presence.person.start")) return res;
+    const b = await res.clone().json().catch(() => null);
+    if (!b || !b.error || b.error.code !== "person_session_required" || !canProve()) return res;
+    try { await signIn(); } catch { return res; }
+    return rawFetch(input, init);
+  };
+  /** @type {any} */ (wrapped).vyrePerson = true;
+  window.fetch = /** @type {any} */ (wrapped);
+}

@@ -24,7 +24,7 @@ In the order `vyre help` lists them.
 | [`vyre box`](#vyre-box) | put Vyre on a server from this Mac, and look after it |
 | [`vyre doctor`](#vyre-doctor) | check vyred, Tailscale, the box, your phone, passkey, pairing, Claude and the Capsule, and say what to fix |
 | [`vyre status`](#vyre-status) | is it running, and what is it running |
-| [`vyre projects`](#vyre-projects) | every project |
+| [`vyre projects`](#vyre-projects) | every project; on a box, move moves the homes to /work/projects |
 | [`vyre recall`](#vyre-recall) | search every session for what was said (vyre recall eval <file> to measure it) |
 | [`vyre index`](#vyre-index) | index new and changed sessions now |
 | [`vyre new`](#vyre-new) | make a project by picking sessions (flags: --home --thread --workspace --person --org --no-pick) |
@@ -115,10 +115,10 @@ vyre status [--json]
 
 ### vyre projects
 
-Every project.
+Every project; on a box, move moves the homes to /work/projects.
 
 ```
-vyre projects [--json]
+vyre projects [--json] | vyre projects move [--dry-run]
 ```
 
 ### vyre recall
@@ -389,7 +389,7 @@ vyre hooks [status|on|off|open|close] [name]
 Pair this Mac with your box, or approve a Mac on the box.
 
 ```
-vyre link [pair|approve|deny|unpair] [--json]
+vyre link [pair|approve|deny|unpair|signin|signout] [--json]
 ```
 
 ### vyre relay

@@ -210,10 +210,22 @@ Plan (to the lead before building):
 
 ## Doing (27 Sep, after logout 3)
 
-Audit reported to the lead (above); waiting for go on the person session and the two decisions
-(uid split on the box; Mac CLI person session). ADR 0030 notes sent to sessions. presence.since
-done. Next: the headscale run on the next deployed sha. Two switchboard.test.js cases fail on the
-Mac only on main too (/var vs /private/var), not ours.
+Done and pushed (d1ba721e): HIGH 2 link.call; a) person session; b) `vyre link signin`; vault
+fill; peer check by pgid and by orphans outside their own group; the uid split (core/spawner,
+image, compose; scripts/e2e-split/check.sh 15/15); ADR 0032.
+
+Headscale run of THIS branch (27 Sep, torn down after; CA and setup files kept in /srv/vyre-e2e):
+onboarding to the Deck; a curl from the Mac node gets 401 person_session_required for
+agents.create and term.open while reads pass; the Deck's first person action signs in with the
+passkey by itself (cookie invisible to the page) and goes through; Vault seal with passkey;
+the Mac pairs; `vyre link signin` opens /person/signin, the passkey, the loopback, "signed in
+until 10/27"; the Mac CLI updates an agent on the box; a call under a claude on the Mac and its
+nohup orphan are refused; a made-up bearer is refused. Found and fixed: the service worker served
+the Deck shell for /person/signin. Harness note: a passkey cloned to the phone makes the Mac's
+counter go backwards; bump the Mac's signCount before reusing it.
+
+Next: the same run against the lead's deployed sha. Waiting: tailnet's CORS sha; pwa's sign-in
+sheet; sessions calling spawnAsAgent (and spawning detached); vault's extension key.
 
 ## Earlier (27 Sep, after the restart)
 
@@ -258,6 +270,34 @@ event stream's first byte. Tear down afterwards.
 - vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
+
+- core/spawner: spawnAsAgent(argv, { env, cwd }) -> ChildProcess-like (pid, stdin, stdout, stderr,
+  kill, exit). VYRE_SPAWNER_SOCKET (/run/vyre/spawner.sock), VYRE_SPAWNER_ALLOW (extra programs,
+  colon-separated). Image: users vyre (1000), vyre-agent (1001), group vyre-work (1002); CMD is
+  core/spawner/main.js. compose: vyre service user 0:0, cap_add SETUID SETGID KILL, volume
+  vyre-agent-home.
+
+- link: link.signin / link.signout (callers cli, local, capsule), link.status.signedIn,
+  events link.signed-in / link.signed-out. remote() carries PERSON_ONLY tools with the Mac's
+  person session for person callers only; HUMAN_ONLY never rides the link. presence.person.start
+  accepts `return` = http://127.0.0.1:<port>/cb/<nonce> (a Mac's vyred, traded with no Origin).
+- vault fill: Fill({ extensions }) from vault.fill.extensions; pair(body, headers) keeps the
+  Origin and an optional ES256 `key` (vault_meta device-origin:/device-key:); a key-bound
+  device must send `x-vyre-proof` (same format as the person session). vault.devices and
+  vault.device.revoke callers cli, local, deck, capsule. handle(route, body, headers, { raw, path }).
+
+- Person session (core/presence/person.js). Over the tailnet (`tailnet:<login>` callers) the
+  registry refuses PERSON_ONLY and presence-needing tools without `meta.person`, which only the
+  router sets, from the cookie `__Host-vyre_person` or `authorization: Vyre <id>.<secret>` plus
+  `x-vyre-proof: t=<ms> n=<nonce> sig=<b64url>` (ES256 P1363 over
+  `METHOD\npath?query\nsha256b64url(body)\nt\nn`). 401 `person_session_required`. Exempt:
+  presence.person.start and presence.enroll. Routes POST /v1/person/token {code, verifier, key},
+  POST /v1/person/end. Tools presence.person.start {cc?, return?, label?} (with cc, return must be an allowed https origin, network.origins; the answer carries redirect) (HUMAN_ONLY), .status, .sessions,
+  .revoke (PERSON_ONLY). Events presence.signed-in, presence.signed-out. A request tailnet marks
+  cross-origin (peer.origin) is refused without a session. Tests standing in for a signed-in Deck
+  pass `person: { id, kind }` in meta.
+
+- link.call / ctx.remote refuse PERSON_ONLY and HUMAN_ONLY box tools: `person_session_required`.
 
 - core/modules: `callerAllowed(callers, caller)`. A `tailnet:<login>` caller (the names listener
   admits only the owner) may use any tool whose callers list names `deck`; `tailnet:agent:*` and

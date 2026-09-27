@@ -24,6 +24,16 @@ RUN usermod -l vyre -d /home/vyre -m node \
  && groupmod -n vyre node \
  && mkdir -p /work \
  && chown 1000:1000 /work
+# The split (ADR 0032): Vyre-owned Claude sessions run as vyre-agent, which cannot open vyred's
+# socket or read /home/vyre. Projects in /work are shared through the vyre-work group.
+RUN groupadd -g 1002 vyre-work \
+ && groupadd -g 1001 vyre-agent \
+ && useradd -u 1001 -g 1001 -G vyre-work -m -d /home/vyre-agent -s /bin/sh vyre-agent \
+ && usermod -aG vyre-work vyre \
+ && chown 1000:1002 /work && chmod 2775 /work \
+ && chmod 700 /home/vyre \
+ && chown 1001:1002 /home/vyre-agent && chmod 2750 /home/vyre-agent \
+ && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre
 
 # Everything .dockerignore lets through: package files, bin, core, harness, docs, LICENSE,
 # README.md, and deck, modules and local when they exist.
@@ -42,8 +52,10 @@ ENV VYRE_HOME=/home/vyre/.vyre \
 USER vyre
 WORKDIR /home/vyre
 
-# tini is the init (it reaps, and it keeps the dtach terminals once vyred is gone), and the loop
-# restarts vyred inside the container, so a vyred restart keeps every terminal (ADR 0029, R4).
-# A deploy recreates the container, and its terminals end; the Deck says so (term.closed).
+# tini is the init (PID 1: it reaps, and it keeps the dtach terminals once vyred is gone). As
+# root (compose), the spawner comes next (core/spawner, ADR 0032): it runs the loop, which
+# restarts vyred, as uid vyre, and starts Vyre-owned sessions as vyre-agent. As vyre (a plain
+# docker run), the spawner runs the loop itself. A vyred restart keeps every terminal (ADR 0029,
+# R4); a deploy recreates the container, and its terminals end; the Deck says so (term.closed).
 ENTRYPOINT ["/usr/bin/tini", "--"]
-CMD ["/opt/vyre/core/daemon/loop.sh"]
+CMD ["node", "/opt/vyre/core/spawner/main.js"]
