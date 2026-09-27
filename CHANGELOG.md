@@ -45,6 +45,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - modules/hands-chrome/chrome.test.js: the fake computerd proxy destroys its upgraded CDP pipes
   on close. An open pipe held server.close() forever, so a failed Chrome test on Node 22 hung the
   whole node job until its 30-minute timeout.
+- test/onboard-page.test.js waits for its Chrome to exit (SIGKILL, 3 s cap) before removing the
+  profile. A late profile write recreated the temp home after tempHome's cleanup, and tmp-guard
+  failed the node job on it.
 
 #### Docs: the planner page
 

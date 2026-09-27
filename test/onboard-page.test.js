@@ -31,7 +31,13 @@ async function chrome(t, dir) {
   const profile = fs.mkdtempSync(path.join(dir, "chrome-"));
   const child = spawn(CHROME_BIN, ["--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run",
     "--no-default-browser-check", "--window-size=1280,900", "about:blank"], { stdio: "ignore" });
-  t.after(async () => { child.kill(); await sleep(300); });
+  // Chrome writes its profile until it exits, and tempHome's own cleanup may already have run:
+  // wait for the exit, then remove the profile, or a late write brings the home back.
+  t.after(async () => {
+    if (child.exitCode === null) { const gone = new Promise(r => child.once("exit", r)); child.kill("SIGKILL"); await Promise.race([gone, sleep(3000)]); }
+    fs.rmSync(profile, { recursive: true, force: true });
+    try { fs.rmdirSync(dir); } catch {} // only when tempHome already removed the rest
+  });
   let port = 0;
   for (let i = 0; i < 100 && !port; i++) {
     await sleep(100);
