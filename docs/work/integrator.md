@@ -65,6 +65,9 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - launch acca5cbc + c81244a1 merged. e2e-label 1941f2cf merged (cb1f8e66): a person's label from
   under a claude is "mcp". When vault + connectors land, check mail and on_behalf are covered by it
   too. Suites that call as "cli" run on testbox only, never under a claude.
+- rc.1 = pre/rc a435d516 (ci-rc 1d8ae652 in; no vault, no connectors), full suite on testbox.
+- rc.2 queue: vault-next HELD (a1a4e0b8 has an e2e HIGH: connection takeover reroutes send_mail; wait for e2e sign-off on the fix sha) + connectors 8be461a9 (check mail and on_behalf
+  under e2e-label's rule), launch 4d3b808f (CSS), then ci bumps to rc.2.
 
 ## Done after Logout 3 (2026-09-27)
 
