@@ -31,6 +31,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   runs `git diff --numstat` over what is ahead of `@{push}` (else the upstream, else origin's
   default branch) with no shell, no network and a 3 s budget. Binary files are counted as files
   with `binary: true`, and a push keeps 200 rows (`truncated: true`). ask.raised stays small.
+#### Find shows which sessions are the Mac's
+
+- The phone's Find page puts the machine chip beside a Mac session's title, in search results,
+  Recent and the "Type into" list, outside the title's ellipsis so a long title never hides it
+  (deck/views/find.js, deck/css/views/find.css). The files note no longer says Mac files show
+  when the Mac is online: the box does not search the Mac's files, so it says that.
+
+#### The box's words wait for whoever holds a Mac session
+
+- The person at the box never takes a Mac session's keyboard. While another surface on the Mac
+  holds it (the Capsule, say), `threads.send` queues the words as it does for a terminal, and
+  answers with `busy` (`"terminal"` or the holder). The box's note names the Mac: "<name> is busy
+  in your terminal on alex-mac." The link's caller `link:box` is a caller kind of its own
+  (`fromLink` in core/switchboard/index.js): it queues, is no agent, and its surface is always
+  `box:<surface>`. A queued message from the box reaches Claude as "via the Deck on the box"
+  (core/harness/index.js). Decided with capsule-now. Tests: test/federation-send.test.js,
+  core/switchboard/switchboard.test.js.
 
 #### The person on the box types into a Mac's session
 
@@ -72,6 +89,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   still opens no stream (`core/onboard/loopback.js`). Tests: owner allowed, guest and agent node
   refused (`core/names/service.test.js`), wrong Host and no session on loopback
   (`test/onboard.test.js`).
+
+#### The site has no Capsule zip, and a clean checkout stamps clean
+
+- The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
+  `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still
+  redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
+  stamp in build.json ignores the files build-site writes, so running it twice on a clean checkout
+  says `dirty: false`. `release-check.sh` asserts both redirects, that nothing names the zip, that
+  `/start` is served as committed, and that the install has no node_modules (the size cap is now
+  16 MB: the docs and their screenshots are most of the 11 MB). `vyre capsule install` still
+  fetches the zip until capsule-pro retires it.
 
 #### A box built from vyre.tgz ships the files in it, not stale ones
 

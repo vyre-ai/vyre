@@ -76,7 +76,7 @@ for want in bin/vyre core/daemon/main.js core/cli/index.js harness/.claude-plugi
   grep -qx "$want" "$work/files" || fail "the tarball has no $want"
 done
 ok "has the bin, core, the Harness plugin, the Deck and the box installer"
-if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design|work)/|^local/capsule/(dist|bin)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
+if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design/boards|work|proposals)/|^local/capsule/(dist|bin)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
   fail "the tarball carries the files above, which it should not"
 fi
 ok "no tests, fixtures, test helpers, design boards, build output or env files"
@@ -95,7 +95,9 @@ vyre=$work/prefix/bin/vyre
 pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
 kb=$(du -sk "$work/prefix" | cut -f1)
-[ "$kb" -lt 10240 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency come back?)"
+[ ! -d "$pkg/node_modules" ] || fail "npm i -g installed dependencies: $(ls "$pkg/node_modules" | tr '\n' ' ')"
+# About 11 MB today, most of it the docs and their screenshots, so 16 MB leaves room for the docs to grow.
+[ "$kb" -lt 16384 ] || fail "npm i -g installs $kb KB; it should be about 11 MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"
@@ -142,8 +144,7 @@ ok "down"
 step "site/box"
 box=$repo/site/box
 [ -f "$box/SHA256SUMS" ] || fail "no site/box/SHA256SUMS; run scripts/build-site.sh first"
-# Every line but the zip's, which is served from R2 (checked with --live).
-(cd "$box" && grep -v '  Vyre-mac\.zip$' SHA256SUMS | sum -c --quiet -) || fail "site/box does not match its SHA256SUMS"
+(cd "$box" && sum -c --quiet SHA256SUMS) || fail "site/box does not match its SHA256SUMS"
 for f in install-box.sh vyre compose.yml compose.build.yml vyre.env.example Dockerfile vyre.tgz VERSION; do
   grep -q "  $f\$" "$box/SHA256SUMS" || fail "SHA256SUMS does not list $f"
 done
@@ -155,16 +156,16 @@ sh -n "$box/install-box.sh" || fail "install-box.sh does not parse"
 sh -n "$box/vyre" || fail "the box wrapper does not parse"
 ok "$(wc -l <"$box/SHA256SUMS" | tr -d ' ') files match SHA256SUMS; vyre.tgz is $version"
 grep -qx '/box /box/install-box.sh 200' "$repo/site/_redirects" || fail "site/_redirects does not send /box to install-box.sh"
-if [ -f "$box/Vyre-mac.url" ]; then
-  grep -qE '^https://dl\.vyre\.run/capsule/[0-9a-f]{16}/Vyre-mac\.zip$' "$box/Vyre-mac.url" || fail "Vyre-mac.url is $(cat "$box/Vyre-mac.url")"
-  grep -qx "/box/Vyre-mac.zip $(cat "$box/Vyre-mac.url") 302" "$repo/site/_redirects" || fail "site/_redirects does not point Vyre-mac.zip at $(cat "$box/Vyre-mac.url")"
-  grep -q "^$(cut -d' ' -f1 "$box/Vyre-mac.zip.sha256")  Vyre-mac\.zip\$" "$box/SHA256SUMS" || fail "SHA256SUMS does not list Vyre-mac.zip with its checksum"
-  [ "$(tar -xzOf "$box/vyre.tgz" package/box/Vyre-mac.sha256 2>/dev/null)" = "$(cut -d' ' -f1 "$box/Vyre-mac.zip.sha256")" ] \
-    || fail "vyre.tgz's box/Vyre-mac.sha256 is not the zip's checksum"
-  ok "Vyre-mac.zip redirects to $(cat "$box/Vyre-mac.url")"
-else
-  printf '   note  no Capsule zip in this build (scripts/build-site.sh --mac-zip)\n'
+grep -qx '/download/mac /start#mac 302' "$repo/site/_redirects" || fail "site/_redirects does not send /download/mac to /start#mac"
+# The Capsule zip is retired: the Mac installs from npm and builds the Capsule there.
+if grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" >/dev/null 2>&1 || tar -tzf "$box/vyre.tgz" | grep -q '^package/box/Vyre-mac\.sha256$'; then
+  fail "the retired Capsule zip is still referenced: $(grep -rIl 'Vyre-mac\.zip' "$repo/site" "$box" 2>/dev/null | tr '\n' ' ')"
 fi
+# /start is served as committed: nothing between the checkout and the site rewrote it.
+if git -C "$repo" rev-parse --verify HEAD >/dev/null 2>&1; then
+  git -C "$repo" diff --quiet HEAD -- site/start || fail "site/start differs from what is committed"
+fi
+ok "_redirects sends /box and /download/mac; no Capsule zip; /start is as committed"
 
 if [ "$LIVE" = 1 ]; then
   step "live at $base"
@@ -183,12 +184,7 @@ if [ "$LIVE" = 1 ]; then
   [ "$code" = 200 ] || fail "$base/start answers $code"
   code=$(curl -s -o "$work/box-alias" -w '%{http_code}' "$base/box")
   { [ "$code" = 200 ] && cmp -s "$work/box-alias" "$box/install-box.sh"; } || fail "$base/box is not install-box.sh ($code)"
-  if [ -f "$box/Vyre-mac.url" ]; then
-    unzip -l "$work/live/Vyre-mac.zip" | grep -q 'Vyre.app/Contents/Info.plist' || fail "Vyre-mac.zip has no Vyre.app"
-    (cd "$work/live" && ditto -x -k Vyre-mac.zip app 2>/dev/null && codesign --verify --deep --strict app/Vyre.app 2>/dev/null) \
-      || [ "$(uname -s)" != Darwin ] || fail "Vyre.app in the zip does not pass codesign --verify (macOS would call it damaged)"
-    ok "Vyre-mac.zip is served, matches its checksum, and its signature verifies"
-  fi
+  curl -fsSL "$base/start/" | cmp -s - "$repo/site/start/index.html" || fail "$base/start is not site/start/index.html"
   ok "every file is served byte for byte; install.sh, /start and 404 are right"
 fi
 

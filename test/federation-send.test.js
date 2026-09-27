@@ -97,8 +97,8 @@ test("federation send: a Mac session busy in a terminal queues the person's word
   const busy = terminalSession(s.transcripts, s.macWork, { ageMs: 1000 });
   const r = await s.boxCall("threads.send", { thread: busy.id, text: "which branch are you on?" }, "deck");
   assert.ok(!r.error, JSON.stringify(r.error));
-  assert.deepEqual(r.data, { sent: false, queued: true, open_elsewhere: true, thread: busy.id, name: "Northwind orders",
-    note: "Northwind orders is busy in your terminal. I'll hand it your message when this turn ends.", source: "mac", machine: "alex-mac" });
+  assert.deepEqual(r.data, { sent: false, queued: true, open_elsewhere: true, thread: busy.id, name: "Northwind orders", busy: "terminal",
+    note: "Northwind orders is busy in your terminal on alex-mac. I'll hand it your message when this turn ends.", source: "mac", machine: "alex-mac" });
   const queued = await until(() => got(s, busy.id, "thread.queued")[0]);
   assert.deepEqual([queued.payload.text, queued.payload.surface, queued.payload.machine], ["which branch are you on?", "box:deck", "alex-mac"]);
   assert.equal(inbox(s.mac).length, 1);
@@ -117,6 +117,24 @@ test("federation send: a Mac session busy in a terminal queues the person's word
   assert.deepEqual([reply.payload.text, reply.payload.done, reply.payload.machine], ["On main.", true, "alex-mac"]);
   await until(() => got(s, busy.id, "thread.finished")[0]);
   await until(async () => (await s.macCall("link.status")).data.following === 0);
+});
+
+test("federation send: a Mac session another surface holds queues the box's words and never takes the keyboard", async t => {
+  const s = await world(t);
+  const free = terminalSession(s.transcripts, s.macWork);
+  assert.equal((await s.boxCall("threads.send", { thread: free.id, text: "add a phone field" }, "deck")).data.sent, true);
+  await until(() => got(s, free.id, "thread.finished")[0]);
+  // The Capsule on the Mac takes the keyboard; the person at the box types again.
+  assert.equal((await s.macCall("threads.lease", { thread: free.id, surface: "capsule" }, "capsule")).data.holder, "capsule");
+  const r = await s.boxCall("threads.send", { thread: free.id, text: "and a note field" }, "deck");
+  assert.ok(!r.error, JSON.stringify(r.error));
+  assert.deepEqual([r.data.sent, r.data.queued, r.data.busy, r.data.machine], [false, true, "capsule", "alex-mac"]);
+  assert.equal(r.data.note, "Northwind orders is in use in capsule on alex-mac. I'll hand it your message when this turn ends.");
+  assert.equal((await s.macCall("threads.get", { thread: free.id })).data.thread.holder, "capsule", "the Capsule keeps the keyboard");
+  assert.deepEqual(inbox(s.mac).map(m => [m.text, m.surface]), [["and a note field", "box:deck"]]);
+  // A surface the input names is still the box's, on the Mac.
+  await s.boxCall("threads.send", { thread: free.id, text: "one more", surface: "capsule" }, "deck");
+  assert.equal(inbox(s.mac).at(-1).surface, "box:capsule");
 });
 
 test("federation send: a thread.finished while queued words wait is not the end of the follow", async t => {
