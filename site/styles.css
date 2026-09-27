@@ -204,7 +204,7 @@ code { font-family: var(--mono); font-size: 0.92em; }
 .cap-recall { padding: 16px 16px 14px 44px; display: flex; flex-direction: column; gap: 8px; }
 .cap-recall .big { font-size: 22px; line-height: 28px; font-weight: 600; letter-spacing: -0.015em; color: var(--bone); }
 .src { display: flex; align-items: center; gap: 10px; padding: 8px 10px; margin: 6px; border-radius: var(--r-2); background: var(--raised); font-size: 13px; line-height: 18px; color: var(--stone); flex-wrap: wrap; }
-.held-chip { font-family: var(--mono); display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border-radius: var(--r-1); color: var(--beacon); font-size: 11px; line-height: 14px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; white-space: nowrap; }
+.held-chip { display: inline-flex; align-items: center; gap: 6px; color: var(--beacon); font-size: 13px; line-height: 18px; white-space: nowrap; }
 .held-chip .dot { width: 6px; height: 6px; }
 .mail { padding: 12px 16px 14px 44px; display: flex; flex-direction: column; gap: 10px; }
 .mail dl { display: grid; grid-template-columns: 56px minmax(0, 1fr); row-gap: 4px; font-size: 12px; line-height: 16px; }
