@@ -13,7 +13,7 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 ## Doing (2026-09-27, after resume from logout 4)
 - P0 for batch 4: work/platform e8e3d902 (merges main 7880dfa6; 101/101 targeted) sent to the integrator; the old b4 had the stale 2e6997dd.
 - Store limits: work/platform-store-limits 67abc47f = c9f1d630 + a clean merge of native-core 19b92574 (48/48 on testbox). ADOPTED by native-core in 62abf2cf; e2e confirmed in its re-review.
-- settings.write e4515fb6: HELD until e2e signs off native-core; only masking secret settings in settings.get is left. Then hand to the integrator.
+- settings.write e4515fb6: HELD until e2e signs off native-core; only masking secret settings in settings.get is left. Then rebase e4515fb6 on it so settings.write returns the same masked value (asked native-core for a shared mask helper), e2e re-review, then integrator. Then hand to the integrator.
 - Hub asks to native-core (hub file + live hand edits, per-key check tool, choices tool, prompt-layer toggle key): re-sent; no answer yet. They fold them into ADR 0035.
 - P2 DONE on work/platform 54180bb5 (145/146 on testbox, 1 skip = shellcheck absent; shellcheck clean by hand): core/cli/commands/update.js + core/cli/update/releases.js (Mac), box/vyre update/rollback (box, APK + releases.sign), docs/using/box-care.md, draft docs/build/first-module.md. up.js exports health/waitFor/bring; bring compares against mineOf().version. Not tried end to end with a real npm install and restart; releases stay dry-run (VYRE_RELEASES unset).
 
