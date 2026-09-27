@@ -19,16 +19,24 @@ import { call } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { untilde } from "../../config/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import catalogue, { parse, up } from "./projects.js";
-import { json, emit, fail as kitFail, failTool, usage } from "../kit.js";
+import catalogue, { parse, up, resume } from "./projects.js";
+import { editText, toolError, PURPOSES } from "./sessions.js";
+import { json, emit, fail as kitFail, usage } from "../kit.js";
 
 const SURFACE = "cli:" + process.pid;
-const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop"];
+const SUBS = ["start", "send", "list", "ls", "get", "show", "watch", "lease", "release", "asks", "answer", "stop",
+  "interrupt", "mode", "rewind", "open", "queue", "take-back", "edit", "send-now"];
+/** Subcommands whose words are free text (what is sent), so their flags are read by hand. */
+const FREE = ["send", "edit"];
+/** The permission modes a person can put a session in (threads.mode); bypassPermissions never. */
+export const MODES = ["default", "acceptEdits", "plan"];
 
 const id8 = s => String(s || "").slice(0, 8);
 /** The flags each subcommand takes; the rest take none. */
 const FLAGS = {
-  start: { values: ["project", "cwd", "name", "model"], cmd: "threads" },
+  start: { values: ["project", "cwd", "name", "model", "purpose", "provider"], cmd: "threads" },
+  get: { values: ["since", "limit"], cmd: "threads" },
+  show: { values: ["since", "limit"], cmd: "threads" },
   list: { bool: ["all"], values: ["agent"], cmd: "threads" },
   ls: { bool: ["all"], values: ["agent"], cmd: "threads" },
   answer: { bool: ["always"], multi: ["pick", "answer"], values: ["scope", "message"], cmd: "threads" },
@@ -36,10 +44,14 @@ const FLAGS = {
 // --json: each subcommand prints one line of JSON (the tool's data, or { error }) and nothing
 // else, so a script can drive threads without parsing the words meant for a person (kit.js).
 const fail = (msg, next) => kitFail(msg, { next });
-/** A tool call that prints its own error, in the mode this run is in. */
+/**
+ * A tool call that prints its own error, in the mode this run is in. A vyred without the tool yet
+ * (the sessions verbs, ADR 0030) says so in one line; a person-only change refused from inside a
+ * Claude session names where to do it (./sessions.js toolError).
+ */
 async function tool(name, input) {
   const r = await call(name, input);
-  if (r.error) { failTool(r.error); return null; }
+  if (r.error) { toolError(r.error, name); return null; }
   return r.data;
 }
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
@@ -111,8 +123,39 @@ export function formatEvent(e, streamed = new Set()) {
     }
     case "thread.sent":
       return dim(`  > ${cut(p.text, 200)}${p.surface ? "  (" + p.surface + ")" : ""}`) + "\n";
-    case "thread.tool":
-      return p.phase === "started" ? dim(`  · ${p.summary || p.tool || "tool"}`) + "\n" : null;
+    case "thread.tool": {
+      const what = p.summary || p.name || p.tool || "tool";
+      // Sessions on the Agent SDK (ADR 0030) send one call re-emitted with a status; a call is
+      // shown when it starts, and again only if it failed.
+      if (p.status) {
+        const key = "tool:" + String(p.call ?? what);
+        if (p.status === "running") { if (streamed.has(key)) return null; streamed.add(key); return dim(`  · ${what}`) + "\n"; }
+        streamed.delete(key);
+        return p.status === "failed" ? dim(`  · ${what} failed`) + "\n" : null;
+      }
+      return p.phase === "started" ? dim(`  · ${what}`) + "\n" : null;
+    }
+    case "thread.turn":
+      return dim(`  turn ${String(p.turn ?? "").split(":").pop() || ""}`.trimEnd()) + "\n";
+    case "thread.steered":
+      return dim(`  > joined the running turn: ${cut(p.text, 160)}`) + "\n";
+    case "thread.queued":
+      return dim(`  queued${p.queued != null ? " " + p.queued : ""}: ${cut(p.text, 160)}`) + "\n";
+    case "thread.unqueued":
+      return dim(`  took back${p.queued != null ? " " + p.queued : ""}${p.text ? ": " + cut(p.text, 120) : ""}`) + "\n";
+    case "thread.usage": {
+      const u = usageLine(p);
+      return u ? dim(`  ${u}`) + "\n" : null;
+    }
+    case "thread.state":
+      // running and idle are what sent and done already say; the rest is news.
+      return p.state && !["running", "idle", "working"].includes(p.state) ? dim(`  ${p.state}`) + "\n" : null;
+    case "thread.limit":
+      return p.note || p.text ? beacon(`  ${cut(p.note || p.text, 200)}`) + "\n" : null;
+    case "mode.changed":
+      return dim(`  mode: ${p.mode}`) + "\n";
+    case "ask.cancelled":
+      return dim(`  ask ${p.ask} cancelled`) + "\n";
     case "ask.raised": {
       const where = p.destination ? ` -> ${p.destination}` : "";
       return beacon(`  ? ask ${p.ask}  ${p.tool}: ${p.summary || ""}${where}`) + "\n"
@@ -123,8 +166,10 @@ export function formatEvent(e, streamed = new Set()) {
     case "lease.changed":
       return dim(`  keyboard: ${p.holder || "free"}`) + "\n";
     case "thread.finished": {
-      const cost = typeof p.cost_usd === "number" ? `$${p.cost_usd.toFixed(4)}` : "";
-      const bits = [p.ok === false ? "failed" : "done", cost, p.error ? cut(p.error, 120) : ""].filter(Boolean);
+      const usd = typeof p.cost_usd === "number" ? p.cost_usd : typeof p.cost === "number" ? p.cost : null;
+      const cost = usd === null ? "" : `$${usd.toFixed(4)}`;
+      const how = p.canceled ? "interrupted" : p.ok === false || (p.error && p.ok !== true) ? "failed" : "done";
+      const bits = [how, cost, p.error ? cut(typeof p.error === "string" ? p.error : p.error.message || p.message, 120) : ""].filter(Boolean);
       return dim(`  ${bits.join(" · ")}`) + "\n";
     }
     case "thread.started":
@@ -134,6 +179,57 @@ export function formatEvent(e, streamed = new Set()) {
     default:
       return null;
   }
+}
+
+/**
+ * thread.usage as a few words: tokens in and out, cost, how full the context is. The payload's
+ * shape is the driver's, so each part is read if it is there and left out if not.
+ * @param {any} p
+ */
+export function usageLine(p) {
+  const n = v => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  const k = v => (v >= 10_000 ? Math.round(v / 1000) + "k" : String(v));
+  const t = p.tokens && typeof p.tokens === "object" ? p.tokens : p;
+  const inp = n(t.input ?? t.input_tokens), outp = n(t.output ?? t.output_tokens);
+  const bits = [];
+  if (inp !== null || outp !== null) bits.push(`${inp !== null ? k(inp) : "?"} in, ${outp !== null ? k(outp) : "?"} out`);
+  else if (n(p.tokens) !== null) bits.push(`${k(p.tokens)} tokens`);
+  const usd = n(p.cost_usd ?? p.cost);
+  if (usd !== null) bits.push(`$${usd.toFixed(4)}`);
+  const c = p.context;
+  if (c && typeof c === "object" && n(c.used) !== null && n(c.max)) bits.push(`context ${Math.round(c.used / c.max * 100)}%`);
+  else if (n(c) !== null) bits.push(`context ${c <= 1 ? Math.round(c * 100) : Math.round(c)}%`);
+  return bits.length ? bits.join(" · ") : null;
+}
+
+/**
+ * What is queued for a thread and not yet handed over, from its events: thread.queued adds one,
+ * thread.sent with that queued id (handed over), thread.unqueued (taken back) or a steer of it
+ * remove it, and a later thread.queued or thread.edited with the same id changes its text.
+ * @param {{ type: string, id?: number, at?: number, payload?: any }[]} events
+ * @returns {{ queued: number|string, text: string, surface: string|null, at: number|null }[]}
+ */
+export function pendingQueue(events) {
+  const q = new Map();
+  for (const e of events || []) {
+    const p = e.payload || {};
+    if (p.queued == null) continue;
+    const k = String(p.queued);
+    if (e.type === "thread.queued") q.set(k, { queued: p.queued, text: String(p.text || ""), surface: p.surface || null, at: e.at ?? null });
+    else if (e.type === "thread.edited" && q.has(k)) q.get(k).text = String(p.text || "");
+    else if (["thread.sent", "thread.unqueued", "thread.steered"].includes(e.type)) q.delete(k);
+  }
+  return [...q.values()];
+}
+
+/**
+ * The reconnect waits for a watch: 1 s, 2 s, 5 s, then up to 30 s, back to 1 s once the stream
+ * is open again (ADR 0029 R3, tuned for a person looking at a terminal). No jitter: one terminal.
+ * @returns {{ delay(): number, reset(): void }}
+ */
+export function watchBackoff(steps = [1000, 2000, 5000, 10_000, 20_000, 30_000]) {
+  let i = 0;
+  return { delay() { const d = steps[Math.min(i, steps.length - 1)]; i++; return d; }, reset() { i = 0; } };
 }
 
 // ------------------------------------------------------------ finding threads and asks
@@ -319,7 +415,9 @@ async function watch(id) {
   if (t.status === "stopped") { out(dim("  the thread is stopped · vyre threads send resumes it")); }
 
   // Followed with the resilient client (ADR 0029): a dropped stream or a vyred restart is a
-  // quiet "reconnecting" line and a replay from the cursor, not the end of the watch.
+  // quiet "reconnecting" line, a wait of 1 s, 2 s, 5 s up to 30 s, and a replay from the last
+  // event id (sent as Last-Event-ID), not the end of the watch. Nothing polls: the stream pushes.
+  // An event at or below the last one shown is dropped here too, so a replay never prints twice.
   return new Promise(resolve => {
     let done = false, away = false;
     const finish = code => {
@@ -334,11 +432,16 @@ async function watch(id) {
     process.on("SIGINT", onInt);
     const say = s => { if (midline) { process.stdout.write("\n"); midline = false; } out(s); };
     const stream = followStream({ paths: ["unix:" + config.paths().socket], open, cursor: since, headers: { "x-vyre-caller": "cli" },
+      backoff: watchBackoff(),
       onEvent: e => {
         // Stream events carry the thread at the top; the payload has it too, as a fallback.
         if ((e.thread ?? (e.payload && e.payload.thread)) !== id) return;
+        const n = Number(e.id);
+        if (Number.isFinite(n)) { if (n <= since) return; since = n; }
         show(e);
-        if (e.type === "thread.stopped") finish(0);
+        // A session closed for idleness or by a vyred restart comes back on the next message
+        // (ADR 0030), so the watch stays; a stop someone asked for ends it.
+        if (e.type === "thread.stopped" && !["idle", "restart"].includes(e.payload && e.payload.reason)) finish(0);
       },
       onState: st => {
         if (st.state === "reconnecting" && !away) { away = true; say(dim("  reconnecting to vyred…")); }
@@ -367,6 +470,8 @@ const run = {
     else if (!flags.project) input.cwd = process.cwd();
     if (flags.name) input.name = flags.name;
     if (flags.model) input.model = flags.model;
+    if (flags.purpose) input.purpose = flags.purpose;
+    if (flags.provider) input.provider = flags.provider;
     if (pos.length) input.prompt = pos.join(" ");
     const t = await tool("threads.start", input);
     if (!t) return 1;
@@ -377,16 +482,23 @@ const run = {
   },
 
   async send(args) {
-    const [ref, ...words] = args;
-    if (!ref || !words.length) return usage("vyre threads send <thread> <text>", "vyre threads list shows the threads");
+    const { how, ref, words } = sendArgs(args);
+    if (how === "both") return usage("--queue and --steer disagree: pick one", "vyre help threads");
+    if (!ref || !words.length) return usage("vyre threads send <thread> [--queue|--steer] <text>", "vyre threads list shows the threads");
     const f = await resolveThread(ref);
     if ("error" in f) return missed(f);
-    const r = await tool("threads.send", { thread: f.id, text: words.join(" "), surface: SURFACE });
+    // No flag: vyred decides (a running turn of a session it owns is steered, ADR 0030).
+    const r = await tool("threads.send", { thread: f.id, text: words.join(" "), surface: SURFACE, ...(how ? { mode: how } : {}) });
     if (!r) return 1;
-    if (json()) { emit(r); return r.sent ? 0 : 1; }
-    if (r.sent) { out(dim(`  sent · vyre threads watch ${id8(f.id)}`)); return 0; }
-    // Open in a terminal: queued, and handed over when its turn ends.
-    if (r.queued) { out(dim(`  queued · ${r.note}`)); return 0; }
+    if (json()) { emit(r); return r.sent || r.queued ? 0 : 1; }
+    const qid = queuedId(r);
+    if (r.queued) {
+      // Held until the turn ends (a terminal session always queues): it can still be changed.
+      out(dim(`  queued${qid != null ? " " + qid : ""}${r.note ? " · " + r.note : ""}`));
+      if (qid != null) out(dim(`  vyre threads take-back ${id8(f.id)} ${qid} · edit ${id8(f.id)} ${qid} · send-now ${id8(f.id)} ${qid}`));
+      return 0;
+    }
+    if (r.sent) { out(dim(`  ${r.steered || r.mode === "steer" ? "sent into the running turn" : "sent"} · vyre threads watch ${id8(f.id)}`)); return 0; }
     if (r.holder) {
       out(beacon(`  ${r.holder} has the keyboard`));
       out(dim(`  vyre threads lease ${id8(f.id)}`));
@@ -409,6 +521,139 @@ const run = {
     if ("error" in f) return missed(f);
     if (json()) { const g = await tool("threads.get", { thread: f.id, limit: 100 }); if (!g) return 1; emit(g); return 0; }
     return watch(f.id);
+  },
+
+  /** One read of a thread, then back to the prompt: its record, open asks, and events (--since, --limit). */
+  async get(args) {
+    const { flags, pos } = parse(args, FLAGS.get);
+    const f = await resolveThread(pos[0]);
+    if ("error" in f) return missed(f);
+    for (const k of ["since", "limit"]) if (flags[k] !== undefined && !/^\d+$/.test(flags[k])) return usage(`--${k} takes a whole number`, "vyre help threads");
+    const g = await tool("threads.get", { thread: f.id, limit: flags.limit ? Number(flags.limit) : 100, ...(flags.since ? { since: Number(flags.since) } : {}) });
+    if (!g) return 1;
+    if (json()) { emit(g); return 0; }
+    const t = g.thread;
+    out(`  ${bold(t.name || tail(t.cwd, 40))}  ${dim([id8(t.id), t.status, t.model, t.holder ? "keyboard: " + t.holder : "", t.agent || ""].filter(Boolean).join(" · "))}`);
+    const streamed = new Set();
+    let midline = false;
+    for (const e of g.events || []) {
+      const s = formatEvent(e, streamed);
+      if (s == null) continue;
+      process.stdout.write(s);
+      midline = !s.endsWith("\n");
+    }
+    if (midline) process.stdout.write("\n");
+    for (const a of g.asks || []) if (!(g.events || []).some(e => e.type === "ask.raised" && e.payload && e.payload.ask === a.id)) process.stdout.write(formatEvent({ type: "ask.raised", payload: { ask: a.id, ...a } }) || "");
+    const last = (g.events || []).at(-1);
+    out(dim(`  vyre threads watch ${id8(t.id)} follows it${last ? ` · --since ${last.id} reads only what comes after` : ""}`));
+    return 0;
+  },
+
+  async interrupt(args) {
+    const f = await resolveThread(args[0]);
+    if ("error" in f) return missed(f);
+    const r = await tool("threads.interrupt", { thread: f.id });
+    if (!r) return 1;
+    if (json()) { emit(r); return 0; }
+    out(r.interrupted ? `  interrupted ${dim(id8(f.id) + " · the session stays; vyre threads send goes on")}` : dim(`  ${r.note || "nothing to interrupt"}`));
+    return 0;
+  },
+
+  /** `mode <thread>` says the mode; `mode <thread> <mode>` sets it (the person's own act). */
+  async mode(args) {
+    const [ref, want] = args;
+    if (args.length > 2) return usage(`vyre threads mode <thread> [${MODES.join("|")}]`);
+    if (want && !MODES.includes(want)) return usage(`the modes are ${MODES.join(", ")}`, "vyre help threads");
+    const f = await resolveThread(ref);
+    if ("error" in f) return missed(f);
+    if (!want) {
+      const g = await tool("threads.get", { thread: f.id, limit: 1000 });
+      if (!g) return 1;
+      const last = (g.events || []).filter(e => e.type === "mode.changed").at(-1);
+      const mode = g.thread.mode || (last && last.payload.mode) || "default";
+      if (json()) { emit({ thread: f.id, mode }); return 0; }
+      out(`  mode: ${signal(mode)} ${dim(`· vyre threads mode ${id8(f.id)} ${MODES.join("|")}`)}`);
+      return 0;
+    }
+    const r = await tool("threads.mode", { thread: f.id, mode: want });
+    if (!r) return 1;
+    if (json()) { emit(r); return r.mode ? 0 : 1; }
+    if (!r.mode) return kitFail(r.note || "the mode did not change", { next: `vyre threads send ${id8(f.id)} <text> starts it; then set the mode` });
+    out(`  mode: ${signal(r.mode)} ${dim(id8(f.id))}`);
+    return 0;
+  },
+
+  async rewind(args) {
+    const [ref, uuid] = args;
+    if (!ref || !uuid) return usage("vyre threads rewind <thread> <message uuid>", "vyre threads get <thread> --json shows each turn's uuid");
+    const f = await resolveThread(ref);
+    if ("error" in f) return missed(f);
+    const r = await tool("threads.rewind", { thread: f.id, uuid });
+    if (!r) return 1;
+    if (json()) { emit(r); return 0; }
+    out(`  ${signal("rewound")} ${dim(`${id8(f.id)} to ${id8(uuid)}${r.note ? " · " + r.note : ""}`)}`);
+    return 0;
+  },
+
+  /** Open the thread in `claude` in this terminal, where it ran (vyre resume hands it over). */
+  async open(args) {
+    const f = await resolveThread(args[0]);
+    if ("error" in f) return missed(f);
+    const g = await tool("threads.get", { thread: f.id, limit: 1 });
+    if (!g) return 1;
+    const t = g.thread;
+    const label = t.name || id8(t.id);
+    // One transcript takes one writer. Mid-turn it is left alone; idle, vyred lets go of it first.
+    if (["working", "waiting", "starting", "running"].includes(t.status)) {
+      return kitFail(`${label} is ${t.status === "waiting" ? "waiting on a question" : "in the middle of a turn"} in vyred`,
+        { next: `let it finish, or stop the turn: vyre threads interrupt ${id8(t.id)}` });
+    }
+    if (t.status === "idle") {
+      const r = await tool("threads.stop", { thread: t.id });
+      if (!r) return 1;
+      out(dim("  handed over from vyred; a message from the Deck or the Capsule brings it back there once you exit"));
+    }
+    return resume({ id: t.id, cwd: t.cwd, label }, { project: t.project || undefined });
+  },
+
+  async queue(args) {
+    const f = await resolveThread(args[0]);
+    if ("error" in f) return missed(f);
+    const g = await tool("threads.get", { thread: f.id, limit: 1000 });
+    if (!g) return 1;
+    const list = pendingQueue(g.events);
+    if (json()) { emit(list); return 0; }
+    if (!list.length) { out(dim("  nothing is queued")); return 0; }
+    for (const q of list) out(`  ${beacon(String(q.queued))}  ${cut(q.text, 90)}${q.surface ? dim("  " + q.surface) : ""}`);
+    out(dim(`  from the thread's last 1000 events · take-back, edit or send-now <thread> <queued>`));
+    return 0;
+  },
+
+  async "take-back"(args) { return queued(args, "take-back", "threads.unqueue", "taken back"); },
+  async "send-now"(args) { return queued(args, "send-now", "threads.send_now", "sent now"); },
+
+  async edit(args) {
+    const [ref, qid, ...words] = args;
+    if (!ref || !qid) return usage("vyre threads edit <thread> <queued> [text]", "vyre threads queue <thread> lists what is queued");
+    const f = await resolveThread(ref);
+    if ("error" in f) return missed(f);
+    let text = words.join(" ");
+    if (!text) {
+      if (json()) return usage("vyre threads edit needs the new text with --json");
+      const g = await tool("threads.get", { thread: f.id, limit: 1000 });
+      if (!g) return 1;
+      const was = pendingQueue(g.events).find(q => String(q.queued) === qid);
+      let edited;
+      try { edited = editText(was ? was.text : "", "message.md"); } catch (e) { return kitFail(/** @type {Error} */ (e).message); }
+      if (edited === null) return usage("no editor here (set $EDITOR), or give the new text", "vyre help threads");
+      if (!edited.trim() || (was && edited === was.text)) { out(dim("  nothing changed")); return 0; }
+      text = edited;
+    }
+    const r = await tool("threads.edit", { thread: f.id, queued: queuedArg(qid), text });
+    if (!r) return 1;
+    if (json()) { emit(r); return 0; }
+    out(`  ${signal("changed")} ${dim(`queued ${qid} · handed over when the turn ends`)}`);
+    return 0;
   },
 
   async lease(args) {
@@ -525,13 +770,73 @@ const run = {
   },
 };
 run.ls = run.list;
-run.get = run.watch;
-run.show = run.watch;
+run.show = run.get;
+
+/** A queued id as typed: vyred's are numbers (threads_inbox rows); anything else passes as is. */
+const qidArg = s => (/^\d+$/.test(String(s)) ? Number(s) : String(s));
+const queuedArg = qidArg;
+
+/** take-back and send-now: one queued message, by thread and id. */
+async function queued(args, verb, name, said) {
+  const [ref, qid] = args;
+  if (!ref || !qid) return usage(`vyre threads ${verb} <thread> <queued>`, "vyre threads queue <thread> lists what is queued");
+  const f = await resolveThread(ref);
+  if ("error" in f) return missed(f);
+  const r = await tool(name, { thread: f.id, queued: qidArg(qid) });
+  if (!r) return 1;
+  if (json()) { emit(r); return 0; }
+  out(`  ${signal(said)} ${dim(`queued ${qid}${r.note ? " · " + r.note : ""}`)}`);
+  return 0;
+}
+
+/** The queued message's id in a send's reply: queued_id, or `queued` when it is the id. */
+export const queuedId = r => (r && r.queued_id != null ? r.queued_id : r && (typeof r.queued === "number" || typeof r.queued === "string") ? r.queued : null);
+
+/**
+ * `send`'s words: --queue or --steer (before the text) say how; the first other word is the
+ * thread and the rest is the text, flags and all, so "use --queue" can still be said. `--` ends
+ * the flags.
+ * @param {string[]} args
+ * @returns {{ how: "queue"|"steer"|"both"|null, ref: string|undefined, words: string[] }}
+ */
+export function sendArgs(args) {
+  let how = /** @type {"queue"|"steer"|"both"|null} */ (null), ref;
+  const set = h => { how = how && how !== h ? "both" : h; };
+  let i = 0;
+  for (; i < args.length; i++) {
+    const a = args[i];
+    if (a === "--") { i++; if (ref === undefined) ref = args[i++]; break; }
+    if (a === "--queue") { set("queue"); continue; }
+    if (a === "--steer") { set("steer"); continue; }
+    if (ref === undefined) { ref = a; continue; }
+    break;
+  }
+  return { how, ref, words: args.slice(i) };
+}
 
 export default {
-  name: "threads", order: 22, usage: "vyre threads start|send|watch|answer|stop … [--json]",
-  summary: "headless threads vyred runs: start, send, list, watch, lease, release, asks, answer, stop (anything else searches sessions)",
+  name: "threads", order: 22, usage: "vyre threads start|send|watch|answer|interrupt|stop … [--json]",
+  summary: "sessions vyred runs: start, send, list, get, watch, queue, interrupt, mode, open, asks, answer, stop (anything else searches sessions)",
   help: [
+    "Running a session vyred owns:",
+    "  vyre threads start [prompt] [--cwd D | --project P] [--name N] [--model M] [--purpose P]",
+    `                                                    purpose: ${PURPOSES.join(", ")}`,
+    "  vyre threads send <thread> <text>                 mid-turn, vyred joins it to the running turn",
+    "  vyre threads send <thread> --queue <text>         hold it until the turn ends (a terminal session always does)",
+    "  vyre threads send <thread> --steer <text>         join the running turn at its next step",
+    "  vyre threads queue <thread>                       what is queued and not yet handed over",
+    "  vyre threads take-back|send-now <thread> <queued> take a queued message back, or hand it over now",
+    "  vyre threads edit <thread> <queued> [text]        change it (no text: $EDITOR)",
+    "  vyre threads get <thread> [--since ID] [--limit N]  one read: the record, open asks, events",
+    "  vyre threads watch <thread>                       follow it live; reconnects on its own",
+    "  vyre threads interrupt <thread>                   stop the turn (Escape); the session stays",
+    `  vyre threads mode <thread> [${MODES.join("|")}]`,
+    "                                                    say or set the permission mode",
+    "  vyre threads rewind <thread> <uuid>               back to a message, files too",
+    "  vyre threads open <thread>                        open it in claude here (vyred lets go of an idle one)",
+    "  vyre threads stop <thread>                        end its process; the transcript stays",
+    "  Setting a mode is refused from inside Claude Code: use the Deck or a plain terminal.",
+    "",
     "Answering an ask (vyre needs and vyre threads asks list them):",
     "  vyre threads answer <ask> allow|deny [message]    a permission, once",
     "  vyre threads answer <ask> always [--scope project]  allow, and stop asking (where offered)",
@@ -548,7 +853,7 @@ export default {
     const rest = more.filter(a => a !== "--json");
     // A mistyped flag is refused before vyred is started for it. What is sent or answered is
     // free text, so those take the words as they are.
-    if (sub !== "send") parse(rest, FLAGS[sub] || { values: [], cmd: "threads" });
+    if (!FREE.includes(sub)) parse(rest, FLAGS[sub] || { values: [], cmd: "threads" });
     if (!(await up())) return 5;
     return run[sub](rest);
   },
