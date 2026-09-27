@@ -6,13 +6,17 @@
 import { call } from "../../daemon/client.js";
 import { callAsPerson } from "../presence.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
+import { json, emit, failTool, usage } from "../kit.js";
 
 const USAGE = "vyre hooks [status|on|off|open <name> --scheme hmac-sha256|github|stripe --secret <vault item> [--header <name>]|close <name>]";
 const fail = r => {
+  if (json()) return failTool(r.error);
   const down = ["unreachable", "timeout"].includes(r.error.code);
   out(down ? `  vyred is not running ${dim("· vyre up to start it")}` : beacon(`  ${r.error.code}: `) + r.error.message);
   return 1;
 };
+/** The usage line, as a usage mistake: exit 2, a JSON error under --json. */
+const bad = () => usage(USAGE, "vyre help hooks");
 /** --key value pairs after the positional name. */
 const flags = args => {
   const o = {};
@@ -23,6 +27,7 @@ const flags = args => {
 async function list() {
   const r = await call("hooks.list");
   if (r.error) return fail(r);
+  if (json()) return emit(r.data);
   const d = r.data;
   out(`  listener ${d.listening ? signal(`on ${d.host}:${d.port}`) : d.enabled ? beacon("not listening") : dim("off")}${d.error ? beacon("  " + d.error) : ""}`);
   if (!d.routes.length) { out(dim("  no routes open · vyre hooks open <name> --scheme <scheme> --secret <vault item>")); return 0; }
@@ -36,6 +41,7 @@ async function list() {
 async function status() {
   const r = await call("hooks.status");
   if (r.error) return fail(r);
+  if (json()) return emit(r.data);
   const d = r.data;
   out(`  listener ${d.listening ? signal(`on ${d.host}:${d.port}`) : dim("off")} · funnel attribute ${d.node.funnel ? signal("yes") : beacon("no")} · https ${d.node.https ? signal("yes") : beacon("no")}`);
   if (!d.funnel.read) out(beacon(`  could not read Funnel: ${d.funnel.why}`));
@@ -50,22 +56,25 @@ async function status() {
 }
 
 export default {
-  name: "hooks", order: 45, usage: "vyre hooks [status|on|off|open|close] [name]", summary: "webhooks from the internet through Funnel, one route at a time",
-  async run([verb = "list", ...rest]) {
+  name: "hooks", order: 45, usage: "vyre hooks [status|on|off|open|close] [name] [--json]", summary: "webhooks from the internet through Funnel, one route at a time",
+  async run(args) {
+    const [verb = "list", ...rest] = args.filter(a => a !== "--json");
     if (verb === "list") return list();
     if (verb === "status") return status();
     if (verb === "on" || verb === "off") {
       const r = await callAsPerson("hooks.enable", { on: verb === "on" });
       if (r.error) return fail(r);
+      if (json()) return emit(r.data);
       out(`  listener ${r.data.listening ? signal(`on ${r.data.host}:${r.data.port}`) : dim("off")}${r.data.error ? beacon("  " + r.data.error) : ""}`);
       return 0;
     }
     const name = rest[0] && !rest[0].startsWith("--") ? rest[0] : "";
-    if ((verb === "open" || verb === "close") && !name) { out(`  ${USAGE}`); return 1; }
+    if ((verb === "open" || verb === "close") && !name) return bad();
     if (verb === "open") {
       const f = flags(rest.slice(1));
       const r = await callAsPerson("hooks.open", { name, verify: { scheme: f.scheme, secret: f.secret, ...(f.header ? { header: f.header } : {}) } });
       if (r.error) return fail(r);
+      if (json()) return emit(r.data);
       out(`  ${bold(r.data.path)} open ${dim(`· ${r.data.verify.scheme} · ${r.data.verify.header}`)}`);
       for (const s of r.data.next) out(dim(`  · ${s}`));
       return 0;
@@ -73,12 +82,12 @@ export default {
     if (verb === "close") {
       const r = await callAsPerson("hooks.close", { name });
       if (r.error) return fail(r);
+      if (json()) return emit(r.data);
       out(`  /hooks/${name} closed ${dim("· vyred answers 404 there now")}`);
       out(dim(`  stop publishing it: ${r.data.funnel.close}`));
       if (r.data.funnel.off) out(dim(`  no routes left; turn the Funnel port off: ${r.data.funnel.off}`));
       return 0;
     }
-    out(`  ${USAGE}`);
-    return 1;
+    return bad();
   },
 };

@@ -199,7 +199,7 @@ The lead's earlier decisions of 27 Sep 2026, still to build in this order:
    box start: the move across the vyre-home and vyre-work volumes, and Claude resuming a
    session through the old-path link.
 
-0. **Federation, threads.answer for Mac-owned sessions** (ADR 0030 step 7, ADR 0021 v2),
+0. **Done on work/federation 06441c6f (see docs/work/federation.md). Federation, threads.answer for Mac-owned sessions** (ADR 0030 step 7, ADR 0021 v2),
    proposed to sessions 27 Sep: the box checks a person caller, then forwards over the link with
    an Ed25519 assertion { v, tool, mac, thread, ask, decision sha256, caller, device, iat, exp
    +60 s, nonce } signed by a box link key the Mac pins at pairing (TOFU once for paired Macs).
@@ -278,7 +278,7 @@ only read-only checks on the test box.
   with VYRE_PROJECTS_MOVE=1, then a Claude session resuming through an old-path link).
 - relay: the hosted app's origin list (preview origins?) and whether it ever reaches the box
   through the relay (then CORS must be answered there too).
-- sessions: confirm (a) to (d) of the threads.answer contract (Next 0).
+- chat: replace "Answer it on <mac>" with normal buttons calling threads.answer with `machine` (work/federation 06441c6f, federation.md Needs from others).
 
 - vault: see the tailnet entry in docs/work/vault.md "Needs from others".
 - computers: review the Pacer (`glass.js`), the pool's egress remake and agent-node join, the

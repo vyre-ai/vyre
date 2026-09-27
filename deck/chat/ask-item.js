@@ -19,7 +19,7 @@
 // .update() once session.js has read threads.asks.
 
 import { h, put } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
 import { problemLine, macHeld, macLabel, macProblem } from "./presence.js";
@@ -166,6 +166,7 @@ export function askCard(ask) {
   const changesView = { open: false };
 
   /** @param {string} decision @param {Record<string, any>} [extra] @param {{ presence?: boolean }} [opts] a passkey proof first (a Mac's refusal asked for one) */
+  // Through the outbox. A Mac's refusal asks for the passkey on the card, so the outbox never proves on its own for one.
   const answer = async (decision, extra = {}, opts = {}) => {
     if (state.busy || state.decided) return;
     // Which button: Always has its own verb; allow and deny are their own.
@@ -174,7 +175,7 @@ export function askCard(ask) {
     state.busy = act; state.error = null; draw();
     const input = { ask: ask.id, decision, surface: "deck", ...extra, ...(decision === "deny" && state.why.trim() ? { message: state.why.trim() } : {}),
       ...(ask.machine ? { machine: ask.machine } : {}) };
-    const r = await attempt("threads.answer", input, opts.presence ? { presence: true } : {});
+    const r = await queued("threads.answer", input, { presence: opts.presence ? true : ask.machine ? false : undefined });
     state.busy = null;
     if (!r.error) state.decided = decision;
     else if (!macHeld(ask, r.error)) { state.error = r.error; state.again = o => answer(decision, extra, { ...opts, ...o }); }

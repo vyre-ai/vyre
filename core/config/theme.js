@@ -85,7 +85,7 @@ export const THEME_USE = {
  * to its roles here (unless config names the role itself): { dark: { graphite } } still repaints
  * the ground.
  */
-const ROLES_OF = {
+export const ROLES_OF = {
   "graphite": ["bg"], "carbon": ["panel"], "raised": ["hover"],
   "bone": ["text"], "stone": ["text-2"], "ash": ["label"],
   "signal": ["primary-bg", "focus", "mark-dot"], "signal-hover": ["primary-hover"], "signal-ink": ["primary-ink"],

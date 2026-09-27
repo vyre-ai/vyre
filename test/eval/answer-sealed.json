@@ -1,0 +1,543 @@
+{
+  "about": "Sealed questions for memory.answer on test/fixtures/personal-sealed.js, written without reading the rules, the model prompt or any other world's body. Not to be read by whoever tunes the rules. expect: acceptable answers, matched case-insensitively as whole words or phrases; null means the right output is no answer.",
+  "questions": [
+    {
+      "q": "whats my wifes name",
+      "expect": [
+        "bree",
+        "brielle"
+      ],
+      "kind": "spouse"
+    },
+    {
+      "q": "who's the missus",
+      "expect": [
+        "bree",
+        "brielle"
+      ],
+      "kind": "spouse-nickname"
+    },
+    {
+      "q": "my partnrs name?",
+      "expect": [
+        "bree",
+        "brielle"
+      ],
+      "kind": "spouse-typo"
+    },
+    {
+      "q": "who is bree",
+      "expect": [
+        "wife"
+      ],
+      "kind": "who-is"
+    },
+    {
+      "q": "wha does my wife do for work",
+      "expect": [
+        "physio",
+        "physiotherapist",
+        "physiotherapy"
+      ],
+      "kind": "spouse-job"
+    },
+    {
+      "q": "is bree a nurse",
+      "expect": [
+        "physio",
+        "physiotherapist",
+        "physiotherapy"
+      ],
+      "kind": "assistant-wrong"
+    },
+    {
+      "q": "where does bree work now",
+      "expect": [
+        "clinic",
+        "private clinic"
+      ],
+      "kind": "spouse-job-change"
+    },
+    {
+      "q": "when is my wifes birthday",
+      "expect": [
+        "2 june",
+        "june 2",
+        "2nd june",
+        "2nd of june",
+        "june 2nd"
+      ],
+      "kind": "spouse-birthday"
+    },
+    {
+      "q": "does the missus eat meat",
+      "expect": [
+        "vegetarian",
+        "veggie"
+      ],
+      "kind": "spouse-diet"
+    },
+    {
+      "q": "whats my husbands name",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "how many kids have i got",
+      "expect": [
+        "two",
+        "2"
+      ],
+      "kind": "kids"
+    },
+    {
+      "q": "whats my sons name",
+      "expect": [
+        "corwin"
+      ],
+      "kind": "kids"
+    },
+    {
+      "q": "how old is corwin",
+      "expect": [
+        "7",
+        "seven"
+      ],
+      "kind": "kid-age-after-birthday"
+    },
+    {
+      "q": "how old is the wee man now",
+      "expect": [
+        "7",
+        "seven"
+      ],
+      "kind": "kid-age-after-birthday"
+    },
+    {
+      "q": "hw old is my daughter",
+      "expect": [
+        "3",
+        "three"
+      ],
+      "kind": "kids"
+    },
+    {
+      "q": "daughters name?",
+      "expect": [
+        "nell"
+      ],
+      "kind": "kids"
+    },
+    {
+      "q": "what school do the kids go to",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "how old are my twins",
+      "expect": null,
+      "kind": "trap-friend-kids"
+    },
+    {
+      "q": "who is otto",
+      "expect": null,
+      "kind": "trap-demo"
+    },
+    {
+      "q": "whos sir wobble",
+      "expect": null,
+      "kind": "trap-story"
+    },
+    {
+      "q": "whats my nephews name",
+      "expect": null,
+      "kind": "trap-assistant-wrong"
+    },
+    {
+      "q": "how old is my son dev",
+      "expect": null,
+      "kind": "trap-pasted-email"
+    },
+    {
+      "q": "whats my mams name",
+      "expect": [
+        "maureen"
+      ],
+      "kind": "mother"
+    },
+    {
+      "q": "where does my mum live",
+      "expect": [
+        "sunderland"
+      ],
+      "kind": "mother"
+    },
+    {
+      "q": "is mam still working",
+      "expect": [
+        "retired"
+      ],
+      "kind": "mother-change"
+    },
+    {
+      "q": "what did my mam do for a job",
+      "expect": [
+        "library",
+        "librarian"
+      ],
+      "kind": "mother"
+    },
+    {
+      "q": "whats my grandmas name",
+      "expect": null,
+      "kind": "trap-support-ticket"
+    },
+    {
+      "q": "whats my brothers name",
+      "expect": [
+        "lorcan"
+      ],
+      "kind": "brother"
+    },
+    {
+      "q": "what does our kid do for a living",
+      "expect": [
+        "electrician",
+        "sparky"
+      ],
+      "kind": "brother-nickname"
+    },
+    {
+      "q": "where does my brother live",
+      "expect": [
+        "whitley bay"
+      ],
+      "kind": "brother-correction"
+    },
+    {
+      "q": "what does lorcan my brother do",
+      "expect": [
+        "electrician",
+        "sparky"
+      ],
+      "kind": "same-name"
+    },
+    {
+      "q": "whats my dads name",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "do i have a sister",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "whats my sister in laws name",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "whats the dogs name",
+      "expect": [
+        "bramble"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "what breed is the pup",
+      "expect": [
+        "border terrier"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "what is my cat called",
+      "expect": [
+        "mungo"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "how many pets do we have",
+      "expect": [
+        "two",
+        "2"
+      ],
+      "kind": "pet"
+    },
+    {
+      "q": "whats our cockapoo called",
+      "expect": null,
+      "kind": "trap-hypothetical"
+    },
+    {
+      "q": "whats my newfoundlands name",
+      "expect": null,
+      "kind": "trap-client-pet"
+    },
+    {
+      "q": "whose dog is crumpet",
+      "expect": [
+        "wendell"
+      ],
+      "kind": "contact-pet"
+    },
+    {
+      "q": "what car do i drive",
+      "expect": [
+        "niro",
+        "kia niro"
+      ],
+      "kind": "vehicle-change"
+    },
+    {
+      "q": "what colour is my car",
+      "expect": [
+        "white"
+      ],
+      "kind": "vehicle-colour"
+    },
+    {
+      "q": "what did i drive before the niro",
+      "expect": [
+        "astra",
+        "vauxhall astra"
+      ],
+      "kind": "vehicle-history"
+    },
+    {
+      "q": "what colur was the astra",
+      "expect": [
+        "blue"
+      ],
+      "kind": "vehicle-colour"
+    },
+    {
+      "q": "what motorbike do i ride",
+      "expect": null,
+      "kind": "trap-hypothetical"
+    },
+    {
+      "q": "whats my wifes car",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "what does hamish drive now",
+      "expect": [
+        "kodiaq",
+        "skoda kodiaq"
+      ],
+      "kind": "friend-vehicle-change"
+    },
+    {
+      "q": "what car does lorcan voss have",
+      "expect": [
+        "xc40",
+        "volvo"
+      ],
+      "kind": "contact-vehicle"
+    },
+    {
+      "q": "where do i live",
+      "expect": [
+        "durham"
+      ],
+      "kind": "place-change"
+    },
+    {
+      "q": "where did we live before durham",
+      "expect": [
+        "newcastle",
+        "heaton"
+      ],
+      "kind": "place-history"
+    },
+    {
+      "q": "whats my adress in lisbon",
+      "expect": null,
+      "kind": "trap-hypothetical"
+    },
+    {
+      "q": "when did we move to edinburgh",
+      "expect": null,
+      "kind": "trap-cancelled"
+    },
+    {
+      "q": "where do i go sea swimming these days",
+      "expect": [
+        "seaham"
+      ],
+      "kind": "place-change"
+    },
+    {
+      "q": "where do i work",
+      "expect": [
+        "tidewell",
+        "tidewell health"
+      ],
+      "kind": "job-change"
+    },
+    {
+      "q": "what was my old job",
+      "expect": [
+        "brackwater",
+        "brackwater utilities"
+      ],
+      "kind": "job-history"
+    },
+    {
+      "q": "whats my job title",
+      "expect": [
+        "lead data engineer",
+        "data engineer"
+      ],
+      "kind": "job"
+    },
+    {
+      "q": "how much do i earn",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "whens my birthday",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "where was i born",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "what gym do i go to",
+      "expect": null,
+      "kind": "never-said"
+    },
+    {
+      "q": "whats my diet",
+      "expect": [
+        "coeliac",
+        "gluten free",
+        "gluten-free"
+      ],
+      "kind": "diet"
+    },
+    {
+      "q": "any food allergys i have",
+      "expect": [
+        "coeliac",
+        "gluten"
+      ],
+      "kind": "diet-typo"
+    },
+    {
+      "q": "what are my hobbies",
+      "expect": [
+        "swimming",
+        "sea swimming",
+        "chess"
+      ],
+      "kind": "hobby"
+    },
+    {
+      "q": "where do i play chess online",
+      "expect": [
+        "lichess"
+      ],
+      "kind": "hobby"
+    },
+    {
+      "q": "what editor do i use",
+      "expect": [
+        "zed"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "still on vscode?",
+      "expect": [
+        "zed"
+      ],
+      "kind": "tool-change"
+    },
+    {
+      "q": "what db client do i use",
+      "expect": [
+        "datagrip"
+      ],
+      "kind": "tool"
+    },
+    {
+      "q": "what do i use instead of docker desktop",
+      "expect": [
+        "orbstack"
+      ],
+      "kind": "tool-change"
+    },
+    {
+      "q": "who is hamish",
+      "expect": [
+        "friend",
+        "swimming"
+      ],
+      "kind": "friend"
+    },
+    {
+      "q": "whats hamishs wifes name",
+      "expect": [
+        "ffion"
+      ],
+      "kind": "friend-family"
+    },
+    {
+      "q": "who's tobi",
+      "expect": [
+        "chess",
+        "friend"
+      ],
+      "kind": "friend"
+    },
+    {
+      "q": "who is my accountant",
+      "expect": [
+        "gwen",
+        "gwen halloran"
+      ],
+      "kind": "contact"
+    },
+    {
+      "q": "who is lorcan voss",
+      "expect": [
+        "harlow",
+        "it manager"
+      ],
+      "kind": "same-name"
+    },
+    {
+      "q": "whos wendell",
+      "expect": [
+        "northwind"
+      ],
+      "kind": "contact"
+    },
+    {
+      "q": "whats wendells wifes name",
+      "expect": [
+        "sunniva"
+      ],
+      "kind": "contact-family"
+    },
+    {
+      "q": "who is clementine",
+      "expect": null,
+      "kind": "trap-demo"
+    },
+    {
+      "q": "is lina my daughter",
+      "expect": null,
+      "kind": "trap-pasted-chat"
+    }
+  ]
+}

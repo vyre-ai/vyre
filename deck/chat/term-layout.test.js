@@ -48,7 +48,7 @@ test("term layout: the key bar is a grid of 7, gap 6, padding 8; keys 34 tall, r
   assert.match(css, /\.term-keys \{ display: grid; \}/, "shown as a grid on touch screens");
   const key = rule(".term-key");
   assert.match(key, /height:\s*34px/);
-  assert.match(key, /border-radius:\s*var\(--r-2\)/);
+  assert.match(key, /border-radius:\s*var\(--radius-field, 8px\)/);
   assert.match(key, /background:\s*var\(--hover\)/);
   assert.match(key, /font-size:\s*12px/);
   assert.match(key, /line-height:\s*16px/);
