@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck's popover shadow comes from tokens.css alone
+
+- deck/css/deck.css no longer declares --popover: app-design's tokens.css carries it (same
+  values, dark and paper), and deck/test/tokens.test.js refuses a second copy.
+
 #### A queued reply streams live, and only its own turn counts
 
 - A reply queued for a busy session no longer takes the words, tools or end of the turn the

@@ -24,12 +24,10 @@
 
   --r-1: 4px; --r-2: 6px; --r-3: 10px; --r-4: 14px;
   --light-top: var(--float);
-  --popover: inset 0 1px 0 rgba(241,238,230,0.05), 0 12px 24px -12px rgba(0,0,0,0.55);
 }
 :root[data-theme="paper"] {
   --recall-ink: #7E5B0C; --recall-wash: rgba(126,91,12,0.08); --recall: #7E5B0C;
   --beacon-wash: rgba(91,63,196,0.08); --beacon-rule: rgba(91,63,196,0.28);
-  --popover: 0 12px 24px -12px rgba(20,19,17,0.3);
 }
 
 * { box-sizing: border-box; }
