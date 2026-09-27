@@ -1,3 +1,11 @@
+---
+title: Deck design
+summary: The Deck's visual system and screen patterns, Direction B second pass, picked on 27 Sep 2026.
+audience: builders
+owner: docs
+status: draft
+---
+
 # Deck design (Direction B, second pass)
 
 The Deck's visual system and screen patterns, picked by the user on 27 Sep 2026: B's look (icon

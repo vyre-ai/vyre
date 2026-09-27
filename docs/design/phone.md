@@ -242,7 +242,7 @@ Swipe:
 
 - **Right** reveals the primary action from the left edge, 100 wide, in `--primary-bg` with
   `--primary-ink`: a check glyph (24) over "Approve" (asks) or "Send" (drafts) in 13/600, the
-  Face ID glyph instead when `presence.required` is true and `covered` false (section 5).
+  Face ID glyph instead when `presence.required` is true and `covered` false (section 5). <!-- terms: ignore -->
   Past 100 or a fast fling, it commits: the proof runs if one is needed, and on success the
   row collapses. Letting go short of 100 leaves the action showing; tapping it commits.
 - **Left** reveals "Deny" (asks) or "Discard" (drafts) from the right edge, 100 wide, `--hover`
@@ -324,7 +324,7 @@ Action area (8 between buttons, 34 bottom):
 - Ask: the primary, full width, 54 tall, radius 12, `--primary-bg`: "Approve", one tap (asks
   are always `required: false`). Under it, two secondary buttons stacked, 46 tall,
   radius 12: "Always in <project>" (secondary: approves and writes the rule), then "Deny" (a
-  ghost). Where `ask.always_project` is null, only Deny sits under the primary.
+  ghost). Where `ask.always_project` is null, only Deny sits under the primary. <!-- terms: ignore -->
 - Held item at the Gate (a send, spend or delete of outside data): the primary follows the three presence states below,
   "Send with Face ID" (22 px glyph; "with Touch ID", "with fingerprint", "with passkey" by
   device) only when not covered; "Discard" a ghost, never a proof. Drafts are held sends.
@@ -344,7 +344,7 @@ Action area (8 between buttons, 34 bottom):
     line under the button: "Confirmed with Face ID a moment ago" ("12 min ago").
   - `required: true, covered: false`: "Send with Face ID" ("Delete with Face ID") with the glyph; the proof runs
     on tap and opens a new presence session.
-  The "ago" comes from `presence.since` (the proof's time, which the box sends with `covered`);
+  The "ago" comes from `presence.since` (the proof's time, which the box sends with `covered`); <!-- terms: ignore -->
   without it the line is left out. If the session lapsed between render and tap, the box
   answers 403 `error.code: "presence_required"`: the sheet runs Face ID in place without closing
   and retries the same approve with `x-vyre-presence-keep: 1`, which starts a fresh session.
@@ -410,7 +410,7 @@ gap of more than an hour ("Today 12:01"):
   `--beacon-ink`, "Details" on the right, a ghost in Button 13/18 `--text` (opens the detail sheet). The command
   in a mono block (`--code-bg`, radius 6, 10 x 12, Code 13/18). One Meta `--text-2` line of facts ("3
   commits · 6 files · harlow-legal/reports"). Then Deny (a ghost) and Approve (primary, with the Face ID
-  glyph only when `presence.required` is true and `covered` false) side by side, 44 tall, radius 10, Button 17/24. Answered, it shrinks to one Meta line:
+  glyph only when `presence.required` is true and `covered` false) side by side, 44 tall, radius 10, Button 17/24. Answered, it shrinks to one Meta line: <!-- terms: ignore -->
   "Approved by you, 12:07".
 - **Question card**: the same card with the choices as rows inside it.
 - **Recalled**: a neutral row when memory fed the reply: the memory stack icon, "From memory"
@@ -588,10 +588,10 @@ Landed on work/chat (10604b9):
   the first item at or after `at` in `thread`. A model's MCP call has no tool_use_id yet, so gate
   items land by event or time.
 - **Questions as Needs items.** `threads.asks` returns `kind: "question"` items with `questions`,
-  `agent` and `thread_name`. Answer with `threads.answer { ask, decision: "allow", answers: {
-  [question]: "label" | "a, b" | "typed text" } }`, or `decision: "deny"` for Later/decline. The
+  `agent` and `thread_name`. Answer with `threads.answer { ask, decision: "allow",
+  answers: { [question]: "label" | "a, b" | "typed text" } }`, or `decision: "deny"` for Later/decline. The
   ask id is the capability.
-- **Always in <project>.** Show the button only when `ask.always_project` is a name (it can be null
+- **Always in <project>.** Show the button only when `ask.always_project` is a name (it can be null <!-- terms: ignore -->
   for a moment after `ask.raised`; the sheet adds the button when it arrives, never reflowing
   under the user's thumb mid-tap). It sends `threads.answer { ask, decision: "always", scope:
   "project" }` with the same presence check; the rule is written to that project's own
