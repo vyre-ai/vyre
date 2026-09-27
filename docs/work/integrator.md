@@ -133,6 +133,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   (hard-fails docs-owned pages only).
 - memory-iq's 0.1.1 sha (memory.ask stream: true cutover, around ffae4f08) BEFORE capsule-pro's
   Capsule change that depends on it; memory-iq coordinates, target 30 Sep.
+- mac test guard: branch work/mac-test-guard 6a2bb019 (worktree ../vyre-integrator-guard): tempHome and
+  tmp-guard refuse on darwin unless VYRE_ALLOW_MAC_TESTS=1; capsule-mac sets it. Mac refuses, testbox 34/34.
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
