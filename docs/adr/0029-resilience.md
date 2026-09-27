@@ -1,0 +1,155 @@
+---
+title: ADR 0029: The resilience contract
+summary: What every Vyre surface does when the network blips, a lid closes or the box restarts, so an outage is boring.
+audience: builders
+owner: resilience
+status: proposed
+---
+
+# ADR 0029: The resilience contract
+
+Status: proposed, 27 Sep 2026 · Workstream: resilience ·
+Builds on ADR 0002 (network and identity), ADR 0011 (web push), ADR 0014 (tailnet), ADR 0024
+(chat and the terminal), ADR 0025 (planner), ADR 0026 (relay) and ADR 0027 (one Expo app).
+
+## Context
+
+The user ran Tess from a phone over Termius. Every time the network blipped, the session threw a
+wall of errors and the user had to start again. Vyre is used the same way: a phone that walks from
+Wi-Fi to cellular, a laptop lid that closes mid-turn, a box that restarts for a deploy, a relay or
+a Tailscale path that goes flaky, and long stretches with no network at all.
+
+An audit on 27 Sep 2026 found the pieces half there. vyred's event log has ids and the SSE route
+honours `Last-Event-ID`, and most clients back off and stay quiet. But no write anywhere carries an
+idempotency key, so a retry after a lost response sends a message twice; no surface keeps an
+outbox; a stream that drops before its first event loses the gap; a terminal dies 10 s after its
+socket closes and every vyred restart kills it; each client knows one box address; and a phone
+cannot ring an alarm while the box is out of reach.
+
+This ADR is the contract every surface meets: the Deck, the phone app, the Capsule, the CLI, the
+terminal, Glass, the relay and federation between boxes. Each rule has a test in the chaos harness
+(`test/chaos/`), named after the rule.
+
+## Decision
+
+### R1. Every event stream resumes from a cursor
+
+- An event's id is its cursor. Ids only grow, across restarts and prunes: the events table is
+  `AUTOINCREMENT`, so an emptied or pruned tail never hands out an id twice.
+- vyred's SSE stream writes `retry: 2000` and an `id: <cursor>` line as soon as it opens, before
+  any backlog, and again with every heartbeat. A client that drops before its first event
+  therefore still resumes from where it was, never from `latest`.
+- `since=latest` is resolved once, by the server, into a number the client then holds. A client
+  never sends `latest` on a reconnect.
+- If a client's cursor is older than what the log still holds for its filter (a prune went past
+  it), the stream sends `event: reset` with the oldest id it has. The client reloads its state
+  through tools and follows from there. A gap is always either replayed or announced, never silent.
+- Clients drop any event whose id is at or below the last one they applied (no doubles), and
+  persist the cursor so a cold start resumes too.
+- A client treats 45 s without a byte (three missed heartbeats) as a dead stream and reconnects.
+- Tool reads that a view renders from (`threads.get`, `planner.list`, Needs) return `last_event`,
+  the cursor they are current to, so a view that loads first and subscribes second has no gap.
+
+### R2. Every write carries an idempotency key, and each device has an outbox
+
+- A surface sends `Idempotency-Key: <uuid>` with every tool call that changes something (over MCP
+  and `ctx.remote`, the key rides in meta). One key per intent: a retry reuses it.
+- vyred keeps `(caller, tool, key) -> (input hash, result)` for 24 h, in the registry, around the
+  tool's `run`. A repeat with the same input gets the stored result back without running the tool
+  again. A repeat with different input is refused with `idempotency_conflict`. A call still
+  running answers `in_progress`, and the client retries it later. Only successes and the tool's
+  own refusals are stored; a transport failure is not.
+- Tools that refuse a second attempt today (`threads.answer`, `gate.approve`, `gate.reject`)
+  return the earlier outcome as a success when the key matches, so a retry reads as done.
+- Every device keeps an outbox in durable storage (IndexedDB in the Deck, SQLite or MMKV in the
+  app, a file in the CLI and the Capsule). Sends, answers, approvals, notes and todos go into it
+  first, with their key, and show at once as "sending". The outbox drains in order when the box
+  is reachable, and an entry leaves it only on a stored result from the box. Presence-gated
+  writes (approvals that need Touch ID or a passkey) keep their proof request in the outbox and
+  ask the person again only if the proof has expired.
+- An entry the box refuses on its merits (a gate already rejected by someone else) leaves the
+  outbox and shows its reason inline. Nothing is dropped without a trace.
+
+### R3. Reconnecting is quiet, and the last state is always on screen
+
+- A lost box shows one small "Reconnecting" pill. Never a blocking screen, an error wall, a modal
+  or an empty list. Lists keep their last contents; the Capsule keeps its tool list.
+- Backoff starts at 2 s, doubles to a 60 s cap, with 20 percent jitter. It resets on success, on a
+  network change (NWPathMonitor, ConnectivityManager, the browser's `online` event) and on a wake
+  from sleep.
+- A hidden app, tab or window stops reconnecting and closes its stream. Coming back to the front
+  reconnects at once from the saved cursor.
+- The pill appears only after the first failed retry (about 2 s), so a blip that heals on the
+  first try shows nothing. After 60 s it says since when the box has not answered, measured from
+  the box's last answer, not from when the pill appeared.
+- Each surface caches what it last showed (Now, Needs, chat threads, the planner) and opens from
+  that cache offline. A reconnect reconciles in place; it never remounts a view, and it never
+  throws away a draft.
+
+### R4. The terminal survives like mosh
+
+- The shell runs on the box under a detachable holder (a pty kept by vyred's term module, with a
+  `dtach` socket so it outlives a vyred restart). A client disconnect never ends it. An idle
+  terminal is kept for 12 h by default (`term.keep_hours`), not seconds.
+- The box counts every output byte. A client attaches with `from=<offset>` and gets exactly the
+  bytes after it from a 1 MB ring, trimmed only at line boundaries. If the offset has left the
+  ring, the client gets the whole ring and a marker saying what was cut. The client keeps its own
+  scrollback and never resets it on reattach.
+- Keys typed while disconnected are held (up to 4 KB) and sent on reattach, and the terminal
+  dims to show it is catching up. A vyred restart is a reconnect like any other.
+
+### R5. Paths fail over without the user noticing
+
+- Each device keeps an ordered list of ways to the box: LAN (when the box advertises one and the
+  device sees it), the tailnet name, then the relay (ADR 0026). Every path ends at the same
+  identity check, so a path never weakens who the box is.
+- A transport error, a stall (R1) or a network change moves to the next path at once, without
+  waiting out the backoff. The device probes a better path in the background every 60 s while
+  the app is in front and moves back when it answers.
+- The stream cursor and the outbox are per box, not per path, so a switch mid-stream replays
+  nothing twice and loses nothing.
+- The Mac link to the box restarts its serve loop after a short backoff (2 s to 60 s), not on its
+  60 s heartbeat, and the box re-queues any question a dead held request never delivered.
+- Federation between boxes retries reads once on another path and carries cursors for anything
+  it follows.
+
+### R6. Alarms ring even when the box is out of reach
+
+- Each device schedules the next 48 h of planner alarms and reminders as local notifications,
+  from `planner.agenda`, and refreshes that schedule on every planner change event and every
+  foreground.
+- The dedupe key is `planner-<item>-<due>`, where `due` is the scheduled time in epoch seconds.
+  The box's push uses that same key as its tag (web push), `apns-collapse-id` (iOS) and
+  notification tag (Android), and carries `item` and `due`. A device that already rang locally
+  replaces the box's notification instead of ringing twice.
+- An alarm acknowledged on one device clears it on the others through the existing `planner-ack`
+  push, and the local schedule for that key is cancelled.
+
+### R7. The box's restarts and deploys drop no client state
+
+- On SIGTERM vyred stops accepting new connections, lets in-flight tool calls finish (up to 5 s),
+  then ends streams with a final `retry: 2000` so clients come back fast.
+- Event ids, idempotency records and outboxes are durable, so a restart costs a reconnect and
+  nothing else. Threads that a restart cut get a `thread.stopped` with reason `restart`, so the
+  Deck says what happened instead of spinning.
+- The Deck's service worker swaps its shell as one versioned set, so a deploy never mixes old and
+  new modules.
+
+### R8. Proven by a chaos harness
+
+`test/chaos/` runs vyred behind a small fault proxy in a temp home. The proxy can drop a
+connection, delay bytes, cut a stream mid-event, partition (blackhole without closing), switch
+between two paths and restart vyred mid-stream. Every rule above has a test named `R<n>: ...`.
+The harness runs on testbox under `nice -n 15`, one file at a time, in well under a minute. A
+surface team adds its own client to the harness by pointing it at the proxy.
+
+## Consequences
+
+- Every surface team has work to meet R1 to R6; the resilience workstream tracks it in
+  `docs/work/resilience.md` and does the shared pieces: the SSE changes, the idempotency layer,
+  the drain on stop, the chaos harness and a reference client (stream plus outbox) in
+  `core/resilience/` that the CLI, the Capsule's Electron lib and the Deck can use as is.
+- Idempotency costs one small table and one lookup per write. Reads skip it.
+- A terminal that outlives vyred needs `dtach` in the box image (a 30 KB binary).
+- Local alarms mean each device holds the next 48 h of alarm titles. They are the user's own
+  data on the user's own devices, and the schedule is cleared on sign-out.
