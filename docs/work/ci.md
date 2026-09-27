@@ -99,6 +99,8 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
 - testbox keeps vyre-box:gate and ~/vyre-ci/{ci,ci-gate,sdk-js,gate1.sh}.
 
 ## Next
+- After 0.1.0: drop build-app.sh's dist/assets/node_modules move and rewrite once mobile says the
+  export no longer writes a node_modules path (mobile will drop expo-router's error/sitemap icons).
 - Delete throwaway branches once their workflows are on main: work/ci-app, ci-box-c8fb9aa,
   ci-pid1-proof, ci-sessions, ci-release, ci-pid1, ci-boundaries (after merge).
 - actionlint v1.7.7 in the scratchpad (re-download). `gh run list -c` needs the FULL sha.
