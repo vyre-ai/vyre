@@ -1,8 +1,45 @@
 # mobile
 
-Branch: work/mobile · Worktree: ../vyre-mobile · ADR 0018
+Branch: work/mobile · Worktree: ../vyre-mobile · ADR 0027 (one app), ADR 0018 (native, paused)
 
-## Scope
+## Pivot (27 Sep 2026, user decision)
+
+ONE Expo app (`apps/app`) for the iPhone web app, the Android APK, the box-served app and the
+hosted app.vyre.run. Design of record: Direction A (inbox first), work/app-design
+`docs/design/one-app/` (DIRECTION.md, tokens.json), canvas
+https://claude.ai/artifact/Ap7uKGmbiEs4wM44iSyi1X. No Apple Developer account: iPhone = the
+installed web app over Tailscale (relay fallback); Android = APK over adb from `vyre phone add`,
+self-updating from the box; native iOS build only if the web app misses the bar in the one-week
+spike. Agent SDK sessions (ADR 0030) are the default: the app speaks their event model and
+imports chat's DOM-free core (deck/chat/core/). GitHub is flaky: retry pushes, keep WIP local.
+The native SwiftUI/Compose code below is PAUSED and stays on this branch as reference.
+
+## One app: Done
+- ADR 0027 docs/adr/0027-one-app.md (draft, in the nav, claimed in docs/work/README.md):
+  targets, what is shared, the hosted app's signed pinned versions, the smoothness bar as
+  acceptance criteria, the perf harness, the one-week spike.
+- apps/app/perf/meter.js + meter.test.js (19 tests) + README.md: the frame meter and `BAR`.
+- Merged main at ef51363 (a51bdcc): kept `tailnet` in the new callers (gate, switchboard, push),
+  `device` in METHODS and in the presence session description; deck/test/world.js keeps its
+  exports with main's alex-beside-home, CHAT_DEMO and WebSocket pass-through.
+
+## One app: Doing
+- Plan the one-week spike with pwa (Now, a session, the approve swipe) and scaffold apps/app.
+
+## One app: Next
+1. The spike plan with pwa; then scaffold `apps/app` (Expo 54, expo-router, RN Web, Reanimated,
+   Gesture Handler, zustand), web export served at `/app/` by the box.
+2. Tokens: a generator from tokens.json (coral gone, violet `beacon`) to tokens.ts, the Deck's
+   tokens.css and Theme.swift (coordinate with deck-design, who owns the Deck CSS swap).
+3. The spike: Now, a session (inverted virtualized transcript, paced streaming, composer and
+   keyboard, queue/unqueue via threads.unqueue), the approve swipe; the `?perf=1` overlay.
+4. Phone first-class parity list (every Deck page), then the Android build in CI and
+   `vyre phone add --android --usb`.
+5. work/mobile-presence: the device presence method as its own branch for relay (device:<id>).
+
+## Native (ADR 0018, PAUSED)
+
+### Scope
 
 Owns `apps/ios/`, `apps/android/`, `apps/CONTRACT.md`, `apps/RELEASE.md`, `apps/test/`. Native
 iPhone and Android apps for the Deck, Chat and the Capsule: Now (held drafts edited in place),

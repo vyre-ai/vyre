@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: ADR 0027 and the smoothness meter
+
+- docs/adr/0027-one-app.md (draft): one Expo codebase for the iPhone web app, the Android APK,
+  the box-served app and app.vyre.run; the native iOS build is the fallback after a one-week
+  spike on a real iPhone. The smoothness bar as acceptance criteria, the hosted app's pinned,
+  signed versions, and what is shared with chat (the session core) and sessions (ADR 0030 events).
+  Joins the nav; ADR 0027 claimed in docs/work/README.md.
+- apps/app/perf/meter.js: a DOM-free frame meter the web (requestAnimationFrame) and native
+  (Reanimated) both feed; bounded rings, named measures, gaps and long tasks, and a verdict
+  against `BAR`, the ADR's table as data. Tests in apps/app/perf/meter.test.js.
+- deck/test/world.js keeps its exported pieces (for apps/test/world.js) with main's alex folder
+  beside the home, CHAT_DEMO and the WebSocket pass-through.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
