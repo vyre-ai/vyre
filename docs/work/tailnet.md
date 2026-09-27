@@ -150,7 +150,15 @@ Later the same day (lead and e2e answers):
 - Lead decisions: a login-only ssh remote is not a secret; relay is the always-works phone path
   and the tailnet an automatic upgrade when the probe answers.
 
-Waiting: e2e (wires sessionOf), relay (origin list, and whether the
+- 7cd25e6c: e2e built the gate in the router themselves (work/e2e 8ad92a73, fb097a3d), so my
+  stub core/presence/person.js and my route() gate are removed; the listener only sets
+  peer.origin and passes req untouched. Trial merge with work/e2e conflicts only in generated
+  docs, CHANGELOG, core/presence/index.js (PERSON_ONLY: take both lists) and
+  test/guests.test.js (take mine: guests have threads.list only). NOT yet tested: the test box is
+  frozen for the integrator's suite. Queued run: core/names/service.test.js test/guests.test.js
+  test/daemon.test.js core/presence/presence.test.js test/hygiene.test.js test/docs-build.test.js.
+
+Waiting: e2e (merges work/tailnet and tests the app flow end to end), relay (origin list, and whether the
 hosted app ever reaches the box through the relay), sessions (threads.answer contract for
 Mac-owned sessions, below).
 
@@ -254,7 +262,7 @@ only read-only checks on the test box.
   in deck/chat/session.js).
 - integrator: merge work/tailnet (this branch's tip) and work/federation 5c247ce.
 - e2e: re-run the egress checks on headscale (the list under "Verify on first real run").
-- e2e: wire `personSessions(db).sessionOf` in core/presence/person.js (merge from work/tailnet).
+- e2e: merge work/tailnet and run the hosted-app flow end to end.
 - box-deploy: validate `projects.move` on a copy of the live box (dry run, then the real move
   with VYRE_PROJECTS_MOVE=1, then a Claude session resuming through an old-path link).
 - relay: the hosted app's origin list (preview origins?) and whether it ever reaches the box
