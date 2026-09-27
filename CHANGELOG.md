@@ -213,6 +213,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   sessions by the harness (`core/harness/rules.js`). The Deck's "Confirm it's you" step is gone
   (`deck/glass/takeover.js`). Tests: core/computers/computers.test.js, core/glass/glass.test.js,
   core/harness/floor.test.js. ADR 0004 and 0005 amended.
+#### Every Claude Code session knows the user
+
+- `core/about`: keeps `<home>/about.md`, a few lines on the user (name, assistant, busiest projects
+  and their people, and memory's `memory.profile` lines of kind work, place or preference; never
+  people, vehicles or clients), under 600 characters,
+  with anything shaped like a credential, email or phone number dropped. Tool `about.text`.
+- The SessionStart hook reads that file and adds it ahead of the project brief, also with vyred
+  down. An agent scoped to some projects does not get it.
+- `/vyre todo`, `/vyre remind <when> <text>`, `/vyre agenda` (the planner's `planner.add`,
+  `planner.list` and `planner.agenda`; the planner reads the reminder's time) and
+  `/vyre remember <fact>` (memory's `memory.remember`; a lesson where it refuses). Making a lesson
+  moves from `/vyre remember` to `/vyre lesson <rule>`.
+- The MCP server's instructions: back a promised reminder with `planner_add`, ask `memory_answer`
+  before saying you do not know.
 
 #### The site has no Capsule zip, and a clean checkout stamps clean
 
