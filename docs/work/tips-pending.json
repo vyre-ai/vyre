@@ -51,7 +51,7 @@
   "pending": "vyre-capsule-pro/work/capsule-pro",
   "tip": {
    "id": "do",
-   "text": "Type `do open the Northwind Bakery order sheet` and Vyre drives the Mac for you, each step on screen.",
+   "text": "Start with `do` to let Vyre use your Mac: type `do open the Northwind Bakery order sheet` and press `⏎`.",
    "surfaces": [
     "capsule"
    ],
@@ -61,15 +61,15 @@
   }
  },
  {
-  "module": "hands",
+  "module": "capsule",
   "pending": "vyre-capsule-pro/work/capsule-pro",
   "tip": {
-   "id": "cmd-return",
-   "text": "Press `⌘⏎` on words that are not a question and Vyre does them on this Mac instead of answering.",
+   "id": "think-deeper",
+   "text": "Press `⌘⏎` to think deeper: the deeper model answers with thinking, in the same thread.",
    "surfaces": [
     "capsule"
    ],
-   "level": "first-use",
+   "level": "power",
    "trigger": "on-use",
    "since": "0.1.0",
    "key": "⌘⏎"

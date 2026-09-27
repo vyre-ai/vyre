@@ -14,6 +14,7 @@ generated: scripts/gen-docs-reference
 467 tools across 44 modules. Every caller reaches a tool through the same path: Claude through MCP, a surface through HTTP, the CLI with `vyre call <tool> [json]`. The input is checked against the schema below, then the rules run, then the tool.
 
 Callers are the kinds of caller that may use a tool: `cli` (the terminal), `local` (the Mac's own surfaces), `deck`, `capsule`, `mcp` (Claude and agents), `module` (another module). Any caller means the tool does not limit them. See [tools and events](../build/tools-and-events.md).
+A tool marked internal is registered, but only another module can call it: `vyre call`, MCP and HTTP answer `no_such_tool`, and `vyre tools` never lists it. A person reaches what it does through a public tool (`agents.history` reads `threads.history`, for example).
 
 A tool marked "needs a person present" runs only after someone proves they are at the machine, with Touch ID, a passkey or the terminal: see [presence](../concepts/presence.md). A call from Claude alone cannot pass it.
 
@@ -314,7 +315,7 @@ Where the agent's Chrome and computerd answer, and computerd's token. Checks out
 - Input:
   - `agent` string
   - `thread` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `computers.get`
 
@@ -354,7 +355,7 @@ Where computerd answers, and its token. Thaws and touches without taking a scree
 
 - Input:
   - `agent` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `computers.limits`
 
@@ -381,7 +382,7 @@ May the agent's hands act now? Refused while paused or taken over, with who has 
   - `agent` string
   - `read` boolean
   - `tool` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `computers.node.agent`
 
@@ -389,7 +390,7 @@ The agent whose running computer is this tailnet node (by stable id), or null.
 
 - Input:
   - `stableId` string, required
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `computers.pause`
 
@@ -430,7 +431,7 @@ Shield an agent's computer while a person signs in: its hands refuse reads as we
 - Input:
   - `on` boolean, required
   - `agent` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `computers.stop`
 
@@ -696,7 +697,7 @@ A module offers a sender of its own: `name` in its namespace (<module>, <module>
   - `tool` string, required
   - `content` object
   - `kinds` list of one of "send", "spend", "delete"
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `gate.reject`
 
@@ -743,7 +744,7 @@ harness.rules: whether a sending MCP tool should go through the Gate instead.
   - `agent` string
   - `input` object
   - `session` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `gate.senders`
 
@@ -1077,7 +1078,7 @@ The Gate's call once the user approved a held email or invite: sends exactly the
   - `content` object, required
   - `id` string, required
   - `to` list of string, required
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `google.remove`
 
@@ -1441,7 +1442,7 @@ PostToolUse or PostToolUseFailure: a call ran (ok) or failed. Hashes a file Clau
   - `ok` boolean
   - `path` string
   - `tool_use_id` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `learn.relax`
 
@@ -1477,7 +1478,7 @@ Enrich: a prompt starts a turn. Opens with lessons broken last turn; takes a pla
   - `interactive` boolean
   - `prompt` string
   - `prompt_id` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `learn.signals`
 
@@ -1599,7 +1600,7 @@ Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or
   - `input` object
   - `mac` string
   - `timeout` number
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 - Registered only on the box.
 
 ### `link.pair`
@@ -1672,7 +1673,7 @@ ctx.remote's carrier: a box tool for a module on this Mac.
 - Input:
   - `tool` string, required
   - `input` object
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 - Registered only on the Mac (local).
 
 ### `link.reply`
@@ -1769,7 +1770,7 @@ The Gate runs an approved call: exactly the approved arguments, on the server th
   - `content` object, required
   - `id` string, required
   - `to` list of string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `mcp.remove`
 
@@ -2032,7 +2033,7 @@ A fact taught by another module, folded into the graph with that module as its s
   - `fact` object, required
   - `from` string, required
   - `kind` string, required
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `memory.uncorrect`
 
@@ -2078,7 +2079,7 @@ Point <name>.vyre.run at this box's tailnet address, get its certificate and ser
 A one-time link for a tagged box: the first tailnet login to open it becomes the owner.
 
 - Input: none
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `names.connect`
 
@@ -2462,7 +2463,7 @@ Whether the device a call came from (its tailnet peer; none for this machine) ha
 
 - Input:
   - `peer` object
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `presence.enroll`
 
@@ -2821,7 +2822,7 @@ The presence key id enrolled for a paired relay device, or null.
 
 - Input:
   - `id` string, required
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `relay.devices.list`
 
@@ -3002,7 +3003,7 @@ The model a session starting now runs on, and where that comes from.
   - `model` string
   - `project` string
   - `purpose` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `sessions.models.set`
 
@@ -3024,7 +3025,7 @@ The system prompt for a session starting now: the levels around Vyre's own launc
   - `facts` list of string
   - `project` string
   - `purpose` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `sessions.prompt.get`
 
@@ -3094,7 +3095,7 @@ The concurrency ledger (for the Switchboard and teammates): take a teammate or s
   - `project` string
   - `timeout_ms` integer
   - `wait` boolean
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `sessions.slots.status`
 
@@ -3140,7 +3141,7 @@ The Vyre-owned values a session starting now in this project should use, as {key
 
 - Input:
   - `project` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `settings.schema`
 
@@ -3172,7 +3173,7 @@ A module sets or clears one of its own settings (kept by Vyre, no confirm, not l
   - `level` "account" or "project"
   - `project` string
   - `value` any
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ## sideview
 
@@ -3259,7 +3260,7 @@ A module adds a suggestion source: tool, one of its own tools (<module>.<name>),
 - Input:
   - `kinds` list of one of "mention", "command", "account", "entity", "phrase", "file", "time", required
   - `tool` string, required
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `suggest.picked`
 
@@ -3377,7 +3378,7 @@ Whether a Claude Code session id is a live headless thread in this vyred, and wh
 
 - Input:
   - `session` string, required
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.commands`
 
@@ -3393,7 +3394,7 @@ Say a second writer opened a live headless thread's session (a terminal resume);
 
 - Input:
   - `session` string, required
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.edit`
 
@@ -3435,7 +3436,7 @@ Stop a thread with a reason, saying why in the thread first.
   - `reason` string, required
   - `thread` string, required
   - `text` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.history`
 
@@ -3445,7 +3446,7 @@ Exchanges with agents (a send and its replies), newest last.
   - `agent` string
   - `before` integer
   - `limit` integer
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.inbox`
 
@@ -3454,7 +3455,7 @@ Words queued for this session, marked handed over (via stop or prompt).
 - Input:
   - `session` string, required
   - `via` "stop" or "prompt"
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.interrupt`
 
@@ -3502,7 +3503,7 @@ Start or resume a thread for an agent, with its credentials set only in that chi
   - `settings` boolean
   - `surface` string
   - `tools` "none" or "default"
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.lease`
 
@@ -3528,7 +3529,7 @@ Headless threads: running ones and those active in the last day (all: every one)
 Sessions open in a running claude process other than vyred's own threads.
 
 - Input: none
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.mode`
 
@@ -3555,14 +3556,14 @@ Say something in a thread as Vyre.
 - Input:
   - `text` string, required
   - `thread` string, required
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.pids`
 
 The processes Claude sessions run in: vyred's own thread children and every live bound session. vyred refuses a person-only call from under any of them.
 
 - Input: none
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.post`
 
@@ -3573,7 +3574,7 @@ Give a thread words from a module (a teammate's result): a turn of their own now
   - `thread` string, required
   - `from` string
   - `kind` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.queue`
 
@@ -3609,7 +3610,7 @@ The turn that answered handed-over words has ended: its last message is their re
 - Input:
   - `session` string, required
   - `text` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.rewind`
 
@@ -3722,7 +3723,7 @@ Turns, time, tokens and cost per agent, and the last rate-limit report.
 - Input:
   - `agent` string
   - `since` integer
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.vouch`
 
@@ -3732,7 +3733,7 @@ The live thread of this agent, or this bound session, that holds this key; or nu
   - `key` string, required
   - `agent` string
   - `session` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `threads.watch`
 
@@ -3762,15 +3763,15 @@ Every tip the running modules declare, with how often each was shown and whether
 
 - Input:
   - `module` string
-  - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass"
+  - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass", "statusline"
 - Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `tips.next`
 
-The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in, first on the surface's very first open (one welcome tip, once), idle when they have paused, busy while an ask, a prompt or a running turn is on screen. mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.
+The one tip a surface may show now, or none and why (off, busy, gap, spread, cap, none). Pass the surface, and in context the module the person is in (else context.now's view for that surface), first on the surface's very first open (one welcome tip, once), idle when they have paused, busy while an ask, a prompt or a running turn is on screen (anything in waiting.count counts as busy too). mark: true records it as shown, for a surface that draws it at once (the CLI); otherwise call tips.seen when it is drawn.
 
 - Input:
-  - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass", required
+  - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass", "statusline", required
   - `context` object
     - `busy` boolean
     - `first` boolean
@@ -3792,7 +3793,7 @@ A surface drew this tip: it counts toward the gap, the daily cap and the tip's t
 
 - Input:
   - `id` string, required
-  - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass", required
+  - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass", "statusline", required
   - `acted` boolean
 - Callers: `capsule`, `cli`, `deck`, `local`
 
@@ -3811,7 +3812,7 @@ Tips that came after the version the person last saw (or after `since`), newest 
 - Input:
   - `ack` boolean
   - `since` string
-  - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass"
+  - `surface` one of "capsule", "deck", "chat", "phone", "cli", "glass", "statusline"
 - Callers: `capsule`, `cli`, `deck`, `local`
 
 ## vault
@@ -4354,7 +4355,7 @@ One value, to a module holding a grant for it.
   - `name` string, required
   - `field` string
   - `watcher` string
-- Callers: other modules only (internal, never listed)
+- Callers: other modules only (internal: `vyre call` answers no_such_tool)
 
 ### `vault.render`
 
