@@ -75,28 +75,23 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing (2026-09-27 afternoon)
-- work/ci holds: box-image.yml, sessions-sdk.yml, app.yml, the capsule-mac signing fix, the Chrome
-  test cleanup (Node 22 hang FIXED: 2424 pass, 4 min), tmp-guard listing, node skipping work/ci-*.
-  Waiting for the integrator to merge work/ci.
-- box-image green on main 15e82dd7, 9efbddc0; c8fb9aae running (work/ci-box-c8fb9aa).
-- work/ci-pid1 0f804c11: compose PID-1 = tini check, merges in batch 3 WITH resilience d0129781
-  (fails on a compose with `init: true`). Proof on work/ci-pid1-proof (d0129781 + workflow).
-- APK: OWNER-KEY model (lead's final call). CI builds UNSIGNED vyre-<v>-<sha7>.apk + android.json;
-  a throwaway-signed copy and mobile's JS signer output (apps/app/scripts/sign-apk.mjs, CLI
-  guessed, asked mobile) are checked with apksigner verify. No Vyre key, nothing in the vault.
-  Proof on work/ci-app (mobile + app.yml).
-- sessions-sdk proof on work/ci-sessions (sessions + workflow).
-- perf RSS max: not a merge. vyred holds ~160 MB for ~23 s after indexing, then 92 MB flat.
-  Sent to lead (harness choice) and memory-iq (release buffers after the pass).
-- Flaky tmp-guard leak from test/onboard.test.js "reserve goes to ts.net": wait for tmp-guard to
-  name the writer.
+## Doing (2026-09-27, late)
+- Batch 4: work/ci 2746b636 (integrator has it); 1b1c8573 (sessions smoke invocation) rides next.
+  work/ci-boundaries a1be584e (off main): test/boundaries.test.js + docs/architecture/boundaries.md,
+  26 frozen edges (17 lib, 8 ctx.call, 1 surface). Waiting on its GitHub node run.
+- Batch 3: work/ci-pid1 0f804c11 with resilience d0129781, proven green.
+- Watching capsule-mac 36317665732 (58a2c49) for capsule-pro and the b4 verify runs; report to
+  integrator + lead.
+- APK: owner-key model, unsigned + android.json signer "none", release on main. No key, no secrets.
+- sessions-sdk: 207/1 on the driver job (sessions' test under the env override); real green.
+- TESTBOX HOLD: nothing on testbox until the integrator announces open. Then `uptime` first,
+  wait if load > 8. GitHub runners only meanwhile.
+- Never run an extensionless script to "check" it: `node --check` needs a .js/.mjs copy.
 
 ## Next
-- Report c8fb9aae box-image; pid1 proof; app and sessions proofs to their teams.
-- Delete throwaway branches once their workflows are on main.
-- Recheck: `gh run list -R vyre-ai/vyre --branch <b> --workflow <wf>`. In zsh, `set -- $var`
-  does not split: wrap loops in `bash -c`. actionlint lives in the scratchpad, fetch v1.7.7 again.
+- Delete throwaway branches (work/ci-app, ci-box-c8fb9aa, ci-pid1-proof, ci-sessions) once their
+  workflows are on main.
+- Perf job for app.yml when mobile pings. Match mobile's JS signer CLI when they send it.
 
 ## Needs from others
 - None.
