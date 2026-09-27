@@ -172,7 +172,20 @@ Deck as served files and by the Expo app through Metro; mobile to confirm):
   capsule bridge, deck/chat, deck/test, guests, hygiene: 247/247 after one test fix.
 - composer.js "Claude Code's commands" was already fixed (f857520); only a code comment remains.
 
-## Doing (27 Sep, after logout 4)
+## Doing (27 Sep, evening)
+- UNTESTED (testbox held by the lead until batch 4 reports): 00b7a269 plan card (deck/chat/plan-card.js,
+  core/plan.js parser, fake claude `plan`, world's third live session, chat-shots 8-plan, switchboard
+  test), 942047c2 cohesion 1 (context.report on open, context.now project default), a3e31c67 tips
+  on the composer hint line (tip-line.js; composer.js tipSlot/input, sw.js SHELL adds three files),
+  de2c8adc cohesion 9 (nav refresh on thread.status, agents.changed). FIRST when testbox frees:
+  `node --test "deck/chat/**/*.test.js" "deck/test/*.test.js" "core/switchboard/**/*.test.js"`,
+  then chat-shots --only plan and a desk/phone look at the tip, then send the integrator the tip sha.
+- Cohesion 5 (the / menu merges commands.list, Render cards) waits on platform P1's sha from cohesion.
+- Plan card deviation: Revise writes in the card (not the composer, native-core's). Needs row "kit has
+  a plan to approve" is pwa's deck/js/needs.js. Docs base for tip Show me: https://docs.vyre.run/ (ask docs).
+- Perf still open: fling p95 (profile: forced layouts in window-view update), cold open 1.1 s.
+
+## Earlier (27 Sep, after logout 4)
 - Done this session: 19c287db merge main 7880dfa6; 553017a1 scroll jump (content-visibility
   placeholder collapsed the just-finished reply; native-bar budget 5 now 0 px, CLS 0; phone keyboard
   lift read an undefined `following`); 0293db20 question card never cut off + ask/question cards to
