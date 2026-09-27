@@ -4,6 +4,27 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre capsule install` builds the Capsule on the Mac
+
+- vyre.run no longer serves `Vyre-mac.zip`, so the download would have failed. `vyre capsule
+  install` now runs `vyre capsule build --app` (Electron into local/capsule, the helpers, an
+  ad-hoc signed Vyre.app) and downloads nothing; `vyre capsule` opens that build.
+  `capsule-install.js`, its test and `VYRE_DOWNLOAD_BASE`/`VYRE_APPS_DIR` are gone (capsule-pro's
+  native build replaces this path when it merges). docs/using/capsule.md and
+  docs/get-started/install.md say so; the reference is regenerated.
+
+#### The site has no Capsule zip, and a clean checkout stamps clean
+
+- The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
+  `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still
+  redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
+  stamp in build.json ignores the files build-site writes, so running it twice on a clean checkout
+  says `dirty: false`. `release-check.sh` asserts both redirects, that nothing names the zip, that
+  `/start` is served as committed, and that the install has no node_modules. The docs
+  screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
+  brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
+  still fetches the zip until capsule-pro retires it.
+
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
 - npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
