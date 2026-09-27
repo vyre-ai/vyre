@@ -1,0 +1,23 @@
+#!/usr/bin/env node
+// @ts-check
+// docs-check: holds docs/ to the contract in docs/CONTRIBUTING-DOCS.md. Every published page has
+// front matter and a place in docs/nav.json; every link and #anchor resolves; redirect stubs
+// point at real pages; no em dash, no section sign, no real names, secrets, email or IP addresses
+// that are not examples; and the generated reference pages match the code. The rules live in
+// scripts/lib/docs/check.js, which test/docs-check.test.js also runs as part of npm test.
+//
+// Exits 0 when clean, 1 with one `path:line: problem` line per problem, and a count by kind on
+// stderr. Nothing is fetched: external links are not checked.
+//
+//   node scripts/docs-check                  everything
+//   node scripts/docs-check --no-reference   skip regenerating the reference pages
+
+import { check, format, counts } from "./lib/docs/check.js";
+
+const problems = await check({ reference: process.argv.includes("--no-reference") ? false : undefined });
+for (const line of format(problems)) process.stdout.write(line + "\n");
+if (problems.length) {
+  const by = Object.entries(counts(problems)).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, n]) => `${k} ${n}`).join(", ");
+  process.stderr.write(`docs-check: ${problems.length} problem${problems.length === 1 ? "" : "s"} (${by})\n`);
+} else process.stderr.write("docs-check: clean\n");
+process.exitCode = problems.length ? 1 : 0;

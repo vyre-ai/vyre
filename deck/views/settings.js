@@ -25,6 +25,7 @@ const SECTIONS = [
   ["claude", "Claude Code"],
   ["connections", "Connections"],
   ["network", "Network"],
+  ["devices", "Your devices"],
   ["history", "History and memory"],
   ["lessons", "Lessons"],
   ["notifications", "Notifications"],
@@ -94,7 +95,7 @@ export default async function settings(ctx) {
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
     // Imported on its own, so a problem in that file shows here and never blanks Settings.
     import("./connections.js").then(m => m.drawConnections(body.connections, ctx)).catch(e => put(body.connections, empty("Connections did not load.", e))),
-    drawNetwork(body.network, ctx), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
+    drawNetwork(body.network, ctx), drawDevices(body.devices), drawHistory(body.history, ctx), drawLessons(body.lessons, ctx),
     drawNotifications(body.notifications, ctx), drawSecurity(body.security, ctx), drawModules(body.modules),
     drawAppearance(body.appearance), drawMachine(body.machine),
   ];
@@ -162,7 +163,8 @@ async function drawYou(el) {
   const name = r.data?.name || "";
   put(el, h("div", { class: "rows" },
     row("Name", name ? h("span", null, name) : h("span", { class: "muted" }, "Not chosen yet"), name ? null : toOnboard("you")),
-    row("Address", name ? mono(`${name}.vyre.run`) : h("span", { class: "muted" }, "None until you pick a name"),
+    // The address it is served at: a ts.net name when there is no vyre.run name (ADR 0008).
+    row("Address", r.data?.address ? mono(String(r.data.address).replace(/^https:\/\//, "")) : name ? mono(`${name}.vyre.run`) : h("span", { class: "muted" }, "None until you pick a name"),
       r.data?.steps?.name === "done" || !name ? null : toOnboard("name")),
     here));
 }
@@ -193,7 +195,7 @@ async function drawAssistant(el, ctx) {
       if (ins.value !== (a.instructions || "")) input.instructions = ins.value;
       if (Object.keys(input).length === 1) { show(); return; }
       /** @type {HTMLButtonElement} */ (save).disabled = true;
-      const u = await attempt("agents.update", input);
+      const u = await attempt("agents.update", input, { presence: true });
       if (u.error) { put(st, errText(u.error)); /** @type {HTMLButtonElement} */ (save).disabled = false; return; }
       Object.assign(a, u.data && u.data.name ? u.data : { name: input.name || a.name, instructions: input.instructions ?? a.instructions });
       show();
@@ -436,6 +438,49 @@ async function drawLock(el) {
   });
   put(el, row("Tailnet Lock", h("span", { class: "muted" }, "Off"),
     h("div", { class: "small faint" }, LOCK.what), h("div", { class: "small faint" }, LOCK.cost), foot(toggle), steps));
+}
+
+// ---- 5b. Your devices ----------------------------------------------------------------------
+
+/**
+ * What a tailnet node is, by the OS Tailscale reports. Tailscale says iOS for an iPad too, so the
+ * node's name tells them apart. handheld: a phone or tablet, the ones the offline line is for.
+ * @param {string} os @param {string} [name]
+ */
+function deviceKind(os, name = "") {
+  const o = String(os || "").toLowerCase();
+  if (o === "ios") return { kind: /ipad/i.test(name) ? "iPad" : "iPhone", handheld: true };
+  if (o === "android") return { kind: "Android phone", handheld: true };
+  const k = { macos: "Mac", windows: "Windows PC", linux: "Linux computer" }[o];
+  return { kind: k || os || "Device", handheld: false };
+}
+
+/** The owner's devices on the tailnet (onboard.status detail.devices.peers) and the paired Macs (link.peers). */
+async function drawDevices(el) {
+  const [st, macs] = await Promise.all([attempt("onboard.status"), attempt("link.peers")]);
+  if (st.error) { put(el, empty("Your devices are read by the box module.", st.error), foot(toOnboard("devices", "Open"))); return; }
+  const peers = st.data?.detail?.devices?.peers || [];
+  const paired = Array.isArray(macs.data) ? macs.data : [];
+  const same = (m, p) => (m.node && (m.node === p.dns || String(m.node).split(".")[0] === p.name)) || m.name === p.name;
+  const pairedHere = p => paired.some(m => same(m, p));
+  const order = p => (deviceKind(p.os, p.name).handheld ? 0 : 1) * 2 + (p.online ? 0 : 1);
+  const rows = [...peers].sort((a, b) => order(a) - order(b)).map(p => {
+    const { kind, handheld } = deviceKind(p.os, p.name);
+    return row(kind,
+      h("span", { class: "set-inline" }, mono(p.name), stateLbl(p.online ? "Online" : "Offline", p.online ? "" : "faint")),
+      pairedHere(p) ? h("div", { class: "small muted" }, "Paired with this box") : null,
+      handheld && !p.online ? h("div", { class: "set-off small" }, icon("phone", 14),
+        h("span", null, `Your ${kind} is offline in Tailscale. Open the Tailscale app and turn it on.`)) : null);
+  });
+  // A paired Mac Tailscale did not list (Tailscale not running here, say) still shows.
+  for (const m of paired) {
+    if (peers.some(p => same(m, p))) continue;
+    rows.push(row("Mac", h("span", { class: "set-inline" }, mono(m.name || m.node || "A Mac"), stateLbl("Paired", "faint"))));
+  }
+  put(el,
+    rows.length ? h("div", { class: "rows" }, rows)
+      : note("No other devices on your tailnet yet. The setup's last step adds your phone and pairs your Mac."),
+    foot(toOnboard("devices", rows.length ? "Add a device" : "Open")));
 }
 
 // ---- 6. History and memory -----------------------------------------------------------------

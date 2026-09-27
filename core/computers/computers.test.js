@@ -80,8 +80,8 @@ test("computers: the manifest loads on the box with its tools and the glass stre
   const s = await boot(t);
   const tools = s.d.registry.listTools().map(x => x.name).filter(n => n.startsWith("computers."));
   assert.deepEqual(tools.sort(), ["computers.checkout", "computers.egress.set", "computers.egress.status", "computers.get", "computers.giveback",
-    "computers.list", "computers.pause", "computers.release", "computers.resume", "computers.stop", "computers.tailnet.set", "computers.tailnet.status",
-    "computers.takeover", "computers.watch"]);
+    "computers.limits", "computers.list", "computers.pause", "computers.release", "computers.restart", "computers.resume", "computers.stop",
+    "computers.tailnet.set", "computers.tailnet.status", "computers.takeover", "computers.watch"]);
   assert.equal((await s.cli("computers.endpoint", { agent: "kit" })).error.code, "no_such_tool", "an internal tool was reachable from the socket");
   // Glass is another file; whether or not it is there yet, the module runs and says which.
   const glass = s.d.registry.upgrades.has("computers/glass");
@@ -322,6 +322,20 @@ test("computers: no password or token ever reaches a tool result, an event or a 
     assert.ok(secret.length >= 8);
     for (const [where, text] of haystacks) assert.ok(!text.includes(secret), `a computer secret appeared in a ${where}`);
   }
+});
+
+test("computers: limits are a person's or the assistant's to set, and restart applies them", async t => {
+  const s = await boot(t);
+  assert.match((await s.kit("computers.limits", { cpus: 8 })).error.message, /kit cannot change a computer's limits/);
+  assert.deepEqual((await s.juno("computers.limits", { agent: "kit", cpus: 3 })).data.cpus, 3);
+  const v = (await s.cli("computers.limits", { agent: "kit", memory_gb: 6 })).data;
+  assert.deepEqual([v.cpus, v.memory_gb], [3, 6]);
+  const r = await s.cli("computers.restart", { agent: "kit" });
+  assert.equal(r.data.state, "running", r.error && r.error.message);
+  const spec = [...s.h.driver.containers.values()].find(c => c.agent === "kit").spec;
+  assert.deepEqual([spec.cpus, spec.memoryMb], [3, 6144]);
+  assert.equal((await s.kit("computers.restart", {})).data.state, "running", "an agent may restart its own computer");
+  assert.match((await s.kit("computers.restart", { agent: "pax" })).error.message, /kit can only use its own computer/);
 });
 
 // ---- egress ------------------------------------------------------------------------------

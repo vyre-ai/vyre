@@ -7,6 +7,7 @@ import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { parse, up, tool } from "./projects.js";
 import { json, emit, fail as kitFail, failTool, usage } from "../kit.js";
+import { callAsPerson } from "../presence.js";
 
 const SURFACE = "cli:" + process.pid;
 const id8 = s => String(s || "").slice(0, 8);
@@ -72,8 +73,10 @@ async function createOrUpdate(which, args) {
   let fields;
   try { fields = agentFields(flags); } catch (e) { return usage(/** @type {Error} */ (e).message, "vyre help agents"); }
   if (which === "update" && !Object.keys(fields).length) return usage("vyre agents update: nothing to change", FLAGS);
-  const a = await tool(which === "create" ? "agents.create" : "agents.update", { name, ...fields });
-  if (!a) return 1;
+  // Both are on the floor's human-only list: Touch ID or a code typed at this terminal.
+  const r = await callAsPerson(which === "create" ? "agents.create" : "agents.update", { name, ...fields });
+  if (r.error) { failTool(r.error); return 1; }
+  const a = r.data;
   if (json()) return emit(a);
   showAgent(a, which === "create" ? "made" : "updated");
   return 0;

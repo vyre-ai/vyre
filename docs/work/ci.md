@@ -62,35 +62,27 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
   (Free plan, name `vyre-ai`).
 
 ## Done
-- Scan of main's full history (above).
-- Workflows (10317c1), lint-clean with actionlint 1.7.7, not yet run on GitHub:
-  - `node.yml`: ubuntu, Node 22 and 24, `npm ci`, `npm test`, `npm run perf-check`. Every push/PR.
-  - `capsule-mac.yml`: macos-latest, `local/capsule/build.sh`, then `native/build.sh test` and
-    `app` when `local/capsule/native/build.sh` exists (capsule-pro), then the Mac-only Node tests.
-    Uploads `capsule-helpers.zip` and `Vyre-capsule.app.zip`. Runs on changes under `local/`.
-  - `ios.yml`: an ubuntu check skips the job while `apps/ios/project.yml` is absent (no macOS
-    minutes); else xcodegen, the newest available iPhone simulator, `xcodebuild test` unsigned,
-    uploads `Vyre-ios-simulator.app.zip` and the build log.
-  - `android.yml`: ubuntu, temurin 17, setup-gradle (cache), `assembleDebug testDebugUnitTest`
-    (no FCM), uploads the debug APK and test reports. Skips while `apps/android` is absent.
-  - Removed `test.yml` (full suite on 2 macOS + 2 ubuntu runners, no `npm ci`); its perf gate
-    moved into `node.yml`.
-  - README badges point at vyre-ai/vyre.
-- How a team gets a Mac build: push its branch to the repo (capsule-mac/ios run on changes to
-  their paths), or Actions tab > the workflow > Run workflow on any branch
-  (`gh workflow run capsule-mac.yml --ref work/<team>`). Artifacts are on the run page for 14 days.
+- Workflows: node, capsule-mac, ios, android (see CHANGELOG). ios/android use mobile's build
+  commands (`apps/ios/scripts/build.sh test`, `gradlew -p apps/android`).
+- 2026-09-27 published https://github.com/vyre-ai/vyre (public, default branch main):
+  - main scrubbed and merged work/ci; teams frozen, open trees WIP-committed (tracked files only).
+  - Mirror backup `<vyre-dir>/vyre-prerewrite.git` plus a bundle in the team folder's
+    `ci-rewrite/backup/`. After publish there is no undo.
+  - `git filter-repo --force` on the live repo, all 45 branches, 3-4 s; every worktree kept its
+    uncommitted edits (mixed reset, then only rewrite-changed untouched files refreshed). A commit
+    landed mid-freeze with the old hostname; a second pass caught it. Rescan CLEAN (900 commits).
+  - Pushed private, verified the remote tips equal the scanned tips, flipped public. main and
+    work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
+- A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
 ## Doing
-- Rewrite tooling and rehearsal (team folder, `ci-rewrite/`). Then hold for the user's go.
+- Watching the first runs (node, capsule-mac on main).
 
 ## Next
-- On the go, overnight: preflight, rewrite, rescan, publish (main plus work/*), send TEAMS.md,
-  watch each workflow's first run, fix failures.
-- First runs to watch: the Mac-only Node tests on a runner (some may expect a desktop session),
-  the simulator choice on macos-latest, and android once work/mobile merges.
+- Fix whatever the first runs show. Teams push work/<team> or `gh workflow run <wf>.yml --ref work/<team>`.
 
 ## Needs from others
-- lead/user: create org vyre-ai; decide the public commit identity; the go for the overnight rewrite.
+- None.
 
 ## Changed contracts
 - None.

@@ -21,3 +21,11 @@
   .pair-code { font-size: 20px; }
   .pair-actions .btn { flex: 1 1 0; }
 }
+
+/* No passkey on the box yet (js/first-passkey.js). Loaded with the pairing styles, since Now uses both. */
+.first-passkey { display: flex; flex-direction: column; gap: 8px; padding: 16px; margin-bottom: 24px; border-radius: var(--r-3);
+  background: var(--beacon-wash); border: 1px solid var(--beacon-rule); }
+.first-passkey .lbl { display: inline-flex; align-items: center; gap: 6px; }
+.fp-cmds { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; }
+.fp-cmds > div { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border-radius: var(--r-2); background: var(--code-bg); }
+.fp-cmds code { font-size: 14px; color: var(--text); }

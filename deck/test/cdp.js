@@ -46,11 +46,12 @@ export async function openTab(cdp, dev) {
     send, errors,
     /** @param {string} url */
     async go(url, settle = 2000) { await send("Page.navigate", { url }); await sleep(settle); },
-    /** Run JS in the page; `wait(ms)`, `click(sel)` and `type(sel, text)` are defined. */
+    /** Run JS in the page; `wait(ms)`, `waitFor(sel)`, `await click(sel)` and `type(sel, text)` are defined. */
     async run(/** @type {string} */ script) {
       const r = await send("Runtime.evaluate", { awaitPromise: true, returnByValue: true, expression: `(async () => {
         const wait = ms => new Promise(r => setTimeout(r, ms));
-        const click = sel => { const el = document.querySelector(sel); if (!el) throw new Error("no " + sel); el.click(); };
+        const waitFor = async (sel, ms = 8000) => { for (let t = 0; t < ms; t += 100) { const el = document.querySelector(sel); if (el) return el; await wait(100); } throw new Error("no " + sel); };
+        const click = async sel => { (await waitFor(sel)).click(); };
         const type = (sel, text) => { const el = document.querySelector(sel); if (!el) throw new Error("no " + sel); el.focus(); el.value = text; el.dispatchEvent(new Event("input", { bubbles: true })); };
         ${script}
       })()` });
