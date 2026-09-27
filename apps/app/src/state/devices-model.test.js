@@ -56,10 +56,19 @@ test("rows: an untrusted browser gets Trust as a secondary button, a trusted one
   const u = rowChoice(web(), "trusted");
   assert.equal(u.badge, "Untrusted");
   assert.equal(u.warning, null);
-  assert.deepEqual(u.control, { trusted: true, label: "Trust this browser", style: "secondary", note: "Presence follows" });
+  assert.deepEqual(u.control, { trusted: true, label: "Trust this browser", style: "secondary", note: "Touch ID follows" });
   const t = rowChoice(web({ trusted: true }), "trusted");
   assert.equal(t.badge, "Trusted");
   assert.deepEqual(t.control, { trusted: false, label: "Stop trusting", style: "ghost", note: "One tap" });
+});
+
+test("rows: the trust note names this device's proof", { skip: !strip }, async () => {
+  const { rowChoice, proofNote } = await load();
+  assert.equal(proofNote("ios"), "Face ID follows");
+  assert.equal(proofNote("android"), "Fingerprint follows");
+  assert.equal(proofNote("web"), "Touch ID follows");
+  assert.equal(rowChoice(web(), "trusted", "ios").control?.note, "Face ID follows");
+  assert.equal(rowChoice(web({ trusted: true }), "trusted", "ios").control?.note, "One tap");
 });
 
 test("rows: an unknown build warns, and Trust is an outline button, never secondary", { skip: !strip }, async () => {

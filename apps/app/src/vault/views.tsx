@@ -7,6 +7,7 @@ import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
 import { face, type } from "../theme/type";
 import { Button } from "../ui/Button";
+import { Card } from "../ui/Card";
 import { List } from "../ui/List";
 import { Row, ROW_HEIGHT } from "../ui/Row";
 import { CLEAR_AFTER_S } from "./clip-model";
@@ -141,25 +142,29 @@ export function TrustCard() {
   const [err, setErr] = useState<string | null>(null);
   const ask = canAskTrust();
   return (
-    <View testID="vault-trust-card" style={[styles.card, { backgroundColor: color.panel, borderColor: color.rule }]}>
+    <Card
+      testID="vault-trust-card"
+      footer={
+        <>
+          {ask ? (
+            <Button
+              kind="primary"
+              label={asked ? "Asked · waiting for your Mac" : "Ask to trust"}
+              disabled={asked}
+              onPress={async () => setErr(await askTrust())}
+            />
+          ) : null}
+          <Button kind="ghost" label="How" onPress={() => setHow((h) => !h)} testID="vault-how" />
+        </>
+      }
+    >
       <Text style={[type.readStrong, { color: color.text }]}>Trust this browser to use the vault here</Text>
       <Text style={[type.base, { color: color.text2 }]}>
         This browser was paired through the relay. It can see your vault's names, but it can't show, copy or fill a secret until you trust it from your Mac or phone.
       </Text>
-      <View style={styles.cardButtons}>
-        {ask ? (
-          <Button
-            kind="primary"
-            label={asked ? "Asked · waiting for your Mac" : "Ask to trust"}
-            disabled={asked}
-            onPress={async () => setErr(await askTrust())}
-          />
-        ) : null}
-        <Button kind="ghost" label="How" onPress={() => setHow((h) => !h)} testID="vault-how" />
-      </View>
       {how ? <Text style={[type.base, { color: color.text }]}>{howText(name)}</Text> : null}
       {err ? <Text style={[type.meta, { color: color.text2 }]}>{err}</Text> : null}
-    </View>
+    </Card>
   );
 }
 
@@ -183,7 +188,5 @@ const styles = StyleSheet.create({
   fieldLabel: { width: 96 },
   fieldValue: { flex: 1, minWidth: 0, gap: tokens.space[1] },
   fieldButtons: { flexDirection: "row", alignItems: "center", gap: tokens.space[2] },
-  card: { borderWidth: StyleSheet.hairlineWidth, borderRadius: tokens.radius.cardPhone, padding: tokens.space[5], gap: tokens.space[3] },
-  cardButtons: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: tokens.space[3] },
   none: { flex: 1, alignItems: "center", justifyContent: "center", padding: tokens.layout.gutterPhone },
 });

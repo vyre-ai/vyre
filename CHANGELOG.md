@@ -569,6 +569,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - docs-check knows the cohesion team as a page owner.
 - test/cohesion-drift.test.js freezes the surfaces' own copies of model names and presence's
   tool-policy sets; a new copy fails, and the list only shrinks.
+#### One app: real icons, the full status mark, 44 list rows
+
+- New dependency: react-native-svg 15.12.1 (the SDK 54 pin from `expo install`). The icon set has
+  curves, circles and rounded rects that bars cannot draw, and it is the renderer Expo ships for
+  iOS, Android and the web. `Icon` now draws the whole set (icons.md) from its path data at 12, 16
+  and 20, with the stroke held at 1.5 at every size.
+- `StatusMark` (status-mark.md): the failed mark is the failed icon, the status word beside the
+  mark ("running · 4m"), elapsed time on running from a `since` time (one timer, only while
+  mounted and the app is visible), and `Badge` (18, "99+", "3 need you") and `Count`.
+- `ListRow` (list-row.md): the 44 single-line and the two-line rows, trailing meta, a 12 chevron
+  on rows that open a screen, selected (the signal wash) and focused (2 px inset ring). Settings
+  uses the single-line rows; Places shows the chevron.
+- Your bubble in a session is the hover fill with no border (turn.md).
+- Devices: "This device" is a tag like the trust tags, and the note beside Trust names the proof:
+  Face ID on iOS, fingerprint on Android, Touch ID on the web (device-row.md).
+- The web swipe commits at 40% of the row width, as the native one does (needs-row.md).
+
+#### One app: every card on Card, an icon button, the first icons
+
+- The vault's trust card and the session's ask card draw on the one Card (card.md, ask-card.md):
+  a neutral border at all times, the needs-you dot and the label in the attention colour while an
+  ask is open, the command in the card's code block, the buttons in the footer. Answered, the
+  header names the outcome ("Allowed", "Denied", "Withdrawn") beside a neutral check or x.
+- `src/ui/IconButton.tsx` (icon-button.md): 28, 32 and 44 squares, plain, toggle, filled round and
+  primary, busy, an accessible name the type requires, and a 44 hit area on the phone at any size.
+  The composer's Stop and Send are 44 icon circles on it (composer.md).
+- `src/ui/Icon.tsx`: send, stop, check and x from the icon set's path data, drawn as bars with round
+  caps (no SVG renderer in the app, and no new dependency).
 
 #### A vyred killed by a signal is started again in the box
 

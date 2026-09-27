@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { about } from "../src/api/relay";
 import { refreshDevices, setTrust, useDevices, useDevicesError, useSelf, useTrust } from "../src/state/devices";
 import { expiryText, kindText, pathText, powersText, rowChoice, seenText, type Device, type Trust } from "../src/state/devices-model";
@@ -54,7 +54,7 @@ function DeviceRow({ d, self, viewer, now }: { d: Device; self: boolean; viewer:
   const { color } = useTheme();
   const [busy, setBusy] = useState(false);
   const [said, setSaid] = useState<string | null>(null);
-  const c = rowChoice(d, viewer);
+  const c = rowChoice(d, viewer, Platform.OS);
   const powers = powersText(d);
   const expiry = expiryText(d);
   const mine = self ? (about.kind === "web" ? "This browser" : "This device") : null;
@@ -68,7 +68,8 @@ function DeviceRow({ d, self, viewer, now }: { d: Device; self: boolean; viewer:
     <View testID="device-row" style={[styles.row, { borderTopColor: color.rule }]}>
       <View style={styles.line}>
         <Text numberOfLines={1} style={[type.readStrong, styles.name, { color: color.text }]}>{d.name}</Text>
-        {mine ? <Text style={[type.meta, { color: color.label }]}>{mine}</Text> : null}
+        {/* Tags (the chip spec): a hover fill, no border, never a colour. */}
+        {mine ? <Tag text={mine} /> : null}
         {c.badge ? <Tag text={c.badge} /> : null}
       </View>
       {c.warning ? <Text style={[type.base, { color: color.text }]}>{c.warning}</Text> : null}
