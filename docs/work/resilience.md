@@ -53,17 +53,8 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
    after holdMs unless cancelled, so a 4 s Undo on the approve swipe can put the answer in the
    outbox the moment it commits (a killed app still sends it). Keep lifecycle's flush on hide
    delivering held entries early only if mobile wants that; ask.
-6. From e2e (small, both in 3b's code; lead decides whether to fix before the deploy):
-   a. core/daemon/main.js registers SIGTERM/SIGINT only after `await start()` (lines 7-10), so a
-      stop during start-up kills vyred by the signal (exit 143, no drain). Register first; if the
-      signal comes before start resolves, stop once it does, then exit 0.
-   b. core/daemon/loop.sh: a trapped `wait` returns 143; if vyred already exited, the `kill -0`
-      loop is skipped and the loop exits 143, not vyred's code. After a >128 return with the
-      child gone, `wait "$pid"` once more for its real status (keep the old code on 127).
-   Tests: loop.test.js (stop just as vyred exits 0 -> loop exits 0) and a daemon test (SIGTERM
-   during start -> clean exit, socket removed).
-   One init confirmed by e2e (work/e2e c8e00e7b, scripts/e2e-split/check.sh): tini PID 1 ->
-   spawner -> loop.sh -> vyred; sessions under their own tini -s; no --init anywhere.
+6. Done: e2e's start-up SIGTERM (main.js handlers before load) and loop.sh exit-code fixes,
+   tested (main.test.js fails on the old main.js). One init confirmed by e2e (work/e2e c8e00e7b).
 7. After batch 3 deploys: confirm on the live box that PID 1 is tini (ci smoke asserts it) and
    that a vyred restart keeps an open terminal.
 
