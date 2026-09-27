@@ -6,7 +6,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import path from "node:path";
-import { clean, tally } from "./index.js";
+import { clean, tally, fromPending } from "./index.js";
 import { discover, Registry } from "../modules/index.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
@@ -78,8 +78,18 @@ test("waiting.list: each kind says which owner tool answers it and what the pers
   assert.equal(by["planner:f1"].title, "Call alex about the bakery lease");
   assert.equal(by["planner:f1"].at, T + 2000, "a ring is dated by when it was due");
   assert.equal(by["link:p1"].title, `Pair the Mac "alex's MacBook"`);
-  assert.equal(by["link:p1"].at, T, "a pairing is dated by when it was asked, its expiry less the box's ten minutes");
+  assert.equal(by["link:p1"].at, T, "no created field yet: falls back to its expiry less the box's ten minutes");
   assert.ok(!JSON.stringify(by["link:p1"]).includes("code\":\""), "never a code");
+});
+
+test("fromPending: a box's real created time wins over the expiry-minus-TTL guess", () => {
+  // core/link/box.js now sends `created`, so the exact request time shows even when it does not
+  // land exactly ten minutes before `expires` (a clock skew, a future TTL change on the box).
+  const withCreated = fromPending([{ id: "p2", name: "alex's iMac", login: "alex@example.com", node: "alex-imac", created: T + 500, expires: T + 900_000 }]);
+  assert.equal(withCreated[0].at, T + 500);
+  // An older box that has not shipped `created` yet still falls back to the ten-minute guess.
+  const withoutCreated = fromPending([{ id: "p3", name: "alex's iPad", login: "alex@example.com", node: "alex-ipad", expires: T + 600_000 }]);
+  assert.equal(withoutCreated[0].at, T);
 });
 
 test("waiting.list: a failing, refused or missing source leaves its name in partial and the rest still show", async t => {

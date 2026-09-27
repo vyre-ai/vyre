@@ -55,6 +55,11 @@ const desktopSrc = `export default { async start(ctx) {
   return {};
 } };`;
 
+const agentsSrc = `export default { async start(ctx) {
+  ctx.tool("agents.list", { run: async () => ([{ name: "kit", kind: "worker" }, { name: "vyre", kind: "assistant" }]) });
+  return {};
+} };`;
+
 const chromeSrc = `export default { async start(ctx) {
   ctx.tool("chrome.snapshot", { run: async ({ agent }) => {
     ctx.events.emit("chrome.acted", { agent, action: "snapshot", ok: true, summary: "2 controls" });
@@ -87,6 +92,7 @@ const FAKES = {
   desktop: ["hands-desktop", ["hands-desktop.tree"], ["desktop.acted"], desktopSrc],
   chrome: ["chrome", ["chrome.snapshot"], ["chrome.acted"], chromeSrc],
   hands: ["hands", [], ["hands.acted"], `export default { async start() { return {}; } };`],
+  agents: ["agents", ["agents.list"], [], agentsSrc],
 };
 
 const data = r => { assert.ok(!r.error, JSON.stringify(r.error)); return r.data; };
@@ -263,6 +269,32 @@ test("sight.watch: an agent's ticket from computers.watch; the Mac answers local
   assert.equal((await reg.call("sight.watch", { target: "agent:kit" }, "cli")).error?.message.includes("surface"), true, "computers' own refusal comes through");
   assert.equal((await reg.call("sight.watch", { target: "mac" }, "cli")).error?.code, "local_only");
   assert.equal((await reg.call("sight.watch", { target: "agent:kit", surface: "glass:laptop" }, "mcp")).error?.code, "denied");
+});
+
+test("sight.watch refuses an ordinary agent's real caller even once a module has relabeled it", async t => {
+  // computers.watch's own ownSurface floor only ever sees "module:sight" once sight has forwarded
+  // the call (core/modules/index.js's call wrapper); this is sight checking meta.caller itself,
+  // before that relabeling happens, so an agent proxied behind any caller kind sight.watch is open
+  // to (here "module", which "module:agent:kit" carries) still cannot claim a person's screen.
+  const { reg } = await world(t, [FAKES.computers, FAKES.agents]);
+  const r = await reg.call("sight.watch", { target: "agent:kit", surface: "glass:laptop" }, "module:agent:kit");
+  assert.equal(r.error?.code, "denied");
+  assert.match(r.error?.message, /"kit" is an agent/);
+  // The assistant is exempt, same as computers' own floor: it is how the user reaches this tool.
+  const ok = data(await reg.call("sight.watch", { target: "agent:kit", surface: "glass:laptop" }, "module:agent:vyre"));
+  assert.equal(ok.ticket, "t-kit");
+});
+
+test("agentCaller: the real caller behind a claim, exempting the assistant and non-claims", async () => {
+  const { agentCaller } = await import("./index.js");
+  const fakeCtx = { call: async () => ({ data: [{ name: "kit", kind: "worker" }, { name: "vyre", kind: "assistant" }] }) };
+  assert.equal(await agentCaller(fakeCtx, { caller: "mcp:agent:kit" }), "kit");
+  assert.equal(await agentCaller(fakeCtx, { caller: "harness:agent:kit" }), "kit");
+  assert.equal(await agentCaller(fakeCtx, { caller: "mcp:agent:vyre" }), null, "the assistant is exempt");
+  assert.equal(await agentCaller(fakeCtx, { caller: "cli" }), null, "not a claim at all");
+  assert.equal(await agentCaller(fakeCtx, {}), null);
+  const failing = { call: async () => ({ error: { code: "no_such_tool", message: "no agents module" } }) };
+  assert.equal(await agentCaller(failing, { caller: "mcp:agent:kit" }), "kit", "cannot check: fail closed");
 });
 
 test("sight.frame: one small JPEG of an agent's screen with its last step; never the Mac", async t => {
