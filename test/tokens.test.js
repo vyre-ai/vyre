@@ -29,19 +29,28 @@ test("tokens: the Swift file carries every role, the status list in order, and m
   assert.equal(swift(t), s, "stable output");
 });
 
-test("tokens: the CSS uses the Deck's role names", () => {
+test("tokens: the CSS uses the Deck's selectors and role names", () => {
   const c = css(t);
-  for (const name of ["--bg:", "--text-2:", "--rule-strong:", "--primary-bg:", "--signal-wash:", "--code-bg:"]) assert.ok(c.includes(name), name);
+  assert.match(c, /^:root \{/m);
+  assert.match(c, /^:root\[data-theme="paper"\] \{/m);
+  for (const name of ["--bg:", "--panel:", "--hover:", "--text-2:", "--label:", "--rule-strong:", "--primary-bg:", "--primary-ink:",
+    "--focus:", "--signal-wash:", "--code-bg:", "--beacon-ink:", "--beacon-dot:", "--beacon-badge-ink:", "--sans:", "--mono:"])
+    assert.ok(c.includes(name), name);
 });
 
-test("tokens: the TS file is plain values", () => {
+test("tokens: the TS file is what the app imports: tokens, Scheme, Colors, attention()", () => {
   const out = ts(t);
   assert.match(out, /export const tokens = /);
+  assert.match(out, /export type Scheme = "dark" \| "paper";/);
+  assert.match(out, /export type Colors = /);
+  assert.match(out, /export function attention\(/);
   assert.doesNotMatch(out, /\$schema/);
 });
 
-test("tokens: a generated file in the tree is current", () => {
-  const file = path.join(ROOT, "local/capsule/native/Sources/UI/Tokens.generated.swift");
-  if (!fs.existsSync(file)) return;
-  assert.equal(fs.readFileSync(file, "utf8"), swift(t), "run scripts/gen-tokens");
+test("tokens: every generated file in the tree is current", async () => {
+  const { generate } = await import("../scripts/gen-tokens");
+  for (const [rel, body] of Object.entries(generate())) {
+    const file = path.join(ROOT, rel);
+    if (fs.existsSync(file)) assert.equal(fs.readFileSync(file, "utf8"), body, `${rel} is stale; run npm run tokens`);
+  }
 });

@@ -6,10 +6,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Tokens: one JSON, rendered for the Capsule, the app and the Deck
 
-- scripts/gen-tokens renders docs/design/one-app/tokens.json as Swift (the Capsule's
-  Tokens.generated.swift, the default target), TypeScript (`--ts <path>`, for the Expo app) and
-  CSS custom properties (`--css <path>`, the Deck's role names). `--check` exits 1 when a target is
-  stale. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
+- scripts/gen-tokens (`npm run tokens`) is the one token generator (lead, 27 Sep; it replaces the
+  app's and the Capsule's own). It writes apps/app/src/theme/tokens.ts (byte-identical to the
+  app's current file: `tokens`, `Scheme`, `Colors`, `attention()`), the Capsule's
+  local/capsule/native/Sources/UI/Tokens.generated.swift and deck/css/tokens.css (the Deck's
+  selectors and role names, incl. --beacon-ink, --beacon-dot, --beacon-badge-ink). `--check` exits
+  1 when a file is stale; `--ts/--swift/--css <path>` write one output elsewhere. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
   now a list of sizes (12, 13), not a size and line pair; phone type steps get their own enum.
   Tests in test/tokens.test.js.
 
