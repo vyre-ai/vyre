@@ -37,6 +37,15 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   Run: test/chaos/chaos.test.js test/chaos/web.test.js, then CHANGELOG, push, tell integrator.
 
 ## Next
+0. R5 relay chaos tests, once work/relay is on main (not at 9efbddc): test/chaos/relay.test.js
+   importing relay/. Real relay relay/node/server.js (createRelay().listen()), box = vyred with
+   the relay module per test/relay.test.js (world() + firstPairing()), device = relay/client
+   pair()/connect() in Node (webCrypto(), memoryKeyStore(), globalThis.WebSocket). Kill with
+   relay.close() or by destroying the device socket, mid-SSE and mid-POST with the answer lost
+   (see relay/client/e2e.test.js); then web.js over(createPaths().fetch) for failover between a
+   direct path and the relay (paths.test.js has the fake direct server). paths.js reports
+   relay.devices.path on the first request, each switch and foreground: pass report: false or
+   allow for it in counts.
 1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
 2. R6 chaos test, once work/planner 3c75e47 is on main (not yet at b1dbb49). Planner's spec:
    key = planner-<item>-<Math.floor(due/1000)>; planner.upcoming omits moments answered or
