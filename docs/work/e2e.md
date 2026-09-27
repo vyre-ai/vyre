@@ -393,6 +393,10 @@ Plan (to the lead before building):
 - teammates slice A 8b8f10a1/8806df79 OK; told to move core/team/git.js onto lib/git-safe.js.
 - 0.1.1 TODO (docs, ADR 0038): box->server words in core/link mac/box/transport, daemon :329.
   statusline handed back.
+- federation 6816e83c: delete semantics OK (off/unpair keep data; sync.delete person-only; nit confirm+preview).
+  HIGH: link.upload path guard allows ".." (new URL resolves) -> any box tool from any module. MEDIUM:
+  sync.send (module caller) reads any path -> restrict to first-party + transcript folders. 96cbf078
+  MEDIUMs 1-5 still open.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
