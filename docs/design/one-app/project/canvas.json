@@ -514,6 +514,20 @@
       "w": 2680,
       "x": 2000,
       "y": 29100
+    },
+    "VaultImport.dc.html": {
+      "h": 2150,
+      "title": "Vault, import your secrets \u2014 the onboarding moment",
+      "w": 1900,
+      "x": 4900,
+      "y": 28000
+    },
+    "VaultImport-paper.dc.html": {
+      "h": 2150,
+      "title": "Vault, import your secrets \u2014 the onboarding moment \u00b7 paper",
+      "w": 1900,
+      "x": 4900,
+      "y": 30300
     }
   },
   "createdOnFiles": {
