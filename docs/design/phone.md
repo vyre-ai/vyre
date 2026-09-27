@@ -334,8 +334,11 @@ Action area (8 between buttons, 34 bottom):
     line under the button: "Confirmed with Face ID a moment ago" ("12 min ago").
   - `required: true, covered: false`: "Send with Face ID" ("Delete with Face ID") with the glyph; the proof runs
     on tap and opens a new presence session.
-  If `covered` has lapsed by the time you tap (the box refuses), the sheet asks for Face ID then,
-  in place, without closing.
+  The "ago" comes from `presence.since` (the proof's time, which the box sends with `covered`);
+  without it the line is left out. If the session lapsed between render and tap, the box
+  answers 403 `error.code: "presence_required"`: the sheet runs Face ID in place without closing
+  and retries the same approve with `x-vyre-presence-keep: 1`, which starts a fresh session.
+  A 403 `denied` is a refusal, never a prompt: the sheet shows the reason and closes.
 - A proof is the same box-verified check per ADR 0004 on every surface. The web build uses a WebAuthn passkey assertion. The iOS and Android builds use a device-key signature
   after Face ID or the fingerprint (ADR 0018): a P-256 key in the Secure Enclave or StrongBox,
   enrolled once through the Deck's passkey, signs the same message the Capsule signs, and the box
