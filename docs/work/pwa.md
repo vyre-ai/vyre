@@ -120,6 +120,14 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
      overscroll, touch-action and callout, scroll-snap row swipes.
   D. tailnet's UI findings (asked them for the list), then the SW version skew.
 
+## Next
+- SW version skew: a release lands on the second launch; register sw.js with the build commit.
+- Settings > Setup rows could rerun a step in place instead of naming `vyre up`.
+- Step 6 Mac card: "Already on your tailnet" for an online Mac node.
+- theme.colors: match docs' final shape.
+- threads.unqueue once capsule-now ships it.
+- Real iPhone check by the user, against the DIRECTION.md bar.
+
 ## Needs from others
 - polish-cli answered: no --step; Settings says `vyre up` (and `vyre index` for history).
 - box: review the additive `onboard.status` detail.devices.peers and parsePeers (core/onboard).
