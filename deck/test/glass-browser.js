@@ -76,6 +76,15 @@ try {
   const ratio = await tab.run(`return document.querySelector(".gl-stage").style.getPropertyValue("--ratio");`);
   say("fit: the stage's aspect ratio matches the screen glass.open reported", /1024\s*\/\s*768/.test(String(ratio)), String(ratio));
 
+  // 2b. 1:1 toggle (Deck only): flips the screen to scrollable native size and back.
+  const toggled = await tab.run(`const b = [...document.querySelectorAll("button")].find(x => x.textContent.trim() === "1:1");
+    if (!b) return "no button"; b.click(); await wait(200);
+    const on = document.querySelector(".gl-screen").classList.contains("gl-1to1"), label = b.textContent.trim();
+    b.click(); await wait(200);
+    const off = document.querySelector(".gl-screen").classList.contains("gl-1to1");
+    return { on, label, off };`);
+  say("1:1 toggle: turns gl-1to1 on and off, and the label flips to Fit", toggled?.on === true && toggled?.label === "Fit" && toggled?.off === false, JSON.stringify(toggled));
+
   // 3. Take over: the CTA is enabled with no proof needed (PERSON_ONLY, no passkey), and the
   // stage marks itself held.
   const took = await tab.run(`const b = [...document.querySelectorAll("button")].find(x => x.textContent.includes("Take over"));

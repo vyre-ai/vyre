@@ -43,6 +43,10 @@
 .gl-panel-me { color: var(--text); }
 .gl-held .gl-panel-me { color: var(--gl-accent); }
 .gl-screen { position: relative; width: 100%; aspect-ratio: var(--ratio, 16 / 10); max-height: calc(100dvh - 260px); min-height: 220px; overflow: hidden; }
+/* 1:1: the remote desktop at its own resolution, scrollable rather than squeezed to fit. A fixed
+   height (not aspect-ratio) so overflow: auto has a box to scroll within. */
+.gl-screen.gl-1to1 { aspect-ratio: auto; height: calc(100dvh - 260px); overflow: auto; }
+.gl-screen.gl-1to1 .gl-zoom, .gl-screen.gl-1to1 .gl-rfb { position: static; inset: auto; }
 .gl-zoom, .gl-rfb { position: absolute; inset: 0; }
 .gl-rfb > div { background: transparent !important; }
 .gl-rfb canvas { touch-action: none; }
