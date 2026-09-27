@@ -76,6 +76,40 @@ export const AGENT_REFUSED = new Set([
  */
 export const agentUrlAllowed = url => typeof url === "string" && (/^https?:\/\//i.test(url) || /^about:blank(#.*)?$/i.test(url) || /^data:/i.test(url));
 
+/** cookie and set-cookie, whatever case Chrome sent them in. */
+const COOKIE_HEADER = /^(cookie|set-cookie)$/i;
+/** Events worth reconstructing for an agent client rather than passing Chrome's text through. */
+const COOKIE_EVENTS = new Set(["Network.requestWillBeSentExtraInfo", "Network.responseReceivedExtraInfo", "Fetch.requestPaused"]);
+/** @param {any} headers a CDP headers object ({name: value}), or anything else (left alone) */
+const dropCookieHeaders = headers => {
+  if (!headers || typeof headers !== "object") return headers;
+  /** @type {Record<string, any>} */
+  const out = {};
+  for (const [k, v] of Object.entries(headers)) if (!COOKIE_HEADER.test(k)) out[k] = v;
+  return out;
+};
+
+/**
+ * Events that carry request/response headers straight from the network stack, which is where
+ * HttpOnly cookies live -- CDP's own Network.getCookies-family refusal (AGENT_REFUSED, above)
+ * never sees these, since they are events Chrome sends unasked once Network or Fetch is enabled.
+ * The agent may still see every OTHER header (e2e review MEDIUM 4: "no bulk dumps", not "no
+ * headers at all" -- a page telling the agent its own Content-Type is normal automation).
+ * @param {string} method @param {any} params
+ */
+const scrubAgentEventParams = (method, params) => {
+  if (method === "Network.requestWillBeSentExtraInfo" || method === "Network.responseReceivedExtraInfo") {
+    return { ...params, headers: dropCookieHeaders(params.headers) };
+  }
+  if (method === "Fetch.requestPaused") {
+    const out = { ...params };
+    if (out.request && typeof out.request === "object") out.request = { ...out.request, headers: dropCookieHeaders(out.request.headers) };
+    if (out.responseHeaders) out.responseHeaders = out.responseHeaders.filter((/** @type {any} */ h) => !COOKIE_HEADER.test(h.name));
+    return out;
+  }
+  return params;
+};
+
 /** A Chrome message larger than this is dropped whole rather than buffered. */
 const MAX_MESSAGE = 256 * 1024 * 1024;
 /** Messages a client may send before its browser session exists. */
@@ -260,10 +294,17 @@ export class CdpMux {
       const child = this.sessions.get(params.sessionId);
       if (child && child.client === s.client && !child.browser) this._forget(params.sessionId);
     }
+    // An agent client never sees a Cookie or Set-Cookie header, on any session: those live in
+    // events Chrome sends unasked (Network/Fetch domains), which CDP's cookie-API refusal above
+    // does not touch (e2e review MEDIUM 4). COOKIE_EVENTS is the only case worth reconstructing
+    // the message for; everything else keeps the fast, unparsed passthrough.
+    const scrub = s.client.kind === "agent" && COOKIE_EVENTS.has(m.method);
     if (s.browser) {
-      const out = { ...m };
+      const out = { ...m, params: scrub ? scrubAgentEventParams(m.method, params) : m.params };
       delete out.sessionId;
       s.client.transport.send(JSON.stringify(out));
+    } else if (scrub) {
+      s.client.transport.send(JSON.stringify({ ...m, params: scrubAgentEventParams(m.method, params) }));
     } else s.client.transport.send(text);
   }
 
@@ -428,6 +469,18 @@ export class CdpMux {
   _agentParams(method, params) {
     if ((method === "Page.navigate" || method === "Target.createTarget") && !agentUrlAllowed(params.url)) {
       return "may open only http(s), about:blank or data: pages";
+    }
+    // Chrome (computerd's uid) opens whatever local path a file input names and hands the page
+    // its bytes through the DOM -- a page-JS FileReader then reads .boot, the Cookies DB or
+    // anything else that uid can see, which is exactly what the URL fence above stops for a
+    // navigation. Refused outright: staging an agent's own upload through a vyre-owned copy is a
+    // real feature, not a param this fence can safely narrow (e2e review finding, HIGH 1).
+    if (method === "DOM.setFileInputFiles") return "cannot attach local files to a page";
+    // A drag carrying files is the same attack shaped differently (a page's drop handler reads
+    // them the same way a <input type=file> change handler would); a drag with no files (moving
+    // an element within a page) is unaffected.
+    if (method === "Input.dispatchDragEvent" && Array.isArray(params.data && params.data.files) && params.data.files.length) {
+      return "cannot drag local files onto a page";
     }
     if (method === "Browser.setDownloadBehavior" || method === "Page.setDownloadBehavior") {
       const b = params.behavior;
