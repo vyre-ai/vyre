@@ -97,7 +97,7 @@ extension CapsuleModel {
         guard credentialAsk === a else { return }
         if let why { a.error = why; return }
         credentialAsk = nil
-        line = note ?? "Saved your \(n.label) in the vault."
+        if let note { line = note } else { flash("Saved your \(n.label) in the vault.") }
         if note == nil { a.saved() }
     }
 

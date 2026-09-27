@@ -148,16 +148,37 @@ final class PanelController: NSObject, NSWindowDelegate {
     }
 
     func height() -> CGFloat { CapsuleLayout.panelHeight(model) }
+    /// The height the open step is easing to, while it eases.
+    private var easingTo: CGFloat?
 
     /// Keep the top edge where it is and grow or shrink downwards.
     func fit() {
         guard panel.isVisible else { return }
         let h = height()
         var f = panel.frame
-        if abs(f.height - h) < 0.5 { return }
+        // Mid-step the frame is still easing: the height it is easing to is what counts.
+        if let to = easingTo, abs(to - h) < 0.5 { return }
+        if easingTo == nil, abs(f.height - h) < 0.5 { return }
+        easingTo = nil
+        let grows = h > f.height
         f.origin.y = top - h
         f.size.height = h
         frameChanges += 1
+        // Opening from the compact bar to the full panel is one 150 ms step (capsule.md); every
+        // other change, and any under Reduce Motion, is at once. Nothing resizes while text streams
+        // (the open panel's height is fixed).
+        if grows, h >= CapsuleLayout.openHeight - 0.5, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion {
+            easingTo = h
+            NSAnimationContext.runAnimationGroup { c in
+                c.duration = Tokens.Motion.reveal / 1000
+                c.timingFunction = CAMediaTimingFunction(controlPoints: Float(Tokens.Motion.ease[0]), Float(Tokens.Motion.ease[1]), Float(Tokens.Motion.ease[2]), Float(Tokens.Motion.ease[3]))
+                panel.animator().setFrame(f, display: true)
+            } completionHandler: { [weak self] in MainActor.assumeIsolated {
+                if self?.easingTo == h { self?.easingTo = nil }
+                self?.panel.invalidateShadow()
+            } }
+            return
+        }
         panel.setFrame(f, display: true)
         panel.invalidateShadow()
     }

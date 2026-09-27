@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule opens to 560 in one step; a passing status lasts 2 s
+
+- app-design 305fc07b: from the compact bar, the first result or question takes the panel to its
+  560 in one 150 ms step (`Motion.reveal`, the token ease), at once under Reduce Motion; it never
+  resizes while text streams. A step already easing is not restarted by later redraws.
+- "Copied", "Taken back" and "Saved in the vault" show as the status line for 2 s, then go,
+  unless something newer was said (`CapsuleModel.flash`).
+- `Sources/Host/Panel.swift`, `Sources/Host/CapsuleModel.swift`; `Tests/DesignATests.swift`.
+
 #### `vyre ...` runs in the Capsule and draws what it says
 
 - The user's feedback: "run vyre voice" fell through to a memory answer. Words that start with

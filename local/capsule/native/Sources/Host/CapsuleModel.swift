@@ -316,6 +316,15 @@ public final class CapsuleModel: ObservableObject {
         line = "Not approved. Nothing was done."
     }
 
+    /// A passing status with no row of its own ("Copied", "Taken back"): one line above the
+    /// footer for 2 s (capsule.md rule 3), unless something else was said meanwhile.
+    func flash(_ s: String, for seconds: Double = 2) {
+        line = s
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds) { [weak self] in
+            MainActor.assumeIsolated { if self?.line == s { self?.line = nil } }
+        }
+    }
+
     /// Search again for the same words (an extension's commands changed).
     func refresh() { search() }
 
@@ -718,7 +727,7 @@ public final class CapsuleModel: ObservableObject {
         guard let item = current, let s = item.copyText ?? (item.kind == "ask" ? nil : item.title) else { return false }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(s, forType: .string)
-        line = "Copied"
+        flash("Copied")
         return true
     }
 
@@ -936,7 +945,7 @@ extension CapsuleModel {
         guard reply?.thread == r.thread else { return }
         if !ids.isEmpty {
             if var x = reply { x = VyState.cancel(x); x.queued?.withdrawn = true; reply = x }
-            line = "Taken back. \(q.name) never got it."
+            flash("Taken back. \(q.name) never got it.")
         } else {
             reply?.queued?.delivered = true
             line = "Too late: \(q.name) already has it. Its reply shows here when its turn ends."

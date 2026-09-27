@@ -188,4 +188,22 @@ let designASuite = Suite("design A") { t in
         }
         t.ok(ok)
     }
+
+    t.test("a passing status shows for its time, then goes; a newer line is kept") {
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in
+                let m = CapsuleModel(home: vyScratch("flash"), vyred: VyredClient(socket: vyScratch("flash") + "/none.sock"), providers: [])
+                m.flash("Copied", for: 0.1)
+                return m
+            }
+            let first = await MainActor.run { m.line ?? "" }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            let gone = await MainActor.run { m.line ?? "gone" }
+            await MainActor.run { m.flash("Copied", for: 0.1); m.line = "Could not take it back" }
+            try? await Task.sleep(nanoseconds: 300_000_000)
+            let kept = await MainActor.run { m.line ?? "gone" }
+            return [first, gone, kept, "\(CapsuleLayout.openHeight)"]
+        }
+        t.eq(r, ["Copied", "gone", "Could not take it back", "560.0"])
+    }
 }

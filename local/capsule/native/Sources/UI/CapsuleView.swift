@@ -316,9 +316,12 @@ enum CapsuleLayout {
         m.presenceAsk != nil || m.credentialAsk != nil || m.commandRun != nil || m.asked != nil || !m.groups.isEmpty || m.showsMemory || m.panelFor?(m.current) != nil || AgentLayout.opens(m)
     }
 
+    /// The open panel's height (560): the bar, the body and the footer.
+    static var openHeight: CGFloat { Theme.barHeight + area }
+
     /// The panel's height: the bar alone, the bar and a line, or the bar and the fixed area (560).
     @MainActor static func panelHeight(_ m: CapsuleModel) -> CGFloat {
-        if isOpen(m) { return Theme.barHeight + area }
+        if isOpen(m) { return openHeight }
         if let l = m.line, !l.isEmpty { return Theme.barHeight + 1 + lineHeight }
         if AgentLayout.slim(m) { return Theme.barHeight + 1 + lineHeight }
         return Theme.barHeight
