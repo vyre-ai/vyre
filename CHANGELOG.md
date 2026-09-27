@@ -23,6 +23,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   scrolls: with the trackpad, and with ⌘↑ ⌘↓, PageUp PageDown, Home and End while the focus stays
   in the box. A streaming answer follows its newest words unless the user scrolled up; scrolling
   back to the end follows again. ⌘↑ ⌘↓ stay the box's own keys while nothing needs scrolling.
+- The card draws its own thumb (4 wide, 3 in from the right edge) whenever it can scroll, and
+  "Jump to latest ⌘↓" at its bottom edge once the user scrolled up from a longer answer. ⌥↑ ⌥↓
+  move three lines (app-design's capsule.md).
 - Empty "Send to" and "Commands" headings are gone: a group with no rows is dropped (with no
   assistant to ask, the destinations group was empty but still drawn), and the results list ends
   on a whole row, so a heading is never left at the bottom with its rows out of sight.

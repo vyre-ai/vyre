@@ -11,10 +11,12 @@
 import AppKit
 import SwiftUI
 
-@MainActor final class AnswerScroller {
+@MainActor final class AnswerScroller: ObservableObject {
     private(set) weak var scrollView: NSScrollView?
     /// Keep the newest words in sight. Off once the user scrolls away from the end.
-    private(set) var following = true
+    @Published private(set) var following = true
+    /// The thumb, as fractions of the card (start, length), while there is anything to scroll.
+    @Published private(set) var thumb: (start: CGFloat, length: CGFloat)?
     private var watching: NSObjectProtocol?
     /// Our own scrolls, so a bounds change from them is not read as the user's.
     private var moving = false
@@ -23,6 +25,8 @@ import SwiftUI
         guard s !== scrollView else { return }
         if let w = watching { NotificationCenter.default.removeObserver(w) }
         scrollView = s
+        // The card draws its own thumb (always shown while it can scroll); AppKit's hides.
+        s.hasVerticalScroller = false
         s.contentView.postsBoundsChangedNotifications = true
         watching = NotificationCenter.default.addObserver(forName: NSView.boundsDidChangeNotification, object: s.contentView, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.userScrolled() }
@@ -51,7 +55,10 @@ import SwiftUI
     }
 
     /// The words grew: keep the end in sight if following. Run after layout.
-    func grew() { if following { scroll(to: maxOffset) } }
+    func grew() { if following { scroll(to: maxOffset) } else { measure() } }
+
+    /// ⌥↑ ⌥↓: three lines.
+    func lines(_ by: Int) { scroll(to: offset + CGFloat(by) * 3 * Theme.readLine) }
 
     /// One page up (-1) or down (1), keeping a line of the last page for context.
     func page(_ by: Int) {
@@ -70,12 +77,23 @@ import SwiftUI
         s.contentView.scroll(to: NSPoint(x: 0, y: y))
         s.reflectScrolledClipView(s.contentView)
         moving = false
-        following = atEnd
+        measure()
     }
 
     private func userScrolled() {
         guard !moving else { return }
-        following = atEnd
+        measure()
+    }
+
+    /// Follow and the thumb from where the card is now. Published only when they change.
+    private func measure() {
+        if following != atEnd { following = atEnd }
+        var t: (start: CGFloat, length: CGFloat)?
+        if overflows, let s = scrollView, let doc = s.documentView, doc.frame.height > 0 {
+            let h = s.contentView.bounds.height
+            t = (offset / doc.frame.height, h / doc.frame.height)
+        }
+        if t?.start != thumb?.start || t?.length != thumb?.length { thumb = t }
     }
 }
 
@@ -118,18 +136,46 @@ struct AnswerScroll<Content: View>: View {
     @State private var height: CGFloat = 0
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
+        ScrollView(.vertical, showsIndicators: false) {
             content()
                 .background(ScrollProbe(scroller: scroller).frame(width: 0, height: 0))
                 .background(GeometryReader { g in Color.clear.preference(key: AnswerHeightKey.self, value: g.size.height) })
         }
-        .scrollIndicators(.automatic)
         .frame(height: CapsuleLayout.answerHeight(content: height, cap: cap), alignment: .top)
+        .overlay { AnswerChrome(scroller: scroller) }
         .onPreferenceChange(AnswerHeightKey.self) { h in
             height = h
             DispatchQueue.main.async { scroller.grew() }
         }
         .onChange(of: grows) { DispatchQueue.main.async { scroller.grew() } }
         .onChange(of: answerID) { scroller.reset() }
+    }
+}
+
+/// What the card draws over itself while it scrolls: a 4 wide thumb 3 in from the right edge, and
+/// "Jump to latest ⌘↓" at its bottom edge once the user has scrolled up from a longer answer.
+struct AnswerChrome: View {
+    @ObservedObject var scroller: AnswerScroller
+
+    var body: some View {
+        GeometryReader { g in
+            if let t = scroller.thumb {
+                Capsule().fill(Theme.ruleStrong)
+                    .frame(width: 4, height: max(24, g.size.height * t.length))
+                    .offset(x: g.size.width - 4 - 3, y: min(g.size.height - max(24, g.size.height * t.length), g.size.height * t.start))
+                    .allowsHitTesting(false)
+            }
+            if scroller.thumb != nil && !scroller.following {
+                KeyHint(title: "Jump to latest", keys: ["⌘", "↓"])
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Capsule().fill(Theme.raised))
+                    .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 8)
+                    .onTapGesture { scroller.toEnd() }
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHint("Command Down Arrow")
+            }
+        }
     }
 }

@@ -165,6 +165,7 @@ box, and every key below passed through or kept.
 | Services | From the field's context menu and the app menu | AppKit |
 | ←/→, ⌥←/→, ⌘←/→ | Move by character, word, line; with ⇧ they select | the field |
 | ⌘↑/↓ | Top or end of a long answer; with no answer to scroll, start or end of the box; with ⇧ they select | Capsule, the field |
+| ⌥↑/↓ | Three lines of a long answer; with none, the box's | Capsule, the field |
 | PageUp/PageDown, Home/End | Page through a long answer, or go to its top or end; the focus stays in the box | Capsule |
 | ⌥⌫, ⌘⌫ | Delete a word, delete to the start (⌘⌫ removes an attachment chip first) | the field, Capsule |
 | ⌃A, ⌃E, ⌃K (and the other emacs keys) | Start, end, kill to end | the field |

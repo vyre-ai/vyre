@@ -236,6 +236,8 @@ final class PanelController: NSObject, NSWindowDelegate {
         // ⌘↑ ⌘↓ are the card's only while it has more to show, else the box's (start, end).
         case 126 where cmd && !shift && model.asked != nil && model.answerScroll.overflows: model.answerScroll.toTop(); return true
         case 125 where cmd && !shift && model.asked != nil && model.answerScroll.overflows: model.answerScroll.toEnd(); return true
+        case 126 where e.modifierFlags.contains(.option) && !cmd && !shift && model.asked != nil && model.answerScroll.overflows: model.answerScroll.lines(-1); return true
+        case 125 where e.modifierFlags.contains(.option) && !cmd && !shift && model.asked != nil && model.answerScroll.overflows: model.answerScroll.lines(1); return true
         case 116 where model.asked != nil: model.answerScroll.page(-1); return true // PageUp
         case 121 where model.asked != nil: model.answerScroll.page(1); return true // PageDown
         case 115 where model.asked != nil && !cmd: model.answerScroll.toTop(); return true // Home

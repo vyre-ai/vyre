@@ -65,6 +65,8 @@ let answerScrollSuite = Suite("answer scroll") { t in
             // The panel first: the card drawn last is the one the scroller holds.
             let pc = PanelController(model: m)
             let host = draw(m)
+            m.answerScroll.toEnd()
+            for _ in 0..<2 { host.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.03)) }
             png(host, "7-long-answer")
             var out: [String] = []
             let s = m.answerScroll
@@ -79,10 +81,21 @@ let answerScrollSuite = Suite("answer scroll") { t in
             if s.following { out.append("still following after the user scrolled up") }
             _ = pc.key(key("\u{F700}", 126, [.command]))
             if s.offset != 0 { out.append("⌘↑ is not the top: \(s.offset)") }
+            for _ in 0..<2 { host.layoutSubtreeIfNeeded(); RunLoop.main.run(until: Date().addingTimeInterval(0.03)) }
+            png(host, "7b-long-answer-top")
             _ = pc.key(key("\u{F72D}", 121)) // PageDown
             if !(s.offset > 0) { out.append("PageDown did not scroll down") }
             _ = pc.key(key("\u{F701}", 125, [.command]))
             if !s.atEnd || !s.following { out.append("⌘↓ did not reach the end and follow again") }
+            // The thumb is there while it can scroll, at the bottom when following.
+            if let th = s.thumb { if abs(th.start + th.length - 1) > 0.01 { out.append("thumb not at the end: \(th)") } } else { out.append("no thumb") }
+            // ⌥↑ ⌥↓: three lines at a time.
+            let at = s.offset
+            _ = pc.key(key("\u{F700}", 126, [.option]))
+            if abs((at - s.offset) - 3 * Theme.readLine) > 0.5 { out.append("⌥↑ moved \(at - s.offset)") }
+            if s.following { out.append("⌥↑ kept following, so no Jump to latest") }
+            _ = pc.key(key("\u{F701}", 125, [.option]))
+            if abs(s.offset - at) > 0.5 { out.append("⌥↓ did not come back") }
             return out
         }
         t.eq(r, [])
