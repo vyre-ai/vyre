@@ -63,9 +63,59 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 - app-design boards approved (work/app-design 99820a16 and 6a1e2f7a) — not yet consumed (step 6).
 
 ## Next
-1. e2e security review of the tools' caller rules (asked, 2026-09-28) before calling step 1 done.
+1. e2e's first pass (2026-09-28, sha f8cbc882) found 3 HIGH, 4 MEDIUM, 2 LOW; all fixed at
+   e07... (see "Changed contracts" and the e2e-review section below) with regression tests for
+   each HIGH. Sent back to e2e for a second pass; step 1 is not "done" until that clears.
 2. Step 2: notes-changed check on team.done, compaction re-injection, rotation.
 3. Step 3: summon tool in sessions' MCP list, result injection, per ADR 0031 and the lead's brief.
+
+## e2e review round 1 (2026-09-28, f8cbc882) — fixed
+
+A caller label ("cli", "local", "deck", "capsule") on the socket is only a claim; nothing but
+`fromClaude` (peer-ancestry: is this process actually inside a Claude session?) checks it, and
+that only runs for `PERSON_ONLY`/presence-required tools. Every "or a person may..." branch in
+team.js that trusted the label alone (not a verified thread or agent identity) was exactly as
+forgeable as a Bash tool call inside any session or teammate.
+
+- **HIGH 1** (label trust): `team.ask`, `team.list`, `team.status`, `team.cancel`, `team.notes`,
+  `team.notes.edit` added to `PERSON_ONLY` (core/presence/index.js). This does not narrow who may
+  call them (mcp/module callers, i.e. every session's and teammate's own use, are unaffected —
+  `fromClaude` only runs for a caller claiming a person label) and does not force an interactive
+  presence proof by itself (only `HUMAN_ONLY`/`def.presence` do that): it only makes sure the
+  label itself was not forged. `team.notes`'s person-write path was removed outright rather than
+  gated: it is now `team.notes.edit`, a separate PERSON_ONLY tool; `team.notes` set is the
+  teammate's own tool only (`meta.agent` match, cryptographically verified, never a label).
+- **HIGH 2** (path traversal): `team.notes`' `part` is checked against `PART` (a role-shaped
+  word) before it ever reaches a path, and `notesPath` re-resolves and checks the result stays
+  under the teammate's own notes folder as a second line of defense.
+- **HIGH 3** (wrapper break-out): the `<vyre-teammate-result>` tag now carries a random nonce
+  chosen after the teammate has already written `result` (so it cannot be guessed and echoed
+  back), and `neutralize()` splices a zero-width space into any literal `vyre-request`/
+  `vyre-teammate-result` text found in a teammate's result or a requester's own text, as a second
+  line of defense for whatever reads the wrapper without knowing the nonce scheme. `attr()` keeps
+  free-text labels (`req.from`) from breaking out of an attribute.
+- **MEDIUM** (`projectOf` fell through to `input.project` when a thread had no project; `team.list`
+  read `i.project` before the thread and fell back to listing every project when neither was
+  given; `team.notes` get had no scope check at all): `projectOf` now throws rather than falling
+  through once a thread is known; `team.list` resolves the caller's own project first and only a
+  verified person sees every project; `team.notes` get requires the teammate itself, a verified
+  session/teammate of the project, or a person.
+- **LOW**: the `via` cycle/depth check had an off-by-one (a chain of 4 was let through for
+  `MAX_VIA = 3`); a resumed thread's request was picked as "running" before the slot was taken,
+  which meant the *next* pump() (fired from team.done/team.fail, mid-turn) could write a new
+  prompt to the same session while its current turn was still finishing — found chasing a
+  flaky-looking priority-order test, where the low-priority request closed with the urgent
+  request's own result. Fixed by moving the redispatch to fire only from `thread.finished` (the
+  turn has genuinely ended), never from team.done/team.fail directly. `agentName`'s project
+  charset is now checked (`SLUG`) everywhere a project is taken as input, including `team.add`
+  (which also now checks the project actually exists).
+- New regression tests (core/team/team.test.js): one per HIGH finding, using two additions to the
+  shared fake claude driver (core/switchboard/testing/fake-claude.js, test-only): `bareforge
+  <caller> <tool> [json]`, the "no agent key, no session header" sibling of the existing `forge`
+  (which always sends the calling agent's own key, a different and separately-blocked forgery);
+  and the same "embedded, not only at the very start" line-finding already added for `vyre`. Ran
+  the HIGH 1 test with `team.notes.edit` pulled back out of `PERSON_ONLY` to confirm it actually
+  catches the regression (it does) before putting the fix back.
 
 ## Settings this feature needs (handed to native-core for Settings)
 Declared by native-core (work/native-core 42dcb98c, core/sessions/module.json settings list):
@@ -116,16 +166,23 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
   `vault_agent_grants`, checked on release for shared teammates (the lead told vault).
 
 ## Changed contracts
-- New module `team` (a876e5e4): tables `team_teammates`, `team_requests`, `team_notes` (own,
-  not `agents_agents` — see "Where ADR 0031 stands" above); tools `team.add`, `team.list`,
-  `team.ask`, `team.status`, `team.cancel`, `team.done`, `team.fail`, `team.notes`; events
-  `teammate.created`, `summon.queued`, `summon.started`, `summon.finished`, `summon.cancelled`.
-  Talks to `threads`, `projects` and `sessions` only through `ctx.call` (boundaries.test.js clean).
-- presence (a876e5e4): `team.add` added to `PERSON_ONLY` in `core/presence/index.js` — a
-  teammate is made by a person, never a session or another teammate.
-- switchboard/testing/fake-claude.js (a876e5e4, test-only): its `"vyre <tool> <json>"` prompt
-  line is now found anywhere in the prompt, not only when the whole prompt starts with it, so a
-  teammate's `<vyre-request>`-wrapped text can still script a tool call from a test. At the start
-  it behaves exactly as before (multi-line JSON still works); found further in, only that one
-  line is taken as the call, so it never swallows what follows it (the wrapper's closing tag).
-  Every switchboard/agents/presence test still green (52+54) after this change.
+- New module `team` (a876e5e4, HIGH-fixes after e2e round 1): tables `team_teammates`,
+  `team_requests`, `team_notes` (own, not `agents_agents` — see "Where ADR 0031 stands" above);
+  tools `team.add`, `team.list`, `team.ask`, `team.status`, `team.cancel`, `team.done`,
+  `team.fail`, `team.notes`, `team.notes.edit`; events `teammate.created`, `summon.queued`,
+  `summon.started`, `summon.finished`, `summon.cancelled`. Talks to `threads`, `projects` and
+  `sessions` only through `ctx.call` (boundaries.test.js clean).
+- presence: `PERSON_ONLY` in `core/presence/index.js` gained `team.add`, `team.ask`, `team.list`,
+  `team.status`, `team.cancel`, `team.notes`, `team.notes.edit` — see "e2e review round 1" above
+  for why each one needs it (not narrower callers, not a forced proof: only that a "cli"/"local"/
+  "deck"/"capsule" claim over the socket was not itself forged by something inside a session).
+- switchboard/testing/fake-claude.js (test-only): its `"vyre <tool> <json>"` prompt line is now
+  found anywhere in the prompt, not only when the whole prompt starts with it, so a teammate's
+  `<vyre-request>`-wrapped text can still script a tool call from a test. At the start it behaves
+  exactly as before (multi-line JSON still works); found further in, only that one line is taken
+  as the call, so it never swallows what follows it (the wrapper's closing tag). The same applies
+  to `forge`/`bareforge`, and `bareforge <caller> <tool> [json]` is new: a forgery that sends
+  neither an agent key nor a session header, the shape `forge` did not cover, and now takes a
+  real JSON body (was always `{}`) so a test can attempt a forged call that would actually
+  succeed if not caught. Every switchboard/agents/presence test still green (52) after each of
+  these changes; core/team's own suite (11) is green throughout.

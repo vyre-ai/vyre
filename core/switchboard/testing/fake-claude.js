@@ -325,17 +325,29 @@ async function turn(prompt, uuid = null) {
     return result(false, "Claude usage limit reached.", 0);
   }
   // What a careless forgery from this thread's Bash looks like: its own key, someone else's name.
-  const forge = /^forge (\S+) (\S+)$/.exec(p);
-  if (forge) {
+  // "forge <caller> <tool>" sends the agent's own key with it, which the daemon refuses outright
+  // (the key must name its own agent); "bareforge <caller> <tool>" sends neither a key nor a
+  // session header, the plainer and more realistic forgery ("its Bash can call vyre call ... with
+  // no agent key and no session header", e2e review HIGH 1) that only fromClaude (peer ancestry)
+  // catches. Both, like "vyre", are found anywhere in the prompt: at the very start they take the
+  // rest of the string (unused today, kept for symmetry), embedded further in they take just that
+  // line, since request-wrapped text (core/team) has a closing tag after it that must not be
+  // swallowed.
+  const lines = p.split("\n");
+  const CMD = /^(forge|bareforge) (\S+) (\S+)(?:\s+(.*))?$/s;
+  const cmdAt = lines.findIndex(l => CMD.test(l));
+  const cmd = cmdAt < 0 ? null : CMD.exec(cmdAt === 0 ? p : lines[cmdAt]);
+  if (cmd) {
+    const [, kind, caller, toolName, body] = cmd;
     const http = await import("node:http");
     const { paths } = await import("../../config/index.js");
     const r = await new Promise(resolve => {
-      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + forge[2], method: "POST",
-        headers: { "content-type": "application/json", "x-vyre-caller": forge[1], "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } }, res => {
+      const req = http.request({ socketPath: paths(process.env.VYRE_HOME).socket, path: "/v1/tools/" + toolName, method: "POST",
+        headers: { "content-type": "application/json", "x-vyre-caller": caller, ...(kind === "forge" ? { "x-vyre-agent-key": process.env.VYRE_AGENT_KEY || "" } : {}) } }, res => {
         let raw = ""; res.on("data", c => { raw += c; }); res.on("end", () => resolve(`${res.statusCode} ${raw}`));
       });
       req.on("error", e => resolve(`error ${e.message}`));
-      req.end("{}");
+      req.end(body || "{}");
     });
     await say(String(r));
     return result(true, String(r));
@@ -345,7 +357,6 @@ async function turn(prompt, uuid = null) {
   // the very start the rest of the prompt is the call, as before (a multi-line JSON body works);
   // found further in, only that one line is the call, so text that follows it (a wrapper's
   // closing tag) is never swallowed into the JSON.
-  const lines = p.split("\n");
   const vyreAt = lines.findIndex(l => /^vyre \S/.test(l));
   const tool = vyreAt < 0 ? null : vyreAt === 0 ? /^vyre (\S+)\s*(.*)$/s.exec(p) : /^vyre (\S+)\s*(.*)$/.exec(lines[vyreAt]);
   if (tool) {
