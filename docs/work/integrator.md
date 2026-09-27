@@ -59,6 +59,9 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   (lead OK, 30416e64 + boundaries.md), Capsule IQ model names in the drift list. Waiting only on glass-live.
 - memory-iq aaf4fcb5 merged (9cac53a0). main's two node reds fixed (09f5e02a).
 - e2e-peerfix a8eee5dc (072fab3d) + follow-up ae9c6cdc (a007577f, reviewer cleared; testbox 92/92).
+- rc.2 BLOCKER: e2e's lib/git-safe.js fix (vault's gitState/gitWarnings run a planted core.fsmonitor as
+  vyred's uid), built on pre/rc, reviewer-cleared. Also a main hotfix, with glass's docker-api hotfix if
+  they are ready near the same time (fast-forward, targeted run, box-deploy redeploys after a backup).
 - rc.2 candidate, NOT gating: cohesion agentClaim parser (5ef364c3 + fix sha) once e2e AND reviewer sign
   off the fix sha. If glass is ready first, land without it.
 - rc.2 waits on: glass (14f1824c HELD by reviewer, 2 HIGH; take only a sha reviewer signs off). Was also e2e's fix
