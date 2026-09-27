@@ -524,7 +524,7 @@ export class Switchboard {
   }
 
   onMessage(id, st, m) {
-    const t = translate(m);
+    const t = translate(m, st.seen);
     const rec = this.record(id);
     const project = rec ? rec.project : null;
     if (t.model) this.set(id, { model: t.model, status: rec && rec.status === "starting" ? "idle" : rec ? rec.status : "idle" });

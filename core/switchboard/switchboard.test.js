@@ -34,6 +34,7 @@ test("translate: real stream-json lines become small thread events", () => {
   assert.equal(translate({ type: "system", subtype: "hook_response", output: "the user's own hook output" }).events.length, 0, "hook output never reaches an event");
   assert.equal(translate({ type: "stream_event", event: { type: "message_start", message: { id: "m1" } } }).message, "m1");
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hel" } }, parent_tool_use_id: null }).delta, "hel");
+  assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", index: 2, delta: { type: "text_delta", text: "hel" } }, parent_tool_use_id: null }).block, 2, "a delta keeps its content block index");
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "x" } }, parent_tool_use_id: "toolu_9" }).delta, undefined, "a subagent's text is not the thread's");
   const tool = translate({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "/w/a.txt", content: "x".repeat(50000) } }] } });
   // call and status (ADR 0030): the row is keyed by call, id kept equal during the migration.
@@ -47,6 +48,53 @@ test("translate: real stream-json lines become small thread events", () => {
   assert.equal(fin.events[0].payload.cost_usd, 0.01);
   assert.equal(translate({ type: "rate_limit_event", rate_limit_info: { status: "allowed", overageStatus: "rejected" } }).limited, undefined, "overage being off is not the limit");
   assert.equal(translate({ type: "rate_limit_event", rate_limit_info: { status: "rejected" } }).limited, true);
+});
+
+/**
+ * translate as the Switchboard runs it: a whole line's text blocks keyed across the lines of one
+ * message. Either translate(m, seen) counts them itself (work/chat), or it names the line's own
+ * blocks (`blocks`) and the Switchboard adds the lines before (work/sessions, onMessage's ord).
+ */
+const keyed = () => {
+  const seen = new Map(), ord = new Map();
+  return (/** @type {any} */ m) => {
+    const t = /** @type {any} */ (translate)(m, seen);
+    if (typeof t.blocks === "number" && m && m.message && m.message.id) {
+      const id = String(m.message.id), base = ord.get(id) || 0;
+      for (const e of t.events) if (typeof e.payload.block === "number") e.payload.block += base;
+      ord.set(id, base + t.blocks);
+    }
+    return t;
+  };
+};
+
+test("translate: text keys (message, block) count content blocks across the lines of one message, as the transcript does", () => {
+  const fix = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "transcripts", "fixtures");
+  const tr = keyed();
+  let message = "";
+  const done = [], partial = [];
+  for (const line of fs.readFileSync(path.join(fix, "split.stream.jsonl"), "utf8").split("\n").filter(Boolean)) {
+    const t = tr(JSON.parse(line));
+    if (t.message !== undefined) message = t.message;
+    if (t.delta) partial.push(`${message}#${t.block}`);
+    for (const e of t.events) if (e.type === "thread.text") done.push(`${e.payload.message}#${e.payload.block}`);
+  }
+  // msg_03A is thinking, text, tool_use, text (one line each); msg_03B is one text.
+  const want = ["msg_03A#1", "msg_03A#3", "msg_03B#0"];
+  assert.deepEqual(done, want);
+  assert.deepEqual([...new Set(partial)], want);
+  // The same keys the transcript read gives for the matching transcript (fixtures/split.jsonl).
+  const tx = fs.readFileSync(path.join(fix, "split.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
+  const counts = new Map(), keys = [];
+  for (const o of tx) {
+    if (o.type !== "assistant") continue;
+    const n = counts.get(o.message.id) || 0;
+    o.message.content.forEach((p, i) => { if (p.type === "text") keys.push(`${o.message.id}#${n + i}`); });
+    counts.set(o.message.id, n + o.message.content.length);
+  }
+  assert.deepEqual(keys, want);
+  // Without a shared count a line counts on its own, as before.
+  assert.equal(translate({ type: "assistant", message: { id: "m9", content: [{ type: "text", text: "a" }, { type: "text", text: "b" }] } }).events[1].payload.block, 1);
 });
 
 test("describe: a sending tool names where it goes", () => {
@@ -232,6 +280,8 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
     const deltas = of(c.got, id, "thread.text").filter(e => e.payload.delta);
     assert.equal(deltas.map(e => e.payload.delta).join(""), done.payload.text, "the deltas add up to the text");
     assert.ok(deltas.length < Math.ceil(done.payload.text.length / 6), "partial text is throttled, not one event per chunk");
+    assert.ok(deltas.every(e => e.payload.message === done.payload.message && e.payload.block === done.payload.block && done.payload.block === 0),
+      "partial and whole text share one key (message, block)");
     assert.ok(of(c.got, id, "thread.started")[0].payload.headless);
   }
   assert.deepEqual(a.got.map(e => e.id), b.got.map(e => e.id), "both clients see the same thread");

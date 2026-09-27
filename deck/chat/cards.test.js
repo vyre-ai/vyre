@@ -30,7 +30,10 @@ function vyred(answers = {}) {
     const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
     const input = JSON.parse(o.body);
     calls.push({ tool, input, presence: !!o.headers["x-vyre-presence"] });
-    const a = tool in answers ? answers[tool] : { ok: true };
+    // An answer may be a function of the input; { $error } is a refusal.
+    const a0 = tool in answers ? answers[tool] : { ok: true };
+    const a = typeof a0 === "function" ? a0(input, !!o.headers["x-vyre-presence"]) : a0;
+    if (a && a.$error) return { status: 409, statusText: "", json: async () => ({ error: a.$error }) };
     return { status: 200, statusText: "", json: async () => ({ data: a }) };
   });
   return { calls, of: t => calls.filter(c => c.tool === t) };
@@ -185,4 +188,166 @@ test("tool cards: the checklist, a short diff and a run open on their own; a rea
   assert.equal(text(personAv("capsule")), "C");
   assert.ok($(agentAv("Vyre"), "svg"));
   assert.equal(text(agentAv("juno")), "ju");
+});
+
+test("permission card: the diff summary, totals first, a row per file on a tap, binary and 'and N more'", async () => {
+  vyred();
+  const push = askCard({ id: "ask_g", tool: "Bash", kind: "permission", always: false, reason: null,
+    detail: { command: "git push origin main",
+      changes: [
+        { file: "src/intake/estate.ts", added: 96, removed: 41 },
+        { file: "src/intake/probate.ts", added: 92, removed: 92 },
+        { file: "public/harlow-legal-logo.png", added: null, removed: null, binary: true },
+      ],
+      totals: { files: 5, added: 188, removed: 133 }, truncated: true } });
+  const sum = $(push, ".cv-changes");
+  assert.ok(sum, "a push with changes shows the summary");
+  const head = $(sum, ".cv-ch-head");
+  assert.match(text(head), /Changed files/);
+  assert.equal(text($(head, ".cv-ch-add")), "+188");
+  assert.equal(text($(head, ".cv-ch-del")), "−133");
+  assert.equal($(sum, ".cv-ch-list"), null, "per-file rows wait for a tap");
+  assert.equal(head.getAttribute("aria-expanded"), "false");
+  await head.click();
+  const rows = $$(sum, ".cv-ch-row");
+  assert.equal(rows.length, 3);
+  assert.match(text(rows[0]), /src\/intake\/estate\.ts/);
+  assert.equal(text($(rows[0], ".cv-ch-add")), "+96");
+  assert.equal(text($(rows[0], ".cv-ch-del")), "−41");
+  assert.match(text(rows[2]), /binary/);
+  assert.equal($(rows[2], ".cv-ch-add"), null, "a binary file has no counts");
+  assert.equal(text($(sum, ".cv-ch-more")), "and 2 more");
+  assert.equal($(push, ".cv-ch-head").getAttribute("aria-expanded"), "true");
+  // Open stays open when the card redraws (the Deny field), and the buttons stay below it.
+  push.onKey(key("Escape"));
+  assert.ok($(push, ".cv-ch-list"), "the rows stay open across a redraw");
+  push.onKey(key("Escape"));
+  assert.ok($(push, ".gate-actions"));
+});
+
+test("permission card: a single-file Edit keeps its inline diff with the summary above the buttons; no changes, no row", () => {
+  vyred();
+  const edit = askCard({ id: "ask_e2", tool: "Edit", kind: "permission", always: false, reason: null,
+    detail: { file: "src/order/OrderForm.js", old: "a\nb", new: "a\nc",
+      changes: [{ file: "src/order/OrderForm.js", added: 1, removed: 1 }], totals: { files: 1, added: 1, removed: 1 } } });
+  assert.equal($$(edit, ".cv-dl-add").length, 1, "the inline diff stays");
+  assert.match(text($(edit, ".cv-ch-head")), /Changed file\b/);
+  assert.equal($(edit, ".cv-ch-more"), null);
+  const kids = [...edit.children];
+  const at = c => kids.findIndex(k => k.classList.contains(c));
+  assert.ok(at("cv-changes") > at("cv-ask-what") && at("cv-changes") < at("gate-actions"), "summary between the diff and the buttons");
+
+  const plain = askCard({ id: "ask_n", tool: "Edit", kind: "permission", always: false, reason: null,
+    detail: { file: "src/order/OrderForm.js", old: "a", new: "b" } });
+  assert.equal($(plain, ".cv-changes"), null);
+  const empty = askCard({ id: "ask_n2", tool: "Bash", kind: "permission", always: false, reason: null,
+    detail: { command: "git push", changes: [], totals: { files: 0, added: 0, removed: 0 } } });
+  assert.equal($(empty, ".cv-changes"), null);
+  assert.equal($(askCard({ id: "ask_n3", tool: "Bash", kind: "permission", reason: null }), ".cv-changes"), null, "no detail at all");
+});
+
+// ---- a Mac session's ask, answered from here (federation v2) -----------------------------------------
+
+const MACHINE = "alex's MacBook Pro";
+const macAsk = (id) => ({ ...structuredClone(fx.asks[1]), id, machine: MACHINE, node: "nMacStable1" });
+const btn = (card, re) => $$(card, "button").find(b => re.test(text(b)));
+
+test("Mac ask: the usual buttons, 'on <mac>', and threads.answer carries the machine", async () => {
+  const api = vyred({ "threads.answer": { ask: "ask_m1", answered: true, source: "mac", machine: MACHINE } });
+  const card = askCard(macAsk("ask_m1"));
+  assert.match(text(card), /on alex's MacBook Pro/);
+  assert.doesNotMatch(text(card), /Answer it on/);
+  assert.ok(btn(card, /Allow once/) && btn(card, /Deny/));
+  assert.equal(card.isOpen(), true);
+  card.onKey(key("Enter"));
+  await settle();
+  assert.deepEqual(api.of("threads.answer")[0].input, { ask: "ask_m1", decision: "allow", surface: "deck", machine: MACHINE });
+  assert.equal(api.of("threads.answer")[0].presence, false);
+  assert.match(text(card), /Allowed once/);
+
+  const q = questionCard({ ...structuredClone(fx.asks[0]), id: "ask_m2", questions: [fx.asks[0].questions[0]], machine: MACHINE, node: "nMacStable1" });
+  assert.match(text(q), /on alex's MacBook Pro/);
+  await btn(q, /^Decline$/).click();
+  await settle();
+  assert.deepEqual(api.of("threads.answer")[1].input, { ask: "ask_m2", decision: "deny", surface: "deck", machine: MACHINE });
+});
+
+test("Mac ask refused: person_session_required sends the person to the box's sign-in page, then Try again (no proof on the answer)", async () => {
+  let signedIn = false;
+  const api = vyred({ "threads.answer": () => signedIn ? { answered: true, source: "mac", machine: MACHINE }
+    : { $error: { code: "person_session_required", message: "answering a Mac's ask is the person's own action: sign in on this device with your passkey first" } } });
+  const card = askCard(macAsk("ask_m3"));
+  card.onKey(key("Enter"));
+  await settle();
+  assert.match(text(card), /Sign this browser in to answer asks on alex's MacBook Pro/);
+  const a = /** @type {any} */ ($(card, "a.cv-person-signin"));
+  assert.equal(a.getAttribute("href"), "/person/signin", "e2e's sign-in page on the box");
+  assert.equal(a.getAttribute("target"), "_blank");
+  assert.equal(card.isOpen(), true, "the card stays open");
+  signedIn = true;
+  await btn(card, /Try again/).click();
+  await settle();
+  const [first, again] = api.of("threads.answer");
+  assert.equal(first.presence, false);
+  assert.equal(again.presence, false, "a passkey proof on the answer is not a sign-in");
+  assert.deepEqual(again.input, first.input);
+  assert.match(text(card), /Allowed once/);
+});
+
+test("Mac ask refused: presence_required asks for a passkey or Touch ID and keeps the decision and reason", async () => {
+  const api = vyred({ "threads.answer": (_i, proved) => proved ? { answered: true }
+    : { $error: { code: "presence_required", message: "this ask approves a protected action: prove you are here (passkey or Touch ID) to answer it" } } });
+  const card = askCard(macAsk("ask_m4"));
+  card.onKey(key("Escape"));
+  const why = /** @type {any} */ ($(card, "input.cv-why"));
+  why.value = "Not to kit yet";
+  why.dispatchEvent(Object.assign(new Event("input"), { target: why }));
+  why.dispatchEvent(Object.assign(new Event("keydown"), { key: "Enter", target: why, preventDefault() {} }));
+  await settle();
+  assert.match(text(card), /Prove it is you first/);
+  assert.doesNotMatch(text(card), /Denied/);
+  await btn(card, /Use passkey or Touch ID/).click();
+  await settle();
+  const again = api.of("threads.answer")[1];
+  assert.equal(again.presence, true);
+  assert.deepEqual(again.input, { ask: "ask_m4", decision: "deny", surface: "deck", message: "Not to kit yet", machine: MACHINE });
+  assert.match(text(card), /Denied/);
+});
+
+test("Mac ask refused: mac_offline and timeout say so with Try again; the card stays open", async () => {
+  const errs = [
+    { $error: { code: "mac_offline", message: "alex's MacBook Pro is offline; your answer was not sent" } },
+    { $error: { code: "timeout", message: "alex's MacBook Pro did not answer in time; your answer may not have reached it" } },
+    { answered: true },
+  ];
+  const api = vyred({ "threads.answer": () => errs.shift() });
+  const q = questionCard({ ...structuredClone(fx.asks[0]), id: "ask_m5", questions: [fx.asks[0].questions[0]], machine: MACHINE, node: "nMacStable1" });
+  q.onKey(key("1"));
+  await settle();
+  assert.match(text(q), /alex's MacBook Pro is offline; your answer was not sent/);
+  assert.equal(q.isOpen(), true);
+  assert.ok(btn(q, /^Submit/), "the buttons stay");
+  await btn(q, /^Try again$/).click();
+  await settle();
+  assert.match(text(q), /did not answer in time; your answer may not have reached it/);
+  assert.equal(q.isOpen(), true);
+  await btn(q, /^Try again$/).click();
+  await settle();
+  assert.equal(api.of("threads.answer").length, 3);
+  assert.ok(api.of("threads.answer").every(c => c.input.machine === MACHINE && c.presence === false));
+  assert.match(text(q), /Answered/);
+});
+
+test("Mac refusals, by code: which step each needs; only an unknown tool, bad input or unsupported means the box cannot forward", async () => {
+  const { macRefusal } = await import("./presence.js");
+  assert.equal(macRefusal({ code: "person_session_required" }), "sign_in");
+  assert.equal(macRefusal({ code: "presence_required" }), "presence");
+  assert.equal(macRefusal({ code: "mac_offline" }), "retry");
+  assert.equal(macRefusal({ code: "timeout" }), "retry");
+  assert.equal(macRefusal({ code: "no_such_tool" }), "held");
+  assert.equal(macRefusal({ code: "bad_input" }), "held");
+  assert.equal(macRefusal({ code: "unsupported" }), "held");
+  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, {}), null, "a relayed ask already means the box forwards: its words, not the fallback");
+  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, { node: "nMacStable1" }), null);
+  assert.equal(macRefusal({ code: "denied", message: "pair again" }, { node: "nMacStable1" }), null);
 });
