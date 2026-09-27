@@ -119,7 +119,8 @@ const refused = async (reg, tool, input, msg = /not available/) => {
 test("files: the manifest loads and offers its four tools to every caller", async t => {
   const { work, vyreHome } = workspace(t);
   const reg = await registry(t, { role: "box", files: { roots: [work] }, home: vyreHome, seam: { rg: fakeRg } });
-  const names = reg.listTools("mcp").map(x => x.name).sort();
+  // Taildrive's tools (files.drive.*) have their own tests in drive.test.js.
+  const names = reg.listTools("mcp").map(x => x.name).filter(n => !n.startsWith("files.drive.")).sort();
   assert.deepEqual(names, ["files.fetch", "files.preview", "files.search", "files.stat"]);
 });
 

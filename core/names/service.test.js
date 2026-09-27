@@ -5,7 +5,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import https from "node:https";
 import crypto from "node:crypto";
@@ -14,12 +13,13 @@ import * as config from "../config/index.js";
 import * as certs from "./certs.js";
 import { names, checkName } from "./service.js";
 import { tempHome } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const hasOpenssl = (() => { try { execFileSync("openssl", ["version"], { stdio: "ignore" }); return true; } catch { return false; } })();
 const skip = !hasOpenssl && "openssl is needed to make a certificate";
 
 function selfSigned(cn, days = 90) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-names-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-names-"));
   try {
     execFileSync("openssl", ["req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
       "-keyout", path.join(dir, "k.pem"), "-out", path.join(dir, "c.pem"), "-subj", `/O=Test CA/CN=${cn}`, "-days", String(days)], { stdio: "ignore" });
@@ -38,6 +38,8 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
     config: cfg, paths: config.ensure(root), log: () => {},
     events: { emit: (type, payload) => emitted.push({ type, payload }) },
     handler: () => async (req, res, caller) => { calls.push(caller); res.writeHead(200, { "content-type": "application/json" }); res.end(JSON.stringify({ data: { caller } })); },
+    // A stream router that answers every upgrade it is handed, saying who the caller was.
+    upgrader: () => (req, socket, head, caller) => { calls.push(`stream ${caller}`); socket.end(`HTTP/1.1 101 Switching Protocols\r\nx-caller: ${caller}\r\n\r\n`); },
   };
   fs.mkdirSync(ctx.paths.certs, { recursive: true });
   const ts = {
@@ -63,7 +65,7 @@ function world(t, { tagged = false, owner = "alex@example.com", ips = ["127.0.0.
   t.after(() => svc.close());
   /** A new service on the same box, as after vyred restarts. */
   const restart = () => { const again = names(deps); t.after(() => again.close()); return again; };
-  return { root, cfg, ctx, svc, emitted, records, calls, issued: () => issued, restart };
+  return { root, cfg, ctx, ts, svc, emitted, records, calls, issued: () => issued, restart };
 }
 
 /** A request as the listener sees it, from a given peer address. */
@@ -230,4 +232,54 @@ test("names: whois naming this very node is refused even when the address list i
   const id = identifier({ whois: async () => ({ login: "alex@example.com", tagged: false, node: "box", stableId: "nSELF" }),
     selfIps: () => [], selfId: () => "nSELF", owner: () => "alex@example.com" });
   assert.equal((await id("100.101.1.1")).why, "from this box itself");
+});
+
+/** A WebSocket upgrade to the listener, as a browser sends one; resolves to the status line and headers. */
+function upgradeTo(port, headers) {
+  return new Promise((resolve, reject) => {
+    const req = https.request({ host: "127.0.0.1", port, path: "/v1/streams/computers/glass?ticket=x", rejectUnauthorized: false,
+      headers: { connection: "Upgrade", upgrade: "websocket", "sec-websocket-version": "13", "sec-websocket-key": "dGhlIHNhbXBsZSBub25jZQ==", ...headers } });
+    req.on("upgrade", (res, socket) => { socket.destroy(); resolve({ status: res.statusCode, caller: res.headers["x-caller"] }); });
+    req.on("response", res => { res.resume(); resolve({ status: res.statusCode, caller: null }); });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+test("names: the listener takes WebSocket upgrades itself rather than routing them as requests", { skip }, async t => {
+  const w = world(t, { ips: ["127.0.0.1"] });
+  w.svc.claim("alex");
+  await w.svc.wait();
+  assert.equal(w.svc.status().phase, "serving");
+  const port = Number(new URL(String(w.svc.status().address)).port);
+  // The test connects from the box's own address, which the identity rule refuses; what matters
+  // here is that the upgrade reached the listener's own rules. With no upgrade listener, Node
+  // handed it to the request router, which answered 404 (the live box did, 27 Sep).
+  const r = await upgradeTo(port, { host: `alex.vyre.run:${port}` });
+  assert.equal(r.status, 403);
+});
+
+test("names: the owner's WebSockets reach vyred's streams as the owner; nobody else's do", async t => {
+  const w = world(t);
+  w.cfg.name = "alex";
+  await w.svc.tailscale();
+  const host = "alex.vyre.run:0";
+  /** An upgrade from a peer; resolves to the status line the listener wrote. */
+  const up = async (ip, headers) => {
+    let out = "";
+    const socket = { on() {}, end(x) { out = String(x); }, destroy() {} };
+    await w.svc.onUpgrade({ url: "/v1/streams/computers/glass?ticket=x", headers: { host, ...headers }, socket: { remoteAddress: ip } }, socket, Buffer.alloc(0));
+    return out.split("\r\n")[0];
+  };
+  assert.equal(await up("100.101.1.2", { origin: `https://${host}` }), "HTTP/1.1 101 Switching Protocols");
+  assert.equal(await up("100.101.1.2", {}), "HTTP/1.1 101 Switching Protocols", "a client that sends no Origin");
+  assert.equal(await up("100.101.1.2", { origin: "https://evil.example" }), "HTTP/1.1 403 Forbidden", "another site's page");
+  assert.equal(await up("100.101.1.2", { host: "evil.example" }), "HTTP/1.1 421 Misdirected Request", "another host name");
+  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 403 Forbidden", "someone else on the tailnet");
+  assert.equal(await up("100.101.9.9", {}), "HTTP/1.1 403 Forbidden", "an address whois does not know");
+  // A guest's stream is a guest's, never the owner's.
+  w.cfg.network.guests = { enabled: true, people: { "sam@example.com": { tools: ["glass.open"] } } };
+  assert.equal(await up("100.101.1.3", { origin: `https://${host}` }), "HTTP/1.1 101 Switching Protocols", "a guest listed for Glass");
+  assert.deepEqual(w.calls.filter(c => c.startsWith("stream")),
+    ["stream tailnet:alex@example.com", "stream tailnet:alex@example.com", "stream tailnet-guest:sam@example.com"]);
 });

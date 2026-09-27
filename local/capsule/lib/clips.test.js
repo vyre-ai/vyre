@@ -6,12 +6,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { Clips, looksSecret, label, age, NOTE, TEXT_MAX } from "./clips.js";
+import { SCRATCH } from "../../../test/scratch.mjs";
 
 function tmp(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-clips-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-clips-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   return path.join(dir, "sub", "clips.json");
 }

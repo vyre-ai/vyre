@@ -16,6 +16,10 @@ import { attempt, on, fromFixtures, fixturesOn } from "./api.js";
 import { icon, mark, wordmark } from "./icons.js";
 import * as needs from "./needs.js";
 import { when, base, initials } from "./fmt.js";
+import * as pwa from "./pwa.js";
+// Loaded with the shell, not with Now, so it hears Chrome's one beforeinstallprompt.
+import "./phone-setup.js";
+import { isMac, machineChip } from "./machine.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -39,6 +43,7 @@ const ROUTES = [
   ["/vault/:place/:name", "vault"],
   ["/settings", "settings"],
   ["/ask", "ask"],
+  ["/find", "find"],
 ];
 const PLACES = [
   { href: "/now", label: "Now", icon: "now", view: "now" },
@@ -52,7 +57,9 @@ const PLACES = [
 const TABS = [
   { href: "/now", label: "Now", icon: "clock", view: "now" },
   { href: "/projects", label: "Projects", icon: "projects", view: "projects" },
-  { href: "/ask", label: "Ask", icon: "chat", view: "ask" },
+  { href: "/chat", label: "Chat", icon: "chat", view: "chat" },
+  // Find is the phone's Capsule: one box for files, sessions, agents, memory and asking juno.
+  { href: "/find", label: "Find", icon: "search", view: "find" },
   { href: "/agents", label: "Agents", icon: "agents", view: "agents" },
 ];
 
@@ -128,7 +135,8 @@ window.addEventListener("deck:rail", e => { railOwned = true; put(pins, /** @typ
 async function drawRail() {
   const r = await attempt("projects.list");
   if (railOwned) return;
-  info.projects = r.data?.projects || [];
+  // Pins open a board on this machine, so a paired Mac's projects (on the box) are not pinned here.
+  info.projects = (r.data?.projects || []).filter(p => !isMac(p));
   const pins_ = pinned();
   const chosen = pins_.length ? pins_.map(s => info.projects.find(p => p.slug === s)).filter(Boolean)
     : [...info.projects].sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
@@ -142,7 +150,9 @@ window.addEventListener("deck:pins", drawRail);
 async function drawFoot() {
   const r = await attempt("system.info");
   info.host = r.data?.host || location.hostname;
-  put(avatar, initials(info.host).slice(0, 2) || "V");
+  // The owner's own initials when onboarding saved a name, else the machine's.
+  put(avatar, initials(r.data?.owner?.name || info.host).slice(0, 2) || "V");
+  if (r.data?.owner?.name) avatar.setAttribute("title", r.data.owner.name);
   const onTailnet = /\.vyre\.run$|\.ts\.net$/.test(location.hostname);
   put(foot,
     h("div", { class: "code", style: { color: "var(--text-2)" } }, info.host),
@@ -169,7 +179,8 @@ async function search() {
     hits = r.data.map(t => ({ href: threadHref(t.session) }));
     put(pop, r.data.map((t, i) => link(hits[i].href, { role: "option", id: "hit-" + i, onclick: () => closeSearch() },
       h("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px" } },
-        h("span", { class: "small ellipsis" }, t.name || t.title || t.session),
+        h("span", { class: "small ellipsis", style: { flexGrow: "1" } }, t.name || t.title || t.session),
+        machineChip(t),
         h("span", { class: "code", style: { flexShrink: "0" } }, when(t.ts))),
       h("div", { class: "small muted", style: { marginTop: "2px" } }, snippet(t.snippet || t.text)),
       h("div", { class: "code faint", style: { marginTop: "2px" } }, base(t.cwd), " · ", t.role))));
@@ -201,47 +212,122 @@ document.addEventListener("click", e => { if (!(/** @type {Element} */ (e.target
 document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchIn.focus(); searchIn.select(); } });
 
 // ---- router --------------------------------------------------------------------------------
+//
+// Views stay mounted. Each address gets its own page (a scroller inside #view); leaving it hides
+// the page instead of tearing it down, so going back is one frame: the page as it was, scrolled
+// where it was, still following its events. A view that wants fresh data on a revisit passes
+// ctx.onShow(fn). At most KEEP pages are kept (least recently shown goes first), and a few views
+// are never kept: Glass streams a screen, and the Vault can hold a revealed secret on screen.
 
-let leave = () => {};
+const KEEP = 8;
+const NEVER_KEEP = new Set(["glass", "vault", "missing"]);
+/** @type {Map<string, { page: HTMLElement, name: string, leave: () => void, shows: (() => void)[], rail: any, alive: boolean }>} */
+const pages = new Map();
+let current = "";
+
+/** Off screen but laid out, so coming back costs a paint, not a layout; inert, so no tap or
+ * screen reader reaches it. */
+function away(/** @type {HTMLElement} */ page, /** @type {boolean} */ off) {
+  page.classList.toggle("away", off);
+  page.inert = off;
+  if (off) page.setAttribute("aria-hidden", "true"); else page.removeAttribute("aria-hidden");
+}
+
+function drop(/** @type {string} */ key) {
+  const p = pages.get(key);
+  if (!p) return;
+  pages.delete(key);
+  p.alive = false;
+  p.leave();
+  p.page.remove();
+}
+
 async function route() {
-  leave();
   const { view: name, params } = match(location.pathname);
-  const offs = [];
-  let alive = true;
-  leave = () => { alive = false; for (const f of offs.splice(0)) { try { f(); } catch {} } };
+  const key = location.pathname + location.search;
   put(address.lastChild, location.host, h("b", null, location.pathname === "/" ? "/now" : location.pathname));
   for (const a of [...railLinks, ...tabs]) {
     const v = a.getAttribute("data-view");
-    a.setAttribute("aria-current", v === name || (name === "needs" && v === "now") ? "page" : "false");
+    a.setAttribute("aria-current", v === name || (name === "needs" && v === "now") || (name === "ask" && v === "find") ? "page" : "false");
     if (a.getAttribute("aria-current") === "false") a.removeAttribute("aria-current");
   }
+  pwa.remember(key);
+  // The page being left: hidden if kept, else ended. Tapping the tab you are on scrolls it to the top.
+  const again = current === key;
+  const was = pages.get(current);
+  if (was && current !== key) { if (NEVER_KEEP.has(was.name)) drop(current); else away(was.page, true); }
+  current = key;
   railOwned = false;
-  drawRail();
+  // The rail is not drawn on a phone (no rail there), which saves a projects.list per tap.
+  if (!phone()) drawRail();
+
+  const kept = pages.get(key);
+  if (kept) {
+    // A revisit: the page as it was, at once; then whatever it asked to refresh, behind it.
+    pages.delete(key); pages.set(key, kept); // most recent last
+    away(kept.page, false);
+    if (again) { kept.page.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    put(railLower, kept.rail ?? null);
+    for (const f of kept.shows) { try { f(); } catch (e) { console.error(e); } }
+    return;
+  }
+
   put(railLower);
-  view.scrollTop = 0;
-  put(view);
+  await mount(key, name, params, new URLSearchParams(location.search));
+}
+
+/**
+ * Make the page for an address and run its view in it. `hidden` mounts it off screen (warm).
+ * @param {string} key @param {string} name @param {Record<string, string>} params @param {URLSearchParams} query
+ */
+async function mount(key, name, params, query, hidden = false) {
+  const page = h("div", { class: "page", "data-page": name });
+  away(page, hidden);
+  view.append(page);
+  const offs = /** @type {(() => void)[]} */ ([]);
+  const entry = { page, name, shows: /** @type {(() => void)[]} */ ([]), rail: /** @type {any} */ (null), alive: true,
+    leave: () => { for (const f of offs.splice(0)) { try { f(); } catch {} } } };
+  pages.set(key, entry);
+  while (pages.size > KEEP) drop(/** @type {string} */ ([...pages.keys()].find(k => k !== current)));
   const ctx = {
-    root: view, params, query: new URLSearchParams(location.search),
+    root: page, params, query,
     on: (type, fn) => { offs.push(on(type, fn)); },
     cleanup: fn => { offs.push(fn); },
-    alive: () => alive,
+    alive: () => entry.alive,
+    /** False while the page is kept but not on screen. */
+    shown: () => entry.alive && !page.classList.contains("away"),
+    /** Run fn each time the user comes back to this page (not on the first visit). */
+    onShow: (/** @type {() => void} */ fn) => { entry.shows.push(fn); },
     /** Fill the rail's lower group (between Recent/Pinned and the machine footer). */
-    rail: (/** @type {any} */ el) => put(railLower, el),
+    rail: (/** @type {any} */ el) => { entry.rail = el; if (current === key) put(railLower, el); },
   };
   try {
     await style(name);
     const mod = await import(`../views/${name}.js`);
-    if (!alive) return;
+    if (!entry.alive) return;
     await mod.default(ctx);
   } catch (e) {
-    if (!alive) return;
+    if (!entry.alive) return;
     console.error(e);
-    put(view, h("div", { style: { padding: "48px 72px" } },
+    put(page, h("div", { style: { padding: "48px 72px" } },
       h("div", { class: "lbl" }, name === "missing" ? "Not found" : "Not built yet"),
       h("h1", { class: "h2", style: { marginTop: "10px" } }, name === "missing" ? "There is nothing at this address." : "This part of the Deck is not here yet."),
       h("p", { class: "muted", style: { marginTop: "8px" } }, link("/now", { class: "link" }, "Back to Now"))));
   }
 }
+const phone = () => matchMedia("(max-width: 760px)").matches;
+// The phone's five tabs, made once while the phone is idle after the first screen, one after
+// another, each hidden: the first tap on a tab is then a revisit, one frame. Only on a phone, and
+// only for tabs not open yet; each view reads its data once, then follows events as it would.
+async function warm() {
+  if (!phone()) return;
+  for (const t of TABS) {
+    if ([...pages.values()].some(p => p.name === t.view) || pages.has(t.href)) continue;
+    await mount(t.href, t.view, {}, new URLSearchParams(), true);
+    await new Promise(r => setTimeout(r, 50));
+  }
+}
+
 /** Each view has its own stylesheet, css/views/<name>.css, added once, before it first renders. */
 const styled = new Map();
 function style(name) {
@@ -258,11 +344,20 @@ window.addEventListener("popstate", route);
 window.addEventListener("deck:navigate", route);
 
 // First visit before setup is finished goes to the onboarding.
+// onboard.status can be slow (it asks Tailscale and Claude Code on a cold cache), so the Deck waits
+// for it at most a moment and never leaves the phone on a blank screen: a late answer that says
+// there is no owner yet still sends the page to the onboarding.
 (async () => {
-  const st = await attempt("onboard.status");
-  if (st.data && st.data.owner === false && !fixturesOn) { location.replace("/onboard"); return; }
+  const status = attempt("onboard.status");
+  const first = await Promise.race([status, new Promise(r => setTimeout(r, 800, null))]);
+  const toOnboard = (/** @type {any} */ st) => st?.data && st.data.owner === false && !fixturesOn;
+  if (toOnboard(first)) { location.replace("/onboard"); return; }
+  if (!first) status.then(st => { if (toOnboard(st)) location.replace("/onboard"); });
   drawFoot();
+  pwa.start({ view, deck });
   route();
+  // After the first view has its data: fetch the other tabs' code while the phone is idle.
+  ("requestIdleCallback" in window ? /** @type {any} */ (window).requestIdleCallback : (/** @type {any} */ f) => setTimeout(f, 1500))(warm);
   needs.load();
   for (const t of ["ask.raised", "ask.answered", "gate.held", "gate.released", "gate.failed", "gate.rejected"]) on(t, () => needs.load());
   on("project.*", drawRail);

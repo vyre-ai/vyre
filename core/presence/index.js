@@ -29,9 +29,18 @@ export const HUMAN_ONLY = new Set([
   "vault.session.open", "vault.export", "vault.kit",
   // What Claude is told in every later session: accepting, weakening and removing lessons and skills.
   "learn.accept", "learn.retire", "learn.relax", "learn.skill-install",
+  // Who an agent is, what it may spend and whose credentials it runs on.
+  "agents.create", "agents.update",
   // A person's hands on an agent's computer, and a new machine joined to this one.
   "computers.takeover", "computers.giveback", "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
+  // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
+  // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
+  // and the sites that leave through the owner's Mac.
+  "files.drive.share", "files.drive.unshare",
+  "network.guests.add", "network.guests.remove", "network.guests.enable",
+  "hooks.enable", "hooks.open", "hooks.close",
+  "computers.tailnet.set", "computers.egress.set",
 ]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
@@ -455,7 +464,7 @@ export class Presence {
 
   /** Enrolled keys, never their public keys: a list is for recognising and removing them. */
   keys() {
-    return this.db.prepare("SELECT id, kind, name, created, last_used FROM presence_keys ORDER BY created").all();
+    return this.db.prepare("SELECT id, kind, name, rp_id, created, last_used FROM presence_keys ORDER BY created").all();
   }
 
   /**

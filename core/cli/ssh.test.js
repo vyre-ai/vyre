@@ -4,10 +4,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import net from "node:net";
-import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { quote, line, remote, portFree, validTarget } from "./ssh.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 /** A fake ssh: logs argv, answers -O itself, fails BatchMode when FAKE_SSH_NOKEY is set, else runs the command with sh. */
 const FAKE_SSH = `#!/bin/sh
@@ -29,7 +29,7 @@ exec sh -c "$*"
 `;
 
 function fake(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-ssh-test-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-ssh-test-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const bin = path.join(dir, "ssh"), log = path.join(dir, "log");
   fs.writeFileSync(bin, FAKE_SSH, { mode: 0o755 });

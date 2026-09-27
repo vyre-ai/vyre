@@ -6,13 +6,17 @@
 import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { parse, up, tool } from "./projects.js";
+import { json, emit, fail as kitFail, failTool, usage } from "../kit.js";
+import { callAsPerson } from "../presence.js";
 
 const SURFACE = "cli:" + process.pid;
 const id8 = s => String(s || "").slice(0, 8);
-const fail = msg => { out(beacon("  " + msg)); return 1; };
+const fail = (msg, next) => kitFail(msg, { next });
 const cut = (s, n) => { const t = String(s || "").replace(/\s+/g, " ").trim(); return t.length > n ? t.slice(0, n - 1) + "…" : t; };
 
-const USAGE = "vyre agents [create|update|ask|threads|usage|stop|delete] …";
+const USAGE = "vyre agents [list|create|update|ask|threads|usage|stop|delete] … [--json]";
+const AGENT_FLAGS = { bool: ["assistant"], values: ["projects", "model", "vault", "fallback", "budget", "instructions"], cmd: "agents" };
+const SUBS = ["list", "ls", "create", "update", "ask", "threads", "usage", "stop", "delete", "rm", "remove"];
 const FLAGS = "--assistant --projects a,b|* --model m --vault item --fallback item --budget 20 --instructions text";
 
 /**
@@ -52,6 +56,7 @@ async function list() {
   const r = await tool("agents.list", {});
   if (!r) return 1;
   const agents = Array.isArray(r) ? r : [];
+  if (json()) return emit(agents);
   if (!agents.length) { out(dim(`  no agents yet · vyre agents create <name> [${FLAGS}]`)); return 0; }
   for (const a of agents) {
     const status = a.status === "waiting" ? beacon(String(a.status).padEnd(8)) : a.status === "working" ? signal(String(a.status).padEnd(8)) : dim(String(a.status || "").padEnd(8));
@@ -62,24 +67,29 @@ async function list() {
 }
 
 async function createOrUpdate(which, args) {
-  const { flags, pos } = parse(args, { bool: ["assistant"] });
+  const { flags, pos } = parse(args, AGENT_FLAGS);
   const name = pos.join(" ").trim();
-  if (!name) return fail(`vyre agents ${which} <name> [${FLAGS}]`);
-  const fields = agentFields(flags);
-  if (which === "update" && !Object.keys(fields).length) return fail(`nothing to change · ${FLAGS}`);
-  const a = await tool(which === "create" ? "agents.create" : "agents.update", { name, ...fields });
-  if (!a) return 1;
+  if (!name) return usage(`vyre agents ${which} needs a name`, `vyre agents ${which} <name> [${FLAGS}]`);
+  let fields;
+  try { fields = agentFields(flags); } catch (e) { return usage(/** @type {Error} */ (e).message, "vyre help agents"); }
+  if (which === "update" && !Object.keys(fields).length) return usage("vyre agents update: nothing to change", FLAGS);
+  // Both are on the floor's human-only list: Touch ID or a code typed at this terminal.
+  const r = await callAsPerson(which === "create" ? "agents.create" : "agents.update", { name, ...fields });
+  if (r.error) { failTool(r.error); return 1; }
+  const a = r.data;
+  if (json()) return emit(a);
   showAgent(a, which === "create" ? "made" : "updated");
   return 0;
 }
 
 async function ask(args) {
   const [name, ...words] = args;
-  if (!name || !words.length) return fail("vyre agents ask <name> <text>");
+  if (!name || !words.length) return usage("vyre agents ask <name> <text>", "vyre agents lists them");
   // An agent may work for minutes before it answers, so this waits far past the usual 10s.
   const r = await call("agents.ask", { agent: name, text: words.join(" "), surface: SURFACE, wait: true }, { timeout: 600_000 });
-  if (r.error) return fail(r.error.message);
+  if (r.error) return failTool(r.error);
   const d = r.data || {};
+  if (json()) { emit(d); return d.ok === false ? 1 : 0; }
   if (d.ask) {
     // It stopped on a permission question: say what, and how to answer it.
     const a = typeof d.ask === "object" ? d.ask : { id: d.ask };
@@ -97,9 +107,10 @@ async function ask(args) {
 
 async function threads(args) {
   const name = args.join(" ").trim();
-  if (!name) return fail("vyre agents threads <name>");
+  if (!name) return usage("vyre agents threads needs an agent's name", "vyre agents lists them");
   const ts = await tool("agents.threads", { agent: name });
   if (!ts) return 1;
+  if (json()) return emit(ts);
   if (!ts.length) { out(dim(`  ${name} has no threads yet`)); return 0; }
   for (const t of ts) out(`  ${dim(id8(t.id))}  ${String(t.status).padEnd(8)} ${dim(String(t.holder || "-").padEnd(14))} ${cut(t.name || t.cwd, 40)}`);
   out(dim("  vyre threads watch <id>"));
@@ -107,10 +118,11 @@ async function threads(args) {
 }
 
 /** What each agent has used: turns, time, tokens, dollars against its budget, and the last rate-limit report. */
-async function usage(args) {
+async function usageOf(args) {
   const name = args.join(" ").trim();
   const rows = await tool("agents.usage", name ? { agent: name } : {});
   if (!rows) return 1;
+  if (json()) return emit(rows);
   if (!rows.length) { out(dim("  no agents yet")); return 0; }
   const k = n => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "k" : String(n));
   for (const u of rows) {
@@ -124,9 +136,10 @@ async function usage(args) {
 
 async function stop(args) {
   const name = args.join(" ").trim();
-  if (!name) return fail("vyre agents stop <name>");
+  if (!name) return usage("vyre agents stop needs an agent's name", "vyre agents lists them");
   const r = await tool("agents.stop", { agent: name });
   if (!r) return 1;
+  if (json()) return emit(r);
   const ids = r.stopped || [];
   out(ids.length ? `  stopped ${ids.length} thread${ids.length === 1 ? "" : "s"} of ${r.agent || name} ${dim(ids.map(id8).join(" "))}` : dim(`  ${r.agent || name} had nothing running`));
   return 0;
@@ -134,9 +147,10 @@ async function stop(args) {
 
 async function remove(args) {
   const name = args.join(" ").trim();
-  if (!name) return fail("vyre agents delete <name>");
+  if (!name) return usage("vyre agents delete needs an agent's name", "vyre agents lists them");
   const r = await tool("agents.delete", { agent: name });
   if (!r) return 1;
+  if (json()) return emit(r);
   out(`  deleted ${r.agent} ${dim("(its threads' transcripts stay)")}`);
   return 0;
 }
@@ -146,17 +160,17 @@ export default {
   summary: "agents: list, create, update, ask, threads, usage, stop, delete",
   /** @param {string[]} args */
   async run(args) {
-    const [sub, ...rest] = args;
-    if (!(await up())) return 1;
-    try {
-      if (!sub || sub === "list" || sub === "ls") return await list();
-      if (sub === "create" || sub === "update") return await createOrUpdate(sub, rest);
-      if (sub === "ask") return await ask(rest);
-      if (sub === "threads") return await threads(rest);
-      if (sub === "usage") return await usage(rest);
-      if (sub === "stop") return await stop(rest);
-      if (sub === "delete" || sub === "rm") return await remove(rest);
-      return fail(`vyre agents ${sub}: not a subcommand · ${USAGE}`);
-    } catch (err) { return fail(/** @type {Error} */ (err).message); }
+    const [sub, ...rest] = args.filter(a => a !== "--json");
+    if (sub && !SUBS.includes(sub)) return usage(`vyre agents ${sub}: not a subcommand`, USAGE);
+    // A mistyped flag is refused before vyred is started for it.
+    if (sub === "create" || sub === "update") parse(rest, AGENT_FLAGS);
+    if (!(await up())) return 5;
+    if (!sub || sub === "list" || sub === "ls") return list();
+    if (sub === "create" || sub === "update") return createOrUpdate(sub, rest);
+    if (sub === "ask") return ask(rest);
+    if (sub === "threads") return threads(rest);
+    if (sub === "usage") return usageOf(rest);
+    if (sub === "stop") return stop(rest);
+    return remove(rest);
   },
 };

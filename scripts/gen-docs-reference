@@ -1,0 +1,34 @@
+#!/usr/bin/env node
+// @ts-check
+// gen-docs-reference: writes docs/reference/{cli,tools,events,config,modules}.md from the code, and
+// the index of every thing the docs name: docs/reference/index.md and docs/index.json (built from
+// the code and every published page, so run it after editing a page too).
+// The pages say they are generated; edit the code they come from, then run `npm run docs:ref`.
+// scripts/docs-check fails when a committed page differs from what this would write.
+//
+// It loads every module in a child process with a throwaway VYRE_HOME and HOME (never ~/.vyre),
+// with a context that only records tool definitions: see scripts/lib/docs/harvest.mjs.
+//
+//   node scripts/gen-docs-reference           write the pages
+//   node scripts/gen-docs-reference --check   exit 1 if any page is stale, write nothing
+
+import fs from "node:fs";
+import path from "node:path";
+import { generateAll, REPO } from "./lib/docs/reference.js";
+
+const check = process.argv.includes("--check");
+const pages = generateAll();
+let stale = 0;
+for (const [rel, text] of Object.entries(pages)) {
+  const file = path.join(REPO, "docs", rel);
+  let now = null;
+  try { now = fs.readFileSync(file, "utf8"); } catch {}
+  if (now === text) continue;
+  stale++;
+  if (check) { process.stdout.write(`docs/${rel}: stale\n`); continue; }
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, text);
+  process.stdout.write(`wrote docs/${rel}\n`);
+}
+if (!stale) process.stdout.write("reference pages are up to date\n");
+process.exitCode = check && stale ? 1 : 0;

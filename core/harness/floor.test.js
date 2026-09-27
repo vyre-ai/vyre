@@ -2,11 +2,11 @@
 // The floor's second layer (docs/adr/0004-presence.md): the model's own ways around presence proof.
 import { test } from "node:test";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import assert from "node:assert/strict";
 import { rules } from "./rules.js";
 import { flatten, globReaches } from "./shell.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const USER = "/home/sam";
 const HOME = "/home/sam/.vyre";
@@ -136,7 +136,7 @@ test("shell: flatten and globReaches", () => {
 });
 
 test("floor: VYRE_HOME is recognised by its real path too", t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-floor-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-floor-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const home = path.join(dir, "home");
   fs.mkdirSync(home);

@@ -58,22 +58,49 @@ export class Indexer {
   /**
    * One pass over every transcript under the folders.
    * @param {string[]} folders
-   * @param {{ stopped?: () => boolean }} [opts]
+   * `pace` is awaited after each file with how long it took (pace.js), so a first pass over a
+   * whole history trickles; `onProgress` hears (done, total) after each file.
+   * @param {{ stopped?: () => boolean, pace?: (spentMs: number) => Promise<void>, onProgress?: (done: number, total: number) => void }} [opts]
    * @returns {Promise<Stats>}
    */
-  async run(folders, { stopped = () => false } = {}) {
+  async run(folders, { stopped = () => false, pace, onProgress } = {}) {
+    const t0 = Date.now();
+    /** @type {Stats} */
+    const s = { sessions: 0, added: 0, appended: 0, reindexed: 0, skipped: 0, failed: 0, turns: 0, ms: 0 };
+    const all = [...transcripts.list(folders)];
+    for (const entry of all) {
+      if (stopped()) break;
+      s.sessions++;
+      const t = Date.now();
+      try { this.one(entry, s); }
+      catch (e) { s.failed++; this.log(`could not index ${entry.id}: ${/** @type {Error} */ (e).message}`); }
+      onProgress?.(s.sessions, all.length);
+      // An unchanged file costs a stat; only real work is paced.
+      const spent = Date.now() - t;
+      if (pace && spent > 2) await pace(spent); else await breathe();
+    }
+    s.ms = Date.now() - t0;
+    this.q.meta.run("last_index", JSON.stringify({ at: Date.now(), ...s }));
+    return s;
+  }
+
+  /**
+   * Index one session now, for a turn that just completed: its transcript copies only, and no
+   * last_index mark, since this is not a pass over everything.
+   * @param {string[]} folders @param {string} id
+   * @returns {Stats}
+   */
+  session(folders, id) {
     const t0 = Date.now();
     /** @type {Stats} */
     const s = { sessions: 0, added: 0, appended: 0, reindexed: 0, skipped: 0, failed: 0, turns: 0, ms: 0 };
     for (const entry of transcripts.list(folders)) {
-      if (stopped()) break;
+      if (entry.id !== id) continue;
       s.sessions++;
       try { this.one(entry, s); }
       catch (e) { s.failed++; this.log(`could not index ${entry.id}: ${/** @type {Error} */ (e).message}`); }
-      await breathe();
     }
     s.ms = Date.now() - t0;
-    this.q.meta.run("last_index", JSON.stringify({ at: Date.now(), ...s }));
     return s;
   }
 
@@ -152,9 +179,10 @@ export class Indexer {
    * only what arrived since. A turn with nothing to embed still gets an empty row, or it would
    * be found as unfinished work on every pass forever.
    * @param {import("./embed.js").Embedder} embedder
-   * @param {{ limit?: number, stopped?: () => boolean, onProgress?: (done: number, total: number) => void }} [opts]
+   * `pace` is awaited after each turn with how long its embedding took (pace.js).
+   * @param {{ limit?: number, stopped?: () => boolean, onProgress?: (done: number, total: number) => void, pace?: (spentMs: number) => Promise<void> }} [opts]
    */
-  async vectorize(embedder, { limit = 0, stopped = () => false, onProgress } = {}) {
+  async vectorize(embedder, { limit = 0, stopped = () => false, onProgress, pace } = {}) {
     const t0 = Date.now();
     let rids = this.pending();
     if (limit) rids = rids.slice(0, limit);
@@ -167,7 +195,9 @@ export class Indexer {
       if (!row) { gone++; continue; }
       const cs = chunks(String(row.text));
       const vs = [];
+      const t = Date.now();
       for (const c of cs) vs.push(await embedder.embed(c.text));
+      if (pace) await pace(Date.now() - t);
       // The turn may have gone while it was being embedded: a re-index deleted its session and
       // reused the rowid, or the seq, for different text. Writing anyway attaches a vector to
       // text it was never made from, a wrong answer that looks exactly like a right one; 13,667
@@ -182,7 +212,7 @@ export class Indexer {
       } catch (e) { this.db.exec("ROLLBACK"); throw e; }
       turns++; made += cs.length;
       this.onVector({ rid, session: String(row.session), seq: Number(row.seq), role: String(row.role), chunks: cs.map((c, i) => ({ off: c.off, v: vs[i] })) });
-      if (onProgress && turns % 100 === 0) onProgress(turns, rids.length);
+      if (onProgress && (turns % 20 === 0 || turns === rids.length)) onProgress(turns, rids.length);
     }
     return { turns, chunks: made, gone, ms: Date.now() - t0 };
   }

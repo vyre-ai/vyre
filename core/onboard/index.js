@@ -6,12 +6,15 @@
 // config.json under "onboard". The steps call other modules' tools (names.*, vault.put,
 // recall.*, projects.*) and work without them: a missing module blocks its step and says why.
 
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 import { execFile } from "node:child_process";
 import * as config from "../config/index.js";
 import { loopback } from "./loopback.js";
 import { setupToken } from "./setup-token.js";
 import { checkName } from "../names/service.js";
+import { run as tailscale, lockStatus } from "../names/tailscale.js";
 
 export const STEPS = ["you", "claude", "tailscale", "name", "history", "devices"];
 /** names phases, in order; the page shows them as reserve, dns and cert rows. */
@@ -32,6 +35,15 @@ const CREDENTIAL_READERS = ["agents"];
 // Never a tailnet caller, which a model on the owner's Mac is too.
 const HANDS_CODE = new Set(["onboard", "cli", "local"]);
 const GREETING = "Vyre is set up. Say hello to me in two or three sentences: who you are, and one thing you can do for me now.";
+/**
+ * The commands the Tailnet Lock card shows. The person runs them on their Mac; Vyre never runs
+ * `lock init` or `lock sign`. The init line names the Mac's key (which only the Mac can show) and
+ * this box's, and asks for disablement secrets: two for the person, one for Tailscale support.
+ */
+export function lockCommands(boxKey) {
+  return { mac: "tailscale lock", init: `tailscale lock init --gen-disablements 2 --gen-disablement-for-support <mac key> ${boxKey || "<box key>"}` };
+}
+
 /** An agent's name from a display name: "Juno Two" becomes "juno-two". */
 export const slug = s => {
   const v = String(s || "").toLowerCase().normalize("NFKD").replace(/[^a-z0-9]+/g, "-").replace(/^[^a-z]+|-+$/g, "").slice(0, 31).replace(/-+$/, "");
@@ -49,6 +61,30 @@ function claudeVersion() {
   return known.version;
 }
 
+/**
+ * The owner's other devices on the tailnet, from `tailscale status --json`: name, os and whether
+ * Tailscale says it is online. Tagged nodes (servers) and other people's shared nodes are left out.
+ * Remembered for 15 seconds: onboard.status is asked often while a step waits.
+ */
+let seen = { at: 0, peers: /** @type {Promise<any[]>|null} */ (null) };
+function tailnetPeers() {
+  if (seen.peers && Date.now() - seen.at < 15_000) return seen.peers;
+  seen = { at: Date.now(), peers: tailscale(["status", "--json"], { timeout: 5000 }).then(r => {
+    if (r.code !== 0) return [];
+    try { return parsePeers(JSON.parse(r.out)); } catch { return []; }
+  }) };
+  return seen.peers;
+}
+/** Pure, for tests. */
+export function parsePeers(s) {
+  const self = s && s.Self;
+  const mine = self && !(self.Tags || []).length ? String(self.UserID) : null;
+  return Object.values((s && s.Peer) || {})
+    .filter(p => !(p.Tags || []).length && (!mine || String(p.UserID) === mine))
+    .map(p => ({ name: String(p.HostName || "") || String(p.DNSName || "").split(".")[0], dns: String(p.DNSName || "").replace(/\.$/, ""),
+      os: String(p.OS || ""), online: Boolean(p.Online), lastSeen: p.LastSeen && !String(p.LastSeen).startsWith("0001") ? String(p.LastSeen) : null }));
+}
+
 /** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 export default {
   async start(ctx) {
@@ -56,13 +92,24 @@ export default {
     const ob = () => ctx.config.onboard || {};
     const skipped = () => new Set(ob().skipped || []);
     const net = () => ctx.config.network || {};
-    const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? 7300), log: m => ctx.log(m) });
+    // The link's hash survives a restart (vyre update restarts vyred): 0600, hashes only.
+    const kept = path.join(ctx.paths.root, "onboard-link.json");
+    const keep = {
+      load: () => { try { return JSON.parse(fs.readFileSync(kept, "utf8")); } catch { return null; } },
+      save: s => { if (s) fs.writeFileSync(kept, JSON.stringify(s), { mode: 0o600 }); else fs.rmSync(kept, { force: true }); },
+    };
+    const lb = loopback({ handler: p => ctx.handler(p), port: Number(net().onboardPort ?? 7300), log: m => ctx.log(m), keep });
+    if (!net().ownerSeen) await lb.resume().catch(e => ctx.log(`onboard: the kept link did not reopen: ${e.message}`));
+    else keep.save(null);
     let claimUrl = null;
     let indexing = null;
     let lastPhase = "idle";
     const signin = setupToken();
     /** @type {Record<string, string>} */
     let lastStates = {};
+    /** The box's last federated catalogue answer, held for 30 s: see the history step. */
+    let catalogHeld = /** @type {{ at: number, seen: string, cat: any } | null} */ (null);
+    const offLink = ["link.paired", "link.unpaired"].map(type => ctx.events.on(type, () => { catalogHeld = null; }));
 
     const call = async (tool, input = {}) => {
       const r = await ctx.call(tool, input);
@@ -118,18 +165,46 @@ export default {
       const history = { state: "todo", why: null, sessions: 0, indexed: r ? r.sessions : 0, running: Boolean(r && r.indexing) || Boolean(indexing) };
       if (!r) Object.assign(history, { state: "blocked", why: recall.__error });
       else {
-        const cat = await tryCall("projects.catalog", { limit: 100000 });
-        history.sessions = Math.max(cat.__error ? 0 : Number(cat.total) || 0, history.indexed);
+        // total does not depend on the limit, so one row is enough. On the box the catalogue
+        // counts the paired Mac's sessions too (a module asks for that with machines: "all"), and
+        // sources says which machines answered.
+        const box = ctx.config.role === "box";
+        // The page asks every couple of seconds, and each federated answer is a question to the
+        // Mac, so the box keeps it for 30 s, or until a Mac pairs, unpairs, comes or goes
+        // (link.macs is the box's own record, so reading it costs the Mac nothing). The box's own
+        // count still moves with the index through history.indexed below.
+        const linked = box ? await tryCall("link.macs") : [];
+        const seen = Array.isArray(linked) ? linked.map(m => `${m.mac}:${m.online}`).join(",") : "";
+        let cat;
+        if (box && catalogHeld && catalogHeld.seen === seen && Date.now() - catalogHeld.at <= 30_000) cat = catalogHeld.cat;
+        else {
+          cat = await tryCall("projects.catalog", { limit: 1, ...(box ? { machines: "all" } : {}) });
+          catalogHeld = box && !cat.__error ? { at: Date.now(), seen, cat } : null;
+        }
+        const sources = !cat.__error && Array.isArray(cat.sources) ? cat.sources : null;
+        const count = x => Number(x && x.total) || 0;
+        // The box's own sessions are what its index has to catch up with; a Mac indexes its own.
+        const own = Math.max(sources ? count(sources[0]) : count(cat.__error ? null : cat), history.indexed);
+        const macs = sources ? sources.filter(x => x.source === "mac") : [];
+        history.sessions = own + macs.reduce((n, m) => n + count(m), 0);
+        if (sources) history.machines = sources.map(x => ({ machine: x.machine, source: x.source, sessions: x.source === "box" ? own : count(x), ok: x.ok }));
         if (history.running) history.state = "working";
-        else if (history.sessions === 0) Object.assign(history, { state: "done",
-          why: ctx.config.role === "box" ? "Your Mac's sessions appear here when you connect your Mac" : "no Claude Code sessions on this machine yet" });
-        else if (ob().history && history.indexed >= history.sessions) history.state = "done";
+        else if (history.sessions === 0) {
+          const off = Array.isArray(linked) ? linked.find(m => !m.online) : null;
+          Object.assign(history, { state: "done",
+            why: !box ? "no Claude Code sessions on this machine yet"
+              : off ? `Your Mac (${off.name}) is offline, so its sessions do not show here yet`
+              : "Your Mac's sessions appear here when you connect your Mac" });
+        }
+        else if (ob().history && history.indexed >= own) history.state = "done";
       }
 
       // The Mac counts once link has paired one; the first paired is the one shown.
       const peers = await tryCall("link.peers");
       const mac = Array.isArray(peers) && peers.length ? { connected: true, name: peers[0].name || peers[0].node || null } : { connected: false, name: null };
-      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac };
+      // peers: the owner's other tailnet devices and whether each is online, for the phone's line.
+      const tailnet = t && t.running ? await tailnetPeers() : [];
+      const devices = { state: ob().finished ? "done" : "todo", why: null, phoneUrl: n && n.phase === "serving" ? n.address : null, macDownload: MAC_DOWNLOAD, mac, peers: tailnet };
 
       // detail: each step's full state (todo, working, blocked, done, skipped) and what it needs.
       // steps: the page's view of it, todo, done or skipped.
@@ -144,7 +219,9 @@ export default {
       const mode = caller === "onboard" ? "loopback" : String(caller).startsWith("tailnet:") ? "tailnet" : "local";
       return { mode, role: ctx.config.role, owner: net().owner || null, address: n && n.phase === "serving" ? n.address : null,
         host: (t && t.node && t.node.name) || os.hostname(), name: ctx.config.name || null, person: ob().person || null, assistant: ob().assistant || null,
-        current, finished: Boolean(ob().finished), steps, detail };
+        // arrived: the owner has reached the address over the tailnet (the page's Switch), so the
+        // loopback page is done with and `vyre box add` may close its tunnel.
+        current, finished: Boolean(ob().finished), arrived: Boolean(net().ownerSeen), steps, detail };
     }
 
     /** How the name step serves: what it already uses, else a vyre.run claim when a zone token or own domain is here, else ts.net. */
@@ -179,32 +256,41 @@ export default {
         if (!p || p.length > 60 || /[\u0000-\u001f]/.test(p)) throw new Error("your name is one line of up to 60 characters");
         if (a.length > 40 || /[\u0000-\u001f]/.test(a)) throw new Error("the assistant's name is one line of up to 40 characters");
         const c = checkName(p);
-        save({ ...(c.valid && !ctx.config.name ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
+        // Continue is the person confirming this name, so it replaces any earlier candidate, unless
+        // an address already serves under the old one.
+        save({ ...(c.valid && !net().address ? { name: c.name } : {}), onboard: { person: p, ...(a ? { assistant: a } : {}) } });
         return stepOf("you", caller);
       },
     });
 
     ctx.tool("onboard.name", {
       description: "Checks <name>.vyre.run and saves it; reserve serves this machine at its address (DNS and certificate, as progress rows): the vyre.run name with a zone token or own domain, else the ts.net name. `via` says which; again retries.",
-      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] } }),
-      run: async ({ name, action = "check" }, { caller }) => {
+      input: obj({ name: { type: "string" }, action: { type: "string", enum: ["check", "reserve", "claim", "status", "ts.net"] }, confirm: { type: "boolean" } }),
+      run: async ({ name, action = "check", confirm }, { caller }) => {
         if (action === "check") {
           if (!name) throw new Error("name is required to check");
           // No zone token and no own domain: the address is this machine's ts.net name, so there
           // is nothing on vyre.run to check and every valid name is free.
           const n = await tryCall("names.status");
           if (!n.__error && via(n) === "ts.net") {
+            // A check only answers. It saves nothing: a name typed in step 1 and then skipped must
+            // not become the address (step 4 claims only a name the person confirmed).
             const v = checkName(name), dns = n.tailscale && n.tailscale.node && n.tailscale.node.dnsName;
-            if (v.valid) save({ name: v.name });
-            await status(caller);
             return { name: v.name, valid: v.valid, available: v.valid, why: v.why, via: "ts.net", address: dns ? `https://${String(dns).replace(/\.$/, "")}` : null };
           }
-          const c = await call("names.check", { name });
-          if (c.valid && c.available) save({ name: c.name });
-          await status(caller);
-          return c;
+          return call("names.check", { name });
         }
         if (action === "reserve" && via(await call("names.status")) === "ts.net") action = "ts.net";
+        if (action === "reserve" || action === "claim") {
+          // A vyre.run name is public DNS. It is claimed only when the person typed it and pressed
+          // Continue in step 1 (onboard.you saved it), or confirmed it here with confirm: true.
+          const want = checkName(name || ctx.config.name || "");
+          if (!want.valid) throw Object.assign(new Error("pick a name first, or use this machine's tailnet name"), { code: "confirm_name" });
+          if (confirm === true) save({ name: want.name });
+          else if (!(ob().person && ctx.config.name === want.name)) {
+            throw Object.assign(new Error(`${want.name}.vyre.run is a public name: confirm it first, or use this machine's tailnet name`), { code: "confirm_name" });
+          }
+        }
         if (action !== "status") await call(action === "ts.net" ? "names.fallback" : "names.claim", action !== "ts.net" && name ? { name } : {});
         return progress(await stepOf("name", caller));
       },
@@ -234,9 +320,13 @@ export default {
     });
 
     ctx.tool("onboard.tailscale", {
-      description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link.",
-      input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect"] } }),
+      description: "Tailscale on this machine; connect starts `tailscale up` and returns its sign-in link. lock reads Tailnet Lock (read-only): whether it is on, this box's lock key, how many keys are trusted, whether this box is signed, and the commands the person runs on their Mac to turn it on.",
+      input: obj({ action: { type: "string", enum: ["status", "detect", "poll", "connect", "lock"] } }),
       run: async ({ action = "status" }, { caller }) => {
+        if (action === "lock") {
+          const l = await lockStatus();
+          return { ...l, key: l.nodeKey, commands: lockCommands(l.nodeKey) };
+        }
         if (action === "connect") {
           const s = await stepOf("tailscale", caller);
           if (s.state === "done" || !s.installed || !s.operator.ok) return link(s);
@@ -286,7 +376,8 @@ export default {
           const name = slug(display);
           const person = ob().person ? ` You work for ${ob().person}.` : "";
           a = await call("agents.create", { name, kind: "assistant", projects: "*",
-            auth: { vault: VAULT_ITEM[auth === "api-key" ? "api-key" : "subscription"], ...(auth === "api-key" ? {} : { fallback: VAULT_ITEM["api-key"] }) },
+            // agents reads auth.vault as a subscription token and auth.fallback as an API key.
+            auth: auth === "api-key" ? { fallback: VAULT_ITEM["api-key"] } : { vault: VAULT_ITEM.subscription, fallback: VAULT_ITEM["api-key"] },
             instructions: `Your name is ${display}.${person} You are their assistant in Vyre: you can see every project and start, drive and stop any session.` });
         }
         const r = await call("agents.ask", { agent: a.name, text: GREETING, wait: false, surface: "onboard" });
@@ -335,15 +426,21 @@ export default {
     });
 
     ctx.tool("onboard.link", {
-      description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket.",
-      input: obj(),
-      run: async (_, { caller }) => {
+      description: "A one-time link to the onboarding page on this machine's loopback address. Only from this machine's own socket. With mint false it makes nothing and says whether an unused link is still open (url null, pending with its expiry), so an update never voids the link the user was sent.",
+      input: obj({ mint: { type: "boolean" } }),
+      run: async (input, { caller }) => {
         if (!["cli", "local", "capsule"].includes(String(caller))) throw new Error("links are made only from the box's own terminal");
         const address = net().address || null;
         // Once the owner has come in over the tailnet, or onboarding is finished and the address
         // serves, the way in is the address: no more one-time links (the open one may still finish).
         if (net().ownerSeen || (ob().finished && address)) {
-          return { url: null, address, passkeyUrl: address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+          // A passkey link is a one-time code too: mint false makes none.
+          const mint = !(input && input.mint === false);
+          return { url: null, address, passkeyUrl: mint && address && HANDS_CODE.has(String(caller)) ? await passkeyUrl(address) : null, port: null, expires: null, user: os.userInfo().username };
+        }
+        if (input && input.mint === false) {
+          const p = lb.pending();
+          return { url: null, address, passkeyUrl: null, port: p ? p.port : null, expires: p ? p.expires : null, pending: Boolean(p), user: os.userInfo().username };
         }
         return { ...(await lb.link()), address, user: os.userInfo().username };
       },
@@ -351,6 +448,6 @@ export default {
 
     // The owner reached the box over the tailnet, so the loopback door is no longer needed.
     const off = ctx.events.on("owner.seen", () => { lb.close().catch(() => {}); });
-    return { async stop() { if (typeof off === "function") off(); signin.stop(); await lb.close(); await indexing; } };
+    return { async stop() { if (typeof off === "function") off(); for (const o of offLink) if (typeof o === "function") o(); signin.stop(); await lb.close({ forget: false }); await indexing; } };
   },
 };

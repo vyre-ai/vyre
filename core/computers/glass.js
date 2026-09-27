@@ -13,7 +13,8 @@
 // completes ("a used or expired ticket gets a 403 before any byte of RFB"); an open connection
 // counts as needing to look, so it holds the checkout (pool.viewer) for as long as it lasts; an
 // unparseable client message closes the connection, because a stream Glass cannot follow is one
-// it cannot gate.
+// it cannot gate. A ticket marked slow (the viewer is relayed or far away, per link.health) has
+// its incremental update requests paced to 5 a second (Pacer); nothing else is held back.
 
 import net from "node:net";
 import { Bytes, ClientParser, INPUT, clientHandshake, serverHandshake } from "./rfb.js";
@@ -24,11 +25,85 @@ function reject(socket, status, reason) {
   try { socket.end(`HTTP/1.1 ${status} ${reason}\r\nConnection: close\r\n\r\n`); } catch {}
 }
 
+/**
+ * Send a WebSocket close frame with a code and a short reason (at most 123 bytes, cut at a
+ * character), so the browser learns why rather than seeing a dropped connection.
+ * @param {import("node:net").Socket} socket @param {number} code @param {string} reason
+ */
+export function closeWith(socket, code, reason) {
+  let r = Buffer.from(String(reason || ""), "utf8");
+  if (r.length > 123) r = Buffer.from(r.subarray(0, 123).toString("utf8").replace(/\uFFFD+$/, ""), "utf8");
+  const payload = Buffer.alloc(2 + r.length);
+  payload.writeUInt16BE(code, 0);
+  r.copy(payload, 2);
+  try { socket.write(encodeFrame(payload, 0x8)); } catch {}
+}
+
 /** Never let a password or token ride an error message up to a log line. */
 function scrub(msg, ...secrets) {
   let s = String(msg == null ? "an error" : msg);
   for (const secret of secrets) if (secret) s = s.split(String(secret)).join("[redacted]");
   return s;
+}
+
+/** How often a viewer on a slow link may ask for an incremental update: every 200 ms, 5 fps. */
+export const SLOW_EVERY = 200;
+
+/** A FramebufferUpdateRequest (message type 3) with its incremental flag set. */
+const isIncremental = (/** @type {{ type: number, bytes: Buffer }} */ m) => m.type === 3 && m.bytes.length >= 2 && m.bytes[1] !== 0;
+
+/**
+ * Paces a slow viewer's incremental FramebufferUpdateRequests. Xvnc answers each request with
+ * whatever changed, so a request held back is fewer frames on the wire. Only the latest pending
+ * request is kept (a newer one says the same thing), and it goes out when the window opens, from
+ * one timer at a time that close() clears.
+ */
+export class Pacer {
+  /**
+   * @param {(bytes: Buffer) => void} send
+   * @param {{ every?: number, now?: () => number, setTimer?: typeof setTimeout, clearTimer?: typeof clearTimeout }} [opts]
+   */
+  constructor(send, { every = SLOW_EVERY, now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+    this.send = send;
+    this.every = every;
+    this.now = now;
+    this.setTimer = setTimer;
+    this.clearTimer = clearTimer;
+    this.last = -Infinity;
+    /** @type {Buffer|null} */
+    this.pending = null;
+    /** @type {any} */
+    this.timer = null;
+    this.closed = false;
+  }
+
+  /** @param {Buffer} bytes one incremental FramebufferUpdateRequest */
+  push(bytes) {
+    if (this.closed) return;
+    const t = this.now();
+    if (!this.timer && t - this.last >= this.every) { this.last = t; this.send(bytes); return; }
+    this.pending = bytes;
+    if (!this.timer) {
+      this.timer = this.setTimer(() => this.fire(), Math.max(0, this.every - (t - this.last)));
+      this.timer?.unref?.();
+    }
+  }
+
+  fire() {
+    this.timer = null;
+    if (this.closed || !this.pending) return;
+    const b = this.pending;
+    this.pending = null;
+    this.last = this.now();
+    this.send(b);
+  }
+
+  close() {
+    this.closed = true;
+    if (this.timer) this.clearTimer(this.timer);
+    this.timer = null;
+    this.pending = null;
+  }
 }
 
 export class Glass {
@@ -57,6 +132,8 @@ export class Glass {
     const redeemed = this.pool.redeem(url.searchParams.get("ticket"));
     if (!redeemed) { reject(socket, 403, "Forbidden"); return; }
     const { agent, surface } = redeemed;
+    // The viewer's link is relayed or slow (glass.open asked link.health): pace its frames.
+    const slow = Boolean(/** @type {any} */ (redeemed).slow);
 
     const key = req.headers && req.headers["sec-websocket-key"];
     const upgrade = req.headers && String(req.headers["upgrade"] || "").toLowerCase();
@@ -79,12 +156,16 @@ export class Glass {
     let missed = 0;
     /** @type {import("node:net").Socket|null} */
     let xvnc = null;
-    const closeAll = (/** @type {string} */ why) => {
+    /** @type {Pacer|null} */
+    let pacer = null;
+    /** @param {string} why @param {boolean} [flush] end the socket after what is written (a close frame), rather than drop it */
+    const closeAll = (why, flush = false) => {
       if (closed) return;
       closed = true;
       if (pinger) { clearInterval(pinger); pinger = null; }
+      if (pacer) { pacer.close(); pacer = null; }
       if (viewerHeld) { viewerHeld = false; try { this.pool.viewer(agent, -1); } catch {} }
-      try { socket.destroy(); } catch {}
+      try { if (flush) socket.end(); else socket.destroy(); } catch {}
       if (xvnc) try { xvnc.destroy(); } catch {}
       if (why) this.log(`glass: ${agent}/${surface} ended (${scrub(why)})`);
     };
@@ -116,12 +197,19 @@ export class Glass {
 
     // The computer has to be running before Xvnc can be dialled; this checkout is what "an open
     // Glass viewer holds the screen" means (pool.viewer), and it lasts until this connection ends.
+    // 4001 says the computer is not running. With a reason, it did not boot, and Glass shows the
+    // reason and stops retrying; without one, it may yet start, and Glass tries again.
     try { await this.pool.viewer(agent, 1); viewerHeld = true; }
-    catch (e) { closeAll(/** @type {Error} */ (e).message); return; }
+    catch (e) {
+      const err = /** @type {any} */ (e);
+      closeWith(socket, err && err.boot ? 4001 : 1011, err && err.boot ? String(err.short || err.message) : "");
+      closeAll(err && err.message, true);
+      return;
+    }
     if (closed) return;
 
     const vnc = this.pool.vnc(agent);
-    if (!vnc) { closeAll(`${agent}'s computer is not running`); return; }
+    if (!vnc) { closeWith(socket, 4001, ""); closeAll(`${agent}'s computer is not running`, true); return; }
 
     xvnc = net.connect(vnc.port, vnc.host);
     this.sockets.add(xvnc);
@@ -145,6 +233,12 @@ export class Glass {
     // each side already sent beyond the handshake (Bytes.rest()) goes first, so nothing that
     // arrived early is skipped.
     const clientParser = new ClientParser();
+    const toXvnc = (/** @type {Buffer} */ b) => {
+      if (closed) return;
+      try { /** @type {import("node:net").Socket} */ (xvnc).write(b); }
+      catch (e) { closeAll(/** @type {Error} */ (e).message); }
+    };
+    if (slow) pacer = new Pacer(toXvnc);
     const forwardClient = (/** @type {Buffer} */ bytes) => {
       if (!bytes.length || closed) return;
       let msgs;
@@ -156,6 +250,9 @@ export class Glass {
           // The holder is at the keyboard: that keeps the take-over alive.
           this.keyboard.renew?.(agent, surface);
         }
+        // On a slow link only incremental update requests wait; input and a full-frame request
+        // (the viewer has lost its picture) always go straight through.
+        if (pacer && isIncremental(m)) { pacer.push(m.bytes); continue; }
         try { /** @type {import("node:net").Socket} */ (xvnc).write(m.bytes); }
         catch (e) { closeAll(/** @type {Error} */ (e).message); return; }
       }

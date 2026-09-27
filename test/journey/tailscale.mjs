@@ -11,6 +11,7 @@
 //   so looking it up never leaves this machine.
 
 import fs from "node:fs";
+import os from "node:os";
 
 const rig = JSON.parse(fs.readFileSync(String(process.env.JOURNEY_RIG), "utf8"));
 const [who, ...args] = process.argv.slice(2);
@@ -51,7 +52,8 @@ switch (args[0]) {
     process.stdout.write(JSON.stringify({ Node: { Name: "laptop.tail0000.ts.net.", StableID: "nmac" }, UserProfile: { LoginName: "alex@example.com" } }) + "\n");
     break;
   case "debug":
-    process.stdout.write(JSON.stringify({ OperatorUser: "vyre" }) + "\n");
+    // The box's vyred runs as this account here, and the installer made it the operator.
+    process.stdout.write(JSON.stringify({ OperatorUser: os.userInfo().username }) + "\n");
     break;
   default:
     break;

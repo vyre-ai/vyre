@@ -44,6 +44,28 @@ export function explain(err) {
   return err.message || err.code;
 }
 
+/** How often the Capsule asks link.health, at most: once a minute, and only when it opens. */
+export const HEALTH_EVERY = 60_000;
+
+/**
+ * The line a person reads about the box's connection: "direct 12 ms", "relayed via fra 80 ms",
+ * with the last handshake and the dot's colour. Null when there is nothing to say (no box, no
+ * link module). The Deck says the same in deck/js/health.js; a packaged Capsule carries only
+ * local/capsule/, so the words are written again here rather than imported.
+ * @param {any} x link.health's answer @param {number} now
+ */
+export function linkLine(x, now) {
+  if (!x || !x.path) return null;
+  const ms = typeof x.latencyMs === "number" ? ` ${x.latencyMs} ms` : "";
+  const path = x.path === "direct" ? `direct${ms}` : x.path === "relay" ? `relayed${x.relay ? ` via ${x.relay}` : ""}${ms}`
+    : x.path === "peer-relay" ? `peer relay${ms}` : x.why === "the node is offline" ? "offline" : "unknown";
+  const hs = typeof x.lastHandshake === "number" ? route.age(x.lastHandshake, now) : null;
+  const relayed = x.path === "relay" || x.path === "peer-relay";
+  // The dot's colour, as the Deck draws it (deck/js/health.js): green direct, amber relayed, grey unknown.
+  const dot = x.path === "direct" ? "direct" : relayed ? "relayed" : "unknown";
+  return { path, handshake: hs ? `last handshake ${hs === "now" ? "just now" : `${hs} ago`}` : null, relayed, dot };
+}
+
 export class Bridge extends EventEmitter {
   /**
    * `home` is vyred's home, where quick questions get a folder to run in. By default it is the
@@ -92,6 +114,9 @@ export class Bridge extends EventEmitter {
     this.pendingSeq = 0;
     /** The newest event id heard on the stream. */
     this.lastEvent = 0;
+    /** @type {any} link.health's last answer, and when it was asked */
+    this.health = null;
+    this.healthAt = 0;
   }
 
   /** Who is asking, for a waiting row: the agent whose thread it is, else the thread's name. */
@@ -159,6 +184,20 @@ export class Bridge extends EventEmitter {
     await this.loadWaiting();
     this.emit("change");
     return { up: true };
+  }
+
+  /**
+   * How this Mac reaches its box (link.health). main.js calls this when the Capsule opens, never
+   * while it is hidden, and it asks at most once a minute; vyred's own cache keeps the tailscale
+   * checks to one a minute whoever else asks.
+   */
+  async linkHealth() {
+    if (!this.has("link.health") || !this.catalog.box) { if (this.health) { this.health = null; this.emit("change"); } return; }
+    if (this.healthAt && this.now() - this.healthAt < HEALTH_EVERY) return;
+    this.healthAt = this.now();
+    const r = await this.client.call("link.health").catch(() => null);
+    this.health = r && r.data && r.data.path ? r.data : null;
+    this.emit("change");
   }
 
   /** @param {string} q */
@@ -683,7 +722,7 @@ export class Bridge extends EventEmitter {
     return {
       up: this.up,
       has: { agents: this.has("agents.list"), threads: this.has("threads.send"), gate: this.has("gate.held"), recall: this.has("recall.search"),
-        quick: this.has("threads.start"), stop: this.has("threads.stop") },
+        quick: this.has("threads.start"), stop: this.has("threads.stop"), send: this.has("files.send") && Boolean(this.catalog.box) },
       assistant: ((this.catalog.agents || []).find(a => a.kind === "assistant") || {}).name || null,
       waiting: this.waiting.map(w => ({ ...w, age: route.age(w.at, this.now()) })),
       // What counts toward the Beacon dot and the tray badge: proposed lessons are quiet.
@@ -694,6 +733,7 @@ export class Bridge extends EventEmitter {
         cost: this.reply.cost, ms: this.reply.ms,
         memory: this.reply.memory ? { ...this.reply.memory, memo: memoItems(this.reply.memory) } : null } : null,
       dm: this.chat ? st.dmView(this.chat) : null,
+      link: this.catalog.box ? linkLine(this.health, this.now()) : null,
     };
   }
 }

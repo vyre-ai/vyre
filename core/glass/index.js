@@ -52,6 +52,12 @@ export function duration(ms) {
 
 const FROM = { deck: "the Deck", phone: "phone", glass: "Glass", capsule: "the Capsule" };
 
+/** How long glass.open waits for link.health before opening without it. */
+const HEALTH_WAIT = 1500;
+
+/** A link slow enough that the screen should send fewer frames: relayed, or over 150 ms. */
+export const isSlow = link => Boolean(link && (link.path === "relay" || link.path === "peer-relay" || (typeof link.latencyMs === "number" && link.latencyMs > 150)));
+
 /** @type {{ start(ctx: any): Promise<any> }} */
 export default {
   async start(ctx) {
@@ -154,24 +160,48 @@ export default {
       });
 
     tool("glass.open", "Open a target on a person's screen. For an agent's computer the answer carries a one-use ticket for its screen stream.",
-      obj({ target: str, surface: str }, ["target", "surface"]), async (i, { caller }) => {
+      obj({ target: str, surface: str }, ["target", "surface"]), async (i, { caller, peer }) => {
         const surface = surfaceOf(i.surface, caller);
         const agent = agentOf(i.target);
         /** @type {any} */
         let screen;
-        if (agent) screen = await need("computers.watch", { agent, surface });
+        /** @type {{ path: string, latencyMs: number|null } | null} */
+        let link = null;
+        if (agent) {
+          link = await viewerLink(peer);
+          screen = await need("computers.watch", { agent, surface, ...(link && isSlow(link) ? { slow: true } : {}) });
+        }
         else if (!box) throw new Error("the box has no folders open to Glass; set glass.roots in config");
         const session = crypto.randomUUID();
         db.prepare("INSERT INTO glass_sessions (id, target, surface, caller, opened, closed) VALUES (?, ?, ?, ?, ?, NULL)")
           .run(session, i.target, surface, String(caller), now());
         emit("glass.opened", { session, target: i.target, surface });
         const roots = agent ? [{ name: "home", path: "" }] : /** @type {BoxProvider} */ (box).roots();
-        return { session, ...(screen ? { screen } : {}), roots };
+        return { session, ...(screen ? { screen } : {}), ...(link ? { link } : {}), roots };
       });
 
-    tool("glass.close", "Close a Glass session.", obj({ session: str }, ["session"]), async i => {
+    /**
+     * How the box reaches the viewer's device, for a tailnet viewer: link.health, best effort. A
+     * first check can take seconds (a ping), so the open waits at most HEALTH_WAIT for it; the
+     * check goes on and its cached answer serves the next open. Never fails the open.
+     * @param {any} peer the node the tailnet listener identified, or undefined on the socket
+     */
+    const viewerLink = async peer => {
+      if (!peer || !peer.stableId) return null;
+      let timer;
+      try {
+        const r = await Promise.race([ctx.call("link.health", { node: String(peer.stableId) }),
+          new Promise(resolve => { timer = setTimeout(() => resolve(null), HEALTH_WAIT); timer.unref?.(); })]);
+        const d = r && !r.error ? r.data : null;
+        return d && d.path ? { path: String(d.path), latencyMs: typeof d.latencyMs === "number" ? d.latencyMs : null } : null;
+      } catch { return null; }
+      finally { clearTimeout(timer); }
+    };
+
+    tool("glass.close", "Close a Glass session.", obj({ session: str }, ["session"]), async (i, { caller } = {}) => {
       const row = /** @type {any} */ (db.prepare("SELECT * FROM glass_sessions WHERE id = ? AND closed IS NULL").get(i.session));
-      if (!row) return { closed: false };
+      // A guest closes only the sessions it opened, never the owner's.
+      if (!row || (String(caller).startsWith("tailnet-guest:") && row.caller !== String(caller))) return { closed: false };
       const at = now();
       db.prepare("UPDATE glass_sessions SET closed = ? WHERE id = ?").run(at, i.session);
       emit("glass.closed", { session: row.id, target: row.target, surface: row.surface, seconds: Math.round((at - Number(row.opened)) / 1000) });
@@ -219,7 +249,10 @@ export default {
         emit("glass.released", { target: i.target, surface, held_ms: held, why: "gave back" });
         await noteThread(agent, surface, held, i.note);
         return { released: true, held_ms: held };
-      }, { presence: { summary: i => `Hand the keyboard of ${String(i.target).replace(/^computer:/, "")}'s computer back` } });
+        // No presence: giving the agent its keyboard back only returns what it had, and a person
+        // at the Deck must never be stuck in control. An agent still cannot call it for a person's
+        // surface (surfaceOf), and takeover keeps its passkey.
+      });
 
     /**
      * Tell the agent its keyboard was taken and given back: who, for how long, and the person's

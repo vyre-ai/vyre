@@ -47,9 +47,9 @@ function raw(socketPath, url, body, headers) {
 function child(args, env, input = "") {
   return new Promise(resolve => {
     const p = spawn(process.execPath, args, { env: { ...process.env, ...env, NO_COLOR: "1" }, detached: true, stdio: ["pipe", "pipe", "pipe"] });
-    let out = "";
-    p.stdout.on("data", c => (out += c)); p.stderr.on("data", c => (out += c));
-    p.on("close", code => resolve({ code, out }));
+    let out = "", stdout = "";
+    p.stdout.on("data", c => { out += c; stdout += c; }); p.stderr.on("data", c => (out += c));
+    p.on("close", code => resolve({ code, out, stdout }));
     p.stdin.end(input);
   });
 }
@@ -134,12 +134,12 @@ test("bypass: a Bash tool call that tries it is denied by the floor, with vyred 
   const hook = command => child([HOOK, "rules"], { VYRE_HOME: b.root }, JSON.stringify({ session_id: "s1", cwd: "/tmp", tool_name: "Bash", tool_input: { command } }));
   for (const command of tries) {
     const r = await hook(command);
-    assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, "deny", command);
+    assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "deny", command);
   }
   await b.d.stop();
   for (const command of tries) {
     const r = await hook(command);
-    assert.equal(JSON.parse(r.out).hookSpecificOutput.permissionDecision, "deny", "vyred down: " + command);
+    assert.equal(JSON.parse(r.stdout).hookSpecificOutput.permissionDecision, "deny", "vyred down: " + command);
   }
   assert.equal(b.mail.got.length, 0);
 });
@@ -199,4 +199,27 @@ test("bypass: on the box, Claude's socket cannot enroll a passkey with a code it
   const ok = await d.registry.call("presence.enroll", enroll("me.vyre.run"), "tailnet:me@example.com", { proof: { method: "code", code: await code() } });
   assert.ok(ok.data, JSON.stringify(ok));
   assert.equal((await d.registry.call("presence.keys", {}, "cli")).data.filter(k => k.kind === "passkey").length, 1);
+});
+
+test("bypass: making or changing an agent (its credentials and budget) needs a person", async t => {
+  const b = await box(t);
+  const make = { name: "kit", kind: "agent", auth: { vault: "claude-setup-token", budget_usd: 5 } };
+  // An agent, through its MCP server, is refused whatever it claims.
+  for (const caller of ["mcp", "mcp:agent:juno"]) {
+    const r = await raw(b.socket, "/v1/tools/agents.create", make, { "x-vyre-caller": caller });
+    assert.equal(r.status, 403, caller);
+  }
+  // A person's surface without a proof is refused for want of one.
+  for (const caller of ["cli", "deck", "capsule"]) {
+    const r = await raw(b.socket, "/v1/tools/agents.create", make, { "x-vyre-caller": caller });
+    assert.equal(r.status, 403, caller);
+    assert.equal(r.body.error.code, "presence_required", caller);
+  }
+  assert.deepEqual((await call("agents.list", {}, { root: b.root, caller: "cli" })).data, [], "nothing was made");
+  // With a proof, it is made, and changing its budget asks again.
+  assert.ok((await b.person("agents.create", make)).data, "a person may make one");
+  const raise = { name: "kit", auth: { vault: "claude-setup-token", budget_usd: 500 } };
+  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "cli" })).body.error.code, "presence_required");
+  assert.equal((await raw(b.socket, "/v1/tools/agents.update", raise, { "x-vyre-caller": "mcp:agent:kit" })).status, 403);
+  assert.ok((await b.person("agents.update", raise)).data, "a person may change it");
 });

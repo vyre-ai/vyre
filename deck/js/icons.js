@@ -22,6 +22,7 @@ const P = {
   close: '<path d="M4.5 4.5l7 7M11.5 4.5l-7 7"/>',
   chevron: '<path d="M5 6.5L8 9.5l3-3"/>',
   right: '<path d="M6.5 4.5L10 8l-3.5 3.5"/>',
+  left: '<path d="M9.5 4.5L6 8l3.5 3.5"/>',
   edit: '<path d="M10.5 2.5l3 3L6 13H3v-3z"/>',
   lines: '<path d="M3 4h10M3 8h10M3 12h6"/>',
   mail: '<rect x="2" y="3.5" width="12" height="9" rx="1"/><path d="M2.5 4.5L8 9l5.5-4.5"/>',

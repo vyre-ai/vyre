@@ -199,6 +199,9 @@ function site(folder, version = "0.3.0") {
   fs.mkdirSync(path.join(src, "box"), { recursive: true });
   fs.writeFileSync(path.join(src, "box", "Dockerfile"), "FROM scratch\n");
   fs.writeFileSync(path.join(src, "VERSION"), version + "\n");
+  // As npm pack makes it: every mtime pinned to 1985.
+  const old = new Date("1985-10-26T08:15:00Z");
+  for (const f of [path.join(src, "box", "Dockerfile"), path.join(src, "VERSION"), path.join(src, "box"), src]) fs.utimesSync(f, old, old);
   execFileSync("tar", ["-czf", path.join(folder, "vyre.tgz"), "-C", path.dirname(src), `vyre-${version}`]);
   fs.writeFileSync(path.join(folder, "VERSION"), version + "\n");
   sums(folder);
@@ -218,6 +221,23 @@ function sums(folder) {
 }
 
 /** A temp box: stubs on PATH, the release site, the stack folder and the wrapper's path. */
+/**
+ * /usr/bin:/bin, or, when a test takes a command away (a null stub), a folder of links to both
+ * without it: a machine that has the real one (the test box has Docker) must not find it there.
+ */
+function systemPath(base, without) {
+  if (!without.length) return "/usr/bin:/bin";
+  const dir = path.join(base, "system-bin");
+  fs.mkdirSync(dir);
+  for (const from of ["/usr/bin", "/bin"]) {
+    for (const name of fs.readdirSync(from)) {
+      if (without.includes(name) || fs.existsSync(path.join(dir, name))) continue;
+      try { fs.symlinkSync(path.join(from, name), path.join(dir, name)); } catch {}
+    }
+  }
+  return dir;
+}
+
 function setup(t, extra) {
   const base = tempHome(t);
   const bin = path.join(base, "bin"), log = path.join(base, "calls.log"), www = path.join(base, "site");
@@ -229,7 +249,7 @@ function setup(t, extra) {
   fs.writeFileSync(log, "");
   // /dev/null stands in for /dev/net/tun: a character device on every system.
   // No Docker socket unless a test makes one, so no DOCKER_GID line unless a test asks for it.
-  const env = { PATH: `${bin}:/usr/bin:/bin`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper, VYRE_TUN: "/dev/null",
+  const env = { PATH: `${bin}:${systemPath(base, Object.keys(extra || {}).filter(k => extra[k] === null))}`, HOME: base, VYRE_DIR: dir, VYRE_WRAPPER: wrapper, VYRE_TUN: "/dev/null",
     VYRE_DOCKER_SOCK: path.join(base, "no-docker.sock") };
   const calls = () => fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean);
   return { base, dir, wrapper, site: www, env, calls };
@@ -414,6 +434,8 @@ test("install-box.sh: with no image to pull, it builds from a verified vyre.tgz 
   assert.equal(fs.readFileSync(path.join(r.dir, "src", "VERSION"), "utf8"), "0.3.0\n");
   assert.ok(fs.existsSync(path.join(r.dir, "src", "box", "Dockerfile")));
   assert.ok(!fs.existsSync(path.join(r.dir, "src.new")));
+  // npm pack's 1985 mtimes are replaced, so BuildKit sees every changed file.
+  for (const f of ["VERSION", "box/Dockerfile"]) assert.ok(Date.now() - fs.statSync(path.join(r.dir, "src", f)).mtimeMs < 10 * 60_000, `${f} kept its packed mtime`);
   const env = fs.readFileSync(path.join(r.dir, ".env"), "utf8");
   assert.match(env, /^COMPOSE_FILE=compose\.yml:compose\.build\.yml$/m);
   assert.equal(env.match(/^VYRE_SOURCE=(.*)$/m)?.[1], path.join(r.dir, "src"));
@@ -429,6 +451,7 @@ test("install-box.sh: VYRE_BUILD=tgz builds from source even when the image exis
   assert.equal(dry.status, 0, dry.stderr);
   assert.match(dry.stdout, /^would download and verify: https:\/\/vyre\.run\/box\/vyre\.tgz$/m);
   assert.match(dry.stdout, /--strip-components=1$/m);
+  assert.match(dry.stdout, new RegExp(`^would run: find ${dry.dir}/src\\.new -exec touch '\\{\\}' \\+$`, "m"));
   assert.match(dry.stdout, new RegExp(`^ {2}VYRE_SOURCE=${dry.dir}/src$`, "m"));
   assert.ok(!fs.existsSync(dry.dir));
   assert.ok(!dry.calls.some(c => c.startsWith("curl")));
@@ -478,6 +501,7 @@ test("box/vyre: update refetches a verified vyre.tgz into DIR/src, then builds",
   assert.equal(r.status, 0, r.stderr);
   assert.equal(fs.readFileSync(path.join(box.dir, "src", "VERSION"), "utf8"), "0.3.0\n");
   assert.ok(!fs.existsSync(path.join(box.dir, "src.new")) && !fs.existsSync(path.join(box.dir, "src.old")));
+  assert.ok(Date.now() - fs.statSync(path.join(box.dir, "src", "VERSION")).mtimeMs < 10 * 60_000, "npm pack's 1985 mtime is replaced");
   const calls = box.calls();
   const fetched = calls.findIndex(c => c.startsWith("curl -fsSL https://vyre.run/box/vyre.tgz"));
   const built = calls.indexOf("docker compose build --pull");

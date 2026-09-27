@@ -5,13 +5,22 @@
 // Working: running threads from the switchboard (threads.list). When nothing runs, the most
 // recent sessions from the catalogue stand in, so Now is never an empty page.
 // Learned today: memory.facts last seen today, in Recall gold, each with its source thread.
+//
+// On the box, Working and the recent sessions take in the paired Mac's too, with a machine chip
+// and no Watch (a Mac thread is read here, never driven: js/machine.js). A paired Mac that is away
+// shows as one quiet chip in Working's head, from link.macs, read each time Working redraws.
 
 import { h, put, link, head, empty } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
+import { setupCard } from "../js/phone-setup.js";
+import { assistantCard } from "../js/assistant-setup.js";
+import { pairRequests } from "../js/pair.js";
+import { firstPasskeyCard } from "../js/first-passkey.js";
 import { things, count, clock, today, since, when, startOfToday, base, initial, plural } from "../js/fmt.js";
+import { isMac, machineChip, offlineChip, readMacs } from "../js/machine.js";
 
 /** @param {any} ctx */
 export default async function now(ctx) {
@@ -24,21 +33,37 @@ export default async function now(ctx) {
   const learned = h("section", { class: "now-sec", "aria-labelledby": "learned-h" });
   const recentProjects = h("section", { class: "now-sec", "aria-labelledby": "recent-h" });
 
+  // A Mac asking to pair waits on the person, so it sits above everything else.
+  const pairing = pairRequests();
+  ctx.cleanup(pairing.stop);
+  // No passkey on the box at all: nothing above can be approved until there is one.
+  const firstKey = firstPasskeyCard();
+  ctx.cleanup(firstKey.stop);
+
   put(ctx.root, h("div", { class: "now" },
     h("div", { class: "phone-head" }, h("span", { style: { display: "flex", gap: "8px", alignItems: "center" } }, mark(18), wordmark(20)),
       h("span", { class: "code" }, location.host)),
     h("div", { class: "now-col" },
+      // A phone that is not set up yet: install, notifications, a passkey. null anywhere else.
+      firstKey.el,
+      pairing.el,
+      setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
       needsBox, working, learned, recentProjects)));
 
   // The assistant, present: who it is and what it is doing, the first live thing Now says after
   // onboarding hands off here.
+  // No assistant yet (onboarding's first step was skipped): the card to make one stands in its
+  // place, and the line is drawn from what agents.create hands back.
+  const drawAssistant = (/** @type {any} */ a) => {
+    assistant.classList.toggle("has-card", !a);
+    put(assistant, a ? h("span", null, h("b", null, a.name), " · ", a.doing || "idle")
+      : assistantCard({ onCreated: made => { if (ctx.alive()) drawAssistant(made); } }));
+  };
   (async () => {
     const r = await attempt("agents.list");
     if (!ctx.alive() || r.error) return;
-    const a = (Array.isArray(r.data) ? r.data : []).find(x => x.kind === "assistant");
-    if (!a) return;
-    put(assistant, h("span", null, h("b", null, a.name), " · ", a.doing || "idle"));
+    drawAssistant((Array.isArray(r.data) ? r.data : []).find(x => x.kind === "assistant") || null);
   })();
 
   let running = 0;
@@ -80,9 +105,11 @@ export default async function now(ctx) {
   needs.load();
 
   // Working
+  let macs = /** @type {any[]} */ ([]);
   const drawWorking = async () => {
-    const r = await attempt("threads.list", {});
+    const [r, m] = await Promise.all([attempt("threads.list", {}), readMacs(attempt, macs)]);
     if (!ctx.alive()) return;
+    macs = m;
     if (r.error?.code === "offline") {
       const snap = loadSnapshot();
       const headRow = head("Working");
@@ -98,7 +125,8 @@ export default async function now(ctx) {
     const done = all.filter(t => t.status === "stopped" && (t.last || 0) >= startOfToday());
     running = run.length;
     say();
-    const right = h("span", { class: "lbl" }, r.error ? "" : `${run.length} running · ${done.length} finished today`);
+    const right = h("span", { style: { display: "inline-flex", gap: "10px", alignItems: "center" } }, offlineChip(macs),
+      h("span", { class: "lbl now-count" }, r.error ? "" : `${run.length} running · ${done.length} finished today`));
     const headRow = head("Working", right);
     /** @type {HTMLElement} */ (headRow.firstChild).id = "working-h";
     if (run.length) { put(working, headRow, h("div", { class: "rows" }, run.map(workRow))); return; }
@@ -115,7 +143,8 @@ export default async function now(ctx) {
 
   // Learned today
   const drawLearned = async () => {
-    const [f, cat] = await Promise.all([attempt("memory.facts", { limit: 200 }), attempt("projects.catalog", { limit: 500 })]);
+    // The box's own catalogue: it only maps Memory's sessions to projects, so the Mac is not asked for 500 rows.
+    const [f, cat] = await Promise.all([attempt("memory.facts", { limit: 200 }), attempt("projects.catalog", { limit: 500, machines: "local" })]);
     if (!ctx.alive()) return;
     const projectOf = new Map((cat.data?.sessions || []).map(s => [s.id, s.projects?.[0] || null]));
     const names = new Map((await attempt("projects.list")).data?.projects?.map(p => [p.slug, p.name]) || []);
@@ -139,7 +168,8 @@ export default async function now(ctx) {
   const drawRecent = async () => {
     const r = await attempt("projects.list");
     if (!ctx.alive()) return;
-    const list = [...(r.data?.projects || [])].sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
+    // Each opens its board on this machine, so a Mac's projects (listed under Projects) are left out.
+    const list = [...(r.data?.projects || [])].filter(p => !isMac(p)).sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
     const headRow = head("Recent projects");
     /** @type {HTMLElement} */ (headRow.firstChild).id = "recent-h";
     if (r.error) { put(recentProjects); return; }
@@ -148,7 +178,7 @@ export default async function now(ctx) {
       h("div", { class: "work-row" },
         h("span", { class: "initial", "aria-hidden": "true" }, icon("projects", 14)),
         h("div", { class: "work-main" },
-          h("div", { class: "work-title" }, link(`/projects/${encodeURIComponent(p.slug)}`, { class: "link quiet" }, p.name)),
+          h("div", { class: "work-title" }, link(`/projects/${encodeURIComponent(p.slug)}`, { class: "link quiet ellipsis" }, p.name)),
           h("div", { class: "code ellipsis" }, plural(p.threads, "thread"))),
         h("div", { class: "code faint work-since" }, p.last ? since(p.last) : "")))));
   };
@@ -234,24 +264,27 @@ function compactTitle(n) {
 }
 
 function workRow(t) {
-  const href = t.project ? `/projects/${encodeURIComponent(t.project)}/${encodeURIComponent(t.id)}` : `/threads/${encodeURIComponent(t.id)}`;
+  // A Mac thread's project and agent are the Mac's: it opens read-only by id, and has no Watch here.
+  const mac = isMac(t);
+  const href = t.project && !mac ? `/projects/${encodeURIComponent(t.project)}/${encodeURIComponent(t.id)}` : `/threads/${encodeURIComponent(t.id)}`;
   return h("div", { class: "work-row" },
     h("span", { class: "initial", "aria-hidden": "true" }, initial(t.agent || t.name)),
     h("div", { class: "work-agent" }, t.agent || "you"),
     h("div", { class: "work-main" },
-      h("div", { class: "work-title" }, link(href, { class: "link quiet" }, t.name || t.id), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
+      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, t.name || t.id), machineChip(t), t.projectName ? h("span", { class: "small faint" }, t.projectName) : null),
       h("div", { class: "code ellipsis" }, t.activity || "")),
     h("div", { class: "code faint work-since" }, since(t.started)),
-    link(t.agent ? `/agents/${encodeURIComponent(t.agent)}` : href, { class: "btn btn-ghost btn-sm work-watch" }, icon("watch", 14), "Watch"),
+    mac ? null : link(t.agent ? `/agents/${encodeURIComponent(t.agent)}` : href, { class: "btn btn-ghost btn-sm work-watch" }, icon("watch", 14), "Watch"),
     h("span", { class: "work-chev phone-only", "aria-hidden": "true" }, icon("right")));
 }
 
 function recentRow(s) {
-  const href = s.projects?.[0] ? `/projects/${encodeURIComponent(s.projects[0])}/${encodeURIComponent(s.id)}` : `/threads/${encodeURIComponent(s.id)}`;
+  // A Mac session's projects are the Mac's own slugs, not boards here: it opens by id.
+  const href = s.projects?.[0] && !isMac(s) ? `/projects/${encodeURIComponent(s.projects[0])}/${encodeURIComponent(s.id)}` : `/threads/${encodeURIComponent(s.id)}`;
   return h("div", { class: "work-row" },
     h("span", { class: "initial", "aria-hidden": "true" }, icon("chat", 12)),
     h("div", { class: "work-main" },
-      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, s.label || s.title || s.id)),
+      h("div", { class: "work-title" }, link(href, { class: "link quiet ellipsis" }, s.label || s.title || s.id), machineChip(s)),
       h("div", { class: "code ellipsis" }, base(s.cwd), s.turns ? `  ·  ${plural(s.turns, "turn")}` : "")),
     h("div", { class: "code faint work-since" }, when(s.last)));
 }

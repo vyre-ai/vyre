@@ -13,17 +13,19 @@
 import { h, link } from "../js/dom.js";
 import { icon } from "../js/icons.js";
 import { threadHref, projectHref } from "./lib/routes.js";
+import { groupSessions, title } from "./lib/sessions.js";
+import { machineChip } from "../js/machine.js";
 
 const open = new Set();
 
 /**
- * @param {{ projects: any[], threads: any[], route: { project: string|null, thread: string|null },
+ * @param {{ projects: any[], rows: import("./lib/sessions.js").Row[], route: { project: string|null, thread: string|null },
  *   err: any, onChange: () => void }} p
  */
-export function renderNav({ projects, threads, route, err, onChange }) {
-  const list = h("div", { id: "chat-nav-list" }, groups(projects, threads, route, "", onChange));
+export function renderNav({ projects, rows, route, err, onChange }) {
+  const list = h("div", { id: "chat-nav-list" }, groups(projects, rows, route, "", onChange));
   const q = h("input", { type: "text", placeholder: "Search sessions", "aria-label": "Search sessions",
-    oninput: e => { list.replaceChildren(); for (const k of [groups(projects, threads, route, /** @type {any} */ (e.target).value, onChange)].flat(Infinity)) if (k) list.append(k); } });
+    oninput: e => { list.replaceChildren(); for (const k of [groups(projects, rows, route, /** @type {any} */ (e.target).value, onChange)].flat(Infinity)) if (k) list.append(k); } });
 
   return h("div", { style: { display: "flex", flexDirection: "column", gap: "14px" } },
     h("label", { class: "search", style: { width: "auto" } }, icon("search", 14), q),
@@ -32,36 +34,29 @@ export function renderNav({ projects, threads, route, err, onChange }) {
   );
 }
 
-function groups(projects, threads, route, q, onChange) {
+function groups(projects, rows, route, q, onChange) {
   const needle = q.trim().toLowerCase();
-  const match = t => !needle || String(t.name || t.id).toLowerCase().includes(needle) || String(t.agent || "").toLowerCase().includes(needle);
-  const byProject = new Map(projects.map(p => [p.slug, []]));
-  const noProject = [], byAgent = new Map();
-  for (const t of threads) {
-    if (!match(t)) continue;
-    if (t.project && byProject.has(t.project)) byProject.get(t.project).push(t);
-    else if (!t.project) noProject.push(t);
-    if (t.agent) { if (!byAgent.has(t.agent)) byAgent.set(t.agent, []); byAgent.get(t.agent).push(t); }
-  }
+  const match = t => !needle || title(t).toLowerCase().includes(needle) || String(t.agent || "").toLowerCase().includes(needle);
+  const { byProject, noProject, byAgent } = groupSessions(rows.filter(match), projects);
   const out = [];
   if (projects.length) out.push(h("div", { class: "rail-group" },
-    projects.filter(p => !needle || p.name.toLowerCase().includes(needle) || byProject.get(p.slug).length)
+    projects.filter(p => !needle || p.name.toLowerCase().includes(needle) || byProject.get(p.slug)?.length)
       .map(p => projectGroup(p, byProject.get(p.slug) || [], route, onChange))));
   if (noProject.length) out.push(h("div", { class: "rail-group" }, disclose("no-project", "No project", noProject.length, () =>
-    h("div", { class: "rail-sub" }, noProject.map(t => threadLink(t, route))), false, undefined, onChange)));
+    h("div", { class: "rail-sub" }, noProject.map(t => threadLink(t, route, null))), false, undefined, onChange)));
   if (byAgent.size) out.push(h("div", { class: "rail-group" },
     h("div", { class: "lbl", style: { padding: "0 10px 6px" } }, "Agents"),
-    [...byAgent.entries()].map(([agent, rows]) => disclose("agent:" + agent, agent, rows.length, () =>
-      h("div", { class: "rail-sub" }, rows.map(t => threadLink(t, route))), rows.some(t => t.status === "running"), undefined, onChange))));
-  if (!out.length) out.push(h("div", { class: "empty" }, needle ? "No matches." : "Nothing yet."));
+    [...byAgent.entries()].map(([agent, list]) => disclose("agent:" + agent, agent, list.length, () =>
+      h("div", { class: "rail-sub" }, list.map(t => threadLink(t, route, null))), list.some(t => t.status === "running"), undefined, onChange))));
+  if (!out.length) out.push(h("div", { class: "empty" }, needle ? "No matches." : "No sessions yet."));
   return out;
 }
 
 function projectGroup(p, rows, route, onChange) {
   const isOpen = open.has("p:" + p.slug) || route.project === p.slug;
-  const label = link(projectHref(p.slug), { class: "ellipsis link quiet", style: { flexGrow: "1", color: "inherit" }, onclick: e => e.stopPropagation() }, p.name);
+  const label = [link(projectHref(p.slug), { class: "ellipsis link quiet", style: { flexGrow: "1", color: "inherit" }, onclick: e => e.stopPropagation() }, p.name), machineChip(p)];
   return disclose("p:" + p.slug, label, rows.length, () =>
-    h("div", { class: "rail-sub" }, rows.length ? rows.map(t => threadLink(t, route)) : h("div", { class: "empty", style: { padding: "4px 10px" } }, "No sessions")),
+    h("div", { class: "rail-sub" }, rows.length ? rows.map(t => threadLink(t, route, p.slug)) : h("div", { class: "empty", style: { padding: "4px 10px" } }, "No sessions yet")),
     false, isOpen, onChange);
 }
 
@@ -75,10 +70,11 @@ function disclose(key, label, count, body, live, isOpen, onChange) {
   return h("div", null, btn, open_ ? body() : null);
 }
 
-function threadLink(t, route) {
-  const current = route.thread === t.id;
-  return link(threadHref(t), { class: "rail-a", "aria-current": current ? "page" : null },
+function threadLink(t, route, inProject) {
+  const current = route.thread === t.id && (!inProject || route.project === inProject);
+  return link(threadHref(t, inProject), { class: "rail-a", "aria-current": current ? "page" : null },
     t.status === "running" ? h("span", { class: "agent-dot live" }) : h("span", { class: "agent-dot" }),
-    h("span", { class: "ellipsis", style: { flexGrow: "1" } }, t.name || t.id.slice(0, 8)),
+    h("span", { class: "ellipsis", style: { flexGrow: "1" } }, title(t)),
+    machineChip(t),
     t.asks ? h("span", { class: "count" }, String(t.asks)) : null);
 }

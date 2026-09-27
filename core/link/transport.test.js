@@ -41,7 +41,7 @@ test("transport: VYRE_TAILSCALE_BIN is used for whois and status", async t => {
   fs.writeFileSync(bin, `#!/bin/sh\nif [ "$1" = whois ]; then echo '${whoisJson}'; else echo '${statusJson}'; fi\n`, { mode: 0o755 });
   await withEnv({ VYRE_TAILSCALE_BIN: bin }, async () => {
     assert.equal(tailscaleBin(), bin);
-    assert.deepEqual(await whois("100.64.0.2"), { stableId: "nBOX", node: "box.example.ts.net", login: "owner@example.com", tagged: false });
+    assert.deepEqual(await whois("100.64.0.2"), { stableId: "nBOX", node: "box.example.ts.net", login: "owner@example.com", tagged: false, tags: [], caps: {} });
     assert.deepEqual(await tailnetPeers(), [{ ip: "100.64.0.2", dns: "box.example.ts.net", stableId: "nBOX", host: "box" }]);
   });
 });

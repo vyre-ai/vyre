@@ -2,6 +2,10 @@
 // @ts-check
 // perf-check — holds vyred to docs/SPEC.md section 2, principle 8 ("Light by default"):
 //
+//   scripts/perf-check                     vyred idle (below)
+//   scripts/perf-check --first-run [--real-model] [--seconds N]
+//                                          the first index of a whole history (lib/first-run.mjs)
+//
 //   vyred idle: under 0.5% of one core and under 150 MB resident, with no polling faster than
 //   once a minute when nothing is happening; work is driven by events and file-system notice.
 //
@@ -49,6 +53,13 @@ const BUDGET = { cpuPct: 0.5, rssMB: 150, minTimerMs: 60_000, cpuSustainedPct: 1
 function log(msg) { process.stderr.write(`perf-check: ${msg}\n`); }
 
 async function main() {
+  // --first-run: what the first index of a whole history costs (scripts/lib/first-run.mjs).
+  if (process.argv.includes("--first-run")) {
+    const { firstRun } = await import(path.join(HERE, "lib", "first-run.mjs"));
+    process.exitCode = await firstRun({ repo: REPO, log, real: process.argv.includes("--real-model"),
+      seconds: Number(process.argv[process.argv.indexOf("--seconds") + 1]) || 60 });
+    return;
+  }
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-perf-"));
   const transcriptsDir = path.join(home, "transcripts");
   fs.mkdirSync(transcriptsDir, { recursive: true });
@@ -65,6 +76,10 @@ async function main() {
     await waitForHealth(home, child, STARTUP_TIMEOUT_MS);
     log("vyred is up; waiting for the startup indexing pass to finish");
     await waitForIndexing(home, expected, STARTUP_TIMEOUT_MS);
+    // Memory's curation of the indexed turns runs after indexing and takes seconds on 20,000
+    // turns, longer than the settle below on a loaded host or with more modules starting.
+    // memory.curate waits for that pass and then answers, so idle starts after it, not during.
+    await waitForMemory(home);
     // Let things settle: Memory's post-index curation debounces 250ms behind the last indexed
     // session (core/memory/index.js), so the tail of startup work is still draining for a
     // moment after recall.status says indexing is done. Starting the idle window here would
@@ -160,6 +175,13 @@ async function waitForHealth(home, child, timeoutMs) {
     await sleep(250);
   }
   throw new Error(`vyred did not answer /v1/health within ${timeoutMs}ms`);
+}
+
+/** Wait for Memory's startup curation pass to finish. Without the memory module there is none. */
+async function waitForMemory(home) {
+  const { call } = await daemonClient(home);
+  const r = await call("memory.curate", {});
+  if (r.error && r.error.code !== "no_such_tool") throw new Error(`memory.curate failed: ${r.error.message}`);
 }
 
 /** Poll recall.status until the startup pass has indexed everything and is not running. */

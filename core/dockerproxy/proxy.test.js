@@ -6,10 +6,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { createProxy, duplicateKey, loadPolicy, scrub } from "./proxy.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 
 const PREFIX = "run.vyre.computers";
 const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPrefix: PREFIX, capAdd: [] };
@@ -38,7 +38,7 @@ const stub = {
 
 /** A fake Engine: one computer, one database, one volume per case, two execs. */
 async function engine(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-dproxy-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-dproxy-"));
   const socket = path.join(dir, "d.sock");
   /** @type {Array<{ method: string, url: string, raw: string }>} */
   const seen = [];
@@ -297,7 +297,7 @@ test("dockerproxy: volume inspect answers only for a computer's volume", async t
 });
 
 test("dockerproxy: loadPolicy refuses a module without the policy's exports", async t => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vyre-dproxy-"));
+  const dir = fs.mkdtempSync(path.join(SCRATCH, "vyre-dproxy-"));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, "p.mjs");
   fs.writeFileSync(file, "export const allowCreate = () => ({ ok: true });\n");

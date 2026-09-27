@@ -16,6 +16,7 @@ import { start } from "../daemon/index.js";
 import { request, call } from "../daemon/client.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
 import { writeFakes } from "./mac/fakes.js";
+import { Presence } from "../presence/index.js";
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const mac = process.platform === "darwin";
@@ -237,6 +238,27 @@ test("surfaces: the Deck and the Capsule reveal behind presence; without a proof
   for (const who of ["deck", "capsule"]) assert.equal((await as(who)("vault.reveal", { name: "site-login", confirm: true })).data.value, pw);
   const cleared = await as("mcp")("vault.clipboard.clear");
   assert.deepEqual(cleared.data, { cleared: true }, "clearing takes nothing from anyone, so even Claude may");
+});
+
+test("surfaces: reveal is on in vault.caps, and with vyred's real presence check nothing is shown without a proof", async t => {
+  const root = tempHome(t);
+  const fakes = writeFakes(path.join(root, "fakes"), {});
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "local", vault: { keystore: "file", testHelpers: fakes.helpers } }));
+  // No test verifier: the real Presence, which only a proof satisfies. Touch ID is off, so no
+  // dialog can reach the screen.
+  const d = await start({ root, log: () => {}, presence: deps => new Presence({ ...deps,
+    touchid: { available: async () => false, authenticate: async () => ({ ok: false, reason: "unavailable" }) } }) });
+  t.after(() => d.stop());
+  const as = caller => (tool, input = {}) => call(tool, input, { root, caller });
+  const pw = canary("pw");
+  await d.registry.call("vault.put", { name: "site-login", kind: "login", fields: { username: "alex@example.com", password: pw } }, "module:onboard");
+  assert.equal((await as("deck")("vault.caps")).data.reveal, true);
+  for (const who of ["deck", "capsule"]) {
+    const r = await as(who)("vault.reveal", { name: "site-login", confirm: true });
+    assert.ok(r.error, `${who} got a value with no proof`);
+    assert.ok(!JSON.stringify(r).includes(pw), `${who}: the value is in the refusal`);
+  }
+  for (const who of ["mcp", "mcp:agent:kit", "harness:agent:kit"]) assert.equal((await as(who)("vault.reveal", { name: "site-login" })).error?.code, "denied", who);
 });
 
 test("surfaces: the Capsule's shape: search gives names only, and actions take { id, front }", async t => {

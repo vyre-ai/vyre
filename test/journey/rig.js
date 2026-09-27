@@ -87,6 +87,9 @@ function makeCert(dir) {
  * @param {{ mac?: "running"|"signed-out" }} [o]
  */
 export async function makeRig(o = {}) {
+  // Bare in $TMPDIR, not under SCRATCH: the ten bytes SCRATCH adds push the Mac's vyred socket
+  // past the ~100-byte limit onto the hashed /tmp fallback, and the journey stops connecting.
+  // close() removes it, and the tmp-guard still catches a vyre-journey-* left behind.
   const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "vyre-journey-")));
   const d = (...p) => path.join(root, ...p);
   for (const dir of ["mac/.vyre", "srv/host", "srv/bin", "srv/home/.vyre", "fakes", "state/forwards", "mirror"]) fs.mkdirSync(d(dir), { recursive: true });
@@ -174,6 +177,18 @@ export async function makeRig(o = {}) {
     macConfig: () => readJson(d("mac", ".vyre", "config.json")),
     boxConfig: () => readJson(d("srv", "home", ".vyre", "config.json")),
     macTailscale: mode => fs.writeFileSync(rig.state.mac, JSON.stringify({ mode })),
+    /**
+     * The person made their first passkey at the box's address (WebAuthn, which no harness can
+     * do): the row the box's presence.enroll would write, in the box's own store.
+     */
+    boxPasskey: async () => {
+      const { DatabaseSync } = await import("node:sqlite");
+      const db = new DatabaseSync(d("srv", "home", ".vyre", "vyre.db"));
+      try {
+        db.prepare("INSERT INTO presence_keys (id, kind, name, public_key, alg, rp_id, created) VALUES (?, 'passkey', 'alex phone', ?, -7, ?, ?)")
+          .run(crypto.randomBytes(16).toString("base64url"), crypto.randomBytes(32).toString("base64url"), TS_NAME, Date.now());
+      } finally { db.close(); }
+    },
     /** The person finished Tailscale's sign-in in the browser. */
     boxSignedIn: () => fs.writeFileSync(rig.state.box, JSON.stringify(BOX_RUNNING)),
 
@@ -221,4 +236,24 @@ export async function browser(url) {
     return j.data;
   }
   return { status: r.status, location, session, tool };
+}
+
+/**
+ * The box's own terminal, `vyre call <tool>` through the host wrapper, for what the page does
+ * once the address serves. The page moves to https://<ts.net name> and the loopback link stops
+ * working: box add takes the tunnel down as soon as it sees the address step done. The harness
+ * cannot follow the page there, since the box answers only its owner at the address and a
+ * caller on 127.0.0.1 is not a tailnet address (the same gap as linking, below), so the rest of
+ * the onboarding runs from the box's terminal, which may call every onboarding tool.
+ * @param {{ server: (cmd: string, o?: any) => Running, env: { server: Record<string, string> } }} rig
+ */
+export function terminal(rig) {
+  const wrapper = `env VYRE_DIR=${rig.env.server.VYRE_DIR} ${rig.env.server.VYRE_WRAPPER}`;
+  /** @returns {Promise<any>} the tool's data; throws with its error */
+  async function tool(name, input = {}) {
+    const r = await rig.server(`${wrapper} call ${name} '${JSON.stringify(input)}'`, { timeout: 30_000 }).done;
+    if (r.code !== 0) throw new Error(`${name}: ${r.out.trim()}`);
+    return JSON.parse(r.out.slice(r.out.search(/^[{[]/m)));
+  }
+  return { tool };
 }

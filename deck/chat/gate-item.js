@@ -4,15 +4,19 @@
 // rule forward). Shape matched to the Capsule's (capsule teammate, 2026-09-27): a HELD FOR YOU
 // badge, a To/Subject grid, a hairline, the body — everything contenteditable plaintext-only with
 // a Signal underline on focus, SEND primary with a keycap, DISCARD a ghost button, no Edit button.
-// Editing debounces into gate.revise; Send calls gate.approve; Discard calls gate.reject. Once
-// resolved (sent/rejected/failed-and-retried), the card loses every control and just says what
-// happened.
+// Edits stay on the card until Send, which passes them as gate.approve's `edited` (only the fields
+// that changed). They are not saved one keystroke at a time through gate.revise: gate.revise,
+// gate.approve and gate.reject are all on the floor's human-only list (core/presence/index.js,
+// ADR 0004), so each would ask for a passkey. Send and Discard carry that proof. Once resolved
+// (sent/rejected), the card loses every control and just says what happened; a failed send or a
+// refused proof says why and leaves the buttons.
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when } from "../js/fmt.js";
 import { renderDiff } from "./lib/diff.js";
+import { problemLine } from "./presence.js";
 
 // "to" and "subject" get the grid + mono treatment (email-shaped); anything else short goes in
 // the same grid in field order; "body" (or the one remaining long field) sits under the hairline.
@@ -24,8 +28,7 @@ const GRID_ORDER = ["to", "cc", "bcc", "subject", "url", "method"];
  */
 export function gateCard(held) {
   const el = h("div", { class: "gate-card" });
-  let timer = null;
-  const state = { item: null, dirty: {}, busy: false };
+  const state = { item: /** @type {any} */ (null), dirty: /** @type {Record<string, string>} */ ({}), busy: false, problem: /** @type {any} */ (null) };
 
   async function load() {
     const r = await attempt("gate.get", { id: held.id });
@@ -41,29 +44,36 @@ export function gateCard(held) {
     return content[key] ?? "";
   }
 
-  function edited(key, value) {
-    state.dirty[key] = value;
-    clearTimeout(timer);
-    timer = setTimeout(async () => {
-      if (!Object.keys(state.dirty).length) return;
-      const changes = { ...state.dirty };
-      const r = await attempt("gate.revise", { id: held.id, edited: changes });
-      if (!r.error) { state.item = r.data; state.dirty = {}; }
-    }, 500);
+  function edited(key, value) { state.dirty[key] = value; }
+
+  /** The changed fields as gate.approve takes them: `to` as a list, as js/editable.js sends it. */
+  function changes() {
+    const out = /** @type {Record<string, any>} */ ({ ...state.dirty });
+    if ("to" in out) out.to = String(out.to).split(",").map(s => s.trim()).filter(Boolean);
+    return Object.keys(out).length ? out : undefined;
   }
 
   async function send() {
-    state.busy = true; draw();
-    const changes = Object.keys(state.dirty).length ? { ...state.dirty } : undefined;
-    const r = await attempt("gate.approve", changes ? { id: held.id, edited: changes } : { id: held.id });
+    if (state.busy) return;
+    state.busy = true; state.problem = null; draw();
+    const edits = changes();
+    const r = await attempt("gate.approve", edits ? { id: held.id, edited: edits } : { id: held.id }, { presence: true });
     state.busy = false;
-    if (r.error) { state.item = { ...state.item, error: r.error.message }; draw(); return; }
-    state.item = r.data.result || state.item; await load();
+    // Refused (no proof, a cancelled passkey, a bad edit): nothing was sent, the edits stay.
+    if (r.error) { state.problem = r.error; draw(); return; }
+    // Approved but the sender failed: gate.js keeps it held with the edit as `final`, so reload it.
+    state.dirty = {};
+    await load();
+    // gate.get carries the sender's error, which draw() shows; say it here only if it did not.
+    if (r.data?.state === "failed" && state.item && !state.item.error) { state.problem = { message: "Not sent: " + (r.data.error || "the sender failed") + ". It is still held; Send tries again." }; draw(); }
   }
 
   async function discard() {
-    state.busy = true; draw();
-    await attempt("gate.reject", { id: held.id });
+    if (state.busy) return;
+    state.busy = true; state.problem = null; draw();
+    const r = await attempt("gate.reject", { id: held.id }, { presence: true });
+    state.busy = false;
+    if (r.error) { state.problem = r.error; draw(); return; }
     await load();
   }
 
@@ -96,6 +106,7 @@ export function gateCard(held) {
         h("button", { class: "btn btn-ghost", disabled: state.busy, onclick: discard }, "Discard"),
         state.busy ? h("span", { class: "code" }, "…") : null,
       ),
+      state.problem ? problemLine(state.problem) : null,
     );
   }
 

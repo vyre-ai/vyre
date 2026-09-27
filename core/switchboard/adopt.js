@@ -70,14 +70,27 @@ export function sessionInfo(file) {
   return { cwd, name };
 }
 
-/** Running processes whose arguments name this session, other than ours. @param {string} id @param {number[]} ours */
+/**
+ * Does this command line open the session: a claude given it with --resume, -r or --session-id?
+ * Naming the id is not enough. `vyre threads watch <id>` names it and only reads, and under a
+ * folder with "claude" in its path it was taken for a second writer, so every resume after a
+ * stop was refused for as long as the watch ran (found by scripts/stress-drive).
+ * @param {string} cmd @param {string} id
+ */
+export function opensSession(cmd, id) {
+  if (!/claude/i.test(cmd)) return false;
+  const esc = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:^|\\s)(?:--resume|-r|--session-id)(?:=|\\s+)${esc}(?:\\s|$)`).test(cmd);
+}
+
+/** Running claude processes that have this session open, other than ours. @param {string} id @param {number[]} ours */
 export function claudesNaming(id, ours) {
   let out = "";
   try { out = execFileSync("ps", ["-ax", "-o", "pid=,command="], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 }); } catch { return []; }
   const pids = [];
   for (const line of out.split("\n")) {
     const m = /^\s*(\d+)\s+(.*)$/.exec(line);
-    if (!m || !m[2].includes(id) || !/claude/.test(m[2]) || /\bps\b -ax/.test(m[2])) continue;
+    if (!m || !opensSession(m[2], id) || /\bps\b -ax/.test(m[2])) continue;
     const pid = Number(m[1]);
     if (pid !== process.pid && !ours.includes(pid)) pids.push(pid);
   }

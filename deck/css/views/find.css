@@ -1,0 +1,103 @@
+/* Find: the phone's Capsule (deck/views/find.js). Phone first at 390 and 430 px; on desktop a
+   centred column of 640px. Every colour is a variable, so dark and paper both follow. Gold is
+   memory's alone: the From memory section, nothing else. */
+
+.fd { width: 640px; max-width: 100%; margin: 0 auto; min-height: 100%; display: flex; flex-direction: column; }
+
+/* The box, sticky under the safe area. */
+.fd-bar { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: 12px 16px 10px; }
+.fd-form { position: relative; margin: 0; }
+.fd-glass { position: absolute; left: 14px; top: 0; height: 48px; display: flex; align-items: center; color: var(--label); pointer-events: none; }
+.fd-in { display: block; width: 100%; height: 48px; padding: 0 14px 0 42px; border: 1px solid var(--rule); border-radius: var(--r-3);
+  background: var(--panel); color: var(--text); font-size: 17px; line-height: 24px; box-shadow: var(--light-top);
+  -webkit-appearance: none; appearance: none; }
+.fd-in::placeholder { color: var(--label); }
+.fd-in:focus-visible { outline: 2px solid var(--focus); outline-offset: -1px; }
+.fd-in::-webkit-search-decoration { -webkit-appearance: none; }
+
+/* Sections */
+.fd-list { display: flex; flex-direction: column; gap: 20px; padding: 8px 16px 24px; min-width: 0; }
+.fd-sec { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fd-sec > .lbl { padding: 4px 0; }
+.fd-rows { display: flex; flex-direction: column; min-width: 0; }
+
+.fd-row { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: 12px; width: 100%; min-height: 56px;
+  padding: 8px 10px; border: none; border-radius: var(--r-2); background: transparent; color: var(--text); text-align: left;
+  text-decoration: none; cursor: pointer; }
+.fd-row:hover { background: var(--hover); }
+.fd-row.hi { background: var(--signal-wash); box-shadow: inset 0 0 0 1px var(--focus); }
+.fd-ic { display: flex; align-items: center; justify-content: center; color: var(--label); }
+.fd-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fd-right { display: flex; align-items: center; }
+.fd-title, .fd-sub, .fd-snip { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fd-title { font-size: 15px; line-height: 20px; font-weight: 500; }
+.fd-sub { font-family: var(--mono); font-size: 11px; line-height: 16px; color: var(--label); }
+.fd-snip { font-size: 13px; line-height: 18px; color: var(--text-2); }
+.fd-m { background: var(--signal-wash); color: var(--text); border-radius: 2px; padding: 0 1px; }
+.fd-tag { font-family: var(--mono); font-size: 10px; line-height: 14px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--label);
+  border: 1px solid var(--rule); border-radius: var(--r-1); padding: 1px 6px; }
+
+.fd-ask .fd-ic { color: var(--text); }
+.fd-q { color: var(--text-2); font-weight: 400; }
+
+.fd-more { align-self: flex-start; min-height: 44px; padding: 0 10px; border: none; background: transparent; color: var(--text-2);
+  font-family: var(--mono); font-size: 12px; line-height: 16px; cursor: pointer; border-radius: var(--r-2); }
+.fd-more:hover { background: var(--hover); color: var(--text); }
+.fd-note { padding: 2px 10px; font-size: 12px; line-height: 16px; color: var(--label); overflow-wrap: anywhere; }
+.fd-lone { display: flex; flex-direction: column; gap: 4px; padding: 0 10px; }
+.fd-list > .empty { padding: 0 10px; font-size: 12px; line-height: 16px; color: var(--label); }
+.fd-hint { padding: 4px 10px 0; font-size: 12px; line-height: 16px; color: var(--label); }
+
+/* From memory: the gold wash, like memory facts elsewhere. */
+.fd-mem.recalled { padding: 10px 6px 6px; }
+.fd-mem > .lbl { padding: 0 10px 4px; }
+.fd-recall:hover { background: var(--recall-wash); }
+.fd-recall.hi { background: var(--recall-wash); box-shadow: inset 0 0 0 1px var(--recall-ink); }
+.fd-fact { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; font-size: 14px; line-height: 20px;
+  overflow-wrap: anywhere; }
+.fd-src { color: var(--recall-ink); }
+
+/* The answer, under the Ask row. */
+.fd-answer { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding: 12px 10px 4px; border-top: 1px solid var(--rule); }
+.fd-aq { color: var(--text-2); overflow-wrap: anywhere; }
+.fd-atext { font-size: 16px; line-height: 24px; white-space: pre-wrap; overflow-wrap: anywhere; text-wrap: pretty; }
+.fd-open { align-self: flex-start; height: 44px; text-decoration: none; }
+
+/* Empty box: the agents as chips. */
+.fd-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.fd-chip { display: inline-flex; align-items: center; height: 44px; padding: 0 14px; max-width: 100%; border: 1px solid var(--rule);
+  border-radius: var(--r-2); background: var(--panel); color: var(--text); font-family: var(--mono); font-size: 13px; line-height: 18px;
+  text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fd-chip:hover { background: var(--hover); }
+.fd-chip.hi { background: var(--signal-wash); border-color: var(--focus); }
+
+/* A file, in a sheet: from the bottom on the phone, centred on desktop. */
+.fd-back { position: fixed; inset: 0; z-index: 70; display: flex; align-items: center; justify-content: center; padding: 16px;
+  background: color-mix(in srgb, var(--graphite) 55%, transparent); }
+.fd-sheet { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 560px; max-height: calc(100dvh - 48px); overflow: auto;
+  padding: 16px 20px 20px; background: var(--panel); color: var(--text); border: 1px solid var(--rule-strong); border-radius: var(--r-3);
+  box-shadow: var(--light-top); outline: none; }
+.fd-grip { display: none; }
+.fd-shead { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+.fd-stitle { font-size: 17px; line-height: 24px; font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fd-x { width: 44px; height: 44px; flex-shrink: 0; }
+.fd-smeta { overflow-wrap: anywhere; }
+.fd-sbody { min-width: 0; }
+.fd-pre { margin: 0; padding: 10px 12px; max-height: 55dvh; overflow: auto; border: 1px solid var(--rule); border-radius: var(--r-2);
+  background: var(--code-bg); font-family: var(--mono); font-size: 12px; line-height: 18px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.fd-img { display: block; max-width: 100%; max-height: 60dvh; margin: 0 auto; border-radius: var(--r-2); }
+
+@media (max-width: 760px) {
+  .fd-back { align-items: flex-end; padding: 0; }
+  .fd-sheet { max-width: none; max-height: 85dvh; border-radius: var(--r-4) var(--r-4) 0 0; border-bottom: none;
+    padding: 8px 16px calc(20px + env(safe-area-inset-bottom)); }
+  .fd-grip { display: block; width: 36px; height: 4px; margin: 0 auto 6px; border-radius: 2px; background: var(--rule-strong); }
+}
+@media (min-width: 761px) {
+  .fd-bar { padding-top: 32px; }
+}
+
+/* What Enter will do, under the box (js/commands.js), and the session a command goes to. */
+.fd-plan:empty { display: none; }
+.fd-plan { padding: 8px 2px 0; color: var(--text-2); }
+.fd-chosen .fd-ic { color: var(--focus); }

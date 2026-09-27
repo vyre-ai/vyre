@@ -92,8 +92,8 @@ const OWN_BUNDLE = "run.vyre.capsule";
 let providersAt = 0;
 const launcher = new Launcher({ apps: new Apps(), helper, clips, providers,
   frecency: new Frecency(path.join(HOME, "capsule", "frecency.json")), copy: t => clipboard.writeText(t),
-  // Files on the box come through this Mac's vyred (files.search, files.fetch), only while shown.
-  vyred: (tool, input) => vyred.call(tool, input), visible: () => Boolean(win && !win.isDestroyed() && win.isVisible()) });
+  // Files on the box come through this Mac's vyred (files.search, files.fetch, and files.drive.local for a mounted share), only while shown.
+  vyred: (tool, input, opts) => vyred.call(tool, input, opts), visible: () => Boolean(win && !win.isDestroyed() && win.isVisible()) });
 /** Icons, bounded, in the Capsule's own app-data folder ("-2": the helper once drew them a quarter size). Asked for only while the page is showing results. */
 let icons = /** @type {Icons|null} */ (null);
 const iconsNow = () => (icons ||= new Icons({ dir: path.join(app.getPath("userData"), "icons-2"), helper }));
@@ -201,6 +201,8 @@ async function show(via, at = Date.now(), from = undefined) {
   if (w.webContents.isLoading()) w.webContents.once("did-finish-load", opened); else opened();
   await refresh;
   push();
+  // How the box is reached, for the empty Capsule: only on open, at most once a minute.
+  bridge.linkHealth().catch(() => {});
   say({ shown: w.getBounds(), via, focused: w.isFocused() });
 }
 
@@ -429,6 +431,8 @@ ipcMain.handle("capsule:act", async (_e, r, key) => {
 ipcMain.handle("capsule:dm-open", (_e, agent) => bridge.openDm(String(agent || "")));
 ipcMain.handle("capsule:dm-close", () => bridge.closeDm());
 ipcMain.handle("capsule:copy", (_e, text) => { clipboard.writeText(String(text || "")); return { ok: true }; });
+// Send a file on this Mac to the box with Taildrop. The window stays, so the note says how it went.
+ipcMain.handle("capsule:send-file", (_e, r) => launcher.send(r));
 ipcMain.handle("capsule:pick", async (_e, r, query) => {
   const out = await launcher.pick(r, String(query || ""));
   if (out.close) hide();

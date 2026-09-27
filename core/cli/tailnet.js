@@ -15,9 +15,9 @@ const CANDIDATES = ["tailscale", "/usr/local/bin/tailscale", "/opt/homebrew/bin/
 export const DOWNLOAD = "https://tailscale.com/download";
 
 /** Run `tailscale status --json` with one binary; 127 when it is not there. */
-function statusWith(bin, env) {
+function statusWith(bin, env, timeout = 10_000) {
   return new Promise(resolve => {
-    execFile(bin, ["status", "--json"], { timeout: 10_000, maxBuffer: 16 * 1024 * 1024, env }, (e, out, err) => {
+    execFile(bin, ["status", "--json"], { timeout, maxBuffer: 16 * 1024 * 1024, env }, (e, out, err) => {
       const code = !e ? 0 : /** @type {any} */ (e).code === "ENOENT" ? 127 : Number(/** @type {any} */ (e).code) || 1;
       resolve({ code, out: String(out), err: String(err) });
     });
@@ -25,16 +25,19 @@ function statusWith(bin, env) {
 }
 
 /**
- * @typedef {{ dnsName: string, hostName: string, ips: string[], online: boolean, userId: string, tagged: boolean, os: string }} Peer
+ * ssh: the peer runs Tailscale SSH (its status carries sshHostKeys), so `ssh user@<its MagicDNS name>`
+ * reaches it with the tailnet's own identity instead of a key or password.
+ * @typedef {{ dnsName: string, hostName: string, ips: string[], online: boolean, userId: string, tagged: boolean, os: string, ssh: boolean }} Peer
  * @typedef {{ installed: boolean, running: boolean, backend: string|null, login: string|null, userId: string|null,
- *   self: { dnsName: string, hostName: string, ips: string[] } | null, peers: Peer[], why: string|null }} Tailnet
+ *   self: { dnsName: string, hostName: string, ips: string[] } | null, peers: Peer[], why: string|null,
+ *   magicDNS?: boolean|null, certDomains?: string[] }} Tailnet
  */
 
 /** @returns {Promise<Tailnet>} */
-export async function status(env = process.env) {
+export async function status(env = process.env, { timeout = 10_000 } = {}) {
   const bins = env.VYRE_TAILSCALE_BIN ? [env.VYRE_TAILSCALE_BIN] : [...CANDIDATES, ...(fs.existsSync(MAC_APP) ? [MAC_APP] : [])];
   for (const bin of bins) {
-    const r = await statusWith(bin, bin === MAC_APP ? { ...env, TAILSCALE_BE_CLI: "1" } : env);
+    const r = await statusWith(bin, bin === MAC_APP ? { ...env, TAILSCALE_BE_CLI: "1" } : env, timeout);
     if (r.code === 127) continue;
     try { return parse(JSON.parse(r.out)); }
     catch { return { ...none(true), why: (r.err || r.out).trim().split("\n")[0] || "tailscale status failed" }; }
@@ -58,6 +61,7 @@ export function parse(s) {
   const peers = Object.values(s.Peer || {}).map(p => ({
     dnsName: trim(p.DNSName), hostName: String(p.HostName || ""), ips: p.TailscaleIPs || [], online: Boolean(p.Online),
     userId: String(p.UserID ?? ""), tagged: Boolean(p.Tags && p.Tags.length), os: String(p.OS || ""),
+    ssh: Array.isArray(p.sshHostKeys) && p.sshHostKeys.length > 0,
   }));
   return {
     installed: true, running, backend: s.BackendState || null,
@@ -65,6 +69,9 @@ export function parse(s) {
     userId,
     self: self ? { dnsName: trim(self.DNSName), hostName: String(self.HostName || ""), ips: self.TailscaleIPs || [] } : null,
     peers,
+    // MagicDNS names and HTTPS certificates: a box's https://<name>.<tailnet>.ts.net needs both.
+    magicDNS: s.CurrentTailnet && typeof s.CurrentTailnet.MagicDNSEnabled === "boolean" ? s.CurrentTailnet.MagicDNSEnabled : null,
+    certDomains: (s.CertDomains || []).map(String),
     why: running ? null : s.BackendState === "NeedsLogin" ? "Tailscale is signed out: open Tailscale and sign in" : `Tailscale is ${s.BackendState || "not running"}`,
   };
 }
