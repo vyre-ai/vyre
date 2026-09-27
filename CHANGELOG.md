@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### threads.answer's Mac forward fails closed on an unreadable or unknown ask (e2e review of 0f2a8752)
+
+- core/link/mac.js `answer()`: if the Mac cannot read its own threads.asks, or the ask is not in
+  it, it refuses with "could not read this ask" rather than let `gatedAsk(null)` call it ungated
+  and accept an assertion with no fresh proof for what may be a gated ask (MEDIUM).
+- core/switchboard/index.js `gatedOnMac`: an ask the box does not know about (after a restart, or
+  a name it never saw) is treated as gated, not ungated, so the person is asked for a fresh proof
+  instead of getting a plain "refused" (LOW 1).
+- docs/adr/0021: a known limit noted, not fixed — seen nonces are memory-only, so a Mac restart
+  inside a used assertion's 60 s window could let a captured one replay once, for that ask and
+  answer alone (LOW 2).
+- test/federation-answer.test.js: two new tests, and the first test's "an ask the box never saw"
+  section updated for the new fail-closed error text and the LOW 1 gating.
+
 #### files.deliver: the box sends a file to a paired Mac with Taildrop (ADR 0021, "Mac and box as one")
 
 - core/files/drop.js: the reverse of files.send. The box names one paired Mac (mac: its id or

@@ -1884,8 +1884,14 @@ export default {
       }));
       offs.push(ctx.events.on("ask.answered", e => { const p = e.payload || {}; if (p.source === "mac") macAsks.delete(p.ask); }));
     }
-    /** Would this answer go to a Mac, and approve a gated ask there? An ask the box never saw, named by `machine`, counts as gated. */
-    const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : Boolean(i.machine));
+    /**
+     * Would this answer go to a Mac, and approve a gated ask there? An ask the box never saw (the
+     * box restarted, or it raced ask.raised) counts as gated too, not only one named by `machine`:
+     * macAsks is memory-only, so "unknown" must fail toward asking for a fresh proof, not toward
+     * skipping it (e2e, review of 0f2a8752, LOW 1). The person sees a proof prompt they didn't
+     * strictly need rather than an ungated pass on an ask that turns out to be gated.
+     */
+    const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : true);
     /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
     const ownerDevice = caller => /^tailnet:(?!agent:)./.test(String(caller)) || /^device:[a-z2-7]{16}$/i.test(String(caller));
 

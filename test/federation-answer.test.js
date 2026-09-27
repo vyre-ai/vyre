@@ -96,17 +96,21 @@ test("federation answer: a Mac's ask reaches the box labelled with the Mac, and 
   // An answer follows nothing: only a send does.
   assert.equal((await w.macd.registry.call("link.status", {}, "cli")).data.following, 0);
 
-  // An ask the Mac no longer has is its last word, passed through, not retried. An ask the box
-  // never saw counts as gated (it could approve anything), so it takes a fresh proof.
+  // An ask the box never saw counts as gated (it could approve anything, and after a restart the
+  // box would not know either way, e2e review of 0f2a8752, LOW 1), so it takes a fresh proof.
   const unproved = await w.boxCall("threads.answer", { ask: "zzzzzzzzzzzzzzzzzz", decision: "deny", machine: "alex-mac" }, "deck");
   assert.equal(unproved.error.code, "presence_required");
+  // With a fresh proof it is forwarded, but the Mac does not have it either: it fails closed
+  // rather than guess whether it was gated (e2e review of 0f2a8752, MEDIUM), so the Mac's own
+  // "no ask zzzz" from the switchboard is never reached.
   const gone = await w.boxCall("threads.answer", { ask: "zzzzzzzzzzzzzzzzzz", decision: "deny", machine: "alex-mac" }, "deck", { presence: { method: "passkey", keyId: null } });
-  assert.match(gone.error.message, /^no ask zzzz/);
-  assert.equal(answersRun(w).length, 2);
-  // An ask no Mac raised, and no machine named: the box answers as before, and no Mac is asked.
+  assert.match(gone.error.message, /could not read this ask/);
+  assert.equal(answersRun(w).length, 1);
+  // An ask no Mac raised and no machine named is unknown too, so it is gated the same way: a
+  // fresh proof is needed before the box even tries a Mac.
   const none = await w.boxCall("threads.answer", { ask: "yyyyyyyyyyyyyyyyyy", decision: "deny" }, "deck");
-  assert.match(none.error.message, /^no ask yyyy/);
-  assert.equal(answersRun(w).length, 2);
+  assert.equal(none.error.code, "presence_required");
+  assert.equal(answersRun(w).length, 1);
 });
 
 test("federation answer: the owner's phone answers only inside a person session, the device and the person in what the box signs", async t => {
@@ -198,6 +202,37 @@ test("federation answer: an ask that approves a floor tool needs a fresh proof o
   assert.ok(!ok.error, JSON.stringify(ok.error));
   assert.deepEqual([ok.data.answered, ok.data.machine], [true, "alex-mac"]);
   assert.equal(w.linked.at(-1).by.presence, "passkey");
+});
+
+test("federation answer: the Mac fails closed when it cannot read its own ask, even for a plain ask (e2e review of 0f2a8752, MEDIUM)", async t => {
+  const w = await world(t);
+  const { ask } = await macAsk(w, "ls"); // plain, ungated: the box asks for no proof at all
+  const real = w.macd.registry.call.bind(w.macd.registry);
+  // threads.asks fails on the Mac: gatedAsk(null) would say "ungated", so without this fix the
+  // assertion (carrying no fresh proof, since the box never asked for one) would be accepted.
+  w.macd.registry.call = (tool, input, caller, meta) => tool === "threads.asks"
+    ? Promise.resolve({ error: { code: "failed", message: "boom" } }) : real(tool, input, caller, meta);
+  const r = await w.boxCall("threads.answer", { ask, decision: "allow" }, "deck");
+  assert.equal(r.error?.code, "denied");
+  assert.match(r.error?.message || "", /could not read this ask/);
+  assert.equal(answersRun(w).length, 0, "threads.answer never ran on the Mac");
+  w.macd.registry.call = real;
+
+  // Not found in threads.asks either (the box names a machine for an ask it never saw): the box
+  // itself treats an unknown ask as gated (LOW 1, below), so it asks for a fresh proof first.
+  const unproved = await w.boxCall("threads.answer", { ask: "no-such-ask", decision: "allow", machine: "alex-mac" }, "deck");
+  assert.equal(unproved.error?.code, "presence_required");
+  const s = await w.boxCall("threads.answer", { ask: "no-such-ask", decision: "allow", machine: "alex-mac" }, "deck", { presence: { method: "passkey", keyId: null } });
+  assert.equal(s.error?.code, "denied");
+  assert.match(s.error?.message || "", /could not read this ask/);
+});
+
+test("federation answer: an unknown ask on the box (no machine named) is treated as gated, not ungated (e2e review of 0f2a8752, LOW 1)", async t => {
+  const w = await world(t);
+  // The box never saw this ask raised (as after a restart: macAsks is memory-only), and no
+  // `machine` names where it is: gatedOnMac must say "gated" rather than let it through free.
+  const def = w.box.registry.tools.get("threads.answer");
+  assert.equal(Presence.prototype.required.call({}, "threads.answer", def, { ask: "unseen-ask", decision: "allow" }), true);
 });
 
 test("federation answer: threads.asks on the box lists the Macs' open asks for the person only, gated ones asking a fresh proof", async t => {

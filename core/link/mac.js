@@ -287,9 +287,14 @@ export function macSide(ctx, seam = {}) {
   async function answer(q) {
     const input = q.input && typeof q.input === "object" ? q.input : {};
     // The Mac's own record of the ask says whether it is gated, not the box: an ask that approves
-    // a floor tool needs a fresh proof of presence on the box (federate.js gatedAsk).
+    // a floor tool needs a fresh proof of presence on the box (federate.js gatedAsk). Fail closed:
+    // if threads.asks cannot be read, or this ask is not in it, gatedAsk(null) would say "ungated"
+    // and an assertion with no fresh proof would be accepted for what may be a gated ask (e2e,
+    // review of 0f2a8752). Refuse instead of guessing; the box can ask again once it can read it.
     const open = await ctx.call("threads.asks", {});
-    const mine = !open.error && Array.isArray(open.data) ? open.data.find(a => a && a.id === input.ask) : null;
+    if (open.error || !Array.isArray(open.data)) return { error: { code: "denied", message: "the box's answer was refused: could not read this ask" } };
+    const mine = open.data.find(a => a && a.id === input.ask);
+    if (!mine) return { error: { code: "denied", message: "the box's answer was refused: could not read this ask" } };
     const c = checkAnswer({ assertion: q.assertion, tool: q.tool, input, pinned: saved && saved.box.assertKey, self: saved && saved.self, nonces,
       now: seam.now ? seam.now() : Date.now(), gated: gatedAsk(mine) });
     if (!c.ok) return { error: { code: "denied", message: `the box's answer was refused: ${c.reason}` } };

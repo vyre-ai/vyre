@@ -243,6 +243,20 @@ box.
 
 ## Doing
 
+28 Sep 2026: e2e reviewed 0f2a8752 and signed off on the design, with 1 MEDIUM and 2 LOW. Fixed:
+core/link/mac.js's `answer()` fails closed ("could not read this ask") when threads.asks errors
+or does not have the ask, instead of `gatedAsk(null)` calling it ungated (MEDIUM); the box's
+`gatedOnMac` treats an unknown ask as gated by default, not ungated (LOW 1). Noted in ADR 0021
+rather than fixed: seen nonces are memory-only, so a captured assertion could replay once across a
+Mac restart inside its 60 s window (LOW 2, small impact — only the paired box mints assertions,
+bound to one Mac, ask and exact answer). test/federation-answer.test.js: 2 new tests, plus the
+first test's tail updated (an ask the box never saw now needs a fresh proof before it is even
+forwarded, and the Mac's fail-closed message replaces the switchboard's "no ask" for one it can't
+find). CHANGELOG has the detail. Tests on the test box, nice -n 15, load under 2: 9/9 on
+federation-answer, 145/145 on link + link-federation + federation-reads + federation-send +
+federation-answer + link/transport + link/assert + switchboard + harness + hygiene + federate.
+Sending the sha to e2e for sign-off next.
+
 28 Sep 2026, after the merge (below): built the "Mac and box as one" pieces the lead ordered for
 0.1.x from docs/design/federation-plan.md (work/federation-transcript).
 

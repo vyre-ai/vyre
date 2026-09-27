@@ -180,6 +180,14 @@ method, and the Mac refuses without a fresh one. A box that was taken over could
 owner's Deck on the box already has. A captured assertion is no use on another Mac, another
 ask, another answer, a second time or after a minute.
 
+**Known limit (v2, e2e review, LOW 2, accepted for now):** seen nonces are kept in memory only. A
+Mac that restarts inside a used assertion's 60 s window forgets it saw that nonce, so a captured
+assertion could replay once, on that Mac, for that one ask and answer, before the window ends.
+The impact stays small: only the paired box can mint an assertion at all, and it is bound to one
+Mac, one ask and the exact answer hash, so a replay can only repeat the same answer to the same
+still-open ask, not forge a new one. Persisting the nonce set is the fix if this needs closing
+further; not done in v2.
+
 ## Consequences
 
 - A paired Mac keeps one held request open to the box: one request a minute while idle.
