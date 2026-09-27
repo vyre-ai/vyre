@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Three more onboarding steps: secrets and Vyre Drive stubbed, Agent computers built
+
+- deck/onboard/onboard.js's client STEPS array grows from 6 to 9: `secrets` and `drive` are stubs
+  (a "Coming soon" card, Skip/Continue, no backend yet: vault hasn't sent tool shapes, federation
+  is still drafting Vyre Drive's options with the user), `computers` ("Agent computers") is a
+  full build, the lead's Off / Browser only / Browser + desktops choice, with server-size numbers
+  left as "still measuring" placeholders since Glass's backend (docs/design/agent-browsers.md)
+  doesn't exist yet. None of the three call a server tool to save the choice: `stepState()`
+  already defaults an unknown step id to "todo" and `mark_()` only tries the server when a step
+  is skipped, so a client-only step marks, skips and counts toward the step bar and the total
+  correctly today, and will save for real once each owning team's tool lands, no shell rework
+  needed.
+
+
 #### Onboarding's session-import step: discover, choose, watch (0.1.1, provisional)
 
 - deck/onboard/onboard.js's `history` step rewritten from the old post-hoc project-picker into

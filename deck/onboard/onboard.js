@@ -11,12 +11,18 @@ import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 
+// Steps beyond the original six are client-side stubs for now (onboarding-v2.md): stepState()
+// defaults an unknown id to "todo" and mark_() only tries the server for a real onboard.<id>
+// tool, so a step with no server-side counterpart yet still marks, skips and counts correctly.
 const STEPS = [
   { id: "you", title: "You" },
   { id: "claude", title: "Claude Code" },
   { id: "tailscale", title: "Tailscale" },
   { id: "name", title: "Your address" },
   { id: "history", title: "Your history" },
+  { id: "secrets", title: "Your secrets" },
+  { id: "computers", title: "Agent computers" },
+  { id: "drive", title: "Vyre Drive" },
   { id: "devices", title: "Your devices" },
 ];
 
@@ -730,6 +736,55 @@ const SCREENS = {
     };
 
     drawDiscover();
+  },
+
+  // Stub (docs/design/onboarding-v2.md step 5, lead 29 Sep): vault owns the engine and hasn't
+  // sent tool shapes yet. This slot exists so the step count, the celebration and the summary
+  // are right once it's real; the board (VaultImport.dc.html, work/app-design 19a96abd) already
+  // shows the masked/grouped list, the Touch ID moment and the per-key animate-in this becomes.
+  secrets(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Your secrets."),
+      h("p", { class: "lead" }, "Vyre finds the keys already on this machine, from .env files, shell exports, your password manager, Chrome and SSH, shows them to you masked and grouped by project, and brings them into the vault with one Touch ID."));
+    col.append(h("div", { class: "need" },
+      h("div", { class: "lbl" }, "Coming soon"),
+      "This step isn't built yet. Skip it for now, and bring your keys into the vault later from Settings."));
+    s.foot({ label: "Continue", run: s.next });
+  },
+
+  // Full build (lead, 29 Sep): Off / Browser only / Browser + desktops. Glass owns the backend
+  // (docs/design/agent-browsers.md, coming) and the actual server-size numbers; this step's own
+  // choice is kept locally only until a real tool exists to save it to, same degrade-gracefully
+  // shape as every other step here.
+  computers(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Agent computers."),
+      h("p", { class: "lead" }, "Each agent can work from its own computer, the way a coworker would: a browser to look things up in, or a whole desktop to work on. More capable, and more for your server to run."));
+    const body = h("div", { class: "ob-panel" });
+    col.append(body);
+    let choice = /** @type {"off"|"browser"|"desktop"|null} */ (null);
+    const syncFoot = () => s.foot({ label: "Continue", disabled: !choice, run: s.next });
+    const opt = (value, title, desc, size) => h("label", { class: value === choice ? "on" : "" },
+      h("input", { type: "radio", name: "computers", value, checked: value === choice, onchange: () => { choice = value; put(body, choiceEl()); syncFoot(); } }),
+      h("span", { class: "t" }, h("b", null, title), h("span", null, desc), h("span", { class: "code" }, size)));
+    const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "Agent computers" },
+      opt("off", "Off", "Agents work from the terminal only, no browser or desktop of their own.", "Nothing extra to run."),
+      opt("browser", "Browser only", "Each agent gets a Chrome it can look things up and click through in, that you can watch live.", "Size: still measuring."),
+      opt("desktop", "Browser + desktops", "Each agent gets a full desktop too, for anything a browser alone can't do.", "Size: still measuring, more than browser only."));
+    put(body, choiceEl());
+    syncFoot();
+  },
+
+  // Stub (lead, 29 Sep): federation is drafting the options (what to sync, how, where it shows
+  // up, agent access per folder, conflicts) with the user; nothing to choose yet.
+  drive(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Vyre Drive."),
+      h("p", { class: "lead" }, "Your files, synced to every device: drag one in on your Mac, and watch it show up on your phone."));
+    col.append(h("div", { class: "need" },
+      h("div", { class: "lbl" }, "Coming soon"),
+      "This step isn't built yet. Skip it for now."));
+    s.foot({ label: "Continue", run: s.next });
   },
 
   devices(col, s) {
