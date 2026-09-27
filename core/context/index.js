@@ -15,7 +15,7 @@
 import { ownerDevice } from "../modules/index.js";
 
 /** Fields a surface may report. Anything else in the input is ignored, except REFUSED. */
-export const FIELDS = ["project", "cwd", "thread", "app", "window", "url"];
+export const FIELDS = ["project", "cwd", "thread", "view", "app", "window", "url"];
 /** What a screen reads that must never reach this module: it would sit in memory and in events. */
 export const REFUSED = ["text", "selection", "selected", "value", "focused"];
 /** Fields whose values never go into an event. */
@@ -173,6 +173,7 @@ export default {
         project: { type: ["string", "null"], description: "A project slug." },
         cwd: { type: ["string", "null"], description: "An absolute folder; the project is found from it when none is given." },
         thread: { type: ["string", "null"], description: "The thread (session id) open on this surface." },
+        view: { type: ["string", "null"], description: "The module or view the person is in on this surface: planner, vault, chat, glass. Tips and ranking read it." },
         app: { type: ["string", "null"], description: "The front app's name." },
         window: { type: ["string", "null"], description: "The front window's title." },
         url: { type: ["string", "null"], description: "The page open in a browser. Its query and fragment are dropped." },
@@ -214,11 +215,13 @@ export default {
       description: "Where the user is now: the newest project, cwd, thread, app, window and url across every surface that reported, the surface and device that reported last (the focus), and the list of surfaces. The project is found from the folder when only a folder is known. parts: [\"screen\"] adds what sight sees on this Mac (not over the tailnet).",
       input: { type: "object", properties: {
         parts: { type: "array", items: { type: "string", enum: ["screen"] }, description: "Extra parts: screen." },
+        surface: { type: "string", description: "Only this surface's own report (its view, thread and project), not the merge across surfaces." },
       } },
       callers: CALLERS,
       run: async (input, meta = {}) => {
         const parts = Array.isArray(input && input.parts) ? input.parts : [];
-        const recs = [...surfaces.values()].sort((a, b) => b.at - a.at);
+        const only = input && typeof input.surface === "string" ? input.surface : null;
+        const recs = [...surfaces.values()].filter(r => !only || r.surface === only).sort((a, b) => b.at - a.at);
         /** @type {Record<string, { v: string|null, at: number }>} */
         const latest = {};
         for (const r of recs) for (const [k, f] of Object.entries(r.values)) if (!latest[k] || f.at > latest[k].at) latest[k] = f;
@@ -228,6 +231,7 @@ export default {
           project: await effectiveProject(latest),
           cwd: latest.cwd ? latest.cwd.v : null,
           thread: latest.thread ? latest.thread.v : null,
+          view: latest.view ? latest.view.v : null,
           surface: focus ? focus.surface : null,
           device: focus ? focus.device : null,
           app: latest.app ? latest.app.v : null,

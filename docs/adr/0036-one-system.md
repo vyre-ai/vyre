@@ -54,14 +54,16 @@ the acting module wrote, the app and the outcome.
 
 ### 2. context: where the user is now
 
-- `context.report {surface, device?, project?, cwd?, thread?, app?, window?, url?}` is how a
+- `context.report {surface, device?, project?, cwd?, thread?, view?, app?, window?, url?}` is how a
   surface says what it sees: the Capsule on app switch, chat on thread open, the phone on
   foreground. Fields not given are left as they were for that surface. `url` is kept without its
   query and fragment. Text and selection are refused.
-- `context.now {parts?}` returns `{project, cwd, thread, surface, device, app, window, url, at,
+- `context.now {parts?, surface?}` returns `{project, cwd, thread, view, surface, device, app, window, url, at,
   surfaces: [{surface, device, at}]}`: the latest value of each field across surfaces, with
   `project` found through `projects.of {cwd}` when only a folder is known. `parts: ["screen"]`
-  adds `sight.now {target: "mac", parts: ["text"]}` on a Mac.
+  adds `sight.now {target: "mac", parts: ["text"]}` on a Mac. `surface` answers from that
+  surface's own report only. `view` is the module or view the person is in there (planner,
+  vault, chat), which tips and ranking read.
 - Event `context.changed {changed: [field names], project?, thread?, surface, device?}`, at most
   one per second per surface. It carries no app, window or url.
 

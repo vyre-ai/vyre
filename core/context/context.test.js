@@ -226,3 +226,15 @@ test("report: a device paired through the relay is named by its caller when the 
   const said = await call("context.report", { surface: "phone", device: "alex-phone" }, `device:${id}`);
   assert.equal(said.data.device, "alex-phone", "a device the report names wins");
 });
+
+test("view and one surface: context.now {surface} answers from that surface's own report", async t => {
+  const { call } = await world(t);
+  await call("context.report", { surface: "deck", view: "planner", project: "harlow" }, "deck");
+  await call("context.report", { surface: "capsule", app: "Mail" }, "capsule");
+  const deck = (await call("context.now", { surface: "deck" })).data;
+  assert.equal(deck.view, "planner");
+  assert.equal(deck.app, null, "the Capsule's app is not the Deck's");
+  assert.equal(deck.surface, "deck");
+  assert.equal((await call("context.now")).data.view, "planner", "the merge still has it");
+  assert.equal((await call("context.now", { surface: "phone" })).data.surface, null, "a surface that never reported");
+});

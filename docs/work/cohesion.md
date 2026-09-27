@@ -33,21 +33,23 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 ## Agreement tracker
 | # | Item | Owners | Status |
 |---|---|---|---|
-| 1 | One screen service, both sides (sight) | capsule-pro, pwa, mobile, sessions, chat; acting modules; platform (call id) | glue built; owner asks to send |
-| 2 | Context now | capsule-pro, chat, pwa, mobile, sessions | glue built; asked |
-| 3 | Connections for a capability | vault (owns, ADR 0028 9b), connectors | vault owns; align |
-| 4 | Suggest | memory-iq, capsule-pro, chat, native-core | glue built; asked |
-| 5 | One ask path + wife's-name fix | memory-iq, sessions, capsule-pro, chat | lead: yes; owners |
-| 6 | Commands everywhere | platform, polish-cli, capsule-pro, chat | asked |
-| 7 | Keys once through the vault | vault (owns, ADR 0028 9a), connectors, polish-cli | vault owns; align |
-| 8 | Waiting on you | pwa, capsule-pro, mobile, polish-cli | glue built; mobile yes (after 0.1.0) |
-| 9 | Hub read live everywhere | native-core, platform, app-design, capsule-pro, mobile, sessions | native-core yes (settings.changed = rev + non-secret level value; lists from settings.schema and presence.policy) |
-| 10 | One live catalog | sessions, capsule-pro, chat, mobile | asked |
-| 11 | Tips (slot + signals) | docs (tips.next/dismiss/seen/whatsnew/list, teaches.tips), app-design (slot spec) | docs building |
+| 1 | Screen service, both sides (sight) | capsule-pro, pwa, mobile, sessions, chat, platform | capsule-pro yes (sees-chip + context.report this session); mobile yes after 0.1.0 (wants a phone spec; sight.frame offered); sessions yes (passes tool_use id once meta.call exists); platform yes (meta.call from X-Vyre-Call-Id, P1); acted fields done c362505b; pwa asked |
+| 2 | Context now | capsule-pro, chat, sessions, mobile, docs | all yes; context gains `view` and context.now {surface} for tips |
+| 3 | Connections | vault (owns), connectors | agreed: vault.connections.list {surface}, vault.connection-added/removed/changed, use {tool, input:{account}} |
+| 4 | Suggest | memory-iq (memory.suggest, recall prefix), native-core (composer), capsule-pro | memory-iq yes; capsule-pro yes (local rows first); chat routed composer to native-core |
+| 5 | One ask path | memory-iq, sessions, capsule-pro | sessions mostly done 51eaa964 (no temperature in SDK); memory-iq: Said.swift must be REMOVED; capsule-pro removes it once iq.ask + suggest on main (asked for memory.answer fallback now) |
+| 6 | Commands everywhere | polish-cli, platform, capsule-pro, chat | polish-cli `vyre <cmd> --view` frames; platform commands.list + Render in P1 (asked to widen Render to 7 kinds) |
+| 7 | Keys once | vault, connectors, polish-cli, capsule-pro | shape final: needs_credential {module, need, account?} -> vault.need / vault.connect; polish-cli `vyre key` |
+| 8 | Waiting on you | pwa, capsule-pro, mobile, polish-cli | mobile yes; capsule-pro yes; polish-cli yes (status line) |
+| 9 | Hub read live | native-core, platform, sessions, mobile | native-core yes (rev + non-secret level value); mobile wants per-tool policy flags on /v1/tools |
+| 10 | One live catalog | sessions, chat, capsule-pro, mobile | sessions adds thread.status; chat yes |
+| 11 | Tips | docs, app-design | docs building core/tips (work/docs f89e0fad); reads context.now {surface} view + waiting.count |
+| 12 | Memory learns | memory-iq, connectors, sessions | memory-iq yes under source trust; reads vault connection events |
 
 ## Needs from others
 - platform (accepted, P1): meta.call from X-Vyre-Call-Id; registry.status() use counts {calls, lastUsed}; commands.list; events.catalog.
 - DONE by cohesion (lead's call, owners stopped): acted-event fields and the chrome query strip, c362505b.
+- mobile: per-tool policy flags (human_only, sessionable) on /v1/tools rows (platform or presence).
 - mobile: wants sight.frame (a still JPEG per step) for the relay? Needs a resize in computerd.
 - computers: `sight.watch` calls computers.watch as module:sight, so ownSurface (core/computers/index.js:154)
   can't see the real caller; sight keeps agents out, but surface is not checked against the caller.
