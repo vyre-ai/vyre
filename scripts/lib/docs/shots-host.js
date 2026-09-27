@@ -37,8 +37,14 @@ if (tls) {
 const peer = String(process.env.VYRE_SHOTS_PEER || "").split("=");
 if (peer.length === 2) {
   const d = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(net.Socket.prototype, "remoteAddress"));
-  Object.defineProperty(net.Socket.prototype, "remoteAddress", { ...d, get() {
-    const a = d.get ? d.get.call(this) : undefined;
-    return a === peer[0] || a === `::ffff:${peer[0]}` ? peer[1] : a;
-  } });
+  const emit = net.Server.prototype.emit;
+  net.Server.prototype.emit = /** @type {any} */ (function (/** @type {any} */ event, /** @type {any[]} */ ...rest) {
+    const s = rest[0];
+    if ((event === "connection" || event === "secureConnection") && s instanceof net.Socket && !Object.hasOwn(s, "remoteAddress"))
+      Object.defineProperty(s, "remoteAddress", { configurable: true, get() {
+        const a = d.get ? d.get.call(this) : undefined;
+        return a === peer[0] || a === `::ffff:${peer[0]}` ? peer[1] : a;
+      } });
+    return emit.call(this, event, ...rest);
+  });
 }
