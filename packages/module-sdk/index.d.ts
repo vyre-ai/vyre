@@ -35,7 +35,7 @@ export interface SettingDef {
   /** The allowed numbers for an int. */
   choices?: number[];
   /** A tool of this module that lists the choices when the schema is read, within 500 ms (ADR 0035). */
-  choicesFrom?: { tool: ToolName };
+  choicesFrom?: { tool: ToolName; read?: string };
   /** A tool of this module asked { ok } or { ok: false, message } before a value is stored, within 500 ms; off or late refuses (ADR 0035). */
   check?: { tool: ToolName };
   min?: number;
@@ -55,7 +55,7 @@ export interface SettingDef {
   /** What it loosens, in a few words. */
   loosens?: string;
   /** Ask the person before a change: always, or only for these values. */
-  confirm?: true | { values: unknown[] };
+  confirm?: true | { values: unknown[] } | { drops: true };
   /** Where the value is kept. Omitted: Vyre's settings table. "$value" and "$project" fill a tool store's input. */
   store?:
     | { config: string }

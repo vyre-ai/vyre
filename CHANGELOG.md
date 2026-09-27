@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The module schema knows choicesFrom.read and confirm.drops
+
+- packages/module-sdk: a setting's `choicesFrom` may name `read`, the dotted path to the list in
+  the tool's answer (core/appearance), and `confirm` may be `{ drops: true }`, ask when an entry is
+  taken out of a list (core/sessions). The settings loader already did both.
+
 #### On a Mac, waiting leaves the planner to the box
 #### Appearance settings per device, from the hub
 
