@@ -741,6 +741,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (the Registry's callerAllowed), never a guest.
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- One init in the box: no compose service on the vyre image sets `init: true` any more (vyre,
+  docker-api, egress), so the image's tini is PID 1 instead of a second init behind docker-init.
+  test/box-init.test.js guards it; the tailscale service is unchanged.
 - web.js `over(pathFetch)`: the stream client and the outbox run on any fetch(path, init), such
   as relay/client's createPaths().fetch (the relay is Noise over a WebSocket, not an HTTP proxy);
   the paths layer picks the way, follow() keeps the cursor on one logical path.

@@ -91,6 +91,7 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - vyred HTTP: 409 `idempotency_conflict`; 503 `restarting` with retry-after during drain.
 - Switchboard stopAll: `thread.stopped` reason `restart` (was `stopped`).
 - Module ctx: `ctx.events.latestId()`.
+- box composes: `init: true` dropped on vyre, docker-api, egress (lead approved; e2e does theirs).
 - daemon client: new `write()`; CLI threads send/answer and the screen's send use it (polish-cli).
 - term: `term.closed` reason `box updated` at start for lost terminals; `term.attach` error code
   `terminal_closed`; terms.json gains `gone`.
