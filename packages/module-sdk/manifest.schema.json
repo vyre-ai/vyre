@@ -148,6 +148,7 @@
     }
   },
   "$defs": {
+    "toolRef": { "type": "object", "required": ["tool"], "additionalProperties": false, "properties": { "tool": { "$ref": "#/$defs/tool" } } },
     "surface": { "enum": ["capsule", "deck", "chat", "phone", "cli", "glass"] },
     "moduleName": { "type": "string", "pattern": "^[a-z][a-z0-9-]{1,40}$", "x-message": "must be lowercase letters, digits and dashes" },
     "word": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$", "x-message": "must be lowercase letters, digits and dashes" },
@@ -167,11 +168,15 @@
         "help": { "type": "string" },
         "type": { "enum": ["enum", "bool", "int", "number", "string", "list", "object", "model"] },
         "enum": { "type": "array", "items": { "type": "string" } },
-        "choices": { "type": "array", "items": { "type": "number" } },
+        "choices": {
+          "description": "The allowed numbers for an int, or { tool }: one of this module's own tools that lists the choices when the schema is read (ADR 0035).",
+          "anyOf": [{ "type": "array", "items": { "type": "number" } }, { "$ref": "#/$defs/toolRef" }]
+        },
+        "check": { "$ref": "#/$defs/toolRef", "description": "One of this module's own tools, asked { ok } or { ok: false, message } before a value is stored (ADR 0035)." },
         "min": { "type": "number" },
         "max": { "type": "number" },
         "default": {},
-        "levels": { "type": "array", "items": { "enum": ["account", "project"] }, "minItems": 1, "uniqueItems": true },
+        "levels": { "type": "array", "items": { "enum": ["account", "project", "device", "session"] }, "minItems": 1, "uniqueItems": true },
         "apply": { "enum": ["live", "session", "restart"] },
         "advanced": { "type": "boolean" },
         "security": { "enum": ["loosens"], "description": "The setting can loosen what Vyre allows; the Deck marks it." },

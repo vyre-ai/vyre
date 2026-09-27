@@ -32,12 +32,15 @@ export interface SettingDef {
   help?: string;
   type: "enum" | "bool" | "int" | "number" | "string" | "list" | "object" | "model";
   enum?: string[];
-  choices?: number[];
+  /** The allowed numbers for an int, or a tool of this module that lists the choices (ADR 0035). */
+  choices?: number[] | { tool: ToolName };
+  /** A tool of this module asked { ok } or { ok: false, message } before a value is stored (ADR 0035). */
+  check?: { tool: ToolName };
   min?: number;
   max?: number;
   default?: unknown;
-  /** Where it may be set. A project's value beats the account's, which beats the default. */
-  levels: ("account" | "project")[];
+  /** Where it may be set. session > device > project > account > default (ADR 0035). */
+  levels: ("account" | "project" | "device" | "session")[];
   /** live: at once; session: from the next session; restart: when vyred next starts. */
   apply: "live" | "session" | "restart";
   advanced?: boolean;

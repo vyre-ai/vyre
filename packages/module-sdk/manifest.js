@@ -122,6 +122,12 @@ export function checkManifest(m, { firstParty = false } = {}) {
     if (seen.has(s.key)) out.push(`setting ${s.key} is declared twice`);
     seen.add(s.key);
     if (s.store && s.store.config !== undefined && Array.isArray(s.levels) && s.levels.includes("project")) out.push(`setting ${s.key}: a config.json setting is account only`);
+    // ADR 0035: a device's value changes how a surface looks, never what Claude may do.
+    if (Array.isArray(s.levels) && s.levels.includes("device") && (s.confirm !== undefined || s.security !== undefined)) out.push(`setting ${s.key}: a setting with confirm or security may not be set per device`);
+    for (const f of ["check", "choices"]) {
+      const name = TYPES.object(s[f]) ? s[f].tool : undefined;
+      if (typeof name === "string" && !tools.includes(name)) out.push(`setting ${s.key}: ${f}.tool must be one of this module's own tools`);
+    }
     if (firstParty || !TYPES.object(s.store)) continue;
     if (s.store.claude !== undefined) out.push(`setting ${s.key}: only Vyre's own modules may keep a setting in Claude Code's files`);
     if (typeof s.store.config === "string" && !own(s.store.config)) out.push(`setting ${s.key}: a config.json path must start with "${m.name}."`);

@@ -44,6 +44,7 @@ const full = () => ({
     { key: "bakery.fax", label: "Fax orders", type: "bool", levels: ["account"], apply: "live", security: "loosens", loosens: "outbound fax", confirm: { values: [true] }, store: { config: "bakery.fax" } },
     { key: "bakery.oven", label: "Oven", type: "string", levels: ["project"], apply: "session", confirm: true, store: { tool: { get: { tool: "bakery.orders", input: { project: "$project" }, read: "oven" }, set: { tool: "bakery.order", input: { oven: "$value" } } } } },
     { key: "bakery.model", label: "Model", type: "model", levels: ["account"], apply: "session" },
+    { key: "bakery.look", label: "Look", type: "enum", levels: ["account", "device"], apply: "live", choices: { tool: "bakery.orders" }, check: { tool: "bakery.check" } },
   ],
   needs: { vault: ["bakery-api-key"], tools: ["planner.*", "memory.answer"], network: ["api.example.com", "*.example.org:8443"], slots: ["now"] },
   teaches: { memory: ["order.habit"], prompt: [{ level: "project", file: "prompt/bakery.md" }],
@@ -102,6 +103,11 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   has(bad(m => { m.settings[0].apply = "never"; }), /apply must be one of live, session, restart/);
   has(bad(m => { m.replaces = "memory"; }), /a replacement takes the name of the module it replaces/);
   has(bad(m => { m.teaches.prompt[0].file = "/etc/passwd"; }), /must be a relative path to a \.md file/);
+  has(bad(m => { m.settings[4].check.tool = "theme.check"; }), /setting bakery\.look: check\.tool must be one of this module's own tools/);
+  has(bad(m => { m.settings[4].choices = { tool: "bakery.gone" }; }), /choices\.tool must be one of this module's own tools/);
+  has(bad(m => { m.settings[4].choices = "presets"; }), /choices/);
+  has(bad(m => { m.settings[1].levels = ["account", "device"]; delete m.settings[1].store; }), /may not be set per device/);
+  has(bad(m => { m.settings[0].levels = ["galaxy"]; }), /levels\[0\] must be one of account, project, device, session/);
   has(bad(m => { m.does.connections = "bakery.gone"; }), /does\.connections names bakery\.gone, which is not under does\.tools/);
   has(bad(m => { m.does.suggest = "memory.answer"; }), /does\.suggest names memory\.answer/);
   has(bad(m => { m.shows.notices.push("Late!"); }), /notices\[1\] must be lowercase letters/);

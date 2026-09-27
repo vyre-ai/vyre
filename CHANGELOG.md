@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The manifest schema follows ADR 0035 (the settings hub)
+
+- A setting may declare the `device` and `session` levels, `check: { tool }` (asked before a value
+  is stored) and `choices: { tool }` (lists the choices when the schema is read). Both tools must
+  be the module's own. A setting with `confirm` or `security` may not be set per device. The
+  array form of `choices` for an int still works.
+
 #### Manifest keys for cohesion and tips
 
 - packages/module-sdk/manifest.schema.json (all planned): `does.connections` and `does.suggest`
