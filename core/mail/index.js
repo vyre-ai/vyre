@@ -22,7 +22,7 @@
 // - Nothing runs in the background: no timer, no poll, no child.
 
 import { addresses, checkContent, parseQuery, addressOf, nameOf } from "../connectors/message.js";
-import { MIGRATIONS, ID, callerFor, filingOf, adapterOf, imapConfig, view, pickFor } from "./accounts.js";
+import { MIGRATIONS, ID, callerFor, filingFor, adapterOf, imapConfig, view, pickFor } from "./accounts.js";
 import { guess, checkMap, sendArgs, messagesOf, messageOf } from "./mcpmap.js";
 import { parse, composeId, parseComposeId, messageId, parseMessageId } from "./capsule.js";
 import { imapAdapter } from "./imap.js";
@@ -74,7 +74,7 @@ export default {
       const rows = await use("vault.connections.list", { caller });
       const list = (Array.isArray(rows) ? rows : rows?.connections || [])
         .filter(r => r && ID.test(String(r.id)) && adapterOf(r) && (r.capabilities || []).some(c => MAILCAPS.includes(c)));
-      return { caller, list };
+      return { caller, filing: filingFor(meta.caller, meta, input && input.on_behalf), list };
     };
 
     /** A vault value, with a missing or ungranted item said plainly. */
@@ -270,8 +270,7 @@ export default {
       in_reply_to: { type: "string", description: "the Message-ID being answered, from mail.read" }, account, why: str, on_behalf: behalf };
 
     /** Hold one message at the Gate through the account's adapter. Nothing is sent here. */
-    async function holdSend(acct, to, c, why, caller) {
-      const on = filingOf(caller);
+    async function holdSend(acct, to, c, why, on) {
       const kind = adapterOf(acct);
       let held, via;
       if (kind === "google") {
@@ -309,11 +308,11 @@ export default {
       description: "Send an email as the user from one of their accounts. It is always held at the Gate until the user approves it (and may edit it); returns { held, account, message }. With several accounts, name one from mail.accounts; a send never guesses.",
       input: obj(mailInput, ["to", "subject", "body"]),
       run: async (input, meta) => {
-        const { caller, list } = await usable(meta, input);
+        const { filing, list } = await usable(meta, input);
         const acct = pickFor(list, named(input.account));
         if (!(acct.capabilities || []).includes("send_mail")) throw fail(`${acct.label || acct.account} is not allowed to send; it reads only`, "denied");
         const { to, c } = contentOf(input);
-        return holdSend(acct, to, c, named(input.why), caller);
+        return holdSend(acct, to, c, named(input.why), filing);
       },
     });
 
@@ -374,7 +373,7 @@ export default {
       input: obj({ id: str, to: emails, subject: str, body: str }, ["id"]),
       callers: PEOPLE,
       run: async (input, meta) => {
-        const { caller, list } = await usable(meta, input);
+        const { filing, list } = await usable(meta, input);
         const msg = parseMessageId(input.id);
         if (msg) return { kind: "email", message: await readOne(pickFor(list, msg.account), msg.id) };
         const row = parseComposeId(input.id);
@@ -385,7 +384,7 @@ export default {
         if (!to && fill.name) to = await resolve(list, acct, fill.name);
         if (!to) throw fail(fill.name ? `no address found for ${fill.name}; say who it goes to with an address` : "say who it goes to: an address", "needs_to");
         const { to: dest, c } = contentOf({ to, subject: fill.subject || "", body: fill.body || "" });
-        return { kind: "held", ...(await holdSend(acct, dest, c, "written in the Capsule", caller)) };
+        return { kind: "held", ...(await holdSend(acct, dest, c, "written in the Capsule", filing)) };
       },
     });
 

@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { callerFor, filingOf, adapterOf, imapConfig, pickFor, view } from "./accounts.js";
+import { callerFor, filingFor, adapterOf, imapConfig, pickFor, view } from "./accounts.js";
 
 test("accounts: callerFor comes from what vyred verified", () => {
   assert.equal(callerFor("capsule", {}), "capsule");
@@ -38,12 +38,16 @@ test("accounts: callerFor from a module names the surface it acts for", () => {
   assert.equal(m("capsule"), "module:mail");
 });
 
-test("accounts: filingOf", () => {
-  assert.deepEqual(filingOf("mcp:thread:t-1"), { thread: "t-1" });
-  assert.deepEqual(filingOf("mcp:agent:kit"), { agent: "kit" });
-  assert.deepEqual(filingOf("tailnet:agent:juno"), { agent: "juno" });
-  assert.deepEqual(filingOf("harness:agent:juno"), { agent: "juno" });
-  for (const c of ["capsule", "mcp", "cli", "mobile", "module:mail"]) assert.deepEqual(filingOf(c), {}, c);
+test("accounts: filingFor", () => {
+  assert.deepEqual(filingFor("mcp", { thread: "t-1" }), { thread: "t-1" });
+  assert.deepEqual(filingFor("mcp:agent:kit", {}), { agent: "kit" });
+  assert.deepEqual(filingFor("mcp:agent:kit", { agent: "kit", thread: "t-kit" }), { thread: "t-kit", agent: "kit" });
+  assert.deepEqual(filingFor("tailnet:agent:juno", {}), { agent: "juno" });
+  assert.deepEqual(filingFor("module:mail", {}, { surface: "agent", agent: "kit", thread: "t-9" }), { thread: "t-9", agent: "kit" });
+  assert.deepEqual(filingFor("module:mail", {}, { surface: "chat", thread: "t-9" }), { thread: "t-9" });
+  // Only a module's on_behalf is heard.
+  assert.deepEqual(filingFor("mcp", { thread: "t-1" }, { surface: "agent", agent: "kit", thread: "t-9" }), { thread: "t-1" });
+  for (const c of ["capsule", "mcp", "cli", "mobile", "module:mail"]) assert.deepEqual(filingFor(c, {}), {}, c);
 });
 
 test("accounts: adapterOf", () => {

@@ -44,11 +44,18 @@ export function callerFor(caller, meta = {}, behalf) {
   return c;
 }
 
-/** The thread and agent a held item is filed under, from the caller string. @param {string} c */
-export function filingOf(c) {
-  const t = /^mcp:thread:(.+)$/s.exec(c);
-  const a = /^(?:mcp|tailnet|harness):agent:(.+)$/s.exec(c);
-  return { ...(t ? { thread: t[1] } : {}), ...(a ? { agent: a[1] } : {}) };
+/**
+ * The thread and agent a held item is filed under: what vyred verified, or for a module the
+ * chat or agent it acts for. An agent's own caller string names it even without meta.
+ * @param {string} caller @param {{ thread?: string, agent?: string }} meta @param {any} [behalf]
+ */
+export function filingFor(caller, meta = {}, behalf) {
+  const c = String(caller || "");
+  const b = c.startsWith("module:") && behalf && typeof behalf === "object" ? behalf : {};
+  const thread = meta.thread || (typeof b.thread === "string" && b.thread ? b.thread : undefined);
+  const named = /^(?:mcp|tailnet|harness):agent:(.+)$/s.exec(c);
+  const agent = meta.agent || (named ? named[1] : undefined) || (b.surface === "agent" && typeof b.agent === "string" && b.agent ? b.agent : undefined);
+  return { ...(thread ? { thread } : {}), ...(agent ? { agent } : {}) };
 }
 
 /**
