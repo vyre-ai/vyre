@@ -32,6 +32,8 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 4. Hand the finished sha to the integrator (no WIP pushes until the lead says "pushes open").
 
 ## Agreement tracker
+app-design specs for every item: work/app-design b756d128, docs/design/system/components/ (suggestions, account-row, needs-row waiting section, credential-sheet, result-card, tip, glass-mini; ask/plan/question cards built once in chat-core).
+
 | # | Item | Owners | Status |
 |---|---|---|---|
 | 1 | Screen service, both sides (sight) | capsule-pro, pwa, mobile, sessions, chat, platform | capsule-pro yes (sees-chip + context.report this session); mobile yes after 0.1.0 (wants a phone spec; sight.frame offered); sessions yes (passes tool_use id once meta.call exists); platform yes (meta.call from X-Vyre-Call-Id, P1); acted fields done c362505b; sight.frame 791bd180 for the phone; pwa yes (mini-view after Design A) |
@@ -50,6 +52,7 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 ## Needs from others
 - platform (accepted, P1): meta.call from X-Vyre-Call-Id; registry.status() use counts {calls, lastUsed}; commands.list; events.catalog.
 - DONE by cohesion (lead's call, owners stopped): acted-event fields and the chrome query strip, c362505b.
+- vault: `default` (per capability) and `last_used` on vault.connections.list rows, for app-design's account row (asked).
 - mobile: per-tool policy flags (human_only, sessionable) on /v1/tools rows (platform or presence).
 - mobile: wants sight.frame (a still JPEG per step) for the relay? Needs a resize in computerd.
 - computers: `sight.watch` calls computers.watch as module:sight, so ownSurface (core/computers/index.js:154)
