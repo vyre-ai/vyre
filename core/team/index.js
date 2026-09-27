@@ -22,7 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
 import { callerKind } from "../modules/index.js";
-import { repoRoot, currentBranch, ensureWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange } from "./git.js";
+import { repoRoot, currentBranch, ensureWorktree, isOwnWorktree, worktreePath, branchOf, mergeBaseIn, aheadOf, shaRange } from "./git.js";
 
 export const MIGRATIONS = [
   `CREATE TABLE team_teammates (
@@ -268,6 +268,9 @@ export default {
     const mergeWorktree = async tm => {
       const info = await worktreeInfo(tm);
       if (!info) return { ok: false, error: `could not find ${tm.project}'s repo or ${tm.role}'s worktree to merge into` };
+      if (!(await isOwnWorktree(info.repo, info.dir, info.branch))) {
+        return { ok: false, error: `${info.dir} is not ${tm.project}'s own ${info.branch} worktree any more; vyred will not merge into it` };
+      }
       const r = await mergeBaseIn(info.dir, info.base);
       if (!r.ok) return { ok: false, error: `could not merge ${info.base} into ${branchOf(tm.role)}:\n${r.stderr}`.slice(0, 4000) };
       return { ok: true, info };
@@ -466,7 +469,7 @@ export default {
     };
 
     ctx.tool("team.add", {
-      description: "Add a teammate to a project: a role (how sessions address it, e.g. \"design\"), a brief (what work goes to it) and, optionally, instructions, tools and isolation. Makes agent <role>-<project>. isolation: \"worktree\" gives it its own git worktree and branch, and brings an \"integrator\" teammate along the first time, which merges finished work into the project's own branch; refused when the project's home is not a git repo.",
+      description: "Add a teammate to a project: a role (how sessions address it, e.g. \"design\"), a brief (what work goes to it) and, optionally, instructions, tools and isolation. Makes agent <role>-<project>. isolation: \"worktree\" gives it its own git worktree and branch, and brings an \"integrator\" teammate along the first time, which merges finished work into the project's own branch; when the project's home is not a git repo it falls back to isolation: \"folder\" instead (shared with any other folder-isolated teammate), saying so in the answer's `notice`.",
       input: { type: "object", required: ["project", "role"], properties: { project: { type: "string" }, role: { type: "string" },
         brief: { type: "string" }, instructions: { type: "string" }, tools: { type: "array", items: { type: "string" } },
         isolation: { type: "string", enum: ["worktree", "folder", "none"] }, model: { type: "string" }, helper_model: { type: "string" } } },
@@ -482,22 +485,31 @@ export default {
         const agent = agentName(i.role, i.project);
         if (byAgent(agent)) throw new Error(`there is already an agent ${agent}`);
         let isolation = i.isolation || "folder";
+        let notice;
         if (isolation === "worktree") {
           const home = await projectHome(i.project);
           const repo = home && await repoRoot(home);
-          if (!repo) throw Object.assign(new Error(`${i.project} isn't a git repo; teammates will share the folder`), { code: "bad_input" });
-          const base = await currentBranch(home);
-          if (!base) throw Object.assign(new Error(`${i.project}'s repo has no branch checked out to start ${i.role} from`), { code: "bad_input" });
-          const w = await ensureWorktree(repo, i.role, base);
-          if (!w.ok) throw new Error(`could not make ${i.role}'s worktree: ${w.stderr || "unknown git error"}`);
-          if (!byRole(i.project, INTEGRATOR_ROLE)) {
-            const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
-            if (iw.ok) insertTeammate({ project: i.project, role: INTEGRATOR_ROLE, isolation: "worktree",
-              brief: "Merges other teammates' finished work into this project's own branch once the tests pass." });
-            else ctx.log?.(`team: ${i.project}'s integrator worktree failed, so it was not added: ${iw.stderr}`);
+          const base = repo && await currentBranch(home);
+          if (!repo || !base) {
+            // Never git init on the person's behalf: fall back to sharing the project's folder,
+            // with why said plainly, rather than refusing outright and leaving them to guess a
+            // different isolation themselves (the lead's call, after an earlier pass of this
+            // that only refused: the message and the behavior have to agree).
+            isolation = "folder";
+            notice = !repo ? `${i.project} isn't a git repo; teammates will share the folder`
+              : `${i.project}'s repo has no branch checked out to start ${i.role} from; teammates will share the folder`;
+          } else {
+            const w = await ensureWorktree(repo, i.role, base);
+            if (!w.ok) throw new Error(`could not make ${i.role}'s worktree: ${w.stderr || "unknown git error"}`);
+            if (!byRole(i.project, INTEGRATOR_ROLE)) {
+              const iw = await ensureWorktree(repo, INTEGRATOR_ROLE, base);
+              if (iw.ok) insertTeammate({ project: i.project, role: INTEGRATOR_ROLE, isolation: "worktree",
+                brief: "Merges other teammates' finished work into this project's own branch once the tests pass." });
+              else ctx.log?.(`team: ${i.project}'s integrator worktree failed, so it was not added: ${iw.stderr}`);
+            }
           }
         }
-        return insertTeammate({ ...i, isolation });
+        return { ...insertTeammate({ ...i, isolation }), ...(notice ? { notice } : {}) };
       },
     });
 

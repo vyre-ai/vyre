@@ -421,12 +421,15 @@ test("compaction: a teammate's own SessionStart (source compact) gets its notes 
 
 // --- step 4, slice A (2026-09-28): worktree lifecycle, the integrator, merge-before-dispatch ----
 
-test("isolation: worktree is refused when the project's home is not a git repo", async t => {
+test("isolation: worktree falls back to sharing the folder when the project's home is not a git repo, saying so", async t => {
   const { tool, project } = await boot(t); // boot(), not bootGit(): a plain folder, no `git init`
-  await assert.rejects(() => tool("team.add", { project: project.slug, role: "design", isolation: "worktree" }),
-    e => { assert.match(e.message, /isn't a git repo/); return true; });
+  const tm = await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  assert.equal(tm.isolation, "folder"); // never git init'd on the person's behalf: shares the folder instead
+  assert.match(tm.notice, /isn't a git repo/);
+  assert.match(tm.notice, /share the folder/);
   const rows = await tool("team.list", { project: project.slug });
-  assert.equal(rows.length, 0); // never git init'd on the person's behalf, and nothing half-made
+  assert.equal(rows.length, 1); // the teammate itself, folder-isolated; no integrator (nothing to merge)
+  assert.equal(rows[0].agent, tm.agent);
 });
 
 test("isolation: worktree makes the teammate's own worktree and branch, and brings an integrator along", async t => {
@@ -505,4 +508,59 @@ test("a worktree teammate's request that finishes with new commits queues a merg
     return row && /^merge team\/design /.test(row.text) ? row : null;
   }, "a merge request queued to the integrator");
   assert.match(merge.text, new RegExp(`from request ${ask.request}`));
+});
+
+// --- slice A review (e2e and reviewer, 8eb1a785): nothing the repo says to run ------------------
+// A teammate writes the shared .git to commit, so it can plant hooks or config naming programs;
+// vyred's own git must never run them (they would run as vyred, outside every permission check).
+
+const plantHook = (repo, name, marker) => {
+  const f = path.join(repo, ".git", "hooks", name);
+  fs.writeFileSync(f, `#!/bin/sh\ntouch '${marker}'\n`);
+  fs.chmodSync(f, 0o755);
+};
+
+test("planted hooks never run: not on vyred's worktree add, not on its merge before a dispatch", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  const marker = path.join(root, "hook-ran");
+  plantHook(repo, "post-checkout", marker);
+  plantHook(repo, "post-merge", marker);
+  plantHook(repo, "pre-merge-commit", marker);
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  fs.writeFileSync(path.join(project.home, "CHANGES.md"), "later\n");
+  git(project.home, ["add", "."]);
+  git(project.home, ["commit", "-q", "--no-verify", "-m", "later, on main"]);
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"ok","notes":"unchanged","reason":"test"}' });
+  assert.equal(ask.state, "done");
+  assert.ok(fs.existsSync(path.join(worktreePath(repo, "design"), "CHANGES.md")), "the merge itself still happened");
+  assert.ok(!fs.existsSync(marker), "no planted hook may run under vyred's own git");
+});
+
+test("a filter named in repo config refuses the merge before a dispatch, and never runs", async t => {
+  const { tool, root, project, repo } = await bootGit(t);
+  const marker = path.join(root, "filter-ran");
+  await tool("team.add", { project: project.slug, role: "design", isolation: "worktree" });
+  fs.writeFileSync(path.join(project.home, ".gitattributes"), "* filter=evil\n");
+  git(project.home, ["add", "."]);
+  git(project.home, ["commit", "-q", "--no-verify", "-m", "attributes"]);
+  git(project.home, ["config", "filter.evil.smudge", `touch '${marker}'; cat`]);
+  const ask = await tool("team.ask", { to: "design", project: project.slug, wait: true, text: 'vyre team.done {"result":"should never run"}' });
+  assert.equal(ask.state, "failed");
+  assert.match(ask.result, /filter\.evil\.smudge/);
+  assert.ok(!fs.existsSync(marker), "the filter must never run");
+});
+
+test("isolation: worktree is refused while repo config names a filter or merge driver", async t => {
+  const { tool, root, project } = await bootGit(t);
+  git(project.home, ["config", "merge.evil.driver", `touch '${path.join(root, "driver-ran")}'`]);
+  await assert.rejects(() => tool("team.add", { project: project.slug, role: "design", isolation: "worktree" }),
+    e => { assert.match(e.message, /merge\.evil\.driver/); return true; });
+});
+
+test("a folder already at <repo>-<role> that is not this repo's own worktree is refused, not adopted", async t => {
+  const { tool, project, repo } = await bootGit(t);
+  const other = worktreePath(repo, "design");
+  git(path.dirname(other), ["init", "-q", "-b", "main", path.basename(other)]); // an unrelated repo beside this one
+  await assert.rejects(() => tool("team.add", { project: project.slug, role: "design", isolation: "worktree" }),
+    e => { assert.match(e.message, /not this repo's own team\/design worktree/); return true; });
 });
