@@ -8,12 +8,11 @@
 // `git diff --numstat` over what the push would send, run in the thread's folder with no shell,
 // no prompt, no network and a 3 s budget. Only counts and paths leave here, never content.
 
-import { execFile } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { clip, CAPS } from "./translate.js";
-import { safeGitArgs, safeGitEnv } from "../../lib/git/safe.js";
+import { gitAsync } from "../../lib/git-safe.js";
 
 /** Past this many lines on either side (after the common ends are trimmed), count all removed and all added. */
 export const DIFF_LINES = 2000;
@@ -210,12 +209,7 @@ export function pushDir(command, cwd) {
 function git(dir, args, deadline) {
   const ms = deadline - Date.now();
   if (ms <= 0) return Promise.resolve(null);
-  return new Promise(resolve => {
-    execFile("git", [...safeGitArgs(dir), "-C", dir, ...args], {
-      timeout: ms, killSignal: "SIGKILL", maxBuffer: 16 * 1024 * 1024, windowsHide: true,
-      env: safeGitEnv(),
-    }, (err, stdout) => resolve(err ? null : String(stdout)));
-  });
+  return gitAsync(dir, args, { timeout: ms }).then(r => (r.ok ? r.stdout : null));
 }
 
 /**
