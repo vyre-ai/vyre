@@ -101,7 +101,7 @@ services:
     depends_on:
       - tailscale
     restart: unless-stopped
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     # Root, for the spawner only (core/spawner, ADR 0032): it runs vyred as uid vyre (1000) and
     # Vyre-owned Claude sessions as vyre-agent (1001), which cannot open vyred's socket. Every
     # capability is dropped but changing uid and signalling its children. `vyre` in this
@@ -156,7 +156,7 @@ services:
     command: ["node", "/opt/vyre/core/dockerproxy/main.js"]
     profiles: ["computers"]
     restart: unless-stopped
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     user: "1000:1000"
     group_add:
       - "${DOCKER_GID:-999}"

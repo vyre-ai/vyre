@@ -2442,10 +2442,11 @@ The browsers and apps signed in as the person: id, how (cookie or app), device, 
 
 ### `presence.person.start`
 
-Sign this browser in as the person for 30 days (90 at most), on this device only, with a passkey. The Deck gets a cookie; with cc (a PKCE S256 challenge) the answer is a one-time code the hosted app trades at /v1/person/token.
+Sign this browser or app in as the person for 30 days (90 at most), on this device only, with a passkey or the device's own key. The Deck gets a cookie; with cc (a PKCE S256 challenge) the answer is a one-time code the app trades at /v1/person/token; a device paired over the relay sends its request-signing key (key, an ES256 public JWK) and gets the token itself.
 
 - Input:
   - `cc` string
+  - `key` object
   - `label` string
   - `return` string
 - Callers: `capsule`, `deck`

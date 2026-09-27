@@ -466,14 +466,14 @@ test("term: a terminal the box lost while vyred was down (a deploy) answers term
   const { reg, events, work, stop } = await registry(t, {}, { root });
   const closed = events.since(0, { type: "term.closed", limit: 10 });
   assert.deepEqual(closed.map(e => e.payload), [{ term: "tlost", reason: "box updated" }]);
-  const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } });
+  const r = await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON });
   assert.equal(r.error?.code, "terminal_closed");
   assert.match(r.error.message, /box was updated/);
   // Another screen still learns nothing about it.
-  assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } })).error?.code, "not_found");
+  assert.equal((await reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON })).error?.code, "not_found");
   // And it is remembered across the next restart, without a second announcement.
   await stop();
   const again = await registry(t, {}, { root, work });
-  assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "terminal_closed");
+  assert.equal((await again.reg.call("term.attach", { term: "tlost", surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON })).error?.code, "terminal_closed");
   assert.equal(again.events.since(0, { type: "term.closed", limit: 10 }).length, 1);
 });

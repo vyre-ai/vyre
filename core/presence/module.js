@@ -77,7 +77,7 @@ export default {
     const nodeOf = meta => (meta.peer && (meta.peer.stableId || meta.peer.node)) || null;
 
     ctx.tool("presence.person.start", {
-      description: "Sign this browser in as the person for 30 days (90 at most), on this device only, with a passkey. The Deck gets a cookie; with cc (a PKCE S256 challenge) the answer is a one-time code the hosted app trades at /v1/person/token.",
+      description: "Sign this browser or app in as the person for 30 days (90 at most), on this device only, with a passkey or the device's own key. The Deck gets a cookie; with cc (a PKCE S256 challenge) the answer is a one-time code the app trades at /v1/person/token; a device paired over the relay sends its request-signing key (key, an ES256 public JWK) and gets the token itself.",
       presence: { summary: async input => {
         if (!input.cc) return "Sign this browser in for 30 days";
         let at = "an app";
@@ -85,7 +85,7 @@ export default {
         return `Sign ${at} in on this device for 30 days`;
       } },
       callers: ["deck", "capsule"],
-      input: obj({ cc: str, return: str, label: str }),
+      input: obj({ cc: str, return: str, label: str, key: { type: "object" } }),
       run: async (input, meta) => {
         if (!meta.presence) throw new Error("a person session opens from a person's proof");
         const node = nodeOf(meta);
@@ -99,10 +99,28 @@ export default {
           // A paired Mac's vyred (`vyre link signin`) listens on its own loopback, as a native
           // app does (RFC 8252). Its code is traded by vyred itself, never by a browser page.
           const loop = back.protocol === "http:" && back.hostname === "127.0.0.1" && /^\/cb\/[\w-]{16,}$/.test(back.pathname);
-          if (!loop && (back.protocol !== "https:" || !allowed.includes(back.origin))) throw Object.assign(new Error(`${back.origin} is not an app this box signs in to`), { code: "denied" });
-          const c = people.code({ node, cc: input.cc, origin: loop ? "loopback" : back.origin, label });
+          // The native app (vyre://person/signin): its code is traded by the app itself, which
+          // must also sign that trade with the key it registers (person.js exchange).
+          const native = back.protocol === "vyre:" && back.host === "person";
+          if (!loop && !native && (back.protocol !== "https:" || !allowed.includes(back.origin))) throw Object.assign(new Error(`${back.protocol === "vyre:" ? back.href : back.origin} is not an app this box signs in to`), { code: "denied" });
+          const c = people.code({ node, cc: input.cc, origin: loop ? "loopback" : native ? "app:vyre" : back.origin, label });
           back.searchParams.set("code", c.code);
           return { kind: "code", code: c.code, expires: c.expires, redirect: back.href };
+        }
+        // A device paired over the relay (ADR 0026) has no browser to hold a cookie and no path to
+        // the box's sign-in page. It proves the person with the key enrolled for it at pairing (a
+        // phone's Secure Enclave or Keystore key, method device), and gets a token bound to the
+        // request-signing key it sends, pinned to its device id.
+        if (meta.peer && meta.peer.kind === "device") {
+          if (meta.presence.method !== "device") throw Object.assign(new Error("a paired device signs in with its own device key"), { code: "denied" });
+          const r = await ctx.call("relay.device.presence", { id: node }).catch(() => null);
+          const mine = r && r.data && r.data.key;
+          if (!mine || mine !== meta.presence.keyId) throw Object.assign(new Error("that key is not the one enrolled for this device"), { code: "denied" });
+          const k = input.key;
+          if (!k || k.kty !== "EC" || k.crv !== "P-256" || typeof k.x !== "string" || typeof k.y !== "string" || k.d) throw Object.assign(new Error("key must be the public JWK of an ES256 key"), { code: "bad_input" });
+          const s = people.start({ node, kind: "bearer", label, key: { kty: "EC", crv: "P-256", x: k.x, y: k.y } });
+          ctx.events.emit("presence.signed-in", { id: s.id, node: label });
+          return { kind: "bearer", id: s.id, token: s.token, expires: s.expires };
         }
         const s = people.start({ node, kind: "cookie", label });
         ctx.events.emit("presence.signed-in", { id: s.id, node: label });

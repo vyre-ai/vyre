@@ -356,11 +356,12 @@ export class Registry {
     if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
       return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
     }
-    // Over the tailnet, a node signed in as the owner is the owner's device, and so is any script
-    // on it. The person's own actions there need the person's session too (core/presence/person.js),
+    // Over the tailnet a node signed in as the owner, and over the relay a paired device
+    // (`device:<id>`), is the owner's device, and so is any script on it (ADR 0032). The person's
+    // own actions there need the person's session too (core/presence/person.js),
     // which only vyred's router sets, from a cookie or a signed bearer token. Signing in is the one
     // way to get it, and the first passkey is enrolled with onboarding's code.
-    if (ownerOverTailnet(caller) && !meta.person && !PERSON_FREE.has(tool)
+    if (ownerDevice(caller) && !meta.person && !PERSON_FREE.has(tool)
       && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : Boolean(def.presence)))) {
       return { error: { code: "person_session_required", message: `${tool} is the person's own action: sign in on this device with your passkey first` } };
     }

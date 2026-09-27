@@ -54,7 +54,7 @@ services:
     image: vyre-e2e:local
     network_mode: service:tailscale
     depends_on: [tailscale]
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     # As box/compose.yml: the spawner as root with three capabilities, vyred as vyre (ADR 0032).
     user: "0:0"
     cap_drop: [ALL]
@@ -85,7 +85,7 @@ services:
     image: vyre-e2e:local
     command: ["node", "/opt/vyre/core/dockerproxy/main.js"]
     profiles: ["computers"]
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     user: "1000:1000"
     group_add: ["${DOCKER_GID:-987}"]
     read_only: true
@@ -200,7 +200,7 @@ services:
     network_mode: service:mac-ts
     depends_on: [mac-ts]
     profiles: [mac]
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     user: "1000:1000"
     environment:
       - VYRE_HOME=/home/vyre/.vyre

@@ -352,9 +352,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (device && req.method === "POST" && url.pathname === "/v1/person/token") {
     // The hosted app trades the sign-in page's one-time code, its PKCE verifier and the public
     // half of its key for a bearer session. The one call from another origin that needs none.
-    let b;
-    try { b = await body(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
-    const r = people ? people.exchange({ code: String(b.code || ""), verifier: String(b.verifier || ""), key: b.key, node: nodeId || "", origin: policy.peer && /** @type {any} */ (policy.peer).origin || null }) : { error: { code: "denied", message: "no person sessions here" } };
+    let raw = "", b;
+    try { raw = /** @type {any} */ (req).vyreRaw !== undefined ? /** @type {any} */ (req).vyreRaw : await rawBody(req); b = raw ? JSON.parse(raw) : {}; }
+    catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
+    const r = people ? people.exchange({ code: String(b.code || ""), verifier: String(b.verifier || ""), key: b.key, node: nodeId || "", origin: policy.peer && /** @type {any} */ (policy.peer).origin || null,
+      request: { headers: req.headers, method: req.method || "POST", path: url.pathname + url.search, raw } }) : { error: { code: "denied", message: "no person sessions here" } };
     if (r.data) events.emit("presence", "presence.signed-in", { id: r.data.id, node: policy.peer && policy.peer.node, app: true });
     return send(res, r.error ? (r.error.code === "bad_input" ? 400 : 403) : 200, r);
   }

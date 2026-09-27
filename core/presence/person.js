@@ -110,22 +110,37 @@ export class PersonSessions {
 
   /**
    * Trade a code, its PKCE verifier and the app's public key for a bearer session. Used once.
-   * @param {{ code: string, verifier: string, key: any, node: string, origin: string|null }} o
+   * A native app's code (vyre://) must come with the trade signed by the key it registers
+   * (`request`: the trade's own headers, path and body), so an intercepted code and verifier
+   * are not enough without the app's hardware key.
+   * @param {{ code: string, verifier: string, key: any, node: string, origin: string|null, request?: { headers: any, method: string, path: string, raw: string } }} o
    */
-  exchange({ code, verifier, key, node, origin }) {
+  exchange({ code, verifier, key, node, origin, request }) {
     const row = /** @type {any} */ (this.db.prepare("SELECT * FROM presence_person_codes WHERE hash = ?").get(hash(code || "")));
     if (row) this.db.prepare("DELETE FROM presence_person_codes WHERE hash = ?").run(row.hash);
     if (!row || row.expires <= this.now()) return { error: { code: "denied", message: "that sign-in code is used or expired; sign in again" } };
     if (row.node !== node) return { error: { code: "denied", message: "that sign-in code was made on another device" } };
-    // A loopback code is traded by the Mac's vyred, which sends no Origin; any other only by its app.
-    if (row.origin === "loopback" ? origin : (!origin || row.origin !== origin)) return { error: { code: "denied", message: "that sign-in code is for another app" } };
+    // A loopback or native code is traded by the Mac's vyred or the app, which send no Origin; any
+    // other only by its web app.
+    const noOrigin = row.origin === "loopback" || row.origin === "app:vyre";
+    if (noOrigin ? origin : (!origin || row.origin !== origin)) return { error: { code: "denied", message: "that sign-in code is for another app" } };
     const cc = crypto.createHash("sha256").update(String(verifier || "")).digest("base64url");
     if (!same(cc, row.cc)) return { error: { code: "denied", message: "the verifier does not match the sign-in" } };
     if (!key || key.kty !== "EC" || key.crv !== "P-256" || typeof key.x !== "string" || typeof key.y !== "string" || key.d) {
       return { error: { code: "bad_input", message: "key must be the public JWK of an ES256 key" } };
     }
-    try { crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: key.x, y: key.y }, format: "jwk" }); }
+    let pub;
+    try { pub = crypto.createPublicKey({ key: { kty: "EC", crv: "P-256", x: key.x, y: key.y }, format: "jwk" }); }
     catch { return { error: { code: "bad_input", message: "key is not a P-256 public key" } }; }
+    if (row.origin === "app:vyre") {
+      const p = request && parseProof(request.headers["x-vyre-proof"]);
+      const t = p ? Number(p.t) : NaN;
+      let good = false;
+      if (p && Number.isFinite(t) && Math.abs(this.now() - t) <= SKEW) {
+        try { good = crypto.verify("sha256", Buffer.from(signed({ method: request.method, path: request.path, raw: request.raw, t: p.t, n: p.n })), { key: pub, dsaEncoding: "ieee-p1363" }, Buffer.from(p.sig, "base64url")); } catch {}
+      }
+      if (!good) return { error: { code: "denied", message: "the app must sign this trade with the key it registers" } };
+    }
     const s = this.start({ node, kind: "bearer", label: row.label, key: { kty: "EC", crv: "P-256", x: key.x, y: key.y } });
     return { data: { token: s.token, expires: s.expires, id: s.id } };
   }

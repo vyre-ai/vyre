@@ -69,6 +69,29 @@ onboarding's one-time code). HUMAN_ONLY tools need the session and their proof.
   or a guest never does, and HUMAN_ONLY tools never ride the link: the box cannot check a
   proof made on the Mac.
 
+### 2b. Devices over the relay (ADR 0026)
+
+A device paired over the relay is `device:<id>` (id from its Noise static key), and it is a
+device like a tailnet node: the same registry rule applies (`ownerDevice`), and a session made for
+it is pinned to its device id. It cannot reach the box's sign-in page, so it signs in over the
+Noise channel: presence.person.start from a `device:<id>` caller takes only the method `device`,
+a proof by the Secure Enclave or Keystore key the relay enrolled for that device at pairing
+(relay.device.presence names it; another device's key is refused), and the request-signing key
+the app sends. The answer is the token itself, bound to that key; every later request is signed
+with `x-vyre-proof` as over the tailnet. A browser paired over the relay (app.vyre.run, no
+tailnet) enrolls a passkey (rpId app.vyre.run) at pairing, valid only from that device id, and
+signs in with it over the channel the same way (to build).
+
+### 2c. The native app (vyre://)
+
+The native app returns to `vyre://person/signin` after the box's page. That return is accepted
+for PKCE flows only; its code is traded with no Origin, and the trade must be signed by the key it
+registers (`x-vyre-proof` over the token request), so an intercepted code and verifier are useless
+without the app's hardware key. A web page cannot trade a native code. The phone's
+biometric-bound key (vyre.human) maps to a presence proof for HUMAN_ONLY, with the same 30-minute
+presence session as the Mac's Touch ID (to build), and a Mac Secure Enclave key lets the Mac prove
+HUMAN_ONLY to the box (to build, after batch 3).
+
 ### 3. On the box, a model cannot reach the person's socket
 
 Vyre-owned sessions (ADR 0030) run their `claude` child as a second uid, `vyre-agent`, which
@@ -86,7 +109,10 @@ it (spawnClaudeCodeProcess, core/spawner/client.js). Its socket sits in /run/vyr
 2750, so it takes vyred's group with no capability to chown, and vyre-agent cannot enter. vyred
 runs with umask 002 so the agent can change what it writes in /work; its own files take group
 vyre, which the agent is not in. `vyre` in the container drops from root to vyre by itself.
-scripts/e2e-split/check.sh proves it in a throwaway container.
+One init (with ADR 0029 R4): tini is PID 1 (no compose `init: true`), the spawner is its child,
+the restart loop and vyred run as vyre under the spawner, and each session runs under its own
+`tini -s`, a subreaper for that session's tree, never a second PID 1; the spawner adds no init
+of its own. scripts/e2e-split/check.sh proves it in a throwaway container, with ci's smoke.
 
 ### 4. On the Mac, the residual is accepted
 

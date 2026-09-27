@@ -18,8 +18,13 @@ trap 'docker rm -f "$C" >/dev/null 2>&1; docker volume rm "$V" >/dev/null 2>&1' 
 i=0; until docker exec "$C" test -S /home/vyre/.vyre/vyred.sock 2>/dev/null || [ $i -ge 60 ]; do i=$((i+1)); sleep 1; done
 x() { docker exec "$C" "$@" 2>&1; }
 
-[ "$(x ps -o user= -p 1 | tr -d ' ')" = root ] && ok "the first process is root (the spawner)" || no "the first process is not root"
+# One init: tini is PID 1, the spawner (root) its child, the loop and vyred as vyre under it.
+[ "$(x cat /proc/1/comm)" = tini ] && ok "tini is PID 1" || no "PID 1 is $(x cat /proc/1/comm)"
+SP=$(x pgrep -f '^node /opt/vyre/core/spawner/main.js' | head -1)
+[ "$(x ps -o user=,ppid= -p "$SP" | tr -s ' ' | sed 's/^ //')" = "root 1" ] && ok "the spawner is root, under tini" || no "spawner: $(x ps -o user=,ppid=,args= -p "$SP")"
+x ps -eo user,args | grep -q '^vyre .*core/daemon/loop.sh' && ok "the loop runs as vyre" || no "loop: $(x ps -eo user,args | grep loop)"
 x ps -eo user,args | grep -q '^vyre .*core/daemon/main.js' && ok "vyred runs as vyre" || no "vyred is not uid vyre: $(x ps -eo user,args | grep daemon)"
+[ "$(x ps -eo comm | grep -c '^tini$')" = 1 ] && ok "one init: no second tini at rest" || no "tinis: $(x ps -eo pid,user,args | grep tini)"
 S=$(x vyre status); echo "$S" | grep -qi running && ! echo "$S" | grep -qi "not running" && ok "vyre status from a root exec drops to vyre" || no "vyre status: $(x vyre status | head -2)"
 VW=$(docker exec -u vyre "$C" sh -c 'cat /proc/$(pgrep -f core/daemon/main.js | head -1)/status | grep -i umask' 2>&1 | tr -s ' \t' ' ')
 echo "$VW" | grep -q 0002 && ok "vyred's umask is 002" || no "vyred umask: $VW"
@@ -47,7 +52,38 @@ echo "$OUT" | grep -q '^ENV none /home/vyre-agent$' && ok "the child's env is cu
 echo "$OUT" | grep -q '^OTHER spawner: /bin/bash is not a program' && ok "another program is refused" || no "other: $(echo "$OUT" | grep OTHER)"
 OLD=$(docker exec -u vyre-agent "$C" sh -c 'stat -c %G:%a /work/harlow/notes/a.md && echo more >> /work/harlow/notes/a.md && echo written' 2>&1 | tr '\n' ' ')
 [ "$OLD" = "vyre-work:664 written " ] && ok "an old /work was shared on first start" || no "old work: $OLD"
+# A session's child: tini -s as vyre-agent, a subreaper under the spawner, not a second PID 1.
+docker exec -u vyre -w /opt/vyre "$C" node -e '
+import("/opt/vyre/core/spawner/client.js").then(async ({ spawnAsAgent }) => {
+  const p = await spawnAsAgent(["/bin/sh", "-c", "sleep 30"], { cwd: "/work" }); p.stdin.end(); console.log(p.pid);
+  setTimeout(() => { p.kill("SIGTERM"); setTimeout(() => process.exit(0), 500); }, 3000);
+});' >/dev/null 2>&1 &
+sleep 1.5
+TS=$(x ps -eo pid,ppid,uid,args | awk '$4 ~ /tini$/ && $5 == "-s" {print $2, $3}' | head -1)
+[ "$TS" = "$SP 1001" ] && ok "a session runs under tini -s, as vyre-agent, a child of the spawner" || no "session tini: '$TS' (spawner $SP): $(x ps -eo pid,ppid,user,args | grep -E 'tini|sleep')"
+wait
 docker exec -u vyre-agent "$C" sh -c 'ls /run/vyre' >/dev/null 2>&1 && no "vyre-agent can enter /run/vyre" || ok "vyre-agent cannot reach the spawner's socket"
+# ci's smoke (box-image.yml): a killed vyred comes back and the container stays up.
+V1=$(x pgrep -f 'node /opt/vyre/core/daemon/main.js' | head -1)
+x kill -KILL "$V1" >/dev/null
+i=0; V2=""; while [ $i -lt 30 ]; do V2=$(x pgrep -f 'node /opt/vyre/core/daemon/main.js' | head -1); [ -n "$V2" ] && [ "$V2" != "$V1" ] && break; i=$((i+1)); sleep 1; done
+[ -n "$V2" ] && [ "$V2" != "$V1" ] && [ "$(docker inspect -f '{{.RestartCount}}' "$C")" = 0 ] && ok "a killed vyred comes back in ${i}s, the container stays up" || no "restart: $V1 -> '$V2'"
+i=0; until docker exec "$C" vyre status 2>/dev/null | grep -qi running || [ $i -ge 30 ]; do i=$((i+1)); sleep 1; done
+[ "$(x ps -o user= -p "$(x pgrep -f 'node /opt/vyre/core/daemon/main.js' | head -1)" | tr -d ' ')" = vyre ] && ok "the new vyred is vyre too" || no "new vyred user"
 T0=$(date +%s); docker stop -t 20 "$C" >/dev/null; T=$(( $(date +%s) - T0 ))
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$C")" = 0 ] && [ $T -lt 15 ] && ok "docker stop ends vyred cleanly (${T}s)" || no "stop: exit $(docker inspect -f '{{.State.ExitCode}}' "$C") after ${T}s"
+# And as ci runs it: a plain `docker run` (the image's own user, vyre), where the spawner runs the
+# loop itself and there is no split.
+P=vyre-e2e-plain-$$
+docker run -d --name "$P" --network none "$IMG" >/dev/null
+i=0; until docker exec "$P" vyre status 2>/dev/null | grep -qi running || [ $i -ge 60 ]; do i=$((i+1)); sleep 1; done
+[ "$(docker exec "$P" cat /proc/1/comm)" = tini ] && docker exec "$P" vyre status 2>/dev/null | grep -qi running && ok "plain docker run: tini is PID 1 and vyred is up" || no "plain: $(docker logs "$P" 2>&1 | tail -3)"
+PV=$(docker exec "$P" pgrep -f 'node /opt/vyre/core/daemon/main.js' | head -1); docker exec "$P" kill -KILL "$PV"
+i=0; PV2=""; while [ $i -lt 30 ]; do PV2=$(docker exec "$P" pgrep -f 'node /opt/vyre/core/daemon/main.js' | head -1); [ -n "$PV2" ] && [ "$PV2" != "$PV" ] && break; i=$((i+1)); sleep 1; done
+[ -n "$PV2" ] && [ "$PV2" != "$PV" ] && ok "plain docker run: a killed vyred comes back" || no "plain restart"
+# Stop only once the new vyred is up: a SIGTERM while vyred is still starting kills it outright.
+i=0; until docker exec "$P" vyre status 2>/dev/null | grep -qi running || [ $i -ge 30 ]; do i=$((i+1)); sleep 1; done; sleep 3
+T0=$(date +%s); docker stop -t 30 "$P" >/dev/null; T=$(( $(date +%s) - T0 ))
+[ "$(docker inspect -f '{{.State.ExitCode}}' "$P")" = 0 ] && [ $T -lt 30 ] && ok "plain docker run: docker stop drains (${T}s)" || no "plain stop: exit $(docker inspect -f '{{.State.ExitCode}}' "$P")"
+docker rm -f "$P" >/dev/null 2>&1
 exit $fail
