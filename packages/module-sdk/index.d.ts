@@ -160,7 +160,7 @@ export type Render = (
   | { kind: "text"; lines: string[] }
   | { kind: "qr"; /** The payload to draw. */ text: string; caption?: string }
   | { kind: "checks"; /** ids let a live view update a check in place. */ items: { id: string; label: string; state: CheckState; note?: string }[] }
-  | { kind: "prompt"; prompt: RenderPrompt }
+  | ({ kind: "prompt" } & RenderPrompt)
   | { kind: "error"; code: string; message: string; next?: string }
 ) & { title?: string; actions?: RenderAction[] };
 
