@@ -4,6 +4,185 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: the Agent SDK is the default driver (ADR 0030)
+
+- `sessions.driver` defaults to `sdk`: every session Vyre starts (Chat, agents, the Capsule, the
+  phone, the planner, learning jobs) runs on the Claude Agent SDK; terminal sessions stay plain
+  `claude`. `cli` keeps the runner by choice, and sessions fall back to it while the SDK is not
+  installed yet (the box image carries it; a Mac installs it on first use). Flipped after the
+  full suite passed on the SDK driver on testbox (2551 tests: 2499 pass, 45 skipped, 2 todo;
+  the five failures were stale generated docs, a test that wrote inside VYRE_HOME, now fixed, and
+  two journey tests that hit "database is locked" under load and pass on a rerun).
+- `ask.raised` carries `tool_use_id`, so an inline ask attaches to its tool row; `thread.steered`
+  carries `step`, the tool calls the turn had finished when Claude took the words in.
+- The fake `claude`'s error results list `errors`, as Claude Code's do; the SDK reads them.
+- core/cli/screen/screen-live.test.js runs its thread outside the temp home (the floor refuses
+  writes inside VYRE_HOME before anyone is asked).
+
+#### Sessions: an API key never reaches a session's Bash
+
+- Measured against the real bundled Claude Code 2.1.283 and a fake Messages API
+  (scripts/sessions-proof/env-leak.mjs, with cc-plugin's fake-api.mjs): Claude Code keeps
+  `CLAUDE_CODE_OAUTH_TOKEN` from the tools it runs, but a Bash tool call's `env` printed
+  `ANTHROPIC_API_KEY`, so a model could read the key and send it out. Claude Code's own
+  `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` needs bubblewrap and exits without it.
+- core/sessions/spawn.js now takes an API key out of the environment and writes it once to a pipe
+  on fd 3 (`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`), which Claude Code reads at start and its tools
+  do not see. Same measurement after: authenticated, not in Bash's environment; a control run
+  with no credential fails "Not logged in". Both drivers; tested in core/sessions.
+- Event gaps chat and the Capsule need: a tool call a turn left open when it was interrupted or
+  stopped is `thread.tool {status: "canceled"}`; a failed turn is `thread.state {state: "failed",
+  turn, error}` before the thread goes idle; `thread.state` carries `turn`. ADR 0030's event
+  table now says what is live.
+- `recover()` emits `thread.stopped {reason: "restart"}` for each thread a crash left live
+  (ADR 0029 R7), not only the row.
+- Merged main c8fb9aae; its threads.unqueue is folded into this branch's (a superset: uuid,
+  reason, a `denied` code).
+
+#### Sessions: rewind, as a double Esc does; a smoke for the bundled Claude Code
+
+- scripts/sessions-smoke.mjs: with `VYRE_SESSIONS_SDK_DIR` pointing at the pinned SDK installed
+  with its bundled binary, starts that Claude Code through the driver with no credentials and no
+  turn, and reports the spawn, init time and idle RSS and CPU (for CI's sdk-real job). On testbox:
+  spawned in 219 ms, 189 MB.
+
+- `threads.rewind {thread, uuid}` (a person's surface only): the session goes back to just before
+  that user message and carries on from there in the same thread and transcript (the CLI's
+  `--resume-session-at`, the SDK's `resumeSessionAt`); the message's words come back as `text` for
+  the composer. A running turn is stopped first. Emits `thread.rewound {uuid, at}`. Rewinding to
+  the first message says to start a new session instead. A user message's transcript uuid is the
+  one `thread.turn` gave, so a surface names it from the live stream or the history.
+
+#### Sessions: steering, turns, the queue, state and usage (ADR 0030, step 6's events)
+
+- Steering is the default (the user: Chat must feel like Claude Code in the terminal). A message
+  sent while a turn runs joins that turn at Claude's next step (`priority: "next"`), returns
+  `{steered: true, uuid, turn}`, emits `thread.sent {via: "steer"}`, and `thread.steered {uuid}`
+  when Claude Code takes it in (its `user_message_uuid` echo). Steered words a turn never reached
+  run as the next turn (`thread.turn {steered: true}`).
+- The queue is the alternative: `threads.send {mode: "queue"}` keeps the words until the turn
+  ends ("<name> is working on something", never "terminal" for a session Vyre runs), then hands
+  every row over as one turn, each announced first (`thread.sent {queued, uuid, via: "turn"}`) and
+  marked delivered in the same step. New `threads.unqueue` (the same shape as capsule-now's),
+  `threads.edit` (re-emits `thread.queued` with the same ids, `edited: true`) and
+  `threads.send-now` (steers a queued row in, `via: "now"`). Queued rows carry a `uuid`;
+  `threads.send` answers with `queued_id` and `uuid`.
+- Turns: `thread.turn {turn: "<thread>:<n>", uuid, text}` starts each turn, and every event of a
+  turn carries `turn`. `thread.state {state}` on every change (starting, running, waiting, idle,
+  stopped). `thread.usage {cost_usd, total_cost_usd, tokens}` per turn. `thread.finished` says
+  `canceled: true, reason: "interrupt"` after `threads.interrupt`.
+- Keys: `thread.text` carries `block` (the content block's place in its message across the lines
+  Claude Code writes, so live and transcript rows share `message:block`); `thread.tool` carries
+  `call` (= `id`), `name` and `status` (running, then completed or failed).
+- User messages carry their own `uuid` to Claude Code (runner.js `userLine`). The fake `claude`
+  folds steered messages into its next reply, stamps `user_message_uuid`, lists
+  `user_message_uuids` on its result, and runs unreached steered words as the next turn.
+
+#### Sessions: a turn's cost is its own
+
+- Claude Code reports `total_cost_usd` as the running total of a session's process (continued
+  from the transcript's saved total on a resume), not the turn's own cost. The Switchboard added
+  it up per turn, so a thread's cost, `threads.usage` and agents' API-key budgets counted every
+  earlier turn again. It now keeps the last total per thread (`cost_total`) and records the
+  difference; `thread.finished` says `cost_usd` (the turn's) and `total_cost_usd`. A fork starts
+  from its source's total. The fake `claude` reports a running total as Claude Code does.
+
+#### Sessions: adopting existing sessions, fork, and ADR 0030's settled contract
+
+- `threads.fork {thread, prompt?, name?}`: a new thread that carries on another session's
+  conversation as a copy, in its folder, never touching its process or transcript (the CLI's
+  `--resume <id> --fork-session --session-id <new>`, the SDK's `forkSession`). `thread.started`
+  says `forked_from`. For a session busy in a terminal, the way to go on without two writers.
+- Adopting: a session a terminal started (an older Claude Code's transcript included) is resumed
+  through Vyre on the first message from Chat, in its own folder, and stays one row; a session
+  live in a terminal is queued, never typed into. Tested on both drivers.
+- `threads.answer` with the same decision again returns the earlier outcome
+  (`{answered: true, already: true}`, ADR 0029 R2); a different one is still refused.
+- ADR 0030: the event contract agreed with chat, capsule-now and capsule-sight; the provider
+  contract as built; steering as the default with the queue as the alternative; security as
+  built for e2e's blockers; models per purpose; adopting existing sessions; the parity list with
+  Claude Code in the terminal (SDK-native or ours); decided and open questions.
+- The fake `claude` copies the source transcript on a fork.
+
+#### Sessions: security before the flip, models per purpose, providers as modules (ADR 0030)
+
+- Security (e2e's blockers). core/sessions/spawn.js spawns every session process, on either
+  driver, in its own process group and session, under `tini -s` where installed (the box image now
+  has tini), optionally as another uid/gid (`sessions.uid`, `sessions.gid`), and reports pid, pgid
+  and sid before the process can run anything. `threads.pids` returns `{ pids, pgids, sids }`; a
+  group stays listed until its last process is gone, so a detached orphan is still known. The
+  floor runs before any question is put to the person (the Switchboard refuses what it denies,
+  with a notice), and floor rule 1 now denies a session's writes (file tools and Bash write forms)
+  to Claude Code's settings files, `.mcp.json` and `.claude.json` (core/harness/rules.js, tests in
+  core/harness/floor.test.js). An answer never hands back a switch to bypassPermissions
+  (`safePermissions`); new person-only `threads.mode` (default, acceptEdits, plan; event
+  `mode.changed`).
+- Fixes. `Sessions.bind` walks past dash's `sh -c` to the claude above it (no session bound on
+  Linux before), and returns the pid it bound, which the hook uses for the key file.
+  `callerKind("mcp:thread:<id>")` is "mcp". Threads a restart cut say `restart` (ADR 0029 R7).
+- Models (the user's decision): each session has a purpose (chat, agent, project, capsule, job,
+  memory, planner, learn; inferred when not given: a lean or one-shot thread is a job). Opus for
+  chat, agent and project; haiku for the rest. `sessions.models` in config overrides a purpose;
+  person-only `sessions.models.set` overrides a purpose or a project; an agent's model and an
+  explicit one win. `sessions.models.get`, internal `sessions.models.resolve`, event
+  `model.changed`. `thread.started` says `provider`, `model`, `auth` and `purpose` for the chip;
+  records carry `provider` and `purpose`.
+- Providers: a module adds a session provider through its manifest (`does.providers`) and
+  `ctx.provider(name, driver)`, with no core change; `threads.start { provider }` runs a session on
+  it. The contract and the test every provider must pass are core/sessions/conformance.js; the
+  CLI runner and the SDK driver pass it, and a sample module's provider runs a session end to end.
+- The box image carries the pinned SDK with its bundled Claude Code in /opt/vyre-sessions-sdk
+  (`VYRE_SESSIONS_SDK_DIR`), so a box never downloads it; about 410 MB more. `.dockerignore` keeps
+  scripts/postinstall.mjs, without which `npm ci` in the image failed.
+- Tests: the switchboard and sessions tests keep their work folders outside the temp home (the
+  floor treats the home as Vyre's own, as on a real machine).
+
+#### Sessions: Vyre-owned sessions on the Claude Agent SDK (ADR 0030, steps 1 to 3)
+
+- core/sessions (new module `sessions`): the Claude driver on the Agent SDK (`claude.js`), with the
+  same contract as the CLI runner, so the Switchboard's stream, asks, "always in project", the
+  limit fallback and the watches work unchanged on either. Permission questions come through
+  `canUseTool` into the existing asks; a cancelled one becomes `ask.cancelled`.
+- `sessions.driver` (`cli` or `sdk`; `VYRE_SESSIONS_DRIVER` overrides it for a test run) picks the
+  driver. The SDK is not an npm dependency: it installs on first use into
+  `<VYRE_HOME>/sessions-sdk` (pinned 0.3.283; about 25 MB, plus 230 MB for the bundled Claude Code
+  where `sessions.claude` is `bundled`), never from a test run, and loads with the first session
+  (the import is about 40 MB). New tools `sessions.status` and `sessions.setup`.
+- The box's own credential: a session no agent runs uses `sessions.auth` (the box: the vault's
+  `claude-setup-token`, with `anthropic-api-key` as the limit fallback; the Mac: Claude Code's own
+  login). The vault is asked only once onboarding stored a token or `sessions.auth` is set. The
+  onboarding now grants both items to module `threads` as well as `agents`.
+- The system prompt at three levels (`assistant`, `agent:<name>`, `project:<slug>`), appended to
+  Claude Code's own by default, `replace` as a marked advanced option, every edit a version:
+  `sessions.prompt.get`, `set`, `history`, `revert`, `preview` (and internal `compose`). Event
+  `prompt.changed`. `set` and `revert` are person-only (core/presence PERSON_ONLY). The CLI runner
+  passes a replace as `--system-prompt`.
+- Idle close and a cap: `sessions.idle_minutes` (10) closes a session nobody is using
+  (`thread.stopped` reason `idle`), and the next message resumes it; `sessions.max_live` (box 6)
+  closes the longest-idle one to make room, or refuses a start with `busy`.
+- `threads.interrupt`: stop the running turn; its open questions are cancelled. Thread records say
+  their `driver`.
+- `vyre resume` hands an idle vyred session over to the terminal (stops it first) and leaves one
+  mid-turn alone.
+- Tests: core/sessions/sessions.test.js runs every case on both drivers (the SDK ones need
+  `VYRE_SESSIONS_SDK_DIR`, and skip without it); the switchboard, agents, learn, computers,
+  harness, presence, federation and onboarding suites pass on both. The fake `claude` logs a
+  launch at its initialize request, with what the SDK sends there added as the flags it stands
+  for, and handles an interrupt. Docs: docs/using/sessions.md.
+
+#### Sessions: ADR 0030, Vyre-owned sessions and the provider router (proposed)
+
+- docs/adr/0030-sessions.md (draft): Vyre runs the sessions it starts through the Claude Agent
+  SDK behind a provider router (Claude now, Codex and ACP later), with one session and event
+  model, `canUseTool` into the existing asks, swappable auth from the vault, idle close, and a
+  migration order per team. Joins the nav.
+- scripts/sessions-proof/: a prototype Claude driver and a proof run on testbox with the real
+  SDK driving the fake `claude` (start, stream, an ask answered, the floor, a question, a queued
+  message, resume), plus RSS and CPU of the real binary idle. Not wired into vyred; its SDK
+  dependency is installed only in the proof's own folder.
+- core/switchboard/testing/fake-claude.js reads `--flag=value` as well as `--flag value`, since
+  the Agent SDK passes `--session-id=<id>` and `--resume=<id>`.
+
 #### The answer eval runs without the Electron Capsule
 
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
