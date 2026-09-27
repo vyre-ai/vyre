@@ -81,16 +81,24 @@ mobile and the Capsule (through their owners).
 
 ## Doing
 
-- Waiting: mobile (include vault-android, gradle tests, device check), computers (fill.begin/end for
-  Glass), the lead (a real-browser check of the extension; which team adds the Apple extension
-  targets; the session-in-Keychain call for iOS). Android CredentialProviderService next.
+- PAUSED for the native-core refocus (lead, 27 Sep). Branch is green on its targeted set.
 
-## Next (the approved order, sizes sent to the lead 2026-09-27)
+## Next (in order, when resumed)
 
-9. vault.agent.fill (M): waits on computers.fill.begin/end (glass-live/computers).
-13. Autofill (L): Android CredentialProviderService (passkeys); iOS/macOS ASCredentialProvider targets built in the
-   simulator/CI only (no Apple Developer team); a real-browser check of the extension (passkeys,
-   cards) when the lead says the Mac is free.
+1. Rotation: revoke-old asks for proof with the new key's name shown (lead decision, ADR 0028 4c);
+   then prove each auto provider against a real account.
+2. Agent grants per project (ADR 0031): project column, check on every use, revoke by project.
+3. Extension request signing (e2e 628e2cd9 x-vyre-proof, key at pairing), then make the key required.
+4. vault.reveal {purpose: "copy"} audited as a local copy on the device (mobile asked).
+5. The real-browser extension check on TESTBOX: headless Chrome, temp --user-data-dir, local
+   fixture pages only, after the integrator's run and under load 8.
+6. vault.agent.fill against glass-live's final computers.fill contract (agreed; wiring after native
+   core).
+7. Android: the device check (mobile), and the CredentialProviderService (not started; the
+   subagent wrote nothing). Tell mobile the sha on any module change: their copy is not linked.
+8. Apple: parked until after native core; then mobile (iOS app) and capsule-pro (Capsule) add the
+   targets from modules/vault-apple. The extension keeps its session in the shared Keychain, 30
+   min, cleared on lock (approved).
 
 ## Needs from others
 

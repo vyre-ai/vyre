@@ -255,6 +255,21 @@ blocked, and computerd closing agent CDP websockets on `begin`.
   {name}` says which way an item rotates. Twilio stays guided: Standard API keys cannot manage
   keys.
 
+### 4c. Decided by the lead (27 Sep 2026)
+
+- Rotation has only been tested against fake providers. Until it is proven against a real
+  account, revoking the old key is the one step that asks for proof, with the new key's name
+  shown. Storing the new key needs no proof. (Not built yet: today vault.rotate asks once for the
+  whole rotation.)
+- References: `vault://item/field` is the only scheme. `vyre://` stays for app deep links.
+- The iOS/macOS extension keeps its session token in the shared Keychain group for 30 minutes,
+  cleared on device lock, matching the presence session.
+- Agent grants must name a project (ADR 0031): a nullable `project` column on
+  vault_agent_grants, checked on every use, and revoked by project when a teammate is unshared.
+  Not built yet.
+- The extension should sign each request with a paired key (e2e 628e2cd9: `x-vyre-proof`), and
+  the key becomes required once it ships. Not built yet.
+
 ### 5. The presence window for fills
 
 The standing rule is one proof for about 30 minutes on the Deck, the Capsule and the phone. The
