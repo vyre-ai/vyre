@@ -198,6 +198,21 @@ export class DockerDriver {
     return { state, host, ...(state === "exited" && c.State && typeof c.State.ExitCode === "number" ? { exitCode: c.State.ExitCode } : {}) };
   }
 
+  /**
+   * One CPU/RAM/network sample (vitals, ADR 0014 part 9's follow-on: docker stats?stream=false
+   * gives one pair of counters an interval apart already, so a single request is enough — no
+   * polling loop, no streaming connection held open). Null fields when the container is not
+   * running (docker answers 200 with zeroed counters while stopped; this returns null instead
+   * of reporting 0% of nothing).
+   * @returns {Promise<{ cpu: number|null, ram: number|null, ramLimit: number|null, netRx: number|null, netTx: number|null }>}
+   */
+  async stats(id) {
+    const c = await this.own(id);
+    if (String(c.State && c.State.Status) !== "running") return { cpu: null, ram: null, ramLimit: null, netRx: null, netTx: null };
+    const body = await this.must("GET", `/containers/${encodeURIComponent(id)}/stats`);
+    return reduceStats(body);
+  }
+
   async list() {
     const filters = encodeURIComponent(JSON.stringify({ label: [`${this.managedLabel}=true`] }));
     const rows = await this.must("GET", `/containers/json?all=true&filters=${filters}`);
@@ -212,4 +227,28 @@ function stateOf(s) {
   if (s === "running" || s === "restarting") return "running";
   if (s === "paused") return "paused";
   return "exited";
+}
+
+/**
+ * Pure: one Engine `/stats?stream=false` body to vitals' shape. cpu is the standard Docker CPU%
+ * formula (the delta between the two samples the Engine already took, over the delta of the
+ * whole system's, times the online CPUs) — never a second request. Anything missing or
+ * non-finite comes back null rather than a misleading 0.
+ * @param {any} s
+ */
+export function reduceStats(s) {
+  const num = v => typeof v === "number" && Number.isFinite(v) ? v : null;
+  const cpu = s && s.cpu_stats && s.cpu_stats.cpu_usage, precpu = s && s.precpu_stats && s.precpu_stats.cpu_usage;
+  const cpuTotal = cpu && num(cpu.total_usage), precpuTotal = precpu && num(precpu.total_usage);
+  const sysNow = s && s.cpu_stats && num(s.cpu_stats.system_cpu_usage), sysBefore = s && s.precpu_stats && num(s.precpu_stats.system_cpu_usage);
+  const cpuDelta = cpuTotal !== null && cpuTotal !== undefined && precpuTotal !== null && precpuTotal !== undefined ? cpuTotal - precpuTotal : null;
+  const sysDelta = sysNow !== null && sysNow !== undefined && sysBefore !== null && sysBefore !== undefined ? sysNow - sysBefore : null;
+  const online = (s && s.cpu_stats && num(s.cpu_stats.online_cpus)) || (cpu && Array.isArray(cpu.percpu_usage) ? cpu.percpu_usage.length : null) || 1;
+  const cpuPct = cpuDelta !== null && sysDelta !== null && sysDelta > 0 ? Math.round(cpuDelta / sysDelta * online * 100 * 10) / 10 : null;
+  const mem = s && s.memory_stats;
+  const usage = mem && num(mem.usage), limit = mem && num(mem.limit);
+  const ram = usage !== null && usage !== undefined && limit ? Math.round(usage / limit * 100 * 10) / 10 : null;
+  const nets = (s && s.networks && typeof s.networks === "object") ? Object.values(s.networks) : [];
+  const sum = key => nets.length ? nets.reduce((a, n) => a + (num(n && n[key]) || 0), 0) : null;
+  return { cpu: cpuPct, ram, ramLimit: limit || null, netRx: sum("rx_bytes"), netTx: sum("tx_bytes") };
 }

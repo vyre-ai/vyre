@@ -15,7 +15,7 @@ Written 28 Sep 2026, for the lead before any code. New idea from the user, 0.1.1
 One module, `vitals`, roles `["box", "local"]` (the same two link.js already runs under: it
 collects on the server and on every paired Mac or Windows device, each into its own `vyre.db`).
 There is no central collector reaching out to devices: each device samples itself, keeps its own
-rollups, and answers when asked — matching link's "the box asks a paired Mac" shape
+rollups, and answers when asked: matching link's "the box asks a paired Mac" shape
 (`link.macs.call`) rather than inventing a push path.
 
 ```
@@ -44,7 +44,7 @@ for a permission prompt (ADR 0014's "no nagging" rule is not tailnet-specific; i
 new prompt vitals could otherwise add, so this must not add one).
 
 **On the server, also a breakdown per agent's computer** (docker stats) **and per session**
-(cgroups inside a computer, once glass-live's image change lands — see "Depends on" below).
+(cgroups inside a computer, once glass-live's image change lands: see "Depends on" below).
 `computers.stats { id }` is a new tool on the computers module (not vitals: it owns the Docker
 driver), calling `DockerDriver`'s existing `request()` against `GET /containers/{id}/stats?stream=false`
 and returning `{ cpu, ram, ramLimit, netRx, netTx }` for one container. vitals calls it once per
@@ -87,44 +87,44 @@ CREATE TABLE vitals_hour ( -- same shape, hour TEXT "YYYY-MM-DDTHH", 30-day rete
 );
 ```
 
-The live 2 s samples themselves are never written to disk — only kept in memory for the open
-watcher's sparkline — so a watched session costs one write a minute, same as idle.
+The live 2 s samples themselves are never written to disk: only kept in memory for the open
+watcher's sparkline: so a watched session costs one write a minute, same as idle.
 
 ## Tools
 
-- `vitals.watch { action: "open"|"close" }` — owner-only (presence not required, a read); opens
+- `vitals.watch { action: "open"|"close" }`: owner-only (presence not required, a read); opens
   or closes one live subscription. Answers the current sample plus the in-memory 2 s buffer for
   sparklines.
-- `vitals.status { device? }` — owner-only, full detail: every device's latest sample, its 24 h
+- `vitals.status { device? }`: owner-only, full detail: every device's latest sample, its 24 h
   minute history, and (on the server) the per-computer/per-session breakdown. This is the one
   that could carry a process name or window title one day; for 0.1.1 it does not (see "Access"
   below), but it is the tool to gate if that ever changes.
-- `vitals.summary { device? }` — any caller, including an agent about its own computer: aggregate
+- `vitals.summary { device? }`: any caller, including an agent about its own computer: aggregate
   numbers only (cpu/ram/gpu percentages, no per-process or per-window detail). An agent asking
   about a computer that is not its own gets the same shape with every field null, not a refusal
   (so an agent cannot use the shape of the error to learn another agent is even running).
-- `vitals.explain { device? }` — a compact digest built for IQ, not raw numbers: top consumer by
+- `vitals.explain { device? }`: a compact digest built for IQ, not raw numbers: top consumer by
   CPU/RAM over the last 15 minutes, any open `vitals.trouble` episode, and the trend (rising,
   falling, flat). IQ turns this into "why is the server slow" prose; it never has to read
   `vitals_minute` itself, matching every other module's "IQ calls a tool" contract.
-- `vitals.advice` — owner-only, computed on demand (never a scheduled push, per the no-nagging
+- `vitals.advice`: owner-only, computed on demand (never a scheduled push, per the no-nagging
   rule): scans the last 7 to 30 days of hourly rollups for a pattern like the user's own example
   ("RAM hit 90% four times this week") and returns short strings, plain read, no action taken.
 
 ## Events
 
-- `vitals.sample { device, scope, cpu, ram, gpu, disk, netRx, netTx, battery, at }` — every tick,
+- `vitals.sample { device, scope, cpu, ram, gpu, disk, netRx, netTx, battery, at }`: every tick,
   fast or slow. This is the feed glass's concurrency cap and the computers pool's queue read from
   (`ctx.events.on("vitals.sample", ...)` on their side, never vitals reaching into their code): a
   pool deciding whether to start one more shared-browser context, or Glass deciding whether to
   queue a take-over, can watch the server's aggregate `cpu`/`ram` scope `""` without vitals
   knowing anything about pools or contexts.
-- `vitals.trouble { device, scope, metric, value, minutes }` — only on a sustained breach (a
+- `vitals.trouble { device, scope, metric, value, minutes }`: only on a sustained breach (a
   metric over its threshold for most of the last 15 samples at the current cadence, whichever
   that is), once per episode, and again only after a recovery sample. vitals never decides how
   loudly to surface this: a watcher rule (`{ "on": "vitals.trouble" }`, the same shape hooks
   already uses for `hook.received`) is how the person chooses to be told, so vitals adds no
-  nagging on its own — it only ever emits, at most once per episode.
+  nagging on its own: it only ever emits, at most once per episode.
 
 ## Surfaces
 
@@ -133,11 +133,11 @@ watcher's sparkline — so a watched session costs one write a minute, same as i
   `vitals.watch`'s shape and nothing else. Not building the page myself.
 - **IQ**: answers "why is the server slow" from `vitals.explain`, per memory-iq's existing
   tool-call contract.
-- **Quiet alert**: a watcher on `vitals.trouble`, per the standing "no nagging" rule — the person
+- **Quiet alert**: a watcher on `vitals.trouble`, per the standing "no nagging" rule: the person
   sets up how (or whether) they want to hear it, same as any other watcher.
   `vitals.advice` for sizing suggestions, read on demand only.
 - **Reusing `link.health`**: a device tile also shows the paired connection's path/latency
-  straight from `link.health` (called, not duplicated) beside vitals' own throughput number —
+  straight from `link.health` (called, not duplicated) beside vitals' own throughput number :
   two different signals (connection quality vs. local resource use) shown together, not merged
   into one metric.
 
@@ -146,21 +146,21 @@ watcher's sparkline — so a watched session costs one write a minute, same as i
 Person-level only, per the user's ask. `vitals.watch` and `vitals.status` refuse an agent caller
 outright (same `owner()` guard pattern network.js and files/drive.js already use). `vitals.summary`
 is the one tool an agent may call, and it is built to structurally exclude anything that could
-carry a process name or a window title — not filtered after the fact, never fetched for that path
+carry a process name or a window title: not filtered after the fact, never fetched for that path
 at all. `vitals.explain` and `vitals.advice` are person-level too (IQ answers on the person's
 behalf, from the person's own query).
 
 ## Depends on / open questions
 
 1. Per-shared-browser-context breakdown needs a `GET /vitals` on computerd, which is glass's or
-   computers' code to add, not mine — same coordination shape as the tailnet-side wiring I'm
+   computers' code to add, not mine: same coordination shape as the tailnet-side wiring I'm
    already waiting on glass for. Proposing it lands after theirs, not blocking 0.1.1.
 2. Windows' equivalent of Capsule's local collector: I've sketched the PowerShell/WMI calls above
    from documentation, unverified on a real Windows box. Coordinating with windows on where the
    collector lives (their device-role code, calling into a shared `vitals` local module the same
    way Capsule will) rather than vitals reimplementing anything Windows-specific twice.
 3. Threshold defaults for `vitals.trouble` (what counts as "sustained trouble") and for
-   `vitals.advice`'s "hit 90% four times" style rule — proposing config `vitals.thresholds` with
+   `vitals.advice`'s "hit 90% four times" style rule: proposing config `vitals.thresholds` with
    sane defaults (RAM/CPU 90% for 10 of 15 samples; disk 90% flat, no sustain window since it
    rarely flaps) rather than hard-coding, but want the lead's sign-off on the numbers before I
    ship a default someone has to live with.
