@@ -29,13 +29,14 @@ export function problemLine(err) {
 // A Mac session's ask (source "mac", machine, node on the relayed event) is answered from here with
 // threads.answer { ..., machine }; the box forwards it. Its refusals each get their own step, and the
 // card stays open for all of them:
-//   person_session_required  this device is not signed in as the person: the passkey step, then again
+//   person_session_required  this browser is not signed in as the person: a passkey proof on the
+//                            answer does not help, so the card sends the person to the box's own
+//                            sign-in page (/person/signin, made by presence.person.start), then Try again
 //   presence_required        a gated ask (outbound send, vault): a fresh passkey or Touch ID, then again
 //   mac_offline, timeout     the box's words and Try again
-// There is no flag saying the box forwards answers, so the card tries. A box that does not refuses in
-// a way that says so: an unknown tool or input, or (ignoring `machine`) "no ask <id>" for an ask it
-// never relayed (no `node`). Then the card, and every Mac card after it on this page, falls back to
-// "Answer it on <mac>".
+// A relayed ask (source "mac") already means the box forwards answers, so the card tries. A box that
+// cannot refuses in a way that says so: an unknown tool or input, or unsupported. Then the card, and
+// every Mac card after it on this page, falls back to "Answer it on <mac>".
 
 const HELD = new Set(["no_such_tool", "bad_input", "unsupported", "not_supported", "unknown", "unknown_tool"]);
 let held = false;
@@ -43,18 +44,20 @@ let held = false;
 /** Has this box shown it cannot answer a Mac's ask? New Mac cards then say where to answer instead. */
 export const macAnswersHeld = () => held;
 
+/** The box's own page that signs this browser in as the person (presence.person.start, no cc). */
+export const PERSON_SIGNIN = "/person/signin";
+
 /**
  * Which step a refused Mac answer needs: "sign_in", "presence", "retry", "held" (the box cannot
  * forward answers) or null (show the reason).
- * @param {any} err @param {{ node?: string|null }} [ask]
+ * @param {any} err @param {{ node?: string|null }} [_ask]
  */
-export function macRefusal(err, ask) {
+export function macRefusal(err, _ask) {
   const code = err?.code;
   if (code === "person_session_required") return "sign_in";
   if (code === "presence_required") return "presence";
   if (code === "mac_offline" || code === "timeout") return "retry";
   if (HELD.has(code)) return "held";
-  if (!ask?.node && /^no ask /.test(String(err?.message || ""))) return "held";
   return null;
 }
 
@@ -86,8 +89,10 @@ export function macProblem(err, machine, ask, again) {
   const line = (why, ...kids) => h("div", { class: "gate-note chat-problem cv-mac-step", role: "alert" }, h("span", { class: "err" }, why), ...kids);
   const btn = (label, opts) => h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => again(opts) }, label);
   if (kind === "sign_in") {
-    return line(`Sign in on this device with your passkey to answer asks on ${machine}.`, " ",
-      btn("Sign in with your passkey", { presence: true }), " ", link("/settings#security", { class: "link" }, "Add a passkey on this phone"));
+    // A proof on the answer is not a sign-in: the box's page signs this browser in, then the answer goes again.
+    return line(`Sign this browser in to answer asks on ${machine}.`, " ",
+      h("a", { class: "link cv-person-signin", href: PERSON_SIGNIN, target: "_blank", rel: "noopener" }, "Sign in"), " ",
+      btn("Try again", {}));
   }
   if (kind === "presence") {
     return line(`This answer lets ${machine} do something protected. Prove it is you first.`, " ",

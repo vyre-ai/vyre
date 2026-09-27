@@ -180,7 +180,7 @@ test("a box that cannot forward the answer: the card falls back to 'Answer it on
   assert.match(text(q), /Answer it on alex-mac/);
   assert.equal($$(q, "button").length, 0);
   assert.equal(q.isOpen(), false);
-  // An older box ignores `machine` and does not have an ask it never relayed: "no ask <id>" means the same.
+  // The page remembers it: a later Mac ask says where to answer from the start.
   emit("ask.raised", { ask: "ask_m3", kind: "permission", tool: "Bash", summary: "npm test" });
   await wait();
   const later = $$(box, ".cv-ask").at(-1);

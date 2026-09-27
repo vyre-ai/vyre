@@ -272,20 +272,24 @@ test("Mac ask: the usual buttons, 'on <mac>', and threads.answer carries the mac
   assert.deepEqual(api.of("threads.answer")[1].input, { ask: "ask_m2", decision: "deny", surface: "deck", machine: MACHINE });
 });
 
-test("Mac ask refused: person_session_required shows the passkey sign-in, which sends again with a proof", async () => {
-  const api = vyred({ "threads.answer": (_i, proved) => proved ? { answered: true, source: "mac", machine: MACHINE }
+test("Mac ask refused: person_session_required sends the person to the box's sign-in page, then Try again (no proof on the answer)", async () => {
+  let signedIn = false;
+  const api = vyred({ "threads.answer": () => signedIn ? { answered: true, source: "mac", machine: MACHINE }
     : { $error: { code: "person_session_required", message: "answering a Mac's ask is the person's own action: sign in on this device with your passkey first" } } });
   const card = askCard(macAsk("ask_m3"));
   card.onKey(key("Enter"));
   await settle();
-  assert.match(text(card), /Sign in on this device with your passkey to answer asks on alex's MacBook Pro/);
-  assert.match(text(card), /Add a passkey on this phone/);
+  assert.match(text(card), /Sign this browser in to answer asks on alex's MacBook Pro/);
+  const a = /** @type {any} */ ($(card, "a.cv-person-signin"));
+  assert.equal(a.getAttribute("href"), "/person/signin", "e2e's sign-in page on the box");
+  assert.equal(a.getAttribute("target"), "_blank");
   assert.equal(card.isOpen(), true, "the card stays open");
-  await btn(card, /Sign in with your passkey/).click();
+  signedIn = true;
+  await btn(card, /Try again/).click();
   await settle();
   const [first, again] = api.of("threads.answer");
   assert.equal(first.presence, false);
-  assert.equal(again.presence, true, "the sign-in step is the passkey proof");
+  assert.equal(again.presence, false, "a passkey proof on the answer is not a sign-in");
   assert.deepEqual(again.input, first.input);
   assert.match(text(card), /Allowed once/);
 });
@@ -334,7 +338,7 @@ test("Mac ask refused: mac_offline and timeout say so with Try again; the card s
   assert.match(text(q), /Answered/);
 });
 
-test("Mac refusals, by code: which step each needs, and when 'no ask' means the box cannot forward", async () => {
+test("Mac refusals, by code: which step each needs; only an unknown tool, bad input or unsupported means the box cannot forward", async () => {
   const { macRefusal } = await import("./presence.js");
   assert.equal(macRefusal({ code: "person_session_required" }), "sign_in");
   assert.equal(macRefusal({ code: "presence_required" }), "presence");
@@ -342,7 +346,8 @@ test("Mac refusals, by code: which step each needs, and when 'no ask' means the 
   assert.equal(macRefusal({ code: "timeout" }), "retry");
   assert.equal(macRefusal({ code: "no_such_tool" }), "held");
   assert.equal(macRefusal({ code: "bad_input" }), "held");
-  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, {}), "held", "an older box, an ask it never relayed");
-  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, { node: "nMacStable1" }), null, "a relayed ask: the Mac's own final answer");
+  assert.equal(macRefusal({ code: "unsupported" }), "held");
+  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, {}), null, "a relayed ask already means the box forwards: its words, not the fallback");
+  assert.equal(macRefusal({ code: "failed", message: "no ask ask_m9" }, { node: "nMacStable1" }), null);
   assert.equal(macRefusal({ code: "denied", message: "pair again" }, { node: "nMacStable1" }), null);
 });
