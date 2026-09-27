@@ -332,6 +332,20 @@
       "h": 1200,
       "title": "Teammates and usage (interactive) \u00b7 paper",
       "is_interactive": true
+    },
+    "SettingsRegistry.dc.html": {
+      "x": 12480,
+      "y": 6160,
+      "w": 2700,
+      "h": 1180,
+      "title": "Settings: account and project scopes"
+    },
+    "SettingsRegistry-paper.dc.html": {
+      "x": 12480,
+      "y": 7940,
+      "w": 2700,
+      "h": 1180,
+      "title": "Settings: account and project scopes \u00b7 paper"
     }
   },
   "createdOnFiles": {
@@ -447,11 +461,13 @@
     "Memory.dc.html",
     "Settings.dc.html",
     "Composer.dc.html",
+    "SettingsRegistry.dc.html",
     "Onboarding-paper.dc.html",
     "Projects-paper.dc.html",
     "Memory-paper.dc.html",
     "Settings-paper.dc.html",
     "Composer-paper.dc.html",
+    "SettingsRegistry-paper.dc.html",
     "States.dc.html",
     "InstallLaptop.dc.html",
     "InstallPhones.dc.html",
