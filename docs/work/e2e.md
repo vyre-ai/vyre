@@ -217,7 +217,12 @@ Plan (to the lead before building):
   (phone enrol needs a tailnet; mail and appearance.tokens not in the build). Update 0.1.1 and
   rollback both keep the vault. Nothing left on testbox.
 - box-deploy ran rc-smoke on main 68463d04's tgz (~/vyre-release-68463d0) at 18:57 UTC; it exited
-  within a minute and cleaned up. Its output went to box-deploy's own terminal.
+  within a minute and cleaned up. Output (from box-deploy): 21 pass / 0 fail / 3 skip, all 8
+  phases. Under a minute is normal with a warm docker cache (my rc.1 run took about as long).
+  box-deploy had already redeployed the live box to 68463d04 before the gate result reached it.
+- node RED on main 68463d04 (run 36341827061): 0 fail. journey.test.js:221 is the marked todo; the
+  exit 1 is tmp-guard catching test/onboard.test.js (reserve/ts.net test) leaving a config.json.
+  Verdict sent: known, deploy OK; the leak is the integrator's.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
