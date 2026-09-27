@@ -198,12 +198,25 @@ Filled in as each lands.
   available: links are made only from the box's own terminal"), which looks like pre-existing
   test-environment state, not this change; did not chase further since it is e2e's suite.
 
+- Applied memory-iq's two follow-ups: the ask box calls `memory.ask` (not `memory.answer`,
+  which can't see freshly-imported sessions), handling `abstained`/`known`/`limited`/`sources`;
+  the Choose screen reads real `import.plan` pace estimates and `import.scan`'s
+  `claude_keeps_days` instead of placeholder copy; Discover now notes `left_out` counts.
+  `core/onboard/loopback.js`'s allowlist swapped accordingly.
+- `test/journey.test.js`: e2e confirmed the failure was a real, unrelated Mac-only bug (a caller
+  check leaving vyred's socket blocking on a large answer), already fixed on `work/e2e-peerfix`
+  and heading into rc.2. Not mine, no action needed.
+- tailnet is being revived (the lead, 29 Sep) to work on Tailscale install/onboarding
+  simplicity; it will contact me about steps 1-2 and `install-box.sh`. Waiting to hear from it
+  before changing those further, per the lead's "fewest steps from nothing to a server plus a
+  paired device" shared goal.
+
 ## Next
 
 - Screenshot-verify the import step against fixtures once there is time for the temp-vyred setup.
-- Confirm `test/journey.test.js`'s failure is pre-existing (not caused by this branch) with e2e,
-  or fix it if it turns out to be mine.
-- Start building the step-shell and steps 1-3, per the lead's go-ahead.
+- Start building the step-shell's new pieces (per-step celebration, the final summary) once more
+  steps exist to celebrate; premature to scaffold against only 5 of 9 steps today.
+- Coordinate with tailnet once it reaches out about steps 1-2 and install-box.sh.
 - Design step 7 (Vyre Drive) once federation's options and the user's choices come back.
 
 ## Needs from others
