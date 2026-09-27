@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+## 0.1.0
+
+The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
+
+#### Release prep: 0.1.0-rc.1
+
+- Every package.json (the root, packages/module-sdk, apps/app) and both lockfiles say 0.1.0-rc.1;
+  apps/app/app.json says 0.1.0, since iOS takes only X.Y.Z as the app's version.
+- release.yml takes vX.Y.Z-rc.N tags as prereleases on the beta channel, and an rc without its own
+  CHANGELOG section gets the "## X.Y.Z" section it previews. A dry run builds the branch it was
+  dispatched on, so a candidate is checked before anything is tagged.
+- release/min_from is 0.1.0-rc.1, so a box on the release candidate updates straight to 0.1.0
+  (with the default, 0.1.0, `vyre update` would have refused it).
+
+
 #### The app perf job drags the approve swipe
 
 - The Now row's approve swipe is pointer-driven now (mobile 503414d4), so scrolling its strip did

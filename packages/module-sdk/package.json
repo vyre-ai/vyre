@@ -1,6 +1,6 @@
 {
   "name": "@vyre/module-sdk",
-  "version": "0.1.0",
+  "version": "0.1.0-rc.1",
   "private": true,
   "description": "Types, the manifest schema and a manifest checker for Vyre modules (module API 1).",
   "license": "Apache-2.0",
