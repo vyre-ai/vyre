@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The box's words wait for whoever holds a Mac session
+
+- The person at the box never takes a Mac session's keyboard. While another surface on the Mac
+  holds it (the Capsule, say), `threads.send` queues the words as it does for a terminal, and
+  answers with `busy` (`"terminal"` or the holder). The box's note names the Mac: "<name> is busy
+  in your terminal on alex-mac." The link's caller `link:box` is a caller kind of its own
+  (`fromLink` in core/switchboard/index.js): it queues, is no agent, and its surface is always
+  `box:<surface>`. A queued message from the box reaches Claude as "via the Deck on the box"
+  (core/harness/index.js). Decided with capsule-now. Tests: test/federation-send.test.js,
+  core/switchboard/switchboard.test.js.
+
 #### The person on the box types into a Mac's session
 
 - `threads.send` on the box, for a thread only a paired Mac has, goes to that Mac for the
