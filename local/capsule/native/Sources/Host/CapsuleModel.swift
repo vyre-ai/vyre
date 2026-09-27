@@ -98,7 +98,7 @@ public final class CapsuleModel: ObservableObject {
     }
     @Published public internal(set) var asked: String?
     @Published public internal(set) var pending = false
-    /// What memory says about the words in the box (recall.search and memory.relevant), or nil.
+    /// What memory says about the words in the box (memory.answer), or nil.
     @Published public internal(set) var memory: MemoryAnswer?
     /// What memory showed for the question that was asked, kept beside its reply.
     @Published public internal(set) var askedMemory: MemoryAnswer?
@@ -724,26 +724,25 @@ public final class CapsuleModel: ObservableObject {
         return Route.asksQuestion(m.text) || !(flat.contains { $0.score >= 0.6 && $0.kind != "ask" })
     }
 
-    /// Memory first: what the user already said, on this Mac, with no model. Asked a moment after
-    /// typing stops, and only while vyred is up; an answer for older words is dropped.
+    /// Memory first: what memory.answer says about the words, a moment after typing stops, and
+    /// only while vyred is up. It is the one source of personal facts here; with no memory.answer
+    /// on this vyred there is no memory box at all. An answer for older words is dropped.
     func recall(_ raw: String, token t: Int) {
         recallTask?.cancel()
         let words = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         if memory?.text != words { memory = nil }
-        guard words.count >= 3, vyred.isUp, vyred.has("recall.search") || vyred.has("memory.relevant") else { return }
-        let scratch = URL(fileURLWithPath: home).appendingPathComponent("capsule/ask").path
+        guard words.count >= 3, vyred.isUp, vyred.has("memory.answer") else { return }
         recallTask = Task { @MainActor [vyred] in
             try? await Task.sleep(nanoseconds: 180_000_000)
             if Task.isCancelled || t != self.token { return }
             let t0 = vyNowMs()
-            async let facts = vyred.call("memory.relevant", ["text": words, "limit": 3], presence: false)
-            async let hits = vyred.call("recall.search", ["q": words, "limit": 10, "per_session": 1], presence: false)
-            let (f, h) = await (facts, hits)
+            let r = await vyred.call("memory.answer", ["q": words], presence: false)
             if Task.isCancelled || t != self.token { return }
-            var m = Memo.fold(text: words, facts: (f.data as? [[String: Any]]) ?? [], hits: (h.data as? [[String: Any]]) ?? [], scratch: scratch)
+            guard r.error == nil else { return }
+            var m = Memo.fromAnswer(text: words, r.data)
             m.ms = max(1, vyNowMs() - t0)
             if m != self.memory { self.memoryExpanded = false }
-            self.memory = m
+            self.memory = m.isEmpty ? nil : m
         }
     }
 

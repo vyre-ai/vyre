@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Capsule no longer answers personal questions itself
+
+- The user's bug: "what is my wife's name" answered "Jordan" from a Vyre dev session's test text.
+  The Capsule's own ranker (Said, ported from said.js) read any first-person line in any
+  transcript as a fact about the user. It is removed: the memory box now shows only what
+  memory.answer says (source-trusted, the person's own words), and with no memory.answer on the
+  vyred there is no memory box. recall.search and memory.relevant are no longer called for it.
+- Quick answers go to the box as before (threads.start, purpose capsule), where sessions' Vyre IQ
+  prompt says how to answer; the old "Answer briefly ... no tools" append (Memo.quickAppend,
+  Bridge.quickAppend) is gone. Only memory.answer's lines go with the question.
+- `Sources/Vyred/Said.swift` is now `Sources/Vyred/MemoryBox.swift` (Memo.fromAnswer);
+  `Tests/MemoryBoxTests.swift` replaces SaidTests, with a test that no local path produces a
+  personal fact (a dev transcript's "My wife is Jordan." and a loose fact never reach the box or
+  the prompt).
+
 #### Queued replies follow only their own turn (capsule-agent 42e8da05, merged)
 
 - A reply queued for a busy session ignores the turn it was busy with, counts only its own

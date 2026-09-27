@@ -38,9 +38,9 @@ let capsuleModelSuite = Suite("capsule model") { t in
     t.test("memory on screen goes with the quick question; the prompt stays the user's words") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         let now = Date().timeIntervalSince1970 * 1000
-        v.tool("memory.relevant") { _ in [Any]() }
-        v.tool("recall.search") { _ in [["session": "a1", "role": "user", "name": "Insurance renewal",
-                                          "text": "I own a blue Volvo XC40, bought in 2022.", "ts": now - 14 * 86_400_000]] }
+        v.tool("memory.answer") { _ in ["answer": "You own a blue Volvo XC40, bought in 2022.", "confidence": 0.7, "kind": "said", "from": 1,
+                                        "sources": [["session": "a1", "seq": 4, "name": "Insurance renewal", "quote": "I own a blue Volvo XC40, bought in 2022.",
+                                                     "ts": now - 14 * 86_400_000]]] }
         v.tool("threads.start") { _ in ["id": "q1"] }
         let r: (String?, String?, String?)? = t.wait {
             let m = await MainActor.run { () -> CapsuleModel in let m = model(v); m.willShow(front: nil); return m }
@@ -56,7 +56,7 @@ let capsuleModelSuite = Suite("capsule model") { t in
         }
         t.eq(r?.0, "You own a blue Volvo XC40, bought in 2022.")
         t.ok(r?.1?.contains("- The user said, 2 weeks ago: \"I own a blue Volvo XC40, bought in 2022.\"") == true, r?.1 ?? "no append")
-        t.ok(r?.1?.hasPrefix(Memo.quickAppend) == true)
+        t.ok(r?.1?.contains("no tools") == false, "the old quick append is gone: the box's Vyre IQ prompt says how to answer")
         t.eq(r?.2, "which car do I own")
     }
 
@@ -142,8 +142,7 @@ let capsuleModelSuite = Suite("capsule model") { t in
             ["id": "old1", "name": "Northwind menu", "cwd": "/home/alex/Work/northwind", "last": now - 9 * 86_400_000],
             ["id": "cu1", "name": "COMPUTER USE SETTINGS", "cwd": "/home/alex/Work/vyre", "last": now - 60_000],
         ]] }
-        v.tool("recall.search") { _ in [["session": "x", "role": "user", "text": "computer use settings are in the vault"]] }
-        v.tool("memory.relevant") { _ in [Any]() }
+        v.tool("memory.answer") { _ in ["answer": "Computer use settings are in the vault.", "kind": "said", "from": 1, "sources": [Any]()] }
         v.tool("threads.send") { _ in ["sent": false, "queued": true, "thread": "cu1", "name": "COMPUTER USE SETTINGS",
                                        "note": "COMPUTER USE SETTINGS is busy in your terminal. I'll hand it your message when this turn ends."] }
         let r: [String]? = t.wait {
@@ -152,7 +151,7 @@ let capsuleModelSuite = Suite("capsule model") { t in
             for c in "@computer use settings" { await MainActor.run { m.text.append(c) } }
             try? await Task.sleep(nanoseconds: 400_000_000)
             let first = await MainActor.run { m.current }
-            let memoryQuiet = await MainActor.run { m.memory == nil } && v.callsOf("recall.search").isEmpty
+            let memoryQuiet = await MainActor.run { m.memory == nil } && v.callsOf("memory.answer").isEmpty
             await MainActor.run { m.run() }
             _ = await until { m.target != nil }
             let box = await MainActor.run { m.text }
