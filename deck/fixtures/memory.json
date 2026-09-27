@@ -1052,5 +1052,16 @@
     "answer": "Harlow Legal's Q3 report is due the 30th; you and kit split the intake form in two on the 12th.",
     "confidence": "high",
     "from": 3
+  },
+  "memory.ask": {
+    "answer": "Harlow Legal's Q3 report is due the 30th; you and kit split the intake form in two on the 12th.",
+    "answer_id": "ans_sample",
+    "confidence": "high",
+    "abstained": false,
+    "known": null,
+    "sources": [{ "session": "sess_sample", "seq": 41, "name": "Harlow Legal weekly, 12 Sep", "quote": "Friday before noon works.", "ts": "$ago:12d" }],
+    "via": "retrieval",
+    "latency_ms": 900,
+    "cost_usd": 0.001
   }
 }

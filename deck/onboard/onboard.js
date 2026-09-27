@@ -603,6 +603,8 @@ const SCREENS = {
     const fmtBytes = n => n < 1e6 ? Math.round(n / 1e3) + " KB" : (n / 1e6).toFixed(1) + " MB";
     const key = (/** @type {Source} */ src, /** @type {Folder} */ f) => f.cwd || src.path;
 
+    let claudeKeepsDays = 30;
+
     const drawDiscover = async () => {
       const r = await attempt("import.scan");
       if (r.error) {
@@ -612,6 +614,9 @@ const SCREENS = {
       }
       /** @type {Source[]} */
       const sources = r.data.sources || [];
+      if (Number.isInteger(r.data.claude_keeps_days)) claudeKeepsDays = r.data.claude_keeps_days;
+      const leftOut = r.data.left_out || {};
+      const leftCount = (leftOut.vyre || 0) + (leftOut.excluded || 0);
       for (const src of sources) for (const f of src.folders) if (f.suggested) picked.add(key(src, f));
       const syncFoot = () => s.foot({ label: "Continue", disabled: !picked.size, run: () => drawChoose(sources) });
       put(body,
@@ -628,7 +633,9 @@ const SCREENS = {
                 h("span", { class: "x" },
                   h("span", { class: "ellipsis" }, f.name || f.cwd || "unknown folder"),
                   h("span", { class: "code ellipsis" }, `${plural(f.sessions, "session")} · ${fmtBytes(f.bytes)} · ${when(f.from)}–${when(f.to)}`
-                    + (f.why ? ` · ${f.why}` : "")))); })))));
+                    + (f.why ? ` · ${f.why}` : "")))); })))),
+        leftCount ? h("p", { class: "small muted", style: { marginTop: "4px" } },
+          `${plural(leftCount, "session")} from Vyre's own development and excluded folders never left the device and aren't listed.`) : null);
       syncFoot();
     };
 
@@ -637,6 +644,7 @@ const SCREENS = {
       const r = await attempt("import.plan", { include: [...picked] });
       if (r.error) { put(body, empty("Could not build the plan. Try again.", r.error)); s.foot({ label: "Try again", run: () => drawChoose(sources) }); return; }
       const plan = r.data;
+      const p = plan.pace || {};
       const syncBox = h("input", { type: "checkbox", checked: sync, onchange: (/** @type {any} */ e) => { sync = e.target.checked; } });
       const syncConfirm = () => s.foot({ label: "Import", disabled: !pace, run: () => start(plan.plan) });
       const opt = (value, title, desc) => h("label", { class: value === pace ? "on" : "" },
@@ -650,12 +658,10 @@ const SCREENS = {
             h("span", { class: "code" }, "New sessions import automatically too, from now on."))),
         h("p", { class: "lbl", style: { marginTop: "12px" } }, "How fast"),
         h("div", { class: "choice", role: "radiogroup", "aria-label": "How fast Vyre reads" },
-          // TODO(memory-iq): import.plan is adding a per-pace estimate ({pace:{fast:{hours},
-          // gentle:{days}}}) and claude_keeps_days; switch these two lines to it once it ships.
-          opt("fast", "Fast", "Done in a few hours. Uses more of today's Claude usage."),
-          opt("gentle", "Gentle", "Spread over a few days.")),
+          opt("fast", "Fast", p.fast ? `Done in about ${plural(p.fast.hours, "hour")}. Uses more of today's Claude usage.` : "Done in a few hours. Uses more of today's Claude usage."),
+          opt("gentle", "Gentle", p.gentle ? `Spread over about ${plural(p.gentle.days, "day")}.` : "Spread over a few days.")),
         h("p", { class: "small muted", style: { marginTop: "12px" } },
-          "Claude Code keeps sessions for 30 days, so import now while they last. Vyre never changes Claude Code's own settings."));
+          `Claude Code keeps sessions for ${claudeKeepsDays} days, so import now while they last. Vyre never changes Claude Code's own settings.`));
       syncConfirm();
     };
 
@@ -694,7 +700,10 @@ const SCREENS = {
       every(poll, 5000);
     };
 
-    // "a way to ask IQ right there", as soon as the first sessions are searchable.
+    // "a way to ask IQ right there", as soon as the first sessions are searchable. memory.ask, not
+    // memory.answer: memory.answer knows only personal facts, and right after an import it could
+    // not answer from the sessions just read, which is the whole point of this box (memory-iq).
+    // No stream: true here, a plain request/reply is enough for onboarding.
     const drawAsk = (/** @type {HTMLElement} */ ask) => {
       const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Ask about your own history", "aria-label": "Ask Vyre IQ" }));
       const out = h("div", { class: "small muted", style: { marginTop: "8px" } });
@@ -702,8 +711,17 @@ const SCREENS = {
         const q = qIn.value.trim();
         if (!q) return;
         put(out, h("span", { class: "busy-inline faint" }, "Thinking…"));
-        const r = await attempt("memory.answer", { q });
-        put(out, r.error ? String(r.error.message) : (r.data.answer || "Nothing yet, try again in a moment."));
+        const r = await attempt("memory.ask", { question: q });
+        if (r.error) { put(out, String(r.error.message)); return; }
+        const d = r.data;
+        if (d.limited) { put(out, d.message || "Vyre IQ has reached today's limit. Try again tomorrow."); return; }
+        if (d.abstained) {
+          put(out, "Not sure yet.", d.known ? h("span", null, " ", d.known) : null);
+          return;
+        }
+        put(out, h("span", null, d.answer),
+          d.sources?.length ? h("div", { class: "code", style: { marginTop: "4px" } },
+            d.sources.map(src => src.name || src.session).join(", ")) : null);
       };
       qIn.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
       put(ask, h("p", { class: "lbl", style: { marginTop: "16px" } }, "Ask it something"),
