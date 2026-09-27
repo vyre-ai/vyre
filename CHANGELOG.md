@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A home module's settings stay inside its own rows
+
+- core/config/settings.js validateDecls and core/modules validate: a module from outside Vyre (not
+  shipped in the repo) may keep a setting in its own tools only, a config.json path must start with
+  its name, and Claude Code's files are refused; the module is invalid otherwise. A person's change
+  to a setting carries the person's authority, so a store that reached further let a harmless
+  label drive another tool as the person, write any config path, or widen Claude Code's
+  permissions (found in ADR 0033 work, confirmed by e2e).
+- read and write call a home module's tool store as the settings module, never as the person.
+  declaredSettings tags each declaration with firstParty from the loader, after the manifest's own
+  fields, so a manifest can't claim it.
+
 #### One way to change every setting: core/settings and vyre config
 
 - Modules declare their own settings in module.json ("settings": key, group, label, type, levels,

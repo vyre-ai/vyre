@@ -28,8 +28,15 @@ export const TYPES = ["enum", "bool", "int", "number", "string", "list", "object
 const LEVELS = ["account", "project"];
 const APPLY = ["live", "session", "restart"];
 
-/** Problems with a module's declared settings; empty means valid. @param {string} module @param {any} list */
-export function validateDecls(module, list) {
+/**
+ * Problems with a module's declared settings; empty means valid. A module from outside Vyre
+ * (firstParty false, the default) keeps its settings inside its own rows: a person's change to a
+ * setting carries the person's authority, so its store may not reach past the module (ADR 0033).
+ * A tool store names only the module's own tools (called as the settings module, never the
+ * person), a config.json path starts with "<module>.", and Claude Code's files are refused.
+ * @param {string} module @param {any} list @param {{ firstParty?: boolean, tools?: string[] }} [opts]
+ */
+export function validateDecls(module, list, { firstParty = false, tools = [] } = {}) {
   if (list === undefined) return [];
   if (!Array.isArray(list)) return ["settings must be a list"];
   const out = [], seen = new Set();
@@ -48,6 +55,11 @@ export function validateDecls(module, list) {
       if (kinds.length !== 1 || !["config", "claude", "tool"].includes(kinds[0])) out.push(`setting ${k}: store is {config}, {claude} or {tool}`);
       else if (kinds[0] === "config" && d.levels.includes("project")) out.push(`setting ${k}: a config.json setting is account only`);
       else if (kinds[0] === "tool" && !(s.tool.get && s.tool.set && s.tool.get.tool && s.tool.set.tool)) out.push(`setting ${k}: a tool store needs get.tool and set.tool`);
+      else if (!firstParty) {
+        if (kinds[0] === "claude") out.push(`setting ${k}: only Vyre's own modules may keep a setting in Claude Code's files`);
+        if (kinds[0] === "config" && !String(s.config).startsWith(module + ".")) out.push(`setting ${k}: a config.json path must start with "${module}."`);
+        if (kinds[0] === "tool") for (const side of ["get", "set"]) if (!tools.includes(s.tool[side].tool)) out.push(`setting ${k}: store.tool.${side} must be one of ${module}'s own tools`);
+      }
     }
   }
   return out;
@@ -176,8 +188,9 @@ export async function read(env, d, level, project) {
   }
   if (s.claude) return dig(readJson(await claudeFile(env, level, project)), s.claude);
   const g = s.tool.get;
-  // Reading a module's own settings is harmless, and its tool may be open to people only.
-  const r = await env.call(g.tool, fill(g.input || {}, undefined, project), "local");
+  // Reading a module's own settings is harmless, and its tool may be open to people only. A module
+  // from outside Vyre is never read as a person: its tool sees the settings module.
+  const r = await env.call(g.tool, fill(g.input || {}, undefined, project), d.firstParty ? "local" : undefined);
   if (r && r.error) throw fault(r.error.code === "no_such_tool" ? "unavailable" : r.error.code, r.error.message);
   return g.read ? dig(r.data, fill(g.read, undefined, project)) : r.data;
 }
@@ -213,7 +226,8 @@ export async function write(env, d, level, project, value, as, by) {
     return void writeClaude(file, put(readJson(file), s.claude.split("."), value));
   }
   const t = s.tool.set;
-  const r = await env.call(t.tool, fill(t.input || {}, value, project), as);
+  // Only Vyre's own modules' tools hear the person; any other module's tool sees the settings module.
+  const r = await env.call(t.tool, fill(t.input || {}, value, project), d.firstParty ? as : undefined);
   if (r && r.error) throw fault(r.error.code === "no_such_tool" ? "unavailable" : r.error.code, r.error.message);
 }
 
