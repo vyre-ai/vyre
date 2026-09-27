@@ -178,6 +178,8 @@ export async function add(flags, deps = {}) {
   let noRelay = false;
   // From a Mac the box cannot check a proof made here (link.call refuses human-only tools, and a
   // Touch ID on the Mac is not something the box can verify), so pairing happens on the box.
+  // TODO(e2e, ADR 0032): the Mac's Secure Enclave device key (approved, after batch 2) will let
+  // the Mac prove human-only calls to the box; then call relay.pair.start through the link here.
   if (!t.local && !flags.tailscaleOnly) {
     return fail("pairing a phone needs you at the box, and this Mac cannot prove that to it",
       { next: "open your box's Deck (Settings, Devices, Add a device), or run vyre phone add on the box itself" });
