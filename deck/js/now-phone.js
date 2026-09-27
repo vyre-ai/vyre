@@ -23,6 +23,7 @@
 
 import { h, put, link, go } from "./dom.js";
 import { attempt, on } from "./api.js";
+import { mountGlassMini } from "./glass-mini.js";
 import * as needs from "./needs.js";
 import { initial, base, since } from "./fmt.js";
 import { passkeyState, pushState, setupCard } from "./phone-setup.js";
@@ -58,7 +59,10 @@ export function phoneNow(ctx) {
   const needsSec = h("section", { class: "np-sec np-needs", "aria-labelledby": "np-needs-h" });
   const workSec = h("section", { class: "np-sec", "aria-labelledby": "np-work-h" });
   const memSec = h("section", { class: "np-sec np-mem-sec" });
-  put(ctx.root, h("div", { class: "now np" }, remind, needsSec, workSec, memSec));
+  // What each agent's computer is doing now (sight, glass-mini.md), above Working; hidden while none runs.
+  const glassMini = h("div", { class: "gm np-gm", hidden: true });
+  ctx.cleanup(mountGlassMini(glassMini, { attempt, on }));
+  put(ctx.root, h("div", { class: "now np" }, remind, needsSec, glassMini, workSec, memSec));
 
   // ---- the setup reminder -----------------------------------------------------------------
 

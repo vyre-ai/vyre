@@ -11,7 +11,8 @@
 // shows as one quiet chip in Working's head, from link.macs, read each time Working redraws.
 
 import { h, put, link, head, empty, isPhone } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { attempt, on } from "../js/api.js";
+import { mountGlassMini } from "../js/glass-mini.js";
 import { icon, mark, wordmark } from "../js/icons.js";
 import * as needs from "../js/needs.js";
 import { form, gateFields } from "../js/editable.js";
@@ -37,6 +38,9 @@ export default async function now(ctx) {
   const assistant = h("div", { class: "now-assistant" });
   const needsBox = h("section", { class: "now-needs", "aria-labelledby": "needs-h" });
   const working = h("section", { class: "now-sec", "aria-labelledby": "working-h" });
+  // What each agent's computer is doing now (sight, glass-mini.md): hidden while none runs.
+  const glassMini = h("div", { class: "gm", hidden: true });
+  ctx.cleanup(mountGlassMini(glassMini, { attempt, on }));
   const learned = h("section", { class: "now-sec", "aria-labelledby": "learned-h" });
   const recentProjects = h("section", { class: "now-sec", "aria-labelledby": "recent-h" });
 
@@ -56,7 +60,7 @@ export default async function now(ctx) {
       pairing.el,
       setupCard(),
       h("div", { class: "now-head" }, date, title, sub, assistant),
-      needsBox, working, learned, recentProjects)));
+      needsBox, glassMini, working, learned, recentProjects)));
 
   // The assistant, present: who it is and what it is doing, the first live thing Now says after
   // onboarding hands off here.

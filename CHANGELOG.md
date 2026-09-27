@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### What each agent's computer is doing now, on Now (glass-mini.md, ADR 0036)
+
+- deck/js/glass-mini.js draws one line per running agent computer on Now (desktop and phone),
+  from cohesion's sight: sight.targets (agents only, never the Mac), the last step from
+  sight.steps, then sight.stepped; a computer starting or stopping (computer.*) reads the targets
+  again. The line: the status mark (running while the step is fresh, failed with its why, else
+  done), the agent, the step's own summary, its age or who holds the keyboard. It opens Glass for
+  that computer ("Open Glass for kit's computer"); a polite live region says a new step at most
+  once every 5 s. Nothing polls; a box without sight shows nothing.
+- This slice is the spec's pill variant on every width: no picture yet (it needs sight.frame
+  stills or a small view-only viewer). Tests: deck/js/glass-mini.test.js (3).
+
 #### The Deck tells context where the person is (ADR 0036 part 2)
 
 - deck/js/context-report.js calls context.report {surface: "deck" or "phone", project, thread}

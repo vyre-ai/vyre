@@ -178,3 +178,21 @@
 @media (prefers-reduced-motion: reduce) {
   .np-face.np-spring, .np-collapsing, .np-main { transition: none; }
 }
+
+/* What each agent's computer is doing now (js/glass-mini.js, glass-mini.md's pill variant). */
+.gm { display: flex; flex-direction: column; gap: 8px; margin: 0 0 24px; }
+.gm[hidden] { display: none; }
+.gm-pill { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; min-height: 28px; padding: 4px 12px; border: 1px solid var(--rule);
+  border-radius: var(--radius-full, 999px); color: var(--text); text-decoration: none; font-size: var(--size-base, 13px); line-height: var(--line-base, 18px); }
+.gm-pill:hover { background: var(--hover); }
+.gm-pill:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.gm-agent { font-weight: 600; flex-shrink: 0; }
+.gm-step { min-width: 0; flex: 1 1 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity 150ms var(--ease, ease); }
+.gm-age { flex-shrink: 0; font-size: var(--size-meta, 12px); color: var(--label); }
+.gm-why { flex-basis: 100%; font-size: var(--size-meta, 12px); color: var(--text-2); }
+.gm-say { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+.np-gm { margin: 0 16px 16px; }
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
+  .gm-pill { min-height: 44px; border-radius: var(--radius-card, 12px); }
+}
+@media (prefers-reduced-motion: reduce) { .gm-step { transition: none; } }
