@@ -33,7 +33,10 @@ Apple Developer account. Absorbs deck-design and phone-design.
   Still to do in P4: the board for module UI slots.
   Also in P4 (agreed with platform): move the runtime half (applyOverride, check, css, fromLegacy,
   rgba, load) and tokens.json to lib/theme/, add "lib" to package.json files (main excludes
-  docs/design, so tokens.json does not ship today), repoint SOURCE; outputs byte-identical. Rules already sent 27 Sep: Now card =
+  docs/design, so tokens.json does not ship today), repoint SOURCE; outputs byte-identical.
+  Confirmed by platform (ADR 0033 366b10a7): top-level lib/theme; the first branch to create lib/
+  adds "lib" to files in the same commit; run scripts/release-check.sh to prove tokens.json ships;
+  tell mobile about SOURCE (or keep the docs path as a pointer until they rebase). Rules already sent 27 Sep: Now card =
   the Needs row, tool card = the tool row plus a template, iframes get theme.css + tokens.json and a
   theme message, a "Modules" rail section (3 pinned), one Settings group per module, and tokens a
   theme may never override (attention role, status model, focus ring, 12 px text, 44 targets, AA).
