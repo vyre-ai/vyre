@@ -19,6 +19,8 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   boards (work/app-design), Paseo's agent tools and lifecycle docs.
 
 ## Doing
+- Lead approved (2026-09-27): per-project notes parts in each project's own folder, shown as one
+  file; per-project vault grants (the lead told vault about the `project` column).
 - User decisions folded in (auto-merging integrator, sharing and assistant-assigned teammates,
   one per role, notes per project folder, offered conversion, 200 turns a day, Balanced default).
   Docs tests NOT rerun: testbox freeze by the lead; rerun docs:ref and test/docs-*.test.js after it.
