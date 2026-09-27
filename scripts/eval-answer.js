@@ -161,12 +161,13 @@ export function score(questions, got) {
  * @param {import("node:sqlite").DatabaseSync} db
  * @param {{ me: any, embedder: any, dense: any }} opts
  */
-async function startMemory(db, { me, embedder, dense, runner = null }) {
+export async function startMemory(db, { me, embedder, dense, runner = null, iqRunner = null }) {
   const tools = new Map();
   const ctx = {
     name: "memory",
     // VYRE_EVAL_PASSES: readings per batch when recording (config.memory.model.passes).
-    config: { me, role: "local", memory: { model: { passes: Number(process.env.VYRE_EVAL_PASSES) || 2 } } },
+    // askDailyUsd: an evaluation asks every question at once, far past a day's cap for a person.
+    config: { me, role: "local", memory: { model: { passes: Number(process.env.VYRE_EVAL_PASSES) || 2, askDailyUsd: 5 } } },
     paths: {},
     store: { db, migrate: () => {} },
     log: () => {},
@@ -186,6 +187,8 @@ async function startMemory(db, { me, embedder, dense, runner = null }) {
     tool: (name, def) => tools.set(name, def),
     // The reader's model: `claude -p` when recording, none when replaying (reads come from the fixture).
     memoryRunner: runner,
+    // Vyre IQ's answer model (memory.ask): recorded with eval-iq --record, else replayed.
+    iqRunner,
   };
   const mod = (await import("../core/memory/index.js")).default;
   const handle = await mod.start(ctx);
@@ -204,7 +207,7 @@ async function startMemory(db, { me, embedder, dense, runner = null }) {
  * one transaction: the indexer commits turn by turn, which is right for a live index and makes a
  * throwaway one take seconds longer than it has to.
  */
-async function embedAll(db, embedder) {
+export async function embedAll(db, embedder) {
   const add = db.prepare("INSERT OR REPLACE INTO recall_vectors (session, seq, chunk, off, v) VALUES (?,?,?,?,?)");
   const rows = /** @type {any[]} */ (db.prepare("SELECT session, seq, text FROM recall_turns ORDER BY rowid").all());
   const made = [];

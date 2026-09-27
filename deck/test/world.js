@@ -215,13 +215,14 @@ async function main() {
   });
   server.listen(PORT, "127.0.0.1", async () => {
     console.log(`deck world: http://127.0.0.1:${PORT}/  (home ${root})`);
-    // CHAT_DEMO: two live sessions waiting on the user, one with a question and one with a
-    // permission ask, for Chat's cards. Nobody answers them here: that takes a person.
+    // CHAT_DEMO: three live sessions waiting on the user, with a question, a permission ask and a
+    // plan to approve, for Chat's cards. Nobody answers them here: that takes a person.
     if (process.env.CHAT_DEMO) {
       const start = (/** @type {any} */ body) => fetch(`http://127.0.0.1:${PORT}/v1/tools/threads.start`, { method: "POST",
         headers: { "content-type": "application/json", "x-vyre-caller": "deck" }, body: JSON.stringify({ surface: "deck", ...body }) }).catch(() => {});
       await start({ cwd: moved[2].cwd, prompt: "ask", name: "Northwind menu page" });
       await start({ cwd: moved[0].cwd, prompt: "demo", name: "Intake form, second pass" });
+      await start({ cwd: moved[2].cwd, prompt: "plan", name: "Northwind price list plan" });
     }
     // Two items held at the Gate, so Now and /needs/:id have something real (not a fixture) to
     // show. request() only holds; nothing is sent. A vyred without the gate module ignores this.

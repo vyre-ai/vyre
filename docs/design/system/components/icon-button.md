@@ -22,7 +22,8 @@ phone and desktop"), the composer bar ("Session · the composer, like Claude Cod
 ## Anatomy
 
 - A square, no border, fill none, ink `--text-2`, one icon centred.
-- The icon is 16 at every size (20 only in the rail, which is its own component).
+- The icon is 16 at 28 and 32, and 20 at 44 (the phone's composer circles and nav buttons). The
+  rail's 20 is its own component.
 - Always an accessible name; never a visible label.
 
 ## Variants

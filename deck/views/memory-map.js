@@ -1,6 +1,6 @@
 // @ts-check
 // The floor plan: memory.graph drawn as rooms (one per project, one for what several share, one
-// for what belongs to none), with people, things and threads inside, and each fact as a gold dot
+// for what belongs to none), with people, things and threads inside, and each fact as a dot
 // on the link it names. Board: DeckMemory.
 //
 // Laid out once per graph: seeded positions, then a few hundred steps of springs and box
@@ -110,7 +110,7 @@ export function floor(graph, o) {
   // Facts between rooms (a shared person at a project's org): a dashed curve across the gap.
   const across = (graph.edges || []).filter(e => e.rel !== "mentioned_in" && at.has(e.src) && at.has(e.dst) && at.get(e.src)?.room !== at.get(e.dst)?.room);
   const svg = s("svg", { class: "mem-svg", viewBox: `0 0 ${W} ${H}`, role: "group",
-    "aria-label": `Memory map: ${rooms.length === 1 ? "one room" : `${rooms.length} rooms`}, with people, things and threads. Each gold dot is a fact; gold links were learned today.` },
+    "aria-label": `Memory map: ${rooms.length === 1 ? "one room" : `${rooms.length} rooms`}, with people, things and threads. Each dot is a fact; heavier links were learned today.` },
     panels.map(p => drawPanel(p, o)),
     across.map(e => {
       const a = /** @type {any} */ (at.get(e.src)), b = /** @type {any} */ (at.get(e.dst));
@@ -123,7 +123,7 @@ export function floor(graph, o) {
   return { svg, W, H };
 }
 
-/** A fact on the map: a gold dot on its link. The ring is Signal when it is the selected fact. */
+/** A fact on the map: a dot on its link. The ring is Signal when it is the selected fact. */
 function factDot(e, x, y, name, o) {
   const on = o.selected === e.id;
   return s("g", { transform: `translate(${x.toFixed(1)} ${y.toFixed(1)})`, class: "mm-node mm-factdot" + (e.until ? " closed" : ""), tabindex: 0, role: "button",
