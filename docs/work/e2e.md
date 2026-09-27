@@ -280,6 +280,14 @@ Plan (to the lead before building):
   Suspect vyred restarting under the spawner (loop.sh logs "vyred exited (N); starting it again"
   to docker logs) and the vault losing items. Asked box-deploy for invocation, env, overlap, and
   one RC_KEEP=1 failing container. Lead told to hold the redeploy.
+- a3a844e4 flake DIAGNOSED: stale vyred.lock after a container replace (same boot; old vyred pid
+  reused by a /opt/vyre process: setpriv/sh/spawner) -> "already running (pid 15)", loop 2 s gap,
+  calls in the gap fail. Seen in both kept containers. Fix work/e2e-ensureup 588995b4 (lock
+  records process start time; ensureUp waits under VYRE_SUPERVISOR=docker), sent to the
+  integrator. rc-smoke b3b1ab99: ready = same pid 3 s apart; new check that the loop never had to
+  restart vyred (23/0/2). A/B could not force the collision (pid timing); the unit test covers it.
+  box-deploy asked for 2 alone reruns. The flaky step 3 in their runs is not fully explained yet.
+  Slip: a merge left conflict markers in CHANGELOG (fixed in 850473f5: main's copy).
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
