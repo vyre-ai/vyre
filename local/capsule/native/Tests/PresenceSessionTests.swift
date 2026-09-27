@@ -62,6 +62,7 @@ let presenceSessionSuite = Suite("presence session") { t in
         t.eq(second?.error, nil)
         t.eq(p.count, 1, "no second Touch ID")
         t.eq(v.toolHeaders.last?.headers["x-vyre-presence"], "session id=s1 secret=x1")
+        t.ok(VyredClient.sessionable.contains("apps.send"), "a WhatsApp or Slack send rides the session too; each still has its preview")
     }
 
     t.test("a tool that needs its own proof never sends keep and never rides the session") {

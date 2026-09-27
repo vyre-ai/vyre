@@ -390,7 +390,7 @@ public final class VyredClient: VyredTransport, @unchecked Sendable {
     private var proofMaker: (@Sendable (String, [String: Any], String?) async -> Result<String, VyredFailure>)?
 
     /// The tools a presence session may cover (core/presence SESSIONABLE); vyred still decides.
-    public static let sessionable: Set<String> = ["gate.approve", "vault.reveal", "vault.copy", "vault.totp"]
+    public static let sessionable: Set<String> = ["gate.approve", "apps.send", "vault.reveal", "vault.copy", "vault.totp"]
     /// The presence session one proof opened: `session id=.. secret=..` as x-vyre-presence
     /// takes it, and when it ends (ms). In memory only; never written anywhere.
     private var presenceSession: (header: String, id: String, expires: Double)?

@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A WhatsApp or Slack send rides the presence session
+
+- apps.send joins the Capsule's sessionable tools: one Touch ID covers about 30 minutes of sends
+  on this Mac, as for gate.approve (the user's no-nag rule). Every send still shows its preview
+  and needs a second Enter.
+
 #### Fixes: the voice test's last check, and planner rings at the wall moment
 
 - local/voice/talk.test.js waits up to 5 s for the listen stream to close on vyred's side before
