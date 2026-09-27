@@ -35,7 +35,8 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - Paused (lead, native-core refocus). ab4fdc4d is in batch 3b. Resume on the lead's word.
 
 ## Next
-1. When relay fixes the redial bugs: flip the two `todo` tests in test/chaos/relay.test.js
+1. Relay fixed the redial bugs in work/relay fe94ed13 (batch 3b; relay ran this file with the
+   todos removed: 54/54). Once fe94ed13 is on main, merge main and flip the two `todo` tests in test/chaos/relay.test.js
    ("kit redials within its backoff...", "the box's relay link comes back after an outage
    longer than its first retry") to real tests and run the file twice on testbox.
 2. Idle durable terminal perf check: one dtach terminal open and idle for 30 min on testbox
