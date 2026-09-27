@@ -110,15 +110,16 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   then gate.approve presence:true. Review fixes: Kit boxChanged() (called on text/chip change)
   forgets a preview, held Return ignored (Panel), hide/box generation guard, busy guard, gated
   without held stops, no send by display name. Extension suites 28/28 on the Mac.
-  Not built yet: an ImmediateResults provider for words without @ ("timer 10 min" as a row);
-  the presence summary is still defaultSummary until capsule-pro's host.prove(summary:) lands.
+  7423c8c: the row for words without @ (AppsWords.swift, a full-speed provider): app-like first
+  words only reach apps.route; sends use the host's ResultAction.confirm. Extension suites 29/29.
+  The presence summary is still defaultSummary until capsule-pro's host.prove(summary:) lands.
+- Lead (2026-09-27): the real-Mac check runs after the integrator merges work/planner.
 
 ## Next
 1. When CI on 8cba106 is green: send capsule-pro the hash to merge. Then run capsule-mac CI on
    4d40355 (the AppsExtension) and hand that over too (it changes Kit, CapsuleModel,
    ExtensionHost and Panel by one line each: see Changed contracts).
-2. Provider for words without @ through apps.route; switch the presence summary to host.prove
-   when capsule-pro ships it.
+2. Switch the presence summary to host.prove when capsule-pro ships it.
 3. Slack adapter (slice 3, design below), then WhatsApp over hands (slice 4: hands.find,
    settleMs up to 5000, press Send rather than key Return; needs_front for keys), then any-app.
 4. When work/planner is on main: drop route.js's own time reading (fallback only now).
