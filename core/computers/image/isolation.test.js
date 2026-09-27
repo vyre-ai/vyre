@@ -173,3 +173,30 @@ test("isolation: while shielded every process of the agent's is stopped, and con
   const after = JSON.parse(asVyre(`${STATES}\nprint(json.dumps(agent_states()))`));
   for (const [pid, st] of Object.entries(after)) assert.notEqual(st, "T", `agent pid ${pid} is still stopped`);
 });
+
+/** Run a shell command in the computer as the agent, with its own environment; returns { code, out }. */
+function shAgent(cmd) {
+  try {
+    const out = execFileSync("docker", ["exec", "-u", "1000:1000", "-e", "DISPLAY=:1", "-e", "XAUTHORITY=/run/vyre-x/agent.xauth", C, "sh", "-c", cmd],
+      { encoding: "utf8", timeout: 30_000, stdio: ["ignore", "pipe", "pipe"] });
+    return { code: 0, out: out.trim() };
+  } catch (e) {
+    const err = /** @type {any} */ (e);
+    return { code: typeof err.status === "number" ? err.status : -1, out: String(err.stdout || "") + String(err.stderr || "") };
+  }
+}
+
+test("isolation: the agent is an untrusted X client: no cookie no display, and no screen grab or XTEST with its own", { skip }, () => {
+  assert.notEqual(shAgent("XAUTHORITY=/nonexistent xdpyinfo >/dev/null").code, 0, "the display admits a client with no cookie");
+  const ok = shAgent("xdpyinfo -queryExtensions | grep -c SECURITY");
+  assert.equal(ok.code, 0, `the agent's cookie does not open the display: ${ok.out}`);
+  // Chrome and the desktop are trusted windows; an untrusted client reading the root window gets
+  // an error or nothing, never the pixels.
+  const grab = shAgent("import -window root png:- 2>/dev/null | wc -c");
+  assert.ok(grab.code !== 0 || Number(grab.out) === 0, `the agent grabbed the screen (${grab.out} bytes)`);
+  const xtest = shAgent("xdotool key --clearmodifiers a");
+  assert.notEqual(xtest.code, 0, "the agent injected input with XTEST");
+  // Its own terminal still works: xterm is an ordinary untrusted client.
+  const xterm = shAgent("pgrep -u 1000 -x xterm");
+  assert.equal(xterm.code, 0, "the agent's xterm is not running under its untrusted cookie");
+});
