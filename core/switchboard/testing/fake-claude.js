@@ -354,17 +354,33 @@ async function turn(prompt, uuid = null) {
   }
   // A prompt with a "vyre <tool> <json>" line anywhere in it, not only at the very start, so a
   // teammate's wrapped <vyre-request> text (core/team, ADR 0031) can still script a tool call. At
-  // the very start the rest of the prompt is the call, as before (a multi-line JSON body works);
-  // found further in, only that one line is the call, so text that follows it (a wrapper's
-  // closing tag) is never swallowed into the JSON.
+  // the very start the rest of the prompt is the call, as before (a multi-line JSON body works),
+  // and only one call is made. Found further in, EVERY such line is its own single-line call, run
+  // in order, so a test can script a teammate trying something, reacting to the answer (a refusal,
+  // say) and trying again, all in the one turn a real model would; a wrapper's closing tag after
+  // the last one is never swallowed into any call's JSON, since each line is matched on its own.
   const vyreAt = lines.findIndex(l => /^vyre \S/.test(l));
-  const tool = vyreAt < 0 ? null : vyreAt === 0 ? /^vyre (\S+)\s*(.*)$/s.exec(p) : /^vyre (\S+)\s*(.*)$/.exec(lines[vyreAt]);
-  if (tool) {
+  if (vyreAt === 0) {
+    const tool = /^vyre (\S+)\s*(.*)$/s.exec(p);
+    if (tool) {
+      const { call } = await import("../../daemon/client.js");
+      const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";
+      const r = JSON.stringify(await call(tool[1], tool[2] ? JSON.parse(tool[2]) : {}, { root: process.env.VYRE_HOME, caller }));
+      await say(r);
+      return result(true, r);
+    }
+  } else if (vyreAt > 0) {
     const { call } = await import("../../daemon/client.js");
     const caller = process.env.VYRE_AGENT ? `mcp:agent:${process.env.VYRE_AGENT}` : "mcp";
-    const r = JSON.stringify(await call(tool[1], tool[2] ? JSON.parse(tool[2]) : {}, { root: process.env.VYRE_HOME, caller }));
-    await say(r);
-    return result(true, r);
+    const results = [];
+    for (const l of lines) {
+      const m = /^vyre (\S+)\s*(.*)$/.exec(l);
+      if (!m) continue;
+      results.push(JSON.stringify(await call(m[1], m[2] ? JSON.parse(m[2]) : {}, { root: process.env.VYRE_HOME, caller })));
+    }
+    const text = results.join("\n");
+    await say(text);
+    return result(true, text);
   }
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
