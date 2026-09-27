@@ -72,10 +72,14 @@ test("finished blocks are frozen, an open fence is plain text, a closed one is h
   await wait(SHOWN_MS);
   assert.equal($(row, ".cv-open-fence"), null, "closed");
   assert.equal(top.children[0], first, "still the same first block");
-  const closed = top.children.find(c => c.tagName === "PRE");
-  assert.ok(closed, "the closed block is frozen");
+  // Rendered markdown is appended as a fragment, which the fake DOM keeps as an element: look inside.
+  const closed = $(top, "pre");
+  assert.ok(closed, "the closed block is in the frozen part");
   assert.ok(closed.children[0].children.length > 0, "and highlighted");
   assert.match(text(row), /The form is fine/);
+  row.sync({ text: open + "```\nThe form is fine, and the Northwind Bakery one too", streaming: true });
+  await wait(SHOWN_MS);
+  assert.equal($(top, "pre"), closed, "not rebuilt on later frames");
 
   row.sync({ text: open + "```\nThe form is fine.", streaming: false });
   assert.equal($(row, ".cv-md-part"), null, "done: one whole render");

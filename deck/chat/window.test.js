@@ -275,6 +275,9 @@ test("stuck to the bottom, a streaming update touches only the tail row", async 
   touched = [];
   const t = performance.now();
   for (let i = 0; i < 20; i++) { emit("thread.text", { message: "msg_x", delta: `Line ${i} of the reply. ` }); await wait(20); }
+  // No ResizeObserver here: the stick is the frame a growing reply asks for, one frame after it
+  // grew, and the paced reveal may still be draining: it settles at the bottom.
+  await until(() => timeline.scrollTop + VIEW === timeline.scrollHeight, 2000);
   perf.streamMs = Math.round(performance.now() - t);
   const inTimeline = touched.filter(n => n === timeline || rowOf(n));
   const outside = inTimeline.filter(n => rowOf(n) !== live);

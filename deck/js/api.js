@@ -253,7 +253,7 @@ const known = new Set(["thread.started", "thread.sent", "thread.text", "thread.t
 export function on(type, fn) {
   const sub = { type, fn };
   subs.add(sub);
-  if (!type.includes("*") && !known.has(type)) { known.add(type); source?.addEventListener(type, deliver); }
+  if (!type.includes("*") && !known.has(type)) { known.add(type); source?.addEventListener(type, heard); }
   if (!source && !retryTimer && !waitingVisible) connect();
   return () => { subs.delete(sub); };
 }
@@ -283,7 +283,7 @@ function connect() {
   const s = headers["x-vyre-onboard"];
   const since = lastSeen > 0 ? String(lastSeen) : "latest";
   const es = source = new EventSource(`/v1/events/stream?since=${since}` + (s ? `&s=${encodeURIComponent(s)}` : ""));
-  for (const t of known) es.addEventListener(t, deliver);
+  for (const t of known) es.addEventListener(t, heard);
   es.addEventListener("open", () => {
     if (es !== source) return;
     reach(true);
@@ -323,6 +323,13 @@ function waitVisible() {
     if (!source) { retryMs = 1000; connect(); }
   };
   document.addEventListener("visibilitychange", back);
+}
+
+/** An event from the stream in use; one from a stream given up on (and replaced) is not delivered. @param {MessageEvent} m */
+function heard(m) {
+  const from = /** @type {any} */ (m)?.currentTarget ?? /** @type {any} */ (m)?.target;
+  if (from && source && from !== source) return;
+  deliver(m);
 }
 
 /** @param {MessageEvent} m */

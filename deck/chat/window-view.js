@@ -246,7 +246,8 @@ export function createWindowView(box, opts) {
 // rows are observed one by one as window-view mounts them (the timeline has no content wrapper).
 //
 // Nothing is read or written per event. A ResizeObserver on the scroller and on every mounted row
-// hears the content grow; while stuck, at most one frame per burst sets scrollTop to the bottom.
+// hears the content grow; while stuck, its callback (once a frame, before paint) sets scrollTop to
+// the bottom. Without an observer, a caller's poke asks for one frame per burst instead.
 // Only the reader's own intent detaches: an upward wheel, PageUp / ArrowUp / Home / Shift+Space
 // outside a text field, a finger dragging the content down, or a press on the scrollbar, each
 // counting when the scroll event that moves the view up comes within 100 ms of it (the scrollbar
@@ -310,7 +311,9 @@ export function createStick(box, o = {}) {
   }
 
   const observer = typeof ResizeObserver === "function"
-    ? new ResizeObserver(() => { if (stuck) poke(); else o.onGrowDetached?.(); })
+    // A ResizeObserver runs after layout and before paint, once a frame: stick right there, so the
+    // tail is never painted a frame late (a frame asked for from here would land on the next one).
+    ? new ResizeObserver(() => { if (stuck) { o.onStick?.(); toEnd(); } else o.onGrowDetached?.(); })
     : null;
   observer?.observe(box);
 
