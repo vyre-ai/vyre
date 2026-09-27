@@ -28,8 +28,14 @@ set -euo pipefail
 
 SCREEN="${SCREEN:-1440x900}"
 GEOMETRY="${SCREEN}x24"
-: "${VNC_PASSWORD:?VNC_PASSWORD is required}"
-: "${COMPUTERD_TOKEN:?COMPUTERD_TOKEN is required}"
+# The secrets are never in this environment: vyred puts them in /var/lib/vyre/.boot (0400, vyre)
+# before each start, because Docker hands a container's Env to every exec in it. This script,
+# root without DAC_OVERRIDE, cannot even read the file; vyre's processes do.
+BOOT_FILE=/var/lib/vyre/.boot
+if [ -n "${COMPUTERD_TOKEN:-}${VNC_PASSWORD:-}" ]; then
+  echo "[entrypoint] refusing to start: the computer's secrets are in its environment (an old vyred?); they belong in ${BOOT_FILE}" >&2
+  exit 1
+fi
 VYRE_HOME=/var/lib/vyre
 AGENT_HOME=/home/agent
 # X cookies: vyre's is trusted (Xvnc's -auth file); the agent's is an untrusted one the SECURITY
@@ -86,7 +92,8 @@ fi
 # would otherwise reach every watcher's browser (ADR 0005, decision 1). Nobody resizes the
 # agent's screen under it (-AcceptSetDesktopSize=0), and 24 frames a second is plenty. X itself
 # listens on its unix socket only (-nolisten tcp); -localhost=no is about VNC's 5900, for vyred.
-printf '%s' "${VNC_PASSWORD}" | as_vyre sh -c 'umask 077; vncpasswd -f > "$HOME/.vnc/passwd"'
+as_vyre sh -c 'test -r "$0"' "${BOOT_FILE}" || { log "no ${BOOT_FILE}: vyred seeds it before start"; exit 1; }
+as_vyre sh -c 'umask 077; sed -n "s/^VNC_PASSWORD=//p" "$0" | tr -d "\n" | vncpasswd -f > "$HOME/.vnc/passwd"' "${BOOT_FILE}"
 # A fresh trusted cookie every start, known only to vyre's processes.
 as_vyre sh -c 'umask 077; rm -f "$XAUTHORITY"; xauth -q add "$DISPLAY" . "$(mcookie)"'
 
@@ -164,7 +171,7 @@ exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
   env -i HOME="${VYRE_HOME}" USER=vyre LOGNAME=vyre PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" \
     DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS}" DBUS_SESSION_BUS_PID="${DBUS_SESSION_BUS_PID}" XAUTHORITY="${VYRE_XAUTH}" \
     GTK_MODULES=gail:atk-bridge NO_AT_BRIDGE=0 QT_ACCESSIBILITY=1 \
-    COMPUTERD_TOKEN="${COMPUTERD_TOKEN}" SCREEN="${SCREEN}" ${VYRE_PROXY_PAC:+VYRE_PROXY_PAC="${VYRE_PROXY_PAC}"} \
+    COMPUTERD_TOKEN_FILE="${BOOT_FILE}" SCREEN="${SCREEN}" ${VYRE_PROXY_PAC:+VYRE_PROXY_PAC="${VYRE_PROXY_PAC}"} \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
     CHROME_PROFILE="${VYRE_HOME}/chromium" CHROME_LOG="${VYRE_HOME}/chromium.log" COMPUTERD_FS_ROOT="${AGENT_HOME}" \
     VYRE_FREEZE_FD=9 \

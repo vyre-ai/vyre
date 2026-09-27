@@ -13,7 +13,7 @@
 
 import http from "node:http";
 import { PORTS, SIZE } from "./index.js";
-import { REQUIRED_CAPS } from "./policy.js";
+import { REQUIRED_CAPS, BOOT, bootTar } from "./policy.js";
 
 const API = "/v1.43";
 
@@ -50,9 +50,11 @@ export class DockerDriver {
    */
   request(method, path, body) {
     return new Promise((resolve, reject) => {
-      const data = body === undefined ? null : Buffer.from(JSON.stringify(body));
+      // A Buffer goes as it is (the .boot tar); anything else as JSON.
+      const tar = Buffer.isBuffer(body);
+      const data = body === undefined ? null : tar ? body : Buffer.from(JSON.stringify(body));
       const req = http.request({ ...this.target, method, path: API + path, timeout: this.timeoutMs,
-        headers: { host: "docker", ...(data ? { "content-type": "application/json", "content-length": data.length } : {}) } }, res => {
+        headers: { host: "docker", ...(data ? { "content-type": tar ? "application/x-tar" : "application/json", "content-length": data.length } : {}) } }, res => {
         const chunks = [];
         res.on("data", c => chunks.push(c));
         res.on("end", () => {
@@ -114,6 +116,10 @@ export class DockerDriver {
    * hard-coded off here, the one place a create body is built.
    */
   async create(spec) {
+    // The secrets go by seed(), never in Env: Docker hands Env to every exec in the container.
+    for (const k of Object.keys(spec.env || {})) {
+      if (k === "COMPUTERD_TOKEN" || k === "VNC_PASSWORD") throw new Error(`${k} must not be in a computer's Env; seed() puts it in /var/lib/vyre/.boot`);
+    }
     const agent = String(spec.agent);
     if (!/^[a-z][a-z0-9-]{0,40}$/.test(agent)) throw new Error(`"${agent}" is not an agent name`);
     if (String(spec.network || this.network || "") === "host") throw new Error("a computer never runs on the host network");
@@ -181,6 +187,15 @@ export class DockerDriver {
     const name = `${this.prefix}-computer-${agent}`;
     const r = await this.must("POST", `/containers/create?name=${encodeURIComponent(name)}`, body);
     return { id: String(r.Id) };
+  }
+
+  /**
+   * The computer's secrets, as /var/lib/vyre/.boot in its own volume (0400, vyre), never in Env.
+   * @param {string} id @param {{ computerd_token: string, vnc_password: string }} secrets
+   */
+  async seed(id, secrets) {
+    await this.own(id);
+    await this.must("PUT", `/containers/${encodeURIComponent(id)}/archive?path=${encodeURIComponent(BOOT.dir)}`, bootTar(secrets));
   }
 
   async start(id) { await this.own(id); await this.must("POST", `/containers/${encodeURIComponent(id)}/start`, undefined, [304]); }

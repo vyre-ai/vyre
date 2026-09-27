@@ -10,6 +10,7 @@ import path from "node:path";
 import http from "node:http";
 import { createProxy, duplicateKey, loadPolicy, scrub } from "./proxy.js";
 import { SCRATCH } from "../../test/scratch.mjs";
+import { BOOT, bootTar, allowBootTar } from "../computers/driver/policy.js";
 
 const PREFIX = "run.vyre.computers";
 const CONFIG = { network: "vyre-computers", image: "vyre/computer:0.1", labelPrefix: PREFIX, capAdd: [] };
@@ -34,6 +35,8 @@ const stub = {
   },
   allowExec: labels => stub.isComputerLabels(labels) ? { ok: true } : { ok: false, why: "not a computer" },
   allowContainerOp: labels => stub.allowExec(labels),
+  // The real ones: the .boot check is byte-exact, and a stub of it would test nothing.
+  BOOT, allowBootTar,
 };
 
 /** A fake Engine: one computer, one database, one volume per case, two execs. */
@@ -86,6 +89,7 @@ async function engine(t) {
       return;
     }
     if (/^\/containers\/[^/]+\/exec$/.test(p)) return send(201, { Id: "ex9" });
+    if (req.method === "PUT" && /^\/containers\/[^/]+\/archive$/.test(p)) return send(200);
     if (/^\/containers\/[^/]+\/(start|stop|pause|unpause)$/.test(p) || (req.method === "DELETE" && /^\/containers\/[^/]+$/.test(p))) return send(204);
     send(404, { message: "page not found" });
   });
@@ -109,7 +113,7 @@ async function proxy(t, policy = stub) {
    * @returns {Promise<{ status: number, text: string, json: any }>}
    */
   const call = (method, p, body, headers = {}) => new Promise((resolve, reject) => {
-    const data = body === undefined ? null : Buffer.from(typeof body === "string" ? body : JSON.stringify(body));
+    const data = body === undefined ? null : Buffer.isBuffer(body) ? body : Buffer.from(typeof body === "string" ? body : JSON.stringify(body));
     /** @type {Record<string, any>} an empty value drops the header */
     const h = { ...(data ? { "content-type": "application/json", "content-length": data.length } : {}), ...headers };
     for (const k of Object.keys(h)) if (h[k] === "") delete h[k];
@@ -316,4 +320,25 @@ test("dockerproxy: scrub drops an exec's ProcessConfig and a container's Env, Cm
   assert.deepEqual(scrub({ Id: "c", Path: "p", Args: ["a"], Config: { Env: ["A=1"], Cmd: ["x"], Entrypoint: ["y"], Labels: {} } }),
     { Id: "c", Config: { Labels: {} } });
   assert.equal(scrub(null), null);
+});
+
+test("dockerproxy: the only archive upload is a computer's .boot tar, to /var/lib/vyre", async t => {
+  const p = await proxy(t);
+  const good = bootTar({ computerd_token: "k".repeat(43), vnc_password: "Ab-_1234" });
+  const tarH = { "content-type": "application/x-tar" };
+  const put = (path, body, h = tarH) => p.call("PUT", path, body, h);
+  const ok = await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good);
+  assert.equal(ok.status, 200, ok.text);
+  const fwd = p.sent().filter(s => s.method === "PUT");
+  assert.deepEqual(fwd.map(s => s.url), ["/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre"]);
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fhome%2Fagent", good)).status, 403, "another folder");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2F", good)).status, 403, "the root");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive", good)).status, 403, "no path");
+  assert.equal((await put("/v1.43/containers/db1/archive?path=%2Fvar%2Flib%2Fvyre", good)).status, 403, "not a computer");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", good, { "content-type": "application/json" })).status, 400);
+  const evil = Buffer.from(good); evil.write("x", 0, "ascii");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre", evil)).status, 403, "another file");
+  assert.equal((await put("/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre&noOverwriteDirNonDir=1", good)).status, 403, "extra query");
+  assert.equal(p.sent().filter(s => s.method === "PUT").length, 1, "only the good upload reached the Engine");
+  assert.equal((await p.call("GET", "/v1.43/containers/kitfull0001/archive?path=%2Fvar%2Flib%2Fvyre")).status, 403, "never a read");
 });

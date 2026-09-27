@@ -11,6 +11,7 @@ import os from "node:os";
 import path from "node:path";
 import http from "node:http";
 import { DockerDriver } from "./docker.js";
+import { allowBootTar } from "./policy.js";
 import { SCRATCH } from "../../../test/scratch.mjs";
 
 /** A fake Engine: two containers of ours to be, and one that is someone else's database. */
@@ -25,9 +26,11 @@ async function engine(t) {
     ["half", { Id: "half", Name: "/half", Config: { Labels: { "vyre.managed": "true" } }, State: { Status: "running" }, NetworkSettings: { Networks: {} } }],
   ]);
   const server = http.createServer(async (req, res) => {
-    let raw = "";
-    for await (const c of req) raw += c;
-    const body = raw ? JSON.parse(raw) : undefined;
+    const chunks = [];
+    for await (const c of req) chunks.push(c);
+    const buf = Buffer.concat(chunks);
+    const tar = req.headers["content-type"] === "application/x-tar";
+    const body = tar ? buf : buf.length ? JSON.parse(buf.toString("utf8")) : undefined;
     seen.push({ method: String(req.method), path: String(req.url), body });
     const send = (status, b) => { res.writeHead(status, { "content-type": "application/json" }); res.end(b === undefined ? "" : JSON.stringify(b)); };
     const url = new URL(String(req.url), "http://d");
@@ -52,6 +55,7 @@ async function engine(t) {
       return send(204);
     }
     if (req.method === "DELETE" && (m = /^\/v1\.43\/containers\/([^/]+)$/.exec(url.pathname))) { boxes.delete(m[1]); return send(204); }
+    if (req.method === "PUT" && (m = /^\/v1\.43\/containers\/([^/]+)\/archive$/.exec(url.pathname))) return send(boxes.has(m[1]) ? 200 : 404);
     send(404, { message: "page not found" });
   });
   await new Promise(r => server.listen(socket, () => r(undefined)));
@@ -61,7 +65,7 @@ async function engine(t) {
 
 const spec = {
   agent: "kit", image: "vyre/computer:0.1", network: "vyre-computers", cpus: 2, memoryMb: 3072, size: { w: 1440, h: 900 },
-  env: { VNC_PASSWORD: "abcdefgh", COMPUTERD_TOKEN: "t0ken", SCREEN: "1440x900" },
+  env: { SCREEN: "1440x900" },
   labels: { "vyre.computer": "kit", "vyre.managed": "true" }, volume: "vyre-home-kit",
 };
 
@@ -77,7 +81,7 @@ test("docker: create sends exactly the container Vyre means, and nothing is publ
   assert.deepEqual(r.body, {
     Image: "vyre/computer:0.1",
     Hostname: "kit",
-    Env: ["VNC_PASSWORD=abcdefgh", "COMPUTERD_TOKEN=t0ken", "SCREEN=1440x900"],
+    Env: ["SCREEN=1440x900"],
     Labels: { "vyre.computer": "kit", "vyre.managed": "true", "run.vyre": "1" },
     ExposedPorts: { "5900/tcp": {}, "7000/tcp": {} },
     HostConfig: {
@@ -220,4 +224,21 @@ test("docker: works over TCP to a proxy too", async t => {
   const d = new DockerDriver({ url: `http://127.0.0.1:${addr.port}` });
   assert.deepEqual(await d.list(), []);
   assert.match(seen[0], /^GET \/v1\.43\/containers\/json\?all=true/);
+});
+
+test("docker: the secrets never go in Env; seed() puts them in the computer's volume as a .boot tar", async t => {
+  const e = await engine(t);
+  const d = new DockerDriver({ url: `unix://${e.socket}`, labelPrefix: "vyre", network: "vyre-computers" });
+  await assert.rejects(d.create({ ...spec, env: { SCREEN: "1440x900", COMPUTERD_TOKEN: "x".repeat(43) } }), /must not be in a computer's Env/);
+  await assert.rejects(d.create({ ...spec, env: { VNC_PASSWORD: "abcdefgh" } }), /must not be in a computer's Env/);
+  const { id } = await d.create(spec);
+  await d.seed(id, { computerd_token: "T".repeat(43), vnc_password: "Ab-_1234" });
+  const put = e.seen.at(-1);
+  assert.equal(put.method, "PUT");
+  assert.equal(put.path, `/v1.43/containers/${id}/archive?path=%2Fvar%2Flib%2Fvyre`);
+  assert.deepEqual(allowBootTar(put.body), { ok: true });
+  assert.match(put.body.toString("latin1"), /COMPUTERD_TOKEN=T{43}\nVNC_PASSWORD=Ab-_1234\n/);
+  // Only our containers: someone else's database is never written to.
+  await assert.rejects(d.seed("db1", { computerd_token: "T".repeat(43), vnc_password: "Ab-_1234" }));
+  assert.ok(!e.seen.some(s => s.method === "PUT" && s.path.includes("db1")));
 });

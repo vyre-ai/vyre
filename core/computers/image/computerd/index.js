@@ -44,9 +44,25 @@ import { CdpMux } from "./cdpmux.js";
 import { acceptKey, encodeFrame, FrameParser } from "./ws.js";
 
 const PORT = Number(process.env.COMPUTERD_PORT || 7000);
-const TOKEN = process.env.COMPUTERD_TOKEN || "";
+/**
+ * The token, from COMPUTERD_TOKEN_FILE (the image: /var/lib/vyre/.boot, 0400, this uid only,
+ * seeded by vyred before start) and never from this process's own environment there, so nothing
+ * that can read /proc/<pid>/environ of this uid finds it. COMPUTERD_TOKEN is for tests alone.
+ */
+function readToken() {
+  const file = process.env.COMPUTERD_TOKEN_FILE;
+  if (file) {
+    try {
+      const m = /^COMPUTERD_TOKEN=([A-Za-z0-9_-]{32,128})$/m.exec(fs.readFileSync(file, "ascii"));
+      return m ? m[1] : "";
+    } catch (e) { console.error(`computerd: could not read ${file}: ${/** @type {any} */ (e).code || e}`); return ""; }
+  }
+  return process.env.COMPUTERD_TOKEN || "";
+}
+const TOKEN = readToken();
+delete process.env.COMPUTERD_TOKEN;
 if (!TOKEN) {
-  console.error("computerd: COMPUTERD_TOKEN is not set; refusing to start with no way to authenticate callers");
+  console.error("computerd: no token (COMPUTERD_TOKEN_FILE); refusing to start with no way to authenticate callers");
   process.exit(1);
 }
 
@@ -219,7 +235,7 @@ function readBody(req) {
 // ---- Chrome, over its pipe -------------------------------------------------------------
 
 /** Logs name methods and count things; cdpmux never hands this a message's contents. */
-const mux = new CdpMux({ log: line => console.log(line) });
+const mux = new CdpMux({ log: line => console.log(line), downloads: process.env.AGENT_DOWNLOADS || path.join(process.env.COMPUTERD_FS_ROOT || "/home/agent", "Downloads") });
 /** @type {import("node:child_process").ChildProcess|null} */
 let chrome = null;
 let stopping = false;
