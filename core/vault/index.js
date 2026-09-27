@@ -373,11 +373,13 @@ export default {
       : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box"),
         // The same opt-in vault.breach.check asks presence for; a scheduled run has nobody to
         // ask, so config is the person's standing answer (ADR 0028).
-        breach: { enabled: opts.breach === "ask", fetch: globalThis.fetch } });
+        breach: { enabled: opts.breach === "ask", fetch: globalThis.fetch },
+        connections: conns.connections });
 
     return {
       ssh: cli.ssh,
       vault,
+      connections: conns.connections,
       async stop() {
         reminders.stop();
         await conns.stop();
