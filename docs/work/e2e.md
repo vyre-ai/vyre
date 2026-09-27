@@ -223,7 +223,7 @@ Done this session:
   last run's files (same "v0.0.1" cache name) and the passkey page breaks on a stale api.js.
 - rooms.test.js:227 passes alone on testbox; asked the integrator for the failing text (likely a
   run under a `claude` process, since agents.create is PERSON_ONLY on the socket).
-- Batch 4 sha sent: work/e2e 0856b9b9.
+- Batch 4 sha sent: work/e2e 4e5a27f7 (was 0856b9b9).
 - native-core re-review of 62abf2cf (tip 87fb03d7): HIGH 1 and 2 fixed, store limits right, 60/60
   on testbox. NOT signed off: new HIGH, settings.get has no callers, so mcp and agents read
   sessions.env values (Claude Code's env, API keys). Asked for masked values for non-person
@@ -234,8 +234,9 @@ Done this session:
 you". recall's readable() guards only under node --test, so a dev world read the real transcripts
 (config default, core/config/index.js:135). Guard test on work/e2e-noclaude (52ac6576 + the next
 commit): vyred in a child with HOME = a planted fake home, NODE_TEST_CONTEXT cleared, every fs call on
-a .claude path recorded and refused. Red on main with exactly those 3 paths. memory-iq is fixing it;
-I review their sha and they carry the test. Other defaults to route through one kernel helper:
+a .claude path recorded and refused. Red on main with exactly those 3 paths. FIXED by me (lead's call): claudeHome() in core/config, work/e2e-noclaude 32dc0956, guard
+green, sent to the integrator. memory-iq keeps its recall-side fix (I review it). One-line switches sent to sessions,
+polish-cli, native-core; learn/skills.js has no owner, asked the lead. Other defaults to route through one kernel helper:
 learn/skills.js:414, switchboard/index.js:1333, cli statusline.js:22, native-core settings claudeDir.
 
 Batch 4 lows (lead, 27 Sep): DONE in 8b9b092c. Unknown ids at gate.* and agents.* answer 404
@@ -306,6 +307,10 @@ event stream's first byte. Tear down afterwards.
 - vault-deck: snag 16. polish-surfaces: snags 17 and 18.
 
 ## Changed contracts
+
+- core/config: `claudeHome(root, env?)`: Claude Code's folder for a Vyre home (real ~/.claude or
+  CLAUDE_CONFIG_DIR only for the real ~/.vyre; `<home>/claude` otherwise; VYRE_CLAUDE_HOME
+  overrides). Default `transcripts` use it.
 
 - core/spawner: spawnAsAgent(argv, { env, cwd }) -> ChildProcess-like (pid, stdin, stdout, stderr,
   kill, exit). VYRE_SPAWNER_SOCKET (/run/vyre/spawner.sock), VYRE_SPAWNER_ALLOW (extra programs,
