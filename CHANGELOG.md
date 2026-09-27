@@ -11,9 +11,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
   stamp in build.json ignores the files build-site writes, so running it twice on a clean checkout
   says `dirty: false`. `release-check.sh` asserts both redirects, that nothing names the zip, that
-  `/start` is served as committed, and that the install has no node_modules (the size cap is now
-  16 MB: the docs and their screenshots are most of the 11 MB). `vyre capsule install` still
-  fetches the zip until capsule-pro retires it.
+  `/start` is served as committed, and that the install has no node_modules. The docs
+  screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
+  brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
+  still fetches the zip until capsule-pro retires it.
 
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
