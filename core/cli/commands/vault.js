@@ -27,8 +27,8 @@ import fs from "node:fs";
 import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../../vault/cli-io.js";
 import { inspect } from "../../vault/backup.js";
 import { templateRefs, render, parseEnvFile, parseRef } from "../../vault/refs.js";
-import { KINDS as VAULT_KINDS, defaultField as defaultFieldOf } from "../../vault/kinds.js";
-import { setupPlan, addAllowedSigner, findPrivateKeys } from "../../vault/ssh/setup.js";
+import { KINDS as VAULT_KINDS, defaultField as defaultFieldOf } from "../../../lib/vault-kinds/kinds.js";
+import { setupPlan, addAllowedSigner, findPrivateKeys } from "../../../lib/vault-ssh-setup/setup.js";
 
 // --json, on every command: the tool's own `{"data":...}` or `{"error":{code,message}}` as one
 // line on stdout and nothing else there. Exit codes: 0 ok, 1 error, 3 presence refused or

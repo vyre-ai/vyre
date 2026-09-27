@@ -12,7 +12,7 @@ import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, writeModule } from "../../test/helpers.js";
 import { PROVIDERS, CAPABILITIES, provider, checkProviderFields, checkServiceAccount } from "./providers.js";
-import { KINDS, SPEC, cleanDetails } from "./kinds.js";
+import { KINDS, SPEC, cleanDetails } from "../../lib/vault-kinds/kinds.js";
 
 const hex = n => crypto.randomBytes(n).toString("hex");
 
