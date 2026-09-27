@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
 import { gatedAsk } from "../modules/federate.js";
-import { boxKey, canonical, decisionHash, signAnswer, checkAnswer, Nonces, KEY_FILE, TTL, MAX_NONCES } from "./assert.js";
+import { boxKey, canonical, decisionHash, signAnswer, checkAnswer, Nonces, KEY_FILE, TTL, MAX_NONCES, NONCES_FILE } from "./assert.js";
 
 const T0 = Date.parse("2026-09-27T10:00:00Z");
 const INPUT = { ask: "q7Xk2mA9pL0sN4vB", decision: "allow", surface: "deck" };
@@ -103,6 +103,30 @@ test("assert: a failed check spends no nonce, and the nonces seen are bounded an
   assert.equal(full.take("fresh-nonce-000000000", T0 + TTL, T0), false);
   assert.equal(full.take("fresh-nonce-000000000", T0 + 2 * TTL, T0 + TTL), true, "expired ones are swept");
   assert.equal(full.seen.size, 1);
+});
+
+test("assert: nonces persisted to a file survive a restart, so a captured assertion cannot replay across one (e2e review of 0f2a8752, LOW 2)", t => {
+  const home = tempHome(t);
+  const file = path.join(home, NONCES_FILE);
+  const k = pair();
+  const s = sign(k);
+  const first = new Nonces(file, T0);
+  assert.equal(check(k, s, { nonces: first, now: T0 + 1000 }).ok, true);
+  assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  // A fresh Nonces (as a restarted Mac would make) loads what the last one wrote. Its own clock
+  // (here, the test's simulated one) decides what still counts as unexpired, same as take() does.
+  const second = new Nonces(file, T0 + 2000);
+  assert.equal(check(k, s, { nonces: second, now: T0 + 2000 }).ok, false, "the same assertion replays as used, not fresh, after a restart");
+  // Expired nonces are not carried forward: loading prunes them.
+  const third = new Nonces(file, T0 + TTL + 1);
+  assert.equal(check(k, s, { nonces: third, now: T0 + TTL + 1 }).ok, false, "still expired: the assertion itself has expired too");
+  const s2 = sign(k, { now: T0 + TTL + 1 });
+  const fourth = new Nonces(file, T0 + TTL + 2);
+  assert.equal(check(k, s2, { nonces: fourth, now: T0 + TTL + 2 }).ok, true, "a later assertion, once the old nonce has expired, is fresh");
+  // A missing or unreadable file is no error: an empty set, as a first run has.
+  assert.deepEqual([...new Nonces(path.join(home, "no-such-file.json")).seen], []);
+  fs.writeFileSync(file, "not json", { mode: 0o600 });
+  assert.deepEqual([...new Nonces(file).seen], []);
 });
 
 test("assert: an ask is gated when it approves a floor tool, by its exact name or its MCP name, or says presence is required", () => {

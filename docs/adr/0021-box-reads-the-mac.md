@@ -180,13 +180,12 @@ method, and the Mac refuses without a fresh one. A box that was taken over could
 owner's Deck on the box already has. A captured assertion is no use on another Mac, another
 ask, another answer, a second time or after a minute.
 
-**Known limit (v2, e2e review, LOW 2, accepted for now):** seen nonces are kept in memory only. A
-Mac that restarts inside a used assertion's 60 s window forgets it saw that nonce, so a captured
-assertion could replay once, on that Mac, for that one ask and answer, before the window ends.
-The impact stays small: only the paired box can mint an assertion at all, and it is bound to one
-Mac, one ask and the exact answer hash, so a replay can only repeat the same answer to the same
-still-open ask, not forge a new one. Persisting the nonce set is the fix if this needs closing
-further; not done in v2.
+**Fixed (v2, e2e review, LOW 2):** seen nonces are persisted to the Mac's home
+(`link-assert-nonces.json`, 0600, best-effort write), not kept in memory alone, so a Mac that
+restarts inside a used assertion's 60 s window still remembers it saw that nonce and refuses a
+replay. Loading prunes what has already expired by the Mac's own clock. A write that fails (a
+full disk, say) never blocks the answer; that one restart's window is the only one it could
+widen, and only for a captured assertion bound to one Mac, one ask and the exact answer hash.
 
 ## Consequences
 

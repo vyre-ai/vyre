@@ -29,7 +29,7 @@ import { connector, identifyBox, tailnetPeers, certNames } from "./transport.js"
 import { createHealth, unknown } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
-import { checkAnswer, Nonces } from "./assert.js";
+import { checkAnswer, Nonces, NONCES_FILE } from "./assert.js";
 import { gatedAsk } from "../modules/federate.js";
 import { HUMAN_ONLY, PERSON_ONLY, inputHash } from "../presence/index.js";
 import * as enclave from "./se/index.js";
@@ -278,8 +278,9 @@ export function macSide(ctx, seam = {}) {
     if (!on && askOff) { askOff(); askOff = null; }
   }
 
-  // Nonces of the box's answers seen here, each until its assertion expires (memory only).
-  const nonces = new Nonces();
+  // Nonces of the box's answers seen here, each until its assertion expires, persisted so a
+  // restart inside the 60 s TTL cannot forget one (e2e review of 0f2a8752, LOW 2).
+  const nonces = new Nonces(path.join(ctx.paths.root, NONCES_FILE));
   /**
    * The box's answer to one of this Mac's asks: runs only when its assertion checks out.
    * @param {any} q the box's request

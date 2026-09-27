@@ -12,11 +12,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - core/switchboard/index.js `gatedOnMac`: an ask the box does not know about (after a restart, or
   a name it never saw) is treated as gated, not ungated, so the person is asked for a fresh proof
   instead of getting a plain "refused" (LOW 1).
-- docs/adr/0021: a known limit noted, not fixed — seen nonces are memory-only, so a Mac restart
-  inside a used assertion's 60 s window could let a captured one replay once, for that ask and
-  answer alone (LOW 2).
+- core/link/assert.js `Nonces`: takes an optional file (the Mac's `link-assert-nonces.json`,
+  0600) and persists what it sees there, best-effort, loaded back and pruned to what has not
+  expired on restart, so a Mac restart inside a used assertion's 60 s window still refuses a
+  replay (LOW 2).
 - test/federation-answer.test.js: two new tests, and the first test's "an ask the box never saw"
   section updated for the new fail-closed error text and the LOW 1 gating.
+  core/link/assert.test.js: a new test for persisted nonces surviving a restart.
 
 #### files.deliver: the box sends a file to a paired Mac with Taildrop (ADR 0021, "Mac and box as one")
 

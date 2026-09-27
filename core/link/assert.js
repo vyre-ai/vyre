@@ -79,14 +79,44 @@ export function signAnswer(privateKey, { mac, ask, thread, input, caller, device
   return { a: b64u(bytes), sig: b64u(crypto.sign(null, bytes, privateKey)) };
 }
 
-/** Nonces seen, each kept until its assertion expires, and never more than MAX_NONCES. */
+/** The file in the Mac's home that persists seen nonces across a restart (see Nonces, below). */
+export const NONCES_FILE = "link-assert-nonces.json";
+
+/**
+ * Nonces seen, each kept until its assertion expires, and never more than MAX_NONCES. Memory
+ * only unless given a file: without one, a Mac that restarts inside a used assertion's 60 s TTL
+ * forgets it saw that nonce, so a captured assertion could replay once in that window (e2e review
+ * of 0f2a8752, LOW 2). With a file, what is seen is written there too (best-effort: a write that
+ * fails never blocks the answer), and loaded back at start, pruned to what has not yet expired.
+ */
 export class Nonces {
-  constructor() { /** @type {Map<string, number>} */ this.seen = new Map(); }
+  /** @param {string|null} [file] @param {number} [now] a test seam; production takes the real clock */
+  constructor(file = null, now = Date.now()) {
+    this.file = file;
+    /** @type {Map<string, number>} */ this.seen = new Map();
+    if (file) this.load(now);
+  }
+  /** @param {number} [now] */
+  load(now = Date.now()) {
+    let rows;
+    try { rows = JSON.parse(fs.readFileSync(/** @type {string} */ (this.file), "utf8")); } catch { return; }
+    if (!Array.isArray(rows)) return;
+    for (const row of rows) if (Array.isArray(row) && typeof row[0] === "string" && Number(row[1]) > now) this.seen.set(row[0], Number(row[1]));
+  }
+  save() {
+    if (!this.file) return;
+    try {
+      const tmp = `${this.file}.${process.pid}.${crypto.randomBytes(4).toString("hex")}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify([...this.seen]), { mode: 0o600 });
+      fs.renameSync(tmp, this.file);
+    } catch {} // best-effort: the in-memory record still refuses a replay this run
+  }
   /** Record a nonce: false if it was seen, or there is no room. @param {string} n @param {number} exp @param {number} now */
   take(n, exp, now) {
     for (const [k, e] of this.seen) if (e <= now) this.seen.delete(k);
     if (this.seen.has(n) || this.seen.size >= MAX_NONCES) return false;
     this.seen.set(n, exp);
+    this.save();
     return true;
   }
 }
