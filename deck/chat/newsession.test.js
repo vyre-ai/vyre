@@ -108,7 +108,7 @@ test("new session: with no project given, it starts in context.now's project; an
     const box = /** @type {any} */ (document.createElement("div"));
     const stop = mountNewSession(box, { onDone() {} });
     await tick(); await tick();
-    assert.equal(api.of("context.now").length, 1);
+    assert.deepEqual(api.of("context.now").map(c => c.input), [{ surface: "chat" }]);
     const on = $$(box, "button[aria-checked=true]").map(text).join(" | ");
     if (want) assert.ok(on.includes(want), `${want} chosen: ${on}`);
     else assert.ok(!on.includes("Northwind Bakery") && !on.includes("Harlow Legal"), `no project chosen: ${on}`);

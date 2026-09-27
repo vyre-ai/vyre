@@ -107,7 +107,7 @@ export function mountNewSession(container, opts) {
     const [p, r, a, d, nm, now] = await Promise.all([attempt("projects.list"), attempt("files.recent", { limit: 8 }), attempt("agents.list"), attempt("files.dirs", {}), readNames(attempt),
       // What the person is working on now (cohesion's context.now): a new session defaults to its project.
       // An older box without it answers no_such_tool, and the sheet opens on "none" as before.
-      attempt("context.now", {})]);
+      attempt("context.now", { surface: "chat" })]);
     if (!alive) return;
     const nowProject = typeof now?.data?.project === "string" && now.data.project ? now.data.project : null;
     if (state.where.kind === "none" && nowProject && (p.data?.projects || []).some(x => x.slug === nowProject)) state.where = { kind: "project", slug: nowProject };
