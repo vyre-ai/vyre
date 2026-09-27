@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions say when a terminal has them open, and queued words can be taken back
+
+- `threads.list` rows and `projects.catalog` sessions carry `live`: true when the session is
+  bound (its SessionStart hook ran) to a claude process that still runs and is not one of vyred's
+  own threads. One query and a signal-0 per bound pid, no ps, so it costs nothing per list. The
+  catalogue reads it through the new internal `threads.live`; without the Switchboard every row
+  says false. The native Capsule can drop its 15-minute guess for the badge.
+- `threads.unqueue {thread, queued?}` takes back words queued for a terminal-busy session before
+  the Harness hands them over: one (`queued_id`, now in the `threads.send` queued result) or all
+  of the thread's. Words already handed over stay. Person surfaces only; emits `thread.unqueued`.
+  `core/switchboard/index.js`, `sessions.js`, `module.json`, `core/projects/index.js`; tests in
+  core/switchboard/switchboard.test.js and core/projects/projects.test.js.
+
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
 - npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size

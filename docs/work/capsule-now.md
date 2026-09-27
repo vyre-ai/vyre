@@ -63,6 +63,12 @@ them, one per fix.
   `VYRE_CAPSULE_STAY=1`. `present()` in lib/present.js is shared by main.js and the check script;
   unit tests in present.test.js. Default behaviour is unchanged.
 - 9c9514a fix(capsule): the memory box ranks for the question (lib/said.js), rule 7.
+- (this commit) feat(threads): `live` on threads.list and projects.catalog rows; threads.unqueue.
+- On work/capsule-agent: 3ce1433 the native Capsule calls capsule.report on hotkey state change
+  (HotkeyReport, retried on reconnect); a132faf waiting on you is violet #B8A4FF (Theme.attention)
+  in the native and Electron Capsules; 7526089 a compile fix for a stray `askItem` line that is
+  also on work/capsule-pro's tip.
+- Tailnet has my answers to its Mac-send design (sent 2026-09-27).
 
 ## Doing
 - Nothing in flight. Saved 2026-09-27 at logout.
@@ -71,10 +77,9 @@ them, one per fix.
   docs/work/capsule-agent.md on that branch.
 
 ## Next (open requests, in order)
-- capsule-pro (via the lead): add `live: true` to projects.catalog and threads.list rows for a
-  session a terminal has open with a live bound pid (reuse switchboard elsewhere()/sessions.boundPid),
-  with a test. capsule-pro then drops its 15-minute guess for the badge.
-- tailnet (design review, not answered yet): sending to Mac sessions from the box. My answers:
+- Wire threads.unqueue into the Capsules: Esc on a queued reply (native and Electron) and the
+  phone. Streaming a queued session's reply live.
+- tailnet (answers sent 2026-09-27): sending to Mac sessions from the box. My answers:
   1 yes: a separate WRITE allowlist (threads.send, later threads.unqueue), person callers only, and
     `as: "person"` checked on the Mac.
   2 yes, with an explicit caller kind "link" in guard() and surfaceOf() instead of relying on the
@@ -86,12 +91,7 @@ them, one per fix.
   4 Always queue when anything on the Mac holds the lease; never take it from the Capsule.
   Misses: the Stop hook hand-over (harness.stop -> threads.inbox / threads.replied) runs on the Mac
   unchanged; an idle terminal session only gets the words on its next prompt (no nudge).
-  threads.unqueue does not exist yet.
-- polish-cli: the Capsule calls capsule.report {ok, message} as caller "capsule" when its hotkey
-  state changes (only on change). Their tool is on work/polish-cli 5d77d2c. Needed in the native app
-  (Hotkeys.swift state) more than in Electron's main.js, since the native Capsule is the default.
-- threads.unqueue (withdraw an undelivered message; Esc on a queued reply, the phone), and streaming a
-  queued session's reply live.
+  threads.unqueue now exists (below); the link WRITE allowlist is tailnet's to extend.
 - Watched-thread reports on the empty native Capsule (Electron listed up to 4).
 
 ## Standing rule (user, 2026-09-27)
@@ -106,6 +106,11 @@ them, one per fix.
 - switchboard: the threads_inbox migration was appended to MIGRATIONS; order it at merge if needed.
 
 ## Changed contracts
+- `threads.list` rows and `projects.catalog` sessions gain `live` (boolean). New internal tool
+  `threads.live {}` -> `{sessions}`.
+- New tool `threads.unqueue {thread, queued?, surface?}` -> `{unqueued: [ids], note?}`, person
+  callers only (queuesFor). New event `thread.unqueued {queued, surface}`. `threads.send`'s queued
+  result gains `queued_id`.
 - `threads.send`: new result `{sent:false, queued:true, open_elsewhere:true, thread, name, note}`
   for a person's caller when the session is open elsewhere. Callers `mcp*` and `harness*` still get
   the old refusal.
@@ -120,6 +125,8 @@ them, one per fix.
   results carry `memo` and each source `kind` ("fact" or "quote") and `role`.
 
 ## Tests
+- 2026-09-27 on the test box: switchboard, projects, federation-reads, link-federation, harness
+  77/77; switchboard-cli, capsule bridge, onboard, deck machine, guests 70/70.
 - local/capsule/lib/bridge.test.js 29/29, state.test.js 14/14, core/switchboard 26/26,
   core/harness 19/19, test/harness.test.js 13/13, core/cli switchboard-cli 11/11, present 3/3.
 - Memory ranking (on the test box): bridge 31/31, said 4/4, state 14/14, present 3/3, hygiene 1/1.
