@@ -197,6 +197,7 @@ Running a session vyred owns:
   vyre threads get <thread> [--since ID] [--limit N]  one read: the record, open asks, events
   vyre threads watch <thread>                       follow it live; reconnects on its own
   vyre threads interrupt <thread>                   stop the turn (Escape); the session stays
+  vyre threads fork <thread> [prompt]               a new session from this one's history
   vyre threads mode <thread> [default|acceptEdits|plan]
                                                     say or set the permission mode
   vyre threads rewind <thread> <uuid>               back to a message, files too
@@ -525,7 +526,8 @@ vyre phone [add|list|remove <id>|test [id]] [--json]
 vyre phone add               the steps to put a phone on the box, then live checks
       --iphone | --android     only that phone's install step
       --tailscale-only         skip the relay: Tailscale on the phone first, then the box's address
-      --android --usb          the native app over a cable (needs adb and an APK the box serves)
+      --android --usb          the native app over a cable: downloads the APK the box serves,
+                               checks its size and sha256, installs it with adb, opens it to pair
       --android --wireless     the same over Wireless debugging
   vyre phone list              the devices that get notifications, and the passkeys
   vyre phone remove <id>...    forget a notification device, or remove a passkey (asks you first)
@@ -534,8 +536,8 @@ vyre phone add               the steps to put a phone on the box, then live chec
   add pairs through the relay by default: it asks you first, then shows a QR that works once
   for 10 minutes, so the phone needs nothing installed first. Adding Tailscale afterwards makes the
   path direct and private. With --tailscale-only (or on a box without the relay) it mints a
-  one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new notification device, a test notification the
-  push service took, and a new passkey. It checks again every minute and when you press Enter.
+  one-time code for the phone's passkey instead. Then it watches until the phone shows up: a new
+  notification device, a test notification the phone showed, and a new passkey. It checks again every minute and when you press Enter.
   With --json it prints the address, the code and the steps as one JSON value and does not watch.
 
 ### vyre send
