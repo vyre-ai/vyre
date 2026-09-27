@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind } from "./session-state.js";
+import { createSession, applyEvent, applyBlocks, localSend, dropLocal, checkpoints, localShell, confirmSend, noteRewind, filesNote, contextLabel } from "./session-state.js";
 
 const T = "th-harlow";
 /** @param {any} s */
@@ -597,4 +597,74 @@ test("a ! command's answer is a row of its own, updated in place", () => {
   localShell(s, { id: "1", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200, at: 5 });
   assert.deepEqual(keys(s), ["sh:1"]);
   assert.deepEqual(s.byKey.get("sh:1"), { key: "sh:1", kind: "shell", command: "git status --short", output: " M src/intake/estate.ts", exit: 0, duration_ms: 200, at: 5 });
+});
+
+test("a code-only rewind puts the files back and drops nothing; answer and event are one notice; re-reads keep the branch", () => {
+  const s = createSession(T);
+  const blocks = [
+    { seq: 0, kind: "user", ts: 1000, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "text", ts: 2000, message: "msg_a", text: "It has three forms." },
+    { seq: 2, kind: "user", ts: 3000, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 3, kind: "tool", ts: 4000, id: "c1", tool: "Edit", input: { file_path: "src/intake/estate.ts", old_string: "a", new_string: "b" }, output: "ok", error: false },
+    { seq: 4, kind: "text", ts: 5000, message: "msg_b", text: "Done." },
+  ];
+  applyBlocks(s, blocks);
+  const before = keys(s);
+  const files = { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts", "README.md"] };
+  const out = ev(s, "thread.rewound", { uuid: "b", restore: "code", files, local: true }, { at: 10_000 });
+  assert.ok(!out.includes("@rewound"), "the composer keeps what it has");
+  assert.equal(s.rewound, null);
+  assert.deepEqual(keys(s).slice(0, before.length), before, "nothing leaves the view");
+  assert.equal(s.items.at(-1).text, "Restored 3 files");
+  assert.deepEqual(checkpoints(s).map(c => c.uuid), ["b", "a"], "both messages can still be gone back to");
+  assert.equal(s.meta.rewinds.length, 0, "no branch is abandoned");
+  // Its event: the same restore.
+  assert.deepEqual(ev(s, "thread.rewound", { uuid: "b", restore: "code", files }, { at: 10_050 }), []);
+  assert.equal(s.items.filter(i => i.kind === "notice").length, 1);
+  applyBlocks(s, blocks);
+  assert.deepEqual(keys(s).slice(0, before.length), before, "a re-read draws the same conversation");
+  // A second restore to the same message is its own.
+  ev(s, "thread.rewound", { uuid: "b", restore: "code", files: { restored: false, why: "no checkpoint" } }, { at: 20_000 });
+  assert.equal(s.items.at(-1).text, "Could not restore the files: no checkpoint");
+});
+
+test("a rewind of both: the conversation goes back as before, and the notice says what the files did", () => {
+  const s = createSession(T);
+  applyBlocks(s, [
+    { seq: 0, kind: "user", ts: 1000, text: "Read the intake folder", uuid: "a" },
+    { seq: 1, kind: "user", ts: 3000, text: "Rebuild the Estate intake", uuid: "b" },
+    { seq: 2, kind: "text", ts: 5000, message: "msg_b", text: "Done." },
+  ]);
+  const out = ev(s, "thread.rewound", { uuid: "b", at: "a", restore: "both", files: { restored: true, files_changed: ["src/intake/estate.ts"] } }, { at: 10_000 });
+  assert.ok(out.includes("@rewound"));
+  assert.equal(s.rewound?.text, "Rebuild the Estate intake");
+  assert.equal(s.items.at(-1).text, 'Rewound to before "Rebuild the Estate intake" · Restored 1 file');
+  assert.equal(s.items.filter(i => i.kind === "user").length, 1);
+});
+
+test("filesNote and contextLabel", () => {
+  assert.equal(filesNote(null), null);
+  assert.equal(filesNote({ restored: true }), "Restored the files");
+  assert.equal(filesNote({ restored: true, files_changed: [] }), "No files to restore");
+  assert.equal(filesNote({ restored: true, files_changed: ["a.ts", "b.ts"] }), "Restored 2 files");
+  assert.equal(filesNote({ restored: false }), "Could not restore the files");
+  assert.equal(contextLabel(null), null);
+  assert.equal(contextLabel({ context: { used: 1000, max: null } }), null, "no share, no meter");
+  assert.deepEqual(contextLabel({ context: { used: 124000, max: 200000, share: 0.62 } }), { text: "62% of context", title: "124,000 of 200,000 tokens", share: 0.62 });
+  assert.equal(contextLabel({ context: { used: 250000, max: 200000, share: 1.25 } })?.text, "100% of context");
+});
+
+test("thread.usage keeps the context; model.switched moves the model, and a scoped model.changed is not this thread's", () => {
+  const s = createSession(T);
+  ev(s, "thread.started", { provider: "claude", model: "opus" });
+  assert.deepEqual(ev(s, "thread.usage", { cost_usd: 0.01, total_cost_usd: 0.3, context: { used: 124000, max: 200000, share: 0.62 } }), ["@session"]);
+  assert.equal(contextLabel(s.usage)?.text, "62% of context");
+  ev(s, "thread.usage", { cost_usd: 0.01, total_cost_usd: 0.31 });
+  assert.equal(contextLabel(s.usage)?.text, "62% of context", "a usage without context keeps the last");
+  assert.deepEqual(ev(s, "model.switched", { model: "haiku", live: true }), ["@session"]);
+  assert.equal(s.model, "haiku");
+  assert.deepEqual(ev(s, "model.changed", { scope: "purpose:job", model: "sonnet" }), [], "sessions.models.set, a purpose's default");
+  assert.equal(s.model, "haiku");
+  assert.deepEqual(ev(s, "model.changed", { model: "sonnet" }), ["@session"], "an older box's thread model");
+  assert.equal(s.model, "sonnet");
 });

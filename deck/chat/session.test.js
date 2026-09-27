@@ -104,6 +104,9 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const input = JSON.parse(o.body);
   calls.push({ tool, input });
   let data;
+  // sessions.models.get names no thread: the per-purpose map.
+  if (tool === "sessions.models.get") return { status: 200, statusText: "", json: async () => ({ data: {
+    purposes: { chat: { model: "opus", from: "config:chat" }, job: { model: "claude-haiku-4-5", from: "config:job" } }, projects: {} } }) };
   if (input.thread === RES || input.session === RES) {
     if (tool === "threads.get") data = { thread: { id: RES, name: "Northwind order form", cwd: "/home/alex/work/northwind", status: "idle", holder: null, agent: null },
       events: res.events.filter(e => e.id > (input.since ?? 0)), asks: res.asks };
@@ -126,7 +129,12 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     else if (tool === "threads.send") data = input.mode === "queue"
       ? { sent: false, queued: true, queued_id: 41, uuid: "box-q41", thread: NEW, name: "Q3 report", busy: "working", note: "Q3 report is working on something." }
       : input.mode === "steer" ? { sent: true, steered: true, thread: NEW, uuid: "box-steer-1", turn: `${NEW}:9` } : { sent: true, thread: NEW };
-    else if (tool === "threads.rewind") data = { rewound: true, thread: NEW, uuid: input.uuid, text: "Use Estate intake v2 instead" };
+    else if (tool === "threads.rewind") data = input.restore === "code"
+      ? { rewound: true, thread: NEW, uuid: input.uuid, restore: "code", files: { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts"] } }
+      : { rewound: true, thread: NEW, uuid: input.uuid, text: "Use Estate intake v2 instead",
+        ...(input.restore ? { restore: input.restore, files: { restored: true, files_changed: ["src/intake/estate.ts"] } } : {}) };
+    else if (tool === "threads.commands") data = { thread: NEW, commands: [{ name: "compact", description: "Clear history but keep a summary", argumentHint: "<instructions>" }] };
+    else if (tool === "threads.model") data = { thread: NEW, model: input.model };
     else if (tool === "threads.mode") data = { thread: NEW, mode: input.mode };
     else data = tool === "memory.facts" ? { facts: [] } : {};
     return { status: 200, statusText: "", json: async () => ({ data }) };
@@ -452,18 +460,57 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   const sheet = $(box4, ".cv-rewind");
   assert.ok(sheet, "Esc Esc opens the rewind sheet");
   assert.match(text(sheet), /Use Estate intake v2 instead/);
+  await wait();
+  // Claude Code's three choices; the box answered threads.commands, so it can put files back.
+  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => text(b)), ["Restore code and conversation", "Restore conversation", "Restore code"]);
+  assert.deepEqual($$(box4, ".cv-rw-opt").map(b => b.disabled), [false, false, false]);
+  assert.equal(text($(box4, ".cv-rw-opt[aria-checked=true]")), "Restore code and conversation", "both is the default");
   press3("Enter");
   await wait();
-  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "box-steer-1" }, "the box's uuid for the message");
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "box-steer-1", restore: "both" }, "the box's uuid for the message");
   assert.deepEqual(went, [], "the same thread: nothing opens");
   assert.equal($(box4, ".cv-rewind"), null);
   assert.equal($$(box4, ".cv-user").length, 1, "the message and everything after it are gone");
   assert.equal($$(box4, ".cv-steer").length, 0);
   assert.equal(ta.value, "Use Estate intake v2 instead", "the words come back to edit");
-  assert.match(text($(box4, ".thread-view")), /Rewound to before "Use Estate intake v2 instead"/);
-  at("thread.rewound", { uuid: "box-steer-1", at: "u-first" });
+  assert.match(text($(box4, ".thread-view")), /Rewound to before "Use Estate intake v2 instead" · Restored 1 file/);
+  at("thread.rewound", { uuid: "box-steer-1", at: "u-first", restore: "both", files: { restored: true, files_changed: ["src/intake/estate.ts"] } });
   await wait();
   assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Rewound/.test(text(n))).length, 1, "its event is the same rewind");
+
+  // Code only: the files go back; the conversation, the view and the composer stay.
+  ta.value = "";
+  key("Escape"); key("Escape");
+  await wait();
+  press3("ArrowLeft");
+  assert.equal(text($(box4, ".cv-rw-opt[aria-checked=true]")), "Restore code");
+  const users = $$(box4, ".cv-user").length;
+  ta.value = "keep this draft";
+  press3("Enter");
+  await wait();
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "u-first", restore: "code" });
+  assert.equal($(box4, ".cv-rewind"), null);
+  assert.equal($$(box4, ".cv-user").length, users, "nothing leaves the view");
+  assert.equal(ta.value, "keep this draft", "the composer keeps its words");
+  assert.match(text($(box4, ".thread-view")), /Restored 2 files/);
+  at("thread.rewound", { uuid: "u-first", restore: "code", files: { restored: true, files_changed: ["src/intake/estate.ts", "src/intake/forms.ts"] } });
+  await wait();
+  assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Restored 2 files/.test(text(n))).length, 1, "its event is the same restore");
+
+  // The context meter, only once the box says the share; the model chip follows model.switched.
+  assert.equal($(box4, ".cv-context"), null);
+  at("thread.usage", { cost_usd: 0.01, total_cost_usd: 0.2, context: { used: 124000, max: 200000, share: 0.62 } });
+  await wait();
+  assert.equal(text($(box4, ".cv-context")), "62% of context");
+  at("model.switched", { model: "haiku", live: true });
+  await wait();
+  assert.match(text($(box4, ".composer-model")), /haiku/);
+  await $(box4, ".composer-model").click();
+  await wait();
+  assert.ok(calls.some(c => c.tool === "sessions.models.get"), "the picker reads the per-purpose map");
+  assert.match(text($(box4, ".composer-menu")), /claude-haiku-4-5/);
+  assert.match(text($(box4, ".composer-menu")), /Used for job/);
+  ta.value = "";
   stop4();
 });
 

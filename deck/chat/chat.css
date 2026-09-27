@@ -532,6 +532,8 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 @media (prefers-reduced-motion: reduce) { .cv-run .cv-chev { transition: none; } }
 
 .cv-chip { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.cv-context { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.cv-context.high { color: var(--beacon-ink); }
 .cv-state { font-family: var(--mono); font-size: 11px; color: var(--label); white-space: nowrap; }
 .cv-state-running, .cv-state-starting { color: var(--signal-ink-text, var(--signal)); }
 .cv-state-waiting { color: var(--text); }
@@ -643,6 +645,9 @@ pre code { display: block; font-family: var(--mono); font-size: 13px; line-heigh
 .cv-rewind-acts { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; border-top: 1px solid var(--rule); }
 .cv-rewind-acts .btn .kbd { margin-left: 4px; }
 .cv-rewind-acts .btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.cv-rewind-opts { display: flex; flex-wrap: wrap; gap: 4px; padding: 4px 6px; border-top: 1px solid var(--rule); }
+.cv-rw-opt[aria-checked="true"] { background: var(--hover); color: var(--text); }
+.cv-rw-opt[disabled] { opacity: 0.5; cursor: not-allowed; }
 .cv-rewind-note { padding: 0 6px 4px; font-size: 12px; color: var(--beacon-ink); }
 .cv-rewind-note:empty { display: none; }
 

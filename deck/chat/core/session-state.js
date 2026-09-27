@@ -43,9 +43,16 @@
 // same thread goes back to just before that message. The message and everything after it leave
 // the view, and later reads of the transcript (which keeps the abandoned branch) skip them too:
 // the blocks from that message on written before the rewind. s.rewound carries the words back.
+// restore (work/sessions 7543952e): "conversation" (the default, and all an older box does),
+// "code" (the files its tools changed since that message go back; the conversation and the view
+// stay as they are, so nothing is dropped and no branch is abandoned) or "both". files
+// {restored, files_changed, why} says how the files went: a notice "Restored 3 files".
 //
 // thread.state is one of starting, running, waiting, idle, stopped. thread.usage names the turn's
-// own cost (cost_usd) and the session's (total_cost_usd). The mode is mode.changed {mode}.
+// own cost (cost_usd) and the session's (total_cost_usd), and context {used, max, share}: what the
+// last request held of the model's window (contextLabel). The mode is mode.changed {mode}; the
+// model is model.switched {model} (threads.model), model.changed {model} on older boxes (a
+// model.changed with a scope is sessions.models.set's per-purpose default, not this thread's).
 
 import { toolDetail } from "./tool-detail.js";
 
@@ -82,7 +89,7 @@ import { toolDetail } from "./tool-detail.js";
  *   rewound: { uuid: string, text: string, at: number|null }|null, purpose: string|null,
  *   meta: { live: number, notices: number, turns: number, lastId: number, stateSeen: boolean,
  *     uuids: Map<string, string>, idents: Map<string, string>, texts: Map<string, string>, taskEvents: boolean,
- *     rewinds: Rewind[] }
+ *     rewinds: Rewind[], restores: { uuid: string, local: boolean, key: string }[] }
  * }} Session
  */
 
@@ -98,7 +105,7 @@ export function createSession(thread) {
     // words of queued messages by uuid (a hand-over or a steer from the queue may name only the
     // uuid), and whether thread.task events come (then tasks are theirs).
     meta: { live: 0, notices: 0, turns: 0, lastId: -Infinity, stateSeen: false, uuids: new Map(), idents: new Map(),
-      texts: new Map(), taskEvents: false, rewinds: [] },
+      texts: new Map(), taskEvents: false, rewinds: [], restores: [] },
   };
 }
 
@@ -420,6 +427,7 @@ function onSteered(s, p, at, out) {
 function onRewound(s, p, at, out) {
   const uuid = String(p.uuid ?? "");
   if (!uuid) return;
+  if (p.restore === "code") { onRestored(s, uuid, p, at, out); return; }
   const key = s.meta.uuids.get(uuid) ?? s.items.find(it => it.kind === "user" && it.uuid === uuid)?.key;
   const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
   // Applied already (the answer, then its event; or the other way round): the box's time wins.
@@ -444,10 +452,59 @@ function onRewound(s, p, at, out) {
   out.add("@rewound");
   const nkey = `rw:${uuid}:${++s.meta.notices}`;
   const quote = text.length > 60 ? text.slice(0, 59) + "…" : text;
-  insert(s, /** @type {NoticeItem} */ ({ key: nkey, kind: "notice", text: quote ? `Rewound to before "${quote}"` : "Rewound",
+  const files = filesNote(p.files);
+  insert(s, /** @type {NoticeItem} */ ({ key: nkey, kind: "notice", text: (quote ? `Rewound to before "${quote}"` : "Rewound") + (files ? ` · ${files}` : ""),
     ...(at !== undefined ? { at } : {}) }));
   out.add(nkey);
   out.add("@session");
+}
+
+/**
+ * How a rewind's files went, for its notice: "Restored 3 files", "No files to restore", or why
+ * they could not be put back. Null when the rewind did not touch files.
+ * @param {any} files {restored, files_changed?, why?} @returns {string|null}
+ */
+export function filesNote(files) {
+  if (!files || typeof files !== "object") return null;
+  if (files.restored === false) return "Could not restore the files" + (files.why ? `: ${files.why}` : "");
+  if (!Array.isArray(files.files_changed)) return "Restored the files";
+  const n = files.files_changed.length;
+  return n ? `Restored ${n} file${n === 1 ? "" : "s"}` : "No files to restore";
+}
+
+/**
+ * A code-only rewind: the files went back, the conversation stays. Nothing leaves the view and
+ * no branch is abandoned; a notice says what came back. The answer (local) and its event are one
+ * restore: whichever comes second finds the first's unpaired record and only updates its notice.
+ * @param {Session} s @param {string} uuid @param {any} p @param {number|undefined} at @param {Set<string>} out
+ */
+function onRestored(s, uuid, p, at, out) {
+  const local = Boolean(p.local);
+  const text = filesNote(p.files) || "Restored the files";
+  const pair = s.meta.restores.find(r => r.uuid === uuid && r.local !== local);
+  if (pair) {
+    s.meta.restores.splice(s.meta.restores.indexOf(pair), 1);
+    const n = /** @type {NoticeItem|undefined} */ (s.byKey.get(pair.key));
+    if (n && p.files && n.text !== text) { n.text = text; out.add(n.key); }
+    return;
+  }
+  const key = `rs:${uuid}:${++s.meta.notices}`;
+  insert(s, /** @type {NoticeItem} */ ({ key, kind: "notice", text, ...(at !== undefined ? { at } : {}) }));
+  s.meta.restores.push({ uuid, local, key });
+  out.add(key);
+}
+
+/**
+ * The header's context meter, "62% of context", from thread.usage's context; null until the box
+ * says the share (an older box, or a model whose window it does not know).
+ * @param {any} usage @returns {{ text: string, title: string|null, share: number }|null}
+ */
+export function contextLabel(usage) {
+  const c = usage && usage.context;
+  if (!c || typeof c.share !== "number" || !isFinite(c.share) || c.share < 0) return null;
+  const pct = Math.min(100, Math.round(c.share * 100));
+  const title = typeof c.used === "number" && typeof c.max === "number" ? `${c.used.toLocaleString("en-US")} of ${c.max.toLocaleString("en-US")} tokens` : null;
+  return { text: `${pct}% of context`, title, share: c.share };
 }
 
 /**
@@ -866,8 +923,12 @@ export function applyEvent(s, e) {
     case "mode.changed":
       if (typeof p.mode === "string") { s.mode = p.mode; out.add("@session"); }
       break;
-    case "model.changed": case "thread.model":
-      if (p.model != null) { s.model = String(p.model); out.add("@session"); }
+    case "model.changed":
+      // With a scope it is sessions.models.set (a purpose's or a project's default), not this thread.
+      if (p.scope != null) break;
+    // falls through
+    case "model.switched": case "thread.model":
+      if (p.model != null && p.model !== "") { s.model = String(p.model); out.add("@session"); }
       break;
     case "thread.thinking":
       if (typeof p.on === "boolean") { s.thinking = p.on; out.add("@session"); }

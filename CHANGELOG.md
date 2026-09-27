@@ -4,6 +4,29 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Chat: the model picker, the session's commands, rewind with code, the context meter
+
+Wires sessions 7543952e and 468af69f in deck/chat.
+- caps.js: threads.model, threads.commands and sessions.models.get are live (SESSION_TOOLS, learnt
+  lazily, so an older box switches them off on its first "no such tool"), out of NOT_OFFERED.
+  REWIND_CODE (threads.rewind's restore "code"/"both") is learnt with them (LINKED).
+- Model chip and picker (composer.js, composer-state.js modelChoices): the aliases opus, sonnet
+  and haiku, then every id sessions.models.get names per purpose ("Used for chat, agent") and the
+  thread's own, "now" on the thread's. threads.model switches it; a stopped thread's note is shown.
+  session-state reduces model.switched, and model.changed only without a scope (a scoped one is
+  sessions.models.set's per-purpose default, not the thread's).
+- "/" menu: threads.commands' {commands: [{name, description, argumentHint}]}, with the static
+  core/commands.js list while the thread is not running (asked again after 15 s) or on an older box.
+- Rewind sheet (pickers.js): Claude Code's "Restore code and conversation" (the default),
+  "Restore conversation" and "Restore code". Code keeps the conversation, the view and the
+  composer's words; a notice says "Restored N files" (or why not). Both adds it to the rewind's
+  notice. Code choices are off, with "Needs the sessions update", on a box that restores the
+  conversation only. A code restore is never noted as an abandoned branch.
+- Header: "62% of context" from thread.usage context, only when the box gives the share.
+- test/chat-sessions-contract: AHEAD_TOOLS and AHEAD_EVENTS allow threads.model,
+  threads.commands and model.switched to be missing from this tree's core until sessions merges;
+  strict once core has them. Dotted tool names (sessions.models.get) are read whole.
+
 #### Chat: the stream resumes, and long replies stay smooth
 
 - Reconnect (deck/js/api.js, ADR 0029 R1): the shared stream hears `stream.reset` and lowers its

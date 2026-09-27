@@ -23,8 +23,12 @@
 // - A pasted image is attached (thumbnails, at most 4, 5 MB each) and sent with the words, once
 //   the box takes images on threads.send (core/caps.js SEND_IMAGES; until then a paste says so).
 //
-// Tools are learnt through core/caps.js: what the contract does not offer yet (model, thinking,
-// commands, shell, memory) starts off, and the first "no such tool" from an older box switches
+// The model chip opens the model picker: the aliases (opus, sonnet, haiku) and every model
+// sessions.models.get names per purpose, "now" on this thread's; threads.model switches it (a
+// stopped thread when it next runs) and model.switched moves the chip.
+//
+// Tools are learnt through core/caps.js: what the contract does not offer yet (thinking, shell,
+// memory) starts off, and the first "no such tool" from an older box switches
 // that control off too, with "Needs the sessions update" as its title; the words stay in the box. A paired Mac's session (opts.machine) keeps the plain send it had: threads.send
 // {thread, text, surface, machine}, no chips, and the notes for an offline or slow Mac.
 //
@@ -38,6 +42,7 @@ import { icon } from "../js/icons.js";
 import {
   draftKind, draftBody, kindLabel, findMention, applyMention, rankFiles, historyStore, remember, recall, recalling, stopRecall,
   upAction, enterAction, createEsc, escape, nextMode, modeLabel, actionFor, addImage, removeImage, sendImages, newUuid, IMAGE_TYPES,
+  modelChoices, shortModel,
 } from "./core/composer-state.js";
 import { findCommand, rankCommands, applyCommand, normalizeCommands, sourceLabel } from "./core/commands.js";
 import { scorePath, compareScores } from "./core/match.js";
@@ -54,12 +59,6 @@ const HISTORY = historyStore();
 try { const raw = localStorage.getItem(HISTORY_KEY); if (raw) HISTORY.load(JSON.parse(raw)); } catch {}
 const saveHistory = () => { try { localStorage.setItem(HISTORY_KEY, JSON.stringify(HISTORY)); } catch {} };
 
-/** Models to offer when the box cannot list them (sessions.models). */
-const MODELS = Object.freeze([
-  { id: "opus", label: "Opus", description: "The most capable" },
-  { id: "sonnet", label: "Sonnet", description: "Fast and capable" },
-  { id: "haiku", label: "Haiku", description: "The fastest" },
-]);
 /** Where a "#" memory goes. */
 const SCOPES = Object.freeze([
   { id: "project", label: "This project", hint: "Only here" },
@@ -68,8 +67,8 @@ const SCOPES = Object.freeze([
 ]);
 /** How long the send button is held to queue. */
 const HOLD_MS = 450;
-/** The model's family name, never the vendor's: "claude-opus-4-5" reads "opus". @param {string|null|undefined} m */
-const shortModel = m => (m ? (/(opus|sonnet|haiku|fable)/i.exec(m)?.[1]?.toLowerCase() || String(m).replace(/^claude-/i, "")) : null);
+/** A fallback "/" list is asked again after this long (the session was not running: it had none). */
+const COMMANDS_RETRY_MS = 15_000;
 
 /**
  * @param {{ thread: string, agents?: string[], threads?: { id: string, name: string|null }[], holder?: string|null, surface?: string,
@@ -100,8 +99,9 @@ export function mountComposer(opts) {
   const hist = HISTORY.get(thread);
   const esc = createEsc();
   const menu = listMenu();
-  /** The session's commands, once asked for. */
+  /** The session's commands, once asked for; `commandsAt` when, if they were the static fallback. */
   let commands = /** @type {import("./core/commands.js").Command[]|null} */ (null);
+  let commandsAt = 0;
   let fileTimer = /** @type {any} */ (null), fileSeq = 0;
 
   const ta = /** @type {HTMLTextAreaElement} */ (h("textarea", {
@@ -209,13 +209,13 @@ export function mountComposer(opts) {
   async function openModels() {
     if (!rich()) return;
     if (off("threads.model")) { say(NEEDS_UPDATE); return; }
-    const r = await CAPS.use("sessions.models", () => attempt("sessions.models", {}));
-    const list = Array.isArray(r.data) && r.data.length ? r.data.map((/** @type {any} */ m) => typeof m === "string" ? { id: m, label: m } : m) : MODELS;
-    const cur = shortModel(/** @type {any} */ (S).model);
+    // No list of models on the box: the aliases, the per-purpose map, and this thread's own.
+    const r = await CAPS.use("sessions.models.get", () => attempt("sessions.models.get", {}));
+    const list = modelChoices({ current: /** @type {any} */ (S).model, purposes: /** @type {any} */ (r.data)?.purposes });
     menu.setKind("model");
-    menu.open(list.map((/** @type {any} */ m) => ({ key: String(m.id), value: m, render: () => [
+    menu.open(list.map(m => ({ key: m.id, value: m, render: () => [
       h("span", { class: "cv-menu-name" }, m.label || m.id), m.description ? h("span", { class: "cv-menu-desc" }, m.description) : null,
-      shortModel(m.id) === cur ? h("span", { class: "cv-menu-badge" }, "now") : null] })),
+      m.now ? h("span", { class: "cv-menu-badge" }, "now") : null] })),
     row => pickModel(row.value), "Switch the model for this session", keysLine(["↑↓", "move"], ["⏎", "switch"], ["Esc", "close"]));
   }
   async function pickModel(/** @type {any} */ m) {
@@ -226,16 +226,23 @@ export function mountComposer(opts) {
     patch(["@session"]); drawChips();
     const r = await CAPS.use("threads.model", () => attempt("threads.model", { thread, model: String(m.id) }));
     if (r.error) { s.model = was; patch(["@session"]); drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not switch the model: " + r.error.message); }
+    // A stopped thread takes it when it next runs: the box says so. model.switched follows either way.
+    else if (/** @type {any} */ (r.data)?.note) say(String(/** @type {any} */ (r.data).note));
     ta.focus();
   }
 
   // ---- "/" and "@" --------------------------------------------------------------------------
 
   async function loadCommands() {
-    if (commands) return commands;
-    if (machine) { commands = normalizeCommands(null); return commands; }
+    if (commands && (!commandsAt || Date.now() - commandsAt < COMMANDS_RETRY_MS)) return commands;
+    if (machine) { commands = normalizeCommands(null); commandsAt = 0; return commands; }
+    // {thread, commands: [{name, description, argumentHint}]}; empty while the thread is not
+    // running (the list comes with the session), so the static one stands in and is asked again.
     const r = await CAPS.use("threads.commands", () => attempt("threads.commands", { thread }));
-    commands = normalizeCommands(r.data);
+    const d = /** @type {any} */ (r.data);
+    const got = Array.isArray(d) ? d : Array.isArray(d?.commands) ? d.commands : null;
+    commands = normalizeCommands(got);
+    commandsAt = got && got.length ? 0 : (r.missing ? 0 : Date.now());
     return commands;
   }
 
