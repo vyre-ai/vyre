@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: the release workflow (ADR 0033)
+
+- .github/workflows/release.yml: a tag vX.Y.Z publishes a GitHub Release (stable), vX.Y.Z-beta.N a
+  prerelease (beta). Assets: build-site.sh's box files and vyre.tgz and VERSION, the unsigned
+  Android APK and android.json from app.yml's green run on the same commit when there is one,
+  release.json { version, channel, commit, date, min_from, notes } and SHA256SUMS over all of
+  them, each with a keyless build provenance attestation (no key, no secret). The notes are the
+  CHANGELOG's "## X.Y.Z" section; min_from is 0.1.0 unless release/min_from says otherwise; the
+  tag must equal package.json's version. Dispatched with a tag, it builds and checks everything
+  and publishes nothing.
+
 #### CI: the box image is built and booted
 
 - .github/workflows/box-image.yml builds box/Dockerfile from the npm pack tarball, the context a
