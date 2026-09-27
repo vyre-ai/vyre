@@ -89,34 +89,42 @@ without editing Capsule files:
   fix, the extension seam, `@` targets: see CHANGELOG.
 
 ## Doing (session 5, 2026-09-27, after logout 4)
-Merged main 7880dfa6 (b3c63eb5). Done this session: the answer card grows, then scrolls (540d55ba,
-c1a9223f: keys, follow, thumb, Jump to latest, no empty headings, whole-row results); ⌘⏎ in the
-same thread with threads.model + threads.thinking (f7e7fb52). Swift 304/304.
-Now: app-design's capsule.md (vyre-app-design docs/design/system/capsule.md, 6f8ae52f), in tasks:
-T1 geometry, copy, sentence case, footer states (done, see CHANGELOG "Design A"); T2 voice and
-computer-use surfaces, layered Esc.
-Blocked: Vyre IQ iq.ask (memory-iq not on main); the hub theme (/v1/appearance/theme, not on main).
+Handed to the integrator: work/capsule-pro-said a127335d (capsule-mac green): the clipping fix,
+no empty headings, ⌘⏎ same thread, capsule-agent 42e8da05, Said.swift removed (memory.answer only),
+four timing-only test fixes.
+On work/capsule-pro since (not handed over yet): Design A T1 (b330aa82: 560 fixed, rows 44,
+headers 28, footer 32, sentence case, keys-only footer), ⌘⏎ always think deeper, screen context
+on every ask by default ("sees:" chip, Stop sharing command), the inline key row through the
+vault (Credentials.swift), `vyre ...` run in the panel with --view frames (CommandRun.swift;
+/v1/health `cli`). Swift 322/322.
 
 The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
-- trial vyred pid 58916 (`node core/daemon/main.js` from this worktree, started before the merge,
-  so it has no threads.model: ⌘⏎ falls back to a new thread until it restarts; its config points
-  at the real box and a restart may make a pairing request, so ask the lead first)
-- trial Capsule relaunched on each new build: `open -n -g --env VYRE_HOME=/private/tmp/claude-501/vyre-try --env VYRE_ALLOW_DIALOGS=1 local/capsule/native/.build/Vyre.app`
-  (find the pid with `pgrep -f vyre-capsule-pro/local/capsule/native/.build/Vyre.app`)
-- Stop: quit from the menu-bar mark ("Quit Vyre Capsule"), then
-  `VYRE_HOME=/private/tmp/claude-501/vyre-try node bin/vyre down`.
-- The real Vyre (global npm 0.0.1, vyred 60055, ~/.vyre) is untouched.
+- runs from a separate local checkout ../vyre-capsule-pro-trial (detached; my branch plus
+  sessions 51eaa964's Vyre IQ prompt; never pushed). Update it with
+  `git -C ../vyre-capsule-pro-trial merge --no-edit <sha>`, rebuild there, relaunch.
+- trial vyred: `VYRE_HOME=... VYRE_ALLOW_DIALOGS=1 nohup node core/daemon/main.js` from the trial
+  checkout (log vyre-try/vyred-trial.log); find it with `ps` on core/daemon/main.js and VYRE_HOME.
+- trial Capsule: `open -n -g --env VYRE_HOME=/private/tmp/claude-501/vyre-try --env VYRE_ALLOW_DIALOGS=1 ../vyre-capsule-pro-trial/local/capsule/native/.build/Vyre.app`;
+  find it with `pgrep -f vyre-capsule-pro-trial/local/capsule/native/.build/Vyre.app` (never a
+  bare "Vyre.app" pattern: that would match the user's real Capsule).
+- Stop: quit from the menu-bar mark, then `VYRE_HOME=/private/tmp/claude-501/vyre-try node bin/vyre down`.
+- The real Vyre (~/.vyre) is untouched.
 
 ## Next
-1. capsule.md T1 and T2 (above), then the rest of its Gaps list that is not blocked.
-2. Vyre IQ: iq.ask {stream: true} when memory-iq lands it: stages, source chips ⌘1..⌘3, "Not sure"
-   with known, nothing found.
-3. The settings hub (native-core, app-design appearance): GET /v1/appearance/theme at launch,
-   repaint on appearance.changed; Tokens.generated.swift as the offline fallback only.
-4. The real-Vyre install after tonight's deploy, only with the lead's go; then the 11-step check.
-5. "idle" on @ session rows from threads.list `status`. Persist PlannerBanners.unsent.
-6. Voice and computer use live checks need the user (speech key, Mic / Accessibility / Screen
-   Recording grants).
+1. app-design 305fc07b: compact panel with nothing typed (input, waiting list, footer), 560 in
+   one 150 ms step on the first result, the 2 s status line; tip.md (tips.next, ⌘. dismisses),
+   credential-sheet.md check against the row built, glass-mini.md step pill.
+2. Hand work/capsule-pro to the integrator as a READY sha once capsule-mac is green on it.
+3. Vyre IQ over iq.ask {stream:true} when memory-iq lands it (stages, source chips ⌘1..⌘3, Not
+   sure, nothing found). [n] in replies linked to source rows (sessions 51eaa964).
+4. Cohesion glue as each lands on main: context.report on front-app switch, sight.now,
+   suggest.query, waiting.list/count, sessions.models.resolve, connections (vault) and mail rows
+   (connectors 04a5495e), needs_credential {detail} parsed by the client, commands.list.
+5. The settings hub: /v1/theme?device= (ADR 0035) or /v1/appearance/theme, repaint on
+   settings.changed; Tokens.generated.swift as the offline fallback only.
+6. `!cmd` shell lines (person-only, under the floor): not built; needs a tool (threads.shell needs
+   a thread). A presence proof for CLI verbs that exit 3: ask polish-cli for an env or flag.
+7. The real-Vyre install only with the lead's go; then the 11-step check.
 
 ## Footprint: met (2026-09-27)
 - CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use
