@@ -18,6 +18,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   Changed contracts in docs/work/capsule-pro.md), `core/daemon/build.test.js`.
 - `Sources/Host/CommandRun.swift`, `Sources/UI/CommandRunView.swift`; `Tests/CommandRunTests.swift`
   (a fake vyre script: frames, replace, qr/checks/table/error, the plain fallback, Esc).
+- Bare `vyre voice` shows voice's status here (the terminal's push-to-talk is Option-Return in
+  the Capsule); `vyre capsule` and `vyre voice --send` are not run from the Capsule and say why.
 
 #### Four Capsule tests hardened for loaded CI runners
 

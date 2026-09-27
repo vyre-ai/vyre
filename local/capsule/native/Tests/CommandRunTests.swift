@@ -66,6 +66,8 @@ let commandRunSuite = Suite("command run") { t in
         t.eq(CLIRun.parse("what is vyre"), nil)
         t.eq(CLIRun.parse("vyred status"), nil)
         t.eq(CapsuleModel.wantsAnswer("run vyre voice", topKind: nil, topScore: 0), false)
+        t.eq(CLIRun.forCapsule(["voice"]), ["voice", "status"], "the terminal's push-to-talk is Option-Return here")
+        t.ok(CLIRun.refused(["capsule"]) != nil && CLIRun.refused(["voice", "--send", "t1"]) != nil && CLIRun.refused(["voice", "status"]) == nil)
         let rows = MainActor.assumeIsolated { () -> [String] in
             let m = runModel("/nonexistent")
             m.text = "run vyre voice"
@@ -124,7 +126,7 @@ let commandRunSuite = Suite("command run") { t in
             return await MainActor.run { [String(describing: m.commandRun?.views ?? []), "exit \(m.commandRun?.exit ?? -1)"] } + runs.split(separator: "\n").map(String.init)
         }
         t.ok(r?[0].contains("voice deepgram saved") == true && r?[0].contains("\u{1B}") == false, r?[0] ?? "")
-        t.eq(Array(r?.dropFirst() ?? []), ["exit 0", "voice --view", "voice"])
+        t.eq(Array(r?.dropFirst() ?? []), ["exit 0", "voice status --view", "voice status"])
     }
 
     t.test("Esc ends a live verb, and a second Esc clears it") {

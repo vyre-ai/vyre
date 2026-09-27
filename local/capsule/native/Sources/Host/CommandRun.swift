@@ -78,6 +78,20 @@ public enum CLIRun {
         return args.isEmpty ? nil : args
     }
 
+    /// Verbs that mean something else in the Capsule. Bare `vyre voice` is the terminal's
+    /// push-to-talk: here talking is Option-Return, so it shows voice's status instead.
+    public static func forCapsule(_ argv: [String]) -> [String] {
+        argv == ["voice"] ? ["voice", "status"] : argv
+    }
+
+    /// Why a verb is not run from the Capsule, or nil. Only the ones that would take the terminal
+    /// or this app itself.
+    public static func refused(_ argv: [String]) -> String? {
+        if argv.first == "capsule" { return "This is the Capsule already. Its settings are in the menu bar mark." }
+        if argv.first == "voice", argv.dropFirst().first == "--send" { return "To talk to a session from here, pick it with @ and press Option-Return." }
+        return nil
+    }
+
     static func words(_ s: String) -> [String] {
         var out: [String] = [], cur = "", quote: Character?
         for ch in s {
@@ -169,11 +183,13 @@ extension CapsuleModel {
     }
 
     /// Run `vyre <argv>` with --view and draw its frames. One command at a time.
-    func runCommand(_ argv: [String]) {
+    func runCommand(_ typed: [String]) {
         commandRun?.stop()
+        let argv = CLIRun.forCapsule(typed)
         let run = CommandRun(argv: argv)
         commandRun = run
         autoTask?.cancel()
+        if let why = CLIRun.refused(argv) { run.finish(nil, failure: why); return }
         Task { @MainActor [vyred] in
             var cli = self.cliOverride
             if cli == nil { cli = await Self.cliPath(vyred) }
