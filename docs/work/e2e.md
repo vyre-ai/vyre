@@ -211,13 +211,11 @@ Plan (to the lead before building):
 
 ## Doing (27 Sep, after logout 3)
 
-Critical path tonight: the uid split wired into sessions' spawn.js (7b4bf9f1, merges sessions
-e4d65bf1; 382a869d adds VYRE_SESSIONS_SPAWNER=0). Unit tests 3/3 local. WAITING for the testbox
-hold to lift, then: rebuild the image from work/e2e on testbox (docker build -t vyre-e2e-split:local
--f box/Dockerfile .), `sh scripts/e2e-split/check.sh vyre-e2e-split:local` (27 checks now), rm the
-image, send the integrator the sha. Asked the lead: box sessions lose Vyre MCP/hooks to vyred under
-the split until sessions' phase 3; options (a) ship, (b) an agent socket, (c) split off tonight.
-Sessions reviewing the spawn.js diff. Then: the headscale gate on the sha box-deploy forwards.
+Deploy blocker done: work/e2e 21ac4910 to the integrator (spawnAsAgent wiring, the split OFF by
+default per the lead's (c), sessions.spawner / VYRE_SESSIONS_SPAWNER; check.sh passes both ways).
+Next: the headscale gate on the candidate sha box-deploy forwards (setup in /srv/vyre-e2e;
+run1/run2/run3 plus the person-session checks). pwa takes its api.js at merge (keep personCode).
+
 
 /srv/vyre-e2e; `./run1.sh`, `./run2.sh <link>`, `./run3.sh`, then the person-session checks in
 the 27 Sep notes above). Follow up: sessions' three changes, glass-live's two HIGH, relay's
