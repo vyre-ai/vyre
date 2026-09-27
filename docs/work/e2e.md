@@ -569,6 +569,15 @@ Done this session:
   (4/4) and boundaries.test.js (5/5) pass on testbox. Reviewer + integrator told to re-review
   at e5944433 instead of 9efb1851.
 
+- reviewer HOLD on safe-git (against stale 9efb1851): HIGH (callers still on lib/git/safe.js,
+  already fixed at e5944433, reviewer confirmed closed) + MEDIUM (a repo's own
+  log.showSignature=true + gpg.program=<cmd>, or gpg.ssh.program/gpg.x509.program, runs that
+  command as vyred on log/show, even for --format=%G? on an unsigned commit). Fixed on both:
+  SAFE_GIT_ARGS forces all three gpg programs + showSignature off; test/safe-git.test.js plants
+  a gpg.program with a hand-crafted gpgsig trailer (no real gpg needed). pre/rc: work/e2e-safegit
+  ed8a5506 (on e5944433). main: work/e2e-safegit-main 60b3673b (on a26793cd, which had no HIGH).
+  Both 10/10 safe-git + 5/5 boundaries on testbox. Sent to reviewer, integrator, lead.
+
 Next: re-review federation's fix sha (the link.upload path guard HIGH + the MEDIUMs) once sent.
 
 ## Next
