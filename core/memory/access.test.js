@@ -216,3 +216,12 @@ test("card: one card per person or org, what it is to the person on their own su
   const kitCard = (await call("memory.card", { about: "Harlow Legal", agent: "kit", room: "northwind" }, "mcp:agent:kit")).data.card;
   assert.deepEqual(kitCard?.projects ?? [], kitCard ? ["Northwind"] : [], JSON.stringify(kitCard));
 });
+
+test("pace: only the import the person started sets the first read's pace; fast is a capped one-time pool", async t => {
+  const { call, db } = await module_(t);
+  assert.equal((await call("memory.pace", { pace: "fast", usd: 5 }, "deck")).code, "denied");
+  assert.equal((await call("memory.pace", { pace: "fast", usd: 5 }, "mcp")).code, "denied");
+  assert.deepEqual((await call("memory.pace", { pace: "fast", usd: 50 }, "module:import")).data, { pace: "fast", backfill_extra_usd: 10 });
+  assert.equal(Number(db.prepare("SELECT v FROM memory_meta WHERE k = 'backfill_extra_usd'").get().v), 10);
+  assert.equal((await call("memory.pace", { pace: "gentle" }, "module:import")).data.backfill_extra_usd, 0);
+});

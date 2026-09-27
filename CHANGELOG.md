@@ -48,6 +48,14 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   sessions (`recall.forget`), then says how much went (`memory.forgot`). `memory.device {machine}`
   is the preview, in counts. Only federation's own module may say `sync.deleted`: memory ignores it from any
   other, and core/modules reserves the `sync.*` events for the first-party `sync` module (core/sync). import.scan never offers the synced folder as this device's own.
+- Import, sending: `import.start {plan, mode: once|sync, pace: fast|gentle}` is the person's own
+  action (never an agent or a device nobody signed in on). It records their consent with the
+  server through federation's `sync.consent` (with the plan's hash), sets the first read's pace
+  (`memory.pace`: fast adds a one-time pool of at most $10 on the Claude login), and sends the
+  plan's sessions through federation's `sync.send`, 25 at a time, in Claude Code's own layout;
+  `import.status` and `import.progress` gain the upload stage (sent, failed, quarantined).
+  `import.stop` stops and deletes nothing; `import.cancel {delete: true}` also deletes everything
+  this device sent (`sync.delete`).
 - Import, first part (docs/design/import.md): `import.scan {folders?}` lists this device's Claude Code
   sessions by source (projects, the archive, folders the person adds) and by the folder each ran
   in, with counts, sizes and dates, and suggests only the person's own work (never work on Vyre

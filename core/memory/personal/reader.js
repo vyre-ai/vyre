@@ -422,7 +422,10 @@ export function createReader(deps) {
     const c = cfgOf();
     const m = c.memory?.model || {};
     const num = (x, d) => (x !== null && x !== "" && Number.isFinite(Number(x)) && Number(x) >= 0 ? Number(x) : d);
-    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, READER.dailyUsd), backfillUsd: num(m.backfillUsd, READER.backfillUsd),
+    // A fast first read the person chose on the import screen (memory.pace) adds to the one-time pool.
+    let extra = 0;
+    try { extra = Number(/** @type {any} */ (db.prepare("SELECT v FROM memory_meta WHERE k = 'backfill_extra_usd'").get())?.v) || 0; } catch { /* no memory_meta yet */ }
+    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, READER.dailyUsd), backfillUsd: num(m.backfillUsd, READER.backfillUsd) + extra,
       batch: Math.max(1, Math.min(50, num(m.batch, READER.batch))), gapMs: Math.max(60_000, num(m.gapMs, READER.gapMs)),
       passes: Math.max(1, Math.min(3, num(m.passes, READER.passes))) };
   };

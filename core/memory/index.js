@@ -976,6 +976,20 @@ export default {
           ...(to_you ? { to_you } : {}), facts, projects, sessions: counts.sessions, last: counts.last, sources } };
       },
     });
+    // The first read's pace, the person's choice on the import screen (docs/design/import.md):
+    // fast adds a one-time pool sized to the history, gentle keeps the daily cap alone. On the
+    // person's Claude login, never API dollars.
+    ctx.tool("memory.pace", {
+      internal: true,
+      description: "Set the first read's pace for an import: fast (usd: a one-time pool, at most $10) or gentle (the daily cap alone).",
+      input: { type: "object", required: ["pace"], properties: { pace: { type: "string", enum: ["fast", "gentle"] }, usd: { type: "number", minimum: 0, maximum: 10 } } },
+      run: async ({ pace, usd = 0 }, { caller } = {}) => {
+        if (caller !== "module:import") throw denied("the pace is set by the import the person started");
+        const v = pace === "fast" ? Math.max(0, Math.min(10, Number(usd) || 0)) : 0;
+        ctx.store.db.prepare("INSERT INTO memory_meta (k, v) VALUES ('backfill_extra_usd', ?) ON CONFLICT (k) DO UPDATE SET v = excluded.v").run(String(v));
+        return { pace, backfill_extra_usd: v };
+      },
+    });
     // Two values for one thing about the person's life, put to them to settle (graph win 3).
     ctx.tool("memory.contradictions", {
       description: "Things memory holds two values for about the person's life (where they live, their wife's name), for them to settle: { contradictions: [{ id, question, values: [{ value, confidence, sessions, last_seen }] }] }. The person's own surfaces only.",
