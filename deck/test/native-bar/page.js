@@ -49,6 +49,15 @@ export const PAGE_SCRIPT = String.raw`(() => {
     }).observe({ type: "layout-shift", buffered: true });
   } catch {}
 
+  // ---- Event Timing: keydown and input entries (Chrome reports only those of 16 ms or more) ----
+  B.evt = [];
+  try {
+    new PerformanceObserver(l => { for (const e of l.getEntries()) if (/^(keydown|keypress|beforeinput|input)$/.test(e.name))
+      B.evt.push({ name: e.name, start: e.startTime, duration: e.duration, proc: e.processingEnd - e.processingStart, id: e.interactionId || 0 }); })
+      .observe({ type: "event", durationThreshold: 16, buffered: true });
+    B.evtOk = true;
+  } catch { B.evtOk = false; }
+
   // ---- keydown to next paint ------------------------------------------------------------------
   document.addEventListener("keydown", e => {
     if (!B.keyOn) return;

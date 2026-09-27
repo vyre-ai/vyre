@@ -18,10 +18,37 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
 - 2026-09-27: audits of sessions, chat, settings and Paseo (findings in the gap list sent to the
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
-## Doing
-- f9389d56 harness landed with first numbers (native-bar.md Results). Waiting on: chat (which of the
-  5 fixes they take), resilience (reconnect), sessions (names, rewind, settings.resolve), app-design
-  (Settings frame), harness subagent a52324e (budget 1 via Event Timing).
+## Doing (at logout 4, 2026-09-27)
+BLOCKING the branch (e2e must re-review; branch merges only after sign-off):
+1. e2e HIGH 1: add "settings.set" and "settings.reset" to PERSON_ONLY (core/presence/index.js);
+   refuse callers matching /(?:^|[\s:])agent:/ in both run()s. Tests: refused for mcp,
+   mcp:agent:kit, "cli agent:kit", anonymous; tailnet without person session 401
+   person_session_required; socket from under claude 403 (test/peer.test.js helper).
+2. e2e HIGH 2: scope CALL_AS to each core key's declared setter tool (not the whole label);
+   check the tool in ctx.call. Test: CALL_AS refuses a tool outside the setter list.
+3. platform store limits: merge work/platform-store-limits (one commit on 390ff807; 40/40):
+   third-party modules may not use claude stores, config paths must start "<module>.", tool
+   stores only their own tools called as module:settings. Then send e2e the sha.
+After that:
+4. Typing lag: my tree's 2,000-row paint p95 48 ms (> 33) from composer.js:70 grow() over an
+   unwindowed timeline. Rebase composer work on chat c26f868 (chat handed composer.js,
+   pickers.js, caps.js, core/composer-state.js back to me). Fix grow (field-sizing: content or
+   rAF-batched, contain: layout) + take chat's windowing. Then drafts, @ scoped to cwd, hide
+   absent chips. Image drop is done by chat.
+5. Scroll jump re-measure (chat's fix) and reconnect on work/pwa (0af372a overlay pill, follow()).
+6. Agent "Effort" saves nothing: fix in core/agents (unowned; mine now) with a test.
+7. THE CENTRAL HUB (user directive): settings + session configs + ALL design tokens in one hub,
+   read live by every surface (/theme.css, /v1/theme, settings.changed), levels account >
+   project > device > session, one hand-editable file under the home that emits
+   settings.changed. Write ADR 0035 (claim it). Platform's asks: hub file name + live read,
+   per-key `check: {tool}`, `choices: {tool}`, sessions.prompt_layers_off; a first-party
+   `theme` module (platform P4). Coordinate app-design, platform, pwa, mobile, capsule-pro,
+   sessions.
+8. Deck confirm/proof flow is built (70023ba2); check it in a real browser when Chrome frees.
+Also: platform settings.write (e4515fb6) is approved by e2e; lands after the HIGHs.
+Answer mobile: meter location (proposed lib/perf/meter.js) and server `t` on thread.text is
+NOT stamped yet (ask sessions for field `t`, ms epoch).
+Answer app-design: check docs/design/system specs (work/app-design c4f9bb23) paths.
 
 ## Known follow-ups
 - Screenshots of Settings in one world (needs a Chrome run on testbox).

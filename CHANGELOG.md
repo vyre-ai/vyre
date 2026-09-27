@@ -28,6 +28,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   confirm: true; a key that loosens security (vault lock) needs a fresh presence proof; preview:
   true says what would change and where, and writes nothing. Bypass itself needs no proof (the
   user's decision). The first write to a Claude Code settings file keeps it as .vyre-backup.
+- Deck Settings: a change that widens what Claude may do is previewed on its row (what changes,
+  where it lands, Confirm or Cancel); a loosening key goes through the Deck's passkey proof.
+- Deck Settings rows follow design A: a source chip only when not the default, "Next session" or
+  "After restart" in the description, one reserved slot for Saved, a named reset and a 4 s Undo; a
+  banner counts changes that apply after restart; Project scope hides account-only keys; J/K and /.
 
 - core/settings: a registry of every setting (models per purpose, effort, permission mode and rules,
   sessions, teammates' limits, notifications, planner, memory, vault lock, files, terminal, tools)

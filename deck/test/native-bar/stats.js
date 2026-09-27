@@ -121,3 +121,20 @@ export function burstPlan(text, seed) {
   }
   return out;
 }
+
+/**
+ * p95 over `total` events when only those at or over `threshold` were reported (the Event Timing
+ * API drops entries under its durationThreshold, 16 ms at the least). Every unreported event was
+ * under the threshold, so the top values are all reported: the p95 is exact when more than 5 % of
+ * events were reported, and otherwise only known to be under the threshold.
+ * @param {number[]} reported values at or over threshold @param {number} total @param {number} threshold
+ * @returns {{ value: number|null, under: boolean }} under: the p95 is below threshold (value is null then)
+ */
+export function thresholdP95(reported, total, threshold) {
+  const top = reported.filter(x => x >= threshold).sort((a, b) => a - b);
+  if (total <= 0) return { value: null, under: false };
+  const rank = Math.ceil(0.95 * total); // 1-based, nearest rank
+  const below = total - top.length;     // all under threshold, and all ranked first
+  if (rank <= below) return { value: null, under: true };
+  return { value: top[rank - below - 1], under: false };
+}
