@@ -274,3 +274,8 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   phone). Told them: they build it, card.md's new Connections card variant is the exact anatomy to
   follow, pull f79b6cad + f65d51e5 first. When their file lands, fill in card.md's Implementing
   file table and close its native-core Gaps line.
+- Lead: granting Agents needs presence (Touch ID/passkey), revoking stays one tap always, granting
+  Capsule/Chat/Phone stays one tap but now with the undo toast instead of an in-place re-tap
+  (47030189). Updated card.md, chip.md (new Asking state on the filter chip) and the board (the
+  Touch ID shield glyph trails the Agents chip whenever it's off). Told connectors, who hadn't
+  built the DOM yet, before checking with them (msg_id 2bf39209).
