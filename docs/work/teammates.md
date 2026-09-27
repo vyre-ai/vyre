@@ -10,7 +10,8 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 ## Done
 - ADR 0031 drafted (number claimed in docs/work/README.md, front matter, nav.json entry).
 - docs:ref regenerated (docs/index.json, docs/reference/index.md); on testbox
-  test/docs-build, docs-check, docs-index, docs-shots: 61 of 61 pass.
+  test/docs-build, docs-check, docs-index, docs-shots: 61 of 61 pass (again after merging main
+  and the user's decisions, 2026-09-27).
 - Section 14 (lead's user requirement): per-project concurrency limits (active teammates,
   subagents), a box-wide ceiling, a fair slot queue with position and ETA, the usage-aware pause,
   presets Light / Balanced / Max / Custom with estimated peak usage.
@@ -23,11 +24,9 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
   file; per-project vault grants (the lead told vault about the `project` column).
 - User decisions folded in (auto-merging integrator, sharing and assistant-assigned teammates,
   one per role, notes per project folder, offered conversion, 200 turns a day, Balanced default).
-  Docs tests NOT rerun: testbox freeze by the lead; rerun docs:ref and test/docs-*.test.js after it.
 
 ## Next
-1. After the testbox freeze: docs:ref, docs tests, commit the index.
-2. When ADR 0030 steps 1 to 3 are on main: migration step 1 (core/team, fake driver), then 2 to 8.
+1. When ADR 0030 steps 1 to 3 are on main: migration step 1 (core/team, fake driver), then 2 to 8.
 
 ## Needs from others
 - sessions: the slot ledger (`sessions.slots`, events `slot.taken|released|queued`), the Task-tool
