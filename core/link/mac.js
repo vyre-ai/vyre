@@ -28,6 +28,7 @@ import { createHealth, unknown } from "./health.js";
 import { realBoxAllowed } from "../config/dialogs.js";
 import { ALLOW, WRITE, FOLLOWED, ASKS } from "./allow.js";
 import { checkAnswer, Nonces } from "./assert.js";
+import { gatedAsk } from "../modules/federate.js";
 
 const MAX_BACKOFF = 30_000;
 /** How long the box holds link.serve open (box.js); the Mac waits this plus a margin. */
@@ -237,7 +238,12 @@ export function macSide(ctx, seam = {}) {
    */
   async function answer(q) {
     const input = q.input && typeof q.input === "object" ? q.input : {};
-    const c = checkAnswer({ assertion: q.assertion, tool: q.tool, input, pinned: saved && saved.box.assertKey, self: saved && saved.self, nonces, now: seam.now ? seam.now() : Date.now() });
+    // The Mac's own record of the ask says whether it is gated, not the box: an ask that approves
+    // a floor tool needs a fresh proof of presence on the box (federate.js gatedAsk).
+    const open = await ctx.call("threads.asks", {});
+    const mine = !open.error && Array.isArray(open.data) ? open.data.find(a => a && a.id === input.ask) : null;
+    const c = checkAnswer({ assertion: q.assertion, tool: q.tool, input, pinned: saved && saved.box.assertKey, self: saved && saved.self, nonces,
+      now: seam.now ? seam.now() : Date.now(), gated: gatedAsk(mine) });
     if (!c.ok) return { error: { code: "denied", message: `the box's answer was refused: ${c.reason}` } };
     // write() follows input.thread, and an answer names none: nothing is followed for it.
     return write("threads.answer", input);

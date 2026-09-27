@@ -17,6 +17,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   that raised it, for the person's own callers only; it takes `machine` and lists `link:box`.
 - core/learn ignores a Mac's relayed answers on the box. core/daemon: a socket client can no
   longer claim a `link:` caller label.
+- An owner device answers a Mac's ask only in a person session (`person_session_required`), and
+  an ask that approves a floor tool (vault, gate approval, pairing, ...) needs a fresh proof of
+  presence on the box (`presence_required`), which the Mac checks again from its own ask. The
+  assertion carries the person session and the proof's method.
 
 #### The design docs stay out of the package
 

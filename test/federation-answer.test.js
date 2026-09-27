@@ -13,6 +13,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { start } from "../core/daemon/index.js";
 import { KEY_FILE } from "../core/link/assert.js";
+import { Presence } from "../core/presence/index.js";
 import { present } from "./helpers.js";
 import { until, pair } from "./link-harness.js";
 
@@ -28,7 +29,11 @@ async function world(t) {
   const s = await pair(t, { macTranscripts: [], boxName: "harlow-box", macHost: "alex-mac" });
   const heard = [];
   t.after(s.box.events.on("*", e => heard.push(e)));
-  const w = { ...s, heard, ran: /** @type {any[]} */ ([]), macd: s.mac };
+  // What the box's switchboard asks of the link: a refused answer must not even be signed.
+  const linked = [];
+  const real = s.box.registry.call.bind(s.box.registry);
+  s.box.registry.call = (tool, input, caller, meta) => { if (tool === "link.macs.call") linked.push(input); return real(tool, input, caller, meta); };
+  const w = { ...s, heard, linked, ran: /** @type {any[]} */ ([]), macd: s.mac };
   watchMac(w, s.mac);
   await online(w);
   return w;
@@ -45,8 +50,8 @@ const saved = w => JSON.parse(fs.readFileSync(linkFile(w), "utf8"));
 const answersRun = w => w.ran.filter(r => r.tool === "threads.answer");
 
 /** A session on the Mac that asks to run a command, and the box's copy of its ask.raised. */
-async function macAsk(w, command = "ls") {
-  const started = await w.macd.registry.call("threads.start", { cwd: w.macWork, prompt: `bash ${command}`, surface: "capsule" }, "capsule");
+async function macAsk(w, command = "ls", prompt = `bash ${command}`) {
+  const started = await w.macd.registry.call("threads.start", { cwd: w.macWork, prompt, surface: "capsule" }, "capsule");
   assert.ok(!started.error, JSON.stringify(started.error));
   const thread = started.data.id;
   const raised = await until(() => w.heard.find(e => e.type === "ask.raised" && e.thread === thread));
@@ -89,8 +94,11 @@ test("federation answer: a Mac's ask reaches the box labelled with the Mac, and 
   // An answer follows nothing: only a send does.
   assert.equal((await w.macd.registry.call("link.status", {}, "cli")).data.following, 0);
 
-  // An ask the Mac no longer has is its last word, passed through, not retried.
-  const gone = await w.boxCall("threads.answer", { ask: "zzzzzzzzzzzzzzzzzz", decision: "deny", machine: "alex-mac" }, "deck");
+  // An ask the Mac no longer has is its last word, passed through, not retried. An ask the box
+  // never saw counts as gated (it could approve anything), so it takes a fresh proof.
+  const unproved = await w.boxCall("threads.answer", { ask: "zzzzzzzzzzzzzzzzzz", decision: "deny", machine: "alex-mac" }, "deck");
+  assert.equal(unproved.error.code, "presence_required");
+  const gone = await w.boxCall("threads.answer", { ask: "zzzzzzzzzzzzzzzzzz", decision: "deny", machine: "alex-mac" }, "deck", { presence: { method: "passkey", keyId: null } });
   assert.match(gone.error.message, /^no ask zzzz/);
   assert.equal(answersRun(w).length, 2);
   // An ask no Mac raised, and no machine named: the box answers as before, and no Mac is asked.
@@ -99,11 +107,18 @@ test("federation answer: a Mac's ask reaches the box labelled with the Mac, and 
   assert.equal(answersRun(w).length, 2);
 });
 
-test("federation answer: the owner's phone answers a question on the Mac, the device named in what the box signs", async t => {
+test("federation answer: the owner's phone answers only inside a person session, the device and the person in what the box signs", async t => {
   const w = await world(t);
   const { ask } = await macAsk(w, "npm test");
-  const r = await w.boxCall("threads.answer", { ask, decision: "deny", message: "not now" }, "tailnet:owner@example.com", { peer: { stableId: "nPHONE", node: "test-phone", login: "owner@example.com" } });
+  const phone = { peer: { stableId: "nPHONE", node: "test-phone", login: "owner@example.com" } };
+  // A device without a person session: refused on the box, nothing signed, nothing sent.
+  const bare = await w.boxCall("threads.answer", { ask, decision: "deny" }, "tailnet:owner@example.com", phone);
+  assert.equal(bare.error.code, "person_session_required");
+  assert.deepEqual([w.linked.length, answersRun(w).length], [0, 0], "no assertion was made, and the Mac saw nothing");
+  // In a person session, an ungated ask takes no proof (the no-nag rule).
+  const r = await w.boxCall("threads.answer", { ask, decision: "deny", message: "not now" }, "tailnet:owner@example.com", { ...phone, person: { id: "ps-alex-phone", kind: "passkey" } });
   assert.ok(!r.error, JSON.stringify(r.error));
+  assert.deepEqual(w.linked[0].by, { caller: "tailnet:owner@example.com", device: "nPHONE", person: "ps-alex-phone" });
   assert.deepEqual([r.data.answered, r.data.decision, r.data.machine], [true, "deny", "alex-mac"]);
   assert.deepEqual(answersRun(w)[0].input, { ask, decision: "deny", message: "not now", surface: "box:tailnet:owner@example.com" });
 });
@@ -149,4 +164,36 @@ test("federation answer: a Mac that pinned another key refuses the box's answer,
   assert.equal((await w.macd.registry.call("threads.asks", {}, "capsule")).data.length, 1);
   await w.macd.registry.call("link.status", {}, "cli");
   assert.equal(saved(w).box.assertKey, other, "the heartbeat did not swap the pinned key");
+});
+
+test("federation answer: an ask that approves a floor tool needs a fresh proof on the box, and the Mac checks it too", async t => {
+  const w = await world(t);
+  const { ask, raised } = await macAsk(w, "", "use mcp__vyre__vault_reveal");
+  assert.equal(raised.payload.tool, "mcp__vyre__vault_reveal");
+  // threads.answer's rule on the box asks for presence for this input only, as the floor reads it.
+  const def = w.box.registry.tools.get("threads.answer");
+  assert.equal(Presence.prototype.required.call({}, "threads.answer", def, { ask, decision: "allow" }), true);
+  assert.equal(Presence.prototype.required.call({}, "threads.answer", w.macd.registry.tools.get("threads.answer"), { ask, decision: "allow" }), false, "the Mac declares no rule");
+
+  // Refused without a proof, and with a presence session: nothing is signed.
+  for (const meta of [{}, { presence: { method: "session", keyId: null } }]) {
+    const r = await w.boxCall("threads.answer", { ask, decision: "allow" }, "deck", meta);
+    assert.equal(r.error && r.error.code, "presence_required", JSON.stringify(meta));
+  }
+  assert.equal(w.linked.length, 0);
+
+  // Signed by the box without a fresh proof (as a changed box would), the Mac still refuses.
+  for (const presence of [undefined, "session"]) {
+    const r = await w.boxCall("link.macs.call", { tool: "threads.answer", as: "person", by: { caller: "deck", ...(presence ? { presence } : {}) }, input: { ask, decision: "allow", surface: "deck" } }, "module:test");
+    assert.equal(r.data[0].ok, false);
+    assert.equal(r.data[0].error.code, "denied");
+    assert.match(r.data[0].error.message, /fresh proof of presence/);
+  }
+  assert.equal(answersRun(w).length, 0, "threads.answer never ran on the Mac");
+
+  // A fresh proof: forwarded, and answered.
+  const ok = await w.boxCall("threads.answer", { ask, decision: "allow" }, "deck", { presence: { method: "passkey", keyId: "k1" } });
+  assert.ok(!ok.error, JSON.stringify(ok.error));
+  assert.deepEqual([ok.data.answered, ok.data.machine], [true, "alex-mac"]);
+  assert.equal(w.linked.at(-1).by.presence, "passkey");
 });

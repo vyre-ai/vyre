@@ -231,6 +231,15 @@ box.
   - The box's learn module ignores relayed asks (`source: "mac"`); the Mac's learn counts them.
   - A socket client may not claim a `link:` caller label (core/daemon FORBIDDEN_LABEL), now that
     `threads.answer` lists `link:box`.
+  - The lead's conditions (after 06441c6f): an owner device forwards only in a person session
+    (`person_session_required` otherwise, nothing signed); gated asks (`gatedAsk`: a HUMAN_ONLY
+    tool by exact name or exact Vyre MCP name, or `presence.required: true`) need a fresh proof
+    on the box (`presence_required`; a presence session is not one) and the Mac checks it again
+    from its own ask. An unseen ask named by `machine` counts as gated. A carries `person` and
+    `presence`. The spent-nonce set already kept each nonce until its exp and refused when full.
+  - Held: the Mac-owned default (the Deck answering Mac asks for owner devices) stays held until
+    e2e's person session is live on the box; until then only the socket's callers and a
+    device already carrying a person session get through.
 
 ## Doing
 
@@ -382,6 +391,14 @@ loose ends (below); next is rich Mac transcripts (chat's ask), then Taildrive on
   (answer gains `source`, `machine`; errors `mac_offline`, `timeout`, `denied` or the Mac's).
   core/learn skips `ask.answered` with `source: "mac"`. core/daemon: `link:` joins the socket's
   forbidden caller labels.
+- Person session and gated asks: A gains `person` (session id or null) and `presence` (method
+  or null); `link.macs.call`'s `by` takes `person` and `presence`. New shared `gatedAsk(ask)` in
+  core/modules/federate.js (imports HUMAN_ONLY from core/presence). On a box, `threads.answer`
+  declares `presence: { when, summary }` (true only for a gated Mac-bound answer), so
+  `/v1/tools` lists it with `presence: true` there; a Mac declares none. New errors on the box
+  forward: `person_session_required`, `presence_required`. `checkAnswer` takes `gated`. The Mac
+  reads its own ask with `threads.asks` before it checks. The switchboard's fake claude takes
+  `use <tool>` (asks permission for that tool).
 
 ## Notes for Task B
 
