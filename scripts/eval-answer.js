@@ -8,8 +8,8 @@
 //   node scripts/eval-answer.js --record  read the world's turns with the fast model (`claude -p`) into
 //            test/eval/reads/<world>.json; by default the reads are replayed from there, no model
 //   node scripts/eval-answer.js --no-model  the rules alone
-//   node scripts/eval-answer.js --claims <text>  also list the claims that name it (not for fresh)
-//   node scripts/eval-answer.js --facts  also list the personal facts the world left (not for fresh)
+//   node scripts/eval-answer.js --claims <text>  also list the claims that name it (not for sealed)
+//   node scripts/eval-answer.js --facts  also list the personal facts the world left (not for sealed)
 //   node scripts/eval-answer.js --keyword  without the dense index (keyword recall only)
 //   node scripts/eval-answer.js --world heldout  the held-out world (test/fixtures/personal-heldout.js
 //            and test/eval/answer-heldout.json), written before reading the rules
@@ -18,6 +18,8 @@
 //   node scripts/eval-answer.js --world fresh  the fresh world (test/fixtures/personal-fresh.js and
 //            test/eval/answer-fresh.json), sealed: written without the rules or any other world's
 //            body, and not to be read by whoever tunes the rules
+//   node scripts/eval-answer.js --world sealed  the second sealed world (test/fixtures/personal-sealed.js
+//            and test/eval/answer-sealed.json), written the same way; no --facts, --claims or --ask
 //
 // Exits non-zero when memory.answer misses the bar: overall 0.9 or more, no confident wrong
 // answer, p95 under 150 ms.
@@ -48,6 +50,7 @@ import { PERSONAL_SESSIONS, ME, NOW, SCRATCH } from "../test/fixtures/personal-w
 import * as heldout from "../test/fixtures/personal-heldout.js";
 import * as blind from "../test/fixtures/personal-blind.js";
 import * as fresh from "../test/fixtures/personal-fresh.js";
+import * as sealed from "../test/fixtures/personal-sealed.js";
 import { search, thread } from "../core/recall/search.js";
 import { chunks, encode } from "../core/recall/embed.js";
 import { Dense } from "../core/recall/dense.js";
@@ -61,6 +64,7 @@ export const GOLD_FILE = path.join(ROOT, "test/eval/answer-gold.json");
 export const HELDOUT_GOLD_FILE = path.join(ROOT, "test/eval/answer-heldout.json");
 export const BLIND_GOLD_FILE = path.join(ROOT, "test/eval/answer-blind.json");
 export const FRESH_GOLD_FILE = path.join(ROOT, "test/eval/answer-fresh.json");
+export const SEALED_GOLD_FILE = path.join(ROOT, "test/eval/answer-sealed.json");
 
 /**
  * The worlds the evaluation knows: the one the rules were written against, and a held-out one.
@@ -71,6 +75,7 @@ export const WORLDS = {
   heldout: () => ({ gold: JSON.parse(fs.readFileSync(HELDOUT_GOLD_FILE, "utf8")), sessions: heldout.HELDOUT_SESSIONS, me: heldout.ME, now: heldout.NOW, scratch: heldout.SCRATCH }),
   blind: () => ({ gold: JSON.parse(fs.readFileSync(BLIND_GOLD_FILE, "utf8")), sessions: blind.BLIND_SESSIONS, me: blind.ME, now: blind.NOW, scratch: blind.SCRATCH }),
   fresh: () => ({ gold: JSON.parse(fs.readFileSync(FRESH_GOLD_FILE, "utf8")), sessions: fresh.FRESH_SESSIONS, me: fresh.ME, now: fresh.NOW, scratch: fresh.SCRATCH }),
+  sealed: () => ({ gold: JSON.parse(fs.readFileSync(SEALED_GOLD_FILE, "utf8")), sessions: sealed.SEALED_SESSIONS, me: sealed.ME, now: sealed.NOW, scratch: sealed.SCRATCH }),
 };
 /** An answer at this confidence or more is one the user is told as a fact. */
 export const CONFIDENT = 0.5;
@@ -380,12 +385,12 @@ export function barFailures(a) {
 async function main(argv) {
   const wi = argv.indexOf("--world");
   const world = wi >= 0 ? argv[wi + 1] : "personal";
-  if (argv.includes("--facts") && world === "fresh") throw new Error("the fresh world is sealed: no --facts");
+  if (argv.includes("--facts") && world === "sealed") throw new Error("the sealed world is sealed: no --facts");
   const model = argv.includes("--record") ? "record" : argv.includes("--no-model") ? "off" : "replay";
   const ai = argv.indexOf("--ask");
-  if (ai >= 0 && world === "fresh") throw new Error("the fresh world is sealed: no --ask");
+  if (ai >= 0 && world === "sealed") throw new Error("the sealed world is sealed: no --ask");
   const ci = argv.indexOf("--claims");
-  if (ci >= 0 && world === "fresh") throw new Error("the fresh world is sealed: no --claims");
+  if (ci >= 0 && world === "sealed") throw new Error("the sealed world is sealed: no --claims");
   const r = await runEval({ world, vectors: !argv.includes("--keyword"), facts: argv.includes("--facts"), model, claims: ci >= 0 ? argv[ci + 1] : null,
     ...(ai >= 0 ? { gold: { questions: [{ q: argv[ai + 1], expect: null }] }, full: true } : {}) });
   if (ai >= 0) { process.stdout.write(JSON.stringify(r.answerers.answer.answers[0], null, 1) + "\n"); return; }
