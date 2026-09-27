@@ -14,6 +14,7 @@ const dead = () => false;
 /** A root with a bit of everything, including things a backup must leave out. */
 function seed(root) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "alex" }));
+  fs.writeFileSync(path.join(root, "hub.json"), JSON.stringify({ rev: 1, account: {} }));
   const db = new DatabaseSync(path.join(root, "vyre.db"));
   db.exec("PRAGMA journal_mode=WAL; CREATE TABLE t (v TEXT); INSERT INTO t VALUES ('one'), ('two');");
   db.close();
@@ -32,7 +33,7 @@ test("backup: includes the state, leaves out models, logs and pid, and is 0600",
   seed(root);
   const file = path.join(home, "out", "b.tar.gz");
   const r = await backup({ root, file });
-  assert.deepEqual(r.included, ["config.json", "vyre.db", "vault", "watchers", "certs"]);
+  assert.deepEqual(r.included, ["config.json", "hub.json", "vyre.db", "vault", "watchers", "certs"]);
   assert.equal(r.file, file);
   assert.equal(r.bytes, fs.statSync(file).size);
   assert.equal(mode(file), 0o600);
@@ -58,11 +59,12 @@ test("restore: round-trips into an empty root", async t => {
   const file = path.join(home, "b.tar.gz");
   await backup({ root: a, file });
   const r = await restore({ root: b, file, alive: dead });
-  assert.deepEqual(r.restored, ["config.json", "vyre.db", "vault", "watchers", "certs"]);
+  assert.deepEqual(r.restored, ["config.json", "hub.json", "vyre.db", "vault", "watchers", "certs"]);
   const db = new DatabaseSync(path.join(b, "vyre.db"));
   assert.deepEqual(db.prepare("SELECT v FROM t ORDER BY v").all().map(x => x.v), ["one", "two"]);
   db.close();
   assert.equal(fs.readFileSync(path.join(b, "vault", "key"), "utf8"), "k");
+  assert.equal(JSON.parse(fs.readFileSync(path.join(b, "hub.json"), "utf8")).rev, 1, "the settings hub comes back");
   assert.equal(mode(path.join(b, "vault", "key")), 0o600);
   assert.ok(!fs.existsSync(path.join(b, "models")));
   assert.ok(!fs.readdirSync(b).some(n => n.startsWith(".restore-")), "staging removed");

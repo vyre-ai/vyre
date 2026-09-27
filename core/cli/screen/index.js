@@ -15,6 +15,7 @@ import { render } from "./layout.js";
 import { terminal } from "./driver.js";
 import { transcript, apply, load as loadTranscript } from "./transcript.js";
 import { load, sessions, stream, linkStatus, REFRESH } from "./live.js";
+import { fortune } from "../delight.js";
 
 const { SURFACE } = model;
 const LINK_MS = 60_000;
@@ -51,7 +52,7 @@ export async function runScreen(io, o) {
   let ended = false;
 
   const frame = () => {
-    const lines = render(st, { ...term.size(), transcripts, details });
+    const lines = render(st, { ...term.size(), transcripts, details, fortune: fortune({ stream: { isTTY: true } }) });
     o.onFrame?.(lines);
     return lines;
   };

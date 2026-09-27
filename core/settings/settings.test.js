@@ -59,6 +59,40 @@ test("an enum's labels name only its own values", () => {
   assert.match(validateDecls("bakery", [{ ...base, type: "string", labels: { gas: "Gas" } }]).join(), /labels/);
 });
 
+test("ADR 0035 levels and hooks: device never with confirm or security, session only with a tool store, check and choicesFrom name own tools", () => {
+  const base = { key: "bakery.oven", label: "Oven", type: "string", levels: ["account"], apply: "live" };
+  const bad = (/** @type {any} */ d, /** @type {RegExp} */ re) => assert.match(validateDecls("bakery", [{ ...base, ...d }], { tools: ["bakery.check", "bakery.get", "bakery.set"] }).join(" | "), re, JSON.stringify(d));
+  bad({ levels: ["device"], confirm: true }, /may not be set per device/);
+  bad({ levels: ["device"], security: "loosens" }, /may not be set per device/);
+  bad({ levels: ["session"] }, /session level needs a store in this module's own tools/);
+  bad({ check: { tool: "vault.reveal" } }, /check\.tool must be one of bakery's own tools/);
+  bad({ choicesFrom: { tool: "bakery.nope" } }, /choicesFrom\.tool must be one of bakery's own tools/);
+  bad({ choices: { tool: "bakery.get" } }, /choices is a list of numbers; a tool goes in choicesFrom/);
+  assert.deepEqual(validateDecls("bakery", [{ ...base, check: { tool: "bakery.check" }, choicesFrom: { tool: "bakery.get" } }], { tools: ["bakery.check", "bakery.get"] }), []);
+});
+
+test("env and plugins ask first; taking an entry off deny or ask asks first, adding one does not", async t => {
+  const { c, claudeDir } = await world(t);
+  assert.equal((await c("settings.set", { key: "sessions.env", value: { LOG_LEVEL: "debug" } })).error.code, "confirm_required");
+  assert.equal((await c("settings.set", { key: "sessions.plugins", value: { "bakery@market": true } })).error.code, "confirm_required");
+  assert.ok(!(await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)", "WebFetch"] })).error, "adding to deny is stricter");
+  let r = await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"] });
+  assert.equal(r.error.code, "confirm_required", "dropping WebFetch lets it run");
+  assert.equal((await c("settings.set", { key: "sessions.deny", value: ["Bash(rm:*)"], preview: true })).data.confirm, "Claude will no longer be refused what you take off this list.");
+  assert.equal((await c("settings.reset", { key: "sessions.deny" })).error.code, "confirm_required", "a reset drops them all");
+  assert.ok(!(await c("settings.reset", { key: "sessions.deny", confirm: true })).error);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(claudeDir, "settings.json"), "utf8")).permissions?.deny, undefined);
+  assert.ok(!(await c("settings.reset", { key: "sessions.ask" })).error, "nothing to drop, nothing to ask");
+});
+
+test("asPerson names a person's surface, the owner's device as the Deck, and refuses anything else", async () => {
+  const { asPerson } = await import("./index.js");
+  assert.equal(asPerson("cli"), "cli");
+  assert.equal(asPerson("tailnet:alex"), "deck");
+  assert.equal(asPerson("device:abcdefghijklmnop"), "deck");
+  for (const c of ["mcp", "tailnet:agent:kit", "cli agent:kit", "module:bakery", "tailnet-guest:juno", "unknown"]) assert.throws(() => asPerson(c), /not a person's surface/, c);
+});
+
 test("coerce reads CLI text and refuses what is out of range", () => {
   const idle = { key: "sessions.idle_minutes", type: "int", min: 1, max: 1440 };
   assert.equal(coerce(idle, "15"), 15);
@@ -162,11 +196,19 @@ test("another module's keys go through its own tool, and a missing module reads 
   assert.equal((await c("sessions.limits.get", { project: "northwind" })).data.project.teammate, 2);
 });
 
-test("settings.changed says which key and level, never the value; resolve is for modules only", async t => {
+test("settings.changed says which key, level and rev, the new value only for a key that isn't secret; resolve is for modules only", async t => {
   const { c, d } = await world(t);
   await c("settings.set", { key: "sessions.effort", value: "high", project: "northwind" });
   const e = d.events.since(0, { type: "settings.changed" }).at(-1);
-  assert.deepEqual(e.payload, { key: "sessions.effort", level: "project", project: "northwind", apply: "session" });
+  assert.equal(typeof e.payload.rev, "number");
+  assert.deepEqual({ ...e.payload, rev: 0 }, { key: "sessions.effort", level: "project", project: "northwind", apply: "session", rev: 0, value: "high" });
+  await c("settings.reset", { key: "sessions.effort", project: "northwind" });
+  assert.equal(d.events.since(0, { type: "settings.changed" }).at(-1).payload.value, null, "a reset says null");
+  // A secret key's change never carries its value.
+  await c("settings.set", { key: "sessions.env", value: { NORTHWIND_TOKEN: "nw-secret-123" }, confirm: true });
+  const s = d.events.since(0, { type: "settings.changed" }).at(-1).payload;
+  assert.equal(s.key, "sessions.env");
+  assert.ok(!("value" in s) && !JSON.stringify(s).includes("nw-secret"));
   assert.equal((await c("settings.resolve", { project: "northwind" })).error.code, "no_such_tool");
 });
 
@@ -370,6 +412,8 @@ test("settings.write: a module sets its own plain keys, and nothing else", async
   r = await c("settings.get", { key: "bakery.opens" });
   assert.deepEqual([r.data.value, r.data.source], [9, "account"]);
   assert.deepEqual(seen.map(e => [e.key, e.by]), [["bakery.opens", "module:bakery"]], "the change says which module made it");
+  assert.equal(seen[0].value, 9, "a plain key's event carries its new value");
+  assert.ok(Number.isInteger(seen[0].rev) && seen[0].rev > 0, "and the hub's new rev");
   r = await c("bakery.put", { key: "bakery.opens", value: 99 });
   assert.match(r.error.message, /at most 23/);
 
@@ -399,4 +443,17 @@ test("settings.write: a module's own secret key comes back masked, like settings
   const r = await call("bakery.put", { key: "bakery.token", value: "northwind-till-1" }, { root });
   assert.equal(r.error, undefined, JSON.stringify(r.error));
   assert.equal(r.data.value, MASK);
+  const e = d.events.since(0, { type: "settings.changed" }).at(-1).payload;
+  assert.equal(e.key, "bakery.token");
+  assert.ok(!("value" in e), "a secret key's event never carries its value");
+  assert.ok(Number.isInteger(e.rev));
+  // hub.json is plain text and goes into the backup: the secret never reaches it.
+  let hub = "";
+  try { hub = fs.readFileSync(path.join(root, "hub.json"), "utf8"); } catch {}
+  assert.ok(!hub.includes("northwind-till-1"), "the secret's value is not in hub.json");
+  assert.ok(!hub.includes("bakery.token"), "nor is its key");
+  // The person still gets it back in the clear.
+  const own = await call("settings.get", { key: "bakery.token" }, { root });
+  assert.equal(own.error, undefined, JSON.stringify(own.error));
+  assert.equal(own.data.value, "northwind-till-1");
 });

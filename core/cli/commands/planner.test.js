@@ -317,3 +317,123 @@ test("planner cli: timer rm and remind rm delete their own kind, answer --json, 
   assert.ok(JSON.parse(again.out).deleted_at);
   assert.deepEqual(JSON.parse((await vyre("timer", "list", "--json")).out).timers.map(x => x.id), [other]);
 });
+
+/** stdout alone, for --json and --view. @returns {Promise<{ code: number, stdout: string }>} */
+const runOut = (root, args) => new Promise(resolve =>
+  execFile(process.execPath, [BIN, ...args], { env: { ...process.env, VYRE_HOME: root, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 },
+    (err, stdout) => resolve({ code: err ? Number(/** @type {any} */ (err).code ?? 1) : 0, stdout })));
+const framesOf = s => s.trim().split("\n").map(l => JSON.parse(l));
+
+test("planner cli: vyre commands lists every verb each planner command handles", async t => {
+  const root = tempHome(t);
+  const want = {
+    agenda: ["today", "tomorrow", "on"],
+    alarm: ["list", "set", "off", "edit", "rm"],
+    timer: ["list", "set", "edit", "rm"],
+    remind: ["list", "set", "edit", "rm"],
+    todo: ["list", "add", "done", "edit", "rm"],
+    notes: ["list", "add", "show", "edit", "rm"],
+  };
+  for (const [name, verbs] of Object.entries(want)) {
+    const r = await runOut(root, ["commands", name, "--json"]);
+    assert.equal(r.code, 0, r.stdout);
+    const row = JSON.parse(r.stdout).commands[0];
+    assert.deepEqual(row.verbs.map(v => v.verb), verbs, name);
+    for (const v of row.verbs) assert.match(v.verb, /^[a-z][a-z.-]*$/);
+    for (const v of verbs) assert.ok(row.usage.includes(v), `${name} usage names ${v}: ${row.usage}`);
+  }
+  const alarm = JSON.parse((await runOut(root, ["commands", "alarm", "--json"])).stdout).commands[0];
+  assert.deepEqual(alarm.verbs.find(v => v.verb === "list").aliases, ["ls"]);
+  assert.equal(alarm.verbs.find(v => v.verb === "list").read, true);
+  assert.deepEqual(alarm.verbs.find(v => v.verb === "rm").aliases, ["delete"]);
+  assert.deepEqual(alarm.verbs.find(v => v.verb === "edit").args.map(a => a.name), ["id", "time"]);
+  const on = JSON.parse((await runOut(root, ["commands", "agenda", "--json"])).stdout).commands[0].verbs.find(v => v.verb === "on");
+  assert.deepEqual(on.args, [{ name: "date", required: true }]);
+  // Single-action commands name their words in the usage line.
+  const snooze = JSON.parse((await runOut(root, ["commands", "snooze", "--json"])).stdout).commands[0];
+  assert.deepEqual(snooze.args.map(a => a.name), ["id", "minutes"]);
+});
+
+test("planner cli: set, list and on are words a surface can call, and the old spellings still work", async t => {
+  const { vyre } = await world(t);
+  const a = await vyre("alarm", "set", "7am");
+  assert.equal(a.code, 0, a.out);
+  assert.match(a.out, /alarm Fri 25 Sep 07:00/);
+  assert.match((await vyre("alarm", "list")).out, /07:00\s+once/);
+  assert.match((await vyre("timer", "set", "10m", "bread")).out, /timer 10m rings at 10:10\s+bread/);
+  assert.match((await vyre("remind", "set", "call juno", "at", "6")).out, /reminder Thu 24 Sep 18:00\s+call juno/);
+  assert.match((await vyre("todo", "list")).out, /nothing to do/);
+  assert.match((await vyre("notes", "ls")).out, /no notes yet/);
+  const on = await vyre("agenda", "on", "2026-09-25");
+  assert.equal(on.code, 0, on.out);
+  assert.match(on.out, /Fri 25 Sep/);
+  assert.match(on.out, /07:00\s+alarm/);
+  assert.deepEqual(JSON.parse((await vyre("agenda", "on", "2026-09-25", "--json")).out), JSON.parse((await vyre("agenda", "2026-09-25", "--json")).out));
+  assert.equal((await vyre("agenda", "on")).code, 2);
+});
+
+test("planner cli: --view frames draw each list as a table, a note as a card, and keep --json's data", async t => {
+  const { root, vyre, advance } = await world(t);
+  await vyre("alarm", "7am");
+  const tm = idIn((await vyre("timer", "1m", "bread")).out);
+  await vyre("remind", "call juno", "at", "6");
+  await vyre("todo", "add", "buy", "flour", "!high");
+  await vyre("todo", "add", "call", "kit", "by", "friday");
+  const note = idIn((await vyre("notes", "add", "kit", "prefers", "mornings")).out);
+
+  /** --view frames for these words, checked against --json. */
+  const view = async (...args) => {
+    const v = await runOut(root, [...args, "--view"]);
+    assert.equal(v.code, 0, v.stdout);
+    const f = framesOf(v.stdout);
+    assert.deepEqual(f[f.length - 1], { v: 1, done: true, exit: 0 });
+    const j = await runOut(root, [...args, "--json"]);
+    assert.deepEqual(f[0].data, JSON.parse(j.stdout), `${args.join(" ")}: the frame's data is what --json prints`);
+    return f[0];
+  };
+  const keys = f => f.view.columns.map(c => c.key);
+
+  const al = await view("alarm", "list");
+  assert.equal(al.view.kind, "table");
+  assert.deepEqual(keys(al), ["when", "repeat", "title", "id"]);
+  assert.equal(al.view.rows[0].when, "Fri 25 Sep 07:00", "the time reads in the planner's zone");
+  assert.equal(al.view.rows[0].id, al.data.alarms[0].id);
+  assert.match(al.view.title, /Asia\/Karachi/);
+  const tl = await view("timer", "list");
+  assert.deepEqual([tl.view.kind, ...keys(tl)], ["table", "when", "repeat", "title", "id"]);
+  assert.equal(tl.view.rows[0].when, "Thu 24 Sep 10:01");
+  const rl = await view("remind", "list");
+  assert.equal(rl.view.rows[0].when, "Thu 24 Sep 18:00");
+  assert.equal(rl.view.rows[0].title, "call juno");
+
+  const td = await view("todo");
+  assert.equal(td.view.kind, "table");
+  assert.equal(td.view.title, "Todos");
+  assert.deepEqual(keys(td), ["title", "priority", "due", "list"]);
+  assert.deepEqual(td.view.rows.map(r => [r.title, r.priority, r.due]), [["buy flour", "!!!", ""], ["call kit", "", "Fri 25 Sep"]]);
+  assert.ok(td.view.rows.every(r => /^i_/.test(r.id)), "each row keeps its id");
+
+  const nl = await view("notes", "list");
+  assert.deepEqual([nl.view.kind, ...keys(nl)], ["table", "title", "pinned", "updated", "id"]);
+  const ns = await view("notes", "show", note);
+  assert.equal(ns.view.kind, "card");
+  assert.equal(ns.view.title, "kit prefers mornings");
+  assert.ok(ns.view.fields.some(x => x.label === "Updated" && x.value === "Thu 24 Sep 10:00"));
+
+  const ag = await view("agenda");
+  assert.equal(ag.view.kind, "table");
+  assert.equal(ag.view.title, "Thu 24 Sep · today · Asia/Karachi");
+  assert.deepEqual(keys(ag), ["time", "kind", "title", "note"]);
+  assert.deepEqual(ag.view.rows.map(r => [r.time, r.kind, r.title]), [["10:01", "timer", "bread"], ["18:00", "reminder", "call juno"]]);
+  assert.ok(ag.view.rows.every(r => /^i_/.test(r.id)));
+  const tw = await view("agenda", "tomorrow");
+  assert.equal(tw.view.title, "Fri 25 Sep · tomorrow · Asia/Karachi");
+  assert.deepEqual(tw.view.rows.map(r => [r.time, r.kind, r.title]), [["07:00", "alarm", "Alarm"], ["due", "todo", "call kit"]], "todos due that day follow the entries");
+
+  advance(2 * 60_000);
+  const rg = await view("ringing");
+  assert.deepEqual([rg.view.kind, ...keys(rg)], ["table", "kind", "due", "title", "note"]);
+  assert.equal(rg.view.rows[0].item, tm);
+  assert.equal(rg.view.rows[0].due, "10:01");
+  assert.match(rg.view.rows[0].id, /^f_/, "the firing's id, which dismiss takes");
+});

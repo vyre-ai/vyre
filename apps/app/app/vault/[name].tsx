@@ -14,7 +14,7 @@ export default function VaultItemScreen() {
     if (!items) void refreshVault();
   }, [items]);
   return (
-    <Screen title="Vault" back>
+    <Screen title="Vault" back backTo="Vault">
       {item ? <ItemDetail item={item} /> : <NoItem text={items ? "No such item in the vault" : " "} />}
     </Screen>
   );

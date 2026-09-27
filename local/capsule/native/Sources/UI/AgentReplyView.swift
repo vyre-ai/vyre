@@ -15,9 +15,9 @@ struct AgentReplyActions: View {
                     Button { model.deeper() } label: { Text("Deeper · sonnet") }.buttonStyle(AgentButton(primary: false))
                 }
                 Spacer()
-                Text("type to follow up").font(Theme.label).foregroundColor(Theme.ash)
+                Text("type to follow up").font(Theme.subtitle).foregroundColor(Theme.ash)
             }
-            .padding(.horizontal, 16).padding(.top, 8)
+            .padding(.horizontal, Theme.inset).padding(.top, 8)
         }
     }
 

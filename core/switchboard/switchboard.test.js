@@ -1279,3 +1279,12 @@ test("steer and queue while an ask is open: both are kept, threads.get shows the
   assert.ok(took, "the steered words reached Claude in the running turn");
   assert.deepEqual((await tool("threads.queue", { thread: id }, "deck")).data.queued, []);
 });
+
+test("describe: a Bash ask's summary is redacted, as it is shown on every device", () => {
+  // Built at run time so the fake key does not trip the hygiene scan (test/hygiene.test.js).
+  const fake = ["sk", "ant", "api03", "abcdefghijklmnopqrstuvwxyz0123456789ABCD"].join("-");
+  const d = describe("Bash", { command: `curl -H "Authorization: Bearer ${fake}" https://example.com` });
+  assert.doesNotMatch(d.summary, /abcdefghijklmnopqrstuvwxyz0123/);
+  assert.match(d.summary, /^curl -H "Authorization: Bearer \[/);
+  assert.equal(describe("Bash", { command: "npm   test" }).summary, "npm test");
+});

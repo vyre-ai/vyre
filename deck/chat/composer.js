@@ -49,6 +49,7 @@ import {
 } from "./core/composer-state.js";
 import { findCommand, rankCommands, applyCommand, normalizeCommands, sourceLabel } from "./core/commands.js";
 import { scorePath, compareScores } from "./core/match.js";
+import { queryInput, suggestRows, applySuggestion, pickedInput, tokenBefore } from "./core/suggest.js";
 import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
 import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { listMenu, keysLine } from "./pickers.js";
@@ -247,9 +248,9 @@ export function mountComposer(opts) {
   async function openModels() {
     if (!rich()) return;
     if (off("threads.model")) { say(NEEDS_UPDATE); return; }
-    // No list of models on the box: the aliases, the per-purpose map, and this thread's own.
+    // The box's aliases, the per-purpose map, and this thread's own (sessions.models.get).
     const r = await CAPS.use("sessions.models.get", () => attempt("sessions.models.get", {}));
-    const list = modelChoices({ current: /** @type {any} */ (S).model, purposes: /** @type {any} */ (r.data)?.purposes });
+    const list = modelChoices({ current: /** @type {any} */ (S).model, purposes: /** @type {any} */ (r.data)?.purposes, aliases: /** @type {any} */ (r.data)?.aliases });
     menu.setKind("model");
     menu.open(list.map(m => ({ key: m.id, value: m, render: () => [
       h("span", { class: "cv-menu-name" }, m.label || m.id), m.description ? h("span", { class: "cv-menu-desc" }, m.description) : null,
@@ -328,18 +329,50 @@ export function mountComposer(opts) {
     }
     const seq = ++fileSeq;
     fileTimer = setTimeout(async () => {
-      const r = await attempt("files.search", { q: range.query, limit: 50, where: "here" });
+      // Agents, projects, threads and people from suggest (one ranked list for every surface),
+      // then the files of this session's folder.
+      const [r, s] = await Promise.all([attempt("files.search", { q: range.query, limit: 50, where: "here" }),
+        CAPS.use("suggest.query", () => attempt("suggest.query", queryInput(ta.value, caret())))]);
       if (seq !== fileSeq) return;
       const found = r.error ? [] : (/** @type {any} */ (r.data)?.results || []).map((/** @type {any} */ x) => ({ path: String(x.path || ""), mtime: x.mtime ?? x.modified }));
       const now = findMention(ta.value, caret());
       if (!now) return;
+      const named = s.error ? [] : suggestRows(s.data, 5).filter(x => x.kind === "mention");
       const list = rankFiles(found, now.query, cwd, scorePath, compareScores);
       menu.setKind("mention");
-      menu.open(list.map(f => {
-        const cut = f.rel.lastIndexOf("/");
-        return { key: f.path, value: f, render: () => [h("span", { class: "cv-menu-dir" }, cut >= 0 ? f.rel.slice(0, cut + 1) : ""), h("span", { class: "cv-menu-name" }, cut >= 0 ? f.rel.slice(cut + 1) : f.rel)] };
-      }), row => pickFile(row.value.rel), "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
+      menu.open([
+        ...named.map(x => ({ key: "s:" + x.source + ":" + x.id, value: { suggestion: x }, render: () => [h("span", { class: "cv-menu-name" }, x.label),
+          x.detail ? h("span", { class: "cv-menu-desc" }, x.detail) : null, h("span", { class: "cv-menu-badge" }, x.sub || x.kind)] })),
+        ...list.map(f => {
+          const cut = f.rel.lastIndexOf("/");
+          return { key: f.path, value: f, render: () => [h("span", { class: "cv-menu-dir" }, cut >= 0 ? f.rel.slice(0, cut + 1) : ""), h("span", { class: "cv-menu-name" }, cut >= 0 ? f.rel.slice(cut + 1) : f.rel)] };
+        })], row => (row.value.suggestion ? pickSuggestion(row.value.suggestion) : pickFile(row.value.rel)),
+      named.length ? "People, agents and files" : "Files in " + (folder || "this folder"), keysLine(["⏎", "insert"], ["Esc", "close"]));
     }, 120);
+  }
+  /** A word completed from suggest (Tab on a word, or an @ name): put it in and say it was picked. */
+  function pickSuggestion(/** @type {ReturnType<typeof suggestRows>[number]} */ row) {
+    menu.close();
+    const r = applySuggestion(ta.value, caret(), row);
+    setValue(r.text, r.caret);
+    void CAPS.use("suggest.picked", () => attempt("suggest.picked", pickedInput(row)));
+    ta.focus();
+  }
+  /** Tab on a plain word asks suggest for what it may be; nothing opens on its own while typing. */
+  async function showSuggestions() {
+    const at = caret(), text = ta.value;
+    const { token } = tokenBefore(text, at);
+    if (token.length < 2 || token.startsWith("@") || token.startsWith("/")) return false;
+    const seq = ++fileSeq;
+    const r = await CAPS.use("suggest.query", () => attempt("suggest.query", queryInput(text, at)));
+    if (seq !== fileSeq || ta.value !== text || caret() !== at) return true;
+    const rows = r.error ? [] : suggestRows(r.data, 8).filter(x => x.kind !== "mention" && x.kind !== "command");
+    if (!rows.length) { say("No suggestions for that word", true); return true; }
+    if (rows.length === 1) { pickSuggestion(rows[0]); return true; }
+    menu.setKind("suggest");
+    menu.open(rows.map(x => ({ key: x.source + ":" + x.id, value: x, render: () => [h("span", { class: "cv-menu-name" }, x.label),
+      x.detail ? h("span", { class: "cv-menu-desc" }, x.detail) : null] })), row => pickSuggestion(row.value), "Suggestions", keysLine(["↑↓", "move"], ["⏎", "insert"], ["Esc", "close"]));
+    return true;
   }
   function pickFile(/** @type {string} */ rel) {
     const range = findMention(ta.value, caret());
@@ -599,6 +632,11 @@ export function mountComposer(opts) {
       if ((e.key === "Enter" && !e.shiftKey) || (e.key === "Tab" && !e.shiftKey)) { if (menu.pick()) { e.preventDefault(); return; } }
     }
     if (e.key === "Escape") { if (onEscape()) e.preventDefault(); return; }
+    // Tab on a word: suggest's completions (the box's names, entities and phrases).
+    if (e.key === "Tab" && !e.shiftKey && !e.altKey && !e.metaKey && !e.ctrlKey && !menu.isOpen() && rich()) {
+      const { token } = tokenBefore(ta.value, caret());
+      if (token.length >= 2 && !token.startsWith("@") && !token.startsWith("/")) { e.preventDefault(); void showSuggestions(); return; }
+    }
     const id = actionFor(/** @type {any} */ (e), isMacOS());
     if (id === "mode") { if (rich()) { e.preventDefault(); cycleMode(); } return; }
     if (id === "thinking" || id === "thinking-view" || id === "tasks") { if (key(e)) e.preventDefault(); return; }

@@ -2,10 +2,25 @@
   "name": "sight",
   "version": "0.1.0",
   "description": "One screen service for the user's Mac and every agent's computer: what is on it, what was just done on it, and the frame stream where one may leave the machine.",
-  "roles": ["box", "local"],
+  "roles": [
+    "box",
+    "local"
+  ],
   "requires": [],
-  "does": { "tools": ["sight.targets", "sight.now", "sight.watch", "sight.steps"] },
-  "watches": { "emits": ["sight.stepped"] },
+  "does": {
+    "tools": [
+      "sight.targets",
+      "sight.now",
+      "sight.watch",
+      "sight.frame",
+      "sight.steps"
+    ]
+  },
+  "watches": {
+    "emits": [
+      "sight.stepped"
+    ]
+  },
   "shows": {},
   "needs": {},
   "teaches": {}

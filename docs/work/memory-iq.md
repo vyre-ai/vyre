@@ -117,24 +117,38 @@ facts are not a project's.
   precision 0.057, 4 confident wrong (the husband answered as "Claire", Owen's wife from a
   pasted email). The held-out world is the real number.
 
-## Doing
-- Round 4 (27 Sep), pushed at 8478379a. The reader makes two readings per batch and takes a
-  second look at who someone is. Scores: sealed 0.577 (6 confident wrong), fresh 0.76, blind
-  0.959, personal 1.0, heldout 1.0.
-- Evaluation worlds: `sealed` (40c1f23c) is the honest number; never open it (the eval refuses
-  --facts, --claims and --ask on it). `fresh` is now a tuning world, opened on 27 Sep.
-- Cost is about $0.30 per 1,000 turns per reading, plus the second look, so about $0.65 per
-  1,000 with two readings.
+## Doing (SAVED 27 Sep, before a restart)
+- RC handed to the integrator: work/memory-iq 1a76d383, the leak fix via e2e's transcriptFolders
+  (88c90d56 merged; recall readable() wraps it), source trust, memory.retrieve/ask/suggest,
+  recall.search {prefix}, eval-iq and the iq worlds, and ADR 0034 amended (status stable). After
+  it: 7b48652d, memory.ask's cap at $0.50/day, with limited plus a message at the cap (the lead
+  asked for this in the next RC). Tests at 1a76d383: 319 + 71 pass on testbox. ask.test.js's new
+  cap assertions have NOT run yet.
+- The open-world memory.ask re-record with prompt v2 (ask.js VERSION 2) was running on testbox
+  (the test box's memory-iq copy, `node scripts/eval-iq.js --world open --answer --record`) and was stopped
+  for the restart. Rerun that command: it keeps the replies already recorded. Then scp
+  test/eval/asks/open.json back and commit it. v1 numbers: accuracy 0.722, confident-wrong 7
+  (4 of them over-literal golds, now widened), abstained 0.40, ungrounded 0, inconsistent 0, about
+  $0.003 a question.
+- Scores (replayed reads): personal 1.0, heldout 1.0, blind 0.959, fresh 0.76, trust 1.0,
+  sealed 0.551 with 7 confident wrong (was 0.577 with 6). Two sealed answers were lost because
+  Claude's words no longer count. Not tuned on sealed.
+- Retrieval (memory.retrieve, real MiniLM): recall@8 open 0.833, sealed 0.638. Graph expansion
+  adds 0 on both, but the graph stays (a pillar). Dense weight stays 0.25 (lead). Sealed stays sealed.
+- memory.ask runs on sessions' threads.quick (work/sessions db4af9c3, lands after batch 4), else
+  `claude -p`. threads.quick sessions write no transcript (sessions c6663f14), and <home>/quick is
+  skipped as a second guard.
 
 ## Next
-- Model-backed answering with evidence (asked by the lead): too slow for memory.answer's 150 ms
-  bar, so a separate `deep` path the Capsule can call when there's no fact. Design it after the
-  numbers.
-- Once ADR 0030 lands, route the reader's model calls through the sessions layer as a background
-  job: its per-purpose model map, concurrency slots and budget. Today reader.js runs `claude -p` itself.
-  The runner is injected (deps.runner), so this is a swap of one function.
-- CI step for `npm run eval:answer` (replay only), ADR 0023, and contract notes for capsule-pro,
-  pwa and mobile.
+- Finish the v2 re-record, report accuracy and cost to the lead, commit asks/open.json, and hand
+  the integrator a new RC sha containing 7b48652d.
+- Run core/memory/iq/ask.test.js (only when uptime is under 6, nice 15, --test-timeout).
+- Record the sealed world's asks without reading them (eval-iq --world sealed --answer --record).
+- Phase 4: the second look for people answers, and an answer cache by fact-set version. Phase 5:
+  latency on threads.quick; memory.ask in the Capsule, Chat and the phone.
+- "Before" for places: its confidence is the current place's, so a wrong past place comes back
+  confident (sealed place-history).
+- The full backfill cost (about $1.50 to $2.60) waits for the user's yes, via the lead.
 
 ## Needs from others
 - main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
@@ -143,8 +157,7 @@ facts are not a project's.
   per-turn memory.answer or a combined memory.context tool (message sent 27 Sep).
 - polish-cli: the contract of the low-priority index worker. Until then extraction runs in the
   memory curator's background pass, in bounded batches that yield.
-- main/integrator: core/memory/rooms.test.js:227 fails on main's code. agents.create now needs
-  presence ("Making or changing an agent needs a person"), and the test does not provide it.
 
 ## Changed contracts
+- core/recall/index.js readable(folders, root, env): the person's ~/.claude only for the real ~/.vyre (or VYRE_ALLOW_REAL_TRANSCRIPTS=1). New tool memory.retrieve. Table memory_me_trust. Config memory.personal.skipCwds.
 - New tools `memory.answer`, `memory.profile`, `memory.remember` (see above); event `memory.remembered`; table `memory_me_told`. New table family `memory_me_*` (memory's own).

@@ -32,6 +32,8 @@ async function fakeVyred(t) {
       const tool = decodeURIComponent(String(req.url).replace("/v1/tools/", ""));
       calls.push({ tool, body });
       if (tool === "presence.keys") return send(200, { data: { keys } });
+      // A code needs a person: this fake asks for one, as vyred does without a proof.
+      if (tool === "presence.code") return send(403, { error: { code: "presence_required", message: "presence.code needs you", methods: ["tty"] } });
       if (tool === "presence.remove") {
         const i = keys.findIndex(k => k.id === body.id);
         if (i < 0) return send(400, { error: { code: "bad_input", message: `no key ${body.id}` } });
@@ -102,4 +104,34 @@ test("presence cli: remove with no id, or an unknown verb, is a usage error (exi
   const ghost = await vyre(root, ["presence", "remove", "k_ghost"]);
   assert.equal(ghost.code, 1, ghost.all);
   assert.match(ghost.all, /no key k_ghost/);
+});
+
+/** Every stdout line of a --view run, parsed. @param {string} s */
+const frames = s => s.trim().split("\n").map(l => JSON.parse(l));
+
+test("presence cli: vyre commands lists every verb run() handles, with aliases", async t => {
+  const root = tempHome(t);
+  const r = await vyre(root, ["commands", "presence", "--json"]);
+  assert.equal(r.code, 0, r.all);
+  const verbs = JSON.parse(r.out).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => [v.verb, v.aliases || [], Boolean(v.read), Boolean(v.person)]),
+    [["keys", ["list", "ls"], true, false], ["code", [], false, true], ["remove", ["rm"], false, true]]);
+  assert.deepEqual(verbs.find(v => v.verb === "remove").args, [{ name: "id", required: true }]);
+});
+
+test("presence cli: --view draws the keys as a table, and a verb that needs a person never prompts", async t => {
+  const { root, keys } = await fakeVyred(t);
+  const k = await vyre(root, ["presence", "keys", "--view"]);
+  assert.equal(k.code, 0, k.all);
+  const f = frames(k.out);
+  assert.deepEqual([f[0].cmd, f[0].view.kind, f[0].view.columns.map(c => c.key)], ["presence keys", "table", ["id", "kind", "label", "created"]]);
+  assert.deepEqual(f[0].data, keys, "data is what --json prints");
+  assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 0 });
+  // presence.code asks for a person: under --view that is exit 3 with no prompt, as an error frame.
+  const c = await vyre(root, ["presence", "code", "--view"]);
+  assert.equal(c.code, 3, c.all);
+  const e = frames(c.out);
+  assert.deepEqual([e[0].view.kind, e[0].view.code], ["error", "no_terminal"]);
+  assert.match(e[0].view.next, /your own terminal/);
+  assert.doesNotMatch(c.err, /Type the code/, "no prompt was written");
 });

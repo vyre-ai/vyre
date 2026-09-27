@@ -42,7 +42,8 @@ let autoAskSuite = Suite("auto ask") { t in
     t.test("the pause: typing on waits, and only the words at rest are asked, once") {
         let v = quietVyred(); defer { v.stop() }
         let r: [String]? = t.wait {
-            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.willShow(front: nil); return m }
+            // A pause long enough that a slow CI machine's 30 ms between keys never counts as rest.
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.autoDelay = 0.4; m.willShow(front: nil); return m }
             _ = await until { m.vyred.isUp }
             await MainActor.run { m.text = "what is arch" }
             try? await Task.sleep(nanoseconds: 30_000_000)
@@ -153,6 +154,21 @@ let autoAskSuite = Suite("auto ask") { t in
         }
         t.eq(r, ["q1", "sonnet", "q1", "Think this through more carefully and answer again: what is archipelago", "q1 sonnet what is archipelago true",
                  "and in Greece?", "starts 1", "thinking on q1"])
+    }
+
+    t.test("⌘⏎ has one meaning: words that are not a question think deeper, never computer use") {
+        let v = quietVyred(); defer { v.stop() }
+        v.tool("hands.stop") { _ in ["stopped": true] }
+        let r: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = askModel(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp }
+            await MainActor.run { m.text = "open Notes and add milk"; _ = m.handleReturn(command: true) }
+            _ = await until { !v.callsOf("threads.start").isEmpty }
+            let s = v.callsOf("threads.start").first
+            let doing = await MainActor.run { m.doing }
+            return [VJ.s(s?["prompt"]), VJ.s(s?["model"]), VJ.s(s?["purpose"]), "\(doing)"]
+        }
+        t.eq(r, ["open Notes and add milk", CapsuleModel.deeperModel, "capsule", "false"])
     }
 
     t.test("voice: partial words ask nothing; the final words are asked at once, as ⏎ would") {
