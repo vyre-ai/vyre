@@ -59,7 +59,11 @@ earlier decision).
 | `/vyre send <session> <text>` | Types into another session, named by its id, the first 8 characters of it, or its name. The reply streams there. |
 | `/vyre recall <query>` | Searches your past sessions. |
 | `/vyre project` | This folder's project brief. |
-| `/vyre remember <text>` | Makes a lesson. |
+| `/vyre todo <text>` | Adds a todo. With no text, lists your open todos. |
+| `/vyre remind <when> <text>` | Sets a reminder, for example `/vyre remind 6pm call Harlow Legal`, "tomorrow 9am" or "in 20 minutes". The [planner](planner.md) reads the time and says when it will ring. With no time, Claude asks for one. The reminder arrives by push, the Capsule and the Deck, not in the Claude session. |
+| `/vyre agenda` | Today: what is on, then your todos, overdue ones too. `/vyre agenda tomorrow` shows another day. |
+| `/vyre remember <fact>` | Saves a fact about you or your work to [memory](memory.md), for every future session. A session scoped to some projects can't teach personal facts; Claude offers a lesson instead. |
+| `/vyre lesson <rule>` | Makes a lesson, and says whether hooks check it or it is a reminder. |
 | `/vyre lessons` | Your lessons, with how often each was applied, caught and broken. |
 | `/vyre statusline` | Tells you how to put Vyre's line under every session. |
 

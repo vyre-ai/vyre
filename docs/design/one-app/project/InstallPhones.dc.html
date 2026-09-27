@@ -18,14 +18,14 @@
     <div class="col" style="max-width: 1500px;">
       <span class="lbl">Install 2 · On the phone, with no Apple Developer account</span>
       <h1 class="t28 w6">Your box serves the app: Add to Home Screen on iPhone, one tap on Android, no store for Vyre.</h1>
-      <p class="t15 t2">The phone opens the pairing page, installs the web app from the box, and turns on notifications and Face ID once. Android can also take the native app straight from the box. The table below says plainly what each path gives up.</p>
+      <p class="t15 t2">The phone opens the pairing page on the relay, so nothing has to be installed first, adds the web app, and turns on notifications and Face ID once. It switches to Tailscale by itself whenever Tailscale answers. Android can also take the native app straight from the box. The table below says plainly what each path gives up.</p>
     </div>
   </div>
 
   <div class="frames">
 
     <div class="cap">
-      <span class="cap-t">a · iPhone, Safari on the pairing page</span>
+      <span class="cap-t">a · iPhone, Safari on app.vyre.run/pair</span>
       <div class="phone">
         <div class="island"></div>
         <div class="safe-t"></div>
@@ -42,7 +42,7 @@
             <div class="step"><span class="step-n">2</span><div class="col" style="gap: 2px;"><span class="t17 w6">Tap Add to Home Screen</span><span class="t13 t2">Scroll the list if you do not see it</span></div></div>
             <div class="step"><span class="step-n">3</span><div class="col" style="gap: 2px;"><span class="t17 w6">Tap Add, then open Vyre</span><span class="t13 t2">From the Home Screen, not from Safari</span></div></div>
           </div>
-          <p class="t13 t2">No App Store and no Apple account. The laptop shows a tick as each step lands.</p>
+          <p class="t13 t2">No App Store, no Apple account and no Tailscale needed. The laptop shows a tick as each step lands.</p>
         </div>
         <div class="col" style="position: absolute; left: 262px; bottom: 92px; width: 120px; align-items: center; gap: 2px; z-index: 5;">
           <span class="live">Share is here</span>
@@ -50,7 +50,7 @@
         </div>
         <div class="row" style="position: absolute; left: 0; right: 0; bottom: 34px; height: 54px; padding: 0 12px; gap: 8px; background: var(--panel); border-top: 1px solid var(--rule);">
           <span class="ibtn" aria-label="Back"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M10 3.5l-4.5 4.5 4.5 4.5"></path></svg></span>
-          <span class="row grow" style="height: 38px; border-radius: 19px; background: var(--hover); justify-content: center; gap: 6px; color: var(--text-2);"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg><span class="t13 t2">vyre.harlow.ts.net</span></span>
+          <span class="row grow" style="height: 38px; border-radius: 19px; background: var(--hover); justify-content: center; gap: 6px; color: var(--text-2);"><svg class="ic ic-12" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg><span class="t13 t2">app.vyre.run</span></span>
           <span class="ibtn" aria-label="Share" style="color: var(--text); box-shadow: 0 0 0 2px var(--focus);"><svg class="ic ic-20" viewBox="0 0 16 16"><path d="M8 10V1.5M5 4.5l3-3 3 3M4.5 7h-2v7h11V7h-2"></path></svg></span>
           <span class="ibtn" aria-label="More"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.8"></circle><circle cx="8" cy="8" r="0.8"></circle><circle cx="12.5" cy="8" r="0.8"></circle></svg></span>
         </div>
@@ -102,7 +102,7 @@
             <span class="t22 w6">Nothing needs you</span>
             <span class="t17 t2">juno and kit will ask here, and this phone will buzz.</span>
           </div>
-          <div class="row" style="justify-content: center; margin-top: auto; padding-bottom: 120px;"><span class="st"><span class="dot dot-run"></span>Tailscale · direct 18 ms to the box</span></div>
+          <div class="row" style="justify-content: center; margin-top: auto; padding-bottom: 120px;"><span class="st"><span class="dot dot-run"></span>Relay · 80 ms · switches to Tailscale when it can</span></div>
         </div>
         <div class="capsule"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path class="mk-w" d="M3.5 5.5L12 19.5L17.96 9.69" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"></path><circle class="mk-d" cx="20.5" cy="5.5" r="2.3"></circle></svg><span class="ph">Ask juno, find, or run</span><button class="mic" type="button" aria-label="Hold to talk"><svg class="ic ic-20" viewBox="0 0 16 16"><rect x="6" y="1.5" width="4" height="8" rx="2"></rect><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.5"></path></svg></button></div>
         <div class="home-ind"></div>
@@ -115,7 +115,7 @@
         <div style="position: absolute; top: 14px; left: 50%; margin-left: -7px; width: 14px; height: 14px; border-radius: 7px; background: #000000;"></div>
         <div style="height: 40px; flex: none;"></div>
         <div class="row" style="height: 52px; flex: none; padding: 0 12px; gap: 8px; border-bottom: 1px solid var(--rule);">
-          <span class="row grow" style="height: 38px; border-radius: 19px; background: var(--hover); padding: 0 14px; gap: 8px; min-width: 0;"><svg class="ic ic-12 t2" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg><span class="t13 t2 trunc">vyre.harlow.ts.net/pair</span></span>
+          <span class="row grow" style="height: 38px; border-radius: 19px; background: var(--hover); padding: 0 14px; gap: 8px; min-width: 0;"><svg class="ic ic-12 t2" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="1.5"></rect><path d="M5 7V5a3 3 0 0 1 6 0v2"></path></svg><span class="t13 t2 trunc">app.vyre.run/pair</span></span>
           <span class="ibtn" aria-label="More"><svg class="ic ic-20" viewBox="0 0 16 16"><circle cx="3.5" cy="8" r="0.8"></circle><circle cx="8" cy="8" r="0.8"></circle><circle cx="12.5" cy="8" r="0.8"></circle></svg></span>
         </div>
         <div class="ph-body" style="gap: 12px; padding-top: 14px;">
@@ -147,12 +147,13 @@
 
     <div class="anno" style="width: 404px;">
       <span class="lbl">The default path, per platform</span>
-      <div class="anno-i"><span class="anno-n">1</span><span>iPhone: the web app over Tailscale. No Apple account, push works, and Tailscale is the only store download.</span></div>
-      <div class="anno-i"><span class="anno-n">2</span><span>iPhone without Tailscale: the same web app over the relay. One extra hop, sealed end to end, nothing to install first.</span></div>
+      <div class="anno-i"><span class="anno-n">1</span><span>iPhone: the web app over the relay, upgrading to Tailscale. No Apple account and no store download; push works; the path goes direct whenever Tailscale answers.</span></div>
+      <div class="anno-i"><span class="anno-n">2</span><span>Tailscale on the phone is recommended, not required. Alone it is not the default: #19147 overrides iOS DNS, and #18889 and #19504 drop the tunnel every few minutes.</span></div>
       <div class="anno-i"><span class="anno-n">3</span><span>The free Apple ID build stays behind Advanced. It expires every 7 days and has no push, so it is never the default.</span></div>
       <div class="anno-i"><span class="anno-n">4</span><span>Android: the APK over adb from the laptop (<span class="mono">vyre phone add --android --usb</span>). Full native and exempt from developer verification.</span></div>
-      <div class="anno-i"><span class="anno-n">5</span><span>Android with no computer at hand: Install app in Chrome. The APK from the box is offered, with the verification wait stated up front.</span></div>
+      <div class="anno-i"><span class="anno-n">5</span><span>Android with no computer at hand: Install app in Chrome, or the APK from the box with the verification wait stated up front. Both start on the relay and switch to Tailscale too.</span></div>
       <div class="anno-i"><span class="anno-n">6</span><span>Every path pairs with one Touch ID on the laptop and saves a Face ID or fingerprint key on the phone. Nothing else asks.</span></div>
+      <div class="anno-i"><span class="anno-n">7</span><span>Smooth: the path line updates in place when the phone moves from relay to Tailscale, with no reload and no prompt. Steps tick on the laptop as they land; no haptics in the iOS web app, a visual tick instead.</span></div>
     </div>
 
   </div>
@@ -162,17 +163,17 @@
     <div class="tbl" style="grid-template-columns: 300px minmax(0, 1.35fr) minmax(0, 1.25fr) minmax(0, 1fr) 250px;">
       <div class="th">Path</div><div class="th">What works</div><div class="th">What does not</div><div class="th">Steps</div><div class="th">Lasts</div>
 
-      <div class="rh col" style="gap: 6px; align-items: flex-start;"><span>iPhone web app over Tailscale</span><span class="tag">Recommended</span></div>
-      <div>Push once added to the Home Screen (iOS 16.4+, declarative push iOS 18.4+), badge, offline cache, camera QR scanning, Face ID via passkeys. iOS 26 opens Home Screen sites as web apps by default.</div>
-      <div>No haptics, no share target, no background sync, no system password autofill. Push needs the box to reach Apple's push service.</div>
-      <div>Tailscale app, sign in or use an auth key. Needs HTTPS: <span class="mono">tailscale serve</span> gives a <span class="mono">*.ts.net</span> certificate; plain <span class="mono">http://100.x</span> will not work.</div>
-      <div>Until you remove it. Updates with the box. Only one VPN at a time on the phone.</div>
+      <div class="rh col" style="gap: 6px; align-items: flex-start;"><span>iPhone web app over the relay, upgrading to Tailscale</span><span class="tag">Recommended</span></div>
+      <div>Push once added to the Home Screen (iOS 16.4+, declarative push iOS 18.4+), badge, offline cache, camera QR scanning, Face ID via passkeys. Works with no Tailscale; goes direct by itself when Tailscale answers.</div>
+      <div>No haptics, no share target, no background sync, no system password autofill. One extra hop until Tailscale is up. Push needs the box to reach Apple's push service.</div>
+      <div>Scan the single-use code (valid 10 min, <span class="mono">app.vyre.run/pair</span>), then Add to Home Screen. Tailscale later, optional.</div>
+      <div>Until you remove it. Updates with the box. Traffic sealed end to end; the relay sees only ciphertext.</div>
 
-      <div class="rh">iPhone web app over the relay (<span class="mono">app.vyre.run</span>)</div>
-      <div>Everything above, without Tailscale on the phone. Public certificate; traffic sealed end to end, the relay reads nothing.</div>
-      <div>One extra hop through the relay city. Push still needs the box to reach Apple.</div>
-      <div>Scan the single-use code (valid 10 min), then Add to Home Screen.</div>
-      <div>Until you remove it.</div>
+      <div class="rh col" style="gap: 6px; align-items: flex-start;"><span>iPhone web app on Tailscale only</span><span class="tag">Not alone</span></div>
+      <div>Direct path, nothing through the relay. <span class="mono">tailscale serve</span> gives a <span class="mono">*.ts.net</span> certificate.</div>
+      <div>Tailscale #19147 overrides iOS DNS; #18889 and #19504 drop the tunnel every few minutes. With no relay behind it, the app goes dark when that happens.</div>
+      <div>Tailscale app, sign in or use an auth key. Plain <span class="mono">http://100.x</span> will not work.</div>
+      <div>Until you remove it. Only one VPN at a time on the phone.</div>
 
       <div class="rh col" style="gap: 6px; align-items: flex-start;"><span>iPhone native app via a free Apple ID</span><span class="tag">Advanced</span></div>
       <div>The native app, sideloaded from the Mac with Xcode.</div>
@@ -181,7 +182,7 @@
       <div>Expires every 7 days. Needs a weekly refresh.</div>
 
       <div class="rh">Android web app</div>
-      <div>Push, install prompt, share target, background sync.</div>
+      <div>Push, install prompt, share target, background sync. Relay first, then Tailscale when it answers.</div>
       <div>Needs HTTPS, the same as iPhone.</div>
       <div>Open the pairing page in Chrome, tap Install app.</div>
       <div>Until you remove it. Updates with the box.</div>
@@ -193,7 +194,7 @@
       <div>Until you remove it. Updates itself from the box.</div>
 
       <div class="rh">Android app downloaded from the box</div>
-      <div>Full native, in-app self-update. Push via UnifiedPush / ntfy from the box, or FCM.</div>
+      <div>Full native, in-app self-update. Push via UnifiedPush / ntfy from the box, or FCM. Relay first, then Tailscale.</div>
       <div>From 30 Sep 2026 in Brazil, Indonesia, Singapore and Thailand (worldwide in 2027), unverified apps need Android's one-time advanced flow with a 24 h wait, unless Vyre is registered.</div>
       <div>Get the Android app from your box, allow installs from this source once.</div>
       <div>Until you remove it. Updates itself from the box.</div>

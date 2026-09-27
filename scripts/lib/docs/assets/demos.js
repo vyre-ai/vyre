@@ -33,7 +33,7 @@
 
   // ---------------------------------------------------------------- capsule
 
-  // The Capsule's own drawings (local/capsule/app/capsule.js), on the 16 grid.
+  // The first Capsule's own drawings, on the 16 grid.
   var GLYPHS = {
     agent: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.5c.6-2.6 2.4-4 4.5-4s3.9 1.4 4.5 4"/>',
     assistant: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3.5 13.5c.6-2.6 2.4-4 4.5-4s3.9 1.4 4.5 4"/><circle cx="13" cy="3" r="1.6" fill="#C6F36B" stroke="none"/>',

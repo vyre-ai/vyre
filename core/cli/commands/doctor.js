@@ -21,7 +21,7 @@ import { REPO } from "../../daemon/index.js";
 import { label as buildLabel } from "../../daemon/build.js";
 import * as config from "../../config/index.js";
 import { status as tailscaleStatus, probe } from "../tailnet.js";
-import { INSTALLED } from "./capsule.js";
+import { appPath as capsuleApp } from "./capsule-native.js";
 import { shadows } from "../shadow.js";
 import { progressLine } from "../../recall/progress.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -200,7 +200,8 @@ export async function diagnose(deps = {}) {
   // --------------------------------------------------------------- this machine
   const capsule = role === "box" || process.platform !== "darwin" ? Promise.resolve(null) : (async () => {
     const labelCap = "The Capsule";
-    const app = (deps.capsuleApps || INSTALLED).find(p => fs.existsSync(p));
+    // The native app, built on this Mac into the Vyre home (capsule-native.js).
+    const app = (deps.capsuleApps || [capsuleApp(config.paths().root)]).find(p => fs.existsSync(p));
     if (!app) return failed("capsule", labelCap, "not installed", "vyre capsule install");
     // What macOS allows is known to the app itself (TCC holds Vyre.app responsible); it reports
     // it as capsule.hotkey. A Capsule that has not reported yet is "?" rather than a guess.
