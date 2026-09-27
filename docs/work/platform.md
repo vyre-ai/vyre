@@ -37,6 +37,12 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - End-to-end `vyre update` on testbox (npm path, throwaway): update 4.6 s, failed-health rollback 18 to 25 s, --rollback 5.4 s, RSS ~83 MB settled; found and fixed a prune bug (9343bc44). Box wrapper path not run (needs own compose project + no tailscale login).
 - Combined targeted run 217 pass / 0 fail / 1 skip (shellcheck). Finished sha for the integrator: 9343bc44.
 
+- Batch 4 red fixed: work/platform-b4fix 97686e1b (checkout build update downloads nothing), with the integrator.
+- work/platform b7bbf5d8 (pushed): merges b4d + fix; ADR 0035 schema; P1 settings-free; vault needs.credentials loader diff (ctx.modules.status(), not .list); Render (7 kinds); statusline surface; ADR 0033 theme -> ADR 0035 (appearance.scheme). 393 pass / 0 fail / 16 skip.
+- settings.write af5160dd (pushed) on native-core ac34c322: mirror() rev + said(); 74/74. Waiting e2e quick look, then integrator.
+- Reviewed connectors af11226d meta.firstParty: OK (merge after b7bbf5d8). Vault told to read ctx.modules.status().
+- Testbox runs on hold until the integrator reports batch 4 (lead).
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
