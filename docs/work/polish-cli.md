@@ -84,6 +84,11 @@ Driving Vyre from the terminal feels as native as Claude Code's own. Owns `core/
   ("loosens" = fresh proof: vault lock, Gate, presence length, devices/origins -> presence_required
   -> callAsPerson) and `confirm` (permission allow rules, bypass: no proof, settings.set/reset
   {confirm:true} else error confirm_required with what it loosens -> show it, typed key or --yes).
+  Live on work/native-core 42dcb98c: keys are module-named (sessions.mode, sessions.allow,
+  push.watch, planner.event_lead, vault.lock_idle, ...), schema names each key's module; confirm
+  keys: sessions.allow, sessions.folders, sessions.hooks, sessions.mode for bypassPermissions,
+  dontAsk or auto; `preview:true` -> {before, after, where, confirm?}, writes nothing (print the
+  "what changes" line from it before asking); vault.lock_* -> presence_required.
 - Chat parity next (native-core's order): per-session model (threads.model), rewind --restore
   conversation|code|both, send --image <file>, effort/thinking per session, then ! and #. None of
   these tools is on main at fb1ed1d1 (rewind is {thread, uuid} only); names asked of sessions.
