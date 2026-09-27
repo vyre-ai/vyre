@@ -90,8 +90,11 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
 - testbox: nothing of mine is running. Leftovers: image vyre-box:gate, ~/vyre-ci/{ci,ci-gate,ci-loop,sdk-js,gate1.sh}.
 
 ## Next
-- 0.1.1 (lead): move the generated docs/index.json (1 MB) and docs/reference (0.8 MB) out of the
-  npm package if nothing at runtime reads them (asked docs). Install is 16.6 MB, cap 20 MB for 0.1.0.
+- 0.1.1 (lead): drop docs/index.json (1 MB) and docs/reference/ (0.8 MB) from package.json "files".
+  docs CONFIRMED nothing at runtime reads them (only scripts/docs-check, build-docs and the docs
+  tests, all in the repo; tips resolve to docs.vyre.run URLs). Keep the hand-written .md pages.
+  Update release-check.sh's "read offline" comment, re-measure the install, and tell docs, who will
+  add a line to docs/CONTRIBUTING-DOCS.md. Caveat: docs.vyre.run is not deployed yet.
 - RC prep is HELD on work/ci-rc 1d8ae652 (root + apps/app 0.1.0-rc.1, module-sdk stays 0.1.0,
   CHANGELOG "## 0.1.0", release.yml rc tags + notes fallback + dry run builds the dispatched
   branch, release/min_from 0.1.0-rc.1). It goes to the integrator as the LAST item of the RC batch;
