@@ -257,6 +257,9 @@ async function install(ctx, releases, target, channel) {
       const r = await npmInstall(ctx.npm, prev.tgz);
       did.push(r.ok ? `reinstalled ${current}` : `could not reinstall ${current} (${r.why})`);
     }
+    // A release that failed here is not kept: prune() would count it among the two newest and
+    // drop a good one, and --rollback would later reinstall it.
+    fs.rmSync(dir, { recursive: true, force: true });
     if (data) {
       await ctx.stop();
       try { await ctx.restore({ root: home, file, force: true }); did.push("restored the backup"); }

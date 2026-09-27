@@ -50,6 +50,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   healthy update nothing restores data by itself. `--check` exits 1 when an update is waiting;
   `--rollback` keeps the current data, `--restore-data` asks first; `--to` steps through a
   release when `min_from` needs it. A checkout is told to update with git.
+  A release that fails its health check is removed from <home>/releases/, so it can never push
+  out a good release or come back through `--rollback` (found by the end-to-end run on testbox).
 - core/cli/commands/up.js exports health, waitFor and bring, and bring compares vyred against the
   build it is asked for (the release just installed), not the running CLI's own version number.
 - box/vyre `update`: the same steps on the box. The release comes from GitHub Releases, with
