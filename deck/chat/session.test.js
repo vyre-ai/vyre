@@ -24,7 +24,7 @@ Object.assign(globalThis, {
   addEventListener: () => {}, removeEventListener: () => {},
   localStorage: { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) },
 });
-/** Where go() sent the page (a rewind opens its fork). */
+/** Where go() sent the page (a rewind stays on the same thread: nothing goes here). */
 const went = [];
 Object.defineProperty(globalThis, "history", { value: { state: null, pushState: (_s, _t, url) => went.push(url), replaceState: () => {} },
   configurable: true, writable: true });
@@ -98,8 +98,13 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
     else if (tool === "recall.transcript") data = { session: { id: NEW, cwd: "/home/alex/work/harlow-legal" }, blocks: [], next: 0, first: 0 };
     else if (tool === "threads.asks") data = [];
     else if (tool === "threads.answer") data = { answered: true };
-    // The final contract's answers: a steer {sent, steered, uuid, turn}; a queued message {queued: <row id>, uuid}.
-    else if (tool === "threads.send") data = input.mode === "queue" ? { queued: 41, uuid: input.uuid } : { sent: true, steered: input.mode === "steer", uuid: input.uuid, turn: `${NEW}:9` };
+    // core/switchboard's answers (work/sessions): the box mints the uuid. A steer {sent, steered,
+    // thread, uuid, turn}; a queued message {sent: false, queued: true, queued_id, uuid, thread, busy}.
+    else if (tool === "threads.send") data = input.mode === "queue"
+      ? { sent: false, queued: true, queued_id: 41, uuid: "box-q41", thread: NEW, name: "Q3 report", busy: "working", note: "Q3 report is working on something." }
+      : input.mode === "steer" ? { sent: true, steered: true, thread: NEW, uuid: "box-steer-1", turn: `${NEW}:9` } : { sent: true, thread: NEW };
+    else if (tool === "threads.rewind") data = { rewound: true, thread: NEW, uuid: input.uuid, text: "Use Estate intake v2 instead" };
+    else if (tool === "threads.mode") data = { thread: NEW, mode: input.mode };
     else data = tool === "memory.facts" ? { facts: [] } : {};
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
@@ -295,7 +300,7 @@ test("thinking folds to its length, a run of tools is one row that counts up, th
 });
 
 // Changed on purpose (the composer like Claude Code, 27 Sep): the row reads "Queued for after",
-// "Send now" is "Steer now" (threads.send_now in the final contract), and each button is on until
+// "Send now" is "Steer now" (threads.send-now in the sessions contract), and each button is on until
 // the box says it has no such tool (core/caps.js), not off from the start. Rows are named by the
 // box's row id (`queued`): a row without one yet has its buttons off.
 test("queued rows sit above the composer: Edit, Take back, Steer now by row id; a box without the tool turns that button off", async () => {
@@ -370,7 +375,7 @@ test("an inline ask: A allows, D denies, and one answered on another screen says
 
 // ---- the composer like Claude Code: steer, queue, mode, rewind ----------------------------------
 
-test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc forks", async () => {
+test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc rewinds this thread", async () => {
   const box4 = new El("div");
   doc.body.append(box4);
   const stop4 = mountSession(box4, { thread: NEW, project: null, onBack() {} });
@@ -388,11 +393,14 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   assert.equal(sent.text, "Use Estate intake v2 instead");
   assert.match(sent.uuid, /^[0-9a-f-]{36}$/);
   assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/);
-  at("thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: sent.uuid, turn: `${NEW}:9`, via: "steer" });
+  // The box's own uuid, not the Deck's: the echo and the answer tie it to the words drawn on send.
+  at("thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: "box-steer-1", via: "steer" });
+  assert.equal($$(box4, ".cv-user").length, 2, "the echo is the same message");
   assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/, "the echo is not the join");
   at("thread.tool", { call: "s1", status: "completed" });
   // No step on the event: counted here, one call of this turn done.
-  at("thread.steered", { uuid: sent.uuid, turn: `${NEW}:9` });
+  at("thread.steered", { uuid: "box-steer-1" });
+  assert.equal($$(box4, ".cv-steer").length, 1);
   assert.match(text($(box4, ".cv-steer")).trim(), /^Steered at step 1 · \d\d:\d\d$/);
   const order = box4.querySelectorAll(".cv-row").map(n => n.className.split(" ").find(c => /^cv-(user|steer|tool)$/.test(c))).filter(Boolean);
   assert.deepEqual(order, ["cv-user", "cv-tool", "cv-steer", "cv-user"], "the words sit where they joined, after the Read");
@@ -402,7 +410,10 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   await wait();
   assert.equal(calls.filter(c => c.tool === "threads.send").at(-1).input.mode, "queue");
   assert.match(text($(box4, ".cv-queued-row")), /Then open a PR against main/);
-  assert.equal($(box4, ".cv-queued-row .cv-q-edit").disabled, false, "the answer named the row (queued: 41)");
+  assert.equal($(box4, ".cv-queued-row .cv-q-edit").disabled, false, "the answer named the row (queued_id: 41)");
+  assert.equal($$(box4, ".cv-queued-row").length, 1);
+  at("thread.queued", { queued: 41, uuid: "box-q41", text: "Then open a PR against main", surface: "deck" });
+  assert.equal($$(box4, ".cv-queued-row").length, 1, "the event is the same row");
 
   assert.match(text($(box4, ".composer-mode")), /^Asks first/);
   assert.equal(key("Tab", { shiftKey: true }).defaultPrevented, true);
@@ -418,22 +429,17 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   const sheet = $(box4, ".cv-rewind");
   assert.ok(sheet, "Esc Esc opens the rewind sheet");
   assert.match(text(sheet), /Use Estate intake v2 instead/);
-  assert.equal($(sheet, ".cv-rw-conversation"), null, "no conversation / code / both choice: the box forks");
   press3("Enter");
   await wait();
-  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: sent.uuid });
-  assert.deepEqual(went, [], "the answer did not name the fork: thread.rewound will");
-  at("thread.rewound", { uuid: sent.uuid, fork: "th-harlow-fork" });
-  await wait();
-  assert.deepEqual(went, ["/chat/thread/th-harlow-fork"], "the fork opens");
+  assert.deepEqual(calls.filter(c => c.tool === "threads.rewind").at(-1).input, { thread: NEW, uuid: "box-steer-1" }, "the box's uuid for the message");
+  assert.deepEqual(went, [], "the same thread: nothing opens");
   assert.equal($(box4, ".cv-rewind"), null);
-  assert.equal($$(box4, ".cv-user").length, 2, "this session keeps every word");
-  assert.match(text($(box4, ".thread-view")), /Rewound to before "Use Estate intake v2 instead" in a new session/);
-  // The fork, opened: the words are back in its composer.
-  const box5 = new El("div");
-  doc.body.append(box5);
-  const stop5 = mountSession(box5, { thread: "th-harlow-fork", project: null, onBack() {} });
-  assert.equal($(box5, "textarea").value, "Use Estate intake v2 instead", "the words come back to edit in the fork");
-  stop5();
+  assert.equal($$(box4, ".cv-user").length, 1, "the message and everything after it are gone");
+  assert.equal($$(box4, ".cv-steer").length, 0);
+  assert.equal(ta.value, "Use Estate intake v2 instead", "the words come back to edit");
+  assert.match(text($(box4, ".thread-view")), /Rewound to before "Use Estate intake v2 instead"/);
+  at("thread.rewound", { uuid: "box-steer-1", at: "u-first" });
+  await wait();
+  assert.equal($$(box4, ".thread-view .cv-notice").filter(n => /Rewound/.test(text(n))).length, 1, "its event is the same rewind");
   stop4();
 });

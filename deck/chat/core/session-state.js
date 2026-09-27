@@ -18,30 +18,43 @@
 // (the latest todo list), "@tasks" (background tasks) and "@rewound" (a rewind just happened:
 // s.rewound says to which message, so a composer can take its words back).
 //
+// The sessions contract (core/switchboard, work/sessions b8b1a0a7 and 045d3472):
+//
 // Steering (the composer's default while a turn runs): the words join the running turn at its
 // next step. A steer is a user item plus a marker item just before it ("Steered at step N", key
 // steer:<uuid>), placed where the words joined: localSend() draws both at once ("steering"),
-// thread.sent {via: "steer"} (or "now", a queued row sent into the turn) echoes them, and
-// thread.steered {uuid, turn} confirms them and moves them to the turn's tail. The event names no
-// step: the step is counted here, the tool calls of that turn finished when it arrives. A
-// transcript user block with steered: true (core/transcripts) gets the same marker on a re-read,
-// with the transcript's step.
+// thread.sent {via: "steer", uuid} (or "now", a queued row sent into the turn) echoes them, and
+// thread.steered {uuid} says Claude took them in: the marker is confirmed and moves to the turn's
+// tail, with the step counted here (the tool calls of that turn finished when it arrives). The
+// box mints the uuid, not the Deck: the send's answer {steered, uuid} (confirmSend) or its echo
+// (same words) ties the drawn item to it. Steered words the turn never reached run as the next
+// turn: thread.turn {steered: true, uuid, text} (text: every such steer, joined). Their markers
+// go, the first becomes a plain message at the tail with that text, and the others fold into it,
+// so nothing shows twice. A transcript user block with steered: true (core/transcripts) gets the
+// marker on a re-read, with the transcript's step.
 //
-// The queue: rows are keyed by the box's threads_inbox row id (`queued`), uuid alongside.
-// thread.queued adds a row, or (threads.edit) re-emits it with new words under the same id;
-// thread.unqueued takes it away; thread.sent {queued, via: "turn"} hands it over at a turn's end
-// (a message of its own) and {queued, via: "now"} steers it into the running turn.
-// A rewind (thread.rewound {uuid, fork}) forks the session at that message: this session keeps
-// every word, s.rewound names the fork (a new thread) and the words to take back there.
+// The queue: rows are keyed by the box's threads_inbox row id (`queued`; the send's answer calls
+// it queued_id), uuid alongside. thread.queued adds a row, or (threads.edit, edited: true)
+// re-emits it with new words under the same id; thread.unqueued takes it away; thread.sent
+// {queued, via: "turn"} hands it over at a turn's end (a message of its own) and {queued, via:
+// "now"} (threads.send-now) steers it into the running turn, or starts a turn when none runs.
+//
+// A rewind (threads.rewind, thread.rewound {uuid, at: <its parent's uuid>}) is not a fork: the
+// same thread goes back to just before that message. The message and everything after it leave
+// the view, and later reads of the transcript (which keeps the abandoned branch) skip them too:
+// the blocks from that message on written before the rewind. s.rewound carries the words back.
+//
+// thread.state is one of starting, running, waiting, idle, stopped. thread.usage names the turn's
+// own cost (cost_usd) and the session's (total_cost_usd). The mode is mode.changed {mode}.
 
 import { toolDetail } from "./tool-detail.js";
 
 /**
- * @typedef {"starting"|"idle"|"running"|"waiting"|"stopped"|"failed"} SessionState
+ * @typedef {"starting"|"idle"|"running"|"waiting"|"stopped"} SessionState
  * @typedef {{ key: string, kind: "user", text: string, uuid?: string, at?: number, seq?: number, command?: true, surface?: string|null,
- *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean }} UserItem
+ *   steered?: boolean, step?: number|null, local?: boolean, confirmed?: boolean, opened?: boolean }} UserItem
  * @typedef {{ key: string, kind: "steer", uuid: string|null, user: string|null, step: number|null, turn: string|null, pending: boolean,
- *   at?: number, seq?: number }} SteerItem
+ *   taken?: boolean, at?: number, seq?: number }} SteerItem
  * @typedef {{ key: string, kind: "text"|"reasoning", message: string|null, block: number, text: string, streaming: boolean, at?: number, seq?: number }} TextItem
  * @typedef {{ key: string, kind: "tool", call: string, name: string, status: "running"|"completed"|"failed"|"canceled", summary?: string,
  *   error?: string|boolean, input?: any, output?: string|null, detail?: import("./tool-detail.js").ToolDetail, duration_ms?: number|null,
@@ -58,15 +71,18 @@ import { toolDetail } from "./tool-detail.js";
  * @typedef {{ content: string, status: string, activeForm?: string }} Todo
  * @typedef {{ id: string, kind: "shell"|"agent", title: string, status: string, call?: string, at?: number|null, derived?: boolean }} Task
  * @typedef {{ type: string, payload?: any, at?: number, id?: number|string }} SessionEvent
+ * @typedef {{ uuid: string, seq: number|null, from: number|null, at: number }} Rewind
+ *   A rewind: the message's line (seq) and time (from) once known, and when it happened (at).
  * @typedef {{
  *   thread: string, provider: string|null, model: string|null, auth: string|null, state: SessionState, turn: number|null,
  *   items: Item[], byKey: Map<string, Item>, queued: Queued[], asks: Map<string, Ask>,
  *   usage: any, limit: any, stopped: string|null,
  *   mode: string|null, modes: string[]|null, thinking: boolean|null,
  *   todos: { key: string, todos: Todo[] }|null, tasks: Map<string, Task>,
- *   rewound: { uuid: string, fork: string|null, text: string, at: number|null }|null, purpose: string|null,
+ *   rewound: { uuid: string, text: string, at: number|null }|null, purpose: string|null,
  *   meta: { live: number, notices: number, turns: number, lastId: number, stateSeen: boolean,
- *     uuids: Map<string, string>, idents: Map<string, string>, texts: Map<string, string>, taskEvents: boolean }
+ *     uuids: Map<string, string>, idents: Map<string, string>, texts: Map<string, string>, taskEvents: boolean,
+ *     rewinds: Rewind[] }
  * }} Session
  */
 
@@ -82,7 +98,7 @@ export function createSession(thread) {
     // words of queued messages by uuid (a hand-over or a steer from the queue may name only the
     // uuid), and whether thread.task events come (then tasks are theirs).
     meta: { live: 0, notices: 0, turns: 0, lastId: -Infinity, stateSeen: false, uuids: new Map(), idents: new Map(),
-      texts: new Map(), taskEvents: false },
+      texts: new Map(), taskEvents: false, rewinds: [] },
   };
 }
 
@@ -153,6 +169,12 @@ function settle(s, out) {
  */
 function liveUser(s, u, out) {
   if (u.uuid && s.meta.uuids.has(u.uuid)) return;
+  if (u.uuid) {
+    // The box mints its own uuid: a steer drawn on send under the Deck's is this one, by its words.
+    const mine = /** @type {UserItem|undefined} */ (s.items.find(it => it.kind === "user" && it.local && !it.confirmed && it.seq === undefined
+      && it.uuid !== u.uuid && sameText(it.text, u.text)));
+    if (mine) { adopt(s, mine, u.uuid, out); return; }
+  }
   if (!u.uuid) {
     // An older switchboard echoes a steer without its uuid: the words drawn on send are it.
     const mine = s.items.find(it => it.kind === "user" && it.local && !it.confirmed && it.seq === undefined && sameText(it.text, u.text));
@@ -181,6 +203,55 @@ function liveUser(s, u, out) {
 }
 
 // ---- steering, the queue drawn on send, rewinds ------------------------------------------------
+
+/**
+ * A user item drawn under the Deck's uuid is known by the box's from now on (its marker too).
+ * @param {Session} s @param {UserItem} user @param {string} uuid @param {Set<string>} out
+ */
+function adopt(s, user, uuid, out) {
+  const was = user.uuid;
+  user.uuid = uuid;
+  user.confirmed = true;
+  s.meta.uuids.set(uuid, user.key);
+  if (was && was !== uuid) {
+    const m = /** @type {SteerItem|undefined} */ (s.byKey.get(`steer:${was}`));
+    // thread.steered may have come first under the box's uuid: that marker is the one to keep.
+    const early = /** @type {SteerItem|undefined} */ (s.byKey.get(`steer:${uuid}`));
+    if (m && early && early !== m && !early.user) {
+      Object.assign(m, { step: early.step, pending: false, taken: true, turn: early.turn ?? m.turn });
+      const i = s.items.indexOf(early);
+      if (i >= 0) s.items.splice(i, 1);
+      s.byKey.delete(early.key);
+      out.add(early.key);
+    }
+    if (m) { m.uuid = uuid; s.byKey.set(`steer:${uuid}`, m); out.add(m.key); }
+    if (s.meta.texts.has(was)) { s.meta.texts.set(uuid, /** @type {string} */ (s.meta.texts.get(was))); s.meta.texts.delete(was); }
+  }
+  out.add(user.key);
+}
+
+/**
+ * The send's answer named the box's uuid for words drawn under the Deck's (a steer: {steered,
+ * uuid}; a queued row: {queued_id, uuid}). Returns the keys touched.
+ * @param {Session} s @param {string} local the Deck's uuid @param {string|null|undefined} uuid the box's
+ */
+export function confirmSend(s, local, uuid) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  if (!uuid || uuid === local) return [];
+  const key = s.meta.uuids.get(local);
+  const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
+  if (user && user.uuid === local) adopt(s, user, uuid, out);
+  // A row drawn on send: its uuid is the box's now (thread.queued may have named it already).
+  const row = s.queued.find(q => q.uuid === local);
+  if (row) {
+    if (s.queued.some(q => q !== row && q.uuid === uuid)) s.queued = s.queued.filter(q => q !== row);
+    else row.uuid = uuid;
+    if (s.meta.texts.has(local)) { s.meta.texts.set(uuid, /** @type {string} */ (s.meta.texts.get(local))); s.meta.texts.delete(local); }
+    out.add("@queued");
+  }
+  return [...out];
+}
 
 /** The marker that heads a user item, if any. @param {Session} s @param {string} userKey */
 function markerOf(s, userKey) {
@@ -321,15 +392,16 @@ function onSteered(s, p, at, out) {
     // Words not seen yet (another screen steered): the marker waits at the tail for them.
     let m = /** @type {SteerItem|undefined} */ (s.byKey.get(`steer:${uuid}`));
     if (!m) {
-      m = { key: `steer:${uuid}`, kind: "steer", uuid, user: null, step, turn: p.turn ?? null, pending: false };
+      m = { key: `steer:${uuid}`, kind: "steer", uuid, user: null, step, turn: p.turn ?? null, pending: false, taken: true };
       if (at !== undefined) m.at = at;
       insert(s, m);
-    } else Object.assign(m, { step, pending: false });
+    } else Object.assign(m, { step, pending: false, taken: true });
     out.add(m.key);
     return;
   }
   // Where the words joined is the turn's tail now: a live item moves there, a transcript's stays.
   const m = ensureMarker(s, user, { uuid, step, pending: false, turn: p.turn ?? null, at }, out);
+  m.taken = true;
   if (at !== undefined) m.at = at;
   if (user.seq === undefined) { move(s, m); move(s, user); }
   user.steered = true;
@@ -339,22 +411,79 @@ function onSteered(s, p, at, out) {
 }
 
 /**
- * A rewind forks the session at a message of the person's (threads.rewind): the fork is a new
- * thread holding what came before it. This session keeps every word; a notice says where it went.
+ * A rewind (threads.rewind): the same thread went back to just before a message of the person's.
+ * That message and everything after it leave the view; the rewind is kept (noteRewind) so a later
+ * read of the transcript, which still holds the abandoned branch, skips it too. s.rewound carries
+ * the words back for the composer (the answer's text, when this screen asked).
  * @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out
  */
 function onRewound(s, p, at, out) {
   const uuid = String(p.uuid ?? "");
+  if (!uuid) return;
   const key = s.meta.uuids.get(uuid) ?? s.items.find(it => it.kind === "user" && it.uuid === uuid)?.key;
   const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
-  const fork = p.fork != null && p.fork !== "" ? String(p.fork) : null;
-  s.rewound = { uuid, fork, text: user?.text ?? String(p.text ?? ""), at: at ?? null };
+  // Applied already (the answer, then its event; or the other way round): the box's time wins.
+  const known = s.meta.rewinds.find(r => r.uuid === uuid);
+  if (known && !user) { if (!p.local && at !== undefined) known.at = at; return; }
+  const text = typeof p.text === "string" ? p.text : user?.text ?? "";
+  noteRewind(s, { uuid, at: at ?? Date.now(), seq: user?.seq ?? null, from: user?.at ?? null });
+  const i = user ? s.items.indexOf(user) : -1;
+  if (i >= 0) {
+    // A steer marker heading it goes with it.
+    const head = i > 0 && s.items[i - 1].kind === "steer" && /** @type {SteerItem} */ (s.items[i - 1]).user === user?.key ? i - 1 : i;
+    for (const it of s.items.splice(head)) {
+      s.byKey.delete(it.key);
+      out.add(it.key);
+      if (it.kind === "user" && it.uuid) { s.meta.uuids.delete(it.uuid); s.meta.texts.delete(it.uuid); }
+      if (it.kind === "ask") s.asks.delete(it.ask);
+    }
+    for (const [ident, k] of s.meta.idents) if (!s.byKey.has(k)) s.meta.idents.delete(ident);
+    derive(s, out);
+  }
+  s.rewound = { uuid, text, at: at ?? null };
   out.add("@rewound");
   const nkey = `rw:${uuid}:${++s.meta.notices}`;
-  const quote = s.rewound.text.length > 60 ? s.rewound.text.slice(0, 59) + "…" : s.rewound.text;
-  const text = quote ? `Rewound to before "${quote}" in a new session` : "Rewound in a new session";
-  insert(s, /** @type {NoticeItem} */ ({ key: nkey, kind: "notice", text, ...(at !== undefined ? { at } : {}) }));
+  const quote = text.length > 60 ? text.slice(0, 59) + "…" : text;
+  insert(s, /** @type {NoticeItem} */ ({ key: nkey, kind: "notice", text: quote ? `Rewound to before "${quote}"` : "Rewound",
+    ...(at !== undefined ? { at } : {}) }));
   out.add(nkey);
+  out.add("@session");
+}
+
+/**
+ * Remember a rewind without touching the items: what a view does for thread.rewound events it
+ * reads back on open, before the transcript's blocks, so the abandoned branch is never drawn.
+ * `at` is when it happened (the event's time); seq and from (the message's line and time) are
+ * learnt from the transcript when not given.
+ * @param {Session} s @param {{ uuid: string, at: number, seq?: number|null, from?: number|null }} r
+ */
+export function noteRewind(s, r) {
+  if (!r || !r.uuid) return;
+  const was = s.meta.rewinds.find(x => x.uuid === r.uuid && x.at === r.at);
+  if (was) { if (r.seq != null) was.seq = r.seq; if (r.from != null) was.from = r.from; return; }
+  s.meta.rewinds.push({ uuid: String(r.uuid), at: Number(r.at) || Date.now(), seq: r.seq ?? null, from: r.from ?? null });
+}
+
+/**
+ * Is this transcript block on a branch a rewind left? From the rewound message's line on, written
+ * after that message and before the rewind. A turn block is dated by its start, so the turn the
+ * message closed (written before it) stays.
+ * @param {Session} s @param {any} b
+ */
+function abandoned(s, b) {
+  for (const r of s.meta.rewinds) {
+    if (b.kind === "user" && b.uuid === r.uuid) {
+      if (r.seq == null) r.seq = b.seq;
+      if (r.from == null && typeof b.ts === "number" && b.ts) r.from = b.ts;
+      return true;
+    }
+    if (r.seq == null || b.seq < r.seq) continue;
+    const ts = typeof b.ts === "number" ? b.ts : 0;
+    if (!ts || ts >= r.at) continue;
+    if (b.kind === "turn" && (r.from == null ? b.seq <= r.seq : ts < r.from)) continue;
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -576,12 +705,59 @@ function onFinished(s, p, at, out) {
 }
 
 /**
+ * thread.turn {steered: true, uuid, text}: steered words the turn never reached run as the next
+ * turn, all of them as one message (text, joined; uuid, the first's). Every live steer the box has
+ * not taken in (no thread.steered) was one: their markers go, the first (by uuid, else the oldest)
+ * becomes a plain message at the tail with the joined text, and the rest fold into it.
+ * @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out
+ */
+function steersRun(s, p, at, out) {
+  const uuid = p.uuid ? String(p.uuid) : undefined;
+  const text = typeof p.text === "string" ? p.text : "";
+  const markers = /** @type {SteerItem[]} */ (s.items.filter(it => it.kind === "steer" && !it.taken && it.seq === undefined));
+  const users = /** @type {UserItem[]} */ (markers.map(m => m.user && s.byKey.get(m.user)).filter(u => u && u.kind === "user" && u.seq === undefined));
+  let first = uuid ? /** @type {UserItem|undefined} */ (s.byKey.get(/** @type {string} */ (s.meta.uuids.get(uuid) ?? ""))) : undefined;
+  if (!first && users.length) {
+    // Drawn here under the Deck's uuid and not yet tied to the box's: the oldest is the first.
+    first = users[0];
+    if (uuid) adopt(s, first, uuid, out);
+  }
+  for (const m of markers) {
+    const i = s.items.indexOf(m);
+    if (i >= 0) s.items.splice(i, 1);
+    s.byKey.delete(m.key);
+    if (m.uuid) s.byKey.delete(`steer:${m.uuid}`);
+    out.add(m.key);
+  }
+  for (const u of users) {
+    if (u === first) continue;
+    const i = s.items.indexOf(u);
+    if (i >= 0) s.items.splice(i, 1);
+    s.byKey.delete(u.key);
+    if (u.uuid && first) s.meta.uuids.set(u.uuid, first.key);
+    out.add(u.key);
+  }
+  if (!first) { liveUser(s, { text, uuid, at }, out); first = uuid ? /** @type {UserItem|undefined} */ (s.byKey.get(/** @type {string} */ (s.meta.uuids.get(uuid) ?? ""))) : undefined; }
+  if (!first) return;
+  if (text) first.text = text;
+  first.steered = false;
+  first.step = null;
+  first.opened = true;
+  if (at !== undefined) first.at = at;
+  if (first.seq === undefined) move(s, first);
+  if (uuid) s.meta.texts.delete(uuid);
+  out.add(first.key);
+  guess(s, "running");
+}
+
+/**
  * thread.sent: a message went in. via "turn" (a queued row handed over at a turn's end) and a
  * plain send are messages of their own; via "steer" (threads.send into a running turn) and "now"
- * (threads.send_now, a queued row into the running turn) are steers: the words and a "steering"
- * marker until thread.steered. A hand-over may carry only its row id and uuid: the words are the
- * row's. A steer drawn on send that the box took as a plain message (the turn ended first) loses
- * its marker.
+ * (threads.send-now, a queued row into the running turn) are steers: the words and a "steering"
+ * marker until thread.steered. A "now" with no turn running starts one (thread.turn came first
+ * with its uuid): a message of its own. A hand-over may carry only its row id and uuid: the words
+ * are the row's. A steer drawn on send that the box took as a plain message (the turn ended
+ * first) loses its marker.
  * @param {Session} s @param {any} p @param {number|undefined} at @param {Set<string>} out
  */
 function onSent(s, p, at, out) {
@@ -598,13 +774,13 @@ function onSent(s, p, at, out) {
   const key = uuid ? s.meta.uuids.get(uuid) : undefined;
   const user = key ? /** @type {UserItem|undefined} */ (s.byKey.get(key)) : undefined;
   if (user && user.seq === undefined) {
-    const steer = p.via === "steer" || p.via === "now";
+    const steer = p.via === "steer" || (p.via === "now" && !user.opened);
     const m = markerOf(s, user.key);
     if (steer) {
       user.steered = true;
       if (!m || m.pending) ensureMarker(s, user, { uuid, pending: true, turn: p.turn ?? null, ...(at !== undefined ? { at } : {}) }, out);
       out.add(user.key);
-    } else if (p.via !== undefined && m && m.pending) {
+    } else if (m && m.pending && !m.taken) {
       // Drawn as a steer, taken as a message of its own.
       const i = s.items.indexOf(m);
       if (i >= 0) s.items.splice(i, 1);
@@ -652,7 +828,10 @@ export function applyEvent(s, e) {
     case "thread.turn": {
       const m = /:(\d+)$/.exec(String(p.turn ?? ""));
       if (m) { s.turn = Number(m[1]); out.add("@session"); }
+      if (p.steered) { steersRun(s, p, at, out); break; }
       if (typeof p.text === "string") liveUser(s, { text: p.text, uuid: p.uuid || undefined, at }, out);
+      const u = p.uuid ? s.byKey.get(/** @type {string} */ (s.meta.uuids.get(String(p.uuid)) ?? "")) : undefined;
+      if (u && u.kind === "user") u.opened = true;
       break;
     }
     case "thread.queued": {
@@ -662,7 +841,8 @@ export function applyEvent(s, e) {
       // on send), or (an older switchboard) the row drawn on send with the same words.
       let i = q.queued != null ? s.queued.findIndex(x => x.queued === q.queued) : -1;
       if (i < 0 && q.uuid) i = s.queued.findIndex(x => x.uuid === q.uuid);
-      if (i < 0 && !q.uuid) i = s.queued.findIndex(x => x.local && sameText(x.text, q.text));
+      // The box mints its own uuid, so a row drawn on send is also this one by its words until the answer names it.
+      if (i < 0) i = s.queued.findIndex(x => x.local && x.queued == null && sameText(x.text, q.text));
       if (i >= 0) {
         const was = s.queued[i];
         s.queued[i] = { ...q, uuid: q.uuid ?? was.uuid, queued: q.queued ?? was.queued, at: was.local ? q.at : was.at ?? q.at };
@@ -683,10 +863,8 @@ export function applyEvent(s, e) {
     }
     case "thread.steered": onSteered(s, p, at, out); break;
     case "thread.rewound": onRewound(s, p, at, out); break;
-    case "thread.mode":
-      if (typeof p.mode === "string") s.mode = p.mode;
-      if (Array.isArray(p.modes)) s.modes = p.modes.map(String);
-      out.add("@session");
+    case "mode.changed":
+      if (typeof p.mode === "string") { s.mode = p.mode; out.add("@session"); }
       break;
     case "thread.model":
       if (p.model != null) { s.model = String(p.model); out.add("@session"); }
@@ -709,8 +887,9 @@ export function applyEvent(s, e) {
     case "thread.tool": onTool(s, p, at, out); break;
     case "ask.raised": case "ask.answered": case "ask.cancelled": onAsk(s, e.type, p, at, out); break;
     case "thread.usage":
+      // cost_usd is the turn's own, total_cost_usd the session's so far: never the one for the other.
       s.usage = { ...(s.usage || {}), ...(p.tokens ? { tokens: p.tokens } : {}), ...(p.cost_usd != null ? { cost_usd: p.cost_usd } : {}),
-        ...(p.context ? { context: p.context } : {}) };
+        ...(p.total_cost_usd != null ? { total_cost_usd: p.total_cost_usd } : {}), ...(p.context ? { context: p.context } : {}) };
       out.add("@session");
       break;
     case "thread.limit": {
@@ -724,7 +903,8 @@ export function applyEvent(s, e) {
       settle(s, out);
       s.stopped = String(p.reason || "stop");
       // Closed for idleness (ADR 0030 section 7): no process, but the next message resumes it.
-      guess(s, /^(crash|exited [^0])/.test(s.stopped) ? "failed" : s.stopped === "idle" ? "idle" : "stopped");
+      // A crash is stopped too (the reason says why); there is no "failed" state.
+      guess(s, s.stopped === "idle" ? "idle" : "stopped");
       out.add("@session");
       break;
     default: break;
@@ -844,7 +1024,8 @@ export function applyBlocks(s, blocks) {
 
   // First pass: which item each block is (or null for a new one), so a new block can be placed
   // before the next block that is already on screen.
-  const list = blocks.filter(b => b && typeof b === "object" && typeof b.seq === "number");
+  // A branch a rewind left is never drawn again, whatever the transcript still holds.
+  const list = blocks.filter(b => b && typeof b === "object" && typeof b.seq === "number" && !(s.meta.rewinds.length && abandoned(s, b)));
   const anyLive = s.items.some(it => it.seq === undefined);
   const plan = list.map((b, i) => {
     const ok = `${b.seq}:${b.kind}`;
@@ -918,9 +1099,11 @@ function userRead(s, item, b, out) {
  */
 function placeOf(s, plan, i, prev, hint = -1) {
   if (prev) {
-    if (hint >= 0 && s.items[hint]?.key === prev) return hint + 1;
-    const at = s.items.findIndex(it => it.key === prev);
-    if (at >= 0) return at + 1;
+    let at = hint >= 0 && s.items[hint]?.key === prev ? hint + 1 : s.items.findIndex(it => it.key === prev) + 1;
+    // A live notice from before this block (a rewind's, say) stays above it.
+    const ts = plan[i].b.ts;
+    while (at > 0 && at < s.items.length && ts && s.items[at].kind === "notice" && s.items[at].seq === undefined && (s.items[at].at ?? Infinity) <= ts) at++;
+    if (at > 0) return at;
   }
   for (let j = i + 1; j < plan.length; j++) {
     const it = plan[j].item;

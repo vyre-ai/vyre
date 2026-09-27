@@ -4,9 +4,10 @@
 //
 // - Enter sends. While a turn runs it steers: the words join the running turn at its next step
 //   (threads.send mode "steer", the box's default for a running turn; it answers {sent, steered,
-//   uuid, turn}), drawn at once with a "steering" marker that thread.steered confirms. Alt+Enter,
-//   or the "Queue for after this turn" toggle, queues them instead (mode "queue"; the answer is
-//   {queued: <row id>, uuid}): a row above the composer with Edit, Take back and Steer now. A
+//   uuid, turn}, the uuid the box's own), drawn at once with a "steering" marker that
+//   thread.steered confirms. Alt+Enter, or the "Queue for after this turn" toggle, queues them
+//   instead (mode "queue"; the answer is {sent: false, queued: true, queued_id: <row id>, uuid,
+//   busy}): a row above the composer with Edit, Take back and Steer now. A
 //   session busy in a terminal queues every message, steer or not. Shift+Enter is a new line; on
 //   a touch screen Enter is a new line and the send button sends (hold it to queue).
 // - The first character picks the mode and the composer names it: "/" commands (a picker with
@@ -28,7 +29,7 @@
 // {thread, text, surface, machine}, no chips, and the notes for an offline or slow Mac.
 //
 // A session busy in the user's terminal takes the message into the inbox queue instead: threads.send
-// answers {queued: <row id>, uuid} (an older box: {sent: false, queued: true, name, note}), and
+// answers {queued: true, queued_id: <row id>, uuid, name, note} (an older box: no queued_id), and
 // opts.onQueue hears how many wait and for whom (the Mac's lease line).
 
 import { h, put } from "../js/dom.js";
@@ -41,7 +42,7 @@ import {
 import { findCommand, rankCommands, applyCommand, normalizeCommands, sourceLabel } from "./core/commands.js";
 import { scorePath, compareScores } from "./core/match.js";
 import { CAPS, NEEDS_UPDATE, SEND_IMAGES } from "./core/caps.js";
-import { localSend, dropLocal, localShell } from "./core/session-state.js";
+import { localSend, dropLocal, localShell, confirmSend } from "./core/session-state.js";
 import { listMenu, keysLine } from "./pickers.js";
 
 const touch = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
@@ -187,7 +188,10 @@ export function mountComposer(opts) {
     patch(["@session"]);
     drawChips();
     const r = await CAPS.use("threads.mode", () => attempt("threads.mode", { thread, mode: next }));
-    if (r.error) { s.mode = was; patch(["@session"]); drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not change the mode: " + r.error.message); }
+    if (r.error) { s.mode = was; patch(["@session"]); drawChips(); say(r.missing ? NEEDS_UPDATE : "Could not change the mode: " + r.error.message); return; }
+    // Not running: the box takes no mode ({mode: null, note}), so the chip goes back and says why.
+    const d = /** @type {any} */ (r.data) || {};
+    if (d.mode === null) { s.mode = was; patch(["@session"]); drawChips(); say(String(d.note || "The mode applies to a running session.")); }
   }
 
   async function toggleThinking() {
@@ -394,10 +398,11 @@ export function mountComposer(opts) {
     if (machine) opts.onOffline?.(null);
     if (d.queued != null && d.queued !== false) {
       // Queued: asked for (mode "queue"), or a session busy in a terminal, which queues every
-      // message. The answer names the row ({queued: <id>, uuid}; an older box says queued: true
-      // and thread.queued names it). A steer drawn on send was not one: it becomes the row.
-      const id = d.queued === true ? null : d.queued;
+      // message. The answer names the row (queued_id, and the box's uuid; an older box only says
+      // queued: true and thread.queued names it). A steer drawn on send was not one: it becomes the row.
+      const id = d.queued_id ?? (d.queued === true ? null : d.queued);
       if (drawn && mode === "steer") patch(dropLocal(/** @type {any} */ (S), uuid));
+      if (drawn && mode === "queue") patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
       if (S && !machine && (id != null || drawn)) patch(localSend(S, { uuid: d.uuid || uuid, text, mode: "queue", at: Date.now(), queued: id }));
       if (id != null && !machine) return;
       busyName = d.name || busyName;
@@ -406,6 +411,8 @@ export function mountComposer(opts) {
       if (machine && d.note) say(`On ${machine} · ${d.note}`);
       return;
     }
+    // A steer: the box's uuid names the words drawn under ours (thread.steered will use it).
+    if (drawn && d.uuid) patch(confirmSend(/** @type {any} */ (S), uuid, d.uuid));
     if (d.sent === false) {
       back();
       say([h("span", null, d.note || "The session did not take the message."), " ", retry()]);
@@ -537,6 +544,11 @@ export function mountComposer(opts) {
       if (e.thread !== thread || !e.payload?.queued) return;
       waiting.delete("pending:" + e.payload.text);
       waiting.set(String(e.payload.queued), String(e.payload.text || ""));
+      drawQueued();
+    }),
+    on("thread.unqueued", e => {
+      if (e.thread !== thread || e.payload?.queued == null) return;
+      waiting.delete(String(e.payload.queued));
       drawQueued();
     }),
     // Handed over (or typed in directly): a queued one leaves the list, and the note goes with the last.

@@ -38,7 +38,8 @@ test("what counts as missing", () => {
   assert.equal(isMissing({ code: "not_found", message: "no such thread" }), false);
   assert.equal(isMissing({ code: "busy" }), false);
   assert.equal(isMissing(null), false);
-  assert.ok(SESSION_TOOLS.includes("threads.send_now"));
+  assert.ok(SESSION_TOOLS.includes("threads.send-now"));
+  assert.ok(!SESSION_TOOLS.includes("threads.send_now"));
 });
 
 test("the final contract: its tools are learnt, what it does not offer starts off and is never called", async () => {

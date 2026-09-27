@@ -18,7 +18,7 @@
 // off screen skip layout (content-visibility in chat.css).
 //
 // The header chip reads the session's provider, model and auth ("Claude · opus · subscription",
-// unknown parts left out) and its state word (starting, idle, running, waiting, stopped, failed);
+// unknown parts left out) and its state word (starting, idle, running, waiting, stopped);
 // a session closed for idleness says "Resumes on your next message". While a turn runs the
 // composer has Stop (Esc): threads.interrupt, or on a Switchboard without it threads.stop.
 //
@@ -26,9 +26,10 @@
 // typing while a turn runs steers it, and a quiet "Steered at step N" row marks where the words
 // joined (live, and again on a re-read: core/transcripts marks such a line). Messages queued for
 // after the turn sit above the composer: "Queued for after <text>" with Edit, Take back and Steer
-// now (threads.edit, threads.unqueue, threads.send_now, each naming the row's `queued` id). Esc
-// Esc opens the rewind sheet: your messages from the session state; choosing one forks the
-// session there (threads.rewind) and the fork opens with the words back in its composer. The
+// now (threads.edit, threads.unqueue, threads.send-now, each naming the row's `queued` id). Esc
+// Esc opens the rewind sheet: your messages from the session state; choosing one rewinds this
+// same thread to just before it (threads.rewind): that message and everything after it leave the
+// view, and its words come back to the composer to edit and send again. The
 // pinned todo list and the background tasks tray sit above the composer, and Ctrl+O hides or
 // shows the thinking. A box without the sessions update is learnt from its first "no such tool"
 // (core/caps.js): that control turns off and says "Needs the sessions update".
@@ -51,7 +52,7 @@
 //
 // Nothing here uses innerHTML: text is untrusted, so it goes through lib/markdown.js or text nodes.
 
-import { h, put, empty, go } from "../js/dom.js";
+import { h, put, empty } from "../js/dom.js";
 import { attempt, on } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { clock } from "../js/fmt.js";
@@ -66,10 +67,9 @@ import { OURS, labelFor, isAssistant, readNames } from "./lib/names.js";
 import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, thinkingRow, toolCard, turnRow, rawView, outputEl } from "./blocks.js";
 import { textItemRow } from "./live-text.js";
-import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints } from "./core/session-state.js";
+import { createSession, applyEvent as applyStateEvent, applyBlocks, checkpoints, noteRewind } from "./core/session-state.js";
 import { CAPS, NEEDS_UPDATE } from "./core/caps.js";
 import { rewindSheet } from "./pickers.js";
-import { threadHref } from "./lib/routes.js";
 import { todoPin, tasksTray } from "./tray.js";
 import { groupItems } from "./core/grouping.js";
 import { isAtBottom } from "./core/window.js";
@@ -93,13 +93,13 @@ const readHideThinking = () => { try { return localStorage.getItem(THINK_KEY) ==
  * shared stream listen (thread.* only hears the names it knows).
  */
 const MORE_EVENTS = ["thread.state", "thread.turn", "thread.queued", "thread.unqueued", "thread.steered", "thread.rewound",
-  "thread.mode", "thread.model", "thread.thinking", "thread.task", "thread.usage", "thread.limit"];
+  "thread.model", "thread.thinking", "thread.task", "thread.usage", "thread.limit"];
 const editable = t => !!t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.tagName === "SELECT" || t.isContentEditable);
 const PROVIDERS = /** @type {Record<string, string>} */ ({ claude: "Claude", codex: "Codex", acp: "ACP" });
 const BUSY = new Set(["starting", "running", "waiting"]);
+/** The Switchboard's raw status, for a record read before any thread.state. */
+const STATUS = /** @type {Record<string, string>} */ ({ working: "running", running: "running", stopped: "stopped", idle: "idle", starting: "starting", waiting: "waiting" });
 /** Where an answer came from, as the card says it. */
-/** Words a rewind took back, by the fork thread they open in (read once, when that thread mounts). */
-const PREFILL = new Map();
 const SURFACES = /** @type {Record<string, string>} */ ({ capsule: "the Capsule", cli: "the terminal", local: "the terminal", phone: "your phone",
   mobile: "your phone", pwa: "your phone", needs: "Needs", deck: "the Deck", chat: "the Deck", glass: "Glass" });
 
@@ -198,9 +198,6 @@ export function mountSession(container, opts) {
   const capsOff = CAPS.on(() => { drawQueued(); tray.draw(); rewind?.refresh(); });
 
   put(container, head, h("div", { class: "thread-wrap" }, timeline, jump), leaseBar, pin.el, tray.el, queuedBox, rewindBox, composer.el);
-  // Opened as the fork of a rewind: the words taken back are in the composer to edit.
-  const prefill = PREFILL.get(thread);
-  if (prefill) { PREFILL.delete(thread); composer.setText(prefill.text, prefill.note); }
   timeline.replaceChildren(h("div", { class: "empty" }, "Loading…"));
 
   let names = /** @type {{ assistant: string|null, owner: string|null }} */ ({ assistant: null, owner: null });
@@ -233,7 +230,7 @@ export function mountSession(container, opts) {
     if (!r.error) {
       record.current = /** @type {any} */ (r).data.thread;
       const rec = record.current || {};
-      const st = rec.state || ({ running: "running", stopped: "stopped", idle: "idle", failed: "failed", starting: "starting", waiting: "waiting" })[rec.status];
+      const st = rec.state || STATUS[rec.status];
       if (st) S.state = st;
       for (const k of /** @type {const} */ (["provider", "model", "auth", "purpose"])) if (rec[k]) S[k] = String(rec[k]);
       if (typeof rec.mode === "string") S.mode = rec.mode;
@@ -247,6 +244,8 @@ export function mountSession(container, opts) {
     if (t.error && r.error) return legacyBoot(r);
     recorded.on = !!r.error;
     if (t.data?.session) recorded.session = t.data.session;
+    // Rewinds first: the transcript still holds the branch each one left, which is never drawn.
+    if (!r.error) for (const e of /** @type {any} */ (r).data.events || []) if (e.type === "thread.rewound" && e.payload?.uuid) noteRewind(S, { uuid: String(e.payload.uuid), at: Number(e.at) || Date.now() });
     const got = t.data ? t.data.blocks : [];
     applyBlocks(S, got);
     if (!r.error && !got.length) {
@@ -362,7 +361,7 @@ export function mountSession(container, opts) {
    * "Queued for after <text>" rows above the composer, from the session's queue: Edit takes the
    * words back into the box (Enter saves them, threads.edit), Take back withdraws the message
    * (threads.unqueue; the words come back to the box), Steer now hands it to the running turn at
-   * its next step (threads.send_now). Each names the row by its `queued` id, so a row drawn on
+   * its next step (threads.send-now). Each names the row by its `queued` id, so a row drawn on
    * send has its buttons off until the box has answered with one. A button whose tool the box
    * lacks is off and says so.
    */
@@ -378,14 +377,20 @@ export function mountSession(container, opts) {
       h("span", { class: "cv-queued-text ellipsis" }, q.text),
       btn("Edit", "cv-q-edit", "threads.edit", q, () => composer.editQueued(q)),
       btn("Take back", "cv-q-take", "threads.unqueue", q, () => queueAct("threads.unqueue", q)),
-      btn("Steer now", "cv-q-now", "threads.send_now", q, () => queueAct("threads.send_now", q)),
+      btn("Steer now", "cv-q-now", "threads.send-now", q, () => queueAct("threads.send-now", q)),
     )));
   }
-  /** @param {"threads.unqueue"|"threads.send_now"} tool @param {any} q */
+  /** @param {"threads.unqueue"|"threads.send-now"} tool @param {any} q */
   async function queueAct(tool, q) {
     if (q.queued == null) return;
     const r = await CAPS.use(tool, () => attempt(tool, { thread, queued: q.queued }));
-    if (r.error) { if (!r.missing) { stop.error = (tool === "threads.send_now" ? "Could not steer: " : "Could not take it back: ") + (r.error.message || r.error.code); drawHead(); } drawQueued(); return; }
+    if (r.error) { if (!r.missing) { stop.error = (tool === "threads.send-now" ? "Could not steer: " : "Could not take it back: ") + (r.error.message || r.error.code); drawHead(); } drawQueued(); return; }
+    // Already handed over (or never queued here): the box says so and the row is not taken.
+    const d = /** @type {any} */ (r.data) || {};
+    if (d.sent === false || (tool === "threads.unqueue" && Array.isArray(d.unqueued) && !d.unqueued.length)) {
+      if (d.note) { stop.error = String(d.note); drawHead(); }
+      return;
+    }
     // Done: the row goes now (thread.unqueued says the same a moment later); taken back, the words return to the box.
     S.queued = S.queued.filter(x => x !== q);
     drawQueued();
@@ -394,8 +399,8 @@ export function mountSession(container, opts) {
 
   // ---- rewind (Esc Esc) --------------------------------------------------------------------
 
-  /** A rewind this screen asked for: its message, and whether the fork has opened. */
-  let rewinding = /** @type {{ uuid: string, text: string, at: number|null, went: boolean }|null} */ (null);
+  /** A rewind this screen asked for: its message, while the box works on it. */
+  let rewinding = /** @type {{ uuid: string, text: string, at: number|null }|null} */ (null);
 
   function openRewind() {
     if (rewind || !switchboard()) return;
@@ -404,27 +409,26 @@ export function mountSession(container, opts) {
       can: () => CAPS.has("threads.rewind"),
       onClose: closeRewind,
       onChoose: async p => {
-        rewinding = { uuid: p.uuid, text: p.text, at: p.at, went: false };
+        rewinding = { uuid: p.uuid, text: p.text, at: p.at };
         const res = await CAPS.use("threads.rewind", () => attempt("threads.rewind", { thread, uuid: p.uuid }));
-        if (res.error) { rewinding = null; return res.missing ? NEEDS_UPDATE : "Could not rewind: " + (res.error.message || res.error.code); }
-        const fork = /** @type {any} */ (res.data)?.fork;
-        if (fork) { toFork(String(fork)); return null; }
-        // The answer did not name it: thread.rewound {uuid, fork} will.
-        return rewinding && rewinding.went ? null : "Opening the new session…";
+        const was = rewinding;
+        rewinding = null;
+        if (res.error) return res.missing ? NEEDS_UPDATE : "Could not rewind: " + (res.error.message || res.error.code);
+        const d = /** @type {any} */ (res.data) || {};
+        // The first message has nothing before it: the box says so (start a new session with it).
+        if (d.rewound === false) return String(d.note || "This message cannot be rewound to.");
+        // Same thread, back to just before it: thread.rewound takes the rows away (here too, in
+        // case the event is late), and the words come back to the box to edit and send again.
+        patch(applyStateEvent(S, { type: "thread.rewound", at: Date.now(), payload: { uuid: d.uuid || was?.uuid || p.uuid, text: typeof d.text === "string" ? d.text : p.text, local: true } }));
+        composer.setText(typeof d.text === "string" ? d.text : p.text, "Prefilled from " + (p.at ? clock(p.at) : "the rewind"));
+        if (rewind) closeRewind();
+        return null;
       },
     });
     rewindBox.hidden = false;
     put(rewindBox, rewind.el);
     rewind.el.setAttribute("tabindex", "-1");
     rewind.el.focus?.();
-  }
-  /** The fork a rewind of this screen's made: it opens, with the words back in its composer. @param {string} fork */
-  function toFork(fork) {
-    if (!rewinding || rewinding.went) return;
-    rewinding.went = true;
-    PREFILL.set(fork, { text: rewinding.text, note: "Prefilled from " + (rewinding.at ? clock(rewinding.at) : "the rewind") });
-    if (rewind) closeRewind();
-    go(threadHref({ id: fork, project: record.current?.project || null }, opts.project));
   }
   function closeRewind() {
     rewind = null;
@@ -821,12 +825,8 @@ export function mountSession(container, opts) {
       if (k === "@queued") { drawQueued(); continue; }
       if (k === "@todos") { pin.set(S.todos); continue; }
       if (k === "@tasks") { tray.set(S.tasks); continue; }
-      if (k === "@rewound") {
-        // This screen's rewind: its fork opens. Another screen's: the notice row says so.
-        const rw = S.rewound;
-        if (rw && rw.fork && rewinding && rw.uuid === rewinding.uuid) toFork(rw.fork);
-        continue;
-      }
+      // A rewind: its rows are gone (the keys say so); the words go back to the box from the answer.
+      if (k === "@rewound") continue;
       const it = S.byKey.get(k);
       if (!it) { const gone = els.get(k); if (gone) { gone.stop?.(); els.delete(k); } order = true; continue; }
       if (it.kind === "turn" && it.canceled && stop.at && Date.now() - stop.at < STOP_MS && !byMe.has(k)) { byMe.add(k); stop.at = 0; }
@@ -914,7 +914,7 @@ export function mountSession(container, opts) {
       const last = [...S.items].reverse().find(it => it.kind === "user" || it.kind === "turn");
       if (last && last.kind === "user") patch(applyStateEvent(S, { type: "thread.finished", at: e.at, payload: { ok: false, canceled: true, reason: "interrupt" } }));
     }
-    if (/^thread\./.test(e.type)) {
+    if (/^thread\./.test(e.type) || e.type === "mode.changed") {
       patch(applyStateEvent(S, e));
       if (e.type === "thread.finished" && !replaying) refresh();
       return;
@@ -1238,6 +1238,8 @@ export function mountSession(container, opts) {
   }
   const offs = [
     on("thread.*", onLive),
+    // Not a thread.* name: heard on its own.
+    on("mode.changed", onLive),
     on("ask.raised", onLive),
     on("ask.answered", onLive),
     on("ask.cancelled", onLive),

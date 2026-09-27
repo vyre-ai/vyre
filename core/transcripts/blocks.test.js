@@ -265,3 +265,31 @@ test("blocks: the live stream's keys (message, block) equal the transcript's for
   // Without the count, two texts of one message would share a key and the second overwrite the first.
   assert.equal(new Set(keys(done)).size, done.length);
 });
+
+test("blocks: a rewind's abandoned branch (two person's lines under one parent) is skipped, before and after paging", t => {
+  const P = (/** @type {string|null} */ parent, /** @type {string} */ uuid, /** @type {any} */ line) => ({ parentUuid: parent, ...line, uuid });
+  const f = write(t, [
+    P(null, "a1", U("Read the Harlow Legal intake folder", "2026-09-03T10:00:00Z")),
+    P("a1", "a2", A("m1", { type: "text", text: "It has three forms." }, "2026-09-03T10:00:01Z")),
+    // The message rewound to, and what followed it: a branch the session no longer follows.
+    P("a2", "b1", U("Rebuild the Estate intake", "2026-09-03T10:01:00Z")),
+    P("b1", "b2", A("m2", { type: "tool_use", id: "t1", name: "Edit", input: { file_path: "src/intake/estate.ts" } }, "2026-09-03T10:01:01Z")),
+    P("b2", "b3", R("t1", "ok", "2026-09-03T10:01:02Z")),
+    P("b3", "b4", A("m3", { type: "text", text: "Rebuilt." }, "2026-09-03T10:01:03Z")),
+    // After the rewind: the next message is a second child of a2.
+    P("a2", "c1", U("Rebuild it as Estate intake v2", "2026-09-03T10:02:00Z")),
+    P("c1", "c2", A("m4", { type: "text", text: "On it." }, "2026-09-03T10:02:01Z")),
+  ]);
+  const bs = /** @type {any[]} */ (blocks(f, { from: 0 }).blocks);
+  assert.deepEqual(bs.map(b => `${b.seq}:${b.kind}`), ["0:user", "1:text", "6:turn", "6:user", "7:text", "7:turn"]);
+  assert.ok(!bs.some(b => b.kind === "tool" || /Rebuil(d the|t\.)/.test(b.text || "")), "nothing of the old branch");
+  assert.deepEqual(blocks(f, {}).blocks.map(b => `${b.seq}:${b.kind}`), ["0:user", "1:text", "6:turn", "6:user", "7:text", "7:turn"], "the tail read too");
+  // A tool's results under one parent are not a branch: only two person's lines are.
+  const g = write(t, [
+    P(null, "x1", U("Run the Northwind Bakery tests", "2026-09-03T11:00:00Z")),
+    P("x1", "x2", A("n1", { type: "tool_use", id: "t2", name: "Bash", input: { command: "npm test" } }, "2026-09-03T11:00:01Z")),
+    P("x2", "x3", R("t2", "ok", "2026-09-03T11:00:02Z")),
+    P("x2", "x4", A("n2", { type: "text", text: "Passing." }, "2026-09-03T11:00:03Z")),
+  ]);
+  assert.deepEqual(blocks(g, { from: 0 }).blocks.map(b => `${b.seq}:${b.kind}`), ["0:user", "1:tool", "3:text", "3:turn"]);
+});

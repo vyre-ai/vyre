@@ -68,10 +68,11 @@ export const keysLine = (...pairs) => pairs.map(([k, what], i) => [i ? " · " : 
 
 /**
  * The rewind sheet: "Rewind to an earlier message", your messages newest first, each with its
- * time. Choosing one forks the session at it (threads.rewind): the fork opens with the words back
- * in the composer, and this session stays as it was. Arrows move, Enter rewinds, Esc closes. A
- * box without threads.rewind shows the list with the button off. (The box restores the
- * conversation only; what to restore, code or both, is one more argument to onChoose when it can.)
+ * time. Choosing one rewinds this same session to just before it (threads.rewind; a running turn
+ * is stopped): that message and everything after it go, and its words come back in the composer.
+ * The first message cannot be rewound to: the box's note says so here. Arrows move, Enter
+ * rewinds, Esc closes. A box without threads.rewind shows the list with the button off. (The box
+ * restores the conversation only, not files.)
  * @param {{ points: RewindPoint[], can: () => boolean|null, onChoose: (p: RewindPoint) => Promise<string|null>|void, onClose: () => void }} o
  *   onChoose resolves to an error message to show, or null.
  * @returns {{ el: HTMLElement, key: (e: KeyboardEvent) => boolean, refresh: () => void }}
@@ -101,7 +102,7 @@ export function rewindSheet(o) {
       h("span", { class: "cv-rewind-meta" }, p.at ? clock(p.at) : ""))) :
       h("div", { class: "cv-menu-empty" }, "No earlier messages to go back to"));
     put(acts,
-      h("button", { class: "btn btn-ghost btn-sm cv-rw-go", type: "button", disabled: off || busy || !o.points.length, title: off ? NEEDS_UPDATE : "Opens a new session from before this message",
+      h("button", { class: "btn btn-ghost btn-sm cv-rw-go", type: "button", disabled: off || busy || !o.points.length, title: off ? NEEDS_UPDATE : "Goes back to just before this message; its words come back to edit",
         onclick: () => choose() }, "Rewind here", h("span", { class: "kbd" }, "⏎")),
       h("button", { class: "btn btn-ghost btn-sm cv-rw-cancel", type: "button", onclick: o.onClose }, "Cancel", h("span", { class: "kbd" }, "Esc")));
     if (off) put(note, NEEDS_UPDATE);

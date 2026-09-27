@@ -1,8 +1,8 @@
 // @ts-check
 // Which of the sessions tools this box has: the one place that knows (shared core, no DOM).
 //
-// The sessions contract (final, 27 Sep): threads.interrupt, .unqueue, .edit, .send_now, .rewind
-// and .mode are live; an older box may still lack them. The Deck gets no list of tools, so each
+// The sessions contract (core/switchboard on work/sessions): threads.interrupt, .unqueue, .edit,
+// .send-now (a dash), .rewind and .mode are live; an older box may still lack them. The Deck gets no list of tools, so each
 // is learnt lazily: the first call that comes back "no such tool" marks it missing, and every
 // control that needs it is disabled from then on with NEEDS_UPDATE as its title. A tool that
 // answered once is known to be there. Listeners hear each change, so a control drawn before the
@@ -17,7 +17,7 @@ export const NEEDS_UPDATE = "Needs the sessions update";
 
 /** The contract's tools chat calls that older boxes lack. */
 export const SESSION_TOOLS = Object.freeze([
-  "threads.interrupt", "threads.unqueue", "threads.edit", "threads.send_now", "threads.rewind", "threads.mode",
+  "threads.interrupt", "threads.unqueue", "threads.edit", "threads.send-now", "threads.rewind", "threads.mode",
 ]);
 
 /** Images sent with threads.send: a feature, not a tool, so it has a name of its own here. */
