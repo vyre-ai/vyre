@@ -1,6 +1,6 @@
 // @ts-check
-// The onboarding (spec section 1): six steps, one a screen, each skippable. The box workstream
-// owns the onboard.* tools; this file owns the screens. History uses Recall and Projects, which
+// The onboarding (spec section 1): six steps, one a screen, each skippable. The onboard
+// workstream owns the onboard.* tools; this file owns the screens. History uses Recall and Projects, which
 // are already on main. Board: docs/design/boards/Onboard.dc.html.
 
 import { h, put, empty } from "../js/dom.js";
@@ -11,13 +11,26 @@ import { pairRequests } from "../js/pair.js";
 import qrcode from "../vendor/qrcode.js";
 import { LOCK, lockState, lockSteps } from "../js/lock.js";
 
+// Reconciled with docs/design/onboarding-v2.md's 10-step table (the lead, 29 Sep): this array's
+// order now matches it exactly, with two client screens standing in for the doc's single step 2
+// ("Pair this device with the server" is tailscale then name here) and the doc's step 10
+// ("A tour of the Capsule") as its own final, non-skippable screen split out of the old
+// "devices" step, which keeps Mac- and phone-pairing but is a normal, skippable middle step now.
+// Steps beyond the original six are client-side stubs for now: stepState() defaults an unknown
+// id to "todo" and mark_() only tries the server for a real onboard.<id> tool, so a step with no
+// server-side counterpart yet still marks, skips and counts correctly.
 const STEPS = [
-  { id: "you", title: "You" },
-  { id: "claude", title: "Claude Code" },
-  { id: "tailscale", title: "Tailscale" },
-  { id: "name", title: "Your address" },
-  { id: "history", title: "Your history" },
-  { id: "devices", title: "Your devices" },
+  { id: "you", title: "You" },                    // 1
+  { id: "tailscale", title: "Tailscale" },         // 2a
+  { id: "name", title: "Your address" },           // 2b
+  { id: "claude", title: "Claude Code" },          // 3
+  { id: "history", title: "Your history" },        // 4
+  { id: "secrets", title: "Your secrets" },        // 5
+  { id: "accounts", title: "Connect accounts" },   // 6
+  { id: "computers", title: "Agent computers" },   // 7
+  { id: "drive", title: "Vyre Drive" },            // 8
+  { id: "devices", title: "Your devices" },        // 9
+  { id: "capsule", title: "The Capsule" },         // 10
 ];
 
 // The session vyred gave for `vyre up`'s one-time link: the server redeems ?t= itself and
@@ -147,8 +160,8 @@ function render() {
   if (state.statusError?.missing && i !== 4) {
     col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
       h("div", { class: "lbl beacon" }, "Setup is not running"),
-      "The box module is not running on this machine, so this step cannot finish here yet. Run ", h("code", null, "vyre up"),
-      " on the box, then reload this page. Until then, skip ahead to the steps that work."));
+      "The server module is not running on this machine, so this step cannot finish here yet. Run ", h("code", null, "vyre up"),
+      " on the server, then reload this page. Until then, skip ahead to the steps that work."));
   }
   // A new browser, or the link already used here: the loopback door refuses every onboard.* call
   // without the session `vyre up`'s link carries (core/onboard/loopback.js answers 403 "denied").
@@ -156,7 +169,7 @@ function render() {
     col.append(h("div", { class: "need", style: { marginBottom: "24px" } },
       h("div", { class: "lbl beacon" }, "Open your setup link"),
       "This page needs the one-time link ", h("code", null, "vyre up"), " printed, opened in this browser. Run ", h("code", null, "vyre up"),
-      " on the box for a fresh link, then open it here."));
+      " on the server for a fresh link, then open it here."));
   }
   SCREENS[step.id](col, screen);
 }
@@ -284,7 +297,7 @@ const SCREENS = {
       const n = ++seq;
       const r = await attempt("onboard.name", { name: v, action: "check" });
       if (n !== seq) return;
-      if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the box module runs.")); }
+      if (r.error?.missing) { ok = true; put(status, h("span", { class: "faint" }, "Availability is checked when the server module runs.")); }
       else if (r.error) put(status, String(r.error.message));
       // No vyre.run token (the usual box): the address is this machine's ts.net name, set up in step 4.
       else if (r.data.via === "ts.net" && r.data.available) { ok = true; put(status, h("span", { class: "faint" }, r.data.address ? `Your address will be ${r.data.address.replace(/^https:\/\//, "")}.` : "Your address will be on your tailnet, set up in step 4.")); }
@@ -404,6 +417,29 @@ const SCREENS = {
     const panel = h("div", { class: "ob-panel" }, h("div", { class: "found" }, h("span", { class: "faint" }, "Looking for Tailscale")));
     col.append(panel);
     s.foot(null);
+
+    // The merged policy snippet (tailnet, ecd89c0c): one JSON object for Taildrive, Taildrop,
+    // egress (when on) and the SSH rule, replacing the four separate placeholders in ADR 0014.
+    // Fetched once, only after signing in; a person who onboarded before this shipped finds the
+    // same panel later in Settings > Network (not yet built).
+    let policyDrawn = false;
+    const drawPolicy = async () => {
+      if (policyDrawn) return;
+      policyDrawn = true;
+      const box = h("div", null, h("span", { class: "faint" }, "Reading your tailnet policy…"));
+      panel.append(h("details", { class: "ob-collapse" }, h("summary", null, "Advanced: your tailnet policy"), box));
+      const r = await attempt("onboard.tailscale", { action: "policy" });
+      if (r.error || !r.data.ready) { put(box, h("p", { class: "small muted" }, r.data?.why || "Not ready yet. Reload this page to try again.")); return; }
+      const text = JSON.stringify(r.data.policy, null, 2);
+      const copyBtn = h("button", { type: "button", class: "btn btn-line btn-sm", onclick: async () => {
+        try { await navigator.clipboard.writeText(text); put(copyBtn, "Copied"); later(() => put(copyBtn, "Copy"), 1500); } catch {}
+      } }, "Copy");
+      put(box,
+        h("p", { class: "small muted" }, "Paste this into your tailnet's access policy (the admin console's Access Controls tab) to turn on Taildrive, Taildrop, egress and SSH between your devices."),
+        h("pre", { class: "code", style: { whiteSpace: "pre-wrap", overflowWrap: "anywhere", margin: "8px 0" } }, text),
+        copyBtn,
+        r.data.notes?.length ? h("ul", { class: "small muted", style: { marginTop: "8px" } }, r.data.notes.map(n => h("li", null, n))) : null);
+    };
     const show = (/** @type {any} */ t) => {
       if (!t.installed) {
         put(panel,
@@ -431,7 +467,7 @@ const SCREENS = {
         t.loginUrl && !signed ? h("p", { class: "notice" }, "The sign-in page did not open? ",
           h("a", { class: "link", href: t.loginUrl, target: "_blank", rel: "noopener" }, "Open it here")) : null,
         null);
-      if (signed) s.foot({ label: "Continue", run: s.next });
+      if (signed) { s.foot({ label: "Continue", run: s.next }); drawPolicy(); }
       else if (opened) s.foot({ label: "Waiting for Tailscale", disabled: true, run: () => {} });
       else s.foot({ label: "Connect", run: connect });
     };
@@ -573,107 +609,246 @@ const SCREENS = {
       if (!done(r.data) && rows.some((/** @type {any} */ x) => x.state === "doing")) watch();
     })();
     col.append(h("details", { class: "ob-collapse" }, h("summary", null, "Your own domain"),
-      h("p", { class: "small muted" }, "Point a domain you already own at this box instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the box's own configuration, then come back and reserve again.")));
+      h("p", { class: "small muted" }, "Point a domain you already own at this server instead of a ts.net address: a Cloudflare API token scoped to one zone, and a hostname in it. Set this in the server's own configuration, then come back and reserve again.")));
   },
 
+  // Import your sessions: discover, choose, watch Vyre IQ learn (docs/design/import.md,
+  // memory-iq; docs/design/onboarding-v2.md step 4). Three phases in one step: discover (scan,
+  // nothing leaves the device), choose (a plan, "keep in sync" unticked, a Fast/Gentle reading
+  // pace with neither preselected), watch (live progress in three plain-language stages, and a
+  // question box as soon as the first sessions are searchable). Every call degrades gracefully
+  // (empty()'s missing-module message) if memory-iq's import.* tools are not running yet.
+  // Shapes are core/import/index.js's real ones (memory-iq, work/memory-iq 959e8e2f), not a
+  // guess: import.scan groups by source, each source's folders carry their own suggested/why;
+  // import.plan's `folders` is the array of folder paths, not a count; import.status has no
+  // "upload" stage and graph is a live count, not a done/total (docs/design/import.md).
   history(col, s) {
     col.append(
       h("h1", { class: "h1" }, "Your history."),
-      h("p", { class: "lead" }, "Vyre reads the Claude Code sessions already on this machine, so you can search every one and group them into projects. It keeps reading in the background, so carry on whenever you like."));
-    const meter = h("div", { class: "meter", "aria-live": "polite" });
-    const made = h("div", { class: "rows" });
-    const picker = h("div");
-    col.append(h("div", { class: "ob-panel" }, meter, h("div", { class: "lbl", style: { marginTop: "8px" } }, "Make your first projects"),
-      h("p", { class: "small muted", style: { marginTop: "-12px" } }, "A project is a client or a piece of work: pick the sessions that belong to it. A session can be in several."),
-      made, picker));
-    s.foot({ label: "Continue", run: s.next });
+      h("p", { class: "lead" }, "Vyre finds the Claude Code sessions already on this machine, so you can search and ask about your own work as soon as it reads them."));
+    const body = h("div", { class: "ob-panel" });
+    col.append(body);
     attempt("onboard.history", { action: "start" });
 
-    const drawMeter = async () => {
-      const r = await attempt("recall.status");
-      if (r.error) { put(meter, empty("Your history cannot be read yet. Continue, and it shows up in the Deck once Vyre can read it.", r.error)); return; }
-      const st = r.data;
-      const v = st.vectors || {};
-      const reading = !!st.indexing;
-      const pct = v.on && st.turns ? Math.round(100 * (v.embedded || 0) / st.turns) : 100;
-      const none = !reading && !st.sessions;
-      // A box starts with no sessions of its own: the Mac's arrive once it is paired, in step 6.
-      const box = state.status?.role === "box";
-      put(meter,
-        h("div", { class: "row" },
-          h("span", { class: "big" }, `${(st.sessions || 0).toLocaleString()} sessions`),
-          h("span", { class: "code" }, `${(st.turns || 0).toLocaleString()} turns`)),
-        none ? null : h("div", { class: "bar live" + (reading ? " moving" : ""), role: "progressbar", "aria-label": "Reading your history",
-          "aria-valuemin": "0", "aria-valuemax": "100", "aria-valuenow": reading ? false : String(pct) },
-          h("span", { style: { width: (reading ? 30 : pct) + "%" } })),
-        none
-          ? h("p", { class: "small muted" }, box
-            ? ["This box has no sessions of its own. Your Mac's sessions show up here once you pair it, right after setup. ",
-              h("a", { class: "link", href: "#devices", onclick: (/** @type {MouseEvent} */ e) => { e.preventDefault(); toMac = true; goto(5); } }, "Pair your Mac")]
-            : "No Claude Code sessions found on this machine yet. Start one with claude and it shows up here.")
-          : h("div", { class: "row" },
-            h("span", { class: "small muted" }, reading ? "Reading sessions" : "Every session is searchable by what was said."),
-            h("span", { class: "code" }, v.on && st.sessions ? `${pct}% ranked by meaning` : reading ? "" : "full-text search")));
-      return st;
-    };
-    drawMeter();
-    // The loopback stream (before an owner exists) carries only onboard.* events, not the
-    // switchboard/Recall ones like session.indexed; core reports reading progress as
-    // onboard.stepped, and every() below covers the rest with a poll.
-    let t = 0;
-    const soon = () => { clearTimeout(t); t = window.setTimeout(drawMeter, 400); };
-    cleanup.push(on("onboard.stepped", soon));
-    cleanup.push(on("onboard.finished", soon));
-    every(drawMeter, 5000);
+    /** @typedef {{ cwd: string|null, sessions: number, bytes: number, from: number, to: number, project?: string, name?: string, suggested: boolean, why?: string }} Folder */
+    /** @typedef {{ id: string, path: string, kind: string, sessions: number, bytes: number, from?: number, to?: number, folders: Folder[] }} Source */
+    /** Folder cwds ticked for the plan (or the source path itself, for a folder with no cwd). Suggested folders start ticked, dev/Vyre/temp folders start unticked. */
+    const picked = new Set();
+    let pace = /** @type {"fast"|"gentle"|null} */ (null);
+    let sync = false;
+    const fmtBytes = n => n < 1e6 ? Math.round(n / 1e3) + " KB" : (n / 1e6).toFixed(1) + " MB";
+    const key = (/** @type {Source} */ src, /** @type {Folder} */ f) => f.cwd || src.path;
 
-    /** Project names by slug, so the picker says "in Harlow Legal", not "in harlow-legal". */
-    const names = new Map();
-    const drawMade = async () => {
-      const r = await attempt("projects.list");
-      const list = r.data?.projects || [];
-      for (const p of list) names.set(p.slug, p.name);
-      put(made, list.map(p => h("div", { class: "made", style: { padding: "10px 0" } }, icon("projects"),
-        h("span", null, h("b", null, p.name), ` · ${plural(p.threads, "thread")}`))));
+    let claudeKeepsDays = 30;
+
+    const drawDiscover = async () => {
+      const r = await attempt("import.scan");
+      if (r.error) {
+        put(body, empty("Your history cannot be read yet. Continue, and it shows up here once Vyre can read it.", r.error));
+        s.foot({ label: "Continue", run: s.next });
+        return;
+      }
+      /** @type {Source[]} */
+      const sources = r.data.sources || [];
+      if (Number.isInteger(r.data.claude_keeps_days)) claudeKeepsDays = r.data.claude_keeps_days;
+      const leftOut = r.data.left_out || {};
+      const leftCount = (leftOut.vyre || 0) + (leftOut.excluded || 0);
+      for (const src of sources) for (const f of src.folders) if (f.suggested) picked.add(key(src, f));
+      const syncFoot = () => s.foot({ label: "Continue", disabled: !picked.size, run: () => drawChoose(sources) });
+      put(body,
+        h("p", { class: "lbl" }, "What Vyre found"),
+        sources.length === 0 || sources.every(src => !src.folders.length)
+          ? empty("No Claude Code sessions found on this machine yet. Start one with claude and come back.")
+          : sources.filter(src => src.folders.length).map(src => h("div", { style: { marginBottom: "16px" } },
+            h("p", { class: "small muted", style: { padding: "8px 0 0" } }, src.path),
+            h("div", { class: "rows" }, src.folders.map(f => {
+              const k = key(src, f);
+              const box = h("input", { type: "checkbox", checked: picked.has(k), onchange: (/** @type {any} */ e) => {
+                e.target.checked ? picked.add(k) : picked.delete(k); syncFoot(); } });
+              return h("label", { class: "pick" }, box,
+                h("span", { class: "x" },
+                  h("span", { class: "ellipsis" }, f.name || f.cwd || "unknown folder"),
+                  h("span", { class: "code ellipsis" }, `${plural(f.sessions, "session")} · ${fmtBytes(f.bytes)} · ${when(f.from)}–${when(f.to)}`
+                    + (f.why ? ` · ${f.why}` : "")))); })))),
+        leftCount ? h("p", { class: "small muted", style: { marginTop: "4px" } },
+          `${plural(leftCount, "session")} from Vyre's own development and excluded folders never left the device and aren't listed.`) : null);
+      syncFoot();
     };
 
-    // The picker: name, search, sessions with checkboxes, Make project.
-    const chosen = new Set();
-    const nameIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Project name, e.g. Harlow Legal", "aria-label": "Project name", oninput: () => syncMake() }));
-    const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", type: "search", placeholder: "Search sessions by what was said", "aria-label": "Search sessions" }));
-    const list = h("div", { class: "list" });
-    const count = h("span", { class: "small muted" });
-    const makeBtn = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "btn", onclick: async () => {
-      const r = await attempt("projects.create", { name: nameIn.value.trim(), threads: [...chosen] });
-      if (r.error) { put(count, String(r.error.message)); return; }
-      chosen.clear(); nameIn.value = ""; drawMade(); load(); syncMake();
-    } }, icon("plus", 14), "Make project"));
-    const syncMake = () => { makeBtn.disabled = !nameIn.value.trim() || !chosen.size; put(count, chosen.size ? plural(chosen.size, "session") + " picked" : "Pick sessions below"); };
-    let seq = 0;
-    const load = async () => {
-      const n = ++seq;
-      const r = await attempt("projects.catalog", { q: qIn.value.trim() || undefined, limit: 60 });
-      if (n !== seq) return;
-      if (r.error) { put(list, h("div", { style: { padding: "0 14px" } }, empty("The session list is not available yet. Continue, and make projects later in the Deck.", r.error))); return; }
-      const rows = r.data.sessions || [];
-      if (!rows.length) { put(list, h("div", { style: { padding: "0 14px" } }, empty(qIn.value ? "No session mentions that. Try a word you would have typed in it." : "No sessions yet. They show up here as Vyre reads them."))); return; }
-      put(list, rows.map(ses => {
-        const box = h("input", { type: "checkbox", checked: chosen.has(ses.id), onchange: (/** @type {any} */ e) => {
-          e.target.checked ? chosen.add(ses.id) : chosen.delete(ses.id); syncMake(); } });
-        return h("label", { class: "pick" }, box,
-          h("span", { class: "x" }, h("span", { class: "ellipsis" }, ses.label || ses.title || ses.id),
-            h("span", { class: "code ellipsis" }, base(ses.cwd), ses.projects?.length ? `  ·  in ${ses.projects.map(p => names.get(p) || p).join(", ")}` : "")),
-          h("span", { class: "w" }, when(ses.last)));
-      }));
+    const drawChoose = async (/** @type {Source[]} */ sources) => {
+      s.foot({ label: "Building your plan", disabled: true, run: () => {} });
+      const r = await attempt("import.plan", { include: [...picked] });
+      if (r.error) { put(body, empty("Could not build the plan. Try again.", r.error)); s.foot({ label: "Try again", run: () => drawChoose(sources) }); return; }
+      const plan = r.data;
+      const p = plan.pace || {};
+      const syncBox = h("input", { type: "checkbox", checked: sync, onchange: (/** @type {any} */ e) => { sync = e.target.checked; } });
+      const syncConfirm = () => s.foot({ label: "Import", disabled: !pace, run: () => start(plan.plan) });
+      const opt = (value, title, desc) => h("label", { class: value === pace ? "on" : "" },
+        h("input", { type: "radio", name: "pace", value, checked: value === pace, onchange: () => { pace = value; syncConfirm(); } }),
+        h("span", { class: "t" }, h("b", null, title), h("span", null, desc)));
+      put(body,
+        h("div", { class: "meter" }, h("span", { class: "big" },
+          `${plural(plan.sessions, "session")} · ${fmtBytes(plan.bytes)} · from ${plural(plan.folders.length, "folder")}, to your server`)),
+        h("label", { class: "pick", style: { padding: "12px 0" } }, syncBox,
+          h("span", { class: "x" }, h("span", null, "Keep them in sync"),
+            h("span", { class: "code" }, "New sessions import automatically too, from now on."))),
+        h("p", { class: "lbl", style: { marginTop: "12px" } }, "How fast"),
+        h("div", { class: "choice", role: "radiogroup", "aria-label": "How fast Vyre reads" },
+          opt("fast", "Fast", p.fast ? `Done in about ${plural(p.fast.hours, "hour")}. Uses more of today's Claude usage.` : "Done in a few hours. Uses more of today's Claude usage."),
+          opt("gentle", "Gentle", p.gentle ? `Spread over about ${plural(p.gentle.days, "day")}.` : "Spread over a few days.")),
+        h("p", { class: "small muted", style: { marginTop: "12px" } },
+          `Claude Code keeps sessions for ${claudeKeepsDays} days, so import now while they last. Vyre never changes Claude Code's own settings.`));
+      syncConfirm();
     };
-    let qt = 0;
-    qIn.addEventListener("input", () => { clearTimeout(qt); qt = window.setTimeout(load, 250); });
-    put(picker, h("div", { class: "picker" },
-      h("div", { class: "bar-top" }, nameIn),
-      h("div", { class: "bar-top" }, qIn),
-      list,
-      h("div", { class: "bar-bottom" }, count, h("div", { style: { flexGrow: "1" } }), makeBtn)));
-    syncMake();
-    drawMade().then(load);
+
+    const start = async (/** @type {string} */ plan) => {
+      s.foot({ label: "Starting", disabled: true, run: () => {} });
+      const r = await attempt("import.start", { plan, mode: sync ? "sync" : "once", pace });
+      if (r.error) {
+        // memory-iq's error codes: not_found (the plan expired or was already used), busy, and
+        // unavailable (no server to send to yet: the device still indexes its own local copy).
+        const msg = r.error.code === "not_found" ? "That plan expired. Go back and choose again."
+          : r.error.code === "busy" ? "An import is already running. Try again in a moment."
+          : r.error.code === "unavailable" ? null // not an error: shows its own local-only note below
+          : String(r.error.message);
+        if (msg) { put(body, empty(msg, r.error)); s.foot({ label: "Try again", run: () => drawChoose(sources) }); return; }
+      }
+      drawWatch(r.error?.code === "unavailable");
+    };
+
+    const drawWatch = (/** @type {boolean} */ localOnly) => {
+      const list = h("ul", { class: "progress" });
+      const ask = h("div");
+      put(body,
+        h("p", { class: "lbl" }, "Reading your history"),
+        localOnly ? h("p", { class: "small muted" }, "No server to send this to yet, so this device is indexing its own copy for now.") : null,
+        list, ask);
+      s.foot({ label: "Continue", run: s.next });
+      let asked = false;
+      const poll = async () => {
+        const r = await attempt("import.status");
+        if (r.error) return;
+        const st = r.data;
+        // Vyre IQ's own stages, in plain language (memory-iq): upload gets it to the server
+        // (skipped when local-only); search makes it findable; meaning makes it understood
+        // (personal facts keep reading in the background for days, so they never gate this
+        // checkmark); graph keeps growing after, with no total to reach.
+        const state = c => !c || !(c.total > 0) ? "todo" : c.done >= c.total ? "done" : "doing";
+        const g = st.graph || {};
+        const personalNote = st.personal && st.personal.total > st.personal.done
+          ? `, still reading ${plural(st.personal.total - st.personal.done, "turn")} for personal facts` : "";
+        const up = st.upload;
+        const upNote = up?.quarantined ? `${plural(up.quarantined, "session")} set aside: they looked like they held a secret` : null;
+        put(list,
+          up ? progressRow("Sending to your server", up.state === "done" ? "done" : up.state === "stopped" ? "failed" : "doing", upNote, undefined) : null,
+          progressRow("Searchable now", state(st.search), null, undefined),
+          progressRow("Understood", state(st.meaning), personalNote || null, undefined),
+          progressRow("The graph growing", g.sessions > 0 ? "doing" : "todo",
+            g.sessions > 0 ? `${plural(g.people, "person")} · ${plural(g.orgs, "org")} · ${plural(g.facts, "fact")}` : null, undefined));
+        if (!asked && (st.searchable_sessions || 0) > 0) { asked = true; drawAsk(ask); }
+      };
+      poll();
+      every(poll, 5000);
+    };
+
+    // "a way to ask IQ right there", as soon as the first sessions are searchable. memory.ask, not
+    // memory.answer: memory.answer knows only personal facts, and right after an import it could
+    // not answer from the sessions just read, which is the whole point of this box (memory-iq).
+    // No stream: true here, a plain request/reply is enough for onboarding.
+    const drawAsk = (/** @type {HTMLElement} */ ask) => {
+      const qIn = /** @type {HTMLInputElement} */ (h("input", { class: "input", placeholder: "Ask about your own history", "aria-label": "Ask Vyre IQ" }));
+      const out = h("div", { class: "small muted", style: { marginTop: "8px" } });
+      const go = async () => {
+        const q = qIn.value.trim();
+        if (!q) return;
+        put(out, h("span", { class: "busy-inline faint" }, "Thinking…"));
+        const r = await attempt("memory.ask", { question: q });
+        if (r.error) { put(out, String(r.error.message)); return; }
+        const d = r.data;
+        if (d.limited) { put(out, d.message || "Vyre IQ has reached today's limit. Try again tomorrow."); return; }
+        if (d.abstained) {
+          put(out, "Not sure yet.", d.known ? h("span", null, " ", d.known) : null);
+          return;
+        }
+        put(out, h("span", null, d.answer),
+          d.sources?.length ? h("div", { class: "code", style: { marginTop: "4px" } },
+            d.sources.map(src => src.name || src.session).join(", ")) : null);
+      };
+      qIn.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+      put(ask, h("p", { class: "lbl", style: { marginTop: "16px" } }, "Ask it something"),
+        h("div", { class: "bar-top" }, qIn, h("button", { type: "button", class: "btn", onclick: go }, "Ask")),
+        out);
+    };
+
+    drawDiscover();
+  },
+
+  // Stub (docs/design/onboarding-v2.md step 5, lead 29 Sep): vault owns the engine and hasn't
+  // sent tool shapes yet. This slot exists so the step count, the celebration and the summary
+  // are right once it's real; the board (VaultImport.dc.html, work/app-design 19a96abd) already
+  // shows the masked/grouped list, the Touch ID moment and the per-key animate-in this becomes.
+  secrets(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Your secrets."),
+      h("p", { class: "lead" }, "Vyre finds the keys already on this machine, from .env files, shell exports, your password manager, Chrome and SSH, shows them to you masked and grouped by project, and brings them into the vault with one Touch ID."));
+    col.append(h("div", { class: "need" },
+      h("div", { class: "lbl" }, "Coming soon"),
+      "This step isn't built yet. Skip it for now, and bring your keys into the vault later from Settings."));
+    s.foot({ label: "Continue", run: s.next });
+  },
+
+  // Stub (docs/design/onboarding-v2.md step 6): connectors/vault own the engine; spec not sent
+  // yet. Existing connector flows (Settings > Connections) work today outside onboarding.
+  accounts(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Connect accounts."),
+      h("p", { class: "lead" }, "Google and email, and MCP servers: connect them once, and every agent can use them with your permission."));
+    col.append(h("div", { class: "need" },
+      h("div", { class: "lbl" }, "Coming soon"),
+      "This step isn't built yet. Skip it for now, and connect accounts later from Settings."));
+    s.foot({ label: "Continue", run: s.next });
+  },
+
+  // Full build (lead, 29 Sep): Off / Browser only / Browser + desktops. Glass owns the backend
+  // (docs/design/agent-browsers.md, coming) and the actual server-size numbers; this step's own
+  // choice is kept locally only until a real tool exists to save it to, same degrade-gracefully
+  // shape as every other step here.
+  computers(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Agent computers."),
+      h("p", { class: "lead" }, "Each agent can work from its own computer, the way a coworker would: a browser to look things up in, or a whole desktop to work on. More capable, and more for your server to run."));
+    const body = h("div", { class: "ob-panel" });
+    col.append(body);
+    let choice = /** @type {"off"|"browser"|"desktop"|null} */ (null);
+    const syncFoot = () => s.foot({ label: "Continue", disabled: !choice, run: s.next });
+    const opt = (value, title, desc, size) => h("label", { class: value === choice ? "on" : "" },
+      h("input", { type: "radio", name: "computers", value, checked: value === choice, onchange: () => { choice = value; put(body, choiceEl()); syncFoot(); } }),
+      h("span", { class: "t" }, h("b", null, title), h("span", null, desc), h("span", { class: "code" }, size)));
+    const choiceEl = () => h("div", { class: "choice", role: "radiogroup", "aria-label": "Agent computers" },
+      opt("off", "Off", "Agents work from the terminal only, no browser or desktop of their own.", "Nothing extra to run."),
+      opt("browser", "Browser only", "Each agent gets a Chrome it can look things up and click through in, that you can watch live.", "Size: still measuring."),
+      opt("desktop", "Browser + desktops", "Each agent gets a full desktop too, for anything a browser alone can't do.", "Size: still measuring, more than browser only."));
+    put(body, choiceEl());
+    syncFoot();
+  },
+
+  // The user's decisions (the lead, 29 Sep, docs/design/drive-onboarding.md e69a544a): files on
+  // demand by default, a what-to-sync folder picker with sizes, per-folder agent access, a
+  // receive-files switch, no quota. Federation's own doc is candid about what that needs versus
+  // what exists: on-demand mounting is real (files.drive.share/mount); the picker, per-folder
+  // access and files.receive as a UI toggle are not built (M/M/S); the "watch it appear on your
+  // other device" celebration needs the phone app and a Capsule drop target, neither of which
+  // exist, so it can't be the real celebration yet either. Still a stub UI-wise, but with the
+  // decided design named accurately rather than a placeholder line, so it reads like a described
+  // plan, not a guess.
+  drive(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "Vyre Drive."),
+      h("p", { class: "lead" }, "Your files, mounted on demand: nothing downloads until you open it. Pick which folders, who can reach them, whether this device can receive what the server sends you, and watch a file you drop in show up wherever you look next."));
+    col.append(h("div", { class: "need" },
+      h("div", { class: "lbl" }, "Coming soon"),
+      "This step isn't built yet: the folder picker, per-folder access and the receive switch all need work that hasn't landed. Skip it for now, and share a folder from the CLI or the Deck in the meantime."));
+    s.foot({ label: "Continue", run: s.next });
   },
 
   devices(col, s) {
@@ -691,7 +866,7 @@ const SCREENS = {
     col.classList.add("wide");
     col.append(
       h("h1", { class: "h1" }, "Your devices."),
-      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this box over your tailnet, and nothing else can. Last step, nearly there."));
+      h("p", { class: "lead" }, "Pair your Mac and open Vyre on your phone. Both reach this server over your tailnet, and nothing else can. One more step after this."));
 
     // Mac: install, `vyre up`, then approve the request it makes, in this card.
     const macState = h("div", { class: "dev-state", "aria-live": "polite" });
@@ -715,8 +890,8 @@ const SCREENS = {
       h("h2", { class: "h3", id: "dev-mac-h" }, "Pair this Mac"),
       h("ol", { class: "dev-steps" },
         devStep("1", "Install Vyre", command("npm i -g https://vyre.run/box/vyre.tgz")),
-        devStep("2", "Pair it with this box", command("vyre up"),
-          h("p", { class: "small muted" }, "It finds this box on your tailnet and shows a code. Type that code here to approve the Mac."))),
+        devStep("2", "Pair it with this server", command("vyre up"),
+          h("p", { class: "small muted" }, "It finds this server on your tailnet and shows a code. Type that code here to approve the Mac."))),
       macName ? null : pairs.el,
       macState);
     if (macName) pairs.stop();
@@ -777,6 +952,20 @@ const SCREENS = {
       toMac = false;
       later(() => { macCard.scrollIntoView({ block: "start" }); macCard.focus({ preventScroll: true }); }, 0);
     }
+    // No longer the mandatory final step (the Capsule tour is, now): normal Continue and Skip.
+    s.foot({ label: "Continue", run: s.next });
+  },
+
+  // The Capsule tour (docs/design/onboarding-v2.md step 10), split out of "devices" so the
+  // mandatory, non-skippable final screen is this one, not Mac/phone pairing. capsule-pro owns
+  // the real, signed-in tour; this reuses the landing page's copy and hotkey
+  // (site/index.html, docs/work/launch-surfaces.md) as a starting shape.
+  capsule(col, s) {
+    col.append(
+      h("h1", { class: "h1" }, "A tour of the Capsule."),
+      h("p", { class: "lead" }, "Press ⌥Space over any app, a call or a doc, on your Mac, and the Capsule opens. Say what you need. It's gone when you're done."));
+    col.append(h("div", { class: "ob-panel" },
+      h("p", { class: "small muted" }, "Try it now if your Mac is already paired: press ⌥Space anywhere. Not paired yet? Pair it from the devices step, or open the Deck and pair it any time.")));
     s.foot({ label: "Open Vyre", run: s.next }, { skip: false });
   },
 };
