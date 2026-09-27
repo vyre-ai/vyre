@@ -179,7 +179,8 @@ facts are not a project's.
   unless the lead says otherwise.
 
 ## Next
-- 0.1.1 queue, in order: person and org cards; contradictions to confirm; import.start/stop/cancel
+- Built 28 Sep: memory.card (e67ba34d), memory.contradictions/settle (fd7f57ab).
+- 0.1.1 queue, in order: import.start/stop/cancel
   (after federation's sync.send); then site recipes (memory.recipe per site from glass's
   browse.finished, self-correcting, person-editable; shape proposed to glass 28 Sep).
 - Project graphs: recall.search `sessions` filter + retrieve scopes by folders plus picked ids (0.1.1).
