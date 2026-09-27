@@ -70,8 +70,10 @@ turns) running past perf-check's 250 ms settle, not idle work. perf-check now wa
 
 ## Doing
 
-27 Sep 2026 (resumed): the WebSocket upgrade handler is done (f309059, below). Now on the
-Mac-send loose ends on work/federation (../vyre-federation), in "Next".
+27 Sep 2026 (resumed): the WebSocket upgrade handler is done (f309059, below). The Mac-send
+loose ends are done on work/federation 5c247ce (docs/work/federation.md "Doing"). Rich Mac
+transcripts are done on work/federation-transcript 6731af9 (../vyre-federation-transcript, off
+work/chat, since recall.transcript is only there). Now: Taildrive (Next, item 2).
 
 Owner-only streams (f309059): the upgrade path already existed on main (ctx.upgrader in
 core/daemon/index.js, onUpgrade in core/names/service.js, from glass-live), but it let a guest
