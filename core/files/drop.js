@@ -98,7 +98,9 @@ const inside = (p, dir) => p === dir || p.startsWith(dir.endsWith(path.sep) ? di
 export function drop(ctx, { role, g, cfg }) {
   if (role === "local") {
     sender(ctx, g);
-    if (!cfg.receive) return { async stop() {} };
+    // Exactly true, not merely truthy: a config value read back as the string "false" (a shell
+    // export, a stray env override) must not switch the receiver on (e2e review of aa9cb40c).
+    if (cfg.receive !== true) return { async stop() {} };
     return receiver(ctx, g, cfg, macInbox());
   }
   boxSender(ctx, g);

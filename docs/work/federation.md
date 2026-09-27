@@ -243,6 +243,18 @@ box.
 
 ## Doing
 
+28 Sep 2026: e2e signed off work/federation at aa9cb40c, with one nit: `!cfg.receive` counts the
+string "false" as on. Fixed (`cfg.receive !== true`), with a test trying several truthy-but-wrong
+values. Also tried adding files.receive as a real declared setting (core/files/module.json
+"settings", ADR 0035) so it would show in Settings, not just config.json — reverted: a
+device-level setting has no `store.config` (settings.set refuses it, "a device's value is kept in
+the hub, so a setting set per device has no store"), which broke every drop.test.js test since
+the files module failed to start. Wiring files.receive through the hub properly is follow-up work
+for whoever picks up Settings-facing polish, not a blocker: the config.json switch is what both
+reviewers signed off on. Tests on the test box, nice -n 15, load under 5: 18/18 on drop.test.js
+(1 new) + hygiene, 96/96 on `core/files/**/*.test.js` + docs-build. Sending the sha to the
+integrator next.
+
 28 Sep 2026: e2e amended their f712e7d7 review after reading 0c645473 (files.deliver) more
 closely — not signed off for that part, since it wasn't flagged as included when asked to review.
 Note for next time: name every commit in a sha handed over for review. Fixed: a Mac's own inbox

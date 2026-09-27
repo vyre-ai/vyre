@@ -262,6 +262,19 @@ test("drop: a Mac starts no receiver by default, so pairing never changes what T
   await stop();
 });
 
+test("drop: files.receive is exactly true, not merely truthy — the string \"false\" does not switch a Mac's receiver on (e2e nit on aa9cb40c)", async t => {
+  const f = fake(t, running([]));
+  const w = path.join(f.home, "work");
+  fs.mkdirSync(w);
+  const inbox = path.join(w, "inbox");
+  for (const receive of ["false", "0", "no", 1, {}]) {
+    const { stop } = await registry(t, f.home, { role: "local", files: { roots: [w], inbox, receive }, link: LINKED });
+    await new Promise(r => setTimeout(r, 100));
+    assert.deepEqual(f.calls(), [], `receive: ${JSON.stringify(receive)} must not start the receiver`);
+    await stop();
+  }
+});
+
 test("drop: a Mac runs its own tailscale file get into its ~/Vyre/inbox default, for what the box delivers, once files.receive is on", async t => {
   const f = fake(t, running([]));
   const w = path.join(f.home, "work");

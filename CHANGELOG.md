@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### files.deliver's opt-in checks the value exactly, not merely truthily (e2e nit on aa9cb40c)
+
+- core/files/drop.js: `cfg.receive !== true` gates the Mac's receiver, not `!cfg.receive`, so a
+  config value that comes back as the string "false" cannot switch it on. New test in
+  drop.test.js tries several truthy-but-wrong values.
+
 #### threads.answer's Mac forward fails closed on an unreadable or unknown ask (e2e review of 0f2a8752)
 
 - core/link/mac.js `answer()`: if the Mac cannot read its own threads.asks, or the ask is not in
