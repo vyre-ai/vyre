@@ -73,7 +73,7 @@
 .progress .x span:first-child { font-size: 14px; line-height: 20px; }
 .progress .x span + span { font-size: 13px; line-height: 18px; color: var(--label); }
 .progress .todo .x span:first-child { color: var(--text-2); }
-.progress .state { font-size: 12px; color: var(--label); }
+.progress .state { font-size: 12px; font-weight: 600; color: var(--label); }
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .progress .st .busy { animation: none; border-color: var(--text); } }
 

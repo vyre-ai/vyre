@@ -111,6 +111,13 @@ Filled in as each lands.
   label's underlying text was already sentence case, so this was CSS-only, no copy rewrites
   needed. Screenshotted the single theme the landing page has (it's dark-only, no light/paper
   mode in site/ at all, unlike the docs/brand art or the app itself).
+- app-design's re-review confirmed btn/chip/dtab/404.html and agreed on `.lbl` (citing
+  `docs/design/one-app/project/vyre.css` as the canonical board CSS and `docs/design/system/`
+  as the system of record over root-level TOKENS.md). Caught two more: `.lbl` should be weight
+  600, not the 400 used in the first pass (fixed in `site/styles.css`, `site/404.html`,
+  `deck/onboard/onboard.css`'s `.progress .state`); and `.dtab[aria-pressed="true"]`'s selected
+  text was lime (`--signal`), a pre-existing nit (not from this session) that tabs.md/chip.md say
+  should be neutral text with only the ring/fill carrying colour. Fixed to `--bone`.
 
 ## Doing
 

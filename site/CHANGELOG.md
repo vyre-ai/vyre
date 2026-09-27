@@ -5,6 +5,18 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### .lbl's weight, and the selected tab's text colour (2026-09-27)
+
+- app-design's re-review caught a detail the sentence-case pass got wrong: `.lbl` should be weight
+  600, not 400 (their canonical board CSS, `docs/design/one-app/project/vyre.css`, has it exactly:
+  `font-size:12px; weight:600; color:var(--label)`). Fixed in `site/styles.css`, `site/404.html`'s
+  own copy, and `deck/onboard/onboard.css`'s `.progress .state` for the same reason it got the
+  rest of that fix.
+- Also fixed an unrelated pre-existing nit app-design flagged while reviewing: the selected
+  Capsule state tab (`.dtab[aria-pressed="true"]`) coloured its own text lime (`--signal`). Both
+  tabs.md (selected ink `--text`) and chip.md's filter-chip "On" state want the text neutral, only
+  the ring/fill carrying the colour. Text is `--bone` now; the lime border and wash stay.
+
 ### The last of it: .lbl and .page .over, sentence case everywhere (2026-09-27)
 
 - Held `.lbl` back last round on the strength of `docs/design/TOKENS.md` (status: stable), which
