@@ -14,6 +14,7 @@ import { start } from "../daemon/index.js";
 import { call, request } from "../daemon/client.js";
 import * as config from "../config/index.js";
 import { tempHome, writeModule, present } from "../../test/helpers.js";
+import { SCRATCH } from "../../test/scratch.mjs";
 import { translate, describe } from "./translate.js";
 import { argsFor } from "./runner.js";
 import { Leases, TTL } from "./lease.js";
@@ -35,7 +36,9 @@ test("translate: real stream-json lines become small thread events", () => {
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hel" } }, parent_tool_use_id: null }).delta, "hel");
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "x" } }, parent_tool_use_id: "toolu_9" }).delta, undefined, "a subagent's text is not the thread's");
   const tool = translate({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "/w/a.txt", content: "x".repeat(50000) } }] } });
-  assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", tool: "Write", phase: "started", summary: "Write /w/a.txt", destination: "/w/a.txt" } });
+  // call and status (ADR 0030): the row is keyed by call, id kept equal during the migration.
+  assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", call: "t1", tool: "Write", name: "Write", phase: "started", status: "running", block: 0,
+    summary: "Write /w/a.txt", destination: "/w/a.txt" } });
   const ask = translate({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls -la" }, tool_use_id: "t2" } });
   assert.equal(ask.ask.summary, "ls -la");
   assert.equal(ask.ask.request_id, "r1");
@@ -178,8 +181,11 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   }
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  // realpath: on the Mac the temp dir sits under /var, which vyred and fake claude see as /private/var.
-  const work = fs.realpathSync(fs.mkdtempSync(path.join(root, "work-")));
+  // The work folder is outside the home: the security floor treats everything in VYRE_HOME as
+  // Vyre's own state, as it does on a real machine. realpath: on the Mac the temp dir sits under
+  // /var, which vyred and fake claude see as /private/var.
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(SCRATCH, "vyre-work-")));
+  t.after(() => fs.rmSync(work, { recursive: true, force: true }));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   for (const [name, value] of Object.entries(vault || {})) {
@@ -274,6 +280,8 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   await until(() => fs.existsSync(target), "the file the answer allowed");
   assert.deepEqual((await tool("threads.asks", { thread: id })).data, []);
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny" })).data.answered, false, "an answered ask stays answered");
+  assert.deepEqual((await tool("threads.answer", { ask: raised.payload.ask, decision: "allow" })).data,
+    { ask: raised.payload.ask, answered: true, decision: "allow", already: true }, "the same answer again is the earlier outcome (ADR 0029 R2)");
 
   // The lease: the other surface is read-only until it takes the keyboard.
   const refused = (await tool("threads.send", { thread: id, text: "from the phone", surface: "phone" })).data;
@@ -749,7 +757,9 @@ test("usage on the subscription: turns and time, no dollars, and the rate-limit 
   await tool("agents.create", { name: "juno", kind: "assistant" });
   const r = (await tool("agents.ask", { agent: "juno", text: "nearlimit" })).data;
   const limit = await until(() => of(s.got, r.thread, "thread.limit")[0], "thread.limit");
-  assert.deepEqual(limit.payload, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
+  const { turn, ...rest } = limit.payload;
+  assert.equal(turn, `${r.thread}:1`, "every event of a turn says which turn (ADR 0030)");
+  assert.deepEqual(rest, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
   const said = await until(() => of(s.got, r.thread, "thread.text").find(e => e.payload.notice), "the notice");
   assert.match(said.payload.text, /^Claude's five-hour usage limit is at 85%; it resets at \d\d:\d\d UTC\.$/);
   const all = (await tool("agents.usage", {})).data;
@@ -996,7 +1006,7 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   for (const l of lines) { assert.equal(l.sessionId, id); assert.equal(l.cwd, work); assert.ok(!Number.isNaN(Date.parse(l.timestamp))); }
   const blocks = lines.flatMap(l => l.message.content instanceof Array ? l.message.content.map(b => ({ type: l.type, b, l })) : []);
   assert.deepEqual(blocks.map(x => x.b.type), ["thinking", "tool_use", "tool_result", "tool_use", "tool_result", "tool_use", "tool_result", "tool_use", "tool_result", "text"]);
-  for (const x of blocks.filter(x => x.type === "assistant")) { assert.equal(x.l.message.model, "fake-model"); assert.ok(x.l.message.usage.output_tokens > 0); }
+  for (const x of blocks.filter(x => x.type === "assistant")) { assert.equal(x.l.message.model, "opus", "a chat session runs on the work model (sessions.models)"); assert.ok(x.l.message.usage.output_tokens > 0); }
   const todo = blocks.find(x => x.b.name === "TodoWrite").b.input.todos;
   assert.deepEqual(todo.map(t => t.status), ["completed", "in_progress", "pending"]);
   const bashResult = blocks.filter(x => x.b.type === "tool_result")[2];

@@ -201,6 +201,19 @@ export function claude(args, cwd, brief, project) {
 
 export async function resume(t, { project, name } = {}) {
   if (!t.cwd || !fs.existsSync(t.cwd)) return fail(`${t.label} ran in ${tilde(t.cwd) || "an unknown folder"}, which is gone; Claude Code can only resume it there`, "vyre start begins a new thread instead");
+  // A session vyred runs (ADR 0030) is handed over, never shared: one transcript takes one
+  // writer. An idle one is closed here first; one in the middle of a turn is left alone.
+  const run = await call("threads.get", { thread: t.id, limit: 1 });
+  const st = run.data?.thread?.status;
+  if (st === "working" || st === "waiting" || st === "starting") {
+    return fail(`${t.label} is ${st === "waiting" ? "waiting on a question" : "in the middle of a turn"} in vyred`,
+      `let it finish, or stop the turn first: vyre call threads.interrupt '{"thread":"${t.id}"}'`);
+  }
+  if (st === "idle") {
+    const stop = await call("threads.stop", { thread: t.id });
+    if (stop.error) return fail(`could not hand ${t.label} over from vyred: ${stop.error.message}`);
+    out(dim(`  handed over from vyred; a message from the Deck or the Capsule brings it back there once you exit`));
+  }
   const ctx = await call("projects.context", { ...(project ? { project } : {}), cwd: t.cwd, session: t.id });
   const brief = ctx.data?.text || "";
   const args = ["--resume", t.id];

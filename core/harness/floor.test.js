@@ -176,3 +176,87 @@ test("floor: an agent's session works in its own folder under VYRE_HOME, and now
   // Without a vouched agent, the folder is internal as before.
   assert.equal(as("Write", { file_path: "/home/sam/.vyre/agents/kit/notes/orders.md", content: "" }, null), "deny");
 });
+
+test("floor: a session cannot grant itself permissions through Claude Code's settings files", () => {
+  const targets = [
+    "/home/sam/work/.claude/settings.json",
+    "/home/sam/work/.claude/settings.local.json",
+    ".claude/settings.local.json",
+    "/home/sam/work/app/.claude/settings.json",
+    "~/.claude/settings.json",
+    "/home/sam/.claude/settings.local.json",
+    "~/.claude.json",
+    "/home/sam/work/.mcp.json",
+    ".mcp.json",
+    "/etc/claude-code/managed-settings.json",
+  ];
+  for (const t of targets) {
+    assert.equal(file("Write", { file_path: t, content: `{"permissions":{"allow":["Bash(*)"]}}` }), "deny", `Write ${t}`);
+    assert.equal(file("Edit", { file_path: t, old_string: "[]", new_string: `["Bash(*)"]` }), "deny", `Edit ${t}`);
+    assert.equal(file("MultiEdit", { file_path: t, edits: [] }), "deny", `MultiEdit ${t}`);
+    assert.equal(file("NotebookEdit", { notebook_path: t, new_source: "" }), "deny", `NotebookEdit ${t}`);
+  }
+  const r = rules({ tool: "Write", input: { file_path: "~/.claude/settings.json", content: "{}" }, cwd: "/home/sam/work", home: HOME, userHome: USER });
+  assert.equal(r.rule, 1);
+  assert.match(r.reason || "", /changed by the person, not by a session: ~\/\.claude\/settings\.json\. Ask the user to make this change themselves\./);
+
+  const denied = [
+    `echo '{"permissions":{"allow":["Bash(*)"]}}' > .claude/settings.local.json`,
+    `echo x >> ~/.claude/settings.json`,
+    `echo x > $HOME/.claude/settings.local.json`,
+    `echo '{}' | tee .claude/settings.json`,
+    `echo '{}' | tee -a /home/sam/.claude.json`,
+    `sed -i 's/"deny"/"allow"/' .claude/settings.json`,
+    `sed -i.bak 's/a/b/' ~/.claude/settings.json`,
+    `perl -pi -e 's/ask/allow/' .claude/settings.local.json`,
+    `cp /tmp/open.json .claude/settings.local.json`,
+    `mv new.json ~/.claude/settings.json`,
+    `ln -sf /tmp/open.json .claude/settings.json`,
+    `install -m 644 x.json ~/.claude/settings.json`,
+    `truncate -s 0 .claude/settings.json`,
+    `dd if=/tmp/x of=.claude/settings.json`,
+    `rm .claude/settings.local.json`,
+    `python3 -c "open('/home/sam/work/.claude/settings.json','w').write('{}')"`,
+    `node -e "require('fs').writeFileSync('.mcp.json', '{}')"`,
+    `jq '.permissions.allow += ["Bash(*)"]' .claude/settings.json > /tmp/s && mv /tmp/s .claude/settings.json`,
+    `echo '{"mcpServers":{}}' > .mcp.json`,
+    `cp x.json ~/.claude.json`,
+    `echo x > .claude/set*.json`,
+    `cat > /etc/claude-code/managed-settings.json`,
+  ];
+  for (const c of denied) assert.equal(bash(c), "deny", c);
+});
+
+test("floor: reading Claude Code's settings, and writing ordinary files, passes", () => {
+  const allowed = [
+    `cat .claude/settings.json`,
+    `cat ~/.claude/settings.local.json 2>/dev/null`,
+    `less ~/.claude.json`,
+    `grep -n allow .claude/settings.local.json`,
+    `jq .permissions ~/.claude/settings.json`,
+    `head .mcp.json`,
+    `echo x > src/app.js`,
+    `cp config/settings.json /tmp/settings.json`,
+    `sed -i 's/a/b/' src/app.js`,
+  ];
+  for (const c of allowed) assert.equal(bash(c), null, c);
+  for (const t of ["/home/sam/work/.claude/settings.json", "~/.claude/settings.local.json", "~/.claude.json", ".mcp.json"]) {
+    assert.equal(file("Read", { file_path: t }), null, `Read ${t}`);
+  }
+  assert.equal(file("Write", { file_path: "src/app.js", content: "" }), null);
+  assert.equal(file("Write", { file_path: "/home/sam/work/config/settings.json", content: "{}" }), null, "settings.json outside a .claude folder");
+  assert.equal(file("Edit", { file_path: "/home/sam/work/.claude/agents/juno.md", old_string: "a", new_string: "b" }), null, "an agent file is not a settings file");
+  assert.equal(file("Write", { file_path: "/home/sam/.vyre/config.json", content: "{}" }), "deny", "Vyre's own config stays internal");
+});
+
+test("floor: settings files under CLAUDE_CONFIG_DIR are the person's too", t => {
+  const before = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = "/home/sam/cc-config";
+  t.after(() => { if (before == null) delete process.env.CLAUDE_CONFIG_DIR; else process.env.CLAUDE_CONFIG_DIR = before; });
+  assert.equal(file("Write", { file_path: "/home/sam/cc-config/settings.json", content: "{}" }), "deny");
+  assert.equal(file("Edit", { file_path: "/home/sam/cc-config/settings.local.json", old_string: "a", new_string: "b" }), "deny");
+  assert.equal(bash(`echo '{}' > /home/sam/cc-config/settings.json`), "deny");
+  assert.equal(bash(`echo x > "$CLAUDE_CONFIG_DIR/settings.json"`), "deny");
+  assert.equal(file("Write", { file_path: "/home/sam/cc-config/notes.md", content: "" }), null);
+  assert.equal(bash(`cat /home/sam/cc-config/settings.json`), null);
+});

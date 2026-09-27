@@ -16,6 +16,7 @@
       "using/chat.md",
       "using/cli.md",
       "using/claude-code.md",
+      "using/sessions.md",
       "using/projects-and-threads.md",
       "using/agents.md",
       "using/vault.md",
@@ -76,6 +77,7 @@
       "adr/0025-planner.md",
       "adr/0026-relay.md",
       "adr/0029-resilience.md",
+      "adr/0030-sessions.md",
       "adr/0032-person-and-device.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },

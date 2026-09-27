@@ -94,7 +94,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_EGRESS_UPSTREAM` | Not described yet. | `core/computers/egressgate.js` |
 | `VYRE_HANDS_BIN` | Another build of the Mac hands helper. | `local/hands-mac/index.js` |
 | `VYRE_HARNESS_DIR` | The Harness plugin folder threads load. Default the one beside this install. | `core/cli/commands/projects.js`, `core/switchboard/index.js` |
-| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/switchboard/index.js`, `harness/lib/vyre.js` |
+| `VYRE_HOME` | Where Vyre keeps its data. Default `~/.vyre`. | `core/agents/index.js`, `core/config/dialogs.js`, `core/config/index.js`, `core/harness/rules.js`, `core/learn/checks.js`, `core/sessions/index.js`, `core/switchboard/index.js`, `harness/lib/vyre.js` |
 | `VYRE_HOST_USER` | The user name in the `ssh -L` line `vyre up` prints for reaching the box. | `core/cli/commands/up.js` |
 | `VYRE_NO_OPEN` | Never open a browser tab from the terminal. | `core/cli/commands/vault.js` |
 | `VYRE_NO_UP` | `vyre box add` installs Vyre without starting it. | `core/cli/commands/box.js` |
@@ -105,6 +105,8 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
 | `VYRE_PROJECTS_MOVE` | Not described yet. | `core/projects/index.js` |
 | `VYRE_SCREEN_BIN` | Not described yet. | `local/screen-mac/index.js` |
+| `VYRE_SESSIONS_DRIVER` | Not described yet. | `core/sessions/config.js` |
+| `VYRE_SESSIONS_SDK_DIR` | Not described yet. | `core/sessions/config.js` |
 | `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_SSE_HEARTBEAT_MS` | Not described yet. | `core/daemon/index.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |

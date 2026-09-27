@@ -119,7 +119,8 @@ export function describe(tool, input = {}) {
  * @param {any} m
  */
 export function translate(m) {
-  /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, limited?: boolean, turn?: any,
+  /** @type {{ events: { type: string, payload: any }[], session?: string, model?: string|null, message?: string, ask?: any, cancel?: string, delta?: string, block?: number, limited?: boolean, turn?: any,
+   *   folded?: string[], blocks?: number,
    *   limit?: { status: string, kind: string|null, resets_at: number|null, utilization?: number } }} */
   const out = { events: [] };
   if (!m || typeof m !== "object") return out;
@@ -137,22 +138,29 @@ export function translate(m) {
     // Deltas carry no message id; message_start does, and the runner keeps it for what follows.
     if (m.parent_tool_use_id) return out;
     if (e.type === "message_start" && e.message && e.message.id) out.message = String(e.message.id);
-    if (e.type === "content_block_delta" && e.delta && e.delta.type === "text_delta" && e.delta.text) out.delta = String(e.delta.text);
+    if (e.type === "content_block_delta" && e.delta && e.delta.type === "text_delta" && e.delta.text) { out.delta = String(e.delta.text); if (typeof e.index === "number") out.block = e.index; }
+    // A steered message Claude Code folded into the running turn is stamped on the first frame after it.
+    if (typeof m.user_message_uuid === "string") out.folded = [m.user_message_uuid];
     return out;
   }
 
   if (m.type === "assistant" && m.message && !m.parent_tool_use_id) {
     const id = String(m.message.id || "");
-    for (const b of m.message.content || []) {
-      if (b.type === "text" && b.text) out.events.push({ type: "thread.text", payload: { message: id, text: String(b.text).slice(0, 20000), done: true } });
-      if (b.type === "tool_use") out.events.push({ type: "thread.tool", payload: { id: b.id, tool: b.name, phase: "started", ...describe(b.name, b.input) } });
-    }
+    // block: the block's place in this line; the Switchboard adds the blocks earlier lines of the
+    // same message had (Claude Code writes each block as its own line), so live and transcript
+    // rows share one key, message:block.
+    (m.message.content || []).forEach((b, block) => {
+      if (b.type === "text" && b.text) out.events.push({ type: "thread.text", payload: { message: id, block, text: String(b.text).slice(0, 20000), done: true } });
+      if (b.type === "tool_use") out.events.push({ type: "thread.tool", payload: { id: b.id, call: b.id, tool: b.name, name: b.name, phase: "started", status: "running", block, ...describe(b.name, b.input) } });
+    });
+    out.blocks = (m.message.content || []).length;
+    if (typeof m.user_message_uuid === "string") out.folded = [m.user_message_uuid];
     return out;
   }
 
   if (m.type === "user" && m.message && Array.isArray(m.message.content) && !m.parent_tool_use_id) {
     for (const b of m.message.content) {
-      if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, phase: "done", error: Boolean(b.is_error) } });
+      if (b.type === "tool_result") out.events.push({ type: "thread.tool", payload: { id: b.tool_use_id, call: b.tool_use_id, phase: "done", status: b.is_error ? "failed" : "completed", error: Boolean(b.is_error) } });
     }
     return out;
   }
@@ -190,6 +198,7 @@ export function translate(m) {
     // A turn that failed on the subscription's limit reads as an error result naming the limit.
     if (m.is_error && /usage limit|rate limit|limit reached|out of (extra )?usage/i.test(text)) out.limited = true;
     out.turn = { ok: !m.is_error, text, cost_usd: typeof m.total_cost_usd === "number" ? m.total_cost_usd : 0 };
+    if (Array.isArray(m.user_message_uuids)) out.folded = m.user_message_uuids.map(String);
     const u = m.usage || {};
     const n = v => (typeof v === "number" && v >= 0 ? v : 0);
     const tokens = { input: n(u.input_tokens), output: n(u.output_tokens), cache_read: n(u.cache_read_input_tokens), cache_write: n(u.cache_creation_input_tokens) };

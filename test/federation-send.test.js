@@ -97,9 +97,10 @@ test("federation send: a Mac session busy in a terminal queues the person's word
   const busy = terminalSession(s.transcripts, s.macWork, { ageMs: 1000 });
   const r = await s.boxCall("threads.send", { thread: busy.id, text: "which branch are you on?" }, "deck");
   assert.ok(!r.error, JSON.stringify(r.error));
-  // queued_id (threads.unqueue's handle) is the Mac's row id.
-  const { queued_id, ...sent } = r.data;
+  // queued_id (threads.unqueue's handle) is the Mac's row id; uuid (ADR 0030) the message's own id.
+  const { queued_id, uuid, ...sent } = r.data;
   assert.ok(Number.isInteger(queued_id), "a queued_id to take the words back with");
+  assert.match(uuid, /^[0-9a-f-]{36}$/);
   assert.deepEqual(sent, { sent: false, queued: true, open_elsewhere: true, thread: busy.id, name: "Northwind orders", busy: "terminal",
     note: "Northwind orders is busy in your terminal on alex-mac. I'll hand it your message when this turn ends.", source: "mac", machine: "alex-mac" });
   const queued = await until(() => got(s, busy.id, "thread.queued")[0]);

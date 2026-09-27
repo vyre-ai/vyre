@@ -90,7 +90,8 @@ async function main() {
     if (h.session_id && !down(r)) {
       const pid = process.ppid;
       const b = await call("threads.bind", { session: h.session_id, pid }, opts);
-      if (b.data && b.data.key) try { writeKey(paths(home()).sessions, pid, b.data); } catch {}
+      // The pid vyred bound: claude's, which is this hook's parent, or its parent when /bin/sh forked.
+      if (b.data && b.data.key) try { writeKey(paths(home()).sessions, Number(b.data.pid) || pid, b.data); } catch {}
     }
   } else if (piece === "enrich") {
     const prompt = String(h.prompt || "");
