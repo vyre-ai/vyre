@@ -66,6 +66,16 @@ action. The goal beyond that is that the user can cancel 1Password (spec section
 
 ## Doing
 
+- 0.1.1 (lead approved, see message log): 7 of 8 items shipped and green on testbox, each its own
+  commit on this branch (boundary fix f3d39f3f..2ee3e337 range - check `git log --oneline` for
+  exact shas): kinds.js/ssh-setup.js to lib/ (clears the two frozen boundary edges), scheduled
+  breach check, needs-credential reminders, Touch ID nudge, expiring-pass reminder, `vyre up`
+  .env nudge, suggest-a-default, passkey coverage in Watchtower. Item #9 (a real Chromium pass
+  for the autofill extension, not the vm+stub-chrome extension.test.js uses): wrote
+  `modules/vault-extension/testing/browser-check.mjs` (builds the extension, loads it into real
+  headless Chromium via CDP, pairs against a real fill listener, fills a real page). NOT YET RUN:
+  testbox already had two other Chromium trees running when I checked (ports 9222 and 9450, load
+  5.6) and "one Chrome at a time" - waiting on the lead before adding a third.
 - The relayed pass between two machines on the tailnet, end to end through the box
   workstream's Docker Compose stack and tailscale sidecar. Waiting on that stack reaching main.
 - 2026-09-27: merged main (68463d04) into work/vault-next (51b1d184), then tested 9b (connections)
