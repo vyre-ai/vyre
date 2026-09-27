@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A bare "tailnet" label is never a caller
+
+- core/modules callerAllowed: a tool whose callers list says "tailnet" opens to the owner's
+  devices (`tailnet:<login>`, a paired `device:`), never to a socket client that sends the bare
+  word as its label. Mobile's rule and test (core/modules/modules.test.js) had lost the check in a
+  merge of main.
+
 #### The Deck's popover shadow comes from tokens.css alone
 
 - deck/css/deck.css no longer declares --popover: app-design's tokens.css carries it (same
