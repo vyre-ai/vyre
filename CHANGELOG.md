@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### CI: the box image is built and booted
+
+- .github/workflows/box-image.yml builds box/Dockerfile (never pushed; layers in the Actions
+  cache) on every push to main and on branch pushes that touch box/, core/daemon/, the package
+  files or .dockerignore, then boots it: vyred answers /v1/health on its socket; tini is PID 1;
+  a vyred killed with SIGKILL comes back through loop.sh with the container up and no Docker
+  restart; `docker stop` exits 0 inside the 30 s timeout (the SIGTERM reached vyred and it
+  drained). The tini and restart checks skip on an image without core/daemon/loop.sh.
+
 #### CI: the Capsule signing step can no longer hang
 
 - capsule-mac.yml's signing step hung to the 45-minute job timeout on capsule-pro branches:
