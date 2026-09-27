@@ -250,12 +250,13 @@ Rules, and why:
   `send_mail` capability never sends.
 - **The thread and the agent follow the call.** `mail` passes what vyred verified as
   `on_behalf: {thread, agent}` to `google.mail.send` and `mcp.call`. They hear it only from one of
-  Vyre's own modules: the registry sets `meta.firstParty` for a caller whose folder is under
-  `core/`, over anything passed in, so a module installed into a home never can. The thread must
+  Vyre's own modules: the registry sets `meta.firstParty` by the loader's own first-party rule,
+  over anything passed in, and anyone else who passes `on_behalf` is refused. The thread must
   exist in the Switchboard, and when it is an agent's, the agent named must be that one; a
   mismatch is refused, never filed (`core/connectors/behalf.js`). In the hub, a call on behalf of
   a thread or an agent is scoped as that thread or agent, not as the person. A module calling
-  `mail` may say whom it acts for the same way; a home module sees no mail account at all.
+  `mail` may say whom it acts for the same way; a home module is refused it, and sees no mail
+  account at all.
 - **Which account.** `mail.send` with no `account` uses the only account the caller may use;
   with several it answers `ambiguous` and lists them, never a guess. Reads fan out over every
   account the caller may use, newest first; one failing account is an entry in `errors`, not a
