@@ -9,7 +9,7 @@ LABEL run.vyre="1" \
       org.opencontainers.image.source="https://github.com/vyre-ai/vyre"
 
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach \
+ && apt-get install -y --no-install-recommends ca-certificates git tar openssl curl procps dtach tini \
  && rm -rf /var/lib/apt/lists/*
 
 # The tailscale CLI only. tailscaled runs in the tailscale container; the CLI talks to it
@@ -42,4 +42,8 @@ ENV VYRE_HOME=/home/vyre/.vyre \
 USER vyre
 WORKDIR /home/vyre
 
-CMD ["node", "/opt/vyre/core/daemon/main.js"]
+# tini is the init (it reaps, and it keeps the dtach terminals once vyred is gone), and the loop
+# restarts vyred inside the container, so a vyred restart keeps every terminal (ADR 0029, R4).
+# A deploy recreates the container, and its terminals end; the Deck says so (term.closed).
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/opt/vyre/core/daemon/loop.sh"]

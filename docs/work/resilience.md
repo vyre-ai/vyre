@@ -19,7 +19,11 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
   web.js (fetch transport and caller, IndexedDB outbox, cursor and snapshot stores, lifecycle).
 - CLI `threads watch`, `connect --sign-in` and the live screen use the resilient client.
 - Chaos harness test/chaos/ (proxy, R1 R2 R3 R5 R7 tests, browser transport tests, web.test.js).
-- Tests on testbox (27 Sep): 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
+- Lead decision (a): tini + core/daemon/loop.sh restart vyred inside the container; a deploy
+  ends terminals and says so (term.closed "box updated", term.attach terminal_closed). Term
+  sidecar that survives deploys: backlog.
+- ctx.events.latestId() for modules (planner.upcoming's last_event).
+- Tests on testbox (27 Sep, after main b1dbb49): 189 pass, 0 fail. Earlier: 124 pass, 0 fail across idempotency, switchboard, chaos, web, term
   (real dtach), daemon and modules tests.
 
 ## Doing
@@ -27,7 +31,8 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 
 ## Next
 1. Per-team fixes (below), starting with pwa and mobile (the web app is the phone's default).
-2. R6 local alarms contract with planner and mobile (dedupe key planner-<item>-<due>).
+2. R6: planner.upcoming is ready (work/planner 3c75e47); mobile and pwa schedule local
+   notifications from it with the key planner-<item>-<due seconds>. Add a chaos test.
 3. `last_event` on threads.get, planner.list and Needs reads (R1), with their owners.
 4. A 30 min perf check of an idle durable terminal and of the stream client (scripts/perf-check).
 
@@ -48,9 +53,10 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - R7: stop() cuts in-flight calls (closeAllConnections) and SSE without draining.
 
 ## Needs from others
-- lead/box: vyred is PID 1 in the box container, so dtach terminals survive a vyred restart but
-  not a container recreate (every deploy). Decide: a tiny init plus a restart loop inside the
-  container, or accept that deploys end terminals.
+- integrator: box/Dockerfile's apt line is `procps dtach tini` here and `procps tini` on
+  work/sessions: the union is right. Build the box image once in CI (ENTRYPOINT tini, CMD loop.sh).
+- chat: show `term.closed` reason `box updated` / `terminal_closed` as "The box was updated and
+  this terminal was closed. Open a new one." (one line, with a reopen button in the same folder).
 - sessions (ADR 0030): threads.send passes `keyUuid(caller, meta.idempotencyKey)` as the SDK
   message uuid and refuses a uuid it already queued or handed over; the driver's close on vyred
   stop uses reason `restart` (the Switchboard's stopAll does it today); threads.answer and
@@ -67,6 +73,10 @@ in core/resilience/), the chaos harness (test/chaos/), and the audit with fixes 
 - Registry.call: new meta `idempotencyKey` (from the Idempotency-Key header); tools receive it.
 - vyred HTTP: 409 `idempotency_conflict`; 503 `restarting` with retry-after during drain.
 - Switchboard stopAll: `thread.stopped` reason `restart` (was `stopped`).
+- Module ctx: `ctx.events.latestId()`.
+- term: `term.closed` reason `box updated` at start for lost terminals; `term.attach` error code
+  `terminal_closed`; terms.json gains `gone`.
+- box image: ENTRYPOINT tini, CMD core/daemon/loop.sh.
 - term: `term.open`/`term.attach` add `durable`, `offset`, `oldest`; attach takes `from`; new
   text frames `cut` and `at` only when `from` is given; close code 1012 on stop; config
   `term.keep_hours`.

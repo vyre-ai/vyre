@@ -50,8 +50,9 @@ terminal, Glass, the relay and federation between boxes. Each rule has a test in
 - Clients drop any event whose id is at or below the last one they applied (no doubles), and
   persist the cursor so a cold start resumes too.
 - A client treats 45 s without a byte (three missed heartbeats) as a dead stream and reconnects.
-- Tool reads that a view renders from (`threads.get`, `planner.list`, Needs) return `last_event`,
-  the cursor they are current to, so a view that loads first and subscribes second has no gap.
+- Tool reads that a view renders from (`threads.get`, `planner.list`, `planner.upcoming`, Needs)
+  return `last_event`, the cursor they are current to, so a view that loads first and subscribes
+  second has no gap. A module reads it from `ctx.events.latestId()`.
 
 ### R2. Every write carries an idempotency key, and each device has an outbox
 
@@ -105,8 +106,12 @@ terminal, Glass, the relay and federation between boxes. Each rule has a test in
 - The shell runs on the box under a detachable holder (a pty kept by vyred's term module, with a
   `dtach` socket so it outlives a vyred restart; the next vyred re-adopts it from
   `run/term/terms.json`). Without `dtach` on the PATH it is a plain pty and `term.open` says
-  `durable: false`. It outlives a restart of the vyred process, not of its container: while vyred
-  is the container's PID 1, a deploy that recreates the container still ends every terminal. A client disconnect never ends it. An idle
+  `durable: false`. In the box image tini is the init and a small loop (`core/daemon/loop.sh`)
+  restarts vyred inside the container, so a vyred crash or restart keeps every terminal. A deploy
+  recreates the container and ends them: the next vyred says so with `term.closed` reason
+  `box updated`, and `term.attach` on one of them answers `terminal_closed` (for a day) instead of
+  `not_found`, so the screen shows "the box was updated; open a new terminal" rather than going
+  quiet. Terminals that survive a deploy need a holder outside the vyred container (backlog). A client disconnect never ends it. An idle
   terminal is kept for 12 h by default (`term.keep_hours`), not seconds.
 - The box counts every output byte. A client attaches with `from=<offset>` and gets exactly the
   bytes after it from a 1 MB ring, trimmed only at line boundaries. If the offset has left the
