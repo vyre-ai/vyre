@@ -48,7 +48,8 @@ RUN groupadd -g 1002 vyre-work \
  && chown 1000:1002 /work && chmod 2775 /work \
  && chmod 700 /home/vyre \
  && chown 1001:1002 /home/vyre-agent && chmod 2750 /home/vyre-agent \
- && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre
+ && mkdir -p /run/vyre && chown 0:1000 /run/vyre && chmod 2750 /run/vyre \
+ && mkdir -p /run/vyre-threads && chown 1000:1002 /run/vyre-threads && chmod 2710 /run/vyre-threads
 
 # Everything .dockerignore lets through: package files, bin, core, harness, docs, LICENSE,
 # README.md, and deck, modules and local when they exist.

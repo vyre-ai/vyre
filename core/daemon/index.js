@@ -186,7 +186,7 @@ async function body(req) {
 }
 
 /**
- * @typedef {{ caller?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
+ * @typedef {{ caller?: string, thread?: string, agent?: string, tool?: (name: string) => boolean, path?: (method: string, pathname: string) => boolean,
  *   eventType?: string, headers?: Record<string, string>, peer?: { node: string, stableId: string|null, login: string|null,
  *   tags?: string[], caps?: Record<string, any[]>, kind?: "owner"|"guest"|"agent", agent?: string, origin?: string } }} Policy
  * A policy from a module's listener: the caller it established, which tools and paths it may reach,
@@ -282,6 +282,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // The tailnet peer a network listener established (node, stableId, login) rides here too.
   /** @type {{ thread?: string, agent?: string, peer?: any, person?: { id: string, kind: string } }} */
   const via = policy.peer ? { peer: policy.peer } : {};
+  // A session's own socket (core/daemon/threadsock.js): vyred bound the thread and the agent when
+  // it opened it, so neither is read from the call, and no key is asked for.
+  if (policy.thread) { via.thread = String(policy.thread); if (policy.agent) via.agent = String(policy.agent); }
   // The person, not only their device (core/presence/person.js, ADR 0032). A node signed in as the
   // owner over the tailnet, and a paired device over the relay (`device:<id>`), are the owner's
   // devices; the person is a browser or app holding a person session made on that one device
@@ -319,7 +322,9 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   if (agentNode && !(said && policy.peer && policy.peer.agent === said[1])) {
     return send(res, 403, { error: { code: "denied", message: "this node's agent is not the one its caller names" } });
   }
-  if (said) {
+  if (policy.thread) {
+    // Bound above; a key or a session claim on this socket changes nothing.
+  } else if (said) {
     const key = String(req.headers["x-vyre-agent-key"] || "");
     const v = key ? await registry.call("threads.vouch", { agent: said[1], key }, "module:vyred") : null;
     if (!(v && v.data && v.data.thread)) return send(res, 403, { error: { code: "denied", message: `the caller names agent ${said[1] || "(none)"}, and no thread of that agent is running with this key` } });

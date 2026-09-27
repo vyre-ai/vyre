@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One socket per Vyre-owned session (ADR 0030 phase 3, option A)
+
+- core/daemon/threadsock.js: `openThreadSocket({ handler: ctx.handler, thread, agent, pids, dir })`
+  opens a socket for one session, at a random name in /run/vyre-threads (vyre:vyre-work, 2710:
+  the agent can pass through, not list). vyred binds the caller (`mcp:thread:<id>`,
+  `harness:thread:<id>`, or `mcp:agent:<name>` / `harness:agent:<name>`; the client picks only
+  mcp or harness), the thread and the agent, and asks for no key; the kernel's peer pid must belong
+  to the session (its process, group, session or a descendant); person-only and human-only tools
+  and presence routes are refused. `close()` removes it. The router takes `thread` and `agent`
+  from a listener's policy.
+
 #### Phones over the relay: vault sessions, and the same key signing in again
 
 - A presence session serves vault reveal and copy for a device paired over the relay
