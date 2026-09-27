@@ -127,8 +127,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 ## Next: 0.1.1 batch 1 (right after rc.2 lands)
 
 - federation 9338a6a5 (supersedes aa9cb40c; e2e signed off: fail-closed ask checks, persisted nonces, files.deliver opt-in).
-- windows 63156fe9 (Tier A+B, ADR 0037, test-windows job non-blocking), AFTER e2e reads the win32
-  role-default change in core/config; windows will ping.
+- windows 8cd4722d (Tier A+B, ADR 0037, test-windows job non-blocking; reviewer cleared).
 - docs 40dcb26d (supersedes 53bbc146): ADR 0038 terminology, glossary, docs-check terminology rule
   (hard-fails docs-owned pages only).
 - memory-iq's 0.1.1 sha (memory.ask stream: true cutover, around ffae4f08) BEFORE capsule-pro's
@@ -138,7 +137,7 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
 - HOTFIX first when it comes: work/glass-hotfix (vyred-only bearer on docker-api). After reviewer's
   sign-off: fast-forward main, targeted run, tell box-deploy to redeploy (backup first). Then merge into pre/rc.
 - Reviewer (security) now signs off shas. Cleared for 0.1.1: teammates 9d9e6688 (on 20d0f121, fixes its LOW; supersedes b19f10c2),
-  memory-iq d0b916b9 + 7ee03df6 (together). HELD: windows cac517d4 (MEDIUM).
+  memory-iq d0b916b9 + 7ee03df6 (together). windows 8cd4722d cleared (with cac517d4 + 63156fe9).
 - teammates b19f10c2 (core/team, ADR 0031 step 1; e2e signed off). It carries a cherry-pick of 1941f2cf
   in core/daemon/index.js, already on main: expect a trivial conflict there.
 
