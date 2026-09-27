@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Deck tells context where the person is (ADR 0036 part 2)
+
+- deck/js/context-report.js calls context.report {surface: "deck" or "phone", project, thread}
+  when the Deck lands on a page (the path's project and thread) and when it comes back to the
+  front, once per place; never while hidden, never text, a selection, a URL or a device (the box
+  knows the caller's). A box without context is asked once. Tests: deck/js/context-report.test.js (3).
+
 #### Needs you reads cohesion's waiting (ADR 0036 decision 4)
 
 - deck/js/needs.js asks waiting.list beside the owners' reads. Where the box has it, the list is

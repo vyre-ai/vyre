@@ -32,6 +32,7 @@ import { rail, placeForKey, macKeys } from "./rail.js";
 import { fillPlaces, readPin } from "./places.js";
 import { watchHealth, linkLine } from "./health.js";
 import { followTheme } from "./theme-live.js";
+import { reportContext } from "./context-report.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -770,6 +771,8 @@ window.addEventListener("deck:navigate", route);
   installPersonHandler();
   // The theme and scheme from the settings hub, live (ADR 0035); a box without the hub keeps /theme.css.
   followTheme({ attempt, on, onResume });
+  // Where the person is, for cohesion's context (ADR 0036): on each page and on coming back.
+  reportContext({ attempt, surface: () => (phone() ? "phone" : "deck") });
   // What needed the user last time, from this device, while the box is asked (ADR 0029 R3).
   void needs.restore();
   const status = attempt("onboard.status");
