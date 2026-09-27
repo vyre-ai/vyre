@@ -862,6 +862,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   (the Registry's callerAllowed), never a guest.
 #### Outages are boring: streams resume, retried writes run once, and a restart drains (ADR 0029)
 
+- term: one socket owns a terminal's size (the first to attach). `{"t":"take"}` moves it; size
+  frames from other sockets are kept, not applied; when the owner leaves, the oldest socket left
+  takes over at the size it last asked for. Sockets on the offset protocol hear
+  `{"t":"size","cols","rows","owner"}`; clients without from= still get no text frames.
+- test/chaos/relay.test.js runs R1, R2 and R5 over the real Node relay and a real vyred: a stream
+  survives a dropped device socket and a relay restart, an outbox write whose answer the relay
+  lost lands once, and createPaths moves a stream from direct to the relay and back with nothing
+  lost or doubled. web.js over() now reads relay/client's async-iterable bodies (before, it could
+  not open a stream over the relay at all). Two relay redial bugs are recorded as todo tests.
+- One init in the box: no compose service on the vyre image sets `init: true` any more (vyre,
+  docker-api, egress), so the image's tini is PID 1 instead of a second init behind docker-init.
+  test/box-init.test.js guards it; the tailscale service is unchanged.
+- web.js `over(pathFetch)`: the stream client and the outbox run on any fetch(path, init), such
+  as relay/client's createPaths().fetch (the relay is Noise over a WebSocket, not an HTTP proxy);
+  the paths layer picks the way, follow() keeps the cursor on one logical path.
+- R6 chaos test: a ring answered by key from a device's outbox while the box was out of reach is
+  never rung by the box, is acked once with `unrung: true`, and a retry says `already`.
 - The CLI's writes run once: `write()` in core/daemon/client.js sends an Idempotency-Key per
   intent and retries with it for up to 20 s while vyred is unreachable or restarting, so
   `vyre threads send`, `threads answer` and the live screen's send ride out a restart.

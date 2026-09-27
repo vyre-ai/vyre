@@ -53,7 +53,7 @@ services:
     # Only where computers run: without them nothing would use it.
     profiles: ["computers"]
     restart: unless-stopped
-    init: true
+    # No `init: true`: the image's tini is PID 1 (box/Dockerfile, ADR 0029 R4).
     user: "1000:1000"
     read_only: true
     cap_drop: [ALL]
