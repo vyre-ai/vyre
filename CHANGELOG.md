@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The box reads a Mac session as blocks
+
+- `recall.transcript` on the box, for the person, reads a session the box does not have from the
+  paired Mac (or any session with `source: "mac"`), labelled `source: "mac"` and `machine`, so a
+  Mac reply keeps its rich view after the re-read. Nothing is stored on the box. An id no machine
+  has is still `not_found`; an away Mac says so. `recall.transcript` joins the link's read
+  allowlist (core/link/allow.js), and agents and MCP still never get it. Test:
+  test/federation-reads.test.js.
+
 #### Chat starts sessions, browses the box's folders, opens a terminal, and asks real questions (ADR 0024)
 
 - Chat has New session (header, rail, empty state, key `n`): pick a project, a folder on the box or
