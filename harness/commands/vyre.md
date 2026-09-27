@@ -24,15 +24,15 @@ The user ran `/vyre $ARGUMENTS`.
 - `project`: call `projects_context` for the current folder's project and show it as is. If the
   folder is in no project, say so and mention `vyre new`.
 - `todo <text>`: call `planner_add` with `{"text": "<text>", "kind": "todo"}`. With no text, call
-  `planner_agenda` and show only its `todos`. Say in one line what was added.
+  `planner_list` with `{"kind": "todo"}` (the open ones) and show one title a line. Say in one line what was added.
 - `remind <when> <text>`: call `planner_add` with `{"text": "remind me <when> <text>"}`, the user's
   words as they typed them ("remind me 6pm call Harlow Legal", "remind me in 20 minutes check the
   oven"); the planner reads the time itself. Say in one line what it will say and when, from the
   `title`, `date` and `wall` it returned (the planner's local time). If it comes back with an
-  error because there is no time, ask for one. Never say a reminder is set unless `planner_add`
-  returned it.
+  error because there is no time, ask for one.
+  Never say a reminder is set unless `planner_add` returned it.
 - `agenda`: call `planner_agenda` with `{}` (today). Show its `entries` first, one line each with
-  the local time of `at` in its `tz`, then the open `todos`. Nothing on: say so in one line.
+  the local time of `at` in its `tz`, then the `todos` due that day. Nothing on: say so in one line.
   `agenda tomorrow` (or another day) passes `{"from": "YYYY-MM-DD"}` for that day.
 - `remember <fact>`: a fact about the user or their work, for every future session. Call
   `memory_remember` with `{"text": "<fact>"}` and say in one line that it is remembered. If
@@ -50,7 +50,7 @@ The user ran `/vyre $ARGUMENTS`.
   status line it changes nothing unless they add `--chain`, which keeps theirs and adds Vyre's
   line under it. Do not run it for them and do not edit their settings.json.
 
-If `planner_add` or `planner_agenda` is not offered, the planner is not running on this machine
+If `planner_add`, `planner_list` or `planner_agenda` is not offered, the planner is not running on this machine
 yet: say so in one line and do not pretend to set anything.
 
 If the `vyre` MCP server has no tools at all, Vyre is not running here: its instructions say
