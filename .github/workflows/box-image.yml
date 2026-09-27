@@ -92,22 +92,38 @@ jobs:
           sh "$RUNNER_TEMP/health.sh" 60
 
       # The two checks below need ADR 0029's tini and loop.sh (resilience); an older image skips them.
-      # The web app a deploy ships (scripts/build-app.sh): /app/ is its index.html, and /app/sw.js
-      # carries the export's precache list, more than index.html alone.
+      # The web app a deploy ships (scripts/build-app.sh). A 404 no_app on /app/ means the pack
+      # step was missed.
       - name: GET /app/ serves the web app with its precache list
         if: hashFiles('apps/app/package.json') != ''
         run: |
           docker exec "$C" node -e '
             const http = require("node:http");
+            const fs = require("node:fs");
             import("/opt/vyre/core/config/index.js").then(async c => {
               const socketPath = c.paths(c.home()).socket;
               const get = p => new Promise((ok, no) => http.get({ socketPath, path: p, headers: { "x-vyre-caller": "cli" } }, r => {
-                let b = ""; r.setEncoding("utf8"); r.on("data", d => b += d); r.on("end", () => ok({ status: r.statusCode, type: r.headers["content-type"], body: b })); }).on("error", no));
-              const page = await get("/app/"), sw = await get("/app/sw.js");
+                let b = ""; r.setEncoding("utf8"); r.on("data", d => b += d); r.on("end", () => ok({ status: r.statusCode, type: String(r.headers["content-type"] || ""), location: r.headers.location, body: b })); }).on("error", no));
+              const fail = m => { console.error("FAIL " + m); process.exit(1); };
+              const pre = JSON.parse(fs.readFileSync("/opt/vyre/apps/app/dist/precache.json", "utf8"));
+              const bare = await get("/app");
+              if (bare.status !== 301 || bare.location !== "/app/") fail(`/app is ${bare.status} to ${bare.location}`);
+              const page = await get("/app/");
+              if (page.status !== 200 || !/text\/html/.test(page.type)) fail(`/app/ is ${page.status} ${page.type} ${page.body.slice(0, 120)}`);
+              const entry = (/\/app\/_expo\/static\/js\/web\/entry-[^"]+\.js/.exec(page.body) || [])[0];
+              if (!entry) fail("/app/ names no entry-<hash>.js");
+              const js = await get(entry);
+              if (js.status !== 200 || !/javascript/.test(js.type)) fail(`${entry} is ${js.status} ${js.type}`);
+              const spa = await get("/app/now");
+              if (spa.status !== 200 || !/text\/html/.test(spa.type)) fail(`/app/now is ${spa.status}`);
+              const sw = await get("/app/sw.js");
               const list = JSON.parse((/const PRECACHE = (\[.*?\]);/.exec(sw.body) || [])[1] || "[]");
-              console.log(`/app/ ${page.status} ${page.type}, ${page.body.length} bytes; /app/sw.js ${sw.status}, ${list.length} precached`);
-              if (page.status !== 200 || !/text\/html/.test(page.type || "") || !/<html/i.test(page.body)) process.exit(1);
-              if (sw.status !== 200 || list.length < 2 || !list.includes("/app/index.html")) process.exit(1);
+              if (sw.status !== 200 || !sw.body.includes(JSON.stringify(pre.build)) || list.length < 2 || !list.includes(entry)) fail(`/app/sw.js is ${sw.status}, ${list.length} precached, build ${pre.build}`);
+              // The worker installs only when every precached file answers: one 404 and /app/ never works offline.
+              for (const f of list) { const r = await get(f); if (r.status !== 200) fail(`precached ${f} is ${r.status}`); }
+              const man = await get("/app/manifest.webmanifest");
+              if (man.status !== 200 || !/manifest\+json/.test(man.type) || JSON.parse(man.body).start_url !== "/app/") fail(`/app/manifest.webmanifest is ${man.status} ${man.type}`);
+              console.log(`/app/ 200 (${page.body.length} bytes), ${entry} ${js.body.length} bytes, /app/now 200, /app/sw.js build ${pre.build} with ${list.length} precached (all 200), manifest start_url /app/`);
             }).catch(e => { console.error(e); process.exit(1); });' | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: tini is PID 1

@@ -82,6 +82,10 @@ if [ -f "$repo/apps/app/package.json" ]; then
     grep -qx "$want" "$work/files" || fail "the tarball has no $want (run scripts/build-app.sh before npm pack)"
   done
   grep -q '^apps/app/\(src\|node_modules\)/' "$work/files" && fail "the tarball carries the app's source or node_modules, only apps/app/dist belongs"
+  if [ -d "$repo/apps/app/dist" ]; then
+    missing=$(cd "$repo/apps/app/dist" && find . -type f | sed 's|^\./|apps/app/dist/|' | grep -vxF -f "$work/files" || true)
+    [ -z "$missing" ] || fail "npm pack left out these files of apps/app/dist: $missing"
+  fi
   ok "has the web app for /app/ ($(grep -c '^apps/app/dist/' "$work/files") files)"
 fi
 if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design|work|proposals)/|^docs/.*\.png$|^local/capsule/native/(\.build|Tests)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
@@ -104,11 +108,12 @@ pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
 kb=$(du -sk "$work/prefix" | cut -f1)
 [ ! -d "$pkg/node_modules" ] || fail "npm i -g installed dependencies: $(ls "$pkg/node_modules" | tr '\n' ' ')"
-# 12 MB: real code growth (memory/personal, the Mac apps module, relay, resilience) plus the docs
+# 16 MB: 12.7 MB without the web app on 2026-09-27 (already over the old 12 MB), plus apps/app/dist
+# (2.6 MB, 26 files) that vyred serves at /app/. Before that, 12 MB: real code growth (memory/personal, the Mac apps module, relay, resilience) plus the docs
 # and docs/index.json, which scripts and agents read offline. du counts a block per file, so 670
 # small files cost more here than in the 2.5 MB tarball. A dependency or build output coming back
 # would add tens of MB; design docs and screenshots are kept out above.
-[ "$kb" -lt 12288 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
+[ "$kb" -lt 16384 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"

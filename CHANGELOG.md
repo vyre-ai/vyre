@@ -13,7 +13,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   dist/ and would drop it from the pack. A checkout without apps/app skips the step.
 - box-image.yml checks GET /app/ is the app's index.html and /app/sw.js carries its precache
   list; release-check.sh checks the tarball has dist/index.html and dist/precache.json and none of
-  the app's source.
+  the app's source, and that every file of dist made it in. The icons Metro puts under
+  dist/assets/node_modules/ move to dist/assets/nm/ (npm never packs a node_modules folder, and one
+  missing precached file stops /app/sw.js installing); box-image fetches every precached path.
+- release-check's install cap is 16 MB: 12.7 MB without the app (over the old 12 MB already), plus
+  2.6 MB for apps/app/dist; vyre.tgz is about 3.8 MB.
 
 #### The onboard page test cleans its home last
 

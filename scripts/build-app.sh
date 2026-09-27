@@ -31,7 +31,26 @@ fi
 cd "$app"
 rm -rf dist
 npm ci --no-audit --no-fund --loglevel=error
-EXPO_NO_TELEMETRY=1 npx expo export -p web --output-dir dist
+# The app's own export:web (expo export -p web, then scripts/precache.mjs), into dist, which
+# core/daemon/app.js serves. Metro reads repo folders through aliases, so this runs in a checkout.
+# Between the two: Metro puts the icons of packages (expo-router, react-navigation) under
+# dist/assets/node_modules/, and npm never packs a folder named node_modules, so vyre.tgz lost them
+# and /app/sw.js failed to install on their 404s. They move to dist/assets/nm/ and the bundle's
+# paths follow, before the precache list is made.
+CI=1 EXPO_NO_TELEMETRY=1 npx expo export -p web
+if [ -d dist/assets/node_modules ]; then
+  mv dist/assets/node_modules dist/assets/nm
+  node -e '
+    const fs = require("node:fs"), path = require("node:path");
+    const walk = d => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]);
+    let n = 0;
+    for (const f of walk("dist").filter(f => /\.(js|html|json|css)$/.test(f))) {
+      const s = fs.readFileSync(f, "utf8"), t = s.split("/assets/node_modules/").join("/assets/nm/");
+      if (t !== s) { fs.writeFileSync(f, t); n++; }
+    }
+    if (!n) { console.error("build-app: no file named assets/node_modules; the icons would not load"); process.exit(1); }'
+fi
+[ -z "$(find dist -type d -name node_modules)" ] || { echo "build-app: dist still has a node_modules folder, which npm will not pack" >&2; exit 1; }
 node scripts/precache.mjs dist /app/
 [ -f dist/index.html ] || { echo "build-app: the export has no dist/index.html" >&2; exit 1; }
 [ -f dist/precache.json ] || { echo "build-app: precache.mjs wrote no dist/precache.json" >&2; exit 1; }
