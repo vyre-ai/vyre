@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The floor follows links
+
+- Every write target is checked as named and as the kernel walks it: a symlink anywhere on the
+  way, and `..` after one (`x/../settings.json` where x links into `.claude`), are resolved with
+  realpath(3) from the raw string; a file not there yet by its folder's real path. This covers
+  rule 1 (Claude Code's settings, .mcp.json, ~/.claude.json) and rule 8 (VYRE_HOME, other agents'
+  folders), for the file tools and Bash write forms. A write to an existing file with more than
+  one link is compared by inode with the settings files and with VYRE_HOME outside the places a
+  model may work; a hard link to one of them is refused. It runs in the PreToolUse floor, so it
+  holds in every permission mode, bypassPermissions included.
+
 #### One socket per Vyre-owned session (ADR 0030 phase 3, option A)
 
 - core/daemon/threadsock.js: `openThreadSocket({ handler: ctx.handler, thread, agent, pids, dir })`
