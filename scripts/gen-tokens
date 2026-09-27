@@ -5,7 +5,8 @@
 // an output by hand; change the JSON and run this.
 //
 //   node scripts/gen-tokens              write every file
-//   node scripts/gen-tokens --check      exit 1 if a file is stale, write nothing
+//   node scripts/gen-tokens --check      exit 1 if a file is stale, write nothing (a surface whose
+//                                        folder is not in the tree is skipped)
 //   --ts <path> --swift <path> --css <path>   write only these, to these paths
 import fs from "node:fs";
 import path from "node:path";
@@ -40,6 +41,8 @@ if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.a
     const file = path.resolve(REPO, rel);
     const now = fs.existsSync(file) ? fs.readFileSync(file, "utf8") : null;
     if (now === body) continue;
+    // A surface that is not in this tree yet (its folder is missing) is not checked.
+    if (check && now === null && !picked.length && !fs.existsSync(path.dirname(file))) continue;
     if (check) { console.error(`${rel} is stale; run node scripts/gen-tokens`); stale++; continue; }
     fs.mkdirSync(path.dirname(file), { recursive: true });
     fs.writeFileSync(file, body);
