@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: a Glass card scrolled off screen fetches no still
+
+- The card on Now counts as hidden while it is out of view: an IntersectionObserver on the web, and
+  on native a measure in the window on layout and on the scroller's signal (at most every 100 ms).
+  `src/ui/onscreen.js` holds the pure overlap check and the signal, with tests.
+
 #### App: the Glass mini-view on Now and in the thread, from sight.frame stills
 
 - `apps/app/src/state/glass-model.js` (pure, node-tested) folds `sight.targets`, `sight.steps` and

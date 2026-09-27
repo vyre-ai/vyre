@@ -19,6 +19,7 @@ import { focusData } from "./Button";
 import { Icon } from "./Icon";
 import { useReducedMotion } from "./pointer";
 import { StatusMark } from "./StatusMark";
+import { useOnScreen } from "./useOnScreen";
 
 type Props = {
   view: TargetView;
@@ -181,8 +182,11 @@ export function GlassCard({ view, waiting = null, visible, here }: Props) {
   const frame = useGlassFrame();
   const [width, setWidth] = useState(0);
   const onLayout = useCallback((e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width), []);
+  // Scrolled out of view counts as hidden: no stills for a card nobody can see (glass-mini.md).
+  const frameRef = useRef<View>(null);
+  const onScreen = useOnScreen(frameRef);
   const shows = phase === "card" || phase === "stopped";
-  const on = visible && front && shows;
+  const on = visible && onScreen && front && shows;
   const now = useAge(view.step?.at, on);
   const line = stepLine(view, now, waiting);
   const said = useAnnounce(line.text ? announceText(view.agent, line.text) : "");
@@ -200,8 +204,8 @@ export function GlassCard({ view, waiting = null, visible, here }: Props) {
   }, [view.target]);
   const maxWidth = frameWidth(width, PixelRatio.get());
   useEffect(() => {
-    watch.current?.set({ visible: visible && shows && width > 0, width: maxWidth });
-  }, [visible, shows, width, maxWidth]);
+    watch.current?.set({ visible: visible && onScreen && shows && width > 0, width: maxWidth });
+  }, [visible, onScreen, shows, width, maxWidth]);
 
   if (phase === "gone") return null;
   if (phase === "pill") return <GlassPill view={view} waiting={waiting} here={here} />;
@@ -218,6 +222,7 @@ export function GlassCard({ view, waiting = null, visible, here }: Props) {
         style={(st) => [styles.card, st.pressed ? { backgroundColor: color.hover } : null]}
       >
         <View
+          ref={frameRef}
           onLayout={onLayout}
           aria-hidden
           accessibilityElementsHidden

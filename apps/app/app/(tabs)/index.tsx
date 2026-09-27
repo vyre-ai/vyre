@@ -12,6 +12,7 @@ import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
 import { type } from "../../src/theme/type";
 import { List } from "../../src/ui/List";
+import { ScrollSignal, createScrollSignal } from "../../src/ui/scroll-signal";
 import { NotifyBar } from "../../src/ui/NotifyBar";
 import { Row, ROW_HEIGHT } from "../../src/ui/Row";
 import { GlassCard, useScreenFocused } from "../../src/ui/GlassMini";
@@ -139,6 +140,7 @@ export default function Now() {
   useTabDrawn();
   const list = useMemo(() => visibleNeeds(items, hidden), [items, hidden]);
   const glass = useGlassCards().length > 0;
+  const signal = useMemo(createScrollSignal, []);
   useOpenMarks(from !== "none");
 
   const header = (
@@ -154,10 +156,12 @@ export default function Now() {
       <NotifyBar />
       {header}
       {list.length === 0 && glass ? (
-        <ScrollView style={styles.fill}>
-          <Text style={[type.read, styles.quiet, { color: color.label }]}>{from === "none" ? " " : "Nothing needs you"}</Text>
-          <GlassSection list={list} />
-        </ScrollView>
+        <ScrollSignal.Provider value={signal}>
+          <ScrollView style={styles.fill} onScroll={signal.emit} scrollEventThrottle={100}>
+            <Text style={[type.read, styles.quiet, { color: color.label }]}>{from === "none" ? " " : "Nothing needs you"}</Text>
+            <GlassSection list={list} />
+          </ScrollView>
+        </ScrollSignal.Provider>
       ) : list.length === 0 ? (
         <Empty text={from === "none" ? " " : "Nothing needs you"} />
       ) : (
