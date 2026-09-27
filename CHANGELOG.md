@@ -15,6 +15,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   way, and CI replays them. Questions have their own daily cap (config.memory.model.askDailyUsd, $0.50, about 150 questions).
   At the cap memory.ask returns limited: true and the message "Vyre IQ's daily limit is reached,
   change it in Settings", for the surface to show.
+- Memory's model calls (the reader and Vyre IQ) run on the person's Claude login and never bill API
+  dollars: ANTHROPIC_API_KEY and ANTHROPIC_AUTH_TOKEN are left out of their environment unless
+  config.memory.model.billing is "api".
 - A fact a module teaches about the user (`subject: {kind: "me"}`, a learned preference) lands on
   the user's own node, not on a stray "the user", and reads "you prefer pnpm".
 - `memory.retrieve {question}`: Recall's searches for the question and for the names memory and

@@ -92,7 +92,7 @@ export default {
     };
     const runner = ctx.memoryRunner !== undefined ? ctx.memoryRunner
       : process.env.NODE_TEST_CONTEXT && !process.env.VYRE_CLAUDE_BIN ? null
-      : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()) }) : null;
+      : jobs() ? claudeOnce({ cwd: /** @type {string} */ (jobs()), billing: () => ctx.config.memory?.model?.billing }) : null;
     const model = createReader({
       db: ctx.store.db, personal, now: () => Date.now(), call: (tool, input) => ctx.call(tool, input), log: ctx.log, config: () => ctx.config,
       // Never a real model under node --test unless a test points VYRE_CLAUDE_BIN at a fake.
