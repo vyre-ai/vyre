@@ -45,8 +45,12 @@ A personal fact answers in under 50 ms with no model. Otherwise the fast model r
 about 3.8 s at p50 through `claude -p` today (measured on the open world), and under 3 s once
 sessions' warm quick session lands (work/sessions, not on main yet).
 
-How it looks is app-design's (docs/design/system/components/result-card). The shape every surface
-shares:
+How it looks is app-design's: an "Answer" variant of the result card
+(docs/design/system/components/result-card), confirmed 28 Sep. It uses the result card's shell, with
+no header row and never a primary action. Sources are source chips (a 1px strong rule, no fill, a
+mono 12 meta line). Confidence is plain text in the meta line, never a colour. The abstain and
+limited states use the same shell and padding, never a red or amber treatment. Above the search
+hits there is a 12 px gap (space-3), full width. The shape every surface shares:
 
 1. The answer, one or two sentences, in the user's words for names and files.
 2. One line under it: how sure ("confidence 0.8") and where from ("from 2 sessions", or "from what
