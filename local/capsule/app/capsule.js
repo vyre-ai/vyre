@@ -542,7 +542,7 @@ function paint() {
     const mem = r && r.memory && (r.memory.memo || []).length ? r.memory : null;
     if (mem) kids.push(memoBox(mem));
     // Queued for a session busy in a terminal: it gets the words when its turn ends (harness Stop).
-    if (r && r.queued && !r.text && !r.finished) kids.push(h("div", { class: "sect status" }, r.queued.delivered ? `Handed to ${r.queued.name}. Its reply shows here when its turn ends.` : `Queued for ${r.queued.name}: it gets this when its current turn ends.`));
+    if (r && r.queued && !r.text && !r.finished) kids.push(h("div", { class: "sect status" }, r.queued.delivered ? `Handed to ${r.queued.name}. Its reply shows here as it comes.` : `Queued for ${r.queued.name}: it gets this when its current turn ends.`));
     if (r && r.tools.length) kids.push(h("div", { class: "tools" }, r.tools.map(t => h("span", { class: "tl" + (t.error ? " fail" : "") }, `${t.done ? (t.error ? "failed" : "done") : "running"} · ${t.summary}`))));
     kids.push(h("div", { class: "reply md" }, r && r.text ? md(r.text) : null, r && !r.finished && !(r.queued && !r.text) ? h("span", { class: "caret" }) : null));
     // Vyre's own words (a usage limit), faint, under the answer and never in it.

@@ -138,7 +138,7 @@ const drop = (list, source, id) => {
  * `cancelled` is the user's Stop: nothing that arrives after it changes the reply.
  * @typedef {{ thread: string, order: string[], text: Record<string, string>, tools: { id: string, summary: string, done: boolean, error: boolean }[],
  *   finished: boolean, ok: boolean|null, error: string|null, lease: string|null, cost: number|null, ms: number|null,
- *   cancelled?: boolean, notice?: string|null, queued?: { name: string, delivered: boolean, id?: number|null, withdrawn?: boolean }|null, model?: string|null, memory?: { answer: string|null, sources: any[], confidence?: number|null, answerAge?: string|null }|null }} Reply
+ *   cancelled?: boolean, notice?: string|null, queued?: { name: string, delivered: boolean, id?: number|null, turn?: string, withdrawn?: boolean }|null, model?: string|null, memory?: { answer: string|null, sources: any[], confidence?: number|null, answerAge?: string|null }|null }} Reply
  */
 export function reply(thread) {
   return /** @type {Reply} */ ({ thread, order: [], text: {}, tools: [], finished: false, ok: null, error: null, lease: null, cost: null, ms: null });
@@ -154,8 +154,18 @@ export function applyReply(r, e) {
   if (!r || r.cancelled || e.thread !== r.thread) return r;
   const p = e.payload || {};
   if (e.type === "thread.text" && p.notice) return { ...r, notice: s(p.text) };
-  // Words queued for a session busy in a terminal reached it (the Harness handed them over).
-  if (e.type === "thread.sent" && p.queued != null && r.queued) return { ...r, queued: { ...r.queued, delivered: true } };
+  // Words queued for a busy session reached it: the Harness at a terminal's Stop, or the owned
+  // session's own turn end. Only our row counts; another surface's queued words are not ours.
+  if (e.type === "thread.sent" && p.queued != null && r.queued) {
+    if (r.queued.delivered || (r.queued.id != null && Number(p.queued) !== r.queued.id)) return r;
+    return { ...r, queued: { ...r.queued, delivered: true, ...(p.turn != null ? { turn: s(p.turn) } : {}) } };
+  }
+  // Until then the thread is answering something else (the turn it is busy with): none of that
+  // is this reply. After it, only the answering turn is, when events name their turn.
+  if (r.queued && /^thread\.(text|tool|finished)$/.test(e.type)) {
+    if (!r.queued.delivered) return r;
+    if (r.queued.turn != null && p.turn != null && s(p.turn) !== r.queued.turn) return r;
+  }
   if (e.type === "thread.text") {
     const id = s(p.message || "m");
     const order = r.order.includes(id) ? r.order : [...r.order, id];

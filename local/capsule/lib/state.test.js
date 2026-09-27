@@ -202,3 +202,36 @@ test("state: a Vyre notice is a status line, never part of the answer or the DM'
   assert.deepEqual(v.messages.map(m => [m.role, m.text]), [["user", "hi"], ["agent", "Hello."]]);
   assert.equal(v.notice, "Claude's seven-day usage limit is at 85%.");
 });
+
+test("state: a queued reply ignores the turn the session is busy with, then streams its own turn live", () => {
+  const T = { thread: "t1" };
+  let r = { ...reply("t1"), queued: { name: "Intake form", delivered: false, id: 7 } };
+  // The running turn someone else started: its words and its end are not this reply.
+  r = applyReply(r, ev(1, "thread.text", { message: "m0", delta: "Still refactoring" }, T));
+  r = applyReply(r, ev(2, "thread.tool", { id: "c1", summary: "npm test" }, T));
+  r = applyReply(r, ev(3, "thread.finished", { ok: true, cost_usd: 0.4 }, T));
+  assert.deepEqual([replyText(r), r.tools.length, r.finished, r.cost], ["", 0, false, null]);
+  // Another surface's queued words handed over first: still not ours.
+  r = applyReply(r, ev(4, "thread.sent", { queued: 6, via: "turn", turn: "t1:3" }, T));
+  assert.equal(r.queued?.delivered, false);
+  r = applyReply(r, ev(5, "thread.sent", { queued: 7, via: "turn", turn: "t1:3" }, T));
+  assert.deepEqual([r.queued?.delivered, r.queued?.turn], [true, "t1:3"]);
+  // Its turn streams in pieces; a stray event from another turn is dropped.
+  r = applyReply(r, ev(6, "thread.text", { message: "m1", delta: "On ", turn: "t1:3" }, T));
+  r = applyReply(r, ev(7, "thread.text", { message: "mX", delta: "noise", turn: "t1:2" }, T));
+  r = applyReply(r, ev(8, "thread.text", { message: "m1", delta: "main.", turn: "t1:3" }, T));
+  assert.deepEqual([replyText(r), r.finished], ["On main.", false], "live, before the turn ends");
+  r = applyReply(r, ev(9, "thread.finished", { ok: true, cost_usd: 0.01, turn: "t1:3" }, T));
+  assert.deepEqual([r.finished, r.ok, r.cost], [true, true, 0.01]);
+});
+
+test("state: a queued reply without turn ids ends at the first finish after its hand-over", () => {
+  const T = { thread: "t1" };
+  let r = { ...reply("t1"), queued: { name: "Intake form", delivered: false, id: null } };
+  r = applyReply(r, ev(1, "thread.finished", { ok: true }, T));
+  assert.equal(r.finished, false, "the busy turn ending is not the answer");
+  r = applyReply(r, ev(2, "thread.sent", { queued: 3, via: "stop" }, T));
+  r = applyReply(r, ev(3, "thread.text", { message: "m1", text: "Done.", done: true }, T));
+  r = applyReply(r, ev(4, "thread.finished", { ok: true }, T));
+  assert.deepEqual([replyText(r), r.finished], ["Done.", true]);
+});
