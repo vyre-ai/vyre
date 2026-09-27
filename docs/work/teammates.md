@@ -63,25 +63,22 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 - app-design boards approved (work/app-design 99820a16 and 6a1e2f7a) — not yet consumed (step 6).
 
 ## Next
-1. e2e round 3 (2026-09-28): HIGH 2/3 and the MEDIUM/LOW findings signed off. One core/team item
-   was still open (`projectOf` took `input.project` from a bare "mcp" caller with neither a
-   thread nor an agent, which is exactly the shape a forged label becomes after the daemon's
-   downgrade) — fixed: `input.project` is now taken only when `PERSON.has(callerKind(caller))`.
-   The flaky priority-order test is fixed too (fake claude's `subagent`/`subagent-slow` is now
-   found anywhere in the prompt, like `vyre`/`forge`/`bareforge`, so a request-wrapped prompt
-   actually holds its turn open for the 1.5s the test needs — it never matched before, since a
-   wrapped prompt never starts with "subagent"). New test: a teammate's forged `team.ask` naming
-   another project is refused, and that project's teammate stays untouched.
-2. **Found chasing this** (2026-09-28, not core/team's): the daemon's label-downgrade fix
-   (cherry-picked at 2d83c814, upstream 1941f2cf) hangs core/switchboard/switchboard.test.js —
-   confirmed by reverting just core/daemon/index.js to its pre-cherry-pick content (45/45 green,
-   8s) and restoring it (hangs past 120s, repro: "switchboard: a thread streams to two clients,
-   asks, is answered, and changes hands", the first SSE-backed test in the file, or nearby).
-   core/team's own suite (12/12, POST-only, no SSE) and test/peer.test.js are unaffected. Flagged
-   to e2e/the lead directly; not something core/team's worktree should fix. Blocks the RC if it
-   is not isolated to my checkout.
-3. Step 2: notes-changed check on team.done, compaction re-injection, rotation.
-4. Step 3: summon tool in sessions' MCP list, result injection, per ADR 0031 and the lead's brief.
+1. e2e round 3 (2026-09-28, b19f10c2): **signed off.** `projectOf` took `input.project` from a
+   bare "mcp" caller with neither a thread nor an agent, which is exactly the shape a forged label
+   becomes after the daemon's downgrade — fixed: `input.project` is now taken only when
+   `PERSON.has(callerKind(caller))`. The flaky priority-order test is fixed too (fake claude's
+   `subagent`/`subagent-slow` is now found anywhere in the prompt, like `vyre`/`forge`/
+   `bareforge`, so a request-wrapped prompt actually holds its turn open for the 1.5s the test
+   needs — it never matched before, since a wrapped prompt never starts with "subagent"). New
+   test: a teammate's forged `team.ask` naming another project is refused, and that project's
+   teammate stays untouched.
+   - A `core/switchboard/switchboard.test.js` hang I flagged while chasing this was a false alarm
+     on my part: I ran it on the Mac, from inside this Claude Code session — under the daemon's
+     own fix, that makes every "cli" call this session's tests make read as "mcp", which is
+     exactly the case the fix targets. e2e ran b19f10c2 on testbox (RULES: suites run there, not
+     the Mac, and never from a session the fix itself would relabel): 57/57 green in 48s, no hang.
+2. Step 2: notes-changed check on team.done, compaction re-injection, rotation.
+3. Step 3: summon tool in sessions' MCP list, result injection, per ADR 0031 and the lead's brief.
 
 ## e2e review round 1 (2026-09-28, f8cbc882)
 
