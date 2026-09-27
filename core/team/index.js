@@ -516,6 +516,11 @@ export default {
           const row = /** @type {any} */ (db.prepare("SELECT notes_hash_at_start FROM team_requests WHERE id = ?").get(r.id));
           const started = row && row.notes_hash_at_start;
           if (started != null && hash(noteCurrent(r.teammate, "general")) === started) {
+            const tm = byAgent(r.teammate);
+            // Cohesion review, item 3: the pause is a fact worth a line in the transcript, not
+            // only an error the teammate's own turn reads and (maybe) acts on silently.
+            if (tm && tm.thread) await ctx.call("threads.notice", { thread: tm.thread,
+              text: `${tm.agent} paused: team.done was refused because its notes have not changed since this request started. It needs to update them (team.notes), or call team.done again with notes: "unchanged" and why.` }).catch(() => {});
             throw Object.assign(new Error("your notes have not changed since this request started; update them before closing it (team.notes), or pass notes: \"unchanged\" with a reason"), { code: "denied" });
           }
         }
