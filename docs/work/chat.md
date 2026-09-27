@@ -266,6 +266,8 @@ work/app-design, Session board). Chat is a native chat over Vyre's event stream;
 - tailnet: WebSocket upgrade fix (owned by tailnet, per the lead).
 
 ## Changed contracts
+- deck/test/pwa.test.js (pwa's): two pins follow chat's changes: the keyboard lift reads stick.stuck, and
+  transcript rows carry no content-visibility (windowed instead).
 - threads.answer: `answers`, decision `always`. threads.asks / ask.raised: `kind`, `questions`,
   `detail`, `always`. New tools recall.transcript, files.dirs, files.recent, term.*. New stream
   /v1/streams/term/pty. New events term.opened, term.closed.

@@ -300,7 +300,7 @@ test("pwa ios: the keyboard lifts the composer and a sheet, and the transcript f
   assert.match(read("css/sheet.css"), /:root\[data-kb\] \.sheet \{ bottom: var\(--kb\); \}/);
   const session = read("chat/session.js");
   assert.match(session, /window\.addEventListener\("deck:kb", onKb\)/);
-  assert.match(session, /if \(following\) toBottom\(\); else if \(pad >= 0\) timeline\.scrollTop \+= p - pad;/);
+  assert.match(session, /if \(stick\.stuck\) toBottom\(\); else if \(pad >= 0\) timeline\.scrollTop \+= p - pad;/);
   assert.match(read("js/pwa.js"), /watchKeyboard\(\);/);
 });
 
@@ -374,9 +374,11 @@ test("pwa ios: the keyboard listener runs only while a field has focus on a phon
   stop();
 });
 
-test("pwa ios: long lists and the transcript skip off-screen rows; the newest 40 turns always draw", () => {
+test("pwa ios: long lists skip off-screen rows; the transcript is windowed instead", () => {
   const chat = read("chat/chat.css");
-  assert.match(chat, /\.cv-timeline > :nth-last-child\(n\+41\) \{ content-visibility: auto; contain-intrinsic-size: auto 96px; \}/);
+  // Changed by chat (27 Sep): content-visibility on transcript rows dropped a just-finished reply to
+  // its placeholder and jumped a reader scrolled up to the bottom; window-view.js windows long sessions.
+  assert.doesNotMatch(chat, /\.cv-timeline > [^{]*\{[^}]*content-visibility: auto/);
   assert.match(chat, /\.rows > \.thread-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
   assert.match(block(read("css/views/find.css"), "@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {"), /\.fd-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
 });
