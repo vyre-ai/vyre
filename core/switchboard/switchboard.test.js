@@ -36,7 +36,9 @@ test("translate: real stream-json lines become small thread events", () => {
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hel" } }, parent_tool_use_id: null }).delta, "hel");
   assert.equal(translate({ type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "x" } }, parent_tool_use_id: "toolu_9" }).delta, undefined, "a subagent's text is not the thread's");
   const tool = translate({ type: "assistant", message: { id: "m1", content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "/w/a.txt", content: "x".repeat(50000) } }] } });
-  assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", tool: "Write", phase: "started", summary: "Write /w/a.txt", destination: "/w/a.txt" } });
+  // call and status (ADR 0030): the row is keyed by call, id kept equal during the migration.
+  assert.deepEqual(tool.events[0], { type: "thread.tool", payload: { id: "t1", call: "t1", tool: "Write", name: "Write", phase: "started", status: "running", block: 0,
+    summary: "Write /w/a.txt", destination: "/w/a.txt" } });
   const ask = translate({ type: "control_request", request_id: "r1", request: { subtype: "can_use_tool", tool_name: "Bash", input: { command: "ls -la" }, tool_use_id: "t2" } });
   assert.equal(ask.ask.summary, "ls -la");
   assert.equal(ask.ask.request_id, "r1");
@@ -714,7 +716,9 @@ test("usage on the subscription: turns and time, no dollars, and the rate-limit 
   await tool("agents.create", { name: "juno", kind: "assistant" });
   const r = (await tool("agents.ask", { agent: "juno", text: "nearlimit" })).data;
   const limit = await until(() => of(s.got, r.thread, "thread.limit")[0], "thread.limit");
-  assert.deepEqual(limit.payload, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
+  const { turn, ...rest } = limit.payload;
+  assert.equal(turn, `${r.thread}:1`, "every event of a turn says which turn (ADR 0030)");
+  assert.deepEqual(rest, { thread: r.thread, status: "allowed_warning", kind: "five_hour", resets_at: 1790000000, utilization: 0.85 });
   const said = await until(() => of(s.got, r.thread, "thread.text").find(e => e.payload.notice), "the notice");
   assert.match(said.payload.text, /^Claude's five-hour usage limit is at 85%; it resets at \d\d:\d\d UTC\.$/);
   const all = (await tool("agents.usage", {})).data;

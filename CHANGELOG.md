@@ -4,6 +4,31 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Sessions: steering, turns, the queue, state and usage (ADR 0030, step 6's events)
+
+- Steering is the default (the user: Chat must feel like Claude Code in the terminal). A message
+  sent while a turn runs joins that turn at Claude's next step (`priority: "next"`), returns
+  `{steered: true, uuid, turn}`, emits `thread.sent {via: "steer"}`, and `thread.steered {uuid}`
+  when Claude Code takes it in (its `user_message_uuid` echo). Steered words a turn never reached
+  run as the next turn (`thread.turn {steered: true}`).
+- The queue is the alternative: `threads.send {mode: "queue"}` keeps the words until the turn
+  ends ("<name> is working on something", never "terminal" for a session Vyre runs), then hands
+  every row over as one turn, each announced first (`thread.sent {queued, uuid, via: "turn"}`) and
+  marked delivered in the same step. New `threads.unqueue` (the same shape as capsule-now's),
+  `threads.edit` (re-emits `thread.queued` with the same ids, `edited: true`) and
+  `threads.send-now` (steers a queued row in, `via: "now"`). Queued rows carry a `uuid`;
+  `threads.send` answers with `queued_id` and `uuid`.
+- Turns: `thread.turn {turn: "<thread>:<n>", uuid, text}` starts each turn, and every event of a
+  turn carries `turn`. `thread.state {state}` on every change (starting, running, waiting, idle,
+  stopped). `thread.usage {cost_usd, total_cost_usd, tokens}` per turn. `thread.finished` says
+  `canceled: true, reason: "interrupt"` after `threads.interrupt`.
+- Keys: `thread.text` carries `block` (the content block's place in its message across the lines
+  Claude Code writes, so live and transcript rows share `message:block`); `thread.tool` carries
+  `call` (= `id`), `name` and `status` (running, then completed or failed).
+- User messages carry their own `uuid` to Claude Code (runner.js `userLine`). The fake `claude`
+  folds steered messages into its next reply, stamps `user_message_uuid`, lists
+  `user_message_uuids` on its result, and runs unreached steered words as the next turn.
+
 #### Sessions: a turn's cost is its own
 
 - Claude Code reports `total_cost_usd` as the running total of a session's process (continued

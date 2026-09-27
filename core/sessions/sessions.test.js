@@ -463,6 +463,76 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.get", { thread: th.id })).data.thread.cost_usd, 0.85);
   });
 
+  test(`${driver}: a message sent while working steers the running turn at its next step`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const r = (await w.tool("threads.send", { thread: th.id, text: "use pnpm instead", surface: "deck" })).data;
+    assert.equal(r.steered, true);
+    assert.equal(r.turn, `${th.id}:1`, "it joins the running turn");
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id);
+    const ev = await w.events(th.id);
+    assert.ok(ev.some(e => e.type === "thread.sent" && e.payload.via === "steer" && e.payload.uuid === r.uuid));
+    const steered = ev.find(e => e.type === "thread.steered");
+    assert.equal(steered && steered.payload.uuid, r.uuid, "Claude took it in at a step");
+    assert.match((await w.said(th.id)).at(-1), /took in: use pnpm instead/);
+    assert.equal(ev.filter(e => e.type === "thread.turn").length, 1, "no turn of its own");
+    assert.equal(ev.filter(e => e.type === "thread.finished").length, 1);
+    // Every event of the turn says which turn; the state and usage are said.
+    assert.ok(ev.filter(e => /^(thread\.(text|tool|finished|sent)|ask\.)/.test(e.type)).every(e => e.payload.turn === `${th.id}:1`));
+    assert.deepEqual(ev.filter(e => e.type === "thread.state").map(e => e.payload.state), ["starting", "running", "waiting", "running", "idle"]);
+    assert.ok(ev.some(e => e.type === "thread.usage" && typeof e.payload.cost_usd === "number"));
+    const text = ev.filter(e => e.type === "thread.text" && e.payload.done && !e.payload.notice);
+    assert.ok(text.every(e => typeof e.payload.block === "number"), "done text carries its block");
+  });
+
+  test(`${driver}: queued for after the turn: edited, taken back, sent now, or handed over as one turn`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    const ask = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    const a = (await w.tool("threads.send", { thread: th.id, text: "then the menu", surface: "deck", mode: "queue" })).data;
+    assert.equal(a.queued, true);
+    assert.match(a.note, /is working on something/);
+    assert.doesNotMatch(a.note, /terminal/);
+    const b = (await w.tool("threads.send", { thread: th.id, text: "and the prices", surface: "deck", mode: "queue" })).data;
+    const c = (await w.tool("threads.send", { thread: th.id, text: "never mind this", surface: "deck", mode: "queue" })).data;
+    assert.deepEqual((await w.tool("threads.edit", { thread: th.id, queued: b.queued_id, text: "and the autumn prices" })).data, { edited: true, queued: b.queued_id });
+    assert.deepEqual((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id })).data, { unqueued: [c.queued_id] });
+    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: c.queued_id }, "mcp")).error.code, "denied", "a model never takes a person's words back");
+    await w.tool("threads.answer", { ask: ask.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 2);
+    const ev = await w.events(th.id);
+    const handed = ev.filter(e => e.type === "thread.sent" && e.payload.via === "turn");
+    assert.deepEqual(handed.map(e => e.payload.queued), [a.queued_id, b.queued_id], "one thread.sent per row, in order");
+    const second = ev.filter(e => e.type === "thread.turn")[1];
+    assert.ok(handed.every(e => e.id < second.id), "announced before the turn that answers them");
+    assert.equal((await w.said(th.id)).at(-1), "echo: then the menu\n\nand the autumn prices");
+    assert.ok(ev.some(e => e.type === "thread.unqueued" && e.payload.queued === c.queued_id));
+    assert.equal((await w.tool("threads.unqueue", { thread: th.id, queued: a.queued_id })).data.unqueued.length, 0, "handed over words stay Claude's");
+
+    // Send now: a queued row joins the running turn instead of waiting.
+    await w.tool("threads.send", { thread: th.id, text: "bash npm run build", surface: "deck" });
+    const ask2 = await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the second ask");
+    const d = (await w.tool("threads.send", { thread: th.id, text: "skip the lint", surface: "deck", mode: "queue" })).data;
+    const now = (await w.tool("threads.send-now", { thread: th.id, queued: d.queued_id })).data;
+    assert.equal(now.sent, true);
+    await w.tool("threads.answer", { ask: ask2.id, decision: "allow", surface: "deck" });
+    await w.finished(th.id, 3);
+    assert.match((await w.said(th.id)).at(-1), /took in: skip the lint/);
+    assert.ok((await w.events(th.id)).some(e => e.type === "thread.sent" && e.payload.via === "now" && e.payload.queued === d.queued_id));
+  });
+
+  test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "bash npm test", surface: "deck" })).data;
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    await w.tool("threads.interrupt", { thread: th.id });
+    await w.finished(th.id);
+    const fin = (await w.events(th.id)).find(e => e.type === "thread.finished").payload;
+    assert.deepEqual([fin.canceled, fin.reason], [true, "interrupt"]);
+  });
+
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {
     const w = await boot(t, { driver, role: "local" });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;

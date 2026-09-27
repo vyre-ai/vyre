@@ -48,8 +48,14 @@ export function argsFor(o) {
   return a;
 }
 
-/** A user turn, as stream-json input. */
-export const userLine = (text, session) => ({ type: "user", message: { role: "user", content: String(text) }, parent_tool_use_id: null, session_id: session });
+/**
+ * A user turn, as stream-json input. `uuid` is the message's own id (the transcript line's, and
+ * the key Claude Code echoes back); `priority: "next"` steers it into a running turn at the next
+ * step, as a message typed while Claude Code works does.
+ * @param {string} text @param {string} session @param {{ uuid?: string, priority?: "next"|"now"|"later" }} [o]
+ */
+export const userLine = (text, session, o = {}) => ({ type: "user", message: { role: "user", content: String(text) }, parent_tool_use_id: null, session_id: session,
+  ...(o.uuid ? { uuid: o.uuid } : {}), ...(o.priority ? { priority: o.priority } : {}) });
 
 /**
  * The answer to a can_use_tool request, as the Agent SDK sends it. Allowing passes the input back
