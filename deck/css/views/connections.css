@@ -6,6 +6,29 @@
 .cn-group + .cn-group { margin-top: 28px; }
 .cn-empty { padding-top: 16px; }
 
+/* Connections cards (app-design's board db3dbbfa, mcp-native gap 2): one card per connection,
+   whatever the source. card.md/chip.md are still draft with no Connections row (2026-09-28), so
+   these are this section's own classes, built from the same tokens (--panel, --rule,
+   --radius-card) rather than the board's own preview-only class names; app-design reviews. */
+.cn-cards { margin-bottom: 8px; }
+.cn-card-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.cn-card { background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+.cn-card-problem { flex-direction: row; align-items: center; gap: 12px; }
+.cn-card-head { display: flex; align-items: center; gap: 12px; }
+.cn-card-t, .cn-add-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1 1 auto; }
+.cn-name { font-size: 15px; line-height: 20px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cn-last { flex-shrink: 0; }
+.cn-avatar { width: 32px; height: 32px; border-radius: 8px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center; background: var(--hover); color: var(--text-2); }
+.cn-chips { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cn-granted-l { margin-right: 2px; }
+.cn-chip-on { background: var(--hover); color: var(--text); border-color: var(--rule-strong); }
+.cn-card-f { display: flex; align-items: center; gap: 8px; padding-top: 8px; border-top: 1px solid var(--rule); }
+.cn-connected { margin-left: auto; }
+.cn-steplink { color: var(--text-2); font-size: 13px; line-height: 18px; cursor: pointer; text-decoration: underline; text-decoration-color: var(--rule-strong); background: none; border: none; padding: 0; }
+.cn-steplink:hover { color: var(--text); }
+.cn-add { flex-direction: row; align-items: center; gap: 12px; border-style: dashed; cursor: pointer; }
+.cn-add:hover { background: var(--hover); }
+
 .cn-row { padding: 14px 0; display: flex; flex-direction: column; gap: 8px; }
 .cn-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
 .cn-name { font-size: 14px; line-height: 20px; color: var(--text); }

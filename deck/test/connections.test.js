@@ -12,6 +12,10 @@ import { fileURLToPath } from "node:url";
 import { install, text, everything, $, $$ } from "./fake-dom.js";
 
 install();
+// icons.js (the Connections cards' avatars and chip glyphs) parses its drawings with DOMParser,
+// which the fake DOM does not have (deck/test/rail.test.js's own fix).
+/** @type {any} */ (globalThis).DOMParser = class { parseFromString() { const s = document.createElement("svg"); s.append(document.createElement("circle")); return { documentElement: s }; } };
+/** @type {any} */ (document).importNode = (/** @type {any} */ n) => n;
 const { drawConnections, pickServers, pickItems, pickGoogleTest, pickConnections, itemsFor, toolModes, EVENTS } = await import("../views/connections.js");
 
 const DECK = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -82,7 +86,7 @@ const submit = form => Promise.all(form.dispatchEvent(new Event("submit")));
 
 test("renders every server and account with names only", async () => {
   const { el, api } = await render();
-  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["google.accounts", "mcp.servers"], "opening makes two calls, and never google.test");
+  assert.deepEqual(api.calls.map(c => c.tool).sort(), ["google.accounts", "mcp.servers", "vault.connections.list"], "opening makes three calls, and never google.test");
 
   const t = text(server(el, "tracker"));
   assert.match(t, /tracker/);
@@ -118,6 +122,58 @@ test("renders every server and account with names only", async () => {
   assert.match(b, /OAuth/);
   assert.match(b, /northwind-google/);
   noLeak(el);
+});
+
+const connection = (el, id) => $(el, `[data-connection=${id}]`);
+
+test("Connections cards: one per vault connection, whatever the source, granted chips shown, problem rows simplified", async () => {
+  const { el } = await render();
+  const alex = text(connection(el, "cn_alex"));
+  assert.match(alex, /alex@harlowlegal\.com/);
+  assert.match(alex, /Google/);
+  assert.match(alex, /6 min ago/);
+  assert.match(alex, /Connected 9 d ago/);
+  assert.match(alex, /Wrong account\?/);
+  // Granted: Capsule and Chat show pressed; Agents and Phone do not.
+  const chipsOf = c => [...$$(c, ".chip")].map(b => ({ text: text(b).trim(), on: b.getAttribute("aria-pressed") === "true" }));
+  assert.deepEqual(chipsOf(connection(el, "cn_alex")), [
+    { text: "Capsule", on: true }, { text: "Chat", on: true }, { text: "Agents", on: false }, { text: "Phone", on: false } ]);
+
+  const tracker = text(connection(el, "cn_tracker"));
+  assert.match(tracker, /Northwind Tracker MCP/);
+  assert.match(tracker, /MCP server/);
+
+  const script = connection(el, "cn_appsscript");
+  assert.match(text(script), /Apps Script/);
+  assert.match(text(script), /Needs sign-in/);
+  assert.ok($(script, "button"), "a Sign in button, no chips or footer on a problem row");
+  assert.equal($$(script, ".chip").length, 0);
+
+  assert.ok($(el, ".cn-add"), "Connect another account is offered");
+  noLeak(el);
+});
+
+test("Connections cards: a chip toggle is optimistic, calls grant or revoke by id and surface, and a failure reverts", async () => {
+  const { el, api } = await render();
+  const agentsChip = [...$$(connection(el, "cn_tracker"), ".chip")].find(b => text(b).includes("Chat"));
+  assert.equal(agentsChip.getAttribute("aria-pressed"), "false");
+  await Promise.all(agentsChip.dispatchEvent(new Event("click")));
+  // Optimistic: the chip flips before the call even resolves (fakeApi is synchronous here, so
+  // check the call was made with the right id/surface, and the chip ends up pressed).
+  assert.deepEqual(api.of("vault.connections.grant"), [{ tool: "vault.connections.grant", input: { id: "cn_tracker", surface: "chat" } }]);
+  assert.equal([...$$(connection(el, "cn_tracker"), ".chip")].find(b => text(b).includes("Chat")).getAttribute("aria-pressed"), "true");
+
+  const failing = await render({ over: { "vault.connections.grant": { $error: { code: "denied", message: "not your surface" } } } });
+  const chip2 = [...$$(connection(failing.el, "cn_tracker"), ".chip")].find(b => text(b).includes("Chat"));
+  await Promise.all(chip2.dispatchEvent(new Event("click")));
+  assert.equal([...$$(connection(failing.el, "cn_tracker"), ".chip")].find(b => text(b).includes("Chat")).getAttribute("aria-pressed"), "false",
+    "reverted after the call failed");
+});
+
+test("Connections cards: vault.connections.list missing (an older Vyre) draws nothing extra, no error banner", async () => {
+  const { el } = await render({ missing: ["vault"] });
+  assert.equal($(el, ".cn-card"), null);
+  assert.ok(server(el, "tracker"), "the mcp/google groups still work standalone");
 });
 
 test("empty state when neither module runs, and each half on its own", async () => {

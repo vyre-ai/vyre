@@ -109,39 +109,58 @@ Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, 
 - Found a live mismatch, not guessed around: the board's grant chips are Chat, Planner, Agents;
   vault-next's real SURFACE_NAMES are capsule, chat, agents, phone. No Planner surface exists to
   grant today. Filed below rather than inventing a chip that grants nothing.
+- e2e reviewed 21beb66b (merge + design doc + discover.js + lib/connectors move) and signed off for
+  0.1.1 batch 1, with two MEDIUM conditions before discover is wired anywhere: (1) discover() must
+  never return an env/header VALUE, names + hasSecrets only; (2) `userHome` must come from the
+  kernel's rule (a new `claudeJson(root, env)` beside `claudeHome` in core/config/dialogs.js, both
+  exported from index.js), never `os.homedir()`, so a dev/temp/trial home never reads the real
+  `~/.claude.json`/plugins. Both fixed (9ca2c50a): normalize() keeps envNames/headerNames only;
+  discover({ root, env, cwd, plugins }) reads through claudeJson/claudeHome, plugin scan added
+  (`<claudeHome>/plugins/*/.mcp.json`), guard test in core/config/claude-home.test.js. Documented
+  in discover()'s jsdoc: whoever wires this into a tool must pass the caller's verified project as
+  `cwd`, never a path from the tool's input.
+- Merged work/vault-next (63 commits, b93d0b1d): real vault.connections.* now in this tree. Wired
+  `drawConnections` (the lead's "wire it now," unblocking on both open questions: CSS built from
+  production tokens directly, chips are the real four surfaces, no Planner) — see the changelog
+  entry for the shape. 347/347 targeted + docs on testbox.
 
 ## Next
 
-1. mcp-native gap 2: once app-design has a card.md/chip.md row for Connections (or says to build
-   ahead of it) and vault 9b's connections tools are on main, wire pickConnections() into
-   drawConnections, replacing the mcp.servers/google.accounts read; toggle chips call
-   vault.connections.grant/revoke; "Connect another account" reuses the existing add flow.
-2. mcp-native gap 1 follow-up: wire discover() into a pending row surfaced by mcp.servers (or a new
-   mcp.discovered tool), and an fs.watch (not polling) on the handful of config files so a server
-   added to .mcp.json after Vyre started still shows up. Decide with the lead whether
-   core/harness/rules.js's path walk should become a shared export before a third caller needs it.
+1. mcp-native gap 1 follow-up: a `pending` row for a discovered-not-added server (surfaced by
+   mcp.servers or a new mcp.discovered tool), wired with the caller's verified project as cwd (not
+   from input, per e2e), and an fs.watch (not polling) on the handful of config files so a server
+   added to .mcp.json after Vyre started still shows up.
+2. A real "Sign in again" flow for a problem card (today it draws a Sign in button that does
+   nothing): needs app-design's read on the flow and which tool fixes a needs_credential row per
+   provider (vault.connect for a generic need; google.connect for Google specifically).
 3. mcp-native gap 4: the Capsule's compact account picker ("send from which account?"), with
-   app-design and capsule-pro, once 1 has a shape.
-4. When vault 9b's sha arrives: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
-   instances) on top of it; hand the integrator the new sha.
-5. Tell capsule-pro when mail is on main (they render mail.find rows, open the Gate card).
-6. `vyre connect` for mail.map (CLI), and the Deck row for mail accounts (with pwa/native-core).
-7. Platform's non-blocking note: cache config.home() in the registry; one firstParty definition.
+   app-design and capsule-pro, once app-design has reviewed the Deck card.
+4. Ask app-design to review deck/css/views/connections.css's card/chip CSS (built ahead of
+   card.md/chip.md having a Connections row, the lead's call) and fold it into the shared
+   components once they exist, or tell me to change it now.
+5. When vault 9b's sha (now merged here) lands on main: real-vyred mail tests (IMAP, Apps Script,
+   Google, two MCP instances); hand the integrator the new sha.
+6. Tell capsule-pro when mail is on main (they render mail.find rows, open the Gate card).
+7. `vyre connect` for mail.map (CLI), and the Deck row for mail accounts (with pwa/native-core).
+8. Platform's non-blocking note: cache config.home() in the registry; one firstParty definition.
 
 ## Needs from others
 
-- app-design: card.md and chip.md (docs/design/system/components/) have no Connections row yet;
-  need the real `.card`/`.chip` (with an "on" state) implementation for deck/css/views/
-  connections.css before the Deck card can be built for real, not against board-only class names.
-  Also: the board's grant chips show Chat, Planner and Agents; is Planner meant to become a fifth
-  vault SURFACE_NAME (a real grant), or does it mean something else there?
-- vault: module-only vault.connections.list {capability?, caller} answering for that caller's surface; useOf send_mail/read_mail of every source -> mail.send/mail.search {account: id}; google-apps-script default capabilities send_mail+read_mail; take core/mail out of work/vault-next (6a0c0760). Also: does "expired" (app-design's board shows a Stripe MCP row expired 3d ago) get its own state, or does it fold into needs_credential?
-- capsule-pro: Capsule rendering of mail rows.
+- app-design: review deck/css/views/connections.css's card/chip CSS, built from raw tokens ahead of
+  card.md/chip.md having a Connections row (the lead's call, 2026-09-28). Also: the board's grant
+  chips show Chat, Planner and Agents; is Planner meant to become a fifth vault SURFACE_NAME (a
+  real grant), or does it mean something else there? And the real "Sign in again" flow for a
+  problem card (today's Sign in button does nothing).
+- vault: does "expired" (app-design's board shows a Stripe MCP row expired 3d ago) get its own
+  state, or does it fold into needs_credential? Which tool fixes a needs_credential connection's
+  credential from the Deck (vault.connect? something per-provider)?
+- capsule-pro: Capsule rendering of mail rows; the compact account picker (mcp-native gap 4).
 
 - Lead: whoever owns scripts/perf-check, on the first-sample flake.
 
 ## Changed contracts
 
+- KERNEL, 9ca2c50a (e2e review, not yet a separate sign-off): `core/config/dialogs.js` gains `claudeJson(root, env)` beside `claudeHome`, exported from `core/config/index.js`. Same real-vs-dev rule as claudeHome, for the file (`.claude.json`) that sits beside the folder rather than inside it. Test in core/config/claude-home.test.js. Flag this one to platform/whoever else reads core/config, since it is the second connectors change to a kernel file this batch (the first, firstParty, already got its own review).
 - KERNEL, its own commit af11226d for platform's review (lead OK): registry.call sets `meta.firstParty` from the loader's `firstParty(dir)`, taken verbatim from native-core 98412a66 (one rule), overwriting any passed value. Test in core/modules/modules.test.js.
 - on_behalf needs meta.firstParty (anyone else is refused, code denied) and a real thread of the named agent (core/connectors/behalf.js), and sets who.person=false in the hub (e2e HIGH and MEDIUM 1, 2).
 
