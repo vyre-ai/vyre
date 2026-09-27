@@ -58,15 +58,17 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
   pairing notice, sections 2-4 and 8 synced with the code, 0029/0030 tie-ins.
 - WebSocket streams through the bridge (core/relay/wsclient.js): upgrade via ctx.upgrader as
   `device:<id>`, pings answered by the bridge, one whole message per data frame.
-- testbox: `core/relay`, `relay/**`, `test/relay.test.js` 91/91.
+- Box side of section 10: kind web, WEB_DENY via the handler's tool policy, relay.devices.trust,
+  web_expiry_days (checked at admit and in list, no timer), build check (releases.js/.json),
+  richer device.paired.
+- testbox: `core/relay`, `relay/**`, `test/relay.test.js` 93/93; docs tests 50/50.
 
 ## Doing
 - Nothing in flight. Reported to the lead.
 
 ## Next
-1. Box side of section 10: `kind: "web"` in the hello and relay_devices, the web-device limits
-   (no pair.start, no vault reveal/export), 30-day expiry, build check against published
-   releases, the pairing notice to every surface.
+1. Surfaces show the `device.paired` notice with one-tap removal (pwa, capsule, mobile own the
+   UI; the event now carries kind, release, build known/unknown).
 2. relay/app/: the app.vyre.run host (CSP, SRI, signed release manifest, pinning service
    worker) and vyre.run/pair forwarding the fragment. Build comes from mobile.
 3. `vyre relay` CLI (status, pair with a terminal QR, devices).
@@ -77,7 +79,7 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 ## Needs from others
 - tailnet: CORS on vyred for https://app.vyre.run (the /v1/health probe and API calls), or
   Direction A's direct path is blocked in the browser.
-- presence owner: enroll a `webauthn` presence key (rp app.vyre.run) sent at pairing by a web
+- presence owner: enroll a passkey presence key (rp app.vyre.run) sent at pairing by a web
   device.
 - resilience: the Registry.call idempotency layer; the bridge already forwards the header.
 - lead: go for the first real Cloudflare deploy (design and $5/mo spend are approved).

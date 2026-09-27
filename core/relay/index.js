@@ -7,6 +7,12 @@
 //
 // Off until the first pairing. Keys live in ~/.vyre/relay/keys.json (0600) and never leave the
 // box: box.key is the Noise static key the QR carries, route.key proves the route to the relay.
+//
+// A device paired from the hosted web app (kind "web", ADR 0026 section 10) runs code fetched
+// from app.vyre.run on each visit, so until the person trusts it from another device it cannot
+// mint pairings, change trust, enroll presence keys or take a secret out of the vault, and it
+// expires after `relay.web_expiry_days` without use. Its build is checked against the releases
+// this box knows and shown with every pairing notice.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -18,17 +24,26 @@ import { newRouteKey, routeId, base32 } from "./wire.js";
 import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
 import { pairUrl } from "./pairing.js";
+import { knownBuild } from "./releases.js";
 
 export const DEFAULT_RELAY = "wss://relay.vyre.run";
 const PAIR_TTL = 10 * 60_000;
 const NAME = /^[^\u0000-\u001f\u007f]{1,64}$/;
 const AGENT_CLAIM = /(?:^|[\s:])agent:/;
+const DAY = 24 * 60 * 60_000;
+/** What an untrusted web device may not call: minting devices, trust, presence keys, secrets out. */
+export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
+const BUILD = /^[\w.+-]{1,64}$/;
 
 export const MIGRATIONS = [
   `CREATE TABLE relay_devices (
      id TEXT PRIMARY KEY, name TEXT NOT NULL, pub TEXT NOT NULL, presence_key TEXT,
      paired_at INTEGER NOT NULL, last_seen INTEGER, removed_at INTEGER
    );`,
+  `ALTER TABLE relay_devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'app';
+   ALTER TABLE relay_devices ADD COLUMN release TEXT;
+   ALTER TABLE relay_devices ADD COLUMN manifest TEXT;
+   ALTER TABLE relay_devices ADD COLUMN trusted INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 /** The id a device is known by: the first 16 base32 characters of sha256 of its static key. */
@@ -70,7 +85,7 @@ export default {
     const db = ctx.store.db;
     const now = seam.now || Date.now;
     const platform = seam.platform || process.platform;
-    const settings = () => ({ enabled: false, url: DEFAULT_RELAY, ...(ctx.config.relay || {}) });
+    const settings = () => ({ enabled: false, url: DEFAULT_RELAY, web_expiry_days: 30, ...(ctx.config.relay || {}) });
     const save = patch => config.save({ relay: patch }, ctx.paths.root, ctx.config);
     /** @type {ReturnType<typeof loadKeys> | null} */
     let keys = null;
@@ -85,7 +100,8 @@ export default {
     /** @type {Map<string, Set<any>>} */
     const live = new Map();
 
-    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen FROM relay_devices WHERE removed_at IS NULL ORDER BY paired_at").all());
+    const active = () => /** @type {any[]} */ (db.prepare("SELECT id, name, pub, presence_key, paired_at, last_seen, kind, release, manifest, trusted FROM relay_devices WHERE removed_at IS NULL ORDER BY paired_at").all());
+    const expired = d => d.kind === "web" && now() - (d.last_seen || d.paired_at) > Number(settings().web_expiry_days) * DAY;
     const personExists = () => active().length > 0 || Boolean(ctx.config.network && ctx.config.network.owner);
 
     /** Reads and changes are the owner's: never a guest's, an agent's, a hook's or anonymous. */
@@ -122,6 +138,9 @@ export default {
         if (p.first && personExists()) throw new Error("this box already has a device; if that was not you, remove it from Settings, Devices");
         pairing = null;
         const name = typeof hello.name === "string" && NAME.test(hello.name.trim()) ? hello.name.trim() : "a device";
+        const kind = hello.kind === "web" ? "web" : "app";
+        const release = typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
+        const manifest = typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
         let presenceKey = null, presence = { enrolled: false, reason: "no presence key offered" };
         const pk = hello.presenceKey;
         if (pk && typeof pk.public_key === "string") {
@@ -129,26 +148,34 @@ export default {
           if (r && r.data && (r.data.keyId || r.data.id)) { presenceKey = String(r.data.keyId || r.data.id); presence = { enrolled: true, reason: "" }; }
           else presence = { enrolled: false, reason: (r && r.error && r.error.message) || "presence would not enroll this key" };
         }
-        db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at) VALUES (?, ?, ?, ?, ?, ?, NULL)
-          ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL`)
-          .run(id, name, pub.toString("base64url"), presenceKey, now(), now());
-        ctx.events.emit("device.paired", { id, name });
+        db.prepare(`INSERT INTO relay_devices (id, name, pub, presence_key, paired_at, last_seen, removed_at, kind, release, manifest, trusted) VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 0)
+          ON CONFLICT(id) DO UPDATE SET name = excluded.name, pub = excluded.pub, presence_key = excluded.presence_key, paired_at = excluded.paired_at, last_seen = excluded.last_seen, removed_at = NULL,
+            kind = excluded.kind, release = excluded.release, manifest = excluded.manifest, trusted = 0`)
+          .run(id, name, pub.toString("base64url"), presenceKey, now(), now(), kind, release, manifest);
+        // The pairing notice: every surface shows it with a one-tap removal (ADR 0026 section 6).
+        ctx.events.emit("device.paired", { id, name, kind, ...(kind === "web" ? { release, build: knownBuild(release, manifest) ? "known" : "unknown" } : {}) });
         return { v: 1, box: { name: boxName() }, device: id, paired: true, presence };
       }
-      const row = /** @type {any} */ (db.prepare("SELECT id, pub FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      const row = /** @type {any} */ (db.prepare("SELECT id, pub, kind, paired_at, last_seen FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row || !crypto.timingSafeEqual(Buffer.from(row.pub, "base64url"), pub)) throw new Error("not a paired device");
-      db.prepare("UPDATE relay_devices SET last_seen = ? WHERE id = ?").run(now(), id);
+      if (expired(row)) { forget(id, "expired"); throw new Error("this browser went unused too long and was removed; pair it again from another device"); }
+      const release = hello && typeof hello.release === "string" && BUILD.test(hello.release) ? hello.release : null;
+      const manifest = hello && typeof hello.manifest === "string" && /^[a-f0-9]{64}$/.test(hello.manifest) ? hello.manifest : null;
+      if (row.kind === "web") db.prepare("UPDATE relay_devices SET last_seen = ?, release = ?, manifest = ? WHERE id = ?").run(now(), release, manifest, id);
+      else db.prepare("UPDATE relay_devices SET last_seen = ? WHERE id = ?").run(now(), id);
       return { v: 1, box: { name: boxName() }, device: id };
     }
 
-    let handle = null, upgrade = null;
+    let handle = null, webHandle = null, upgrade = null;
     function onchannel(channel, { reply }) {
       const id = String(reply.device);
-      const row = /** @type {any} */ (db.prepare("SELECT name FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      const row = /** @type {any} */ (db.prepare("SELECT name, kind, trusted FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
       if (!row) { channel.close(4401, "device removed"); return; }
       if (!handle) handle = ctx.handler({});
-      const peer = { node: row.name, stableId: id, login: null, tags: [], caps: {}, kind: "device" };
-      bridge(channel, { handler: handle, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m) });
+      if (!webHandle) webHandle = ctx.handler({ tool: name => !WEB_DENY.test(name) });
+      const limited = row.kind === "web" && !row.trusted;
+      const peer = { node: row.name, stableId: id, login: null, tags: [], caps: {}, kind: "device", ...(row.kind === "web" ? { web: true } : {}) };
+      bridge(channel, { handler: limited ? webHandle : handle, caller: `device:${id}`, peer, upgrade: () => (upgrade = upgrade || ctx.upgrader({})), log: m => ctx.log(m) });
       const set = live.get(id) || new Set();
       set.add(channel);
       live.set(id, set);
@@ -160,7 +187,21 @@ export default {
 
     // ---- tools ----
 
-    const view = d => ({ id: d.id, name: d.name, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key), online: (live.get(d.id)?.size || 0) > 0 });
+    const view = d => ({ id: d.id, name: d.name, kind: d.kind, pairedAt: d.paired_at, lastSeen: d.last_seen, presence: Boolean(d.presence_key), online: (live.get(d.id)?.size || 0) > 0,
+      ...(d.kind === "web" ? { trusted: Boolean(d.trusted), release: d.release, build: knownBuild(d.release, d.manifest) ? "known" : "unknown",
+        expiresAt: (d.last_seen || d.paired_at) + Number(settings().web_expiry_days) * DAY } : {}) });
+
+    /** Remove a device: close its channels, drop its presence key, tell every surface. */
+    function forget(id, why) {
+      const row = /** @type {any} */ (db.prepare("SELECT presence_key FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+      if (!row) return false;
+      db.prepare("UPDATE relay_devices SET removed_at = ? WHERE id = ?").run(now(), id);
+      for (const ch of live.get(id) || []) ch.close(4401, "device removed");
+      live.delete(id);
+      if (row.presence_key) ctx.call("presence.remove", { id: row.presence_key }).catch(() => null);
+      ctx.events.emit("device.removed", { id, why });
+      return true;
+    }
 
     ctx.tool("relay.status", {
       description: "Whether the relay is on and connected, which relay, this box's route id, and how many paired devices and open connections it has.",
@@ -235,7 +276,11 @@ export default {
     ctx.tool("relay.devices.list", {
       description: "Devices paired through the relay: id, name, when paired and last seen, whether presence is enrolled, and whether it is connected now.",
       input: obj(),
-      run: async (_, meta = {}) => { owner(meta.caller, meta, "the device list"); return { devices: active().map(view) }; },
+      run: async (_, meta = {}) => {
+        owner(meta.caller, meta, "the device list");
+        for (const d of active()) if (expired(d)) forget(d.id, "expired");
+        return { devices: active().map(view) };
+      },
     });
 
     ctx.tool("relay.devices.rename", {
@@ -258,14 +303,26 @@ export default {
       run: async (input, meta = {}) => {
         owner(meta.caller, meta, "removing a device");
         const id = String(input.id);
-        const row = /** @type {any} */ (db.prepare("SELECT presence_key FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
-        if (!row) throw fail("not_found", `no paired device ${id}`);
-        db.prepare("UPDATE relay_devices SET removed_at = ? WHERE id = ?").run(now(), id);
-        for (const ch of live.get(id) || []) ch.close(4401, "device removed");
-        live.delete(id);
-        if (row.presence_key) await ctx.call("presence.remove", { id: row.presence_key }).catch(() => null);
-        ctx.events.emit("device.removed", { id });
+        if (!forget(id, "removed")) throw fail("not_found", `no paired device ${id}`);
         return { removed: id };
+      },
+    });
+
+    ctx.tool("relay.devices.trust", {
+      description: "Give a browser paired from the hosted web app the full powers of the owner's app (pairing devices, vault secrets), or take them back. Not callable from a web device that is not trusted.",
+      input: obj({ id: str, trusted: { type: "boolean" } }, ["id", "trusted"]),
+      presence: { summary: async input => `${input && input.trusted ? "Trust" : "Stop trusting"} browser ${String(input && input.id)} fully` },
+      run: async (input, meta = {}) => {
+        owner(meta.caller, meta, "trusting a browser");
+        const id = String(input.id);
+        const row = /** @type {any} */ (db.prepare("SELECT kind FROM relay_devices WHERE id = ? AND removed_at IS NULL").get(id));
+        if (!row) throw fail("not_found", `no paired device ${id}`);
+        if (row.kind !== "web") throw fail("bad_input", "only a browser from the web app has limits to lift");
+        db.prepare("UPDATE relay_devices SET trusted = ? WHERE id = ?").run(input.trusted ? 1 : 0, id);
+        // Open channels keep the handler they started with: close them so the next one gets the new one.
+        for (const ch of live.get(id) || []) ch.close(1000, "trust changed");
+        live.delete(id);
+        return { id, trusted: Boolean(input.trusted) };
       },
     });
 

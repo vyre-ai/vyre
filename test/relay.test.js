@@ -25,27 +25,27 @@ const lenient = {
 };
 const PROOF = { proof: { method: "passkey", id: "x" } };
 
-async function world(t) {
+async function world(t, relayConfig = {}) {
   const relay = createRelay();
   const url = await relay.listen();
   t.after(() => relay.close());
   const root = tempHome(t);
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
-    network: { name: "alex" }, relay: { enabled: false, url }, modules: { disable: ["names", "onboard"] } }));
+    network: { name: "alex" }, relay: { enabled: false, url, ...relayConfig }, modules: { disable: ["names", "onboard"] } }));
   const d = await start({ presence: lenient, root, log: () => {} });
   t.after(() => d.stop());
   return { d, relay, url, root };
 }
 
 /** Alex's phone: scan, connect, handshake. Resolves with a request helper once the box answers. */
-async function phone(scanned, { keys = keyPair(), pair = true, name = "alex's phone" } = {}) {
+async function phone(scanned, { keys = keyPair(), pair = true, name = "alex's phone", hello = {} } = {}) {
   const offer = /** @type {any} */ (parsePairUrl(scanned));
   assert.ok(offer, "the QR code parses");
   const ws = new WebSocket(`${offer.relay}/v1/device?route=${offer.route}`);
   ws.binaryType = "arraybuffer";
   await new Promise((res, rej) => { ws.onopen = res; ws.onerror = rej; });
   const side = deviceSide({ send: b => ws.send(b), close: (c, r) => ws.close(c === 1000 || (c >= 3000 && c < 5000) ? c : 4000, r) },
-    { s: keys, box: offer.box, route: offer.route, hello: { v: 1, name, ...(pair ? { pair: offer.secret } : {}) } });
+    { s: keys, box: offer.box, route: offer.route, hello: { v: 1, name, ...hello, ...(pair ? { pair: offer.secret } : {}) } });
   let closed = null;
   ws.onmessage = e => { if (typeof e.data !== "string") side.receive(Buffer.from(e.data)); };
   ws.onclose = e => { closed = { code: e.code, reason: e.reason }; side.gone(e.reason || "closed"); };
@@ -156,4 +156,48 @@ test("relay: an event stream stays open and delivers events through the channel"
   await phone(url, { name: "alex's laptop" });
   assert.match(await chunk, /device\.paired/);
   s.reset("done");
+});
+
+test("relay: a browser from the web app is a web device, limited until trusted from another device", async t => {
+  const { d } = await world(t);
+  const seen = [];
+  d.events.on("device.paired", e => seen.push(e));
+  const p = await phone(await firstPairing(d));
+  const P = { "x-vyre-presence": "passkey id=abc" };
+  const url = (await p.call("relay.pair.start", {}, P)).data.url;
+  const web = await phone(url, { name: "Harlow Legal laptop", hello: { kind: "web", release: "0.4.2", manifest: "a".repeat(64) } });
+
+  const list = (await p.call("relay.devices.list")).data.devices;
+  const w = list.find(x => x.id === web.reply.device);
+  assert.equal(w.kind, "web");
+  assert.equal(w.trusted, false);
+  assert.equal(w.build, "unknown", "a release this box has never seen is flagged");
+  assert.equal(list.find(x => x.id === p.reply.device).kind, "app");
+  const notice = seen.map(e => e.payload || e.data || e).find(e => e.id === web.reply.device);
+  assert.deepEqual([notice.kind, notice.release, notice.build], ["web", "0.4.2", "unknown"], "the pairing notice says what joined");
+
+  // The web device reads freely but cannot mint devices or lift its own limits, even with presence.
+  assert.equal((await web.call("relay.devices.list")).status, 200);
+  const mint = await web.call("relay.pair.start", {}, P);
+  assert.equal(mint.status, 404, JSON.stringify(mint));
+  assert.equal((await web.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P)).status, 404);
+  assert.equal((await web.call("vault.reveal", { id: "x" }, P)).status, 404);
+
+  // alex trusts it from the phone; the browser's channel closes and its next one has full powers.
+  const trust = await p.call("relay.devices.trust", { id: web.reply.device, trusted: true }, P);
+  assert.equal(trust.status, 200, JSON.stringify(trust));
+  const again = await phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } });
+  assert.equal((await again.call("relay.pair.start", {}, P)).status, 200);
+});
+
+test("relay: a web device unused past relay.web_expiry_days is removed at its next knock", async t => {
+  const { d } = await world(t, { web_expiry_days: 1e-8 });
+  const p = await phone(await firstPairing(d));
+  const url = (await p.call("relay.pair.start", {}, { "x-vyre-presence": "passkey id=abc" })).data.url;
+  const web = await phone(url, { name: "kiosk", hello: { kind: "web" } });
+  web.ws.close();
+  await new Promise(r => setTimeout(r, 20));
+  await assert.rejects(phone(url, { keys: web.keys, pair: false, hello: { kind: "web" } }), /unused too long|closed/);
+  const ids = (await p.call("relay.devices.list")).data.devices.map(x => x.id);
+  assert.deepEqual(ids, [p.reply.device], "the phone, an app device, never expires");
 });
