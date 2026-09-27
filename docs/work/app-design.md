@@ -43,6 +43,11 @@ Session 5 (27 Sep, after logout 4). Done this session, all on work/app-design:
   TipLine and GlassMini (3da9eecb), all audited; canvas republished (63 boards).
 - The design workflow passed in CI on 548c4572 (run 36326407452).
 
+Now (lead, 27 Sep late): support the new launch team (worktree vyre-launch) until the RC closes
+about 03:00 UTC. Its requests come first: review its visuals against Design A, and draw the hero,
+product shots, the og image and the README hero as boards. Kit sent to it. The hub branch
+(work/app-design-hub 9a6abbcf) lands after native-core 6ccad201; merged run on testbox green.
+
 Next: native-core's six asks for appearance (device level, call check, choicesFrom shape,
 settings.snapshot, /theme.css and /v1/theme from the daemon, GROUPS), then switch the keys to
 account + device and drop the tokens tool store. Then polish passes over the specs with each team.
