@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### system.info says which sites may call the box
+
+- `system.info` answers `network: { origins }`: the hosted app's origins in effect
+  (`network.origins`, default `["https://app.vyre.run"]`, `[]` when off), for the Deck's Settings
+  row. `HOSTED_ORIGINS` and `hostedOrigins()` now live in core/config (core/names/service.js
+  re-exports the constant).
+
 #### The answer eval runs without the Electron Capsule
 
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
