@@ -240,6 +240,12 @@ down after):
   sight.steps + sight.stepped), only while it is visible. The mini-view needs an app-design phone
   spec first. Asked cohesion: frame wire format, size and rate, a lower-rate option for the relay,
   tailnet/device callers and presence for sight.*, answer.tool carrying its input, device defaulting.
+- docs tips (work/docs d960197d, docs/build/tips.md "Show one on a surface"), after 0.1.0 and an
+  app-design look: tips.next {surface:"phone", context:{module, idle}} on Places open and once after a
+  pause on Now (one visible-only timer), busy:true during approvals, presence or a running turn;
+  tips.seen when drawn, tips.dismiss {id} on swipe. Told docs swipe-approve and Autofill tips can
+  leave tips-pending.json once batch 4 lands; asked that tips.* allow tailnet/device callers with no
+  person session.
 - STANDING RULE (user, 27 Sep): Vyre must not nag. Face ID (device proof) only for pairing a new
   device, vault secrets, and sending, posting or paying outside; one Face ID covers about 30
   minutes. Creating or editing an agent needs NO Face ID: a person caller is enough. Keep the
