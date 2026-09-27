@@ -29,6 +29,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   why on its row. settings.changed refreshes only its row, so another device's change shows live.
 - /settings#<group> and ?key=<key> open a group or one highlighted setting; below 1180 px a select
   replaces the hidden section rail.
+- deck/test/native-bar: the native bar harness. A seeded bursty fake stream, 40 and 2,000-row
+  transcripts, and in-page measures for keystrokes, first token, pacing, layout shift, scroll,
+  open, reconnect, send, Esc and idle timers, plus a pty terminal comparison. First numbers in
+  docs/design/native-bar.md.
 
 #### The answer eval runs without the Electron Capsule
 

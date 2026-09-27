@@ -16,7 +16,7 @@ milestone.
 
 | # | What | Budget | How it's measured |
 |---|---|---|---|
-| 1 | Keystroke to paint in the composer | p95 under 16 ms, no long task over 50 ms while typing | Chrome trace: `EventDispatch` (keydown/input) to the next `Paint`, 200 keys typed into a 40-row transcript and into a 2,000-row one |
+| 1 | Keystroke to paint in the composer | p95 under 16 ms of work per key, and under 33 ms to the next painted frame; no long task over 50 ms while typing | Chrome trace: `EventDispatch` (keydown/input) to the next `Paint`, 200 keys typed into a 40-row transcript and into a 2,000-row one |
 | 2 | First streamed token painted | under 100 ms after the SSE event arrives | `performance.mark` on EventSource message, a MutationObserver on the live row, rAF after it |
 | 3 | Box to screen for the first token | under 250 ms from the SDK `stream_event` to paint, on the tailnet | server stamps `t` on `thread.text`; the page subtracts (clocks synced by one round trip) |
 | 4 | Steady streaming | characters per frame coefficient of variation under 2; p95 gap between visible updates under 250 ms | Paseo's gate: rAF sampler over the live row's text length, 6 s bursty fake stream |
@@ -44,4 +44,40 @@ The world uses a temp home and the fake Claude binary; no real sessions, no dial
 
 ## Results
 
-Not measured yet.
+First run, 2026-09-27, testbox (load 3.5 to 6, so single runs are noisy), headless Chrome, loopback.
+native-core is main's chat (bc51d601); vyre-chat is work/chat (fe1cc5eb). Re-run with
+`node deck/test/native-bar/run.js --tree <tree> --label <name>` on testbox.
+
+| # | Budget | main chat | work/chat | Terminal |
+|---|---|---|---|---|
+| 1 | key p95, 40 rows | 18.5 ms | 21.6 ms | 1.2 ms echo |
+| 1 | key p95, 2,000 rows | 48.4 ms, long tasks to 69 ms | 36.6 ms | |
+| 2 | first token, arrival to paint | 126 ms | 52 ms, pass | 3.3 ms |
+| 3 | stream event to paint | 200 ms, pass | 120 ms, pass | |
+| 4 | chars per frame CV / p95 gap | 3.89 / 284 ms | 1.1 / 44 ms, pass | |
+| 5 | no jump while scrolled up | pass | 426 px jump | |
+| 6 | fling p95 frame, 2,000 rows | 50 ms | 33 ms | |
+| 7 | open cold / from cache | 1461 / 14 ms | 1043 / 16 ms | |
+| 8 | reconnect catch-up, jump | 1584 ms, 41 px | 1563 ms, 738 px | |
+| 9 | send to user row | 339 ms | 83 ms | |
+| 10 | Esc to stopped | no Stop | 112 ms | |
+| 11 | idle timers, CPU | pass, 0.5 % | pass, 0.4 % | |
+
+Budget 1's first method counted the wait for the next frame (0 to 16.7 ms), so it read high even on
+an idle page; it moves to the Event Timing API (work per key, then time to the painted frame).
+
+Why the rest fail, and who fixes it:
+- 5 and 8 (work/chat): the scroll position jumps to the bottom when tool rows arrive while the
+  reader is scrolled up; `following` is only updated in the scroll listener and races `grew()` and
+  `toBottom()` (session.js), plus the window anchor (window-view.js). Fix: detach only on user
+  intent (Paseo's stick-to-bottom). chat.
+- 6: windowing still mounts and measures rows every frame at 8,000 px/s. chat.
+- 8: the server says `retry: 2000` (core/daemon/index.js:421) and the Deck doesn't reconnect when
+  the network returns; the offline bar is prepended and pushes the view 41 px (deck/js/pwa.js:71).
+  Fix: reconnect on `online` and on reach, overlay the bar. pwa and resilience.
+- 9: the user row is drawn at once only for steer or queue (composer.js:374); a plain send waits for
+  the server. Fix: always draw the local row with a client id the server keeps. chat.
+- 10: Stop tries `threads.interrupt`, which this tree lacks, then `threads.stop`, with nothing shown
+  meanwhile. Fix: show stopping at once; sessions' interrupt. chat and sessions.
+- 1 at 2,000 rows: `grow()` resets the textarea height on every key and lays out the timeline.
+  chat.
