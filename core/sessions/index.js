@@ -99,6 +99,17 @@ export default {
       { type: "object", properties: { agent: str, agent_kind: str, project: str } },
       async i => prompts.compose({ agent: i.agent || null, agentKind: i.agent_kind || null, project: i.project || null }));
 
+    // The models a person can pick for a thread (chat's model picker): the aliases Claude Code
+    // takes, and any others listed in config (sessions.models_offered: [{id, label}]).
+    tool("sessions.models", "The models a thread can switch to (threads.model): id and label, the aliases Claude Code takes first.",
+      { type: "object", properties: {} },
+      async () => {
+        const extra = ctx.config && ctx.config.sessions && Array.isArray(ctx.config.sessions.models_offered) ? ctx.config.sessions.models_offered : [];
+        const base = [{ id: "opus", label: "Opus" }, { id: "sonnet", label: "Sonnet" }, { id: "haiku", label: "Haiku" }];
+        const seen = new Set(base.map(m => m.id));
+        return [...base, ...extra.filter(m => m && typeof m.id === "string" && !seen.has(m.id)).map(m => ({ id: String(m.id), label: String(m.label || m.id) }))];
+      });
+
     tool("sessions.models.get", "What each kind of session runs on: the model per purpose (chat, agent, project, teammate, capsule, job, memory, planner, learn, helper) and per project, and where each comes from. An agent's own model (agents.update) wins over these.",
       { type: "object", properties: {} },
       async () => ({ purposes: Object.fromEntries(PURPOSES.map(p => [p, modelFor({ purpose: p })])),

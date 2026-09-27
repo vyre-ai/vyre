@@ -8,10 +8,11 @@
 // answered once is known to be there. Listeners hear each change, so a control drawn before the
 // answer updates.
 //
-// What the contract does not offer yet (NOT_OFFERED: the model picker, commands, "!" shell, "#"
-// memory, thinking, killing a background task, images on send) starts off on the page's probe,
-// so those controls are off from the first draw and never called. When the sessions team ships
-// one, take it out of the list.
+// What the contract does not offer yet (NOT_OFFERED) starts off on the page's probe, so those
+// controls are off from the first draw and never called. The sessions team shipped the model
+// picker, commands, "!" shell, "#" memory, thinking, killing a background task and images on send
+// (work/sessions db44749b), so the list is empty; an older box still answers no_such_tool, which
+// switches a control off on first use.
 
 export const NEEDS_UPDATE = "Needs the sessions update";
 
@@ -24,10 +25,7 @@ export const SESSION_TOOLS = Object.freeze([
 export const SEND_IMAGES = "threads.send:images";
 
 /** Not offered by the server yet: off from the start on the page's probe. */
-export const NOT_OFFERED = Object.freeze([
-  "threads.model", "sessions.models", "threads.commands", "threads.shell", "threads.remember", "threads.thinking",
-  "threads.kill-task", SEND_IMAGES,
-]);
+export const NOT_OFFERED = Object.freeze([]);
 
 const MISSING_CODES = new Set(["no_such_tool", "unknown_tool", "http_404"]);
 
