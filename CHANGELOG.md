@@ -28,6 +28,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   reading, checking) as each step starts and `memory.answered {id, abstained, limited}`. The id is
   the caller's, so a surface can show IQ thinking before the reply comes back. The events never
   carry the question or the answer. Its description now tells the assistant when to use it.
+- Corrections (memory.correct, uncorrect, merge, split, and IQ answer fixes) follow one rule: the
+  person's own surfaces, or their phone or paired device with a person session (a passkey,
+  ADR 0032). A device without one gets `person_session_required`; agents are always refused.
 - Correct Vyre IQ where it appears: every memory.ask answer (a "not sure" too) has an
   `answer_id`, and `memory.correct {answer, action: wrong|replace|forget, object?}` fixes it with
   no Touch ID. replace: the same question gets the person's words at once, and a personal answer

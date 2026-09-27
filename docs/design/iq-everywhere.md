@@ -180,7 +180,11 @@ Cohesion writes the product spec. This is what IQ needs from it and what it cost
 
 Federation owns the transport (its plan: "3. Session sync") and memory-iq the indexing. Agreed with
 federation on 28 Sep. ADR 0008 is amended (approved by the user: a per-device switch, off by
-default, in the settings hub, turned on by a person); e2e reviews the security. It is 0.2 work.
+default, in the settings hub, turned on by a person). e2e approved the direction with conditions,
+now in ADR 0008: the box names the machine from the verified peer and keeps its own copy of the
+switch; UUID file names, temp and rename, no symlinks, a quota; trust is the lower of the folder
+rule and mac-sync; the secret scrub runs at ingest; every derived row carries its machine so the
+delete is complete; unpairing deletes too. It is 0.2 work.
 
 - **Consent.** One switch per Mac in the settings hub (ADR 0035), off by default, turned on only by
   a person. Vyre's own folders, `<home>/quick` and folders the person excludes never leave the Mac.
@@ -214,8 +218,9 @@ that for the future and improves." Built on work/memory-iq (95b2b891).
 
 - **One tool, extended.** `memory.correct { answer: <answer_id>, action, object? }`. Every
   `memory.ask` reply, a "not sure" too, carries `answer_id` (the same answer to the same question
-  has the same id). Owner surfaces only (Deck, CLI, Capsule, local), no Touch ID (the no-nag rule);
-  agents never. The phone waits for e2e's review of tailnet writes (0.1.1).
+  has the same id). The person's own surfaces (Deck, CLI, Capsule, local), or their phone or
+  paired device with a person session (a passkey, ADR 0032), with no Touch ID (the no-nag rule);
+  agents never. Graph corrections follow the same rule (e2e, 28 Sep).
   - `replace` with `object` (the right answer, the person's words): the same question gets it at
     once (`via: "corrected"`, source "your correction"), no model call. For a personal answer the
     text is also told to memory (`memory.remember`, highest trust), so "who is my wife" has it too.
@@ -245,8 +250,8 @@ that for the future and improves." Built on work/memory-iq (95b2b891).
   - chat (Deck chat and the PWA through chat-core): the same three choices on an IQ card inside a
     conversation, calling `memory.correct { answer }`; "Undo" calls `memory.uncorrect { fix }`.
   - pwa: nothing of its own beyond chat-core's card.
-  - mobile: Find's card gets the same line and choices once tailnet corrections are reviewed
-    (0.1.1); until then the phone shows "Correct this on your Mac".
+  - mobile: Find's card gets the same line and choices. Without a person session the reply is
+    `person_session_required`: offer the passkey sign-in, then send again.
 
 ## Ranked
 

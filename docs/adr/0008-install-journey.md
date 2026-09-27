@@ -250,9 +250,26 @@ not a rule:
    index for offline search.
 5. **Turning it off** deletes that Mac's synced files and everything derived from them on the box,
    and says how much went.
-6. **Review.** e2e reviews the security of the transport, the switch and the delete before it
-   ships. Federation owns the transport and memory-iq the indexing
-   (docs/design/iq-everywhere.md, "Host to server").
+6. **Security conditions** (e2e's review, 28 Sep; they hold before 0.2 is built):
+   - *Transport.* The box takes `<machine>` from the verified link peer, never from the request
+     body or path. It accepts a file only while its own record of that Mac's switch is on (the box
+     keeps its own copy; the Mac's word is not enough). File names are session UUIDs ending in
+     `.jsonl`. Files are written to a temp file and renamed, symlinks are never followed, and
+     each Mac has a quota.
+   - *The switch.* Turning it on needs a person session on that Mac. Turning it off works from
+     any person surface, the box included, and the box stops accepting that Mac's files at once.
+   - *Trust.* The folder written in a synced session is the Mac's claim. Its trust is the lower of
+     the folder rule and the trust of `mac-sync`, so a compromised Mac cannot pass as a trusted
+     project folder.
+   - *Secrets.* Transcripts hold tool output (environment, keys). The same secret scrub as
+     indexing runs at ingest. `<home>/synced` stays out of agent users, the files and Drive tools
+     and MCP. An agent's recall of synced sessions is scoped by project, as it is locally.
+   - *The delete.* Every derived row (Recall turns and chunks, embeddings, graph facts, personal
+     facts, IQ caches and answers) carries the machine it came from from ingest on, so everything
+     derived can be listed and deleted. Unpairing the Mac deletes the same way. The screen says
+     that existing box backups keep the data until they age out.
+   - e2e reviews the transport code when federation has it. Federation owns the transport and
+     memory-iq the indexing (docs/design/iq-everywhere.md, "Host to server").
 
 ## Consequences
 
