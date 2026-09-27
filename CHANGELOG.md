@@ -88,6 +88,91 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - A home other than ~/.vyre never talks to a real box (not even to check it answers) unless
   VYRE_ALLOW_REAL_BOX=1; VYRE_ALLOW_DIALOGS=1 no longer counts for boxes. A box on this machine's
   loopback (a dev world) is always fine.
+#### The terminal matches the Deck composer: model, thinking, !, #, images, rewind, tasks
+
+- `vyre threads model | thinking | commands | shell | remember [--scope project|user|local] |
+  tasks | kill-task`, each with `--json`. On a vyred without the tool, one line says it is coming.
+- `vyre threads send` takes `--image <file>` (png, jpg, gif, webp; up to 5, 5 MB each). A leading
+  `!` runs the line in the thread's folder (threads.shell) and `#` adds it to CLAUDE.md
+  (threads.remember); `--raw` sends either as typed. Images are refused with `--queue` until the
+  queue carries them, and a send that ends up queued says its images were not kept.
+- `vyre threads rewind <thread>` lists the messages to go back to and, in a terminal, asks which;
+  `--restore code|both` puts files back too, and the message's words come back to send again.
+- Watch and get show model switches, thinking, background tasks, shell lines, remembered lines
+  and rewinds.
+
+#### Sessions from the terminal: interrupt, steer or queue, take back, send now, open (ADR 0030)
+
+- `vyre threads` catches up with the Deck for sessions Vyre runs: `interrupt` (stop the turn, keep
+  the session), `mode <id> [default|acceptEdits|plan]`, `send --queue|--steer`, `queue`,
+  `take-back`, `edit`, `send-now`, `rewind`, `open` (hands an idle session to `claude --resume` in
+  this terminal), and a one-shot `get --since/--limit` (`watch` still follows). A verb whose tool
+  this vyred does not have yet says so in one line and exits 1.
+- Behaviour change: `vyre threads get` and `vyre threads show` print the thread once and exit
+  (threads.get); they used to follow it like `watch`. Use `vyre threads watch` to follow.
+- `vyre threads watch` reconnects by itself (1 s, 2 s, 5 s, up to 30 s) from the last event it
+  showed (Last-Event-ID), never prints an event twice, and stays through an idle close or a vyred
+  restart.
+- New `vyre sessions`: the driver and sign-in, `setup` for the Agent SDK, `models` per purpose or
+  project, and `prompt` show, set (text, file or $EDITOR, `--replace`), history, revert, preview.
+- One QR encoder: `core/cli/qr.js` draws the vendored qrcode-generator (the Deck's, all 40
+  versions), so a relay pair URL with a long box name fits. `vyre relay pair` draws with it too
+  (its own copy is gone), and in a pipe or without colour it prints the address to open instead.
+- `vyre phone add` counts "Test notification arrived" once the phone posts back the test's
+  receipt (push.receipt), now that the push module sends one.
+
+#### Every Deck feature has a CLI verb: needs, gate, phone, live one-time codes, planner edits
+
+- `vyre needs`: everything waiting on you in one list, held drafts and open asks, newest first,
+  each with the command that answers it. `vyre gate` (also `vyre drafts`) lists, shows, approves,
+  rejects and revises held drafts; revise opens `$EDITOR` or takes `--text`/`--file`. Approving asks
+  for proof each time (a send is never windowed in a terminal).
+- `vyre threads answer` takes always, `--scope project`, and question answers by `--pick N`,
+  `--answer "Q=choice"` or a picker in your terminal, and shows the ask before answering.
+- `vyre vault totp` and `vyre vault get --otp` count down live: the code grouped as "123 456", a
+  seconds-left bar redrawn from the local clock with the item's own period; when it expires the
+  next code waits for Enter, which asks for proof again; q, Esc or Ctrl-C quits, it stops after 5
+  minutes. `--once`, `--json` or a pipe print
+  one result. New `vyre vault health`, `breach`, `history <item>`, `revert <item> <version>` and
+  `clear-clipboard`.
+- `vyre phone add` walks a phone onto the box as the app-design sheet shows: which phone, a
+  single-use relay QR to pair (relay.pair.start; nothing to install on the phone first), install
+  steps, live checks ("via relay 80 ms", a test notification, the device's presence key), then the
+  optional "Faster and private: add Tailscale" step. `--tailscale-only`, or a box without the relay,
+  takes the old path: Tailscale, the box's address with a terminal QR (a dependency-free encoder,
+  `core/cli/qr.js`) and a one-time passkey code. `vyre phone list` (relay devices too),
+  `remove <id>` and `test [id]`.
+- `vyre phone add --android --usb` (or `--wireless`) installs the native app: it downloads the APK
+  the box serves at /v1/releases/android?file=, checks its size and sha256 against /v1/releases/android, installs
+  it with adb and opens it on a relay pairing offer (vyre://pair). A mismatch installs nothing.
+- The live checks follow push.subscribed, push.delivered and push.seen: "Test notification arrived"
+  passes when the phone posts back the test's receipt, and "Opened as an app" when an installed app
+  says so. A box without receipts keeps "the push service took it".
+- `vyre todo`, `notes`, `alarm`, `timer` and `remind` take `edit <id>` and `rm <id>` (an id of
+  another kind is refused with the command that owns it); `vyre timer list`, `vyre remind list`,
+  `vyre ringing` and `vyre dismiss <id>`.
+- `vyre agents history`, `vyre agents resume` and `vyre agents computer <name> [restart|limits]`.
+  agents.resume is now a person's tool (cli, local, deck, capsule; PERSON_ONLY), defaulting to the
+  agent's latest thread and leaving a running one alone.
+- `--json` on `vyre learn` (stats, signals, skills, show, level, scope), `vyre connect`,
+  `vyre hooks` and `vyre send`.
+
+#### The CLI gets a 30-minute window for vault approvals and grants
+
+- `vyre vault approve` and `vyre vault grant` asked for a proof on every call from a terminal.
+  Now one Touch ID (or a Capsule or passkey proof) from a login covers that login's vault.approve
+  and vault.grant for 30 minutes. Reveals, copies, one-time codes and `vyre vault run` still ask every
+  time in a terminal: other processes can type into a terminal (tmux send-keys, AppleScript), so
+  a window must not turn that into a silent reveal (ADR 0004 addendum). Each windowed use writes
+  "vyre: used your Touch ID window for ..." to that terminal and a row to `vyre vault audit`.
+  Nothing is written to disk: vyred keys the window on the login the kernel names (the socket
+  peer's pid, its controlling terminal, the login's leader and start time, `who`'s list), after
+  the peer ancestry check, so a new login on a reused tty, anything under `claude`, a detached
+  process or a script pty never rides it; a tmux pane rides it only when every attached client
+  runs in such a login. `core/presence/index.js` (`TERMINAL_WINDOWED`, `windowNotice`),
+  `core/daemon/index.js` (atTerminal), `core/daemon/peer.js` (`loginOf`, `tmuxClients`),
+  `core/vault/index.js` (the audit row), `docs/concepts/presence.md`, `docs/adr/0004-presence.md`.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or
@@ -1292,19 +1377,6 @@ Wires sessions 7543952e and 468af69f in deck/chat.
   day in 2001; the same holds for planner.agenda from and to.
 - planner.parse reads a time said first as a reminder: "6pm call Harlow Legal", "at 6:30 pick up
   juno". Only a time that cannot be a count leads (am/pm, a colon, noon), so "3 apples" is not one.
-
-#### The CLI gets the same 30-minute window for the vault as the Deck
-
-- `vyre vault get --reveal`, copy, one-time codes, approve and grant asked for a proof on every
-  call from a terminal. Now one Touch ID (or a Capsule or passkey proof) from a login terminal
-  covers that terminal's vault.reveal, vault.copy, vault.totp, vault.approve and vault.grant for
-  30 minutes, for items that do not ask every time. Nothing is written to disk: vyred keeps the
-  terminal in memory, named from the kernel (the socket peer's pid, its controlling terminal, and
-  `who`'s login list), gated on the peer ancestry check, so a process under `claude`, a detached
-  process, or a tmux/script pty never rides it. A terminal code proves one call and opens no
-  window. `core/presence/index.js` (`terminal` in verify), `core/daemon/index.js` (atTerminal),
-  `core/daemon/peer.js` (`controllingTty`), `core/modules/index.js`, `docs/concepts/presence.md`,
-  tests in `core/presence/presence.test.js`, `test/presence-cli.test.js`, `test/peer.test.js`.
 
 #### Memory and lesson changes ask nothing; vault sessions cover grants on the Deck; the Mac update line works
 

@@ -377,11 +377,27 @@ export default {
     });
 
     // The switchboard asks for this when someone types into an agent's stopped thread: only
-    // this module can give it the agent's credentials and scope again.
+    // this module can give it the agent's credentials and scope again. A person may ask for it
+    // too (`vyre agents resume`), for the agent's latest thread by default; theirs is checked:
+    // the thread must be the agent's own, and a running one is left as it is. No model may.
     ctx.tool("agents.resume", {
-      description: "Resume one of an agent's threads with its credentials and scope.", internal: true,
-      input: { type: "object", required: ["agent", "thread"], properties: { agent: { type: "string" }, thread: { type: "string" } } },
-      run: async ({ agent, thread }) => launch(must(agent), { resume: thread }),
+      description: "Resume one of an agent's threads (its latest by default) with its credentials and scope. A thread already running is left as it is ({ running: true }).",
+      callers: ["cli", "local", "deck", "capsule", "module"],
+      input: { type: "object", required: ["agent"], properties: { agent: { type: "string" }, thread: { type: "string" } } },
+      run: async ({ agent, thread }, { caller }) => {
+        const a = must(agent);
+        if (String(caller || "").startsWith("module:")) {
+          if (!thread) throw new Error("thread is required");
+          return launch(a, { resume: thread });
+        }
+        const id = thread || a.thread;
+        if (!id) throw new Error(`${a.name} has no thread to resume yet; vyre agents ask ${a.name} <text> starts one`);
+        const r = await ctx.call("threads.get", { thread: id, limit: 1 });
+        const t = r.data && r.data.thread;
+        if (!t || t.agent !== a.name) throw new Error(`${id} is not one of ${a.name}'s threads`);
+        if (t.status !== "stopped") return { ...t, running: true };
+        return launch(a, { resume: id });
+      },
     });
 
     return { async stop() {} };

@@ -65,6 +65,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | Variable | What it does | Read in |
 | --- | --- | --- |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
+| `VYRE_ADB_BIN` | Not described yet. | `core/cli/commands/phone.js` |
 | `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_AGENT_HOME` | Not described yet. | `core/sessions/spawn.js`, `core/spawner/main.js` |
 | `VYRE_AGENT_UID` | Not described yet. | `core/spawner/main.js` |
@@ -118,6 +119,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_THREAD_SOCKETS` | Not described yet. | `core/daemon/threadsock.js` |
 | `VYRE_TILE_BIN` | Not described yet. | `local/sideview/index.js` |
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |
+| `VYRE_TMUX_BIN` | Not described yet. | `core/daemon/peer.js` |
 | `VYRE_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_USER_HOME` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_WORK` | Not described yet. | `core/spawner/main.js` |

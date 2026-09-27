@@ -125,6 +125,56 @@ test("connect: add, list, test and remove MCP servers, granting their vault item
   for (const r of [added, web, list, tested, removed]) for (const s of [gh, token]) assert.ok(!r.all.includes(s), "a value reached the terminal");
 });
 
+test("connect --json: list, add, test and remove print one JSON value; --json after -- is the server's", async t => {
+  const v = await vyred(t);
+  const token = fake("tracker");
+  await v.put("tracker-token", { value: token });
+  const j = async args => {
+    const r = await vyre(v.root, args);
+    assert.equal(r.out.trim().split("\n").length, 1, `one line of JSON: ${r.all}`);
+    return { code: r.code, data: JSON.parse(r.out), all: r.all };
+  };
+
+  assert.deepEqual((await j(["connect", "--json"])).data, { mcp: [], google: [] });
+
+  const http = await startFakeMcpHttp(t, { requireAuth: `Bearer ${token}` });
+  const web = await j(["connect", "add", "mcp", "tracker", "--url", http.url, "--auth", "bearer", "--item", "tracker-token", "--json"]);
+  assert.equal(web.code, 0, web.all);
+  assert.equal(web.data.added.name, "tracker");
+  assert.deepEqual(web.data.grants, [{ item: "tracker-token", module: "mcp", status: "active", ...(web.data.grants[0].id ? { id: web.data.grants[0].id } : {}) }]);
+  assert.equal(web.data.test.ok, true);
+  assert.equal(web.data.test.tools.length, 6);
+
+  // After `--`, --json is the server command's own argument, and is kept.
+  const local = await j(["connect", "add", "mcp", "local", "--json", "--", process.execPath, FAKE, "--stdio", "--json"]);
+  assert.equal(local.code, 0, local.all);
+  assert.deepEqual(local.data.added.args, [FAKE, "--stdio", "--json"]);
+  assert.deepEqual(local.data.grants, []);
+  assert.equal(local.data.test.ok, true);
+
+  const list = await j(["connect", "list", "--json"]);
+  assert.deepEqual(list.data.mcp.map(s => [s.name, s.transport]).sort(), [["local", "stdio"], ["tracker", "http"]]);
+  assert.deepEqual(list.data.google, []);
+
+  const tested = await j(["connect", "test", "tracker", "--json"]);
+  assert.equal(tested.code, 0);
+  assert.equal(tested.data.ok, true);
+
+  const bad = await j(["connect", "add", "mcp", "x", "--json"]);
+  assert.equal(bad.code, 1);
+  assert.equal(bad.data.error.code, "bad_input");
+  assert.match(bad.data.error.message, /say how to reach it/);
+  const nobody = await j(["connect", "test", "nobody", "--json"]);
+  assert.equal(nobody.code, 1);
+  assert.match(nobody.data.error.message, /nothing connected is named nobody/);
+
+  const removed = await j(["connect", "remove", "local", "--json"]);
+  assert.equal(removed.code, 0);
+  assert.equal(removed.data.kind, "mcp");
+  assert.equal(removed.data.name, "local");
+  for (const r of [web, list, tested]) assert.ok(!r.all.includes(token), "a value reached the terminal");
+});
+
 test("connect: a Google account with domain-wide delegation, and the scopes Workspace refused", async t => {
   const S_READ = [S + "calendar.readonly", S + "gmail.readonly"];
   const g = await startFakeGoogle(t, { allowedScopes: S_READ });

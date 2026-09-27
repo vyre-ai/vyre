@@ -84,12 +84,12 @@ Every agent, the assistant first, with what each is doing now.
 
 ### `agents.resume`
 
-Resume one of an agent's threads with its credentials and scope.
+Resume one of an agent's threads (its latest by default) with its credentials and scope. A thread already running is left as it is ({ running: true }).
 
 - Input:
   - `agent` string, required
-  - `thread` string, required
-- Callers: other modules only (internal, never listed)
+  - `thread` string
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `agents.stop`
 
