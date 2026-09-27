@@ -230,6 +230,7 @@ Makes the Mac and the box one system: pairing, box tools from the Mac, box event
 - Tools: [9](tools.md#mail), 1 of them only for other modules
 - Emits: [4 events](events.md#mail)
 - Shows on: capsule, deck
+- Needs credentials: `[object Object]`, `[object Object]`
 - Needs vault: `per-connection`
 
 ## mcp

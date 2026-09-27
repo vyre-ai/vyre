@@ -948,12 +948,12 @@ Change an event: only the fields given. Without a change to attendees it is writ
 
 ### `google.connect`
 
-Start "Sign in with Google": `client` names a vault env-set with the OAuth client's client_id and client_secret (and optionally auth_uri, token_uri), granted to google. Returns { id, url, redirect }: open `url` in a browser. When Google sends the browser back, the account is added as `name` and google.connected is emitted. A browser on another device cannot reach `redirect`; paste the address it landed on into google.connect.finish.
+Start "Sign in with Google": `client` (default google-oauth-client) names a vault env-set with the OAuth client's client_id and client_secret (and optionally auth_uri, token_uri), granted to google. Returns { id, url, redirect }: open `url` in a browser. When Google sends the browser back, the account is added as `name` and google.connected is emitted. A browser on another device cannot reach `redirect`; paste the address it landed on into google.connect.finish.
 
 - Input:
-  - `client` string, required
   - `name` string, required
   - `base` string
+  - `client` string: the OAuth client env-set; default google-oauth-client
 - Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `google.connect.cancel`
