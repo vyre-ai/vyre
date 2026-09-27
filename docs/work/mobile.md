@@ -102,6 +102,22 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   flagged it breaking every app job on a runner). Sent to the integrator. Pushes are paused (lead)
   except to hand over a finished sha.
 
+## RESUME HERE (saved 27 Sep 2026, before a restart)
+- Handed off: READY 01068595 is with the integrator for the batch after batch 4 (it replaces
+  16844948, 503414d4 and 8bc3b5b1). Batch 4 itself took 8bc3b5b1 + 48f84c63. Ignore
+  work/mobile-b4fix d66af88b; the integrator knows.
+- Waiting on: ci's pack of apps/app/dist into vyre.tgz, then a redeploy, then the user's iPhone run
+  (steps below). The box also needs a Claude sign-in (the user's step) for step 6.
+- Next, in order: (1) the shell restructure (Start-here item 7), held until after the iPhone run
+  and shaped by its report; (2) after 0.1.0: cohesion 8, 7, 9, 1, 3 (registry HUMAN_ONLY read,
+  waiting.*, catalog and thread.status, context.report, chat-core suggest), the ADR 0035 hub theme
+  (when native-core pings), tips (docs); (3) the app-side fix for dist/assets/node_modules (then
+  tell ci to drop its rewrite).
+- Test recipes: app `cd apps/app && nice -n 15 npx tsc --noEmit && nice -n 15 npm test`; testbox
+  targeted set as in the notes below; headless Chrome over CDP against
+  `VYRE_NO_DIALOGS=1 node apps/test/world.js 4811` with the export copied to apps/app/dist (remove
+  it after).
+
 ## One app: Doing
 - The real-iPhone run: steps in "iPhone test steps" below, after tonight's deploy.
 - Design-system adoption: ask and trust cards on `<Card>` (CardCode for commands), IconButton +
