@@ -12,7 +12,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   down to the files imported; a new edge or a new file behind one fails, and so does an entry
   nothing uses any more (the list only shrinks). Tests, testing/ and fixtures are out of scope.
 - docs/architecture/boundaries.md: the rule, and each frozen edge with why it exists and what it
-  becomes (16 lib, 9 ctx.call, 1 surface). In the nav; reference regenerated.
+  becomes (17 lib, 8 ctx.call, 1 surface). In the nav; reference regenerated.
 
 #### The answer eval runs without the Electron Capsule
 
