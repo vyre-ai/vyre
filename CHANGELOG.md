@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The Google test counts only its own reads
+
+- core/google/module.test.js: "one call, one 401, one retry" counts the test's own calendar reads.
+  The planner's calendar mirror also reads a window on google.added, which made it 4, not 3, on
+  every run since the planner merge.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
