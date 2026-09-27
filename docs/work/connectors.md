@@ -63,6 +63,8 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
   + message unit and module tests (module test runs on a fake ctx, since vault.connections is on
   work/vault-next), 130/130 neighbours (google, mcp, connectors, gate, harness, connect), docs
   tests green (docs-check: only the 263 pre-existing shot mtimes).
+- 4de05249: needs.credentials (imap, apps-script), need ids in needs_credential, google.connect client defaults to google-oauth-client (vault's oauth `next` passes only a name). NOT yet run: core/mail/module.test.js and core/google/module.test.js after this change (testbox held at load 20 by the lead); run them first when it is free.
+- Landing plan (lead): after e2e approves hold/on_behalf, push as finished and hand the integrator the sha for the batch after batch 4, together with vault's connections (9b).
 - Waiting: vault's module-only `vault.connections.list {caller}` and `use` entries pointing at
   mail.*; then a real-vyred mail test once both are on main.
 
