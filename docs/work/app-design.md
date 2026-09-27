@@ -246,3 +246,11 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   boards stay queued until memory-iq/capsule-pro/glass actually ask, so I'm not guessing at shape;
   the violet-fill cleanup they flagged was already closed by launch's 57eebd9f before they read my
   message — confirmed clean, nothing open there.
+- cohesion re-ran the grep on origin/main and reported --beacon-wash back in site/styles.css
+  (.held-chip, a .block.beacon-bg). Fetched origin/main fresh (a3a844e4) and checked directly:
+  no --beacon-wash anywhere in the file, .held-chip is colour-only, no .block.beacon-bg class
+  exists, 57eebd9f is a confirmed ancestor, and four more commits touched the file after it
+  (c81244a1, 2b3f55ca, acca5cbc, 342e02f5). Their checkout was stale, not a real regression — told
+  them to re-fetch. Also checked core/config/theme.js and every deck/*.css on origin/main for the
+  "sanctioned wash pattern elsewhere" they held back from flagging: zero hits there too, so that
+  may be stale as well. Nothing open.
