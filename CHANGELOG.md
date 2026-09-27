@@ -6,6 +6,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### Sessions: tool calls carry their call id; quick sessions leave no transcript
 
+- vyred's stop waits for a spare quick session still starting and stops it with the rest (a
+  test home was removed while one was being written into).
 - A threads.quick session runs with no session persistence (`--no-session-persistence`, the SDK's
   `persistSession: false`): no transcript for Recall to index its prompt from.
 

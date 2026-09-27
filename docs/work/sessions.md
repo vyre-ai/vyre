@@ -43,8 +43,7 @@ Capsule quick asks to the box assistant, Mac project folders Mac-owned.
   (sessions.usage.*, usage_paused on sessions.slots take with auth).
 
 ## Doing
-- Waiting for the integrator's batch-4 report, then: testbox run of test/mcp-server-tools.test.js + sessions.test.js (warm session), push 88357590, c6663f14, 47a54681 (docs).
-- X-Vyre-Call-Id from the MCP server + quick sessions ephemeral (--no-session-persistence): committed, tests written, NOT yet run (testbox held for batch 4).
+- X-Vyre-Call-Id from the MCP server; quick sessions ephemeral; stopAll waits for spares: tested, pushed.
 - Now own onboard's Claude sign-in (onboard.claude, setup-token.js): review vault's vault.connect relay when it arrives; add threads needs.credentials (vault f4272358 shape) once on main.
 - Lead's list done through 7. Compile phase next: the promised items below, then docs + polish.
 
