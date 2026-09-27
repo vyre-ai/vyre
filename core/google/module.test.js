@@ -1,6 +1,6 @@
 // @ts-check
 // The google module inside a real vyred, in a temp home, with the real vault and the real Gate,
-// against the fake Google (core/connectors/testing/fake-google.js). Never real Google.
+// against the fake Google (lib/connectors/testing/fake-google.js). Never real Google.
 //
 // What these prove: reads mint read-only tokens; a draft goes nowhere; a send and an invite with
 // attendees are held until the person approves, and then go out with exactly what was approved,
@@ -15,7 +15,7 @@ import path from "node:path";
 import { start } from "../daemon/index.js";
 import { call } from "../daemon/client.js";
 import { tempHome, present } from "../../test/helpers.js";
-import { startFakeGoogle } from "../connectors/testing/fake-google.js";
+import { startFakeGoogle } from "../../lib/connectors/testing/fake-google.js";
 
 // "today" and "tomorrow" are this machine's days; pin them so the fake's times land predictably.
 process.env.TZ = "UTC";

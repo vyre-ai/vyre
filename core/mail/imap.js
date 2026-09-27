@@ -24,8 +24,8 @@
 import crypto from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
-import { scrub } from "../connectors/auth.js";
-import { addresses, checkContent, htmlToText, rfc822Text, EMAIL } from "../connectors/message.js";
+import { scrub } from "../../lib/connectors/auth.js";
+import { addresses, checkContent, htmlToText, rfc822Text, EMAIL } from "../../lib/connectors/message.js";
 
 const TIMEOUT_MS = 30_000;
 const MAX_RESPONSE = 6 * 1024 * 1024;
@@ -449,7 +449,7 @@ const imapDate = ms => { const d = new Date(ms); return `${d.getUTCDate()}-${MON
 
 /**
  * The UID SEARCH criteria for a parsed query.
- * @param {ReturnType<typeof import("../connectors/message.js").parseQuery>} q @param {number} now
+ * @param {ReturnType<typeof import("../../lib/connectors/message.js").parseQuery>} q @param {number} now
  * @returns {(string | { lit: Buffer })[]}
  */
 export function searchCriteria(q, now) {
@@ -755,7 +755,7 @@ export function imapAdapter(deps = {}) {
 
     /**
      * @param {ImapConfig} cfg @param {() => Promise<string>} password
-     * @param {{ query: ReturnType<typeof import("../connectors/message.js").parseQuery>, limit?: number }} o
+     * @param {{ query: ReturnType<typeof import("../../lib/connectors/message.js").parseQuery>, limit?: number }} o
      */
     async search(cfg, password, { query, limit }) {
       ensure(cfg);

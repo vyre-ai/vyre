@@ -11,10 +11,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   local scope) and a plugin's own `.mcp.json`, normalized to the hub's server shape. `undiscovered`
   diffs against the hub's known names. Bad JSON or an unreadable file answers no rows, never
   throws. No wiring into `mcp.add` or the Deck yet (next: multi-account grouping, gap 2).
-- Boundaries allowlist (`test/boundaries.test.js`, `docs/architecture/boundaries.md`) updated to
-  match connectors' already-shipped edges: `core/google`, `core/mail` and `core/mcp` each import
-  `core/connectors/behalf.js` (on_behalf) and mail's `message.js`; main's allowlist froze before
-  these landed.
+- `lib/connectors` (auth.js, message.js, behalf.js, and their testing/fake-google.js), moved from
+  `core/connectors`: stateless helpers, so a lib rather than an allowlist entry (the lead's
+  correction, reverting an earlier attempt to widen `test/boundaries.test.js`'s frozen allowlist
+  instead). Removes `core/google -> core/connectors` and `core/mcp -> core/connectors` entirely;
+  `core/mail` never needed an entry, since a lib import is not a tracked edge. 26 frozen edges
+  become 24. google.js, mail's files and mcp's now import `lib/connectors/*` directly.
 
 #### Mail: send an email from any connected account (ADR 0016 decision 8)
 

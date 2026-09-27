@@ -6,7 +6,7 @@
 // with what the words named filled in. "email from dana", "mail about invoices" are a search.
 // Anything else is not mail's, and mail.find returns no rows for it.
 
-import { EMAIL } from "../connectors/message.js";
+import { EMAIL } from "../../lib/connectors/message.js";
 
 const COMPOSE = /^\s*(?:(?:send|write|compose|draft|new)\s+(?:an?\s+|the\s+)?(?:e-?mail|mail|message)(?:\s+to)?|e-?mail|write\s+to|mail\s+to|message)\b\s*(.*)$/i;
 const SEARCH = /^\s*(?:e-?mails?|mails?|messages?|inbox)\s+(from|about|to)\s+(.+)$/i;

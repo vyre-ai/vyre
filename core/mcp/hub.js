@@ -342,7 +342,7 @@ const PEOPLE = ["cli", "local", "deck", "capsule", "module"];
 
 /**
  * @typedef {{ person: boolean, agent: string|null, thread: string|null }} Who
- * @typedef {{ db: import("node:sqlite").DatabaseSync, creds: import("../connectors/auth.js").Credentials,
+ * @typedef {{ db: import("node:sqlite").DatabaseSync, creds: import("../../lib/connectors/auth.js").Credentials,
  *   connect: typeof import("./client.js").connect, emit: (type: string, payload: any, where?: any) => any,
  *   log?: (m: string) => void, now?: () => number,
  *   offer?: (server: string) => Promise<void>,

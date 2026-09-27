@@ -4,7 +4,7 @@ Branch: work/connectors · Worktree: ../vyre-connectors · ADR: 0016
 
 ## Scope
 
-Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/commands/connect.js`,
+Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/commands/connect.js`,
 `deck/views/connections.js`. Small changes by contract in `core/gate/` (a module sender),
 `core/harness/rules.js` (the hub's namespace), `harness/mcp/server.js` (aggregation) and
 `deck/views/settings.js` (the Connections section).
@@ -76,10 +76,17 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
   (pure, tested with synthetic Claude Code config fixtures in temp homes, never real files),
   9af3a4fb. Not yet wired into `mcp.add`, `mcp.servers` or the Deck (own step, so a `pending` row's
   shape gets its own review before the UI depends on it).
-- Fallout from the main merge, fixed alongside discover.js: `test/boundaries.test.js`'s allowlist
-  froze on 2026-09-27 before connectors' on_behalf (behalf.js) and mail (message.js) edges landed;
-  updated the allowlist and docs/architecture/boundaries.md to match what core/google, core/mail
-  and core/mcp already import (all four sides are connectors' own files, no cross-team ask needed).
+- Fallout from the main merge: `test/boundaries.test.js`'s allowlist froze 2026-09-27 before
+  connectors' on_behalf (behalf.js) and mail (message.js) edges landed. First fix (9af3a4fb) widened
+  the allowlist; the lead corrected it: the allowlist only shrinks, and the integrator had already
+  frozen these as connectors' 0.1.1 debt. Reverted, then did the real fix (lib move, below).
+- `lib/connectors` (auth.js, message.js, behalf.js, testing/fake-google.js), moved from
+  core/connectors: all three are stateless (injected deps or pure functions, no ctx, no I/O of
+  their own), so they belong in a lib per ADR 0033, not behind an allowlist entry. Removes
+  `core/google -> core/connectors` and `core/mcp -> core/connectors` from the allowlist entirely
+  (26 frozen edges to 24); google/mail/mcp now import `lib/connectors/*` directly. Updated
+  docs/architecture/boundaries.md and docs/adr/0033-hackable-vyre.md (item 2, done early, wider
+  than planned).
 - SAVED for restart 2026-09-27 (superseded by the above once mcp-native lands): handed to the
   integrator work/connectors 8be461a9 for the batch after batch 4; e2e signed off (84f630c9 + row
   text), platform approved kernel af11226d + test 77dcd644. Land together with vault 9b
