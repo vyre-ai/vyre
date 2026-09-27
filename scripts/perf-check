@@ -12,7 +12,8 @@
 //   while (about 160 MB for ~20 s on the synthetic corpus) and gives it back once idle, so the
 //   idle budget is read once RSS has been flat for RSS_FLAT_SAMPLES samples at the end of the
 //   window (the window runs on, up to IDLE_MAX_SECONDS, until it is). A separate startup budget
-//   (200 MB, the first 30 s from spawn) still fails a real indexing blowup.
+//   (200 MB, the first 30 s from spawn) still fails a real indexing blowup. Both RSS budgets gate on
+//   the Node the box ships; the heap after a forced GC (scripts/lib/gc-hook.mjs) gates everywhere.
 //
 // Builds a throwaway VYRE_HOME (never the real ~/.vyre), seeds it with the small fixture corpus
 // plus a synthetic ~20,000-turn one so Recall has real work to do, starts a real vyred as a
@@ -57,7 +58,17 @@ const SETTLE_MS = 3000;
 // shouldn't fail the whole check when 39 of 40 samples are clean). cpuSustainedPct/window catch
 // the failure mode p95 alone would miss: real ongoing load that just isn't the single worst
 // sample, e.g. a leftover polling loop running the whole 60s at 1-2%.
-const BUDGET = { cpuPct: 0.5, rssMB: 150, startupRssMB: 200, minTimerMs: 60_000, cpuSustainedPct: 1.0, cpuSustainedWindow: 5 };
+// heapMB gates what vyred really holds once idle: the V8 heap right after a forced full GC
+// (scripts/lib/gc-hook.mjs), about 20 MB on the synthetic corpus. The RSS budgets gate only on the
+// Node major the box image ships (box/Dockerfile's FROM node:N): on Node 22 an idle vyred gives its
+// startup heap back (RSS about 85 MB), while Node 24 keeps it (186 to 260 MB, depending on the
+// run) with a heap V8 simply hasn't collected yet, so there RSS is informational.
+const BUDGET = { cpuPct: 0.5, rssMB: 150, startupRssMB: 200, heapMB: 50, minTimerMs: 60_000, cpuSustainedPct: 1.0, cpuSustainedWindow: 5 };
+
+/** The Node major the box image runs, from box/Dockerfile, or null. */
+function shippedNodeMajor() {
+  try { return Number(/^FROM node:(\d+)/m.exec(fs.readFileSync(path.join(REPO, "box", "Dockerfile"), "utf8"))?.[1]) || null; } catch { return null; }
+}
 
 function log(msg) { process.stderr.write(`perf-check: ${msg}\n`); }
 
@@ -76,10 +87,12 @@ async function main() {
   let expected;
   let child;
   let timersFile;
+  let gcFile;
   try {
     expected = await seed(home, transcriptsDir);
     timersFile = path.join(home, "timers.json");
-    child = spawnDaemon(home, timersFile);
+    gcFile = path.join(home, "gc.json");
+    child = spawnDaemon(home, timersFile, gcFile);
     log(`vyred starting (pid ${child.pid}), home ${home}`);
     const startup = watchStartup(child.pid, STARTUP_SECONDS, 500);
 
@@ -102,12 +115,13 @@ async function main() {
     // The settled size: run on until the last RSS_FLAT_SAMPLES samples sit within RSS_FLAT_MB.
     while (!rssFlat(samples) && Date.now() - idleStart < IDLE_MAX_SECONDS * 1000) samples.push(...await sampleIdle(child.pid, SAMPLE_MS / 1000, SAMPLE_MS));
     const startupPeakMB = await startup;
+    const afterGc = await gcSnapshot(child, gcFile);
     // Stop vyred BEFORE reading the timer dump: timer-hook.mjs only writes it on process exit
     // (see that file), so reading it any earlier always finds nothing.
     await stopChild(child);
     const timers = readTimers(timersFile);
 
-    const exitCode = report(samples, timers, idleStart, startupPeakMB);
+    const exitCode = report(samples, timers, idleStart, startupPeakMB, afterGc);
     process.exitCode = exitCode;
   } finally {
     if (child && child.exitCode === null) await stopChild(child);
@@ -140,12 +154,13 @@ async function seed(home, transcriptsDir) {
   return { sessions: SESSIONS.length + synth.sessions, turns: fixtureTurns + synth.turns };
 }
 
-function spawnDaemon(home, timersFile) {
+function spawnDaemon(home, timersFile, gcFile) {
   const entry = path.join(REPO, "core", "daemon", "main.js");
   const hook = path.join(HERE, "lib", "timer-hook.mjs");
-  const child = spawn(process.execPath, [`--import=${pathToImportSpecifier(hook)}`, entry], {
+  const gcHook = path.join(HERE, "lib", "gc-hook.mjs");
+  const child = spawn(process.execPath, ["--expose-gc", `--import=${pathToImportSpecifier(hook)}`, `--import=${pathToImportSpecifier(gcHook)}`, entry], {
     cwd: REPO,
-    env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile },
+    env: { ...process.env, VYRE_HOME: home, VYRE_PERF_TIMERS_FILE: timersFile, VYRE_PERF_GC_FILE: gcFile },
     stdio: ["ignore", "pipe", "pipe"],
   });
   let out = "";
@@ -167,6 +182,19 @@ function spawnDaemon(home, timersFile) {
  * Windows path does not, so go through a file:// URL, which works everywhere. */
 function pathToImportSpecifier(p) {
   return new URL("file://" + p.split(path.sep).map(encodeURIComponent).join("/")).href;
+}
+
+/**
+ * vyred's memory right after a full GC (scripts/lib/gc-hook.mjs, on SIGUSR2), in MB, or null.
+ * @returns {Promise<{ rss: number, heapTotal: number, heapUsed: number, external: number, arrayBuffers: number } | null>}
+ */
+async function gcSnapshot(child, file) {
+  try { process.kill(child.pid, "SIGUSR2"); } catch { return null; }
+  for (let i = 0; i < 50; i++) {
+    await sleep(100);
+    try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { /* not written yet */ }
+  }
+  return null;
 }
 
 /** daemon/client.js, imported with the temp home baked in via its own `root` option. */
@@ -308,7 +336,12 @@ async function stopChild(child) {
 function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
 
 /** Print the pass/fail table and return the process exit code. */
-function report(samples, timers, idleStart, startupPeakMB) {
+function report(samples, timers, idleStart, startupPeakMB, afterGc) {
+  const shipped = shippedNodeMajor();
+  const node = Number(process.versions.node.split(".")[0]);
+  // No box/Dockerfile (a packed tree): gate RSS as before.
+  const rssGates = shipped === null || node === shipped;
+  const rssBudget = b => (rssGates ? `< ${b} MB` : `informational (Node ${node}; the box runs ${shipped})`);
   const cpu = samples.map(s => s.cpuPct);
   const rssMB = samples.map(s => s.rssKB / 1024);
   const meanCpu = mean(cpu), maxCpu = Math.max(...cpu), p95Cpu = percentile(cpu, 95);
@@ -344,11 +377,16 @@ function report(samples, timers, idleStart, startupPeakMB) {
     { name: "CPU (mean)", value: `${meanCpu.toFixed(2)}%`, budget: "informational", pass: true, gate: false },
     { name: "CPU (max)", value: `${maxCpu.toFixed(2)}%`, budget: "informational", pass: true, gate: false },
     // Gating: the settled size, once RSS is flat; a size that never settles fails too.
+    // Gating everywhere: the live heap once idle, after a full GC; a missing snapshot fails.
+    { name: "heap used (after a full GC)", value: afterGc ? `${afterGc.heapUsed.toFixed(1)} MB` : "no snapshot",
+      budget: `< ${BUDGET.heapMB} MB`, pass: !!afterGc && afterGc.heapUsed < BUDGET.heapMB, gate: true },
+    { name: "RSS (after a full GC)", value: afterGc ? `${afterGc.rss.toFixed(1)} MB` : "no snapshot", budget: "informational", pass: true, gate: false },
+    // Gating on the shipped Node: the settled size, once RSS is flat; a size that never settles fails too.
     { name: `RSS (settled, last ${RSS_FLAT_SAMPLES})`, value: flat ? `${settledRss.toFixed(1)} MB` : `not flat in ${IDLE_MAX_SECONDS}s`,
-      budget: `< ${BUDGET.rssMB} MB`, pass: flat && settledRss < BUDGET.rssMB, gate: true },
-    // Gating: the first 30 s from spawn, indexing included, so a real blowup still fails.
-    { name: `RSS (startup peak, ${STARTUP_SECONDS}s)`, value: `${startupPeakMB.toFixed(1)} MB`, budget: `< ${BUDGET.startupRssMB} MB`,
-      pass: startupPeakMB < BUDGET.startupRssMB, gate: true },
+      budget: rssBudget(BUDGET.rssMB), pass: !rssGates || (flat && settledRss < BUDGET.rssMB), gate: rssGates },
+    // Gating on the shipped Node: the first 30 s from spawn, indexing included, so a real blowup still fails.
+    { name: `RSS (startup peak, ${STARTUP_SECONDS}s)`, value: `${startupPeakMB.toFixed(1)} MB`, budget: rssBudget(BUDGET.startupRssMB),
+      pass: !rssGates || startupPeakMB < BUDGET.startupRssMB, gate: rssGates },
     { name: "RSS (mean)", value: `${meanRss.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
     { name: "RSS (max)", value: `${maxRss.toFixed(1)} MB`, budget: "informational", pass: true, gate: false },
     { name: "fastest recurring timer", value: fastestMs === Infinity ? "none under 60s" : `${fastestMs} ms`,

@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### perf-check gates the live heap, and RSS on the Node the box ships
+
+- The idle RSS gate failed on GitHub's Node 24 runners at 185 to 333 MB on every batch-4 merge and on
+  its base alike, with notes-only merges swinging by 70 MB. Node 24 keeps the startup heap while
+  idle (74 to 111 MB in use, 20 MB of it live); Node 22, which the box image runs, gives it back and
+  settles near 85 MB. perf-check now starts vyred with --expose-gc and scripts/lib/gc-hook.mjs,
+  reads memoryUsage after a full GC on SIGUSR2, and gates heap used under 50 MB on every Node. The
+  settled (150 MB) and startup-peak (200 MB) RSS budgets gate on the Node major in box/Dockerfile
+  and print as informational on others.
+
 #### box-image builds whenever a file in the image changes
 
 - The detect step compared a push against a fixed path list (box/, core/daemon/, package files),
