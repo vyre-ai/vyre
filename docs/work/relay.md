@@ -77,7 +77,9 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
   denied tools answer `denied` "trust this browser first" instead of 404 (a WEB_DENY check in
   the tools or a policy that answers denied, not hides); (2) emit `device.trusted {id, trusted}`
   and pass the "trust changed" close reason through relay/client; (3) relay.devices.list gains
-  webExpiryDays and trustedBy/trustedAt; (4) same as app-design (2): name, not id, in the trust
+  webExpiryDays and trustedBy/trustedAt (relay.devices.trust records trusted_by = the trusting
+  device's id and name, and trusted_at; both cleared when trust is lowered or the browser pairs
+  again; returned in the view for web devices, per app-design); (4) same as app-design (2): name, not id, in the trust
   summary. The app hides "Ask to trust" until relay.devices.ask-trust is listed.
 - From app-design (board "Devices: trusting a browser for the vault", work/app-design 46f1b3d),
   after native-core: (1) relay.devices.trust with trusted:false needs no proof (presence.when on
