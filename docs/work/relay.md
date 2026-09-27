@@ -64,6 +64,9 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - testbox: `core/relay`, `relay/**`, `test/relay.test.js` 93/93; docs tests 50/50.
 
 ## Doing
+- Redial bug FIXED (lead asked during the pause): link.js and client.js treat a pre-open
+  `error` as a failed dial; 30 s dial timer in link.js. resilience's two chaos todos pass with
+  the fix (their branch + this fix, 54/54); they flip the todos on their branch.
 - PAUSED (lead, 27 Sep 2026): the user is refocusing on the native core. 4d58d4b is in batch 3b.
   Nothing in flight; everything is pushed. The Cloudflare deploy stays deferred until the lead
   says the phone spike or the hosted app needs a live relay (check the vyre.run zone is on
