@@ -119,9 +119,9 @@ What the imported history makes possible, largest value for the size first.
 
 | # | Opportunity | What the person gets | Size | When |
 |---|---|---|---|---|
-| 1 | Import progress as a live graph | People, orgs and projects appear as sessions are read (`memory.graph-grew`) | S memory, M Deck | 0.1.1 |
-| 2 | "Who is ..." and "everything about ..." | One card per person or org: role, where they work, projects, last talked about, sources | S | 0.1.1 |
-| 3 | Contradictions to confirm | Two values for one thing (two home cities, two spouses): one "waiting on you" card to pick, using the suggestions IQ corrections built | S | 0.1.1 |
+| 1 | Import progress as a live graph | People, orgs and projects appear as sessions are read (`memory.graph-grew`) | S memory, M Deck | memory side built |
+| 2 | "Who is ..." and "everything about ..." | One card per person or org: role, where they work, projects, last talked about, sources | S | built: `memory.card` |
+| 3 | Contradictions to confirm | Two values for one thing (two home cities, two spouses): one card to pick | S | built: `memory.contradictions`, `memory.settle` |
 | 4 | What changed | Per project, what memory learned since a date, from the person's own words (memory.today, widened) | S | 0.1.1 |
 | 5 | Project timelines | Decisions, deploys and fixes per project, in order, each with its session | M | 0.1.2 |
 | 6 | Multi-hop IQ answers | "What did my contact at Northwind ask for in June": person to org to project to turns, measured on the eval worlds before it ships | M | 0.1.2 |
