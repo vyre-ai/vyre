@@ -92,12 +92,15 @@ mobile and the Capsule (through their owners).
   `vyre voice key` now calls vault.connect, voice declares a "speech" group. 584 pass, 0 fail.
 - core/mail was built (6a0c0760) then reverted (7cb60736): connectors owns core/mail (lead). Offered to them to cherry-pick.
 
+- 9b connections (4d43906e and after): core/vault/connections.js + tools/connections.js, vault_connections (MACed,
+  tampered row granted to nothing), vault rows resynced on vault.connected/put/delete, modules register theirs,
+  list/get/grant/revoke/update/sync/allowed/register/unregister, events vault.connection-added/-removed/-changed,
+  core/modules/needs-credential.js, multiple: true needs, Apps Script mail capabilities + /a/macros URL,
+  `vyre vault connections`. Targeted run on testbox: 39 pass, 0 fail.
+
 ## Doing
 
-- 9b connections (subagent): vault_connections table (MACed), vault-source rows, modules REGISTER theirs
-  (vault.connections.register/unregister), list/get/grant/revoke/update/sync/allowed, events
-  vault.connection-added/-removed/-changed, needs_credential error {code, message, detail:{module, need, account?}},
-  multiple: true needs. Contract sent to connectors and cohesion (27 Sep).
+- Nothing. 9b done; waiting on connectors to register google, mcp and mail rows and call allowed.
 
 ## Next (in order, when resumed)
 
@@ -129,7 +132,9 @@ mobile and the Capsule (through their owners).
 - capsule-pro: replace "Run: vyre voice key" (SightExtension.swift:400-402) with an inline secure field that calls
   vault.connect {module:"voice", need}; an account chooser from vault.connections.list {capability}.
 - native-core: the "Vault, Connections" entry in the settings hub (list, grant per surface, connect sheet).
-- sessions: does a thread record that it came from the Capsule? (surface resolution for mcp:thread callers)
+- sessions: confirm threads.get's `thread.purpose === "capsule"` is how a Capsule thread is told apart (9b uses it).
+- lead: `tailnet:<login>` (the owner's own device on the box) counts as the person, like the Deck; the phone
+  arrives that way too, so "phone" is only the `mobile` caller today. Is that right?
 - connectors: google.connect wants a `client` item; what should vault.connect's oauth `next.input` carry?
 
 - mobile: include modules/vault-android (sent 27 Sep), run its gradle unit tests + a device check;
@@ -147,6 +152,11 @@ mobile and the Capsule (through their owners).
 - lead: refs stay vault://item/field; accept vyre://vault/... as an alias? Who builds the Deck/phone vault board (Direction A): pwa + mobile, or vault-next?
 
 ## Changed contracts
+
+- Kernel (core/modules/index.js): validate() takes needs.credentials[].multiple (boolean, no `item` with it);
+  ctx.vault.fetch accepts `<module>-<label>` items of a module with a multiple need. New kernel helper
+  core/modules/needs-credential.js (pure). vault.need returns `multiple` and `items` for such needs; vault.connect
+  takes `label` as the item suffix there. providers.js: google-apps-script capabilities send_mail, read_mail.
 
 - Kernel (core/modules/index.js): validate() checks needs.credentials; ctx.vault.fetch also accepts
   its items; status() (and GET /v1/modules) carries `credentials`; ctx.modules.list() returns

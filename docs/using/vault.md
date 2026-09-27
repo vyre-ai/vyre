@@ -274,6 +274,51 @@ A need is `ready`, `missing`, `not_granted` (saved but not granted), `pending` (
 the grant and it waits for you) or `expired`. Claude can never connect a key: the value only ever
 comes from your own screen.
 
+Some modules take several accounts of one kind, such as mail: give each a label, `vyre vault
+connect <module> account --label northwind`, and each is its own item (`<module>-northwind`).
+
+## Vault, Connections
+
+Every account and key Vyre can act through is one connection: your Google accounts, each MCP
+server, each mailbox, and each key you connected. One list shows them side by side, with what
+each can do and which surface may use it.
+
+```bash
+vyre vault connections
+vyre vault connections --can send_mail
+vyre vault connections --surface agents
+```
+
+```output
+  cn_Vq3k9x0aB2c  kit at Northwind kit@northwind.test · google-dwd · service-account
+                  can send_mail, read_mail, calendar · capsule, chat
+  cn_Lm8Pz1yQw4r  Harlow Legal Gmail alex@harlowlegal.test · mcp · oauth
+                  can send_mail, read_mail · capsule, chat
+```
+
+A surface is `capsule`, `chat` (Claude in a thread), `agents` or `phone`. A new connection is
+granted to the Capsule and chat, so "send an email" in the Capsule offers every account that can
+send, and Claude in a chat thread sees the same list. Agents see nothing until you grant it:
+
+```bash
+vyre vault connections grant cn_Vq3k9x0aB2c agents
+vyre vault connections revoke cn_Vq3k9x0aB2c chat
+vyre vault connections sync
+```
+
+Granting asks you to prove you are there; revoking never does. You can also rename a connection
+or change what it can do (`vault.connections.update`), and that survives every resync. A
+connection whose key is missing or not granted to its module shows `needs credential` and the
+`vyre vault connect` that fixes it. A row someone changed behind the vault's back fails its check
+and is granted to nothing until you grant it again.
+
+> **For module authors.** Register each account with `vault.connections.register {ref, provider,
+> account, auth, label?, capabilities? or tools?, items?, use?}`; the source is your module's
+> name. Before acting for a caller, ask `vault.connections.allowed {id, caller}` and refuse
+> unless it says `allowed: true`. When a key is missing, answer with `{code: "needs_credential",
+> message, detail: {module, need, account?}}` (core/modules/needs-credential.js). The vault
+> emits `vault.connection-added`, `vault.connection-removed` and `vault.connection-changed`.
+
 ## Use an item in a script
 
 Scripts outside Vyre run under `vyre vault run`, which puts the values into one child process's

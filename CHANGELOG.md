@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vault, Connections: every account and key, granted per surface (ADR 0028, decision 9b)
+
+- A new table, `vault_connections`, MACed like the grant rows: the vault's own items with a
+  catalog provider (resynced on `vault.connected`, put and delete), and rows modules register with
+  `vault.connections.register` (source = the calling module, id `cn_...` stable across upserts;
+  capabilities given, or read from tool names by a small pattern table). `unregister` removes a
+  module's own row. A row whose items are missing or not granted has state `needs_credential`.
+- `vault.connections.list {capability?, surface?, caller?}` shows only what the caller's surface
+  (capsule, chat, agents, phone) may use, each with `uses` (capability to `{tool, input}`);
+  `get`, `grant` (presence), `revoke` (no presence), `update` (presence; label and capabilities
+  survive resyncs), `sync`, and `allowed` for modules. New rows are granted to capsule and chat.
+  A tampered row is granted to nothing. Events `vault.connection-added`, `-removed`, `-changed`.
+- core/modules/needs-credential.js: the one missing-key shape, `{code: "needs_credential",
+  message, detail: {module, need, account?}}`.
+- `needs.credentials` takes `multiple: true`: `vault.connect` then needs a `label`, and the item
+  is `<module>-<label>`. The Apps Script provider can send and read mail, and takes the
+  `/a/macros/<domain>/s/<id>/exec` URL too.
+- `vyre vault connections [--can c] [--surface s]`, `connections grant|revoke <id> <surface>`,
+  `connections sync`.
+
 #### Connecting a key: needs.credentials, vault.need and vault.connect (ADR 0028, decision 9a)
 
 - A manifest may declare `needs.credentials`: `{id, kind, provider, purpose, item?, optional?,

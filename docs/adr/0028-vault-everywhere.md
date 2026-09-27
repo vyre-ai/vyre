@@ -392,43 +392,66 @@ accepts these items as it accepts `needs.vault` names.
 
 **9b. A connection is a provider, an account, an auth kind, capabilities and surfaces.** Table
 `vault_connections(id, source, ref, provider, account, auth, label, capabilities, surfaces,
-added, updated, mac)`, MACed like the grant rows, unique on `(source, ref)`. Sources:
+added, updated, mac)`, MACed like the grant rows, unique on `(source, ref)`. A row whose MAC
+fails is granted to no surface. Ids are `cn_` and base64url, stable across upserts. Two kinds of
+row:
 
 - `vault`: an item made by `vault.connect` or put with a catalog provider (API keys, PATs, IMAP
-  and SMTP logins, Apps Script web-app tokens).
-- `google`: each row of `google.accounts` (OAuth sign-in or DWD service account, one per
-  account email).
-- `mcp`: each server in the hub (`mcp.servers`). Two Gmail servers are two connections; the
-  account is the server's label.
+  and SMTP logins, Apps Script web-app tokens). The vault writes these itself and resyncs them on
+  `vault.connected` and on its own put and delete events. Nothing polls.
+- A module's own rows. Modules register their connections; the vault never reads their tables or
+  lists. `vault.connections.register {ref, provider, account, auth, label?, capabilities? | tools?,
+  items?, use?}` (module callers only) upserts on `(source, ref)`, where `source` is the calling
+  module's name from its caller label, never from the input, and returns `{id}`. `auth` is one of
+  `oauth`, `service-account`, `api-key`, `password`, `bearer`, `none`. With `tools` and no
+  `capabilities`, capabilities come from the tool names by a small pattern table (`gmail_send`
+  sends mail; `search_threads` reads mail on a mail server; `list_events` is calendar).
+  `vault.connections.unregister {ref}` removes one of the caller's own rows. The google module
+  registers one row per account, the mcp hub one per server (two Gmail servers are two rows), and
+  the mail module one per IMAP and SMTP login.
+- `items` names the vault items a row signs in with. A row whose items are not all there and
+  granted to its module has state `needs_credential`, with `needs: [{module, need}]` from that
+  module's manifest. An item a module row claims is not listed again as a vault row.
 
-The vault reads the other two only through their tools (`google.accounts`, `mcp.servers`,
-`mcp.tools`) and resyncs a source on its events (`google.added`, `google.removed`,
-`google.connected`, `mcp.added`, `mcp.updated`, `mcp.removed`, `mcp.refreshed`). Nothing polls.
-Capabilities (`send_mail`, `read_mail`, `calendar`, `files`, `send_message`, `speech`, `llm`,
-`search`, `other`) come from the catalog for vault and Google connections and from the tool names
-for MCP servers; a person may change them (`vault.connections.update`).
+Capabilities are `send_mail`, `read_mail`, `calendar`, `files`, `send_message`, `speech`, `llm`,
+`search` and `other`; a person may change them and the label (`vault.connections.update`), and
+the change survives every resync and re-register. `use` is a map from capability to
+`{tool, input}`: what a module passed, the catalog for vault rows, and for `send_mail` and
+`read_mail` with nothing else, `mail.send` and `mail.search` with `{account: <connection id>}`.
 
 - Surfaces: `capsule`, `chat`, `agents`, `phone`. A new connection is granted to `capsule` and
   `chat`; `agents` is opt-in. The caller decides the surface: `capsule`, `mobile` (phone),
-  `mcp:thread:<id>` (chat, or capsule when the thread says it came from the Capsule),
-  `mcp:agent:<n>` and `tailnet:agent:<n>` (agents). `cli`, `local` and `deck` are the person at a
-  settings screen and see everything.
-- `vault.connections.list {capability?, surface?}` (people's surfaces and mcp) returns only the
-  connections granted to the caller's surface, each with `use: {tool, input}`: for example
-  `google.mail.send {account}`, `mcp.call {server, tool}` or `mail.send {connection}`. So
-  "send an email" in the Capsule offers every account that can send, and Claude in a chat thread
-  sees the same list. Never a value, a token or a field name that holds one.
-- `vault.connections.grant {id, surface}` (presence) and `vault.connections.revoke {id, surface}`
-  (no presence: taking access away never needs it).
-- `vault.connections.allowed {source, ref, caller}` (modules only) is the check a module makes
-  before it acts on a connection. mcp.call and the google tools make it; the mail module does too.
-  A send is still held at the Gate as before; the grant decides who may ask.
+  `mcp` and `mcp:thread:<id>` (chat, or capsule when the thread's purpose is `capsule`),
+  `mcp:agent:<n>` and `tailnet:agent:<n>` (agents). `cli`, `local`, `deck` and the owner's own
+  device at the box's tailnet address are the person at a settings screen and see everything.
+- `vault.connections.list {capability?, surface?, caller?}` (people's surfaces, mcp and modules)
+  returns only the rows granted to the caller's surface, each with `uses`, and with a capability
+  also `use`, that one entry. A module must pass `surface`, or `caller` (the caller it acts for).
+  So "send an email" in the Capsule offers every account that can send, and Claude in a chat
+  thread sees the same list. Never a value, a token or a field name that holds one.
+  `vault.connections.get {id}` is one row, on the same terms.
+- `vault.connections.grant {id, surface}` (presence), `vault.connections.revoke {id, surface}`
+  (no presence: taking access away never needs it), `vault.connections.sync` (people).
+- `vault.connections.allowed {id} | {source, ref}, caller` (modules only) returns
+  `{allowed, surface, reason?}`: the check a module makes before it acts on a connection. People
+  are always allowed; a module acting as itself is not a surface and must pass the caller it acts
+  for. A send is still held at the Gate as before; the grant decides who may ask.
+- A module that cannot act because a credential is missing answers with one shape,
+  `{code: "needs_credential", message, detail: {module, need, account?}}` (the kernel helper
+  core/modules/needs-credential.js), so every surface offers the same fix, `vault.connect`.
+- Events: `vault.connection-added {id, source, provider, account}`,
+  `vault.connection-removed {id}`, `vault.connection-changed {id, fields}`.
+- A need may take several accounts: `multiple: true` in `needs.credentials`, and `vault.connect`
+  then takes a `label` and names the item `<module>-<label>` (mail-northwind, say).
 
-**9c. IMAP and SMTP.** A new module `mail` (core/mail) with `mail.test`, `mail.search`,
-`mail.read`, `mail.send` and `mail.release` over IMAP4rev1 and SMTP (TLS or STARTTLS, AUTH PLAIN
-or LOGIN), with no new dependency. A login is an `env-set` item of provider `imap-smtp` granted to
-`mail`. `mail.send` offers `mail:<connection>` to the Gate and releases through `mail.release`,
-as google does. Tests run against fake IMAP and SMTP servers only.
+**9c. IMAP and SMTP.** The connectors team owns a module `mail` (core/mail, under ADR 0016) with
+`mail.test`, `mail.search`, `mail.read`, `mail.send` and `mail.release` over IMAP4rev1 and SMTP
+(TLS or STARTTLS, AUTH PLAIN or LOGIN), with no new dependency. A login is an `env-set` item of
+provider `imap-smtp` granted to `mail`, declared as the need `{id: "account", kind: "env-set",
+provider: "imap-smtp", multiple: true}`. Each login is a registered connection, and the mail tools
+take `account`, a connection id; they ask `vault.connections.allowed` first. `mail.send` offers
+`mail:<account>` to the Gate and releases through `mail.release`, as google does. Tests run
+against fake IMAP and SMTP servers only.
 
 **9d. What is not in this step.** Apps Script web apps are saved and listed (`url` and `token`,
 capabilities the person picks) but have no adapter yet: each script's shape is its own. OAuth for

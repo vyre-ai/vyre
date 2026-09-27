@@ -51,7 +51,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 40 | 26 | cli |
-| [`vault`](#vault) | `core/vault` | `box`, `local` | 100 | 39 | capsule, cli, deck |
+| [`vault`](#vault) | `core/vault` | `box`, `local` | 109 | 42 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
 
@@ -407,8 +407,8 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/vault`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [100](tools.md#vault), 1 of them only for other modules
-- Emits: [39 events](events.md#vault)
+- Tools: [109](tools.md#vault), 1 of them only for other modules
+- Emits: [42 events](events.md#vault)
 - Shows on: capsule, cli, deck
 
 ## voice
