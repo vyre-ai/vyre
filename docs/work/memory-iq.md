@@ -47,6 +47,22 @@ Attributes: `name` (me|name|lit:Alex, kin:spouse|name|lit:Jordan), `birthday`, `
 `from`, `works_at`, `role`, `owns` (vehicles and other things), `drives`, `client`, `uses`,
 `prefers`.
 
+### Round 1 additions (27 Sep, the contract both halves build against)
+
+- Relations: `diet` (me|diet|lit:vegetarian; single-valued), `breed` (a pet|breed|lit:beagle;
+  single-valued), `friend` (me|friend|kin:friend or name:<Name>, many). A relative's own
+  attributes use the existing relations with the relative as subject: kin:spouse|role|lit:nurse,
+  kin:mother|lives_in|place:Tucson, kin:spouse|works_at|org:<Org>.
+- Kin words gain friend: friend, buddy, mate (only as "my mate"), pal, bestie -> role `friend`
+  (not singular: each named friend is name:<Name>).
+- Vehicles: trucks, vans, motorbikes are vehicles; owns/drives/ended:owns as for cars.
+- Answer kinds: `of {who: {kin?|name?}, rel}` (a relative's or named person's attribute),
+  `diet`, `car` also for truck/van/suv/pickup/bike, `carFate {car}` ("what happened to the
+  outback"), friend questions through `kin` with role friend.
+- Evaluation discipline: rules are written for the general phrasing with the agent's own varied
+  test sentences, never by copying a world's sentence. test/fixtures/personal-fresh.js and
+  test/eval/answer-fresh.json are SEALED: never opened, only scored.
+
 ### Confidence
 
 Per claim by method: explicit rule 0.9, indirect rule 0.7, model 0.75, assistant's words 0.35.
