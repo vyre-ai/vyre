@@ -179,8 +179,8 @@ export function toolTitle(tool, input, cwd = null) {
 
 /**
  * A path as the session reads it: relative to the session's folder when inside it ("menu.md",
- * "src/app.js", "." for the folder itself), else the whole path, shortened to its last three
- * parts past five ("…/alex/Work/other/notes.md"). The full path goes in a title.
+ * "src/app.js", "." for the folder itself), else the whole path (the row's ellipsis cuts it).
+ * The full path goes in a title.
  * @param {string|null|undefined} path @param {string|null|undefined} [cwd]
  */
 export function shortPath(path, cwd = null) {
@@ -189,8 +189,7 @@ export function shortPath(path, cwd = null) {
   const base = cwd ? String(cwd).replace(/\/+$/, "") : "";
   if (base && s === base) return ".";
   if (base && s.startsWith(base + "/")) return s.slice(base.length + 1);
-  const parts = s.split("/").filter(Boolean);
-  return s.startsWith("/") && parts.length > 5 ? "…/" + parts.slice(-3).join("/") : s;
+  return s;
 }
 
 /** A command with the session's folder dropped where it names a path inside it ("cat src/a.js"). */
