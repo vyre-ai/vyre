@@ -58,7 +58,8 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   vault f3d39f3f + 17dd7a05 and connectors 8be461a9 merged Six edges frozen as 0.1.1 debt
   (lead OK, 30416e64 + boundaries.md), Capsule IQ model names in the drift list. Waiting only on glass-live.
 - memory-iq aaf4fcb5 merged (9cac53a0). main's two node reds fixed (09f5e02a).
-- e2e-peerfix a8eee5dc merged (072fab3d; testbox 95/95).
+- e2e-peerfix a8eee5dc merged on pre/rc (072fab3d; testbox 95/95). rc.2 must NOT ship without e2e's follow-up
+  sha on work/e2e-peerfix (/usr/bin/perl with env {}, parent setBlocking(false) on child exit), reviewer-cleared.
 - rc.2 waits on: glass (14f1824c HELD by reviewer, 2 HIGH; take only a sha reviewer signs off). Was also e2e's fix
   sha for the macOS hang in 1941f2cf's per-connection peer check (ps or perl).
   MUST also take glass-live's rebased sha (two e2e HIGHs: container Env secrets, unfenced CDP), via
