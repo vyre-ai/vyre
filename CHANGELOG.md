@@ -30,12 +30,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 #### CI: ready for the Agent SDK
 
-- .github/workflows/sessions-sdk.yml: installs the Agent SDK with its bundled Claude Code
-  (231 MB, ~/.npm cached on the lockfile), checks the binary runs with a temp HOME and no
-  credentials, and runs core/sessions tests against the real SDK. Skips until the SDK is in
-  package.json.
-- node.yml and capsule-mac.yml install with `--omit=optional`, so the native binary is never
-  downloaded for tests that use the fake claude. Vyre has no other optional dependencies.
+- .github/workflows/sessions-sdk.yml, for core/sessions/sdk.js's install-on-first-use SDK (Vyre
+  keeps zero npm dependencies). `driver`: the SDK's JS at sdk.js's pinned VERSION in a cache dir
+  keyed on it, then the sessions, switchboard, agents, learn and harness suites with
+  VYRE_SESSIONS_DRIVER=sdk against the fake claude. `real`: the full install with the bundled
+  Claude Code (231 MB, cached per VERSION), the binary's --version with a temp HOME and no
+  credentials, and scripts/sessions-smoke.mjs in real-idle mode when it exists; only when sdk.js
+  or the smoke changes. Skips until core/sessions/sdk.js exists.
 
 #### CI: the Chrome tests leave nothing behind
 
