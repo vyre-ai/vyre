@@ -62,6 +62,9 @@ Vyre reads these when they are set. None is needed for normal use.
 | Variable | What it does | Read in |
 | --- | --- | --- |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
+| `VYRE_AGENT_GID` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_AGENT_HOME` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_AGENT_UID` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js`, `local/capsule/lib/dialogs.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
@@ -97,12 +100,17 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_ONBOARD_HOST` | The address onboarding listens on. Default `127.0.0.1`. | `core/onboard/loopback.js` |
 | `VYRE_OPEN_BIN` | The command that opens links. Tests point it at a fake. | `core/cli/commands/box.js`, `core/cli/commands/up.js` |
 | `VYRE_PACKAGE` | Not described yet. | `harness/lib/vyre.js` |
+| `VYRE_SPAWNER_ALLOW` | Not described yet. | `core/spawner/main.js` |
 | `VYRE_SSH_BIN` | The `ssh` binary to run. | `core/cli/ssh.js` |
-| `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `core/cli/commands/up.js`, `core/daemon/index.js` |
+| `VYRE_SUPERVISOR` | What runs vyred: `docker` inside the box container, which changes how `vyre up` restarts it. | `bin/vyre`, `core/cli/commands/up.js`, `core/daemon/index.js` |
 | `VYRE_TAILSCALE_BIN` | The `tailscale` binary to run. A path that does not exist means no tailnet. | `core/cli/tailnet.js`, `core/link/mac.js`, `core/link/transport.js` |
 | `VYRE_TAILSCALE_UP_FLAGS` | Extra flags for `tailscale up`, space separated. | `core/names/tailscale.js` |
 | `VYRE_TEXT_PRUNE_MS` | How long a thread's streamed text events are kept before they are pruned. | `core/switchboard/index.js` |
 | `VYRE_TMPDIR` | Not described yet. | `core/files/index.js`, `core/names/backup.js` |
+| `VYRE_UID` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_USER_HOME` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_WORK` | Not described yet. | `core/spawner/main.js` |
+| `VYRE_WORK_GID` | Not described yet. | `bin/vyre`, `core/spawner/main.js` |
 | `VYRE_WRAPPER` | Where `vyre box add` puts the `vyre` command on the server. Default `/usr/local/bin/vyre`. | `core/cli/commands/box.js` |
 
 ### Set by Vyre
@@ -121,6 +129,7 @@ vyred sets these for the threads and helpers it starts, and the Harness reads th
 | `VYRE_PROJECTS` | The projects an agent's thread is limited to, comma separated, or `*` for all of them. | `core/switchboard/index.js`, `harness/hooks/hook.js`, `harness/mcp/server.js` |
 | `VYRE_SCOPE_CWDS` | The folders an agent's `recall.search` is held to, as JSON. | `core/switchboard/index.js`, `harness/mcp/server.js` |
 | `VYRE_SOCKET` | The path of vyred's socket, for the Capsule. | `local/capsule/lib/vyred.js` |
+| `VYRE_SPAWNER_SOCKET` | Not described yet. | `core/spawner/client.js`, `core/spawner/main.js` |
 | `VYRE_THREAD` | The session id of a headless thread vyred runs. | `harness/hooks/hook.js` |
 
 ### For tests and development
