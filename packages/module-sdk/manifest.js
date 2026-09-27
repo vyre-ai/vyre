@@ -104,7 +104,7 @@ export function checkManifest(m) {
   const mapped = [
     ...Object.entries(TYPES.object(does.hooks) ? does.hooks : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.hooks.${k}`, t])),
     ...Object.entries(TYPES.object(does.senders) ? does.senders : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.senders.${k}`, t])),
-    ...Object.entries(TYPES.object(does.commands) ? does.commands : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.commands.${k}`, t])),
+    ...(Array.isArray(does.commands) ? does.commands : []).map((c, i) => /** @type {[string, any]} */ ([`does.commands[${i}]`, c && c.tool])),
     ...Object.entries(TYPES.object(does.apps) ? does.apps : {}).flatMap(([app, a]) =>
       Object.entries(TYPES.object(a) && TYPES.object(a.actions) ? a.actions : {}).map(([k, t]) => /** @type {[string, any]} */ ([`does.apps.${app}.actions.${k}`, t]))),
   ];

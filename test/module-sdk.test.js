@@ -33,7 +33,7 @@ const full = () => ({
     hooks: { brief: "bakery.brief", pretool: "bakery.check" },
     senders: { "bakery-fax": "bakery.send" },
     apps: { oven: { app: "Oven", bundleIds: ["com.example.oven"], actions: { order: "bakery.order" } } },
-    commands: { orders: "bakery.orders" },
+    commands: [{ verb: "orders", tool: "bakery.orders", summary: "today's orders", args: ["day"] }],
   },
   watches: { emits: ["order.placed"], on: ["planner.*", "order.placed"] },
   shows: { deck: ["now:bakery.orders", "renderer:bakery.orders", "settings"], capsule: { "results:bakery.orders": { title: "Orders" } }, cli: ["bakery"], streams: [] },
@@ -73,6 +73,8 @@ test("module sdk: the checker refuses with a reason a person can act on", () => 
   has(bad(m => { m.does.hooks.stop = "bakery.missing"; }), /does\.hooks\.stop names bakery\.missing, which is not under does\.tools/);
   has(bad(m => { m.does.hooks.everything = "bakery.brief"; }), /does\.hooks\.everything is not a manifest key/);
   has(bad(m => { m.does.apps.oven.actions.bake = "bakery.bake"; }), /does\.apps\.oven\.actions\.bake names bakery\.bake/);
+  has(bad(m => { m.does.commands[0].tool = "bakery.gone"; }), /does\.commands\[0\] names bakery\.gone, which is not under does\.tools/);
+  has(bad(m => { m.does.commands[0].summary = "Today's orders."; }), /must be one lowercase line with no final period/);
   has(bad(m => { m.watches.emits.push("Placed"); }), /must look like noun\.past-verb/);
   has(bad(m => { m.watches.on.push("**"); }), /must be an event type, noun\.\* or \*/);
   has(bad(m => { m.shows.deck.push("sidebar:x"); }), /must be a slot/);

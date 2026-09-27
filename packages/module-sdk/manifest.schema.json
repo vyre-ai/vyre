@@ -49,7 +49,18 @@
             }
           }
         },
-        "commands": { "type": "object", "x-status": "planned", "description": "CLI verbs: vyre <module> <verb> runs this tool.", "propertyNames": { "$ref": "#/$defs/word" }, "additionalProperties": { "$ref": "#/$defs/tool" } }
+        "commands": {
+          "type": "array", "x-status": "planned", "description": "CLI verbs: vyre <module> <verb> runs this tool, with positional args taken as these input keys in order.",
+          "items": {
+            "type": "object", "required": ["verb", "tool", "summary"], "additionalProperties": false,
+            "properties": {
+              "verb": { "$ref": "#/$defs/word" },
+              "tool": { "$ref": "#/$defs/tool" },
+              "summary": { "type": "string", "pattern": "^[^A-Z].*[^.]$", "x-message": "must be one lowercase line with no final period" },
+              "args": { "type": "array", "items": { "type": "string", "minLength": 1 }, "uniqueItems": true }
+            }
+          }
+        }
       }
     },
     "watches": {

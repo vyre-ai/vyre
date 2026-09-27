@@ -67,8 +67,8 @@ export interface Manifest {
     senders?: Record<string, ToolName>;
     /** @planned @App adapters. */
     apps?: Record<string, { app: string; bundleIds?: string[]; actions: Record<string, ToolName> }>;
-    /** @planned CLI verbs: `vyre <module> <verb>` runs this tool. */
-    commands?: Record<string, ToolName>;
+    /** @planned CLI verbs: `vyre <module> <verb>` runs `tool`; positional args fill `args` input keys in order. */
+    commands?: { verb: string; tool: ToolName; summary: string; args?: string[] }[];
   };
   watches?: {
     emits?: EventType[];

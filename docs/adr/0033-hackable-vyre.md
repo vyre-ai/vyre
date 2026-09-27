@@ -65,7 +65,7 @@ one:
 | `does.hooks` | harness hook points it contributes to (section 2) | yes |
 | `does.senders` | Gate sender types it adds | yes |
 | `does.apps` | @App adapters it adds, as tools | yes |
-| `does.commands` | CLI verbs, each mapped to a tool (builds `shows.cli`) | yes |
+| `does.commands` | CLI verbs as `{ verb, tool, summary, args? }`, each running a tool (builds `shows.cli`; polish-cli writes the dispatcher) | yes |
 | `watches.emits` | event types it may emit | |
 | `watches.on` | event patterns it may subscribe to | yes |
 | `shows.deck`, `shows.capsule`, `shows.streams` | UI slots and streams (section 2) | slot grammar |
