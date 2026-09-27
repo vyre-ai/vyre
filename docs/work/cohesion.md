@@ -17,14 +17,12 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
 - docs-check OWNERS gains "cohesion" (scripts/lib/docs/check.js, docs team's file).
 
 ## Doing
-- Integrator has f5cd36f7 (glue + drift test; targeted 125/125).
-- Unpushed, waiting on e2e re-review of a4efd0d8 and the Chrome e2e on testbox (Playwright Chromium at
-  /opt/ms-playwright/chromium-1187/chrome-linux/chrome, CHROME_BIN, one Chrome at a time, after the
-  integrator's suite): c362505b + a4efd0d8 (chrome.acted scrub, thread from meta only, call/app on acted
-  events), 9accaebe (context view + now {surface}), 791bd180 (sight.frame JPEG still), 84d42bb0 (Mac asks
-  answered on the Mac until federation). Unit runs so far: 18 pass / 7 Chrome skips; context, sight, docs
-  and waiting runs queued (load gate).
-- Then: merge main, full targeted run, docs:ref, push, hand the sha to the integrator.
+- Handed 3383d308 to the integrator (pushed): on top of f5cd36f7, the hands privacy fix (c362505b,
+  a4efd0d8, 533f84e2; e2e signed off), context view + now {surface}, sight.frame, Mac asks answered
+  on the Mac, suggest account ranking, Chrome teardown fix. testbox: targeted non-Chrome set 156
+  (all pass after the context shape fix), hands-chrome e2e on testbox Chromium 8/8, no Chrome left.
+- Next: follow owners as their parts land; switch suggest/waiting to ctx.modules.status() when
+  platform 382a8574 is on main.
 
 ## Next
 2. Owner replies: record below. Send owners the built contracts and their exact asks.
