@@ -192,7 +192,7 @@ jobs:
             const bt = s.indexOf("buildTypes"), rel = s.indexOf("release {", bt), line = "signingConfig signingConfigs.debug";
             const at = s.indexOf(line, rel);
             if (bt < 0 || rel < 0 || at < 0) { console.error("no release signingConfig to drop in " + f); process.exit(1); }
-            fs.writeFileSync(f, s.slice(0, at) + "// unsigned: the box signs it with the owner's key" + s.slice(at + line.length));'
+            fs.writeFileSync(f, s.slice(0, at) + "// unsigned: the box signs it with the owner key" + s.slice(at + line.length));'
       - run: ./gradlew --no-daemon assembleDebug assembleRelease
         working-directory: apps/app/android
       - name: Name the release and write android.json

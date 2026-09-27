@@ -270,6 +270,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   runs in such a login. `core/presence/index.js` (`TERMINAL_WINDOWED`, `windowNotice`),
   `core/daemon/index.js` (atTerminal), `core/daemon/peer.js` (`loginOf`, `tmuxClients`),
   `core/vault/index.js` (the audit row), `docs/concepts/presence.md`, `docs/adr/0004-presence.md`.
+#### app.yml's unsigned release step runs again
+
+- The apostrophe in "owner's key", inside the step's single-quoted `node -e`, ended the quote, and
+  bash failed with "unexpected EOF" before gradle ran. The comment it writes says "owner key".
+
+#### vyre.tgz ships the web app at /app/
+
+- scripts/build-app.sh exports apps/app for the web (`npm ci`, `expo export -p web`, then
+  scripts/precache.mjs) into apps/app/dist. build-site.sh runs it before `npm pack`, so the box
+  deploy and release.yml get it, and box-image.yml's pack step runs it too. package.json "files"
+  gains apps/app/dist; apps/app/.npmignore stands in for the app's .gitignore, which ignores
+  dist/ and would drop it from the pack. A checkout without apps/app skips the step.
+- box-image.yml checks GET /app/ is the app's index.html and /app/sw.js carries its precache
+  list; release-check.sh checks the tarball has dist/index.html and dist/precache.json and none of
+  the app's source, and that every file of dist made it in. The icons Metro puts under
+  dist/assets/node_modules/ move to dist/assets/nm/ (npm never packs a node_modules folder, and one
+  missing precached file stops /app/sw.js installing); box-image fetches every precached path.
+- release-check's install cap is 16 MB: 12.7 MB without the app (over the old 12 MB already), plus
+  2.6 MB for apps/app/dist; vyre.tgz is about 3.8 MB.
+- box-image.yml's pack step installs the tarball into a temp prefix and prints vyre.tgz's size, the
+  installed size against the 16 MB cap and the app's, in the job summary, so growth shows per run.
+
 #### The onboard page test cleans its home last
 
 - test/onboard-page.test.js left its temp home behind on Node 24 runners, so tmp-guard failed main's
