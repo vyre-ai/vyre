@@ -5,6 +5,40 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### The last of it: .lbl and .page .over, sentence case everywhere (2026-09-27)
+
+- Held `.lbl` back last round on the strength of `docs/design/TOKENS.md` (status: stable), which
+  still documented a mono/uppercase/`+0.16em` "Label (engraved)" role. The lead settled it:
+  `docs/design/system/copy.md` ("Sentence case everywhere: titles, buttons, labels, menus. No
+  caps labels and no letter-spaced mono captions") is the current rule, TOKENS.md is the stale
+  one, and app-design will update it after the RC. Changed `.lbl` to the meta step in Sans (12/16,
+  weight 400, no tracking), and `.page .over` (the Chrome mock's "Harlow County Court" overline,
+  the fifth uppercase rule) to match. `site/404.html`'s own `.lbl` and
+  `deck/onboard/onboard.css`'s `.progress .state` had the identical stale pattern; fixed both for
+  the same reason. Every label's underlying text was already sentence case ("Sends to", "Open
+  source · Apache 2.0 · Built on Claude Code", "Harlow County Court"), so this was CSS-only: no
+  copy to rewrite.
+- The landing page and 404 have no light/paper theme (dark only, no `prefers-color-scheme` or
+  `data-theme` anywhere in either file), so "both themes" only applies to the docs/brand art, not
+  this fix. Screenshotted the single dark theme on testbox instead.
+
+### Buttons, chips and tabs: sentence case, off the old mono/uppercase pattern (2026-09-27)
+
+- `.btn`, `.chip` and `.dtab` (the Capsule state tabs) were all still JetBrains Mono, uppercase,
+  with wide letter-spacing: the pattern `docs/design/system/components/button.md`'s own Gaps
+  section names outright ("Deck: `.btn` is JetBrains Mono 12, weight 500, upper case with letter
+  spacing; use Instrument Sans 13/18 weight 600, sentence case"), and chip.md/tabs.md confirm the
+  same for chips (12/16 weight 400) and tabs (13/18, selected weight 600). Underlying copy was
+  already sentence case ("Install", "Copy", "Send", "Typing", "coming"), so only the CSS moved:
+  Sans instead of Mono, no `text-transform`, no `letter-spacing`, updated sizes/weights per each
+  component's spec. `site/404.html` had its own copies of `.btn` and `.nav-links a` with the same
+  stale pattern (site/styles.css's own `.nav-links a` was already fixed); brought both in line.
+- Left `.lbl` (the mono, uppercase, `+0.16em` "Label (engraved)" role: eyebrows like "OPEN SOURCE
+  · APACHE 2.0", "02 MEMORY", "SENDS TO") alone. `docs/design/TOKENS.md` (status: stable) still
+  documents that role as mono/uppercase/tracked, and unlike button/chip/tabs, no component doc
+  says otherwise. Flagged to the lead rather than changing ~15 call sites against the current
+  written spec.
+
 ### held-chip: sentence case, no badge tracking; the hotkey chip is one chord (2026-09-27)
 
 - `.held-chip` ("Held for you") also had `text-transform: uppercase` and `letter-spacing: 0.14em`

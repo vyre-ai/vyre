@@ -93,6 +93,24 @@ Filled in as each lands.
   hero/demo keyboard hint rendered Option-Space as two chips instead of one chord (key-hint.md:
   modifiers first, no plus sign, one chip). app-design's nit, cheap enough to fix before the
   deadline rather than deferring.
+- The lead's last item: `.btn`, `.chip`, `.dtab` and `.lbl` were named as needing sentence case,
+  no uppercase. Checked each against its component doc before touching anything (receiving
+  feedback well means verifying, not just complying): button.md's own Gaps section names the
+  `.btn` mono-uppercase pattern as exactly wrong and gives the fix (Sans 13/18 weight 600,
+  sentence case); chip.md and tabs.md say the same for chips (12/16 weight 400) and tabs (13/18).
+  Fixed all three, plus `site/404.html`'s own stale copies of `.btn` and `.nav-links a`. Held
+  `.lbl` back: `docs/design/TOKENS.md` (status: stable) still documents that exact role, "Label
+  (engraved)", as mono/uppercase/`+0.16em`, and no component doc overrides it the way button.md
+  overrides `.btn`. Flagged below rather than changing ~15 eyebrow labels against the written
+  spec.
+- The lead resolved it: `docs/design/system/copy.md` ("Sentence case everywhere... no caps
+  labels and no letter-spaced mono captions") is current, TOKENS.md is the stale doc (app-design
+  to update it post-RC). Changed `.lbl` to Sans meta (12/16, no tracking) in `site/styles.css` and
+  `site/404.html`, plus `.page .over` (the fifth uppercase rule the lead counted) and
+  `deck/onboard/onboard.css`'s `.progress .state` (same stale pattern, same file family). Every
+  label's underlying text was already sentence case, so this was CSS-only, no copy rewrites
+  needed. Screenshotted the single theme the landing page has (it's dark-only, no light/paper
+  mode in site/ at all, unlike the docs/brand art or the app itself).
 
 ## Doing
 
