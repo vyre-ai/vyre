@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### local/capsule/bin/ is ignored
+
+- The old helper builds (hotkey, local, vyre-launcher) could sit untracked in local/capsule/bin/;
+  it is in .gitignore now. The CI signing step's fallback, used only when Vyre.app did not build,
+  signs a copy of /bin/echo instead of the vyre-launcher nothing builds any more.
+
 #### ⌘A and every standard shortcut work in the Capsule
 
 - The Capsule had no main menu (an accessory app with a non-activating panel), so ⌘A, ⌘Z, ⌘V and
