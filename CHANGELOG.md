@@ -4,10 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### The onboard reserve test no longer leaks its temp home
+#### Two test fixes for a green node job: onboard's temp home, switchboard's fake key
 
 - test/onboard.test.js: the reserve test waits for its background claim to end before teardown.
   The claim saved config.json after the temp home was removed, so tmp-guard failed the node job.
+- core/switchboard/switchboard.test.js: the Bash-redaction test builds its fake key at run time,
+  so test/hygiene.test.js no longer reads it as a secret.
 
 #### The install cap is 20 MB for 0.1.0
 
