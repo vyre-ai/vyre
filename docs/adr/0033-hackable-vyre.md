@@ -201,12 +201,16 @@ status line script).
 - **The theme override file** (`overrides/theme.json`) is a partial `tokens.json`
   (docs/design/one-app/tokens.json), deep-merged over it: objects merge by key, arrays and plain
   values replace. It may set `color.dark` and `color.paper` (existing role names only), `font`
-  (the two families and weights), `type`, `space`, `radius`, `control`, `motion` and `shadow`. It
-  may not touch `status`, `layout` or `icon`, or add a key the tokens don't have. app-design's
+  (the two families and weights), `type`, `space`, `radius`, `control`, `motion`, `shadow` and
+  `popover`. It may not touch `status`, `layout`, `icon` or `color.attentionAlt`, add a key the
+  tokens don't have, or change a value's type. app-design's
   `scripts/gen-tokens` merges it and refuses the whole file, naming the failing pair, when a
   text/background pair drops under AA, the focus ring under 3:1, the attention role is removed or
-  reused, a size under 12 or a target under 44. The older `config.theme.colors` still works and is
-  read first; the file wins. The result is `/theme.css` for the Deck and frames, and `/v1/theme`
+  reused, a size under 12, a target under 44 or an empty font family (`applyOverride` and `check`
+  in `scripts/lib/theme.js`; `node scripts/gen-tokens --validate <file>` from a terminal). The
+  older `config.theme.colors` is mapped in by `fromLegacy` and read first, and the file wins; it
+  works for one release and is then deprecated. The merge and the checks move into `lib/theme` in
+  phase 4, since vyred serves the result and `scripts/` isn't in the package. The result is `/theme.css` for the Deck and frames, and `/v1/theme`
   for the Capsule and the phone.
 - A module may ship `themes/<name>.json` in the same shape, which the person can pick in Settings.
   A module never changes the tokens by itself.
