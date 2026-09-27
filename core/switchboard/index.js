@@ -24,7 +24,7 @@ import { editChanges, pushDir, pushChanges } from "./changes.js";
 import { register as registerClaim } from "./claim.js";
 import { Sessions, SESSIONS_MIGRATION, alive } from "./sessions.js";
 import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
-import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
+import { wantsMacs, askMacs, mergeRows, gatedAsk } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -981,10 +981,35 @@ export default {
      * or null when no Mac has the ask, so the box answers as usual ("no ask"). Never retried: a Mac
      * that says the ask is gone or cancelled has the last word, and a retry would carry a new nonce.
      */
-    const answerOnMac = async (i, caller, peer) => {
+    // The paired Macs' open asks, as their ask.raised reached this box (core/link relays them with
+    // source "mac"): ask id -> gated. Read synchronously by threads.answer's presence rule. Box only.
+    /** @type {Map<string, { gated: boolean }>} */
+    const macAsks = new Map();
+    const offs = [];
+    if (ctx.config && ctx.config.role === "box") {
+      offs.push(ctx.events.on("ask.raised", e => {
+        const p = e.payload || {};
+        if (p.source !== "mac" || typeof p.ask !== "string") return;
+        while (macAsks.size >= 500) macAsks.delete(/** @type {string} */ (macAsks.keys().next().value));
+        macAsks.set(p.ask, { gated: gatedAsk(p) });
+      }));
+      offs.push(ctx.events.on("ask.answered", e => { const p = e.payload || {}; if (p.source === "mac") macAsks.delete(p.ask); }));
+    }
+    /** Would this answer go to a Mac, and approve a gated ask there? An ask the box never saw, named by `machine`, counts as gated. */
+    const gatedOnMac = i => !sb.asks.get(i.ask) && (macAsks.has(i.ask) ? /** @type {any} */ (macAsks.get(i.ask)).gated : Boolean(i.machine));
+    /** The owner's device over the tailnet or the relay: the person needs a person session there (ADR 0032). */
+    const ownerDevice = caller => /^tailnet:(?!agent:)./.test(String(caller)) || /^device:[a-z2-7]{16}$/i.test(String(caller));
+
+    const answerOnMac = async (i, caller, peer, meta = {}) => {
+      // Defence in depth until the registry's person-session rule (ADR 0032) is on this branch: an
+      // owner device answers a Mac's ask only inside a person session. Nothing is signed or sent.
+      if (ownerDevice(caller) && !meta.person) throw Object.assign(new Error("answering a Mac's ask is the person's own action: sign in on this device with your passkey first"), { code: "person_session_required" });
+      // An ask that approves a floor tool needs a fresh proof (the registry checked it; a presence session is not one).
+      if (gatedOnMac(i) && (!meta.presence || meta.presence.method === "session")) throw Object.assign(new Error("this ask approves a protected action: prove you are here (passkey or Touch ID) to answer it"), { code: "presence_required" });
       const input = { ask: i.ask, decision: i.decision, surface: surfaceOf(i, caller),
         ...(i.message !== undefined ? { message: i.message } : {}), ...(i.answers !== undefined ? { answers: i.answers } : {}), ...(i.scope !== undefined ? { scope: i.scope } : {}) };
-      const by = { caller: String(caller || ""), ...(peer && peer.stableId ? { device: String(peer.stableId) } : {}) };
+      const by = { caller: String(caller || ""), ...(peer && peer.stableId ? { device: String(peer.stableId) } : {}),
+        ...(meta.person && meta.person.id ? { person: String(meta.person.id) } : {}), ...(meta.presence && meta.presence.method ? { presence: String(meta.presence.method) } : {}) };
       const r = await ctx.call("link.macs.call", { tool: "threads.answer", as: "person", by, input, ...(i.machine ? { mac: i.machine } : {}) });
       if (r.error || !Array.isArray(r.data) || !r.data.length) return null;
       const done = r.data.find(a => a.ok);
@@ -1055,13 +1080,14 @@ export default {
       { type: "object", required: ["ask", "decision"], properties: { ask: str, decision: { type: "string", enum: ["allow", "deny", "always"] }, message: str, surface: str, machine: str,
         answers: { type: "object", additionalProperties: { type: "string" } },
         scope: { type: "string", enum: ["project"], description: "With always: allow this tool from now on in the thread's project only (the ask's always_project)." } } },
-      async (i, { caller, thread, peer }) => {
+      async (i, meta) => {
+        const { caller, thread, peer } = meta;
         // A call vyred traced to a session never answers that session's own ask, whoever it says it is.
         const a = sb.asks.get(i.ask);
         if (a && thread && a.thread === thread) throw Object.assign(new Error("an ask is answered by the person, not from the session that raised it"), { code: "denied" });
         // Only the person's own callers reach a Mac (a module never: it passes no `machines`).
         if (!a && !thread && wantsMacs(ctx, {}, caller)) {
-          const mac = await answerOnMac(i, caller, peer);
+          const mac = await answerOnMac(i, caller, peer, meta);
           if (mac) return mac;
         }
         return sb.answer(i.ask, i.decision, surfaceOf(i, caller), i.message, i.answers, i.scope);
@@ -1074,7 +1100,10 @@ export default {
       // harness floor refuses a model's Bash that names this tool (core/presence PERSON_ONLY).
       // "link:box" is the person at the paired box, on a Mac: core/link runs it only after checking
       // the box's signed assertion for this ask and this answer (docs/adr/0021, "v2").
-      ["cli", "local", "module", "deck", "capsule", "link:box"]);
+      ["cli", "local", "module", "deck", "capsule", "link:box"],
+      // On a box, an answer that goes to a Mac and approves a floor tool there needs a fresh proof
+      // (gatedOnMac). Every other answer asks nothing (the no-nag rule). A Mac declares no rule.
+      ctx.config && ctx.config.role === "box" ? { presence: { when: i => Boolean(i && i.ask) && gatedOnMac(i), summary: () => "Answer a protected request on your Mac" } } : {});
 
     tool("threads.watch", "Tell me once when a thread finishes a turn, asks a question, or stops: emits thread.watched {watch, thread, reason, notify, note, summary} and clears itself. until: finished, asks or either (default).",
       { type: "object", required: ["thread"], properties: { thread: str, until: { type: "string", enum: ["finished", "asks", "either"] }, notify: str, note: str } },
@@ -1151,6 +1180,6 @@ export default {
       async i => sb.sessions.bind(i.session, i.pid), ["harness"]);
     registerClaim(ctx, sb);                                              // threads.claimed, threads.contend
 
-    return { async stop() { await sb.stopAll(); } };
+    return { async stop() { for (const off of offs) off(); await sb.stopAll(); } };
   },
 };

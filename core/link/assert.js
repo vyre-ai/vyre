@@ -67,12 +67,14 @@ export function boxKey(root) {
 /**
  * Sign an answer for one Mac.
  * @param {crypto.KeyObject} privateKey
- * @param {{ mac: string, ask: string, thread?: string|null, input: any, caller: string, device?: string|null, now?: number }} o
+ * @param {{ mac: string, ask: string, thread?: string|null, input: any, caller: string, device?: string|null, person?: string|null, presence?: string|null, now?: number }} o
+ *   person: the person session's id on the box, null for a socket caller (the person already);
+ *   presence: how the person proved presence for this call (a method such as "passkey"), or null
  * @returns {{ a: string, sig: string }} a: the assertion's canonical JSON, base64url; sig: its Ed25519 signature
  */
-export function signAnswer(privateKey, { mac, ask, thread, input, caller, device, now = Date.now() }) {
+export function signAnswer(privateKey, { mac, ask, thread, input, caller, device, person, presence, now = Date.now() }) {
   const A = { v: 1, tool: "threads.answer", mac, ask, ...(thread ? { thread } : {}), decision: decisionHash(input),
-    caller, device: device || null, iat: now, exp: now + TTL, nonce: b64u(crypto.randomBytes(16)) };
+    caller, device: device || null, person: person || null, presence: presence || null, iat: now, exp: now + TTL, nonce: b64u(crypto.randomBytes(16)) };
   const bytes = Buffer.from(canonical(A));
   return { a: b64u(bytes), sig: b64u(crypto.sign(null, bytes, privateKey)) };
 }
@@ -92,11 +94,14 @@ export class Nonces {
 /**
  * The Mac's check, before threads.answer runs as "link:box". Every part must hold: the signature
  * against the pinned key, the tool, this Mac, this ask, this exact input, the time, and a nonce
- * not seen before. The nonce is spent only when everything else passed.
- * @param {{ assertion: any, tool: string, input: any, pinned?: string|null, self?: string|null, nonces: Nonces, now?: number }} o
+ * not seen before, and for a gated ask (federate.js gatedAsk: it approves a floor tool) a fresh
+ * proof of presence on the box, never a presence session. The nonce is spent only when everything
+ * else passed.
+ * @param {{ assertion: any, tool: string, input: any, pinned?: string|null, self?: string|null, nonces: Nonces, now?: number, gated?: boolean }} o
+ *   gated: the Mac's own ask, looked up by the Mac, is gated
  * @returns {{ ok: true, a: any } | { ok: false, reason: string }}
  */
-export function checkAnswer({ assertion, tool, input, pinned, self, nonces, now = Date.now() }) {
+export function checkAnswer({ assertion, tool, input, pinned, self, nonces, now = Date.now(), gated = false }) {
   const no = reason => ({ ok: /** @type {false} */ (false), reason });
   if (tool !== "threads.answer") return no(`an assertion answers threads.answer only, not ${tool}`);
   if (!pinned) return no("this Mac has not pinned the box's key; it answers from the box once it has");
@@ -118,6 +123,7 @@ export function checkAnswer({ assertion, tool, input, pinned, self, nonces, now 
   if (now >= A.exp) return no("the assertion has expired");
   if (A.iat > now + SKEW) return no("the assertion is dated in the future");
   if (typeof A.nonce !== "string" || A.nonce.length < 16) return no("the assertion has no nonce");
+  if (gated && (typeof A.presence !== "string" || !A.presence || A.presence === "session")) return no("this ask approves a protected action and needs a fresh proof of presence on the box");
   if (!nonces.take(A.nonce, A.exp, now)) return no("the assertion was used already");
   return { ok: true, a: A };
 }

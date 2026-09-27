@@ -138,15 +138,32 @@ the phone.
    as before (`no ask <id>`). The box signs, for that Mac alone, A = `{ v: 1, tool:
    "threads.answer", mac: <the Mac's stableId>, ask, thread?, decision: <sha256 base64url of the
    canonical JSON of the exact input sent>, caller, device: <the calling device's stableId or
-   null>, iat, exp: iat + 60 s, nonce: <16 random bytes> }`, and sends it with the write, `as:
-   "person"`. The answer comes back unchanged plus `source: "mac"` and `machine`. It is never
+   null>, person: <the person session's id, or null for a socket caller>, presence: <the proof's
+   method, or null>, iat, exp: iat + 60 s, nonce: <16 random bytes> }`, and sends it with the
+   write, `as: "person"`.
+3a. **The person, and gated asks** (the lead's conditions, 27 Sep 2026). An owner device over the
+   tailnet or the relay (`tailnet:<login>`, not `tailnet:agent:*`, or `device:<id>`) forwards an
+   answer only inside a person session (`meta.person`, ADR 0032); without one the box refuses
+   with `person_session_required` and signs and sends nothing. This is defence in depth: the
+   registry's own person-session rule is on work/e2e, not yet here. The socket's callers (the
+   Deck, the terminal, the Capsule) are the person already. An ask is **gated** when allowing it
+   approves a floor tool that needs a fresh proof (`gatedAsk` in core/modules/federate.js): its
+   `tool` is a HUMAN_ONLY name, or `mcp__vyre__<name>` or `mcp__plugin_vyre_vyre__<name>` with
+   the name spelled as Vyre's MCP server spells it (each character outside `[A-Za-z0-9_-]` as
+   `_`), exactly; or the ask says `presence.required: true`. On the box `threads.answer` carries
+   a presence rule that asks only for an answer bound for a Mac that is gated, or for an ask the
+   box never saw that names a `machine` (it could approve anything, so it fails closed); the
+   registry verifies the proof, and the forward refuses with `presence_required` when there is
+   none or it is a presence session. Every other answer asks nothing (the no-nag rule). On the
+   Mac, the Mac looks up its own ask; for a gated one it refuses an assertion whose `presence` is
+   null or `session`, however good its signature. The answer comes back unchanged plus `source: "mac"` and `machine`. It is never
    retried: "no ask" or "cancelled" from the Mac is final, and a retry would need a new nonce.
 4. **The Mac's checks.** `threads.answer` is in `WRITE` at both ends. Before it runs as
    `link:box`, the Mac checks the signature against the pinned key, `tool` is `threads.answer`,
    `mac` is its own node, `ask` is the input's, the hash matches the input exactly, now is before
-   `exp`, `iat` is at most 60 s ahead, the life is at most 60 s, and the nonce is unseen (kept in
-   memory until its `exp`, at most 1000; past that, answers are refused rather than a nonce
-   forgotten early). Any failure answers `denied` with the reason, and `threads.answer` never
+   `exp`, `iat` is at most 60 s ahead, the life is at most 60 s, the nonce is unseen (kept in
+   memory until its `exp`, so for the whole window, at most 1000; past that, answers are refused
+   rather than a nonce forgotten early), and a gated ask carries a fresh proof (3a). Any failure answers `denied` with the reason, and `threads.answer` never
    runs. The assertion is read for `threads.answer` only: `threads.send` keeps its own rule.
    `threads.answer` lists `link:box` among its callers, and a socket client can no longer claim
    a `link:` label (core/daemon), so only the link reaches it that way.
@@ -155,10 +172,11 @@ the phone.
    session says next reaches the box only if the box is following that thread for a send.
 
 **Trust.** The key proves the answer came from the paired box, for that ask, that answer and
-that Mac, once, within a minute. It does not prove that a person pressed anything: on the box,
-only the switchboard's person rule (the Deck, the terminal, the Capsule, the owner's devices)
-makes the call, as for `threads.send`, and answering takes no presence proof there either
-(ADR 0024, "No nagging"). A box that was taken over could sign answers, the same reach the
+that Mac, once, within a minute. For most asks it does not prove that a person pressed anything:
+on the box, only the switchboard's person rule (the Deck, the terminal, the Capsule, the owner's
+devices in a person session) makes the call, as for `threads.send`, and answering takes no
+presence proof (ADR 0024, "No nagging"). A gated ask is the exception: the box signs the proof's
+method, and the Mac refuses without a fresh one. A box that was taken over could sign answers, the same reach the
 owner's Deck on the box already has. A captured assertion is no use on another Mac, another
 ask, another answer, a second time or after a minute.
 

@@ -355,9 +355,9 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
   });
 
   ctx.tool("link.macs.call", {
-    description: "Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send or threads.answer (by: the box's caller and device, for the answer's assertion). Answers [{ mac, name, ok, data?, error? }], one per Mac asked.",
+    description: "Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send or threads.answer (by: the box's caller, device, person session and presence method, for the answer's assertion). Answers [{ mac, name, ok, data?, error? }], one per Mac asked.",
     input: { type: "object", properties: { tool: { type: "string" }, input: { type: "object" }, timeout: { type: "number" }, mac: { type: "string" }, as: { type: "string" },
-      by: { type: "object", properties: { caller: { type: "string" }, device: { type: "string" } } } }, required: ["tool"] },
+      by: { type: "object", properties: { caller: { type: "string" }, device: { type: "string" }, person: { type: "string" }, presence: { type: "string" } } } }, required: ["tool"] },
     internal: true,
     run: async ({ tool, input = {}, timeout, mac: only, as, by }) => {
       // A read list widened by a test seam to take a write sends it as a read, without `as`: how
@@ -393,7 +393,8 @@ export function boxSide(ctx, { now = Date.now, hold = HOLD, allow = ALLOW, healt
         if (answer) {
           if (!m.stable_id) { clearTimeout(timer); return resolve({ ...who, ok: false, error: { code: "denied", message: `the Mac "${m.name}" paired without its node known; pair it again to answer its asks here` } }); }
           assertion = signAnswer(assertKey().privateKey, { mac: m.stable_id, ask: String(input.ask), thread: known && known.mac === m.id ? known.thread : null, input,
-            caller: String((by && by.caller) || "unknown"), device: by && by.device ? String(by.device) : null, now: now() });
+            caller: String((by && by.caller) || "unknown"), device: by && by.device ? String(by.device) : null,
+            person: by && by.person ? String(by.person) : null, presence: by && by.presence ? String(by.presence) : null, now: now() });
         }
         const a = { id, mac: m.id, tool, input, ...(write ? { as: "person" } : {}), ...(assertion ? { assertion } : {}), sent: false, done: r => {
           if (!asks.delete(id)) return;

@@ -1501,7 +1501,7 @@ The paired Macs and whether each is online for the box to read now.
 
 ### `link.macs.call`
 
-Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send or threads.answer (by: the box's caller and device, for the answer's assertion). Answers [{ mac, name, ok, data?, error? }], one per Mac asked.
+Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or, as the person, threads.send or threads.answer (by: the box's caller, device, person session and presence method, for the answer's assertion). Answers [{ mac, name, ok, data?, error? }], one per Mac asked.
 
 - Input:
   - `tool` string, required
@@ -1509,6 +1509,8 @@ Ask every paired Mac (or one: mac, its id or name) for one of its read tools, or
   - `by` object
     - `caller` string
     - `device` string
+    - `person` string
+    - `presence` string
   - `input` object
   - `mac` string
   - `timeout` number
@@ -2704,6 +2706,7 @@ Answer an ask: allow, deny, or always (allow, and stop asking where Claude Code 
   - `scope` "project": With always: allow this tool from now on in the thread's project only (the ask's always_project).
   - `surface` string
 - Callers: `capsule`, `cli`, `deck`, `link:box`, `local`, `module`
+- Needs a person present.
 
 ### `threads.asks`
 

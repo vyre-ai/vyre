@@ -8,6 +8,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { tempHome } from "../../test/helpers.js";
+import { gatedAsk } from "../modules/federate.js";
 import { boxKey, canonical, decisionHash, signAnswer, checkAnswer, Nonces, KEY_FILE, TTL, MAX_NONCES } from "./assert.js";
 
 const T0 = Date.parse("2026-09-27T10:00:00Z");
@@ -50,7 +51,8 @@ test("assert: a signed answer carries what it binds, and the Mac accepts it once
   const k = pair();
   const s = sign(k);
   const A = JSON.parse(Buffer.from(s.a, "base64url").toString());
-  assert.deepEqual(Object.keys(A).sort(), ["ask", "caller", "decision", "device", "exp", "iat", "mac", "nonce", "thread", "tool", "v"]);
+  assert.deepEqual(Object.keys(A).sort(), ["ask", "caller", "decision", "device", "exp", "iat", "mac", "nonce", "person", "presence", "thread", "tool", "v"]);
+  assert.deepEqual([A.person, A.presence], [null, null], "a socket caller with no proof");
   assert.deepEqual([A.v, A.tool, A.mac, A.ask, A.thread, A.caller, A.device, A.iat, A.exp], [1, "threads.answer", "nMAC", INPUT.ask, "t-1", "deck", "nPHONE", T0, T0 + TTL]);
   assert.equal(A.decision, decisionHash(INPUT));
   assert.equal(Buffer.from(A.nonce, "base64url").length, 16);
@@ -101,4 +103,26 @@ test("assert: a failed check spends no nonce, and the nonces seen are bounded an
   assert.equal(full.take("fresh-nonce-000000000", T0 + TTL, T0), false);
   assert.equal(full.take("fresh-nonce-000000000", T0 + 2 * TTL, T0 + TTL), true, "expired ones are swept");
   assert.equal(full.seen.size, 1);
+});
+
+test("assert: an ask is gated when it approves a floor tool, by its exact name or its MCP name, or says presence is required", () => {
+  for (const tool of ["vault.reveal", "mcp__vyre__vault_reveal", "mcp__plugin_vyre_vyre__vault_reveal", "mcp__vyre__vault_unlock-passphrase", "mcp__vyre__gate_approve", "mcp__vyre__link_pair_approve"]) {
+    assert.equal(gatedAsk({ tool }), true, tool);
+  }
+  for (const tool of ["Bash", "Write", "mcp__vyre__threads_answer", "mcp__vyre__vault_list", "mcp__vyre__google_mail_send", "mcp__other__vault_reveal", "mcp__vyre__vault_reveal_all", "vault_reveal"]) {
+    assert.equal(gatedAsk({ tool }), false, tool);
+  }
+  assert.equal(gatedAsk({ tool: "Bash", presence: { required: true } }), true);
+  assert.equal(gatedAsk({ tool: "Bash", presence: { required: false } }), false);
+  assert.equal(gatedAsk(null), false);
+});
+
+test("assert: for a gated ask the Mac needs the box's fresh proof in the assertion, never a presence session", () => {
+  const k = pair();
+  const r1 = check(k, sign(k), { gated: true });
+  assert.equal(r1.ok, false);
+  assert.match(/** @type {any} */ (r1).reason, /fresh proof of presence/);
+  assert.equal(check(k, sign(k, { presence: "session" }), { gated: true }).ok, false);
+  assert.equal(check(k, sign(k, { presence: "passkey", person: "ps-1" }), { gated: true }).ok, true);
+  assert.equal(check(k, sign(k), { gated: false }).ok, true, "an ungated ask needs no proof");
 });
