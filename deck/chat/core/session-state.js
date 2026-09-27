@@ -326,9 +326,10 @@ function ensureMarker(s, user, f, out) {
 /**
  * The composer sent something: draw it now. "steer": the words and a "steering" marker at the
  * tail; "queue": a row in the queue, and again with `queued` (the row id threads.send answered)
- * once it is known, so the row's buttons can name it. A plain send (idle) draws nothing:
- * thread.sent does. Returns the keys touched.
- * @param {Session} s @param {{ uuid: string, text: string, mode: "steer"|"queue"|null, at?: number, queued?: number|string|null, images?: number }} m
+ * once it is known, so the row's buttons can name it; "send" (the session idle): the words at
+ * the tail, no marker, adopted by thread.sent's words or confirmSend. null draws nothing.
+ * Returns the keys touched.
+ * @param {Session} s @param {{ uuid: string, text: string, mode: "steer"|"queue"|"send"|null, at?: number, queued?: number|string|null, images?: number }} m
  */
 export function localSend(s, m) {
   /** @type {Set<string>} */
@@ -342,12 +343,14 @@ export function localSend(s, m) {
     out.add("@queued");
     return [...out];
   }
-  if (m.mode !== "steer") return [];
+  if (m.mode !== "steer" && m.mode !== "send") return [];
   liveUser(s, { text: m.text, uuid: m.uuid, at: m.at }, out);
   const user = /** @type {UserItem|undefined} */ (s.byKey.get(/** @type {string} */ (s.meta.uuids.get(m.uuid))));
   if (!user) return [...out];
   if (m.images) user.images = m.images;
   user.local = true;
+  // A plain send (the session idle): the row is drawn at once, with no steer marker.
+  if (m.mode === "send") { out.add(user.key); return [...out]; }
   user.steered = true;
   // A marker thread.steered made first (it can overtake the send's answer) is already confirmed.
   ensureMarker(s, user, { uuid: m.uuid, pending: s.byKey.has(`steer:${m.uuid}`) ? undefined : true, at: m.at }, out);

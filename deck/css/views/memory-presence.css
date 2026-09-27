@@ -1,5 +1,4 @@
-/* The presence sheet (deck/views/memory-presence.js). Neutral panel, signal for the one action:
-   gold belongs to memory's content, never to this sheet. */
+/* The presence sheet (deck/views/memory-presence.js). Neutral panel, signal for the one action. */
 
 .mp-back { position: fixed; inset: 0; z-index: 70; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; padding: 16px; }
 .mp-sheet { width: 100%; max-width: 440px; padding: 20px 20px 16px; border: 1px solid var(--rule-strong); border-radius: var(--radius-card, 12px);

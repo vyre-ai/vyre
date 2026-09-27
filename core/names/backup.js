@@ -16,7 +16,7 @@ import { spawn } from "node:child_process";
 import * as config from "../config/index.js";
 
 /** What goes in a backup, in order. Everything else under the root stays out. */
-export const INCLUDE = ["config.json", "vyre.db", "vault", "watchers", "modules", "certs", "names"];
+export const INCLUDE = ["config.json", "hub.json", "vyre.db", "vault", "watchers", "modules", "certs", "names"];
 
 /** Run a command in argv form and collect its output; reject on a non-zero exit. */
 function run(argv, opts = {}) {

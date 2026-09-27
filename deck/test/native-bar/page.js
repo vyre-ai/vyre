@@ -40,6 +40,49 @@ export const PAGE_SCRIPT = String.raw`(() => {
     window.EventSource = Bar;
   }
 
+  // ---- the event stream over fetch (core/resilience follow(), ADR 0029) ------------------------
+  // A Deck that reads /v1/events/stream with fetch never makes an EventSource: tee each such
+  // response and read the same events from it, count each fetch as an open and each end or
+  // failure as an error, and keep the Deck's own "deck:stream" states beside them.
+  const TYPES_F = new Set(["thread.sent", "thread.text", "thread.tool", "thread.finished", "thread.stopped", "stream.reset"]);
+  B.streamStates = [];
+  B.via = Native ? "eventsource" : "none";
+  window.addEventListener("deck:stream", ev => B.streamStates.push({ t: now(), state: ev.detail && ev.detail.state, attempt: ev.detail && ev.detail.attempt }));
+  const nativeFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    const url = typeof input === "string" ? input : input && input.url ? input.url : String(input);
+    if (!/\/v1\/events\/stream/.test(url)) return nativeFetch(input, init);
+    B.via = "fetch";
+    let res;
+    try { res = await nativeFetch(input, init); } catch (err) { B.esError.push({ t: now(), state: "fetch-failed" }); throw err; }
+    if (!res.ok || !res.body) { B.esError.push({ t: now(), state: "status-" + res.status }); return res; }
+    B.esOpen.push(now());
+    const [mine, theirs] = res.body.tee();
+    (async () => {
+      const rd = mine.getReader(), dec = new TextDecoder();
+      let buf = "";
+      try {
+        for (;;) {
+          const { value, done } = await rd.read();
+          if (done) break;
+          buf += dec.decode(value, { stream: true });
+          let cut;
+          while ((cut = buf.indexOf("\n\n")) >= 0) {
+            const frame = buf.slice(0, cut); buf = buf.slice(cut + 2);
+            const data = frame.split("\n").filter(l => l.startsWith("data: ")).map(l => l.slice(6)).join("\n");
+            if (!data) continue;
+            let e = null; try { e = JSON.parse(data); } catch {}
+            if (!e || !TYPES_F.has(e.type)) continue;
+            const p = e.payload || {};
+            B.events.push({ id: e.id, type: e.type, thread: e.thread, at: e.at, arrive: now(), len: p.delta ? p.delta.length : 0, done: !!p.done });
+          }
+        }
+      } catch {}
+      B.esError.push({ t: now(), state: "ended" });
+    })();
+    return new Response(theirs, { status: res.status, statusText: res.statusText, headers: res.headers });
+  };
+
   // ---- observers ----------------------------------------------------------------------------
   try { new PerformanceObserver(l => { for (const e of l.getEntries()) B.longtasks.push({ start: e.startTime, duration: e.duration }); }).observe({ type: "longtask", buffered: true }); } catch {}
   try {

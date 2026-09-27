@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { afterPaint, perf, sessionOpening } from "../../src/perf";
 import { useTabDrawn } from "../../src/perf/tabs";
 import { visibleNeeds } from "../../src/state/answers";
+import { useGlassCards } from "../../src/state/glass";
 import { answers } from "../../src/state/live";
 import { age, canCommit, type Decision, type Need } from "../../src/state/needs-model";
 import { useHidden, useNeeds, useNeedsFrom, useRefused } from "../../src/state/needs";
@@ -11,8 +12,10 @@ import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
 import { type } from "../../src/theme/type";
 import { List } from "../../src/ui/List";
+import { ScrollSignal, createScrollSignal } from "../../src/ui/scroll-signal";
 import { NotifyBar } from "../../src/ui/NotifyBar";
 import { Row, ROW_HEIGHT } from "../../src/ui/Row";
+import { GlassCard, useScreenFocused } from "../../src/ui/GlassMini";
 import { Empty, Screen } from "../../src/ui/Screen";
 import { SignInBar } from "../../src/ui/SignInBar";
 import { StatusMark } from "../../src/ui/StatusMark";
@@ -108,6 +111,24 @@ function NeedRow({ n, now, reason, open }: { n: Need; now: number; reason: strin
   );
 }
 
+/**
+ * The agents at work on their computers (glass-mini.md, the Card): Now lists no agents, so one card
+ * per acting agent sits in a small section after the waiting rows, at the screen width less 32.
+ */
+function GlassSection({ list }: { list: readonly Need[] }) {
+  const cards = useGlassCards();
+  const focused = useScreenFocused();
+  if (!cards.length) return null;
+  const waitingFor = (agent: string) => list.find((n) => n.agent === agent)?.title ?? null;
+  return (
+    <View style={styles.glass}>
+      {cards.map((v) => (
+        <GlassCard key={v.target} view={v} waiting={waitingFor(v.agent)} visible={focused} />
+      ))}
+    </View>
+  );
+}
+
 export default function Now() {
   const { color } = useTheme();
   const items = useNeeds();
@@ -118,6 +139,8 @@ export default function Now() {
   const open = useOpen();
   useTabDrawn();
   const list = useMemo(() => visibleNeeds(items, hidden), [items, hidden]);
+  const glass = useGlassCards().length > 0;
+  const signal = useMemo(createScrollSignal, []);
   useOpenMarks(from !== "none");
 
   const header = (
@@ -132,7 +155,14 @@ export default function Now() {
       <SignInBar />
       <NotifyBar />
       {header}
-      {list.length === 0 ? (
+      {list.length === 0 && glass ? (
+        <ScrollSignal.Provider value={signal}>
+          <ScrollView style={styles.fill} onScroll={signal.emit} scrollEventThrottle={100}>
+            <Text style={[type.read, styles.quiet, { color: color.label }]}>{from === "none" ? " " : "Nothing needs you"}</Text>
+            <GlassSection list={list} />
+          </ScrollView>
+        </ScrollSignal.Provider>
+      ) : list.length === 0 ? (
         <Empty text={from === "none" ? " " : "Nothing needs you"} />
       ) : (
         <List
@@ -140,7 +170,12 @@ export default function Now() {
           keyOf={(n) => n.id}
           rowHeight={ROW_HEIGHT}
           render={(n) => <NeedRow n={n} now={now} reason={refused.get(n.id) ?? null} open={open} />}
-          footer={<Text style={[type.meta, styles.hint, { color: color.label }]}>Swipe right to approve, left to deny.</Text>}
+          footer={
+            <>
+              <Text style={[type.meta, styles.hint, { color: color.label }]}>Swipe right to approve, left to deny.</Text>
+              <GlassSection list={list} />
+            </>
+          }
         />
       )}
     </Screen>
@@ -158,4 +193,8 @@ const styles = StyleSheet.create({
   },
   count: { marginLeft: "auto" },
   hint: { paddingHorizontal: tokens.layout.gutterPhone, paddingVertical: tokens.space[4] },
+  fill: { flex: 1 },
+  quiet: { paddingHorizontal: tokens.layout.gutterPhone, paddingVertical: tokens.space[5] },
+  // Outside any card, the screen width less 32; a gap of 24 between computers.
+  glass: { paddingHorizontal: tokens.layout.gutterPhone, paddingTop: tokens.space[4], paddingBottom: tokens.space[6], gap: tokens.space[6] },
 });

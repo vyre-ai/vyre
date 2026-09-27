@@ -88,34 +88,47 @@ without editing Capsule files:
 - Planner banners (d608b8a), Touch ID in the panel, menu-bar popover, Taildrop send, the typing
   fix, the extension seam, `@` targets: see CHANGELOG.
 
-## Doing (session 5, 2026-09-27, after logout 4)
-Merged main 7880dfa6 (b3c63eb5). Done this session: the answer card grows, then scrolls (540d55ba,
-c1a9223f: keys, follow, thumb, Jump to latest, no empty headings, whole-row results); ⌘⏎ in the
-same thread with threads.model + threads.thinking (f7e7fb52). Swift 304/304.
-Now: app-design's capsule.md (vyre-app-design docs/design/system/capsule.md, 6f8ae52f), in tasks:
-T1 geometry, copy, sentence case, footer states; T2 voice and computer-use surfaces, layered Esc.
-Blocked: Vyre IQ iq.ask (memory-iq not on main); the hub theme (/v1/appearance/theme, not on main).
+## Doing (session 6, 2026-09-27/28, Design A for the RC)
+Handed earlier: work/capsule-pro-said a127335d (capsule-mac green).
+On work/capsule-pro since, for the RC cut (Design A; deadline 03:00 UTC, go/no-go 01:30 UTC):
+Design A T1 (b330aa82, 560 fixed, keys-only footer), ⌘⏎ think deeper, screen context with the
+"sees" chip, the inline key row (fcd80523), `vyre ...` in the panel with --view frames
+(1b516a68, e43708bc), 560 in one 150 ms step and the 2 s status line (e762c5f8), the compact
+empty panel with the waiting rows and footer (e784fcae), mail rows (9b56b201). Swift 325/325.
+Then: push work/capsule-pro, capsule-mac CI green, hand the sha to the integrator. After that,
+memory.answer -> memory.ask when memory-iq's lands on main (not there at 19:30 UTC).
 
 The TRIAL is RUNNING for the user (VYRE_HOME=/private/tmp/claude-501/vyre-try, never paired):
-- trial vyred pid 58916 (`node core/daemon/main.js` from this worktree, started before the merge,
-  so it has no threads.model: ⌘⏎ falls back to a new thread until it restarts; its config points
-  at the real box and a restart may make a pairing request, so ask the lead first)
-- trial Capsule relaunched on each new build: `open -n -g --env VYRE_HOME=/private/tmp/claude-501/vyre-try --env VYRE_ALLOW_DIALOGS=1 local/capsule/native/.build/Vyre.app`
-  (find the pid with `pgrep -f vyre-capsule-pro/local/capsule/native/.build/Vyre.app`)
-- Stop: quit from the menu-bar mark ("Quit Vyre Capsule"), then
-  `VYRE_HOME=/private/tmp/claude-501/vyre-try node bin/vyre down`.
-- The real Vyre (global npm 0.0.1, vyred 60055, ~/.vyre) is untouched.
+- runs from a separate local checkout ../vyre-capsule-pro-trial (detached; my branch plus
+  sessions 51eaa964's Vyre IQ prompt; never pushed). Update it with
+  `git -C ../vyre-capsule-pro-trial merge --no-edit <sha>`, rebuild there, relaunch.
+- trial vyred: `VYRE_HOME=... VYRE_ALLOW_DIALOGS=1 nohup node core/daemon/main.js` from the trial
+  checkout (log vyre-try/vyred-trial.log); find it with `ps` on core/daemon/main.js and VYRE_HOME.
+- trial Capsule: `open -n -g --env VYRE_HOME=/private/tmp/claude-501/vyre-try --env VYRE_ALLOW_DIALOGS=1 ../vyre-capsule-pro-trial/local/capsule/native/.build/Vyre.app`;
+  find it with `pgrep -f vyre-capsule-pro-trial/local/capsule/native/.build/Vyre.app` (never a
+  bare "Vyre.app" pattern: that would match the user's real Capsule).
+- Stop: quit from the menu-bar mark, then `VYRE_HOME=/private/tmp/claude-501/vyre-try node bin/vyre down`.
+- The real Vyre (~/.vyre) is untouched.
 
 ## Next
-1. capsule.md T1 and T2 (above), then the rest of its Gaps list that is not blocked.
-2. Vyre IQ: iq.ask {stream: true} when memory-iq lands it: stages, source chips ⌘1..⌘3, "Not sure"
-   with known, nothing found.
-3. The settings hub (native-core, app-design appearance): GET /v1/appearance/theme at launch,
-   repaint on appearance.changed; Tokens.generated.swift as the offline fallback only.
-4. The real-Vyre install after tonight's deploy, only with the lead's go; then the 11-step check.
-5. "idle" on @ session rows from threads.list `status`. Persist PlannerBanners.unsent.
-6. Voice and computer use live checks need the user (speech key, Mic / Accessibility / Screen
-   Recording grants).
+1. app-design 305fc07b left: tip.md (tips.next, ⌘. dismisses), credential-sheet.md check
+   against the row built, glass-mini.md step pill; "three recent items" on open (capsule.md).
+2. A held mail from "Write it" could open its card at once (today: words, then ↑).
+3. (0.1.1) memory-iq 6adfc4b6 spec (docs/design/iq-everywhere.md on work/memory-iq): memory.ask
+   {question, stream:true, id:"cap_<n>", context:{project}}; memory.thinking {id, stage} then
+   memory.answered; reply {answer, confidence, abstained, known[], sources[], via, limited?, message?}.
+   Draw answer, "confidence X · from N sessions", 3 sources (tap opens the turn); abstained: "Not
+   sure yet." + known + "Ask Claude instead"; limited: message verbatim. Old path only on
+   no_such_tool. Earlier note: Vyre IQ over iq.ask {stream:true} when memory-iq lands it (stages, source chips ⌘1..⌘3, Not
+   sure, nothing found). [n] in replies linked to source rows (sessions 51eaa964).
+4. Cohesion glue as each lands on main: context.report on front-app switch, sight.now,
+   suggest.query, waiting.list/count, sessions.models.resolve, connections (vault) and mail rows
+   (connectors 04a5495e), needs_credential {detail} parsed by the client, commands.list.
+5. The settings hub: /v1/theme?device= (ADR 0035) or /v1/appearance/theme, repaint on
+   settings.changed; Tokens.generated.swift as the offline fallback only.
+6. `!cmd` shell lines (person-only, under the floor): not built; needs a tool (threads.shell needs
+   a thread). A presence proof for CLI verbs that exit 3: ask polish-cli for an env or flag.
+7. The real-Vyre install only with the lead's go; then the 11-step check.
 
 ## Footprint: met (2026-09-27)
 - CI run 36314455924 (macos-latest): never shown 18.3 MB footprint, RSS 82.3 MB; hidden after use
@@ -178,9 +191,24 @@ box, and every key below passed through or kept.
 | ⌘→ at the end of the box | Show or fold memory's sources | Capsule |
 | ⌫ in an empty box | Drop the @ chip | Capsule |
 | A in the waiting list | Allow or accept the highlighted row | Capsule |
+| D in the waiting list | Deny the highlighted ask (a held send or a lesson says no on its card) | Capsule |
 | ⌥⏎ | Talk into the box: hold to talk while down, or tap to start and tap to stop (sight) | extension |
-| "do …" then ⏎, or ⌘⏎ on an action | Computer use: an agent session with hands and screen, tool rows live, Esc stops the hands | Capsule |
+| "do …" then ⏎ | Computer use (only this way in): an agent session with hands and screen, tool rows live, Esc stops the hands | Capsule |
 | ⌥Space, Control twice | Open or hide the Capsule from anywhere | hot keys |
+
+### The footer (Design A, capsule.md)
+
+The footer holds keys only, four at most, chosen by `CapsuleLayout.footerHints(model)` (checked by
+`Tests/DesignATests.swift`). Status ("Copied", a confirm's question) is one line above the footer.
+Nothing typed: ↑↓ Move, ⏎ Open, Esc Hide. Results: ↑↓ Move, ⏎ (the row's first action), its ⌘⏎ or
+⌘S action, Esc Clear. Question typed, an answer on top, or the follow-up box: ⏎ Ask, ⌘⏎ Think
+deeper, ⌘O Open in Vyre, Esc Clear. Streaming: Esc Stop, ⌘⏎ Think deeper. Speaking: Esc Stop in
+place of Clear. Using your Mac: Esc Stop, ⌘O; stopped or done: ⌘O, Esc Clear. Listening: ⌥⏎ Stop.
+Ask focused: A Allow once, D Deny, ⏎ Review, Esc Close. A card: ⌘⏎ Send (or ⏎ Allow/Accept), Esc
+Back. ⌘K: ↑↓ Move, ⏎ Run, Esc Back. Touch ID: Esc Cancel. ⌘O shows only with a thread to open.
+Two words differ from the spec's table because the keys do something else today: the list's Esc
+closes the list ("Close", not "Clear"), and listening says "⌥⏎ Stop" since the Capsule cannot tell
+a held talk from a tapped one and Esc does not cancel dictation yet (T2).
 
 ## Real-Mac check for the native Capsule (the user, at the Mac, in their own terminal)
 
@@ -240,6 +268,9 @@ If a step fails, note its number and what the screen said. Screenshots of the Ca
 - mobile: reuses the Capsule's design language (`Sources/UI/Theme.swift`).
 
 ## Changed contracts
+- core/daemon GET /v1/health: `cli` [node, <repo>/bin/vyre], additive, so the Capsule runs the same
+  vyred's CLI for `vyre ...` typed in the box (by argv, with --view).
+- Kit: `CapsuleHost.askCredential(_:saved:)` and `CredentialNeed` (default does nothing, so fakes conform).
 - Kit (Sources/Kit/Extension.swift), for extensions: `VyredLink.stream(_:onMessage:onClose:)`
   with `VyredStream` and `VyredStreamFailure` (default fails, so fakes conform);
   `CapsuleHost.sessionWindow(owner:) -> SessionWindow` (default is a do-nothing window). Chords:

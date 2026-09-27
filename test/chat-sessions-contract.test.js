@@ -45,7 +45,7 @@ const chatTools = names(chat, /"((?:threads|sessions)\.[a-z_-]+(?:\.[a-z_-]+)*)(
 const chatEvents = names(chat, /"((?:thread|ask|mode|model|thinking)\.[a-z_-]+)"/g);
 
 /** Events chat reduces ahead of the server (older names it still accepts; nothing sends them yet). */
-const FUTURE_EVENTS = new Set(["thread.model", "thread.mode"]);
+const FUTURE_EVENTS = new Set(["thread.model", "thread.mode", "thread.status"]);
 /** Events older boxes emit that this one no longer does (a cancelled ask is now ask.answered, decision "cancelled"). */
 const LEGACY_EVENTS = new Set(["ask.cancelled"]);
 

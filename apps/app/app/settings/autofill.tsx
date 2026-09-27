@@ -63,7 +63,7 @@ export default function AutofillSettings() {
 
   if (!Autofill.supported || Platform.OS !== "android") {
     return (
-      <Screen title="Autofill" back>
+      <Screen title="Autofill" back backTo="Settings">
         <Text style={[type.read, styles.pad, { color: color.text2 }]}>Autofill is Android only.</Text>
       </Screen>
     );
@@ -72,7 +72,7 @@ export default function AutofillSettings() {
   const paired = !!st?.paired;
   const input = [styles.input, { color: color.text, backgroundColor: color.panel, borderColor: color.rule }];
   return (
-    <Screen title="Autofill" back>
+    <Screen title="Autofill" back backTo="Settings">
       <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
         <Text style={[type.read, { color: color.text }]}>{describe(st, enabled)}</Text>
         {line ? <Text accessibilityRole="alert" style={[type.meta, { color: color.text2 }]}>{line}</Text> : null}

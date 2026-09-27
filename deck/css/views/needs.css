@@ -36,9 +36,9 @@
 .nd-mem { list-style: none; margin: 0; padding: 4px 16px; display: flex; flex-direction: column; }
 .nd-mem li { display: flex; gap: 14px; padding: 12px 0; border-bottom: 1px solid var(--rule); }
 .nd-mem li:last-child { border-bottom: none; }
-.nd-n { font-family: var(--mono); font-size: 12px; color: var(--recall-ink); padding-top: 2px; }
+.nd-n { font-family: var(--mono); font-size: 12px; color: var(--text-2); padding-top: 2px; }
 .nd-memtext { display: block; font-size: 14px; line-height: 20px; }
-.nd-from { display: block; font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--recall-ink); margin-top: 2px; }
+.nd-from { display: block; font-family: var(--mono); font-size: 12px; line-height: 16px; color: var(--text-2); margin-top: 2px; }
 .nd-draft .nd-actions { flex-direction: row; }
 .nd-draft .nd-actions .nd-btn { width: auto; flex: 1; }
 .nd-draft .nd-actions .nd-grow { flex: 1.4; }

@@ -345,9 +345,9 @@ const hasWord = (text, w) => new RegExp(`(^|[^a-z0-9])${esc(w)}($|[^a-z0-9])`, "
 /**
  * The answerer over one store. Returns answer(input) -> Answer.
  * @param {{ personal: import("./store.js").Personal, graph?: any, db: import("node:sqlite").DatabaseSync,
- *   me?: { name?: string }|null, call?: (tool: string, input: any) => Promise<{ data?: any, error?: any }>, scratch?: string|null }} deps
+ *   me?: { name?: string }|null, call?: (tool: string, input: any) => Promise<{ data?: any, error?: any }>, scratch?: string|null, quick?: string|null }} deps
  */
-export function answerer({ personal, graph = null, db, me = null, call = null, scratch = null }) {
+export function answerer({ personal, graph = null, db, me = null, call = null, scratch = null, quick = null }) {
   const hasTable = name => Boolean(db.prepare("SELECT 1 FROM sqlite_master WHERE name = ?").get(name));
   const turnQ = () => hasTable("recall_turns") ? db.prepare("SELECT text, role, ts FROM recall_turns WHERE session = ? AND seq = ?") : null;
   const sessQ = () => hasTable("recall_sessions") ? db.prepare("SELECT name, title, cwd, human, parent FROM recall_sessions WHERE id = ?") : null;
@@ -359,7 +359,7 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
     if (row && Number(row.ok) === 0) return false;
     const sn = /** @type {any} */ (sessQ()?.get(id));
     const s = sn ? { ...sn, human: Number(sn.human) } : { cwd: h.cwd, human: h.human, parent: h.parent, name: h.name, title: h.title };
-    return sessionTrust(s, { scratch }).ok;
+    return sessionTrust(s, { scratch, quick }).ok;
   };
 
   /** The sentence of a turn that names what the answer says, else its start. */
