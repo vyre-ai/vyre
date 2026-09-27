@@ -207,7 +207,13 @@ export default {
       ctx.events.emit("memory.forgot", out);
       return out;
     };
-    const revokedOff = ctx.events.on("sync.deleted", e => { forgetMachine(e.payload?.machine).catch(err => ctx.log(`forgetting a deleted device's sessions failed: ${err.message}`)); });
+    // Only federation's own module says a device's history was deleted (the reviewer, 28 Sep): the
+    // same event from anyone else forgets nothing. core/modules reserves sync.* for it too.
+    const SYNC_OWNERS = new Set(["sync", "link"]);
+    const revokedOff = ctx.events.on("sync.deleted", e => {
+      if (!SYNC_OWNERS.has(String(e.source || ""))) { ctx.log(`ignored sync.deleted from ${plain(e.source || "an unknown module", 40)}`); return; }
+      forgetMachine(e.payload?.machine).catch(err => ctx.log(`forgetting a deleted device's sessions failed: ${err.message}`));
+    });
 
     // A project made, changed or a thread picked changes the rooms.
     const offs = ["project.created", "project.changed", "thread.picked", "thread.unpicked"].map(type => ctx.events.on(type, () => { roomsStale = true; soon(); }));

@@ -203,6 +203,10 @@ test("memory module: unpairing a device keeps what came from it; the person's de
   assert.equal(preview.sessions, SESSIONS.length);
   assert.ok(preview.turns > 0 && preview.facts > 0 && preview.people > 0, JSON.stringify(preview));
   assert.equal((await d.registry.call("memory.device", { machine: "mac-1" }, "mcp")).error?.code, "denied");
+  // The same event from any module but federation's forgets nothing.
+  d.events.emit("watchers", "sync.deleted", { machine: "mac-1" });
+  await new Promise(r => setTimeout(r, 300));
+  assert.equal((await call("recall.status", {}, { root })).data.sessions, SESSIONS.length, "a sync.deleted from another module deleted history");
   // The person deletes: federation deletes the files, then says so; memory and Recall forget the rest.
   fs.rmSync(synced, { recursive: true, force: true });
   const done = new Promise(resolve => { const off = d.events.on("memory.forgot", e => { off(); resolve(e.payload); }); });
