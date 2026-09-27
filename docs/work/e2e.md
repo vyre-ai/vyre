@@ -298,7 +298,10 @@ Plan (to the lead before building):
 - federation 0f2a8752: OK once MEDIUM fixed (Mac fails open when threads.asks errors). LOW: box
   treats unknown asks as ungated; nonces in memory.
 - memory-iq 5f36a227 SIGNED OFF (one person rule for all corrections; ADR 0008 item 6).
-- federation f712e7d7 SIGNED OFF (Mac fails closed; unknown asks gated on box; nonce limit in ADR 0021).
+- federation f712e7d7: fail-closed code CONFIRMED by reading it (mac.js answer, gatedOnMac). NOT
+  signed off as a sha: it carries 0c645473 files.deliver. MEDIUM: every Mac runs `tailscale file
+  get --loop` into ~/Vyre/inbox (takes over Taildrop); make it opt-in. LOW: callers "module".
+  Lead's rule: security sign-offs need a read of the diff, every commit in the sha.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
