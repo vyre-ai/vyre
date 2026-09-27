@@ -96,7 +96,11 @@ pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
 kb=$(du -sk "$work/prefix" | cut -f1)
 [ ! -d "$pkg/node_modules" ] || fail "npm i -g installed dependencies: $(ls "$pkg/node_modules" | tr '\n' ' ')"
-[ "$kb" -lt 10240 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
+# 12 MB: real code growth (memory/personal, the Mac apps module, relay, resilience) plus the docs
+# and docs/index.json, which scripts and agents read offline. du counts a block per file, so 670
+# small files cost more here than in the 2.5 MB tarball. A dependency or build output coming back
+# would add tens of MB; design docs and screenshots are kept out above.
+[ "$kb" -lt 12288 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"
