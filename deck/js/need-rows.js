@@ -155,11 +155,13 @@ export const SWIPE_HINT = "Swipe right to approve, left to deny.";
 /**
  * The sheet's primary button. An ask: "Approve" (no proof). A draft: "Send with Face ID" (it goes
  * out as the person), "Send edited" once a field changed, "Approve with Face ID" for a spend or
- * a delete. A question: "Answer". A pair: "Pair with Face ID".
- * @param {Item} n @param {string} word presenceWord() @param {boolean} [edited]
+ * a delete. A question: "Answer". A pair: "Pair with Face ID". While a presence session covers
+ * the draft (`covered`, need-sheet.js's coverLine), no Face ID is asked, so it reads just "Send"
+ * or "Approve".
+ * @param {Item} n @param {string} word presenceWord() @param {boolean} [edited] @param {boolean} [covered]
  */
-export function sheetPrimary(n, word, edited = false) {
-  if (n.kind === "draft") return !isSend(n) ? `Approve with ${word}` : edited ? "Send edited" : `Send with ${word}`;
+export function sheetPrimary(n, word, edited = false, covered = false) {
+  if (n.kind === "draft") return !isSend(n) ? (covered ? "Approve" : `Approve with ${word}`) : edited ? "Send edited" : covered ? "Send" : `Send with ${word}`;
   if (n.kind === "question") return "Answer";
   if (n.kind === "pair") return `Pair with ${word}`;
   return "Approve";

@@ -149,7 +149,7 @@ test("pwa shell: dictated words go into Find and are never sent on their own", (
 });
 
 test("pwa shell: light by default: passive gesture listeners, no interval, nothing polls", () => {
-  for (const f of ["js/app.js", "js/capsule.js", "js/pwa.js"]) {
+  for (const f of ["js/app.js", "js/capsule.js", "js/pwa.js", "js/keyboard.js"]) {
     const src = read(f);
     assert.doesNotMatch(src, /setInterval/, `${f} sets no interval`);
     for (const [, type, opts] of src.matchAll(/addEventListener\("(touch(?:start|move|end|cancel)|scroll(?:end)?)", [^\n]*?(\{ passive: true \})?\);?$/gm))
@@ -183,7 +183,7 @@ test("pwa: a planner-ack push shows a silent notification under the ring's tag, 
   assert.deepEqual(badges, [[], []], "an ask and a draft each set a dot, with no number");
   await push({ kind: "watch", title: "Done", path: "/now", tag: "watch-w", at: 1 });
   assert.equal(badges.length, 2);
-  assert.match(read("sw.js"), /const CACHE = "vyre-deck-6";/);
+  assert.match(read("sw.js"), /const CACHE = "vyre-deck-7";/);
 });
 
 test("pwa: a push still shows when a browser has no app badge", async () => {
@@ -210,4 +210,153 @@ test("pwa: push.seen is reported at launch, on visibility changes and on input a
   assert.match(src, /addEventListener\("pointerdown", touched, \{ passive: true, capture: true \}\)/);
   assert.match(src, /addEventListener\("keydown", touched, \{ passive: true, capture: true \}\)/);
   assert.doesNotMatch(src, /setInterval|setTimeout/);
+});
+
+// ---- the iOS pitfalls (one-app DIRECTION.md, "Smooth: the bar") -------------------------------
+
+const block = (/** @type {string} */ css, /** @type {string} */ head) => {
+  const at = css.indexOf(head);
+  assert.ok(at >= 0, head);
+  let depth = 0;
+  for (let j = css.indexOf("{", at); j < css.length; j++) { if (css[j] === "{") depth++; else if (css[j] === "}" && --depth === 0) return css.slice(at, j); }
+  return "";
+};
+
+test("pwa ios: one fixed shell at 100dvh, no page rubber band, no 100vh without a dvh after it", () => {
+  const css = phoneCss();
+  assert.match(css, /html, body \{ overflow: hidden; \}/);
+  assert.match(css, /\.shell \{ position: fixed; inset: 0; height: 100vh; height: 100dvh; overflow: hidden; \}/);
+  for (const m of css.matchAll(/100vh;?(.{0,20})/g)) assert.match(m[1], /^ ?height: 100dvh/, "100vh only as the fallback line before 100dvh");
+  assert.match(read("css/deck.css"), /html, body \{ overscroll-behavior: none; \}/);
+  assert.match(read("css/deck.css"), /\.page \{[^}]*overscroll-behavior-y: contain/);
+  assert.match(read("css/sheet.css"), /\.sheet-body \{[^}]*overscroll-behavior: contain/);
+  assert.match(read("chat/chat.css"), /\.thread-view \{ overscroll-behavior: contain;/);
+});
+
+test("pwa ios: safe areas on the shell (sideways too), the Capsule and sheets; viewport-fit=cover", () => {
+  assert.match(read("index.html"), /name="viewport" content="[^"]*viewport-fit=cover/);
+  const deck = read("css/deck.css");
+  // Outside the phone block, so an iPad or a phone turned sideways (over 760 wide) keeps clear too.
+  assert.match(deck, /^\.shell \{ padding-top: env\(safe-area-inset-top\); padding-left: env\(safe-area-inset-left\); padding-right: env\(safe-area-inset-right\); \}/m);
+  assert.match(phoneCss(), /\.capsule \{[^}]*left: calc\(12px \+ env\(safe-area-inset-left\)\); right: calc\(12px \+ env\(safe-area-inset-right\)\)/);
+  assert.match(deck, /--cap-bottom: max\(12px, env\(safe-area-inset-bottom\)\)/);
+  const sheet = block(read("css/sheet.css"), "@media (max-width: 760px) {\n  /* Sideways");
+  assert.match(sheet, /\.sheet \{ padding-left: env\(safe-area-inset-left, 0px\); padding-right: env\(safe-area-inset-right, 0px\); \}/);
+  assert.match(read("css/sheet.css"), /\.sheet \{[^}]*top: calc\(env\(safe-area-inset-top, 0px\) \+ 10px\)/);
+  assert.match(read("css/sheet.css"), /\.sheet-actions \{[^}]*env\(safe-area-inset-bottom, 0px\)/);
+});
+
+test("pwa ios: taps have no delay, chrome and rows no callout, text selects in messages and code", () => {
+  const css = phoneCss();
+  assert.match(css, /:where\(a, button, input, select, textarea[^)]*\) \{ touch-action: manipulation; \}/);
+  assert.match(css, /:where\(a, button, \.ph-head, \.capsule[^)]*\.np-row, \.thread-row[^)]*\) \{\s*-webkit-touch-callout: none; -webkit-user-select: none; user-select: none; \}/);
+  assert.match(css, /:where\(\.cv-text[^)]*pre, code[^)]*\) \{\s*-webkit-touch-callout: default; -webkit-user-select: text; user-select: text; \}/);
+  assert.match(read("css/deck.css"), /-webkit-tap-highlight-color: transparent/);
+});
+
+test("pwa ios: no field under 16 px on the phone", () => {
+  const css = phoneCss();
+  assert.match(css, /:where\(input:not\([^{]*textarea, select, \[contenteditable\]:not\(\[contenteditable="false"\]\)\) \{ font-size: 16px !important; \}/);
+  assert.match(read("chat/chat.css"), /\.composer textarea \{ font-size: 16px;/);
+  // The bigger ones stay bigger, never smaller than 16.
+  for (const [, px] of css.matchAll(/\{ font-size: (\d+)px !important; \}/g)) assert.ok(Number(px) >= 16, px);
+});
+
+test("pwa ios: the keyboard lifts the composer and a sheet, and the transcript follows", () => {
+  assert.match(phoneCss(), /--kb-lift: max\(0px, calc\(var\(--kb\) - env\(safe-area-inset-bottom, 0px\)\)\)/);
+  assert.match(phoneCss(), /:root\[data-kb\] \.page:not\(:has\(> \.chat-session\)\) \{ padding-bottom: calc\(var\(--kb\) \+ 16px\); \}/);
+  const chat = read("chat/chat.css");
+  assert.match(chat, /:root\[data-kb\] \.chat-session > :is\(\.lease-bar, \.composer\) \{ transform: translateY\(calc\(-1 \* var\(--kb-lift\)\)\); \}/);
+  assert.match(chat, /:root\[data-kb\] \.chat-session \.thread-view \{ padding-bottom: calc\(24px \+ var\(--kb-lift\)\); \}/);
+  assert.match(read("css/sheet.css"), /:root\[data-kb\] \.sheet \{ bottom: var\(--kb\); \}/);
+  const session = read("chat/session.js");
+  assert.match(session, /window\.addEventListener\("deck:kb", onKb\)/);
+  assert.match(session, /if \(following\) toBottom\(\); else if \(pad >= 0\) timeline\.scrollTop \+= p - pad;/);
+  assert.match(read("js/pwa.js"), /watchKeyboard\(\);/);
+});
+
+test("pwa ios: kbInset is the visual viewport's loss at the bottom, floored at 0", async () => {
+  const { kbInset, typesText } = await import("../js/keyboard.js");
+  assert.equal(kbInset(844, { height: 844, offsetTop: 0 }), 0);
+  assert.equal(kbInset(844, { height: 508, offsetTop: 0 }), 336);
+  assert.equal(kbInset(844, { height: 508, offsetTop: 100 }), 236, "iOS panned the page up by 100");
+  assert.equal(kbInset(844, { height: 900, offsetTop: 0 }), 0, "never negative");
+  assert.equal(kbInset(844, { height: 507.6, offsetTop: 0 }), 336);
+  assert.equal(kbInset(844, { height: 422, offsetTop: 0, scale: 2 }), 0, "pinch zoom is not a keyboard");
+  assert.equal(kbInset(844, null), 0);
+  assert.equal(typesText({ nodeType: 1, tagName: "TEXTAREA" }), true);
+  assert.equal(typesText({ nodeType: 1, tagName: "INPUT", type: "search" }), true);
+  assert.equal(typesText({ nodeType: 1, tagName: "INPUT", type: "checkbox" }), false);
+  assert.equal(typesText({ nodeType: 1, tagName: "DIV", isContentEditable: true }), true);
+  assert.equal(typesText({ nodeType: 1, tagName: "BUTTON" }), false);
+});
+
+test("pwa ios: the keyboard listener runs only while a field has focus on a phone, one write a frame", async () => {
+  const { watchKeyboard } = await import("../js/keyboard.js");
+  /** @type {Record<string, Function>} */ const vvOn = {}, docOn = {};
+  /** @type {any[]} */ const vvOpts = [], frames = [], events = [];
+  const props = new Map(), attrs = new Set();
+  let phone = true, scrolled = 0;
+  const field = { nodeType: 1, tagName: "TEXTAREA", closest: () => null };
+  const vv = { height: 844, offsetTop: 0, scale: 1,
+    addEventListener: (/** @type {string} */ t, /** @type {Function} */ f, /** @type {any} */ o) => { vvOn[t] = f; vvOpts.push(o); },
+    removeEventListener: (/** @type {string} */ t) => { delete vvOn[t]; } };
+  const doc = { activeElement: /** @type {any} */ (null),
+    documentElement: { style: { setProperty: (/** @type {string} */ k, /** @type {string} */ v) => props.set(k, v) },
+      setAttribute: (/** @type {string} */ k) => attrs.add(k), removeAttribute: (/** @type {string} */ k) => attrs.delete(k) },
+    addEventListener: (/** @type {string} */ t, /** @type {Function} */ f, /** @type {any} */ o) => { docOn[t] = f; assert.deepEqual(o, { passive: true }); },
+    removeEventListener: () => {} };
+  const win = { visualViewport: vv, document: doc, innerHeight: 844, scrollY: 0,
+    matchMedia: () => ({ matches: phone }),
+    scrollTo: () => { scrolled++; win.scrollY = 0; },
+    requestAnimationFrame: (/** @type {Function} */ f) => { frames.push(f); return frames.length; }, cancelAnimationFrame: () => {},
+    CustomEvent: class { constructor(/** @type {string} */ type, /** @type {any} */ o) { this.type = type; this.detail = o.detail; } },
+    dispatchEvent: (/** @type {any} */ e) => events.push(e) };
+  const flush = () => { for (const f of frames.splice(0)) f(); };
+  const stop = watchKeyboard(win);
+  assert.equal(Object.keys(vvOn).length, 0, "nothing listens before a field has focus");
+
+  // A desktop-wide window: focus attaches nothing.
+  phone = false; doc.activeElement = field; docOn.focusin({ target: field });
+  assert.equal(Object.keys(vvOn).length, 0);
+  phone = true;
+
+  docOn.focusin({ target: field });
+  assert.deepEqual(Object.keys(vvOn).sort(), ["resize", "scroll"]);
+  for (const o of vvOpts) assert.deepEqual(o, { passive: true });
+  flush();
+  assert.equal(props.size, 0, "no keyboard yet: nothing written");
+
+  // The keyboard rises: three resizes in one frame are one write, and iOS's pan is taken back.
+  vv.height = 600; vvOn.resize(); vv.height = 520; vvOn.resize(); win.scrollY = 120; vv.height = 508; vvOn.scroll();
+  assert.equal(frames.length, 1, "coalesced to one frame");
+  flush();
+  assert.equal(scrolled, 1);
+  assert.equal(props.get("--kb"), "336px");
+  assert.ok(attrs.has("data-kb"));
+  assert.deepEqual(events.map(e => [e.type, e.detail.kb, e.detail.delta]), [["deck:kb", 336, 336]]);
+
+  // Focus leaves and the keyboard goes: back to 0, and the listeners come off.
+  doc.activeElement = null; docOn.focusout(); vv.height = 844; vvOn.resize(); flush();
+  assert.equal(props.get("--kb"), "0px");
+  assert.ok(!attrs.has("data-kb"));
+  assert.deepEqual(events.at(-1).detail, { kb: 0, delta: -336 });
+  assert.equal(Object.keys(vvOn).length, 0);
+  stop();
+});
+
+test("pwa ios: long lists and the transcript skip off-screen rows; the newest 40 turns always draw", () => {
+  const chat = read("chat/chat.css");
+  assert.match(chat, /\.cv-timeline > :nth-last-child\(n\+41\) \{ content-visibility: auto; contain-intrinsic-size: auto 96px; \}/);
+  assert.match(chat, /\.rows > \.thread-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
+  assert.match(block(read("css/views/find.css"), "@media (max-width: 760px) {"), /\.fd-row \{ content-visibility: auto; contain-intrinsic-size: auto \d+px; \}/);
+});
+
+test("pwa ios: a row swipe moves only the face's transform, once a frame, promoted only while it moves", () => {
+  const src = read("js/now-phone.js"), css = read("css/views/now.css");
+  assert.match(src, /if \(!frame\) frame = requestAnimationFrame\(follow\);/);
+  assert.match(src, /face\.style\.transform = t;/);
+  assert.doesNotMatch(src.slice(src.indexOf("function row("), src.indexOf("return { el, update };")), /style\.(left|marginLeft|width)\b/);
+  assert.doesNotMatch(css, /\.np-face \{[^}]*will-change/, "no layer for every row at rest");
+  assert.match(css, /\.np-face\.np-drag, \.np-face\.np-spring \{ will-change: transform; \}/);
 });

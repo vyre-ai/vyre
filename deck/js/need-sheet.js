@@ -177,10 +177,14 @@ function draftBody(n, o, { close, actions, body }, offs) {
   const g = n.gate || { kind: "send", to: [], draft: null, sources: [] };
   const status = statusLine();
   const primary = /** @type {HTMLButtonElement} */ (h("button", { type: "button", class: "sb sb-primary sb-full" }));
-  const label = (/** @type {boolean} */ edited) => put(primary, glyph("face-id", 22), sheetPrimary(n, o.word, edited));
+  // Covered by a presence session (the same check as the line under it): no Face ID is asked, so
+  // the button says just "Send" and drops the Face ID mark.
+  let edited = false;
+  const label = () => { const covered = !!coverLine(n.presence, o.word);
+    put(primary, covered ? null : glyph("face-id", 22), sheetPrimary(n, o.word, edited, covered)); };
   // The final words, To through Body, each a real input that reads as text until tapped (js/editable.js).
-  const f = g.draft ? form(gateFields({ to: g.to, draft: g.draft }), { onchange: changed => label(changed), cls: "nsh-form" }) : null;
-  label(false);
+  const f = g.draft ? form(gateFields({ to: g.to, draft: g.draft }), { onchange: changed => { edited = changed; label(); }, cls: "nsh-form" }) : null;
+  label();
   const recalled = g.sources?.length ? g.sources : g.recalled ? [{ text: g.recalled }] : [];
   put(body,
     g.error ? h("p", { class: "nsh-status nsh-sec" }, h("span", { class: "nsh-failed" }, "failed"), h("span", null, `It came back held: ${problem(g.error)}`)) : null,
@@ -198,7 +202,7 @@ function draftBody(n, o, { close, actions, body }, offs) {
     send(n, actions, status, () => needs.answer(n, { label: "Send", decision: "approve" }, edited), () => { close(); o.onDone?.("send", n); });
   });
   const cover = h("p", { class: "nsh-note nsh-cover" });
-  const drawCover = () => { const t = coverLine(n.presence, o.word); cover.hidden = !t; put(cover, t); };
+  const drawCover = () => { const t = coverLine(n.presence, o.word); cover.hidden = !t; put(cover, t); label(); };
   drawCover();
   window.addEventListener("deck:presence", drawCover);
   offs.push(() => window.removeEventListener("deck:presence", drawCover));

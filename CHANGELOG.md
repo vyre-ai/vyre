@@ -4,6 +4,41 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The phone app: a fixed shell, the keyboard inset, safe areas, taps without delay, and Send says just "Send" while covered
+
+- One fixed shell on the phone (`deck/css/deck.css`): `position: fixed; inset: 0` at `100dvh`
+  (100vh first as the fallback), `html, body { overflow: hidden }`, so the app never rubber-bands
+  as a whole and iOS has nothing to scroll when a field takes focus. Only pages, lists and sheets
+  scroll, each with `overscroll-behavior: contain`.
+- The keyboard (`deck/js/keyboard.js`, started by `pwa.start()`): one passive `visualViewport`
+  resize/scroll listener, attached only while a text field has focus on a phone, coalesced to one
+  write a frame. It sets `--kb` (innerHeight minus the visual viewport's height and offsetTop,
+  floored at 0, 0 when pinch zoomed) and `data-kb` on `<html>`, takes back iOS's pan of the whole
+  page, and fires `deck:kb { kb, delta }` on window. Chat's composer and lease line move up by
+  `transform` (`--kb-lift`, the part the home indicator does not already cover), the transcript's
+  bottom padding grows by as much and `chat/session.js` scrolls it along in the same frame (or
+  stays at the bottom when following). A sheet stops at the keyboard (`bottom: var(--kb)`); any
+  other page gets room to scroll a field above it, and a field left under the keys is scrolled
+  into view inside its own scroller, never the page.
+- No field under 16 px on the phone (inputs, textareas, selects, contenteditable), so iOS never
+  zooms; the fields drawn bigger (Find, the sheet's fields, the pair code) keep their size.
+- Safe areas: the shell's top, left and right insets now apply at every width (an iPad or a phone
+  turned sideways is over 760 wide; `env()` is 0 on a desktop browser, so nothing moves there),
+  and sheets keep clear of a side notch and, with no actions row, of the home indicator.
+- Taps: `touch-action: manipulation` on links, buttons and controls; no callout or selection on
+  the header, the Capsule, rows and sheet handles; text still selects in messages, code and fields.
+- `content-visibility: auto` with a remembered `contain-intrinsic-size` on transcript rows older
+  than the newest 40 (so the bottom is always exact), the Chat list's rows and Find's results.
+- Now's row swipe: the face's transform is written at most once a frame (`requestAnimationFrame`),
+  and `will-change: transform` is set only while a row is dragged or springing, not on every row.
+- The Send sheet says "Send" (or "Approve" for a spend) without the Face ID mark while a presence
+  session covers the draft, the same check as the "covers sends until" line, and redraws on
+  `deck:presence` (`sheetPrimary(n, word, edited, covered)`). The held card in Chat already said
+  "Send".
+- Service worker cache `vyre-deck-7` (keeps `/js/keyboard.js`). Tests: 10 new in
+  `deck/test/pwa.test.js` (the CSS rules, the `--kb` math, the listener on a fake window), one in
+  `deck/js/need-rows.test.js`.
+
 #### The phone app: one passkey covers the next sends, the icon shows what waits, and it says when it is looked at
 
 - Presence session on the Deck (`deck/js/api.js`): a passkey proof for a sessionable tool

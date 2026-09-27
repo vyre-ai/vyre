@@ -93,6 +93,21 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   queuesFor now also refuses an agent's tailnet node). If the user's phone still refused, his box
   runs code from before capsule-now's merge.
 
+- C. iOS pitfalls (2026-09-27): fixed shell (`position: fixed; inset: 0`, 100dvh after a 100vh
+  fallback, `html, body { overflow: hidden }` on the phone); the keyboard inset
+  (deck/js/keyboard.js: one passive visualViewport listener while a field has focus on a phone,
+  rAF-coalesced, `--kb` and `data-kb` on html, `deck:kb { kb, delta }`; Chat's composer and lease
+  line lift by transform, the transcript's padding follows and session.js scrolls along; sheets
+  stop at the keyboard; other pages get room); fields at least 16 px on the phone; safe-area
+  insets on the shell at every width (landscape phones and iPads are over 760), sheets sideways;
+  `touch-action: manipulation`, no callout or selection on chrome and rows, text selectable in
+  messages and code; `content-visibility: auto` on transcript rows older than the newest 40, the
+  Chat list and Find results; Now's row swipe writes once a frame and promotes the face only
+  while it moves. The Send sheet says "Send" while a presence session covers the draft.
+  SW cache vyre-deck-7. Tests in deck/test/pwa.test.js ("pwa ios: ...").
+- Row swipes are still pointer-driven transforms, not a scroll-snap row. The conversion is a
+  proposal in the report to the lead (it touches the swipe, commit, Undo and pager-lock logic).
+
 ## How to rerun the shots (the test box)
 - `rsync -a --delete --exclude node_modules --exclude .git ./ the test box:~/vyre-ci/pwa/`
 - Chrome (connectors' shared install): `/usr/local/bin/vyre-chrome --headless=new --remote-debugging-port=9422 --remote-debugging-address=127.0.0.1 --user-data-dir=/tmp/pwa-chrome-prof about:blank`
@@ -116,8 +131,7 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
      (x-vyre-presence-keep, the session header reused until it ends, "Face ID covers 30 min" on
      screen); push.seen reports; the Safari empty-push fallback (planner-ack shows then closes);
      app badge = the Needs count.
-  C. iOS pitfalls: fixed shell at 100dvh, visualViewport keyboard inset, safe areas,
-     overscroll, touch-action and callout, scroll-snap row swipes.
+  C. iOS pitfalls: done (see Done), except the scroll-snap row swipe (proposal, lead's call).
   D. tailnet's UI findings (asked them for the list), then the SW version skew.
 
 ## Next
@@ -126,7 +140,11 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - Step 6 Mac card: "Already on your tailnet" for an online Mac node.
 - theme.colors: match docs' final shape.
 - threads.unqueue once capsule-now ships it.
-- Real iPhone check by the user, against the DIRECTION.md bar.
+- Real iPhone check by the user, against the DIRECTION.md bar. Especially the keyboard: open a
+  session, tap the composer, the transcript must not jump and the composer must sit on the keys;
+  the Send sheet's fields; Find's box.
+- A phone turned sideways (over 760 wide) gets the desktop layout; decide whether the phone
+  shell should follow the shorter side instead (`max-width: 760px` or `max-height: 500px`).
 
 ## Needs from others
 - polish-cli answered: no --step; Settings says `vyre up` (and `vyre index` for history).

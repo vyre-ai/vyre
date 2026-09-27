@@ -10,12 +10,14 @@
 // start() also tells the box when someone is looking at this app (push.seen), so a push that
 // would only repeat what is on screen can be held back by the box. It reports at launch, on each
 // visibility change, and on the first tap or key after a minute without a report. No timer.
+// It also starts the keyboard inset (js/keyboard.js), so a field on a phone is never under the keys.
 
 import { h, put, go } from "./dom.js";
 import { attempt, call, reachable } from "./api.js";
 import { surfaceId } from "../glass/util.js";
 import { icon } from "./icons.js";
 import { when } from "./fmt.js";
+import { watchKeyboard } from "./keyboard.js";
 
 const LAST = "vyre.last";
 const store = (() => { try { return window.localStorage; } catch { return null; } })();
@@ -46,6 +48,7 @@ export function start({ view, deck }) {
   offlineLine(deck);
   pullToFind(view);
   seenReports();
+  watchKeyboard();
 }
 
 const SEEN_EVERY = 60_000;

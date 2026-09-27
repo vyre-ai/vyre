@@ -290,11 +290,17 @@ export function phoneNow(ctx) {
     update(n);
 
     // The swipe: follows the finger 1:1, then springs; past 100 or a fling it commits, short of
-    // that the action stays showing and a tap on it commits.
-    let rest = 0, x0 = 0, y0 = 0, dx = 0, v = 0, lastX = 0, lastT = 0, pid = -1, axis = /** @type {null|"x"|"y"} */ (null), moved = false;
+    // that the action stays showing and a tap on it commits. Only the face's transform moves, at
+    // most once a frame, and the face is promoted (np-drag, will-change) only while it moves.
+    let rest = 0, x0 = 0, y0 = 0, dx = 0, v = 0, lastX = 0, lastT = 0, pid = -1, axis = /** @type {null|"x"|"y"} */ (null), moved = false, frame = 0;
+    const follow = () => { frame = 0; place(dx, false); };
+    const settle = () => { if (frame) { cancelAnimationFrame(frame); frame = 0; } face.classList.remove("np-drag"); };
+    face.addEventListener("transitionend", e => { if (e.target === face) face.classList.remove("np-spring"); });
     const place = (/** @type {number} */ x, /** @type {boolean} */ spring) => {
-      face.classList.toggle("np-spring", spring);
-      face.style.transform = x ? `translateX(${x}px)` : "";
+      const t = x ? `translateX(${x}px)` : "";
+      // A spring only when the face really goes somewhere, so transitionend always ends it.
+      face.classList.toggle("np-spring", spring && t !== face.style.transform && !reduced());
+      face.style.transform = t;
       el.classList.toggle("np-show-r", x > 0);
       el.classList.toggle("np-show-l", x < 0);
     };
@@ -311,13 +317,14 @@ export function phoneNow(ctx) {
         if (axis === "y") return;
         try { face.setPointerCapture(pid); } catch {}
         dragging = true; moved = true;
+        face.classList.add("np-drag");
       }
       if (axis !== "x") return;
       const dt = e.timeStamp - lastT;
       if (dt > 0) v = (e.clientX - lastX) / dt;
       lastX = e.clientX; lastT = e.timeStamp;
       dx = rest + mx;
-      place(dx, false);
+      if (!frame) frame = requestAnimationFrame(follow);
     });
     const end = (/** @type {PointerEvent} */ e) => {
       if (e.pointerId !== pid) return;
@@ -325,6 +332,7 @@ export function phoneNow(ctx) {
       if (axis !== "x") { axis = null; return; }
       axis = null;
       dragging = false;
+      settle();
       const r = release(dx, v);
       if (r === "commit-right" || r === "commit-left") { rest = 0; place(0, true); commit(cur, r === "commit-right" ? "right" : "left"); }
       else { rest = r === "open-right" ? ACTION_W : r === "open-left" ? -ACTION_W : 0; place(rest, true); }

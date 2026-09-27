@@ -131,6 +131,10 @@ test("need-rows: the sheet's primary words", () => {
   assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "spend" } }, "fingerprint"), "Approve with fingerprint");
   assert.equal(sheetPrimary({ kind: "question", at: 0 }, "Face ID"), "Answer");
   assert.equal(sheetPrimary({ kind: "pair", at: 0 }, "Touch ID"), "Pair with Touch ID");
+  // A presence session covers it: no Face ID is asked, so none is named.
+  assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "send" } }, "Face ID", false, true), "Send");
+  assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "send" } }, "Face ID", true, true), "Send edited");
+  assert.equal(sheetPrimary({ kind: "draft", at: 0, gate: { kind: "spend" } }, "Face ID", false, true), "Approve");
 });
 
 test("need-rows: toasts are honest about Undo", () => {
