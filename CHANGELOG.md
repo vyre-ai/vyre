@@ -9,6 +9,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
   (and route.js's words) kept for the eval; the native Capsule has it as Said.swift.
 - test/federation-send: threads.send's queued reply carries queued_id (threads.unqueue's handle).
+#### Scripts: the fake Messages API is a module
+
+- scripts/cc-plugin-parity/fake-api.mjs exports `fakeApi(steps, { isMain })`, for driving a real
+  Claude Code binary with no credentials. parity.mjs also checks that the MCP server's parent is
+  the pid the brief bound (it is: Claude Code starts the server directly, with no `sh -c`).
+
 #### Tests: the plugin's memory test always runs
 
 - test/cc-plugin.test.js: memory-iq's bare-mcp gate is on main, so the remember-then-answer test
