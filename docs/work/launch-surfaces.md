@@ -56,17 +56,26 @@ Filled in as each lands.
 - Brand assets in `docs/brand/`: og.png, social-preview.png, readme-hero(.png/-light.png), each
   with its source .html.
 
+- /start page: re-reviewed on testbox (screenshot below), reads clean and matches Design A. No
+  changes needed.
+- Fixed a real bug found while screenshotting the landing page: the install tabs (Linux box /
+  Mac / What it needs) showed all three panels at once and did not respond to clicks — `.ipanel`'s
+  own `display: flex` beat the browser's default `[hidden]{display:none}`, and `app.js` never had
+  a listener for `.itabs`. Fixed in both files, screenshot-verified fixed. See CHANGELOG.md and
+  site/CHANGELOG.md.
+- Screenshots taken on testbox once load dropped from 6.83 to ~1 (`vyre-chrome --headless=new`,
+  own http.server on a scratch port, torn down after): landing (1440), landing (390 mobile), 404
+  (1440), /start (1440). Confirmed against docs/design/TOKENS.md and the Design A boards; nothing
+  else stood out.
+
 ## Doing
 
-- /start page: exists (`site/start/`), not yet re-reviewed against Design A in this pass.
 - Confirming the Capsule hotkey with capsule-pro before calling the landing demo final (asked;
   current copy says "Control twice").
 
 ## Next
 
-- Screenshots: testbox load was 6.83 at last check (over the "under 6" bar), none taken yet.
-  Retry once it drops, or hand off to app-design/e2e to verify visually on their own pass.
-- GitHub social preview upload (file is done in docs/brand/; the lead/integrator uploads it).
+- Nothing blocking on this list right now besides the hotkey confirmation above.
 
 ## Needs from others
 
