@@ -258,6 +258,10 @@ Plan (to the lead before building):
   ac60d3c5) as 5a646023: 193/193 on testbox, sent to the integrator for rc.2. box-deploy told to
   run rc-smoke from acfef955 (scripts unchanged since 88610b5e) for the rc.1 redeploy.
   Note: local `main` in the shared repo lags; rebase onto origin/main.
+- cohesion f3977466 (sight.watch agentCaller): OK, sight+waiting 23/23. Asked: same guard on
+  sight.frame (proxies hands-desktop.screenshot as module:sight; hands-desktop resolveAgent only
+  knows mcp:agent:). Offered lead a kernel fix: vouch agent claims only after mcp:/harness:
+  ("cli:agent:kit" with a key passes person callers lists). Waiting on both.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
