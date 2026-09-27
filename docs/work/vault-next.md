@@ -101,6 +101,10 @@ mobile and the Capsule (through their owners).
 
 ## Next (in order, when resumed)
 
+0. (0.1.0, lead) Claude sign-in as a need: how "code" in the catalog (sign-in url, then an inline code),
+   backed by onboard.claude; group "claude" = setup token or API key. Proposal sent to sessions 27 Sep;
+   waiting on: which module declares it, module:vault calling onboard.claude, signin.start() twice.
+
 1. Rotation: revoke-old asks for proof with the new key's name shown (lead decision, ADR 0028 4c);
    then prove each auto provider against a real account.
 2. Agent grants per project (ADR 0031): project column, check on every use, revoke by project.
