@@ -4,7 +4,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
-#### Sessions: tool calls carry their call id
+#### Sessions: tool calls carry their call id; quick sessions leave no transcript
+
+- A threads.quick session runs with no session persistence (`--no-session-persistence`, the SDK's
+  `persistSession: false`): no transcript for Recall to index its prompt from.
 
 - The plugin's MCP server sends Claude Code's tool_use id (`_meta["claudecode/toolUseId"]`) as
   X-Vyre-Call-Id, so a tool's steps link to the chat row that caused them (meta.call, platform

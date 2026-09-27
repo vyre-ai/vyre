@@ -37,7 +37,7 @@ function inbox() {
  * The SDK's options for a launch. The same launch the CLI runner turns into flags (argsFor).
  * @param {{ id: string, resume?: boolean, forkFrom?: string|null, resumeAt?: string|null, mode?: string|null, plugin?: string|null, plugins?: string[], model?: string|null, name?: string|null,
  *           system?: { mode: "append"|"replace", text: string }|null, append?: string|null, budgetUsd?: number|null,
- *           tools?: "none"|null, settings?: boolean, skippable?: boolean, effort?: string|null, bin?: string|null, cwd: string, env: Record<string, string|undefined>, hooks?: any }} o
+ *           tools?: "none"|null, settings?: boolean, skippable?: boolean, effort?: string|null, ephemeral?: boolean, bin?: string|null, cwd: string, env: Record<string, string|undefined>, hooks?: any }} o
  */
 export function optionsFor(o) {
   const system = o.system && o.system.mode === "replace" && o.system.text
@@ -65,7 +65,8 @@ export function optionsFor(o) {
     ...(o.bin ? { pathToClaudeCodeExecutable: o.bin } : {}),
     ...(o.hooks ? { hooks: o.hooks } : {}),
     // File checkpoints, so a rewind can put the files back too (threads.rewind restore "code").
-    enableFileCheckpointing: true,
+    // An ephemeral session (threads.quick) writes nothing to disk: no transcript, no checkpoints.
+    ...(o.ephemeral ? { persistSession: false } : { enableFileCheckpointing: true }),
   };
 }
 

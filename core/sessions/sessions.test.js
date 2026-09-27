@@ -756,6 +756,7 @@ for (const driver of ["cli", "sdk"]) {
     assert.ok(!(await w.tool("threads.list", {})).data.some(r => r.name === "Vyre memory"), "not in a person's list");
     const launch = w.launches().filter(x => x.argv).at(-1).argv;
     assert.ok(launch.includes("--setting-sources") && !launch.includes("--plugin-dir"), "lean: no settings, no plugin");
+    assert.ok(launch.includes("--no-session-persistence"), "no transcript for Recall to index");
   });
 
   test(`${driver}: an interrupted turn ends canceled, by you`, { skip }, async t => {

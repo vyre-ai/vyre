@@ -658,7 +658,9 @@ export class Switchboard {
     const mode = PERSON_MODES.includes(String(rec.mode)) && rec.mode !== "default" && (rec.mode !== BYPASS || withPlugin) ? rec.mode : null;
     // "Doesn't ask" asked of a session without the plugin: it starts asking instead, and says so.
     if (rec.mode === BYPASS && !withPlugin) this.db.prepare("UPDATE threads_runs SET mode = 'default' WHERE id = ?").run(id);
-    const lo = { id, hooks, mode, skippable: withPlugin, effort: o.effort || null, resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
+    // A warm quick session (threads.quick) writes no transcript: nothing to resume, and nothing
+    // for Recall to find its prompt (another question's passages) in.
+    const lo = { id, hooks, mode, skippable: withPlugin, effort: o.effort || null, ephemeral: Boolean(o.quick), resume: o.resume, forkFrom: o.forkFrom || null, resumeAt: o.resumeAt || null, plugin: o.plugin === false ? null : pluginDir(), plugins, model: o.model || rec.model, name: rec.name,
       append: o.append, system: o.system || null, budgetUsd: o.budget_usd, tools: o.tools === "none" ? "none" : null, settings: o.settings === false ? false : undefined };
     const state = { launch: o, key, withPlugin, mode: mode || "default", message: "", pending: "", timer: null, lastPrompt: o.lastPrompt || null, switching: false, proc: null, touched: Date.now(), idle: null,
       // Turns (ADR 0030): the current one, how many this thread has had, the steered messages not
