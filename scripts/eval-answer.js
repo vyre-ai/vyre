@@ -5,6 +5,7 @@
 //
 //   node scripts/eval-answer.js          the synthetic personal world, as a report
 //   node scripts/eval-answer.js --json   the same, as JSON
+//   node scripts/eval-answer.js --facts  also list the personal facts the world left (not for fresh)
 //   node scripts/eval-answer.js --keyword  without the dense index (keyword recall only)
 //   node scripts/eval-answer.js --world heldout  the held-out world (test/fixtures/personal-heldout.js
 //            and test/eval/answer-heldout.json), written before reading the rules
@@ -279,6 +280,8 @@ export async function runEval(opts = {}) {
       embed_ms: round(embedMs),
       curate_ms: round(curateMs),
     };
+    // --facts: the personal facts the world left, for working on the rules (never on the sealed world).
+    if (opts.facts) world.facts = /** @type {any[]} */ (db.prepare("SELECT subj, rel, obj, obj_label, confidence, current, sessions FROM memory_me_facts ORDER BY subj, rel, confidence DESC").all());
     const all = answerers(mem, opts.scratch || SCRATCH);
     /** @type {Record<string, any>} */
     const results = {};
@@ -339,7 +342,9 @@ export function barFailures(a) {
 async function main(argv) {
   const wi = argv.indexOf("--world");
   const world = wi >= 0 ? argv[wi + 1] : "personal";
-  const r = await runEval({ world, vectors: !argv.includes("--keyword") });
+  if (argv.includes("--facts") && world === "fresh") throw new Error("the fresh world is sealed: no --facts");
+  const r = await runEval({ world, vectors: !argv.includes("--keyword"), facts: argv.includes("--facts") });
+  if (r.world.facts) for (const f of r.world.facts) process.stdout.write(`  ${f.current ? " " : "x"} ${f.subj} ${f.rel} ${f.obj_label || f.obj} @${round(f.confidence)} (${f.sessions})\n`);
   if (argv.includes("--json")) process.stdout.write(JSON.stringify(r, null, 2) + "\n"); else print(r);
   // CI runs this: a memory.answer under the bar fails the build.
   const bad = barFailures(r.answerers.answer);
