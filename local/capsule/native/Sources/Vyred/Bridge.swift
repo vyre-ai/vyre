@@ -27,8 +27,11 @@ public enum Bridge {
             return message
         }
         if code == "denied" { return "The rules stopped it: \(message)" }
-        // threads.send knows only the sessions the switchboard runs; a terminal's own session is not one.
-        if message.hasPrefix("no thread ") { return "That session is not one vyred runs, so it cannot be typed into from here. Open it where it runs, or start a new thread." }
+        // The box runs at most so many sessions at once (ADR 0030): threads.start says busy.
+        if code == "busy" { return message.isEmpty ? "The box is running as many sessions as it allows. Stop one, or try again when one finishes." : message }
+        // threads.send knows every session Vyre started, idle ones included (they resume); only a
+        // session started in a terminal is not one.
+        if message.hasPrefix("no thread ") { return "That session runs in a terminal, not in Vyre, so it cannot be typed into from here. Open it in its terminal, or start a new thread." }
         return message.isEmpty ? code : message
     }
 

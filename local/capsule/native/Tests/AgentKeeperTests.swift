@@ -30,6 +30,23 @@ let agentKeeperSuite = Suite("agent keeper") { t in
         t.eq(got, ["q1"])
     }
 
+    t.test("Esc on an answer from a Vyre-owned session interrupts the turn and keeps the session") {
+        let v = FakeVyred(); v.start(); defer { v.stop() }
+        v.tool("threads.start") { _ in ["id": "q2"] }
+        v.tool("threads.interrupt") { _ in ["interrupted": true] }
+        v.tool("threads.stop") { _ in ["stopped": true] }
+        let got: [String]? = t.wait {
+            let m = await MainActor.run { () -> CapsuleModel in let m = keeperModel(v); m.willShow(front: nil); return m }
+            _ = await until { m.vyred.isUp && m.vyred.has("threads.interrupt") }
+            await MainActor.run { m.text = "what is 2+2"; m.selected = m.flat.firstIndex { $0.kind == "ask" } ?? 0; m.run() }
+            _ = await until { m.reply?.thread == "q2" }
+            await MainActor.run { m.stopReply() }
+            _ = await until { !v.callsOf("threads.interrupt").isEmpty }
+            return v.callsOf("threads.interrupt").map { VJ.s($0["thread"]) } + ["stops \(v.callsOf("threads.stop").count)"]
+        }
+        t.eq(got, ["q2", "stops 0"])
+    }
+
     t.test("hiding releases the lease and stops idle quick threads; a busy one stops when its turn ends") {
         let v = FakeVyred(); v.start(); defer { v.stop() }
         var n = 0

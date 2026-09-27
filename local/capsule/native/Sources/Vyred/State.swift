@@ -238,6 +238,9 @@ public enum VyState {
                 x.tools = Array((r.tools + [ReplyTool(id: s(p["id"]), summary: VJ.nonEmpty(p["summary"]) ?? s(p["tool"]), done: false, error: false)]).suffix(6))
             }
         case "thread.stopped":
+            // reason "idle": the session closed after 10 quiet minutes and resumes on the next
+            // send (ADR 0030). The answer stands; nothing failed.
+            if VJ.str(p["reason"]) == "idle" { x.finished = true; x.idle = true; break }
             x.finished = true; x.ok = false; x.error = "the thread stopped" + (VJ.nonEmpty(p["reason"]).map { ": \($0)" } ?? "")
         case "thread.finished":
             if let c = VJ.num(p["cost_usd"]) { x.cost = (r.cost ?? 0) + c }
@@ -382,7 +385,7 @@ public enum VyState {
             return trim(d)
         case "thread.finished", "thread.stopped":
             let error: String? = e.type == "thread.stopped"
-                ? (d.busy ? "the thread stopped" + (VJ.nonEmpty(p["reason"]).map { ": \($0)" } ?? "") : nil)
+                ? (d.busy && VJ.str(p["reason"]) != "idle" ? "the thread stopped" + (VJ.nonEmpty(p["reason"]).map { ": \($0)" } ?? "") : nil)
                 : (VJ.bool(p["ok"]) == false ? (VJ.nonEmpty(p["error"]) ?? "the turn failed") : nil)
             let i = openTurn(msgs, nil)
             var list = msgs
@@ -504,6 +507,8 @@ public struct Reply: Sendable, Equatable {
     public var ms: Double?
     /// The user's Stop: nothing that arrives after it changes the reply.
     public var cancelled = false
+    /// The session closed for idleness after this answer; the next send resumes it.
+    public var idle = false
     public var model: String?
     public var memory: ReplyMemory?
     /// The newest notice from vyred itself, drawn as one faint line under the answer.

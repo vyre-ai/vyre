@@ -805,7 +805,12 @@ public final class CapsuleModel: ObservableObject {
         }
         reply = VyState.cancel(r)
         if r.thread.isEmpty { return }
-        // threads.stop takes {thread}: with {id} it was refused and the process ran on.
+        // A Vyre-owned session (ADR 0030): interrupt the running turn and keep the session, so a
+        // follow-up resumes it. An older switchboard has only threads.stop, which takes {thread}.
+        if vyred.has("threads.interrupt") {
+            Task { [vyred] in _ = await vyred.call("threads.interrupt", ["thread": r.thread], presence: false) }
+            return
+        }
         keeper.stop(r.thread)
     }
 }

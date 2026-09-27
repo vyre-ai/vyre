@@ -4,6 +4,26 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Planner rings by key, and the next 48 hours ring on the Mac
+
+- Capsule banners use each ring's key ("planner-<item>-<due>") as the notification identifier.
+  A box ring and a local ring of the same moment show once, and planner.acked removes the
+  banner and any pending ring by key.
+- On connect the Capsule asks planner.ringing {cursor: true} and follows events from its
+  last_event. It schedules planner.upcoming {hours: 48} as local notifications under the same
+  keys, and removes keys the box no longer lists. The schedule is read again on every planner
+  event except a firing, and on wake. A planner without planner.upcoming schedules nothing.
+- Done and Snooze (9 min) answer by key when the ring has one. An answer given while the box
+  is unreachable is kept and sent by key when the stream opens again.
+
+#### The Capsule on Vyre-owned sessions (ADR 0030)
+
+- Esc on a streaming answer calls threads.interrupt when vyred has it: the turn stops and the
+  session stays, so a follow-up resumes it. An older switchboard gets threads.stop as before.
+- thread.stopped with reason "idle" is not a failure: the answer stands and is marked idle.
+- threads.start refused with "busy" (the box's session cap) says so in words. "Not one vyred
+  runs" now names a terminal session, the only kind Vyre cannot type into.
+
 #### Making the signing identity never waits on a password it cannot ask for
 
 - createIdentity refuses with "needs a terminal" when stdin is not a TTY and no runner was given,
