@@ -38,6 +38,14 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
 ## Doing
 - STOPPED (27 Sep, lead): the user refocused on the native core. Branch queued with the integrator
   for batch 4. The vault fill wiring (vault.agent.fill) waits until after the native core.
+- RESUME 8 (28 Sep): merged work/glass-hotfix (head 57dc12c3) into work/glass-live, new head
+  02d0621b. Targeted tests on testbox (508 run, 494 pass, 0 fail, 14 skipped, Mac-only Chrome
+  binary): computers, glass, names, modules, switchboard, daemon, dockerproxy, hands-chrome,
+  deck/glass, deck-contract, box-init, bearer. Sent the reviewer the head sha and contents (HIGH 1
+  fab3fc0a, HIGH 2 + MEDIUM 4 779cc852/0f17b106/57dc12c3, Downloads fix f10af44e). Chrome runs as
+  uid 1001 (vyre) in core/computers/image/Dockerfile; the agent is uid 1000.
+- Next: agent-browsers slice 1 (docs/design/agent-browsers.md), off main, Chrome under its own
+  uid unable to read .boot, computerd's token, the VNC password or other agents' profiles.
 
 ## Rollout (must ship together)
 - The new computer image and the new vyred go out in the same deploy: the image starts as root and
