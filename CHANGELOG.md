@@ -4,6 +4,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Boundaries: parts import only the kernel, or a frozen exception
+
+- test/boundaries.test.js scans every runtime file under core/, local/ and modules/ for relative
+  imports (static, dynamic, require) into another part. The kernel (core/config, store, events,
+  modules, presence, daemon) is open to all. Today's 26 other edges are frozen in an allowlist,
+  down to the files imported; a new edge or a new file behind one fails, and so does an entry
+  nothing uses any more (the list only shrinks). Tests, testing/ and fixtures are out of scope.
+- docs/architecture/boundaries.md: the rule, and each frozen edge with why it exists and what it
+  becomes (16 lib, 9 ctx.call, 1 surface). In the nav; reference regenerated.
+
 #### The answer eval runs without the Electron Capsule
 
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
