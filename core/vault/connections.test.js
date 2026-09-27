@@ -32,18 +32,29 @@ test("connections: each caller is one surface", () => {
   assert.equal(surfaceOf("mcp:thread:t-9").thread, "t-9");
 });
 
-test("connections: a thread the Capsule started is the capsule surface; any other thread is chat", async () => {
+test("connections: a thread's origin picks its surface, looked up once", async () => {
   const asked = [];
+  const origins = { "t-cap": "capsule", "t-phone": "deck:phone", "t-deck": "deck", "t-old": null, "t-purpose": null };
   const fake = { db: null, key: async () => {}, list: () => ({ items: [] }) };
   const c = new Connections(/** @type {any} */ (fake), { call: async (tool, input) => {
-    asked.push([tool, input]);
-    return { data: { thread: { id: input.thread, purpose: input.thread === "t-cap" ? "capsule" : "chat" } } };
+    asked.push([tool, input.thread]);
+    if (!(input.thread in origins)) return { error: { code: "not_found", message: "no thread" } };
+    return { data: { thread: { id: input.thread, origin: origins[input.thread], purpose: input.thread === "t-purpose" ? "capsule" : "chat" } } };
   } });
   assert.equal(await c.surface("mcp:thread:t-cap"), "capsule");
-  assert.equal(await c.surface("mcp:thread:t-chat"), "chat");
-  assert.deepEqual(asked, [["threads.get", { thread: "t-cap", limit: 1 }], ["threads.get", { thread: "t-chat", limit: 1 }]]);
+  assert.equal(await c.surface("mcp:thread:t-phone"), "phone");
+  assert.equal(await c.surface("mcp:thread:t-deck"), "chat");
+  assert.equal(await c.surface("mcp:thread:t-old"), "chat", "no origin is chat");
+  assert.equal(await c.surface("mcp:thread:t-purpose"), "capsule", "an older switchboard says capsule by purpose");
+  assert.equal(await c.surface("mcp:thread:t-none"), "chat", "an error is chat");
+  assert.equal(await c.surface("mcp:thread:t-cap"), "capsule");
+  assert.equal(await c.surface("mcp:thread:t-phone"), "phone");
+  assert.deepEqual(asked.filter(([, th]) => th === "t-cap" || th === "t-phone").length, 2, "cached per thread");
+  assert.equal(asked[0][0], "threads.get");
   const none = new Connections(/** @type {any} */ (fake), { call: async () => ({ error: { code: "no_such_tool", message: "no" } }) });
   assert.equal(await none.surface("mcp:thread:t-cap"), "chat", "with no switchboard a thread is chat");
+  const throws = new Connections(/** @type {any} */ (fake), { call: async () => { throw new Error("down"); } });
+  assert.equal(await throws.surface("mcp:thread:t-cap"), "chat");
 });
 
 test("connections: capabilities from tool names, by a small pattern table", () => {

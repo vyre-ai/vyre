@@ -426,7 +426,8 @@ the change survives every resync and re-register. `use` is a map from capability
 
 - Surfaces: `capsule`, `chat`, `agents`, `phone`. A new connection is granted to `capsule` and
   `chat`; `agents` is opt-in. The caller decides the surface: `capsule`, `mobile` (phone),
-  `mcp` and `mcp:thread:<id>` (chat, or capsule when the thread's purpose is `capsule`),
+  `mcp` (chat), `mcp:thread:<id>` (by the thread's `origin` from threads.get: `capsule` is the
+  capsule, one ending `:phone` the phone, anything else chat),
   `mcp:agent:<n>` and `tailnet:agent:<n>` (agents). `cli`, `local`, `deck` and the owner's own
   device at the box's tailnet address are the person at a settings screen and see everything.
 - `vault.connections.list {capability?, surface?, caller?}` (people's surfaces, mcp and modules)

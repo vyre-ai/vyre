@@ -132,7 +132,7 @@ mobile and the Capsule (through their owners).
 - capsule-pro: replace "Run: vyre voice key" (SightExtension.swift:400-402) with an inline secure field that calls
   vault.connect {module:"voice", need}; an account chooser from vault.connections.list {capability}.
 - native-core: the "Vault, Connections" entry in the settings hub (list, grant per surface, connect sheet).
-- sessions: confirm threads.get's `thread.purpose === "capsule"` is how a Capsule thread is told apart (9b uses it).
+- sessions: 9b reads threads.get `thread.origin` (sessions db4af9c3, not on main yet); falls back to purpose, then chat.
 - lead: `tailnet:<login>` (the owner's own device on the box) counts as the person, like the Deck; the phone
   arrives that way too, so "phone" is only the `mobile` caller today. Is that right?
 - connectors: google.connect wants a `client` item; what should vault.connect's oauth `next.input` carry?

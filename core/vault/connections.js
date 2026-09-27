@@ -198,6 +198,8 @@ export class Connections {
     this.now = deps.now || Date.now;
     /** When last_used was last written, per row, so a busy row writes once a minute. @type {Map<string, number>} */
     this.touched = new Map();
+    /** A thread's surface, from its origin, once looked up. @type {Map<string, "capsule"|"phone"|"chat">} */
+    this.threads = new Map();
     /** Sources synced since start; one not yet synced is synced before anything is read. */
     this.synced = new Set();
     /** Resyncs run one at a time, in order; readers wait for the queue. @type {Promise<any>} */
@@ -445,19 +447,33 @@ export class Connections {
   }
 
   /**
-   * The surface a caller is, with an mcp:thread looked up through threads.get: a thread whose
-   * purpose is "capsule" was started by the Capsule.
+   * The surface a caller is. An mcp:thread is looked up once through threads.get and kept in
+   * memory: its `origin` "capsule" is the capsule, one ending ":phone" ("deck:phone") the phone,
+   * and anything else, null included, chat. An older switchboard without origin says capsule by
+   * `purpose`. No switchboard, or an error, is chat.
    * @param {string} caller
    */
   async surface(caller) {
     const s = surfaceOf(caller);
-    if (s.thread && this.call) {
+    if (!s.thread) return s.surface;
+    const known = this.threads.get(s.thread);
+    if (known) return known;
+    let found = /** @type {"capsule"|"phone"|"chat"} */ ("chat");
+    let answered = false;
+    if (this.call) {
       try {
-        const t = await this.call("threads.get", { thread: s.thread, limit: 1 });
-        if (t && t.data && t.data.thread && t.data.thread.purpose === "capsule") return "capsule";
+        const t = await this.call("threads.get", { thread: s.thread, id: s.thread, limit: 1 });
+        const rec = t && t.data && t.data.thread;
+        if (rec) {
+          answered = true;
+          const origin = typeof rec.origin === "string" ? rec.origin : "";
+          found = origin === "capsule" || (!origin && rec.purpose === "capsule") ? "capsule" : /:phone$/.test(origin) ? "phone" : "chat";
+        }
       } catch { /* no switchboard: chat */ }
     }
-    return s.surface;
+    // Only an answer is kept: a switchboard that was not up yet is asked again next time.
+    if (answered) this.threads.set(s.thread, found);
+    return found;
   }
 
   /**
