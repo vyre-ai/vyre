@@ -8,15 +8,16 @@ status: draft
 
 # Layout and navigation
 
-One tree, three shapes. Layout reads the window's width, never the platform: a phone in landscape,
-an iPad and a narrow desktop window follow the same rules. Components also check their own
+One tree, three shapes. Layout reads the window, never the platform: an iPad and a narrow desktop
+window follow the same rules, and a phone turned sideways stays a phone. The one query, in CSS:
+`(max-width: 719px), (max-height: 500px) and (pointer: coarse)`. Components also check their own
 container, so the composer and cards fit inside a split pane.
 
 ## Breakpoints
 
 | Width | Shape |
 |---|---|
-| under 720 | The phone shell: pages you swipe, the floating Capsule, the Places sheet, pushed screens |
+| under 720, or a short touch screen (height 500 or less with a coarse pointer: a phone in landscape) | The phone shell: pages you swipe, the floating Capsule, the Places sheet, pushed screens |
 | 720 to 1099 | The rail and a list; the detail replaces the list below 900 and sits beside it from 900 |
 | 1100 to 1399 | Rail 72, list 320 (resizable 240 to 480), detail capped at 820 for reading |
 | 1400 and up | Adds the side panel (340): plan and todos, changed files, the agent's computer |
