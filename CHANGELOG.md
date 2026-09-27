@@ -753,7 +753,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   app's current file: `tokens`, `Scheme`, `Colors`, `attention()`), the Capsule's
   local/capsule/native/Sources/UI/Tokens.generated.swift and deck/css/tokens.css (the Deck's
   selectors and role names, incl. --beacon-ink, --beacon-dot, --beacon-badge-ink). `--check` exits
-  1 when a file is stale; `--ts/--swift/--css <path>` write one output elsewhere. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
+  1 when a file is stale; `--ts/--swift/--css <path>` write one output elsewhere.
+- tokens.json gains `popover` (the Deck's menu shadow, dark and paper); tokens.css gains --popover
+  and --radius-* from the radius scale. Writing and `--check` both skip a surface whose root
+  folder (apps/app, local/capsule/native, deck) is not in the tree. The status keys (needsYou, failed, running, unread, done) are a stable contract. Mono is
   now a list of sizes (12, 13), not a size and line pair; phone type steps get their own enum.
   Tests in test/tokens.test.js.
 
