@@ -1,0 +1,329 @@
+---
+title: ADR 0033: Hackable Vyre
+summary: A stable, versioned module API, an extension point for every part, user modules and overrides that survive updates, `vyre update` with channels and rollback, and third-party modules installed as grants.
+audience: builders
+owner: platform
+status: draft
+---
+
+# ADR 0033: Hackable Vyre
+
+Status: proposed, 27 Sep 2026 · Workstream: platform ·
+Builds on the module contract (SPEC section 5, docs/build/module-contract.md), ADR 0008 (install
+journey), ADR 0030 (sessions and providers), the settings registry (native-core) and
+docs/architecture/boundaries.md (ci).
+
+## Context
+
+Vyre is open source and already "everything is a module": `core/modules/index.js` loads folders
+with a `module.json`, and modules reach each other only through `ctx.call` and events. The person
+wants more than that. Anyone should be able to make Vyre their own, build a module for any part,
+change things their own way, and still get every update the project ships.
+
+What works today for an outside author, without editing the repo:
+
+- A folder in `<home>/modules/<name>/` loads, with tools, events, vault needs, memory teaching,
+  streams and routes. Its tools reach MCP, HTTP, `vyre call` and (through `shows.capsule`) the
+  Capsule.
+- Watchers (`<home>/watchers/`), colour overrides (`config.theme.colors`), per-agent instructions,
+  and external MCP servers through the hub.
+
+Everything else is a hard-wired list inside the repo: Deck routes and settings sections, chat
+tool cards, Now cards, CLI verbs, harness brief and enrich, Gate senders, @App adapters, and
+prompt layers. There is no API version, no way to replace a first-party module (the first module
+found wins and a duplicate is marked invalid), no update command on the Mac, and no release
+pipeline: vyre.run always serves one unversioned `vyre.tgz`, and `package.json` says `0.0.1`.
+The full inventory is in the appendix.
+
+## Decision
+
+### 1. A stable, versioned module API
+
+**The manifest gets a schema and an API version.**
+
+- `core/modules/manifest.schema.json` is the one definition. The loader validates against it,
+  `vyre module check` runs it, and the SDK types are generated from it.
+- New required field for modules outside the repo: `"apiVersion": 1`. It is an integer that moves
+  only on a breaking change. First-party modules get it too; a missing value means 1 during a
+  grace period.
+- Vyre supports the current major and the one before it. A module asking for a newer major is
+  not loaded, and `vyre modules` says "needs Vyre with module API 2; you have 1".
+- Additions inside a major (a new ctx method, a new manifest key) are feature-tested, not
+  versioned: `ctx.api.has("settings")`.
+- `requires` may carry ranges: `"requires": { "memory": ">=1.2" }`. The list form stays valid.
+
+**The v1 manifest.** It keeps the five verbs and adds keys only where an extension point needs
+one:
+
+| Key | Meaning | New? |
+|---|---|---|
+| `name`, `version`, `apiVersion`, `description`, `main`, `roles`, `requires` | identity and load order | `apiVersion`, ranges |
+| `does.tools` | tools it registers | |
+| `does.providers` | session drivers (ADR 0030) | on work/sessions |
+| `does.hooks` | harness hook points it contributes to (section 2) | yes |
+| `does.senders` | Gate sender types it adds | yes |
+| `does.apps` | @App adapters it adds, as tools | yes |
+| `does.commands` | CLI verbs, each mapped to a tool (builds `shows.cli`) | yes |
+| `watches.emits` | event types it may emit | |
+| `watches.on` | event patterns it may subscribe to | yes |
+| `shows.deck`, `shows.capsule`, `shows.streams` | UI slots and streams (section 2) | slot grammar |
+| `settings` | its settings, in the native-core registry's `Def` shape | yes |
+| `needs.vault`, `needs.tools`, `needs.network`, `needs.slots` | capabilities the person approves | `tools`, `network`, `slots` |
+| `teaches.memory`, `teaches.prompt` | facts for the curator; prompt layers | `prompt` |
+| `replaces` | the first-party module it stands in for (section 3) | yes |
+
+**The v1 ctx surface.** This is what an outside module may rely on. Anything not listed is
+internal and may change in a minor release.
+
+| Member | What it does |
+|---|---|
+| `ctx.name`, `ctx.api.{version, has}` | identity and feature tests |
+| `ctx.log.{info, warn, error, debug}` (and `ctx.log(msg)`) | module-prefixed logs; `vyre logs <module>` |
+| `ctx.call(tool, input)` | the only way to use another module; home modules are held to `needs.tools` |
+| `ctx.tool(name, def)` | register a declared tool (`description`, `input`, `run`, `callers`, `presence`) |
+| `ctx.events.{emit, on, since, latestId}` | emit declared types; subscribe to declared patterns |
+| `ctx.settings.{get, set, on}` | its own declared keys, resolved project over account over default |
+| `ctx.store.{db, migrate}` | its own tables (the prefix is enforced at migrate) |
+| `ctx.paths.data` | its own folder, `<home>/data/<module>/` |
+| `ctx.vault.fetch(name)` | a secret it declared and the person granted |
+| `ctx.memory.teach(kind, fact)` | a declared fact kind |
+| `ctx.upgrade`, `ctx.route` | streams and routes it declared |
+
+Whole-config access (`ctx.config`), `ctx.remote` and the raw `paths` stay for first-party modules
+and are marked internal in the types. Modules that read `ctx.config.<mine>` today move to
+`ctx.settings` as they are touched; nobody refactors them for this ADR alone.
+
+**Deprecation rules.**
+
+- A ctx member or manifest key is deprecated in a minor release, with a replacement that works in
+  the same release.
+- It keeps working for at least 90 days and two minor releases. `vyre modules` and `vyre doctor`
+  name every module still using it, and the loader logs it once per start.
+- It is removed only when the API major moves. Every removal is in the changelog under
+  "Module API".
+
+**Published types.** `packages/module-sdk/` holds `index.d.ts` (the ctx and manifest types,
+generated from the schema and the JSDoc in `core/modules`), the schema, and `testing.js`: a fake
+registry and temp home so a module's own tests run without a daemon. It publishes as
+`@vyre/module-sdk` with the first npm release (npm publish is deferred by the person; until then
+`vyre module new` copies the installed version's types into the new module's `types/`).
+
+### 2. Extension points for every part
+
+The rule for every slot: **declarative first, code second.** A module describes what it wants in
+the manifest; code runs only where a description can't do the job.
+
+| Part | Extension point | Today | v1 plan |
+|---|---|---|---|
+| Tools | `does.tools` + `ctx.tool` | works | `needs.tools` enforced for home modules |
+| Events | `watches.emits` + `ctx.events` | emit enforced, subscribe open | `watches.on` enforced for home modules |
+| Providers | `does.providers` | on work/sessions, with a conformance test | adopt as is |
+| Hooks (harness) | none; `core/harness` calls a fixed list | missing | `does.hooks`: `brief`, `enrich`, `pretool`, `stop`. Each maps to a tool the harness calls with a 300 ms budget. `pretool` may only tighten a verdict (allow to ask or deny), never loosen it |
+| Internal middleware | none | missing | not planned: the floor stays one function in the kernel |
+| Gate senders | fixed `TYPES` map (gmail, http) | missing | `does.senders`: a tool that runs only after the Gate approved the item; the Gate still owns approval, presence and the log |
+| Capsule @App adapters | `BUILTIN` list, Swift extensions compiled in | missing at runtime | `does.apps`: adapter actions become tools; a `sends` action goes through the Gate like any outbound; Swift extensions stay compile-time |
+| Watchers | `<home>/watchers/` | works | unchanged; later, a module may ship watchers |
+| Themes and tokens | `config.theme.colors` (colours only) | partial | a theme file (tokens JSON: colours, fonts, radii, spacing), from the person's overrides or a module's `themes/`; `/theme.css` for the Deck and `/v1/theme` for the Capsule |
+| Prompt layers | per-agent instructions, project brief | partial | `teaches.prompt`: markdown files at account, project or agent level, ordered, capped in length, shown in Settings > Prompt with their source |
+| Settings | none per module | missing | `settings` in the manifest, merged into native-core's registry, so each key gets a Deck row and `vyre config` with no UI work |
+| CLI verbs | a folder scan of `core/cli/commands` | missing | `does.commands`: `vyre <module> <verb>` mapped to a tool, with args from its input schema |
+| Deck views and panels | static `ROUTES`, `PLACES` | missing | `shows.deck` slots (below) |
+| Settings sections | static `SECTIONS` | missing | generated from `settings` groups |
+| Chat message renderers | `switch (b.tool)` in deck/chat/blocks.js | missing | `renderer:<tool>` slot: a declarative card (title, fields, diff, link) first, code later |
+| Slash commands | Claude Code's own | n/a | `slash:<name>` maps to a tool or a prompt layer |
+| Now cards | fixed in deck/views/now.js | missing | `now:<tool>`: a tool that returns cards in one card shape |
+| Capsule | `shows.capsule` (`results:`, `action:`) | works | adopt; document the key grammar and warn on unknown keys |
+
+**UI code and trust.** A Deck script runs with the person's rights: it can call person-only
+tools as `deck`. So module UI code never runs in the Deck's own page unless it is first-party.
+A third-party view or custom renderer loads in a sandboxed iframe on its own origin
+(`/m/<module>/`), talks to the Deck by `postMessage`, and every tool call it makes goes out as
+`module:<name>`, so the floor treats it as a module, never as the person. Declarative slots need
+no code at all, which is why they come first. app-design owns how slots look; pwa owns the loader.
+
+### 3. User modules and overrides that survive updates
+
+The home holds everything the person made. An update never writes there, except forward store
+migrations and the derived files that are listed in the release (the built Capsule app, the
+status line script).
+
+```
+<home>/
+  modules/<name>/         their own modules and ones they added
+  overrides/prompt/*.md   prompt layers (account level)
+  overrides/theme.json    token overrides
+  data/<module>/          each module's own files
+  modules.lock.json       what was added, from where, which version, which grants
+```
+
+- **Disable any module:** `vyre module disable <name>` writes `config.modules.disable`. Modules
+  that require it show "off: needs <name>" instead of failing the start. The kernel and the floor
+  (config, store, events, modules, presence, daemon, gate, harness rules, vault) can't be
+  disabled.
+- **Replace a first-party module:** a home module declares `"replaces": "memory"`. It must
+  register every tool the original declares, with compatible inputs, or it is refused and the
+  original loads. The same floor list can't be replaced. After an update, `vyre doctor` names any
+  replacement whose original gained tools ("your memory replacement lacks memory.answer, new in
+  0.4").
+- **Patch prompt and theme layers:** files in `overrides/`, read after the shipped layers, shown
+  with their source in Settings.
+
+### 4. Updates
+
+What exists: the box's `vyre update` (box/vyre) refetches `vyre.tgz`, checks it against
+`SHA256SUMS`, rebuilds the image and restarts; `vyre box update` runs it from the Mac. `vyre up`
+restarts a stale vyred. The gaps: no update on the Mac, no versions (always `0.0.1`, so the
+Mac-box comparison is blind), no channels, no backup before an update, no rollback (`src.old` is
+deleted at once), the box files and the wrapper never refresh, and no release workflow in
+GitHub Actions.
+
+**Releases.** A tag `vX.Y.Z` (or `vX.Y.Z-beta.N`) runs a release workflow that builds `vyre.tgz`,
+the box files and `SHA256SUMS`, puts them on a GitHub Release with that version's CHANGELOG
+section as the notes, and writes `releases.json` (channel, version, url, sha256, notes url, the
+lowest version it can update from). vyre.run mirrors the latest stable, so today's install lines
+keep working. Versions start at `0.1.0` with the first tagged release. npm and a ghcr image come
+later, when the person says so; `vyre update` reads `releases.json`, so the source can change
+without a client change. A release signature (minisign, key in the vault) is phase 5.
+
+**`vyre update` on the Mac** (new, top-level):
+
+1. Read `releases.json` for the channel (`update.channel`: `stable` or `beta`).
+2. Show the changelog from the running version to the target. `--check` stops here.
+3. `vyre backup` into `<home>/backups/pre-<version>/` and keep the current tarball in
+   `<home>/releases/` (the last two are kept).
+4. Install the new tarball after checking its sha256, restart vyred (the existing stale-daemon
+   logic in `vyre up`), and wait for `/v1/health` to report the new version.
+5. If health fails, reinstall the previous tarball and restore the backup (store migrations are
+   forward-only, so the database comes back from the backup, not by undoing steps).
+
+`vyre update --rollback` runs step 5 by hand. The person typed the command, so there is no
+confirmation prompt (the no-nag rule).
+
+**`vyre update` on the box** (box/vyre, extended): the same steps, plus it refreshes the box
+files and the wrapper itself from the release, tags the running image `vyre:prev` and keeps
+`src.prev` instead of deleting it, and backs up the database before the rebuild.
+`vyre box update` from the Mac runs it and then offers the Mac the same version.
+
+**Config migrations.** `config.json` gets a `configVersion` and ordered steps in `core/config`,
+run at start, with the file backed up first. Store migrations stay per module.
+
+**Auto-update.** `update.auto` is `notify` by default: vyred checks once a day (well inside the
+60 s rule), emits `update.available`, and Now shows one quiet card. `install` updates at a quiet
+hour when no session is running. `off` never checks. Modules added from outside update with
+`vyre module update`, pinned in `modules.lock.json`, never silently.
+
+### 5. Third-party modules
+
+```
+vyre module new <name> [--kind tool|provider|ui] [--path <dir>]
+vyre module add github:user/repo[#ref] | npm:pkg[@range] | ./path
+vyre module list | check <path> | test <name> | update [name]
+vyre module disable <name> | enable <name> | remove <name>
+```
+
+- `new` scaffolds from `templates/module/` (the same files as the template repo): manifest,
+  `index.js`, a test using `@vyre/module-sdk/testing`, README, and `jsconfig.json` for
+  autocomplete. It goes to `<home>/modules/<name>` unless `--path` is given.
+- `add` fetches into a staging folder, validates the manifest and `apiVersion`, and shows a
+  capability summary: the tools it calls, the vault items it wants, the hosts it talks to, the
+  UI slots it fills, and whether it replaces a first-party module. The person accepts it once;
+  that acceptance is recorded as a grant in `modules.lock.json` with the source, version and
+  integrity hash. An update that widens the capabilities asks again. `./path` installs as a
+  symlink for development and reloads the module when its files change.
+- Vault items go through the existing grant flow, so Touch ID appears only where it already does
+  (revealing or granting a secret). Plain adding is one confirmation in the terminal, not Touch
+  ID.
+- Adding, enabling and replacing are person-only tools (`modules.add`, `modules.enable`,
+  `modules.replace`). An agent may scaffold with `new` in a project, but it can't make code run
+  in the daemon.
+
+**The floor and the Gate still apply.** A module's calls go through the registry as
+`module:<name>`: person-only tools are refused, the rules run on its input, `gate.approve` is
+refused unless the person named it an approver, and `CALL_AS` stays limited to first-party modules
+under `core/`. Outbound sends go through the Gate as drafts.
+
+**Out of process, later.** In-process JavaScript can import `node:fs` or `node:child_process` and
+step around ctx. So v1 is honest about it: enforcement covers everything that passes through ctx
+(tools, events, vault, settings, store prefixes), and `needs.network` is a declaration, not a
+wall. Adding a third-party module is trusted like installing an npm package, and `vyre module
+add` says so in one line. Recorded decision: untrusted modules should run out of process. Phase 5
+builds a module host: a child process under Node's permission model
+(`--permission --allow-fs-read=<module dir>,<data dir>`) that speaks the ctx surface over an RPC
+channel to the registry, with network limited by the host. On the box it can go further, into a
+separate container. Modules added from the internet then default to the host, and `--trusted`
+keeps a module in process.
+
+### 6. Thinning the kernel
+
+The ratchet in test/boundaries.test.js holds 26 frozen edges. Burning them down starts **after
+the native-core milestone**, one small branch per step, each merged green:
+
+1. **A `lib/tailnet`**: `core/names/tailscale.js` and `core/link/transport.js` move into a pure
+   lib. This removes 7 edges (files, hooks, link, network and onboard into names; names and files
+   into link) and the names/link cycle.
+2. `lib/credentials` from `core/connectors/auth.js` (google, mcp): 2 edges.
+3. `lib/resilience` for the reference client (cli): 1 edge. `lib/transcripts` for recall: 1 edge.
+4. The ctx.call edges: cli into names, recall and voice; daemon into names (guests) and
+   switchboard; onboard into names.
+5. The floor (`core/harness/rules.js`) moves into the kernel as `core/floor`, since the kernel
+   runs it on every call.
+
+The boundary test learns that `lib/*` is shared pure code (ci owns the test). What stays after
+this is the kernel plus surfaces (the CLI's own vault terminal code).
+
+### 7. Docs
+
+- `docs/build/writing-a-module.md` becomes **Build your first module**: in about 15 minutes, a
+  module with one tool, one setting, one Now card and a passing test, run with `vyre module new`
+  and `vyre module test`, in the sample world (a Northwind Bakery order counter).
+- `docs/build/module-api.md`: the v1 reference, generated from the schema and the types, with a
+  deprecation table.
+- `docs/build/extension-points.md`: the table in section 2, kept current as slots land.
+- The template repo `vyre-ai/module-template` is generated from `templates/module/` by the release
+  workflow, with a CI job running `vyre module check` and its tests. It is created only when the
+  person OKs a new public repo.
+- The docs drift found in the inventory gets fixed with the schema: SPEC's `requires` example
+  names non-modules, `shows.deck` is documented but unread, `ctx.events.latestId` is undocumented,
+  and the entry-file sketch imports a type that doesn't exist.
+
+## Build plan
+
+| Phase | What | Touches shared code? | Waits on |
+|---|---|---|---|
+| 0 | This ADR, the inventory, `manifest.schema.json`, SDK types skeleton, docs drift fixes | no | the lead's OK |
+| 1 | `apiVersion` and schema checks in the loader; `ctx.api`, `ctx.log` levels, `ctx.paths.data`, `ctx.settings`; the `settings` manifest key into native-core's registry; `watches.on` and `needs.tools` for home modules; `replaces` and disable; `vyre module new/list/check/disable/enable` | loader only (`core/modules`) | native-core's settings on main |
+| 2 | Release workflow, versions from 0.1.0, `releases.json`; `vyre update` on the Mac and the box with backup, rollback, box file refresh, channels, `update.available` | box/vyre, cli | ci, box-deploy, polish-cli (verbs) |
+| 3 | `vyre module add/remove/update`, `modules.lock.json` grants, `@vyre/module-sdk/testing`, `templates/module/`, Build your first module | new files | phase 1 |
+| 4 | Slots: declarative settings, Now cards, renderers and slash commands; then the sandboxed iframe for custom UI. Hooks, senders, @App adapters, themes and prompt layers | Deck, harness, gate | app-design, pwa, sessions, chat |
+| 5 | Out-of-process module host; release signing; kernel thinning steps 1 to 5 | kernel edges | the native-core milestone |
+
+## Open questions
+
+1. Versioning: start at `0.1.0` on the first tagged release, and keep the module API at 1 while
+   Vyre is 0.x? (Recommended.)
+2. Release signing key: minisign, held in the vault, used by the release workflow through a
+   GitHub secret. Who holds the key: the person.
+3. Custom module UI in a sandboxed iframe on its own origin, first-party inline only. (Recommended.)
+4. A public template repo `vyre-ai/module-template`: needs the person's OK.
+5. A community module list (a GitHub topic `vyre-module` first, a page on docs.vyre.run later).
+
+## Appendix: inventory, 27 Sep 2026 (main c8fb9aae)
+
+Works for outside authors: tools and ctx.call through the registry and floor
+(`core/modules/index.js:344`), events (`:228`), vault needs and grants (`:254`), memory teaching
+(`:265`), streams and routes (`:289`, `:310`), `shows.capsule` results and actions
+(`local/capsule/native/Sources/Vyred/ModuleProviders.swift`), watchers (`core/watchers/runtime.js`),
+colour overrides (`core/config/theme.js`), per-agent instructions (`core/agents/index.js:44`),
+MCP servers through the hub.
+
+Hard-wired, needs a repo edit: floor sets (`core/presence/index.js:22,61-84`), Gate sender types
+(`core/gate/senders.js:191`), harness brief and enrich (`core/harness/index.js:52-206`), the
+session runner (`core/switchboard/runner.js`), @App adapters (`local/apps/adapters/index.js:28`),
+Deck routes and rail (`deck/js/app.js:25-66`), settings sections (`deck/views/settings.js:21`),
+chat tool cards (`deck/chat/blocks.js:163`), Now cards (`deck/views/now.js`), CLI verbs (a folder
+scan, `core/cli/index.js:24`), fonts and spacing, and prompt layers beyond agents and projects.
+
+Loader facts: roots are the repo's `core`, `local`, `modules`, then `<home>/modules`
+(`core/daemon/index.js:42`); the first name found wins and a duplicate is marked invalid
+(`core/modules/index.js:178`); `config.modules.{enable,disable}` and `roles` exist (`:186`); no
+`apiVersion`, no hot reload, and `shows.deck` values are declared but unread.

@@ -4,6 +4,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### ADR 0033: Hackable Vyre (proposed)
+
+- docs/adr/0033-hackable-vyre.md: a versioned module API (apiVersion, a manifest schema, the v1
+  ctx surface, deprecation rules, published types), an extension point for every part, user
+  modules and overrides that survive updates, `vyre update` with channels and rollback, third-party
+  modules added as grants, and the order for thinning the kernel. Design only; no code changes.
+
 #### The answer eval runs without the Electron Capsule
 
 - scripts/eval-answer.js reads said lines through scripts/lib/said.js, the Electron Capsule's said.js
