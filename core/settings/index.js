@@ -12,9 +12,8 @@
 // caller to pass confirm: true after showing the person what changes. Agents may read settings,
 // and settings.resolve hands a starting session its Vyre-owned values.
 
-import os from "node:os";
-import path from "node:path";
 import { coerce, read, write, whereIs, needsConfirm } from "../config/settings.js";
+import { claudeHome } from "../config/index.js";
 
 const PEOPLE = ["cli", "local", "deck", "capsule"];
 const MIGRATIONS = [
@@ -88,7 +87,8 @@ export default {
       root: ctx.paths.root,
       live: ctx.config,
       call: (tool, input, as) => (as ? ctx.call(tool, input, { as }) : ctx.call(tool, input)),
-      claudeDir: () => conf().claude_dir || process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude"),
+      // A temp, dev or trial home gets <root>/claude, never the person's ~/.claude (claudeHome).
+      claudeDir: () => conf().claude_dir || claudeHome(ctx.paths.root),
       projectHome: async slug => {
         const r = await ctx.call("projects.list", {});
         const list = r && r.data ? (Array.isArray(r.data) ? r.data : r.data.projects) : null;

@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Settings never read the person's ~/.claude from a temp home
+
+- core/settings: Claude Code's account settings file comes from claudeHome(root), so a temp, dev
+  or trial home reads and writes <root>/claude, and only the person's own ~/.vyre reaches
+  ~/.claude (or CLAUDE_CONFIG_DIR). test/temp-home-claude.test.js caught it in batch 4.
+
 #### The cohesion drift list starts from batch 4's code
 
 - test/cohesion-drift.test.js freezes the model and policy copies batch 4 brought (the Deck's
