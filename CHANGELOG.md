@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The CLI gets the same 30-minute window for the vault as the Deck
+
+- `vyre vault get --reveal`, copy, one-time codes, approve and grant asked for a proof on every
+  call from a terminal. Now one Touch ID (or a Capsule or passkey proof) from a login terminal
+  covers that terminal's vault.reveal, vault.copy, vault.totp, vault.approve and vault.grant for
+  30 minutes, for items that do not ask every time. Nothing is written to disk: vyred keeps the
+  terminal in memory, named from the kernel (the socket peer's pid, its controlling terminal, and
+  `who`'s login list), gated on the peer ancestry check, so a process under `claude`, a detached
+  process, or a tmux/script pty never rides it. A terminal code proves one call and opens no
+  window. `core/presence/index.js` (`terminal` in verify), `core/daemon/index.js` (atTerminal),
+  `core/daemon/peer.js` (`controllingTty`), `core/modules/index.js`, `docs/concepts/presence.md`,
+  tests in `core/presence/presence.test.js`, `test/presence-cli.test.js`, `test/peer.test.js`.
+
 #### Memory and lesson changes ask nothing; vault sessions cover grants on the Deck; the Mac update line works
 
 - `vyre memory correct`, `merge` and `split` asked for the code on the terminal (or Touch ID) on
