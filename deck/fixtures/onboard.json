@@ -37,7 +37,7 @@
       "devices": {
         "state": "todo",
         "phoneUrl": "https://alex.tail-example.ts.net/now",
-        "macDownload": "https://vyre.run/box/Vyre-mac.zip",
+        "macDownload": "https://vyre.run/download/mac",
         "mac": {
           "connected": false
         }

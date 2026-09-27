@@ -93,7 +93,8 @@ in the conversation.
 2. Press **Send** (Command-Enter) to approve exactly what the card shows, or **Discard** to reject
    it.
 
-The box may ask for your passkey first (see [Deck](deck.md#add-a-passkey)). If the send fails,
+The first Send may ask for your passkey (see [Deck](deck.md#add-a-passkey)); one proof covers
+30 minutes on this device. Editing and Discard ask for nothing. If the send fails,
 the card says "failed:" with the reason, and Send tries again.
 
 ## Sessions from your Mac

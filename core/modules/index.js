@@ -134,7 +134,8 @@ export const callerKind = caller => {
  * @param {string[]|null|undefined} callers
  */
 export const callerAllowed = (callers, caller) => !callers || callers.includes(callerKind(caller))
-  || (callers.includes("deck") && ownerOverTailnet(caller));
+  || (callers.includes("deck") && ownerDevice(caller))
+  || (callers.includes("tailnet") && ownerDevice(caller));
 
 /**
  * The box's owner on their own device at the box's address: the tailnet listener names only the
@@ -142,6 +143,14 @@ export const callerAllowed = (callers, caller) => !callers || callers.includes(c
  * agent's node `tailnet:agent:`. The owner's Deck and phone always arrive this way on a box.
  */
 export const ownerOverTailnet = caller => /^tailnet:(?!agent:)./.test(String(caller));
+
+/**
+ * The owner on one of their own devices, however it reached the box: over the tailnet
+ * (`tailnet:<owner>`), or a device paired through the relay (`device:<id>`, ADR 0026), which only
+ * the relay module's listener names. A person who may ask; presence still decides every
+ * human-only call. A guest, an agent's node and a socket label are never one.
+ */
+export const ownerDevice = caller => ownerOverTailnet(caller) || /^device:[a-z2-7]{16}$/.test(String(caller));
 
 export class Registry {
   /**

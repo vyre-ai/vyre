@@ -14,7 +14,7 @@
 import { follow as followStream } from "../../resilience/stream.js";
 import { open } from "../../resilience/node.js";
 import path from "node:path";
-import { call } from "../../daemon/client.js";
+import { call, write } from "../../daemon/client.js";
 import * as config from "../../config/index.js";
 import { untilde } from "../../config/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
@@ -35,8 +35,9 @@ const FLAGS = {
 // else, so a script can drive threads without parsing the words meant for a person (kit.js).
 const fail = (msg, next) => kitFail(msg, { next });
 /** A tool call that prints its own error, in the mode this run is in. */
-async function tool(name, input) {
-  const r = await call(name, input);
+async function tool(name, input, { once = false } = {}) {
+  // A write made `once` carries a key and rides out a vyred restart (ADR 0029, R2).
+  const r = once ? await write(name, input) : await call(name, input);
   if (r.error) { failTool(r.error); return null; }
   return r.data;
 }
@@ -270,7 +271,7 @@ const run = {
     if (!ref || !words.length) return usage("vyre threads send <thread> <text>", "vyre threads list shows the threads");
     const f = await resolveThread(ref);
     if ("error" in f) return missed(f);
-    const r = await tool("threads.send", { thread: f.id, text: words.join(" "), surface: SURFACE });
+    const r = await tool("threads.send", { thread: f.id, text: words.join(" "), surface: SURFACE }, { once: true });
     if (!r) return 1;
     if (json()) { emit(r); return r.sent ? 0 : 1; }
     if (r.sent) { out(dim(`  sent · vyre threads watch ${id8(f.id)}`)); return 0; }
@@ -344,7 +345,7 @@ const run = {
     if (!ref || !["allow", "deny"].includes(decision)) return usage("vyre threads answer <ask> allow|deny [message]", "vyre threads asks lists the open ones");
     const f = await resolveAsk(ref);
     if ("error" in f) return missed(f);
-    const r = await tool("threads.answer", { ask: f.id, decision, ...(words.length ? { message: words.join(" ") } : {}), surface: SURFACE });
+    const r = await tool("threads.answer", { ask: f.id, decision, ...(words.length ? { message: words.join(" ") } : {}), surface: SURFACE }, { once: true });
     if (!r) return 1;
     if (json()) { emit(r); return r.answered ? 0 : 1; }
     if (r.answered) { out(`  ${decision === "allow" ? signal("allowed") : beacon("denied")} ${dim(r.ask)}`); return 0; }

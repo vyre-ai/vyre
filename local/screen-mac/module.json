@@ -1,0 +1,12 @@
+{
+  "name": "screen",
+  "version": "0.1.0",
+  "description": "Screen context on macOS: the front app, window, focused control, URL and visible text, kept current by accessibility notifications, redacted in secure fields and blind in the floor's places. On demand screenshots.",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["screen.context", "screen.shot"] },
+  "watches": { "emits": [] },
+  "shows": {},
+  "needs": {},
+  "teaches": {}
+}

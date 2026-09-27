@@ -1,0 +1,12 @@
+{
+  "name": "sideview",
+  "version": "0.1.0",
+  "description": "The side view on macOS: a session on the left and Chrome (or Glass on the box) filling the rest, tiled through the accessibility API in one call, and put back on close.",
+  "roles": ["local"],
+  "requires": [],
+  "does": { "tools": ["sideview.open", "sideview.close", "sideview.status"] },
+  "watches": { "emits": [] },
+  "shows": {},
+  "needs": {},
+  "teaches": {}
+}

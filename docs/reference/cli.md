@@ -57,7 +57,9 @@ In the order `vyre help` lists them.
 | [`vyre link`](#vyre-link) | pair this Mac with your box, or approve a Mac on the box |
 | [`vyre send`](#vyre-send) | send files from this Mac to your box with Taildrop |
 | [`vyre apps`](#vyre-apps) | drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow |
+| [`vyre sideview`](#vyre-sideview) | this session on the left, Chrome filling the rest |
 | [`vyre statusline`](#vyre-statusline) | Vyre's line under every Claude Code session |
+| [`vyre voice`](#vyre-voice) | push-to-talk from the terminal (Enter to talk), status, and the speech key |
 | [`vyre mcp`](#vyre-mcp) | the Vyre MCP server on stdio, for plain claude |
 | [`vyre backup`](#vyre-backup) | copy config, store, vault, watchers and certificates into one file |
 | [`vyre presence`](#vyre-presence) | the keys that prove you are here, and a code to enroll a passkey |
@@ -232,7 +234,7 @@ vyre agents [list|create|update|ask|threads|usage|stop|delete] … [--json]
 The Mac command bar: Control twice, anywhere.
 
 ```
-vyre capsule [--dev] | build [--app] | install
+vyre capsule [--hidden] | install
 ```
 
 ### vyre memory
@@ -405,12 +407,28 @@ Drive the Mac's apps: timer 10 min, note: buy milk, weather tomorrow.
 vyre apps <words...>
 ```
 
+### vyre sideview
+
+This session on the left, Chrome filling the rest.
+
+```
+vyre sideview [close|status]
+```
+
 ### vyre statusline
 
 Vyre's line under every Claude Code session.
 
 ```
 vyre statusline [install|uninstall]
+```
+
+### vyre voice
+
+Push-to-talk from the terminal (Enter to talk), status, and the speech key.
+
+```
+vyre voice [status | key [provider] | --send <thread>]
 ```
 
 ### vyre mcp

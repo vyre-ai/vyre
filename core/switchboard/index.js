@@ -1154,7 +1154,8 @@ export class Switchboard {
       ? this.db.prepare("SELECT id FROM threads_runs WHERE agent = ? ORDER BY last_at DESC LIMIT 200").all(agent)
       : this.db.prepare(`SELECT id FROM threads_runs ${all ? "" : `WHERE status IN (${LIVE.map(() => "?").join(",")}) OR last_at > ?`} ORDER BY last_at DESC LIMIT 200`)
         .all(...(all ? [] : [...LIVE, Date.now() - 86_400_000]));
-    return rows.map(r => this.record(String(r.id)));
+    const live = this.sessions.live(this.ours());
+    return rows.map(r => ({ ...this.record(String(r.id)), live: live.has(String(r.id)) }));
   }
 
   /** A thread with its recent events, its open asks and who holds it. What a surface opening it needs. */
@@ -1403,7 +1404,7 @@ export default {
         return sb.send(i.thread, i.text, surfaceOf(i, caller), { queue: queuesFor(caller), wait: fromLink(caller), mode: i.mode === "queue" ? "queue" : "steer" });
       });
 
-    tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each and how many questions are open.",
+    tool("threads.list", "Headless threads: running ones and those active in the last day (all: every one), newest first, with who holds each, how many questions are open, and live (a terminal has it open now).",
       { type: "object", properties: { agent: str, all: { type: "boolean" }, machines: { type: "string", enum: ["all", "local"] } } },
       async (i, { caller }) => {
         guard(caller, "list sessions");
@@ -1549,6 +1550,12 @@ export default {
       description: "Stop a thread with a reason, saying why in the thread first.", internal: true,
       input: { type: "object", required: ["thread", "reason"], properties: { thread: str, reason: str, text: str } },
       run: async i => sb.halt(i.thread, i.reason, i.text),
+    });
+    // For projects.catalog: which sessions a terminal has open now, for its live flag.
+    ctx.tool("threads.live", {
+      description: "Sessions open in a running claude process other than vyred's own threads.", internal: true,
+      input: { type: "object", properties: {} },
+      run: async () => ({ sessions: [...sb.sessions.live(sb.ours())] }),
     });
     // For the Harness: words queued for a session open in a terminal, handed over at its Stop or
     // next prompt, and the reply that turn gave.

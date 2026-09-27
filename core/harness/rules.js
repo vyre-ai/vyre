@@ -21,7 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { socketPath } from "../config/index.js";
 import { HUMAN_ONLY, PERSON_ONLY } from "../presence/index.js";
-import { ownerOverTailnet } from "../modules/index.js";
+import { ownerDevice } from "../modules/index.js";
 import { flatten, words, dynamic, globReaches } from "./shell.js";
 
 /** Words in an MCP tool's own name that mean it sends something as the user. */
@@ -302,7 +302,8 @@ function shellSettings(command, { cwd, userHome }) {
 }
 
 /** Callers that are the person at one of Vyre's own surfaces, when they name no agent. The
- * owner's own Deck or phone at the box's address (`tailnet:<owner>`) is one too. */
+ * owner's own Deck or phone at the box's address (`tailnet:<owner>`), or a device paired through
+ * the relay (`device:<id>`), is one too. */
 const PERSON = new Set(["cli", "local", "deck", "capsule"]);
 
 /**
@@ -317,7 +318,7 @@ const PERSON = new Set(["cli", "local", "deck", "capsule"]);
 export function registryRules({ home }) {
   return async ({ tool, input, caller }) => {
     const c = String(caller);
-    if (PERSON.has(c) || ownerOverTailnet(c)) return { allow: true };
+    if (PERSON.has(c) || ownerDevice(c)) return { allow: true };
     const v = rules({ tool, input: input && typeof input === "object" ? input : {}, home });
     if (v.decision === "deny") return { allow: false, reason: v.reason };
     if (v.decision === "ask") return { allow: false, reason: `${v.reason} Only a person can say yes, and ${c} is not one.` };
