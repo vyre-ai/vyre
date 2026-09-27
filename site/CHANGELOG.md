@@ -5,6 +5,17 @@ assets, with no build step and no framework. Fonts load from Google Fonts; the o
 
 ## Unreleased
 
+### held-chip: sentence case, no badge tracking; the hotkey chip is one chord (2026-09-27)
+
+- `.held-chip` ("Held for you") also had `text-transform: uppercase` and `letter-spacing: 0.14em`
+  left over from when it was a filled badge. The lead asked for sentence case now that it's plain
+  text next to a dot: dropped the mono font, the uppercase transform, the tracking and the now-
+  unused padding/border-radius.
+- The hero and demo-header keyboard hint rendered Option-Space as two separate chips (one for
+  &#8997;, one for "Space"). key-hint.md is clear a chord is one chip, modifiers first, no plus
+  sign (its own examples: "&#8984;K", "&#8997;&#9166;"): app-design flagged it as a nit from this
+  session's hotkey change. Now one `&#8997;Space` chip in both places.
+
 ### The rest of the retired tokens: --beacon-wash (2026-09-27)
 
 - `styles.css` still had `--beacon-wash` and used it for backgrounds: `.dest.do` (dead CSS, no

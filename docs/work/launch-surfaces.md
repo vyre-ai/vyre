@@ -88,6 +88,11 @@ Filled in as each lands.
   `core/config/palette.js` (`beacon-ink`/`beacon-dot`, no wash) and the "needs you" rule.
   `--beacon-wash` is gone from `:root` entirely. This round wasn't part of aa9da103; sha 342e02f5
   had already fixed the memory-section gold and the hotkey, so only this token needed a follow-up.
+- Follow-up from the same review pass, both fixed: `.held-chip` had leftover badge styling
+  (uppercase, letter-spacing) from when it had a fill; now sentence case, plain text. And the
+  hero/demo keyboard hint rendered Option-Space as two chips instead of one chord (key-hint.md:
+  modifiers first, no plus sign, one chip). app-design's nit, cheap enough to fix before the
+  deadline rather than deferring.
 
 ## Doing
 
