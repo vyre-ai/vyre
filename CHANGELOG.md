@@ -41,7 +41,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   keyed on it, then the sessions, switchboard, agents, learn and harness suites with
   VYRE_SESSIONS_DRIVER=sdk against the fake claude. `real`: the full install with the bundled
   Claude Code (231 MB, cached per VERSION), the binary's --version with a temp HOME and no
-  credentials, and scripts/sessions-smoke.mjs in real-idle mode when it exists; only when sdk.js
+  credentials, and scripts/sessions-smoke.mjs (IDLE_MS=5000; its JSON must say spawned and
+  alive) when it exists; only when sdk.js
   or the smoke changes. Skips until core/sessions/sdk.js exists.
 
 #### CI: the Chrome tests leave nothing behind
