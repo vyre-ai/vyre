@@ -101,7 +101,9 @@ export default {
     let current = null;
     const runRow = id => /** @type {any} */ (ctx.store.db.prepare("SELECT * FROM import_runs WHERE id = ?").get(id));
     const hashOf = file => new Promise((resolve, reject) => { const h = crypto.createHash("sha256"); fs.createReadStream(file).on("data", d => h.update(d)).on("end", () => resolve(h.digest("hex"))).on("error", reject); });
-    const person = (caller, meta) => PEOPLE.includes(String(caller)) || (/^(?:tailnet:(?!agent:).|device:[a-z2-7]{16}$)/.test(String(caller)) && Boolean(meta && meta.person));
+    // The person at this device's own surfaces: an import sends this device's sessions, so a phone
+    // (which has none) never starts one; callers holds the rest out before this runs.
+    const person = caller => PEOPLE.includes(String(caller));
     const send = async (id, items, mode) => {
       const upd = ctx.store.db.prepare("UPDATE import_runs SET sent = sent + ?, failed = failed + ?, quarantined = quarantined + ? WHERE id = ?");
       for (let i = 0; i < items.length; i += BATCH) {
@@ -125,7 +127,7 @@ export default {
       input: { type: "object", required: ["plan", "mode", "pace"], properties: { plan: { type: "string" }, mode: { type: "string", enum: ["once", "sync"] }, pace: { type: "string", enum: ["fast", "gentle"] } } },
       callers: PEOPLE,
       run: async ({ plan, mode, pace }, meta = {}) => {
-        if (!person(meta.caller, meta)) throw Object.assign(new Error("an import is the person's own action"), { code: "denied" });
+        if (!person(meta.caller)) throw Object.assign(new Error("an import is the person's own action"), { code: "denied" });
         const p = plans.get(String(plan));
         if (!p || Date.now() - p.at > PLAN_TTL_MS) throw Object.assign(new Error("that plan has expired or was never made: choose again"), { code: "not_found" });
         if (current) throw Object.assign(new Error("an import is already running: stop it first"), { code: "busy" });
@@ -148,7 +150,7 @@ export default {
       input: { type: "object", properties: {} },
       callers: PEOPLE,
       run: async (_, meta = {}) => {
-        if (!person(meta.caller, meta)) throw Object.assign(new Error("stopping an import is the person's own action"), { code: "denied" });
+        if (!person(meta.caller)) throw Object.assign(new Error("stopping an import is the person's own action"), { code: "denied" });
         const r = current; if (r) { r.stop = true; await r.done; }
         await ctx.call("sync.consent", { machine: machine(), on: false });
         return { stopped: Boolean(r) };
@@ -159,7 +161,7 @@ export default {
       input: { type: "object", properties: {} },
       callers: PEOPLE,
       run: async (_, meta = {}) => {
-        if (!person(meta.caller, meta)) throw Object.assign(new Error("cancelling an import is the person's own action"), { code: "denied" });
+        if (!person(meta.caller)) throw Object.assign(new Error("cancelling an import is the person's own action"), { code: "denied" });
         const r = current; if (r) { r.stop = true; await r.done; }
         await ctx.call("sync.consent", { machine: machine(), on: false });
         if (r) ctx.store.db.prepare("UPDATE import_runs SET state = 'cancelled' WHERE id = ?").run(r.id);

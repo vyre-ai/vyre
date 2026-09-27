@@ -222,3 +222,13 @@ test("memory module: unpairing a device keeps what came from it; the person's de
   // A name that is not a machine's forgets nothing.
   d.events.emit("sync", "sync.deleted", { machine: "../../etc" });
 });
+
+test("memory module: the first read's pace takes Vyre's own import module only, as the loader vouches", async t => {
+  const root = seeded(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  const imp = d.registry.context(d.registry.modules.get("import").manifest);
+  assert.deepEqual((await imp.call("memory.pace", { pace: "fast" })).data, { pace: "fast" });
+  // The same label from anywhere the loader did not vouch for is refused.
+  assert.equal((await d.registry.call("memory.pace", { pace: "fast" }, "module:import")).error?.code, "denied");
+});
