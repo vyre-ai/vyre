@@ -234,6 +234,12 @@ down after):
 - cohesion (docs/design/cohesion.md, work/cohesion 199120b5): agreed to items 7, 8, 9, 3 and 1, after
   0.1.0, in the order 8, 7, 9, 1, 3 as each tool lands. For 8 they need to send the /v1/tools field
   names for human_only and sessionable.
+- cohesion ADR 0036 (work/cohesion 07cb32ab), agreed after 0.1.0: waiting.list/count/changed
+  (renames needs.*; answer each row with its answer.tool), context.report on foreground and on
+  thread/project change, and a Glass mini-view in a thread and on Now (sight.watch agent:<name>,
+  sight.steps + sight.stepped), only while it is visible. The mini-view needs an app-design phone
+  spec first. Asked cohesion: frame wire format, size and rate, a lower-rate option for the relay,
+  tailnet/device callers and presence for sight.*, answer.tool carrying its input, device defaulting.
 - STANDING RULE (user, 27 Sep): Vyre must not nag. Face ID (device proof) only for pairing a new
   device, vault secrets, and sending, posting or paying outside; one Face ID covers about 30
   minutes. Creating or editing an agent needs NO Face ID: a person caller is enough. Keep the
