@@ -89,6 +89,13 @@ account + device and drop the tokens tool store. Then polish passes over the spe
 
 ## Next
 
+- After RC (~03:00 UTC): add an "Answer" variant to result-card.md for memory-iq's IQ answer card
+  (Deck Find, Memory view, phone Find, chat-core so PWA gets it too). Confirmed the shape by
+  message (msg_id 8dc60e94): no header row, sources as source chips (--rule-strong border, no
+  fill, mono meta — the same pattern as the launch boards), no colour-coding by confidence or by
+  abstain/limited state, --space-3 gap above the search hits. memory-iq is building against this
+  now; the spec write-up is the only thing left.
+
 - ADR 0033 theme overrides: validation built (scripts/lib/theme.js, `gen-tokens --validate`).
   Still to do in P4: the board for module UI slots.
   Also in P4 (agreed with platform): move the runtime half (applyOverride, check, css, fromLegacy,
