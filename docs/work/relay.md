@@ -64,18 +64,11 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 - testbox: `core/relay`, `relay/**`, `test/relay.test.js` 93/93; docs tests 50/50.
 
 ## Doing
-- TESTBOX FREEZE (lead, integrator batch). Untested WIP commits, run these first when it lifts:
-  0e3fc84 (bridge passes authorization/x-vyre-proof; devices.list path), 76c602e
-  (relay.web.release/pin, releases.js sha/newest, ADR section 10 folds in ADR 0027 + e2e sessions),
-  ae027da (relay/app/ + client `about` in hello), 7f18583 (`vyre relay` CLI), 0dfbd12 (relay.devices.path,
-  channel ping/pong on stream 0 for rtt, node linking by one-time code, device.moved; paths.js reports). Run: `node --test core/relay/*.test.js
-  relay/*/*.test.js test/relay.test.js core/cli/commands/relay.test.js core/cli/consistency.test.js` then docs:ref + docs tests (new tools relay.web.*).
-- ADR 0032 (e2e): device:<id> is a device, not the person. MERGE HAZARD: e2e's registry gate uses
-  ownerOverTailnet; must be ownerDevice or relayed devices skip the person rule. Proposed ceremony
-  sent to e2e (presence.person.start over the channel with the device key or an app.vyre.run
-  passkey enrolled at pairing, token pinned to the device id).
-- Waiting on replies: e2e (the above), mobile (relay.web.release name), polish-cli (combined path), lead
-  (deploy command + DNS, sent).
+- Freeze lifted. Targeted runs on testbox all green: core/relay, relay/**, test/relay.test.js,
+  CLI relay test 104/104 (after two test fixes in relay/app); docs + CLI consistency 59/59.
+- Next build: the relay side of the ADR 0032 ceremony (lead approved; waiting on e2e's
+  presence.person.start shape): enroll the app.vyre.run passkey at web pairing, and the loader's
+  sign-in over the channel. MERGE HAZARD stays: e2e's gate must use ownerDevice.
 
 ## Next
 1. After tests: CHANGELOG entries for relay/app, relay.web.*, person-session headers.
