@@ -19,7 +19,7 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing (after LOGOUT 4 resume, 2026-09-27)
-NOW: fa349d31 PUSHED + TESTED (targeted 146/146, daemon.test.js 21/21 alone). Hub steps 1-3, theme
+NOW: tip 6ccad201 (fa349d31 + test-only commits), e2e SIGNED OFF fa349d31 (with platform d62792d0). fa349d31 PUSHED + TESTED (targeted 146/146, daemon.test.js 21/21 alone). Hub steps 1-3, theme
 routes, secrets out of hub.json, Dark/Paper switch on appearance.scheme. Sent to integrator, e2e
 (review steps 2-3), platform (settings.write rebases), app-design (work/app-design-hub).
 Next: e2e review fixes; merge main (with f7226849) when the batch lands; ping mobile + pwa + sessions
