@@ -259,6 +259,12 @@ down after):
   sight.steps + sight.stepped), only while it is visible. The mini-view needs an app-design phone
   spec first. Asked cohesion: frame wire format, size and rate, a lower-rate option for the relay,
   tailnet/device callers and presence for sight.*, answer.tool carrying its input, device defaulting.
+  Answered: sight.frame built (work/cohesion 791bd180): `{target:"agent:<name>", maxWidth 160-1280,
+  default 480}` returns `{image (base64 JPEG), mime, at, step}`; refetch only on sight.stepped; a
+  shield refusal is code "failed" (show "paused while a person signs in", wait for sight.stepped or
+  computer.unshielded); "mac" is local_only. sight.* and tips.* take the owner's devices with no
+  presence. answer is `{tool, input, fill}`. context.report fills device for `device:<id>`
+  callers; over the tailnet send it (snapshot's echoed id).
 - docs tips (work/docs d960197d, docs/build/tips.md "Show one on a surface"), after 0.1.0 and an
   app-design look: tips.next {surface:"phone", context:{module, idle}} on Places open and once after a
   pause on Now (one visible-only timer), busy:true during approvals, presence or a running turn;
