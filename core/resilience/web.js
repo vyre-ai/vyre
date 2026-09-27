@@ -106,7 +106,7 @@ function openDb(idb, box) {
       settled = true; clearTimeout(stuck); resolve(db);
     };
     const stuck = setTimeout(() => done(null), 3_000);   // another tab blocking the upgrade: use the fallback
-    const attempt = (/** @type {number|undefined} */ version, left) => {
+    const attempt = (/** @type {number|undefined} */ version, /** @type {number} */ left) => {
       /** @type {IDBOpenDBRequest} */ let req;
       try { req = version ? idb.open(DB, version) : idb.open(DB); } catch { return done(null); }
       req.onupgradeneeded = () => safely(() => { if (!req.result.objectStoreNames.contains(box)) req.result.createObjectStore(box); });
