@@ -405,6 +405,9 @@ test("daemon: asking for something that is not there is a 404 not_found, not a 5
     const r = /** @type {any} */ (await post(tool, body));
     assert.equal(r.status, 404, `${tool}: ${JSON.stringify(r.body)}`);
     assert.equal(r.body.error.code, "not_found");
+  }
+});
+
 test("daemon: the Deck's resilience client is served from core/resilience, and nothing else there is", { timeout: 20_000 }, async t => {
   const root = tempHome(t);
   const d = await start({ root, log: () => {} });
