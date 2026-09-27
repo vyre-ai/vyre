@@ -694,8 +694,10 @@ const SCREENS = {
             h("span", { class: "code" }, "New sessions import automatically too, from now on."))),
         h("p", { class: "lbl", style: { marginTop: "12px" } }, "How fast"),
         h("div", { class: "choice", role: "radiogroup", "aria-label": "How fast Vyre reads" },
-          opt("fast", "Fast", p.fast ? `Done in about ${plural(p.fast.hours, "hour")}. Uses more of today's Claude usage.` : "Done in a few hours. Uses more of today's Claude usage."),
-          opt("gentle", "Gentle", p.gentle ? `Spread over about ${plural(p.gentle.days, "day")}.` : "Spread over a few days.")),
+          // memory-iq's copy rule (the lead): plan terms, never dollars. Nothing is a charge;
+          // memory reads on the person's own Claude plan.
+          opt("fast", "Fast", p.fast ? `Understood in about ${plural(p.fast.hours, "hour")} (uses more of your Claude plan today).` : "Understood in a few hours (uses more of your Claude plan today)."),
+          opt("gentle", "Gentle", p.gentle ? `Over about ${plural(p.gentle.days, "day")} (barely touches your plan).` : "Over a few days (barely touches your plan).")),
         h("p", { class: "small muted", style: { marginTop: "12px" } },
           `Claude Code keeps sessions for ${claudeKeepsDays} days, so import now while they last. Vyre never changes Claude Code's own settings.`));
       syncConfirm();
