@@ -24,7 +24,7 @@ const obj = (properties, required = []) => ({ type: "object", properties, requir
 export function register({ ctx, vault, tool }) {
   const c = new Connections(vault, {
     call: ctx.call ? (name, input) => ctx.call(name, input) : undefined,
-    modules: () => (ctx.modules && typeof ctx.modules.list === "function" ? ctx.modules.list() : []),
+    modules: () => (ctx.modules && typeof ctx.modules.status === "function" ? ctx.modules.status() : []),
     log: m => ctx.log(m),
   });
 

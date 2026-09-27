@@ -340,7 +340,7 @@ test("modules: ctx.vault.fetch accepts items named by needs.credentials, by item
   } };`;
   const user = `export default { async start(ctx) {
     ctx.tool("talker.check", { run: async ({ item }) => ({ got: await ctx.vault.fetch(item) }) });
-    ctx.tool("talker.mods", { run: async () => ctx.modules.list().find(m => m.name === "talker").credentials.map(c => c.id) });
+    ctx.tool("talker.mods", { run: async () => ctx.modules.status().find(m => m.name === "talker").credentials.map(c => c.id) });
     return {};
   } };`;
   const creds = [{ id: "deepgram", kind: "api-key", provider: "deepgram", purpose: "speech", item: "talker-deepgram-key" },

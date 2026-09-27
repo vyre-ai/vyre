@@ -7,7 +7,7 @@
 // Who may call: the person's own surfaces only. vault.need reveals names and states, so it needs
 // no presence; vault.connect stores a value and gives a module access, so it needs a person, and
 // Claude (mcp) is refused outright: a value never comes through Claude. Manifests are read
-// through the registry (ctx.modules.list), never from another module's files.
+// through the registry (ctx.modules.status), never from another module's files.
 //
 // What leaves: names, kinds, states, field names and labels. Never a value, and never a pattern
 // matched against one. vault.connected carries {module, need, item, provider}, which is the hook
@@ -44,7 +44,7 @@ function itemOf(n, label) {
 export function register({ ctx, vault, tool }) {
   /** Every declared need, from the registry's view of the manifests. */
   const declared = () => {
-    const mods = ctx.modules && typeof ctx.modules.list === "function" ? ctx.modules.list() : [];
+    const mods = ctx.modules && typeof ctx.modules.status === "function" ? ctx.modules.status() : [];
     return mods.filter(m => m.state !== "invalid" && Array.isArray(m.credentials))
       .flatMap(m => m.credentials.map(c => ({ module: m.name, ...c, item: c.multiple ? null : c.item || `${m.name}-${c.id}` })));
   };

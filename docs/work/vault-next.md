@@ -88,7 +88,7 @@ mobile and the Capsule (through their owners).
 - Merge main 7880dfa6 (8272853d): fill.js keeps both keys, browser proof keys (JWK, e2e) and phone
   unlock keys (SPKI string). 394 pass on the vault + docs set.
 - ADR 0028 decision 9, Connections (a92f30df). 9a built (37132a25): core/vault/providers.js, needs.credentials in
-  manifests (kernel validate + fetch courtesy), ctx.modules.list(), vault.need, vault.connect, `vyre vault needs|connect`,
+  manifests (kernel validate + fetch courtesy), ctx.modules.status(), vault.need, vault.connect, `vyre vault needs|connect`,
   `vyre voice key` now calls vault.connect, voice declares a "speech" group. 584 pass, 0 fail.
 - core/mail was built (6a0c0760) then reverted (7cb60736): connectors owns core/mail (lead). Offered to them to cherry-pick.
 
@@ -164,7 +164,7 @@ mobile and the Capsule (through their owners).
   takes `label` as the item suffix there. providers.js: google-apps-script capabilities send_mail, read_mail.
 
 - Kernel (core/modules/index.js): validate() checks needs.credentials; ctx.vault.fetch also accepts
-  its items; status() (and GET /v1/modules) carries `credentials`; ctx.modules.list() returns
+  its items; status() (and GET /v1/modules) carries `credentials`; ctx.modules.status() returns
   status(). voice: module.json needs.credentials, voice.status adds `need` while no key is ready.
 
 - vault.import on a .env file now makes ONE env-set (named after the file's path), holding only

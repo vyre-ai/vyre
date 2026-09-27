@@ -368,7 +368,7 @@ export class Registry {
         this.providers.set(name, { module: m.name, driver });
       },
       // Every module's name, state and declared needs.credentials (the vault lists and fills them).
-      modules: { list: () => this.status() },
+      modules: { status: () => this.status() },
       providers: {
         get: name => { const p = this.providers.get(String(name)); return p ? p.driver : null; },
         list: () => [...this.providers.keys()],
