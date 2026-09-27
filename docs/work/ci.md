@@ -76,20 +76,22 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
 ## Doing
-- Getting main green on all four workflows. On main d6bb815: capsule-mac, ios, android success;
-  node was cancelled (superseded by a newer push), so its result on the fixes is not yet known.
+- node on main d3ed622 (run 36278222482) is red on 5 code failures, not env: home.test.js:169,
+  floor.test.js:150, rooms.test.js:217, and docs-check + docs-index (stale generated docs, env
+  count 73 committed vs 72 made). They reproduce on testbox with Node 22. Sent to the integrator
+  on 2026-09-27. capsule-mac, ios and android were green on main.
+- Signing proof: run 36275719507 never proved anything. Its app step failed because work/ci-sign
+  had no Sources/Extensions and build.sh's `find` aborts under `set -e` (capsule-pro has that
+  dir now). The signing step then hung 40 min on `security add-trusted-cert`: in the user domain
+  that call asks for a password. work/ci-sign 1a4931b merges work/capsule-pro and swaps only that
+  step for `sudo security add-trusted-cert -d` (5 min step timeout). Its capsule-mac run is 36282004237.
 
 ## Next
-- Check node on main's latest push (`gh run list -R vyre-ai/vyre --branch main --workflow node.yml`);
-  if red, send the failing test and output to the integrator (env causes are mine to fix).
-- capsule-pro's "Vyre Local" signing step: proved on the throwaway branch work/ci-sign (work/capsule-pro
-  plus the capsule-mac.yml commits); check run 36275719507 and send capsule-pro the signing lines. The
-  first run never reached signing: 3 native tests fail on the runner (typing paint p95 244 ms vs a 16 ms
-  budget, and ProviderPeopleTests.swift:164 photo colour), both for capsule-pro. Delete work/ci-sign
-  from origin once signing is proven (it is a test branch).
-- Done since publish: rewrite-unpushed.sh fixed polish-cli's commit (main 9ad50a5), commit-msg hook in
-  the shared hooks, shellcheck directives in install-box.sh; Node 24 isClaude and onboard keep-alive
-  bugs diagnosed and fixed by the integrator (main d6bb815).
+- When 36282004237 finishes, send capsule-pro the signing lines. If it proves signing, delete
+  work/ci-sign from origin (`git push origin --delete work/ci-sign`, no force needed).
+- Recheck node on main after the integrator's fix: `gh run list -R vyre-ai/vyre --branch main --workflow node.yml`.
+- Guard hooks: pre-push and commit-msg are in the shared hooks dir. On 2026-09-27 commit-msg
+  rejected a private name and passed a clean message.
 
 ## Needs from others
 - None.
