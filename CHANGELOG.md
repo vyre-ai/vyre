@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyred's git never runs a folder's own commands
+
+- A repo's config and hooks belong to whoever can write the folder: `git ls-files` and `git
+  check-ignore` run a planted core.fsmonitor, `status` runs clean filters, `log -p` textconv. The
+  vault ran two of those in the folder of a file it rendered: on the box, an agent could run code
+  as vyred's own user. lib/git-safe.js (gitSync, gitAsync) is the one way vyred runs git now: no
+  fsmonitor, hooks, pager, external diff or network, no global or system config, and every filter,
+  diff and merge driver the repo names overridden. The vault's checks, the build stamp and the
+  switchboard's push summary use it. test/safe-git.test.js plants the traps and fails if any file
+  but lib/git-safe.js starts git (core/cli, the person's own terminal, aside).
+
 #### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
 
 - package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
