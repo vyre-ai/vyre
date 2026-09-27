@@ -816,7 +816,7 @@
     {"kind":"config","name":"vault.autofill","definedIn":"core/vault/fill.js","page":null,"mentions":[]},
     {"kind":"config","name":"vault.autofill.identities","definedIn":"core/vault/fill.js","page":null,"mentions":[{"page":"adr/0028-vault-everywhere.md","line":83,"anchor":"threat-model"}]},
     {"kind":"tool","name":"vault.backup","definedIn":"core/vault/index.js","page":"reference/tools.md#vaultbackup","module":"vault","mentions":[{"page":"concepts/presence.md","line":30,"anchor":"which-tools-need-it"},{"page":"adr/0004-presence.md","line":214,"anchor":"addendum-26-sep-2026-after-review-with-the-other-workstreams"},{"page":"adr/0006-vault-next.md","line":28,"anchor":"what-the-review-found"}]},
-    {"kind":"config","name":"vault.breach","definedIn":"core/vault/tools/deck.js","page":null,"mentions":[{"page":"adr/0028-vault-everywhere.md","line":221,"anchor":"4-rotation-reminders-through-the-planner"}]},
+    {"kind":"config","name":"vault.breach","definedIn":"core/vault/index.js","page":null,"mentions":[{"page":"adr/0028-vault-everywhere.md","line":221,"anchor":"4-rotation-reminders-through-the-planner"}]},
     {"kind":"tool","name":"vault.breach.check","definedIn":"core/vault/tools/deck.js","page":"reference/tools.md#vaultbreachcheck","module":"vault","mentions":[]},
     {"kind":"tool","name":"vault.caps","definedIn":"core/vault/tools/deck.js","page":"reference/tools.md#vaultcaps","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":154,"anchor":"3-presence-on-every-value"}]},
     {"kind":"event","name":"vault.card-changed","definedIn":"core/vault/share.js","page":"reference/events.md#vault","module":"vault","mentions":[{"page":"adr/0006-vault-next.md","line":239,"anchor":"7-contract-fit"}]},

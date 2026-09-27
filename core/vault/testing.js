@@ -145,6 +145,6 @@ export async function recorded(t, extra = {}, { call } = /** @type {{ call?: (to
   const running = await mod.start(ctx);
   t.after(async () => { await running.stop(); db.close(); fs.rmSync(tmp, { recursive: true, force: true }); });
   const run = (name, input, caller = "cli") => tools.get(name).run(input, { caller });
-  return { tmp, db, tools, events, logs, run };
+  return { tmp, db, tools, events, logs, run, vault: running.vault };
 }
 

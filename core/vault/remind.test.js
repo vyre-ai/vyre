@@ -7,7 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import { recorded } from "./testing.js";
-import { nextRun } from "./remind.js";
+import { nextRun, remindTick, BREACH_EVERY_MS } from "./remind.js";
+import { BREACH_URL } from "./health.js";
 
 const hex = n => crypto.randomBytes(n).toString("hex");
 
@@ -84,4 +85,46 @@ test("reminders: due once a day, the first 09:00 after the last run", () => {
   assert.equal(nextRun(at(5, 9, 1), at(5, 15)), at(6, 9));
   assert.equal(nextRun(at(5, 9, 1), at(7, 8)), at(7, 8) + 60_000, "a day was missed: soon");
   assert.equal(nextRun(at(4, 23), at(5, 8)), at(5, 9));
+});
+
+/** A fake pwnedpasswords that flags exactly `flagged` by password value. */
+function fakeBreachFetch(flagged) {
+  const sha = s => crypto.createHash("sha1").update(s).digest("hex").toUpperCase();
+  return async url => {
+    const prefix = String(url).slice(BREACH_URL.length);
+    const rows = ["0000000000000000000000000000000000A:0"];
+    for (const pw of flagged) if (sha(pw).slice(0, 5) === prefix) rows.push(sha(pw).slice(5) + ":9");
+    return new Response(rows.join("\r\n"));
+  };
+}
+
+test("reminders: the breach check rides the daily tick, opted in, at most once a week", async t => {
+  const planner = fakePlanner();
+  const { run, vault, db } = await recorded(t, { reminders: false }, { call: planner.call });
+  const pw = hex(12);
+  await run("vault.put", { name: "old-forum", kind: "login", fields: { username: "juno", password: pw } });
+  const fetch = /** @type {any} */ (fakeBreachFetch([pw]));
+  let now = Date.now();
+
+  // Not opted in: no network call, no breached reason.
+  const off = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: false, fetch } });
+  assert.deepEqual(off.breached, []);
+  assert.equal(db.prepare("SELECT 1 FROM vault_jobs WHERE name = 'breach'").get(), undefined);
+
+  // Opted in: the first tick runs it, and old-forum gets a "breached" todo.
+  const on = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: true, fetch } });
+  assert.deepEqual(on.breached, ["old-forum"]);
+  assert.equal(on.added.length, 1);
+  assert.match([...planner.items.values()][0].title, /old-forum/);
+  assert.equal(db.prepare("SELECT at FROM vault_jobs WHERE name = 'breach'").get().at, now);
+
+  // A second tick, minutes later, does not run it again.
+  now += 60_000;
+  const soon = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: true, fetch } });
+  assert.deepEqual(soon.breached, []);
+
+  // A week on, it runs again.
+  now += BREACH_EVERY_MS;
+  const week = await remindTick(vault, planner.call, { clock: () => now, breach: { enabled: true, fetch } });
+  assert.deepEqual(week.breached, ["old-forum"]);
 });
