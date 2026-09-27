@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Now on the phone: Needs you with swipe and Undo, and a detail sheet for each item
+
+- Under 760 px Now is its own layout (deck/js/now-phone.js): a one-row setup reminder in place of
+  the setup cards, then Needs you (asks, held drafts, questions and Macs asking to pair, oldest
+  first, one card), Working (steps this turn and the latest one) and From memory.
+- A row swipes. Right approves an ask at once, with no passkey (the owner's own act); on a draft
+  it opens the sheet on the final words, and only Send there asks for Face ID. Left denies or
+  discards after a 4 s Undo toast, and Undo means nothing was sent. A question's left swipe is
+  Later: hidden on this phone for an hour. Every swipe action is also a real button.
+- The detail sheet (deck/js/need-sheet.js, deck/css/sheet.css): who asks and where, Held for,
+  Open session into the exact moment in Chat (?at=&ask=&tool=), the command and its facts, the
+  draft's fields edited in place, the question's choices, and Always in <project> when the ask
+  offers one (threads.answer decision always, scope project).
+- needs.js carries questions as their own kind, anchors, always_project and a question's answers.
+  A push notification's /needs/:id opens Now with that item's sheet on a phone.
+
 #### The phone app switches tabs in one frame
 
 - Pages stay mounted: leaving a screen hides it (laid out, inert) instead of tearing it down, so

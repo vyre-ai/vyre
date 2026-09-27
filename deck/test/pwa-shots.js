@@ -34,7 +34,7 @@ if (process.env.PHONES === "0") DEVICES.splice(0, 2);
 // shell must show there (docs/design/phone.md section 3): "page" (the header with Now, Chats and
 // Agents, and the Capsule), "pushed" (no Capsule; the header only as a back row, or not at all when
 // the view draws its own back) or "find" (the Capsule opened: neither).
-/** @type {{ name: string, path: string, script?: string, wait?: number, theme?: string, drag?: boolean, swipe?: boolean, reduce?: boolean, edge?: boolean, offline?: boolean, last?: string, expect?: string, stub?: Record<string, any>, noShell?: boolean, shell?: string }[]} */
+/** @type {{ name: string, path: string, script?: string | ((dev: { name: string }) => string), wait?: number, theme?: string, drag?: boolean, swipe?: boolean, reduce?: boolean, edge?: boolean, offline?: boolean, last?: string, expect?: string, stub?: Record<string, any>, noShell?: boolean, shell?: string }[]} */
 const SCREENS = [
   { name: "now", path: "/now" },
   { name: "now-paper", path: "/now", theme: "paper" },
@@ -68,8 +68,9 @@ const SCREENS = [
       const ta = document.querySelector('.composer textarea'); ta.value = 'hello from the phone'; ta.dispatchEvent(new Event('input'));
       document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); for (let i = 0; i < 80 && !document.body.innerText.includes('echo: hello from the phone'); i++) await wait(100);
       if (!document.body.innerText.includes('hello from the phone')) throw new Error('the sent line is not in the session');` },
-  // Another session than chat-send's, which the fake claude may still hold.
-  { name: "chat-ask", path: "/chat", shell: "pushed", script: `await click('.chat-recent a.thread-row:nth-of-type(3)'); await wait(2500);
+  // Another session than chat-send's, and one per phone size: the world is shared, and a session
+  // still waiting on its first ask queues the next message instead of asking again.
+  { name: "chat-ask", path: "/chat", shell: "pushed", script: dev => `await click('.chat-recent a.thread-row:nth-of-type(${dev.name === "390" ? 3 : 4})'); await wait(2500);
       const ta = document.querySelector('.composer textarea'); ta.value = 'write notes.txt'; ta.dispatchEvent(new Event('input'));
       document.querySelector('.composer-send, .composer button[aria-label=Send]').click(); await waitFor('.ask-card', 10000).catch(() => null);
       if (!document.querySelector('.ask-card')) throw new Error('no ask card for the permission question');` },
@@ -94,6 +95,25 @@ const SCREENS = [
   // make one: link.pending's answer is stubbed in the page, and nothing else is.
   { name: "pair", path: "/now", stub: { "link.pending": [{ id: "7f1c2a90", name: "alex's MacBook Pro", login: "alex@harlowlegal.com", node: "alex-mbp", in: 540_000 }] }, script: `if (matchMedia("(max-width: 760px)").matches) { await waitFor('.np-row[data-kind=pair] .np-main', 8000); await click('.np-row[data-kind=pair] .np-main'); await wait(700); }
       const i = document.querySelector('.pair-code'); if (!i) throw new Error("no pairing card"); i.value = "482"; i.dispatchEvent(new Event("input")); i.value = "482913"; i.dispatchEvent(new Event("input")); await wait(200);` },
+  // Undo is honest: a denied ask is not sent while its toast shows, and Undo means it never is.
+  // Then an approve from the row's real button goes at once, with no presence proof (no-nag).
+  { name: "now-undo", path: "/now", wait: 4000, script: `await waitFor('.np-row[data-kind=ask] .np-face', 15000);
+      const sent = []; const real = window.fetch;
+      window.fetch = (u, o) => { const t = String(u).split("/v1/tools/")[1]; if (t && /^(threads\\.answer|gate\\.)/.test(t)) sent.push({ t, proof: !!(o && o.headers && o.headers["x-vyre-presence"]) }); return real(u, o); };
+      const row = document.querySelector('.np-row[data-kind=ask]'); const f = row.querySelector('.np-face');
+      const r = f.getBoundingClientRect(), y = r.top + r.height / 2, x = r.right - 40;
+      const ev = (t, dx) => f.dispatchEvent(new PointerEvent(t, { pointerId: 9, clientX: x + dx, clientY: y, button: 0, bubbles: true, pointerType: "touch" }));
+      ev("pointerdown", 0); await wait(30); ev("pointermove", -20); await wait(30); ev("pointermove", -130); await wait(30); ev("pointerup", -130); await wait(400);
+      if (!/Denied/.test(document.querySelector('.np-toast')?.textContent || "")) throw new Error("no Denied toast");
+      if (row.isConnected && row.offsetHeight > 2) throw new Error("the denied row did not collapse");
+      if (sent.length) throw new Error("the deny went before its toast ended");
+      document.querySelector('.np-toast-undo').click(); await wait(4600);
+      if (sent.length) throw new Error("Undo did not stop the deny: " + JSON.stringify(sent));
+      const back = document.querySelector('.np-row[data-kind=ask] .np-kb-b'); if (!back) throw new Error("the row did not come back after Undo");
+      back.click(); await wait(1500);
+      const a = sent.find(x => x.t === "threads.answer"); if (!a) throw new Error("the approve was not sent");
+      if (a.proof) throw new Error("the approve asked for a presence proof");
+      if (!/Approved/.test(document.querySelector('.np-toast')?.textContent || "")) throw new Error("no Approved toast");` },
   // Onboarding's history and devices steps (the phone shell is not part of onboarding).
   { name: "onboard-history", path: "/onboard#history", wait: 3000, noShell: true },
   { name: "onboard-devices", path: "/onboard#devices", wait: 3000, noShell: true },
@@ -130,15 +150,16 @@ for (const dev of DEVICES) {
       if (s.last) await tab.run(`localStorage.setItem("vyre.last", JSON.stringify({ path: ${JSON.stringify(s.last)}, at: Date.now() })); sessionStorage.clear();`);
       if (s.reduce) await tab.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-motion", value: "reduce" }] });
       await tab.go(base + s.path, s.wait || 2200);
-      if (s.script) await tab.run(s.script);
+      if (s.script) await tab.run(typeof s.script === "function" ? s.script(dev) : s.script);
       if (s.offline) {
         await tab.send("Network.enable");
         await tab.send("Network.emulateNetworkConditions", { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
         await tab.run(`window.dispatchEvent(new Event("offline")); await wait(800);`);
       }
       if (s.swipe) {
-        // A finger swiping from right to left across the middle of the page.
-        const y = Math.round(dev.height / 2);
+        // A finger swiping from right to left low on the page, just above the Capsule and clear of
+        // the Needs rows (which swipe on their own and hold the pager still).
+        const y = dev.height - dev.insets.bottom - 110;
         await tab.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: dev.width - 40, y }] });
         for (let i = 1; i <= 10; i++) await tab.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: dev.width - 40 - i * 30, y }] });
         await tab.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
