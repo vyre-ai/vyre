@@ -26,8 +26,9 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
   4b9c0c0d. #3 link.pending carries `created` (core/link/box.js); waiting's fromPending uses it
   directly, falls back to the old expiry-minus-TTL guess for an older box. testbox: 281/281 then
   112/112 targeted (sight, waiting, link*, docs-*, boundaries), nice 15, load under 5 both times.
-  Sent 4b9c0c0d back to e2e for the sign-off it asked for, then to the integrator. No testbox
-  processes of mine running. Items 8, 9, 10 deferred to 0.1.1 per the lead.
+  e2e signed off 4b9c0c0d (sight 15/15 on testbox); sight.now/targets/steps left unguarded is fine,
+  they read state and never proxy pixels. Handed to the integrator. No testbox processes of mine
+  running. Items 8, 9, 10 deferred to 0.1.1 per the lead.
 - SAVED for restart. Integrator has 0f4d1105 (release candidate; supersedes f5cd36f7): glue modules,
   drift test, hands privacy fix (e2e signed off), sight.frame, context view/now {surface}, Mac asks,
   suggest account ranking, Chrome teardown fix. testbox: 156 targeted pass; hands-chrome 8/8 on
