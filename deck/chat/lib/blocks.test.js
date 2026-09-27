@@ -109,6 +109,12 @@ test("shortPath: inside the session's folder relative, outside whole (long ones 
   assert.equal(toolTitle("Bash", { command: `cat ${cwd}/menu.md && ls ${cwd}` }, cwd), "cat menu.md && ls .");
 });
 
+test("raw view: paths relative to the session's folder, as Claude Code prints them", () => {
+  const cwd = "/home/alex/Work/harlow-site";
+  assert.equal(rawToolHead("Edit", { file_path: cwd + "/menu.md" }, cwd), "Update(menu.md)");
+  assert.deepEqual(rawLines([{ kind: "tool", tool: "Edit", input: { file_path: cwd + "/menu.md" }, output: "ok", done: true, cwd }]), ["⏺ Update(menu.md)", "  ⎿  Updated menu.md"]);
+});
+
 test("toolVerb: past tense done, -ing while running or waiting, never the SDK's names", () => {
   assert.equal(toolVerb("Edit", "done"), "Edited");
   assert.equal(toolVerb("Edit", "running"), "Editing");
