@@ -13,16 +13,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
   Found by box-deploy.
 
-#### Making or changing an agent needs a person
+#### Making or changing an agent is the person's, with no passkey
 
-- `agents.create` is on the floor's human-only list. `agents.update` takes only a person's
-  surfaces (no model, the assistant included), and asks for presence when it touches credentials
-  or budget, projects, skills, the computer or any other field beyond name, job, model, effort and
-  description. A tool can now ask for presence for some inputs only (`presence.when`).
-  The Deck asks for the passkey when making an agent or giving it a computer, not for its job or
-  model. `vyre agents` proves presence at the terminal. `core/presence/index.js`,
-  `core/modules/index.js`, `core/agents/index.js`, `core/cli/commands/agents.js`, the Deck's
-  agents, settings and assistant card; test/presence-bypass.test.js.
+- The no-nag rule: `agents.create` and `agents.update` ask for no presence proof. `agents.create`
+  is off the floor's human-only list and takes only a person's surfaces (cli, local, deck,
+  capsule, the owner's Deck over the tailnet) and vyred's modules (onboarding makes the
+  assistant). `agents.update` takes the same, plus the assistant for an agent's name, job, model,
+  effort and description; any other agent, a bare MCP session and a guest are refused with
+  "denied", never asked. The Deck's New agent, "Give a computer" and assistant card no longer ask
+  for the passkey. `presence.when` stays for tools that ask for some inputs only.
+  `core/agents/index.js`, `core/presence/index.js`, `deck/views/agents.js`,
+  `deck/js/assistant-setup.js`; test/presence-bypass.test.js.
+
+#### The event stream sends a byte as it opens
+
+- `/v1/events/stream` writes `: open` right after its headers, so iOS URLSession sees the stream
+  open at once instead of sitting on "connecting" until the 15 s heartbeat.
+  `core/daemon/index.js`.
 
 #### `vyre box add` waits for the switch, and the pairing code for the passkey
 

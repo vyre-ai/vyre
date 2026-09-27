@@ -366,5 +366,6 @@ test("presence: a tool can ask only for some inputs, and counts as asking when l
   assert.equal(p.required("agents.update", def, { instructions: "x" }), false);
   assert.equal(p.required("agents.update", def, { auth: { budget_usd: 1 } }), true);
   assert.equal(p.required("agents.update", def), true, "no input: listing tools");
-  assert.equal(p.required("agents.create", {}, { name: "kit" }), true, "on the floor's list whatever the input");
+  assert.equal(p.required("vault.reveal", {}, { name: "northwind-mail" }), true, "on the floor's list whatever the input");
+  assert.equal(p.required("agents.create", {}, { name: "kit" }), false, "making an agent is a person's, with no passkey");
 });

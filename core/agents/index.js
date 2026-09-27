@@ -56,9 +56,10 @@ export function preamble(a) {
   return lines.join("\n");
 }
 
-/** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 /** agents.update fields that change only what an agent says or which model says it. */
 const PLAIN_UPDATE = new Set(["name", "agent", "instructions", "model", "effort", "description"]);
+
+/** @type {{ start(ctx: any): Promise<{ stop(): Promise<void> }> }} */
 
 export default {
   async start(ctx) {
@@ -213,8 +214,10 @@ export default {
     ctx.tool("agents.create", {
       description: "Make an agent: a name, its projects (\"*\" for all), its credentials (Vault items for the setup token and an API key fallback, with a budget), instructions and model. kind \"assistant\" makes the one assistant, which sees every project.",
       input: { type: "object", required: ["name"], properties: { name: { type: "string" }, ...fields } },
+      // A person's surfaces and vyred's modules (onboarding makes the assistant), with no passkey:
+      // making an agent is the person's own business. No model, the assistant included, and no guest.
+      callers: ["cli", "local", "deck", "capsule", "module"],
       run: async (i, { caller }) => {
-        guard(caller, "make agents");
         if (!NAME.test(i.name)) throw new Error("an agent's name is lowercase letters, digits and dashes");
         if (get(i.name)) throw new Error(`there is already an agent ${i.name}`);
         const kind = i.kind || "agent";
@@ -234,18 +237,16 @@ export default {
       // Every other agents.* tool names its agent `agent`, so update takes that too; the Deck's
       // "Give a computer" sent it and got "input.name is required".
       input: { type: "object", properties: { name: { type: "string" }, agent: { type: "string" }, ...fields } },
-      // A person's surfaces only (the owner's Deck over the tailnet included): no model, not even
-      // the assistant, changes an agent.
-      callers: ["cli", "local", "deck", "capsule"],
-      // Its words and model are a person's to change without a passkey; anything that changes what
-      // it can reach or spend (credentials, budget, projects, skills, its computer, and any field
-      // not named here) needs presence. Agents are refused either way (guard).
-      presence: {
-        when: i => Object.keys(i || {}).some(k => i[k] !== undefined && !PLAIN_UPDATE.has(k)),
-        summary: i => `Change what ${i.name ?? i.agent} can reach or spend: ${Object.keys(i).filter(k => !PLAIN_UPDATE.has(k)).join(", ")}`,
-      },
+      // A person's surfaces, with no passkey (the owner's Deck over the tailnet included). Of the
+      // models, only the assistant, and only for its words and model: never credentials, budget,
+      // projects, skills or a computer. Every other agent, a bare MCP session and a guest are refused.
+      callers: ["cli", "local", "deck", "capsule", "module", "mcp"],
       run: async (i, { caller }) => {
-        guard(caller, "change agents");
+        if (/^mcp(?=$|[\s:])/.test(String(caller))) {
+          const m = /^mcp:agent:(.+)$/.exec(String(caller));
+          const plain = Object.keys(i).every(k => i[k] === undefined || PLAIN_UPDATE.has(k));
+          if (!m || get(m[1])?.kind !== "assistant" || !plain) throw Object.assign(new Error("changing agents is the person's"), { code: "denied" });
+        }
         if (i.name !== undefined && i.agent !== undefined && i.name !== i.agent) throw new Error("name and agent say different agents; give one");
         const who = i.name ?? i.agent;
         if (who === undefined) throw new Error("say which agent: name is required");
