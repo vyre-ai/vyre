@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### vyre.tgz ships the web app at /app/
+
+- scripts/build-app.sh exports apps/app for the web (`npm ci`, `expo export -p web`, then
+  scripts/precache.mjs) into apps/app/dist. build-site.sh runs it before `npm pack`, so the box
+  deploy and release.yml get it, and box-image.yml's pack step runs it too. package.json "files"
+  gains apps/app/dist; apps/app/.npmignore stands in for the app's .gitignore, which ignores
+  dist/ and would drop it from the pack. A checkout without apps/app skips the step.
+- box-image.yml checks GET /app/ is the app's index.html and /app/sw.js carries its precache
+  list; release-check.sh checks the tarball has dist/index.html and dist/precache.json and none of
+  the app's source.
+
 #### The onboard page test cleans its home last
 
 - test/onboard-page.test.js left its temp home behind on Node 24 runners, so tmp-guard failed main's

@@ -34,6 +34,7 @@
     "deck",
     "modules",
     "box",
+    "apps/app/dist",
     "scripts/install-box.sh",
     "scripts/postinstall.mjs",
     "docs",

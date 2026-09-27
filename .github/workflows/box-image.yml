@@ -3,7 +3,7 @@
 # killing vyred once brings it back through core/daemon/loop.sh with the container still up, and
 # `docker stop` reaches vyred as a SIGTERM so it drains and the container exits 0 well inside the
 # stop timeout. Every push to main runs it; other branches run it when a push touches any file in
-# the image (the npm pack, plus box/ and the build files). Deploys that touch box/ wait for it. Layers are cached in the Actions cache.
+# the image (the npm pack, plus box/, the web app's source and the build files). Deploys that touch box/ wait for it. Layers are cached in the Actions cache.
 name: box-image
 on:
   push:
@@ -36,7 +36,7 @@ jobs:
           files=$(gh api "repos/${{ github.repository }}/compare/$from...${{ github.sha }}" --paginate --jq '.files[] | .filename, (.previous_filename // empty)') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
           packed=$(npm pack --dry-run --json --ignore-scripts 2>/dev/null | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const f of JSON.parse(s)[0].files)console.log(f.path)})') || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
           [ -n "$packed" ] || { echo run=true >> "$GITHUB_OUTPUT"; exit 0; }
-          hit=$( { echo "$files" | grep -xF -f <(echo "$packed"); echo "$files" | grep -E '^(box/|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)' || true; } | head -5)
+          hit=$( { echo "$files" | grep -xF -f <(echo "$packed"); echo "$files" | grep -E '^(box/|apps/app/|scripts/build-app\.sh$|package(-lock)?\.json$|\.dockerignore$|\.github/workflows/box-image\.yml$)' || true; } | head -5)
           if [ -n "$hit" ]; then
             echo "image inputs changed:"; echo "$hit"; echo run=true >> "$GITHUB_OUTPUT"
           else
@@ -59,6 +59,7 @@ jobs:
       - name: Pack like a deploy
         run: |
           mkdir -p "$RUNNER_TEMP/src"
+          sh scripts/build-app.sh
           tgz=$(npm pack --silent --pack-destination "$RUNNER_TEMP")
           tar -xzf "$RUNNER_TEMP/$tgz" -C "$RUNNER_TEMP/src" --strip-components=1
           echo "SRC=$RUNNER_TEMP/src" >> "$GITHUB_ENV"
@@ -91,6 +92,24 @@ jobs:
           sh "$RUNNER_TEMP/health.sh" 60
 
       # The two checks below need ADR 0029's tini and loop.sh (resilience); an older image skips them.
+      # The web app a deploy ships (scripts/build-app.sh): /app/ is its index.html, and /app/sw.js
+      # carries the export's precache list, more than index.html alone.
+      - name: GET /app/ serves the web app with its precache list
+        if: hashFiles('apps/app/package.json') != ''
+        run: |
+          docker exec "$C" node -e '
+            const http = require("node:http");
+            import("/opt/vyre/core/config/index.js").then(async c => {
+              const socketPath = c.paths(c.home()).socket;
+              const get = p => new Promise((ok, no) => http.get({ socketPath, path: p, headers: { "x-vyre-caller": "cli" } }, r => {
+                let b = ""; r.setEncoding("utf8"); r.on("data", d => b += d); r.on("end", () => ok({ status: r.statusCode, type: r.headers["content-type"], body: b })); }).on("error", no));
+              const page = await get("/app/"), sw = await get("/app/sw.js");
+              const list = JSON.parse((/const PRECACHE = (\[.*?\]);/.exec(sw.body) || [])[1] || "[]");
+              console.log(`/app/ ${page.status} ${page.type}, ${page.body.length} bytes; /app/sw.js ${sw.status}, ${list.length} precached`);
+              if (page.status !== 200 || !/text\/html/.test(page.type || "") || !/<html/i.test(page.body)) process.exit(1);
+              if (sw.status !== 200 || list.length < 2 || !list.includes("/app/index.html")) process.exit(1);
+            }).catch(e => { console.error(e); process.exit(1); });' | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: tini is PID 1
         if: hashFiles('core/daemon/loop.sh') != ''
         run: |

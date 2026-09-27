@@ -76,6 +76,14 @@ for want in bin/vyre core/daemon/main.js core/cli/index.js harness/.claude-plugi
   grep -qx "$want" "$work/files" || fail "the tarball has no $want"
 done
 ok "has the bin, core, the Harness plugin, the Deck and the box installer"
+# The web app vyred serves at /app/ (ADR 0027): build-site.sh exports it (scripts/build-app.sh).
+if [ -f "$repo/apps/app/package.json" ]; then
+  for want in apps/app/dist/index.html apps/app/dist/precache.json; do
+    grep -qx "$want" "$work/files" || fail "the tarball has no $want (run scripts/build-app.sh before npm pack)"
+  done
+  grep -q '^apps/app/\(src\|node_modules\)/' "$work/files" && fail "the tarball carries the app's source or node_modules, only apps/app/dist belongs"
+  ok "has the web app for /app/ ($(grep -c '^apps/app/dist/' "$work/files") files)"
+fi
 if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design|work|proposals)/|^docs/.*\.png$|^local/capsule/native/(\.build|Tests)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
   fail "the tarball carries the files above, which it should not"
 fi
