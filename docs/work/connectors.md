@@ -93,6 +93,12 @@ Owns `lib/connectors/` (was `core/connectors/`, moved 2026-09-28), `core/mcp/`, 
   literal `[redacted]`, its own `hasSecrets`. New test with a planted key in both places
   (core/mcp/discover.test.js). core/mcp+core/config+boundaries+docs-check 137/137 on testbox.
   Still true: nothing calls discover() outside its own tests yet (Next item 1).
+- Reviewer's LOW on 06f92ad1 (do with the wiring work, not now): SECRET_FLAG misses short/unusual
+  flags (`-k`, `--bearer`, `--auth`, `--pat`; the comment overclaims `-k` already matches — fix the
+  comment too) and a bare positional secret (`npx srv sk-ant-...`, no flag at all). Also redact any
+  arg matching sync/scrub.js's PATTERNS token shapes (that file already knows what a real token
+  looks like by prefix/entropy; reuse it rather than growing a second list here). Fold into Next
+  item 1 (the pending-row wiring) alongside the reviewer's earlier MEDIUM.
 - LOAD RULE (lead): check `ssh testbox uptime` right before every run; run only under 6.
 - RESUMED 2026-09-28: merged origin/main (794 commits, 0.1.0-rc.1/rc.2 landed) into work/connectors
   at 38a0240c. Conflicts: CHANGELOG.md (kept both entries), core/modules/index.js and
