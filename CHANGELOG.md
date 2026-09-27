@@ -124,6 +124,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   allowlist (core/link/allow.js), and agents and MCP still never get it. Test:
   test/federation-reads.test.js.
 
+- The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and
+  `release.sh` no longer build, upload or redirect to `Vyre-mac.zip`. `/download/mac` still
+  redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
+  stamp in build.json ignores the files build-site writes, so running it twice on a clean checkout
+  says `dirty: false`. `release-check.sh` asserts both redirects, that nothing names the zip, that
+  `/start` is served as committed, and that the install has no node_modules. The docs
+  screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
+  brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
+  still fetches the zip until capsule-pro retires it.
+
 #### Chat starts sessions, browses the box's folders, opens a terminal, and asks real questions (ADR 0024)
 
 - Chat has New session (header, rail, empty state, key `n`): pick a project, a folder on the box or
@@ -212,6 +222,30 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   refused (`core/names/service.test.js`), wrong Host and no session on loopback
   (`test/onboard.test.js`).
 
+#### Taking over an agent's computer asks for no passkey
+
+- The owner's take-over, hand-back and Sign in privately in Glass no longer ask for Touch ID or
+  a passkey (Touch ID stays for pairing, vault secrets, and sending, posting or paying outside).
+  `computers.takeover` and `computers.giveback` leave the floor's list; they, `glass.take` and
+  `glass.release` are on a new `PERSON_ONLY` list in `core/presence/index.js`. An agent is still
+  refused by the tools, a tailnet guest by the registry (`core/modules/index.js`), and Claude's
+  sessions by the harness (`core/harness/rules.js`). The Deck's "Confirm it's you" step is gone
+  (`deck/glass/takeover.js`). Tests: core/computers/computers.test.js, core/glass/glass.test.js,
+  core/harness/floor.test.js. ADR 0004 and 0005 amended.
+#### Every Claude Code session knows the user
+
+- `core/about`: keeps `<home>/about.md`, a few lines on the user (name, assistant, busiest projects
+  and their people, and memory's `memory.profile` lines of kind work, place or preference; never
+  people, vehicles or clients), under 600 characters,
+  with anything shaped like a credential, email or phone number dropped. Tool `about.text`.
+- The SessionStart hook reads that file and adds it ahead of the project brief, also with vyred
+  down. An agent scoped to some projects does not get it.
+- `/vyre todo`, `/vyre remind <when> <text>`, `/vyre agenda` (the planner's `planner.add`,
+  `planner.list` and `planner.agenda`; the planner reads the reminder's time) and
+  `/vyre remember <fact>` (memory's `memory.remember`; a lesson where it refuses). Making a lesson
+  moves from `/vyre remember` to `/vyre lesson <rule>`.
+- The MCP server's instructions: back a promised reminder with `planner_add`, ask `memory_answer`
+  before saying you do not know.
 
 #### The site has no Capsule zip, and a clean checkout stamps clean
 
@@ -233,6 +267,35 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the build (`scripts/install-box.sh`, `box/vyre`). The test tarball is packed with 1985 mtimes,
   as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
   Found by box-deploy.
+
+#### A model's shell cannot answer or approve as the person, even as "cli"
+
+- On vyred's socket a caller label is only a claim. For a person-only tool (core/presence
+  PERSON_ONLY: threads.answer, term.open, term.attach, and now agents.create, agents.update,
+  gate.revise, gate.reject), vyred asks the kernel which process connected (LOCAL_PEERPID on
+  macOS, SO_PEERCRED on Linux, read by a one-line perl) and walks its ancestry. Under a running
+  `claude`, or under a process vyred runs a thread in, the call is refused with `denied`, never
+  asked. Processes above vyred itself do not count. A pid vyred cannot read is refused.
+- threads.answer refuses an answer from the session that raised the ask.
+- `core/daemon/peer.js` (new), `core/daemon/index.js`, `core/presence/index.js`, internal
+  `threads.pids` in `core/switchboard`; test/peer.test.js (a fake `claude` parent).
+
+#### Every ask and held item says what answering it takes
+
+- `threads.asks`, `threads.get`'s asks, `gate.held` and `gate.get` carry
+  `presence: {required, covered}`, computed on the box: `required` is true only where a proof is
+  needed (approving a send, a spend or a deletion at the Gate; asks never), `covered` when the caller's
+  device has a live presence session. Surfaces render from it and never guess from tool names.
+- The no-nag rule at the Gate and for asks: `gate.revise`, `gate.reject` and `threads.answer` are
+  off the floor's list and ask for no proof (a person caller still; models are refused).
+  `gate.approve` asks only for kinds `send`, `spend` and `delete`, through the floor's
+  new `NARROWABLE` list, and is sessionable: a request with `x-vyre-presence-keep: 1` and a
+  strong proof gets back `x-vyre-presence-session: session id=.. secret=.. expires=..`, which
+  proves the next sends on that device as `x-vyre-presence`. A presence session now lasts 30
+  minutes from the proof with no idle cutoff (it was 5 minutes idle).
+  `core/presence/index.js`, `core/presence/module.js` (internal `presence.covered`),
+  `core/modules/index.js`, `core/daemon/index.js`, `core/gate/index.js`,
+  `core/switchboard/index.js`; test/presence-bypass.test.js.
 
 #### Making or changing an agent is the person's, with no passkey
 

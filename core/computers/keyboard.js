@@ -101,10 +101,10 @@ export class Keyboard extends EventEmitter {
    * Take the computer for a person's surface. Calling it again from the same surface renews it
    * (and re-leases the thread), which is how Glass keeps a take-over alive.
    *
-   * `caller` is whoever vyred verified made this call (presence now gates `computers.takeover`
-   * itself — a module, or a person who just proved they are here — so recording it is recording
-   * a real identity, not a string the input made up). `giveback` requires the same caller, so a
-   * second person who also proved presence cannot end someone else's take-over.
+   * `caller` is whoever vyred says made this call (a module, or the channel a person came in on,
+   * such as their tailnet login), never a string the input made up. There is no presence proof
+   * for take-over (core/presence PERSON_ONLY). `giveback` requires the same caller, so a second
+   * person cannot end someone else's take-over.
    * @param {string} agent @param {string} surface @param {string} [caller]
    * @returns {Promise<{ agent: string, surface: string, thread: string|null, previous: string|null }>}
    */
@@ -141,8 +141,8 @@ export class Keyboard extends EventEmitter {
   /**
    * Hand the keyboard back. Only the surface that has it can; and when it was taken over by a
    * caller vyred verified (not one moved here by the lease alone, see `onLease`), only that same
-   * caller or a module can — so a second person who also proved presence for `computers.giveback`
-   * cannot end someone else's take-over just by naming their surface.
+   * caller or a module can, so a second person cannot end someone else's take-over just by
+   * naming their surface.
    */
   async giveback(agent, surface, caller) {
     const t = this.takeovers.get(agent);

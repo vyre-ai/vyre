@@ -17,6 +17,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 
 | Module | Folder | Runs on | Tools | Events | Shows on |
 | --- | --- | --- | --- | --- | --- |
+| [`about`](#about) | `core/about` | `box`, `local` | 1 | 0 | cli |
 | [`agents`](#agents) | `core/agents` | `box`, `local` | 10 | 0 | cli |
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
@@ -37,16 +38,27 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`network`](#network) | `core/network` | `box` | 5 | 2 | capsule, cli, deck |
 | [`onboard`](#onboard) | `core/onboard` | `box` | 10 | 2 | none |
 | [`planner`](#planner) | `core/planner` | `box`, `local` | 14 | 5 | capsule, cli, deck |
-| [`presence`](#presence) | `core/presence` | `box`, `local` | 6 | 4 | capsule, cli, deck |
+| [`presence`](#presence) | `core/presence` | `box`, `local` | 7 | 4 | capsule, cli, deck |
 | [`projects`](#projects) | `core/projects` | `box`, `local` | 8 | 4 | cli |
 | [`push`](#push) | `core/push` | `box`, `local` | 6 | 0 | capsule, cli, deck |
 | [`recall`](#recall) | `core/recall` | `box`, `local` | 10 | 3 | cli |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
-| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 22 | 13 | cli |
+| [`threads`](#threads) | `core/switchboard` | `box`, `local` | 23 | 13 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
+
+## about
+
+A few lines on who the user is, cached for every Claude Code session to start with.
+
+- Folder: `core/about`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [1](tools.md#about)
+- Emits: no events
+- Shows on: cli
 
 ## agents
 
@@ -257,7 +269,7 @@ Alarms, timers, reminders, todos, notes and a calendar, kept on the box so somet
 - Folder: `core/presence`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [6](tools.md#presence)
+- Tools: [7](tools.md#presence), 1 of them only for other modules
 - Emits: [4 events](events.md#presence)
 - Shows on: capsule, cli, deck
 
@@ -324,7 +336,7 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Folder: `core/switchboard`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: none
-- Tools: [22](tools.md#threads), 10 of them only for other modules
+- Tools: [23](tools.md#threads), 11 of them only for other modules
 - Emits: [13 events](events.md#threads)
 - Shows on: cli
 
