@@ -944,16 +944,24 @@ async function drawModules(el) {
 function drawAppearance(el) {
   const seg = h("div", { class: "seg", role: "group", "aria-label": "Theme" });
   const cur = () => document.documentElement.dataset.theme === "paper" ? "paper" : "dark";
+  // Painted at once and kept in this browser; with the hub (ADR 0035) it is also this device's
+  // appearance.scheme, so the device's other surfaces follow and settings.changed repaints them.
+  let device = /** @type {string|null} */ (null), hub = false;
+  attempt("settings.snapshot", {}).then(r => { device = r && r.data && r.data.device ? String(r.data.device) : null; hub = Boolean(r && r.data && device && "appearance.scheme" in (r.data.values || {})); draw(); }).catch(() => {});
   const set = v => {
     if (v === "paper") document.documentElement.dataset.theme = "paper"; else delete document.documentElement.dataset.theme;
     try { if (v === "paper") localStorage.setItem("vyre.theme", "paper"); else localStorage.removeItem("vyre.theme"); } catch {}
+    if (hub && device) attempt("settings.set", { key: "appearance.scheme", value: v, level: "device", device }).catch(() => {});
     draw();
   };
-  const draw = () => put(seg, [["dark", "Dark"], ["paper", "Paper"]].map(([v, t]) =>
-    h("button", { type: "button", "aria-pressed": String(cur() === v), onclick: () => set(v) }, t)));
+  const hint = h("div", { class: "small faint" });
+  const draw = () => {
+    put(seg, [["dark", "Dark"], ["paper", "Paper"]].map(([v, t]) =>
+      h("button", { type: "button", "aria-pressed": String(cur() === v), onclick: () => set(v) }, t)));
+    put(hint, hub ? "Kept for this device. Your other devices keep their own." : "Kept in this browser only. Your other devices keep their own.");
+  };
   draw();
-  put(el, h("div", { class: "rows" },
-    row("Theme", seg, h("div", { class: "small faint" }, "Kept in this browser only. Your other devices keep their own."))));
+  put(el, h("div", { class: "rows" }, row("Theme", seg, hint)));
 }
 
 // ---- 10. This machine ----------------------------------------------------------------------
