@@ -11,6 +11,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   `take-back`, `edit`, `send-now`, `rewind`, `open` (hands an idle session to `claude --resume` in
   this terminal), and a one-shot `get --since/--limit` (`watch` still follows). A verb whose tool
   this vyred does not have yet says so in one line and exits 1.
+- Behaviour change: `vyre threads get` and `vyre threads show` print the thread once and exit
+  (threads.get); they used to follow it like `watch`. Use `vyre threads watch` to follow.
 - `vyre threads watch` reconnects by itself (1 s, 2 s, 5 s, up to 30 s) from the last event it
   showed (Last-Event-ID), never prints an event twice, and stays through an idle close or a vyred
   restart.
