@@ -4,6 +4,11 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Theme route tests hold with or without the appearance module
+
+- core/settings/hub.test.js uses the shipped core/appearance when the tree has it, and a small
+  stand-in otherwise; test/daemon.test.js checks the config-colours fallback with appearance off.
+
 #### The Deck's Dark/Paper switch is this device's appearance.scheme
 
 - deck/views/settings.js: with the hub and the appearance module, the switch also sets

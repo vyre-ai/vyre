@@ -231,7 +231,11 @@ test("a secret setting never goes into hub.json, and a hand edit of one is named
 
 test("/theme.css and /v1/theme serve the appearance module's answer per device, with rev as the ETag and a 304", async t => {
   const http = await import("node:http");
+  // The shipped appearance module (core/appearance) answers when the tree has it; otherwise a
+  // small stand-in in the home, so this route test runs on either side of that merge.
+  const shipped = fs.existsSync(new URL("../appearance/module.json", import.meta.url));
   const { d } = await world(t, { before: root => {
+    if (shipped) return;
     const dir = path.join(root, "modules", "appearance");
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, "module.json"), JSON.stringify({ name: "appearance", version: "0.1.0", roles: ["box", "local"], does: { tools: ["appearance.resolve"] } }));
@@ -249,12 +253,18 @@ test("/theme.css and /v1/theme serve the appearance module's answer per device, 
   const css = /** @type {any} */ (await get("/theme.css?device=tailnet:alex-phone"));
   assert.equal(css.status, 200);
   assert.match(css.type, /text\/css/);
-  assert.equal(css.body, ":root { --bg: #fff; }");
-  assert.equal(css.etag, '"7-tailnet:alex-phone"');
+  assert.match(css.etag, /-tailnet:alex-phone"$/, "the ETag names the device");
   assert.equal((/** @type {any} */ (await get("/theme.css?device=tailnet:alex-phone", { "if-none-match": css.etag }))).status, 304);
   const json = /** @type {any} */ (await get("/v1/theme?device=mac:alex-mbp"));
   assert.equal(json.status, 200);
-  assert.deepEqual([JSON.parse(json.body).data.scheme, JSON.parse(json.body).data.rev], ["dark", 7]);
+  const body = JSON.parse(json.body).data;
+  assert.equal(typeof body.css, "string");
+  assert.ok(body.tokens && body.tokens.color, "the whole tokens.json");
+  if (!shipped) {
+    assert.equal(css.body, ":root { --bg: #fff; }");
+    assert.equal(css.etag, '"7-tailnet:alex-phone"');
+    assert.deepEqual([body.scheme, body.rev], ["dark", 7]);
+  }
 });
 
 test("a thread's chip changing in sessions is also a session-level settings.changed, with the next rev", async t => {
