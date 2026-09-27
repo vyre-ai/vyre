@@ -65,7 +65,7 @@ A few lines on who the user is, cached for every Claude Code session to start wi
 - Folder: `core/agents`, version 0.1.0
 - Runs on: `box`, `local`
 - Requires: `threads`
-- Tools: [10](tools.md#agents), 1 of them only for other modules
+- Tools: [10](tools.md#agents)
 - Emits: no events
 - Shows on: cli
 - Needs vault: `per-agent`

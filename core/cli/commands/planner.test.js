@@ -1,5 +1,5 @@
 // @ts-check
-// `vyre alarm`, `timer`, `remind`, `todo`, `notes`, `agenda` and `snooze` as a person runs them:
+// `vyre alarm`, `timer`, `remind`, `todo`, `notes`, `agenda`, `snooze`, `ringing` and `dismiss` as a person runs them:
 // the real bin/vyre in a child process, against a vyred started in this process in a temp home
 // with the planner on a fake clock (Thursday 24 Sep 2026, 10:00 in Karachi).
 
@@ -29,11 +29,26 @@ async function world(t) {
   fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ name: "test-box", role: "box", transcripts: [], vault: { keystore: "file" },
     modules: { enable: [], disable: ["recall", "memory", "learn"] }, planner: { timezone: KHI } }));
   const t0 = { t: NOW };
-  seams.set(root, { now: () => t0.t, setTimer: () => ({}), clearTimer: () => {} });
+  // The planner's timers are kept, not run: `advance` moves the clock and runs what fell due.
+  /** @type {Map<number, { at: number, fn: () => void }>} */
+  const timers = new Map();
+  let seq = 0;
+  seams.set(root, { now: () => t0.t, setTimer: (fn, ms) => { timers.set(++seq, { at: t0.t + ms, fn }); return seq; }, clearTimer: id => { timers.delete(id); } });
   t.after(() => seams.delete(root));
   const d = await start({ root, log: () => {} });
   t.after(() => d.stop());
-  return { root, vyre: (/** @type {string[]} */ ...args) => run(root, args), tool: (name, input = {}) => call(name, input, { root }) };
+  const advance = ms => {
+    const end = t0.t + ms;
+    for (;;) {
+      const next = [...timers.entries()].sort((a, b) => a[1].at - b[1].at)[0];
+      if (!next || next[1].at > end) break;
+      timers.delete(next[0]);
+      t0.t = next[1].at;
+      next[1].fn();
+    }
+    t0.t = end;
+  };
+  return { root, advance, vyre: (/** @type {string[]} */ ...args) => run(root, args), tool: (name, input = {}) => call(name, input, { root }) };
 }
 
 test("planner cli: zone formatting and repeat words", () => {
@@ -154,4 +169,111 @@ test("planner cli: todos by list, notes pinned first, and the agenda", async t =
   assert.equal(aj.tz, KHI);
   assert.equal((await vyre("agenda", "someday")).code, 2);
   t.diagnostic("vyre agenda tomorrow:\n" + tomorrow.out + "\nvyre todo:\n" + (await vyre("todo")).out + "\nvyre agenda:\n" + today.out);
+});
+
+const idIn = out => /** @type {string} */ ((/(i_\S+)/.exec(out) || [])[1]);
+
+test("planner cli: edit and rm for todos, notes, alarms, timers and reminders, and the wrong kind refused", async t => {
+  const { vyre, tool } = await world(t);
+
+  const td = idIn((await vyre("todo", "add", "buy", "flour")).out);
+  const e1 = await vyre("todo", "edit", td, "buy", "rye", "flour", "!high", "by", "friday");
+  assert.equal(e1.code, 0, e1.out);
+  assert.match(e1.out, /todo buy rye flour\s+!!!\s+due Fri 25 Sep/);
+  const ej = JSON.parse((await vyre("todo", "edit", td, "buy", "spelt", "--json")).out);
+  assert.equal(ej.title, "buy spelt");
+  assert.equal(ej.priority, 3, "words without a priority keep it");
+  assert.equal((await vyre("todo", "edit", td)).code, 2, "edit needs the new words");
+
+  const nt = idIn((await vyre("notes", "add", "kit", "prefers", "mornings")).out);
+  const ne = await vyre("notes", "edit", nt, "kit", "prefers", "afternoons");
+  assert.equal(ne.code, 0, ne.out);
+  assert.match(ne.out, /note kit prefers afternoons/);
+
+  const al = idIn((await vyre("alarm", "7am")).out);
+  const ae = await vyre("alarm", "edit", al, "8am");
+  assert.equal(ae.code, 0, ae.out);
+  assert.match(ae.out, /alarm Fri 25 Sep 08:00/);
+  const wk = idIn((await vyre("alarm", "6:30", "weekdays")).out);
+  const we = await vyre("alarm", "edit", wk, "7:15");
+  assert.equal(we.code, 0, we.out);
+  assert.match(we.out, /07:15 · weekdays/, "a repeating alarm keeps its days");
+  assert.match((await vyre("alarm", "edit", al, "banana")).out, /could not read a time in "banana"/);
+
+  const tm = idIn((await vyre("timer", "10m", "bread")).out);
+  const te = await vyre("timer", "edit", tm, "25m");
+  assert.equal(te.code, 0, te.out);
+  assert.match(te.out, /timer 25m rings at 10:25\s+bread/);
+  const tl = JSON.parse((await vyre("timer", "list", "--json")).out);
+  assert.deepEqual(tl.timers.map(x => x.id), [tm]);
+  assert.match((await vyre("timer", "list")).out, /timer Thu 24 Sep 10:25\s+bread/);
+
+  const rm = idIn((await vyre("remind", "call juno", "at", "6")).out);
+  const re1 = await vyre("remind", "edit", rm, "call juno", "at", "7");
+  assert.equal(re1.code, 0, re1.out);
+  assert.match(re1.out, /reminder Thu 24 Sep 19:00\s+call juno/);
+  const re2 = await vyre("remind", "edit", rm, "call", "juno", "about", "Harlow", "Legal");
+  assert.match(re2.out, /reminder Thu 24 Sep 19:00\s+call juno about Harlow Legal/, "words without a time keep the time");
+  const rl = await vyre("remind", "list");
+  assert.equal(rl.code, 0, rl.out);
+  assert.match(rl.out, /19:00\s+call juno about Harlow Legal/);
+
+  // An id of another kind is refused, naming the command that owns it; nothing is deleted.
+  const wrong = await vyre("alarm", "rm", td);
+  assert.equal(wrong.code, 1);
+  assert.match(wrong.out, /is a todo, not an alarm/);
+  assert.match(wrong.out, /next: vyre todo rm i_/);
+  const wj = JSON.parse((await vyre("notes", "rm", al, "--json")).out);
+  assert.equal(wj.error.code, "bad_input");
+  assert.equal((await tool("planner.get", { item: td })).data.item.title, "buy spelt");
+
+  for (const [cmd, id] of [["todo", td], ["notes", nt], ["alarm", al], ["timer", tm], ["remind", rm]]) {
+    const r = await vyre(cmd, "rm", id);
+    assert.equal(r.code, 0, `${cmd} rm: ${r.out}`);
+    assert.match(r.out, /deleted /);
+  }
+  const gone = await tool("planner.get", { item: td });
+  assert.ok(gone.error || gone.data.item.deleted_at, "the todo is deleted");
+  assert.doesNotMatch((await vyre("todo")).out, /spelt/);
+  assert.doesNotMatch((await vyre("notes")).out, /afternoons/);
+  assert.equal(JSON.parse((await vyre("alarm", "--json")).out).alarms.length, 1, "only the weekday alarm is left");
+  const again = await vyre("todo", "rm", "i_nope");
+  assert.equal(again.code, 1);
+  assert.match(again.out, /no such item/);
+  assert.equal((await vyre("todo", "rm")).code, 2);
+});
+
+test("planner cli: ringing lists what rings, and dismiss stops it", async t => {
+  const { vyre, advance } = await world(t);
+  assert.match((await vyre("ringing")).out, /nothing is ringing/);
+  assert.deepEqual(JSON.parse((await vyre("ringing", "--json")).out), []);
+  const tm = idIn((await vyre("timer", "1m", "bread")).out);
+  const al = idIn((await vyre("alarm", "10:05")).out);
+  advance(6 * 60_000);
+
+  const r = await vyre("ringing");
+  assert.equal(r.code, 0, r.out);
+  assert.match(r.out, /timer 10:01 bread\s+rung 2 times\s+f_/, "a timer unanswered for 5 minutes rings again");
+  assert.match(r.out, /alarm 10:05 Alarm\s+f_/);
+  assert.match(r.out, /vyre dismiss <id> stops one/);
+  const rows = JSON.parse((await vyre("ringing", "--json")).out);
+  assert.deepEqual(rows.map(x => x.item).sort(), [tm, al].sort());
+
+  // By firing id, and by the item's id.
+  const byFiring = await vyre("dismiss", rows.find(x => x.item === tm).firing);
+  assert.equal(byFiring.code, 0, byFiring.out);
+  assert.match(byFiring.out, /dismissed bread/);
+  const dj = JSON.parse((await vyre("dismiss", al, "--json")).out);
+  assert.equal(dj.firing.state, "acked");
+  assert.equal(dj.item.state, "done", "a one-off alarm ends");
+  assert.deepEqual(JSON.parse((await vyre("ringing", "--json")).out), []);
+
+  const twice = await vyre("dismiss", rows[0].firing);
+  assert.equal(twice.code, 0, twice.out);
+  assert.match(twice.out, /already/);
+  assert.equal((await vyre("dismiss")).code, 2);
+  const none = await vyre("dismiss", "i_nope");
+  assert.equal(none.code, 1);
+  assert.match(none.out, /next: vyre ringing lists what rings/);
+  assert.match((await vyre("help")).out, /vyre ringing[\s\S]*vyre dismiss/);
 });

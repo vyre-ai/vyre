@@ -42,7 +42,7 @@ const GROUPS = [
   ["Projects and sessions", ["projects", "new", "open", "threads", "resume", "start", "context", "pick", "unpick"]],
   ["Waiting on you", ["needs", "gate"]],
   ["Agents and watchers", ["agents", "watchers"]],
-  ["Time and lists", ["agenda", "alarm", "timer", "remind", "snooze", "todo", "notes"]],
+  ["Time and lists", ["agenda", "alarm", "timer", "remind", "snooze", "ringing", "dismiss", "todo", "notes"]],
   ["Memory", ["recall", "index", "memory", "why", "learn"]],
   ["Vault and presence", ["vault", "presence"]],
   ["Box care", ["backup", "restore"]],

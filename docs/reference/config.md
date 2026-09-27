@@ -62,6 +62,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | Variable | What it does | Read in |
 | --- | --- | --- |
 | `VYRE_ACME_DIRECTORY` | The ACME server certificates come from, in place of Let's Encrypt. With it set, Vyre does not wait for DNS. | `core/names/index.js` |
+| `VYRE_ADB_BIN` | Not described yet. | `core/cli/commands/phone.js` |
 | `VYRE_ALLOW_DIALOGS` | `1`: a home other than `~/.vyre` that you keep on purpose may raise Touch ID and other prompts. Never under tests; `VYRE_NO_DIALOGS` still wins. | `core/config/dialogs.js`, `core/daemon/index.js`, `local/capsule/lib/dialogs.js` |
 | `VYRE_ALLOW_REAL_BOX` | Not described yet. | `core/config/dialogs.js` |
 | `VYRE_BOX_INSTALLER` | The installer `vyre box add` runs on the server, in place of the published one. | `core/cli/commands/box.js` |
