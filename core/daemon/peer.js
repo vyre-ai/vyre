@@ -43,8 +43,29 @@ export function peerPid(socket) {
   return p;
 }
 
-/** @param {import("node:net").Socket} socket @returns {Promise<number|null>} */
-function readPeerPid(socket) {
+/**
+ * The perl that reads the peer: by absolute path (SIP-protected on macOS, root-owned perl-base on
+ * the box) and with an empty environment. vyred's own PATH and env are its user's, which a model's
+ * shell shares: a perl earlier in PATH, or PERL5OPT/PERL5LIB, would be handed fd 3 of every checked
+ * connection and could print whatever pid it liked.
+ */
+const PERL_BIN = "/usr/bin/perl";
+
+/**
+ * Put a socket back to non-blocking. The child's own first line does this, but a child that never
+ * runs it (a failed exec, a kill) must not leave vyred blocking either, so the parent does too.
+ * @param {any} socket
+ */
+function nonBlocking(socket) {
+  try { if (socket && socket._handle && typeof socket._handle.setBlocking === "function") socket._handle.setBlocking(false); } catch {}
+}
+
+/**
+ * @param {import("node:net").Socket} socket
+ * @param {{ bin?: string, args?: string[] }} [seam] tests only: another program in perl's place
+ * @returns {Promise<number|null>}
+ */
+export function readPeerPid(socket, seam = {}) {
   const script = PERL[/** @type {"darwin"|"linux"} */ (process.platform)];
   if (!script) return Promise.resolve(null);
   // The fd number, not the Socket: given a Socket, Node wraps its handle for the child and closes
@@ -53,12 +74,13 @@ function readPeerPid(socket) {
   if (!Number.isInteger(fd) || fd < 0) return Promise.resolve(null);
   return new Promise(resolve => {
     let out = "";
-    const child = spawn("perl", ["-e", script], { stdio: ["ignore", "pipe", "ignore", fd] });
-    const timer = setTimeout(() => child.kill(), 3000);
+    const child = spawn(seam.bin || PERL_BIN, seam.args || ["-e", script], { stdio: ["ignore", "pipe", "ignore", fd], env: {} });
+    const timer = setTimeout(() => child.kill("SIGKILL"), 3000);
     child.stdout.on("data", d => { out += d; });
-    child.on("error", () => { clearTimeout(timer); resolve(null); });
+    child.on("error", () => { clearTimeout(timer); nonBlocking(socket); resolve(null); });
     child.on("close", code => {
       clearTimeout(timer);
+      nonBlocking(socket);
       const pid = Number(out.trim());
       resolve(code === 0 && Number.isInteger(pid) && pid > 0 ? pid : null);
     });
