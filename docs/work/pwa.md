@@ -148,9 +148,11 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
 - Next in order: cohesion's waiting.list,
   context.report, connections.list, credential sheet, Glass mini-view (said yes, once on main);
   docs' tips.next wiring (said yes, once on main).
-- Open for app-design: Places hint wording ("Hold a place to keep it as a fourth page." vs the
-  spec's "Long-press a tile to pin it as a fourth page."); the chat header's toggles on the phone read at base size (a menu would be better,
-  chat's call).
+- app-design answered (589716e7): retired names and "pin" wording applied in fd88ef27 (not yet
+  tested: testbox runs held until the integrator reports batch 4). Open: the chat header's toggles
+  on the phone read at base size (a menu would be better, chat's call).
+- Theme module is app-design's core/appearance (b756d128, next batch); native-core serves
+  /theme.css?device= and /v1/theme on it (/v1/appearance/theme is an interim alias).
 
 ## Earlier (resumed after logout 3, 2026-09-27)
 - ADR 0029 on the Deck, done (2026-09-27): cdf65f1 stream on follow() + vyred serves
@@ -293,8 +295,8 @@ their branch). app-design ticks these in the specs' Gaps lists after the merge.
 | Phone shell | the avatar opened a Settings sheet: now the Places sheet (head row, six tiles, hint), a dialog named "Places"; the avatar is "Places and account" | 79124ccd |
 | Phone shell | no pin-a-fourth-page: a held tile (600 ms, or Shift+F10 / the context menu key) joins the pager after Agents and the header, one at most, per device | 79124ccd |
 | Phone shell | the header labels could shrink: they never shrink and scroll sideways when four do not fit | 79124ccd |
-| Top bar | `.needs-pill` was a violet wash: no fill, its count is `--beacon-ink` text | TOKENS |
-| Status mark | `.dot.recall` was gold: now `--text-2`; "From memory" is a source chip (1 px `--rule-strong`) | TOKENS |
+| Top bar | `.needs-pill` was a violet wash: no fill, its count is `--beacon-ink` text | fd88ef27 |
+| Status mark | `.dot.recall` was gold: now `--text-2`; "From memory" is a source chip (1 px `--rule-strong`) | fd88ef27 |
 
 Not closed here: the phone tab bar badge (this branch has no tab bar, the phone shell uses page
 labels); the 10 s toast under a screen
