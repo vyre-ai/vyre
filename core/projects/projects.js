@@ -166,6 +166,37 @@ export class Projects {
     return { project: p.slug, removed, stillByFolder: byFolder };
   }
 
+  /**
+   * Add watchers: names on the marker (spec 7.2) for someone who should hear about this
+   * project's Needs without running a session in it — core/waiting's rows already carry
+   * `project`, so a surface that knows who watches what can filter on it once this exists.
+   * Person-only (core/presence PERSON_ONLY), same shape as addThreads.
+   */
+  addWatchers(ref, names) {
+    this.refresh();
+    const p = this.resolve(ref);
+    const clean = [...new Set(names.map(n => String(n).trim()).filter(Boolean))];
+    const add = clean.filter(n => !p.watchers.includes(n));
+    if (!add.length) return { project: p.slug, added: [], watchers: p.watchers };
+    const next = /** @type {Project} */ (M.write(p.home, { watchers: [...p.watchers, ...add] }));
+    this.refresh();
+    this.emit("project.changed", { project: p.slug, fields: ["watchers"] }, { project: p.slug });
+    return { project: p.slug, added: add, watchers: next.watchers };
+  }
+
+  /** Remove watchers. Removing a name nobody has does nothing and reports no removal. */
+  removeWatchers(ref, names) {
+    this.refresh();
+    const p = this.resolve(ref);
+    const drop = new Set(names.map(n => String(n).trim()));
+    const removed = p.watchers.filter(n => drop.has(n));
+    if (!removed.length) return { project: p.slug, removed: [], watchers: p.watchers };
+    const next = /** @type {Project} */ (M.write(p.home, { watchers: p.watchers.filter(n => !drop.has(n)) }));
+    this.refresh();
+    this.emit("project.changed", { project: p.slug, fields: ["watchers"] }, { project: p.slug });
+    return { project: p.slug, removed, watchers: next.watchers };
+  }
+
   // ------------------------------------------------------------ reading sessions
 
   hasIndex() {
