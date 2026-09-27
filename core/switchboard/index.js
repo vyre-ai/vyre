@@ -14,13 +14,13 @@
 
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { translate, cut, clip, CAPS } from "./translate.js";
 import { userLine, answerLine, run as defaultRun } from "./runner.js";
 import { claudeProvider } from "../sessions/providers.js";
 import { sessionsConfig, sdkDir, claudeBin, CREDENTIALS } from "../sessions/config.js";
+import { claudeHome, transcriptFolders } from "../config/index.js";
 import { findSubreaper, groupAlive } from "../sessions/spawn.js";
 import { keyUuid } from "../modules/idempotency.js";
 import { rules as floorRules } from "../harness/rules.js";
@@ -34,7 +34,6 @@ import { findSession, sessionInfo, openElsewhere } from "./adopt.js";
 import { wantsMacs, askMacs, mergeRows } from "../modules/federate.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
-const require_home = () => os.homedir();
 
 /** Usage per turn (for agents.usage), and the last rate-limit report Claude Code gave a thread. */
 const USAGE_MIGRATION = `CREATE TABLE threads_turns (thread TEXT NOT NULL, agent TEXT, auth TEXT NOT NULL, at INTEGER NOT NULL, ok INTEGER NOT NULL,
@@ -1330,7 +1329,7 @@ export class Switchboard {
    */
   remember(id, text, scope = "project") {
     const rec = this.must(id);
-    const file = scope === "user" ? path.join(process.env.CLAUDE_CONFIG_DIR || path.join(require_home(), ".claude"), "CLAUDE.md")
+    const file = scope === "user" ? path.join(claudeHome(this.deps.root), "CLAUDE.md")
       : path.join(rec.cwd, scope === "local" ? "CLAUDE.local.md" : "CLAUDE.md");
     const line = String(text).replace(/\s+/g, " ").trim();
     if (!line) throw Object.assign(new Error("nothing to remember"), { code: "bad_input" });
@@ -1551,7 +1550,7 @@ export default {
     };
     const sb = new Switchboard({
       db: ctx.store.db, call: ctx.call, root,
-      transcripts: (ctx.config && ctx.config.transcripts) || [],
+      transcripts: transcriptFolders((ctx.config && ctx.config.transcripts) || [], root),
       emit: (type, payload, where) => ctx.events.emit(type, payload, where), log: ctx.log,
       prune: (thread, before) => ctx.events.prune("thread.text", { thread, before, has: "delta" }),
       idleMs: cfg.idle_minutes * 60_000, maxLive: cfg.max_live, auth, providers: ctx.providers,

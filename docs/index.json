@@ -1074,7 +1074,7 @@
     {"kind":"env","name":"VYRE_AGENT_UID","definedIn":"core/spawner/main.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_ALLOW_DIALOGS","definedIn":"core/config/dialogs.js","page":"reference/config.md#environment-variables","mentions":[{"page":"contributing/index.md","line":37,"anchor":"get-the-code-running"},{"page":"contributing/testing.md","line":100,"anchor":"dialogs"}]},
     {"kind":"env","name":"VYRE_ALLOW_REAL_BOX","definedIn":"core/config/dialogs.js","page":"reference/config.md#environment-variables","mentions":[]},
-    {"kind":"env","name":"VYRE_ALLOW_REAL_TRANSCRIPTS","definedIn":"core/recall/index.js","page":"reference/config.md#environment-variables","mentions":[]},
+    {"kind":"env","name":"VYRE_ALLOW_REAL_TRANSCRIPTS","definedIn":"core/config/dialogs.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_BOX_INSTALLER","definedIn":"core/cli/commands/box.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_BOX_PAIR_WAIT_MS","definedIn":"core/cli/commands/box.js","page":"reference/config.md#environment-variables","mentions":[]},
     {"kind":"env","name":"VYRE_BOX_POLL_MS","definedIn":"core/cli/commands/box.js","page":"reference/config.md#environment-variables","mentions":[]},
