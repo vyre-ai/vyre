@@ -91,7 +91,7 @@ const SHIELDED_ROUTES = new Set(["GET /tree", "GET /screenshot", "POST /act", "P
 // shell can read PID 1's own real environment directly from /proc/1/environ regardless of what
 // any child of computerd gets; it closes the separate, easier channel of computerd's own spawned
 // children leaking the same values if one of them ever echoes or crash-dumps its environment).
-const CHILD_ENV_ALLOW = ["PATH", "HOME", "DISPLAY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "LANG", "LC_ALL"];
+const CHILD_ENV_ALLOW = ["PATH", "HOME", "DISPLAY", "XAUTHORITY", "DBUS_SESSION_BUS_ADDRESS", "XDG_RUNTIME_DIR", "LANG", "LC_ALL"];
 const childEnv = (allow = CHILD_ENV_ALLOW) => Object.fromEntries(allow.filter(k => process.env[k] !== undefined).map(k => [k, process.env[k]]));
 // Chrome gets the same allowlist plus what the entrypoint exports for accessibility (AT-SPI
 // only sees Chromium's tree with these) and the session bus's pid. Before computerd started it,

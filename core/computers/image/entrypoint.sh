@@ -32,6 +32,11 @@ GEOMETRY="${SCREEN}x24"
 : "${COMPUTERD_TOKEN:?COMPUTERD_TOKEN is required}"
 VYRE_HOME=/var/lib/vyre
 AGENT_HOME=/home/agent
+# X cookies: vyre's is trusted (Xvnc's -auth file); the agent's is an untrusted one the SECURITY
+# extension issues, so nothing the agent runs can read Chrome's pixels, send it events or use
+# XTEST. It lives in /run/vyre-x, which the agent can read but not change.
+VYRE_XAUTH="${VYRE_HOME}/.Xauthority"
+AGENT_XAUTH=/run/vyre-x/agent.xauth
 PATH_SAFE=/usr/local/bin:/usr/bin:/bin
 
 log() { echo "[entrypoint] $*" >&2; }
@@ -45,12 +50,13 @@ fi
 # The agent's umask keeps new files group-writable, so computerd (in its group) can save uploads.
 as_vyre() {
   setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
-    env -i HOME="${VYRE_HOME}" USER=vyre LOGNAME=vyre PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" "$@"
+    env -i HOME="${VYRE_HOME}" USER=vyre LOGNAME=vyre PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" \
+      XAUTHORITY="${VYRE_XAUTH}" "$@"
 }
 as_agent() {
   setpriv --reuid=1000 --regid=1000 --init-groups --inh-caps=-all -- \
     env -i HOME="${AGENT_HOME}" USER=agent LOGNAME=agent SHELL=/bin/bash PATH="${PATH_SAFE}" \
-      LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" TERM=xterm \
+      LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" XAUTHORITY="${AGENT_XAUTH}" TERM=xterm \
     /bin/sh -c 'umask 002; exec "$@"' sh "$@"
 }
 
@@ -81,12 +87,16 @@ fi
 # agent's screen under it (-AcceptSetDesktopSize=0), and 24 frames a second is plenty. X itself
 # listens on its unix socket only (-nolisten tcp); -localhost=no is about VNC's 5900, for vyred.
 printf '%s' "${VNC_PASSWORD}" | as_vyre sh -c 'umask 077; vncpasswd -f > "$HOME/.vnc/passwd"'
+# A fresh trusted cookie every start, known only to vyre's processes.
+as_vyre sh -c 'umask 077; rm -f "$XAUTHORITY"; xauth -q add "$DISPLAY" . "$(mcookie)"'
 
 log "starting Xvnc ${DISPLAY} at ${GEOMETRY}"
 as_vyre Xvnc "${DISPLAY}" \
   -geometry "${GEOMETRY}" \
   -rfbport 5900 \
   -rfbauth "${VYRE_HOME}/.vnc/passwd" \
+  -auth "${VYRE_XAUTH}" \
+  +extension SECURITY \
   -SecurityTypes VncAuth \
   -localhost=no \
   -nolisten tcp \
@@ -100,8 +110,16 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 as_vyre xdpyinfo -display "${DISPLAY}" >/dev/null 2>&1 || { log "Xvnc did not come up on ${DISPLAY}"; exit 1; }
-# The agent's desktop needs the display too; local connections by uid, nothing wider.
-as_vyre xhost +SI:localuser:agent >/dev/null
+# Access by cookie only: no host or local-user exceptions, so a client without one is refused.
+as_vyre xhost - >/dev/null
+for entry in $(as_vyre xhost 2>/dev/null | tail -n +2); do as_vyre xhost "-${entry}" >/dev/null 2>&1 || true; done
+# The agent's cookie: untrusted, never timing out. The folder and file are root's and readable to
+# all, so the agent can use the cookie but never swap in another; an untrusted cookie is no secret.
+mkdir -p /run/vyre-x && chmod 0755 /run/vyre-x
+as_vyre sh -c 'umask 027; xauth -q -f /tmp/.agent.xauth generate "$DISPLAY" . untrusted timeout 0' \
+  || { log "Xvnc has no SECURITY extension; refusing to give the agent a trusted display"; exit 1; }
+as_vyre sh -c 'cat /tmp/.agent.xauth' > "${AGENT_XAUTH}.new" && as_vyre rm -f /tmp/.agent.xauth
+chmod 0644 "${AGENT_XAUTH}.new" && mv "${AGENT_XAUTH}.new" "${AGENT_XAUTH}"
 
 # ---- the session bus, vyre's: AT-SPI for computerd and Chrome -------------------------------
 # The agent's processes are not on it (the bus admits its own uid only), so nothing the agent
@@ -142,7 +160,7 @@ exec 9> >(freezer)
 log "starting computerd (it starts chromium)"
 exec setpriv --reuid=1001 --regid=1001 --init-groups --inh-caps=-all -- \
   env -i HOME="${VYRE_HOME}" USER=vyre LOGNAME=vyre PATH="${PATH_SAFE}" LANG="${LANG:-C.UTF-8}" DISPLAY="${DISPLAY}" \
-    DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS}" DBUS_SESSION_BUS_PID="${DBUS_SESSION_BUS_PID}" \
+    DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS}" DBUS_SESSION_BUS_PID="${DBUS_SESSION_BUS_PID}" XAUTHORITY="${VYRE_XAUTH}" \
     GTK_MODULES=gail:atk-bridge NO_AT_BRIDGE=0 QT_ACCESSIBILITY=1 \
     COMPUTERD_TOKEN="${COMPUTERD_TOKEN}" SCREEN="${SCREEN}" ${VYRE_PROXY_PAC:+VYRE_PROXY_PAC="${VYRE_PROXY_PAC}"} \
     ${COMPUTERD_PORT:+COMPUTERD_PORT="${COMPUTERD_PORT}"} \
