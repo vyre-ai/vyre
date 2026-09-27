@@ -103,6 +103,23 @@ app-design specs for every item: work/app-design b756d128, docs/design/system/co
 
 - lead: route event renames (platform recorded as PLANNED in core/event-catalog): glass + harness file.* -> files.*, computers computer.* -> computers.*, projects projects.moved -> project.moved. Aliases go live one release after each rename.
 
+## Follow-ups from the interaction pass
+
+- Item 20 (696107fb): the lead decided the Chrome extension ships 0.1.1; cohesion's part is one
+  login experience with the Capsule (one vault, one grants model, one waiting.list row, one
+  account-row look). Sent to vault (owns the vault side) and capsule-pro (fill UI is the reference
+  look). glass folded items 1-3 into glass-plan.md (76411504); asked about a continuous-latency
+  ping primitive - answered (relay/channel.js's frame ping for the relayed path reused; direct path
+  needs a small new ping on Glass's own stream, nothing existing to reuse there). windows folded
+  its 3 into windows-plan.md and ADR 0037 (f2c5ef02); flagged interaction.md is plain-text-linked
+  on their branch since it's not on main yet - fine, convert once both merge. memory-iq set the
+  stream cutover: 30 Sep 2026, integrator's first 0.1.1 batch, memory-iq's sha and the Capsule land
+  together (work/memory-iq ffae4f08, "The stream cutover"). app-design wrote the Answer card into
+  result-card.md (00d3f471); grep swept `--beacon-wash`/`--recall-wash` before RC close per their
+  ask - site/styles.css on origin/main (a3a844e4) still has both at .held-chip/.block.beacon-bg,
+  their fix 57eebd9f sits on refs/remotes/e2elabel/pre/rc, not origin/main; flagged back to them,
+  not yet resolved either way.
+
 ## Hand-over: paused teams (sessions, chat, pwa, mobile)
 
 Interaction pass (docs/design/interaction.md, sha 5debc1bc), 2026-09-28. These four are paused;
