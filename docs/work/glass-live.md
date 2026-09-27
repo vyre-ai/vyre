@@ -31,6 +31,9 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
 - No passkey for the owner's take-over, hand-back or Sign in privately (user rule, 27 Sep).
   `PERSON_ONLY` in presence; agents, tailnet guests and Claude's sessions still refused.
   Tests (testbox, targeted, 14 files): 186 run, 180 pass, 0 fail, 6 skipped.
+- Merged main with e2e's 61692fd (agents.update person-only, no presence): Deck "Give a
+  computer" asks for no passkey; Settings' passkey note no longer names Glass take-over.
+  Tests after merge (15 files): 187 run, 181 pass, 0 fail, 6 skipped.
 
 ## Doing
 - Nothing in flight. Waiting for the next live-box deploy.
@@ -58,5 +61,6 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
 - presence (core/presence/index.js): `computers.takeover` and `computers.giveback` left
   HUMAN_ONLY; new export `PERSON_ONLY` (those two plus `glass.take`, `glass.release`).
   `computers.takeover`, `computers.giveback` and `glass.take` no longer declare `presence`.
+- Deck Settings (deck/views/settings.js, not ours): the passkey note names Gate and vault, not Glass.
 - registry (core/modules/index.js): a `tailnet-guest:` caller is refused PERSON_ONLY tools.
 - harness rules (core/harness/rules.js): `vyre call <PERSON_ONLY tool>` is denied like the floor's list.

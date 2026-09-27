@@ -317,7 +317,7 @@ export class Registry {
     // A guest from another tailnet is never a person proving they are here, whatever proof it
     // carries: presence is the owner's (ADR 0014 part 8), and so is the keyboard of an agent's
     // computer, which needs no proof (PERSON_ONLY). The router already hides these tools.
-    if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def) : def.presence))) {
+    if (String(caller).startsWith("tailnet-guest:") && (PERSON_ONLY.has(tool) || (this.deps.presence ? this.deps.presence.required(tool, def, input) : def.presence))) {
       return { error: { code: "denied", message: `${tool} is the owner's; a guest never approves or proves presence` } };
     }
     const problems = checkInput(def.input, input);
@@ -329,7 +329,7 @@ export class Registry {
     // A human-only tool needs a proof that a person is there, whatever the caller claims
     // (docs/adr/0004-presence.md). Only modules are exempt: only the loader makes those callers.
     const presence = this.deps.presence;
-    if (presence && callerKind(caller) !== "module" && presence.required(tool, def)) {
+    if (presence && callerKind(caller) !== "module" && presence.required(tool, def, input)) {
       const v = await presence.verify({ tool, input, caller, proof, def, peer: meta.peer || null });
       if (!v.ok) return { error: { code: v.code === "no_dialog" ? "no_dialog" : "presence_required", message: v.message, methods: v.methods } };
       // The tool learns how the person proved it (and with which enrolled key), never the proof.

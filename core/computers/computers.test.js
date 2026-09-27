@@ -230,7 +230,7 @@ test("computers: the owner takes and hands back the keyboard with no passkey; an
     assert.ok(PERSON_ONLY.has(tool) && !HUMAN_ONLY.has(tool), `${tool} is person-only, not on the floor's list`);
     assert.ok(!s.d.registry.tools.get(tool).presence, `${tool} does not declare presence`);
   }
-  assert.equal((await s.cli("agents.update", { name: "kit", computer: true })).error?.code, "presence_required", "the floor still holds");
+  assert.equal((await s.cli("gate.approve", { id: "g1" })).error?.code, "presence_required", "the floor still holds");
   assert.equal((await s.cli("computers.takeover", { agent: "kit", surface: "deck:laptop" })).data.surface, "deck:laptop");
   assert.equal(s.h.keyboard.canType("kit", "deck:laptop"), true);
   assert.match((await s.kit("computers.takeover", { surface: "glass:laptop" })).error.message, /is an agent, not a person's screen/);

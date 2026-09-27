@@ -46,7 +46,7 @@ Make an agent: a name, its projects ("*" for all), its credentials (Vault items 
   - `model` string
   - `projects` any
   - `skills` list of string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `module`
 
 ### `agents.delete`
 
@@ -115,7 +115,7 @@ Change an agent (name it by name or agent): its projects, credentials, instructi
   - `name` string
   - `projects` any
   - `skills` list of string
-- Callers: any caller
+- Callers: `capsule`, `cli`, `deck`, `local`, `mcp`, `module`
 
 ### `agents.usage`
 
