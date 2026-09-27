@@ -6,12 +6,16 @@
 // Entities, aliases, facts and evidence are derived from every claim on each derive, so they can
 // never drift from what was said. derive() writes only when the result differs.
 
-import { extractPersonal, SINGULAR, SINGLE_VALUED, TIME_VARYING, relOfRole } from "./extract.js";
+import { extractPersonal, CONF, SINGULAR, SINGLE_VALUED, TIME_VARYING, relOfRole } from "./extract.js";
 import { MIGRATIONS } from "../schema.js";
 import { migrate } from "../../store/index.js";
 
 /** Evidence kept per fact: enough to show where it came from. */
 const EVIDENCE_PER_FACT = 20;
+/** What a claim is worth when the person told memory outright (memory.remember). */
+export const TOLD = { explicit: 0.95, indirect: 0.8 };
+/** A remembered line longer than this is cut: it is a fact, not a document. */
+const TOLD_MAX = 1000;
 /** Relations that are bookkeeping for derive, never facts. */
 const INTERNAL = new Set(["called", "ended:owns"]);
 const KIN_WORD = { spouse: "spouse", partner: "partner", mother: "mother", father: "father", sister: "sister", brother: "brother", son: "son", daughter: "daughter", child: "child", dog: "dog", cat: "cat" };
@@ -79,7 +83,7 @@ export class Personal {
     const db = this.db;
     if (full) {
       // Claims a model added stay: they are keyed to turns that did not change.
-      this.tx(() => db.exec("DELETE FROM memory_me_claims WHERE method != 'model'; DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;"));
+      this.tx(() => db.exec("DELETE FROM memory_me_claims WHERE method NOT IN ('model', 'told'); DELETE FROM memory_me_cues; DELETE FROM memory_me_cursor;"));
       this.dirty = true;
     }
     const recall = new Map(db.prepare("SELECT id, turns FROM recall_sessions ORDER BY started, id").all().map(r => [String(r.id), Number(r.turns)]));
@@ -174,6 +178,39 @@ export class Personal {
     });
     if (n) this.dirty = true;
     return n;
+  }
+
+  /**
+   * What the person or their assistant told memory outright ("my wife is Jordan"). Read with the
+   * conversation rules as session told:<id>, at TOLD confidence, and kept as a note either way, so
+   * a line no rule can read is still found by its words. Derives, so the next read has it.
+   * @param {string} text @param {{ room?: string|null, who?: string|null }} [opts]
+   * @returns {{ id: number, text: string, facts: Fact[] }}
+   */
+  remember(text, { room = null, who = null } = {}) {
+    const t = String(text ?? "").replace(/\s+/g, " ").trim().slice(0, TOLD_MAX);
+    if (!t) throw new Error("remember needs the fact to keep, as text");
+    const ts = this.now();
+    const id = Number(this.db.prepare("INSERT INTO memory_me_told (ts, text, room, who) VALUES (?,?,?,?)").run(ts, t, room, who).lastInsertRowid);
+    const r = extractPersonal(t, { role: "user" });
+    const lift = c => (c.conf >= CONF.explicit ? TOLD.explicit : c.conf >= CONF.indirect ? TOLD.indirect : c.conf);
+    this.addClaims(`told:${id}`, 0, ts, r.claims.map(c => ({ ...c, conf: lift(c), method: "told" })));
+    this.derive();
+    const facts = this.db.prepare(`SELECT f.* FROM memory_me_facts f JOIN memory_me_evidence v ON v.fact = f.id WHERE v.session = ? ORDER BY f.confidence DESC, f.rel`)
+      .all(`told:${id}`).map(row => this.row(row));
+    return { id, text: t, facts };
+  }
+
+  /** One remembered line by id, or null. */
+  told(id) {
+    const r = this.db.prepare("SELECT id, ts, text, room FROM memory_me_told WHERE id = ?").get(Number(id));
+    return r ? { id: Number(r.id), ts: Number(r.ts), text: String(r.text), room: r.room == null ? null : String(r.room) } : null;
+  }
+
+  /** Remembered lines, newest first. */
+  toldAll({ limit = 200 } = {}) {
+    return this.db.prepare("SELECT id, ts, text, room FROM memory_me_told ORDER BY id DESC LIMIT ?").all(Math.max(1, Math.min(1000, limit)))
+      .map(r => ({ id: Number(r.id), ts: Number(r.ts), text: String(r.text), room: r.room == null ? null : String(r.room) }));
   }
 
   /**
@@ -291,6 +328,7 @@ export class Personal {
       const had = g.turns.get(tk);
       if (!had || had.conf < r.conf) g.turns.set(tk, { conf: r.conf, session: r.session, seq: r.seq, ts: r.ts });
       g.sessions.add(top(r.session));
+      if (r.session.startsWith("told:")) g.told = Math.max(g.told || 0, r.ts);
       g.first = Math.min(g.first, r.ts); g.last = Math.max(g.last, r.ts);
       groups.set(id, g);
     }
@@ -302,7 +340,9 @@ export class Personal {
     for (const f of facts) if (!SINGLE_VALUED.has(f.rel)) f.confidence = f.raw;
     for (const list of bySlot.values()) {
       const newest = [...list].sort((a, b) => b.last - a.last || b.raw - a.raw)[0];
-      const w = list.map(f => f.raw * (TIME_VARYING.has(f.rel) && f !== newest ? 0.5 : 1));
+      // Told outright (memory.remember) is a correction: what was said before it barely counts.
+      const told = Math.max(0, ...list.map(f => f.told || 0));
+      const w = list.map(f => f.raw * (TIME_VARYING.has(f.rel) && f !== newest ? 0.5 : 1) * (told && !f.told && f.last <= told ? 0.1 : 1));
       const sum = w.reduce((a, b) => a + b, 0) || 1;
       list.forEach((f, i) => { f.confidence = f.raw * w[i] / sum; });
       const win = [...list].sort((a, b) => b.confidence - a.confidence || b.last - a.last)[0];
@@ -459,6 +499,7 @@ export class Personal {
       entities: one("SELECT COUNT(*) n FROM memory_me_entities"),
       facts: one("SELECT COUNT(*) n FROM memory_me_facts"),
       current: one("SELECT COUNT(*) n FROM memory_me_facts WHERE current = 1"),
+      told: one("SELECT COUNT(*) n FROM memory_me_told"),
     };
   }
 }

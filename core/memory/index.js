@@ -14,6 +14,7 @@ import path from "node:path";
 import { within } from "./teach.js";
 import { Personal } from "./personal/store.js";
 import { answerer } from "./personal/answer.js";
+import { profile } from "./personal/profile.js";
 import { createModelPass } from "./personal/model.js";
 
 /** How long to wait after a session.indexed event before curating, so a burst of turns is one pass. */
@@ -406,17 +407,45 @@ export default {
     // One line about the user's life from what they have said (docs/work/memory-iq.md). Personal
     // facts are the user's, not a project's: the user's surfaces, their tailnet devices, modules,
     // and the assistant or an agent granted every project ask it; a project's agent is refused.
+    /**
+     * Personal facts are the user's, not a project's: the user's surfaces, their tailnet devices,
+     * modules, and the assistant or an agent granted every project. A project's agent is refused.
+     */
+    const personalOnly = async (input, caller, name) => {
+      const r = await reach(input.agent, caller);
+      if (r.agent ? !r.all : !reader(caller)) {
+        throw denied(r.agent ? `personal facts are not a project's: ${r.agent} is granted only some projects` : `${name} is for the user's own surfaces and agents granted every project, not ${plain(caller || "an unnamed caller", 60)}`);
+      }
+    };
     const answer = answerer({ personal, graph, db: ctx.store.db, me: ctx.config.me || null, call: (tool, input) => ctx.call(tool, input),
       scratch: ctx.paths?.root ? path.join(String(ctx.paths.root), "capsule", "ask") : null });
     ctx.tool("memory.answer", {
       description: "Answer a question about the user's own life in one line (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\") from personal facts, the graph, then the user's own words. Returns { answer, confidence, kind: fact|said|null, from (conversations), facts, sources, via: fact|meaning|keyword|null, ms }; answer is null when memory does not know. sources: true lists more of the turns it came from.",
-      input: { type: "object", required: ["q"], properties: { q: { type: "string" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
+      input: { type: "object", properties: { q: { type: "string" }, question: { type: "string", description: "the same as q" }, project_cwds: cwds, ...roomField, sources: { type: "boolean" }, ...agentField } },
       run: async (input, { caller } = {}) => {
-        const r = await reach(input.agent, caller);
-        if (r.agent ? !r.all : !reader(caller)) {
-          throw denied(r.agent ? `personal facts are not a project's: ${r.agent} is granted only some projects` : `memory.answer is for the user's own surfaces and agents granted every project, not ${plain(caller || "an unnamed caller", 60)}`);
-        }
-        return answer({ q: String(input.q ?? ""), project_cwds: clean(input.project_cwds), sources: Boolean(input.sources) });
+        await personalOnly(input, caller, "memory.answer");
+        return answer({ q: String(input.q ?? input.question ?? ""), project_cwds: clean(input.project_cwds), sources: Boolean(input.sources) });
+      },
+    });
+    ctx.tool("memory.profile", {
+      description: "The user's durable facts as short lines for a system prompt (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\"): only what still holds at confidence 0.5 or more, and nothing sensitive (no dates, account-like numbers, addresses or health). Returns { facts: [{ text, kind: person|place|vehicle|work|client|preference|other, weight, id, rel, from }] }, strongest first.",
+      input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        await personalOnly(input, caller, "memory.profile");
+        if (running) await running.catch(() => {});
+        return profile(personal, { limit: input.limit ?? 12 });
+      },
+    });
+    // Told outright, by the person or their assistant: kept at once, no prompt (the no-nag rule).
+    ctx.tool("memory.remember", {
+      description: "Keep a fact the user or their assistant states outright (\"my wife is Jordan\", \"I moved to Lisbon\"). No confirmation. It is read like a conversation at confidence 0.95 and kept as a note either way, so memory.answer finds a line no rule reads by its words. room is kept as where it was said; personal facts are not a project's. Returns { id, text, facts: [{ id, subject, rel, object, confidence }] }.",
+      input: { type: "object", properties: { text: { type: "string" }, room: { type: "string" }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        await personalOnly(input, caller, "memory.remember");
+        if (running) await running.catch(() => {});
+        const r = personal.remember(String(input.text ?? ""), { room: typeof input.room === "string" && input.room ? input.room : null, who: caller ? plain(caller, 60) : null });
+        ctx.events.emit("memory.remembered", { id: r.id, facts: r.facts.length });
+        return { id: r.id, text: r.text, facts: r.facts.map(f => ({ id: f.id, subject: f.subject, rel: f.rel, object: f.object, confidence: f.confidence })) };
       },
     });
     ctx.tool("memory.uncorrect", {

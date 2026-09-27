@@ -4,6 +4,22 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Memory takes a fact when it is told, and gives a profile for a prompt
+
+- `memory.remember {text, room?}` keeps a fact the user or their assistant states outright ("my
+  brother Leo lives in Denver"), with no prompt. The conversation rules read it at confidence
+  0.95. In a single-valued slot (where the user lives, a spouse's name) it outweighs everything
+  said before it, and a full re-read keeps it. A line no rule can read is kept as a note that
+  `memory.answer` finds by its words. Answers built on it cite "told to memory". It is stored in
+  the new `memory_me_told` table and emits `memory.remembered` (ids and counts only).
+- `memory.profile {limit?}` returns the user's durable facts as second-person lines for about.md
+  ("Your wife is Jordan.", "You drive a blue Volvo XC40."), each with a kind and a weight. It
+  includes only what still holds at 0.5 or more. It leaves out birthdays and dates,
+  account-like numbers, street addresses, emails and health.
+- `memory.answer` also takes `question` as another name for `q`. The three tools share one gate:
+  the user's surfaces, their tailnet devices, modules, and the assistant or an agent granted
+  every project. A project's agent is refused.
+
 #### The site has no Capsule zip, and a clean checkout stamps clean
 
 - The Mac installs from npm and `vyre capsule` builds the Capsule there, so `build-site.sh` and

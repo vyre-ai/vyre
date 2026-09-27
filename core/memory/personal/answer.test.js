@@ -195,7 +195,66 @@ test("answer: the user's surfaces, their devices, modules and all-projects agent
     const r = await call("memory.answer", { q: "who is my wife", ...input }, caller);
     assert.equal(r.code, "denied", `${caller} ${JSON.stringify(input)}: ${JSON.stringify(r)}`);
   }
-  assert.ok(tools.get("memory.answer").input.required.includes("q"));
+  // question is q by another name (the Claude Code plugin's word for it).
+  assert.equal((await call("memory.answer", { question: "who is my wife" })).data.answer, "Your wife is Jordan.");
+  assert.ok(tools.get("memory.answer").input.properties.q);
+});
+
+test("profile: second-person lines that still hold, strongest first, nothing sensitive", async t => {
+  const { call } = await world(t);
+  const r = await call("memory.profile", {});
+  assert.ok(!r.error, r.error);
+  const texts = r.data.facts.map(f => f.text);
+  for (const want of ["Your wife is Jordan.", "You drive a blue Volvo XC40.", "You live in Seattle.", "Your dog is Biscuit.", "Harlow Legal is your client."]) {
+    assert.ok(texts.includes(want), `${want} in ${JSON.stringify(texts)}`);
+  }
+  // Gone, rival or dated: the sold car, the old city, a birthday.
+  for (const not of [/Outback/, /Portland/, /birthday|March/]) assert.ok(!texts.some(x => not.test(x)), `${not} in ${JSON.stringify(texts)}`);
+  for (const f of r.data.facts) {
+    assert.ok(f.weight >= 0.5 && f.weight <= 1, JSON.stringify(f));
+    assert.ok(["person", "place", "vehicle", "work", "client", "preference", "other"].includes(f.kind), f.kind);
+    assert.equal(typeof f.from, "number");
+  }
+  const w = r.data.facts.map(f => f.weight);
+  assert.deepEqual(w, [...w].sort((a, b) => b - a));
+  assert.equal((await call("memory.profile", { limit: 2 })).data.facts.length, 2);
+  // A told account number or address never reaches a profile line.
+  await call("memory.remember", { text: "I work at 1200 Market Street Suite 4." });
+  assert.ok(!(await call("memory.profile", { limit: 50 })).data.facts.some(f => /1200/.test(f.text)));
+  assert.equal((await call("memory.profile", {}, "mcp:agent:kit")).code, "denied");
+});
+
+test("remember: told outright, kept at once, answered at once, no prompt", async t => {
+  const { call, ask } = await world(t);
+  assert.equal((await ask("what is my brother's name")).answer, null);
+  const r = await call("memory.remember", { text: "My brother Leo lives in Denver.", room: "harlow" }, "mcp:agent:juno");
+  assert.ok(!r.error, r.error);
+  assert.equal(typeof r.data.id, "number");
+  assert.equal(r.data.text, "My brother Leo lives in Denver.");
+  assert.ok(r.data.facts.some(f => f.rel === "brother" && f.confidence >= 0.9), JSON.stringify(r.data.facts));
+  const a = await ask("who is my brother");
+  assert.equal(a.answer, "Your brother is Leo.");
+  assert.ok(a.confidence >= 0.9);
+  assert.equal(a.sources[0].name, "told to memory");
+  assert.equal(a.sources[0].session, `told:${r.data.id}`);
+
+  // A correction wins over what was said in passing: told beats two conversations' rule claims.
+  await call("memory.remember", { text: "I live in Tacoma now." });
+  assert.equal((await ask("where do I live")).answer, "You live in Tacoma.");
+
+  // No rule reads it: kept as a note, found by its words.
+  const n = await call("memory.remember", { text: "My locker code rotates every Monday and the gym keeps the spare key." });
+  assert.deepEqual(n.data.facts, []);
+  const l = await ask("when does my locker code rotate");
+  assert.match(String(l.answer), /^Your locker code rotates every Monday/);
+  assert.equal(l.kind, "said");
+
+  // A full re-read keeps what was told.
+  await call("memory.curate", { full: true });
+  assert.equal((await ask("who is my brother")).answer, "Your brother is Leo.");
+
+  for (const caller of ["mcp:agent:kit", "mcp", "tailnet:agent:kit"]) assert.equal((await call("memory.remember", { text: "My brother is Max." }, caller)).code, "denied", caller);
+  assert.match(String((await call("memory.remember", { text: "  " })).error), /needs the fact/);
 });
 
 test("answer: a lookup is fast", async t => {

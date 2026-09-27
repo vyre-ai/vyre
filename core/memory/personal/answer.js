@@ -201,13 +201,21 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
   /** Where facts came from: their evidence turns, with a quote each. */
   const sourcesOf = (facts, n) => {
     const tq = turnQ(), sq = sessQ();
-    if (!tq) return [];
     const out = [], seen = new Set();
     for (const f of facts) {
       const keys = [f.object, f.subject].filter(x => x && !KIN_LABEL.has(String(x).toLowerCase()));
       for (const e of personal.evidence(f.id, n)) {
         const k = `${e.session}\u0000${e.seq}`;
         if (seen.has(k) || out.length >= n) continue;
+        if (e.session.startsWith("told:")) {
+          // Told to memory outright: the line itself is the source.
+          const told = personal.told(e.session.slice(5));
+          if (!told) continue;
+          seen.add(k);
+          out.push({ session: e.session, seq: e.seq, name: "told to memory", quote: quoteOf(told.text, keys), ts: told.ts });
+          continue;
+        }
+        if (!tq) continue;
         const t = /** @type {any} */ (tq.get(e.session, e.seq));
         if (!t) continue;
         seen.add(k);
@@ -452,6 +460,28 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
     return null;
   };
 
+  /**
+   * A line the person told memory (memory.remember) that no rule could read, found by its words:
+   * newest first, the same filters as a said line.
+   * @param {string} q @param {string|null} noun
+   */
+  const byTold = (q, noun) => {
+    const asked = normalize(q).split(" ").filter(w => !STOP.has(w) && w.length > 2);
+    if (!asked.length && !noun) return null;
+    for (const told of personal.toldAll({ limit: 500 })) {
+      for (const s of told.text.split(/(?<=[.!?])\s+/).map(x => x.trim())) {
+        if (!FIRST.test(s) || QUESTION.test(s) || HYPO.test(s)) continue;
+        const ns = normalize(s);
+        // Told on purpose, so every word asked (any ending) is enough, as is a stated relation.
+        const has = w => new RegExp(`(^|[^a-z0-9])${esc(w.replace(/(?:es|s|ed|ing)$/, "") || w)}[a-z]{0,3}($|[^a-z0-9])`).test(ns);
+        const stated = noun && new RegExp(`\\bmy ${esc(noun)} (?:is|was|called|named)\\b`).test(ns);
+        if (!stated && !(noun ? asked.length && asked.every(has) : asked.some(has))) continue;
+        return { line: toYou(s), conf: SAID_MAX, source: { session: `told:${told.id}`, seq: 0, name: "told to memory", quote: s.length > 200 ? s.slice(0, 197) + "..." : s, ts: told.ts } };
+      }
+    }
+    return null;
+  };
+
   /** The key noun of a relation question, for the said filter: "son", "dentist", "phone". */
   const nounOf = (/** @type {Parsed} */ p) => {
     switch (p.kind) {
@@ -503,7 +533,10 @@ export function answerer({ personal, graph = null, db, me = null, call = null, s
           sources: src, via: "fact" });
       }
     }
-    // No fact. A relation question takes only a sentence that states that relation.
+    // No fact. A line told to memory outright comes before anything said in passing.
+    const t = byTold(text, p ? nounOf(p) : null);
+    if (t) return done({ answer: t.line, confidence: round(t.conf), kind: "said", from: 1, facts: [], sources: [t.source], via: "keyword" });
+    // A relation question takes only a sentence that states that relation.
     const s = await bySaid(text, p ? nounOf(p) : null, { project_cwds });
     if (s) return done({ answer: s.line, confidence: round(s.conf), kind: "said", from: 1, facts: [], sources: [s.source], via: s.via });
     return done({});
