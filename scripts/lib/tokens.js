@@ -154,8 +154,9 @@ ${Object.entries(t.motion).filter(([k]) => k !== "ease").map(([k, v]) => `  --mo
 ${roles("paper")}
   color-scheme: light;
 }
-/* Under the phone breakpoint the read and title steps are larger (iOS body size, no zoom on focus). */
-@media (max-width: ${t.layout.breakpoints.medium - 1}px) {
+/* On a phone (under 720 wide, or a phone in landscape) the read and title steps are larger (iOS body
+   size, no zoom on focus). */
+@media (max-width: ${t.layout.breakpoints.medium - 1}px), (max-height: 500px) and (pointer: coarse) {
   :root {
 ${Object.entries(t.type.phone).filter(([k, v]) => v.join() !== t.type.desktop[k].join()).map(([k, [size, line]]) => `    --size-${k}: ${size}px; --line-${k}: ${line}px;`).join("\n")}
   }

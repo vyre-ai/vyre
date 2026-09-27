@@ -89,8 +89,9 @@
   --popover: 0 12px 24px -12px rgba(20,19,17,0.3);
   color-scheme: light;
 }
-/* Under the phone breakpoint the read and title steps are larger (iOS body size, no zoom on focus). */
-@media (max-width: 719px) {
+/* On a phone (under 720 wide, or a phone in landscape) the read and title steps are larger (iOS body
+   size, no zoom on focus). */
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   :root {
     --size-read: 17px; --line-read: 24px;
     --size-title: 22px; --line-title: 28px;
