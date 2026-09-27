@@ -73,6 +73,12 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
   Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
+- From mobile (trust UI on work/mobile 4ea9fcf), after native-core: (1) an untrusted browser's
+  denied tools answer `denied` "trust this browser first" instead of 404 (a WEB_DENY check in
+  the tools or a policy that answers denied, not hides); (2) emit `device.trusted {id, trusted}`
+  and pass the "trust changed" close reason through relay/client; (3) relay.devices.list gains
+  webExpiryDays and trustedBy/trustedAt; (4) same as app-design (2): name, not id, in the trust
+  summary. The app hides "Ask to trust" until relay.devices.ask-trust is listed.
 - From app-design (board "Devices: trusting a browser for the vault", work/app-design 46f1b3d),
   after native-core: (1) relay.devices.trust with trusted:false needs no proof (presence.when on
   input.trusted); (2) the presence summary names the device ("Trust browser Chrome on alex's
