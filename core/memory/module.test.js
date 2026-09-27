@@ -95,3 +95,21 @@ test("memory module: memory.ask streamed tells each step under the caller's id, 
   // A made-up id that is not a plain token is replaced.
   assert.match((await call("memory.ask", { question: "which port did the Northwind staging deploy use?", stream: true, id: "../x" }, { root })).data.id, /^iq_[0-9a-f]{12}$/);
 });
+
+test("memory module: suggest offers the names memory knows, with who a role is", async t => {
+  const root = seeded(t);
+  const d = await start({ root, log: () => {} });
+  t.after(() => d.stop());
+  await call("memory.curate", {}, { root });
+  await call("memory.remember", { text: "my wife is Juno" }, { root });
+  const direct = (await call("memory.suggest", { prefix: "wi" }, { root })).data;
+  assert.deepEqual(direct.items.find(i => i.label === "wife"), { label: "wife", kind: "entity", insert: "wife", id: direct.items.find(i => i.label === "wife").id, detail: "Juno" });
+  // Through suggest.query: the first keystroke may miss the 25 ms deadline while things warm up.
+  let items = [];
+  for (let i = 0; i < 3 && !items.some(x => x.source === "memory.suggest"); i++) items = (await call("suggest.query", { text: "dinner with my wi", surface: "deck" }, { root })).data.items;
+  const wife = items.find(x => x.source === "memory.suggest" && x.label === "wife");
+  assert.ok(wife, JSON.stringify(items));
+  assert.equal(wife.detail, "Juno");
+  items = (await call("suggest.query", { text: "call Jun", surface: "deck" }, { root })).data.items;
+  assert.ok(items.some(x => x.source === "memory.suggest" && x.label === "Juno"), JSON.stringify(items));
+});
