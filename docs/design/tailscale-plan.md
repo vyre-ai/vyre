@@ -19,9 +19,9 @@ doc-only updates (4fa25b16, 1d194c9f) — safe to drop or fold in, no code.
 | # | Part | On main | Notes |
 |---|------|---------|-------|
 | 1 | Taildrive | yes | Renamed "VyreDrive" in user-facing text (1498c4a2); read-only default, per-share rw switch, secret-scan on share |
-| 2 | Taildrop | yes | Box stays a tagged server; inbox watcher via `file get --loop` |
+| 2 | Taildrop | yes | The server stays a tagged node; inbox watcher via `file get --loop` |
 | 3 | Tailscale SSH | yes | `vyre box add`/`move` prefer it, plain ssh fallback |
-| 4 | Health | yes | `link.health`, box-only, module + owner; Glass paces relayed viewers |
+| 4 | Health | yes | `link.health`, server-only, module + owner; Glass paces relayed viewers |
 | 5 | Exit node / egress | yes | `egressgate.js` fail-closed gate + sidecar; OAuth client secret for renewal |
 | 6 | Tailnet Lock | yes | Read-only (`lock status`), onboarding card + Settings row; never writes |
 | 7 | Grants (app capabilities) | yes | `vault.relay.grants`, `vault.grants.status`; narrows only, never widens |
@@ -29,7 +29,7 @@ doc-only updates (4fa25b16, 1d194c9f) — safe to drop or fold in, no code.
 | 9 | Agent nodes | **not wired** | Computer side written (`computerd/tailnet.js`) but the image still runs everything as `USER agent` (`core/computers/image/Dockerfile:75`) — no root-then-drop step exists. `computers.tailnet.set` reports `problem` and sends nothing. This is Decision 4 below, unchanged since 27 Sep. |
 | 10 | Funnel / hooks | yes | `hooks` module, own listener on 127.0.0.1:7310, signature-verified, never calls a tool |
 
-Adjacent, not mine: work/federation carries the Mac-session `threads.answer` v2 (signed box
+Adjacent, not mine: work/federation carries the Mac-session `threads.answer` v2 (signed server
 assertion) — still on its own branch, queued batch 4, not part of ADR 0014's ten.
 
 ## 2. Max benefit — where Tailscale can give Vyre more
@@ -37,11 +37,11 @@ assertion) — still on its own branch, queued batch 4, not part of ADR 0014's t
 | Idea | Value | Size | Admin step |
 |---|---|---|---|
 | Agent-node image change (finish part 9) | Every agent gets its own tailnet identity, not just a shared key — stronger caller class, per-agent tags/grants become real | M | none new (tag already defined) |
-| MagicDNS name shown everywhere the box's address appears (onboarding, Settings, `vyre box add` suggestion) | One name to remember instead of an IP; nothing new to build, mostly surfacing what `tailscale cert`'s target already is | S | Enable MagicDNS (usually on by default) |
+| MagicDNS name shown everywhere the server's address appears (onboarding, Settings, `vyre box add` suggestion) | One name to remember instead of an IP; nothing new to build, mostly surfacing what `tailscale cert`'s target already is | S | Enable MagicDNS (usually on by default) |
 | Device posture as a second gate on vault relay grants (`vault.relay.grants`) and egress | A stolen laptop stays off even with valid Tailscale login | M | Posture policy in admin console (needs a device posture add-on, paid tier) |
 | Tags per device role, generated ACL snippet Vyre hands the person to paste (see section 3) | Cuts hand-editing the policy JSON to near zero | S | Paste once |
 | Serve (internal HTTPS, not just Funnel) for a second local service (e.g. a future web UI on another port) if one shows up | Avoids a second cert/port dance | S | none, `tailscale serve` is user-run only |
-| App connectors | Low fit — Vyre reaches the box, not a fleet of internal SaaS subnets; skip unless a company-tailnet use case appears | — | — |
+| App connectors | Low fit — Vyre reaches the server, not a fleet of internal SaaS subnets; skip unless a company-tailnet use case appears | — | — |
 
 Nothing here needs a new Vyre-side mechanism except finishing part 9; the rest is packaging what
 exists more clearly for the person.

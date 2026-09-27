@@ -86,6 +86,29 @@ Taildrive per-share access and the secrets scan (ea158df, 27 Sep 2026):
 
 ## Doing
 
+28 Sep 2026 (resumed; merged origin/main a3a844e4 into work/tailnet, clean). Wrote
+docs/design/tailscale-plan.md for the lead's max-benefit/simplest-install ask: verified all ten
+ADR 0014 parts by content against origin/main (nine are ancestors of main; part 9, agent nodes,
+is not wired — core/computers/image/Dockerfile still runs everything as `USER agent`, no
+root-then-setpriv step). Lead's decisions back: part 9 ships in 0.1.1 on top of glass-live's
+root-then-setpriv image change once that merges (messaged glass to coordinate: my side, join()
+in core/computers/tailnet.js, already degrades safely on a 404 and needs only the real port
+number/how the root process starts once their image lands); the merged-policy-snippet tool ships
+0.1.1 (with launch, in onboarding); device posture is skipped. Built: `onboard.tailscale
+{ action: "policy" }` in core/onboard/index.js — merges Taildrive's nodeAttrs/grant, Taildrop's
+grant and the SSH rule into one paste using real names this machine already knows (its own
+tailnet node, the paired Mac from `link.peers`, the owner's login, the shares from
+`files.drive.status`), adding egress's tagOwners/grant only while `computers.egress.status` says
+it is on. Read-only, no tailnet write (ADR 0014 rule 1). Tests (targeted, this session):
+test/onboard.test.js 17/17 (2 new), test/boundaries.test.js 5/5 (no new import: uses ctx.call,
+not a direct import of files/drive.js or computers/index.js), test/hygiene.test.js +
+test/docs-build.test.js 39/39. MagicDNS surfacing (the other 0.1.1 item) is already done —
+`t.node.dns` is the primary line in both deck/onboard/onboard.js:430 and
+deck/views/settings.js:277, and `vyre box add` already prefers a peer's dnsName
+(core/cli/commands/box.js:273) — nothing to build there. Next: message launch about wiring
+`onboard.tailscale{action:"policy"}` into the onboarding UI (a "copy policy" panel, likely near
+the tailscale step or in Settings, Network); wait on glass for part 9's port number.
+
 27 Sep 2026 (resumed after logout 3, main ef51363 merged at 7036361). Done this session:
 
 - 1498c4a VyreDrive: users see the box shares as "VyreDrive (built on Tailscale's Taildrive)"

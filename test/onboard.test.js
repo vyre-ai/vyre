@@ -457,3 +457,34 @@ test("onboard: tailscale lock reads Tailnet Lock and hands back this box's key a
   const lockCalls = fs.readFileSync(log, "utf8").split("\n").filter(l => l.startsWith("lock"));
   assert.deepEqual([...new Set(lockCalls)], ["lock status --json"], "Vyre never runs lock init or sign");
 });
+
+test("onboard: tailscale policy merges Taildrive, Taildrop and SSH into one snippet, using real names it already knows", async t => {
+  const { root } = await box(t, { network: { onboardPort: 0, owner: "alex@example.com" } });
+  const dir = fs.mkdtempSync(path.join(root, "ts-"));
+  const bin = path.join(dir, "tailscale");
+  const self = { HostName: "alex-box", DNSName: "alex-box.tail0000.ts.net.", TailscaleIPs: ["100.64.0.5", "fd7a::5"], ID: "n1", Tags: [] };
+  fs.writeFileSync(bin, `#!/bin/sh\necho '${JSON.stringify({ BackendState: "Running", TUN: true, Self: self, User: {} })}'\n`, { mode: 0o755 });
+  process.env.VYRE_TAILSCALE_BIN = bin;
+  const r = await call("onboard.tailscale", { action: "policy" }, { root });
+  assert.ok(r.data, JSON.stringify(r.error));
+  assert.equal(r.data.ready, true);
+  assert.deepEqual(r.data.policy.hosts, { "alex-box": "100.64.0.5" });
+  assert.deepEqual(r.data.policy.nodeAttrs, [
+    { target: ["alex-box"], attr: ["drive:share"] },
+    { target: ["alex@example.com"], attr: ["drive:access"] },
+  ]);
+  const [drive, taildrop] = r.data.policy.grants;
+  assert.deepEqual(drive, { src: ["[your Mac's name]"], dst: ["alex-box"], app: { "tailscale.com/cap/drive": [{ shares: ["projects"], access: "ro" }] } });
+  assert.deepEqual(taildrop, { src: ["autogroup:member"], dst: ["alex-box"], app: { "https://tailscale.com/cap/file-sharing-target": [{}] } });
+  assert.deepEqual(r.data.policy.ssh, [{ action: "accept", src: ["alex@example.com"], dst: ["alex-box"], users: ["autogroup:nonroot"] }]);
+  assert.equal(r.data.policy.tagOwners, undefined, "egress is off by default, so no tag:vyre-egress block");
+});
+
+test("onboard: tailscale policy refuses before Tailscale is connected", async t => {
+  const { root } = await box(t);
+  const r = await call("onboard.tailscale", { action: "policy" }, { root });
+  assert.ok(r.data, JSON.stringify(r.error));
+  assert.equal(r.data.ready, false);
+  assert.equal(r.data.policy, null);
+  assert.match(r.data.why, /connect Tailscale/);
+});
