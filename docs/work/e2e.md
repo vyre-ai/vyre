@@ -240,6 +240,20 @@ green, sent to the integrator. memory-iq keeps its recall-side fix (I review it)
 polish-cli, native-core; learn done by me (lead OK): 399ca89f; the skills write guard keeps refusing the real ~/.claude too. Branch sent at 399ca89f. Other defaults to route through one kernel helper:
 learn/skills.js:414, switchboard/index.js:1333, cli statusline.js:22, native-core settings claudeDir.
 
+Reviews (27 Sep, testbox on hold at load 20 per the lead):
+- memory-iq 6a49c4bb (recall readable): OK. MEDIUM: realpath both sides (symlinks); the switchboard
+  reads config.transcripts unfiltered (index.js:1554), offered to move readable() into core/config.
+- cohesion c362505b (hands): nothing typed reaches events. MEDIUM scrub() bypass (quote or space in
+  a model URL keeps the query; build open's summary from new URL()); MEDIUM desktop takes
+  input.thread when meta has none. Chrome e2e needs a Mac slot from the lead.
+- connectors 04a5495e: HIGH any module (home ones too) passes on_behalf {surface:"capsule"} to mail
+  and reads mail as the Capsule; asked for registry meta.firstParty. MEDIUM on_behalf person=true
+  skips MCP scope; check on_behalf.thread against threads.get.
+- e2e-noclaude bf35f8ea: switchboard remember's user CLAUDE.md via claudeHome (sessions agreed).
+  UNTESTED: run core/sessions/sessions.test.js + switchboard + the guard when testbox is free.
+Next when testbox is free: that test run, then rebuild 501ca3fc (+ sessions' callAsPerson fix) and
+run check.sh + thread.sh.
+
 Split with sessions 501ca3fc (lead, 27 Sep): image from 501ca3fc merged with main 53cd1326.
 check.sh 30/30. New scripts/e2e-split/thread.sh (vyred starts a session through the spawner, CLI
 runner, VYRE_CLAUDE_BIN = a stand-in in /work): 6/7. FAIL `vyre call` inside a session: callAsPerson
