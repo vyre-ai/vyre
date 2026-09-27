@@ -28,7 +28,7 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - Agreed with native-core: settings.changed = rev + value at the changed level for non-secret keys. Schema: secret flag in 172da703 (local).
 
 - ADR 0035 accepted (native-core b95cc4dc) with my five notes answered. Schema matched in 8c74d585 (choicesFrom, session needs tool store). validateDecls patch sent to native-core (scratchpad validateDecls-adr0035.patch; they apply + test). Waiting: their hub store step 1 sha (rev-returning write) to rebase settings.write.
-- settings.write 70242656 pushed; waiting for e2e's quick look, then integrator.
+- settings.write 70242656: e2e ok, handed to the integrator (merge after native-core 3ae4fc93).
 
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
