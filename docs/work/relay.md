@@ -70,6 +70,14 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
   Cloudflare first; use box-deploy's wrangler credentials; custom_domain route).
 
 ## Next
+00. BUG (resilience chaos, work/resilience 3fa95a3, test/chaos/relay.test.js todos): on Node 22 a
+   refused WebSocket fires only `error`, never `close`. `core/relay/link.js` retries only from
+   onclose (control and data sockets), so a retry during a relay outage stops the box retrying
+   until vyred restarts; `relay/client/client.js` openChannel swallows onerror, so a dead relay
+   costs the full 15 s handshake timeout. Fix: error before open = failed dial, schedule retry,
+   `settled` guard against a later close; a dial timer in link.js. Then flip the two todos
+   ("the box's relay link comes back after an outage longer than its first retry", "kit redials
+   within its backoff..."). Asked the lead whether to fix during the pause.
 0. PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
    (a) at web pairing, the loader makes a passkey with rpId app.vyre.run and sends it in the
    hello; admit() passes it to presence for enrollment bound to the device id; (b) the loader
