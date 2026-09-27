@@ -309,6 +309,9 @@ function stream(req, res, url, events, streams) {
   // the stream (a Deck view, or a test) can then race the listener registration below and lose
   // that event to a window the client had no signal it needed to wait out.
   res.flushHeaders();
+  // And one byte of body: iOS URLSession reports nothing (it sits on "connecting", up to the 15s
+  // heartbeat) until the body starts, whatever the headers say.
+  res.write(": open\n\n");
   const write = e => res.write(`id: ${e.id}\nevent: ${e.type}\ndata: ${JSON.stringify(e)}\n\n`);
   let cursor = lastId;
   // Backlog in pages, then live. Anything emitted while paging is caught by the cursor check.

@@ -237,9 +237,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   redirects to `/start#mac`. `site/_redirects` is generated and no longer tracked, and the dirty
   stamp in build.json ignores the files build-site writes, so running it twice on a clean checkout
   says `dirty: false`. `release-check.sh` asserts both redirects, that nothing names the zip, that
-  `/start` is served as committed, and that the install has no node_modules (the size cap is now
-  16 MB: the docs and their screenshots are most of the 11 MB). `vyre capsule install` still
-  fetches the zip until capsule-pro retires it.
+  `/start` is served as committed, and that the install has no node_modules. The docs
+  screenshots stay out of the npm package (`!docs/**/*.png`; the docs site serves them), which
+  brings the install from 11.4 MB to 8.9 MB, under the 10 MB cap again. `vyre capsule install`
+  still fetches the zip until capsule-pro retires it.
 
 #### A box built from vyre.tgz ships the files in it, not stale ones
 
@@ -250,14 +251,23 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
   Found by box-deploy.
 
-#### Making or changing an agent needs a person
+#### Making or changing an agent is the person's, with no passkey
 
-- `agents.create` and `agents.update` set an agent's credentials, budget and scope, and nothing
-  asked who was calling. Both are on the floor's human-only list now: an agent is refused, and a
-  person proves presence (the passkey in the Deck, Touch ID or a typed code for `vyre agents`).
-  The Deck's New agent sheet, agent page, assistant card and Settings ask for the passkey.
-  `core/presence/index.js`, `core/cli/commands/agents.js`, `deck/views/agents.js`,
-  `deck/views/settings.js`, `deck/js/assistant-setup.js`; test/presence-bypass.test.js.
+- The no-nag rule: `agents.create` and `agents.update` ask for no presence proof. `agents.create`
+  is off the floor's human-only list and takes only a person's surfaces (cli, local, deck,
+  capsule, the owner's Deck over the tailnet) and vyred's modules (onboarding makes the
+  assistant). `agents.update` takes the same, plus the assistant for an agent's name, job, model,
+  effort and description; any other agent, a bare MCP session and a guest are refused with
+  "denied", never asked. The Deck's New agent, "Give a computer" and assistant card no longer ask
+  for the passkey. `presence.when` stays for tools that ask for some inputs only.
+  `core/agents/index.js`, `core/presence/index.js`, `deck/views/agents.js`,
+  `deck/js/assistant-setup.js`; test/presence-bypass.test.js.
+
+#### The event stream sends a byte as it opens
+
+- `/v1/events/stream` writes `: open` right after its headers, so iOS URLSession sees the stream
+  open at once instead of sitting on "connecting" until the 15 s heartbeat.
+  `core/daemon/index.js`.
 
 #### `vyre box add` waits for the switch, and the pairing code for the passkey
 

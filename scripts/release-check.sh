@@ -76,10 +76,10 @@ for want in bin/vyre core/daemon/main.js core/cli/index.js harness/.claude-plugi
   grep -qx "$want" "$work/files" || fail "the tarball has no $want"
 done
 ok "has the bin, core, the Harness plugin, the Deck and the box installer"
-if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design/boards|work|proposals)/|^local/capsule/(dist|bin)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
+if grep -E '(\.test\.js$|(^|/)fixtures/|(^|/)testing(/|\.js$)|node_modules/|^docs/(design/boards|work|proposals)/|^docs/.*\.png$|^local/capsule/(dist|bin)/|\.DS_Store$|(^|/)\.env)' "$work/files"; then
   fail "the tarball carries the files above, which it should not"
 fi
-ok "no tests, fixtures, test helpers, design boards, build output or env files"
+ok "no tests, fixtures, test helpers, design boards, docs screenshots, build output or env files"
 node -e '
   const p = require(process.argv[1]);
   if (Object.keys(p.dependencies || {}).length) throw new Error("regular dependencies: " + Object.keys(p.dependencies));
@@ -96,8 +96,7 @@ pkg=$work/prefix/lib/node_modules/vyre
 [ -x "$vyre" ] || fail "no vyre in $work/prefix/bin"
 kb=$(du -sk "$work/prefix" | cut -f1)
 [ ! -d "$pkg/node_modules" ] || fail "npm i -g installed dependencies: $(ls "$pkg/node_modules" | tr '\n' ' ')"
-# About 11 MB today, most of it the docs and their screenshots, so 16 MB leaves room for the docs to grow.
-[ "$kb" -lt 16384 ] || fail "npm i -g installs $kb KB; it should be about 11 MB (did a dependency or a build output come back?)"
+[ "$kb" -lt 10240 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
 
 step "vyre up, status, down"
