@@ -28,12 +28,13 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   trap refused.
 - One card per person, org or project: `memory.card {about}` gives what the graph knows about it,
   the projects it comes up in, when it last did, and three sessions to open; on the person's own
-  surfaces also who it is to them ("your wife"), never for a project's agent.
+  surfaces also who it is to them ("your wife"), never for a project's agent. An agent granted only
+  some projects sees only those projects' names and counts on a card.
 - Contradictions to confirm: `memory.contradictions` lists what memory holds two values for about
   the person's life ("Where do you live: Porto or Lisbon?", "What your wife's name is: Juno or
   Jordan?"), when a rival still carries a fifth of the belief and the person has not settled it.
   `memory.settle {id, pick}` tells memory their answer in their own words ("I live in Porto"),
-  which outweighs every older value. The person's surfaces only.
+  kept as exactly that one claim, which outweighs every older value. The person's surfaces only.
 - memory.ask takes `screen {app, title, selection, text}` (the Capsule's, floor-redacted): for a
   question that points at it ("who sent this email?"), the names the graph knows on screen widen
   the search and the model sees the screen marked as never a source. Never for a question about

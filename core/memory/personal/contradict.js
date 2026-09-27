@@ -54,7 +54,7 @@ export function contradictions(personal) {
     const word = subj === "me" ? null : personal.called(subj);
     if (subj !== "me" && !word) continue;
     const w = words(subj, word);
-    const values = [top, ...rivals].slice(0, 3).map(r => ({ value: String(r.obj_label), confidence: Math.round(Number(r.confidence) * 1000) / 1000, sessions: Number(r.sessions), last_seen: r.last_seen == null ? null : Number(r.last_seen) }));
+    const values = [top, ...rivals].slice(0, 3).map(r => ({ value: String(r.obj_label), obj: String(r.obj), confidence: Math.round(Number(r.confidence) * 1000) / 1000, sessions: Number(r.sessions), last_seen: r.last_seen == null ? null : Number(r.last_seen) }));
     const q = ASK[/** @type {keyof typeof ASK} */ (rel)];
     out.push({ id: "c_" + crypto.createHash("sha256").update(k).digest("hex").slice(0, 12), subject: subj, rel,
       question: `${q.q(w)}: ${values.map(v => v.value).join(" or ")}?`.replace(/^./, c => c.toUpperCase()), values, _say: v => q.say(w, v) });
@@ -63,11 +63,12 @@ export function contradictions(personal) {
 }
 
 /**
- * The person's answer to one, as the words memory is told: "I live in Porto".
+ * The person's answer to one: the words memory keeps ("I live in Porto") and the one claim it
+ * stands for, exactly the slot and the value picked (never read again from the words).
  * @param {ReturnType<typeof contradictions>[number]} c @param {string} pick
  */
 export function settle(c, pick) {
   const v = c.values.find(x => x.value.toLowerCase() === String(pick || "").trim().toLowerCase());
   if (!v) throw Object.assign(new Error(`"${pick}" is not one of ${c.values.map(x => x.value).join(", ")}`), { code: "bad_input" });
-  return /** @type {any} */ (c)._say(v.value);
+  return { text: /** @type {any} */ (c)._say(v.value), claim: { subj: c.subject, rel: c.rel, obj: v.obj } };
 }

@@ -188,7 +188,7 @@ test("contradictions: the person sees and settles them; a model never does", asy
 });
 
 test("card: one card per person or org, what it is to the person on their own surfaces only", async t => {
-  const { call } = await module_(t);
+  const { call, db } = await module_(t);
   const dana = (await call("memory.card", { about: "Dana Reyes" }, "deck")).data.card;
   assert.equal(dana.label, "Dana Reyes");
   assert.equal(dana.kind, "person");
@@ -203,4 +203,16 @@ test("card: one card per person or org, what it is to the person on their own su
   assert.equal(juno?.to_you, "your wife", JSON.stringify(juno));
   const kit = await call("memory.card", { about: "Juno", agent: "kit", room: "northwind" }, "mcp:agent:kit");
   assert.ok(!kit.data?.card?.to_you, JSON.stringify(kit));
+  // A one-project agent's card names only that project, and counts only there (the reviewer).
+  // Harlow Legal also comes up in Northwind's sessions (a shared contact).
+  const id = db.prepare("SELECT id FROM memory_nodes WHERE label = 'Harlow Legal'").get().id;
+  db.prepare("INSERT OR REPLACE INTO memory_room_nodes (room, id, kind, key, label, role, sessions, mentions, first_seen, last_seen) VALUES ('northwind', ?, 'org', 'harlow legal', 'Harlow Legal', NULL, 2, 2, ?, ?)").run(id, Date.now() - 86_400_000, Date.now() - 86_400_000);
+  const owner = (await call("memory.card", { about: "Harlow Legal" }, "deck")).data.card;
+  assert.deepEqual(owner.projects, ["Harlow Legal", "Northwind"]);
+  const hal = (await call("memory.card", { about: "Harlow Legal", agent: "hal", room: "harlow" }, "mcp:agent:hal")).data.card;
+  assert.ok(owner.projects.length >= 1, JSON.stringify(owner));
+  assert.deepEqual(hal.projects, ["Harlow Legal"], JSON.stringify(hal));
+  assert.ok(hal.sessions < owner.sessions + 2);
+  const kitCard = (await call("memory.card", { about: "Harlow Legal", agent: "kit", room: "northwind" }, "mcp:agent:kit")).data.card;
+  assert.deepEqual(kitCard?.projects ?? [], kitCard ? ["Northwind"] : [], JSON.stringify(kitCard));
 });
