@@ -119,6 +119,32 @@ folders, lists `.env.example` files without importing them, and follows no symli
 `--rewrite` changes a file only after every value in it is stored, writes no backup of the old
 file, and leaves a file alone when its values differ from the vault's (a conflict).
 
+## Leaks and rotation
+
+```
+vyre vault sweep ~/code/harlow-intake --history   # files and every commit; places and names only
+vyre vault sweep --shell                          # also ~/.zsh_history and friends
+vyre vault rotate kit-gitlab                      # a new token at GitLab, stored, the old one revoked
+```
+
+The sweep compares every value the vault holds with the files in a folder, and can also look
+through the lines each git commit added and your shell history. It also spots credentials the
+vault does not hold yet by their shape: a Stripe key, a GitHub token, a private key block. It
+says where (file, line, commit) and what (the item's name, or the kind of credential), never the
+value. A value in git history stays there after you delete the file, so rotate it.
+
+`rotate` makes the new credential with the current one, stores it as a new version (the old one
+stays in history), then revokes the old one. AWS access keys, GitLab tokens, Cloudflare API
+tokens and Google Cloud service-account keys rotate by themselves. For everything else (GitHub,
+OpenAI, Anthropic, Stripe and the rest) it gives the provider's page and the steps; paste the new
+value with `vyre vault put`. The item needs its provider: `--provider github` on `put`.
+
+Every morning after 09:00, Watchtower's findings become todos in the planner's Vault list: an
+expired or soon-expiring token, a reused or old password, an item marked to rotate. Each is raised
+once; more than five at once become one todo that lists them. Fixing the item closes its todo,
+and a todo you dismiss stays dismissed until the reason changes. `vyre call vault.remind.run`
+runs the pass now. Set `"reminders": false` under `vault` in config.json to turn it off.
+
 ## One-time codes
 
 The vault is an authenticator too. Every login with a seed, and every `authenticator` item, shows

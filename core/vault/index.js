@@ -13,6 +13,9 @@
 import { Vault, MIGRATIONS, KINDS, parseExpiry, ensureMacColumns } from "./vault.js";
 import { DETAILS, defaultField } from "./kinds.js";
 import { codes, importCodes } from "./codes.js";
+import { sweep } from "./sweep.js";
+import { scheduleReminders, remindRun } from "./remind.js";
+import * as rotateTools from "./tools/rotate.js";
 import fs from "node:fs";
 import path from "node:path";
 import { serve, decodeTicket } from "./relay.js";
@@ -220,6 +223,11 @@ export default {
           // The presence floor's session method covers a code unless the item is reprompt.
           session: input => { const n = input && (input.name ?? input.id); return typeof n === "string" && !reprompt(vault, n); } }));
 
+    // The leak sweep (ADR 0028): where the vault's values, and credentials it lacks, sit in plain text.
+    tool("vault.sweep", ["cli", "local", "deck", "mcp"], "Look in a folder, its git history (history) and the shell's history (shell) for values the vault holds and for credentials it does not hold yet. Returns places and item names or credential types, never a value.",
+      obj({ path: str, history: { type: "boolean" }, shell: { type: "boolean" } }, ["path"]), (input, { caller }) => sweep(vault, input, caller),
+      presence("Look for leaked secrets", ({ path: p, history, shell }) => `Compare every value in the vault with the files in ${path.resolve(String(p))}${history ? ", its git history" : ""}${shell ? " and your shell history" : ""}`));
+
     // The authenticator (ADR 0028): every code at once, current and next, on the same window as one.
     tool("vault.codes", SURFACES, "Every one-time code: the current and next code for each item with a TOTP seed, the seconds left, and the issuer. Never a seed.",
       obj({ names: strs, session: str }), (input, { caller }) => codes(vault, { names: input.names }, caller),
@@ -316,9 +324,18 @@ export default {
 
     deckTools.register({ ctx, vault });
 
+    // Watchtower's findings as planner todos, once a day after 09:00 (ADR 0028, decision 4).
+    const call = (name, input) => (ctx.call ? ctx.call(name, input) : Promise.resolve({ error: { code: "no_such_tool", message: "no planner" } }));
+    tool("vault.remind.run", ["cli", "local", "deck"], "Run the daily reminder pass now: new Watchtower findings become planner todos in the Vault list, fixed ones are marked done. Names only.",
+      obj({}), async () => remindRun(vault, call));
+    rotateTools.register({ vault, tool, presence, quoted, call, endpoints: opts.rotate_endpoints });
+    const reminders = opts.reminders === false || !ctx.call ? { stop() {} }
+      : scheduleReminders(vault, call, { log: ctx.log, local: !(ctx.config && ctx.config.role === "box") });
+
     return {
       ssh: cli.ssh,
       async stop() {
+        reminders.stop();
         await kits.stop();
         vault.devices.stop();
         await cli.stop();

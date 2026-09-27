@@ -236,6 +236,25 @@ blocked, and computerd closing agent CDP websockets on `begin`.
 - The planner is reached through `ctx.call`. If `planner.add` does not exist yet, nothing
   happens, and Watchtower still shows the list.
 
+### 4b. Built (27 Sep 2026)
+
+- The daily job is core/vault/remind.js. It is one setTimeout, re-armed after each run for the
+  first 09:00 after the last one, or a minute from now when that has passed. It runs on the box.
+  A Mac runs it only when it is not paired with a box (link.status), so nobody is told twice.
+  Reasons that raise todos: expired, breached, expiring, rotate, reused, old. The marks live in
+  `vault_reminders(name, reason, planner, state)`, which is not MACed: a mark only silences a
+  todo. `vault.remind.run` runs the pass now. The weekly breach check waits on an unattended
+  way to open personal logins, so it still runs only when a person asks.
+- The leak sweep is `vault.sweep {path, history?, shell?}` (core/vault/sweep.js). It needs
+  presence, because it opens every value. Values are compared in memory and nothing goes to a
+  temp file. It returns places and names only, and never a line of context.
+- Rotation is `vault.rotate {name}` (core/vault/rotate.js, tools/rotate.js). It is automatic for
+  AWS IAM keys (SigV4), GitLab PATs (self/rotate), Cloudflare user API tokens (roll) and Google
+  Cloud service-account keys. Everything else is guided, with the provider's page and steps.
+  The new credential is stored as a new version BEFORE the old one is revoked. `vault.rotation
+  {name}` says which way an item rotates. Twilio stays guided: Standard API keys cannot manage
+  keys.
+
 ### 5. The presence window for fills
 
 The standing rule is one proof for about 30 minutes on the Deck, the Capsule and the phone. The

@@ -14,7 +14,7 @@
 
 import { callAsPerson } from "../presence.js";
 import path from "node:path";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { dialogsAllowed } from "../../config/dialogs.js";
 import { finished } from "node:stream/promises";
 import os from "node:os";
@@ -25,6 +25,7 @@ import { hiddenPrompt, visiblePrompt, Scrubber, parseRunArgs, flags } from "../.
 import { inspect } from "../../vault/backup.js";
 import { templateRefs, render, parseEnvFile, parseRef } from "../../vault/refs.js";
 import { KINDS as VAULT_KINDS, defaultField as defaultFieldOf } from "../../vault/kinds.js";
+import { setupPlan, addAllowedSigner, findPrivateKeys } from "../../vault/ssh/setup.js";
 
 // --json, on every command: the tool's own `{"data":...}` or `{"error":{code,message}}` as one
 // line on stdout and nothing else there. Exit codes: 0 ok, 1 error, 3 presence refused or
@@ -324,7 +325,50 @@ async function ssh(args) {
     hint(dim(`  put that line under a Host block in ~/.ssh/config (Vyre never edits it), or: export SSH_AUTH_SOCK="${r.data.socket}"\n`));
     return 0;
   }
-  return oops(`vyre vault ssh ${sub}: keys, generate, add, approvals [--revoke], approve or agent-line`);
+  if (sub === "setup") {
+    // Shows the lines for ssh and the shell; changes git's settings only with --git.
+    let f;
+    try { f = flags(rest, { boolean: ["git"] }); } catch (e) { return oops(e.message); }
+    const r = await tool("vault.ssh.keys");
+    if (r.error) return fail(r);
+    if (!r.data.socket) return oops('the ssh agent is off · set "vault": { "ssh": { "socket": "ssh/agent.sock" } } in config.json and restart vyred');
+    const keys = (r.data.keys || []).filter(k => k.public);
+    const key = f._[0] ? keys.find(k => k.name === f._[0]) : keys.find(k => k.type === "ssh-ed25519") || keys[0];
+    if (!key) return oops(f._[0] ? `no ssh key named ${f._[0]}` : "no ssh key yet · vyre vault ssh generate <name>, or vyre vault ssh import");
+    let email = "";
+    try { email = execFileSync("git", ["config", "--global", "user.email"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); } catch { /* not set */ }
+    const allowedSigners = path.join(os.homedir(), ".config", "git", "allowed_signers");
+    const plan = setupPlan({ socket: r.data.socket, pub: key.public, email, allowedSigners });
+    say(`  ${bold(key.name)} ${dim(`· ${key.fingerprint}`)}\n`);
+    say(dim("  1. in ~/.ssh/config (Vyre never edits it):"));
+    for (const l of plan.ssh) say(`     ${l}`);
+    say(dim("\n  2. in your shell profile, so git and ssh-add find the agent:"));
+    for (const l of plan.shell) say(`     ${l}`);
+    say(dim(`\n  3. git signs commits with this key${f.git ? "" : " (run again with --git to apply)"}:`));
+    for (const c of plan.git) say(`     git ${c.map(a => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}`);
+    if (!f.git) return 0;
+    for (const c of plan.git) execFileSync("git", c, { stdio: "ignore" });
+    if (plan.allowed) addAllowedSigner(allowedSigners, plan.allowed);
+    say(`\n  ${signal("git now signs")} ${dim(`every commit and tag with ${key.name}; each signature asks you first${plan.allowed ? "" : " · set git user.email, then run this again for allowed_signers"}`)}`);
+    return 0;
+  }
+  if (sub === "import") {
+    // Moves private keys from ~/.ssh (or --dir) into the vault, one vault.ssh.add each.
+    let f;
+    try { f = flags(rest, { string: ["dir"] }); } catch (e) { return oops(e.message); }
+    const dir = path.resolve(f.dir || path.join(os.homedir(), ".ssh"));
+    const found = findPrivateKeys(dir);
+    if (!found.length) { say(dim(`  no private keys in ${dir}`)); return 0; }
+    let failed = 0;
+    for (const k of found) {
+      const r = await tool("vault.ssh.add", { name: k.name, file: k.file });
+      if (r.error) { failed++; say(`  ${beacon("not added")} ${path.basename(k.file)} ${dim(`· ${r.error.message}`)}`); continue; }
+      say(`  ${signal("added")} ${bold(k.name)} ${dim(`· ${r.data.key.fingerprint} · from ${path.basename(k.file)}`)}`);
+    }
+    say(dim(`\n  the files are still in ${dir}: once vyre vault ssh setup works for you, delete them`));
+    return failed ? 1 : 0;
+  }
+  return oops(`vyre vault ssh ${sub}: keys, generate, add, import, setup [--git], approvals [--revoke], approve or agent-line`);
 }
 
 // ------------------------------------------------------------ git credential helper
@@ -594,6 +638,44 @@ async function totp(args) {
   const r = await tool("vault.totp", { name });
   if (r.error) return fail(r);
   say(`  ${bold(signal(r.data.display || r.data.code))}  ${dim(`${r.data.remaining}s left${r.data.next ? ` · next ${r.data.next}` : ""}`)}`);
+  return 0;
+}
+
+/** `sweep <path>`: where the vault's values, and credentials it lacks, sit in plain text. */
+async function sweepCmd(args) {
+  let f;
+  try { f = flags(args, { boolean: ["history", "shell"] }); } catch (e) { return oops(e.message); }
+  if (f._.length > 1) return oops("vyre vault sweep [path] [--history] [--shell]");
+  const where = path.resolve(f._[0] || ".");
+  const r = await tool("vault.sweep", { path: where, ...(f.history ? { history: true } : {}), ...(f.shell ? { shell: true } : {}) });
+  if (r.error) return fail(r);
+  const d = r.data;
+  const found = d.findings || [];
+  say(`  ${found.length ? beacon(plural(found.length, "place")) : signal("nothing found")} ${dim(`· ${d.scanned} files${d.commits ? `, ${d.commits} commits` : ""}${d.shell ? `, ${d.shell} shell histories` : ""}${d.truncated ? ", stopped at the limit" : ""}`)}`);
+  if (d.history) say(dim(`  history: ${d.history}`));
+  for (const x of found) {
+    const at = x.where === "history" ? `${x.file}:${x.line} ${dim(`in commit ${x.commit}${x.also ? ` and ${x.also} more` : ""}`)}` : `${x.file}:${x.line}`;
+    const what = x.item ? `${bold(x.item)} ${dim("from the vault")}` : `${beacon([x.type, x.provider].filter(Boolean).join(" "))} ${dim("not in the vault")}`;
+    say(`  ${at}  ${what}`);
+  }
+  if (found.some(x => x.where === "history")) say(dim("  a value in git history stays there after you delete it: rotate it (vyre vault rotate <name>)"));
+  if (found.some(x => !x.item)) say(dim("  bring unknown ones in with vyre vault import <folder> --rewrite, or vyre vault put"));
+  return 0;
+}
+
+/** `rotate <name>`: a new credential at the provider, or its page and steps. */
+async function rotateCmd(args) {
+  if (args.length !== 1) return oops("vyre vault rotate <name>");
+  const r = await tool("vault.rotate", { name: args[0] });
+  if (r.error) return fail(r);
+  const d = r.data;
+  if (!d.rotated) {
+    say(`  ${bold(args[0])} ${dim(`· ${d.guided.provider} has no API for this; by hand:`)}\n  ${d.guided.steps}\n  ${d.guided.url}`);
+    say(dim(`  then: vyre vault put ${args[0]} --kind <kind>`));
+    return 0;
+  }
+  say(`  ${signal("rotated")} ${bold(args[0])} ${dim(`· ${d.provider} · the old one ${d.revoked ? "is revoked" : "still works"}${d.expires ? ` · until ${day(d.expires)}` : ""}`)}`);
+  if (!d.revoked && d.reason) say(beacon(`  ${d.reason}`));
   return 0;
 }
 
@@ -1256,6 +1338,7 @@ const HELP = [
   ["share <item...> --with <person> [...]", "the same as pass create"],
   ["ssh keys | generate <name> [--type t] | add <name> --file f", "keys for the vault's ssh agent"],
   ["ssh approvals [--revoke [name]] | approve <id> | agent-line", "signing leases, and the IdentityAgent line"],
+  ["ssh import [--dir ~/.ssh] | setup [name] [--git]", "move ~/.ssh keys in; the lines for ssh, your shell and git commit signing"],
   ["git-credential <get|store|erase>", "git's credential helper (bin/git-credential-vyre)"],
   ["put <name> [--kind k] [--description d] [--url u] [--host h ...] [--allow-body]", "prompts for the value without echo"],
   ["    [--username u] [--totp] [--field F ...] [--expires 90d] [--scope s ...] [--provider p] [--from file]", "kinds: " + KINDS.join(", ")],
@@ -1265,6 +1348,8 @@ const HELP = [
   ["approve <id>", "allow one of them"],
   ["run [--env-file f] <item...> -- <command...>", "items as VAR=name.field, or KEY=vault://item/field lines; output scrubbed"],
   ["totp <name>", "the current code, and the next"],
+  ["sweep [path] [--history] [--shell]", "where your secrets sit in plain text: files, git history, shell history; places and names only"],
+  ["rotate <name>", "a new credential at its provider (AWS, GitLab, Cloudflare, Google Cloud), or the page and steps"],
   ["codes [name...] | codes import <scanned code...> [--from f] [--preview]", "every one-time code, current and next; bring in a Google Authenticator export"],
   ["generate [--length n] [--words n] [--no-symbols] [name]", "a password; stored when named"],
   ["import <file|folder> [--preview] [--update-conflicts] [--rewrite] [--format f]", ".env files (a whole project), 1Password, Bitwarden, Chrome, Apple Passwords; --rewrite swaps .env values for vault:// refs"],
@@ -1312,7 +1397,7 @@ async function share(args) {
 
 const SUBS = {
   list, ls: list, get, read, add: put, put, edit, rm: remove, delete: remove, inject, share, ssh, "git-credential": gitCredential,
-  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, codes: codesCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, "migrate-key": migrateKey, help,
+  pair, devices, "unlock-passphrase": unlockPassphrase, backup: backupCmd, restore: restoreCmd, relay: relayCmd, grant, revoke, pending, approve, run, totp, codes: codesCmd, sweep: sweepCmd, rotate: rotateCmd, generate, import: importFile, audit, card, people, fingerprint: fingerprintCmd, kit, vaults, members, move, device, pass, offboard, unlock, lock, account, "migrate-key": migrateKey, help,
 };
 
 export default {

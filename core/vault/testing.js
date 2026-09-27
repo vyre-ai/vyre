@@ -113,7 +113,7 @@ export async function onSearchList(file) {
 }
 
 /** Start the vault module against a ctx that records every tool definition. */
-export async function recorded(t, extra = {}) {
+export async function recorded(t, extra = {}, { call } = /** @type {{ call?: (tool: string, input: any) => Promise<any> }} */ ({})) {
   const tmp = fs.mkdtempSync(path.join(SCRATCH, "vyre-presence-"));
   const db = open(path.join(tmp, "vyre.db"));
   /** @type {Map<string, any>} */
@@ -126,6 +126,7 @@ export async function recorded(t, extra = {}) {
     events: { emit: (type, p) => events.push({ type, p }) },
     log: m => logs.push(m),
     tool: (name, def) => tools.set(name, def),
+    ...(call ? { call } : {}),
   };
   const mod = (await import("./index.js")).default;
   const running = await mod.start(ctx);

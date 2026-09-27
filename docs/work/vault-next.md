@@ -38,15 +38,22 @@ mobile and the Capsule (through their owners).
   core/vault/codes.js, vault.codes (current + next + remaining) and vault.codes.import (people's
   surfaces only, never mcp), vault.totp adds next, CLI `vyre vault codes [import]`. codes.test.js.
 
+- Step 7: vault.sweep (files, git history, shell history; places and names only), vault.rotate
+  (auto: AWS SigV4, GitLab self/rotate, Cloudflare roll, GCP SA keys; guided: the rest incl.
+  Twilio), vault.rotation, daily reminders -> planner todos (remind.js; box, or an unpaired Mac),
+  vault.remind.run. UNVERIFIED against real provider APIs (fake servers only): AWS propagation
+  delay on revoke, Cloudflare account-owned tokens, GCP org policies.
+- Step 8: `vyre vault ssh import` (~/.ssh keys), `vyre vault ssh setup [--git]` (prints ssh/shell
+  lines, applies git signing only with --git, allowed_signers).
+- Full vault + tools + CLI + extension + docs set on testbox: 507 pass, 0 fail, 14 skipped.
+
 ## Doing
 
-- Step 7: leak sweep + rotation (and ADR 0028 decision 4's daily reminders).
+- Step 10 passkeys (step 9 agent fill waits on computers.fill.begin/end).
 
 ## Next (the approved order, sizes sent to the lead 2026-09-27)
 
-7. Leak sweep + rotation (L): auto for AWS, GCP SA, Cloudflare, Twilio, GitLab, Tailscale; guided
-   otherwise; ADR 0028 decision 4 reminders.
-8. `vyre vault ssh setup` (S). 9. vault.agent.fill (M, needs computers). 10. Passkeys (L).
+9. vault.agent.fill (M, needs computers). 10. Passkeys (L).
 11. Cards + addresses (M). 12. Emergency access (M). 13. Autofill: extension, Android service,
    Glass, simulator-only iOS/macOS providers (L).
 

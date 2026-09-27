@@ -4,6 +4,37 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Leaks and rotation: a sweep, rotation at the provider, and daily reminders in the planner
+
+- `vault.sweep {path, history?, shell?}` (CLI `vyre vault sweep [path] --history --shell`) compares
+  every vault value with a folder's files, the lines each git commit added, and the shell's
+  history, and spots credentials the vault lacks by shape (detect.js) and private key blocks. It
+  returns file, line, commit and the item name or credential type, never a value or context.
+  Dependencies, build output, binaries and files over 2 MB are skipped. core/vault/sweep.js.
+- `vault.rotate {name}` (CLI `vyre vault rotate <name>`) makes the new credential with the current
+  one, stores it as a new version, THEN revokes the old one. It is automatic for AWS IAM keys
+  (SigV4 implemented here), GitLab PATs (self/rotate), Cloudflare user API tokens (roll) and
+  Google Cloud service-account keys (a self-signed JWT). Every other provider detect.js knows,
+  Twilio included (Standard API keys may not manage keys), gets its key page and hand steps.
+  `vault.rotation {name}` says which way an item rotates. Errors name the provider and never carry
+  a value, a header or a body. core/vault/rotate.js, core/vault/tools/rotate.js.
+- Rotation reminders (ADR 0028, decision 4): once a day, the first run after 09:00 local, on the
+  box (or a Mac with no box). Watchtower's expired, expiring, rotate, reused and old findings
+  become planner todos in the Vault list, once each; more than five at once become one todo that
+  lists them. A fixed item's todo is marked done, and a dismissed one stays quiet. A rotation
+  closes its item's todos at once. `vault.remind.run` runs the pass now; `vault.reminders: false`
+  turns it off. core/vault/remind.js, migration vault_reminders + vault_jobs.
+- Tests: sweep.test.js, rotate.test.js (fake servers on 127.0.0.1 only), rotate-tool.test.js,
+  remind.test.js.
+
+#### SSH: move ~/.ssh keys in, and sign git commits through the vault's agent
+
+- `vyre vault ssh import [--dir]` moves private keys from ~/.ssh into the vault; the files stay
+  until you delete them. `vyre vault ssh setup [name] [--git]` prints the IdentityAgent and
+  SSH_AUTH_SOCK lines (Vyre never edits ~/.ssh/config or a profile). With `--git` it sets
+  gpg.format ssh, user.signingkey key::<public key>, commit and tag signing, and an
+  allowed_signers line. Every signature asks, as before. core/vault/ssh/setup.js.
+
 #### The authenticator: current and next codes, and Google Authenticator's export
 
 - `vault.codes` lists every one-time code with the next one and the seconds left; `vault.totp`

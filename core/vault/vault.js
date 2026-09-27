@@ -30,6 +30,7 @@ import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
 import { parseFile as parseImport, plan as planImport } from "./import.js";
+import { REMIND_MIGRATION } from "./remind.js";
 import { KINDS, PERSONAL_KINDS, defaultField, checkFields, cleanDetails, derivedDetails } from "./kinds.js";
 import { findEnvFiles, readEnv, rewriteEnv, isEnvName, gitState } from "./envfiles.js";
 import { FILL_MIGRATION } from "./fill.js";
@@ -93,6 +94,8 @@ export const MIGRATIONS = [
   // ADR 0028: typed credentials. What the list shows beside a name (a PAT's scopes and expiry,
   // the provider); listable, so neither sealed nor MACed, and never a value.
   `ALTER TABLE vault_items ADD COLUMN details TEXT NOT NULL DEFAULT '{}';`,
+  // ADR 0028, decision 4: which Watchtower reasons already have a planner todo.
+  REMIND_MIGRATION,
 ];
 
 /** The two classes of vault (ADR 0006 decision 1), and the key version each is on. */
