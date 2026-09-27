@@ -4,6 +4,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The palette test reads swatches through their roles
+
+- test/theme-defaults.test.js: tokens.css paints roles only since pwa's token pass, so a swatch
+  (graphite, bone, signal) is checked through its role (core/config/theme.js ROLES_OF, now
+  exported), and the agents view's --swatch-* literals are not palette entries.
+
 #### box/vyre: a checkout build's update downloads nothing
 
 - A box that builds from a checkout the person keeps (VYRE_SOURCE is not /srv/vyre/src) is
