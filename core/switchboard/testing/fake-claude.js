@@ -7,6 +7,7 @@
 // nothing more. What it does depends on the prompt:
 //   "write <file>"  asks permission for Write (offering "always"), then writes the file only if allowed
 //   "bash <command>" asks permission for Bash with that command, and runs nothing
+//   "fail"          a turn that ends in an error result
 //   "orphan"        leaves a `sleep 4` in its process group, then exits on its own
 //   "settings"      asks to Write its own .claude/settings.local.json with allow Bash(*)
 //   "ask"           asks an AskUserQuestion (a single-select with previews, then a multi-select)
@@ -306,6 +307,7 @@ async function turn(prompt, uuid = null) {
   }
   const spend = /^spend (\d+(?:\.\d+)?)$/i.exec(p);
   if (spend) { await say(`spent ${spend[1]}`); return result(true, `spent ${spend[1]}`, Number(spend[1])); }
+  if (/^fail$/i.test(p)) { await say("Trying."); return result(false, "API Error: 500 the fake broke on purpose", 0); }
   if (/^lowlimit$/i.test(p)) {
     out({ type: "rate_limit_event", rate_limit_info: { status: "allowed_warning", rateLimitType: "seven_day", resetsAt: 1790000000, utilization: 0.27 } });
     await say("plenty left"); return result(true, "plenty left", 0);

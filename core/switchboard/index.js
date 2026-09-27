@@ -321,7 +321,8 @@ export class Switchboard {
     if (fields.status && this.states.get(id) !== fields.status) {
       this.states.set(id, fields.status);
       const rec = /** @type {any} */ (this.db.prepare("SELECT project FROM threads_runs WHERE id = ?").get(id));
-      this.emitRaw("thread.state", { state: STATE[fields.status] || fields.status }, id, rec ? rec.project : null);
+      const st = this.live.get(id);
+      this.emitRaw("thread.state", { state: STATE[fields.status] || fields.status, ...(st && st.turn ? { turn: st.turn } : {}) }, id, rec ? rec.project : null);
     }
   }
 
@@ -459,6 +460,14 @@ export class Switchboard {
     await st.proc.stop();
   }
 
+  /** Tool calls a turn left open, said as canceled (thread.tool status "canceled"). */
+  cancelTools(id, st, project) {
+    if (!st.openTools || !st.openTools.size) return;
+    const rec = project === null ? this.record(id) : null;
+    for (const call of st.openTools) this.emit("thread.tool", { id: call, call, phase: "done", status: "canceled" }, id, project ?? (rec ? rec.project : null));
+    st.openTools.clear();
+  }
+
   /** Something happened in a thread: its idle clock starts again (sessions.idle_minutes). */
   touch(id, st) {
     st.touched = Date.now();
@@ -556,11 +565,19 @@ export class Switchboard {
           Number(e.payload.duration_ms) || 0, Number(tk.input) || 0, Number(tk.output) || 0, Number(tk.cache_read) || 0, Number(tk.cache_write) || 0);
         if (st.interrupting) { st.interrupting = false; e.payload.canceled = true; e.payload.reason = "interrupt"; }
         this.emit("thread.usage", { cost_usd: e.payload.cost_usd, total_cost_usd: total, tokens: tk }, id, project);
+        // A failed turn is said as a state of its own, with its turn, before the thread goes idle.
+        if (!e.payload.ok && !e.payload.canceled && !st.stopping) {
+          this.emitRaw("thread.state", { state: "failed", turn: st.turn, error: e.payload.error || null }, id, project);
+          this.states.set(id, "failed");
+        }
         if (this.asks.open(id).length === 0) this.set(id, { status: "idle" });
         // A one-shot thread (a job, not a conversation) ends with its first answer.
         if (st.launch.once && !st.stopping) { st.done = true; st.stopping = true; setImmediate(() => st.proc.stop()); }
       }
-      if (e.type === "thread.tool" && e.payload.phase === "started") this.set(id, { status: "working" });
+      if (e.type === "thread.tool" && e.payload.phase === "started") { this.set(id, { status: "working" }); st.openTools = st.openTools || new Set(); st.openTools.add(e.payload.call); }
+      if (e.type === "thread.tool" && e.payload.phase === "done" && st.openTools) st.openTools.delete(e.payload.call);
+      // A turn that ends with tool calls still open (an interrupt) cancels them, so no row spins.
+      if (e.type === "thread.finished") this.cancelTools(id, st, project);
       const ev = this.emit(e.type, e.payload, id, project);
       if (e.type === "thread.finished" && ev) this.schedulePrune(id, ev.id);
       if (e.type === "thread.finished") this.turnEnded(id, st, project);
@@ -713,6 +730,7 @@ export class Switchboard {
 
   onExit(id, st, code, signal, stderr) {
     this.flush(id, st);
+    if (this.live.get(id) === st) this.cancelTools(id, st, null);
     if (st.idle) { clearTimeout(st.idle); st.idle = null; }
     if (st.switching || this.live.get(id) !== st) return;               // replaced (fallback): not an end
     this.live.delete(id);

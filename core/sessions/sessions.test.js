@@ -558,6 +558,25 @@ for (const driver of ["cli", "sdk"]) {
     assert.equal((await w.tool("threads.rewind", { thread: th.id, uuid: turns[1].uuid }, "mcp")).error.code, "denied");
   });
 
+  test(`${driver}: a failed turn is a state with its turn, and a stop cancels the tool calls it left open`, { skip }, async t => {
+    const w = await boot(t, { driver });
+    const th = (await w.tool("threads.start", { cwd: w.work, prompt: "fail", surface: "deck" })).data;
+    await w.finished(th.id);
+    const states = (await w.events(th.id)).filter(e => e.type === "thread.state").map(e => e.payload);
+    const failed = states.find(x => x.state === "failed");
+    assert.ok(failed, JSON.stringify(states));
+    assert.equal(failed.turn, `${th.id}:1`);
+    assert.match(failed.error, /broke on purpose/);
+    assert.equal(states.at(-1).state, "idle", "and then it is idle, ready for the next message");
+    assert.ok(states.filter(x => x.state === "running").every(x => x.turn === `${th.id}:1`), "state carries the turn");
+    await w.tool("threads.send", { thread: th.id, text: "bash npm test", surface: "deck" });
+    await until(async () => (await w.tool("threads.asks", { thread: th.id })).data[0], "the ask");
+    await w.tool("threads.stop", { thread: th.id });
+    await until(async () => (await w.events(th.id)).some(e => e.type === "thread.stopped"), "the stop");
+    const tools = (await w.events(th.id)).filter(e => e.type === "thread.tool").map(e => e.payload.status);
+    assert.deepEqual(tools, ["running", "canceled"]);
+  });
+
   test(`${driver}: on a Mac, Claude Code's own login`, { skip }, async t => {
     const w = await boot(t, { driver, role: "local" });
     const th = (await w.tool("threads.start", { cwd: w.work, prompt: "whoami", surface: "deck" })).data;

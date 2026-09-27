@@ -120,25 +120,25 @@ session is `idle` with no process at all once it has been closed for idleness (s
 
 The bus events, agreed with chat, capsule-now and capsule-sight (27 Sep). Existing names keep
 their meaning and gain fields; every event carries `thread` and, once step 6 lands, `turn`.
-A surface that sees a field absent behaves as before.
+A surface that sees a field absent behaves as before. Built on work/sessions (b8b1a0a7 and after).
 
 | Event | Payload (beyond `thread`, `turn`) | State |
 |---|---|---|
 | `thread.started` | `provider`, `model`, `auth`, `purpose`, `cwd`, `resumed` (the chip: "Claude · opus · subscription") | live |
-| `thread.turn` | `turn` (`<thread>:<n>`), `uuid` (the SDK user message uuid, equal to the transcript line's), `text` | step 6 |
-| `thread.text` | `message`, `block` (the content block index; key `message:block`), `delta` or `text` + `done`, `kind: "reasoning"` for thinking | `block`: step 6 |
-| `thread.tool` | `id` (= `call` during the migration), `call`, `name`, `status` (`running` once, then `completed`, `failed` or `canceled` once), `summary` | step 6 |
+| `thread.turn` | `turn` (`<thread>:<n>`), `uuid` (the SDK user message uuid, equal to the transcript line's), `text`, `steered` when unreached steered words run as their own turn | live |
+| `thread.text` | `message`, `block` (the content block index; key `message:block`), `delta` or `text` + `done`, `kind: "reasoning"` for thinking | live; `reasoning`: parity |
+| `thread.tool` | `id` (= `call` during the migration), `call`, `name`, `phase` (`started`, `done`), `status` (`running` once, then `completed`, `failed` or `canceled` once; a call a turn left open when it was interrupted or stopped is `canceled`), `summary`, `block` | live |
 | `ask.raised`, `ask.answered` | as today; `ask.answered` with `decision: "cancelled"` for a withdrawn question | live |
-| `thread.sent` | `text`, `surface`, `uuid`, `via`: `steer` (joined the running turn), `turn` (handed over at a turn's end), `now` (a queued row sent at once); `queued` for a queue row | `via`: step 6 |
-| `thread.steered` | `uuid`: Claude Code took the steered message in at a step (the delivered-at-step marker) | step 6 |
-| `thread.queued` | `queued` (the `threads_inbox` row id), `uuid`, `text`, `surface`; re-emitted with the same ids for an edit | live, `uuid` step 6 |
-| `thread.unqueued` | `queued`, `uuid`, `reason: "taken"` | step 6 |
-| `thread.rewound` | `uuid` (the user message rewound to), `fork` (the new thread id) | parity |
+| `thread.sent` | `text`, `surface`, `uuid`, `via`: `steer` (joined the running turn), `turn` (handed over at a turn's end), `now` (a queued row sent at once); `queued` for a queue row | live |
+| `thread.steered` | `uuid`, `turn`: Claude Code took the steered message in at a step (the delivered-at-step marker) | live |
+| `thread.queued` | `queued` (the `threads_inbox` row id), `uuid`, `text`, `surface`; re-emitted with the same ids and `edited: true` for an edit | live |
+| `thread.unqueued` | `queued`, `uuid`, `reason: "taken"` | live |
+| `thread.rewound` | `uuid` (the user message rewound to), `at` (the entry the session continues from); same thread | live |
 | `mode.changed` | `mode` (`default`, `acceptEdits`, `plan`) | live |
-| `thread.state` | `state` | step 6 |
-| `thread.usage` | `tokens`, `cost_usd`, `context: { used, max }` | step 6 |
+| `thread.state` | `state` (`starting`, `running`, `waiting`, `idle`, `stopped`, `failed`), `turn`; `failed` also carries `error`, and is followed by `idle` | live |
+| `thread.usage` | `tokens`, `cost_usd` (the turn's own), `total_cost_usd`; `context: { used, max }` to come | live |
 | `thread.limit` | the provider's rate-limit info | live |
-| `thread.finished` | `ok`, `cost_usd`, `tokens`; `error`; `canceled: true, reason: "interrupt"` | `canceled`: step 6 |
+| `thread.finished` | `ok`, `cost_usd` (the turn's own), `total_cost_usd`, `tokens`; `error`; `canceled: true, reason: "interrupt"` | live |
 | `thread.stopped` | `reason`: `stopped`, `idle` (resumable), `restart`, `done`, `exited ...` | live |
 
 Full detail (tool inputs, question options, diffs) stays in rows and in the transcript, never in
@@ -338,12 +338,16 @@ Reviewed by e2e (27 Sep); the three blocking notes are built and tested before t
   or a model (`sessions.prompt.set`, `revert`, `sessions.models.set`) is PERSON_ONLY too.
 - **MCP trust.** `canUseTool`'s `mcpServer.source` says whether a tool is ours (`sdk`) or from
   configuration; decisions key on it, never on the tool name.
+- **Credentials in tools** (measured, scripts/sessions-proof/env-leak.mjs, real Claude Code 2.1.283
+  against a fake Messages API). Claude Code keeps `CLAUDE_CODE_OAUTH_TOKEN` from its tools, but a
+  Bash call's environment held `ANTHROPIC_API_KEY`. The key is therefore never put in the child's
+  environment: spawn.js writes it once to a pipe on fd 3 (`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`),
+  which Claude Code reads at start and its tools do not inherit. Re-measured: authenticated, absent
+  from Bash's environment. (`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB` needs bubblewrap and exits without it.)
 - **Setting sources.** Owned sessions load `user`, `project` and `local` settings, as a terminal
   session does, so the user's own rules and hooks apply. Jobs pass `[]`.
 - **Still open** (e2e's "should"): the floor re-checks an answer's final `updatedInput` (with the
-  queue and edit work); whether Claude Code's Bash children inherit `CLAUDE_CODE_OAUTH_TOKEN` is to
-  be measured against a fake Messages API (if they do, the box moves to `login` or an
-  `apiKeyHelper`); owner tailnet nodes are treated as the person over HTTP until e2e's HTTP person
+  queue and edit work); owner tailnet nodes are treated as the person over HTTP until e2e's HTTP person
   session lands, so Mac-owned sessions stay behind that.
 
 ### 9. Models per purpose
@@ -483,7 +487,6 @@ Still open:
 - **Billing terms.** SDK sessions on a subscription rest on the paused 15 June change. If it
   resumes, the box moves to `api-key`, or `login` if a subscription login in the child still
   counts as Claude Code. `sessions.auth` makes that one setting.
-- **Credentials in Bash** (section 8, "still open").
 - **Floor rule 8 and agents' folders.** The floor treats all of VYRE_HOME except `watchers/` and
   `modules/` as Vyre's own state, so an agent without a project, which runs in
   `<home>/agents/<name>`, cannot write files in its own folder. e2e decides.

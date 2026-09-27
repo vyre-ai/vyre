@@ -15,6 +15,10 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   on fd 3 (`CLAUDE_CODE_API_KEY_FILE_DESCRIPTOR`), which Claude Code reads at start and its tools
   do not see. Same measurement after: authenticated, not in Bash's environment; a control run
   with no credential fails "Not logged in". Both drivers; tested in core/sessions.
+- Event gaps chat and the Capsule need: a tool call a turn left open when it was interrupted or
+  stopped is `thread.tool {status: "canceled"}`; a failed turn is `thread.state {state: "failed",
+  turn, error}` before the thread goes idle; `thread.state` carries `turn`. ADR 0030's event
+  table now says what is live.
 - `recover()` emits `thread.stopped {reason: "restart"}` for each thread a crash left live
   (ADR 0029 R7), not only the row.
 - Merged main c8fb9aae; its threads.unqueue is folded into this branch's (a superset: uuid,
