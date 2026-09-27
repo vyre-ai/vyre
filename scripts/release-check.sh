@@ -116,6 +116,18 @@ kb=$(du -sk "$work/prefix" | cut -f1)
 # would add tens of MB; design docs and screenshots are kept out above.
 [ "$kb" -lt 20480 ] || fail "npm i -g installs $kb KB; it should be a few MB (did a dependency or a build output come back?)"
 ok "$(du -sh "$work/prefix" | cut -f1) installed at $work/prefix"
+# 0.1.0-rc.1 installed without packages/module-sdk, which a CLI command imports: every `vyre`
+# died with ERR_MODULE_NOT_FOUND. So every relative import must name a shipped file, every CLI
+# command must load from the installed folder, and `vyre --version` must answer, before vyre up.
+node "$repo/scripts/lib/pack-imports.mjs" "$pkg" || fail "the installed package imports files it does not ship"
+(cd "$work" && node --input-type=module -e '
+  const fs = await import("node:fs"); const path = await import("node:path"); const { pathToFileURL } = await import("node:url");
+  const dir = path.join(process.argv[1], "core/cli/commands");
+  for (const f of fs.readdirSync(dir).filter(f => f.endsWith(".js"))) await import(pathToFileURL(path.join(dir, f)).href);
+' "$pkg") || fail "a CLI command does not load from the installed folder"
+v=$(HOME=$home VYRE_HOME=$home/.vyre VYRE_NO_DIALOGS=1 "$vyre" --version 2>&1) || { echo "$v"; fail "vyre --version"; }
+echo "$v" | grep -q "$version" || fail "vyre --version says $v, not $version"
+ok "every import is shipped, every CLI command loads, vyre --version is $version"
 
 step "vyre up, status, down"
 mkdir -p "$home/.vyre"

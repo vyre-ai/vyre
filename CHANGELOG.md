@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### The package ships packages/module-sdk (0.1.0-rc.1 did not start)
+
+- package.json "files" lists packages/module-sdk. `vyre module` imports its manifest checker at
+  the top, the CLI loads every command, so without it every `vyre` call and vyred failed with
+  ERR_MODULE_NOT_FOUND from the installed package.
+- scripts/lib/pack-imports.mjs: every relative import in a package names a file it ships.
+  test/pack-imports.test.js runs it on `npm pack --dry-run`'s list; scripts/release-check.sh runs
+  it on the installed folder, loads every CLI command from there and asks `vyre --version`.
+
 ## 0.1.0
 
 The first release, previewed as 0.1.0-rc.1. Everything below landed before it.
