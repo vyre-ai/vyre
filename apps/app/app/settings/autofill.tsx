@@ -4,6 +4,7 @@ import { deviceName } from "../../src/api/relay";
 import * as Autofill from "../../src/vault/autofill";
 import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
+import { face, type } from "../../src/theme/type";
 import { Button } from "../../src/ui/Button";
 import { Screen } from "../../src/ui/Screen";
 
@@ -63,7 +64,7 @@ export default function AutofillSettings() {
   if (!Autofill.supported || Platform.OS !== "android") {
     return (
       <Screen title="Autofill" back>
-        <Text style={[styles.body, styles.pad, { color: color.text2 }]}>Autofill is Android only.</Text>
+        <Text style={[type.read, styles.pad, { color: color.text2 }]}>Autofill is Android only.</Text>
       </Screen>
     );
   }
@@ -73,12 +74,12 @@ export default function AutofillSettings() {
   return (
     <Screen title="Autofill" back>
       <ScrollView contentContainerStyle={styles.pad} keyboardShouldPersistTaps="handled">
-        <Text style={[styles.body, { color: color.text }]}>{describe(st, enabled)}</Text>
-        {line ? <Text accessibilityRole="alert" style={[styles.meta, { color: color.text2 }]}>{line}</Text> : null}
+        <Text style={[type.read, { color: color.text }]}>{describe(st, enabled)}</Text>
+        {line ? <Text accessibilityRole="alert" style={[type.meta, { color: color.text2 }]}>{line}</Text> : null}
 
         {paired ? null : (
           <View style={styles.group}>
-            <Text style={[styles.label, { color: color.label }]}>Server address</Text>
+            <Text style={[type.meta, { color: color.label }]}>Server address</Text>
             <TextInput
               value={server}
               onChangeText={setServer}
@@ -91,7 +92,7 @@ export default function AutofillSettings() {
               testID="autofill-server"
               style={input}
             />
-            <Text style={[styles.label, { color: color.label }]}>Pairing code</Text>
+            <Text style={[type.meta, { color: color.label }]}>Pairing code</Text>
             <TextInput
               value={code}
               onChangeText={setCode}
@@ -152,14 +153,13 @@ const styles = StyleSheet.create({
   pad: { padding: tokens.layout.gutterPhone, gap: tokens.space[4], alignItems: "stretch" },
   group: { gap: tokens.space[3] },
   actions: { flexDirection: "row", gap: tokens.space[3] },
-  body: { fontSize: phone.read[0], lineHeight: phone.read[1] },
-  meta: { fontSize: phone.meta[0], lineHeight: phone.meta[1] },
-  label: { fontSize: phone.meta[0], lineHeight: phone.meta[1] },
   input: {
     height: tokens.control.touch,
     paddingHorizontal: tokens.space[4],
     borderWidth: 1,
     borderRadius: tokens.radius.field,
+    // A single-line field takes the read size without its line height (which clips the text on Android).
+    ...face.regular,
     fontSize: phone.read[0],
   },
 });

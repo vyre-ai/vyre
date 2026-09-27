@@ -44,6 +44,7 @@ import { nextPaint, perf } from "../perf";
 import { viewCache } from "../state/cache";
 import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
+import { face, type } from "../theme/type";
 import type { SendResult, SessionStore } from "./store";
 
 const touch = Platform.OS !== "web" || (typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches);
@@ -217,25 +218,25 @@ export const Composer = memo(function Composer({
           {menu.kind === "command"
             ? menu.items.map((c) => (
                 <Pressable key={c.name} accessibilityRole="menuitem" onPress={() => pickCommand(c)} style={styles.menuRow}>
-                  <Text style={[styles.menuName, { color: color.text }]}>/{c.name}</Text>
-                  <Text numberOfLines={1} style={[styles.menuDesc, { color: color.text2 }]}>
+                  <Text style={[type.baseStrong, { color: color.text }]}>/{c.name}</Text>
+                  <Text numberOfLines={1} style={[type.meta, styles.menuDesc, { color: color.text2 }]}>
                     {c.description}
                   </Text>
-                  {sourceLabel(c.source) ? <Text style={[styles.meta, { color: color.label }]}>{sourceLabel(c.source)}</Text> : null}
+                  {sourceLabel(c.source) ? <Text style={[type.meta, { color: color.label }]}>{sourceLabel(c.source)}</Text> : null}
                 </Pressable>
               ))
             : menu.items.map((m) => (
                 <Pressable key={m.id} accessibilityRole="menuitem" onPress={() => void pickModel(m)} style={styles.menuRow}>
-                  <Text style={[styles.menuName, { color: color.text }]}>{m.label}</Text>
-                  <Text numberOfLines={1} style={[styles.menuDesc, { color: color.text2 }]}>
+                  <Text style={[type.baseStrong, { color: color.text }]}>{m.label}</Text>
+                  <Text numberOfLines={1} style={[type.meta, styles.menuDesc, { color: color.text2 }]}>
                     {m.description ?? ""}
                   </Text>
-                  {m.now ? <Text style={[styles.meta, { color: color.label }]}>now</Text> : null}
+                  {m.now ? <Text style={[type.meta, { color: color.label }]}>now</Text> : null}
                 </Pressable>
               ))}
         </View>
       ) : null}
-      {note ? <Text style={[styles.note, { color: color.text2 }]}>{note}</Text> : null}
+      {note ? <Text style={[type.meta, { color: color.text2 }]}>{note}</Text> : null}
       <View style={styles.row}>
         <TextInput
           value={text}
@@ -269,7 +270,7 @@ export const Composer = memo(function Composer({
         />
         {running ? (
           <Pressable accessibilityRole="button" accessibilityLabel="Stop" onPress={onStop} style={[styles.btn, { backgroundColor: color.hover }]}>
-            <Text style={[styles.btnText, { color: color.text }]}>Stop</Text>
+            <Text style={[type.readStrong, { color: color.text }]}>Stop</Text>
           </Pressable>
         ) : null}
         <Pressable
@@ -281,7 +282,7 @@ export const Composer = memo(function Composer({
           delayLongPress={tokens.motion.hold}
           style={[styles.btn, { backgroundColor: text.trim() ? color.primaryBg : color.hover }]}
         >
-          <Text style={[styles.btnText, { color: text.trim() ? color.primaryInk : color.label }]}>Send</Text>
+          <Text style={[type.readStrong, { color: text.trim() ? color.primaryInk : color.label }]}>Send</Text>
         </Pressable>
       </View>
       <View style={styles.chips}>
@@ -292,9 +293,9 @@ export const Composer = memo(function Composer({
           hitSlop={8}
           style={[styles.chip, { borderColor: color.rule }]}
         >
-          <Text style={[styles.meta, { color: color.text2 }]}>{shortModel(model) ?? "Model"}</Text>
+          <Text style={[type.meta, { color: color.text2 }]}>{shortModel(model) ?? "Model"}</Text>
         </Pressable>
-        {hint ? <Text style={[styles.meta, { color: color.label }]}>{hint}</Text> : null}
+        {hint ? <Text style={[type.meta, { color: color.label }]}>{hint}</Text> : null}
       </View>
     </View>
   );
@@ -303,15 +304,16 @@ export const Composer = memo(function Composer({
 /** Focus is lime (the system's focus colour), not the browser's blue. */
 const focusRing = (c: string) => (Platform.OS === "web" ? ({ outlineColor: c, outlineWidth: 1 } as object) : null);
 
-const phone = tokens.type.phone;
 const styles = StyleSheet.create({
   wrap: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: tokens.layout.gutterPhone, paddingVertical: tokens.space[3], gap: tokens.space[2] },
   row: { flexDirection: "row", alignItems: "flex-end", gap: tokens.space[3] },
-  // 16 px: under that, iOS zooms the page when the field takes focus.
+  // 16 px: under that, iOS zooms the page when the field takes focus. The size is the field's own
+  // (no type step is 16); the face is the system's.
   input: {
     flex: 1,
     minHeight: tokens.control.touch,
     maxHeight: 160,
+    ...face.regular,
     fontSize: 16,
     lineHeight: 22,
     paddingHorizontal: tokens.space[4],
@@ -319,14 +321,12 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.buttonTouch,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  // Stop and Send are the composer's own controls (44 circles on the phone per the composer spec,
+  // icon buttons, not the Button), so they keep their box here and take only their type from type.ts.
   btn: { height: tokens.control.touch, paddingHorizontal: tokens.space[5], borderRadius: tokens.radius.buttonTouch, justifyContent: "center" },
-  btnText: { fontSize: phone.read[0], lineHeight: phone.read[1], fontWeight: tokens.font.weight.strong },
-  note: { fontSize: phone.meta[0], lineHeight: phone.meta[1] },
-  meta: { fontSize: phone.meta[0], lineHeight: phone.meta[1] },
   chips: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], flexWrap: "wrap" },
   chip: { borderWidth: StyleSheet.hairlineWidth, borderRadius: tokens.radius.buttonTouch, paddingHorizontal: tokens.space[3], paddingVertical: 2 },
   menu: { borderWidth: StyleSheet.hairlineWidth, borderRadius: tokens.radius.cardPhone, paddingVertical: tokens.space[2] },
   menuRow: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], minHeight: tokens.control.touch, paddingHorizontal: tokens.space[4] },
-  menuName: { fontSize: phone.base[0], lineHeight: phone.base[1], fontWeight: tokens.font.weight.strong },
-  menuDesc: { flex: 1, fontSize: phone.meta[0], lineHeight: phone.meta[1] },
+  menuDesc: { flex: 1 },
 });

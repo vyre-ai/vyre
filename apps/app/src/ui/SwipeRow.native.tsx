@@ -10,6 +10,7 @@ import type { Decision } from "../state/needs-model";
 import { afterPaint, perf } from "../perf";
 import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
+import { type } from "../theme/type";
 import type { SwipeRowProps } from "./SwipeRow";
 
 const COMMIT = 0.4;
@@ -53,10 +54,10 @@ export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel,
   return (
     <Animated.View style={[styles.outer, outerStyle]} onLayout={(e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width)}>
       <Animated.View style={[StyleSheet.absoluteFill, styles.side, { backgroundColor: color.primaryBg }, approveStyle]}>
-        <Text style={[styles.label, { color: color.primaryInk }]}>{approveLabel}</Text>
+        <Text style={[type.baseStrong, { color: color.primaryInk }]}>{approveLabel}</Text>
       </Animated.View>
       <Animated.View style={[StyleSheet.absoluteFill, styles.side, styles.end, { backgroundColor: color.hover }, rejectStyle]}>
-        <Text style={[styles.label, { color: color.text }]}>{rejectLabel}</Text>
+        <Text style={[type.baseStrong, { color: color.text }]}>{rejectLabel}</Text>
       </Animated.View>
       <GestureDetector gesture={pan}>
         <Animated.View testID={testID} style={[{ height }, rowStyle]}>
@@ -71,5 +72,4 @@ const styles = StyleSheet.create({
   outer: { overflow: "hidden" },
   side: { flexDirection: "row", alignItems: "center", paddingHorizontal: tokens.space[6] },
   end: { justifyContent: "flex-end" },
-  label: { fontSize: tokens.type.phone.base[0], lineHeight: tokens.type.phone.base[1], fontWeight: tokens.font.weight.strong },
 });

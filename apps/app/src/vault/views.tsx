@@ -3,9 +3,9 @@ import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { askTrust, canAskTrust, useAsked, useSelfName, useTrust } from "../state/devices";
 import { fieldLabel, fieldsOf, HIDDEN, howText, kindLabel, siteOf, vaultDetail, vaultFooter, type VaultItem } from "../state/devices-model";
 import { copy, reveal } from "../state/vault";
-import { MONO } from "../theme/fonts";
 import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
+import { face, type } from "../theme/type";
 import { Button } from "../ui/Button";
 import { List } from "../ui/List";
 import { Row, ROW_HEIGHT } from "../ui/Row";
@@ -20,8 +20,8 @@ export function NamesOnly() {
   const { color } = useTheme();
   return (
     <View testID="vault-names-only" style={[styles.namesOnly, { backgroundColor: color.panel, borderBottomColor: color.rule }]}>
-      <Text style={[styles.strong, { color: color.text }]}>Names only on this browser</Text>
-      <Text style={[styles.meta, { color: color.text2 }]}>Trust it from your Mac or phone to use secrets here.</Text>
+      <Text style={[type.readStrong, { color: color.text }]}>Names only on this browser</Text>
+      <Text style={[type.meta, { color: color.text2 }]}>Trust it from your Mac or phone to use secrets here.</Text>
     </View>
   );
 }
@@ -36,7 +36,7 @@ export function VaultList({ items, onOpen }: { items: VaultItem[]; onOpen: (name
       rowHeight={ROW_HEIGHT}
       header={trust === "untrusted" ? <NamesOnly /> : null}
       render={(i) => <Row avatar={i.name} title={i.name} detail={vaultDetail(i)} meta={i.description || ""} testID="vault-row" onPress={() => onOpen(i.name)} />}
-      footer={<Text style={[styles.meta, styles.footer, { color: color.label }]}>{vaultFooter(items.length)}</Text>}
+      footer={<Text style={[type.meta, styles.footer, { color: color.label }]}>{vaultFooter(items.length)}</Text>}
     />
   );
 }
@@ -50,23 +50,23 @@ export function ItemDetail({ item }: { item: VaultItem }) {
   const limited = trust === "untrusted";
   return (
     <ScrollView contentContainerStyle={styles.detail}>
-      <Text style={[styles.title, { color: color.text }]}>{item.name}</Text>
-      <Text style={[styles.meta, { color: color.label }]}>{[kindLabel(item.kind), item.description].filter(Boolean).join(" · ")}</Text>
+      <Text style={[type.title, { color: color.text }]}>{item.name}</Text>
+      <Text style={[type.meta, { color: color.label }]}>{[kindLabel(item.kind), item.description].filter(Boolean).join(" · ")}</Text>
       <View>
         {fields.map((f) => (
           <FieldRow key={f} name={item.name} field={f} limited={limited} />
         ))}
         {site ? (
           <View style={[styles.field, { borderTopColor: color.rule }]}>
-            <Text style={[styles.meta, styles.fieldLabel, { color: color.label }]}>Site</Text>
-            <Text selectable style={[styles.body, styles.fieldValue, { color: color.text }]}>{site}</Text>
+            <Text style={[type.meta, styles.fieldLabel, { color: color.label }]}>Site</Text>
+            <Text selectable style={[type.read, styles.fieldValue, { color: color.text }]}>{site}</Text>
           </View>
         ) : null}
       </View>
       {limited ? (
         <TrustCard />
       ) : (
-        <Text style={[styles.meta, { color: color.label }]}>Reveal and Copy ask for presence once; one proof covers 30 min.</Text>
+        <Text style={[type.meta, { color: color.label }]}>Reveal and Copy ask for presence once; one proof covers 30 min.</Text>
       )}
     </ScrollView>
   );
@@ -115,17 +115,17 @@ function FieldRow({ name, field, limited }: { name: string; field: string; limit
   };
   return (
     <View style={[styles.field, { borderTopColor: color.rule }]}>
-      <Text style={[styles.meta, styles.fieldLabel, { color: color.label }]}>{fieldLabel(field)}</Text>
+      <Text style={[type.meta, styles.fieldLabel, { color: color.label }]}>{fieldLabel(field)}</Text>
       <View style={styles.fieldValue}>
-        <Text selectable={shown !== null} numberOfLines={shown !== null ? undefined : 1} style={[styles.body, shown !== null && styles.mono, { color: color.text }]}>
+        <Text selectable={shown !== null} numberOfLines={shown !== null ? undefined : 1} style={[type.read, shown !== null && styles.mono, { color: color.text }]}>
           {shown ?? HIDDEN}
         </Text>
-        {note ? <Text style={[styles.meta, { color: color.text2 }]}>{note}</Text> : null}
+        {note ? <Text style={[type.meta, { color: color.text2 }]}>{note}</Text> : null}
       </View>
       {limited ? null : (
         <View style={styles.fieldButtons}>
-          <Button small kind="secondary" label={shown !== null ? "Hide" : "Reveal"} disabled={busy} onPress={onReveal} testID="vault-reveal" />
-          <Button small kind="ghost" label="Copy" disabled={busy} onPress={onCopy} testID="vault-copy" />
+          <Button size="sm" kind="secondary" label={shown !== null ? "Hide" : "Reveal"} disabled={busy} onPress={onReveal} testID="vault-reveal" />
+          <Button size="sm" kind="ghost" label="Copy" disabled={busy} onPress={onCopy} testID="vault-copy" />
         </View>
       )}
     </View>
@@ -142,8 +142,8 @@ export function TrustCard() {
   const ask = canAskTrust();
   return (
     <View testID="vault-trust-card" style={[styles.card, { backgroundColor: color.panel, borderColor: color.rule }]}>
-      <Text style={[styles.strong, { color: color.text }]}>Trust this browser to use the vault here</Text>
-      <Text style={[styles.base, { color: color.text2 }]}>
+      <Text style={[type.readStrong, { color: color.text }]}>Trust this browser to use the vault here</Text>
+      <Text style={[type.base, { color: color.text2 }]}>
         This browser was paired through the relay. It can see your vault's names, but it can't show, copy or fill a secret until you trust it from your Mac or phone.
       </Text>
       <View style={styles.cardButtons}>
@@ -157,8 +157,8 @@ export function TrustCard() {
         ) : null}
         <Button kind="ghost" label="How" onPress={() => setHow((h) => !h)} testID="vault-how" />
       </View>
-      {how ? <Text style={[styles.base, { color: color.text }]}>{howText(name)}</Text> : null}
-      {err ? <Text style={[styles.meta, { color: color.text2 }]}>{err}</Text> : null}
+      {how ? <Text style={[type.base, { color: color.text }]}>{howText(name)}</Text> : null}
+      {err ? <Text style={[type.meta, { color: color.text2 }]}>{err}</Text> : null}
     </View>
   );
 }
@@ -168,22 +168,17 @@ export function NoItem({ text }: { text: string }) {
   const { color } = useTheme();
   return (
     <View style={styles.none}>
-      <Text style={[styles.body, { color: color.label }]}>{text}</Text>
+      <Text style={[type.read, { color: color.label }]}>{text}</Text>
     </View>
   );
 }
 
-const phone = tokens.type.phone;
 const styles = StyleSheet.create({
   namesOnly: { paddingHorizontal: tokens.layout.gutterPhone, paddingVertical: tokens.space[4], gap: tokens.space[1], borderBottomWidth: StyleSheet.hairlineWidth },
   footer: { paddingHorizontal: tokens.layout.gutterPhone, paddingVertical: tokens.space[4] },
   detail: { padding: tokens.layout.gutterPhone, gap: tokens.space[4], maxWidth: tokens.layout.content, width: "100%" },
-  title: { fontSize: phone.title[0], lineHeight: phone.title[1], fontWeight: tokens.font.weight.strong },
-  strong: { fontSize: phone.read[0], lineHeight: phone.read[1], fontWeight: tokens.font.weight.strong },
-  body: { fontSize: phone.read[0], lineHeight: phone.read[1] },
-  base: { fontSize: phone.base[0], lineHeight: phone.base[1] },
-  meta: { fontSize: phone.meta[0], lineHeight: phone.meta[1] },
-  mono: { fontFamily: MONO, ...(Platform.OS === "web" ? ({ wordBreak: "break-all" } as object) : null) },
+  // A revealed value keeps the line's read size in the mono face.
+  mono: { ...face.mono, ...(Platform.OS === "web" ? ({ wordBreak: "break-all" } as object) : null) },
   field: { flexDirection: "row", alignItems: "center", gap: tokens.space[4], paddingVertical: tokens.space[4], borderTopWidth: StyleSheet.hairlineWidth },
   fieldLabel: { width: 96 },
   fieldValue: { flex: 1, minWidth: 0, gap: tokens.space[1] },

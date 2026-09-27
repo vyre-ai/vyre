@@ -13,6 +13,7 @@ import type { Decision } from "../state/needs-model";
 import { afterPaint, perf } from "../perf";
 import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
+import { type } from "../theme/type";
 import type { SwipeRowProps } from "./SwipeRow";
 
 // Scrollbars off on the strip, once per page (Safari needs the pseudo-element).
@@ -106,7 +107,8 @@ export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel,
     };
   }, [settle]);
 
-  const label = { fontSize: tokens.type.phone.base[0], lineHeight: `${tokens.type.phone.base[1]}px`, fontWeight: 600 };
+  // A plain DOM style: the line height needs its unit here (a bare number is a multiplier in CSS).
+  const label = { ...type.baseStrong, lineHeight: `${type.baseStrong.lineHeight}px` };
   return (
     <div ref={outer} style={{ height, overflow: "hidden", transition: `height ${tokens.motion.tap}ms ease-out`, WebkitTouchCallout: "none", userSelect: "none" }}>
       <div

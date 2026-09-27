@@ -4,6 +4,24 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: the design system's fonts, type steps and one button
+
+- The app ships its own fonts (Instrument Sans 400 and 600, JetBrains Mono 400, OFL): woff2 under
+  @font-face on the web (bundled, no other host), the ttf files embedded by the expo-font config
+  plugin on iOS and Android. New dependencies: expo-font and expo-asset, for exactly that.
+- `src/theme/type.ts`: the phone type steps with their faces. No screen sets a size, line height,
+  family or weight of its own (the composer keeps 16 so iOS does not zoom).
+- One Button (docs/design/system/components/button.md): primary, secondary, outline, ghost and
+  hold, heights 28, 32, 44 and 54, busy and key hints. Hand-drawn buttons on Now, a need, a
+  session, pairing, the Vault and the undo toast now use it. Card, Tag, Banner and Avatar follow
+  their specs; the status mark takes its sizes from the spec.
+- The frame meter moved to lib/perf (shared with the Deck's native-bar harness) and carries chat's
+  budgets.
+- Fixed: apps/app/.gitignore dropped the native sources of the app's own modules (vault-android,
+  vyre-signer), so a clean checkout could not build them. Only the prebuild output is ignored now.
+  vault-android is the copy of work/vault-next 725e4a41 (Credential Manager provider).
+- Fixed: the app's HUMAN_ONLY mirror lacked presence.person.start.
+
 #### The Agent SDK installs itself only in the person's own home, and never outlives vyred
 
 - vyred installs the Claude Agent SDK on first use only in ~/.vyre: never under node --test or

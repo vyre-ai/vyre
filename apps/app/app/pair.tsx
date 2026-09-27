@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as Linking from "expo-linking";
 import { pair } from "@vyre/relay-client/client.js";
@@ -9,6 +9,8 @@ import { about, deviceName, presenceKey, relayCrypto, relayKeyStore, savePairing
 import { Screen } from "../src/ui/Screen";
 import { useTheme } from "../src/theme/theme";
 import { tokens } from "../src/theme/tokens";
+import { type } from "../src/theme/type";
+import { Button } from "../src/ui/Button";
 
 type State = { at: "pairing" } | { at: "paired"; name: string; presence: boolean } | { at: "failed"; message: string };
 
@@ -58,27 +60,23 @@ export default function Pair() {
   return (
     <Screen title="Pair">
       <View style={styles.body}>
-        <Text accessibilityRole="alert" style={[styles.line, { color: state.at === "failed" || !offer ? color.text2 : color.text }]}>
+        <Text accessibilityRole="alert" style={[type.read, { color: state.at === "failed" || !offer ? color.text2 : color.text }]}>
           {line}
         </Text>
         {state.at === "paired" && !state.presence ? (
-          <Text style={[styles.note, { color: color.label }]}>Approvals from this device still ask for a passkey.</Text>
+          <Text style={[type.base, { color: color.label }]}>Approvals from this device still ask for a passkey.</Text>
         ) : null}
         {state.at !== "pairing" || !offer ? (
-          <Pressable accessibilityRole="button" onPress={() => router.replace("/")} style={[styles.btn, { backgroundColor: color.primaryBg }]}>
-            <Text style={[styles.btnText, { color: color.primaryInk }]}>Open Now</Text>
-          </Pressable>
+          <View style={styles.action}>
+            <Button kind="primary" label="Open Now" onPress={() => router.replace("/")} />
+          </View>
         ) : null}
       </View>
     </Screen>
   );
 }
 
-const phone = tokens.type.phone;
 const styles = StyleSheet.create({
   body: { padding: tokens.layout.gutterPhone, gap: tokens.space[4] },
-  line: { fontSize: phone.read[0], lineHeight: phone.read[1] },
-  note: { fontSize: phone.base[0], lineHeight: phone.base[1] },
-  btn: { alignSelf: "flex-start", height: tokens.control.touch, paddingHorizontal: tokens.space[6], borderRadius: tokens.radius.buttonTouch, justifyContent: "center" },
-  btnText: { fontSize: phone.base[0], lineHeight: phone.base[1], fontWeight: tokens.font.weight.strong },
+  action: { alignSelf: "flex-start" },
 });

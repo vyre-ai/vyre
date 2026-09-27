@@ -5,7 +5,7 @@
 // or /rewind opens the rewind sheet.
 
 import { memo, useCallback, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Queued } from "@vyre/chat-core/session-state.js";
@@ -21,6 +21,8 @@ import { useOutbox } from "../../src/state/connection";
 import { useThread } from "../../src/state/threads";
 import { useTheme } from "../../src/theme/theme";
 import { tokens } from "../../src/theme/tokens";
+import { type } from "../../src/theme/type";
+import { Button } from "../../src/ui/Button";
 import { SignInBar } from "../../src/ui/SignInBar";
 import { StatusMark } from "../../src/ui/StatusMark";
 
@@ -60,18 +62,16 @@ export default function SessionScreen() {
   return (
     <View style={[styles.page, { backgroundColor: color.bg, paddingTop: insets.top }]}>
       <View style={[styles.header, { borderBottomColor: color.rule }]}>
-        <Pressable accessibilityRole="button" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} style={styles.back} hitSlop={8}>
-          <Text style={[styles.meta, { color: color.text2 }]}>Back</Text>
-        </Pressable>
+        <Button kind="ghost" label="Back" onPress={() => (router.canGoBack() ? router.back() : router.replace("/"))} />
         <View style={styles.headCol}>
-          <Text numberOfLines={1} accessibilityRole="header" style={[styles.title, { color: color.text }]}>{title}</Text>
+          <Text numberOfLines={1} accessibilityRole="header" style={[type.readStrong, { color: color.text }]}>{title}</Text>
           <View style={styles.stateLine}>
-            <StatusMark status={running ? "running" : words.word === "failed" ? "failed" : openAsk ? "needsYou" : "done"} size={8} />
-            <Text testID="session-state" numberOfLines={1} style={[styles.meta, styles.shrink, { color: color.label }]}>
+            <StatusMark status={running ? "running" : words.word === "failed" ? "failed" : openAsk ? "needsYou" : "done"} />
+            <Text testID="session-state" numberOfLines={1} style={[type.meta, styles.shrink, { color: color.label }]}>
               {[words.word, words.note, chip].filter(Boolean).join(" · ")}
             </Text>
             {ctx ? (
-              <Text accessibilityLabel={ctx.title ?? ctx.text} style={[styles.meta, { color: ctx.share >= 0.8 ? color.text : color.label }]}>
+              <Text accessibilityLabel={ctx.title ?? ctx.text} style={[type.meta, { color: ctx.share >= 0.8 ? color.text : color.label }]}>
                 {ctx.text}
               </Text>
             ) : null}
@@ -85,7 +85,7 @@ export default function SessionScreen() {
           <View style={{ backgroundColor: color.bg, paddingBottom: insets.bottom }}>
             {rewinding ? <RewindSheet store={store} onClose={() => setRewinding(false)} /> : null}
             <Pending store={store} />
-            {note ? <Text style={[styles.pad, styles.meta, { color: color.text2 }]}>{note}</Text> : null}
+            {note ? <Text style={[styles.pad, type.meta, { color: color.text2 }]}>{note}</Text> : null}
             <Composer
               store={store}
               running={running}
@@ -95,7 +95,7 @@ export default function SessionScreen() {
               onStop={onStop}
               onRewind={onRewind}
             />
-            <Text style={[styles.pad, styles.meta, { color: color.label, paddingBottom: tokens.space[3] }]}>{modeLabel(s.mode)}</Text>
+            <Text style={[styles.pad, type.meta, { color: color.label, paddingBottom: tokens.space[3] }]}>{modeLabel(s.mode)}</Text>
           </View>
         }
       />
@@ -105,7 +105,6 @@ export default function SessionScreen() {
 
 /** The transcript on its own subscription: a new row re-lays the list, nothing else does. */
 const TranscriptHost = memo(function TranscriptHost({ store }: { store: SessionStore }) {
-  const { color } = useTheme();
   const listRev = useSyncExternalStore(
     (f) => store.subscribeList(f),
     () => store.listRev(),
@@ -117,16 +116,11 @@ const TranscriptHost = memo(function TranscriptHost({ store }: { store: SessionS
   const head = useMemo(() => <HeadNote store={store} />, [store]);
   const jump = useCallback(
     (go: () => void) => (
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Jump to latest"
-        onPress={go}
-        style={[styles.jump, { backgroundColor: color.panel, borderColor: color.rule }]}
-      >
-        <Text style={[styles.meta, styles.strong, { color: color.text }]}>Jump to latest</Text>
-      </Pressable>
+      <View style={styles.jump}>
+        <Button kind="secondary" size="sm" label="Jump to latest" accessibilityLabel="Jump to latest" onPress={go} />
+      </View>
     ),
-    [color],
+    [],
   );
   return <Transcript rows={rows} renderRow={renderRow} hasMore={store.status.hasMore} onNearTop={onNearTop} head={head} jump={jump} />;
 });
@@ -136,8 +130,8 @@ function HeadNote({ store }: { store: SessionStore }) {
   const { color } = useTheme();
   useHead(store);
   const st = store.status;
-  if (st.error) return <Text style={[styles.headNote, { color: color.text2 }]}>{st.loaded ? `Not current: ${st.error}` : st.error}</Text>;
-  if (st.loading) return <Text style={[styles.headNote, { color: color.label }]}>{st.loaded ? "Loading earlier" : "Loading"}</Text>;
+  if (st.error) return <Text style={[type.meta, styles.headNote, { color: color.text2 }]}>{st.loaded ? `Not current: ${st.error}` : st.error}</Text>;
+  if (st.loading) return <Text style={[type.meta, styles.headNote, { color: color.label }]}>{st.loaded ? "Loading earlier" : "Loading"}</Text>;
   return null;
 }
 
@@ -159,26 +153,18 @@ function RewindSheet({ store, onClose }: { store: SessionStore; onClose: () => v
   return (
     <View style={[styles.sheet, { borderTopColor: color.rule }]}>
       <View style={styles.pendingRow}>
-        <Text style={[styles.meta, styles.strong, styles.shrink, { color: color.text }]}>Rewind to before</Text>
-        <Pressable accessibilityRole="button" onPress={onClose} hitSlop={8}>
-          <Text style={[styles.meta, { color: color.text2 }]}>Close</Text>
-        </Pressable>
+        <Text style={[type.metaStrong, styles.shrink, { color: color.text }]}>Rewind to before</Text>
+        <Button kind="ghost" label="Close" onPress={onClose} />
       </View>
-      {points.length ? null : <Text style={[styles.meta, { color: color.label }]}>No messages to go back to yet.</Text>}
+      {points.length ? null : <Text style={[type.meta, { color: color.label }]}>No messages to go back to yet.</Text>}
       {points.map((p) => (
         <View key={p.key} style={styles.pendingRow}>
-          <Text numberOfLines={1} style={[styles.pendingText, { color: busyOn === p.uuid ? color.label : color.text }]}>{p.text}</Text>
-          <Pressable accessibilityRole="button" disabled={!!busyOn} onPress={() => void go(p, "conversation")} hitSlop={8}>
-            <Text style={[styles.meta, styles.strong, { color: color.text }]}>Rewind</Text>
-          </Pressable>
-          {code ? (
-            <Pressable accessibilityRole="button" disabled={!!busyOn} onPress={() => void go(p, "both")} hitSlop={8}>
-              <Text style={[styles.meta, { color: color.text2 }]}>With code</Text>
-            </Pressable>
-          ) : null}
+          <Text numberOfLines={1} style={[type.base, styles.pendingText, { color: busyOn === p.uuid ? color.label : color.text }]}>{p.text}</Text>
+          <Button kind="secondary" label="Rewind" disabled={!!busyOn} onPress={() => void go(p, "conversation")} />
+          {code ? <Button kind="ghost" label="With code" disabled={!!busyOn} onPress={() => void go(p, "both")} /> : null}
         </View>
       ))}
-      {note ? <Text style={[styles.meta, { color: color.text2 }]}>{note}</Text> : null}
+      {note ? <Text style={[type.meta, { color: color.text2 }]}>{note}</Text> : null}
     </View>
   );
 }
@@ -199,53 +185,37 @@ function Pending({ store }: { store: SessionStore }) {
     <View style={[styles.pending, { borderTopColor: color.rule }]}>
       {s.queued.map((q, i) => (
         <View key={q.uuid ?? `q${q.queued ?? i}`} style={styles.pendingRow}>
-          <Text style={[styles.meta, { color: color.label }]}>Queued</Text>
-          <Text numberOfLines={1} style={[styles.pendingText, { color: color.text }]}>{q.text}</Text>
-          <Pressable accessibilityRole="button" onPress={() => void takeBack(q)} hitSlop={8}>
-            <Text style={[styles.meta, styles.strong, { color: color.text }]}>Take back</Text>
-          </Pressable>
+          <Text style={[type.meta, { color: color.label }]}>Queued</Text>
+          <Text numberOfLines={1} style={[type.base, styles.pendingText, { color: color.text }]}>{q.text}</Text>
+          <Button kind="ghost" label="Take back" onPress={() => void takeBack(q)} />
         </View>
       ))}
-      {drawn.length ? <Text style={[styles.meta, { color: color.label }]}>{drawn.length === 1 ? "Sending" : `Sending ${drawn.length} messages`}</Text> : null}
+      {drawn.length ? <Text style={[type.meta, { color: color.label }]}>{drawn.length === 1 ? "Sending" : `Sending ${drawn.length} messages`}</Text> : null}
       {rest.map((o) => (
         <View key={o.key} style={styles.pendingRow}>
-          <Text style={[styles.meta, { color: color.label }]}>{o.status === "refused" ? "Not sent" : "Sending"}</Text>
-          <Text numberOfLines={1} style={[styles.pendingText, { color: color.text2 }]}>
+          <Text style={[type.meta, { color: color.label }]}>{o.status === "refused" ? "Not sent" : "Sending"}</Text>
+          <Text numberOfLines={1} style={[type.base, styles.pendingText, { color: color.text2 }]}>
             {o.status === "refused" ? o.error?.message : String((o.input as { text?: string } | null)?.text ?? "")}
           </Text>
         </View>
       ))}
-      {note ? <Text style={[styles.meta, { color: color.text2 }]}>{note}</Text> : null}
+      {note ? <Text style={[type.meta, { color: color.text2 }]}>{note}</Text> : null}
     </View>
   );
 }
 
-const phone = tokens.type.phone;
 const G = tokens.layout.gutterPhone;
 const styles = StyleSheet.create({
   page: { flex: 1 },
   header: { minHeight: tokens.layout.phoneHeader + tokens.space[4], flexDirection: "row", alignItems: "center", gap: tokens.space[4], paddingHorizontal: G, borderBottomWidth: StyleSheet.hairlineWidth },
-  back: { height: tokens.control.touch, justifyContent: "center" },
   headCol: { flex: 1, minWidth: 0 },
-  title: { fontSize: phone.read[0], lineHeight: phone.read[1], fontWeight: tokens.font.weight.strong },
   stateLine: { flexDirection: "row", alignItems: "center", gap: tokens.space[2] },
-  meta: { fontSize: phone.meta[0], lineHeight: phone.meta[1] },
   shrink: { flexShrink: 1 },
-  strong: { fontWeight: tokens.font.weight.strong },
   pad: { paddingHorizontal: G },
-  headNote: { fontSize: phone.meta[0], lineHeight: phone.meta[1], textAlign: "center", paddingVertical: tokens.space[4] },
+  headNote: { textAlign: "center", paddingVertical: tokens.space[4] },
   pending: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: G, paddingTop: tokens.space[3], gap: tokens.space[2] },
   pendingRow: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], minHeight: 24 },
-  pendingText: { flex: 1, fontSize: phone.base[0], lineHeight: phone.base[1] },
+  pendingText: { flex: 1 },
   sheet: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: G, paddingVertical: tokens.space[3], gap: tokens.space[2] },
-  jump: {
-    position: "absolute",
-    bottom: tokens.space[4],
-    alignSelf: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: tokens.radius.buttonTouch,
-    paddingHorizontal: tokens.space[4],
-    minHeight: 32,
-    justifyContent: "center",
-  },
+  jump: { position: "absolute", bottom: tokens.space[4], alignSelf: "center" },
 });

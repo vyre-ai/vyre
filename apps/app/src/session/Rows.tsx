@@ -10,14 +10,14 @@ import type { Item } from "@vyre/chat-core/session-state.js";
 import { toolDetail, toolDisplay } from "@vyre/chat-core/tool-detail.js";
 import { answers } from "../state/live";
 import { fromAsk } from "../state/needs-model";
-import { MONO } from "../theme/fonts";
 import { useTheme, type Palette } from "../theme/theme";
 import { tokens } from "../theme/tokens";
+import { face, type } from "../theme/type";
+import { Button } from "../ui/Button";
 import { StatusMark } from "../ui/StatusMark";
 import { sameRow, type TranscriptRow } from "./model";
 import type { SessionStore } from "./store";
 
-const phone = tokens.type.phone;
 const G = tokens.layout.gutterPhone;
 
 function useRow(store: SessionStore, key: string) {
@@ -51,12 +51,12 @@ function RunRow({ store, row }: { store: SessionStore; row: Extract<TranscriptRo
   useRow(store, row.key);
   return (
     <Pressable accessibilityRole="button" accessibilityState={{ expanded: row.open }} onPress={() => store.toggle(row.key)} style={styles.tool}>
-      <StatusMark status={row.running ? "running" : row.failed ? "failed" : "done"} size={8} />
-      <Text numberOfLines={1} style={[styles.toolText, { color: color.text2 }]}>
+      <StatusMark status={row.running ? "running" : row.failed ? "failed" : "done"} />
+      <Text numberOfLines={1} style={[type.base, styles.toolText, { color: color.text2 }]}>
         {row.summary}
         {row.failed ? ` · ${row.failed} failed` : ""}
       </Text>
-      <Text style={[styles.meta, { color: color.label }]}>{row.open ? "Hide" : "Show"}</Text>
+      <Text style={[type.meta, { color: color.label }]}>{row.open ? "Hide" : "Show"}</Text>
     </Pressable>
   );
 }
@@ -74,7 +74,7 @@ function ItemBody({ it, color, store }: { it: Item; color: Palette; store: Sessi
       return (
         <View style={styles.userWrap}>
           <View style={[styles.user, { backgroundColor: color.panel, borderColor: color.rule }]}>
-            <Text selectable style={[styles.read, { color: color.text }]}>{it.text}</Text>
+            <Text selectable style={[type.read, { color: color.text }]}>{it.text}</Text>
           </View>
         </View>
       );
@@ -82,7 +82,7 @@ function ItemBody({ it, color, store }: { it: Item; color: Palette; store: Sessi
       const n = store.shown(it.key);
       return (
         <View style={styles.block}>
-          <Text selectable style={[styles.read, { color: color.text }]}>
+          <Text selectable style={[type.read, { color: color.text }]}>
             {n === undefined ? it.text : it.text.slice(0, n)}
           </Text>
         </View>
@@ -91,7 +91,7 @@ function ItemBody({ it, color, store }: { it: Item; color: Palette; store: Sessi
     case "reasoning":
       return (
         <View style={styles.tool}>
-          <Text style={[styles.meta, { color: color.label }]}>{it.streaming ? "Thinking" : `Thought · ${it.text.length} characters`}</Text>
+          <Text style={[type.meta, { color: color.label }]}>{it.streaming ? "Thinking" : `Thought · ${it.text.length} characters`}</Text>
         </View>
       );
     case "tool": {
@@ -99,12 +99,12 @@ function ItemBody({ it, color, store }: { it: Item; color: Palette; store: Sessi
       const status = it.status === "running" ? "running" : it.status === "failed" ? "failed" : "done";
       return (
         <View style={styles.tool}>
-          <StatusMark status={status} size={8} />
-          <Text numberOfLines={1} style={[styles.toolText, { color: color.text2 }]}>
+          <StatusMark status={status} />
+          <Text numberOfLines={1} style={[type.base, styles.toolText, { color: color.text2 }]}>
             {d.title}{" "}
-            <Text style={{ fontFamily: MONO, color: color.text2 }}>{it.summary ? withoutName(it.summary, it.name) : d.subtitle}</Text>
+            <Text style={[face.mono, { color: color.text2 }]}>{it.summary ? withoutName(it.summary, it.name) : d.subtitle}</Text>
           </Text>
-          {it.status === "running" ? <Text style={[styles.meta, { color: color.label }]}>running</Text> : null}
+          {it.status === "running" ? <Text style={[type.meta, { color: color.label }]}>running</Text> : null}
         </View>
       );
     }
@@ -112,20 +112,20 @@ function ItemBody({ it, color, store }: { it: Item; color: Palette; store: Sessi
       const parts = [it.canceled || it.reason === "interrupted" ? "Stopped by you" : null, seconds(it.duration_ms), kTokens(it.tokens), it.error ?? null].filter(Boolean);
       return (
         <View style={styles.tool}>
-          <Text style={[styles.meta, { color: color.label }]}>{parts.join(" · ") || "Turn done"}</Text>
+          <Text style={[type.meta, { color: color.label }]}>{parts.join(" · ") || "Turn done"}</Text>
         </View>
       );
     }
     case "notice":
       return (
         <View style={styles.tool}>
-          <Text style={[styles.meta, { color: color.label }]}>{it.text}</Text>
+          <Text style={[type.meta, { color: color.label }]}>{it.text}</Text>
         </View>
       );
     case "steer":
       return (
         <View style={styles.tool}>
-          <Text style={[styles.meta, { color: color.label }]}>{it.pending ? "Steering" : it.step != null ? `Steered at step ${it.step}` : "Steered"}</Text>
+          <Text style={[type.meta, { color: color.label }]}>{it.pending ? "Steering" : it.step != null ? `Steered at step ${it.step}` : "Steered"}</Text>
         </View>
       );
     case "ask":
@@ -144,21 +144,17 @@ function AskCard({ it, color, store }: { it: Extract<Item, { kind: "ask" }>; col
     <View style={[styles.card, { backgroundColor: color.panel, borderColor: open ? color.beacon : color.rule }]}>
       <View style={styles.cardHead}>
         {open ? <StatusMark status="needsYou" /> : null}
-        <Text style={[styles.meta, { color: color.label }]}>{question ? "Question" : "Permission"}{open ? "" : ` · ${it.state === "cancelled" ? "cancelled" : it.decision === "deny" ? "denied" : "allowed"}`}</Text>
+        <Text style={[type.meta, { color: color.label }]}>{question ? "Question" : "Permission"}{open ? "" : ` · ${it.state === "cancelled" ? "cancelled" : it.decision === "deny" ? "denied" : "allowed"}`}</Text>
       </View>
-      <Text selectable style={[styles.read, !question && { fontFamily: MONO, fontSize: phone.base[0] }, { color: color.text }]}>{it.summary ?? it.tool ?? ""}</Text>
+      <Text selectable style={[question ? type.read : type.mono, { color: color.text }]}>{it.summary ?? it.tool ?? ""}</Text>
       {open ? (
         <View style={styles.cardButtons}>
           {question ? (
-            <Text style={[styles.meta, { color: color.text2 }]}>Answer it in the Deck for now. Also in Needs.</Text>
+            <Text style={[type.meta, { color: color.text2 }]}>Answer it in the Deck for now. Also in Needs.</Text>
           ) : (
-            <Pressable accessibilityRole="button" onPress={() => answer("approve")} style={[styles.btn, { backgroundColor: color.primaryBg }]}>
-              <Text style={[styles.btnText, { color: color.primaryInk }]}>Allow once</Text>
-            </Pressable>
+            <Button kind="primary" label="Allow once" onPress={() => answer("approve")} />
           )}
-          <Pressable accessibilityRole="button" onPress={() => answer("reject")} style={styles.btn}>
-            <Text style={[styles.btnText, { color: color.text }]}>Deny</Text>
-          </Pressable>
+          <Button kind="ghost" label="Deny" onPress={() => answer("reject")} />
         </View>
       ) : null}
     </View>
@@ -167,15 +163,11 @@ function AskCard({ it, color, store }: { it: Extract<Item, { kind: "ask" }>; col
 
 const styles = StyleSheet.create({
   block: { paddingHorizontal: G, paddingVertical: tokens.space[3] },
-  read: { fontSize: phone.read[0], lineHeight: phone.read[1] },
   userWrap: { paddingHorizontal: G, paddingVertical: tokens.space[3], alignItems: "flex-end" },
   user: { maxWidth: "88%", borderRadius: tokens.radius.bubble, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: tokens.space[4], paddingVertical: tokens.space[3] },
   tool: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], paddingHorizontal: G, minHeight: 28, paddingVertical: tokens.space[2] },
-  toolText: { flex: 1, fontSize: phone.base[0], lineHeight: phone.base[1] },
-  meta: { fontSize: phone.meta[0], lineHeight: phone.meta[1] },
+  toolText: { flex: 1 },
   card: { marginHorizontal: G, marginVertical: tokens.space[3], padding: tokens.space[4], gap: tokens.space[3], borderRadius: tokens.radius.cardPhone, borderWidth: 1 },
   cardHead: { flexDirection: "row", alignItems: "center", gap: tokens.space[3] },
   cardButtons: { flexDirection: "row", alignItems: "center", gap: tokens.space[3], flexWrap: "wrap" },
-  btn: { height: tokens.control.touch, paddingHorizontal: tokens.space[5], borderRadius: tokens.radius.buttonTouch, justifyContent: "center" },
-  btnText: { fontSize: phone.base[0], lineHeight: phone.base[1], fontWeight: tokens.font.weight.strong },
 });

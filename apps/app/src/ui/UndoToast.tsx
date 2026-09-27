@@ -1,9 +1,11 @@
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { answers } from "../state/live";
 import { useToast } from "../state/needs";
 import { useTheme } from "../theme/theme";
 import { tokens } from "../theme/tokens";
+import { type } from "../theme/type";
+import { Button } from "./Button";
 
 /**
  * The Undo toast for an answer given by a swipe: it lasts tokens.motion.undo (4 s), the time the
@@ -18,10 +20,9 @@ export function UndoToast() {
   return (
     <View pointerEvents="box-none" style={[styles.wrap, { bottom: insets.bottom + tokens.control.touchLg + tokens.space[4] }]}>
       <View accessibilityRole="alert" style={[styles.toast, { backgroundColor: color.panel, borderColor: color.ruleStrong }]}>
-        <Text numberOfLines={1} style={[styles.text, { color: color.text }]}>{toast.label}</Text>
-        <Pressable accessibilityRole="button" onPress={() => answers.undo(toast.id)} style={styles.undo} hitSlop={8}>
-          <Text style={[styles.undoText, { color: color.focus }]}>Undo</Text>
-        </Pressable>
+        <Text numberOfLines={1} style={[type.base, styles.text, { color: color.text }]}>{toast.label}</Text>
+        {/* Undo is a ghost button (toast spec): text ink, never lime, 44 on touch and 28 on the desktop. */}
+        <Button kind="ghost" label="Undo" onPress={() => answers.undo(toast.id)} />
       </View>
     </View>
   );
@@ -37,11 +38,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: tokens.space[4],
     paddingLeft: tokens.space[5],
-    paddingRight: tokens.space[3],
+    paddingRight: tokens.space[2] + tokens.space[1],
     borderRadius: tokens.radius.buttonTouch,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  text: { flex: 1, fontSize: tokens.type.phone.base[0], lineHeight: tokens.type.phone.base[1] },
-  undo: { height: tokens.control.touch, justifyContent: "center", paddingHorizontal: tokens.space[3] },
-  undoText: { fontSize: tokens.type.phone.base[0], lineHeight: tokens.type.phone.base[1], fontWeight: tokens.font.weight.strong },
+  text: { flex: 1 },
 });
