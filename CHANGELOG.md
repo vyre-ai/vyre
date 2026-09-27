@@ -76,6 +76,58 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   run time reads it. release-check asserts the tarball has none of it. The install was over the
   10 MB cap with docs/design/one-app (620 KB, 46 files) in it, and 10.3 MB without it, so
   the cap is 12 MB now: the growth is code (memory/personal, apps, relay, resilience).
+#### CI: the box image is built and booted
+
+- .github/workflows/box-image.yml builds box/Dockerfile from the npm pack tarball, the context a
+  deploy builds (never pushed; layers in the Actions cache), on every push to main and on branch pushes that touch box/, core/daemon/, the package
+  files or .dockerignore, then boots it: vyred answers /v1/health on its socket; tini is PID 1;
+  a vyred killed with SIGKILL comes back through loop.sh with the container up and no Docker
+  restart; `docker stop` exits 0 inside the 30 s timeout (the SIGTERM reached vyred and it
+  drained). The tini and restart checks skip on an image without core/daemon/loop.sh.
+
+#### CI: the Capsule signing step can no longer hang
+
+- capsule-mac.yml's signing step hung to the 45-minute job timeout on capsule-pro branches:
+  createIdentity's `security add-trusted-cert` asks for a password in the user domain. The step
+  now passes createIdentity a runner that trusts with `sudo -n ... -d` (admin domain, the path
+  proven in run 36282086841), gives every command /dev/null and a 60 s timeout, stops at
+  5 minutes, and signs a copy of vyre-launcher when Vyre.app did not build.
+
+#### CI: the one Expo app
+
+- .github/workflows/app.yml for apps/app (its own lockfile): typecheck and tests on every push;
+  the web export with its gzipped JS size in the run summary; an Android debug APK and an
+  UNSIGNED release APK, vyre-<version>-<sha7>.apk, with android.json (version, versionCode, sha,
+  sha256, size, minSdk, built, file) read from the APK, for the box to sign with the owner's own
+  key (no Vyre-wide release key). A copy signed with a per-run throwaway key is checked with
+  apksigner verify, and so is the output of apps/app/scripts/sign-apk.mjs (the box's pure-JS
+  signer) once it exists; the NDK 27.1 and CMake 3.22 that modules/vyre-signer fetches are cached. The iOS
+  simulator build only when dispatched with `ios: true`. No EAS, no Expo account. Skips until
+  apps/app/package.json exists; also runs on core/resilience changes (the app imports it).
+
+#### CI: ready for the Agent SDK
+
+- .github/workflows/sessions-sdk.yml, for core/sessions/sdk.js's install-on-first-use SDK (Vyre
+  keeps zero npm dependencies). `driver`: the SDK's JS at sdk.js's pinned VERSION in a cache dir
+  keyed on it, then the sessions, switchboard, agents, learn and harness suites with
+  VYRE_SESSIONS_DRIVER=sdk against the fake claude. `real`: the full install with the bundled
+  Claude Code (231 MB, cached per VERSION), the binary's --version with a temp HOME and no
+  credentials, and scripts/sessions-smoke.mjs in real-idle mode when it exists; only when sdk.js
+  or the smoke changes. Skips until core/sessions/sdk.js exists.
+
+#### CI: the Chrome tests leave nothing behind
+
+- modules/hands-chrome/chrome.test.js: the fake computerd proxy destroys its upgraded CDP pipes
+  on close. An open pipe held server.close() forever, so a failed Chrome test on Node 22 hung the
+  whole node job until its 30-minute timeout.
+- Both Chrome tests (modules/hands-chrome/chrome.test.js, test/onboard-page.test.js) start
+  Chrome in its own process group and SIGKILL the group, wait for the exit (3 s cap), and remove
+  the profile with retries, never throwing. Chrome's helpers outlived the browser and kept
+  writing: on Node 22 the removal threw ENOTEMPTY, the throwing after hook skipped vyred's stop,
+  and the file never exited (the node 22 job hung to its 30-minute timeout on every branch). On
+  Node 24 a late write recreated the temp home and tmp-guard failed the job.
+- test/tmp-guard.mjs lists up to 20 paths inside each leaked dir, so a late writer names itself.
+- node.yml skips pushes to `work/ci-*`, ci's throwaway branches that prove one other workflow.
 
 #### A stopped vyred leaves a removed home removed
 

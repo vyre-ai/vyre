@@ -75,11 +75,28 @@ The same strings are scrubbed from main's tree in a normal commit on this branch
     work/* only; vault/* and wip/* stay local. The pre-push guard is installed in the repo's hooks.
 - A push of more than 3 refs creates no workflow runs, so main's first runs were dispatched by hand.
 
-## Doing
-- Watching the first runs (node, capsule-mac on main).
+## Doing (2026-09-27 afternoon)
+- work/ci holds: box-image.yml, sessions-sdk.yml, app.yml, the capsule-mac signing fix, the Chrome
+  test cleanup (Node 22 hang FIXED: 2424 pass, 4 min), tmp-guard listing, node skipping work/ci-*.
+  Waiting for the integrator to merge work/ci.
+- box-image green on main 15e82dd7, 9efbddc0; c8fb9aae running (work/ci-box-c8fb9aa).
+- work/ci-pid1 0f804c11: compose PID-1 = tini check, merges in batch 3 WITH resilience d0129781
+  (fails on a compose with `init: true`). Proof on work/ci-pid1-proof (d0129781 + workflow).
+- APK: OWNER-KEY model (lead's final call). CI builds UNSIGNED vyre-<v>-<sha7>.apk + android.json;
+  a throwaway-signed copy and mobile's JS signer output (apps/app/scripts/sign-apk.mjs, CLI
+  guessed, asked mobile) are checked with apksigner verify. No Vyre key, nothing in the vault.
+  Proof on work/ci-app (mobile + app.yml).
+- sessions-sdk proof on work/ci-sessions (sessions + workflow).
+- perf RSS max: not a merge. vyred holds ~160 MB for ~23 s after indexing, then 92 MB flat.
+  Sent to lead (harness choice) and memory-iq (release buffers after the pass).
+- Flaky tmp-guard leak from test/onboard.test.js "reserve goes to ts.net": wait for tmp-guard to
+  name the writer.
 
 ## Next
-- Fix whatever the first runs show. Teams push work/<team> or `gh workflow run <wf>.yml --ref work/<team>`.
+- Report c8fb9aae box-image; pid1 proof; app and sessions proofs to their teams.
+- Delete throwaway branches once their workflows are on main.
+- Recheck: `gh run list -R vyre-ai/vyre --branch <b> --workflow <wf>`. In zsh, `set -- $var`
+  does not split: wrap loops in `bash -c`. actionlint lives in the scratchpad, fetch v1.7.7 again.
 
 ## Needs from others
 - None.
