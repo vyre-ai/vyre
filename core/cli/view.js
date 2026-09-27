@@ -13,6 +13,9 @@
 //   prompt {kind, name, label, choices?, secret?, args, answer, flag?}
 //   error  {kind, code, message, next?}
 //
+// Any view may carry actions: [{label, tool, input?}], buttons a surface offers next to it (the
+// same field as platform's Render in packages/module-sdk).
+//
 // A prompt is how a verb asks under --view: it never reads a terminal, it exits 2 with a prompt
 // frame, and the surface runs `vyre <args...>` again with the answer. `args` is the whole argv
 // after `vyre` (kit.again() gives this run's). `answer` says where the answer goes:

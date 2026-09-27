@@ -53,6 +53,9 @@ Every line on stdout is a frame:
 | `prompt` | `name`, `label`, `args`, `answer`, `flag?`, `choices?`, `secret?` |
 | `error` | `code`, `message`, `next?` |
 
+Any view may also carry `actions: [{label, tool, input?}]`: buttons a surface offers beside it,
+each one a tool call.
+
 A verb that does not pick its own view gets one from its data: a list of objects is a table, an
 object with one list is a titled table, any other object is a card.
 
