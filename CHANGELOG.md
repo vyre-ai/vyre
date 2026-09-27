@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Vault import previews first, finds duplicates by content, and reads Apple Passwords
+
+- `vault.import.preview {file, format?}` (cli, local, mcp; same presence as import) returns the
+  format, counts per kind, and the names to add, already here (`same`), in conflict and renamed,
+  never a value. Its `token` is an HMAC, under a per-process key, of the file's SHA-256 and size.
+  `vault.import` takes `token` and refuses a file that changed since, and `conflicts: "update"`
+  puts the file's password into the existing login as a new version, so history keeps the old one.
+  Duplicates are keyed on a login's origin plus its username (lowercased); a taken name becomes
+  `-2`, `-3`. The Apple Passwords export (the Safari header) is reported as `apple-csv`, with
+  `safari-csv` kept as an alias. `vyre vault import <file>` previews, then imports with the token;
+  `--preview` stops after the preview and `--update-conflicts` takes the file's passwords. The
+  import result adds `updated`, `same`, `conflicts` and `renamed`, and keeps `duplicate`. Audit rows
+  carry counts only (ADR 0028, decision 1).
+
 #### `vyre capsule install` builds the Capsule on the Mac
 
 - vyre.run no longer serves `Vyre-mac.zip`, so the download would have failed. `vyre capsule

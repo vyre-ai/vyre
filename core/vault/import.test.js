@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import zlib from "node:zlib";
-import { parse, parseFile, parseCSV, merge } from "./import.js";
+import { parse, parseFile, parseCSV, merge, plan } from "./import.js";
 import { crc32 } from "./zip.js";
 
 // A password with a comma, a quote and a newline, as it appears once CSV-quoted.
@@ -175,7 +175,7 @@ test("import: detects the format without being told", () => {
   assert.equal(parse(BITWARDEN_CSV).format, "bitwarden-csv");
   assert.equal(parse(BITWARDEN_JSON).format, "bitwarden-json");
   assert.equal(parse(CHROME).format, "chrome-csv");
-  assert.equal(parse(SAFARI).format, "safari-csv");
+  assert.equal(parse(SAFARI).format, "apple-csv");
   assert.equal(parse(GENERIC).format, "csv");
   assert.equal(parse(ENV).format, "env");
   assert.equal(parse("anything", { filename: "prod.env" }).format, "env");
@@ -401,4 +401,77 @@ test("parseFile: CSV and .env bytes still go through parse", () => {
   assert.match(parseFile(Buffer.from([0x41, 0x3d, 0xff, 0xfe])).error ?? "", /not UTF-8/);
   // @ts-expect-error: not bytes
   assert.ok(parseFile("KEY=value").error);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Apple Passwords and the import planner (ADR 0028, decision 1). Sample values only.
+
+const APPLE = "Title,URL,Username,Password,Notes,OTPAuth\n" +
+  "Northwind Bakery,https://orders.northwind.test/login,alex@northwind.test,sample-apple-1,,otpauth://totp/Northwind:alex?secret=JBSWY3DPEHPK3PXP\n" +
+  "Harlow Legal,https://portal.harlow.test,juno,sample-apple-2,a note,\n";
+
+test("import: Apple Passwords is apple-csv, safari-csv is an alias, OTPAuth is the totp field", () => {
+  const a = parse(APPLE);
+  assert.equal(a.format, "apple-csv");
+  assert.equal(a.items.length, 2);
+  assert.equal(a.items[0].kind, "login");
+  assert.equal(a.items[0].fields.totp, "otpauth://totp/Northwind:alex?secret=JBSWY3DPEHPK3PXP");
+  assert.deepEqual(a.items[0].hosts, ["https://orders.northwind.test"]);
+  assert.equal(a.items[1].fields.notes, "a note");
+  const s = parse(APPLE, { format: "safari-csv" });
+  assert.equal(s.format, "safari-csv");
+  assert.deepEqual(s.items.map(i => [i.name, i.fields]), a.items.map(i => [i.name, i.fields]));
+  assert.deepEqual(parseFile(Buffer.from(APPLE)).items.map(i => i.name), a.items.map(i => i.name));
+});
+
+/** @param {string} name @param {string} url @param {string} username @param {string} password */
+const login = (name, url, username, password) => ({ name, kind: /** @type {const} */ ("login"), description: name, fields: { username, password }, url, hosts: [new URL(url).origin] });
+
+test("plan: same origin, username and password is same; another password is a conflict", () => {
+  const existing = [
+    { name: "northwind", kind: "login", origin: "https://orders.northwind.test", username: "alex@northwind.test", password: "sample-pw-1" },
+    { name: "harlow", kind: "login", origin: "https://portal.harlow.test", username: "juno", password: "sample-pw-2" },
+  ];
+  const p = plan(existing, [
+    // Another path on the same origin, and the username in other case with spaces: still the same login.
+    login("northwind-bakery", "https://orders.northwind.test/account", "  ALEX@Northwind.test ", "sample-pw-1"),
+    login("harlow-legal", "https://portal.harlow.test/", "juno", "sample-pw-changed"),
+    // Same host, another username: a new login.
+    login("harlow-kit", "https://portal.harlow.test", "kit", "sample-pw-3"),
+    // Same username on another origin: a new login.
+    login("harlow-other", "http://portal.harlow.test", "juno", "sample-pw-2"),
+  ]);
+  assert.deepEqual(p.same, ["northwind-bakery"]);
+  assert.deepEqual(p.conflicts.map(c => ({ name: c.name, existing: c.existing })), [{ name: "harlow-legal", existing: "harlow" }]);
+  assert.equal(p.conflicts[0].item.fields.password, "sample-pw-changed");
+  assert.deepEqual(p.add.map(i => i.name), ["harlow-kit", "harlow-other"]);
+  assert.deepEqual(p.renamed, []);
+});
+
+test("plan: a taken name is renamed -2, -3, against the vault and within the batch", () => {
+  const existing = [
+    { name: "northwind", kind: "login", origin: "https://orders.northwind.test", username: "alex", password: "sample-pw-1" },
+    { name: "northwind-2", kind: "note" },
+    { name: "recipes", kind: "note" },
+  ];
+  const note = /** @type {any} */ ({ name: "recipes", kind: "note", description: "recipes", fields: { text: "sample note" }, hosts: [] });
+  const p = plan(existing, [
+    login("northwind", "https://shop.northwind.test", "alex", "sample-pw-4"),
+    // Already the name a rename would pick: it keeps its own name, and the rename goes past it.
+    login("northwind-3", "https://mail.northwind.test", "alex", "sample-pw-5"),
+    note,
+  ]);
+  assert.deepEqual(p.renamed, [{ from: "northwind", to: "northwind-4" }, { from: "recipes", to: "recipes-2" }]);
+  assert.deepEqual(p.add.map(i => i.name), ["northwind-4", "northwind-3", "recipes-2"]);
+  assert.equal(note.name, "recipes", "the input item is not changed");
+  // A renamed long name still fits the name rules.
+  const long = "n".repeat(128);
+  const q = plan([{ name: long, kind: "note" }], [login(long, "https://a.northwind.test", "kit", "sample-pw-6")]);
+  assert.match(q.add[0].name, /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/);
+  assert.ok(q.add[0].name.endsWith("-2"));
+  // A login with no site is judged by its name alone.
+  const r = plan([{ name: "pin", kind: "login", origin: "", username: "", password: "x" }],
+    [/** @type {any} */ ({ name: "pin", kind: "login", description: "", fields: { password: "x" }, hosts: [] })]);
+  assert.deepEqual(r.same, []);
+  assert.deepEqual(r.renamed, [{ from: "pin", to: "pin-2" }]);
 });

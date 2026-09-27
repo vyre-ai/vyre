@@ -2,8 +2,8 @@
 // vault/import: turn another password manager's export, or a .env file, into vault items.
 //
 // People leave a password manager only when leaving costs them nothing, so this reads the files
-// they already have: .env, 1Password CSV and .1pux, Bitwarden CSV and JSON, Chrome CSV and Safari
-// CSV (ADR 0001, decision 10). vyred reads the file itself and hands the bytes to parseFile, so
+// they already have: .env, 1Password CSV and .1pux, Bitwarden CSV and JSON, Chrome CSV, and the
+// Apple Passwords (and Safari) CSV (ADR 0001, decision 10; ADR 0028, decision 1). vyred reads the file itself and hands the bytes to parseFile, so
 // values never pass through Claude.
 //
 // Everything here is pure: bytes or text in, items out, no disk writes. Sealing and storing belong to
@@ -17,7 +17,7 @@
 import path from "node:path";
 import { unzip } from "./zip.js";
 
-/** @typedef {"env"|"1password-csv"|"1password-1pux"|"bitwarden-csv"|"bitwarden-json"|"chrome-csv"|"safari-csv"|"csv"} Format */
+/** @typedef {"env"|"1password-csv"|"1password-1pux"|"bitwarden-csv"|"bitwarden-json"|"chrome-csv"|"apple-csv"|"safari-csv"|"csv"} Format */
 /**
  * @typedef {object} Item
  * @property {string} name
@@ -30,7 +30,7 @@ import { unzip } from "./zip.js";
  */
 /** @typedef {{ format: Format|null, items: Item[], skipped: string[], error?: string }} Result */
 
-export const FORMATS = /** @type {const} */ (["env", "1password-csv", "1password-1pux", "bitwarden-csv", "bitwarden-json", "chrome-csv", "safari-csv", "csv"]);
+export const FORMATS = /** @type {const} */ (["env", "1password-csv", "1password-1pux", "bitwarden-csv", "bitwarden-json", "chrome-csv", "apple-csv", "safari-csv", "csv"]);
 export const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 
 /**
@@ -133,6 +133,85 @@ export function merge(existingNames, items) {
   return { add, duplicate };
 }
 
+/**
+ * @typedef {object} Existing an item already in the vault. Only a login carries origin,
+ *   username and password, opened by the caller; any other item is there for its name.
+ * @property {string} name
+ * @property {string} kind
+ * @property {string} [origin]
+ * @property {string} [username]
+ * @property {string} [password]
+ */
+/**
+ * @typedef {object} Plan
+ * @property {Item[]} add items to put, under their final names
+ * @property {string[]} same imported logins whose origin, username and password are already here
+ * @property {{ name: string, existing: string, item: Item }[]} conflicts same origin and username, a different password
+ * @property {{ from: string, to: string }[]} renamed items whose name was taken
+ */
+
+/**
+ * Decide what an import does, by content and not only by name (ADR 0028, decision 1). A login is
+ * keyed on the origin of its url (or first host) plus its username, lowercased and trimmed:
+ *   - same key and same password as an existing login: `same`, skipped;
+ *   - same key, another password: `conflicts`, naming the existing item;
+ *   - otherwise it is added, and a name already taken (in the vault, or earlier in this batch)
+ *     becomes name-2, name-3 and so on, listed in `renamed`.
+ * Pure: nothing here reads the disk, and nothing returned carries a value except `add` and
+ * `conflicts[].item`, which the caller stores and never reports.
+ * @param {Existing[]} existing
+ * @param {Item[]} items
+ * @returns {Plan}
+ */
+export function plan(existing, items) {
+  /** @type {Map<string, Existing>} */
+  const logins = new Map();
+  const taken = new Set();
+  for (const e of existing) {
+    taken.add(e.name);
+    if (e.kind !== "login") continue;
+    const k = loginKey(e.origin ? originOf(e.origin) : "", e.username ?? "");
+    if (k && !logins.has(k)) logins.set(k, e);
+  }
+  /** @type {Plan} */
+  const out = { add: [], same: [], conflicts: [], renamed: [] };
+  /** @type {Item[]} */
+  const fresh = [];
+  for (const it of items) {
+    if (it.kind === "login") {
+      const e = logins.get(loginKey(itemOrigin(it), it.fields.username ?? ""));
+      if (e) {
+        if ((e.password ?? "") === (it.fields.password ?? "")) out.same.push(it.name);
+        else out.conflicts.push({ name: it.name, existing: e.name, item: it });
+        continue;
+      }
+    }
+    fresh.push(it);
+  }
+  // Names later in the batch are reserved, so a rename never lands on one of them.
+  const reserved = new Set(fresh.map(i => i.name));
+  for (const it of fresh) {
+    let name = it.name;
+    if (taken.has(name)) {
+      for (let n = 2; ; n++) {
+        const s = String(n);
+        const c = fit(name, s.length + 1) + "-" + s;
+        if (NAME.test(c) && !taken.has(c) && !reserved.has(c)) { name = c; break; }
+      }
+      out.renamed.push({ from: it.name, to: name });
+    }
+    taken.add(name);
+    out.add.push(name === it.name ? it : { ...it, name });
+  }
+  return out;
+}
+
+/** An empty origin never matches: a login with no site is judged by its name alone. @param {string} origin @param {string} username */
+const loginKey = (origin, username) => (origin ? `${origin}\n${username.trim().toLowerCase()}` : "");
+
+/** @param {Item} it */
+const itemOrigin = it => (it.url ? originOf(it.url) : "") || (it.hosts[0] ? originOf(it.hosts[0]) : "");
+
 // ---------------------------------------------------------------------------------------------
 // Detection
 
@@ -170,7 +249,9 @@ function csvFormat(header) {
   const h = new Set(header.map(norm));
   if (h.has("login password") || h.has("login uri") || h.has("login username")) return "bitwarden-csv";
   if (h.has("title") && (h.has("website") || h.has("archived") || h.has("favorite")) && h.has("password")) return "1password-csv";
-  if (h.has("title") && h.has("url") && h.has("otpauth") && h.has("password")) return "safari-csv";
+  // Apple Passwords (macOS 15, iOS 18) and Safari both write Title,URL,Username,Password,Notes,OTPAuth.
+  // "safari-csv" stays accepted as an explicit format and parses the same way.
+  if (h.has("title") && h.has("url") && h.has("otpauth") && h.has("password")) return "apple-csv";
   if (h.has("name") && h.has("url") && h.has("password") && !h.has("title")) return "chrome-csv";
   const cols = columns(header);
   if (cols.password >= 0 || (cols.title >= 0 && (cols.username >= 0 || cols.url >= 0 || cols.notes >= 0))) return "csv";
@@ -599,7 +680,7 @@ const printableName = s => s.replace(/[^\x20-\x7e]/g, "?");
 
 const LABELS = {
   "1password-csv": "1Password", "1password-1pux": "1Password", "bitwarden-csv": "Bitwarden", "bitwarden-json": "Bitwarden",
-  "chrome-csv": "Chrome", "safari-csv": "Safari", csv: "CSV", env: ".env",
+  "chrome-csv": "Chrome", "apple-csv": "Apple Passwords", "safari-csv": "Apple Passwords", csv: "CSV", env: ".env",
 };
 
 /**

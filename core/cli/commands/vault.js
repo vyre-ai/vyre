@@ -567,17 +567,38 @@ async function generate(args) {
 }
 
 async function importFile(args) {
-  const f = flags(args, { string: ["format"] });
-  if (f._.length !== 1) return oops("vyre vault import <file> [--format f]");
+  let f;
+  try { f = flags(args, { string: ["format"], boolean: ["preview", "update-conflicts"] }); } catch (e) { return oops(e.message); }
+  if (f._.length !== 1) return oops("vyre vault import <file> [--preview] [--update-conflicts] [--format f]");
   const file = path.resolve(f._[0]);
-  const r = await tool("vault.import", { file, ...(f.format ? { format: f.format } : {}) });
+  const base = { file, ...(f.format ? { format: f.format } : {}) };
+  // Preview first, always: the token it returns binds the import to this exact file, so a file
+  // swapped between the two calls is refused (ADR 0028, decision 1).
+  const p = await tool("vault.import.preview", base);
+  if (p.error) return fail(p);
+  const { format, counts = {}, add = [], same = [], conflicts = [], renamed = [], skipped = [], token } = p.data;
+  if (f.preview) {
+    const kinds = Object.entries(counts).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(", ") || "nothing";
+    say(`  ${bold(format)} ${dim(`· ${kinds}`)}`);
+    say(`  ${signal(plural(add.length, "item"))} to add${add.length ? `: ${add.join(", ")}` : ""}`);
+    if (same.length) say(dim(`  already here, skipped: ${same.join(", ")}`));
+    for (const c of conflicts) say(beacon(`  conflict: ${c.name}`) + dim(` has another password than ${c.existing} · --update-conflicts makes a new version`));
+    for (const r of renamed) say(dim(`  renamed: ${r.from} to ${r.to}, the name is taken`));
+    for (const s of skipped) say(dim(`  skipped: ${s}`));
+    say(dim(`  vyre vault import ${f._[0]}${f["update-conflicts"] ? " --update-conflicts" : ""} to import it`));
+    return 0;
+  }
+  const r = await tool("vault.import", { ...base, token, conflicts: f["update-conflicts"] ? "update" : "skip" });
   if (r.error) return fail(r);
-  const { format, added = [], duplicate = [], skipped = [], advice } = r.data;
-  say(`  ${signal(plural(added.length, "item"))} added from ${format} ${dim(`· ${duplicate.length} already here · ${skipped.length} skipped`)}`);
+  const d = r.data;
+  const added = d.added || [], updated = d.updated || [], left = d.conflicts || [];
+  say(`  ${signal(plural(added.length, "item"))} added from ${d.format} ${dim(`· ${updated.length} updated · ${(d.same || []).length} already here · ${left.length} conflicts skipped · ${(d.skipped || []).length} not imported`)}`);
   if (added.length) say(`    ${added.join(", ")}`);
-  if (duplicate.length) say(dim(`  already in the vault: ${duplicate.join(", ")}`));
-  for (const s of skipped) say(dim(`  skipped: ${s}`));
-  if (advice) say(beacon(`  ${advice}`));
+  if (updated.length) say(`  ${signal("updated")} ${updated.join(", ")} ${dim("· the old passwords stay in vyre vault history")}`);
+  if (left.length) say(beacon(`  conflicts skipped: ${left.join(", ")}`) + dim(" · --update-conflicts to take the file's passwords"));
+  for (const x of d.renamed || []) say(dim(`  renamed: ${x.from} to ${x.to}`));
+  for (const s of d.skipped || []) say(dim(`  skipped: ${s}`));
+  if (d.advice) say(beacon(`  ${d.advice}`));
   return 0;
 }
 
@@ -1124,7 +1145,7 @@ const HELP = [
   ["run [--env-file f] <item...> -- <command...>", "items as VAR=name.field, or KEY=vault://item/field lines; output scrubbed"],
   ["totp <name>", "the current code"],
   ["generate [--length n] [--words n] [--no-symbols] [name]", "a password; stored when named"],
-  ["import <file> [--format f]", ".env, 1Password, Bitwarden, Chrome, Safari"],
+  ["import <file> [--preview] [--update-conflicts] [--format f]", ".env, 1Password, Bitwarden, Chrome, Apple Passwords; --preview shows names and counts only"],
   ["audit [name] [--limit n]", "who used what, and when"],
   ["delete <name>", "remove an item and its grants"],
   ["card", "this Vyre's card, to share"],

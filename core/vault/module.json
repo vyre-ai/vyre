@@ -20,6 +20,7 @@
       "vault.totp",
       "vault.generate",
       "vault.import",
+      "vault.import.preview",
       "vault.audit",
       "vault.match",
       "vault.unlock",

@@ -29,7 +29,7 @@ import { enclaveCall, wrapAuk, unwrapAuk } from "./touchid.js";
 import { Helper } from "./mac/helper.js";
 import * as history from "./history.js";
 import { callerKind } from "../modules/index.js";
-import { parseFile as parseImport, merge as mergeImport } from "./import.js";
+import { parseFile as parseImport, plan as planImport } from "./import.js";
 import { FILL_MIGRATION } from "./fill.js";
 import { totp } from "./totp.js";
 import { generate } from "./generate.js";
@@ -146,6 +146,10 @@ const IDENTITY_AT = { vault: "agents", kv: 1, id: IDENTITY, ver: 1, name: IDENTI
 
 const now = () => Date.now();
 const newId = () => crypto.randomBytes(9).toString("base64url");
+// Binds an import preview to the file it read. Random per process and never stored, so a token is
+// not forgeable from vyre.db and says nothing about the file's contents (ADR 0028, decision 1).
+const IMPORT_TOKEN_KEY = crypto.randomBytes(32);
+const IMPORT_KINDS = ["login", "note", "card", "secret", "api-key"];
 const json = (v, d) => { try { return v == null ? d : JSON.parse(String(v)); } catch { return d; } };
 
 /** A caller's kind, as the registry sees it. */
@@ -166,6 +170,18 @@ export function parseExpiry(v, from = now()) {
 /** An origin ("https://api.example.com") from anything that parses as an http(s) URL. */
 export function origin(u) {
   try { const x = new URL(String(u)); return ["http:", "https:"].includes(x.protocol) ? x.origin : null; } catch { return null; }
+}
+
+/** The token for an import file: an HMAC, under a per-process key, of its SHA-256 and size. @param {Buffer} bytes */
+function importToken(bytes) {
+  const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+  return crypto.createHmac("sha256", IMPORT_TOKEN_KEY).update(`${digest}:${bytes.length}`).digest("base64url");
+}
+
+/** @param {string} a @param {string} b */
+function sameToken(a, b) {
+  const x = Buffer.from(a), y = Buffer.from(b);
+  return x.length === y.length && crypto.timingSafeEqual(x, y);
 }
 
 export class Vault {
@@ -1136,23 +1152,90 @@ export class Vault {
     return { bits: g.bits, stored: name };
   }
 
-  /** Read an export file and add what is new. The file is left as it is; the user deletes it. */
-  async import({ file, format }, caller) {
+  /**
+   * Read an export file, parse it, and plan it against what is already here (ADR 0028,
+   * decision 1). Existing logins are opened to compare origin, username and password, so the
+   * personal vault must be open. Nothing returned here leaves this class with a value in it.
+   */
+  async importPlan({ file, format }) {
     const p = path.resolve(String(file));
     const st = fs.statSync(p);
     if (!st.isFile()) throw new Error(`${p} is not a file`);
     if (st.size > 20 * 1024 * 1024) throw new Error(`${p} is larger than 20 MB`);
-    const parsed = parseImport(fs.readFileSync(p), { format, filename: path.basename(p) });
+    const bytes = fs.readFileSync(p);
+    const token = importToken(bytes);
+    const parsed = parseImport(bytes, { format, filename: path.basename(p) });
     if (parsed.error) throw new Error(parsed.error);
-    const existing = this.db.prepare("SELECT name FROM vault_items").all().map(r => String(r.name));
-    const { add, duplicate } = mergeImport(existing, parsed.items);
-    const added = [], skipped = [...parsed.skipped];
-    for (const it of add) {
-      try { await this.put({ ...it, origin: `import:${parsed.format}` }, caller); added.push(it.name); }
+    await this.key();
+    const rows = /** @type {any[]} */ (this.db.prepare("SELECT * FROM vault_items").all());
+    if (!this.pvk && rows.some(r => r.kind === "login" && r.vault === PERSONAL))
+      throw locked("your personal vault is locked, and an import compares against the logins in it · vyre vault account unlock");
+    /** @type {import("./import.js").Existing[]} */
+    const existing = [];
+    for (const r of rows) {
+      const e = { name: String(r.name), kind: String(r.kind) };
+      if (r.kind === "login" && this.rowOk("vault_items", r)) {
+        try {
+          const f = await this.fields(r);
+          const o = json(r.hosts, [])[0] || (r.url ? origin(r.url) : "") || "";
+          Object.assign(e, { origin: o, username: f.username ?? "", password: f.password ?? "" });
+        } catch (err) {
+          if (/** @type {any} */ (err).code === "locked") throw err;
+          // A login that does not open is judged by its name alone.
+        }
+      }
+      existing.push(e);
+    }
+    return { p, token, parsed, plan: planImport(existing, parsed.items) };
+  }
+
+  /** What an import would do: names and counts, never a value, plus a token bound to the file. */
+  async importPreview({ file, format }, caller) {
+    const { token, parsed, plan } = await this.importPlan({ file, format });
+    const counts = Object.fromEntries(IMPORT_KINDS.map(k => [k, 0]));
+    for (const it of parsed.items) if (it.kind in counts) counts[it.kind]++;
+    this.audit("import-preview", null, caller, true, `${parsed.format}: ${parsed.items.length} items, ${plan.add.length} new, ${plan.same.length} same, ${plan.conflicts.length} conflicts`);
+    return {
+      format: parsed.format, token, counts,
+      add: plan.add.map(i => i.name), same: plan.same,
+      conflicts: plan.conflicts.map(c => ({ name: c.name, existing: c.existing })),
+      renamed: plan.renamed, skipped: parsed.skipped,
+    };
+  }
+
+  /**
+   * Read an export file and add what is new. With a token from importPreview, a file that changed
+   * since is refused. A conflict is skipped, or with conflicts "update" put into the existing
+   * item as a new version, so history keeps the old password. The file is left as it is; the
+   * user deletes it.
+   */
+  async import({ file, format, token, conflicts = "skip" }, caller) {
+    if (conflicts !== "skip" && conflicts !== "update") throw new Error(`conflicts is "skip" or "update"`);
+    const { p, token: current, parsed, plan } = await this.importPlan({ file, format });
+    if (token !== undefined && token !== null && !sameToken(String(token), current)) throw new Error("the file changed since the preview; preview it again");
+    const from = `import:${parsed.format}`;
+    const added = [], updated = [], skipped = [...parsed.skipped];
+    for (const it of plan.add) {
+      try { await this.put({ ...it, origin: from }, caller); added.push(it.name); }
       catch (e) { skipped.push(`${it.name}: ${/** @type {Error} */ (e).message}`); }
     }
-    this.audit("import", null, caller, true, `${parsed.format}: ${added.length} added from ${path.basename(p)}`);
-    return { format: parsed.format, added, duplicate, skipped,
+    const conflicted = [];
+    for (const c of plan.conflicts) {
+      if (conflicts !== "update") { conflicted.push(c.name); continue; }
+      const r = this.row(c.existing);
+      if (!r) { skipped.push(`${c.name}: ${c.existing} is no longer here`); continue; }
+      try {
+        // Fields the export lacks (a TOTP seed added here, say) are kept; the export's win.
+        const kept = await this.fields(r);
+        await this.put({ ...c.item, name: c.existing, description: r.description, fields: { ...kept, ...c.item.fields }, origin: from }, caller);
+        updated.push(c.existing);
+      } catch (e) { skipped.push(`${c.name}: ${/** @type {Error} */ (e).message}`); }
+    }
+    this.audit("import", null, caller, true,
+      `${parsed.format}: ${added.length} added, ${updated.length} updated, ${plan.same.length} same, ${conflicted.length} conflicts skipped, ${plan.renamed.length} renamed, ${skipped.length} not imported`);
+    return { format: parsed.format, added, updated, same: plan.same, conflicts: conflicted, renamed: plan.renamed, skipped,
+      // Older callers read `duplicate`: everything that was here already.
+      duplicate: [...plan.same, ...conflicted],
       advice: `Delete ${p} now. It still holds every value in plain text, and nothing needs it again.` };
   }
 

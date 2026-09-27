@@ -224,8 +224,14 @@ export default {
         return vault.generate(input, caller);
       });
 
-    tool("vault.import", ["cli", "local", "mcp"], "Import a .env file or a 1Password, Bitwarden, Chrome or Safari export. vyred reads the file itself; the values never pass through Claude.",
-      obj({ file: str, format: str }, ["file"]), (input, { caller }) => vault.import(input, caller),
+    // Preview opens the file and the existing logins, so it asks for the same presence as import
+    // (ADR 0028, decision 1). It returns names and counts, never a value.
+    tool("vault.import.preview", ["cli", "local", "mcp"], "What an import would add, skip as already here, or find in conflict, by name and count only, with a token that binds vault.import to this exact file.",
+      obj({ file: str, format: str }, ["file"]), (input, { caller }) => vault.importPreview(input, caller),
+      presence("Preview a file for import", ({ file }) => `Preview the items in ${path.resolve(String(file))}`));
+
+    tool("vault.import", ["cli", "local", "mcp"], "Import a .env file or a 1Password, Bitwarden, Chrome or Apple Passwords export. vyred reads the file itself; the values never pass through Claude. Pass the token from vault.import.preview to refuse a file that changed since; conflicts \"update\" makes a new version of the existing login.",
+      obj({ file: str, format: str, token: str, conflicts: { type: "string", enum: ["skip", "update"] } }, ["file"]), (input, { caller }) => vault.import(input, caller),
       presence("Import a file into the vault", ({ file }) => `Import the items in ${path.resolve(String(file))} into the vault`));
 
     tool("vault.audit", null, "Who used which item, when, and whether it was allowed. Never a value.",
