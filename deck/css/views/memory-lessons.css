@@ -44,7 +44,7 @@ details.ml-retired[open] > summary h2::before { content: "▾ "; }
 .ml-in { font-size: 15px; line-height: 22px; color: var(--text); background: transparent; resize: none; }
 .ml-edit-act { display: flex; gap: 4px; padding-top: 10px; }
 
-@media (max-width: 760px) {
+@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
   .ml-row { grid-template-columns: minmax(0, 1fr); }
   .ml-row[data-status="proposed"] { padding-left: 12px; }
   .ml-act { margin-left: -10px; flex-wrap: wrap; }

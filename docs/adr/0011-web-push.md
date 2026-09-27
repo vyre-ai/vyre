@@ -58,6 +58,23 @@ servers, and the phone's lock screen shows it to anyone holding the phone.
 7. **Dead subscriptions are dropped.** A 404 or 410 from the service deletes the device, and so
    does a passed `expirationTime`. Other failures are counted per device and kept.
 
+## Amendment, 27 Sep 2026: needs you only, and never while you are at a screen
+
+- A push is for "needs you" only: an ask, a held draft, a watched thread (a notification the
+  person asked for) and a planner ring. A proposed lesson is off by default; `push.settings`
+  with `kinds: {lesson: true}` turns it back on.
+- Surfaces call `push.seen` (`surface`, `visible`) when a screen is shown, when it is hidden,
+  and on the first input after a minute of none. It never polls. The box keeps the time of the
+  last call in memory only; a restart forgets it, and the next moment then goes at once.
+- An ask, a draft or a watch that arrives within 3 minutes of the last `push.seen` is held, by
+  its tag, until 3 minutes after that call. One timer runs, and only while something is held.
+  When it fires after a newer `push.seen`, it waits again. At most 200 are held; the oldest
+  goes first. Quiet hours and the kind switches are checked again when it is sent.
+- A held moment answered or resolved on a screen is dropped and never sent: `ask.answered`
+  for an ask, and `gate.released`, `gate.rejected`, `gate.revised` or `gate.failed` for a draft.
+  A watch has no resolution; it waits for the timer.
+- A planner ring (`planner.fired`) always goes at once, and `planner.acked` is unchanged.
+
 ## Consequences
 
 - The push services learn that this box sent this device something, when, and roughly how

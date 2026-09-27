@@ -80,7 +80,7 @@ export function pickDevices(d) {
   }));
 }
 
-/** Usage rows from vault.usage or vault.audit, names and actions only. */
+/** Usage rows from vault.audit, names and actions only. */
 export function pickUsage(d) {
   const list = Array.isArray(d) ? d : Array.isArray(d?.entries) ? d.entries : [];
   return list.filter(u => u && num(u.at) && u.ok !== false).map(u => ({

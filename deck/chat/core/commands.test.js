@@ -57,3 +57,10 @@ test("the session's own list: slashes dropped, sources kept, the composer's own 
   assert.equal(sourceLabel("plugin"), "plugin");
   assert.equal(sourceLabel("acme"), "acme");
 });
+
+test("threads.commands' answer object reads as its list; an empty one (not running) is the static list", () => {
+  const got = normalizeCommands({ thread: "t1", commands: [{ name: "compact", description: "Clear history but keep a summary", argumentHint: "<instructions>" }, { name: "review-intake", description: "", argumentHint: "" }] });
+  assert.deepEqual(got.slice(0, 2).map(c => [c.name, c.hint ?? null, c.source]), [["compact", "<instructions>", "session"], ["review-intake", null, "session"]]);
+  assert.ok(got.some(c => c.name === "model" && c.local === "model"), "the composer's own are added");
+  assert.deepEqual(normalizeCommands({ thread: "t1", commands: [], note: "not running" }).map(c => c.name), COMMANDS.map(c => c.name));
+});

@@ -72,20 +72,30 @@ test("translate: text keys (message, block) count content blocks across the line
   const fix = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "transcripts", "fixtures");
   const tr = keyed();
   let message = "";
-  const done = [], partial = [], thought = [];
+  // Text keys are compared with text keys, reasoning with reasoning: a box that streams thinking
+  // adds reasoning keys (thread.thinking, or thread.text kind "reasoning" on sessions 034c71e5),
+  // never text ones.
+  const done = [], partial = [], rdone = [], rpartial = [];
   for (const line of fs.readFileSync(path.join(fix, "split.stream.jsonl"), "utf8").split("\n").filter(Boolean)) {
     const t = tr(JSON.parse(line));
     if (t.message !== undefined) message = t.message;
     if (t.delta) partial.push(`${message}#${t.block}`);
-    for (const e of t.events) if (e.type === "thread.text" && !e.payload.kind) done.push(`${e.payload.message}#${e.payload.block}`);
-    for (const e of t.events) if (e.type === "thread.text" && e.payload.kind === "reasoning") thought.push(`${e.payload.message}#${e.payload.block}`);
+    if (t.reasoning) rpartial.push(`${message}#${t.block}`);
+    for (const e of t.events) {
+      if (e.type === "thread.thinking" || (e.type === "thread.text" && e.payload.kind === "reasoning")) rdone.push(`${e.payload.message}#${e.payload.block}`);
+      else if (e.type === "thread.text") done.push(`${e.payload.message}#${e.payload.block}`);
+    }
   }
-  // Thinking is thread.text kind "reasoning", in the same key space: block 0 of msg_03A.
-  assert.deepEqual(thought, ["msg_03A#0"]);
   // msg_03A is thinking, text, tool_use, text (one line each); msg_03B is one text.
   const want = ["msg_03A#1", "msg_03A#3", "msg_03B#0"];
   assert.deepEqual(done, want);
   assert.deepEqual([...new Set(partial)], want);
+  // Thinking, where the box streams it: msg_03A's block 0, its deltas and its whole, never a text key.
+  if (rdone.length || rpartial.length) {
+    assert.deepEqual(rdone, ["msg_03A#0"]);
+    assert.deepEqual([...new Set(rpartial)], ["msg_03A#0"]);
+  }
+  for (const k of [...rdone, ...rpartial]) assert.ok(!want.includes(k), `reasoning ${k} shares a text key`);
   // The same keys the transcript read gives for the matching transcript (fixtures/split.jsonl).
   const tx = fs.readFileSync(path.join(fix, "split.jsonl"), "utf8").split("\n").filter(Boolean).map(l => JSON.parse(l));
   const counts = new Map(), keys = [];
@@ -278,9 +288,9 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   await until(() => of(a.got, id, "thread.finished").length && of(b.got, id, "thread.finished").length, "both clients to see the turn end");
 
   for (const c of [a, b]) {
-    const done = of(c.got, id, "thread.text").find(e => e.payload.done);
+    const done = of(c.got, id, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning");
     assert.equal(done.payload.text, "echo: hello there, this is a longer prompt");
-    const deltas = of(c.got, id, "thread.text").filter(e => e.payload.delta);
+    const deltas = of(c.got, id, "thread.text").filter(e => e.payload.delta && e.payload.kind !== "reasoning");
     assert.equal(deltas.map(e => e.payload.delta).join(""), done.payload.text, "the deltas add up to the text");
     assert.ok(deltas.length < Math.ceil(done.payload.text.length / 6), "partial text is throttled, not one event per chunk");
     assert.ok(deltas.every(e => e.payload.message === done.payload.message && e.payload.block === done.payload.block && done.payload.block === 0),
@@ -370,7 +380,7 @@ test("switchboard: a finished turn's partial text is pruned after the grace; the
   const texts = async () => (await tool("threads.get", { thread: id, limit: 1000 })).data.events.filter(e => e.type === "thread.text");
   assert.ok((await texts()).some(e => e.payload.delta), "the deltas are there during the grace");
   await until(async () => !(await texts()).some(e => e.payload.delta), "the deltas to go");
-  const done = (await texts()).filter(e => e.payload.done);
+  const done = (await texts()).filter(e => e.payload.done && e.payload.kind !== "reasoning");
   assert.deepEqual(done.map(e => e.payload.text), ["echo: hello there, this is a longer prompt"]);
   const got = (await tool("threads.get", { thread: id })).data;
   assert.equal(got.thread.turns, 1);
@@ -732,7 +742,7 @@ test("lean and one-shot threads: no plugin, tools or settings, kept on resume; a
   const stopped = await until(async () => (await tool("threads.get", { thread: job.id })).data.events.find(e => e.type === "thread.stopped"), "the job to stop");
   assert.equal(stopped.payload.reason, "done");
   const events = (await tool("threads.get", { thread: job.id })).data.events;
-  assert.equal(events.find(e => e.type === "thread.text" && e.payload.done).payload.text, "echo: distil this");
+  assert.equal(events.find(e => e.type === "thread.text" && e.payload.done && e.payload.kind !== "reasoning").payload.text, "echo: distil this");
   const jobArgv = launches().at(-1).argv;
   assert.ok(!jobArgv.includes("--plugin-dir") && jobArgv.includes("--strict-mcp-config") && jobArgv[jobArgv.indexOf("--model") + 1] === "haiku");
 });
@@ -986,7 +996,7 @@ test("switchboard: a question is raised small, read whole, answered (single and 
 
   const answers = { [ask.questions[0].question]: "Warm crust", [ask.questions[1].question]: "Breads, Specials" };
   assert.deepEqual((await tool("threads.answer", { ask: ask.id, decision: "allow", answers, surface: "deck" })).data, { ask: ask.id, answered: true, decision: "allow" });
-  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the fake to say the answers");
+  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning"), "the fake to say the answers");
   assert.equal(said.payload.text, `answers: ${JSON.stringify(answers)}`);
   const [r] = got();
   assert.equal(r.behavior, "allow");
@@ -1006,7 +1016,7 @@ test("switchboard: a question can be declined", async t => {
   const id = (await tool("threads.start", { cwd: work, prompt: "ask" })).data.id;
   const raised = await until(() => of(s.got, id, "ask.raised")[0], "ask.raised");
   assert.equal((await tool("threads.answer", { ask: raised.payload.ask, decision: "deny", message: "Not now." })).data.answered, true);
-  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  const said = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && e.payload.kind !== "reasoning"), "the reply");
   assert.equal(said.payload.text, "You declined the question: Not now.");
   assert.equal(got()[0].behavior, "deny");
   assert.equal(of(s.got, id, "ask.answered")[0].payload.answers, undefined);
@@ -1039,9 +1049,8 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   assert.deepEqual(bash.detail, { command: "npm test", description: "Run the menu tests" });
   assert.equal(bash.always, true);
   await tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
-  const reply = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done && !e.payload.kind), "the reply");
-  // Thinking comes first, as thread.text kind "reasoning"; the reply is the first text of no kind.
-  assert.match(of(s.got, id, "thread.text").find(e => e.payload.done && e.payload.kind === "reasoning").payload.text, /^alex wants the autumn specials/);
+  const reply = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  assert.match(of(s.got, id, "thread.thinking")[0].payload.text, /^alex wants the autumn specials/, "thinking is its own event, before the reply");
   assert.match(reply.payload.text, /^## Autumn specials/);
   assert.match(reply.payload.text, /```sh\nnpm test/);
 
@@ -1101,6 +1110,20 @@ test("agents.update: names its agent by name or agent, as the Deck's Give a comp
   assert.match((await tool("agents.update", { name: "kit", agent: "juno", computer: true })).error.message, /different agents/);
   assert.match((await tool("agents.update", { computer: true })).error.message, /say which agent/);
   assert.equal((await tool("agents.list", {})).data.find(a => a.name === "kit").computer, false);
+});
+
+test("agents.create: computer true, as the Deck's New agent and Create your assistant boxes send it, is kept", async t => {
+  const { tool } = await boot(t);
+  const r = await tool("agents.create", { name: "kit", kind: "agent", projects: [], computer: true }, "deck");
+  assert.equal(r.error, undefined, r.error && r.error.message);
+  assert.equal(r.data.computer, true);
+  const juno = await tool("agents.create", { name: "juno", kind: "assistant", projects: "*", computer: true }, "deck");
+  assert.equal(juno.error, undefined, juno.error && juno.error.message);
+  await tool("agents.create", { name: "pax", kind: "agent", projects: [] }, "deck");
+  const list = (await tool("agents.list", {})).data;
+  assert.equal(list.find(a => a.name === "kit").computer, true);
+  assert.equal(list.find(a => a.name === "juno").computer, true);
+  assert.equal(list.find(a => a.name === "pax").computer, false, "unticked stays without one");
 });
 
 test("sessions: claude is known by its command line, since node 24 names its main thread MainThread", () => {

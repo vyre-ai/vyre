@@ -2,8 +2,8 @@
 // Vyre's colours as config: `theme.colors` { dark: {...}, light: {...} } in config.json, keyed by
 // the custom property names the Deck uses without their dashes. THEME_COLORS below is the palette
 // itself (docs/design/TOKENS.md draws its tables from it, and test/theme-defaults.test.js holds
-// deck/css/deck.css to it); THEME_USE says what each one is for. The Deck's own stylesheet keeps
-// these defaults; GET /theme.css (core/daemon) turns whatever config overrides into custom
+// deck/css/tokens.css and deck/css/deck.css to it); THEME_USE says what each one is for. Those two
+// stylesheets paint these defaults; GET /theme.css (core/daemon) turns whatever config overrides into custom
 // properties, dark on :root and light on :root[data-theme="paper"]. A value that is not a plain
 // CSS colour is dropped, so config can never add a rule, an import or a url().
 
@@ -18,16 +18,16 @@ export const THEME_COLORS = {
     "signal": "#C6F36B", "signal-hover": "#D4F88A", "signal-ink": "#0E0D0C", "signal-wash": "rgba(198,243,107,0.12)",
     "recall": "#EBC76B", "recall-wash": "rgba(235,199,107,0.10)",
     "beacon": "#B8A4FF", "beacon-wash": "rgba(184,164,255,0.12)", "beacon-rule": "rgba(184,164,255,0.28)", "beacon-badge-ink": "#0E0D0C",
-    "code-bg": "rgba(14,13,12,0.45)",
+    "code-bg": "#121110",
   },
   light: {
-    "bg": "#F4F1EA", "panel": "#FBFAF6", "hover": "#FBFAF6", "rule": "#DCD7CC", "rule-strong": "#C9C3B7",
+    "bg": "#F4F1EA", "panel": "#FBFAF6", "hover": "#EEEAE2", "rule": "#DCD7CC", "rule-strong": "#C9C3B7",
     "text": "#141311", "text-2": "#4A463F", "label": "#6B665D",
     "primary-bg": "#141311", "primary-hover": "#4A463F", "primary-ink": "#F4F1EA",
     "focus": "#46700C", "signal-wash": "rgba(70,112,12,0.10)",
     "recall-ink": "#7E5B0C", "recall-wash": "rgba(126,91,12,0.08)", "recall": "#7E5B0C",
     "beacon-ink": "#5B3FC4", "beacon-dot": "#5B3FC4", "beacon-wash": "rgba(91,63,196,0.08)", "beacon-rule": "rgba(91,63,196,0.28)", "beacon-badge-ink": "#F4F1EA",
-    "code-bg": "rgba(20,19,17,0.06)",
+    "code-bg": "#F0EDE5",
   },
 };
 
@@ -79,21 +79,46 @@ export const THEME_USE = {
   },
 };
 
-/** @param {any} set @returns {string[]} "--name: value;" lines for the valid entries */
-function lines(set) {
+/**
+ * Dark swatch names config has always used, and the roles deck.css used to derive from them. The
+ * roles now come from the generated deck/css/tokens.css, so an override of a swatch is also written
+ * to its roles here (unless config names the role itself): { dark: { graphite } } still repaints
+ * the ground.
+ */
+const ROLES_OF = {
+  "graphite": ["bg"], "carbon": ["panel"], "raised": ["hover"],
+  "bone": ["text"], "stone": ["text-2"], "ash": ["label"],
+  "signal": ["primary-bg", "focus", "mark-dot"], "signal-hover": ["primary-hover"], "signal-ink": ["primary-ink"],
+  "beacon": ["beacon-ink", "beacon-dot"],
+};
+
+/** @param {any} set @returns {[string, string][]} the valid entries */
+function valid(set) {
   if (!set || typeof set !== "object" || Array.isArray(set)) return [];
   return Object.entries(set).filter(([k, v]) => NAME.test(k) && typeof v === "string" && COLOUR.test(v.trim()))
-    .map(([k, v]) => `  --${k}: ${v.trim()};`);
+    .map(([k, v]) => [k, v.trim()]);
+}
+
+/** @param {[string, string][]} entries @param {boolean} alias @returns {string[]} "--name: value;" lines */
+function lines(entries, alias) {
+  const out = entries.map(([k, v]) => `  --${k}: ${v};`);
+  if (!alias) return out;
+  const named = new Set(entries.map(([k]) => k));
+  for (const [k, v] of entries) for (const role of /** @type {Record<string, string[]>} */ (ROLES_OF)[k] || []) {
+    if (!named.has(role)) { named.add(role); out.push(`  --${role}: ${v};`); }
+  }
+  return out;
 }
 
 /**
- * The stylesheet for config's theme.colors. Empty sets make an empty stylesheet.
+ * The stylesheet for config's theme.colors. Empty sets make an empty stylesheet. The Deck links it
+ * after tokens.css and deck.css under the same selectors, so config wins over both.
  * @param {any} colors
  * @returns {string}
  */
 export function themeCss(colors) {
-  const dark = lines(colors && colors.dark), light = lines(colors && (colors.light || colors.paper));
-  const out = ["/* Vyre's colours from config (theme.colors); the defaults are in deck.css. */"];
+  const dark = lines(valid(colors && colors.dark), true), light = lines(valid(colors && (colors.light || colors.paper)), false);
+  const out = ["/* Vyre's colours from config (theme.colors); the defaults are in tokens.css and deck.css. */"];
   if (dark.length) out.push(":root {", ...dark, "}");
   if (light.length) out.push(':root[data-theme="paper"] {', ...light, "}");
   return out.join("\n") + "\n";
