@@ -25,9 +25,10 @@ const at = (/** @type {number} */ y) => ({ x: 0, y, w: 300, h: 40 });
 /**
  * A WhatsApp window: `chats` in the list; `opens` says which chat a row really opens (a wrong
  * one tests the check); `takes` false makes the message field ignore what is set.
- * @param {string[]} chats @param {{ opens?: (name: string) => string, takes?: boolean }} [o]
+ * `switchTo` moves the open chat to another once the words are set (a person clicking elsewhere).
+ * @param {string[]} chats @param {{ opens?: (name: string) => string, takes?: boolean, switchTo?: string }} [o]
  */
-function whatsappWindow(chats, { opens = n => n, takes = true } = {}) {
+function whatsappWindow(chats, { opens = n => n, takes = true, switchTo = "" } = {}) {
   /** @type {{ to: string, text: string }[]} */
   const sent = [];
   const search = { path: "/0/s", role: "AXTextField", name: "Search", value: "", enabled: true, frame: at(0) };
@@ -46,7 +47,7 @@ function whatsappWindow(chats, { opens = n => n, takes = true } = {}) {
   const f = fakeWindow(state, (/** @type {any} */ req) => {
     if (req.path === "/0/s" && req.kind === "set") search.value = req.value;
     else if (req.path.startsWith("/0/r") && req.kind === "press") { state.open = opens(String(req.name)); state.draft = ""; }
-    else if (req.path === "/1/c" && req.kind === "set") { if (takes) state.draft = req.value; }
+    else if (req.path === "/1/c" && req.kind === "set") { if (takes) state.draft = req.value; if (switchTo && req.value) { state.open = switchTo; } }
     else if (req.path === "/1/b" && req.kind === "press") { sent.push({ to: state.open, text: state.draft }); state.texts = [...state.texts, state.draft]; state.draft = ""; }
     draw();
     return { acted: true };
@@ -112,6 +113,17 @@ test("whatsapp: a chat that opens as someone else, or a field that will not take
   assert.deepEqual(stuck.sent, []);
   assert.equal(acts(stuck).includes("press Send"), false);
   assert.equal(acts(stuck).at(-1), "set Type a message", "the field is cleared again after a stop");
+});
+
+test("whatsapp: the chat is checked again right before Send; another chat opened in between gets nothing", async t => {
+  const w = whatsappWindow(["juno", "kit"], { switchTo: "kit" });
+  const reg = await start(t, w);
+  const r = await reg.call("apps.send", { app: "WhatsApp", action: "send", args: { to: "juno", text: "running late" } }, "cli");
+  assert.equal(r.error.code, "failed");
+  assert.match(r.error.message, /no longer juno; nothing was sent/);
+  assert.deepEqual(w.sent, []);
+  assert.equal(acts(w).includes("press Send"), false);
+  assert.equal(acts(w).at(-1), "set Type a message", "the words are taken back out");
 });
 
 test("whatsapp: apps.act refuses a send, and a stop from the person holds every later step", async t => {

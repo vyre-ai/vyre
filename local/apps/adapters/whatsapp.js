@@ -96,10 +96,20 @@ async function openChat(/** @type {import("../env.js").Env} */ env, /** @type {a
   await act(env, { app: c.app, selector: exact[0].selector, kind: "press", settleMs: 4000 }, `opening the chat with ${to}`);
   const composer = (await find(env, c.app, c.composer))[0];
   if (!composer) throw new AppsError("failed", `the chat with ${to} opened without a message field; nothing was written`);
-  const header = (await find(env, c.app, { ...c.header, names: [to] }, composer.selector.path))
-    .filter((/** @type {any} */ e) => e.selector.path !== exact[0].selector.path);
-  if (!header.length) throw new AppsError("failed", `could not confirm the open chat is ${to}; nothing was written`);
+  if (!(await isOpen(env, c, to, composer, exact[0].selector.path))) throw new AppsError("failed", `could not confirm the open chat is ${to}; nothing was written`);
   return composer;
+}
+
+/**
+ * Whether the chat on screen is still `to`: an element named exactly that beside the message
+ * field (not the list row that was pressed). The message field has no name of its own chat, so
+ * this is asked again before the words go in and again right before Send: a person clicking
+ * another chat in between must never get these words.
+ */
+async function isOpen(/** @type {import("../env.js").Env} */ env, /** @type {any} */ c, /** @type {string} */ to, /** @type {any} */ composer, /** @type {string} */ row = "") {
+  const header = (await find(env, c.app, { ...c.header, names: [to] }, composer.selector.path))
+    .filter((/** @type {any} */ e) => e.selector.path !== row && !/^AXCell|^AXRow/.test(e.selector.role));
+  return header.length > 0;
 }
 
 /** The composer emptied, so nothing half-written is left in the chat. Best effort. */
@@ -129,12 +139,17 @@ export default {
         const to = String(args.to).trim(), text = String(args.text);
         if (!to) throw new AppsError("bad_input", "who is the WhatsApp message for?");
         const composer = await openChat(env, c, to);
+        const moved = () => new AppsError("failed", `the open chat is no longer ${to}; nothing was sent`);
+        /** @type {any} */
+        let send;
         try {
+          if (!(await isOpen(env, c, to, composer))) throw moved();
           const set = await act(env, { app: c.app, selector: composer.selector, kind: "set", value: text }, "writing the message");
           if (!set.verified) throw new AppsError("failed", "the message field did not take the words; nothing was sent");
+          send = (await find(env, c.app, c.send, composer.selector.path))[0];
+          if (!send) throw new AppsError("failed", "WhatsApp's Send button is not there; nothing was sent");
+          if (!(await isOpen(env, c, to, composer))) throw moved();
         } catch (e) { await clear(env, c, composer); throw e; }
-        const send = (await find(env, c.app, c.send, composer.selector.path))[0];
-        if (!send) { await clear(env, c, composer); throw new AppsError("failed", "WhatsApp's Send button is not there; nothing was sent"); }
         // The one step that sends. No retry after this: a second press could send it twice.
         const r = await act(env, { app: c.app, selector: send.selector, kind: "press", settleMs: 4000 }, "pressing Send", true);
         const after = (await find(env, c.app, c.composer))[0];

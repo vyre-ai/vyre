@@ -12,7 +12,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   named exactly that is pressed, the open chat is checked by its name, the message field is set
   (so a line break never sends early), and Send is pressed through hands.commit.
 - Two chats that could be it, or only near misses, are a question; a chat that opens as someone
-  else, or a field that will not take the words, stops before Send and clears the field. After
+  else, or a field that will not take the words, stops before Send and clears the field. The open
+  chat is checked again before the words go in and right before Send, so a chat the person opens
+  in between never gets them. After
   Send there is no retry: a send not seen to go says "check WhatsApp".
 - Names and roles are lists with config apps.whatsapp overrides, for the first real-Mac check.
   apps.targets lists the chats on screen; a name off screen still goes to the search. "Which app?"
