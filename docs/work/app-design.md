@@ -86,6 +86,12 @@ account + device and drop the tokens tool store. Then polish passes over the spe
   Minor nit not blocking: `.keys .kc` renders the hero's ⌥Space as two boxed chips; key-hint.md
   wants one chip per chord. Pre-existing, not part of this session's changes. Sent to launch
   (msg_id 3050a9b8).
+- Third pass, launch 57eebd9f: `--beacon-wash` fully removed from site/styles.css (the lead caught
+  it live in `.dest.do` (dead, removed), `.held-chip`, `.ph-card`). Confirmed clean: violet is
+  text-only everywhere on the page now (`.held-chip` color-only, `.ph-card` on `--raised` with
+  `.lbl.beacon`/`.dot.beacon`). Full hex/rgba sweep of styles.css against tokens.json: every value
+  matches, both themes. No regressions in the memory section or hotkey copy. Cleared for RC
+  (msg_id e75a2677).
 
 ## Next
 
