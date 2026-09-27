@@ -82,7 +82,9 @@
       "CONTRIBUTING-DOCS.md",
       "contributing/testing.md",
       "design/TOKENS.md",
-      "design/phone.md"
+      "design/phone.md",
+      "design/one-app/README.md",
+      "design/one-app/DIRECTION.md"
     ]},
     { "title": "Status", "pages": ["known-gaps.md", "changelog.md"] }
   ],
