@@ -196,7 +196,7 @@ test("hooks: open and close need presence, refuse agents, guests and modules, an
   await no("hooks.open", { name: "../vault", verify: NW.verify }, "cli", "bad_input");
   assert.equal((await ok("hooks.list")).routes.length, 0);
 
-  const opened = await ok("hooks.open", NW, "tailnet:alex@example.com");
+  const opened = await ok("hooks.open", NW, "tailnet:alex@example.com", { ...HERE, person: { id: "s1", kind: "cookie" } });
   assert.equal(opened.ready, true);
   assert.equal(opened.path, "/hooks/northwind-orders");
   assert.equal(opened.funnel.open, "tailscale funnel --bg --https=8443 --set-path=/hooks/northwind-orders http://127.0.0.1:0/hooks/northwind-orders");

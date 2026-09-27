@@ -4,6 +4,18 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Security: the person session over the tailnet
+
+- A node signed in as the owner is the owner's device, not the person. Over the tailnet,
+  PERSON_ONLY, HUMAN_ONLY and presence-needing tools answer 401 `person_session_required` until
+  the browser signs in with a passkey (`presence.person.start`). The Deck gets an HttpOnly,
+  Secure, SameSite=Strict cookie `__Host-vyre_person`, pinned to the node, 30 days from last use
+  and 90 at most. The hosted app gets a one-time code on the box's page (`cc`, PKCE S256), trades
+  it at POST /v1/person/token with the verifier and an ES256 public key, and signs every request
+  (`authorization: Vyre <token>`, `x-vyre-proof: t n sig`). POST /v1/person/end signs out;
+  `presence.person.sessions`, `presence.person.revoke` and `presence.person.status` list, revoke
+  and check. The Deck signs in by itself the first time a call needs it. core/presence/person.js.
+
 #### Security: the person's actions never ride the link
 
 - link.call and ctx.remote on a Mac refuse PERSON_ONLY and HUMAN_ONLY tools on the box

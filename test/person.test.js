@@ -1,0 +1,149 @@
+// @ts-check
+// The person session over the tailnet (core/presence/person.js), end to end: the real names
+// listener's request path with whois simulated, in front of a real vyred router. A node signed in
+// as the owner is only the owner's device; a script on it (no cookie, no signed token) cannot
+// answer an ask, approve, open a terminal or reach a human-only tool.
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import { Readable } from "node:stream";
+import { start } from "../core/daemon/index.js";
+import * as config from "../core/config/index.js";
+import { names } from "../core/names/service.js";
+import { HUMAN_ONLY } from "../core/presence/index.js";
+import { COOKIE, signed } from "../core/presence/person.js";
+import { tempHome } from "./helpers.js";
+
+const MAC_IP = "100.101.1.2", PHONE_IP = "100.101.1.3";
+const WHO = {
+  [MAC_IP]: { login: "alex@example.com", tagged: false, node: "alex-mac", stableId: "nMAC", tags: [], caps: {} },
+  [PHONE_IP]: { login: "alex@example.com", tagged: false, node: "alex-phone", stableId: "nPHONE", tags: [], caps: {} },
+};
+
+/** Asks for a proof on every human-only tool and takes any proof: refusals below are about the session. */
+const lenient = {
+  required: (tool, def, input) => HUMAN_ONLY.has(tool) || Boolean(def && def.presence && (typeof def.presence.when !== "function" || input === undefined || def.presence.when(input))),
+  verify: async ({ proof }) => (proof ? { ok: true, method: "passkey", keyId: "k1" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
+  challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
+  covered: () => false,
+  coverage: () => ({ covered: false, since: null, expires: null }),
+};
+
+async function box(t) {
+  const root = tempHome(t);
+  fs.writeFileSync(path.join(root, "config.json"), JSON.stringify({ role: "box", name: "alex", transcripts: [],
+    network: { tailscale: true, owner: "alex@example.com", port: 0 }, modules: { disable: ["names", "onboard"] } }));
+  const d = await start({ presence: lenient, root, log: () => {} });
+  t.after(() => d.stop());
+  const ctx = d.registry.context({ name: "names", version: "0.1.0", does: { tools: [] }, watches: { emits: ["owner.seen"] } });
+  const svc = names({ ctx, ts: { whois: async ip => WHO[ip] || null, status: async () => ({}) }, save: p => config.save(p, root, d.config),
+    certs: { load: () => null, save: () => {} }, dns: async () => ({}), issue: async () => ({}) });
+  t.after(() => svc.close());
+  /** One request through the listener. `origin` stands for tailnet's CORS marking a cross-origin call. */
+  const send = async (ip, method, url, input, headers = {}) => {
+    const raw = input === undefined ? "" : JSON.stringify(input);
+    const req = Object.assign(Readable.from(raw ? [Buffer.from(raw)] : []), { method, url,
+      headers: { host: "alex.vyre.run:0", "content-type": "application/json", ...headers }, socket: { remoteAddress: ip } });
+    let out = "", status = 0;
+    /** @type {Record<string, any>} */
+    const set = {};
+    const res = { setHeader(k, v) { set[k.toLowerCase()] = v; }, writeHead(s, h = {}) { status = s; for (const [k, v] of Object.entries(h)) set[k.toLowerCase()] = v; }, end(b = "") { out += b; }, headersSent: false };
+    await svc.onRequest(req, res);
+    return { status, headers: set, ...(out ? JSON.parse(out) : {}) };
+  };
+  const call = (ip, tool, input = {}, headers) => send(ip, "POST", `/v1/tools/${tool}`, input, headers);
+  return { d, send, call };
+}
+
+/** The cookie a presence.person.start answer set, as a request's cookie header. */
+const cookieOf = r => String(r.headers["set-cookie"] || "").split(";")[0];
+
+test("person: a script on the owner's Mac is the owner's device, never the person", async t => {
+  const { call } = await box(t);
+  for (const [tool, input] of [["threads.answer", { ask: "0123456789abcdef01", decision: "allow" }], ["gate.reject", { id: "g1" }],
+    ["agents.create", { name: "kit" }], ["term.open", {}], ["vault.reveal", { name: "northwind-mail" }]]) {
+    const r = await call(MAC_IP, tool, input);
+    assert.equal(r.status, 401, `${tool}: ${JSON.stringify(r)}`);
+    assert.equal(r.error.code, "person_session_required", tool);
+  }
+  // A proof alone is not enough over the tailnet: human-only still wants the person's session.
+  const proved = await call(MAC_IP, "vault.reveal", { name: "northwind-mail" }, { "x-vyre-presence": "passkey id=x" });
+  assert.equal(proved.error.code, "person_session_required");
+  // Reads stay the device's: the Deck loads before anyone signs in.
+  assert.equal((await call(MAC_IP, "agents.list")).status, 200);
+  assert.deepEqual((await call(MAC_IP, "presence.person.status")).data, { signed: false });
+});
+
+test("person: the Deck signs in with a passkey, gets an HttpOnly cookie pinned to its node, and the secret never reaches the page", async t => {
+  const { call, send } = await box(t);
+  assert.equal((await call(MAC_IP, "presence.person.start", {})).error.code, "presence_required", "signing in takes a passkey");
+  const s = await call(MAC_IP, "presence.person.start", {}, { "x-vyre-presence": "passkey id=x" });
+  assert.equal(s.status, 200, JSON.stringify(s));
+  assert.equal(s.data.token, undefined, "the secret is only in the cookie");
+  const setCookie = String(s.headers["set-cookie"]);
+  assert.match(setCookie, new RegExp(`^${COOKIE}=[\\w-]+\\.[\\w-]+; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=7776000$`));
+  const cookie = { cookie: cookieOf(s) };
+
+  assert.deepEqual((await call(MAC_IP, "presence.person.status", {}, cookie)).data, { signed: true, id: s.data.id, kind: "cookie" });
+  const made = await call(MAC_IP, "agents.create", { name: "kit" }, cookie);
+  assert.equal(made.status, 200, JSON.stringify(made));
+  // Human-only: the session and a proof.
+  assert.notEqual((await call(MAC_IP, "presence.person.revoke", { id: "nope" }, cookie)).error.code, "person_session_required");
+
+  // The same cookie from the phone is refused: it was made on the Mac.
+  assert.equal((await call(PHONE_IP, "agents.update", { name: "kit", description: "x" }, cookie)).error.code, "person_session_required");
+
+  // Listed without a secret, revoked from anywhere signed in, and then it is only a device again.
+  const list = (await call(MAC_IP, "presence.person.sessions", {}, cookie)).data.sessions;
+  assert.equal(list.length, 1);
+  assert.deepEqual(Object.keys(list[0]).sort(), ["created", "expires", "id", "kind", "label", "last_used", "node"]);
+  assert.equal(list[0].node, "nMAC");
+  const end = await send(MAC_IP, "POST", "/v1/person/end", {}, cookie);
+  assert.equal(end.data.ended, true);
+  assert.match(String(end.headers["set-cookie"]), /Max-Age=0/);
+  assert.equal((await call(MAC_IP, "agents.create", { name: "juno" }, cookie)).error.code, "person_session_required");
+});
+
+test("person: the hosted app gets a code on the box's page, trades it with PKCE and a key, and signs every request", async t => {
+  const { call, send } = await box(t);
+  const verifier = crypto.randomBytes(32).toString("base64url");
+  const cc = crypto.createHash("sha256").update(verifier).digest("base64url");
+  const { publicKey, privateKey } = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" });
+  const key = publicKey.export({ format: "jwk" });
+
+  const c = await call(PHONE_IP, "presence.person.start", { cc, label: "Vyre app" }, { "x-vyre-presence": "passkey id=x" });
+  assert.equal(c.data.kind, "code");
+  assert.equal(c.headers["set-cookie"], undefined, "no cookie for the app");
+
+  // The code is bound to its node and its verifier, and is used once.
+  assert.equal((await send(MAC_IP, "POST", "/v1/person/token", { code: c.data.code, verifier, key })).error.code, "denied");
+  const c2 = await call(PHONE_IP, "presence.person.start", { cc }, { "x-vyre-presence": "passkey id=x" });
+  assert.equal((await send(PHONE_IP, "POST", "/v1/person/token", { code: c2.data.code, verifier: "wrong", key })).error.code, "denied");
+  const c3 = await call(PHONE_IP, "presence.person.start", { cc }, { "x-vyre-presence": "passkey id=x" });
+  const tok = await send(PHONE_IP, "POST", "/v1/person/token", { code: c3.data.code, verifier, key });
+  assert.equal(tok.status, 200, JSON.stringify(tok));
+  assert.equal((await send(PHONE_IP, "POST", "/v1/person/token", { code: c3.data.code, verifier, key })).error.code, "denied", "used once");
+
+  const sign = (tool, input, { t = Date.now(), n = crypto.randomBytes(12).toString("base64url"), k = privateKey } = {}) => {
+    const raw = JSON.stringify(input);
+    const sig = crypto.sign("sha256", Buffer.from(signed({ method: "POST", path: `/v1/tools/${tool}`, raw, t, n })), { key: k, dsaEncoding: "ieee-p1363" }).toString("base64url");
+    return { authorization: `Vyre ${tok.data.token}`, "x-vyre-proof": `t=${t} n=${n} sig=${sig}` };
+  };
+  const ok = await call(PHONE_IP, "agents.create", { name: "kit" }, sign("agents.create", { name: "kit" }));
+  assert.equal(ok.status, 200, JSON.stringify(ok));
+
+  // The token alone, an old signature, a replay, another key, another body: all refused.
+  assert.equal((await call(PHONE_IP, "agents.list", {}, { authorization: `Vyre ${tok.data.token}` })).status, 401);
+  assert.equal((await call(PHONE_IP, "agents.list", {}, sign("agents.list", {}, { t: Date.now() - 5 * 60_000 }))).status, 401);
+  const once = sign("agents.list", {});
+  assert.equal((await call(PHONE_IP, "agents.list", {}, once)).status, 200);
+  assert.equal((await call(PHONE_IP, "agents.list", {}, once)).status, 401, "a replay");
+  const other = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey;
+  assert.equal((await call(PHONE_IP, "agents.list", {}, sign("agents.list", {}, { k: other }))).status, 401);
+  assert.equal((await call(PHONE_IP, "agents.create", { name: "evil" }, sign("agents.create", { name: "kit2" }))).status, 401, "signed for another body");
+  // From the Mac, the phone's token is nothing.
+  assert.equal((await call(MAC_IP, "agents.list", {}, sign("agents.list", {}))).status, 401);
+});

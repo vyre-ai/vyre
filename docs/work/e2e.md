@@ -261,6 +261,17 @@ event stream's first byte. Tear down afterwards.
 
 ## Changed contracts
 
+- Person session (core/presence/person.js). Over the tailnet (`tailnet:<login>` callers) the
+  registry refuses PERSON_ONLY and presence-needing tools without `meta.person`, which only the
+  router sets, from the cookie `__Host-vyre_person` or `authorization: Vyre <id>.<secret>` plus
+  `x-vyre-proof: t=<ms> n=<nonce> sig=<b64url>` (ES256 P1363 over
+  `METHOD\npath?query\nsha256b64url(body)\nt\nn`). 401 `person_session_required`. Exempt:
+  presence.person.start and presence.enroll. Routes POST /v1/person/token {code, verifier, key},
+  POST /v1/person/end. Tools presence.person.start {cc?, label?} (HUMAN_ONLY), .status, .sessions,
+  .revoke (PERSON_ONLY). Events presence.signed-in, presence.signed-out. A request tailnet marks
+  cross-origin (peer.origin) is refused without a session. Tests standing in for a signed-in Deck
+  pass `person: { id, kind }` in meta.
+
 - link.call / ctx.remote refuse PERSON_ONLY and HUMAN_ONLY box tools: `person_session_required`.
 
 - core/modules: `callerAllowed(callers, caller)`. A `tailnet:<login>` caller (the names listener

@@ -15,11 +15,12 @@ import { themeCss } from "../config/theme.js";
 import { isRealHome } from "../config/dialogs.js";
 import { open } from "../store/index.js";
 import { Events } from "../events/index.js";
-import { Registry, discover } from "../modules/index.js";
+import { Registry, discover, ownerOverTailnet } from "../modules/index.js";
 import { build } from "./build.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, parse as parsePresence } from "../presence/index.js";
 import { peerPid, insideClaude } from "./peer.js";
+import { PersonSessions, COOKIE, MAX as PERSON_MAX } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
 
@@ -67,6 +68,8 @@ async function startLocked(opts, root, p, release) {
   // vyred always checks presence. A test may pass a verifier, or a function that builds one on
   // this store (to give the real one fake OS touch points).
   const presence = typeof opts.presence === "function" ? opts.presence({ db, events, log }) : opts.presence || new Presence({ db, events, log, role: cfg.role, network: () => cfg.network || {} });
+  // Who is the person over the network, not only their device (core/presence/person.js).
+  const people = new PersonSessions({ db });
   const started = Date.now();
   /** Open event streams, closed on stop so server.close() is not held open by them. */
   const streams = new Set();
@@ -75,7 +78,7 @@ async function startLocked(opts, root, p, release) {
   // Modules that open listeners of their own (the tailnet, the onboarding page) establish who is
   // calling themselves, then hand the request to this same router with that caller and a policy
   // limiting what it may reach. The router never reads a caller from their headers.
-  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root }, { ...policy, caller, ...(peer ? { peer } : {}) })
+  const handler = (policy = {}) => (req, res, caller, peer) => route(req, res, { registry, events, cfg, started, streams, root, people }, { ...policy, caller, ...(peer ? { peer } : {}) })
     .catch(e => send(res, 500, { error: { code: "internal", message: e.message } }));
   // WebSockets a module registered with ctx.upgrade, at /v1/streams/<module>/<name>. Upgraded
   // sockets leave the HTTP server's hands, so they are tracked here and ended on stop, or
@@ -143,9 +146,14 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-async function body(req) {
+async function rawBody(req) {
   let raw = "";
   for await (const chunk of req) { raw += chunk; if (raw.length > 5_000_000) throw new Error("request too large"); }
+  return raw;
+}
+
+async function body(req) {
+  const raw = await rawBody(req);
   if (!raw) return {};
   try { return JSON.parse(raw); } catch { throw new Error("request body is not JSON"); }
 }
@@ -190,7 +198,7 @@ async function fromClaude(socket, registry) {
   return who.unknown ? "vyred cannot read which processes this call runs under, so this is refused" : null;
 }
 
-async function route(req, res, { registry, events, cfg, started, streams, root, socket = false }, /** @type {Policy} */ policy = {}) {
+async function route(req, res, { registry, events, cfg, started, streams, root, people = null, socket = false }, /** @type {Policy} */ policy = {}) {
   const url = new URL(req.url || "/", "http://vyred");
   // On the socket the header is only a label, and anything on the box can send it (Claude's own
   // processes included). "module:*" is what the registry uses between modules, "hook" is what the
@@ -224,7 +232,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // the key the Switchboard put in that agent's thread (x-vyre-agent-key); without it, nothing.
   // What vyred has checked about the caller, which tools get beside it: run(input, { caller, thread, agent, peer }).
   // The tailnet peer a network listener established (node, stableId, login) rides here too.
-  /** @type {{ thread?: string, agent?: string, peer?: any }} */
+  /** @type {{ thread?: string, agent?: string, peer?: any, person?: { id: string, kind: string } }} */
   const via = policy.peer ? { peer: policy.peer } : {};
   // A listener's own identity (policy.caller) is established by the listener, not claimed. The
   // one exception is an agent's own tailnet node (`tailnet:agent:<name>`): whois strengthens the
@@ -266,9 +274,44 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   }
   if (req.method === "GET" && url.pathname === "/v1/modules") return send(res, 200, { data: registry.status() });
   if (req.method === "GET" && url.pathname === "/v1/tools") return send(res, 200, { data: registry.listTools(caller).filter(t => !policy.tool || policy.tool(t.name)) });
+  // The person over the tailnet (core/presence/person.js). A node signed in as the owner is only
+  // the owner's device; the person is a browser or app holding a person session made on it.
+  const device = Boolean(policy.caller && ownerOverTailnet(policy.caller));
+  const nodeId = device && policy.peer ? (policy.peer.stableId || policy.peer.node || null) : null;
+  const crossOrigin = Boolean(policy.peer && /** @type {any} */ (policy.peer).origin);
+  if (device && req.method === "POST" && url.pathname === "/v1/person/token") {
+    // The hosted app trades the sign-in page's one-time code, its PKCE verifier and the public
+    // half of its key for a bearer session. The one call from another origin that needs none.
+    let b;
+    try { b = await body(req); } catch (e) { return send(res, 400, { error: { code: "bad_input", message: /** @type {Error} */ (e).message } }); }
+    const r = people ? people.exchange({ code: String(b.code || ""), verifier: String(b.verifier || ""), key: b.key, node: nodeId || "" }) : { error: { code: "denied", message: "no person sessions here" } };
+    if (r.data) events.emit("presence", "presence.signed-in", { id: r.data.id, node: policy.peer && policy.peer.node, app: true });
+    return send(res, r.error ? (r.error.code === "bad_input" ? 400 : 403) : 200, r);
+  }
+  if (device && req.method === "POST" && url.pathname === "/v1/person/end") {
+    let raw = "";
+    try { raw = await rawBody(req); } catch {}
+    const c = people && people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
+    if (c && c.ok) { people.revoke(c.id); events.emit("presence", "presence.signed-out", { id: c.id }); }
+    res.setHeader("set-cookie", `${COOKIE}=; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=0`);
+    return send(res, 200, { data: { ended: Boolean(c && c.ok) } });
+  }
   if (req.method === "POST" && url.pathname.startsWith("/v1/tools/")) {
     const name = decodeURIComponent(url.pathname.slice("/v1/tools/".length));
-    const input = await body(req);
+    const raw = await rawBody(req);
+    let input;
+    try { input = raw ? JSON.parse(raw) : {}; } catch { throw new Error("request body is not JSON"); }
+    /** @type {{ id: string, kind: string } | null} */
+    let person = null;
+    if (device && people) {
+      const c = people.check({ headers: req.headers, node: nodeId, method: req.method, path: url.pathname + url.search, raw });
+      if (c && c.ok) person = { id: c.id, kind: c.kind };
+      // A bad bearer is refused outright; a lapsed cookie is only a device, and the tool decides.
+      else if (c && String(req.headers.authorization || "").startsWith("Vyre ")) return send(res, 401, { error: { code: "person_session_required", message: c.why } });
+    }
+    // From another origin (the hosted app), nothing without a person session.
+    if (crossOrigin && !person) return send(res, 401, { error: { code: "person_session_required", message: "sign in to this box from the app first" } });
+    if (person) via.person = person;
     // A person's action on the socket: a person-only tool, one that needs presence for this input,
     // or any call carrying a presence proof or session.
     const def = registry.tools.get(name);
@@ -283,13 +326,18 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     }
     const result = await registry.call(name, input, caller, { ...via, proof: parsePresence(req.headers["x-vyre-presence"]),
       keep: req.headers["x-vyre-presence-keep"] === "1" });
+    // A new person session for the Deck goes in the cookie, never in the body a script could read.
+    if (name === "presence.person.start" && result.data && result.data.kind === "cookie" && result.data.token) {
+      res.setHeader("set-cookie", `${COOKIE}=${result.data.token}; Path=/; Secure; HttpOnly; SameSite=Strict; Max-Age=${Math.floor(PERSON_MAX / 1000)}`);
+      delete result.data.token;
+    }
     // A session the proof opened goes back in a header, in the form x-vyre-presence takes.
     if (result.session) {
       const s = result.session;
       delete result.session;
       res.setHeader("x-vyre-presence-session", `session id=${s.session} secret=${s.secret} expires=${s.expires}`);
     }
-    const status = !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
+    const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400 : 500;
     return send(res, status, result);
   }
   // A presence proof that needs a challenge first: tty writes a code to a login terminal, passkey

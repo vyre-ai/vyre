@@ -259,7 +259,7 @@ test("link: approving a pairing needs the owner's presence, whoever calls, and t
   if (!box.registry.deps.presence) return t.skip("this vyred has no presence check yet");
   const MAC_PEER = { node: "test-mac", stableId: "nMAC", login: OWNER };
   const p = (await box.registry.call("link.pair.request", { name: "work laptop" }, `tailnet:${OWNER}`, { peer: MAC_PEER })).data;
-  for (const [caller, meta] of [["cli", {}], ["local", {}], [`tailnet:${OWNER}`, { peer: PHONE }]]) {
+  for (const [caller, meta] of [["cli", {}], ["local", {}], [`tailnet:${OWNER}`, { peer: PHONE, person: { id: "s1", kind: "cookie" } }]]) {
     const r = await box.registry.call("link.pair.approve", { code: p.code }, caller, meta);
     assert.equal(r.error && r.error.code, "presence_required", `${caller} alone cannot approve`);
   }

@@ -34,6 +34,8 @@ export const HUMAN_ONLY = new Set([
   // A new machine joined to this one.
   "link.pair.approve",
   "presence.enroll", "presence.remove", "presence.code", "presence.session.open",
+  // Signing a browser in as the person for 30 days (core/presence/person.js).
+  "presence.person.start",
   // Who beyond the owner can reach this box, and what the internet can send it (ADR 0014): a
   // shared folder, a guest from another tailnet, a public webhook route, an agent's own node,
   // and the sites that leave through the owner's Mac.
@@ -56,7 +58,7 @@ export const HUMAN_ONLY = new Set([
  */
 export const PERSON_ONLY = new Set(["threads.answer", "term.open", "term.attach",
   "agents.create", "agents.update", "gate.revise", "gate.reject",
-  "computers.takeover", "computers.giveback", "glass.take", "glass.release"]);
+  "computers.takeover", "computers.giveback", "glass.take", "glass.release", "presence.person.revoke"]);
 
 export const METHODS = ["touchid", "tty", "capsule", "passkey", "code", "session"];
 
@@ -100,6 +102,25 @@ export const MIGRATIONS = [`
     peer TEXT,
     created INTEGER NOT NULL,
     last_used INTEGER NOT NULL,
+    expires INTEGER NOT NULL
+  );
+`, `
+  CREATE TABLE presence_people (
+    id TEXT PRIMARY KEY,
+    hash TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK (kind IN ('cookie', 'bearer')),
+    node TEXT NOT NULL,
+    label TEXT,
+    key TEXT,
+    created INTEGER NOT NULL,
+    last_used INTEGER NOT NULL,
+    max INTEGER NOT NULL
+  );
+  CREATE TABLE presence_person_codes (
+    hash TEXT PRIMARY KEY,
+    cc TEXT NOT NULL,
+    node TEXT NOT NULL,
+    label TEXT,
     expires INTEGER NOT NULL
   );
 `];

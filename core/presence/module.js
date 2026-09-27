@@ -8,6 +8,7 @@
 // the floor's list, and they say so here too.
 
 import { Presence } from "./index.js";
+import { PersonSessions } from "./person.js";
 
 const str = { type: "string" };
 const obj = (properties, required = []) => ({ type: "object", properties, required });
@@ -68,6 +69,50 @@ export default {
       run: async (_, meta) => {
         if (!meta.presence) throw new Error("a session opens from a person's proof, not from a module");
         return presence.openSession({ method: meta.presence.method, keyId: meta.presence.keyId, peer: meta.peer });
+      },
+    });
+
+    // The person session (person.js): a browser signed in as the person, not only their device.
+    const people = new PersonSessions({ db: ctx.store.db });
+    const nodeOf = meta => (meta.peer && (meta.peer.stableId || meta.peer.node)) || null;
+
+    ctx.tool("presence.person.start", {
+      description: "Sign this browser in as the person for 30 days (90 at most), on this device only, with a passkey. The Deck gets a cookie; with cc (a PKCE S256 challenge) the answer is a one-time code the hosted app trades at /v1/person/token.",
+      presence: { summary: async input => input.cc ? "Sign the Vyre app in on this device for 30 days" : "Sign this browser in for 30 days" },
+      callers: ["deck", "capsule"],
+      input: obj({ cc: str, label: str }),
+      run: async (input, meta) => {
+        if (!meta.presence) throw new Error("a person session opens from a person's proof");
+        const node = nodeOf(meta);
+        const label = input.label || (meta.peer && meta.peer.node) || null;
+        if (input.cc) return { kind: "code", ...people.code({ node, cc: input.cc, label }) };
+        const s = people.start({ node, kind: "cookie", label });
+        ctx.events.emit("presence.signed-in", { id: s.id, node: label });
+        return { kind: "cookie", id: s.id, token: s.token, expires: s.expires };
+      },
+    });
+
+    ctx.tool("presence.person.status", {
+      description: "Whether this request is signed in as the person (a person session), and until when.",
+      input: obj({}),
+      run: async (_, meta) => ({ signed: Boolean(meta.person), ...(meta.person ? { id: meta.person.id, kind: meta.person.kind } : {}) }),
+    });
+
+    ctx.tool("presence.person.sessions", {
+      description: "The browsers and apps signed in as the person: id, how (cookie or app), device, made, last used, when it lapses. Never a secret.",
+      callers: ["cli", "local", "deck", "capsule"],
+      input: obj({}),
+      run: async () => ({ sessions: people.list() }),
+    });
+
+    ctx.tool("presence.person.revoke", {
+      description: "Sign one browser or app out now, by session id.",
+      callers: ["cli", "local", "deck", "capsule"],
+      input: obj({ id: str }, ["id"]),
+      run: async ({ id }) => {
+        if (!people.revoke(id)) throw Object.assign(new Error(`no session ${id}`), { code: "not_found" });
+        ctx.events.emit("presence.signed-out", { id });
+        return { revoked: id };
       },
     });
 

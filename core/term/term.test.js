@@ -43,6 +43,8 @@ async function registry(t, term = {}) {
   return { reg, work, events };
 }
 
+/** The person session vyred's router sets for a signed-in Deck over the tailnet (core/presence/person.js). */
+const PERSON = { id: "s1", kind: "cookie" };
 const ok = async (reg, tool, input, caller = "deck", meta = {}) => {
   const r = await reg.call(tool, input, caller, meta);
   if (r.error) throw new Error(`${tool}: ${r.error.code} ${r.error.message}`);
@@ -133,9 +135,9 @@ test("term: the owner opens a terminal with no passkey, and only the screen that
   // Another screen, another caller or another tailnet node cannot pick it up.
   assert.equal((await reg.call("term.attach", { term: o.term, surface: "phone:zzz999" }, "deck")).error?.code, "not_found");
   assert.equal((await reg.call("term.attach", { term: o.term, surface: DECK }, "cli")).error?.code, "not_found");
-  const p = await ok(reg, "term.open", { cwd: work, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } });
-  assert.equal((await reg.call("term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" } })).error?.code, "not_found");
-  await ok(reg, "term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" } });
+  const p = await ok(reg, "term.open", { cwd: work, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON });
+  assert.equal((await reg.call("term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nLaptop" }, person: PERSON })).error?.code, "not_found");
+  await ok(reg, "term.attach", { term: p.term, surface: DECK }, "tailnet:alex", { peer: { stableId: "nPhone" }, person: PERSON });
 });
 
 test("term: cwd must pass the files guard", async t => {
