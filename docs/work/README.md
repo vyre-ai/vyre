@@ -65,3 +65,4 @@ Claim the next number here before writing the ADR, so two workstreams never take
 | 0033 | platform | Hackable Vyre: the module API, extension points, user modules and updates |
 | 0034 | memory-iq | Vyre IQ: cited answers from every session, fact and the graph |
 | 0035 | native-core | The settings hub: one file, four levels, read live by every surface |
+| 0036 | cohesion | One system |

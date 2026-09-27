@@ -23,6 +23,7 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`capsule`](#capsule) | `local/capsule` | `local` | 3 | 2 | capsule, cli |
 | [`chrome`](#chrome) | `modules/hands-chrome` | `box` | 5 | 1 | cli, deck |
 | [`computers`](#computers) | `core/computers` | `box` | 23 | 15 | cli, deck |
+| [`context`](#context) | `core/context` | `box`, `local` | 2 | 1 | cli |
 | [`files`](#files) | `core/files` | `box`, `local` | 17 | 3 | capsule, cli, deck |
 | [`gate`](#gate) | `core/gate` | `box`, `local` | 10 | 6 | capsule, cli, deck |
 | [`glass`](#glass) | `core/glass` | `box` | 13 | 8 | capsule, cli, deck |
@@ -49,13 +50,16 @@ A module runs on the `box` (the always-on server), on `local` (the Mac), or on b
 | [`sessions`](#sessions) | `core/sessions` | `box`, `local` | 16 | 5 | cli |
 | [`settings`](#settings) | `core/settings` | `box`, `local` | 6 | 1 | cli, deck |
 | [`sideview`](#sideview) | `local/sideview` | `local` | 3 | 0 | none |
+| [`sight`](#sight) | `core/sight` | `box`, `local` | 4 | 1 | none |
 | [`statusline`](#statusline) | `core/statusline` | `box`, `local` | 1 | 0 | cli |
+| [`suggest`](#suggest) | `core/suggest` | `box`, `local` | 3 | 0 | cli |
 | [`system`](#system) | `core/system` | `box`, `local` | 2 | 1 | cli |
 | [`term`](#term) | `core/term` | `box`, `local` | 4 | 2 | none |
 | [`threads`](#threads) | `core/switchboard` | `box`, `local` | 40 | 26 | cli |
 | [`tips`](#tips) | `core/tips` | `box`, `local` | 7 | 1 | cli |
 | [`vault`](#vault) | `core/vault` | `box`, `local` | 80 | 31 | capsule, cli, deck |
 | [`voice`](#voice) | `local/voice` | `local` | 3 | 0 | capsule |
+| [`waiting`](#waiting) | `core/waiting` | `box`, `local` | 2 | 1 | cli |
 | [`watchers`](#watchers) | `core/watchers` | `box`, `local` | 8 | 5 | capsule, cli, deck |
 
 ## about
@@ -124,6 +128,17 @@ The Mac command bar: press Control twice and talk to the assistant, any agent or
 - Shows on: cli, deck
 - Streams: `glass`
 - Needs vault: `tailscale-agent-authkey`
+
+## context
+
+Where the user is now: the project, folder, thread, app, window and page each surface last reported, merged into one answer (ADR 0036, part 2).
+
+- Folder: `core/context`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [2](tools.md#context)
+- Emits: [1 events](events.md#context)
+- Shows on: cli
 
 ## files
 
@@ -413,6 +428,17 @@ The side view on macOS: a session on the left and Chrome (or Glass on the box) f
 - Shows on: no surface
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
 
+## sight
+
+One screen service for the user's Mac and every agent's computer: what is on it, what was just done on it, and the frame stream where one may leave the machine.
+
+- Folder: `core/sight`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [4](tools.md#sight)
+- Emits: [1 events](events.md#sight)
+- Shows on: no surface
+
 ## statusline
 
 One short line for Claude Code's status line: what needs the user, the box, the assistant.
@@ -424,6 +450,17 @@ One short line for Claude Code's status line: what needs the user, the box, the 
 - Emits: no events
 - Shows on: cli
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## suggest
+
+Predictive text for every surface: names after @, commands after /, entities, accounts and times as the user types.
+
+- Folder: `core/suggest`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [3](tools.md#suggest), 1 of them only for other modules
+- Emits: no events
+- Shows on: cli
 
 ## system
 
@@ -491,6 +528,17 @@ Push-to-talk for the Capsule: streams the mic to a speech provider and relays th
 - Streams: `listen`
 - Needs vault: `voice-deepgram-key`, `voice-openai-key`, `voice-elevenlabs-key`
 - Teaches tips: `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`, `[object Object]`
+
+## waiting
+
+One list of what waits on the user: session asks, held drafts, ringing reminders and pairing requests.
+
+- Folder: `core/waiting`, version 0.1.0
+- Runs on: `box`, `local`
+- Requires: none
+- Tools: [2](tools.md#waiting)
+- Emits: [1 events](events.md#waiting)
+- Shows on: cli
 
 ## watchers
 

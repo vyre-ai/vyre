@@ -87,7 +87,8 @@
       "adr/0032-person-and-device.md",
       "adr/0033-hackable-vyre.md",
       "adr/0034-vyre-iq.md",
-      "adr/0035-settings-hub.md"
+      "adr/0035-settings-hub.md",
+      "adr/0036-one-system.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },
     { "title": "Contributing", "pages": [
@@ -100,7 +101,8 @@
       "design/native-bar.md",
       "design/phone.md",
       "design/one-app/README.md",
-      "design/one-app/DIRECTION.md"
+      "design/one-app/DIRECTION.md",
+      "design/cohesion.md"
     ]},
     { "title": "Design system", "pages": [
       "design/system/README.md",
