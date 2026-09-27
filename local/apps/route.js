@@ -28,7 +28,7 @@
 
 /**
  * @typedef {{ app: string, action: string, args: Record<string, any>, sends: boolean, said: string }} Route
- * @typedef {{ ambiguous: true, reason: string, needs: { app?: any[], recipient?: any[] }, ask: string, text: string, app?: string, action?: string, to?: string }} NeedsPrompt
+ * @typedef {{ ambiguous: true, reason: string, needs: { app?: any[], recipient?: any[] }, ask: string, text: string, app?: string, action?: string, to?: string, firstWordIsTo?: boolean }} NeedsPrompt
  * @typedef {{ ambiguous: true, reason: string } | NeedsPrompt} Ambiguous
  * @typedef {{ now: number, timeZone: string, app?: string, planner?: "planner" | "apple" }} RouteOptions
  */
@@ -436,7 +436,9 @@ function messageRules(raw, only) {
   // "whatsapp running late": the app is named and who is not. Everything after it is the message.
   const bare = new RegExp(`^${APP}\\s+([\\s\\S]+)$`, "i").exec(raw);
   if (bare && (!only || MESSENGERS[bare[1].toLowerCase()] === only)) {
-    return needRecipient(MESSENGERS[bare[1].toLowerCase()], bare[2], bare[2].trim().split(/\s+/)[0]);
+    // The first word may be who, or the message's first word: the tool decides once it has
+    // looked for that name among the app's people (firstWordIsTo).
+    return { ...needRecipient(MESSENGERS[bare[1].toLowerCase()], bare[2], bare[2].trim().split(/\s+/)[0]), firstWordIsTo: true };
   }
   if (only) return null;
   // Words that mention a messenger but match no form are left alone rather than guessed at.
@@ -541,8 +543,9 @@ export function route(text, o) {
     }
     return scopedMessage(raw, app);
   }
+  // "in apple notes" inside a message is part of the message: messages are read first.
   const apple = appleAsked(raw);
-  if (apple) return route(apple.text, { ...o, app: apple.app });
+  if (apple && !messageRules(raw, null)) return route(apple.text, { ...o, app: apple.app });
   /** @type {[string, Route | Ambiguous | null][]} */
   const tries = [["clock", clockRules(t)], ["note", noteRules(raw)], ["todo", todoRoute(raw)], ["reminder", reminderRules(t, o)]];
   const hit = tries.find(([, r]) => r);

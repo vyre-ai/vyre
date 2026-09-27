@@ -386,3 +386,38 @@ test("module: a picked answer routes on with {text, app, to}, checked against th
   assert.match(cannot.reason, /cannot send through Messages/);
   assert.equal(sent.length, 0, "routing sent something");
 });
+
+test("module: an answer by id is that person, two people with one name are asked about, and a bare first word is dropped only when it is someone", async t => {
+  const sent = /** @type {any[]} */ ([]);
+  const wa = whatsapp(sent);
+  const twins = { ...wa, targets: async () => [...await wa.targets(), { id: "c5", title: "Alex", kind: "contact" }, { id: "c6", title: "Alex", kind: "contact" }] };
+  const { reg } = await start(t, { apps: { adapters: [twins] } });
+  const ask = async (/** @type {any} */ input) => (await reg.call("apps.route", input, "capsule")).data;
+
+  const byId = await ask({ text: "dinner at 8?", app: "WhatsApp", to: "c3" });
+  assert.deepEqual({ args: byId.args, said: byId.said }, { args: { to: "c3", text: "dinner at 8?" }, said: "WhatsApp → Ammi jee: dinner at 8?" });
+
+  const two = await ask({ text: "whatsapp alex: hi" });
+  assert.equal(two.ask, "Which one?");
+  assert.deepEqual(two.needs.recipient.map((/** @type {any} */ c) => c.id), ["c5", "c6"]);
+
+  const bare = await ask({ text: "whatsapp juno running late" });
+  assert.equal(bare.to, "juno");
+  assert.equal(bare.text, "running late", "juno is someone, so the message is the rest");
+  assert.equal(bare.firstWordIsTo, undefined);
+  const plain = await ask({ text: "whatsapp running late" });
+  assert.equal(plain.text, "running late", "no one is called running, so the words stay whole");
+  assert.equal(plain.to, undefined);
+  assert.equal(sent.length, 0, "routing sent something");
+});
+
+test("module: Apple words inside a message stay in the message", async t => {
+  const { reg } = await start(t, { apps: { adapters: [whatsapp()] } });
+  const r = (await reg.call("apps.route", { text: "whatsapp kit: the code is in apple notes" }, "capsule")).data;
+  assert.deepEqual({ app: r.app, args: r.args }, { app: "WhatsApp", args: { to: "kit", text: "the code is in apple notes" } });
+  const tell = (await reg.call("apps.route", { text: "tell kit to check the notes app" }, "capsule")).data;
+  assert.equal(tell.ask, "Which app?");
+  assert.equal(tell.text, "to check the notes app");
+  const note = (await reg.call("apps.route", { text: "note in apple notes: buy milk" }, "capsule")).data;
+  assert.equal(note.app, "Notes");
+});

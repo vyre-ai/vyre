@@ -91,7 +91,11 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   apps.route {text, app, to} for answers (sendTo in route.js), the `vyre apps` prompt loop (TTY:
   numbered pick, Enter for a lone Did you mean, 3 rounds; else exit 3, JSON with --json),
   local/apps/fuzzy.test.js, CHANGELOG. Testbox: local/apps + core/cli/commands/apps.test.js
-  194 pass, 0 fail, 5 skipped. Review pending.
+  196 pass, 0 fail, 5 skipped. Reviewed; fixed: Apple words inside a message, Ctrl-D as cancel
+  plus one Enter at the preview after a question, candidates by id (two people with one name are
+  asked about), the bare "whatsapp juno ..." first word, y/n answers, a fuzzy app answer.
+  Note for AppsExtension: an id in args.to makes the adapter's preview show the id; real adapters
+  must preview with the title.
 - planner.parse as the single time parser stays with the planner team (ADR 0025, ../vyre-planner):
   switch apps.route to it when they send the hash; local answer on the Mac, no box round trip.
 - Slice 2 Kit (branch work/capsule-apps-native, worktree ../vyre-capsule-apps-native):
@@ -105,8 +109,7 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   extension filter: 16 pass, push, run capsule-mac CI, then send the hash to capsule-pro to merge.
 
 ## Next
-1. Review T4, fix, push work/capsule-apps.
-2. Kit: merge c778f56, CI, hand off to capsule-pro.
+1. Kit: merge c778f56, CI, hand off to capsule-pro.
 3. AppsExtension (Sources/Extensions/apps on the native branch): installed apps as @ targets
    with real icons (nests: true for apps with targets), refreshMentions/mentionPicked call
    apps.targets, send() calls apps.route with the app scope; first Enter shows the preview,

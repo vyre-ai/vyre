@@ -19,11 +19,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   letter or two), and a lone strong match adds "Did you mean Ammi jee on WhatsApp?". A send to a
   name the app does not know is asked about the same way. "tell mom I'm on slack now" asks who
   on Slack, keeping "I'm on slack now".
-- `apps.route {text, app, to}` is how an answer goes back: the app and who as picked, the words
-  from the question. It is checked against the app's people and asked again if still unclear.
+- `apps.route {text, app, to}` is how an answer goes back: the app and who as picked (a
+  candidate's id, or a name typed), the words from the question. It is checked against the app's
+  people and asked again if still unclear; two people with the same name are asked about ("Which
+  one?"), never sent to whichever the app finds first. "in apple notes" inside a message stays in
+  the message, and "whatsapp juno running late" drops "juno" from the text only when juno is
+  someone in the app.
 - `vyre apps` asks on a terminal: the question, the Did you mean line and numbered candidates;
-  a number, a name, or Enter for the Did you mean, up to three rounds, and an empty answer sends
-  nothing. Off a terminal, or with `--json`, it prints the question (as JSON with `--json`) and
+  a number, a name, or Enter for the Did you mean, up to three rounds. An empty answer, "no" or
+  Ctrl-D sends nothing, and after a question the preview needs one more Enter before the send. Off a terminal, or with `--json`, it prints the question (as JSON with `--json`) and
   exits 3, so a script can tell "asked" from "failed".
 
 #### Apps: timers, notes, reminders and the weather from the Capsule (ADR 0022, slice 1)

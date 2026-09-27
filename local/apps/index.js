@@ -170,8 +170,15 @@ export default {
     /** A route that asks: fill in the candidates it asks between. */
     const fillNeeds = async (/** @type {any} */ r) => {
       if (r.needs.app) return { ...r, needs: { app: await messagingApps() } };
+      const { firstWordIsTo, ...q } = r;
       const { list, didYouMean } = await recipients(r.app, r.to || "");
-      return { ...r, needs: { recipient: list }, ...(didYouMean ? { didYouMean } : {}) };
+      // "whatsapp juno running late": when juno is someone in the app, the message is the rest;
+      // when no one is, the first word was the message's own and nothing is known about who.
+      if (firstWordIsTo) {
+        if (list.length) q.text = q.text.trim().replace(/^\S+\s*/, "") || q.text;
+        else delete q.to;
+      }
+      return { ...q, needs: { recipient: list }, ...(didYouMean ? { didYouMean } : {}) };
     };
 
     /**
@@ -184,21 +191,48 @@ export default {
       let all;
       try { all = await targetsOf(a, ""); } catch { return r; }
       const to = String(r.args.to || "").toLowerCase();
-      if (all.some((/** @type {any} */ t) => t.id.toLowerCase() === to || t.title.toLowerCase() === to)) return r;
+      // An id is one person. A name is one person only when no one else in the app has it: two
+      // people called Alex are asked about, never sent to whichever the app finds first.
+      const byId = all.find((/** @type {any} */ t) => t.id.toLowerCase() === to);
+      if (byId) return { ...r, said: `${a.app} → ${byId.title}: ${r.args.text}` };
+      const named = all.filter((/** @type {any} */ t) => t.title.toLowerCase() === to);
+      if (named.length === 1) return r;
+      if (named.length > 1) {
+        return { ambiguous: true, reason: `${a.app} has ${named.length} people called ${r.args.to}`, ask: "Which one?", text: r.args.text, app: r.app, action: r.action, to: r.args.to,
+          needs: { recipient: named.map((/** @type {any} */ t) => ({ id: t.id, title: t.title, app: a.app, score: 1 })) } };
+      }
       const { list, didYouMean } = await recipients(r.app, r.args.to);
       return { ambiguous: true, reason: `${a.app} has no one called ${r.args.to}`, needs: { recipient: list }, ask: "Who should get this?",
         text: r.args.text, app: r.app, action: r.action, to: r.args.to, ...(didYouMean ? { didYouMean } : {}) };
     };
 
-    /** A route from picked parts: asked again if still unclear, checked against the app's people. */
-    const answered = (/** @type {any} */ r) => r.needs ? fillNeeds(r) : !r.ambiguous && r.sends ? checkRecipient(r) : r;
+    /**
+     * An answer to a question: the app and who as picked (an id from the candidates, or a name
+     * typed), and the words kept from it. An app Vyre cannot send through, or a name that is not
+     * one, is asked about again; who is checked against the app's people like any send.
+     */
+    const answer = async (/** @type {string} */ text, /** @type {string | undefined} */ app, /** @type {string} */ to) => {
+      const again = async (/** @type {string} */ reason) => ({ ambiguous: true, reason, needs: { app: await messagingApps() }, ask: "Which app?", text, action: "send", to });
+      if (!app) return again("which app should this go through?");
+      const offered = (await messagingApps()).filter(x => x.hint === "Vyre sends through it").map(x => ({ id: x.name, title: x.name }));
+      const best = rankTargets(app, offered)[0];
+      const a = registry.find(best ? best.id : app);
+      if (!a || !Object.values(a.actions).some(x => x.sends)) return again(`Vyre cannot send through ${app} yet`);
+      // A candidate's id may not look like a name (WhatsApp's have an @), so an id is looked up first.
+      let all = [];
+      if (typeof a.targets === "function") { try { all = await targetsOf(a, ""); } catch {} }
+      const hit = all.find((/** @type {any} */ t) => t.id === to);
+      if (hit) return { app: a.app, action: "send", args: { to: hit.id, text }, sends: true, said: `${a.app} → ${hit.title}: ${text}` };
+      const r = /** @type {any} */ (sendTo(a.app, to, text));
+      return r.needs ? fillNeeds(r) : !r.ambiguous && r.sends ? checkRecipient(r) : r;
+    };
 
     ctx.tool("apps.route", {
       description: "Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks, as {text, app, to}. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
       input: { type: "object", required: ["text"], properties: { text: { type: "string", maxLength: 2000 }, app: str, to: str, model: { type: "boolean" } } },
       async run({ text, app, to, model = false }) {
         // An answer to a question: the app and who, as picked, and the words kept from it.
-        if (to) return app ? answered(sendTo(app, to, text)) : { ambiguous: true, reason: "to needs an app", needs: { app: await messagingApps() }, ask: "Which app?", text, action: "send", to };
+        if (to) return answer(text, app, to);
         const r = /** @type {any} */ (route(text, { now: env.now(), timeZone: env.timeZone, planner: opts.planner === "apple" ? "apple" : "planner", ...(app ? { app } : {}) }));
         if (r.needs) return fillNeeds(r);
         if (!r.ambiguous && r.sends) return checkRecipient(r);

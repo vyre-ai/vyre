@@ -173,32 +173,32 @@ test("apps cli: with no terminal a question is printed with its candidates and e
 
 test("apps cli: on a terminal Enter takes the Did you mean, then the send is previewed and proved", async () => {
   const f = fake({ "apps.route": (/** @type {any} */ i) => (i.to ? picked(i.app, i.to, i.text) : WHO), "apps.send": { said: "Sent to Ammi jee" } });
-  const tty = terminal([""]);
+  const tty = terminal(["", ""]);
   assert.equal(await runApps(["whatsapp", "ammi:", "dinner", "at", "8?"], { ...f.deps, ...tty }), 0);
-  assert.deepEqual(tty.asked, ["  pick one (Enter for the first): "]);
+  assert.deepEqual(tty.asked, ["  pick one (Enter for the first): ", "  Enter to send, n to cancel: "]);
   assert.deepEqual(f.calls.map(c => [c.tool, c.as]), [["apps.route", "call"], ["apps.route", "call"], ["apps.send", "person"]]);
-  assert.deepEqual(f.calls[1].input, { text: "dinner at 8?", app: "WhatsApp", to: "Ammi jee" });
-  assert.deepEqual(f.calls[2].input, { app: "WhatsApp", action: "send", args: { to: "Ammi jee", text: "dinner at 8?" } });
-  assert.deepEqual(f.lines.slice(-2), ["  WhatsApp → Ammi jee: dinner at 8?", "  ● Sent to Ammi jee"]);
+  assert.deepEqual(f.calls[1].input, { text: "dinner at 8?", app: "WhatsApp", to: "c3" }, "the id goes back, not the name");
+  assert.deepEqual(f.calls[2].input, { app: "WhatsApp", action: "send", args: { to: "c3", text: "dinner at 8?" } });
+  assert.deepEqual(f.lines.slice(-2), ["  WhatsApp → c3: dinner at 8?", "  ● Sent to Ammi jee"]);
 });
 
 test("apps cli: an unclear app is asked, then who; a number out of range asks again", async () => {
   const routes = [WHICH, { ...WHO, didYouMean: undefined, needs: { recipient: [{ id: "c1", title: "Juno Park", app: "WhatsApp", score: 0.9 }, { id: "c2", title: "Jules", app: "WhatsApp", score: 0.8 }] }, text: "I'm running late", to: "juno" }];
   const f = fake({ "apps.route": (/** @type {any} */ i) => routes.length ? routes.shift() : picked(i.app, i.to, i.text), "apps.send": { said: "Sent" } });
-  const tty = terminal(["1", "7", "juno park"]);
+  const tty = terminal(["1", "7", "juno park", ""]);
   assert.equal(await runApps(["tell", "juno", "I'm", "running", "late"], { ...f.deps, ...tty }), 0);
   assert.deepEqual(f.calls.filter(c => c.tool === "apps.route").map(c => c.input), [
     { text: "tell juno I'm running late" },
     { text: "I'm running late", app: "WhatsApp", to: "juno" },
-    { text: "I'm running late", app: "WhatsApp", to: "Juno Park" },
+    { text: "I'm running late", app: "WhatsApp", to: "c1" },
   ]);
   assert.ok(f.lines.includes("  there is no 7 in the list"));
-  assert.ok(f.lines.includes("  WhatsApp → Juno Park: I'm running late"));
+  assert.ok(f.lines.includes("  WhatsApp → c1: I'm running late"));
 });
 
-test("apps cli: an empty answer with no Did you mean, or a closed terminal, cancels and sends nothing", async () => {
-  for (const answers of [[""], []]) {
-    const f = fake({ "apps.route": { ...WHO, didYouMean: undefined }, "apps.send": { said: "Sent" } });
+test("apps cli: an empty answer with no Did you mean, no, a closed terminal, or n at the preview sends nothing", async () => {
+  for (const [answers, dym] of /** @type {[string[], any][]} */ ([[[""], undefined], [["no"], WHO.didYouMean], [[], WHO.didYouMean], [["", "n"], WHO.didYouMean], [["", ], WHO.didYouMean]])) {
+    const f = fake({ "apps.route": (/** @type {any} */ i) => (i.to ? picked(i.app, i.to, i.text) : { ...WHO, didYouMean: dym }), "apps.send": { said: "Sent" } });
     assert.equal(await runApps(["whatsapp", "ammi:", "dinner"], { ...f.deps, ...terminal(answers) }), 1);
     assert.equal(f.lines.at(-1), "  nothing sent");
     assert.equal(f.calls.some(c => c.tool === "apps.send"), false);
@@ -215,9 +215,11 @@ test("apps cli: questions stop after three rounds", async () => {
 });
 
 test("apps cli: pick reads a number, a name from the list, yes, or a new name", () => {
-  assert.deepEqual(pick(WHO, "2"), { text: "dinner at 8?", app: "WhatsApp", to: "Amir" });
-  assert.deepEqual(pick(WHO, "yes"), { text: "dinner at 8?", app: "WhatsApp", to: "Ammi jee" });
-  assert.deepEqual(pick(WHO, "AMIR"), { text: "dinner at 8?", app: "WhatsApp", to: "Amir" });
+  assert.deepEqual(pick(WHO, "2"), { text: "dinner at 8?", app: "WhatsApp", to: "c9" });
+  assert.deepEqual(pick(WHO, "yes"), { text: "dinner at 8?", app: "WhatsApp", to: "c3" });
+  assert.deepEqual(pick(WHO, "AMIR"), { text: "dinner at 8?", app: "WhatsApp", to: "c9" });
+  assert.equal(pick(WHO, "n"), null);
+  assert.equal(pick({ ...WHO, didYouMean: undefined }, "y"), null, "a yes with nothing offered is not a name");
   assert.deepEqual(pick(WHO, "kit"), { text: "dinner at 8?", app: "WhatsApp", to: "kit" });
   assert.equal(pick(WHO, "9"), null);
   assert.deepEqual(pick(WHICH, "2"), { text: "I'm running late", app: "Messages", to: "juno" });

@@ -141,19 +141,22 @@ export function formatQuestion(r) {
 /** @param {any} r @returns {{ label: string, hint?: string, app?: string, to?: string }[]} */
 function candidates(r) {
   if (r.needs.app) return r.needs.app.map((/** @type {any} */ a) => ({ label: a.name, hint: a.hint, app: a.name }));
-  return (r.needs.recipient || []).map((/** @type {any} */ c) => ({ label: c.title, to: c.title }));
+  // The id, not the name: two people can share a name, and an id is one of them.
+  return (r.needs.recipient || []).map((/** @type {any} */ c) => ({ label: c.title, to: c.id || c.title }));
 }
 
 /**
  * A person's answer to a question: a number, a name typed out, or Enter for a lone Did you mean.
- * Returns the apps.route input to ask again with, or null for no answer (cancel).
+ * Returns the apps.route input to ask again with, or null for no answer, no, or a yes to nothing
+ * (cancel).
  * @param {any} r @param {string} line @returns {{ text: string, app?: string, to?: string } | null}
  */
 export function pick(r, line) {
   const a = String(line || "").trim();
   const list = candidates(r);
   if (!a) return r.didYouMean && list.length ? pickOne(r, list[0]) : null;
-  if (/^(y|yes)$/i.test(a) && r.didYouMean && list.length) return pickOne(r, list[0]);
+  if (/^(n|no)$/i.test(a)) return null;
+  if (/^(y|yes)$/i.test(a)) return r.didYouMean && list.length ? pickOne(r, list[0]) : null;
   if (/^\d+$/.test(a)) {
     const c = list[Number(a) - 1];
     return c ? pickOne(r, c) : null;
@@ -216,7 +219,8 @@ export async function runApps(args, deps = real) {
   const routed = await deps.call("apps.route", { text, ...(flags.app ? { app: flags.app } : {}), ...(flags.model ? { model: true } : {}) });
   if (routed.error) return fail(routed.error);
   let r = routed.data;
-  for (let round = 0; r.needs; round++) {
+  let asked = false;
+  for (let round = 0; r.needs; round++, asked = true) {
     if (flags.json || !deps.isTTY || !deps.ask) {
       if (flags.json) p(JSON.stringify(r, null, 2));
       else { for (const line of formatQuestion(r)) p(line); p(dim("  run it on a terminal to pick, or say it again with the name and app")); }
@@ -225,8 +229,10 @@ export async function runApps(args, deps = real) {
     if (round >= ROUNDS) { p(`  ${beacon("not sure")}: ${r.reason}`); return 1; }
     for (const line of formatQuestion(r)) p(line);
     const line = await deps.ask(r.didYouMean ? "  pick one (Enter for the first): " : "  pick one: ");
-    if (/^\s*\d+\s*$/.test(line || "") && !candidates(r)[Number(line) - 1]) { p(`  there is no ${String(line).trim()} in the list`); continue; }
-    const next = pick(r, line || "");
+    // A closed terminal (Ctrl-D) is a cancel, never the Enter that takes the Did you mean.
+    if (line === null) { p(dim("  nothing sent")); return 1; }
+    if (/^\s*\d+\s*$/.test(line) && !candidates(r)[Number(line) - 1]) { p(`  there is no ${line.trim()} in the list`); continue; }
+    const next = pick(r, line);
     if (!next) { p(dim("  nothing sent")); return 1; }
     const again = await deps.call("apps.route", next);
     if (again.error) return fail(again.error);
@@ -243,6 +249,12 @@ export async function runApps(args, deps = real) {
     // --json it goes to stderr, keeping stdout for the JSON.
     if (flags.json) deps.warn(`  ${r.said}`);
     else p(`  ${bold(r.said)}`);
+    // After a question the person has not yet seen what goes out: one more Enter sends it, since
+    // a presence session may let the proof pass without a prompt.
+    if (asked && deps.ask) {
+      const ok = await deps.ask("  Enter to send, n to cancel: ");
+      if (ok === null || ok.trim()) { p(dim("  nothing sent")); return 1; }
+    }
     return done(await deps.person("apps.send", input), d => [`  ${signal("●")} ${d.said}`]);
   }
   return done(await deps.call("apps.act", input), d => [`  ${signal("●")} ${d.said}`]);
