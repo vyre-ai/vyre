@@ -22,7 +22,12 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
 DONE on resume: main 7880dfa6 merged (e9b22592); e2e HIGH 1 + HIGH 2 fixed (6fb87f4e: PERSON_ONLY
 settings.set/reset, agent labels refused, CALL_AS for settings limited to registry.settingTools());
 store limits merged (b172c2d0 + 67abc47f); sent e2e 62abf2cf for re-review. Waiting on e2e sign-off.
-After that:
+Also done on resume: typing lag (e91f970c, composer grow via field-sizing; budget 1 passes 24 ms at
+2,000 rows), scroll jump re-measured (fixed on work/chat 553017a1, 0 px), reconnect 1.5 s still
+(pwa/resilience), agent Effort saved (87fb03d7), ADR 0035 the settings hub drafted (docs/adr/0035).
+Next: coordinate ADR 0035 with app-design, platform, pwa, mobile, capsule-pro, sessions; build
+step 1 (hub.json store) once the lead OKs the ADR; Deck confirm/proof check in a real browser.
+Older list (kept for reference):
 4. Typing lag: my tree's 2,000-row paint p95 48 ms (> 33) from composer.js:70 grow() over an
    unwindowed timeline. Rebase composer work on chat c26f868 (chat handed composer.js,
    pickers.js, caps.js, core/composer-state.js back to me). Fix grow (field-sizing: content or
