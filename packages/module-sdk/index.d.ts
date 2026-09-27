@@ -80,6 +80,10 @@ export interface Manifest {
     apps?: Record<string, { app: string; bundleIds?: string[]; actions: Record<string, ToolName> }>;
     /** @planned CLI verbs: `vyre <module> <verb>` runs `tool`; positional args fill `args` input keys in order. */
     commands?: { verb: string; tool: ToolName; summary: string; args?: string[] }[];
+    /** @planned The tool that returns this module's connection rows (docs/design/cohesion.md). */
+    connections?: ToolName;
+    /** @planned The tool that answers suggest.query for this module, inside a 25 ms deadline. */
+    suggest?: ToolName;
   };
   watches?: {
     emits?: EventType[];
@@ -91,6 +95,8 @@ export interface Manifest {
     capsule?: string[] | Record<string, CapsuleEntry>;
     cli?: string[];
     streams?: string[];
+    /** @planned Notice kinds it raises, rendered from needs.list on every surface. */
+    notices?: string[];
   };
   /** @planned Settings, drawn in the Deck's Settings and `vyre config` with no UI work. */
   settings?: SettingDef[];
@@ -109,7 +115,27 @@ export interface Manifest {
     memory?: string[];
     /** @planned Prompt layers: markdown files in the module. */
     prompt?: { level: "account" | "project" | "agent"; file: string }[];
+    /** @planned Short tips the tips module shows. text is at most 140 characters. */
+    tips?: Tip[];
   };
+  [experimental: `x-${string}`]: unknown;
+}
+
+export type Surface = "capsule" | "deck" | "chat" | "phone" | "cli" | "glass";
+
+export interface Tip {
+  id: string;
+  text: string;
+  surfaces: Surface[];
+  level: "first-use" | "power" | "discovery";
+  trigger: "on-use" | "idle" | "never-used" | "after-update";
+  /** The version the tip arrived in. */
+  since: string;
+  key?: string;
+  command?: string;
+  /** A relative .md path, with an optional #anchor. */
+  docs?: string;
+  about?: Surface;
   [experimental: `x-${string}`]: unknown;
 }
 

@@ -55,10 +55,11 @@ export function sshLine(port, user, env = process.env) {
 const UNIT = path.join(system.ETC, "vyre.service");
 const systemdManaged = () => process.platform === "linux" && fs.existsSync(UNIT);
 
-async function health() { const h = await request("GET", "/v1/health"); return h.error ? null : h.data; }
+/** vyred's /v1/health, or null when it does not answer. */
+export async function health() { const h = await request("GET", "/v1/health"); return h.error ? null : h.data; }
 
 /** Wait for vyred to answer with the wanted version and build (after systemd restarts it). */
-async function waitFor(version, ms = 15_000, commit = null) {
+export async function waitFor(version, ms = 15_000, commit = null) {
   for (let t = 0; t < ms; t += 250) {
     const h = await health();
     if (h && h.version === version && (!commit || h.commit === commit)) return h;
@@ -67,22 +68,26 @@ async function waitFor(version, ms = 15_000, commit = null) {
   return null;
 }
 
-/** Start vyred, or restart it when it runs an older version or the wrong role. */
-async function bring(role, mineOf = build) {
+/**
+ * Start vyred, or restart it when it runs an older version or the wrong role. `mineOf` names the
+ * build that should be running: this package's own, or for `vyre update` the release it just
+ * installed, since this process still holds the old code and the old version number.
+ */
+export async function bring(role, mineOf = build) {
   const h = await health();
   // A release is stamped with its commit (build.json). An upgrade that keeps the version number
   // still changes the commit, and the vyred started before it runs the old code: that one is
   // restarted, as is one whose build is dirty or unknown. A checkout (no stamp) compares versions.
   const mine = mineOf();
   const sameBuild = !mine.stamped || (h && h.commit === mine.commit && h.dirty === false && mine.dirty === false);
-  if (h && h.version === VERSION && h.role === role && sameBuild) return { ok: true, note: null };
+  if (h && h.version === mine.version && h.role === role && sameBuild) return { ok: true, note: null };
   const was = h ? label({ version: h.version, commit: h.commit ?? null, dirty: h.dirty ?? null }) : "";
   const now = label(mine);
-  const restarted = h && h.version === VERSION && !sameBuild ? `updated · restarted vyred (${was} → ${now})` : `restarted ${was} → ${now}`;
+  const restarted = h && h.version === mine.version && !sameBuild ? `updated · restarted vyred (${was} → ${now})` : `restarted ${was} → ${now}`;
   if (h && h.supervisor === "systemd") {
     // systemd restarts it (Restart=always) with the code npm just installed.
     try { process.kill(h.pid, "SIGTERM"); } catch {}
-    const back = await waitFor(VERSION, 15_000, mine.stamped ? mine.commit : null);
+    const back = await waitFor(mine.version, 15_000, mine.stamped ? mine.commit : null);
     return back ? { ok: true, note: restarted } : { ok: false, note: "vyred did not come back; see journalctl -u vyre" };
   }
   if (process.env.VYRE_SUPERVISOR === "docker") {

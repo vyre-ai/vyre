@@ -27,6 +27,38 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - using/glass.md: take-over, hand-back and Sign in privately ask for no passkey. using/deck.md,
   using/chat.md, concepts/presence.md: only a send, payment or deletion asks, and one proof covers
   30 minutes. using/claude-code.md: `/vyre todo`, `remind`, `agenda`, `remember`, `lesson`.
+#### Manifest keys for cohesion and tips
+
+- packages/module-sdk/manifest.schema.json (all planned): `does.connections` and `does.suggest`
+  name one of the module's own tools for the cohesion glue modules; `shows.notices` lists the
+  notice kinds a module raises, so push needs no fixed map; `teaches.tips` holds short tips
+  (id, text of at most 140 characters with no em dash, surfaces, level, trigger, since, and
+  optional key, command, docs, about). The checker learns maxLength and refuses a tip id declared
+  twice; index.d.ts gains Tip and Surface.
+- `vyre update` asks tips.whatsnew {since} after a healthy update and prints up to five
+  "New in <version>" lines. With the tips module off it prints none and still succeeds.
+
+#### `vyre update` on the Mac and the box, with backup and rollback (ADR 0033, phase 2)
+
+- `vyre update` (new, in Box care): reads GitHub Releases for the channel (`update.channel` or
+  `--channel`, stable or beta), shows the changelog from the running version, backs up into
+  <home>/backups/pre-<version>/, checks vyre.tgz against SHA256SUMS, installs it with npm and
+  restarts vyred through the same path `vyre up` uses. If vyred isn't healthy on the new version
+  inside the update window, the previous tarball goes back and the backup is restored. After a
+  healthy update nothing restores data by itself. `--check` exits 1 when an update is waiting;
+  `--rollback` keeps the current data, `--restore-data` asks first; `--to` steps through a
+  release when `min_from` needs it. A checkout is told to update with git.
+- core/cli/commands/up.js exports health, waitFor and bring, and bring compares vyred against the
+  build it is asked for (the release just installed), not the running CLI's own version number.
+- box/vyre `update`: the same steps on the box. The release comes from GitHub Releases, with
+  VYRE_BOX_URL as the fallback, so today's install keeps working while there are no releases.
+  It backs up first, tags the running image vyre:prev, keeps src.prev, refreshes the box files and
+  the wrapper (never .env), rolls back and restores data only when health fails, then brings the
+  phone app: APK first, android.json last and atomically (android.json.prev kept), then
+  `vyre call releases.sign`, whose refusal is reported without failing the update.
+  `vyre update --rollback [--restore-data]` swaps back.
+- docs/build/first-module.md (draft): a step-by-step "Build your first module" in the sample world,
+  run end to end in a throwaway home; what arrives in phases 1 and 3 is marked as coming.
 
 #### ADR 0033: Hackable Vyre (accepted), and the module SDK's first piece
 

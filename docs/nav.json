@@ -41,6 +41,7 @@
       "build/module-contract.md",
       "build/tools-and-events.md",
       "build/writing-a-module.md",
+      "build/first-module.md",
       "build/mcp-hub.md"
     ]},
     { "title": "Reference", "pages": [

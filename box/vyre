@@ -7,11 +7,26 @@
 #   vyre up --print-link
 #                  the same, but stdout is only VYRE_LINK=<url> and, on a headless box,
 #                  VYRE_SSH=<ssh -L line>, for a program to read (or VYRE_LINK_ONLY=1)
-#   vyre update    pull (or rebuild) the images and recreate what changed. When the image is
-#                  built from $DIR/src (the installer's vyre.tgz), it first fetches a new
-#                  vyre.tgz from VYRE_BOX_URL and checks it against SHA256SUMS: no git needed.
+#   vyre update [--channel stable|beta] [--to <version>]
+#                  bring the box to the newest release (ADR 0033, section 4). The release comes
+#                  from GitHub Releases (VYRE_RELEASES_API, repo vyre-ai/vyre; stable is the newest
+#                  non-prerelease, beta the newest of any), or from VYRE_BOX_URL when that alone is
+#                  set, or when GitHub has no release yet (default https://vyre.run/box/). Every
+#                  file is checked against the release's SHA256SUMS before anything changes. Then
+#                  it backs up the database, tags the running image vyre:prev, keeps src.prev and
+#                  box.prev, refreshes the box files and this wrapper (never .env), rebuilds or
+#                  pulls, and waits for vyred. If vyred does not come up it puts everything back,
+#                  the database too, and exits 1. After a healthy update it brings the phone app
+#                  along when the release has one, and nothing restores the database any more.
+#   vyre update --rollback [--restore-data [--yes]]
+#                  put the previous release back (src.prev, vyre:prev, box.prev, android.json.prev)
+#                  and keep the current database. --restore-data also puts back the database from
+#                  before the update, after a typed confirm (or --yes off a terminal).
 #   vyre logs      follow vyred's output
 #   vyre ...       anything else goes to the vyre CLI in the container
+
+# The csh lines below are single-quoted on purpose: they expand in the container's shell.
+# shellcheck disable=SC2016
 set -eu
 
 DIR=${VYRE_DIR:-/srv/vyre}
@@ -21,16 +36,35 @@ DIR=${VYRE_DIR:-/srv/vyre}
 cd "$DIR"
 compose() { docker compose "$@"; }
 die() { echo "vyre: $*" >&2; exit 1; }
+say() { echo "vyre: $*"; }
 
-BASE=${VYRE_BOX_URL:-https://vyre.run/box/}
-case "$BASE" in */) ;; *) BASE="$BASE/" ;; esac
+# An explicit VYRE_BOX_URL on its own means that site (a test build, a mirror); otherwise GitHub
+# Releases first and the site as the fallback.
+SITE=${VYRE_BOX_URL:-https://vyre.run/box/}
+case "$SITE" in */) ;; *) SITE="$SITE/" ;; esac
+BASE=$SITE
+API=${VYRE_RELEASES_API:-https://api.github.com}
+REPO=${VYRE_RELEASES_REPO:-vyre-ai/vyre}
+USE_API=1
+if [ -n "${VYRE_BOX_URL:-}" ] && [ -z "${VYRE_RELEASES_API:-}" ]; then USE_API=0; fi
+# Overridable for tests only, as in install-box.sh.
+WRAPPER=${VYRE_WRAPPER:-/usr/local/bin/vyre}
+MARK="vyre on a Docker box"
+# The box files install-box.sh lays out beside .env, which is never among them.
+BOXF="compose.yml compose.build.yml vyre.env.example Dockerfile dockerignore"
+# vyred's home in the container: the vyre service's VYRE_HOME in compose.yml (on the vyre-home
+# volume, so it outlives the image). Backups and the phone app's releases folder live under it.
+CHOME=${VYRE_CONTAINER_HOME:-$(sed -n 's/^ *- VYRE_HOME=\(.*[^ ]\) *$/\1/p' "$DIR/compose.yml" | head -n 1)}
+CHOME=${CHOME:-/home/vyre/.vyre}
 
-fetch() {
-  if command -v curl >/dev/null 2>&1; then curl -fsSL "$BASE$1" -o "$2"
-  elif command -v wget >/dev/null 2>&1; then wget -qO "$2" "$BASE$1"
-  else die "need curl or wget to download $BASE$1"
+# fetch_url URL DEST
+fetch_url() {
+  if command -v curl >/dev/null 2>&1; then curl -fsSL "$1" -o "$2"
+  elif command -v wget >/dev/null 2>&1; then wget -qO "$2" "$1"
+  else die "need curl or wget to download $1"
   fi
 }
+fetch() { fetch_url "$BASE$1" "$2"; }
 
 sha256() {
   if command -v sha256sum >/dev/null 2>&1; then sha256sum "$1" | awk '{print $1}'
@@ -39,20 +73,66 @@ sha256() {
   fi
 }
 
-# Replace $DIR/src with a verified vyre.tgz. A missing file on the site can come back as 200 and
-# a web page, so SHA256SUMS must look like one before anything in it is trusted.
-refresh_src() {
-  tmp=$(mktemp -d)
-  trap 'rm -rf "$tmp"' EXIT
+# csh SCRIPT ARGS...: a shell in the container as uid vyre, the owner of CHOME. Root there has
+# every capability dropped, so it could not write under /home/vyre. Paths go in as arguments.
+csh() { s=$1; shift; compose exec -T -u vyre vyre sh -c "$s" sh "$@"; }
+
+# older A B: true when version A is below B (x.y.z, a -beta.N suffix ignored).
+older() {
+  awk -v a="$1" -v b="$2" 'BEGIN { sub(/-.*/, "", a); sub(/-.*/, "", b); split(a, x, "."); split(b, y, ".")
+    for (i = 1; i <= 3; i++) { if (x[i] + 0 < y[i] + 0) exit 0; if (x[i] + 0 > y[i] + 0) exit 1 } exit 1 }'
+}
+
+# pick_release: set BASE to the release's download folder and TAG to its tag, from the GitHub
+# Releases API. No jq on a plain box, and no node or python on the host to rely on, so this reads
+# the four fields it needs with grep and awk: GitHub lists each release's tag_name, draft and
+# prerelease before its assets, newest release first, and a quote inside the notes is escaped, so
+# it never looks like a key. A release counts only with a SHA256SUMS asset, whose folder is where
+# every other asset is. Returns 1 when there is no such release, or GitHub cannot be reached.
+pick_release() {
+  fetch_url "$API/repos/$REPO/releases?per_page=30" "$tmp/releases.json" 2>/dev/null || return 1
+  pick=$(tr -d '\n' <"$tmp/releases.json" \
+    | grep -oE '"(tag_name|draft|prerelease|browser_download_url)": *("[^"]*"|true|false)' \
+    | sed 's/^"\([a-z_]*\)": *"\{0,1\}\([^"]*\)"\{0,1\}$/\1 \2/' \
+    | awk -v ch="$CHANNEL" -v want="$TO" '
+      function done_one() {
+        if (tag != "" && !found && draft != "true" && sums != "" &&
+            (want != "" ? (tag == want || tag == "v" want) : (ch == "beta" || pre == "false"))) {
+          print tag, sums; found = 1
+        }
+      }
+      $1 == "tag_name" { done_one(); tag = $2; draft = ""; pre = ""; sums = "" }
+      $1 == "draft" { draft = $2 }
+      $1 == "prerelease" { pre = $2 }
+      $1 == "browser_download_url" && $2 ~ /\/SHA256SUMS$/ { sums = $2 }
+      END { done_one() }') || return 1
+  [ -n "$pick" ] || return 1
+  TAG=${pick%% *}
+  BASE=${pick#* }
+  BASE=${BASE%SHA256SUMS}
+}
+
+# get_sums: SHA256SUMS first. A missing file on the site can come back as 200 and a web page, so
+# every line must look like "<64 hex>  <path>" before anything in it is trusted.
+get_sums() {
   fetch SHA256SUMS "$tmp/SHA256SUMS" || die "could not download $BASE""SHA256SUMS"
   if [ ! -s "$tmp/SHA256SUMS" ] || grep -vqE '^[0-9a-f]{64} [ *][^ ]+$' "$tmp/SHA256SUMS"; then
     die "$BASE""SHA256SUMS is not a checksum list; is VYRE_BOX_URL right?"
   fi
-  want=$(awk '$2 == "vyre.tgz" || $2 == "*vyre.tgz" { print $1; exit }' "$tmp/SHA256SUMS")
-  [ -n "$want" ] || die "SHA256SUMS has no line for vyre.tgz"
-  fetch vyre.tgz "$tmp/vyre.tgz" || die "could not download $BASE""vyre.tgz"
-  got=$(sha256 "$tmp/vyre.tgz")
-  [ "$got" = "$want" ] || die "checksum mismatch for $BASE""vyre.tgz (want $want, got $got)"
+}
+listed() { awk -v p="$1" '$2 == p || $2 == "*" p { f = 1 } END { exit !f }' "$tmp/SHA256SUMS"; }
+
+# get NAME: download a release file into tmp and check it against its line in SHA256SUMS.
+get() {
+  want=$(awk -v p="$1" '$2 == p || $2 == "*" p { print $1; exit }' "$tmp/SHA256SUMS")
+  [ -n "$want" ] || die "SHA256SUMS has no line for $1"
+  fetch "$1" "$tmp/$1" || die "could not download $BASE$1"
+  got=$(sha256 "$tmp/$1")
+  [ "$got" = "$want" ] || die "checksum mismatch for $BASE$1 (want $want, got $got)"
+}
+
+# Unpack the verified vyre.tgz into $DIR/src.new. Nothing in $DIR/src changes yet.
+unpack_src() {
   rm -rf "$DIR/src.new"
   mkdir -p "$DIR/src.new"
   tar -xzf "$tmp/vyre.tgz" -C "$DIR/src.new" --strip-components=1
@@ -60,17 +140,14 @@ refresh_src() {
   # match what it synced before, so the image would keep stale files: give them today's.
   find "$DIR/src.new" -exec touch {} +
   [ -f "$DIR/src.new/box/Dockerfile" ] || { rm -rf "$DIR/src.new"; die "vyre.tgz has no box/Dockerfile"; }
-  rm -rf "$DIR/src.old"
-  if [ -d "$DIR/src" ]; then mv "$DIR/src" "$DIR/src.old"; fi
-  mv "$DIR/src.new" "$DIR/src"
-  rm -rf "$DIR/src.old" "$tmp"
-  trap - EXIT
+  # npm pack leaves out .dockerignore, which keeps tests and scripts out of the image.
+  if [ -f "$tmp/dockerignore" ]; then cp "$tmp/dockerignore" "$DIR/src.new/.dockerignore"; fi
 }
 
-# Wait for vyred to answer on its socket, up to a minute.
+# Wait for vyred to answer on its socket, up to a minute (VYRE_UPDATE_WAIT seconds).
 ready() {
   i=0
-  while [ $i -lt 60 ]; do
+  while [ $i -lt "${VYRE_UPDATE_WAIT:-60}" ]; do
     compose exec -T vyre vyre status >/dev/null 2>&1 && return 0
     i=$((i + 1)); sleep 1
   done
@@ -100,6 +177,263 @@ print_link() {
   if [ -n "$ssh" ]; then printf 'VYRE_SSH=%s\n' "$ssh"; fi
 }
 
+# The image the vyre service runs: built here as vyre:local, or pulled.
+image() {
+  if [ "$BUILD" = 1 ]; then echo vyre:local; return; fi
+  v=$(sed -n 's/^VYRE_IMAGE=//p' "$DIR/.env" 2>/dev/null | tail -n 1)
+  echo "${v:-${VYRE_IMAGE:-ghcr.io/vyre-ai/vyre:latest}}"
+}
+
+# backup_db VERSION: the CLI's own backup, in the container, into CHOME/backups/pre-VERSION.tar.gz
+# on the vyre-home volume, and a copy in $DIR/backups for the host. $DIR/backups/last names it,
+# for a failed update and for --rollback --restore-data.
+backup_db() {
+  f="$CHOME/backups/pre-$1.tar.gz"
+  csh 'mkdir -p "$1" && rm -f "$2"' "$CHOME/backups" "$f" \
+    || die "could not reach vyred's home in the container to back up; is the box up? (vyre up)"
+  compose exec -T vyre vyre backup "$f" >/dev/null || die "the backup before the update failed; nothing changed"
+  mkdir -p "$DIR/backups"
+  chmod 700 "$DIR/backups"
+  # It holds the sealed vault: only this account reads the host copy.
+  (umask 077; csh 'cat "$1"' "$f" >"$DIR/backups/pre-$1.tar.gz") || true
+  printf '%s\n' "$f" >"$DIR/backups/last"
+  say "backed up the database to $f (and $DIR/backups/pre-$1.tar.gz)"
+}
+
+# restore_db: put the pre-update backup back. restore wants vyred stopped, so the vyre container
+# stops and a one-off container of the same (already rolled back) image runs the restore.
+restore_db() {
+  f=$(cat "$DIR/backups/last" 2>/dev/null || true)
+  [ -n "$f" ] || { echo "vyre: no pre-update backup is recorded in $DIR/backups/last" >&2; return 1; }
+  compose stop vyre
+  compose run --rm --no-deps -T vyre vyre restore "$f" --force || { echo "vyre: could not restore $f" >&2; return 1; }
+  say "restored the database from $f"
+}
+
+# swap_dirs A B: exchange two folders (either may be missing).
+swap_dirs() {
+  rm -rf "$1.swap"
+  if [ -e "$1" ]; then mv "$1" "$1.swap"; fi
+  if [ -e "$2" ]; then mv "$2" "$1"; fi
+  if [ -e "$1.swap" ]; then mv "$1.swap" "$2"; fi
+}
+
+# save_box: the box files and this wrapper as they are now, into $DIR/box.prev.
+save_box() {
+  rm -rf "$DIR/box.prev"
+  mkdir -p "$DIR/box.prev"
+  for f in $BOXF VERSION; do if [ -f "$DIR/$f" ]; then cp -p "$DIR/$f" "$DIR/box.prev/$f"; fi; done
+  if [ -f "$WRAPPER" ]; then cp -p "$WRAPPER" "$DIR/box.prev/vyre"; fi
+}
+
+# put_box FROM [exact]: install the box files found in folder FROM into $DIR. With exact (putting
+# box.prev back), a file FROM does not have is removed, so $DIR matches it; compose.yml always stays.
+put_box() {
+  for f in $BOXF VERSION; do
+    if [ -f "$1/$f" ]; then cp "$1/$f" "$DIR/$f.new" && mv "$DIR/$f.new" "$DIR/$f"
+    elif [ "${2:-}" = exact ] && [ "$f" != compose.yml ]; then rm -f "$DIR/$f"
+    fi
+  done
+}
+
+# put_wrapper FILE: replace this wrapper with FILE, through a temp name in the same folder and a
+# rename, so the shell running this script keeps reading the old file. Only a file that is the box
+# wrapper and parses replaces it, and only the box wrapper is ever replaced. Call it last.
+put_wrapper() {
+  [ -f "$1" ] && [ -f "$WRAPPER" ] || return 0
+  grep -q "$MARK" "$WRAPPER" 2>/dev/null || return 0
+  cmp -s "$1" "$WRAPPER" && return 0
+  if ! grep -q "$MARK" "$1" || ! sh -n "$1"; then echo "vyre: the release's wrapper does not look right; kept $WRAPPER" >&2; return 0; fi
+  if cp "$1" "$WRAPPER.new.$$" 2>/dev/null && chmod 0755 "$WRAPPER.new.$$" && mv "$WRAPPER.new.$$" "$WRAPPER"; then
+    say "replaced $WRAPPER"
+  else
+    rm -f "$WRAPPER.new.$$" 2>/dev/null || true
+    echo "vyre: could not replace $WRAPPER (needs root); run: sudo install -m 0755 $1 $WRAPPER" >&2
+  fi
+}
+
+# android: bring the release's phone app into the container's releases folder, APK first and
+# android.json last through a temp name and a rename, the old manifest kept as android.json.prev.
+# Then releases.sign signs it with the owner's key. Its refusal is reported, never fatal.
+android() {
+  listed android.json || return 0
+  get android.json
+  apk=$(tr -d '\n' <"$tmp/android.json" | sed -n 's/.*"file": *"\([^"]*\)".*/\1/p')
+  case "$apk" in ""|*/*|.*|*[!A-Za-z0-9._-]*) echo "vyre: android.json names no usable file; the phone app stays as it was" >&2; return 0 ;; esac
+  get "$apk"
+  want=$(tr -d '\n' <"$tmp/android.json" | sed -n 's/.*"sha256": *"\([0-9a-f]*\)".*/\1/p')
+  if [ -n "$want" ] && [ "$want" != "$(sha256 "$tmp/$apk")" ]; then
+    echo "vyre: $apk does not match android.json's sha256; the phone app stays as it was" >&2; return 0
+  fi
+  rdir="$CHOME/releases/android"
+  csh 'mkdir -p "$1" && cat >"$1/.$2.partial" && mv "$1/.$2.partial" "$1/$2"' "$rdir" "$apk" <"$tmp/$apk" \
+    || { echo "vyre: could not copy $apk into the container" >&2; return 0; }
+  csh 'cat >"$1/.android.json.tmp" && { [ ! -f "$1/android.json" ] || cp "$1/android.json" "$1/android.json.prev"; } && mv "$1/.android.json.tmp" "$1/android.json"' "$rdir" <"$tmp/android.json" \
+    || { echo "vyre: could not copy android.json into the container" >&2; return 0; }
+  say "phone app $apk is in $rdir"
+  if s=$(compose exec -T vyre vyre call releases.sign 2>&1); then say "phone app signed"
+  else echo "vyre: releases.sign did not sign the phone app: $(printf '%s\n' "$s" | sed '/^ *$/d' | head -n 2 | tr '\n' ' ')" >&2
+  fi
+}
+
+# roll_back: undo a failed update: src, image, box files, then the database from the backup.
+roll_back() {
+  echo "vyre: the update did not come up healthy; rolling back" >&2
+  if [ "$BUILD_SRC" = 1 ] && [ -d "$DIR/src.prev" ]; then rm -rf "$DIR/src"; mv "$DIR/src.prev" "$DIR/src"; fi
+  if [ "$TAGGED" = 1 ]; then docker image tag vyre:prev "$IMG"; fi
+  put_box "$DIR/box.prev" exact
+  compose up -d || true
+  restore_db || true
+  compose up -d || true
+  ready || true
+  die "rolled back to the release before; the database is as it was before the update"
+}
+
+update() {
+  CHANNEL=${VYRE_CHANNEL:-stable}
+  TO=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --channel) [ $# -ge 2 ] || die "--channel needs stable or beta"; CHANNEL=$2; shift ;;
+      --channel=*) CHANNEL=${1#--channel=} ;;
+      --to) [ $# -ge 2 ] || die "--to needs a version"; TO=$2; shift ;;
+      --to=*) TO=${1#--to=} ;;
+      *) die "vyre update: unknown option $1" ;;
+    esac
+    shift
+  done
+  case "$CHANNEL" in stable|beta) ;; *) die "the channel is stable or beta, not $CHANNEL" ;; esac
+
+  tmp=$(mktemp -d)
+  trap 'rm -rf "$tmp"' EXIT
+  TAG=""
+  if [ "$USE_API" = 1 ]; then
+    if pick_release; then say "release $TAG ($CHANNEL) from GitHub"
+    elif [ -n "$TO" ]; then die "GitHub has no release $TO"
+    else say "no $CHANNEL release on GitHub yet; using $SITE"; BASE=$SITE
+    fi
+  fi
+
+  # Everything is downloaded and checked before anything on the box changes.
+  get_sums
+  BUILD_SRC=0
+  if [ "$BUILD" = 1 ]; then
+    src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
+    if [ "${src%/}" = "${DIR%/}/src" ]; then BUILD_SRC=1; get vyre.tgz; fi
+  fi
+  for f in $BOXF VERSION vyre release.json; do if listed "$f"; then get "$f"; fi; done
+  VERSION=$(tr -d ' \n' 2>/dev/null <"$tmp/VERSION" || true)
+  VERSION=${VERSION:-${TAG#v}}
+  VERSION=${VERSION:-$(date -u +%Y%m%d%H%M%S)}
+  if [ -f "$tmp/release.json" ]; then
+    min=$(tr -d '\n' <"$tmp/release.json" | sed -n 's/.*"min_from": *"\([^"]*\)".*/\1/p')
+    cur=$(compose exec -T vyre vyre version 2>/dev/null | tr -d ' \r\n' || true)
+    if [ -n "$min" ] && [ -n "$cur" ] && older "$cur" "$min"; then
+      die "this box runs $cur, and $VERSION updates from $min or newer: run vyre update --to $min first"
+    fi
+  fi
+  if [ "$BUILD_SRC" = 1 ]; then unpack_src; fi
+
+  # Now the box changes: back up, keep what runs, then swap in the new files.
+  backup_db "$VERSION"
+  IMG=$(image)
+  TAGGED=0
+  if docker image inspect "$IMG" >/dev/null 2>&1; then docker image tag "$IMG" vyre:prev; TAGGED=1; fi
+  save_box
+  put_box "$tmp"
+  if [ "$BUILD_SRC" = 1 ]; then
+    rm -rf "$DIR/src.prev"
+    if [ -d "$DIR/src" ]; then mv "$DIR/src" "$DIR/src.prev"; fi
+    mv "$DIR/src.new" "$DIR/src"
+  fi
+
+  if [ "$BUILD" = 1 ]; then ok=0; compose build --pull && ok=1
+  else ok=0; compose pull && ok=1
+  fi
+  if [ "$ok" = 0 ]; then
+    # Nothing new ran, so the database is untouched: put the files back only.
+    if [ "$BUILD_SRC" = 1 ] && [ -d "$DIR/src.prev" ]; then rm -rf "$DIR/src"; mv "$DIR/src.prev" "$DIR/src"; fi
+    put_box "$DIR/box.prev" exact
+    die "the new image did not build; the box files are back as they were and vyred was not restarted"
+  fi
+  compose up -d || roll_back
+  ready || roll_back
+  printf '%s\n' "$VERSION" >"$DIR/VERSION"
+  say "updated to $VERSION"
+
+  android
+  # Report only: a fresh link would void the one the user was sent and has not opened yet.
+  docker compose exec -T vyre vyre up --keep-link || true
+  put_wrapper "$tmp/vyre"
+  exit 0
+}
+
+# rollback: the previous release back by hand. The database stays unless --restore-data.
+rollback() {
+  DATA=0
+  YES=0
+  for a in "$@"; do
+    case "$a" in
+      --rollback) ;;
+      --restore-data) DATA=1 ;;
+      --yes|-y) YES=1 ;;
+      *) die "vyre update --rollback: unknown option $a" ;;
+    esac
+  done
+  IMG=$(image)
+  have_img=0
+  if docker image inspect vyre:prev >/dev/null 2>&1; then have_img=1; fi
+  [ -d "$DIR/src.prev" ] || [ -d "$DIR/box.prev" ] || [ "$have_img" = 1 ] || die "there is no previous release to roll back to"
+  if [ "$DATA" = 1 ]; then
+    f=$(cat "$DIR/backups/last" 2>/dev/null || true)
+    [ -n "$f" ] || die "no pre-update backup is recorded in $DIR/backups/last"
+    echo "vyre: --restore-data puts back the database from $f, and drops everything written since"
+    echo "  (threads, notes, settings and vault changes made after that update)."
+    if [ "$YES" = 0 ]; then
+      [ -t 0 ] || die "--restore-data drops data; on a terminal type the confirm line, or pass --yes"
+      printf 'type restore to go on: '
+      read -r answer || answer=""
+      [ "$answer" = restore ] || die "left the database alone"
+    fi
+  fi
+  # A swap, so a second --rollback goes forward again.
+  if [ -d "$DIR/src.prev" ]; then swap_dirs "$DIR/src" "$DIR/src.prev"; fi
+  if [ "$have_img" = 1 ]; then
+    if docker image inspect "$IMG" >/dev/null 2>&1; then docker image tag "$IMG" vyre:next; fi
+    docker image tag vyre:prev "$IMG"
+    if docker image inspect vyre:next >/dev/null 2>&1; then docker image tag vyre:next vyre:prev; docker image rm vyre:next >/dev/null; fi
+  fi
+  if [ -d "$DIR/box.prev" ]; then
+    rm -rf "$DIR/box.cur"
+    mkdir -p "$DIR/box.cur"
+    for f in $BOXF VERSION; do if [ -f "$DIR/$f" ]; then cp -p "$DIR/$f" "$DIR/box.cur/$f"; fi; done
+    if [ -f "$WRAPPER" ]; then cp -p "$WRAPPER" "$DIR/box.cur/vyre"; fi
+    put_box "$DIR/box.prev" exact
+    rm -f "$DIR/.vyre.back"
+    if [ -f "$DIR/box.prev/vyre" ]; then cp -p "$DIR/box.prev/vyre" "$DIR/.vyre.back"; fi
+    rm -rf "$DIR/box.prev"
+    mv "$DIR/box.cur" "$DIR/box.prev"
+  fi
+  compose up -d
+  ready || true
+  csh 'd=$1; [ -f "$d/android.json.prev" ] || exit 0; mv "$d/android.json.prev" "$d/.android.json.swap"; { [ ! -f "$d/android.json" ] || mv "$d/android.json" "$d/android.json.prev"; }; mv "$d/.android.json.swap" "$d/android.json"' \
+    "$CHOME/releases/android" || echo "vyre: could not put android.json.prev back" >&2
+  if [ "$DATA" = 1 ]; then
+    restore_db || die "rolled back the release, but the database restore failed"
+    compose up -d
+    ready || true
+  fi
+  if [ "$DATA" = 1 ]; then say "rolled back, with the database from before the update"
+  else say "rolled back; the database is the current one"
+  fi
+  # The previous wrapper goes back last, the same way an update replaces it.
+  if [ -f "$DIR/.vyre.back" ]; then put_wrapper "$DIR/.vyre.back"; rm -f "$DIR/.vyre.back"; fi
+  exit 0
+}
+
+BUILD=0
+if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then BUILD=1; fi
+
 case "${1:-}" in
   up)
     shift
@@ -117,17 +451,10 @@ case "${1:-}" in
     fi
     ;;
   update)
-    if grep -q '^COMPOSE_FILE=.*compose.build.yml' "$DIR/.env" 2>/dev/null; then
-      src=$(sed -n 's/^VYRE_SOURCE=//p' "$DIR/.env" | tail -n 1)
-      if [ "${src%/}" = "${DIR%/}/src" ]; then refresh_src; fi
-      compose build --pull
-    else
-      compose pull
-    fi
-    compose up -d
-    ready
-    # Report only: a fresh link would void the one the user was sent and has not opened yet.
-    cli up --keep-link
+    shift
+    for a in "$@"; do if [ "$a" = --rollback ]; then rollback "$@"; fi; done
+    for a in "$@"; do case "$a" in --restore-data|--yes|-y) die "$a goes with --rollback" ;; esac; done
+    update "$@"
     ;;
   logs)
     shift
