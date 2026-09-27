@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Design specs for tips, the Glass mini-view and the shared pieces
+
+- New specs in docs/design/system/components: tip (one quiet line or chip from tips.next on every
+  surface, and the one "What's new" card), glass-mini (what an agent is doing now: a small live
+  frame and its step line, from sight), suggestions (one list from suggest.query), account-row
+  (which account sends), credential-sheet (the one sheet for a missing key or sign-in) and
+  result-card (a vyre command's result drawn natively). needs-row gains the one waiting count
+  and row from waiting.list. Boards: TipLine and GlassMini, with paper boards.
+- appearance follows ADR 0035: appearance.theme is a preset (vyre) with choices from
+  appearance.presets, appearance.scheme (system, dark, paper) is its own key, and old theme
+  values map over for one release. appearance.check answers the hub's check call, and
+  appearance.resolve takes a device and a css format, re-checks what it paints and falls back to
+  the preset when a stored value breaks a rule. settings.changed is the repaint contract.
+
 #### The Capsule redesigned, and the design tokens in the hub
 
 - docs/design/system/capsule.md is the Design A Capsule for capsule-pro: keyboard first, a

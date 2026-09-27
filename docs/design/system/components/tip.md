@@ -35,11 +35,12 @@ the moment anything else needs the person. The words come from modules' `teaches
 "Hide tips about this" sits in the close's menu (a long press on the phone, a right click or the
 tip's ⋯ on desktop), never as a visible third control. It dismisses every tip from that module.
 
-**Tip chip** (the Deck and chat views). The same parts in a chip: height 28, padding 0 4 0 10,
+**Tip chip** (the Deck and chat views). The same parts in a chip: height 28, padding 0 2 0 10,
 radius 14, fill none, 1 px `--rule`, 12/16 `--label`, max width 560, the text truncating with an
 ellipsis (the full tip is its tooltip and its accessible name). It sits at the bottom left of the
 view's content column, 16 above the view's bottom edge (or above the composer in chat), in flow,
-never floating over content.
+never floating over content. Inside the chip, Show me and the × are 24 tall (the chip's own
+border takes the rest); their hit area stays 44 on touch.
 
 **New mark.** A tip with `whatsnew` starts with "New" 12/16 600 `--text-2` and a middle dot in
 `--label`. Never lime, violet or a filled badge.
@@ -47,15 +48,15 @@ never floating over content.
 **What's new card** (the Deck's Now, once after an update, on `tips.updated`). A card (card.md) at
 the top of Now, above the Needs rows: "What's new in 0.2" 15/600 `--text`, then up to three tip
 lines from that release, then "See all changes" (ghost, opens the release notes) and a close ×.
-One tap on × removes it for good. It never shows while `waiting.count` is above 0; it waits.
+The × sits top right, beside the title. One tap on × removes it for good. It never shows while `waiting.count` is above 0; it waits.
 
 ## Placements
 
 | Surface | Where | Only when |
 |---|---|---|
 | Capsule | a tip line under the empty input, in the body, padding 0 16, `--label` | the field is empty and nothing waits |
-| Deck | a tip chip at the bottom left of the view; inside an empty state, the line under `.empty-actions` | the view is idle |
-| Chat | the composer's hint line (under the composer, where the key hints sit) | the composer is empty |
+| Deck | a tip chip at the bottom left of the view; inside an empty state, the line under the empty state's row of buttons | the view is idle |
+| Chat | the composer's hint line: the tip on the left, the composer's key hints stay on the right | the composer is empty |
 | Phone | a tip line at the bottom of the Places sheet, and on empty screens under the empty state | the sheet or screen is idle |
 | Glass | none during a take-over; the frame never carries a tip | never |
 | CLI | a dim "tip:" line on stderr after the output (docs team) | the command succeeded |

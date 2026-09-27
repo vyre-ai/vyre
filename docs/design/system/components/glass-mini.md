@@ -39,9 +39,9 @@ second line, 12 `--text-2`.
 
 | Variant | Where | Frame | Picture |
 |---|---|---|---|
-| Card | Now, one per acting agent, under its agent row | 240 wide (desktop), full width minus 32 (phone) | `sight.watch` live on desktop; `sight.frame` still every 2 s on the phone |
+| Card | Now, one per acting agent, under its agent row | 240 wide (desktop), the screen width minus 32, drawn outside any card (phone) | `sight.watch` live on desktop; `sight.frame` still every 2 s on the phone |
 | Header | a thread whose agent has a computer, under the thread's top bar, collapsible | 320 wide, right aligned | `sight.watch` live |
-| Pill | the Capsule, and the phone's thread when the frame is collapsed | no picture: a pill 28 tall (pill.md) with the ring and the step line | none |
+| Pill | the Capsule, and the phone's thread when the frame is collapsed | no picture: a pill 28 tall (pill.md's shape) with the status mark and the step line at 13 `--text`, not pill.md's meta size | none |
 
 The Capsule never draws a picture of the user's own Mac (`sight.watch` answers `local_only`); for
 an agent's computer it shows the pill, and ⌘O opens Glass in the Deck.
@@ -52,11 +52,11 @@ an agent's computer it shows the pill, and ⌘O opens Glass in the Deck.
 |---|---|
 | Acting | the picture live, the step line with the running ring |
 | Between steps | the last step with its tick and age |
-| Waiting for you | the step line reads "Waiting for you: Send to dana@harlowlegal.com"; the waiting row (needs-row.md) owns the attention, the mini-view stays quiet |
+| Waiting for you | the done dot (hollow, status-mark.md), and the step line reads "Waiting for you: Send to dana@harlowlegal.com"; the waiting row (needs-row.md) owns the attention, the mini-view stays quiet |
 | Person holds the keyboard | the holder line; the frame gains the take-over bar only in full Glass |
-| Picture unavailable (phone over the relay, a slow link) | the last still, dimmed to 60 %, and "Picture paused · steps still live" 12 `--label` |
-| Done | the frame stays for 30 s with the last step, then collapses to the pill, then leaves with the run |
-| Stopped | "Stopped. 3 steps done." then it leaves after 4 s |
+| Picture unavailable (phone over the relay, a slow link) | the last still, dimmed to 60 %, with no Live badge, and "Picture paused · steps still live" 12 `--label` |
+| Done | the frame stays for 30 s with the last step, then collapses to the pill (a tick), then leaves with the run |
+| Stopped | no Live badge; "Stopped. 3 steps done." then it leaves after 4 s |
 
 ## Linking
 
@@ -68,7 +68,7 @@ an agent's computer it shows the pill, and ⌘O opens Glass in the Deck.
 ## Keyboard and touch
 
 The mini-view is one button: "Open Glass for kit's computer". Tab reaches it after the agent row;
-⏎ opens Glass. The header variant's collapse is its own icon button ("Hide screen", "Show screen").
+⏎ opens Glass. The header variant's collapse is its own icon button, a chevron ("Hide screen", "Show screen").
 On the phone the whole card is the target (44 at least).
 
 ## Motion
