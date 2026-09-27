@@ -2,7 +2,7 @@
 // A session on the paired Mac, in the fake DOM with a fake box and event stream: it has a
 // composer whose sends carry the machine, the lease line says where it is and what is queued (no
 // Take), an offline Mac keeps the words and says so, cards say "Answer it on", and the reply's
-// live rows give way to the Mac's turns so nothing shows twice. Sample world only.
+// live rows give way to the Mac's blocks (recall.transcript, source "mac") so nothing shows twice. Sample world only.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -54,6 +54,13 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const input = JSON.parse(o.body);
   calls.push({ tool, input });
   const ok = data => ({ status: 200, statusText: "", json: async () => ({ data }) });
+  if (tool === "recall.transcript") {
+    // The box reads the Mac's session as blocks through the link (source "mac"). Reply ids are the
+    // ones the live thread.text events carry (m1, m2), as Claude Code's message ids are.
+    const blocks = input.before != null ? [] : turns.slice(0, have).filter(t => t.seq >= (input.from || 0))
+      .map(t => t.role === "user" ? { seq: t.seq, kind: "user", ts: t.ts, text: t.text } : { seq: t.seq, kind: "text", ts: t.ts, message: "m" + (t.seq - 1) / 2, text: t.text });
+    return ok({ session: { id: MAC, cwd: "/Users/alex/work/northwind-bakery", name: "northwind" }, source: "mac", machine: "alex-mac", blocks, next: have, first: 0 });
+  }
   if (tool === "recall.thread") {
     const from = input.from || 0;
     return ok({ session: { id: MAC, cwd: "/Users/alex/work/northwind-bakery", name: "northwind" }, source: "mac", machine: "alex-mac", turns: turns.slice(from, have) });
@@ -84,7 +91,9 @@ test("a Mac session opens with a composer, the machine chip, 'On alex-mac' and n
   assert.match(text($(box, ".lease-bar")).trim(), /^On alex-mac$/);
   assert.equal($$(box, ".lease-bar button").length, 0, "no Take");
   assert.equal(count("It is open."), 1);
-  assert.ok(calls.some(c => c.tool === "recall.thread" && c.input.source === "mac"));
+  const read = calls.find(c => c.tool === "recall.transcript");
+  assert.ok(read && read.input.source === "mac" && read.input.limit === 80, "blocks from the Mac, in small pages");
+  assert.ok(!calls.some(c => c.tool === "recall.thread" || c.tool === "threads.get"), "no older turn view, no thread on the box");
 });
 
 test("a send carries the machine; the reply's live rows give way to the Mac's turns, once each", async () => {
@@ -101,7 +110,7 @@ test("a send carries the machine; the reply's live rows give way to the Mac's tu
   await wait();
   assert.equal(count("Check the pickup dates"), 1);
   assert.equal(count("Pickup dates are fine."), 1);
-  assert.ok(calls.some(x => x.tool === "recall.thread" && x.input.from === 2 && x.input.source === "mac"), "re-read from the last turn held");
+  assert.ok(calls.some(x => x.tool === "recall.transcript" && x.input.from === 2 && x.input.source === "mac"), "re-read from the last block held");
   assert.doesNotMatch(text($(box, ".thread-view")), /box:deck/);
 });
 

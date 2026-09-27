@@ -42,6 +42,7 @@ import { isMac, machineChip } from "../js/machine.js";
 import { blockRow, headRow, userRow, liveTextRow, toolCard, turnRow, rawView } from "./blocks.js";
 
 const PAGE = 400;
+const MAC_PAGE = 80;
 const KEEP = 1200; // blocks kept when a long session has to be paged forward to its end
 const RAW_KEY = "vyre.chat.raw";
 const readRaw = () => { try { return localStorage.getItem(RAW_KEY) === "1"; } catch { return false; } };
@@ -123,11 +124,11 @@ export function mountSession(container, opts) {
   // ---- open -----------------------------------------------------------------------
 
   async function boot() {
-    // A paired Mac's session is only ever a transcript the box asks the Mac for, read the older way.
-    if (isMac(where)) { names = await readNames(attempt); me = names.owner; return legacyBoot({ error: { message: "on the Mac" } }); }
-    // Everything at once: one round trip from a phone, not three.
+    // Everything at once: one round trip from a phone, not three. A paired Mac's session is only
+    // ever a transcript the box asks the Mac for (recall.transcript, source "mac"), never a thread
+    // here; a box without that read gets the older turn view.
     const [r, t, nm] = await Promise.all([
-      opts.recorded ? { error: { message: "not a Switchboard session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
+      opts.recorded || isMac(where) ? { error: { message: "not a Switchboard session" } } : attempt("threads.get", { thread, since: 0, limit: 500 }),
       readTail(),
       readNames(attempt),
     ]);
@@ -169,21 +170,26 @@ export function mountSession(container, opts) {
     fetchMemory();
   }
 
+  /** Pages from a paired Mac are smaller: each is one link reply, under its 5 MB body cap. */
+  const page = () => isMac(where) ? MAC_PAGE : PAGE;
+  /** One read of the session as blocks, from the Mac when it lives there. @param {Record<string, any>} q */
+  const transcript = q => attempt("recall.transcript", { session: thread, ...q, limit: page(), ...(isMac(where) ? { source: "mac" } : {}) });
+
   /** The latest page of the session. A box that reads from the start (no `first` in the answer) is paged forward to its end. */
   async function readTail() {
-    const t = await attempt("recall.transcript", { session: thread, limit: PAGE });
+    const t = await transcript({});
     if (t.error) return t;
     let data = t.data;
     next = data.next ?? 0;
     first = typeof data.first === "number" ? data.first : typeof data.before === "number" ? data.before : null;
-    if (first == null && data.blocks.length >= PAGE) {
+    if (first == null && data.blocks.length >= page()) {
       let all = data.blocks;
       for (let i = 0; i < 20; i++) {
-        const more = await attempt("recall.transcript", { session: thread, from: next, limit: PAGE });
+        const more = await transcript({ from: next });
         if (more.error || !more.data.blocks.length) break;
         all = all.concat(more.data.blocks).slice(-KEEP);
         next = more.data.next ?? next;
-        if (more.data.blocks.length < PAGE) break;
+        if (more.data.blocks.length < page()) break;
       }
       data = { ...data, blocks: all };
       first = all.length ? all[0].seq : null;
@@ -246,7 +252,7 @@ export function mountSession(container, opts) {
   async function loadEarlier() {
     if (first == null) return;
     put(earlier, h("span", { class: "cv-note" }, "Loading…"));
-    const r = await attempt("recall.transcript", { session: thread, before: first, limit: PAGE });
+    const r = await transcript({ before: first });
     if (r.error) { put(earlier, h("span", { class: "cv-note" }, "Could not load earlier.")); return; }
     const older = r.data.blocks.filter(b => !seen.has(blockKey(b)) && (first == null || b.seq < first));
     const h0 = timeline.scrollHeight;
@@ -398,7 +404,7 @@ export function mountSession(container, opts) {
     try {
       do {
         reading.again = false;
-        const r = await attempt("recall.transcript", { session: thread, from: next, limit: PAGE });
+        const r = await transcript({ from: next });
         if (r.error) break;
         if (r.data.session && recorded.on) { recorded.session = r.data.session; drawHead(); }
         if (r.data.blocks.length) timeline.querySelector(".th-wait")?.remove();
@@ -406,7 +412,7 @@ export function mountSession(container, opts) {
         addRich(r.data.blocks);
         next = r.data.next ?? next;
         if (timeline.scrollHeight !== n) grew();
-        if (r.data.blocks.length >= PAGE) reading.again = true;
+        if (r.data.blocks.length >= page()) reading.again = true;
       } while (reading.again);
     } finally { reading.busy = false; }
   }
