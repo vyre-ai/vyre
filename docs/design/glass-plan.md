@@ -96,13 +96,18 @@ still leak:
    (`link.latencyMs` from `glass.open`, read once at connect); every other "what's happening now"
    surface in Vyre updates live, so this is the one that goes stale mid-session. Needs continuous
    sampling and one event, not a bigger UI change — the render side is already there.
-2. **Native full screen** (M): browser Fullscreen API is wired on Deck; extend to phone
-   (`deck/glass/phone.js`) and verify iOS Safari's fullscreen restrictions (iOS Safari has no
-   real element fullscreen in some contexts — may need a CSS "cover the viewport" fallback
-   instead of the API). A Mac native window through the Capsule is L: needs a real window (not a
-   panel/extension) hosting the same RFB canvas, which is new Capsule-native surface, not a
-   Glass-side change alone — coordinate with capsule-pro. This is the user's literal ask ("feels
-   like my own screen"); reprioritized to the top per cohesion/the lead.
+2. **Native full screen** (M): CORRECTED 28 Sep by the new browser harness (section 8) — the
+   Fullscreen button (`fullBtn` in `watch.js`) is built but only ever placed in the phone
+   layout's markup; on Deck it exists as a JS object with nowhere to render, so Deck has no
+   fullscreen control at all today. The earlier draft of this plan said it was "wired on Deck" —
+   that was wrong, caught by `deck/test/glass-browser.js` actually loading the desktop route and
+   finding no such element. Work: add the same control to the desktop layout (`gl-stagewrap`
+   header), verify iOS Safari's fullscreen restrictions on the phone one that already exists
+   (iOS Safari has no real element fullscreen in some contexts — may need a CSS "cover the
+   viewport" fallback instead of the API). A Mac native window through the Capsule is L: needs a
+   real window (not a panel/extension) hosting the same RFB canvas, which is new Capsule-native
+   surface, not a Glass-side change alone — coordinate with capsule-pro. This is the user's
+   literal ask ("feels like my own screen"); reprioritized to the top per cohesion/the lead.
 3. **`sight.frame` for the reconnect still and the resting-tile preview** (S): already agreed with
    cohesion (2026-09-28) — call `sight.frame` right when the socket drops, show that as the frozen
    frame, swap to the live stream once `sight.watch`'s ticket reconnects; same call, small
@@ -143,30 +148,27 @@ work/glass-live behind it.
   function with a unit test (`watch.test.js`), rendered next to the connection badge. It is an
   open-time snapshot today, not the closed loop cohesion asked for (item 1 above) — that part is
   still open.
-- **1:1 zoom toggle, DPR-aware canvas sizing, sight.frame reconnect still** — written up but not
-  yet coded. Blocker: `deck/glass` has no test harness that mounts `mountScreen` (only pure
-  helpers extracted from `watch.js`/`input.js` are unit-tested; nothing exercises the RFB/DOM
-  wiring these three touch). Landing them on inspection alone, in the same file that just carried
-  the security-review take-over work, was judged too risky without either (a) a live check on
-  testbox the way the isolation fixes got one, or (b) a browser-mounting test added first. Flagged
-  to the lead 28 Sep; the resolution decides which of (a)/(b) happens before this code ships.
+- **1:1 zoom toggle, DPR-aware canvas sizing, sight.frame reconnect still** — written up, not yet
+  coded. Was blocked on `deck/glass` having no test harness for `mountScreen`'s RFB/DOM wiring;
+  the lead's call was to build that harness first rather than land untested changes in the same
+  file the security review just went through. Built (section 8, `deck/test/glass-browser.js`,
+  8/8 on testbox), so these three are now unblocked and next.
 
 ## 6. Tests that improve UX (measurable)
 
+Built, in `deck/test/glass-browser.js` (section 8): mount/connect, fit ratio, take-over class,
+reconnect-keeps-last-frame, phone fullscreen wiring, and resize/layout at Deck (1440) and phone
+(390) widths, plus a screenshot of each state. Still open:
+
 - **Latency budget test**: scripted RFB connect + input round-trip, assert p95 under the target
-  in section 4.3, over both Tailscale-direct and relay paths (two runs, two budgets).
+  in section 4.3, over both Tailscale-direct and relay paths (two runs, two budgets). Needs the
+  closed-loop sampling from item 1 to have a number to assert on.
 - **Frame-drop budget test**: capture N seconds of frame timestamps during a scripted
   mouse-drag, assert dropped-frame percentage under budget.
-- **Fullscreen toggle test**: Deck and phone, assert the stage element enters/exits fullscreen
-  and the canvas resizes to fill it without layout shift.
-- **Resize/fit correctness**: resize the host window through 3-4 sizes, assert `scaleViewport`
-  keeps the full remote desktop visible with no clipped edge and no letterboxing beyond the
-  expected aspect-ratio bars.
-- **Screenshot diff at Deck (1440) and phone (390)** widths, both themes — this branch already
-  has the pattern (`docs/design/boards/*.dc.html` mockups); wire it to the live watch view, not
-  just the static mockup, so regressions in the real RFB canvas surface, not only in markup.
-- **Reconnect test**: kill the socket mid-session, assert the still-frame fallback shows within
-  one frame interval and the black-flash duration is 0 (or under one frame).
+- **Deck fullscreen toggle test**: once item 2 ships a Deck control, add the same
+  stub-and-click check `glass-browser.js` already does for the phone one.
+- **DPR/1:1 correctness**: once those land, assert canvas backing-store size against
+  devicePixelRatio and the toggle's state.
 
 ## 7. Coordinate with cohesion — resolved 28 Sep
 
@@ -185,18 +187,57 @@ work/glass-live behind it.
   other inline-image source (files the agent made — Canva renders, saved screenshots, not a live
   screen) is explicitly unowned, open for 0.1.1, the lead's call.
 
+## 8. Browser harness — built 28 Sep
+
+`deck/glass` had no test that mounts `mountScreen` — only pure helpers extracted from
+`watch.js`/`input.js` were unit-tested. Built one, real Chrome on testbox, real vyred, real Glass
+WS relay, no Docker:
+
+- `test/fixtures/fake-xvnc.js` — a minimal RFB server (extracted from `core/computers/glass.test.js`,
+  which now imports it too rather than keeping its own copy), enough handshake for a real client
+  to reach `connected`, plus `sendFrame()` (one raw-encoded rect, so a real canvas paints
+  something) and `crash()` (kills the TCP connection, standing in for a dead container).
+- `deck/test/glass-world.js` — a throwaway `VYRE_HOME` with `role: "box"` (computers/glass are
+  box-role modules; the default on a Mac is `local`, which silently runs neither — first thing
+  the harness caught) and `computers: { driver: "fake", local: {...} }` pointed at the fake Xvnc,
+  an agent with a real `computers.checkout`, and the same HTTP+WS proxy `deck/test/world.js` uses
+  so the real Deck page and the real Glass relay are exercised, not a mock. Prints `{ready, url,
+  agent}` on stdout, same contract as `deck/test/native-bar/world.js`.
+- `deck/test/glass-browser.js` — drives it with `deck/test/cdp.js` (no Playwright dependency,
+  matching the rest of the repo's browser checks), one JSON line per check plus a screenshot.
+  Run: `node deck/test/glass-browser.js --port 4757` (testbox only, one Chrome at a time).
+
+Run 28 Sep on testbox: 8/8 checks pass — mount/connect, fit ratio, take-over (`gl-held`, no
+passkey prompt, matching the PERSON_ONLY change), reconnect (`gl-snap` stays visible after the
+backend crashes, no black canvas), phone fullscreen (real click, stubbed `requestFullscreen`,
+called once on the stage element), and both resize/layout checks (phone lays out as `gl-phone`,
+Deck as `gl-stagewrap`). Screenshots confirmed real UI (take-over state, the "kit is paused while
+you drive" copy), not a blank page.
+
+**What the harness caught immediately**: the fullscreen button (`fullBtn` in `watch.js`) is built
+but only placed in the phone layout's markup — Deck has no fullscreen control at all today. An
+earlier draft of this plan (section 4, item 2) said it was "wired on Deck"; that was wrong, and
+the harness is what caught it by actually loading the desktop route and finding no such element.
+Corrected above. This is the harness earning its cost on its first run.
+
+Two things it does not cover yet, needed before 1:1/DPR land: canvas pixel-content assertions
+(today's checks are structural — classes, sizes, element presence — not "does this pixel match");
+and a way to fetch `devicePixelRatio`-scaled screenshots (CDP's `Page.captureScreenshot` needs an
+explicit `Emulation.setDeviceMetricsOverride` deviceScaleFactor, which `cdp.js`'s `openTab`
+already takes as `scale`, so this is wiring, not new capability).
+
 ## 0.1.1 build list
 
 | Item | Size | Owner | Status (28 Sep) |
 |---|---|---|---|
 | Merge the two HIGH e2e fixes + fill contract onto main | — | glass (this session) | done, 14f1824c, sent to e2e for rc.2 |
 | Live latency badge | S | glass | done, 47d90b0c |
+| `deck/glass` browser harness (real Chrome, real vyred, fake Xvnc) | M | glass | done, `deck/test/glass-browser.js`, 8/8 on testbox 28 Sep |
 | Close the latency badge's loop (continuous sampling, one event) | S/M | glass | top-2, cohesion's interaction pass |
-| Native full screen: phone + Mac window in the Capsule | L | glass + capsule-pro | top-2, the user's literal ask |
-| Reconnect still + resting-tile preview via sight.frame | S | glass + cohesion | agreed, needs a test path before coding |
-| 1:1 zoom toggle | S | glass | blocked on test harness decision |
-| DPR-aware canvas sizing | S | glass | blocked on test harness decision |
-| Phone fullscreen + iOS fallback | M | glass | |
+| Native full screen: Deck control (missing entirely — harness found it), phone iOS fallback, Mac window in the Capsule | L | glass + capsule-pro | top-2, the user's literal ask; scope corrected 28 Sep |
+| Reconnect still + resting-tile preview via sight.frame | S | glass + cohesion | agreed, harness ready to verify it |
+| 1:1 zoom toggle | S | glass | unblocked, harness in place |
+| DPR-aware canvas sizing | S | glass | unblocked; needs a devicePixelRatio-scaled screenshot check added to the harness first |
 | Two-way clipboard while shielded | M | glass + computers | |
 | IME-aware input testing/fix | M | glass | |
 | fps/latency instrumentation + CI budgets | M | glass + e2e | shares the sampling loop above |
@@ -204,4 +245,3 @@ work/glass-live behind it.
 | Reconcile event families (computer.* vs glass.*) | M | glass | |
 | Move handback settings into the settings hub | S | glass | |
 | Re-skin Glass boards against Design A | M | glass + app-design | |
-| A `deck/glass` browser-mounting test harness | M | glass | new, needed before item above three land |
