@@ -22,8 +22,6 @@ Definition of done: the user uses Vyre chat for a full working day instead of th
 - The native-bar harness (deck/test/native-bar/), fake bursty stream, testbox Chrome.
 
 ## Known follow-ups
-- The new Notifications group duplicates the old Notifications section (both write push.settings):
-  fold the old one into the registry view, keep devices + test there.
 - Screenshots of Settings in one world (needs a Chrome run on testbox).
 - Canvas Settings.dc.html has list+detail with value summaries, J/K / Space keys, "Saved" check:
   not matched yet.

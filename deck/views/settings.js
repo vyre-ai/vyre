@@ -114,7 +114,7 @@ export default async function settings(ctx) {
     drawSetup(body.setup), drawYou(body.you), drawAssistant(body.assistant, ctx), drawClaude(body.claude),
     // Imported on its own, so a problem in that file shows here and never blanks Settings.
     import("./connections.js").then(m => m.drawConnections(body.connections, ctx)).catch(e => put(body.connections, empty("Connections did not load.", e))),
-    import("./settings-keys.js").then(m => m.drawKeys(keysBody, ctx, { taken: new Set(SECTIONS.map(([id]) => id)) })).then(k => {
+    import("./settings-keys.js").then(m => m.drawKeys(keysBody, ctx, { taken: new Set(SECTIONS.map(([id]) => id)), skip: new Set(["notifications"]) })).then(k => {
       keys = k;
       if (!k.groups.length || !ctx.alive()) return;
       put(keysNav, h("div", { class: "set-nav-h lbl" }, "Sessions and Claude"), k.groups.map(g => navLink(g.id, g.label)));
@@ -772,14 +772,17 @@ async function drawNotifications(el, ctx) {
       ? { start: start.value, end: end.value, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone } : null });
     syncQuiet();
     for (const el2 of [quietOn, start, end]) el2.addEventListener("change", () => { syncQuiet(); saveQuiet(); });
-    const KINDS = [["ask", "Permission questions"], ["draft", "Held drafts"], ["watch", "Threads you're watching"], ["lesson", "Lessons"]];
+    const KINDS = [["ask", "Permission questions"], ["draft", "Held drafts"], ["watch", "Threads you're watching"], ["lesson", "Lessons"],
+      ["planner", "Alarms, timers and reminders"]];
+    const words = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: s.planner_label === true,
+      onchange: () => attempt("push.settings", { planner_label: words.checked }) }));
     put(settingsBox, h("div", { class: "rows" },
       row("Quiet hours", quietOn, start, h("span", { class: "small faint" }, "to"), end)),
       h("div", { class: "rows" }, KINDS.map(([k, label]) => {
         const box = /** @type {HTMLInputElement} */ (h("input", { type: "checkbox", checked: s.kinds?.[k] !== false,
           onchange: () => attempt("push.settings", { kinds: { [k]: box.checked } }) }));
         return row(label, box);
-      })),
+      }), row("Show a reminder's own words on the lock screen", words)),
       sub ? foot(h("button", { type: "button", class: "btn btn-sm", onclick: async () => {
         put(st, "Sending."); const t = await attempt("push.test");
         put(st, t.error ? errText(t.error) : t.data?.sent ? "Sent." : "Not sent.");

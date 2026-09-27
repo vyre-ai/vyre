@@ -44,7 +44,7 @@ const same = (/** @type {any} */ a, /** @type {any} */ b) => JSON.stringify(a) =
  * which scrolls to one row and highlights it.
  * @param {HTMLElement} el
  * @param {{ on: Function, cleanup: Function, alive: () => boolean, query?: URLSearchParams }} ctx
- * @param {{ attempt?: typeof apiAttempt, delay?: number, taken?: Set<string>, css?: boolean }} [deps]
+ * @param {{ attempt?: typeof apiAttempt, delay?: number, taken?: Set<string>, skip?: Set<string>, css?: boolean }} [deps]
  */
 export async function drawKeys(el, ctx, deps = {}) {
   const attempt = deps.attempt || apiAttempt;
@@ -63,7 +63,9 @@ export async function drawKeys(el, ctx, deps = {}) {
   }
   /** @type {Def[]} */
   const defs = Array.isArray(sc.data?.keys) ? sc.data.keys : [];
-  const groups = (Array.isArray(sc.data?.groups) ? sc.data.groups : []).filter(g => defs.some(k => k.group === g.id));
+  // A group an older section already draws in full (Notifications, with its devices) stays there.
+  const skip = deps.skip || new Set();
+  const groups = (Array.isArray(sc.data?.groups) ? sc.data.groups : []).filter(g => !skip.has(g.id) && defs.some(k => k.group === g.id));
 
   const state = { level: /** @type {"account"|"project"} */ ("account"), project: "", advanced: false, find: "" };
   /** @type {{ slug: string, name: string }[]} */
