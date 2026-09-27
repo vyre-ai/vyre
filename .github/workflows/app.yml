@@ -1,4 +1,5 @@
-# The one Expo app (ADR 0027), apps/app, with its own package.json and lockfile outside the root
+# The one Expo app (ADR 0027), apps/app, with its own package.json and lockfile outside the root;
+# it imports core/resilience (Metro watchFolders), so jobs check out the whole repo
 # (the box's npm ci never pulls Expo). Tests and typecheck on every push; the web export with its
 # gzipped size; an Android debug APK and a release APK (minify and Hermes exercised, signed with
 # the throwaway debug key prebuild generates on the runner, never the real release key). iOS is
@@ -8,9 +9,9 @@
 name: app
 on:
   push:
-    paths: ["apps/app/**", ".github/workflows/app.yml"]
+    paths: ["apps/app/**", "core/resilience/**", ".github/workflows/app.yml"]
   pull_request:
-    paths: ["apps/app/**", ".github/workflows/app.yml"]
+    paths: ["apps/app/**", "core/resilience/**", ".github/workflows/app.yml"]
   workflow_dispatch:
     inputs:
       ios:
