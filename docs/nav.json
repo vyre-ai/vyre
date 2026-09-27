@@ -23,6 +23,7 @@
       "using/learning.md",
       "using/glass.md",
       "using/watchers.md",
+      "using/planner.md",
       "using/connectors.md",
       "using/tailscale.md",
       "using/mobile.md",
@@ -70,6 +71,8 @@
       "adr/0019-docs-site.md",
       "adr/0020-claude-code-plugin.md",
       "adr/0021-box-reads-the-mac.md",
+      "adr/0024-chat.md",
+      "adr/0025-planner.md",
       "adr/0029-resilience.md"
     ]},
     { "title": "Security", "pages": ["security/index.md"] },

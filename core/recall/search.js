@@ -259,8 +259,11 @@ export function thread(db, { session, from = 0, limit = 200 }) {
     row = like[0];
   }
   if (!row) throw new Error(`no session ${session}`);
+  // id and at are what a live session.turn carries too (recall.watch), so one renderer draws both:
+  // a text turn's id is its seq as a string.
   const turns = db.prepare("SELECT seq, role, ts, text FROM recall_turns WHERE session = ? AND seq >= ? ORDER BY seq LIMIT ?")
-    .all(row.id, from, Math.max(1, Math.min(2000, limit)));
+    .all(row.id, from, Math.max(1, Math.min(2000, limit)))
+    .map(t => ({ id: String(t.seq), ...t, at: t.ts }));
   return { session: row, turns };
 }
 
