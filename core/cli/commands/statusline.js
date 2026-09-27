@@ -5,6 +5,11 @@
 // there, with their consent, and never over a status line they already have: `--chain` keeps
 // theirs and puts Vyre's line under it. Every write keeps the other keys, and the first write
 // leaves settings.json.vyre-backup next to it. `uninstall` undoes only what is Vyre's.
+//
+// --json: show prints { line, from }; install and uninstall print { state, file, ... } where state
+// is installed, already, offered, would, declined (install) or removed, none, not_ours
+// (uninstall). Under --view install never asks on a terminal: it answers with a yes/no prompt
+// frame whose args are the command to run on yes.
 
 import fs from "node:fs";
 import os from "node:os";
@@ -14,6 +19,7 @@ import { call } from "../../daemon/client.js";
 import { REPO } from "../../daemon/index.js";
 import * as config from "../../config/index.js";
 import { out, dim, signal, beacon } from "../style.js";
+import { EXIT, json, emit, fail, failTool, usage, viewing } from "../kit.js";
 
 export const TEMPLATE = path.join(REPO, "harness", "statusline", "statusline.sh");
 
@@ -77,6 +83,28 @@ const terminal = {
   },
 };
 
+/** Every verb run() handles, for `vyre commands --json`. `vyre statusline` alone shows the line. */
+export const VERBS = [
+  { verb: "show", summary: "the line as it is now (the default)", usage: "[--json]", read: true },
+  { verb: "install", summary: "put Vyre's line under every Claude Code session; --chain keeps yours above it", usage: "[--chain] [--yes] [--json]" },
+  { verb: "uninstall", summary: "take Vyre's line out, putting yours back", usage: "[--json]" },
+];
+
+/**
+ * The end of install or uninstall: the words for a person, or one JSON value under --json.
+ * @param {number} code @param {Record<string, any>} data @param {string[]} lines
+ */
+function report(code, data, lines) {
+  if (json()) emit(data);
+  else for (const l of lines) out(l);
+  return code;
+}
+
+/** settings.json did not parse: nothing was changed. @param {string} file @param {string} why */
+const unreadable = (file, why) => json()
+  ? fail(`${file} does not parse (${why}). Nothing was changed.`, { code: "bad_settings", next: "fix the JSON, then run it again" })
+  : (out(beacon(`  ${file} does not parse (${why}). Nothing was changed.`)), EXIT.FAILED);
+
 /** @typedef {{ tty: boolean, ask(q: string): Promise<string> }} IO */
 /** @typedef {{ env?: NodeJS.ProcessEnv, home?: string, io?: IO }} Deps */
 
@@ -90,22 +118,30 @@ export async function install(args, deps = {}) {
   const chain = args.includes("--chain"), yes = args.includes("--yes") || args.includes("-y");
   const file = settingsPath(env), f = files(home);
   const s = readSettings(file);
-  if (!s.ok) { out(beacon(`  ${file} does not parse (${s.why}). Nothing was changed.`)); return 1; }
+  if (!s.ok) return unreadable(file, s.why);
   const sl = s.data.statusLine;
-  if (isOurs(sl, home)) { writeScript(home); out(`  Vyre's status line is already installed ${dim("· " + file)}`); return 0; }
+  if (isOurs(sl, home)) { writeScript(home); return report(0, { state: "already", file }, [`  Vyre's status line is already installed ${dim("· " + file)}`]); }
   const theirs = sl && typeof sl === "object" && typeof sl.command === "string" && sl.command.trim() ? sl.command : null;
   if (sl && !chain) {
-    out(`  you already have a status line; ${signal("vyre statusline install --chain")} keeps it and adds Vyre's line under it`);
-    if (theirs) out(dim(`  yours: ${theirs}`));
-    return 0;
+    return report(0, { state: "offered", file, theirs, next: "vyre statusline install --chain" },
+      [`  you already have a status line; ${signal("vyre statusline install --chain")} keeps it and adds Vyre's line under it`, ...(theirs ? [dim(`  yours: ${theirs}`)] : [])]);
   }
-  if (sl && !theirs) { out(beacon("  your statusLine has no command to keep, so it cannot be chained. Nothing was changed.")); return 1; }
+  if (sl && !theirs) {
+    const why = "your statusLine has no command to keep, so it cannot be chained. Nothing was changed.";
+    return json() ? fail(why, { code: "cannot_chain" }) : (out(beacon("  " + why)), 1);
+  }
 
   const what = theirs ? `set Claude Code's status line to Vyre's, keeping yours above it (${file})` : `set Claude Code's status line to Vyre's (${file})`;
   if (!yes) {
-    if (!io.tty) { out(`  would ${what}`); out(dim("  run it again with --yes to do it. Nothing was changed.")); return 0; }
+    // A surface has no terminal to answer y/N on: it is asked as a prompt, and runs args on yes.
+    if (viewing()) {
+      emit({ state: "asked", file, what }, { kind: "prompt", name: "yes", label: what[0].toUpperCase() + what.slice(1) + "?", choices: ["yes", "no"],
+        args: ["statusline", "install", ...(chain ? ["--chain"] : []), "--yes"] });
+      return EXIT.USAGE;
+    }
+    if (!io.tty) return report(0, { state: "would", file, what, next: `vyre statusline install${chain ? " --chain" : ""} --yes` }, [`  would ${what}`, dim("  run it again with --yes to do it. Nothing was changed.")]);
     const a = await io.ask(`  ${what}? [y/N] `);
-    if (!/^y(es)?$/i.test(a)) { out(dim("  Nothing was changed.")); return 0; }
+    if (!/^y(es)?$/i.test(a)) return report(0, { state: "declined", file }, [dim("  Nothing was changed.")]);
   }
   writeScript(home);
   if (theirs) {
@@ -115,10 +151,10 @@ export async function install(args, deps = {}) {
   backup(file, s.exists);
   writeSettings(file, { ...s.data, statusLine: { type: "command", command: ours(home), padding: 0 } });
   fs.rmSync(f.declined, { force: true });
-  out(signal("  installed") + ` Vyre's status line in ${file}${theirs ? dim(" · yours still shows, above it") : ""}`);
-  if (s.exists) out(dim(`  the old file is in ${file}.vyre-backup`));
-  out(dim("  it shows in new Claude Code sessions; vyre statusline uninstall takes it out"));
-  return 0;
+  return report(0, { state: "installed", file, chained: Boolean(theirs), backup: s.exists ? `${file}.vyre-backup` : null }, [
+    signal("  installed") + ` Vyre's status line in ${file}${theirs ? dim(" · yours still shows, above it") : ""}`,
+    ...(s.exists ? [dim(`  the old file is in ${file}.vyre-backup`)] : []),
+    dim("  it shows in new Claude Code sessions; vyre statusline uninstall takes it out")]);
 }
 
 /**
@@ -129,10 +165,10 @@ export async function uninstall(deps = {}) {
   const env = deps.env || process.env, home = deps.home || config.home();
   const file = settingsPath(env), f = files(home);
   const s = readSettings(file);
-  if (!s.ok) { out(beacon(`  ${file} does not parse (${s.why}). Nothing was changed.`)); return 1; }
+  if (!s.ok) return unreadable(file, s.why);
   const sl = s.data.statusLine;
-  if (!sl) { out(`  no status line is installed ${dim("· " + file)}`); return 0; }
-  if (!isOurs(sl, home)) { out(`  your status line is not Vyre's, so it stays ${dim("· " + file)}`); return 0; }
+  if (!sl) return report(0, { state: "none", file }, [`  no status line is installed ${dim("· " + file)}`]);
+  if (!isOurs(sl, home)) return report(0, { state: "not_ours", file }, [`  your status line is not Vyre's, so it stays ${dim("· " + file)}`]);
   let prev = null;
   try { prev = JSON.parse(fs.readFileSync(f.prevJson, "utf8")); } catch {}
   if (!prev) { try { const c = fs.readFileSync(f.prev, "utf8").trim(); if (c) prev = { type: "command", command: c }; } catch {} }
@@ -141,8 +177,7 @@ export async function uninstall(deps = {}) {
   backup(file, true);
   writeSettings(file, next);
   for (const p of [f.script, f.prev, f.prevJson]) fs.rmSync(p, { force: true });
-  out(signal("  removed") + ` Vyre's status line from ${file}${prev ? dim(" · yours is back") : ""}`);
-  return 0;
+  return report(0, { state: "removed", file, restored: Boolean(prev) }, [signal("  removed") + ` Vyre's status line from ${file}${prev ? dim(" · yours is back") : ""}`]);
 }
 
 /**
@@ -170,27 +205,29 @@ export async function offerStatusline({ interactive, env = process.env, home = c
 /** The line now: from vyred, or from the file it keeps when vyred does not answer. */
 async function show(home = config.home()) {
   const r = await call("statusline.line", {}, { timeout: 3000 });
-  if (!r.error && r.data && r.data.line) { out(`  ${r.data.line}`); return 0; }
+  const shown = (/** @type {string} */ line, /** @type {string} */ from) => json() ? emit({ line, from }, { kind: "text", lines: [line] }) : (out(`  ${line}`), 0);
+  if (!r.error && r.data && r.data.line) return shown(r.data.line, "vyred");
   try {
     const [pid, line] = fs.readFileSync(files(home).line, "utf8").split("\n");
     // kill(0) would signal our own process group and always succeed.
     if (!(Number(pid) > 0)) throw new Error("no pid");
     process.kill(Number(pid), 0);
-    if (line) { out(`  ${line}`); return 0; }
+    if (line) return shown(line, "file");
   } catch {}
+  if (json()) return failTool(r.error || { code: "unreachable" });
   out(`  vyred is not running ${dim("· vyre up to start it")}`);
   return 1;
 }
 
 export default {
-  name: "statusline", order: 70, usage: "vyre statusline [install|uninstall]",
+  name: "statusline", order: 70, usage: "vyre statusline [show | install [--chain] [--yes] | uninstall] [--json]",
   summary: "Vyre's line under every Claude Code session",
+  verbs: VERBS,
   async run(/** @type {string[]} */ args) {
-    const [verb, ...rest] = args;
-    if (!verb) return show();
+    const [verb, ...rest] = args.filter(a => a !== "--json");
+    if (!verb || verb === "show") return show();
     if (verb === "install") return install(rest);
     if (verb === "uninstall") return uninstall();
-    out("  vyre statusline [install [--chain] [--yes] | uninstall]");
-    return 1;
+    return usage(`vyre statusline ${verb}: not a verb`, "vyre statusline [show | install [--chain] [--yes] | uninstall]");
   },
 };

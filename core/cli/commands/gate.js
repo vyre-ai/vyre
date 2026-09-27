@@ -17,11 +17,19 @@ import { spawnSync } from "node:child_process";
 import { call } from "../../daemon/client.js";
 import { callAsPerson } from "../presence.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, fail, failTool, usage, parse } from "../kit.js";
+import { EXIT, json, emit, fail, failTool, usage, parse, viewing } from "../kit.js";
 import { up } from "./projects.js";
 import { id8, cut, age, sourceOf } from "./needs.js";
 
-const SUBS = ["list", "ls", "show", "get", "approve", "send", "reject", "discard", "revise", "edit"];
+/** Every verb gate() handles, for `vyre commands --json`; gate() refuses any other word. */
+export const VERBS = [
+  { verb: "list", aliases: ["ls"], summary: "the held drafts, newest first (the default)", usage: "[--project <p>] [--thread <t>] [--json]", read: true },
+  { verb: "show", aliases: ["get"], summary: "one draft in full: where it goes, the words, what approving takes", usage: "<id> [--json]", read: true },
+  { verb: "approve", aliases: ["send"], summary: "send exactly what show shows; asks you to prove it is you", usage: "<id> [--json]", person: true },
+  { verb: "reject", aliases: ["discard"], summary: "discard it; nothing is sent", usage: "<id> [reason...] [--json]" },
+  { verb: "revise", aliases: ["edit"], summary: "change the words in $EDITOR, or with --text or --file", usage: "<id> [--text <words>] [--file <path>] [--subject <s>] [--to <a,b>] [--set <key=value>] [--json]" },
+];
+const SUBS = VERBS.flatMap(v => [v.verb, ...(v.aliases || [])]);
 const FLAGS = {
   list: { values: ["project", "thread"], cmd: "gate" },
   revise: { values: ["text", "file", "subject", "to"], multi: ["set"], cmd: "gate" },
@@ -101,6 +109,26 @@ function page(it) {
   }
 }
 
+/** A held draft as a card for --view: where it goes, each field, the words, what approving takes. */
+export function card(it) {
+  const c = current(it);
+  const key = bodyKey(c);
+  const show = v => typeof v === "string" ? v : v === undefined ? "" : JSON.stringify(v);
+  const from = sourceOf(it);
+  const fields = [
+    { label: "Id", value: id8(it.id) },
+    { label: "To", value: [it.to].flat().filter(Boolean).join(", ") || "(no destination)" },
+    ...Object.entries(c).filter(([k]) => k !== key).map(([k, v]) => ({ label: k[0].toUpperCase() + k.slice(1), value: show(v) })),
+    { label: "Words", value: show(c[key]) || "(empty)" },
+    ...(from !== "you" ? [{ label: "From", value: from }] : []),
+    ...(it.why ? [{ label: "Why", value: String(it.why) }] : []),
+    ...(it.final ? [{ label: "Revised", value: `${it.by ? "by " + it.by + "; " : ""}this is what approving sends` }] : []),
+    ...(it.error ? [{ label: "Last send", value: `failed: ${it.error}` }] : []),
+    ...(it.state === "held" ? [{ label: "Next", value: `vyre gate approve ${id8(it.id)} · vyre gate revise ${id8(it.id)} · vyre gate reject ${id8(it.id)}` }] : []),
+  ];
+  return { kind: "card", title: `${it.kind} via ${it.via}`, state: it.state, fields };
+}
+
 /** Open $VISUAL or $EDITOR on text and return what was saved, or null when none can run here. */
 function editText(text, name) {
   const editor = process.env.VISUAL || process.env.EDITOR || (process.stdin.isTTY ? "vi" : "");
@@ -137,7 +165,7 @@ const run = {
     if ("error" in f) return missed(f);
     const r = await call("gate.get", { id: f.id });
     if (r.error) return failTool(r.error, "vyre gate lists the held drafts");
-    if (json()) return emit(r.data);
+    if (json()) return emit(r.data, card(r.data));
     page(r.data);
     return 0;
   },
@@ -197,6 +225,13 @@ const run = {
       if (at < 1) return usage(`--set takes key=value, got ${kv}`);
       edited[String(kv).slice(0, at)] = String(kv).slice(at + 1);
     }
+    if (!Object.keys(edited).length && viewing()) {
+      // A surface has no editor to open: it asks for the new words, and runs args with --text.
+      const was = c[key];
+      emit({ id: f.id, field: key, current: was ?? "" }, { kind: "prompt", name: "text", label: `The new words for ${id8(f.id)}`,
+        args: ["gate", "revise", id8(f.id)] });
+      return EXIT.USAGE;
+    }
     if (!Object.keys(edited).length) {
       // Nothing given: the words, in the person's own editor. A body that is not text (an HTTP
       // sender's JSON) is edited as JSON and read back as JSON.
@@ -252,7 +287,8 @@ export async function gate(args, opts = {}) {
 }
 
 export default {
-  name: "gate", aliases: ["drafts"], order: 30, usage: "vyre gate [show|approve|reject|revise] <id> [--json]",
+  name: "gate", aliases: ["drafts"], order: 30, usage: "vyre gate [list|show <id>|approve <id>|reject <id> [reason]|revise <id>] [--json]",
+  verbs: VERBS,
   summary: "drafts held at the Gate: list, show one, approve (send), reject, or revise the words",
   help: [
     "Everything an agent or session wants to send, spend or delete waits at the Gate until you say.",

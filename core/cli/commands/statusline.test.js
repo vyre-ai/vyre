@@ -141,3 +141,71 @@ test("offerStatusline: asks once, remembers a no, points at --chain, and is quie
   assert.match(s.text(), /install --chain/);
   assert.equal(await offerStatusline({ interactive: true, env: { CLAUDE_CONFIG_DIR: path.join(s.home, "nope") }, home: s.home, io: says("y") }), "skipped", "no Claude Code, no offer");
 });
+
+/** The real bin/vyre in a temp home with a temp CLAUDE_CONFIG_DIR, as a surface runs it: pipes, no terminal. */
+function cli(t) {
+  const home = tempHome(t);
+  const claude = path.join(home, "claude-config");
+  fs.mkdirSync(claude);
+  const file = path.join(claude, "settings.json");
+  const bin = path.join(path.dirname(new URL(import.meta.url).pathname), "..", "..", "..", "bin", "vyre");
+  const run = (/** @type {string[]} */ args) => spawnSync(process.execPath, [bin, ...args], { encoding: "utf8", timeout: 30_000,
+    env: { ...process.env, VYRE_HOME: home, CLAUDE_CONFIG_DIR: claude, NO_COLOR: "1", VYRE_NO_DIALOGS: "1" } });
+  return { home, file, run };
+}
+
+test("statusline: vyre commands lists show, install and uninstall, the verbs run() handles", t => {
+  const c = cli(t);
+  const verbs = JSON.parse(c.run(["commands", "statusline", "--json"]).stdout).commands[0].verbs;
+  assert.deepEqual(verbs.map(v => v.verb), ["show", "install", "uninstall"]);
+  assert.deepEqual(verbs.filter(v => v.read).map(v => v.verb), ["show"]);
+  assert.deepEqual(verbs[1].flags.map(f => f.name), ["chain", "yes", "json"]);
+  const bad = c.run(["statusline", "frob", "--json"]);
+  assert.equal(bad.status, 2);
+  assert.equal(JSON.parse(bad.stdout).error.code, "bad_input");
+});
+
+test("statusline --json: install and uninstall print one value each, in a temp Claude config only", t => {
+  const c = cli(t);
+  const would = c.run(["statusline", "install", "--json"]);
+  assert.equal(would.status, 0, would.stdout + would.stderr);
+  assert.deepEqual(JSON.parse(would.stdout), { state: "would", file: c.file, what: `set Claude Code's status line to Vyre's (${c.file})`, next: "vyre statusline install --yes" });
+  assert.equal(fs.existsSync(c.file), false, "nothing written without --yes");
+
+  const done = c.run(["statusline", "install", "--yes", "--json"]);
+  assert.equal(done.status, 0, done.stdout + done.stderr);
+  assert.deepEqual(JSON.parse(done.stdout), { state: "installed", file: c.file, chained: false, backup: null });
+  assert.equal(JSON.parse(fs.readFileSync(c.file, "utf8")).statusLine.command, ours(c.home));
+  assert.equal(JSON.parse(c.run(["statusline", "install", "--json"]).stdout).state, "already");
+
+  const off = c.run(["statusline", "uninstall", "--json"]);
+  assert.deepEqual(JSON.parse(off.stdout), { state: "removed", file: c.file, restored: false });
+  assert.deepEqual(JSON.parse(c.run(["statusline", "uninstall", "--json"]).stdout), { state: "none", file: c.file });
+
+  fs.writeFileSync(c.file, "{ not json");
+  const broken = c.run(["statusline", "install", "--yes", "--json"]);
+  assert.equal(broken.status, 1);
+  assert.equal(JSON.parse(broken.stdout).error.code, "bad_settings");
+
+  // show with no vyred and no line file: exit 5, the next step is vyre up.
+  const show = c.run(["statusline", "--json"]);
+  assert.equal(show.status, 5, show.stdout);
+  assert.match(JSON.parse(show.stdout).error.next, /vyre up/);
+});
+
+test("statusline install --view: a yes/no prompt whose args say what yes runs; nothing is written or asked", t => {
+  const c = cli(t);
+  fs.writeFileSync(c.file, JSON.stringify({ statusLine: THEIRS }));
+  const r = c.run(["statusline", "install", "--chain", "--view"]);
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  const f = r.stdout.trim().split("\n").map(l => JSON.parse(l));
+  assert.equal(f[0].cmd, "statusline install");
+  assert.deepEqual(f[0].view, { kind: "prompt", name: "yes", choices: ["yes", "no"], args: ["statusline", "install", "--chain", "--yes"],
+    label: `Set Claude Code's status line to Vyre's, keeping yours above it (${c.file})?` });
+  assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 2 });
+  assert.deepEqual(JSON.parse(fs.readFileSync(c.file, "utf8")), { statusLine: THEIRS }, "nothing was changed");
+  // What the prompt names, run on yes, does it.
+  const yes = c.run(f[0].view.args.concat("--json"));
+  assert.equal(JSON.parse(yes.stdout).state, "installed");
+  assert.equal(JSON.parse(yes.stdout).chained, true);
+});

@@ -74,12 +74,24 @@ test("send: one line per file, and --json prints what was sent and what failed",
   assert.equal(j.failed.length, 1);
   assert.equal(j.failed[0].file, secret);
   assert.equal(j.failed[0].error.code, "not_available");
+  // --view: one table, a row per file, sent or failed; data is what --json printed.
+  const v = await vyre("send", report, secret, "--view");
+  assert.equal(v.code, 1);
+  const f = v.out.trim().split("\n").map(l => JSON.parse(l));
+  assert.deepEqual([f[0].cmd, f[0].view.kind, f[0].view.title], ["send", "table", "Sent with Taildrop"]);
+  assert.deepEqual(f[0].view.rows.map(r => [r.file, r.state]), [[report, "sent"], [secret, "failed"]]);
+  assert.deepEqual(Object.keys(f[0].data), ["sent", "failed"]);
+  assert.deepEqual(f.at(-1), { v: 1, done: true, exit: 1 });
 
   const human = await vyre("send", secret);
   assert.equal(human.code, 1);
   assert.match(human.out, /○ .*\.env · /);
   const none = await vyre("send", "--json");
-  assert.equal(none.code, 1);
+  assert.equal(none.code, 2, "no file is a usage mistake");
   assert.equal(JSON.parse(none.out).error.code, "bad_input");
   assert.match((await vyre("send")).out, /vyre send <file> \[more files\]/);
+  // No verbs: every word is a file, so vyre commands gives its own arguments instead.
+  const c = JSON.parse((await vyre("commands", "send", "--json")).out).commands[0];
+  assert.deepEqual(c.verbs, []);
+  assert.equal(c.args[0].name, "file");
 });

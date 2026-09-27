@@ -5,7 +5,11 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs, runApps, formatApps, formatTargets, pick, USAGE, ASKED } from "./apps.js";
+import path from "node:path";
+import { execFile } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import { tempHome } from "../../../test/helpers.js";
+import { parseArgs, runApps, formatApps, formatTargets, pick, promptFor, USAGE, ASKED } from "./apps.js";
 
 /**
  * Fake deps: answers by tool name, and records every call and printed line.
@@ -37,13 +41,13 @@ function fake(answers) {
 }
 
 test("apps cli: arguments split into a subcommand, words and flags", () => {
-  assert.deepEqual(parseArgs(["timer", "10", "min"]), { sub: null, words: ["timer", "10", "min"], flags: { json: false, help: false, model: false, app: null }, error: null });
+  assert.deepEqual(parseArgs(["timer", "10", "min"]), { sub: null, words: ["timer", "10", "min"], flags: { json: false, help: false, model: false, app: null, to: null }, error: null });
   assert.deepEqual(parseArgs(["find", "note", "--json"]).sub, "find");
   assert.deepEqual(parseArgs(["--app", "Notes", "buy", "milk"]).flags.app, "Notes");
-  assert.deepEqual(parseArgs(["--app=WhatsApp", "juno:", "hi", "--model"]).flags, { json: false, help: false, model: true, app: "WhatsApp" });
+  assert.deepEqual(parseArgs(["--app=WhatsApp", "juno:", "hi", "--model"]).flags, { json: false, help: false, model: true, app: "WhatsApp", to: null });
   assert.deepEqual(parseArgs(["--", "--json", "is", "text"]).words, ["--json", "is", "text"]);
   assert.equal(parseArgs(["Setup", "clock"]).sub, "setup");
-  assert.deepEqual(parseArgs(["--", "list", "of", "groceries"]), { sub: null, words: ["list", "of", "groceries"], flags: { json: false, help: false, model: false, app: null }, error: null });
+  assert.deepEqual(parseArgs(["--", "list", "of", "groceries"]), { sub: null, words: ["list", "of", "groceries"], flags: { json: false, help: false, model: false, app: null, to: null }, error: null });
 });
 
 test("apps cli: --help prints the usage without reaching vyred", async () => {
@@ -225,4 +229,51 @@ test("apps cli: pick reads a number, a name from the list, yes, or a new name", 
   assert.deepEqual(pick(WHICH, "2"), { text: "I'm running late", app: "Messages", to: "juno" });
   assert.deepEqual(pick(WHICH, "slack"), { text: "I'm running late", app: "slack", to: "juno" });
   assert.equal(pick(WHICH, ""), null, "no Did you mean, no default");
+});
+
+// ---- Surfaces: verbs for autocomplete, one-line JSON, and a question as a prompt frame --------
+
+test("apps cli: vyre commands lists list, find, targets and setup, the words runApps takes as verbs", async t => {
+  const bin = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "bin", "vyre");
+  const out = await new Promise(resolve => execFile(process.execPath, [bin, "commands", "apps", "--json"],
+    { env: { ...process.env, VYRE_HOME: tempHome(t), NO_COLOR: "1", VYRE_NO_DIALOGS: "1" }, timeout: 30_000 }, (_e, stdout) => resolve(stdout)));
+  const c = JSON.parse(String(out)).commands[0];
+  assert.deepEqual(c.verbs.map(v => v.verb), ["list", "find", "targets", "setup"]);
+  assert.deepEqual(c.verbs.filter(v => v.read).map(v => v.verb), ["list", "find", "targets"]);
+  assert.match(c.usage, /list \| find <words\.\.\.> \| targets <app> \[words\.\.\.\] \| setup <app> \| <words\.\.\.>/);
+  for (const v of c.verbs) assert.equal(parseArgs([v.verb, "x"]).sub, v.verb, `${v.verb} is a subcommand runApps knows`);
+});
+
+test("apps cli: --json is one line through the kit's emit when there is one; --to reaches apps.route", async () => {
+  const f = fake({ "apps.list": { apps: [{ name: "Clock", tier: "intents", bundleId: "com.apple.clock" }] },
+    "apps.route": { app: "WhatsApp", action: "send", args: { to: "juno", text: "hi" }, sends: true, said: "WhatsApp to juno: hi" }, "apps.send": { said: "Sent to juno" } });
+  /** @type {any[]} */
+  const emitted = [];
+  const deps = { ...f.deps, emit: (/** @type {any} */ d, /** @type {any} */ v) => { emitted.push([d, v]); } };
+  assert.equal(await runApps(["--json"], deps), 0);
+  assert.deepEqual(emitted[0], [{ apps: [{ name: "Clock", tier: "intents", bundleId: "com.apple.clock" }] }, undefined]);
+  assert.equal(await runApps(["--json", "--app", "WhatsApp", "--to", "juno", "hi"], deps), 0);
+  assert.deepEqual(f.calls.find(c => c.tool === "apps.route")?.input, { text: "hi", app: "WhatsApp", to: "juno" });
+  assert.equal(parseArgs(["--to"]).error, "--to needs who it is for, like --to juno");
+  const plain = fake({ "apps.list": { apps: [] } });
+  assert.equal(await runApps(["--json"], plain.deps), 0);
+  assert.deepEqual(plain.lines, ['{"apps":[]}'], "without emit, still one line");
+});
+
+test("apps cli: under --view a question is a prompt frame with the candidates, exit 2, and no terminal is read", async () => {
+  const f = fake({ "apps.route": WHO });
+  /** @type {any[]} */
+  const emitted = [];
+  let asked = 0;
+  const deps = { ...f.deps, viewing: true, isTTY: true, ask: async () => { asked++; return "1"; }, emit: (/** @type {any} */ d, /** @type {any} */ v) => { emitted.push([d, v]); } };
+  assert.equal(await runApps(["--json", "whatsapp", "ammi:", "dinner", "at", "8?"], deps), 2);
+  assert.equal(asked, 0, "never a terminal question");
+  assert.deepEqual(emitted[0][0], WHO, "data is what --json prints");
+  assert.deepEqual(emitted[0][1], { kind: "prompt", name: "to", label: "Who should get this? Did you mean Ammi jee on WhatsApp?",
+    choices: ["Ammi jee", "Amir"], args: ["apps", "--app", "WhatsApp", "dinner", "at", "8?"] });
+  assert.deepEqual(promptFor(WHICH), { kind: "prompt", name: "app", label: "Which app?", choices: ["WhatsApp", "Messages"],
+    args: ["apps", "--to", "juno", "I'm", "running", "late"] });
+  // The prompt's args with --to <choice> added route to exactly what a pick at a terminal would.
+  const again = parseArgs([...promptFor(WHICH).args.slice(1), "--app", "WhatsApp"]);
+  assert.deepEqual([again.flags.app, again.flags.to, again.words.join(" ")], ["WhatsApp", "juno", "I'm running late"]);
 });
