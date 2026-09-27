@@ -134,7 +134,9 @@ facts are not a project's.
   stats.iq, `vyre memory fix`, eval-iq --fix (open 20/20, sealed 38/38, 0 regressed). Tables
   memory_iq_answers, memory_iq_fixes, memory_me_denied. 0.1.1. Card specs sent to capsule-pro and app-design;
   e2e asked for a review of tailnet corrections and of the sync amendment.
-- Session sync: contract agreed with federation, ADR 0008 amended (f63fe0e2). 0.2.
+- Session sync: contract agreed with federation, ADR 0008 amended (f63fe0e2), e2e's conditions in
+  item 6 (5f36a227). 0.2. e2e reviews federation's transport code when it exists.
+- Phone corrections (personWrites, 5f36a227): e2e SIGNED OFF 28 Sep. 0.1.1.
 - rc.2 handoff: branch work/memory-iq-rc2 (worktree ../vyre-memory-iq-rc2) = 1815b37d + the teach
   me:you fix ported from work/memory + both asks files + "you prefer" grammar, head 4ff57bb6.
   199/199 memory tests on testbox.
