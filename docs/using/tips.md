@@ -41,6 +41,9 @@ Vyre picks at most one, in this order:
 3. **What is new.** After an update, the tips that came with it.
 4. **Handy things.** When you pause, a tip about something you already use.
 
+The very first time you open a screen, it may show one tip about something worth trying, as a
+welcome. That happens once per screen, and never when something is waiting for you.
+
 The choice is fixed by these rules, never by chance, so the same moment gives the same tip.
 
 ## It never nags

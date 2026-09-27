@@ -15,6 +15,9 @@
 //   3. update: only when idle, tips newer than the version they last saw (and every after-update
 //      tip of that release).
 //   4. idle: only when idle, idle tips about modules they have used.
+// A surface's very first open (context.first, and `welcomed` false) is a welcome moment: one
+// never-used discovery tip may show then even without idle, once per surface. The no-nag rules
+// above still apply to it.
 // Within a tier, manifest order decides. A tip is eligible when it names this surface, is not
 // dismissed, was shown fewer than `maxShows` times, and is not newer than what runs.
 
@@ -27,7 +30,8 @@ const MIN = 60_000, DAY = 86_400_000;
  * @param {{
  *   tips: import("./check.js").Tip[],
  *   surface: string,
- *   context?: { module?: string, idle?: boolean, busy?: boolean },
+ *   context?: { module?: string, idle?: boolean, busy?: boolean, first?: boolean },
+ *   welcomed?: boolean,
  *   now: number,
  *   settings?: Partial<typeof DEFAULTS>,
  *   shown: Map<string, { shows: number, last: number, dismissed: boolean }>,
@@ -37,7 +41,7 @@ const MIN = 60_000, DAY = 86_400_000;
  *   running: (tip: import("./check.js").Tip) => string,
  *   seenVersion: (tip: import("./check.js").Tip) => string | null,
  * }} s
- * @returns {{ tip: import("./check.js").Tip | null, why: string }}
+ * @returns {{ tip: import("./check.js").Tip | null, why: string }}  why "welcome" for the first open
  */
 export function pick(s) {
   const o = { ...DEFAULTS, ...(s.settings || {}) };
@@ -65,15 +69,17 @@ export function pick(s) {
     const levels = uses(ctx.module) < o.learnedAfter ? ["first-use"] : ["power", "first-use"];
     for (const lv of levels) { const t = here.find(x => x.level === lv); if (t) return { tip: t, why: "current" }; }
   }
-  if (!ctx.idle) return { tip: null, why: "none" };
+  const welcome = Boolean(ctx.first && !s.welcomed);
+  if (!ctx.idle && !welcome) return { tip: null, why: "none" };
 
-  // 2. Modules they have not tried.
-  const fresh = ok.filter(t => t.trigger === "never-used" && uses(t.about) === 0 && t.about !== ctx.module);
+  // 2. Modules they have not tried (and the one welcome tip on a surface's first open).
+  const fresh = ok.filter(t => t.trigger === "never-used" && uses(t.about) === 0 && t.about !== ctx.module && (ctx.idle || t.level === "discovery"));
   if (fresh.length) {
     const last = (/** @type {string} */ m) => (s.lastTipAt && s.lastTipAt.get(m)) || 0;
     fresh.sort((a, b) => last(a.about) - last(b.about) || a.about.localeCompare(b.about) || a.order - b.order);
-    return { tip: fresh[0], why: "new-module" };
+    return { tip: fresh[0], why: ctx.idle ? "new-module" : "welcome" };
   }
+  if (!ctx.idle) return { tip: null, why: "none" };
 
   // 3. New in this update.
   const upd = ok.filter(t => isNew(t)).sort((a, b) => compareVersions(b.since, a.since) || byOrder(a, b));
