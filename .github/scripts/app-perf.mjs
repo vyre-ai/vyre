@@ -113,12 +113,13 @@ async function drive(page) {
   const chats = await first(page, ['[data-testid="tab-chats"]']);
   if (chats) {
     await chats.click(); await sleep(500);
-    const row = await first(page, ['[data-testid="chat-row"]', '[data-testid="session-row"]', 'main [role="button"]', 'main a[href*="session"]']);
+    const row = await first(page, ['[data-testid="chat-row"]', 'main [role="button"]']);
     if (row) {
       await row.click(); await sleep(800);
-      const list = await first(page, ['[data-testid="transcript"]']);
+      // The transcript mounts after the session's first load: wait for it, don't look once.
+      const list = await page.waitForSelector('[data-testid="transcript"]', { timeout: 15_000 }).then(() => page.locator('[data-testid="transcript"]').first()).catch(() => null);
       if (list) { for (let i = 0; i < 10; i++) { await list.hover(); await page.mouse.wheel(0, 600); await sleep(100); } }
-      else notes.push("no transcript to scroll (no data-testid=transcript on the web)");
+      else notes.push("no transcript to scroll within 15 s");
     } else notes.push("no chat row to open");
   }
   await sleep(1000);
