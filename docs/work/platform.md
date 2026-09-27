@@ -17,7 +17,12 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - Hub asks to native-core (hub file + live hand edits, per-key check tool, choices tool, prompt-layer toggle key): re-sent; no answer yet. They fold them into ADR 0035.
 - P2 DONE on work/platform 54180bb5 (145/146 on testbox, 1 skip = shellcheck absent; shellcheck clean by hand): core/cli/commands/update.js + core/cli/update/releases.js (Mac), box/vyre update/rollback (box, APK + releases.sign), docs/using/box-care.md, draft docs/build/first-module.md. up.js exports health/waitFor/bring; bring compares against mineOf().version. Not tried end to end with a real npm install and restart; releases stay dry-run (VYRE_RELEASES unset).
 
+- Batch 4 sha sent to the integrator: a1c3fbfc (includes e8e3d902 + 54180bb5, plus the cohesion/tips schema keys and tips.whatsnew in update). Branch CI runs cancelled (lead: Actions saturated; push only finished shas until "pushes open").
+- Agreed with cohesion: P1 adds commands.list {surface}, events.catalog (aliases = one-release deprecations, plural canonical), registry.status() rows gain commands/connections/suggest/notices; Render type in index.d.ts. settings.changed resolved value asked of native-core.
+- Agreed with docs: they add ctx.declaredTips in core/modules on work/docs (+ index.d.ts).
+
 ## Next
+0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
 2. P1 once native-core's settings are on main (loader adopts packages/module-sdk/manifest.js, apiVersion, ctx.api/log/paths.data/settings, watches.on + needs.tools, replaces + disable, registry.status commands, core/cli/commands/module.js with polish-cli review).
 3. P2 follow-ups: an end-to-end update on testbox against a throwaway stack (not /srv/vyre) with ci's dry-run dist/ as the release; update.available daily check in vyred (update.auto notify); `vyre box update` from the Mac offering the Mac the same version; the systemd rollback race (restore while systemd restarts vyred).
