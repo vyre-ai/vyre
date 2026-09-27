@@ -74,7 +74,15 @@ Paseo reference: `<team-dir>/../reference/paseo` (Apache 2.0, commit d7b7016).
 
 ## Next
 0. (e2e c8e00e7 has the contract; relay.device.presence added in this commit for the native path.
-   Web: e2e sends a sha for presence.enroll kind webpasskey; then relay admit() calls it.)
+   Web: e2e a33ad94 has it. WAITS until after the native-core milestone (lead). Then, in admit()
+   for a web pairing whose hello carries a passkey: ctx.call("presence.enroll", { kind: "passkey",
+   name, public_key: <base64url SPKI DER>, alg: -7|-8|-257, rp_id: "app.vyre.run", credential_id,
+   device: <device id> }) as module:relay, and store credential_id as presence_key so
+   relay.devices.remove's presence.remove drops the binding. Loader sign-in: POST
+   /v1/presence/challenge { tool: "presence.person.start", input: { key: <JWK> }, method: "passkey" },
+   navigator.credentials.get on app.vyre.run, then POST presence.person.start { key } with
+   x-vyre-presence `passkey id=<challenge> cred= ad= cd= sig=`; keep { token } and sign with
+   x-vyre-proof. Tests: e2e's test/person.test.js.)
    PAUSED: the relayed-device sign-in (ADR 0032, the ceremony the lead approved). Relay side:
    (a) at web pairing, the loader makes a passkey with rpId app.vyre.run and sends it in the
    hello; admit() passes it to presence for enrollment bound to the device id; (b) the loader
