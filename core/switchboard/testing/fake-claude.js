@@ -31,7 +31,8 @@ import path from "node:path";
 import readline from "node:readline";
 
 const argv = process.argv.slice(2);
-const flag = n => { const i = argv.indexOf(n); return i >= 0 ? argv[i + 1] : undefined; };
+// The CLI passes "--flag value"; the Agent SDK passes "--flag=value". Both are read.
+const flag = n => { const i = argv.indexOf(n); if (i >= 0) return argv[i + 1]; const eq = argv.find(a => a.startsWith(n + "=")); return eq ? eq.slice(n.length + 1) : undefined; };
 const session = flag("--session-id") || flag("--resume") || "no-session";
 const auth = process.env.CLAUDE_CODE_OAUTH_TOKEN ? "subscription" : process.env.ANTHROPIC_API_KEY ? "api-key" : "ambient";
 if (process.env.FAKE_CLAUDE_LOG) fs.appendFileSync(process.env.FAKE_CLAUDE_LOG, JSON.stringify({ argv, auth, cwd: process.cwd(), agent: process.env.VYRE_AGENT || null, projects: process.env.VYRE_PROJECTS || null }) + "\n");
