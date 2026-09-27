@@ -34,6 +34,20 @@ export function isRealHome(root) {
   return path.resolve(String(root).replace(/^~(?=$|\/)/, os.homedir())) === realHome();
 }
 
+/**
+ * Claude Code's folder (sessions, transcripts, settings, CLAUDE.md, skills) for the Vyre home at
+ * `root`. The person's real one (CLAUDE_CONFIG_DIR, else ~/.claude) only for their own ~/.vyre;
+ * any other home (a dev world, a demo, a temp home, a test) gets `<root>/claude`, empty until
+ * something puts a fixture there, so it never reads or writes the person's conversations.
+ * VYRE_CLAUDE_HOME names the folder outright, for a home kept elsewhere on purpose.
+ * @param {string} root @param {NodeJS.ProcessEnv} [env]
+ */
+export function claudeHome(root, env = process.env) {
+  if (env.VYRE_CLAUDE_HOME) return path.resolve(env.VYRE_CLAUDE_HOME.replace(/^~(?=$|\/)/, os.homedir()));
+  if (isRealHome(root)) return env.CLAUDE_CONFIG_DIR ? path.resolve(env.CLAUDE_CONFIG_DIR.replace(/^~(?=$|\/)/, os.homedir())) : path.join(os.homedir(), ".claude");
+  return path.join(path.resolve(String(root)), "claude");
+}
+
 /** @param {NodeJS.ProcessEnv} [env] */
 export function dialogsAllowed(env = process.env) {
   if (env.VYRE_NO_DIALOGS === "1") return false;

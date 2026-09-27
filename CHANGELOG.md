@@ -220,6 +220,16 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   until the status changed. The image's /bin/sh (dash) answers the same 137 forever, so the loop
   spun at a full core and vyred never came back while the container looked healthy. The same status
   twice now ends the wait. Found by the box-image smoke on testbox; loop.test.js has the case.
+#### A temp or dev home never reads ~/.claude
+
+- `claudeHome(root)` (core/config): Claude Code's folder for a Vyre home. The person's own
+  (CLAUDE_CONFIG_DIR, else ~/.claude) only for their ~/.vyre; any other home gets `<home>/claude`.
+  VYRE_CLAUDE_HOME names it outright. The default transcript folders use it, so a dev world no
+  longer indexes the person's real conversations (a fresh temp home reported "107 facts about
+  you"). test/temp-home-claude.test.js runs vyred as a dev world does, with every fs call on a
+  .claude path refused and recorded, and fails if any part reaches for one.
+- Learn's skills take their Claude Code folder from claudeHome too, and still refuse to write under
+  the account's own ~/.claude whatever the home.
 
 #### The box image builds again with the Agent SDK pin
 

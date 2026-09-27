@@ -20,23 +20,23 @@ Onboarding and commands like `vyre name` and `vyre owner` write this file for yo
 | Key | Type | Default | What it is for |
 | --- | --- | --- | --- |
 | `name` | `string` | unset | This box's name: its address is `<name>.vyre.run`. Set by `vyre name claim`. |
-| `role` | `'box'\|'local'` | `"local" on macOS, "box" elsewhere` | `box` for the always-on server, `local` for a Mac. Decides which modules start. |
-| `projectsDir` | `string` | `"~/Vyre/projects"` | The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`. |
-| `roots` | `string[]` | `[]` | More folders to look in for projects. |
+| `role` | `'box'\|'local'` | none | `box` for the always-on server, `local` for a Mac. Decides which modules start. |
+| `projectsDir` | `string` | none | The folder new projects are made in. On a box with a `/work` folder and no projectsDir set, `/work/projects` when the box is new (nothing in `~/Vyre/projects`) or its homes were moved with `projects.move`; otherwise `~/Vyre/projects`. |
+| `roots` | `string[]` | none | More folders to look in for projects. |
 | `me` | `object` | see below | Who you are, so memory can tell your own people and domains from everyone else's. |
-| `me.domains` | `string[]` | `[]` | Domains that are yours. |
-| `me.emails` | `string[]` | `[]` | Email addresses that are yours. Their domains count as yours too. |
-| `transcripts` | `string[]` | `["~/.claude/projects", "~/.claude/projects-archive"]` | Where Claude Code keeps session transcripts. Recall indexes these. |
+| `me.domains` | `string[]` | none | Domains that are yours. |
+| `me.emails` | `string[]` | none | Email addresses that are yours. Their domains count as yours too. |
+| `transcripts` | `string[]` | none | Where Claude Code keeps session transcripts. Recall indexes these. |
 | `modules` | `object` | see below | Modules to start or stop against their role. |
-| `modules.enable` | `string[]` | `[]` | Modules to start even where their role says not to. |
-| `modules.disable` | `string[]` | `[]` | Modules never to start. |
+| `modules.enable` | `string[]` | none | Modules to start even where their role says not to. |
+| `modules.disable` | `string[]` | none | Modules never to start. |
 | `network` | `object` | see [network](#network) | How this machine is reached. See [Tailscale](../using/tailscale.md). |
 | `onboard` | `any` | unset | Onboarding's own settings. |
 | `glass` | `{ roots?: string[], egress: { enabled: boolean, sites: string[] } }` | none | Not described yet. |
 | `computers` | `{ tailnet: { enabled: boolean, tag: string }, [k: string]: any }` | none | Not described yet. |
 | `hooks` | `{ enabled: boolean, port: number, routes: Record<string, { scheme: string, header: string, secret: string, opened?: string }> }` | none | Not described yet. |
 | `theme` | `{ colors?: { dark?: Record<string, string>, light?: Record<string, string> } }` | unset | Your colours, over the defaults in `core/config/theme.js`. The box serves them as `/theme.css`. |
-| `term` | `{ keep_hours: number, max?: number, shell?: string }` | `{ keep_hours: 12 }` | Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell. |
+| `term` | `{ keep_hours: number, max?: number, shell?: string }` | none | Terminals in the browser. `keep_hours`: how long a terminal nobody is looking at is kept before it ends (12). `max`: how many may be open at once (8). `shell`: the shell to run, in place of your login shell. |
 | `projects` | `{ move?: 'enabled' }` | unset | Not described yet. |
 
 ### network
@@ -77,6 +77,7 @@ Vyre reads these when they are set. None is needed for normal use.
 | `VYRE_BOX_PROBE_MS` | How long `vyre box` waits for the box's address to answer. Default two minutes. | `core/cli/commands/box.js` |
 | `VYRE_BOX_WAIT_MS` | How long `vyre box` waits for an install to finish. Default 65 minutes. | `core/cli/commands/box.js` |
 | `VYRE_CLAUDE_BIN` | The `claude` binary to run. Default `claude` on the PATH. | `core/memory/index.js`, `core/memory/personal/reader.js`, `core/onboard/index.js`, `core/onboard/setup-token.js`, `core/switchboard/index.js` |
+| `VYRE_CLAUDE_HOME` | Claude Code's folder for a home other than `~/.vyre`. Without it such a home uses its own `claude` folder and never reads `~/.claude`. | `core/config/dialogs.js` |
 | `VYRE_CLOUDFLARE_API` | The Cloudflare API base URL, in place of the real one. | `core/names/index.js` |
 | `VYRE_COMPUTERS_CAP_ADD` | Extra Linux capabilities for agent computers, comma separated. | `core/dockerproxy/main.js` |
 | `VYRE_COMPUTERS_IMAGE` | The container image agent computers run. Default `vyre/computer:0.1`. | `core/dockerproxy/main.js` |

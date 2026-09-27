@@ -289,7 +289,7 @@ See [tools and events](../build/tools-and-events.md) for how to listen.
 
 | Event | Fields |
 | --- | --- |
-| `settings.changed` | `apply`, `key`, `level`; sometimes `project` |
+| `settings.changed` | `apply`, `key`, `level`; sometimes `by`, `project` |
 
 ## system
 
