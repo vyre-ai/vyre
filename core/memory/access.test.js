@@ -217,11 +217,13 @@ test("card: one card per person or org, what it is to the person on their own su
   assert.deepEqual(kitCard?.projects ?? [], kitCard ? ["Northwind"] : [], JSON.stringify(kitCard));
 });
 
-test("pace: only the import the person started sets the first read's pace; fast is a capped one-time pool", async t => {
+test("pace: only the import the person started sets the first read's pace; never a paid allowance", async t => {
   const { call, db } = await module_(t);
-  assert.equal((await call("memory.pace", { pace: "fast", usd: 5 }, "deck")).code, "denied");
-  assert.equal((await call("memory.pace", { pace: "fast", usd: 5 }, "mcp")).code, "denied");
-  assert.deepEqual((await call("memory.pace", { pace: "fast", usd: 50 }, "module:import")).data, { pace: "fast", backfill_extra_usd: 10 });
-  assert.equal(Number(db.prepare("SELECT v FROM memory_meta WHERE k = 'backfill_extra_usd'").get().v), 10);
-  assert.equal((await call("memory.pace", { pace: "gentle" }, "module:import")).data.backfill_extra_usd, 0);
+  assert.equal((await call("memory.pace", { pace: "fast" }, "deck")).code, "denied");
+  assert.equal((await call("memory.pace", { pace: "fast" }, "mcp")).code, "denied");
+  assert.deepEqual((await call("memory.pace", { pace: "fast" }, "module:import")).data, { pace: "fast" });
+  assert.equal(db.prepare("SELECT v FROM memory_meta WHERE k = 'read_pace'").get().v, "fast");
+  const read = (await call("memory.stats", {}, "cli")).data.personal.model;
+  assert.equal(read.backfill_cap_usd, 2, "fast adds no money");
+  assert.deepEqual((await call("memory.pace", { pace: "gentle" }, "module:import")).data, { pace: "gentle" });
 });

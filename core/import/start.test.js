@@ -69,12 +69,12 @@ test("import.start: consent through core/sync, then the plan's sessions in batch
   assert.deepEqual(Object.keys(f).sort(), ["bytes", "hash", "path", "rel"]);
   assert.match(f.rel, /^-home-alex-Work-harlow-site\/22222222-0000-4000-8000-\d{12}\.jsonl$/, "Claude Code's own layout under synced/<machine>/");
   assert.match(f.hash, /^[0-9a-f]{64}$/);
-  assert.ok(calls.some(c => c.tool === "memory.pace" && c.input.pace === "fast" && c.input.usd > 0));
+  assert.deepEqual(calls.filter(c => c.tool === "memory.pace").map(c => c.input), [{ pace: "fast" }], "a pace, never a paid allowance");
   // A plan is used once; a spent or unknown one is refused.
   assert.equal((await call("import.start", { plan: p.plan, mode: "once", pace: "fast" })).code, "not_found");
 });
 
-test("import.stop and cancel: stopping deletes nothing; only the person's delete does", async t => {
+test("import.stop and cancel: neither ever deletes what was sent", async t => {
   const { call, calls } = await world(t, { n: 5 });
   await call("import.scan", {});
   const p = (await call("import.plan", { include: ["/home/alex/Work"] })).data;
@@ -82,12 +82,9 @@ test("import.stop and cancel: stopping deletes nothing; only the person's delete
   const stop = await call("import.stop", {});
   assert.ok(!stop.error, JSON.stringify(stop));
   assert.ok(calls.some(c => c.tool === "sync.consent" && c.input.on === false), "sync turned off");
-  assert.ok(!calls.some(c => c.tool === "sync.delete"), "stopping deleted");
-  assert.deepEqual((await call("import.cancel", {})).data, { stopped: false, deleted: false });
-  assert.ok(!calls.some(c => c.tool === "sync.delete"));
-  assert.equal((await call("import.cancel", { delete: true }, "mcp")).code, "denied");
-  assert.deepEqual((await call("import.cancel", { delete: true })).data, { stopped: false, deleted: true });
-  assert.deepEqual(calls.filter(c => c.tool === "sync.delete").map(c => c.input), [{ machine: "alex-macbook" }]);
+  assert.deepEqual((await call("import.cancel", {})).data, { stopped: false, dropped: false });
+  assert.equal((await call("import.cancel", {}, "mcp")).code, "denied");
+  assert.ok(!calls.some(c => c.tool === "sync.delete"), "a stop or a cancel deleted");
 });
 
 test("import.start: with no server to send to, it says so and sends nothing", async t => {

@@ -28,7 +28,8 @@ events and the graph.
    - "Import now", and next to it "Keep them in sync" (new sessions go too), unticked;
    - how fast to understand them: "Fast: understood in a few hours (uses more of your Claude plan
      today)" or "Gentle: over a few days (barely touches your plan)", each with its estimate from
-     `import.plan`'s `pace`, and the plain line that search works immediately either way;
+     `import.plan`'s `pace`, and the plain line that search works immediately either way. Fast reads
+     bigger batches within the plan's normal limits; neither ever adds paid usage (no money step);
    - where it is true (`claude_keeps_days` from the scan), "Claude Code keeps sessions for 30 days;
      import now so they're kept in Vyre". Vyre never changes Claude Code's settings.
    They confirm once. On a device with no server, nothing moves: the device indexes what was
@@ -65,10 +66,12 @@ events and the graph.
 - `import.start { plan, mode: "once"|"sync", pace: "fast"|"gentle" }`: person-only with a person
   session (ADR 0032), never an agent. It records the consent in the settings hub
   (`sync.sessions.<machine>.on`) with the plan's hash, so a changed plan needs new consent, and
-  hands the plan to federation's `sync.send` (module-only). "fast" sizes a one-time reading pool
-  to the estimate; "gentle" keeps the daily cap.
-- `import.stop {}` stops sending and deletes nothing. `import.cancel {}` stops and deletes the
-  partial import the same way the person's delete does (e2e).
+  hands the plan to federation's `sync.send` (module-only). "fast" reads batches of 50 a minute
+  instead of 20, within the plan's normal limits; "gentle" keeps the default. No paid allowance.
+- `import.stop {}` stops sending and deletes nothing. `import.cancel {}` stops this import; once
+  federation has a per-import delete (keyed by the plan's hash), it also drops only this import's
+  files. Until then it only stops. Deleting everything a device sent is never a cancel: it is the
+  person's own previewed action (`sync.delete`).
 - What came from a device is the person's (ADR 0008, amendment item 5): unpairing, replacing or
   losing the device, or turning sync off, deletes nothing. "Delete everything that came from
   <device>" is the person's own action, with a preview (`memory.device { machine }`: sessions,
@@ -101,7 +104,7 @@ events and the graph.
 e2e's conditions for the import (28 Sep), on top of ADR 0008's: caps on the scan and first lines
 only; nothing but folders and counts in a plan; exclusions applied before listing; the server refuses
 files unless its own record of the switch is on for that machine, and consent carries the plan's
-hash; cancel deletes the partial import like the person's delete; the secret scrub runs at ingest, before
+hash; cancel drops only that import's files (once federation's per-import delete exists; until then it only stops); the secret scrub runs at ingest, before
 indexing, with the quarantined count shown to the person; the machine on every derived row,
 IQ caches and fixes included; and no agent sees or starts a scan, a plan or progress.
 
@@ -147,7 +150,8 @@ without a server, or the server's own sessions), and "Send to your server" arriv
 
 1. "Keep them in sync" is offered on the first screen, unticked, next to "Import now".
 2. The first read's pace is the person's choice on the import screen, neither preselected, with
-   estimates: Fast (a few hours, more of the plan today) or Gentle (a few days).
+   estimates: Fast (a few hours, more of the plan's normal limits today) or Gentle (a few days).
+   Never a paid allowance.
 3. Vyre never touches Claude Code's settings; where true, it says "Claude Code keeps sessions for
    30 days; import now so they're kept in Vyre".
 

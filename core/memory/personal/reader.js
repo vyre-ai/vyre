@@ -422,11 +422,12 @@ export function createReader(deps) {
     const c = cfgOf();
     const m = c.memory?.model || {};
     const num = (x, d) => (x !== null && x !== "" && Number.isFinite(Number(x)) && Number(x) >= 0 ? Number(x) : d);
-    // A fast first read the person chose on the import screen (memory.pace) adds to the one-time pool.
-    let extra = 0;
-    try { extra = Number(/** @type {any} */ (db.prepare("SELECT v FROM memory_meta WHERE k = 'backfill_extra_usd'").get())?.v) || 0; } catch { /* no memory_meta yet */ }
-    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, READER.dailyUsd), backfillUsd: num(m.backfillUsd, READER.backfillUsd) + extra,
-      batch: Math.max(1, Math.min(50, num(m.batch, READER.batch))), gapMs: Math.max(60_000, num(m.gapMs, READER.gapMs)),
+    // A fast first read the person chose on the import screen (memory.pace) reads bigger batches
+    // within the same plan limits: never extra paid usage, never faster than once a minute.
+    let fast = false;
+    try { fast = /** @type {any} */ (db.prepare("SELECT v FROM memory_meta WHERE k = 'read_pace'").get())?.v === "fast"; } catch { /* no memory_meta yet */ }
+    return { on: m.on !== false, model: modelFor(c), dailyUsd: num(m.dailyUsd, READER.dailyUsd), backfillUsd: num(m.backfillUsd, READER.backfillUsd),
+      batch: fast ? 50 : Math.max(1, Math.min(50, num(m.batch, READER.batch))), gapMs: Math.max(60_000, num(m.gapMs, READER.gapMs)),
       passes: Math.max(1, Math.min(3, num(m.passes, READER.passes))) };
   };
   const day = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
