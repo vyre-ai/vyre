@@ -2413,6 +2413,7 @@ Enroll a Capsule key (Ed25519), a phone's device key (P-256, alg -7) or a passke
   - `public_key` string, required
   - `alg` integer
   - `credential_id` string
+  - `device` string
   - `name` string
   - `rp_id` string
 - Callers: any caller

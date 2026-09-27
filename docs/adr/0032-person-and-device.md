@@ -80,7 +80,9 @@ a proof by the Secure Enclave or Keystore key the relay enrolled for that device
 the app sends. The answer is the token itself, bound to that key; every later request is signed
 with `x-vyre-proof` as over the tailnet. A browser paired over the relay (app.vyre.run, no
 tailnet) enrolls a passkey (rpId app.vyre.run) at pairing, valid only from that device id, and
-signs in with it over the channel the same way (to build).
+signs in with it over the channel the same way: presence.enroll with `device` (the relay module
+only), a challenge from that device offering only its passkey, checked against app.vyre.run's
+origin, and never offered to anyone else.
 
 ### 2c. The native app (vyre://)
 
@@ -88,8 +90,8 @@ The native app returns to `vyre://person/signin` after the box's page. That retu
 for PKCE flows only; its code is traded with no Origin, and the trade must be signed by the key it
 registers (`x-vyre-proof` over the token request), so an intercepted code and verifier are useless
 without the app's hardware key. A web page cannot trade a native code. The phone's
-biometric-bound key (vyre.human) maps to a presence proof for HUMAN_ONLY, with the same 30-minute
-presence session as the Mac's Touch ID (to build), and a Mac Secure Enclave key lets the Mac prove
+biometric-bound key (vyre.human) rides the native trade (`human`), is enrolled as a device presence
+key, and proves HUMAN_ONLY with the same 30-minute presence session as the Mac's Touch ID; and a Mac Secure Enclave key lets the Mac prove
 HUMAN_ONLY to the box (to build, after batch 3).
 
 ### 3. On the box, a model cannot reach the person's socket

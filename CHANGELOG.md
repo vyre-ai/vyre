@@ -4,6 +4,15 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### A relayed browser's passkey
+
+- presence.enroll takes `device` (a relay device id) from the relay module only: a passkey the
+  browser made at pairing, for an allowed app's name (app.vyre.run), bound to that device
+  (presence_key_devices) and checked against that app's origin. A challenge from that device
+  offers only its own passkey; every other caller is offered only the passkeys bound to no
+  device. presence.person.start from a relayed device takes that passkey or its device key.
+  Removing a key removes its binding.
+
 #### The phone's biometric key proves presence
 
 - The native app's token trade (vyre://) may carry `human`, the public JWK of its biometric-bound

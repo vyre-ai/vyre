@@ -426,7 +426,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
   // returns WebAuthn options for the Deck (docs/adr/0004-presence.md).
   if (req.method === "POST" && url.pathname === "/v1/presence/challenge") {
     const b = await body(req);
-    const result = await registry.presenceChallenge(String(b.tool || ""), b.input || {}, String(b.method || ""), { tty: b.tty });
+    const result = await registry.presenceChallenge(String(b.tool || ""), b.input || {}, String(b.method || ""), { tty: b.tty, ...(policy.peer ? { peer: policy.peer } : {}) });
     return send(res, !result.error ? 200 : result.error.code === "no_such_tool" ? 404 : result.error.code === "bad_input" ? 400 : 403, result);
   }
   // Webhooks: POST /v1/<module>/<name>/hook reaches that module's hook tool (watchers.hook) with

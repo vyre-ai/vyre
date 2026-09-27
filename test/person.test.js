@@ -26,7 +26,7 @@ const WHO = {
 /** Asks for a proof on every human-only tool and takes any proof: refusals below are about the session. */
 const lenient = {
   required: (tool, def, input) => HUMAN_ONLY.has(tool) || Boolean(def && def.presence && (typeof def.presence.when !== "function" || input === undefined || def.presence.when(input))),
-  verify: async ({ proof }) => (proof ? { ok: true, method: proof.method === "device" ? "device" : "passkey", keyId: proof.key || "k1" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
+  verify: async ({ proof }) => (proof ? { ok: true, method: proof.method === "device" ? "device" : "passkey", keyId: proof.key || proof.cred || "k1" } : { ok: false, message: "needs a person", methods: ["passkey"] }),
   challenge: async () => ({ error: { code: "bad_input", message: "no challenges here" } }),
   covered: () => false,
   coverage: () => ({ covered: false, since: null, expires: null }),
@@ -214,6 +214,17 @@ test("person: a device paired over the relay is a device too, and signs in with 
   assert.equal(made.status, 200, JSON.stringify(made));
   // Pinned to the device id: another relayed device cannot use it.
   assert.equal((await relayed("qrstuvwxyz234567", "POST", "/v1/tools/agents.list", {}, sign("agents.list", {}))).status, 401);
+
+  // A browser paired over the relay: its passkey, enrolled by the relay module alone, for app.vyre.run.
+  const spki = crypto.generateKeyPairSync("ec", { namedCurve: "P-256" }).publicKey.export({ format: "der", type: "spki" }).toString("base64url");
+  const web = { kind: "passkey", name: "alex-phone web", public_key: spki, alg: -7, rp_id: "app.vyre.run", credential_id: "webcredential1", device: ID };
+  assert.equal((await d.registry.call("presence.enroll", web, "cli", { proof: { method: "passkey" } })).error.code, "denied", "only the relay enrolls it");
+  assert.equal((await d.registry.call("presence.enroll", { ...web, rp_id: "evil.example" }, "module:relay")).error.code, "denied");
+  assert.ok(!(await d.registry.call("presence.enroll", web, "module:relay")).error);
+  const w = await relayed(ID, "POST", "/v1/tools/presence.person.start", { key }, { "x-vyre-presence": "passkey id=x cred=webcredential1" });
+  assert.equal(w.data && w.data.kind, "bearer", JSON.stringify(w));
+  // Another device cannot sign in with it.
+  assert.equal((await relayed("qrstuvwxyz234567", "POST", "/v1/tools/presence.person.start", { key }, { "x-vyre-presence": "passkey id=x cred=webcredential1" })).error.code, "denied");
 });
 
 test("person: the native app returns to vyre:// and must sign the trade with the key it registers", async t => {
