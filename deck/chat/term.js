@@ -11,13 +11,20 @@
 //  - a path to the box that carries tool calls but not WebSockets (lib/term-link.js: two stream-less
 //    sockets in a row, each on a fresh ticket) shows a "needs the box link" state with Try again,
 //    and no reconnect loop;
-//  - the box replays the last 64 KB on every attach, so the screen is reset before each one;
+//  - the screen keeps its own scrollback across drops (ADR 0029 R4): it counts the bytes it has
+//    drawn and reattaches with from=<offset>, so the box sends only what it missed. Only when
+//    that offset has left the box's 1 MB ring ("cut") is the screen reset and redrawn from the
+//    ring, under a marker;
+//  - keys typed while away are held (up to 4 KB) and sent once the box has caught the screen up;
+//    the screen dims meanwhile. A vyred restart (close 1012) is a reconnect like any other;
+//  - one screen owns the terminal's size. Another watches at the owner's size, with Take size;
+//  - on a phone a key bar gives Esc, Tab, Ctrl, Alt, arrows and Paste;
 //  - no timers but the reconnect wait. Every string from the box is a text node (deck/js/dom.js).
 
 import { h, put } from "../js/dom.js";
 import { attempt } from "../js/api.js";
 import { surfaceId } from "../glass/util.js";
-import { linkVerdict } from "./lib/term-link.js";
+import { linkVerdict, holdKeys, withFrom, withMods, arrow, sizeRole } from "./lib/term-link.js";
 
 /** Tickets term.open already issued, so the first mount needs no second round trip. One use, 30 s. */
 /** @type {Map<string, { path: string, cwd: string, until: number }>} */
@@ -89,8 +96,8 @@ function theme() {
 const monoFont = () => getComputedStyle(document.documentElement).getPropertyValue("--mono").trim() || "ui-monospace, Menlo, monospace";
 
 /**
- * Draw a live terminal in container. Returns cleanup, which closes the socket; the box ends the
- * terminal 10 s later unless something reattaches (term.close ends it at once).
+ * Draw a live terminal in container. Returns cleanup, which closes the socket; the box keeps the
+ * terminal (12 h by default) for a reattach, and term.close ends it at once.
  * @param {HTMLElement} container
  * @param {{ term: string, onBack?: () => void }} o
  * @returns {() => void}
@@ -107,18 +114,45 @@ export function mountTerminal(container, { term, onBack }) {
   /** @type {ResizeObserver|null} */ let ro = null;
   /** @type {MutationObserver|null} */ let mo = null;
   let frame = 0;
-  const enc = new TextEncoder();
+  /** The box's count of bytes this screen has drawn; a reattach asks for what follows. */
+  let offset = 0;
+  /** Has anything been drawn (so a cut needs a reset)? */
+  let drawn = false;
+  /** Is the box done replaying to this socket, so keys go straight through? */
+  let caughtUp = false;
+  /** Keys typed while away. */
+  let queue = "";
+  /** "own": this screen sets the size. "watch": it draws at another screen's size. */
+  let role = /** @type {"own"|"watch"} */ ("own");
+  /** True while this code resizes xterm to the owner's size, so that resize is not sent back. */
+  let remoteSize = false;
+  const mods = { ctrl: false, alt: false };
 
   const dot = h("span", { class: "dot term-dot", "aria-hidden": "true" });
   const word = h("span", { class: "term-word" }, "Connecting");
   const where = h("span", { class: "term-where mono" }, "");
   const back = h("button", { type: "button", class: "btn btn-ghost btn-sm", onclick: () => onBack?.() }, "Back");
+  const take = h("button", { type: "button", class: "btn btn-sm term-take", hidden: true, title: "Size the terminal to this screen", onclick: () => takeSize() }, "Take size");
   const closeBtn = h("button", { type: "button", class: "btn btn-sm", onclick: () => closeIt() }, "Close");
   const note = h("div", { class: "term-note", role: "status", "aria-live": "polite", hidden: true });
   const screen = h("div", { class: "term-screen" });
+
+  /** A key-bar button: it never takes focus from the terminal. @param {string} label @param {() => void} act @param {object} [attrs] */
+  const key = (label, act, attrs = {}) => h("button", { type: "button", class: "term-key", onpointerdown: e => e.preventDefault(), onclick: () => { act(); xt?.focus(); }, ...attrs }, label);
+  const ctrlKey = key("Ctrl", () => toggle("ctrl"), { "aria-pressed": "false" });
+  const altKey = key("Alt", () => toggle("alt"), { "aria-pressed": "false" });
+  const app = () => Boolean(xt && xt.modes && xt.modes.applicationCursorKeysMode);
+  const keys = h("div", { class: "term-keys", role: "toolbar", "aria-label": "Terminal keys" },
+    key("Esc", () => input("\x1b")), key("Tab", () => input("\t")), ctrlKey, altKey,
+    key("←", () => input(arrow("left", app())), { "aria-label": "Left" }),
+    key("↑", () => input(arrow("up", app())), { "aria-label": "Up" }),
+    key("↓", () => input(arrow("down", app())), { "aria-label": "Down" }),
+    key("→", () => input(arrow("right", app())), { "aria-label": "Right" }),
+    key("Paste", () => paste()));
+
   const root = h("section", { class: "term", "aria-label": "Terminal" },
-    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), closeBtn),
-    note, screen);
+    h("header", { class: "term-head" }, back, h("span", { class: "term-title" }, where), h("span", { class: "term-status" }, dot, word), take, closeBtn),
+    note, screen, keys);
   put(container, root);
 
   /** @param {"connecting"|"live"|"waiting"|"ended"|"error"|"blocked"} state @param {string} [msg] @param {any} [action] */
@@ -127,6 +161,8 @@ export function mountTerminal(container, { term, onBack }) {
     word.textContent = { connecting: "Connecting", live: "Live", waiting: "Reconnecting", ended: "Ended", error: "Not connected", blocked: "No live link" }[state];
     if (msg || action) { put(note, h("span", null, msg), action ? [" ", action] : null); note.hidden = false; }
     else { put(note); note.hidden = true; }
+    // Dim what is drawn while the box catches this screen up.
+    if (state === "live" || state === "ended" || !drawn) delete root.dataset.catching; else root.dataset.catching = "";
   }
 
   const setWhere = cwd => {
@@ -138,11 +174,70 @@ export function mountTerminal(container, { term, onBack }) {
 
   const send = obj => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
 
+  /** @param {"ctrl"|"alt"} m */
+  function toggle(m) {
+    mods[m] = !mods[m];
+    (m === "ctrl" ? ctrlKey : altKey).setAttribute("aria-pressed", String(mods[m]));
+  }
+
+  /** Keys to the shell: straight through when live, else held until the box has caught up. @param {string} d */
+  function input(d) {
+    if (mods.ctrl || mods.alt) {
+      d = withMods(d, mods);
+      mods.ctrl = mods.alt = false;
+      ctrlKey.setAttribute("aria-pressed", "false"); altKey.setAttribute("aria-pressed", "false");
+    }
+    if (ended) return;
+    if (ws && ws.readyState === 1 && caughtUp) { send({ t: "in", d }); return; }
+    const r = holdKeys(queue, d);
+    queue = r.queue;
+    if (r.dropped && root.dataset.state !== "live") status(/** @type {any} */ (root.dataset.state), "Some keys were not kept: the terminal holds 4 KB of typing while it is away.");
+  }
+
+  async function paste() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text && xt) xt.paste(text);
+    } catch { if (!dead && root.dataset.state === "live") status("live", "Paste needs permission to read the clipboard."); }
+  }
+
+  /** Fit this screen and send its size, which makes it the size's owner. */
+  function fitAndSend() {
+    if (!xt) return;
+    try { fit.fit(); } catch {}
+    send({ t: "size", cols: xt.cols, rows: xt.rows });
+  }
+
+  function takeSize() {
+    role = "own";
+    take.hidden = true;
+    fitAndSend();
+  }
+
+  /** The box says who owns the size now. @param {any} m */
+  function sizeFrom(m) {
+    if (!xt) return;
+    role = sizeRole(m.owner);
+    if (role === "watch") {
+      take.hidden = false;
+      const cols = Number(m.cols), rows = Number(m.rows);
+      if (cols > 0 && rows > 0 && (cols !== xt.cols || rows !== xt.rows)) {
+        remoteSize = true;
+        try { xt.resize(cols, rows); } catch {}
+        remoteSize = false;
+      }
+    } else {
+      take.hidden = true;
+      // Nobody owns it: this screen takes it.
+      if (m.owner === "none") fitAndSend();
+    }
+  }
+
   async function ticket() {
     const f = fresh.get(term);
     fresh.delete(term);
     if (f && f.until > Date.now()) return { data: f };
-    return attempt("term.attach", { term, surface });
+    return attempt("term.attach", { term, surface, from: offset });
   }
 
   async function connect() {
@@ -157,10 +252,10 @@ export function mountTerminal(container, { term, onBack }) {
       fit = new X.FitAddon();
       xt.loadAddon(fit);
       xt.open(screen);
-      xt.onData(d => send({ t: "in", d }));
-      xt.onBinary(d => send({ t: "in", d }));
-      xt.onResize(s => send({ t: "size", cols: s.cols, rows: s.rows }));
-      ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { try { fit.fit(); } catch {} }); });
+      xt.onData(d => input(d));
+      xt.onBinary(d => input(d));
+      xt.onResize(s => { if (!remoteSize && role === "own") send({ t: "size", cols: s.cols, rows: s.rows }); });
+      ro = new ResizeObserver(() => { cancelAnimationFrame(frame); frame = requestAnimationFrame(() => { if (role === "own") { try { fit.fit(); } catch {} } }); });
       ro.observe(screen);
       // The Deck switches light and dark on <html data-theme>; follow it.
       mo = new MutationObserver(() => { if (xt) xt.options.theme = theme(); });
@@ -175,7 +270,7 @@ export function mountTerminal(container, { term, onBack }) {
       status("error", termError(r.error)); return;
     }
     setWhere(r.data.cwd);
-    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + r.data.path;
+    const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + withFrom(r.data.path, offset);
     let sock;
     try { sock = new WebSocket(url); }
     catch {
@@ -185,24 +280,45 @@ export function mountTerminal(container, { term, onBack }) {
     }
     sock.binaryType = "arraybuffer";
     ws = sock;
+    caughtUp = false;
     const seen = { opened: false, data: false, code: 0 };
     sock.onopen = () => {
       if (ws !== sock) return;
       seen.opened = true;
-      // What follows first is the box's replay of the recent screen: start from a clean one.
-      xt.reset();
-      status("live");
-      send({ t: "size", cols: xt.cols, rows: xt.rows });
-      xt.focus();
+      // The box replays what this screen missed, then says "at": live from there.
     };
     sock.onmessage = e => {
       if (ws !== sock) return;
       if (!seen.data) { seen.data = true; backoff = 1; attempts = []; }
-      xt.write(typeof e.data === "string" ? enc.encode(e.data) : new Uint8Array(e.data));
+      if (typeof e.data !== "string") {
+        const b = new Uint8Array(e.data);
+        offset += b.byteLength;
+        if (b.byteLength) drawn = true;
+        xt.write(b);
+        return;
+      }
+      let m;
+      try { m = JSON.parse(e.data); } catch { return; }
+      if (m.t === "cut") {
+        // What this screen last drew has left the box's ring: redraw from the oldest kept line.
+        if (drawn) xt.reset();
+        xt.write("\x1b[2m[older output was not kept]\x1b[0m\r\n");
+        offset = Number(m.from) || 0;
+      } else if (m.t === "at") {
+        offset = Number(m.offset) || offset;
+        if (!caughtUp) {
+          caughtUp = true;
+          status("live");
+          if ("owner" in m) sizeFrom(m);
+          if (queue) { const q = queue; queue = ""; send({ t: "in", d: q }); }
+          xt.focus();
+        }
+      } else if (m.t === "size") sizeFrom(m);
     };
     sock.onclose = e => {
       if (ws !== sock) return;
       ws = null;
+      caughtUp = false;
       if (dead) return;
       seen.code = e.code;
       // The box closes with 1000 and a reason when the terminal itself ended.
@@ -210,6 +326,8 @@ export function mountTerminal(container, { term, onBack }) {
         finish(e.reason === "exited" ? "The shell exited." : e.reason === "closed" ? "The terminal was closed." : "The terminal ended.");
         return;
       }
+      // vyred is restarting: the shell lives on; come straight back.
+      if (e.code === 1012) { backoff = 1; later("The box is restarting."); return; }
       if (!seen.data) {
         attempts.push({ ...seen });
         if (linkVerdict(attempts) === "blocked") { blocked(); return; }
@@ -221,7 +339,6 @@ export function mountTerminal(container, { term, onBack }) {
   /** This path to the box does not carry live streams: say so and wait for a tap, never loop. */
   function blocked() {
     clearTimeout(retry);
-    try { xt?.reset(); } catch {}
     status("blocked", "The terminal needs the box link. Your Deck reaches the box through a path that does not carry live streams yet.",
       h("button", { type: "button", class: "btn btn-sm btn-primary", onclick: () => { attempts = []; backoff = 1; connect(); } }, "Try again"));
   }
@@ -229,7 +346,7 @@ export function mountTerminal(container, { term, onBack }) {
   /** Reconnect with a fresh ticket, backing off, only while the tab is visible. */
   function later(reason) {
     if (dead || ended) return;
-    status("waiting", `${reason} Trying again in ${backoff} s.`);
+    status("waiting", `${reason} Trying again in ${backoff} s.${queue ? " Your typing is held and goes through when it is back." : ""}`);
     clearTimeout(retry);
     if (document.visibilityState !== "visible") return;
     retry = window.setTimeout(connect, backoff * 1000);
@@ -241,8 +358,10 @@ export function mountTerminal(container, { term, onBack }) {
 
   function finish(msg) {
     ended = true;
+    queue = "";
     clearTimeout(retry);
     closeBtn.disabled = true;
+    take.hidden = true;
     status("ended", msg);
     if (xt) xt.options.cursorBlink = false;
   }
