@@ -21,7 +21,7 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 4. P4 slots/hooks/senders/apps/themes/prompt; P5 out-of-process host, keyless signing (attestations or sigstore via OIDC first), kernel thinning.
 
 ## Needs from others
-- ci: release.yml on work/ci cf82ec85 (dry run as v0.0.1 on work/ci-release). Asked them to rename the APK asset to android-<version>-<sha7>.apk. P2 tests use a fixture shaped like their dist/.
+- ci: release.yml on work/ci 4b49ecf5. APK asset is android-<version>-<sha7>.apk and android.json's `file` is rewritten to match. Dry run only until repo variable VYRE_RELEASES=go. Its dist/ artifact is the P2 test fixture shape; waiting on the dry-run result.
 - (decided) first tag 0.1.0 after the native-core milestone; Cloudflare token for the mirror asked at 0.1.0. Both recorded as open in ADR 0033.
 - mobile: android.json shape and the signer's entry point (a lib the box's update step can call), for P2.
 - polish-cli: reviews core/cli/commands/module.js and update.js (module.js gets aliases ["modules"], remove `modules` from daemon.js, add both to GROUPS). They write the P4 does.commands dispatcher; wants the shape { verb, tool, summary, args? }.

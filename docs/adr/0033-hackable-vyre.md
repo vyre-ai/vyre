@@ -236,11 +236,15 @@ Each release carries these assets (ci owns the workflow):
 - the box files, as `scripts/build-site.sh` makes them: `install-box.sh`, `compose.yml`,
   `compose.build.yml`, `vyre.env.example`, `vyre` (the box wrapper), `Dockerfile`, `dockerignore`,
   `vyre.tgz` and `VERSION`;
-- `android-<version>-<sha7>.apk` (unsigned) and `android.json`, from mobile's Android build;
+- `android-<version>-<sha7>.apk` (unsigned) and `android.json` (its `file` names that asset), from
+  mobile's Android build on the same commit, when there is one;
 - `release.json`: `{ version, channel, commit, date, min_from, notes }`. `min_from` is the lowest
   version that may update straight to this one. It is `0.1.0` unless a migration needs an
   intermediate release, and then `vyre update` names the release to step through;
 - `SHA256SUMS` over every asset above.
+
+Until the repo variable `VYRE_RELEASES` is `go`, every run of the workflow is a dry run: it uploads
+the assets as a workflow artifact and publishes nothing.
 
 Integrity: until phase 5, `vyre update` checks every file against `SHA256SUMS` fetched over TLS
 from the GitHub Release. The workflow attaches GitHub build provenance attestations from the first
