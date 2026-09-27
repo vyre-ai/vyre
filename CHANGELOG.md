@@ -15,6 +15,12 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   settings.changed carries the hub's new rev, and the value only for a key that isn't secret. Reviewed by e2e before it
   lands.
 
+#### The Deck's Dark/Paper switch is this device's appearance.scheme
+
+- deck/views/settings.js: with the hub and the appearance module, the switch also sets
+  appearance.scheme at device level (the device settings.snapshot resolved), so the device's other
+  surfaces follow; without them it stays in this browser as before.
+
 #### The settings hub, steps 2 and 3: device and session levels, snapshot, checks, theme routes
 
 - core/settings: settings.get, set and reset take device and session. A narrower level wins
