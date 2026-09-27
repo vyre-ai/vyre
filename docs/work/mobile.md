@@ -85,8 +85,38 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   threads.get since/limit returns the newest. Asked native-core: keystroke "within one frame"?,
   a server `t` and box clock.
 
+- Resumed after LOGOUT 4 (27 Sep): merged main 7880dfa6 (3e502914; push PEOPLE keeps "tailnet").
+  Design-system adoption: fonts bundled (Instrument Sans 400/600, JetBrains Mono 400; woff2 on the
+  web, ttf embedded on native), src/theme/type.ts steps on every screen, one Button (five kinds,
+  four heights) replacing hand-drawn buttons, Card/Tag/Banner/Avatar, StatusMark sizes from the spec
+  (47fbb75c). Fixed apps/app/.gitignore, which dropped the local modules' native sources
+  (vault-android, vyre-signer never reached git); vault-android = work/vault-next 725e4a41. The
+  HUMAN_ONLY mirror gained presence.person.start. Perf flag kept per device + a web Settings row,
+  because the Home Screen app opens /app/ with no query (ceaf1268). Root suite runs lib/**.
+  test/mobile-tailnet.test.js updated for ADR 0032 (sign in as the person with the device key
+  first) (2df02254). App 121/121, tsc clean; testbox 168/168 (push, docs-*, lib, mobile-tailnet,
+  person, presence). Headless Chrome over CDP: renders, badge on with ?perf=1, kept on /app/,
+  off after ?perf=0.
+
 ## One app: Doing
-- The real-iPhone run of the spike: needs the box to serve /app/ (pwa) and the user's phone.
+- The real-iPhone run: steps in "iPhone test steps" below, after tonight's deploy.
+- Design-system adoption, remaining: vault TrustCard and the Rows AskCard still draw their own
+  card box (move to <Card>); icons, icon button, key hint, tabs, sheet, settings row are "not
+  built" in docs/design/system/README.md; waiting on app-design's per-team spec list for order.
+
+## iPhone test steps (for the lead to hand the user)
+1. iPhone: Tailscale on, same tailnet as the box.
+2. Safari: open https://<box>/app/ . Share, Add to Home Screen, Add. Open Vyre from the Home Screen
+   (the installed app has its own cookies and storage, separate from Safari: do everything below in it).
+3. Settings (top right), Performance meter: tap it once. The page reloads and a small badge shows
+   fps, dropped frames and a verdict. It stays on across launches until tapped again.
+4. Sign in when the bar asks (passkey; if the box has none, the one-time code from
+   `vyre presence code` on the box).
+5. Now: let it load, switch tabs Now, Chats, Agents a few times, close and reopen the app once.
+6. Open a session from Chats, type a short message, send it, let the reply stream, scroll up while it
+   streams, then Stop once. Open the keyboard and close it twice.
+7. Back on Now, swipe a waiting item to approve (or on a sample item if nothing waits).
+8. Tap the badge: it copies the report as JSON. Paste it into a message to the lead.
 
 ## One app: Next
 1. The spike plan with pwa; then scaffold `apps/app` (Expo 54, expo-router, RN Web, Reanimated,
@@ -232,4 +262,5 @@ down after):
 - `deck/onboard/device/` (deck): a new page, its own `index.html`.
 - `deck/test/world.js` (deck): exports `buildHome`, `makeProjects` (now async) and `heldItems`;
   run directly it behaves as before.
-- `package.json`: the test script also runs `apps/test/*.test.js`.
+- `package.json`: the test script also runs `apps/test/*.test.js` and `lib/**/*.test.js`.
+- `lib/perf/` (new shared pure helper): the frame meter, used by apps/app and the Deck's native-bar harness.
