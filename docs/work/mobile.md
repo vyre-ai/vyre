@@ -123,6 +123,16 @@ The native SwiftUI/Compose code below is PAUSED and stays on this branch as refe
   commits, 40 to 100 rests open with a tappable action, under 40 closes). Web is pointer-driven now
   (no scroll-snap); checked with mouse drags in headless Chrome against apps/test/world.js. ci's
   perf job faked the swipe with scrollTo: told ci to drag instead.
+- Icons (d447c6c3): generated from docs/design/one-app/icons.txt (apps/app/scripts/gen-icons.mjs,
+  `npm run icons -- --check`), react-native-svg, 16 at 28/32 and 20 at 44 (app-design 305fc07b).
+  Back is src/ui/BackButton.tsx: chev-l, 44, the previous page's name at 17 when it fits, "Back to
+  `<page>`" (Screen `backTo`, else the page under it in the router stack).
+- Glass mini-view (glass-mini.md, b756d128): src/state/glass-model.js (+17 tests), glass.ts,
+  src/ui/GlassMini.tsx; card on Now after the waiting rows, header card in a thread collapsing to the
+  pill. Stills: one when shown, then on sight.stepped, at most one per 2 s per target, only visible
+  and foreground, never over the relay; no timer (asked app-design to fix the spec's "every 2 s").
+  Off when sight.targets is no_such_tool. Seen in headless Chrome with faked sight tools (CDP Fetch).
+  Not yet: scroll-based visibility on Now, tap opens Glass (no phone Glass; opens the thread).
 - HOLD (lead): Start-here item 7, the phone shell, until after the user's first iPhone run.
 - BLOCKER for the iPhone run (ci is fixing it, lead): main 53cd1326 has no apps/ (batch 4) and nothing packs
   apps/app/dist into vyre.tgz or the box image, so /app/ is 404 no_app on the box. Told the lead.
