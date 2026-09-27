@@ -211,18 +211,14 @@ Plan (to the lead before building):
 
 ## Doing (27 Sep, after logout 3)
 
-Batch 3 reconcile done (c8e00e7b, then a33ad949): main c8fb9aae and tailnet f30a7333 merged;
-the person gate on ownerDevice (relayed devices); cross-origin reads refused; vyre:// PKCE with a
-signed trade; the phone's biometric key enrolled at the native trade; a relayed browser's passkey
-bound to its device; one init (tini PID 1, spawner, loop.sh; check.sh 24/24); floor rule 8 for an
-agent's own folder. Reviewed: sessions e20f459 (approved, three follow-ups), glass-live 70a72036
-(two HIGH). Waiting: relay's relay.device.presence; the integrator's full suite on batch 3.
+Critical path tonight: the uid split wired into sessions' spawn.js (7b4bf9f1, merges sessions
+e4d65bf1; 382a869d adds VYRE_SESSIONS_SPAWNER=0). Unit tests 3/3 local. WAITING for the testbox
+hold to lift, then: rebuild the image from work/e2e on testbox (docker build -t vyre-e2e-split:local
+-f box/Dockerfile .), `sh scripts/e2e-split/check.sh vyre-e2e-split:local` (27 checks now), rm the
+image, send the integrator the sha. Asked the lead: box sessions lose Vyre MCP/hooks to vyred under
+the split until sessions' phase 3; options (a) ship, (b) an agent socket, (c) split off tonight.
+Sessions reviewing the spawn.js diff. Then: the headscale gate on the sha box-deploy forwards.
 
-Also done: the Mac Secure Enclave key (bf6d4ccb; helper compiles, Touch ID sign not yet run on the
-real Mac, needs the lead's OK); switchboard.test.js 42/42 on the Mac with 123e70f6. Batch 3 sha
-sent: bf6d4ccb.
-
-Next: the headscale gate on main after batch 3a+3b, before box-deploy ships it (setup kept in
 /srv/vyre-e2e; `./run1.sh`, `./run2.sh <link>`, `./run3.sh`, then the person-session checks in
 the 27 Sep notes above). Follow up: sessions' three changes, glass-live's two HIGH, relay's
 relay.device.presence.
