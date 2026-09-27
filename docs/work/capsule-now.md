@@ -94,7 +94,7 @@ them, one per fix.
 - Nothing in flight. Stopped 2026-09-27 on the lead's word: the user is refocusing on the native
   core. Final shas: work/capsule-now 8eece58+ (Electron rule 9, main merged), work/capsule-agent
   42e8da0 (native rule 9, main merged). Merge capsule-now before capsule-agent.
-- sessions built rules 1 to 9 on work/sessions b8b1a0a7: `threads.send-now {thread, queued}`
+- sessions built rules 1 to 9 on work/sessions b8b1a0a7, then d12171cc (batch 3a): thread.steered {uuid, turn, step}; an idle send emits thread.turn {turn, uuid} (result stays {sent:true, thread}); send-now returns {sent, queued, uuid, turn}; one threads.unqueue (main's folded in). `threads.send-now {thread, queued}`
   (dash, not underscore), owned-session note "<name> is working on something..." with
   busy:"working", `turn` on every turn event, thread.unqueued gains uuid and reason. When
   sessions merges, keep ONE threads.unqueue (theirs supersedes the switchboard copy here).
