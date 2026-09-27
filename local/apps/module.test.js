@@ -205,7 +205,7 @@ test("module: a presence session proves apps.send; a session never proves a tool
   const wrong = await reg.call("apps.send", input, "capsule", { proof: { ...proof, secret: "not-it" } });
   assert.equal(wrong.error.code, "presence_required");
   // A tool that says yes to sessions but is not on SESSIONABLE is still refused.
-  const other = await presence.verify({ tool: "gate.approve", input: {}, caller: "capsule", proof, def: { presence: { session: () => true } } });
+  const other = await presence.verify({ tool: "vault.delete", input: {}, caller: "capsule", proof, def: { presence: { session: () => true } } });
   assert.equal(other.ok, false);
   assert.match(other.message, /needs its own proof/);
   assert.equal(chat.sent.length, 2);
