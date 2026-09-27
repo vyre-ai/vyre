@@ -18,8 +18,31 @@ import { call } from "../../daemon/client.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
 import { json, emit, failTool, usage } from "../kit.js";
 import { openUrl } from "./up.js";
+import { stream } from "../screen/live.js";
 
 const fail = r => failTool(r.error);
+
+/**
+ * Wait for this Mac's sign-in to finish (link.signed-in), or the page to close. Resolves the new
+ * session's expiry, or null. One event stream, no polling; when it opens, link.status is read once,
+ * so a passkey confirmed before the stream was up still counts. `before` is the expiry of a session
+ * this Mac already had, which is not a new sign-in.
+ * @param {number} until ms @param {{ root?: string, before?: number }} [o] @returns {Promise<number|null>}
+ */
+export function signedIn(until, { root, before = 0 } = {}) {
+  return new Promise(resolve => {
+    /** @type {{ stop(): void } | null} */
+    let s = null;
+    let over = false;
+    const done = (/** @type {number|null} */ v) => { if (over) return; over = true; clearTimeout(t); s?.stop(); resolve(v); };
+    const t = setTimeout(() => done(null), Math.max(0, until - Date.now()));
+    const fresh = (/** @type {any} */ x) => { const n = Number(x) || 0; if (n > before) done(n); };
+    s = stream({ root,
+      onEvent: e => { if (e.type === "link.signed-in") fresh(e.payload?.expires); },
+      onOpen: () => { call("link.status", {}, root ? { root } : undefined).then(r => fresh(r.data?.signedIn?.expires), () => {}); } });
+    if (over) s.stop();
+  });
+}
 const ago = ms => { const s = Math.round((Date.now() - ms) / 1000); return s < 90 ? `${s}s ago` : s < 5400 ? `${Math.round(s / 60)}m ago` : `${Math.round(s / 3600)}h ago`; };
 
 async function status() {
@@ -87,12 +110,18 @@ export default {
       return 0;
     }
     if (sub === "signin") {
+      const had = (await call("link.status")).data?.signedIn?.expires || 0;
       const r = await call("link.signin", {});
       if (r.error) return fail(r);
       if (json()) return emit(r.data);
       openUrl(r.data.url);
       out(`  confirm with your passkey on your box's page: ${bold(r.data.url)}`);
       out(dim(`  This Mac's command line and Capsule can then answer and approve on the box for 30 days. The page is open for ${Math.round((r.data.expires - Date.now()) / 60000)} minutes.`));
+      // At a terminal, wait for the passkey and say how it went; a script gets the link and goes.
+      if (!process.stdout.isTTY) return 0;
+      const expires = await signedIn(r.data.expires, { before: had });
+      if (!expires) { out("  the sign-in page closed before a passkey confirmed it: run vyre link signin again"); return 1; }
+      out(`  signed in on the box until ${new Date(expires).toLocaleDateString()}`);
       return 0;
     }
     if (sub === "signout") {

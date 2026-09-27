@@ -39,7 +39,8 @@ contract in ADR 0031. No build until ADR 0030 steps 1 to 3 land.
 Per project (Project settings > Teammates > Limits):
 - `team.preset`: `light` (1, 2) | `balanced` (3, 4, default) | `max` (6, 10) | `custom`. Suggest
   Light with one line when the rate-limit signals show a Pro plan; never preselect Max.
-- `team.max_active`: 1 to 8 (active teammates at once). `team.max_subagents`: 0 to 16.
+- Per-project limits are set with `sessions.limits.set {project, max_active (1 to 8),
+  max_subagents (0 to 16)}` (person-only), as built by sessions.
 - Impact line: peak = teammates + 0.3 x subagents Opus sessions (1.6, 4.2, 9); shown as how long a
   5-hour window lasts at the peak; "estimate" until a week of history, then measured from
   `thread.usage`.
@@ -47,7 +48,7 @@ Per project (Project settings > Teammates > Limits):
 - `team.api_fallback`: off (use the API key when the plan is exhausted; bills per call).
 - `team.push_after_merge`: off. `team.test_command`: detected, editable.
 Per box (Settings > Box), capping every project:
-- `limits.max_active_teammates`: 6. `limits.max_subagents`: 8.
+- `sessions.limits.max_active_teammates`: 6. `sessions.limits.max_subagents`: 8.
 Models (Settings > Models):
 - `models.purposes.teammate`: Opus. `models.purposes.helper`: the faster model.
 Per teammate (its Setup tab):
@@ -59,6 +60,14 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 ## Needs from others
 - sessions: the slot ledger (`sessions.slots`, events `slot.taken|released|queued`), the Task-tool
   hold in canUseTool, SubagentStop release, per-auth usage state and pause from `thread.limit`.
+  TAKEN by sessions (2026-09-27): builds it after batch 3a, plus purposes `teammate` (opus) and
+  `helper` (haiku); the rest (teammate-result kind, team.* in-process, compact hook, context used)
+  after slots.
+  BUILT on work/sessions after 4311fca5 (not in batch 3a): sessions.slots, the subagent hold,
+  purposes, threads.post kind teammate-result, thread.usage.context.share, compact via the
+  plugin's SessionStart plus harness.brief. Still open there: the per-auth usage pause, team.* in
+  phase 3 (their per-thread plugin socket, which is fine by us), and a no-wake option on
+  threads.post for a closed caller (asked).
 - sessions: the purpose map (`models.purposes`, purposes `teammate` and `helper`); a
   `teammate-result` item kind in `threads_inbox`; `team.*` in the phase 3 in-process MCP server;
   SessionStart `compact` re-injection hook.

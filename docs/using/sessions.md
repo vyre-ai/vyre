@@ -116,6 +116,26 @@ questions) are still added after your text.
 Only you can edit a system prompt. No agent, model or tool call from inside a session can, its own
 least of all.
 
+### The Capsule's quick answer (Vyre IQ)
+
+A question you ask in the Capsule runs as a small session on the fast model with its own prompt:
+it is Vyre IQ, it answers only from the facts the Capsule showed you for the same words, cites
+them by number (`[1]`), and says "I don't know yet." in one line when none of them answers. It
+never talks about its access or tools, answers in one to three sentences, and fixes your typos
+without saying so. Thinking is off, so the same words get the same answer. The prompt is
+versioned (`capsule@1`), and the version is on the thread's start.
+
+To add a line of your own, or replace it, use scope `capsule`, versioned and undoable like the
+others:
+
+```sh
+vyre call sessions.prompt.set '{"scope":"capsule","text":"Call me alex."}'
+vyre call sessions.prompt.preview '{"purpose":"capsule"}'
+```
+
+`npm run eval:iq` asks the model eleven fixed questions twice each with your own Claude sign-in
+and says which answers break a rule or change between runs.
+
 ## Open in terminal
 
 `vyre resume <thread>` opens any thread in `claude` in your terminal, where it ran. A session vyred

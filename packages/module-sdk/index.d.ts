@@ -46,8 +46,10 @@ export interface SettingDef {
   /** live: at once; session: from the next session; restart: when vyred next starts. */
   apply: "live" | "session" | "restart";
   advanced?: boolean;
-  /** Only the person sees its value; everyone else gets it masked, and it never rides on an event. */
+  /** Masked for anyone but the person. */
   secret?: boolean;
+  /** A label per enum value. */
+  labels?: Record<string, string>;
   /** The setting can loosen what Vyre allows; the Deck marks it. */
   security?: "loosens";
   /** What it loosens, in a few words. */
@@ -142,7 +144,7 @@ export interface Tip {
   command?: string;
   /** A relative .md path, with an optional #anchor. */
   docs?: string;
-  about?: Surface;
+  about?: string;
   [experimental: `x-${string}`]: unknown;
 }
 
@@ -290,6 +292,8 @@ export interface ModuleContext {
   providers: { get(name: string): SessionDriver | null; list(): string[] };
   /** @internal Every running module's declared settings, tagged with its module. For the settings module. */
   declaredSettings(): (SettingDef & { module: string })[];
+  /** Every running module's teaches.tips, for the tips module (core/tips). firstParty: shipped in the repo. */
+  declaredTips(): { module: string; version: string; firstParty: boolean; tips: Tip[] }[];
   /** @internal The whole merged config.json. Modules move to ctx.settings. */
   readonly config: any;
   /** @internal A tool on the linked box, from a module on the Mac. */

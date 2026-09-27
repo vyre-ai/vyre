@@ -140,7 +140,7 @@
               "key": { "type": "string", "minLength": 1 },
               "command": { "type": "string", "minLength": 1 },
               "docs": { "type": "string", "pattern": "^[^/#][^#]*\\.md(#[A-Za-z0-9-]+)?$", "x-message": "must be a relative path to a .md file, with an optional #anchor" },
-              "about": { "$ref": "#/$defs/surface" }
+              "about": { "$ref": "#/$defs/word", "description": "What the tip is about (a part of Vyre such as chat, box or modules), for the tips list." }
             }
           }
         }
@@ -177,7 +177,8 @@
         "levels": { "type": "array", "items": { "enum": ["account", "project", "device", "session"] }, "minItems": 1, "uniqueItems": true },
         "apply": { "enum": ["live", "session", "restart"] },
         "advanced": { "type": "boolean" },
-        "secret": { "type": "boolean", "description": "Only the person sees its value; everyone else gets it masked, and it never rides on an event." },
+        "secret": { "type": "boolean", "description": "Its value is masked for anyone but the person (settings maskFor)." },
+        "labels": { "type": "object", "additionalProperties": { "type": "string" }, "description": "A label per enum value, for surfaces that list the choices." },
         "security": { "enum": ["loosens"], "description": "The setting can loosen what Vyre allows; the Deck marks it." },
         "loosens": { "type": "string", "description": "What it loosens, in a few words." },
         "confirm": {

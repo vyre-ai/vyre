@@ -16,6 +16,7 @@ import reminders from "./reminders.js";
 import weather from "./weather.js";
 import planner from "./planner.js";
 import slack from "./slack.js";
+import whatsapp from "./whatsapp.js";
 
 /**
  * @typedef {import("../env.js").Env} Env
@@ -25,11 +26,11 @@ import slack from "./slack.js";
  * @typedef {{ id: string, app: string, bundleIds: string[], tier: "connector" | "intents" | "script" | "ax",
  *   actions: Record<string, Action>,
  *   targets?: (q: string, env: Env) => Promise<Array<{ id: string, title: string, kind: string, subtitle?: string }>>,
- *   ready?: (env: Env) => Promise<boolean> }} Adapter
+ *   ready?: (env: Env) => Promise<boolean>, partialTargets?: boolean }} Adapter
  */
 
 /** @type {Adapter[]} */
-export const BUILTIN = [planner, clock, notes, reminders, weather, slack];
+export const BUILTIN = [planner, clock, notes, reminders, weather, slack, whatsapp];
 
 /**
  * The adapters in force: config's own first (so a person or a test can stand in for a built-in),

@@ -34,6 +34,20 @@ export function isRealHome(root) {
   return path.resolve(String(root).replace(/^~(?=$|\/)/, os.homedir())) === realHome();
 }
 
+/**
+ * Claude Code's folder (sessions, transcripts, settings, CLAUDE.md, skills) for the Vyre home at
+ * `root`. The person's real one (CLAUDE_CONFIG_DIR, else ~/.claude) only for their own ~/.vyre;
+ * any other home (a dev world, a demo, a temp home, a test) gets `<root>/claude`, empty until
+ * something puts a fixture there, so it never reads or writes the person's conversations.
+ * VYRE_CLAUDE_HOME names the folder outright, for a home kept elsewhere on purpose.
+ * @param {string} root @param {NodeJS.ProcessEnv} [env]
+ */
+export function claudeHome(root, env = process.env) {
+  if (env.VYRE_CLAUDE_HOME) return path.resolve(env.VYRE_CLAUDE_HOME.replace(/^~(?=$|\/)/, os.homedir()));
+  if (isRealHome(root)) return env.CLAUDE_CONFIG_DIR ? path.resolve(env.CLAUDE_CONFIG_DIR.replace(/^~(?=$|\/)/, os.homedir())) : path.join(os.homedir(), ".claude");
+  return path.join(path.resolve(String(root)), "claude");
+}
+
 /** @param {NodeJS.ProcessEnv} [env] */
 export function dialogsAllowed(env = process.env) {
   if (env.VYRE_NO_DIALOGS === "1") return false;
@@ -46,14 +60,15 @@ export function dialogsAllowed(env = process.env) {
  * Whether a vyred on `root` may look for, or pair with, a box on the real tailnet. The same rule
  * as dialogs: a dev world, a demo or a stress run on a temp home found the user's live box and
  * sent it a real pairing request. Only ~/.vyre may, or a home whose owner says so with
- * VYRE_ALLOW_DIALOGS=1 or VYRE_ALLOW_REAL_BOX=1. VYRE_NO_DIALOGS does not change it: a stress run
- * sets that and still must not pair.
+ * VYRE_ALLOW_REAL_BOX=1. VYRE_ALLOW_DIALOGS=1 is about dialogs, not boxes: a trial home that
+ * allowed dialogs and named the user's box sent it a pairing request. VYRE_NO_DIALOGS does not
+ * change it either: a stress run sets that and still must not pair.
  * @param {string} root @param {NodeJS.ProcessEnv} [env]
  */
 export function realBoxAllowed(root, env = process.env) {
   if (env.VYRE_ALLOW_REAL_BOX === "1") return true;
   if (env.NODE_TEST_CONTEXT) return false;
-  return isRealHome(root) || env.VYRE_ALLOW_DIALOGS === "1";
+  return isRealHome(root);
 }
 
 /** The error code a refused dialog carries. */

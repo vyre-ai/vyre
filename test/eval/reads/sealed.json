@@ -1,0 +1,1425 @@
+{
+ "version": 7,
+ "model": "haiku",
+ "reads": {
+  "079caf252cfbf016f240333c39b29770": [],
+  "07a978af6b46cd7731b569c3568b47eb": [],
+  "080c18639c951c324cfa1fcd297f2035": [
+   {
+    "subj": "name:Wendell",
+    "rel": "drives",
+    "obj": "vehicle:Berlingo",
+    "q": "wendell wants the planner to work for his green berlingo van",
+    "conf": 0.9
+   },
+   {
+    "subj": "vehicle:Berlingo",
+    "rel": "color",
+    "obj": "lit:green",
+    "q": "his green berlingo van",
+    "conf": 0.9
+   }
+  ],
+  "0a1e4761f39847641767a0e95ae86000": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "Sounds like Bree has settled the vote",
+    "conf": 0.9,
+    "verified": false
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Bree",
+    "q": "Bree has settled the vote",
+    "conf": 0.9,
+    "verified": false
+   }
+  ],
+  "0a845428546b77c7f86e3ba4523c26bf": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "the bakery meeting",
+    "conf": 0.9
+   }
+  ],
+  "0ad5c0ae3c2343afbf9a8ba65b1e8bad": [],
+  "0bdcd1cd3bd9dfdd404b983c5da5f4cb": [],
+  "0d1b2589c8e27816ec59c4018d6c7e2c": [],
+  "0d42d48a725d9e3c6d5510d51c06e276": [
+   {
+    "subj": "kin:mother",
+    "rel": "name",
+    "obj": "lit:Maureen",
+    "q": "add mam, her names maureen",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "0f14dae67356964ae7d11f40a41606eb": [],
+  "124a235cfbffa74baf2d0e706aab0163": [
+   {
+    "subj": "kin:child",
+    "rel": "name",
+    "obj": "lit:Lorcan",
+    "q": "our kid lorcan",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "name:Lorcan",
+    "rel": "role",
+    "obj": "lit:electrician",
+    "q": "hes a sparky",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "kin:child",
+    "q": "our kid lorcan",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "14c16e4ebeba296029a0e1095db30684": [],
+  "15839647ac5ecd4290e05658eb6a15b4": [],
+  "15f8e046fc36fec0ff4d0d00e1e7e185": [
+   {
+    "subj": "kin:dog",
+    "rel": "age",
+    "obj": "lit:10 weeks",
+    "q": "bramble is 10 weeks",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:dog",
+    "q": "bramble is 10 weeks",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:dog",
+    "rel": "name",
+    "obj": "lit:Bramble",
+    "q": "bramble is 10 weeks",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "15fbfe9b1fc44f5bcc2809bc4e911977": [],
+  "1948f1c1c6b019a8657bf25a1c22e814": [],
+  "1af2fc045bff5fc069f9f5a915d0c26d": [
+   {
+    "subj": "me",
+    "rel": "friend",
+    "obj": "name:Hamish",
+    "q": "went sea swimming at tynemouth this morning with hamish",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Tynemouth",
+    "q": "went sea swimming at tynemouth this morning",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "hobby",
+    "obj": "lit:sea swimming",
+    "q": "went sea swimming at tynemouth this morning",
+    "conf": 0.9
+   }
+  ],
+  "1baa5c1690da49215d5e4e0b602d11b3": [],
+  "1e7b1cc98462bbdf254dc04510ba1b41": [],
+  "1f91d93501fba55265324cf11f239a5e": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "the Northwind orders sheet import",
+    "conf": 0.7
+   }
+  ],
+  "1fc8ef553a7bea7083302fcad4386e2b": [
+   {
+    "subj": "kin:spouse",
+    "rel": "role",
+    "obj": "lit:physio",
+    "q": "shes a physio not a nurse haha",
+    "conf": 0.9
+   }
+  ],
+  "230f8ec078af43738e83bae57712cbb7": [
+   {
+    "subj": "name:Gwen Halloran",
+    "rel": "role",
+    "obj": "lit:accountant",
+    "q": "gwen halloran (my accountant)",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "invoice exports for the northwind and harlow side work",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "invoice exports for the northwind and harlow side work",
+    "conf": 0.7
+   }
+  ],
+  "23d6d5a2f42e2dd90a584b4d8c60436d": [],
+  "23d9e27f5a1e322f2817958086f8bc6d": [],
+  "25cc0e115f3ca14ac6a9f6e9e1c03603": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "set up zed keybindings to match my old vim muscle memory",
+    "conf": 0.9
+   }
+  ],
+  "2a3460e45895a623c0d07448a153387d": [],
+  "2afbe6c4f7ea88c689032b67c804853c": [],
+  "2d24d47880193c4f7d8ddbf0edcda549": [],
+  "30adcc5991a64ff5c292c98fc0d19255": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Edinburgh",
+    "q": "edinburgh is off. the job offer fell through, were staying put for now",
+    "conf": 0.5
+   }
+  ],
+  "30e6a86e7b2cffd8c0e783fd934534df": [],
+  "30ed0ac29634558e01111086989d4ef9": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind Bakery",
+    "q": "northwind Bakery wants a daily orders summary",
+    "conf": 0.9
+   }
+  ],
+  "31475185693ff4430a3298dc3eb12f0a": [],
+  "3180f12831a7aa2600f0e81da49ae7d6": [],
+  "31d4b10d603653c480478920fd696e77": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Durham",
+    "q": "were in durham",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "hobby",
+    "obj": "lit:sea swimming",
+    "q": "sea swimming at seaham",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "set up zed keybindings",
+    "conf": 0.9
+   }
+  ],
+  "3362af7bf7b0b3745b0bdb11719492da": [],
+  "338f500f5bf1f0679d22f2abff97bef8": [],
+  "33ad502dddda43bf1fc5a8a1ed967004": [
+   {
+    "subj": "kin:mother",
+    "rel": "works_at",
+    "obj": "org:Library",
+    "q": "mam still works at the library in sunderland",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:mother",
+    "rel": "lives_in",
+    "obj": "place:Sunderland",
+    "q": "the library in sunderland",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:mother",
+    "rel": "works_at",
+    "obj": "org:Library in Sunderland",
+    "q": "mam still works at the library in sunderland",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "the Northwind oredrs sheet import",
+    "conf": 0.7
+   }
+  ],
+  "34479337f383b5d9a8b0f1a48cb0410c": [],
+  "3678a56b95195fc5ba7fbb4246c51010": [
+   {
+    "subj": "me",
+    "rel": "diet",
+    "obj": "lit:gluten-free",
+    "q": "Look for loaves with the crossed grain symbol. Most supermarkets carry a couple of certified gluten free brands",
+    "conf": 0.7
+   }
+  ],
+  "3853f85a08f6e285e255344891c730bf": [],
+  "3880387fb6d67e7a175e05b3d5569f7f": [],
+  "39b35cc7666e462398f43e5f7dea8aa0": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Durham",
+    "q": "whats the best way to get to the tidewell office from here by train",
+    "conf": 0.7
+   }
+  ],
+  "3a70e6a05987650b902889680e0f36ce": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Kia Niro",
+    "q": "my rating",
+    "conf": 0.5
+   }
+  ],
+  "3b8ec5aed627f2d42eef9c486e476bbc": [],
+  "3cd81d053561d5d67e1d3448dac561f7": [],
+  "3d28331bd34b8e5febe1ee0ec3bb71ce": [],
+  "3ea794b3cd85896c98016f4d5ef4f743": [],
+  "3fe07a7f9c240c1729bbdd9f995da85a": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind Bakery",
+    "q": "Northwind Bakery wants a daily orders summary emailed at 6am",
+    "conf": 0.9
+   }
+  ],
+  "40702477f632982c03db1ddcd00b96c8": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "the missus is away at a physio conference",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "name:Corwin",
+    "q": "solo with corwin and nell",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "name:Nell",
+    "q": "solo with corwin and nell",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "425f713c979919c1094df5cf121240fc": [],
+  "446a7433882fb5e53ddf7f2033a2ff2d": [
+   {
+    "subj": "kin:mother",
+    "rel": "role",
+    "obj": "lit:librarian",
+    "q": "mam finally retired from the library",
+    "conf": 0.9
+   }
+  ],
+  "44ef8eda95a32d4616b35ed8aebfc3e4": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Lichess API",
+    "q": "pull my last 500 gmaes from the lichess API",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:SQLite",
+    "q": "pull my last 500 gmaes from the lichess API into sqlite",
+    "conf": 0.9
+   }
+  ],
+  "47c70dd81a4ad4b4c7dcdc2f69d8563e": [],
+  "498f163905df248cbe69f8abd3b29481": [],
+  "4ef2fab47bd33c84c1aeb663c95325a8": [],
+  "5297cf26ae4e0d2d94a85d8d21cc2997": [],
+  "52cd01dd34af04658bdd9125e6c6546d": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Vauxhall Astra",
+    "q": "the astra wont start again, blue vauxhall astra",
+    "conf": 0.9
+   },
+   {
+    "subj": "vehicle:Vauxhall Astra",
+    "rel": "color",
+    "obj": "lit:blue",
+    "q": "blue vauxhall astra",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "set up zed keybindings to match my old vim muscle memory",
+    "conf": 0.9
+   }
+  ],
+  "567c18fcbc0be7ecd68357a3a4690949": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "Harlow wants a search box across document titles",
+    "conf": 0.9
+   }
+  ],
+  "56f5f8f362b3c2e79af3290482aef96b": [],
+  "5819e56e7a668c43a9a37f7a10c31ef9": [],
+  "584da8eb5a0576618c3a44151c6794aa": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "add a route planner for the Northwind delivery van",
+    "conf": 0.9
+   }
+  ],
+  "596b79bd9e0f12ee064f7d651f31b085": [
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Bree",
+    "q": "bree got offered a job in edinburgh",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Edinburgh",
+    "q": "we might move up in the summer",
+    "conf": 0.5
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "add a route planner for the Northwind delivery van",
+    "conf": 0.9
+   }
+  ],
+  "5ac95703556f7a0c55262b14ad4310c4": [
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Brielle",
+    "q": "her names bree btw (brielle officially)",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "role",
+    "obj": "lit:physiotherapist",
+    "q": "shes a physio",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "role",
+    "obj": "lit:physio",
+    "q": "shes a physio",
+    "conf": 0.9
+   }
+  ],
+  "5ff8869f4be0287fe5489b6d6dc75164": [
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Tidewell Health",
+    "q": "first day at tidewell health",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "need to set up zed and orbstack again",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Orbstack",
+    "q": "need to set up zed and orbstack again",
+    "conf": 0.9
+   }
+  ],
+  "604dca04f29b9796347e23e896d8f112": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Durham",
+    "q": "no were in durham",
+    "conf": 0.9
+   }
+  ],
+  "630d7eb6e472083421f091d11e43e99c": [],
+  "63759f6d37aeec9ebebf7705f29fcb69": [
+   {
+    "subj": "kin:cat",
+    "rel": "name",
+    "obj": "lit:Mungo",
+    "q": "mungo was sick on the stairs at 5am. hes our cat",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "name:Mungo",
+    "rel": "age",
+    "obj": "lit:14",
+    "q": "hes our cat, old tabby, 14 now",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:cat",
+    "q": "mungo was sick on the stairs at 5am. hes our cat",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:cat",
+    "rel": "age",
+    "obj": "lit:14",
+    "q": "14 now",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:cat",
+    "rel": "breed",
+    "obj": "lit:tabby",
+    "q": "old tabby",
+    "conf": 0.7
+   }
+  ],
+  "637fb663324eb3bc14182d1551e2338b": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "harlow legal want the export fixed",
+    "conf": 0.9
+   },
+   {
+    "subj": "name:Lorcan Voss",
+    "rel": "works_at",
+    "obj": "org:Harlow Legal",
+    "q": "lorcan voss (their it manager)",
+    "conf": 0.9
+   }
+  ],
+  "63875cb74fe04671293b7aee10df7bda": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind Bakery",
+    "q": "Northwind Bakery wants a daily orders summary emailed at 6am",
+    "conf": 0.9
+   }
+  ],
+  "64291b99fb9276185ed2a7b4d20f2dee": [],
+  "6592c4e827aee703140b5c60c6299e32": [],
+  "67a643f411c062797790b5aa6ceb5f34": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Kia Niro",
+    "q": "our niro",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:dog",
+    "q": "a family of four with a dog",
+    "conf": 0.7,
+    "verified": true
+   }
+  ],
+  "6838c1edd1af9104ef910619e8a7d9b2": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "Northwind stock cuont form double submits on slow wifi",
+    "conf": 0.9
+   }
+  ],
+  "694c97e95a84c973bafe9e9b158ca6c6": [],
+  "6b764f131b756d619b645d6f6fd275fd": [
+   {
+    "subj": "kin:spouse",
+    "rel": "diet",
+    "obj": "lit:vegetarian",
+    "q": "bree is veggie",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "diet",
+    "obj": "lit:gluten-free",
+    "q": "im coeliac",
+    "conf": 0.9
+   }
+  ],
+  "6c46b92376a8e32e56fdfbcc00ecc304": [],
+  "7324308d1f96ffadcf72fb27c16dbf04": [
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "name:Wendell",
+    "q": "our kid is doing the new consumer unit",
+    "conf": 0.5,
+    "verified": false
+   }
+  ],
+  "741cd3b33b6892c874ef0fffff013a21": [
+   {
+    "subj": "kin:spouse",
+    "rel": "birthday",
+    "obj": "lit:2 June",
+    "q": "brees birthday is the 2nd of june",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "add bree too",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Bree",
+    "q": "add bree too",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "743a510dfd32d3bfdfa82dceb328acab": [],
+  "7608f6fef4996282820e5fca92e20ce4": [
+   {
+    "subj": "kin:spouse",
+    "rel": "works_at",
+    "obj": "org:Hospital",
+    "q": "my other half is on nights at the hospital",
+    "conf": 0.7
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "role",
+    "obj": "lit:nurse",
+    "q": "my other half is on nights at the hospital",
+    "conf": 0.9
+   }
+  ],
+  "766a88e3e1d54eaad0b0949eeddad75a": [
+   {
+    "subj": "me",
+    "rel": "hobby",
+    "obj": "lit:chess",
+    "q": "pull my last 500 games from the lichess API into sqlite",
+    "conf": 0.7
+   }
+  ],
+  "76c647b96ee2fef9a52f5d61fff91996": [],
+  "77b1c1c6f561540b313c6f304705e9cc": [],
+  "792fd343ea16b7dc917ac80e8170738e": [],
+  "7950bb9d4e971de9c48e65e6dfd4df87": [],
+  "79613314e92ee3724b97eba7965a5a4e": [],
+  "7c3fbebe9ebf5d1f8e1e3f6ceb889bf4": [],
+  "7cc90b1ed0079516376b6c88db16e483": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Orbstack",
+    "q": "ditched docker desktop, on orbstack now",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "set up zed keybindings to match my old vim muscle memory",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Vim",
+    "q": "set up zed keybindings to match my old vim muscle memory",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Apple M3",
+    "q": "so much faster on the m3",
+    "conf": 0.7
+   }
+  ],
+  "7cf1bc159c0e6e88e7c5fd35f4e04320": [],
+  "7d7e1b05ead2a3d6b1e5b77f1852bd5a": [
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Brackwater Utilities",
+    "q": "im a data engineer at brackwater utilities, been there about 4 years",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "role",
+    "obj": "lit:data engineer",
+    "q": "im a data engineer at brackwater utilities",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:dbt",
+    "q": "dbt seed fails",
+    "conf": 0.9
+   }
+  ],
+  "7de0eefa0586e4dcfcec49d02be03f2a": [],
+  "7ebaaf1a4a6ccb2e525c359d3191576c": [],
+  "7fb115ea58259db18ae4a222a2324de4": [],
+  "7fc3b55d52fce1827997900a7721e48b": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "i use zed for everything now, moved off vscode last year",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:DataGrip",
+    "q": "datagrip for databases",
+    "conf": 0.9
+   }
+  ],
+  "851d064fb72cdf19f22cabf1889c4c7a": [],
+  "87dce2ecaadb82019ea77a51eeb30c23": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "clinic appointments ingest",
+    "conf": 0.7
+   }
+  ],
+  "88dedad462a0901601986d589cd68756": [],
+  "8a181bcd78954b3870f36c1622f15bc1": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "harlow Legal doc export to PDF cuts off the last page",
+    "conf": 0.9
+   }
+  ],
+  "8a1a3017b706e7dbd2080007a8ad301e": [],
+  "8ceff59cfb46cffc93fdb95ac9403ca3": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Durham",
+    "q": "were buying a house in durham!! offer accepted. moving in about 10 days",
+    "conf": 0.9
+   }
+  ],
+  "8d59f45ac95c9adbdcbaccd9dbbac980": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Kia Niro",
+    "q": "picked up the niro today!! white kia niro hybrid",
+    "conf": 0.9
+   },
+   {
+    "subj": "vehicle:Kia Niro",
+    "rel": "color",
+    "obj": "lit:white",
+    "q": "white kia niro hybrid",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "sold",
+    "obj": "vehicle:Vauxhall Astra",
+    "q": "traded the astra in",
+    "conf": 0.9
+   }
+  ],
+  "8e2df4bef1cc0f58195df82a768ef487": [],
+  "8ed8dee918b427980d888ce5a9d3f06c": [
+   {
+    "subj": "kin:brother",
+    "rel": "name",
+    "obj": "lit:Lorcan",
+    "q": "lorcan isnt in gateshead anymore",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:brother",
+    "rel": "lives_in",
+    "obj": "place:Whitley Bay",
+    "q": "he moved to whitley bay last year",
+    "conf": 0.9
+   }
+  ],
+  "8f966130aae923df7b0a5516c081d851": [],
+  "907343f033ede60290d59a3be4d8e2ff": [],
+  "94dafc572abde0ccdc130d9dab1cfe24": [],
+  "959811c1572813a6280ad598105c30db": [],
+  "969c0d90df514db298c65e50e9bfcb4a": [],
+  "97ce0965527e55785cfd40b7b371b604": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Kia Niro",
+    "q": "what car do i drive",
+    "conf": 0.9
+   }
+  ],
+  "98eaeaf5560e38609b71ca6e0e94b842": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "clinic managers",
+    "conf": 0.5
+   }
+  ],
+  "993fe0d8bbb0bfd1f3c9544e6bc396a7": [
+   {
+    "subj": "me",
+    "rel": "hobby",
+    "obj": "lit:chess",
+    "q": "Pull my last 500 games from the lichess API into sqlite",
+    "conf": 0.7
+   }
+  ],
+  "997e8102d2e16e9dde24721caa200ebb": [
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Durham",
+    "q": "moved in! durham",
+    "conf": 0.9
+   }
+  ],
+  "9ab3ad2ba96c51175fae4dfea2632202": [
+   {
+    "subj": "kin:dog",
+    "rel": "name",
+    "obj": "lit:Bramble",
+    "q": "the pup chewed through my laptop charger",
+    "conf": 0.9,
+    "verified": false
+   }
+  ],
+  "9c7e6f9ceb30852cfc5721eb4e0f9c24": [],
+  "9d25bb3d4e2621f68a18be02154b9427": [],
+  "9d45a0f5837c815fa77d0f24b4c484e0": [],
+  "9e47911ed381501df41650c8347e9ba3": [
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Brackwater",
+    "q": "last day at brackwater",
+    "conf": 0.9
+   }
+  ],
+  "9f25e2b10d5ae6ad067ab01f71160cd0": [
+   {
+    "subj": "me",
+    "rel": "spouse",
+    "obj": "kin:spouse",
+    "q": "bree says no chance",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Bree",
+    "q": "bree says no chance",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "a3af6b3b36334cc4bb3180f5ec3f61d9": [],
+  "a40409d2069ad52e658753cedb5ad758": [],
+  "a49ccd8aa014245e892c7b919aa901eb": [],
+  "a548206aec49bbbff3cd9249fbc2fcd8": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "Northwind stock count form",
+    "conf": 0.9
+   }
+  ],
+  "a7b418206de5ff996a39338452c9120a": [],
+  "a875081662e0ed47860cacad2f87c957": [
+   {
+    "subj": "name:Hamish",
+    "rel": "child",
+    "obj": "name:Rory",
+    "q": "hamishs twins rory and isla are 5",
+    "conf": 0.7,
+    "verified": false
+   },
+   {
+    "subj": "name:Hamish",
+    "rel": "child",
+    "obj": "name:Isla",
+    "q": "hamishs twins rory and isla are 5",
+    "conf": 0.7,
+    "verified": false
+   },
+   {
+    "subj": "name:Rory",
+    "rel": "age",
+    "obj": "lit:5",
+    "q": "hamishs twins rory and isla are 5",
+    "conf": 0.7
+   },
+   {
+    "subj": "name:Isla",
+    "rel": "age",
+    "obj": "lit:5",
+    "q": "hamishs twins rory and isla are 5",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "harlow wants a search box across document titles",
+    "conf": 0.9
+   }
+  ],
+  "a9885143d9c9775531fbd4f6d6ea5f34": [
+   {
+    "subj": "kin:child",
+    "rel": "age",
+    "obj": "lit:6",
+    "q": "hes 6",
+    "conf": 0.9
+   }
+  ],
+  "aa90b5df7f82b41e986c4948e48abafa": [
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Bree",
+    "q": "bree likes the white niro at the dealer",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "tool": "tool:Zed",
+    "q": "Set up zed keybindings",
+    "conf": 0.9
+   }
+  ],
+  "abfe78e33451e58f744b33239a6f4031": [],
+  "ac6b3d9d8aceb903538b7cf48ee96170": [],
+  "ae472345f9981db652fc4a5c6184dc85": [],
+  "b0462a6804ea58a368c93d3b9fe756a6": [],
+  "b15159f5f7c94e65c4402ded6c5c7eb9": [
+   {
+    "subj": "name:Nell",
+    "rel": "age",
+    "obj": "lit:3",
+    "q": "nell starts nursery in september, shes 3",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "Add a route planner for the Northwind delivery van",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "kin:child",
+    "q": "nell starts nursery",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "b474e216df0143a55cd5c1a94101cb67": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "set up zed keybindings to match my old vim muscle memory",
+    "conf": 0.9
+   }
+  ],
+  "b48022a043007fa8026bcc90affbd3a7": [
+   {
+    "subj": "name:Mungo",
+    "rel": "age",
+    "obj": "lit:unknown",
+    "q": "mungo would hate it",
+    "conf": 0.5
+   }
+  ],
+  "b5f672596f9f1dbdc4c96a13b6bfa607": [
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "vehicle:Kia Niro",
+    "q": "the niro needs its first service",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "Set up zed keybindings",
+    "conf": 0.9
+   }
+  ],
+  "b9372d5bce5a7569a2a676e486566cf2": [
+   {
+    "subj": "me",
+    "rel": "diet",
+    "obj": "lit:gluten-free",
+    "q": "im coeliac",
+    "conf": 0.9
+   }
+  ],
+  "bcbc0853729405ea6568700ecc1a6b57": [
+   {
+    "subj": "me",
+    "rel": "hobby",
+    "obj": "lit:chess",
+    "q": "pull my last 500 games from the lichess API into sqlite",
+    "conf": 0.7
+   }
+  ],
+  "bd03e11ab975de9c923cf327ee709450": [],
+  "bd4ae0d66038f21eebf610a60cef97af": [
+   {
+    "subj": "me",
+    "rel": "hobby",
+    "obj": "lit:chess",
+    "q": "tobi beat me again, 4 in a row",
+    "conf": 0.9
+   },
+   {
+    "subj": "name:Tobi",
+    "rel": "hobby",
+    "obj": "lit:chess",
+    "q": "tobi beat me again",
+    "conf": 0.7
+   }
+  ],
+  "bee559385ee6b6c3cefe4380fe97a117": [
+   {
+    "subj": "name:Corwin",
+    "rel": "age",
+    "obj": "lit:7",
+    "q": "hes my son lol. 7 today",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "child",
+    "obj": "kin:child",
+    "q": "hes my son",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "bf470fe5e2a1f9998208758e92d76afe": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "Add a route planner for the Northwind delivery van",
+    "conf": 0.7
+   }
+  ],
+  "c18d36fb1cb0ddc2487361549108017a": [],
+  "c29ff18df50b4c7a0cacb1c5d5a3fc24": [],
+  "c2ccd945844b284c58c7ff4df5c414ec": [],
+  "c36bb11b7f045fa800005dc9fd708134": [],
+  "c89c0675a6fef072663d0f8f8669eb1b": [
+   {
+    "subj": "me",
+    "rel": "hobby",
+    "obj": "lit:chess",
+    "q": "i play a lot of chess on lichess",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Lichess",
+    "q": "i play a lot of chess on lichess",
+    "conf": 0.9
+   }
+  ],
+  "c99a427ba3f839cfaf36d53b81895e95": [],
+  "c9eb99d493f79ecb0bb5bf5aad99d630": [
+   {
+    "subj": "kin:brother",
+    "rel": "name",
+    "obj": "lit:Lorcan",
+    "q": "Handy to have an electrician in the family. yeah hes in gateshead",
+    "conf": 0.5,
+    "verified": false
+   },
+   {
+    "subj": "kin:brother",
+    "rel": "role",
+    "obj": "lit:electrician",
+    "q": "Handy to have an electrician in the family",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:brother",
+    "rel": "lives_in",
+    "obj": "place:Gateshead",
+    "q": "yeah hes in gateshead so its not far",
+    "conf": 0.9
+   }
+  ],
+  "cc0846569bcfe4720d3af8c18164f42a": [],
+  "cc2d027f1cf745d895c513a32aecf5d1": [],
+  "cce1f00b3e4da130de803736baf90804": [],
+  "d2907771e79c6a54feca1d8fa12e1a29": [],
+  "d562b18f852e328fee2250526c5496df": [],
+  "d5ed2276974e5e916585755df81499a0": [],
+  "d6c1e57cdba34c0d15c6aff136ed9dd7": [],
+  "d9904e8d0f500797f10d7cab0f302f40": [],
+  "d9e8a2546f70c14b48d09255108564e8": [],
+  "dc1c6f30b3c0224afb917eb067c2c910": [],
+  "dcb451942248b7bce84c2fc7146e5422": [
+   {
+    "subj": "me",
+    "rel": "mother",
+    "obj": "kin:mother",
+    "q": "mam is staying with us this weekend",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "lives_in",
+    "obj": "place:Durham",
+    "q": "first time seeing the durham house",
+    "conf": 0.9
+   }
+  ],
+  "dcd4c43141f9300518fb5d5d0b03c8b6": [],
+  "dd48056dd779c48f76a3084974831e4a": [
+   {
+    "subj": "kin:son",
+    "rel": "name",
+    "obj": "lit:Corwin",
+    "q": "corwins 6",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "name:Corwin",
+    "rel": "age",
+    "obj": "lit:6",
+    "q": "corwins 6",
+    "conf": 0.9
+   },
+   {
+    "subj": "kin:daughter",
+    "rel": "name",
+    "obj": "lit:Nell",
+    "q": "nell is 3",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "name:Nell",
+    "rel": "age",
+    "obj": "lit:3",
+    "q": "nell is 3",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "add a route planner for the Northwind delivery van",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "son",
+    "obj": "kin:son",
+    "q": "corwins 6 and already asking to learn python",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "daughter",
+    "obj": "kin:daughter",
+    "q": "nell is 3 and just wants to bash the keyboard",
+    "conf": 0.9,
+    "verified": true
+   }
+  ],
+  "dfa9fabf596a7dc37a97331a6abf2df0": [
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Brackwater",
+    "q": "handed my notice in at brackwater",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Tidewell Health",
+    "q": "starting at tidewell health in 2 weeks as lead data engineer",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "role",
+    "obj": "lit:lead data engineer",
+    "q": "starting at tidewell health in 2 weeks as lead data engineer",
+    "conf": 0.9
+   }
+  ],
+  "e2a7c6efa44681acb8cb9a054e44734d": [],
+  "e3e31866fd7768aad4edb1867158be36": [],
+  "e543a75aa5d806954201a30ef21038d8": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow",
+    "q": "the Harlow portal password reset email goes to spam",
+    "conf": 0.7
+   },
+   {
+    "subj": "org:Harlow",
+    "rel": "<contact issue>",
+    "obj": "lit:portal password reset email goes to spam",
+    "q": "the Harlow portal password reset email goes to spam",
+    "conf": 0.7
+   }
+  ],
+  "e568b66550eecbc069be15acdfa96362": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:dbt",
+    "q": "dbt build only on changed models",
+    "conf": 0.9
+   }
+  ],
+  "e65e2be067f5d0a2b93b5448796392f7": [],
+  "e8f00eb92d78fdd8e8f6629a1441ff1d": [],
+  "eada75fe3f1fd97373453cb20ba1637e": [],
+  "ec28e5cbf5f19c0020a592485ba90a39": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind Bakery",
+    "q": "northwind Bakery wants a daily orders summary emailed at 6am",
+    "conf": 0.9
+   }
+  ],
+  "ee6bd94d78225b3af4d523bc6b74e77a": [],
+  "ef10e66f6f8b297ac8876554812debb9": [],
+  "ef52ff2daa3e97635cb280e63a9d94f9": [
+   {
+    "subj": "me",
+    "rel": "pet",
+    "obj": "kin:dog",
+    "q": "we got a puppy!!",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "name:Bramble",
+    "rel": "breed",
+    "obj": "lit:border terrier",
+    "q": "border terrier, we called her bramble",
+    "conf": 0.9
+   },
+   {
+    "subj": "me",
+    "rel": "owns",
+    "obj": "name:Mungo",
+    "q": "mungo would hate it",
+    "conf": 0.5
+   },
+   {
+    "subj": "kin:dog",
+    "rel": "name",
+    "obj": "lit:Bramble",
+    "q": "we called her bramble",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:dog",
+    "rel": "breed",
+    "obj": "lit:border terrier",
+    "q": "border terrier",
+    "conf": 0.9
+   }
+  ],
+  "f18f6c8c18f8a3ee6a6203cb5f0c6a94": [],
+  "f2f23e1e1adf7674c68c09cec29ad291": [],
+  "f62477426a86fdd8e684e0d5e32da74e": [],
+  "f643775efb5fdd8e7aeca809340b404d": [
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Harlow Legal",
+    "q": "harlow wants a search box across document titles",
+    "conf": 0.9
+   }
+  ],
+  "fb1bbc4b204e2be94fb88e0b6d4d8b3e": [],
+  "fb78b70757b692c85042d570ca567972": [],
+  "fc7905f8eb069b24ae88bcbaa93ba442": [],
+  "fcda8f4f4088b6bf511c4736f3431e93": [
+   {
+    "subj": "kin:spouse",
+    "rel": "name",
+    "obj": "lit:Bree",
+    "q": "bree left the hospital",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "works_at",
+    "obj": "org:Durham clinic",
+    "q": "shes doing private physio at a clinic in durham now",
+    "conf": 0.7
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "role",
+    "obj": "lit:physiotherapist",
+    "q": "shes doing private physio at a clinic in durham",
+    "conf": 0.7
+   },
+   {
+    "subj": "kin:spouse",
+    "rel": "lives_in",
+    "obj": "place:Durham",
+    "q": "private physio at a clinic in durham",
+    "conf": 0.7
+   }
+  ],
+  "fdbac70574a53f2478c090cc50887c97": [
+   {
+    "subj": "me",
+    "rel": "brother",
+    "obj": "kin:brother",
+    "q": "lorcan (my brother, not the harlow one)",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "kin:brother",
+    "rel": "name",
+    "obj": "lit:Lorcan",
+    "q": "lorcan (my brother, not the harlow one)",
+    "conf": 0.9,
+    "verified": true
+   },
+   {
+    "subj": "me",
+    "rel": "works_at",
+    "obj": "org:Northwind",
+    "q": "Northwind stock count form",
+    "conf": 0.7
+   },
+   {
+    "subj": "me",
+    "rel": "client",
+    "obj": "org:Northwind",
+    "q": "Northwind stock count form",
+    "conf": 0.9
+   }
+  ],
+  "fdcdf60f077e34264a1cde89b61cb3bb": [],
+  "fe037230aa01cb307971f60d02cc8195": [],
+  "fe1cb3af73772ca898d5372d26b49b7f": [],
+  "fe606ad6c29e7e669accc7f93aa41187": [],
+  "ff4d5d2f078bbab86e0b79041ab31a58": [
+   {
+    "subj": "me",
+    "rel": "uses",
+    "obj": "tool:Zed",
+    "q": "set up zed keybindings to match my old vim muscle memory",
+    "conf": 0.9
+   }
+  ],
+  "ffe8942ecd6a0892199fbad76c0963ad": []
+ }
+}

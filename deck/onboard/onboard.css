@@ -9,12 +9,12 @@
 
 .ob-steps { width: 280px; flex-shrink: 0; border-right: 1px solid var(--rule); padding: 40px 24px 24px; display: flex; flex-direction: column; }
 .ob-steps ol { list-style: none; margin: 16px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.ob-step { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 10px; border-radius: var(--r-2); color: var(--text-2);
+.ob-step { display: flex; align-items: center; gap: 12px; height: 48px; padding: 0 10px; border-radius: var(--radius-field, 8px); color: var(--text-2);
   text-decoration: none; cursor: pointer; }
 .ob-step:hover { background: var(--hover); color: var(--text); }
 .ob-step[aria-current="step"] { background: var(--hover); color: var(--text); }
 .ob-step .n { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r-1); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
+  border-radius: var(--radius-chip, 4px); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
 .ob-step[aria-current="step"] .n { border-color: var(--text); color: var(--text); }
 .ob-step.done .n { background: var(--hover); color: var(--text-2); }
 .ob-step .t { display: flex; flex-direction: column; min-width: 0; }
@@ -34,7 +34,7 @@
 .field { display: flex; flex-direction: column; gap: 8px; }
 .field > label { font-size: 13px; line-height: 18px; color: var(--text-2); }
 .field .hint { font-size: 13px; line-height: 18px; color: var(--label); }
-.affix { display: flex; align-items: stretch; height: 48px; border: 1px solid var(--rule-strong); border-radius: var(--r-2); background: var(--panel); }
+.affix { display: flex; align-items: stretch; height: 48px; border: 1px solid var(--rule-strong); border-radius: var(--radius-field, 8px); background: var(--panel); }
 .affix:focus-within { border-color: var(--focus); }
 .affix input { flex-grow: 1; min-width: 0; background: transparent; border: none; outline: none; padding: 0 14px; font-family: var(--mono);
   font-size: 18px; color: var(--text); }
@@ -42,11 +42,11 @@
   border-left: 1px solid var(--rule); }
 .check-line { display: flex; align-items: center; gap: 8px; font-size: 13px; line-height: 18px; color: var(--text-2); min-height: 18px; }
 
-.found { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3); }
+.found { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); }
 .found .what { flex-grow: 1; min-width: 0; font-size: 14px; line-height: 20px; }
 .found .what .code { display: block; margin-top: 2px; }
 
-.choice { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+.choice { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); overflow: hidden; }
 .choice label { display: flex; gap: 14px; padding: 16px; cursor: pointer; border-bottom: 1px solid var(--rule); }
 .choice label:last-child { border-bottom: none; }
 .choice label:hover { background: var(--hover); }
@@ -58,7 +58,7 @@
 .choice .t span { font-size: 13px; line-height: 18px; color: var(--text-2); }
 .choice .more { padding: 0 16px 16px 46px; margin-top: -6px; display: flex; flex-direction: column; gap: 10px; }
 
-.cmd { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3);
+.cmd { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card, 12px);
   font-family: var(--mono); font-size: 15px; line-height: 20px; color: var(--text); }
 .cmd code { flex-grow: 1; min-width: 0; overflow-x: auto; white-space: nowrap; }
 
@@ -83,7 +83,7 @@
   overflow-wrap: normal; word-break: keep-all; overflow-x: auto; }
 .address-big i { font-style: normal; color: var(--label); }
 
-.meter { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--r-3); }
+.meter { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--panel); border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); }
 .meter .row { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
 .meter .row .code { white-space: nowrap; }
 .meter .big { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -0.01em; }
@@ -92,7 +92,7 @@
 @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
 @media (prefers-reduced-motion: reduce) { .bar.moving > span { animation: none; width: 100% !important; opacity: 0.4; } }
 
-.picker { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--r-3); overflow: hidden; }
+.picker { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); overflow: hidden; }
 .picker .bar-top { display: flex; gap: 8px; padding: 10px; border-bottom: 1px solid var(--rule); }
 .picker .bar-top .input { height: 34px; font-size: 14px; }
 .picker .list { max-height: 320px; overflow: auto; }
@@ -109,7 +109,7 @@
 .made { display: flex; align-items: center; gap: 10px; font-size: 14px; line-height: 20px; color: var(--text-2); }
 .made b { font-weight: 500; color: var(--text); }
 
-.ob-lock { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--rule); border-radius: var(--r-3); }
+.ob-lock { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--rule); border-radius: var(--radius-card, 12px); }
 .ob-lock .h3 { margin: 0; }
 .ob-lock p { margin: 0; }
 .ob-lock-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
@@ -125,7 +125,7 @@
 .ob-end { max-width: 520px; margin: 0 auto; padding: 64px 24px; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .ob-end .brand { margin-bottom: 24px; }
 .ob-end-open { margin-top: 24px; }
-.qr { width: 184px; height: 184px; max-width: 100%; padding: 12px; background: #F1EEE6; border-radius: var(--r-2); }
+.qr { width: 184px; height: 184px; max-width: 100%; padding: 12px; background: #F1EEE6; border-radius: var(--radius-field, 8px); }
 .qr svg { display: block; width: 100%; height: 100%; }
 
 /* Step 6: a card a device, equal width, as many to a row as fit and one on a phone. */
@@ -133,14 +133,14 @@
 .ob-col.wide > .lead { max-width: 600px; }
 .dev-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap: 16px; }
 .dev-card { min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 20px; background: var(--panel); border: 1px solid var(--rule);
-  border-radius: var(--r-3); scroll-margin-top: 24px; }
+  border-radius: var(--radius-card, 12px); scroll-margin-top: 24px; }
 .dev-card:focus { outline: none; }
 .dev-card:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .dev-card > .h3 { margin: -4px 0 0; }
 .dev-steps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 20px; }
 .dev-steps > li { display: flex; gap: 12px; min-width: 0; }
 .dev-steps .n { width: 24px; height: 24px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--r-1); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
+  border-radius: var(--radius-chip, 4px); border: 1px solid var(--rule-strong); font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--text-2); }
 .dev-steps .x { flex-grow: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .dev-steps .x > * { max-width: 100%; }
 .dev-steps .t { font-size: 14px; line-height: 24px; font-weight: 500; overflow-wrap: anywhere; }
@@ -149,13 +149,13 @@
 .dev-steps .cmd code { white-space: normal; overflow-wrap: anywhere; }
 .dev-card .qr { width: 152px; height: 152px; padding: 10px; }
 .qr-later { width: 152px; height: 152px; display: flex; align-items: center; justify-content: center; padding: 16px; text-align: center;
-  border: 1px dashed var(--rule-strong); border-radius: var(--r-2); font-size: 13px; line-height: 18px; color: var(--label); }
+  border: 1px dashed var(--rule-strong); border-radius: var(--radius-field, 8px); font-size: 13px; line-height: 18px; color: var(--label); }
 .dev-net { display: flex; flex-direction: column; gap: 8px; }
 .dev-net:empty { display: none; }
 .dev-ok, .dev-wait, .dev-off { display: flex; align-items: flex-start; gap: 8px; font-size: 14px; line-height: 20px; min-width: 0; }
 .dev-ok svg, .dev-off svg { flex-shrink: 0; margin-top: 3px; }
 .dev-ok b { font-weight: 500; overflow-wrap: anywhere; }
-.dev-off { padding: 10px 12px; background: var(--beacon-wash); border-radius: var(--r-2); font-size: 13px; line-height: 18px; }
+.dev-off { padding: 10px 12px; background: var(--beacon-wash); border-radius: var(--radius-field, 8px); font-size: 13px; line-height: 18px; }
 .dev-off svg { margin-top: 1px; color: var(--beacon-ink); }
 .dev-off .code { display: block; margin-top: 4px; overflow-wrap: anywhere; }
 .dev-wait { align-items: center; color: var(--text-2); }
@@ -175,12 +175,12 @@
 
 .notice { font-size: 13px; line-height: 18px; color: var(--text-2); display: flex; gap: 8px; align-items: flex-start; }
 .notice svg { flex-shrink: 0; margin-top: 1px; color: var(--label); }
-.need { background: var(--beacon-wash); border-radius: var(--r-3); padding: 14px 16px; font-size: 14px; line-height: 20px; }
+.need { background: var(--beacon-wash); border-radius: var(--radius-card, 12px); padding: 14px 16px; font-size: 14px; line-height: 20px; }
 .need .lbl { margin-bottom: 6px; }
 
 .ob-dots { display: none; }
 
-@media (max-width: 760px), (max-height: 500px) and (pointer: coarse) {
+@media (max-width: 719px), (max-height: 500px) and (pointer: coarse) {
   .ob-top { height: 52px; padding: 0 16px; }
   .ob-top .where { display: none; }
   .ob-steps { display: none; }

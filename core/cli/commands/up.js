@@ -15,9 +15,9 @@ import { request, call } from "../../daemon/client.js";
 import { ensureUp, stop } from "../daemonctl.js";
 import { REPO, VERSION } from "../../daemon/index.js";
 import { out, dim, bold, signal, beacon } from "../style.js";
-import { json, emit, failTool, usage } from "../kit.js";
+import { json, emit, fail, failTool, usage } from "../kit.js";
 import * as config from "../../config/index.js";
-import { dialogsAllowed, isRealHome } from "../../config/dialogs.js";
+import { dialogsAllowed, isRealHome, realBoxAllowed } from "../../config/dialogs.js";
 import * as system from "../../names/system.js";
 import { backup, restore } from "../../names/backup.js";
 import * as tailnet from "../tailnet.js";
@@ -129,6 +129,11 @@ export function openUrl(url) {
   try { spawn(process.env.VYRE_OPEN_BIN || "open", [url], { detached: true, stdio: "ignore" }).unref(); } catch {}
 }
 
+/** A box on this machine's own loopback (a dev world or a test's): never the person's real box. */
+function loopbackBox(box) {
+  try { const h = new URL(String(box)).hostname; return h === "127.0.0.1" || h === "localhost" || h === "[::1]" || h === "::1"; } catch { return false; }
+}
+
 /** An address as network.box holds it: https, no trailing slash. */
 export const normalize = a => String(a).trim().replace(/^(?!https:\/\/)/, "https://").replace(/\/$/, "");
 
@@ -205,7 +210,9 @@ async function run(args, deps) {
   }
 
   if (role === "local") {
-    return mac(config.load().network.box || null, { capsule: !flags["no-capsule"] && !json }, { ...deps, tool: callTool, json, say, done, fail });
+    // Pairing starts only when the person asked for this box: --connect (onboarding's choice 3 comes
+    // this way too), or a yes on their terminal. A box merely named in config is never asked.
+    return mac(config.load().network.box || null, { capsule: !flags["no-capsule"] && !json, pair: Boolean(flags.connect) }, { ...deps, tool: callTool, json, say, done, fail });
   }
 
   // --keep-link (vyre update): report, mint nothing, so the link the user already has still works.
@@ -264,7 +271,7 @@ async function run(args, deps) {
  * `deps` is for tests; `say`, `done` and `fail` come from up() so --json stays one object.
  * @param {string|null|undefined} box
  */
-export async function mac(box, { capsule = true } = {}, deps = {}) {
+export async function mac(box, { capsule = true, pair: asked = false } = {}, deps = {}) {
   const {
     health = b => tailnet.probe(b),
     tool = call,
@@ -283,6 +290,8 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     },
     // Offered only on the person's own terminal, never under node --test: a test never reaches
     // the settings.json of whoever runs it.
+    // May this home talk to that box? Tests stand in for the rule (they run under node --test).
+    mayReach = () => realBoxAllowed(config.home()),
     statusline = async () => { if (io === terminal && !process.env.NODE_TEST_CONTEXT) await (await import("./statusline.js")).offerStatusline({ interactive: true, io }); },
   } = /** @type {any} */ (deps);
   const asking = io.tty && !json;
@@ -333,11 +342,22 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
     return 1;
   }
 
-  const paired = await pair(box, tool, say);
+  // A temp or dev home never talks to a real box unless its owner says so (core/config/dialogs.js).
+  if (!loopbackBox(box) && !mayReach(box)) {
+    const why = `this home (${config.home()}) is not ~/.vyre, so it does not talk to a real box; set VYRE_ALLOW_REAL_BOX=1 if you mean it`;
+    if (json) return fail("not_real_home", why);
+    say(beacon("  " + why));
+    return 1;
+  }
+  const paired = await pair(box, tool, say, { start: asked, ask: asking ? q => io.ask(q) : null });
   if (json) return done({ box, ready: paired !== "pending", ...(paired === "pending" ? { pairing: "waiting for approval" } : {}) });
   if (asking) await statusline().catch(() => {});
   if (capsule && platform === "darwin" && !(await openCapsule())) {
     say(`  the Capsule is not installed: ${signal("vyre capsule install")}`);
+  }
+  if (paired === "unpaired") {
+    say(dim(`\n  This Mac is not paired with ${box} yet. To pair it: vyre link pair ${box}`));
+    return 0;
   }
   if (paired === "pending") {
     // Not ready until the box says yes: say what happens next instead of "Vyre is ready."
@@ -358,10 +378,14 @@ export async function mac(box, { capsule = true } = {}, deps = {}) {
  * Pair this Mac with the box, or say where pairing stands. The link module owns the mechanics:
  * the Mac shows a code and the box's owner approves it (ADR 0008 section 7; `vyre box add`
  * approves it itself over SSH). Resolves "linked", "pending" (a code is waiting for approval),
- * or "unknown" (a vyred without the link module, or an error already said).
- * @returns {Promise<"linked" | "pending" | "unknown">}
+ * "unpaired" (nobody asked to pair; nothing was sent), or "unknown" (a vyred without the link
+ * module, or an error already said). A request goes to the box only when the person asked for
+ * this box (`start`: --connect, onboarding) or says yes on their terminal (`ask`).
+ * @param {string} box @param {any} tool @param {(s: string) => void} say
+ * @param {{ start?: boolean, ask?: ((q: string) => Promise<string>) | null }} [o]
+ * @returns {Promise<"linked" | "pending" | "unpaired" | "unknown">}
  */
-async function pair(box, tool, say) {
+async function pair(box, tool, say, { start = false, ask = null } = {}) {
   const s = await tool("link.status");
   if (s.error) {
     if (s.error.code !== "no_such_tool") say(beacon("  cannot read the link: ") + s.error.message);
@@ -370,6 +394,8 @@ async function pair(box, tool, say) {
   if (s.data.linked) { say(`  ${signal("linked")} ${dim("· this Mac and your box work as one")}`); return "linked"; }
   let code = s.data.pending && s.data.pending.code;
   if (!code) {
+    if (!start && ask) start = /^y(es)?$/i.test(String(await ask(`  Pair this Mac with ${box}? It sends the box a request to approve. (y/N) `)).trim());
+    if (!start) return "unpaired";
     const p = await tool("link.pair", { box });
     if (p.error) say(beacon("  pairing did not start: ") + p.error.message + dim(" · vyre link pair " + box));
     code = p.data && p.data.code;
@@ -486,7 +512,10 @@ export default [
       const { flags, rest } = parse(args);
       if (!rest[0]) return usage("vyre restore needs the backup file", "vyre restore <file> [--force]");
       try { await restore({ root: config.home(), file: path.resolve(rest[0]), force: Boolean(flags.force) }); }
-      catch (e) { out(beacon("  " + /** @type {Error} */ (e).message)); return 1; }
+      catch (e) {
+        const m = String(/** @type {Error} */ (e).message);
+        return fail(m, { next: /already exists/.test(m) ? `vyre restore ${rest[0]} --force, to replace it` : /is running/.test(m) ? "vyre down, then try again" : undefined });
+      }
       out("  restored · vyre up to start");
       return 0;
     },
@@ -510,10 +539,19 @@ export default [
   },
   {
     name: "owner", order: 31, hidden: true, usage: "vyre owner <tailscale login>", summary: "the one Tailscale login this box serves",
-    async run([login]) {
-      if (!login) { const s = await call("names.status"); out(`  ${s.data ? s.data.owner || "no owner yet" : s.error.message}`); return 0; }
+    async run(args) {
+      // --json is a flag, never a login: `vyre owner --json` once made "--json" the owner.
+      const [login] = args.filter(a => a !== "--json");
+      if (!login) {
+        const s = await call("names.status");
+        if (s.error) return failTool(s.error);
+        if (json()) return emit({ owner: s.data.owner || null });
+        out(`  ${s.data.owner || "no owner yet"}`);
+        return 0;
+      }
       const r = await call("names.owner", { login });
       if (r.error) return failTool(r.error);
+      if (json()) return emit(r.data);
       out(`  owner: ${signal(login)}`);
       return 0;
     },

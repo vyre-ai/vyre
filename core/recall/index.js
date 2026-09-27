@@ -36,6 +36,8 @@ import { pacer, gate } from "./pace.js";
 import { Dense } from "./dense.js";
 import { Watches } from "./watch.js";
 import { blocks, find, peek } from "../transcripts/index.js";
+import { claudeHome, untilde } from "../config/index.js";
+import { isRealHome } from "../config/dialogs.js";
 import { wantsMacs, askMacs, mergeRows, boxLabel, macLabel } from "../modules/federate.js";
 
 /** @type {import("./embed.js").Embedder | null} */
@@ -49,15 +51,24 @@ let injected = null;
 export function useEmbedder(e) { injected = e; }
 
 /**
- * The transcript folders to read. Under `node --test` the real ~/.claude is never read, whatever
- * the config says: a test that starts vyred with default settings would otherwise index every
- * real conversation on the machine into its temp home. Tests point `transcripts` at fixtures.
- * @param {string[]} folders
+ * The transcript folders to read. The person's own Claude Code folder (~/.claude, or
+ * CLAUDE_CONFIG_DIR) is read only by their own Vyre home (~/.vyre): a dev world, a demo, a trial
+ * or a temp home indexing every real conversation on the machine is how a trial Capsule once
+ * answered from the person's dev sessions. Such a home reads its own folders (claudeHome(root),
+ * <root>/claude), or the real one when VYRE_ALLOW_REAL_TRANSCRIPTS=1 says so on purpose. Under
+ * `node --test` the real one is never read, whatever the config or the environment says.
+ * @param {string[]} folders @param {string} [root] the Vyre home @param {NodeJS.ProcessEnv} [env]
  */
-export function readable(folders) {
-  if (!process.env.NODE_TEST_CONTEXT) return folders;
-  const real = path.join(os.homedir(), ".claude") + path.sep;
-  return folders.filter(f => !(path.resolve(f) + path.sep).startsWith(real));
+export function readable(folders, root = "", env = process.env) {
+  const real = [path.join(os.homedir(), ".claude"), env.CLAUDE_CONFIG_DIR ? untilde(env.CLAUDE_CONFIG_DIR) : null]
+    .filter(Boolean).map(d => path.resolve(/** @type {string} */ (d)) + path.sep);
+  const under = f => { const p = path.resolve(untilde(f)) + path.sep; return real.some(r => p.startsWith(r)); };
+  if (env.NODE_TEST_CONTEXT) return folders.filter(f => !under(f));
+  if (root && isRealHome(root)) return folders;
+  if (env.VYRE_ALLOW_REAL_TRANSCRIPTS === "1") return folders;
+  // A home kept elsewhere on purpose names its folder outright (VYRE_CLAUDE_HOME): that one is its own.
+  const own = root ? path.resolve(claudeHome(root, env)) + path.sep : null;
+  return folders.filter(f => !under(f) || (own && (path.resolve(untilde(f)) + path.sep).startsWith(own)));
 }
 
 /**
@@ -82,7 +93,7 @@ export default {
     const db = ctx.store.db;
     const opts = ctx.config.recall || {};
     const every = opts.every ?? 5;
-    const folders = readable(ctx.config.transcripts || []);
+    const folders = readable(ctx.config.transcripts || [], ctx.paths?.root || "");
     // Every vector in memory for retrieval by meaning: built once, then appended to as turns are
     // embedded, and rebuilt only when a rewrite deletes turns or the chunk cap is reached.
     const dense = new Dense(db, { maxChunks: opts.maxChunks });

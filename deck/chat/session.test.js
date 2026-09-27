@@ -43,12 +43,10 @@ E.insertBefore = function (n, ref) { if (!ref) { this.append(n); return n; } n.r
 E.replaceWith = function (n) { const p = this.parentNode; if (!p) return; p.insertBefore(n, this); this.remove(); };
 E.after = function (n) { this.parentNode.insertBefore(n, this.nextSibling); };
 
-/** The event stream: one fake EventSource, fed by hand. */
+/** The event stream, fed by hand: api.js hear() hands an event to the listeners as the stream does. */
 let evId = 0;
-class FakeES { constructor() { FakeES.last = this; this.l = new Map(); this.readyState = 1; } addEventListener(t, f) { (this.l.get(t) || this.l.set(t, []).get(t)).push(f); } }
-/** @type {any} */ (FakeES).OPEN = 1;
-Object.assign(globalThis, { EventSource: FakeES });
-const emit = (type, payload, thread = SID) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread, at: Date.now(), payload }) }); };
+const { hear, heardResume } = await import("../js/api.js");
+const emit = (type, payload, thread = SID) => hear(/** @type {any} */ ({ id: ++evId, type, thread, at: Date.now(), payload }));
 
 const fx = JSON.parse(readFileSync(new URL("./fixtures/session-blocks.json", import.meta.url), "utf8"));
 const SID = fx.session.id;
@@ -101,6 +99,34 @@ const res = {
   next: 2,
   asks: /** @type {any[]} */ ([]),
 };
+// The fifth session: reopened while an Edit waits on Allow, after the person steered a message
+// and queued another (the screenshot run's shape: threads.get holds both, the transcript neither).
+const REOPEN = "6a7b8c9d-reopen-thread";
+const reopen = {
+  thread: { id: REOPEN, name: "Northwind specials", cwd: "/home/alex/work/northwind", status: "waiting", holder: "deck", agent: null },
+  events: [
+    { id: 1, type: "thread.sent", thread: REOPEN, at: T0, payload: { text: "demo", surface: "deck", uuid: "u-demo" } },
+    { id: 2, type: "thread.turn", thread: REOPEN, at: T0, payload: { turn: `${REOPEN}:1`, uuid: "u-demo", text: "demo" } },
+    // An earlier steer Claude took in, and a queued row taken back: neither is pending now.
+    { id: 3, type: "thread.sent", thread: REOPEN, at: T0 + 100, payload: { text: "read the menu first", surface: "deck", uuid: "s-old", via: "steer" } },
+    { id: 4, type: "thread.steered", thread: REOPEN, at: T0 + 200, payload: { uuid: "s-old", step: 0 } },
+    { id: 5, type: "thread.queued", thread: REOPEN, at: T0 + 300, payload: { queued: 3, uuid: "q-old", text: "never mind", surface: "deck" } },
+    { id: 6, type: "thread.unqueued", thread: REOPEN, at: T0 + 400, payload: { queued: 3, uuid: "q-old", reason: "taken" } },
+    { id: 7, type: "thread.tool", thread: REOPEN, at: T0 + 1000, payload: { call: "toolu_e", id: "toolu_e", tool: "Edit", name: "Edit", phase: "started", status: "running", summary: "Edit menu.md" } },
+    { id: 8, type: "ask.raised", thread: REOPEN, at: T0 + 1100, payload: { ask: "ask_e", kind: "permission", tool: "Edit", summary: "menu.md", tool_use_id: "toolu_e" } },
+    { id: 9, type: "thread.state", thread: REOPEN, at: T0 + 1100, payload: { state: "waiting" } },
+    { id: 10, type: "thread.sent", thread: REOPEN, at: T0 + 2000, payload: { text: "use the rye price too", surface: "deck", uuid: "s-new", via: "steer" } },
+    { id: 11, type: "thread.queued", thread: REOPEN, at: T0 + 3000, payload: { queued: 5, uuid: "q-new", text: "then check the hours", surface: "deck" } },
+  ],
+  asks: [{ id: "ask_e", thread: REOPEN, kind: "permission", tool: "Edit", summary: "menu.md", destination: "/home/alex/work/northwind/menu.md", always: true,
+    anchor: { tool_use_id: "toolu_e", event: 8 }, detail: { file: "/home/alex/work/northwind/menu.md", old: "- Summer berry tart, 5.00", new: "- Pumpkin loaf, 5.50" } }],
+  blocks: [
+    { seq: 0, kind: "user", ts: T0, text: "demo" },
+    { seq: 1, kind: "user", ts: T0 + 100, text: "read the menu first", steered: true },
+    { seq: 2, kind: "tool", ts: T0 + 1000, id: "toolu_e", tool: "Edit", input: { file_path: "/home/alex/work/northwind/menu.md", old_string: "- Summer berry tart, 5.00", new_string: "- Pumpkin loaf, 5.50" } },
+    { seq: 2, kind: "turn", ts: T0, open: true },
+  ],
+};
 globalThis.fetch = /** @type {any} */ (async (url, o) => {
   const tool = decodeURIComponent(String(url).split("/v1/tools/")[1]);
   const input = JSON.parse(o.body);
@@ -116,6 +142,13 @@ globalThis.fetch = /** @type {any} */ (async (url, o) => {
       const from = input.from ?? 0;
       data = { session: { id: RES, cwd: "/home/alex/work/northwind" }, blocks: res.blocks.filter(b => b.seq >= from), next: res.next, first: 0 };
     } else if (tool === "threads.asks") data = res.asks;
+    else data = tool === "memory.facts" ? { facts: [] } : {};
+    return { status: 200, statusText: "", json: async () => ({ data }) };
+  }
+  if (input.thread === REOPEN || input.session === REOPEN) {
+    if (tool === "threads.get") data = { thread: reopen.thread, events: reopen.events.filter(e => e.id > (input.since ?? 0)), asks: reopen.asks };
+    else if (tool === "recall.transcript") data = { session: { id: REOPEN, cwd: reopen.thread.cwd }, blocks: reopen.blocks.filter(b => b.seq >= (input.from ?? 0)), next: 3, first: 0 };
+    else if (tool === "threads.asks") data = reopen.asks;
     else data = tool === "memory.facts" ? { facts: [] } : {};
     return { status: 200, statusText: "", json: async () => ({ data }) };
   }
@@ -187,7 +220,8 @@ test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn 
   const runs = $$(container, ".cv-run");
   assert.equal(runs.length, 2);
   assert.match(text(runs[0]), /^Read 1 file, searched 1 time/);
-  assert.match(text(runs[1]).trim(), /^Edited 1 file, ran 1 command, fetched 1 page, used 1 tool · [\d.]+ s$/);
+  assert.equal(text($(runs[1], ".cv-run-sum")), "Edited 1 file, ran 1 command, fetched 1 page, used 1 tool");
+  assert.match(text($(runs[1], ".cv-run-meta")), /^[\d.]+ s$/);
   assert.equal($$(container, ".cv-tool").length, 1, "the todo list, not folded");
   for (const r of runs) await $(r, ".cv-run-head").click();
   assert.equal($$(container, ".cv-run[data-open]").length, 2);
@@ -198,7 +232,8 @@ test("open: blocks as rows, one Vyre header per run, tool runs folded, the turn 
   assert.equal($$(container, ".cv-tool[data-tool=Edit] .cv-dl-add").length, 1);
   assert.equal($$(container, ".cv-todo-completed").length, 1);
   assert.equal($$(container, ".cv-todo-in_progress").length, 1);
-  assert.match(text($(container, ".cv-turn")), /19 s · 18k in, 912 out/);
+  // The transcript has not closed the turn and the session runs: no footer until it ends (the live test closes it).
+  assert.deepEqual($$(container, ".cv-turn").map(text).filter(Boolean), [], "an open turn has no footer yet");
   // The composer (composer.js, not this view's) is left out: its hint names the terminal's commands.
   assert.doesNotMatch(everything($(container, ".session-head")) + everything($(container, ".thread-view")) + everything($(container, ".lease-bar")), /claude/i);
   assert.ok(calls.some(c => c.tool === "recall.transcript" && c.input.session === SID && c.input.limit === 400));
@@ -284,7 +319,7 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
   assert.equal(all.split("Two questions first.").length - 1, 1, "the reply once");
   assert.equal($$(box, ".cv-user").length, 1, "the message once");
   assert.equal($$(box, ".cv-tool").length, 1, "the tool once");
-  assert.match(text($(box, ".cv-tool")), /done/);
+  assert.ok($(box, ".cv-tool[data-state=done]"), "the tool is done");
   assert.equal($$(box, ".cv-turn").length, 1);
   assert.ok($(box, ".cv-q"), "the card stays");
   stop2();
@@ -296,7 +331,7 @@ test("a live thread the transcript cannot find yet: threads.get's events drawn, 
 const box3 = new El("div");
 doc.body.append(box3);
 let stop3 = () => {};
-const at = (type, payload, when) => { for (const f of FakeES.last.l.get(type) || []) f({ data: JSON.stringify({ id: ++evId, type, thread: NEW, at: when ?? Date.now(), payload }) }); };
+const at = (type, payload, when) => hear(/** @type {any} */ ({ id: ++evId, type, thread: NEW, at: when ?? Date.now(), payload }));
 const press3 = k => { const e = /** @type {any} */ (new Event("keydown")); e.key = k; e.target = doc.body; for (const f of keys) f(e); return e; };
 const stopBtn = () => $(box3, ".composer-stop");
 
@@ -326,15 +361,17 @@ test("thinking folds to its length, a run of tools is one row that counts up, th
   at("thread.tool", { call: "c2", name: "Bash", status: "running", summary: "npm run build" }, Date.now() - 42_000);
   const run = $(box3, ".cv-run");
   assert.ok(run, "two calls in a row fold into one row");
-  assert.match(text(run).trim(), /^Running npm run build · 0:4\d$/);
+  assert.equal(text($(run, ".cv-run-sum")), "Running npm run build");
+  assert.match(text($(run, ".cv-run-meta")), /^0:4\d$/);
   assert.equal($$(box3, ".cv-tool").length, 0, "closed: its cards are not built");
   at("thread.tool", { call: "c2", status: "completed" });
-  assert.match(text($(box3, ".cv-run")).trim(), /^Read 1 file, ran 1 command · \d+ s$/);
+  assert.equal(text($(box3, ".cv-run-sum")), "Read 1 file, ran 1 command");
+  assert.match(text($(box3, ".cv-run-meta")), /^\d+ s$/);
   await $(box3, ".cv-run-head").click();
   assert.equal($$(box3, ".cv-run .cv-tool").length, 2, "open: the calls as rows");
   at("thread.finished", { ok: true, duration_ms: 72_000, tokens: { input: 18_400, output: 900 } });
   await wait(20);
-  assert.match(text($$(box3, ".cv-turn").at(-1)), /^1 min 12 s · 18k in, 900 out$/);
+  assert.match(text($$(box3, ".cv-turn").at(-1)), /^1 min 12 s · 19k tokens$/);
   assert.equal(stopBtn().hidden, true, "no Stop once the turn is over");
 });
 
@@ -414,7 +451,7 @@ test("an inline ask: A allows, D denies, and one answered on another screen says
 
 // ---- the composer like Claude Code: steer, queue, mode, rewind ----------------------------------
 
-test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc rewinds this thread", async () => {
+test("typing while a turn runs steers it ('steering', then 'you steered here · after 1 step' where it joined); Alt+Enter queues; Shift+Tab; Esc Esc rewinds this thread", async () => {
   const box4 = new El("div");
   doc.body.append(box4);
   const stop4 = mountSession(box4, { thread: NEW, project: null, onBack() {} });
@@ -431,16 +468,16 @@ test("typing while a turn runs steers it ('Steering', then 'Steered at step 1' w
   assert.equal(sent.mode, "steer");
   assert.equal(sent.text, "Use Estate intake v2 instead");
   assert.match(sent.uuid, /^[0-9a-f-]{36}$/);
-  assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/);
+  assert.match(text($(box4, ".cv-steer")).trim(), /^steering · \w+ reads it at its next step$/);
   // The box's own uuid, not the Deck's: the echo and the answer tie it to the words drawn on send.
   at("thread.sent", { text: "Use Estate intake v2 instead", surface: "deck", uuid: "box-steer-1", via: "steer" });
   assert.equal($$(box4, ".cv-user").length, 2, "the echo is the same message");
-  assert.match(text($(box4, ".cv-steer")).trim(), /^Steering · joins at the next step$/, "the echo is not the join");
+  assert.match(text($(box4, ".cv-steer")).trim(), /^steering · \w+ reads it at its next step$/, "the echo is not the join");
   at("thread.tool", { call: "s1", status: "completed" });
   // No step on the event: counted here, one call of this turn done.
   at("thread.steered", { uuid: "box-steer-1" });
   assert.equal($$(box4, ".cv-steer").length, 1);
-  assert.match(text($(box4, ".cv-steer")).trim(), /^Steered at step 1 · \d\d:\d\d$/);
+  assert.match(text($(box4, ".cv-steer")).trim(), /^you steered here · after 1 step · \d\d:\d\d$/);
   const order = box4.querySelectorAll(".cv-row").map(n => n.className.split(" ").find(c => /^cv-(user|steer|tool)$/.test(c))).filter(Boolean);
   assert.deepEqual(order, ["cv-user", "cv-tool", "cv-steer", "cv-user"], "the words sit where they joined, after the Read");
 
@@ -530,9 +567,8 @@ test("a reconnect or a stream reset re-reads threads.get, threads.asks and the t
   const stop5 = mountSession(box5, { thread: RES, project: null, onBack() {} });
   await wait(30);
   assert.match(text($(box5, ".thread-view")), /It is open\./);
-  const es = FakeES.last;
-  const fireOpen = () => { for (const f of es.l.get("open") || []) f({}); };
-  fireOpen(); // the first open: not a resume
+  // The stream's first open is not a resume, so only the comebacks are told (api.js heardResume).
+  const fireOpen = () => heardResume("reconnect");
   const before = calls.length;
   // While the stream was down: a message, a queued row and an ask, and their transcript.
   res.events.push(
@@ -564,12 +600,12 @@ test("a reconnect or a stream reset re-reads threads.get, threads.asks and the t
   // The box's log was reset: ids start again at 2, below everything seen.
   res.events = [{ id: 3, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 10, uuid: "q10", text: "And ping kit", surface: "deck" } }];
   const b2 = calls.length;
-  for (const f of es.l.get("stream.reset") || []) f({ data: JSON.stringify({ id: 2, type: "stream.reset", source: "vyred", thread: null, project: null, at: Date.now(), payload: { from: 2, reason: "cursor_ahead" } }) });
+  heardResume("reset", 2);
   await wait(40);
   assert.deepEqual(calls.slice(b2).find(c => c.tool === "threads.get")?.input, { thread: RES, since: 2, limit: 500 }, "from vyred's id");
   assert.match(text($(box5, ".cv-queued")), /And ping kit/, "an event after the reset is applied, though its id is low");
   // A live event with a low id after the reset is heard too (api.js lowered its cursor).
-  for (const f of es.l.get("thread.queued") || []) f({ data: JSON.stringify({ id: 4, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 11, uuid: "q11", text: "Last one for Northwind Bakery", surface: "deck" } }) });
+  hear(/** @type {any} */ ({ id: 4, type: "thread.queued", thread: RES, at: Date.now(), payload: { queued: 11, uuid: "q11", text: "Last one for Northwind Bakery", surface: "deck" } }));
   await wait();
   assert.match(text($(box5, ".cv-queued")), /Last one for Northwind Bakery/);
   stop5();
@@ -680,4 +716,66 @@ test("the box's background tasks, thinking, ! and # and pasted images, on their 
   assert.equal(calls.filter(c => c.tool === "threads.shell").length, before, "never called");
   ta.value = "";
   stop6();
+});
+
+test("the composer grows with its text once a frame, and a key on a line that fits sets no height", async () => {
+  const box7 = new El("div");
+  doc.body.append(box7);
+  const stop7 = mountSession(box7, { thread: NEW, project: null, onBack() {} });
+  await wait(30);
+  const ta = /** @type {any} */ ($(box7, "textarea"));
+  const type = (/** @type {string} */ v) => { ta.value = v; ta.dispatchEvent(new Event("input")); };
+  let reads = 0, sh = 32;
+  Object.defineProperty(ta, "scrollHeight", { configurable: true, get: () => { reads++; return sh; } });
+  Object.defineProperty(ta, "clientHeight", { configurable: true, get: () => Number.parseInt(ta.style.height, 10) || 32 });
+  ta.style.height = "";
+  for (const v of ["H", "Ha", "Har", "Harl"]) type(v);
+  await wait(30);
+  assert.equal(ta.style.height, "", "a line that fits sets no height");
+  assert.equal(reads, 1, "four keys in one frame measure once");
+  sh = 72;
+  type("Harlow Legal\nNorthwind Bakery\njuno");
+  await wait(30);
+  assert.equal(ta.style.height, "72px", "more lines grow the box");
+  sh = 400;
+  type("x".repeat(2000));
+  await wait(30);
+  assert.equal(ta.style.height, "200px", "never past 200 px, then it scrolls");
+  sh = 32;
+  type("");
+  await wait(30);
+  assert.equal(ta.style.height, "32px", "shorter text shrinks it back");
+  stop7();
+});
+
+test("reopened while an Edit waits on Allow: the pending steer and the queued row come back from threads.get; the state word is waiting", async () => {
+  const box5 = new El("div");
+  doc.body.append(box5);
+  const stop5 = mountSession(box5, { thread: REOPEN, project: null, onBack() {} });
+  await wait(30);
+  assert.match(text($(box5, ".cv-state")), /^waiting$/, "an open ask: waiting on you");
+  assert.ok($(box5, ".cv-ask"), "the ask is still there");
+  // The steer: its words and a "Steering" marker, since Claude has not taken them in yet.
+  const steers = $$(box5, ".cv-steer");
+  assert.equal(steers.length, 2, "the old steer (taken in) and the new one (pending)");
+  assert.match(text(steers.at(-1)).trim(), /^steering · \w+ reads it at its next step$/);
+  assert.match(text($$(box5, ".cv-user").at(-1)), /use the rye price too/);
+  assert.equal($$(box5, ".cv-user").filter(u => /read the menu first/.test(text(u))).length, 1, "the taken-in steer is the transcript's, once");
+  // The queue: the row still waiting, not the one taken back.
+  assert.equal($(box5, ".cv-queued").hidden, false);
+  const rows = $$(box5, ".cv-queued-row");
+  assert.equal(rows.length, 1);
+  assert.match(text(rows[0]), /then check the hours/);
+  assert.equal($(rows[0], ".cv-q-edit").disabled, false, "the row has its id (5)");
+  // The answer, then Claude takes the steer in and hands the queued words over: each once.
+  const ev = (type, payload) => emit(type, payload, REOPEN);
+  ev("ask.answered", { ask: "ask_e", decision: "allow", by: "deck" });
+  ev("thread.steered", { uuid: "s-new", step: 1 });
+  assert.match(text($$(box5, ".cv-steer").at(-1)).trim(), /^you steered here · after 1 step/);
+  ev("thread.finished", { ok: true });
+  ev("thread.sent", { text: "then check the hours", surface: "deck", queued: 5, uuid: "q-new", via: "turn" });
+  assert.equal($(box5, ".cv-queued").hidden, true);
+  assert.equal($$(box5, ".cv-user").filter(u => /use the rye price too/.test(text(u))).length, 1);
+  assert.equal($$(box5, ".cv-user").filter(u => /then check the hours/.test(text(u))).length, 1);
+  stop5();
 });

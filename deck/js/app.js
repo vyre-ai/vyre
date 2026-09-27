@@ -1,7 +1,8 @@
 // @ts-check
-// The Deck's shell: the header, the rail, search, and the router that loads one view at a time
-// from deck/views/. Board: DeckNow (header and rail). On a phone (under 760 px, docs/design/phone.md
-// section 3) there is no rail and no tab bar: a 48 tall header with the three page labels (Now,
+// The Deck's shell: the rail, the header, search, and the router that loads one view at a time
+// from deck/views/. From 720 px up the rail (js/rail.js) is a 72 px column on the left, and the
+// header, a view's own list column and the view sit to its right. On a phone (under 720 px,
+// docs/design/phone.md section 3) there is no rail and no tab bar: a 48 tall header with the three page labels (Now,
 // Chats, Agents), the three pages side by side in a pager you swipe, the Capsule floating at the
 // bottom, and every other address pushed over them from the right.
 //
@@ -16,7 +17,7 @@
 
 import { h, put, link, go, back, empty, isPhone, PHONE_QUERY } from "./dom.js";
 import { attempt, on, fromFixtures, fixturesOn } from "./api.js";
-import { icon, mark, wordmark } from "./icons.js";
+import { icon, mark } from "./icons.js";
 import * as needs from "./needs.js";
 import { when, base, initials } from "./fmt.js";
 import * as pwa from "./pwa.js";
@@ -26,6 +27,7 @@ import { isMac, machineChip } from "./machine.js";
 import { capsule, assistantName } from "./capsule.js";
 import { openSheet } from "./sheet.js";
 import { installPersonHandler } from "./person.js";
+import { rail, placeForKey, macKeys } from "./rail.js";
 
 /** Routes, most specific first. The name is the file in deck/views/. */
 const ROUTES = [
@@ -56,15 +58,7 @@ const ROUTES = [
   // `vyre phone add --tailscale-only` points the phone here (views/pair.js).
   ["/pair", "pair"],
 ];
-const PLACES = [
-  { href: "/now", label: "Now", icon: "now", view: "now" },
-  { href: "/projects", label: "Projects", icon: "projects", view: "projects" },
-  { href: "/memory", label: "Memory", icon: "memory", view: "memory" },
-  { href: "/agents", label: "Agents", icon: "agents", view: "agents" },
-  { href: "/chat", label: "Chat", icon: "chat", view: "chat" },
-  { href: "/vault", label: "Vault", icon: "vault", view: "vault" },
-  { href: "/settings", label: "Settings", icon: "settings", view: "settings" },
-];
+// The places and their order are the rail's (js/rail.js PLACES).
 // The phone's three pages, in pager order. Every other address is pushed over them.
 const PAGER = [
   { href: "/now", label: "Now", view: "now" },
@@ -90,7 +84,7 @@ function match(pathname) {
 try { if (localStorage.getItem("vyre.theme") === "paper") document.documentElement.dataset.theme = "paper"; } catch {}
 
 const deck = /** @type {HTMLElement} */ (document.getElementById("deck"));
-const info = { host: "", projects: /** @type {any[]} */ ([]) };
+const info = { projects: /** @type {any[]} */ ([]) };
 
 // ---- shell ---------------------------------------------------------------------------------
 
@@ -99,14 +93,16 @@ const searchIn = /** @type {HTMLInputElement} */ (h("input", { type: "search", p
   autocomplete: "off", role: "combobox", "aria-expanded": "false", "aria-controls": "search-pop" }));
 const pop = h("div", { class: "search-pop", id: "search-pop", role: "listbox", hidden: true });
 const needsPill = link("/now", { class: "needs-pill", hidden: true }, h("span", { class: "dot beacon" }), h("span", null, ""));
-const avatar = link("/settings", { class: "avatar", "aria-label": "Settings and account" }, "");
-const railLinks = PLACES.map(p => link(p.href, { class: "rail-a", "data-view": p.view }, icon(p.icon), h("span", null, p.label),
-  p.view === "now" ? h("span", { class: "count", hidden: true }) : null));
+// Sample data stands in for a module that is not merged yet: said once, quietly, in the header.
+const fixtureNote = h("span", { class: "fixture-note", hidden: true }, "Sample data for modules not merged yet");
+const railEl = rail();
+// The list column, right of the rail: a view's own list (ctx.rail, e.g. Chat's sessions; the
+// deck:rail event, e.g. Vault's places), or the pinned and recent projects beside a project.
+// Hidden while empty, so a view that has no list gets the whole width.
 const pins = h("div", { class: "rail-pins" });
-// A view fills this from ctx.rail(el) (e.g. Vault's places); cleared on every navigation, so a
-// view that does not use it leaves the rail exactly as Projects/Agents/etc. already look.
-const railLower = h("div", { class: "rail-lower" });
-const foot = h("div", { class: "rail-foot" });
+const railLower = h("div", { class: "rail-lower-in" });
+const side = h("aside", { class: "rail-lower", "aria-label": "List", hidden: true }, pins, railLower);
+const sideSync = () => { side.hidden = !pins.childNodes.length && !railLower.childNodes.length; };
 const view = h("main", { class: "view", id: "view" });
 // ---- the phone's header, pager and Capsule ---------------------------------------------------
 
@@ -129,24 +125,23 @@ const cap = capsule({ open: words => openFind(words) });
 
 put(deck,
   phHead,
-  h("header", { class: "top" },
-    link("/now", { class: "brand", "aria-label": "vyre home" }, mark(20), wordmark(22)),
-    address,
-    h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, "⌘K"), pop),
-    h("div", { style: { flexGrow: "1" } }),
-    needsPill,
-    avatar),
   h("div", { class: "body" },
-    h("nav", { class: "rail", "aria-label": "Places" }, h("div", { style: { display: "flex", flexDirection: "column", gap: "2px" } }, railLinks), pins, railLower, foot),
-    view),
+    railEl.el,
+    h("div", { class: "stage" },
+      h("header", { class: "top" },
+        address,
+        h("label", { class: "search" }, icon("search", 14), searchIn, h("span", { class: "kbd" }, "⌘K"), pop),
+        h("div", { style: { flexGrow: "1" } }),
+        fixtureNote,
+        needsPill),
+      h("div", { class: "panes" }, side, view))),
   cap.el);
 
 function drawNeeds(list) {
   const n = list.length;
   needsPill.hidden = n === 0;
   put(/** @type {HTMLElement} */ (needsPill.lastChild), `${n} need${n === 1 ? "s" : ""} you`);
-  const count = /** @type {HTMLElement | null} */ (railLinks[0].querySelector(".count"));
-  if (count) { count.hidden = n === 0; put(count, String(n)); }
+  railEl.setNeeds(n);
   // The phone: the mark's dot takes the attention colour, and Now says how many.
   phHead.toggleAttribute("data-needs", n > 0);
   phLabels[0].setAttribute("aria-label", n ? `Now, ${n} need${n === 1 ? "s" : ""} you` : "Now");
@@ -156,38 +151,40 @@ needs.watch(drawNeeds);
 function pinned() {
   try { return JSON.parse(localStorage.getItem("vyre.pins") || "[]"); } catch { return []; }
 }
-// A view may take the rail's lower group while it is open (the Vault's places): it dispatches
-// deck:rail with the nodes, and the router gives the group back to the pins on the next route.
+// A view may take the list column while it is open (the Vault's places): it dispatches deck:rail
+// with the nodes, and the router gives the column back on the next route.
 let railOwned = false;
-window.addEventListener("deck:rail", e => { railOwned = true; put(pins, /** @type {CustomEvent} */ (e).detail); });
+window.addEventListener("deck:rail", e => { railOwned = true; side.classList.remove("rail-projects"); put(pins, /** @type {CustomEvent} */ (e).detail); sideSync(); });
+/** Pinned and recent projects, in the list column beside a project's board or thread. */
+const ON_PROJECT = /^\/(projects\/[^/]+|threads\/)/;
 async function drawRail() {
+  if (!ON_PROJECT.test(location.pathname)) { if (!railOwned) { side.classList.remove("rail-projects"); put(pins); sideSync(); } return; }
   const r = await attempt("projects.list");
-  if (railOwned) return;
+  if (railOwned || !ON_PROJECT.test(location.pathname)) return;
   // Pins open a board on this machine, so a paired Mac's projects (on the box) are not pinned here.
   info.projects = (r.data?.projects || []).filter(p => !isMac(p));
   const pins_ = pinned();
   const chosen = pins_.length ? pins_.map(s => info.projects.find(p => p.slug === s)).filter(Boolean)
     : [...info.projects].sort((a, b) => (b.last || 0) - (a.last || 0)).slice(0, 4);
   const here = location.pathname.split("/")[2];
+  side.classList.toggle("rail-projects", chosen.length > 0);
   put(pins, chosen.length ? h("div", { class: "lbl", style: { padding: "0 10px 8px" } }, pins_.length ? "Pinned" : "Recent") : null,
     chosen.map(p => link(`/projects/${encodeURIComponent(p.slug)}`, { class: "pin-a", "aria-current": location.pathname.startsWith("/projects/") && here === p.slug ? "page" : false },
       h("span", { class: "sq" }), h("span", { class: "ellipsis" }, p.name))));
+  sideSync();
 }
 window.addEventListener("deck:pins", drawRail);
 
 async function drawFoot() {
   const r = await attempt("system.info");
-  info.host = r.data?.host || location.hostname;
-  // The owner's own initials when onboarding saved a name, else the machine's.
-  put(avatar, initials(r.data?.owner?.name || info.host).slice(0, 2) || "V");
-  if (r.data?.owner?.name) avatar.setAttribute("title", r.data.owner.name);
-  // The phone's avatar is one letter: the owner's initial.
-  put(phInitial, initials(r.data?.owner?.name || info.host).slice(0, 1) || "V");
-  const onTailnet = /\.vyre\.run$|\.ts\.net$/.test(location.hostname);
-  put(foot,
-    h("div", { class: "code", style: { color: "var(--text-2)" } }, info.host),
-    h("div", { class: "small faint" }, onTailnet ? "On your tailnet" : r.error ? "vyred is not answering" : "On this machine only"),
-    fromFixtures.size ? h("div", { class: "fixture-note", title: [...fromFixtures].join(", ") }, "Sample data for modules not merged yet") : null);
+  const host = r.data?.host || location.hostname;
+  // The owner's initial when onboarding saved a name, else the machine's; the rail's avatar is
+  // named for the person ("Account" until there is a name).
+  const letter = initials(r.data?.owner?.name || host).slice(0, 1) || "V";
+  railEl.setOwner(r.data?.owner?.name || null, letter);
+  put(phInitial, letter);
+  fixtureNote.hidden = !fromFixtures.size;
+  if (fromFixtures.size) fixtureNote.setAttribute("title", [...fromFixtures].join(", "));
 }
 window.addEventListener("deck:fixture", () => { clearTimeout(footT); footT = window.setTimeout(drawFoot, 200); });
 let footT = 0;
@@ -240,6 +237,16 @@ searchIn.addEventListener("keydown", e => {
 });
 document.addEventListener("click", e => { if (!(/** @type {Element} */ (e.target)).closest(".search")) pop.hidden = true; });
 document.addEventListener("keydown", e => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); searchIn.focus(); searchIn.select(); } });
+// Cmd+1 to Cmd+9 (Ctrl off a Mac): the rail's places in order, never while typing in a field. The
+// phone has no rail, so no rail keys.
+const MAC = macKeys();
+document.addEventListener("keydown", e => {
+  if (phone()) return;
+  const href = placeForKey(e, MAC);
+  if (!href) return;
+  e.preventDefault();
+  if (location.pathname + location.search + location.hash !== href) go(href);
+});
 
 // ---- router --------------------------------------------------------------------------------
 //
@@ -369,11 +376,9 @@ async function route() {
   const { view: name, params } = match(location.pathname);
   const key = location.pathname + location.search;
   put(address.lastChild, location.host, h("b", null, location.pathname));
-  for (const a of railLinks) {
-    const v = a.getAttribute("data-view");
-    a.setAttribute("aria-current", v === name || (name === "needs" && v === "now") ? "page" : "false");
-    if (a.getAttribute("aria-current") === "false") a.removeAttribute("aria-current");
-  }
+  railEl.setCurrent(name, location.hash);
+  // A detail (a session, a project's board or thread): under 900 it takes the list column's place.
+  deck.toggleAttribute("data-detail", (name === "chat" && !!params.thread) || (name === "projects" && !!(params.slug || params.thread)));
   pwa.remember(key);
   const d = history.state?.deck || 0;
   const backward = d < depth;
@@ -386,10 +391,12 @@ async function route() {
   const again = current === key;
   const wasKey = current;
   const was = pages.get(current);
+  // The new address is current before the old page is let go: leave() hides a page only while it
+  // is not the current one, so a desk navigation (no animation to wait for) really hides it.
+  current = key;
   if (was && !again) leave(wasKey, was, from, to, backward);
   // Agents is where the assistant is made or renamed: the Capsule reads its name again after.
   if (wasKey === "/agents" && !again && phone()) drawAssistantName();
-  current = key;
   setMode(to, name, params, key);
   railOwned = false;
   // The rail is not drawn on a phone (no rail there), which saves a projects.list per tap.
@@ -405,16 +412,20 @@ async function route() {
     // A revisit: the page as it was, at once; then whatever it asked to refresh, behind it.
     pages.delete(key); pages.set(key, kept); // most recent last
     away(kept.page, false);
-    if (again) { kept.page.scrollTo({ top: 0, behavior: reduced() ? "auto" : "smooth" }); return; }
+    // Settings to Settings#devices is the same page: it scrolls to the section (its onShow) instead.
+    if (again && !location.hash) { kept.page.scrollTo({ top: 0, behavior: reduced() ? "auto" : "smooth" }); return; }
+    if (again) { for (const f of kept.shows) { try { f(); } catch (e) { console.error(e); } } return; }
     if (to === "pushed" || to === "find" || crossfade) enter(kept.page, to, backward, crossfade);
     else { covered?.(); covered = null; }
     put(railLower, kept.rail ?? null);
+    sideSync();
     for (const f of kept.shows) { try { f(); } catch (e) { console.error(e); } }
     if (newAgent) window.dispatchEvent(new Event("deck:new-agent"));
     return;
   }
 
   put(railLower);
+  sideSync();
   const made = mount(key, name, params, new URLSearchParams(location.search), false, newAgent);
   const entry = pages.get(key);
   if (entry && (to === "pushed" || to === "find" || crossfade)) enter(entry.page, to, backward, crossfade);
@@ -448,8 +459,8 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
     shown: () => entry.alive && !page.classList.contains("away"),
     /** Run fn each time the user comes back to this page (not on the first visit). */
     onShow: (/** @type {() => void} */ fn) => { entry.shows.push(fn); },
-    /** Fill the rail's lower group (between Recent/Pinned and the machine footer). */
-    rail: (/** @type {any} */ el) => { entry.rail = el; if (current === key) put(railLower, el); },
+    /** Fill the list column right of the rail (Chat's sessions). */
+    rail: (/** @type {any} */ el) => { entry.rail = el; if (current === key) { put(railLower, el); sideSync(); } },
   };
   try {
     await style(name);
@@ -458,12 +469,34 @@ async function mount(key, name, params, query, hidden = false, newAgent = false)
     await mod.default(ctx);
   } catch (e) {
     if (!entry.alive) return;
+    // The view's file did not arrive (the box out of reach before the service worker kept it):
+    // say so, and mount it again once the stream is back, instead of calling it not built.
+    if (unfetched(e)) { waitForBox(key, entry, page); return; }
     console.error(e);
     put(page, h("div", { style: { padding: "48px 72px" } },
       h("div", { class: "lbl" }, name === "missing" ? "Not found" : "Not built yet"),
       h("h1", { class: "h2", style: { marginTop: "10px" } }, name === "missing" ? "There is nothing at this address." : "This part of the Deck is not here yet."),
       h("p", { class: "muted", style: { marginTop: "8px" } }, link("/now", { class: "link" }, "Back to Now"))));
   }
+}
+
+/** A module that failed to load over the network (Chrome, Firefox, Safari word it differently). @param {any} e */
+const unfetched = e => e instanceof TypeError && /dynamically imported module|module script failed|error loading dynamically imported/i.test(String(e.message));
+
+/** A page whose view could not be fetched: one quiet line, and a fresh mount when the box answers again.
+ * @param {string} key @param {{ alive: boolean }} entry @param {HTMLElement} page */
+function waitForBox(key, entry, page) {
+  put(page, h("div", { class: "page-wait", role: "status" }, h("p", { class: "muted" }, "This page loads when your box answers.")));
+  const back = (/** @type {Event} */ ev) => {
+    if (ev.type === "deck:stream" && /** @type {CustomEvent} */ (ev).detail?.state !== "open") return;
+    window.removeEventListener("deck:stream", back);
+    window.removeEventListener("online", back);
+    if (!entry.alive || pages.get(key) !== entry) return;
+    drop(key);
+    if (current === key) void route();
+  };
+  window.addEventListener("deck:stream", back);
+  window.addEventListener("online", back);
 }
 
 /** Where a page lives: its slot in the pager on a phone, else straight in #view. */
@@ -672,6 +705,8 @@ window.addEventListener("deck:navigate", route);
 (async () => {
   // A box that asks for a person session gets a sign-in sheet, and the call goes again once.
   installPersonHandler();
+  // What needed the user last time, from this device, while the box is asked (ADR 0029 R3).
+  void needs.restore();
   const status = attempt("onboard.status");
   const first = await Promise.race([status, new Promise(r => setTimeout(r, 800, null))]);
   const toOnboard = (/** @type {any} */ st) => st?.data && st.data.owner === false && !fixturesOn;
@@ -691,7 +726,9 @@ window.addEventListener("deck:navigate", route);
   if (phone()) drawAssistantName();
   // After the first view has its data: fetch the other pages' code while the phone is idle.
   ("requestIdleCallback" in window ? /** @type {any} */ (window).requestIdleCallback : (/** @type {any} */ f) => setTimeout(f, 1500))(warm);
-  for (const t of ["ask.raised", "ask.answered", "gate.held", "gate.released", "gate.failed", "gate.rejected"]) on(t, () => needs.load());
+  // needs.hear keeps each raised ask until answered, so a push's /needs/<ask> opens even before the list has it.
+  for (const t of ["ask.raised", "ask.answered", "ask.cancelled"]) on(t, e => { needs.hear(e); if (t !== "ask.cancelled") needs.load(); });
+  for (const t of ["gate.held", "gate.released", "gate.failed", "gate.rejected"]) on(t, () => needs.load());
   on("project.*", drawRail);
 })();
 

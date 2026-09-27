@@ -60,41 +60,21 @@ the test box when it matters. Keep the suite green on the test box (Linux, node 
   c8fb9aae (batch 2: relay, native Capsule, resilience, tokens, docs; eval said.js),
   fb1ed1d1 (3a: sessions 4311fca5 with the SDK default, chat fb0694d, chat contract 6182766).
 
-## Doing (Logout 4)
+## Doing (2026-09-27 16:30 UTC)
 
-- pre/3b 291c78f2 (pushed as work/integrator-3b), on main fb1ed1d1: e2e bb0415f8 (person session,
-  spawner off by default, symlink floor fix) + 21ac4910 wiring, resilience b8fa344f, relay 104ebcf7,
-  pwa 77df33b, capsule-apps 430d8eb, planner f5eb28ac, cc-plugin d381d76b, teammates cfffa0e0,
-  ci box-image.yml (0f804c11 file only), capsule-pro 47889399 (Cmd-A), sessions db44749b,
-  chat c26f868, e2e-sdk 8aed4887 (journey 4), plus fixes: api.js one person path, drive tests
-  signed in, box-init test for the spawner, floor/presence unions.
-- Full suite on 6df7efb9 (3b before 8aed4887): 2911 tests, 2833 pass, 1 fail = journey 4, which
-  8aed4887 fixes. Targeted journey + sdk-install + sessions on 291c78f2 was running at logout
-  (~/vyre-ci/int-3b-j4.log on the test box).
-- Next: if that is green, fast-forward main to pre/3b, push, send the sha to box-deploy (it includes
-  e2e: all four gates; recreate vyre and docker-api only, egress stays uncreated, tailscale
-  untouched; the uid split is off by default).
-
-## Next: batch 4 queue (rebuild on main after 3b; ci-boundaries LAST, then boundaries.test and
-list any new edge for the lead; core/cli/qr.js -> deck/vendor/qrcode.js is pre-approved)
-
-- Staged on pre/batch4 (from c8fb9aae, to rebuild): docs a286b900 then 3ddc281d, capsule-agent
-  42e8da05, capsule-now 28246cd0 (before agent; Electron copies stay out), capsule-pro 5d4d642b ->
-  now e0dca278 once capsule-mac 36323645897 is green, glass-live 4b88f1d9 (HOLD off main until its
-  throwaway-stack validation; ships with new vyred + docker-api + computer image), app-design
-  7e554a0e -> be98d494, ci 1b1c8573, capsule-apps e99b09d, ci-boundaries de5651bf, platform
-  2e6997dd -> ab34605c, teammates bc41402e -> b5934a4f.
-- Queued, not staged: e2e e5aaf881, e2e 9fc65458 (auto-pair), federation 98048454 (after sessions'
-  review), tailnet a7365a99, mobile cb4e988c (regenerate tokens.ts), polish-cli 7d2f9c32, memory-iq
-  0616dc37 (NOT b220517b: that one hangs memory at start; new migration, memory.context, ADR 0034), relay ee067714 (already in 3b via 104ebcf7), pwa 459b181+ (its api.js
-  replaces chat's stream section with onResume).
-- After batch 4: vault-next 115c5466 (migrations appended; ADR 0028 in nav between 0026 and 0029).
-- BLOCKED: native-core (77faf1e3 etc.) until e2e re-reviews the settings.set person-only and CALL_AS
-  fixes; check the claude-code.md docs failure then. platform-settings-write e4515fb6 after it.
-- main: core/memory/rooms.test.js:227 fails (agents.create needs presence), per memory-iq. Check
-  on main and route (e2e person gate or sessions).
-- Rules learned: launch suites with setsid (e2e's orphan rule refuses a backgrounded shell);
-  test/deck-contract.test.js in every targeted set; load under 8 before any testbox run.
+- BATCH 4 on main 53cd1326: pre/batch4b 91f34bae, pushed as work/integrator-b4c. As listed
+  before, plus docs f89e0fad, memory-iq 0f0c17a2 (model.js removal confirmed), sessions 51eaa964,
+  chat 5d91f833, edges frozen (de3c1e9e, the lead's wording), 91f34bae (module-sdk schema/types
+  for secret, labels, tip topics, declaredTips; docs-check knows ci; mobile.md quoting).
+- Full suite on the test box at 91f34bae: 3384 tests, 3292 pass, 8 fail, 81 skipped. Routed:
+  native-core (settings.js:97 reads <home>/.claude/settings.json in a temp home; settings-keys.css
+  bare 760px), chat (pwa.test ios content-visibility + keyboard follow asserts; term.js 760px),
+  mobile (apps/test/world.test.js person_session_required), platform (system.test.js box/vyre
+  update curls). Known: journey --json todo; memory p95 5.03 ms (load flake).
+- Each owner branches off 91f34bae and sends a sha; merge them, targeted rerun, then land on main.
+- Out of this batch: capsule-pro 1f0c408f (capsule-mac pending; CapsuleModelTests:176 red is
+  theirs), pwa (no sha), cohesion f5cd36f7 (awaiting the lead), federation (after 0.1.0),
+  sessions 501ca3fc (held for e2e).
 
 ## Needs from others
 

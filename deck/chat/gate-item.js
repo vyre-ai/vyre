@@ -13,7 +13,7 @@
 // (js/api.js), one quiet line under the buttons says until when, and Send asks for no passkey.
 
 import { h, put } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { when } from "../js/fmt.js";
 import { renderDiff } from "./lib/diff.js";
@@ -60,7 +60,7 @@ export function gateCard(held) {
     if (state.busy) return;
     state.busy = true; state.problem = null; draw();
     const edits = changes();
-    const r = await attempt("gate.approve", edits ? { id: held.id, edited: edits } : { id: held.id }, { presence: true });
+    const r = await queued("gate.approve", edits ? { id: held.id, edited: edits } : { id: held.id }, { presence: true });
     state.busy = false;
     // Refused (no proof, a cancelled passkey, a bad edit): nothing was sent, the edits stay.
     if (r.error) { state.problem = r.error; draw(); return; }
@@ -74,7 +74,7 @@ export function gateCard(held) {
   async function discard() {
     if (state.busy) return;
     state.busy = true; state.problem = null; draw();
-    const r = await attempt("gate.reject", { id: held.id }, { presence: "asked" });
+    const r = await queued("gate.reject", { id: held.id }, { presence: "asked" });
     state.busy = false;
     if (r.error) { state.problem = r.error; draw(); return; }
     await load();

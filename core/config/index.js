@@ -9,6 +9,9 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { claudeHome } from "./dialogs.js";
+
+export { claudeHome };
 
 /** Resolve a leading ~ against the home directory. */
 export function untilde(p) {
@@ -98,6 +101,18 @@ export function privateSocketDir() {
  * projects.move "enabled" lets projects.move really move a box's homes (off until box-deploy validates it). */
 
 /**
+ * Pages on other sites that may call this box from the owner's browser: Vyre's hosted app. Config
+ * network.origins replaces the list; an empty list turns cross-origin calls off.
+ */
+export const HOSTED_ORIGINS = Object.freeze(["https://app.vyre.run"]);
+
+/** The origins in effect for this network config, lowercased, no trailing slash. @param {any} network @returns {string[]} */
+export function hostedOrigins(network) {
+  const list = network && Array.isArray(network.origins) ? network.origins : HOSTED_ORIGINS;
+  return list.map(o => String(o).toLowerCase().replace(/\/+$/, ""));
+}
+
+/**
  * The box's work folder: the vyre-work volume, which Taildrive shares. Tests point
  * VYRE_WORK_DIR at a temp folder.
  */
@@ -126,13 +141,15 @@ export function boxProjectsDir() {
 }
 
 /** Defaults: one person on one Mac, nothing enabled that needs setting up. */
-function defaults() {
+/** @param {string} root */
+function defaults(root) {
+  const claude = claudeHome(root);
   return {
     role: process.platform === "darwin" ? "local" : "box",
     projectsDir: path.join(os.homedir(), "Vyre", "projects"),
     roots: [],
     me: { domains: [], emails: [] },
-    transcripts: [path.join(os.homedir(), ".claude", "projects"), path.join(os.homedir(), ".claude", "projects-archive")],
+    transcripts: [path.join(claude, "projects"), path.join(claude, "projects-archive")],
     modules: { enable: [], disable: [] },
     // Guests from another tailnet: off, nobody listed (ADR 0014 part 8, core/names/guests.js).
     network: { tailscale: false, guests: { enabled: false, people: {} } },
@@ -160,7 +177,7 @@ export function load(root = home()) {
   let user = {};
   try { user = JSON.parse(fs.readFileSync(p.config, "utf8")); }
   catch (e) { if (/** @type {any} */ (e).code !== "ENOENT") problems.push("config.json unreadable: " + /** @type {Error} */ (e).message); }
-  const d = defaults();
+  const d = defaults(root);
   const c = {
     ...d, ...user,
     me: { ...d.me, ...(user.me || {}) },

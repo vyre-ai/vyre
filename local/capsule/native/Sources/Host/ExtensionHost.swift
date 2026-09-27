@@ -161,6 +161,10 @@ final class ExtensionHost: CapsuleHost {
     func showPanel(_ extensionID: String) { shownPanel = extensionID; model.panelTick += 1 }
     func hidePanel() { shownPanel = nil; model.panelTick += 1 }
     func setQuery(_ text: String) { model.text = text }
+    func dictate(_ text: String, final: Bool) { model.dictate(text, final: final) }
+
+    /// A key came up: the first extension that wants it (hold-to-talk).
+    func handleUp(key: String) -> Bool { extensions.contains { $0.handleUp(key: key) } }
     func say(_ line: String) { model.line = line }
     func stepAside() async -> Bool { await panel?.stepAside() ?? false }
 

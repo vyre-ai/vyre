@@ -21,7 +21,7 @@ import { build, swWithBuild } from "./build.js";
 import { serveApp } from "./app.js";
 import { acquire } from "./lock.js";
 import { Presence, PERSON_ONLY, HUMAN_ONLY, SESSIONABLE, fingerprint, parse as parsePresence } from "../presence/index.js";
-import { peerPid, insideClaude, controllingTty } from "./peer.js";
+import { peerPid, insideClaude, loginOf, tmuxClients, controllingTty } from "./peer.js";
 import { PersonSessions, COOKIE, MAX as PERSON_MAX, carried } from "../presence/person.js";
 import { allowedTools } from "../names/guests.js";
 import { registryRules } from "../harness/rules.js";
@@ -49,7 +49,7 @@ export function moduleRoots(root) {
 /**
  * Start vyred. Returns a handle with the running registry and a stop() for tests.
  * @param {{ root?: string, log?: (m: string, x?: any) => void, rules?: any, presence?: any,
- *   person?: (socket: import("node:net").Socket) => Promise<string|null> }} [opts] person: a test's stand-in for atTerminal
+ *   person?: (socket: import("node:net").Socket) => Promise<string|{ key: string, tty: string|null }|null> }} [opts] person: a test's stand-in for atTerminal
  */
 export async function start(opts = {}) {
   const root = opts.root || config.home();
@@ -238,21 +238,36 @@ async function fromClaude(socket, registry) {
 }
 
 /**
- * The login terminal the person on the socket is typing in ("ttys003"), or null. Null from under a
- * `claude` or a thread (fromClaude), and null without a login terminal `who` lists: a double-forked
- * or setsid'd process has none, and `script`, tmux or expect ptys are not logins. The kernel says
- * which process connected and which terminal it runs in, so no label or file can fake it. This is
- * what lets one proof serve the CLI for 30 minutes, as a session serves the Deck (the no-nag rule;
- * the CLI is a first-class surface).
+ * The login the person on the socket is typing in, as a key ("ttys003#812@<start>"), or null. Null
+ * from under a `claude` or a thread (fromClaude), and null without a login terminal `who` lists: a
+ * double-forked or setsid'd process has none, and `script` or expect ptys are not logins. The key
+ * names the login's leader and its start time, so a new login that reuses the tty number starts
+ * with nothing. A tmux pane counts when every client attached to its session runs in such a login
+ * with no claude above it (tmux attached from a login shell); the key is then those logins. The
+ * kernel says which process connected and which terminal it runs in, so no label or file can fake
+ * it. This is what lets one proof serve the CLI for 30 minutes, as a session serves the Deck (the
+ * no-nag rule; the CLI is a first-class surface).
  * @param {import("node:net").Socket} socket @param {any} registry @param {any} presence
- * @returns {Promise<string|null>}
+ * @returns {Promise<{ key: string, tty: string|null }|null>} tty: the caller's own terminal, where a notice goes
  */
 async function atTerminal(socket, registry, presence) {
   if (await fromClaude(socket, registry)) return null;
   const pid = await peerPid(socket);
-  const tty = pid ? controllingTty(pid) : null;
-  if (!tty || !presence || typeof presence.who !== "function") return null;
-  return (await presence.who()).includes(tty) ? tty : null;
+  if (!pid || !presence || typeof presence.who !== "function") return null;
+  const logins = await presence.who();
+  const login = loginOf(pid);
+  if (login && logins.includes(login.tty)) return { key: login.key, tty: login.tty };
+  const clients = tmuxClients(pid);
+  if (!clients || !clients.length) return null;
+  const r = await registry.call("threads.pids", {}, "module:vyred");
+  const threads = (r.data && r.data.pids) || [];
+  const keys = [];
+  for (const c of clients) {
+    const l = insideClaude(c, { threads }).inside ? null : loginOf(c);
+    if (!l || !logins.includes(l.tty)) return null;
+    keys.push(l.key);
+  }
+  return { key: "tmux:" + [...new Set(keys)].sort().join("+"), tty: controllingTty(pid) };
 }
 
 async function route(req, res, { registry, events, cfg, started, streams, root, inflight, drain, people = null, socket = false, terminalOf = null }, /** @type {Policy} */ policy = {}) {
@@ -439,7 +454,7 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
       delete result.session;
       res.setHeader("x-vyre-presence-session", `session id=${s.session} secret=${s.secret} expires=${s.expires}`);
     }
-    const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : result.error.code === "no_such_tool" ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400
+    const status = !result.error ? 200 : result.error.code === "person_session_required" ? 401 : ["no_such_tool", "not_found"].includes(result.error.code) ? 404 : ["denied", "presence_required", "no_dialog"].includes(result.error.code) ? 403 : result.error.code === "bad_input" ? 400
       : result.error.code === "idempotency_conflict" ? 409 : 500;
     return send(res, status, result);
   }
@@ -476,6 +491,11 @@ async function route(req, res, { registry, events, cfg, started, streams, root, 
     res.writeHead(200, { "content-type": "text/css", "cache-control": "no-cache", "x-content-type-options": "nosniff" });
     return res.end(themeCss((config.load(root).theme || {}).colors));
   }
+  // The browser half of the resilience client (ADR 0029), which the Deck imports as
+  // ../../core/resilience/<file>.js: that resolves here in a browser and to the repo file in Node,
+  // so the Deck and its tests load the one copy. Only these five files; nothing else in core/.
+  const res29 = req.method === "GET" && /^\/core\/resilience\/(backoff|sse|stream|outbox|web)\.js$/.exec(url.pathname);
+  if (res29) return serveFile(res, path.join(REPO, "core", "resilience", res29[1] + ".js"));
   // The one app (ADR 0027), beside the Deck until it takes over /.
   if (req.method === "GET" && (url.pathname === "/app" || url.pathname.startsWith("/app/"))) return serveApp(res, url.pathname);
   if (req.method === "GET" && !url.pathname.startsWith("/v1/")) return serveDeck(res, url.pathname);
@@ -566,8 +586,19 @@ function serveDeck(res, pathname) {
   // The service worker carries the build, so a release is a new sw.js and a phone swaps its cache
   // at once (deck/sw.js BUILD).
   if (file === path.join(dir, "sw.js")) buf = Buffer.from(swWithBuild(buf.toString("utf8")));
-  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", "cache-control": "no-cache",
-    "x-content-type-options": "nosniff", "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" });
+  res.writeHead(200, { "content-type": TYPES[path.extname(file)] || "application/octet-stream", ...DECK_HEADERS });
+  res.end(buf);
+}
+
+/** What every Deck file goes out with. */
+const DECK_HEADERS = { "cache-control": "no-cache", "x-content-type-options": "nosniff",
+  "content-security-policy": "default-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'" };
+
+/** One module from outside deck/ that the Deck imports (core/resilience), with the Deck's headers. */
+function serveFile(res, file) {
+  let buf;
+  try { buf = fs.readFileSync(file); } catch { return send(res, 404, { error: { code: "not_found", message: path.basename(file) } }); }
+  res.writeHead(200, { "content-type": "text/javascript", ...DECK_HEADERS });
   res.end(buf);
 }
 
