@@ -9,11 +9,31 @@ back.
 Definition of done: the user uses Vyre chat for a full working day instead of the terminal.
 
 ## Done
+- 2026-09-27 77faf1e3: core/settings (registry of ~70 keys, stores: settings_values, config.json,
+  module tools, Claude Code files), settings.schema/get/set/reset/resolve, settings.changed,
+  `vyre config`. 11/11 tests on testbox. CALL_AS lets settings pass a person's change on.
+- 2026-09-27 0dc1f26c: Deck Settings draws every registry key (deck/views/settings-keys.js),
+  Account|Project switch, source chips, optimistic save + rollback, live settings.changed.
+  13/13 fake-DOM tests; not yet seen in a real browser.
 - 2026-09-27: audits of sessions, chat, settings and Paseo (findings in the gap list sent to the
   lead). docs/design/settings-inventory.md and docs/design/native-bar.md written.
 
 ## Doing
-- First report to the lead. Contract mismatches sent to sessions and chat.
+- The native-bar harness (deck/test/native-bar/), fake bursty stream, testbox Chrome.
+
+## Known follow-ups
+- The new Notifications group duplicates the old Notifications section (both write push.settings):
+  fold the old one into the registry view, keep devices + test there.
+- Screenshots of Settings in one world (needs a Chrome run on testbox).
+- Canvas Settings.dc.html has list+detail with value summaries, J/K / Space keys, "Saved" check:
+  not matched yet.
+- docs-check fails on main already: docs/using/claude-code.md:107 settings.json.vyre-backup (cc-plugin/docs).
+- sessions must read settings.resolve at thread start (model.fallback, effort, permissions.mode,
+  sessions.max_turns, sessions.budget_usd, sessions.checkpoints, fast).
+
+## Changed contracts
+- core/modules/index.js CALL_AS: settings may call as cli/local/deck/capsule.
+- scripts/lib/docs/check.js OWNERS: + native-core.
 
 ## Next (1-week plan)
 1. Day 1-2: core/settings registry + adapters, `settings.*` tools, `settings.changed`,
