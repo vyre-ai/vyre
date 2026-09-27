@@ -71,8 +71,15 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
   status/tools/projects; multi-account native (two Gmail MCPs = one server, several vault-backed
   accounts, "add another account" is one click); per-project/surface on/off with secrets in the
   vault; Deck Connections view + compact Capsule list ("send from which account?"); live status
-  events, no polling faster than 60s, optimistic toggle + Undo. Writing docs/design/mcp-native.md
-  next (what exists vs. gaps) before touching code, with vault (grants/connections) and app-design.
+  events, no polling faster than 60s, optimistic toggle + Undo. docs/design/mcp-native.md written
+  and sent to the lead (5 gaps, sized, build order). Gap 1 (discovery) built: core/mcp/discover.js
+  (pure, tested with synthetic Claude Code config fixtures in temp homes, never real files),
+  9af3a4fb. Not yet wired into `mcp.add`, `mcp.servers` or the Deck (own step, so a `pending` row's
+  shape gets its own review before the UI depends on it).
+- Fallout from the main merge, fixed alongside discover.js: `test/boundaries.test.js`'s allowlist
+  froze on 2026-09-27 before connectors' on_behalf (behalf.js) and mail (message.js) edges landed;
+  updated the allowlist and docs/architecture/boundaries.md to match what core/google, core/mail
+  and core/mcp already import (all four sides are connectors' own files, no cross-team ask needed).
 - SAVED for restart 2026-09-27 (superseded by the above once mcp-native lands): handed to the
   integrator work/connectors 8be461a9 for the batch after batch 4; e2e signed off (84f630c9 + row
   text), platform approved kernel af11226d + test 77dcd644. Land together with vault 9b
@@ -82,15 +89,21 @@ Owns `core/connectors/`, `core/mcp/`, `core/google/`, `core/mail/`, `core/cli/co
 
 ## Next
 
-1. Write docs/design/mcp-native.md: current state (hub discovers only servers named in Vyre's own
-   config today, not Claude Code's .mcp.json/user/project/local scopes or plugin-provided ones —
-   confirm exact gap by reading core/mcp/hub.js's discovery path), sizing for live discovery,
-   multi-account grouping in the UI, native per-project toggles, and the Deck/Capsule surfaces.
-2. When vault 9b's sha arrives: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
+1. mcp-native gap 2 (multi-account, native): once vault 9b's connections tools land on main, read
+   them from deck/views/connections.js instead of mcp.servers directly, group rows by a stable
+   same-server key (command+args, or url minus query), render accounts as chips, "add another
+   account" pre-fills the same transport.
+2. mcp-native gap 1 follow-up: wire discover() into a pending row surfaced by mcp.servers (or a new
+   mcp.discovered tool), and an fs.watch (not polling) on the handful of config files so a server
+   added to .mcp.json after Vyre started still shows up. Decide with the lead whether
+   core/harness/rules.js's path walk should become a shared export before a third caller needs it.
+3. mcp-native gaps 3-4: mcp.update scope toggle + vault grant/revoke wiring in the Deck card; the
+   Capsule's compact account picker, with app-design, once 1-2 have a shape.
+4. When vault 9b's sha arrives: real-vyred mail tests (IMAP, Apps Script, Google, two MCP
    instances) on top of it; hand the integrator the new sha.
-3. Tell capsule-pro when mail is on main (they render mail.find rows, open the Gate card).
-4. `vyre connect` for mail.map (CLI), and the Deck row for mail accounts (with pwa/native-core).
-5. Platform's non-blocking note: cache config.home() in the registry; one firstParty definition.
+5. Tell capsule-pro when mail is on main (they render mail.find rows, open the Gate card).
+6. `vyre connect` for mail.map (CLI), and the Deck row for mail accounts (with pwa/native-core).
+7. Platform's non-blocking note: cache config.home() in the registry; one firstParty definition.
 
 ## Needs from others
 
