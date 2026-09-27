@@ -129,6 +129,12 @@ facts are not a project's.
   p50/p95 3.8/4.4 s via claude -p, $0.0032 a question. One question apart: not a measured win.
 - A/B done. Sealed (blind): v1 0.61 / 9 confident-wrong, v2 0.62 / 6. Open: v1 0.767 / 2, v2 0.778 / 1.
   v2 keeps (already in the RC via 1815b37d). Both worlds' v2 replies committed (test/eval/asks).
+- Reader billing fix ec097430 (rc2 branch head; cherry-picked here as well): API keys are left out of model calls unless memory.model.billing is "api".
+- Correct IQ in place (95b2b891): memory.correct {answer}, memory.uncorrect {fix}, corrections {answers},
+  stats.iq, `vyre memory fix`, eval-iq --fix (open 20/20, sealed 38/38, 0 regressed). Tables
+  memory_iq_answers, memory_iq_fixes, memory_me_denied. 0.1.1. Card specs sent to capsule-pro and app-design;
+  e2e asked for a review of tailnet corrections and of the sync amendment.
+- Session sync: contract agreed with federation, ADR 0008 amended (f63fe0e2). 0.2.
 - rc.2 handoff: branch work/memory-iq-rc2 (worktree ../vyre-memory-iq-rc2) = 1815b37d + the teach
   me:you fix ported from work/memory + both asks files + "you prefer" grammar, head 4ff57bb6.
   199/199 memory tests on testbox.
@@ -162,6 +168,7 @@ facts are not a project's.
   memory curator's background pass, in bounded batches that yield.
 
 ## Changed contracts
+- memory.correct takes `answer` (an IQ answer_id) and action `forget`; memory.uncorrect takes `fix`; memory.corrections takes `answers`; memory.stats adds `iq`; memory.ask replies carry `answer_id` and may be `via: "corrected"`; event memory.fixed {id, action, kind}.
 - core/suggest/index.js emits `suggest.ready` at the end of start (module.json emits it), so a module that started first offers again. memory.suggest also returns `items` (suggest.offer's shape).
 - memory.ask takes `stream` and `id`; events memory.thinking {id, stage} and memory.answered {id, abstained, limited}.
 - core/recall/index.js readable(folders, root, env): the person's ~/.claude only for the real ~/.vyre (or VYRE_ALLOW_REAL_TRANSCRIPTS=1). New tool memory.retrieve. Table memory_me_trust. Config memory.personal.skipCwds.
