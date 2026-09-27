@@ -449,6 +449,18 @@ function messageRules(raw, only) {
   return null;
 }
 
+/**
+ * A message to someone a person picked (a candidate from a question, or a name they typed), with
+ * the words kept from the question: no sentence to read, so no colon or "tell" is needed.
+ * @param {string} app @param {string} to @param {string} text
+ * @returns {Route | Ambiguous}
+ */
+export function sendTo(app, to, text) {
+  const a = MESSENGERS[String(app).trim().toLowerCase()];
+  if (!a) return unsure(`Vyre cannot send through ${app}`);
+  return message(a, to, text);
+}
+
 /** Inside a messenger's scope: "juno: text", "tell juno text", or its own full sentence. */
 function scopedMessage(/** @type {string} */ raw, /** @type {string} */ app) {
   const own = messageRules(raw, app);

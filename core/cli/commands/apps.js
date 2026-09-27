@@ -7,11 +7,21 @@
 // apps.send, which asks this terminal for a person's proof the way every human-only call does.
 // `vyre apps`, `find`, `targets` and `setup` are the other tools, plainly printed; --json prints
 // what vyred answered, for scripts.
+//
+// When the app or who a message is for is unclear, vyred asks rather than guesses, and so does
+// this: on a terminal it shows the question and the candidates and reads a pick; anywhere else it
+// prints the question (as JSON with --json) and exits 3, so a script can tell "asked" from "failed".
 
 import { call as daemonCall } from "../../daemon/client.js";
 import { ensureUp } from "../daemonctl.js";
 import { callAsPerson } from "../presence.js";
+import { createInterface } from "node:readline/promises";
 import { out, dim, bold, signal, beacon } from "../style.js";
+
+/** The exit code for "vyred asked a question and no one was there to answer it". */
+export const ASKED = 3;
+/** Questions asked in a row before giving up, so a loop of unclear answers ends. */
+const ROUNDS = 3;
 
 export const USAGE = `
   vyre apps                          the apps on this Mac, and how Vyre reaches each
@@ -26,6 +36,9 @@ export const USAGE = `
   --app <App>    read the words as that app's (like @Notes in the Capsule)
   --model        let a small model try words the rules cannot place
   --json         print vyred's answer as JSON
+
+  When the app or who a message is for is unclear, vyre apps asks (Did you mean ...?) on a
+  terminal; elsewhere it prints the question and exits 3.
 `;
 
 const SUBCOMMANDS = new Set(["find", "targets", "setup", "list"]);
@@ -87,8 +100,15 @@ export function formatSetup(r) {
 /**
  * @typedef {{ data?: any, error?: { code: string, message: string } }} Answer
  * @typedef {{ call(tool: string, input: any, opts?: { timeout?: number }): Promise<Answer>, person(tool: string, input: any): Promise<Answer>,
- *   up(): Promise<boolean>, print(line: string): void, warn(line: string): void }} Deps
+ *   up(): Promise<boolean>, print(line: string): void, warn(line: string): void,
+ *   isTTY?: boolean, ask?(question: string): Promise<string | null> }} Deps
  */
+
+/** One line from the terminal, or null when it closed (Ctrl-D). @param {string} question */
+async function askTerminal(question) {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try { return await rl.question(question); } catch { return null; } finally { rl.close(); }
+}
 
 /** @type {Deps} */
 const real = {
@@ -101,7 +121,54 @@ const real = {
   },
   print: line => out(line),
   warn: line => { process.stderr.write(line + "\n"); },
+  isTTY: Boolean(process.stdin.isTTY && process.stdout.isTTY),
+  ask: askTerminal,
 };
+
+/**
+ * A question from apps.route, in words: what it asks, the Did you mean line, the numbered
+ * candidates. @param {any} r
+ */
+export function formatQuestion(r) {
+  const lines = [`  ${bold(r.ask)} ${dim(`· ${r.text}`)}`];
+  if (r.didYouMean) lines.push(`  ${r.didYouMean}`);
+  const list = candidates(r);
+  list.forEach((c, i) => lines.push(`  ${String(i + 1).padStart(2)}  ${c.label}${c.hint ? dim(`  ${c.hint}`) : ""}`));
+  if (!list.length) lines.push(dim(r.needs.app ? "  no app Vyre can send through is on this Mac" : `  no one to pick from in ${r.app}; type a name`));
+  return lines;
+}
+
+/** @param {any} r @returns {{ label: string, hint?: string, app?: string, to?: string }[]} */
+function candidates(r) {
+  if (r.needs.app) return r.needs.app.map((/** @type {any} */ a) => ({ label: a.name, hint: a.hint, app: a.name }));
+  return (r.needs.recipient || []).map((/** @type {any} */ c) => ({ label: c.title, to: c.title }));
+}
+
+/**
+ * A person's answer to a question: a number, a name typed out, or Enter for a lone Did you mean.
+ * Returns the apps.route input to ask again with, or null for no answer (cancel).
+ * @param {any} r @param {string} line @returns {{ text: string, app?: string, to?: string } | null}
+ */
+export function pick(r, line) {
+  const a = String(line || "").trim();
+  const list = candidates(r);
+  if (!a) return r.didYouMean && list.length ? pickOne(r, list[0]) : null;
+  if (/^(y|yes)$/i.test(a) && r.didYouMean && list.length) return pickOne(r, list[0]);
+  if (/^\d+$/.test(a)) {
+    const c = list[Number(a) - 1];
+    return c ? pickOne(r, c) : null;
+  }
+  const named = list.find(c => c.label.toLowerCase() === a.toLowerCase());
+  if (named) return pickOne(r, named);
+  // A name not in the list: vyred checks it against the app's people and asks again if unsure.
+  return r.needs.app ? { text: r.text, app: a, ...(r.to ? { to: r.to } : {}) } : { text: r.text, app: r.app, to: a };
+}
+
+/** @param {any} r @param {{ app?: string, to?: string }} c */
+function pickOne(r, c) {
+  if (c.app) return { text: r.text, app: c.app, ...(r.to ? { to: r.to } : {}) };
+  return { text: r.text, app: r.app, to: c.to };
+}
 
 /**
  * Run `vyre apps ...` against injected deps. Returns the exit code.
@@ -148,7 +215,23 @@ export async function runApps(args, deps = real) {
   const text = words.join(" ");
   const routed = await deps.call("apps.route", { text, ...(flags.app ? { app: flags.app } : {}), ...(flags.model ? { model: true } : {}) });
   if (routed.error) return fail(routed.error);
-  const r = routed.data;
+  let r = routed.data;
+  for (let round = 0; r.needs; round++) {
+    if (flags.json || !deps.isTTY || !deps.ask) {
+      if (flags.json) p(JSON.stringify(r, null, 2));
+      else { for (const line of formatQuestion(r)) p(line); p(dim("  run it on a terminal to pick, or say it again with the name and app")); }
+      return ASKED;
+    }
+    if (round >= ROUNDS) { p(`  ${beacon("not sure")}: ${r.reason}`); return 1; }
+    for (const line of formatQuestion(r)) p(line);
+    const line = await deps.ask(r.didYouMean ? "  pick one (Enter for the first): " : "  pick one: ");
+    if (/^\s*\d+\s*$/.test(line || "") && !candidates(r)[Number(line) - 1]) { p(`  there is no ${String(line).trim()} in the list`); continue; }
+    const next = pick(r, line || "");
+    if (!next) { p(dim("  nothing sent")); return 1; }
+    const again = await deps.call("apps.route", next);
+    if (again.error) return fail(again.error);
+    r = again.data;
+  }
   if (r.ambiguous) {
     if (flags.json) p(JSON.stringify(r, null, 2));
     else p(`  ${beacon("not sure")}: ${r.reason}`);

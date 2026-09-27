@@ -86,26 +86,14 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   `apps.setup` (setup.js, Clock's shortcuts written, signed, opened) and `vyre apps`
   (core/cli/commands/apps.js). 150 targeted tests pass on the testbox, 5 opt-in skipped.
 
-## Doing (saved 2026-09-27 at logout)
-- T4 WIP (170f3dd; testbox local/apps: 178 tests, 173 pass, 0 fail, 5 skipped). Built: A in full
-  (planner adapter, todo rules, appleAsked opt-in, @Planner scope) and B on the route and tool side
-  (fuzzy.js, didYouMean). NOT built: the CLI prompt loop (TTY choice; exit 3 otherwise), unit tests
-  for fuzzy.js, the CHANGELOG entry: planner by default and
-  structured re-prompts. Files: local/apps/adapters/planner.js, local/apps/fuzzy.js, edits in
-  route.js, route.test.js, adapters/index.js, index.js. Spec, as approved by the lead:
-  - timer, alarm, wake me, remind me, todo and note route to Planner add {text, kind}, which
-    calls ctx.call("planner.add"); if planner.add is missing, code setup, "The planner is not on
-    this Vyre yet". Apple Clock, Notes and Reminders are opt-in: "in Apple Notes", config
-    apps.planner = "apple", or an @Notes/@Clock/@Reminders scope.
-  - planner.parse becomes the single time parser (owned by the planner team, ADR 0025,
-    ../vyre-planner). They port our route.js rules (parseDuration, parseClock/fixed, wall, ahead,
-    reminderParts, the route.test.js table). Asked for: local answer on the Mac, no box round
-    trip. Switch apps.route to it when they send the hash.
-  - Never silently nothing: apps.route returns {needs:{app?, recipient?}, ask, text, app?, action?},
-    candidates first with didYouMean ("Did you mean Ammi jee on WhatsApp?"). The tool fills the
-    candidates (messaging apps; fuzzy apps.targets matches). CLI: prompt on a TTY, else exit 3
-    with the needs shape. Tests: ambiguous app, ambiguous recipient, unknown recipient, a refused
-    sentence ("tell mom I'm on slack now").
+## Doing (2026-09-27, resumed)
+- T4 done (main merged at abd1e79): planner by default, needs prompts on the route and tool side,
+  apps.route {text, app, to} for answers (sendTo in route.js), the `vyre apps` prompt loop (TTY:
+  numbered pick, Enter for a lone Did you mean, 3 rounds; else exit 3, JSON with --json),
+  local/apps/fuzzy.test.js, CHANGELOG. Testbox: local/apps + core/cli/commands/apps.test.js
+  194 pass, 0 fail, 5 skipped. Review pending.
+- planner.parse as the single time parser stays with the planner team (ADR 0025, ../vyre-planner):
+  switch apps.route to it when they send the hash; local answer on the Mac, no box round trip.
 - Slice 2 Kit (branch work/capsule-apps-native, worktree ../vyre-capsule-apps-native):
   708b533 (nested + async mentions) and ff82b8f (all 11 review fixes; CI not rechecked after it).
   Merging origin/work/capsule-pro c778f56 was aborted at logout: conflicts in CHANGELOG.md and
@@ -117,7 +105,7 @@ Owns `local/apps/` (the vyred `apps` module), `core/cli/commands/apps.js`,
   extension filter: 16 pass, push, run capsule-mac CI, then send the hash to capsule-pro to merge.
 
 ## Next
-1. Finish T4 (run local/apps tests on the testbox, fix, commit, push), then review it.
+1. Review T4, fix, push work/capsule-apps.
 2. Kit: merge c778f56, CI, hand off to capsule-pro.
 3. AppsExtension (Sources/Extensions/apps on the native branch): installed apps as @ targets
    with real icons (nests: true for apps with targets), refreshMentions/mentionPicked call

@@ -21,7 +21,7 @@ import { checkInput } from "../../core/modules/index.js";
 import { makeEnv, AppsError } from "./env.js";
 import { adapters } from "./adapters/index.js";
 import { installed, DEFAULT_DIRS } from "./installed.js";
-import { route } from "./route.js";
+import { route, sendTo } from "./route.js";
 import { rank as rankTargets, STRONG } from "./fuzzy.js";
 import { setupFor } from "./setup.js";
 import path from "node:path";
@@ -190,10 +190,15 @@ export default {
         text: r.args.text, app: r.app, action: r.action, to: r.args.to, ...(didYouMean ? { didYouMean } : {}) };
     };
 
+    /** A route from picked parts: asked again if still unclear, checked against the app's people. */
+    const answered = (/** @type {any} */ r) => r.needs ? fillNeeds(r) : !r.ambiguous && r.sends ? checkRecipient(r) : r;
+
     ctx.tool("apps.route", {
-      description: "Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
-      input: { type: "object", required: ["text"], properties: { text: { type: "string", maxLength: 2000 }, app: str, model: { type: "boolean" } } },
-      async run({ text, app, model = false }) {
+      description: "Turn a person's words into one app action without running it: {app, action, args, sends, said}, or {ambiguous, reason}. \"timer 10 min\", \"remind me to call juno at 6\", \"weather tomorrow\", \"whatsapp juno: running late\". Timers, alarms, reminders, todos and notes go to the Planner unless the words ask for the Mac's app. When a message's app or recipient is unclear the answer asks instead: {needs: {app: [candidates]} or {recipient: [candidates]}, ask, text (kept as typed), app?, action?, didYouMean?}; send it on once a person picks, as {text, app, to}. app scopes the words to one app (the Capsule's @App). model: true lets a small model try what the rules cannot place, when one is configured.",
+      input: { type: "object", required: ["text"], properties: { text: { type: "string", maxLength: 2000 }, app: str, to: str, model: { type: "boolean" } } },
+      async run({ text, app, to, model = false }) {
+        // An answer to a question: the app and who, as picked, and the words kept from it.
+        if (to) return app ? answered(sendTo(app, to, text)) : { ambiguous: true, reason: "to needs an app", needs: { app: await messagingApps() }, ask: "Which app?", text, action: "send", to };
         const r = /** @type {any} */ (route(text, { now: env.now(), timeZone: env.timeZone, planner: opts.planner === "apple" ? "apple" : "planner", ...(app ? { app } : {}) }));
         if (r.needs) return fillNeeds(r);
         if (!r.ambiguous && r.sends) return checkRecipient(r);

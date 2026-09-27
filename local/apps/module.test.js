@@ -365,3 +365,24 @@ test("module: a refused recipient sentence asks who on that app, with the words 
   assert.deepEqual({ needs: r.needs, ask: r.ask, app: r.app, text: r.text, action: r.action },
     { needs: { recipient: [] }, ask: "Who should get this?", app: "Slack", text: "I'm on slack now", action: "send" });
 });
+
+test("module: a picked answer routes on with {text, app, to}, checked against the app's people", async t => {
+  const sent = /** @type {any[]} */ ([]);
+  const { reg } = await start(t, { apps: { adapters: [whatsapp(sent)] } });
+  const ask = async (/** @type {any} */ input) => (await reg.call("apps.route", input, "capsule")).data;
+
+  const ok = await ask({ text: "dinner at 8?", app: "WhatsApp", to: "Ammi jee" });
+  assert.deepEqual({ sends: ok.sends, args: ok.args, said: ok.said }, { sends: true, args: { to: "Ammi jee", text: "dinner at 8?" }, said: "WhatsApp → Ammi jee: dinner at 8?" });
+
+  const again = await ask({ text: "dinner at 8?", app: "whatsapp", to: "ammi" });
+  assert.equal(again.didYouMean, "Did you mean Ammi jee on WhatsApp?", "a typed name not in the app is asked about again");
+
+  const noApp = await ask({ text: "hi", to: "juno" });
+  assert.equal(noApp.ask, "Which app?");
+  assert.equal(noApp.to, "juno");
+
+  const cannot = await ask({ text: "hi", app: "Messages", to: "juno" });
+  assert.equal(cannot.ambiguous, true);
+  assert.match(cannot.reason, /cannot send through Messages/);
+  assert.equal(sent.length, 0, "routing sent something");
+});

@@ -5,7 +5,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { parseArgs, runApps, formatApps, formatTargets, USAGE } from "./apps.js";
+import { parseArgs, runApps, formatApps, formatTargets, pick, USAGE, ASKED } from "./apps.js";
 
 /**
  * Fake deps: answers by tool name, and records every call and printed line.
@@ -18,16 +18,17 @@ function fake(answers) {
   const lines = [];
   /** @type {string[]} */
   const errs = [];
-  const answer = (/** @type {string} */ tool) => {
+  const answer = (/** @type {string} */ tool, /** @type {any} */ input) => {
     const a = answers[tool];
     if (a === undefined) return { error: { code: "no_such_tool", message: `no tool ${tool}` } };
-    return a && a.error ? a : { data: typeof a === "function" ? a() : a };
+    const v = typeof a === "function" ? a(input) : a;
+    return v && v.error ? v : { data: v };
   };
   return {
     calls, lines, errs,
     deps: {
-      call: async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ opts) => { calls.push({ tool, input, as: "call", ...(opts ? { opts } : {}) }); return answer(tool); },
-      person: async (/** @type {string} */ tool, /** @type {any} */ input) => { calls.push({ tool, input, as: "person" }); return answer(tool); },
+      call: async (/** @type {string} */ tool, /** @type {any} */ input, /** @type {any} */ opts) => { calls.push({ tool, input, as: "call", ...(opts ? { opts } : {}) }); return answer(tool, input); },
+      person: async (/** @type {string} */ tool, /** @type {any} */ input) => { calls.push({ tool, input, as: "person" }); return answer(tool, input); },
       up: async () => true,
       print: (/** @type {string} */ l) => { lines.push(l.replace(/\x1b\[[0-9;]*m/g, "")); },
       warn: (/** @type {string} */ l) => { errs.push(l); },
@@ -143,4 +144,83 @@ test("apps cli: with --json a send's preview goes to stderr before the proof, an
   assert.deepEqual(order, ["warn", "proof"]);
   assert.deepEqual(f.errs, ["  WhatsApp → juno: hi"]);
   assert.deepEqual(JSON.parse(f.lines.join("\n")), { said: "Sent to juno" });
+});
+
+// ---- Questions: an unclear app or recipient is asked about, never dropped -------------------
+
+const WHO = { ambiguous: true, reason: "who is the WhatsApp message for?", ask: "Who should get this?", text: "dinner at 8?", app: "WhatsApp", action: "send", to: "ammi",
+  needs: { recipient: [{ id: "c3", title: "Ammi jee", app: "WhatsApp", score: 0.9 }, { id: "c9", title: "Amir", app: "WhatsApp", score: 0.7 }] },
+  didYouMean: "Did you mean Ammi jee on WhatsApp?" };
+const WHICH = { ambiguous: true, reason: "which app should this go through?", ask: "Which app?", text: "I'm running late", action: "send", to: "juno",
+  needs: { app: [{ name: "WhatsApp", hint: "Vyre sends through it" }, { name: "Messages", hint: "installed; Vyre cannot send through it yet" }] } };
+/** The route vyred gives once the person has picked. @param {string} app @param {string} to @param {string} text */
+const picked = (app, to, text) => ({ app, action: "send", args: { to, text }, sends: true, said: `${app} → ${to}: ${text}` });
+
+/** A terminal that answers with these lines, in order. @param {string[]} answers */
+const terminal = answers => ({ isTTY: true, asked: /** @type {string[]} */ ([]), async ask(/** @type {string} */ q) { this.asked.push(q); return answers.length ? /** @type {string} */ (answers.shift()) : null; } });
+
+test("apps cli: with no terminal a question is printed with its candidates and exits 3; --json prints its shape", async () => {
+  const f = fake({ "apps.route": WHO });
+  assert.equal(await runApps(["whatsapp", "ammi:", "dinner", "at", "8?"], f.deps), ASKED);
+  assert.equal(ASKED, 3);
+  assert.deepEqual(f.lines.slice(0, 4), ["  Who should get this? · dinner at 8?", "  Did you mean Ammi jee on WhatsApp?", "   1  Ammi jee", "   2  Amir"]);
+  assert.equal(f.calls.length, 1, "nothing but the route ran");
+
+  const j = fake({ "apps.route": WHO });
+  assert.equal(await runApps(["--json", "whatsapp", "ammi:", "dinner", "at", "8?"], { ...j.deps, ...terminal(["1"]) }), ASKED, "--json never prompts");
+  assert.deepEqual(JSON.parse(j.lines.join("\n")), WHO);
+});
+
+test("apps cli: on a terminal Enter takes the Did you mean, then the send is previewed and proved", async () => {
+  const f = fake({ "apps.route": (/** @type {any} */ i) => (i.to ? picked(i.app, i.to, i.text) : WHO), "apps.send": { said: "Sent to Ammi jee" } });
+  const tty = terminal([""]);
+  assert.equal(await runApps(["whatsapp", "ammi:", "dinner", "at", "8?"], { ...f.deps, ...tty }), 0);
+  assert.deepEqual(tty.asked, ["  pick one (Enter for the first): "]);
+  assert.deepEqual(f.calls.map(c => [c.tool, c.as]), [["apps.route", "call"], ["apps.route", "call"], ["apps.send", "person"]]);
+  assert.deepEqual(f.calls[1].input, { text: "dinner at 8?", app: "WhatsApp", to: "Ammi jee" });
+  assert.deepEqual(f.calls[2].input, { app: "WhatsApp", action: "send", args: { to: "Ammi jee", text: "dinner at 8?" } });
+  assert.deepEqual(f.lines.slice(-2), ["  WhatsApp → Ammi jee: dinner at 8?", "  ● Sent to Ammi jee"]);
+});
+
+test("apps cli: an unclear app is asked, then who; a number out of range asks again", async () => {
+  const routes = [WHICH, { ...WHO, didYouMean: undefined, needs: { recipient: [{ id: "c1", title: "Juno Park", app: "WhatsApp", score: 0.9 }, { id: "c2", title: "Jules", app: "WhatsApp", score: 0.8 }] }, text: "I'm running late", to: "juno" }];
+  const f = fake({ "apps.route": (/** @type {any} */ i) => routes.length ? routes.shift() : picked(i.app, i.to, i.text), "apps.send": { said: "Sent" } });
+  const tty = terminal(["1", "7", "juno park"]);
+  assert.equal(await runApps(["tell", "juno", "I'm", "running", "late"], { ...f.deps, ...tty }), 0);
+  assert.deepEqual(f.calls.filter(c => c.tool === "apps.route").map(c => c.input), [
+    { text: "tell juno I'm running late" },
+    { text: "I'm running late", app: "WhatsApp", to: "juno" },
+    { text: "I'm running late", app: "WhatsApp", to: "Juno Park" },
+  ]);
+  assert.ok(f.lines.includes("  there is no 7 in the list"));
+  assert.ok(f.lines.includes("  WhatsApp → Juno Park: I'm running late"));
+});
+
+test("apps cli: an empty answer with no Did you mean, or a closed terminal, cancels and sends nothing", async () => {
+  for (const answers of [[""], []]) {
+    const f = fake({ "apps.route": { ...WHO, didYouMean: undefined }, "apps.send": { said: "Sent" } });
+    assert.equal(await runApps(["whatsapp", "ammi:", "dinner"], { ...f.deps, ...terminal(answers) }), 1);
+    assert.equal(f.lines.at(-1), "  nothing sent");
+    assert.equal(f.calls.some(c => c.tool === "apps.send"), false);
+  }
+});
+
+test("apps cli: questions stop after three rounds", async () => {
+  const f = fake({ "apps.route": { ...WHO, didYouMean: undefined, needs: { recipient: [] } } });
+  const tty = terminal(["zed", "zed", "zed", "zed"]);
+  assert.equal(await runApps(["whatsapp", "zed:", "hi"], { ...f.deps, ...tty }), 1);
+  assert.equal(tty.asked.length, 3);
+  assert.equal(f.lines.at(-1), "  not sure: who is the WhatsApp message for?");
+  assert.ok(f.lines.includes("  no one to pick from in WhatsApp; type a name"));
+});
+
+test("apps cli: pick reads a number, a name from the list, yes, or a new name", () => {
+  assert.deepEqual(pick(WHO, "2"), { text: "dinner at 8?", app: "WhatsApp", to: "Amir" });
+  assert.deepEqual(pick(WHO, "yes"), { text: "dinner at 8?", app: "WhatsApp", to: "Ammi jee" });
+  assert.deepEqual(pick(WHO, "AMIR"), { text: "dinner at 8?", app: "WhatsApp", to: "Amir" });
+  assert.deepEqual(pick(WHO, "kit"), { text: "dinner at 8?", app: "WhatsApp", to: "kit" });
+  assert.equal(pick(WHO, "9"), null);
+  assert.deepEqual(pick(WHICH, "2"), { text: "I'm running late", app: "Messages", to: "juno" });
+  assert.deepEqual(pick(WHICH, "slack"), { text: "I'm running late", app: "slack", to: "juno" });
+  assert.equal(pick(WHICH, ""), null, "no Did you mean, no default");
 });

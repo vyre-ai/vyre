@@ -4,6 +4,28 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Apps: the planner by default, and a question instead of nothing (ADR 0022)
+
+- Timers, alarms, "wake me", reminders, todos and notes now route to Vyre's own planner
+  (`Planner add {text, kind}`, which calls `planner.add`, ADR 0025), so they ring when the Mac is
+  shut. Apple's Clock, Notes and Reminders are opt-in: words like "in Apple Notes" or "notes app",
+  an `@Notes`, `@Clock` or `@Reminders` scope, or config `apps.planner = "apple"`. With no
+  planner module on this Vyre the answer is code `setup`, "The planner is not on this Vyre yet".
+  "todo buy milk" and "add call kit to my todos" are new words for a todo.
+- When a message's app or recipient is unclear, `apps.route` asks rather than refusing or
+  guessing: `{needs: {app} | {recipient}, ask, text, app?, action, to?, didYouMean?}`, the words
+  kept as typed. The candidates are the messaging apps on this Mac, or the app's people ranked by
+  a fuzzy match (`local/apps/fuzzy.js`: a prefix, the first word, every word's start, a slip of a
+  letter or two), and a lone strong match adds "Did you mean Ammi jee on WhatsApp?". A send to a
+  name the app does not know is asked about the same way. "tell mom I'm on slack now" asks who
+  on Slack, keeping "I'm on slack now".
+- `apps.route {text, app, to}` is how an answer goes back: the app and who as picked, the words
+  from the question. It is checked against the app's people and asked again if still unclear.
+- `vyre apps` asks on a terminal: the question, the Did you mean line and numbered candidates;
+  a number, a name, or Enter for the Did you mean, up to three rounds, and an empty answer sends
+  nothing. Off a terminal, or with `--json`, it prints the question (as JSON with `--json`) and
+  exits 3, so a script can tell "asked" from "failed".
+
 #### Apps: timers, notes, reminders and the weather from the Capsule (ADR 0022, slice 1)
 
 - A new vyred module `apps` (`local/apps/`, roles local) drives the Mac's apps. `apps.list` reads
