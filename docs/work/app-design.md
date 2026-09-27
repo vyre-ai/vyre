@@ -53,6 +53,7 @@ Apple Developer account. Absorbs deck-design and phone-design.
   its presence summary names the device ("Trust browser Chrome on alex's Pixel 8 fully") instead
   of the id; and the proposed "Ask to trust" tool (e.g. relay.devices.ask_trust) that puts one
   Device row in Needs on the person's trusted devices. The TrustBrowser board draws all three.
+  Accepted and queued by relay (work/relay 5243964, docs/work/relay.md Next).
 
 - integrator: when merging, take this branch's scripts/gen-tokens over work/mobile 622224a's, drop
   capsule-pro's hand-written Swift add-on, then run `npm run tokens` and commit the three outputs
