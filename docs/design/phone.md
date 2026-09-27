@@ -59,8 +59,8 @@ docs/design/deck-directions/vyre.css), so a phone view and a Deck view read the 
 | `--focus` | #C6F36B | #46700C | Focus ring |
 | `--signal-wash` | rgba(198,243,107,0.12) | rgba(70,112,12,0.10) | The Ask row in Find, added diff lines |
 | `--match` (phone) | rgba(198,243,107,0.20) | rgba(70,112,12,0.16) | Search match highlight, the Open session flash |
-| `--beacon-ink` / `--beacon-dot` | #FF7A59 / #FF7A59 | #C2411F / #E5532F | Needs you. Nothing else |
-| `--beacon-wash` | rgba(255,122,89,0.12) | rgba(229,83,47,0.09) | Behind a held item |
+| `--beacon-ink` / `--beacon-dot` | #B8A4FF / #B8A4FF | #5B3FC4 / #5B3FC4 | Needs you. Nothing else |
+| `--beacon-wash` | rgba(184,164,255,0.12) | rgba(91,63,196,0.09) | Behind a held item |
 | `--recall` | #EBC76B | #7E5B0C | Came from memory |
 | `--recall-wash` | rgba(235,199,107,0.10) | rgba(126,91,12,0.08) | Behind a recalled block |
 | `--del-wash` | rgba(140,135,125,0.14) | rgba(107,102,93,0.10) | Deleted diff lines, with `--label` text |

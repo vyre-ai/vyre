@@ -24,9 +24,9 @@ test("palette: the check catches a failing pair (bone on lime, the bug it exists
   assert.ok(contrast("#0E0D0C", "#C6F36B", "#0E0D0C") > 15);
 });
 
-// deck.css still carries coral and the old roles; the one-commit attention swap (deck-design,
-// after the user's pick) brings it onto this palette and drops the todo.
-test("palette: deck.css declares the same roles, dark on :root and paper on data-theme", { todo: "deck.css moves to the reduced palette in the attention swap" }, () => {
+// deck.css is violet now but still carries the old roles (recall, beacon wash and rule) and the old
+// paper hover; pwa moves it onto this palette and drops the todo.
+test("palette: deck.css declares the same roles, dark on :root and paper on data-theme", { todo: "pwa moves deck.css onto the reduced palette" }, () => {
   const css = fs.readFileSync(new URL("../../deck/css/deck.css", import.meta.url), "utf8");
   const block = (/** @type {RegExp} */ re) => {
     const m = re.exec(css);
