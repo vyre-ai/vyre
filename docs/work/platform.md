@@ -21,6 +21,9 @@ Hackable Vyre (ADR 0033): a stable, versioned module API; extension points for e
 - Agreed with cohesion: P1 adds commands.list {surface}, events.catalog (aliases = one-release deprecations, plural canonical), registry.status() rows gain commands/connections/suggest/notices; Render type in index.d.ts. settings.changed resolved value asked of native-core.
 - Agreed with docs: they add ctx.declaredTips in core/modules on work/docs (+ index.d.ts).
 
+- ADR 0035 (native-core 799ad333, approved) reviewed: answers the four hub asks. Schema aligned locally in abc5e6da (device/session levels, check/choices {tool}, no device on confirm/security keys). Asked native-core: hub.json in vyre backup (update rollback depends on it), check/choices behaviour when the tool is off or slow, choices naming, rev returned by the store write, enforce session level. settings.write must bump rev once the hub store lands.
+- Local, unpushed (pushes paused): 89120047, 339dee40, abc5e6da, this notes commit.
+
 ## Next
 0. After tonight's deploy (lead): end-to-end `vyre update` on a testbox throwaway stack, never /srv/vyre.
 1. When native-core says store limits are in and e2e signs off: hand settings.write e4515fb6 to the integrator.
