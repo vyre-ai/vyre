@@ -59,6 +59,9 @@ utilization, resets_at), the slot chip (per project), the waiting queue, "Resume
 ## Needs from others
 - sessions: the slot ledger (`sessions.slots`, events `slot.taken|released|queued`), the Task-tool
   hold in canUseTool, SubagentStop release, per-auth usage state and pause from `thread.limit`.
+  TAKEN by sessions (2026-09-27): builds it after batch 3a, plus purposes `teammate` (opus) and
+  `helper` (haiku); the rest (teammate-result kind, team.* in-process, compact hook, context used)
+  after slots. Key names confirmed to sessions as in "Settings this feature needs".
 - sessions: the purpose map (`models.purposes`, purposes `teammate` and `helper`); a
   `teammate-result` item kind in `threads_inbox`; `team.*` in the phase 3 in-process MCP server;
   SessionStart `compact` re-injection hook.
