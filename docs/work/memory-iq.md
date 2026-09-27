@@ -102,17 +102,24 @@ facts are not a project's.
   pasted email). The held-out world is the real number.
 
 ## Doing
-- Held-out extraction gaps: pasted and quoted email text taken as the user's words (Claire),
-  and lowercase names, nicknames (hubby, "robin and i"), "the mazda", and moves ("moved to
-  leeds") missed.
+- Round 1 (27 Sep). Done: the bare-mcp and mcp:thread gate (6f2c57c, f9c8636, pushed). Also a
+  sealed fresh world (efe2da6), eval --facts (25ea1113), and the answer side (b1334227). On the
+  answer side, blind went from 0.571 to 0.633 with 0 confident wrong, and gold and heldout stay 1.0.
+- Extraction round 1 is WIP at 37c10f86 and untested. Its subagent was interrupted by the user.
+  Run extract/store/model tests on testbox and review before building on it.
+- Scores, round 0: gold 1.0, heldout 1.0 (tuned on, so no longer held out), blind 0.571, and
+  fresh (sealed) 0.24. Only fresh measures generalisation.
 
 ## Next
-- Get held-out to 0.9 without regressing gold. Then write a third, unseen world so the score
-  still means something.
-- CI step for `npm run eval:answer` (both worlds), ADR 0023, contract notes for capsule-pro, pwa
-  and mobile.
+- Finish and review extraction round 1, then score blind and fresh and report to main.
+- Waiting on main: the model-pass budget and recording eval fixtures with haiku (see Needs).
+- CI step for `npm run eval:answer`, ADR 0023, and contract notes for capsule-pro, pwa and mobile.
 
 ## Needs from others
+- main: OK a fast-model (haiku) extraction pass over every personal-signal user turn (a one-time
+  backfill of about $2, then about $0.25/day, configurable), and recording eval fixtures with `claude -p`.
+- sessions: the per-purpose model map location and the one-shot background job call. Also
+  per-turn memory.answer or a combined memory.context tool (message sent 27 Sep).
 - polish-cli: the contract of the low-priority index worker. Until then extraction runs in the
   memory curator's background pass, in bounded batches that yield.
 - main/integrator: core/memory/rooms.test.js:227 fails on main's code. agents.create now needs
