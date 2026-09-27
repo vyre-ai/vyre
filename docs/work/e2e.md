@@ -326,6 +326,9 @@ Plan (to the lead before building):
 - memory-iq rc.2 58397f56 (source trust, read): OK after MEDIUM: header (session name, folder)
   counts as evidence on the personal paths -> drop it there. LOW: trusted() fails open on missing
   rows; sources lack role. f199928d LOWs on agent corrections confirmed (read). memory.today next.
+- memory.today (read df22ca0c + 3d08288a; f03e2a3a does not exist): OK for 0.1.1 after MEDIUM:
+  evidence must hold in userWords (pasted blocks) + trust row + not devTalk/Vyre folder (answered
+  yes). LOW: last-session line uses the Claude-written name.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
