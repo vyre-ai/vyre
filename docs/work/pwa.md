@@ -124,7 +124,31 @@ Android: Chrome, same address, then Install app from the menu (or the Install bu
   (`ONLY=<regex>` for some screens, `DESKTOP=1280x800,1440x900,2000x1100` adds desktop sizes,
   `PHONES=0` drops the phones). Stop the world and Chrome after (pids in /tmp/pwa-*.pid).
 
-## Doing (resumed after logout 3, 2026-09-27)
+## Doing (resumed after logout 4, 2026-09-27)
+- READY for batch 4 sent to the integrator: 2a577ede (main 53cd1326 merged, pushed). Chrome check
+  on testbox (deck/test/resilience-shots.js): pill, offline line, Retry, outbox once, /app/ route all
+  ok; pwa-shots at 390/430/720/900/1280/1440 ok. Targeted tests 502, 501 pass, 1 skipped.
+- Merge rules used (7880dfa6): api.js keeps follow() over fetch; e2e's signIn stopgap dropped;
+  chat's answers and send via the outbox (queue() presence false for a Mac ask, so its passkey
+  step stays on the card); deck/chat/api-stream.test.js dropped; tests use hear()/heardResume().
+- Design A done since: d442d8e4 switch point 720; ff09ec5d token roles only (radii as
+  var(--radius-*, px) until app-design 4b77ba51 is on main); 861a6d40 + 544e0f6f the 72 px rail,
+  Cmd+1..9, route() hides the page left (old bug from c0edc567); 6c5df144 phone header and queued
+  row fit the 44 buttons; 2a577ede a view that failed to import offline waits and remounts;
+  79124ccd the Places sheet and a pinned fourth page (Chrome-checked at 390 and 430).
+- native-core budget 8: their harness counts EventSource opens, which the fetch stream never makes;
+  told them to use "deck:stream" or count /v1/events/stream fetches and rerun on 2a577ede. If
+  catch-up is over 1 s: an immediate retry on "online" and on the first failure.
+- Next in order: the live theme and settings from native-core's hub (ADR 0035: /theme.css?device=
+  with the rev as ETag, settings.snapshot + settings.changed); cohesion's waiting.list,
+  context.report, connections.list, credential sheet, Glass mini-view (said yes, once on main);
+  docs' tips.next wiring (said yes, once on main).
+- Open for app-design: Places hint wording ("Hold a place to keep it as a fourth page." vs the
+  spec's "Long-press a tile to pin it as a fourth page."); --recall*, --beacon-wash, --beacon-rule
+  have no role; the chat header's toggles on the phone read at base size (a menu would be better,
+  chat's call).
+
+## Earlier (resumed after logout 3, 2026-09-27)
 - ADR 0029 on the Deck, done (2026-09-27): cdf65f1 stream on follow() + vyred serves
   /core/resilience/*.js; 8436536 Idempotency-Key on writes; a593fda outbox for sends, answers,
   Discard, planner add/done (Gate Send with a passkey never queued); a86734c Reconnecting pill;
