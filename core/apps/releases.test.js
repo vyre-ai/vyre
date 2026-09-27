@@ -49,7 +49,7 @@ async function box(t) {
 
 test("the manifest names the signed file, and the APK is served signed and immutable", async t => {
   const b = await box(t);
-  const m = await b.get("/apps/android.json");
+  const m = await b.get("/v1/releases/android");
   assert.equal(m.status, 200, m.body.toString());
   assert.equal(m.headers["cache-control"], "no-store");
   const man = JSON.parse(m.body.toString());
@@ -57,7 +57,7 @@ test("the manifest names the signed file, and the APK is served signed and immut
   assert.notEqual(man.sha256, b.manifest.sha256, "sha256 is the signed file's, not CI's");
   assert.match(man.cert_sha256, /^[0-9a-f]{64}$/);
 
-  const a = await b.get(`/apps/android/${FILE}`);
+  const a = await b.get(`/v1/releases/android?file=${FILE}`);
   assert.equal(a.status, 200);
   assert.equal(a.headers["content-type"], "application/vnd.android.package-archive");
   assert.match(String(a.headers["cache-control"]), /immutable/);
@@ -76,28 +76,29 @@ test("the manifest names the signed file, and the APK is served signed and immut
   // Signed once: the cached file is reused, not signed again.
   const cached = path.join(b.dir, `signed-${FILE}`);
   const mtime = fs.statSync(cached).mtimeMs;
-  assert.equal(sha((await b.get(`/apps/android/${FILE}`)).body), man.sha256);
+  assert.equal(sha((await b.get(`/v1/releases/android?file=${FILE}`)).body), man.sha256);
   assert.equal(fs.statSync(cached).mtimeMs, mtime);
-  const h = await b.get(`/apps/android/${FILE}`, OWNER, "HEAD");
+  const h = await b.get(`/v1/releases/android?file=${FILE}`, OWNER, "HEAD");
   assert.equal(h.status, 200); assert.equal(h.body.length, 0); assert.equal(Number(h.headers["content-length"]), man.size);
 
   // A device paired through the relay is the owner too.
-  assert.equal((await b.get("/apps/android.json", DEVICE)).status, 200);
+  assert.equal((await b.get("/v1/releases/android", DEVICE)).status, 200);
 
   // The same key after a restart: updates install over each other.
   await b.restart();
-  assert.equal(JSON.parse((await b.get("/apps/android.json")).body.toString()).cert_sha256, man.cert_sha256);
+  assert.equal(JSON.parse((await b.get("/v1/releases/android")).body.toString()).cert_sha256, man.cert_sha256);
 });
 
 test("names that are not the release are refused", async t => {
   const b = await box(t);
-  for (const p of [`/apps/android/signed-${FILE}`, "/apps/android/vyre-0.3.0-0000000.apk", "/apps/android/a/b.apk", "/apps/android/..%2Fandroid.json",
-    "/apps/android/%2e%2e%2fandroid.json", "/apps/android/android.json", "/apps/android/", "/apps/ios.json", "/apps/"]) {
+  for (const p of [`/v1/releases/android?file=signed-${FILE}`, "/v1/releases/android?file=vyre-0.3.0-0000000.apk", "/v1/releases/android?file=a/b.apk",
+    "/v1/releases/android?file=..%2Fandroid.json", "/v1/releases/android?file=%2e%2e%2fandroid.json", "/v1/releases/android?file=android.json",
+    "/v1/releases/android?file=", "/v1/releases/ios"]) {
     const r = await b.get(p);
     assert.equal(r.status, 404, p);
     assert.ok(!r.body.includes(Buffer.from("PK")), `${p} served no zip`);
   }
-  assert.equal((await b.get("/apps/android.json", OWNER, "DELETE")).status, 405);
+  assert.equal((await b.get("/v1/releases/android", OWNER, "DELETE")).status, 405);
   assert.throws(() => checkManifest({ ...b.manifest, file: "../x.apk" }), /file/);
   assert.throws(() => checkManifest({ ...b.manifest, minSdk: 21 }), /below 24/);
 });
@@ -106,33 +107,47 @@ test("guests, agents and socket labels get nothing", async t => {
   const b = await box(t);
   for (const who of [GUEST, AGENT, "anonymous"]) {
     // An agent's node is stopped by vyred's router first (403: no agent key); the rest reach the route and get 404.
-    for (const p of ["/apps/android.json", `/apps/android/${FILE}`]) {
+    for (const p of ["/v1/releases/android", `/v1/releases/android?file=${FILE}`]) {
       const r = await b.get(p, who);
       assert.equal(r.status, who === AGENT ? 403 : 404, `${who} ${p}`);
       assert.ok(!r.body.includes(Buffer.from("PK")) && !r.body.includes(Buffer.from("cert_sha256")), `${who} ${p} got nothing`);
     }
   }
   // On the socket even "cli" is only a label, and not one of the owner's devices.
-  const r = await request("GET", "/apps/android.json", undefined, { root: b.root, caller: "cli" });
+  const r = await request("GET", "/v1/releases/android", undefined, { root: b.root, caller: "cli" });
   assert.equal(r.error && r.error.code, "not_found");
   assert.ok(!fs.existsSync(path.join(b.dir, `signed-${FILE}`)), "nothing was signed for them");
 });
 
 test("a build that does not match its manifest is refused, and a lost key makes a new one", async t => {
   const b = await box(t);
-  const first = JSON.parse((await b.get("/apps/android.json")).body.toString());
+  const first = JSON.parse((await b.get("/v1/releases/android")).body.toString());
   // The owner deletes the key (or loses the vault): the next request makes a new one and signs again.
   assert.ok(!(await b.d().registry.call("vault.delete", { name: "android-release-key" }, "cli")).error);
   await b.restart();
-  const second = JSON.parse((await b.get("/apps/android.json")).body.toString());
+  const second = JSON.parse((await b.get("/v1/releases/android")).body.toString());
   assert.notEqual(second.cert_sha256, first.cert_sha256);
   assert.notEqual(second.sha256, first.sha256);
-  assert.equal(sha(verifyApk((await b.get(`/apps/android/${FILE}`)).body).v2.certDer), second.cert_sha256);
+  assert.equal(sha(verifyApk((await b.get(`/v1/releases/android?file=${FILE}`)).body).v2.certDer), second.cert_sha256);
 
   fs.writeFileSync(path.join(b.dir, "android.json"), JSON.stringify({ ...b.manifest, sha: "def5678", sha256: "0".repeat(64) }));
-  const r = await b.get("/apps/android.json");
+  const r = await b.get("/v1/releases/android");
   assert.equal(r.status, 409);
   assert.equal(JSON.parse(r.body.toString()).error.code, "release_mismatch");
   fs.rmSync(path.join(b.dir, "android.json"));
-  assert.equal(JSON.parse((await b.get("/apps/android.json")).body.toString()).error.code, "no_release");
+  assert.equal(JSON.parse((await b.get("/v1/releases/android")).body.toString()).error.code, "no_release");
+});
+
+test("releases.sign signs the placed build ahead of the first download, for `vyre update`", async t => {
+  const b = await box(t);
+  const r = await b.d().registry.call("releases.sign", {}, "cli");
+  assert.ok(r.data, JSON.stringify(r));
+  assert.equal(r.data.file, FILE);
+  assert.ok(fs.existsSync(path.join(b.dir, `signed-${FILE}`)), "signed before anyone asked");
+  const man = JSON.parse((await b.get("/v1/releases/android")).body.toString());
+  assert.equal(r.data.sha256, man.sha256);
+  assert.equal(r.data.cert_sha256, man.cert_sha256);
+  assert.equal((await b.d().registry.call("releases.sign", {}, "mcp")).error.code, "denied");
+  fs.rmSync(path.join(b.dir, "android.json"));
+  assert.equal((await b.d().registry.call("releases.sign", {}, "cli")).error.code, "no_release");
 });

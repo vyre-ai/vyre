@@ -4,6 +4,20 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### One app: the phone signs in and proves presence; the APK is the module's own route; an icon
+
+- Native sign-in follows e2e's shapes: the return is vyre://person/signin; the token trade has no
+  Origin and is signed by the key it registers; it also registers the biometric-bound `human` key,
+  which the box enrolls as a device presence key. Human-only calls carry `x-vyre-presence: device`
+  signed with it (one biometric prompt), ask for a 30-minute presence session, and ride that
+  session after. gate.approve goes first without a proof and asks only when the box says so.
+  x-vyre-human is gone. Tests in apps/app/src/auth/presence.test.js.
+- releases serves the APK from its own route: GET /v1/releases/android (the manifest) and
+  /v1/releases/android?file=<file> (the APK). The one-line /apps/ mapping in core/daemon is gone.
+- testIDs for ci's perf job (tab-now, tab-chats, tab-agents, now-row, now-row-swipe, transcript).
+- A placeholder icon (a lime dot on the dark background) so device builds are not blocked.
+- releases.sign (cli, local, module): signs the placed Android build now, for `vyre update`.
+
 #### One app: the relay path, pairing, the /app/ worker hooks; the box signs the Android APK
 
 - apps/app goes to the box through relay/client's paths: the web tries the box's own origin and
@@ -20,7 +34,7 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the owner's devices only, signing CI's unsigned APK with the owner's own key (EC P-256, made on
   first use, kept in the vault as android-release-key). The signer is pure JS on node:crypto (APK
   Signature Scheme v2 and v3, with a DER X.509 encoder); `apksigner verify` passes v2 and v3.
-  core/apps/sign-apk.mjs is the same signer for CI. core/daemon routes /apps/* to it (one line).
+  core/apps/sign-apk.mjs is the same signer for CI.
 - The iOS app, with the Secure Enclave signer, compiles for the simulator and the device.
 - Tokens regenerated from tokens.json (popover).
 

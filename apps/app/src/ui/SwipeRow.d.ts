@@ -11,6 +11,8 @@ export type SwipeRowProps = {
   /** The label on each side; "Open" when a commit would be refused (presence, a question). */
   approveLabel: string;
   rejectLabel: string;
+  /** The swipe strip's testID (data-testid on the web): the element a synthetic swipe scrolls. */
+  testID?: string;
 };
 
 /** A row that answers with a swipe: right approves, left denies (DIRECTION.md, the Needs board). */

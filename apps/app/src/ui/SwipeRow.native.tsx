@@ -14,7 +14,7 @@ import type { SwipeRowProps } from "./SwipeRow";
 
 const COMMIT = 0.4;
 
-export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel }: SwipeRowProps) {
+export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel, testID }: SwipeRowProps) {
   const { color } = useTheme();
   const [width, setWidth] = useState(0);
   const x = useSharedValue(0);
@@ -59,7 +59,7 @@ export function SwipeRow({ children, height, onSwipe, approveLabel, rejectLabel 
         <Text style={[styles.label, { color: color.text }]}>{rejectLabel}</Text>
       </Animated.View>
       <GestureDetector gesture={pan}>
-        <Animated.View style={[{ height }, rowStyle]}>
+        <Animated.View testID={testID} style={[{ height }, rowStyle]}>
           <View style={{ flex: 1 }}>{children}</View>
         </Animated.View>
       </GestureDetector>

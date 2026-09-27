@@ -7,13 +7,15 @@
 // The person session is src/auth/person.native.ts: the key in the Keystore or the Secure
 // Enclave (modules/vyre-signer), the token in the secure store, sign-in through the system's
 // authentication browser. It needs the box's direct address, so a relay-only phone goes without.
+// HUMAN_ONLY calls carry the biometric key's presence proof; the presence session the box answers
+// with (x-vyre-presence-session, on any path) is kept from here, so the next sessionable call goes
+// with it and no prompt.
 
 import { AppState } from "react-native";
 import { over } from "@vyre/resilience/web.js";
 import { memoryStore } from "@vyre/resilience/outbox.js";
 import { createPaths } from "@vyre/relay-client/paths.js";
-import type { PersonSession } from "../auth/person.ts";
-import { finishSignIn, nativePerson, startSignIn } from "../auth/person.native";
+import { finishSignIn, nativePerson, startSignIn, type NativePerson } from "../auth/person.native";
 import { connection } from "../state/connection";
 import { relayBase, type Pairing } from "./pairing";
 import { about, directFetch, loadPairing, relayCrypto, relayKeyStore, visibility } from "./relay";
@@ -22,7 +24,7 @@ import { makeBox } from "./wire";
 let base = "";
 let paths: string[] | undefined;
 let cursor: number | null = null;
-let person: PersonSession | null = null;
+let person: NativePerson | null = null;
 
 /** The box's https address. The phone has no page origin, so this is required before connect(). */
 export function configure(o: { base?: string; paths?: string[] }): void {
@@ -47,9 +49,9 @@ export function boxName(): string {
 
 const store = memoryStore();
 
-// human: false until the box verifies the biometric key (e2e, ADR 0032): a prompt the box ignores
-// would be nagging for nothing.
-const makePerson = () => nativePerson(base, () => connection.signIn(true), { onSignedIn: (ok) => ok && connection.signIn(false), human: false });
+// The biometric key is enrolled at the native sign-in and proves HUMAN_ONLY calls (e2e, ADR 0032).
+// The prompt shows only for those, and only when no live presence session covers the call.
+const makePerson = () => nativePerson(base, () => connection.signIn(true), { onSignedIn: (ok) => ok && connection.signIn(false) });
 
 const b = makeBox(async () => {
   paired = await loadPairing();
@@ -61,7 +63,16 @@ const b = makeBox(async () => {
     fetch: directFetch,
     visibility,
   });
-  const o = over(p.fetch);
+  // A proof sent with x-vyre-presence-keep opens a presence session; the box names it in a header
+  // the tool caller does not pass on, so it is read here.
+  const o = over(async (path, init) => {
+    const r = await p.fetch(path, init);
+    if (init.headers?.["x-vyre-presence-keep"] === "1") {
+      const h = (r as { headers?: { get?: (n: string) => string | null } }).headers?.get?.("x-vyre-presence-session");
+      if (h && person) await person.presence.keep(h);
+    }
+    return r;
+  });
   return {
     base: base || relayBase(paired as Pairing),
     // One path for follow(): which way the box is reached is the paths layer's job.

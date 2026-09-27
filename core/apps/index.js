@@ -6,13 +6,14 @@
 // (config releases.android, default <home>/releases/android). The box signs that APK with the
 // owner's own key and serves:
 //
-//   GET /apps/android.json         the manifest, with sha256 and size of the SIGNED file and the
-//                                  signing certificate's cert_sha256 (no-store)
-//   GET /apps/android/<file>.apk   the signed APK (immutable: a new build is a new file name)
+//   GET /v1/releases/android               the manifest (CI's android.json), with sha256 and size
+//                                          of the SIGNED file and the certificate's cert_sha256
+//                                          (no-store)
+//   GET /v1/releases/android?file=<file>   the signed APK (immutable: a new build is a new name)
 //
 // Only the owner's devices and the owner over the tailnet reach these (the same callers the Deck
-// admits); a guest, an agent's node, and a label on the socket get a 404. vyred sends every
-// /apps/ path to this module's one route (core/daemon/index.js).
+// admits); a guest, an agent's node, and a label on the socket get a 404. It is the module's own
+// route (ctx.route), so vyred needs nothing for it.
 //
 // The key: an EC P-256 key and a self-signed certificate (CN=Vyre <box>, 25 years), made the first
 // time anything needs them and kept in the box's vault as `android-release-key` (fields value:
@@ -147,14 +148,25 @@ export default {
       run: async () => ({ cert_sha256: (await ownerKey()).cert_sha256, subject: `CN=Vyre ${box}` }),
     });
 
-    // Every /apps/ path lands here (vyred maps them to /v1/releases/apps).
-    ctx.route("apps", async (req, res, { caller, url }) => {
+    ctx.tool("releases.sign", {
+      description: "Sign the Android release now in the release folder (CI's unsigned APK named by android.json) with the owner's key, so the first download is instant. `vyre update` calls it after it places a new build. Idempotent.",
+      callers: ["cli", "local", "module"],
+      input: { type: "object", properties: {} },
+      run: async () => {
+        const m = readManifest();
+        if (!m) throw Object.assign(new Error("no Android release on this box yet"), { code: "no_release" });
+        const s = await signed(m);
+        return { file: m.file, version: m.version, versionCode: m.versionCode, sha256: s.sha256, size: s.size, cert_sha256: (await ownerKey()).cert_sha256 };
+      },
+    });
+
+    ctx.route("android", async (req, res, { caller, url }) => {
       // A guest or anyone who is not the owner learns nothing about what is here.
       if (!ownerDevice(caller)) return fail(res, 404, "not_found", url.pathname);
       if (req.method !== "GET" && req.method !== "HEAD") return fail(res, 405, "method_not_allowed", "GET only", { allow: "GET, HEAD" });
       const head = req.method === "HEAD";
-      const apk = /^\/apps\/android\/([^/]+)$/.exec(url.pathname);
-      if (url.pathname !== "/apps/android.json" && !apk) return fail(res, 404, "not_found", url.pathname);
+      const want = url.searchParams.get("file");
+      const apk = want === null ? null : [want, want];
       if (apk && (!FILE.test(apk[1]) || apk[1].includes(".."))) return fail(res, 404, "not_found", "not a release file name");
       try {
         const m = readManifest();

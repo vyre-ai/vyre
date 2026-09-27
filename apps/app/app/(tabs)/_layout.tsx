@@ -35,10 +35,10 @@ export default function TabsLayout() {
     >
       <Tabs.Screen
         name="index"
-        options={{ title: "Now", tabBarLabel: ({ color: tint }) => <TabLabel text="Now" tint={tint} attention={needs > 0} /> }}
+        options={{ title: "Now", tabBarButtonTestID: "tab-now", tabBarLabel: ({ color: tint }) => <TabLabel text="Now" tint={tint} attention={needs > 0} /> }}
       />
-      <Tabs.Screen name="chats" options={{ title: "Chats", tabBarLabel: ({ color: tint }) => <TabLabel text="Chats" tint={tint} /> }} />
-      <Tabs.Screen name="agents" options={{ title: "Agents", tabBarLabel: ({ color: tint }) => <TabLabel text="Agents" tint={tint} /> }} />
+      <Tabs.Screen name="chats" options={{ title: "Chats", tabBarButtonTestID: "tab-chats", tabBarLabel: ({ color: tint }) => <TabLabel text="Chats" tint={tint} /> }} />
+      <Tabs.Screen name="agents" options={{ title: "Agents", tabBarButtonTestID: "tab-agents", tabBarLabel: ({ color: tint }) => <TabLabel text="Agents" tint={tint} /> }} />
     </Tabs>
   );
 }

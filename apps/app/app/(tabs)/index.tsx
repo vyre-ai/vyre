@@ -84,6 +84,7 @@ function NeedRow({ n, now, reason, open }: { n: Need; now: number; reason: strin
       onSwipe={onSwipe}
       approveLabel={approve.ok ? (n.source === "gate" && n.kind === "send" ? "Send" : "Approve") : "Open"}
       rejectLabel={reject.ok ? (n.source === "gate" ? "Discard" : "Deny") : "Open"}
+      testID="now-row-swipe"
     >
       <Row
         avatar={n.agent ?? (n.source === "gate" ? "g" : "a")}
@@ -94,6 +95,7 @@ function NeedRow({ n, now, reason, open }: { n: Need; now: number; reason: strin
         meta={meta}
         status="needsYou"
         reason={reason}
+        testID="now-row"
         onPress={() => {
           if (reason) answers.dismiss(n.id);
           open(n);

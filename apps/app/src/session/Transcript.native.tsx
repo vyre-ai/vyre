@@ -11,6 +11,7 @@ export function Transcript({ rows, renderRow, hasMore, onNearTop, head }: Transc
   const newestFirst = useMemo(() => [...rows].reverse(), [rows]);
   return (
     <FlatList
+      testID="transcript"
       inverted
       data={newestFirst}
       keyExtractor={(r: TranscriptRow) => r.key}
