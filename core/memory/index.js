@@ -464,6 +464,40 @@ export default {
         return ask({ question: String(input.question || ""), project_cwds, personal: sees, thread: typeof input.context?.thread === "string" ? input.context.thread : null });
       },
     });
+    // Suggestions while typing (cohesion's suggest.query): people, pets, places and things memory
+    // knows whose names start with the prefix. Personal names only for the user's own surfaces.
+    ctx.tool("memory.suggest", {
+      description: "Names memory knows that start with a prefix, for completion: { suggestions: [{ text, kind, id, via: personal|graph }] }. Personal names (\"my wife\", \"juno\") only for the user's own surfaces; a project's caller gets that project's graph names.",
+      input: { type: "object", required: ["prefix"], properties: { prefix: { type: "string" }, project_cwds: cwds, limit: { type: "integer", minimum: 1, maximum: 20 },
+        context: { type: "object", properties: { project: { type: "string" }, thread: { type: "string" } } }, ...agentField } },
+      run: async (input, { caller } = {}) => {
+        const pre = String(input.prefix || "").toLowerCase().replace(/\s+/g, " ").trimStart();
+        const limit = Math.max(1, Math.min(20, Number(input.limit) || 8));
+        const project_cwds = [...clean(input.project_cwds), ...(typeof input.context?.project === "string" && input.context.project ? [input.context.project] : [])];
+        if (pre.length < 1) return { suggestions: [] };
+        let sees = true;
+        try { await personalOnly(input, caller, "memory.suggest"); } catch { sees = false; }
+        if (!sees) await guard({ agent: input.agent, project_cwds }, caller, { tailnet: true });
+        const out = [], seen = new Set();
+        const add = (text, kind, id, via) => { const k = text.toLowerCase(); if (seen.has(k) || out.length >= limit) return; seen.add(k); out.push({ text, kind, id, via }); };
+        if (sees) {
+          // Aliases are lower case and the key's first column: a range scan, not a table scan.
+          for (const r of /** @type {any[]} */ (ctx.store.db.prepare(`SELECT a.alias, e.id, e.kind, e.label FROM memory_me_aliases a JOIN memory_me_entities e ON e.id = a.entity
+              WHERE a.alias >= ? AND a.alias < ? ORDER BY length(a.alias), a.alias LIMIT 40`).all(pre, pre + "\uffff"))) add(String(r.alias), String(r.kind), String(r.id), "personal");
+        }
+        try {
+          const sc = graph.view(project_cwds);
+          const { phrases } = graph.phrases(sc?.room || "*");
+          const hits = [...phrases.keys()].filter(k => k.startsWith(pre)).sort((x, y) => x.length - y.length || (x < y ? -1 : 1));
+          for (const k of hits) {
+            const node = graph.node(phrases.get(k)[0].node, sc);
+            if (node) add(String(node.label), String(node.kind), String(node.id), "graph");
+            if (out.length >= limit) break;
+          }
+        } catch { /* no graph yet */ }
+        return { suggestions: out };
+      },
+    });
     ctx.tool("memory.profile", {
       description: "The user's durable facts as short lines for a system prompt (\"Your wife is Jordan.\", \"You drive a blue Volvo XC40.\"): only what still holds at confidence 0.5 or more, and nothing sensitive (no dates, account-like numbers, addresses or health). Returns { facts: [{ text, kind: person|place|vehicle|work|client|preference|other, weight, id, rel, from }] }, strongest first.",
       input: { type: "object", properties: { limit: { type: "integer", minimum: 1, maximum: 50 }, ...agentField } },

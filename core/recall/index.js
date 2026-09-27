@@ -218,7 +218,7 @@ export default {
       input: { type: "object", required: ["q"], properties: {
         q: { type: "string" }, limit: { type: "integer" }, project_cwds: stringArray,
         role: { type: "string", enum: ["user", "assistant"] }, hybrid: { type: "boolean" },
-        per_session: { type: "integer" }, machines,
+        per_session: { type: "integer" }, prefix: { type: "boolean", description: "each word as a prefix, all of them, keyword only: for completion while typing" }, machines,
       } },
       run: async (input, { caller } = {}) => {
         const { machines: _, ...q } = input;

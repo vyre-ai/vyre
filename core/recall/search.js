@@ -38,8 +38,18 @@ export function anyOf(/** @type {string} */ q) {
 }
 
 /**
+ * The words typed so far, each as a prefix, all of them: "harl inta" finds "Harlow intake". For
+ * completion while typing (memory.suggest, cohesion's suggest.query): no OR-widening, no meaning.
+ */
+export function prefixOf(/** @type {string} */ q) {
+  const words = String(q || "").toLowerCase().match(/[\p{L}\p{N}_][\p{L}\p{N}_'-]*/gu) || [];
+  const keep = words.slice(0, 8);
+  return keep.length ? keep.map(w => phrase(w) + "*").join(" ") : null;
+}
+
+/**
  * @typedef {{ q: string, limit?: number, project_cwds?: string[], role?: "user"|"assistant", hybrid?: boolean,
- *             per_session?: number, candidates?: number, floor?: number, dense_weight?: number }} Query
+ *             per_session?: number, candidates?: number, floor?: number, dense_weight?: number, prefix?: boolean }} Query
  * @typedef {{ session: string, seq: number, role: string, ts: number, text: string, snippet: string,
  *             score: number, name: string|null, title: string|null, cwd: string|null }} Hit
  */
@@ -164,6 +174,22 @@ export async function search(db, query, embedder = null, dense = null) {
   if (!q) return { hits: [], hybrid: false };
   const opts = { role: query.role, cwds: query.project_cwds || [] };
   const wide = Math.max(query.candidates || 300, limit * 4);
+  if (query.prefix) {
+    const expr = prefixOf(q);
+    if (!expr) return { hits: [], hybrid: false };
+    const rows = match(db, expr, { ...opts, limit: Math.max(limit * 4, 40) });
+    const per = new Map(), hits = [];
+    for (const c of rows) {
+      if (hits.length >= limit) break;
+      const had = per.get(c.session) || 0;
+      if (cap && had >= cap) continue;
+      per.set(c.session, had + 1);
+      hits.push({ session: String(c.session), seq: Number(c.seq), role: String(c.role), ts: Number(c.ts), text: String(c.text),
+        snippet: String(c.snippet || String(c.text).slice(0, 200)).replace(/\s+/g, " "), score: Math.round((1 / (1 + hits.length)) * 1000) / 1000,
+        name: c.name ?? null, title: c.title ?? null, cwd: c.cwd ?? null });
+    }
+    return { hits, hybrid: false };
+  }
 
   // The question as typed (AND: the pinned ordering) and then its words ORed together (the
   // reach), deduplicated, strict first. A query with quotes in it was written in FTS5's grammar
