@@ -315,6 +315,10 @@ Plan (to the lead before building):
 - vault-next f3d39f3f SIGNED OFF (read 4551a530, f3d39f3f, merge 5747b8b0 resolutions; takeover
   probe passes on testbox with mail.send as the foreign tool). LOWs: allowed() has no person flag;
   modules.tools(caller) added to the kernel ctx.
+- teammates b19f10c2 SIGNED OFF (read: projectOf input.project only for PERSON callers; subagent
+  match anywhere). Their switchboard.test.js "hang" with 1941f2cf: 57/57 green on testbox in 48 s
+  on b19f10c2; likely run on the Mac under Claude (cli -> mcp, SSE waits). Asked where; idea:
+  make such tests fail fast rather than hang.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
