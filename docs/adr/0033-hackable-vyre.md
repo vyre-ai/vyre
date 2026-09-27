@@ -281,13 +281,22 @@ waiting.
 files and the wrapper itself from the release, tags the running image `vyre:prev` and keeps
 `src.prev` instead of deleting it, and backs up the database before the rebuild.
 
-It also brings the phone app along. It fetches the release's `android-<version>-<sha7>.apk` and
-`android.json`, checks both against `SHA256SUMS`, and has the box sign the APK with the owner's key
-from its own vault, using mobile's pure-JS v2 and v3 signer (no JDK in the image). The signed APK
-goes into the box's releases folder, where mobile's download route serves it; the previous signed
-APK is kept for a rollback. A release without an Android build leaves the current APK in place.
-box-deploy no longer uploads APKs. platform owns this step; mobile owns the signer, the route and
-the phone's self-update.
+It also brings the phone app along, through mobile's `releases` module (no import):
+
+1. On the host, the wrapper fetches the release's `android.json` and the APK it names
+   (`android-<version>-<sha7>.apk`, unsigned) and checks both against `SHA256SUMS`.
+2. It copies them into the container's releases folder (config `releases.android`, default
+   `<home>/releases/android/`): the APK first, then `android.json` last and atomically (a temp name,
+   then a rename). The current `android.json` is kept as `android.json.prev`.
+3. It runs `vyre call releases.sign` in the container. The tool checks the unsigned file against
+   the manifest's `sha256` and `size`, signs it with the owner's key from the box's own vault (v2
+   and v3, no JDK), and writes `signed-<file>` beside it. It is idempotent and refuses with
+   `release_mismatch` or `no_release`, which the update reports without failing the rest.
+
+A rollback puts `android.json.prev` back; the older signed copy is still there, since signed files
+are never deleted. A release without an Android build leaves the folder alone. box-deploy no longer
+uploads APKs. platform owns these steps; mobile owns `releases.sign`, the routes
+(`GET /v1/releases/android`) and the phone's self-update.
 `vyre box update` from the Mac runs it and then offers the Mac the same version.
 
 **Config migrations.** `config.json` gets a `configVersion` and ordered steps in `core/config`,
