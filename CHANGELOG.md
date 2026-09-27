@@ -12,7 +12,9 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   never calls a tool store (which runs as the person) or touches config.json or Claude Code's
   files. settings.changed carries `by: "module:<name>"` for these writes. What it returns for a
   secret key is masked (maskFor), the same as settings.get for anyone but the person. Its
-  settings.changed carries the hub's new rev, and the value only for a key that isn't secret. Reviewed by e2e before it
+  settings.changed carries the hub's new rev, and the value only for a key that isn't secret.
+  A module's write goes through the key's own check tool, like the person's, and a secret key it
+  writes stays out of hub.json (native-core's fix; the test reads the file). Reviewed by e2e before it
   lands.
 
 #### The Deck's Dark/Paper switch is this device's appearance.scheme

@@ -511,13 +511,15 @@ export default {
         if (lv === "project" && !project) throw Object.assign(new Error("a project setting needs project"), { code: "bad_input" });
         const value = i.value === undefined || i.value === null ? undefined : coerce(d, i.value);
         const target = lv === "project" ? project : null;
+        // The key's own check tool (ADR 0035) holds a module's write to what it holds the person's.
+        await checked(d, value, lv, target);
         await write(env, d, lv, target, value, who, who);
         // The same record and event as a person's change: the hub's new rev, and the value only
         // for a key that isn't secret.
         const rev = mirror(d, lv, target, value);
         ctx.events.emit("settings.changed", { key: d.key, level: lv, ...(target ? { project: target } : {}), apply: d.apply, rev, ...said(d, value), by: who });
         ctx.log(`${d.key} ${value === undefined ? "reset" : "set"} at ${lv}${target ? " " + target : ""} by ${who}`);
-        return effective(d, project, false);
+        return effective(d, { project, device: null, session: null, ownDevice: false }, false);
       },
     });
 
