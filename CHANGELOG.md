@@ -4,6 +4,21 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### `vyre module new`, `check` and `add` (ADR 0033)
+
+- `vyre module new <name>` scaffolds a home module in <home>/modules: module.json, index.js,
+  package.json, a node:test file and a README. The scaffold passes `vyre module check` and its own
+  test as written.
+- `vyre module check [dir]` runs the module SDK's schema checker and the loader's validate, checks
+  that the entry file exists and parses, and prints each check. It exits 1 on any problem.
+- `vyre module add <path|git url>` checks a copy (without .git or symlinks), shows what the module
+  would get (tools, events, vault items, hosts, credentials), asks first (or needs --yes), installs
+  it into <home>/modules, restarts vyred the way `vyre up` does and reports whether the module
+  runs. In the box's container it names the host's restart command instead. Replacing a shipped
+  module needs `replaces` and --yes.
+- All three print --json, and --view frames in the shared Render shape.
+- docs/build/first-module.md and writing-a-module.md use the real commands now.
+
 #### needs.credentials in the loader and the schema; the Render type; statusline tips
 
 - The loader checks `needs.credentials` (ADR 0028, 9a: {id, kind, provider, purpose, item?, group?,
