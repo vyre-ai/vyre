@@ -82,7 +82,10 @@ async function world(mode) {
   for (const d of [config, root, work, shim]) fs.mkdirSync(d, { recursive: true });
   fs.writeFileSync(path.join(root, "about.md"), ABOUT);
   const runs = path.join(dir, "node-runs.log");
-  fs.writeFileSync(path.join(shim, "node"), `#!/bin/sh\necho "$*" >> "${runs}"\nexec "${NODE}" "$@"\n`, { mode: 0o755 });
+  fs.writeFileSync(path.join(shim, "node"), `#!/bin/sh
+echo "$* <- $(ps -o args= -p $PPID | cut -c1-60)" >> "${runs}"
+exec "${NODE}" "$@"
+`, { mode: 0o755 });
   fs.symlinkSync(path.join(REPO, "bin", "vyre"), path.join(shim, "vyre"));
   const d = await start({ root, log: () => {} });
   const env = { HOME: home, CLAUDE_CONFIG_DIR: config, VYRE_HOME: root, PATH: `${shim}:/usr/bin:/bin`,
@@ -110,12 +113,13 @@ function runTerminal(w, prompt, allowed) {
 }
 
 /** SDK: query() with the harness as a local plugin, the user's settings loaded as an owned session would. */
-async function runSdk(w, prompt, allowed) {
+async function runSdk(w, prompt) {
   const asked = [];
   const messages = [];
   const q = sdk.query({ prompt, options: {
     pathToClaudeCodeExecutable: CLAUDE, cwd: w.work, env: w.env, plugins: [{ type: "local", path: path.join(REPO, "harness") }],
-    settingSources: ["user", "project", "local"], allowedTools: allowed, includeHookEvents: true,
+    // No allowedTools: every call reaches canUseTool, as in an owned session (ADR 0030); `allowed` is the terminal's list.
+    settingSources: ["user", "project", "local"], includeHookEvents: true,
     canUseTool: async (name, input) => { asked.push(name); return { behavior: "allow", updatedInput: input }; } } });
   for await (const m of q) messages.push(m);
   return { code: 0, err: "", messages, asked };
@@ -133,10 +137,12 @@ function summarise(mode, w, api, r) {
     const m = /hooks\/run\.js (\w+)/.exec(l) || /(mcp)\/run\.js/.exec(l);
     if (m) pieces[m[1]] = (pieces[m[1]] || 0) + 1;
   }
+  // threads.bind wants the hook's parent to be claude; a /bin/sh that forks (dash) is in between.
+  const hookParent = [...new Set(lines.filter(l => l.includes("hooks/run.js")).map(l => l.split(" <- ")[1]?.split(" ")[0]))];
   const db = w.d.registry.deps.db;
   const binds = session ? db.prepare("SELECT COUNT(*) n FROM threads_binds WHERE session=?").get(session).n : 0;
   const files = session ? db.prepare("SELECT path FROM harness_files WHERE session=?").all(session).map(x => path.basename(x.path)) : [];
-  const hookEvents = r.messages.filter(m => m.type === "system" && m.subtype === "hook_response").map(m => `${m.hook_event}:${m.hook_name || ""}`);
+  const hookEvents = r.messages.filter(m => m.type === "system" && m.subtype === "hook_response").map(m => `${m.hook_name}${m.stdout ? " -> " + m.stdout.slice(0, 120) : ""}`);
   return {
     mode, code: r.code, claude: init.claude_code_version,
     plugins: (init.plugins || []).map(p => p.name),
@@ -144,7 +150,7 @@ function summarise(mode, w, api, r) {
     tools: (init.tools || []).filter(t => t.startsWith("mcp__plugin_vyre")).length,
     vyreCommand: (init.slash_commands || []).filter(c => /vyre/.test(c)),
     aboutInFirstRequest: Boolean(first && JSON.stringify(first.body).includes("Name: Alex. Their Vyre assistant is juno.")),
-    toolResults, pieces, binds, files, asked: r.asked || null, hookEvents: hookEvents.length ? hookEvents : undefined,
+    toolResults, pieces, hookParent, binds, files, asked: r.asked || null, hookEvents: hookEvents.length ? hookEvents : undefined,
     result: r.messages.find(m => m.type === "result")?.result, stderr: r.err ? r.err.slice(0, 400) : undefined,
   };
 }
@@ -164,13 +170,15 @@ for (const mode of MODES) {
   const allowed = [ECHO, PLAN, "Write", "Read"];
   try {
     if (mode !== "sdk") installPlugin(w);
-    const r = mode === "terminal" ? await runTerminal(w, "remember flour", allowed) : await runSdk(w, "remember flour", allowed);
+    const r = mode === "terminal" ? await runTerminal(w, "remember flour", allowed) : await runSdk(w, "remember flour");
     out.push(summarise(mode, w, api, r));
+    console.error(JSON.stringify(out.at(-1)));
   } catch (e) {
     out.push({ mode, error: String(/** @type {any} */ (e).stderr || e).slice(0, 800) });
   } finally {
     api.server.close();
-    await w.d.stop();
+    await Promise.race([w.d.stop(), new Promise(r => setTimeout(r, 5000))]);
   }
 }
 console.log(JSON.stringify(out, null, 2));
+process.exit(0);

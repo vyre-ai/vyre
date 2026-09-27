@@ -4,6 +4,17 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### Harness: a Read or a cat into the vault is denied with vyred up, not waved through
+
+- vyred's registry runs the floor on every call's input, so `harness.rules` for a tool call that
+  reaches into the vault was itself refused (`denied`), and the PreToolUse hook took that as "no
+  opinion": the Read went on to Claude Code's own permissions. The hook now runs the floor
+  locally on `denied`, as it does when vyred is down. Test in test/cc-plugin.test.js.
+- scripts/cc-plugin-parity/parity.mjs: the plugin installed with `claude -p`, through the Agent
+  SDK's `plugins` option (ADR 0030 phase 2), and both at once, on one Claude Code binary against a
+  fake Messages API. The three match: the MCP server, 220 tools, /vyre, about.md in the first
+  request, each hook once, the floor's deny before `canUseTool`.
+
 #### Docs: the planner page
 
 - docs/using/planner.md (draft): alarms, timers, reminders, todos and notes from the terminal and
