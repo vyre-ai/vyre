@@ -69,7 +69,7 @@ Frozen from main on 27 September 2026: 26 edges. "Becomes" says where each one s
 
 ## What the list says
 
-Four files carry most of it. `core/names/tailscale.js` (7 edges) and `core/link/transport.js`
+Four files carry most of it. `core/names/tailscale.js` (6 edges) and `core/link/transport.js`
 (3) are shared plumbing, not features: the first move is a small tailnet lib beside the kernel
 that both names and link use, which also ends the `names` and `link` cycle.
 `core/connectors/auth.js` (2) is already a library by design. The ctx.call cases (8) are places
