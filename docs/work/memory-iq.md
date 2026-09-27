@@ -4,6 +4,11 @@ Branch: work/memory-iq · Worktree: ../vyre-memory-iq · ADR 0023 · Owner sessi
 
 ## Scope
 
+28 Sep (the user, via the lead): memory-iq owns recall, the graph and IQ as one product. The old
+memory team's branch (work/memory) had one unmerged change, the teach me:you fix, now ported.
+Carried forward from its notes: prefers/decided stay off until more gold with distractors; the
+Deck's projects view should pass room: slug; agent sessions should put the agent in the caller.
+
 Memory that knows the user. Today "name of my wife" returns unrelated quotes and "which car do I
 own" works only when one literal sentence matches. This workstream adds:
 
@@ -133,6 +138,11 @@ facts are not a project's.
   unless the lead says otherwise.
 
 ## Next
+- Project graphs: recall.search `sessions` filter + retrieve scopes by folders plus picked ids (0.1.1).
+- Host-to-server sync: contract in docs/design/iq-everywhere.md; agree it with federation (paused)
+  and amend ADR 0008.
+- Reader billing: claude -p inherits vyred's env, so an ANTHROPIC_API_KEY there bills API dollars.
+  Proposal: strip it from the reader and IQ unless config.memory.model.billing = "api".
 - Finish the v2 re-record, report accuracy and cost to the lead, commit asks/open.json, and hand
   the integrator a new RC sha containing 7b48652d.
 - Run core/memory/iq/ask.test.js (only when uptime is under 6, nice 15, --test-timeout).
