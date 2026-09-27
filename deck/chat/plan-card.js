@@ -11,7 +11,7 @@
 // composer.js, native-core's): the words and Enter are the same, and the card stays open.
 
 import { h, put, isPhone } from "../js/dom.js";
-import { attempt } from "../js/api.js";
+import { attempt, queued } from "../js/api.js";
 import { icon } from "../js/icons.js";
 import { problemLine } from "./presence.js";
 import { cardHead, keyHint, busyLabel, widthOf, fromLine } from "./ask-item.js";
@@ -52,7 +52,8 @@ export function planCard(ask, opts = {}) {
     state.width = widthOf(el, act);
     state.busy = act; state.error = null; draw();
     const message = act === "revise" ? state.words.trim() : "";
-    const r = await attempt("threads.answer", { ask: ask.id, decision: act === "start" ? "allow" : "deny", surface: "deck",
+    // Through the outbox like the other cards (offline, it goes when the box is back).
+    const r = await queued("threads.answer", { ask: ask.id, decision: act === "start" ? "allow" : "deny", surface: "deck",
       ...(message ? { message } : {}) });
     if (r.error) { state.busy = null; state.error = r.error; draw(); return; }
     // Approved: the plan is answered whatever the mode call says; a failure is said, not undone.
