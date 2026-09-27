@@ -68,7 +68,7 @@ export const agentName = (role, project) => `${role}-${project}`.slice(0, 31).re
 
 /** A free-text label (a caller's name, a thread id) made safe inside an XML-ish attribute: no quote, no angle bracket. */
 export const attr = s => String(s == null ? "" : s).replace(/[<>"&\n\r]/g, "").slice(0, 200);
-/** Neutralise anything that could be read as one of our own wrapper tags, inside text a teammate or a requester wrote, by splicing in a zero-width space. */
+/** Neutralise anything that could be read as one of our own wrapper tags, inside text a teammate or a requester wrote: the opening "<" is dropped and a zero-width space is spliced into the tag name, so nothing that reads it sees a real tag, open or closed. */
 export const neutralize = s => String(s == null ? "" : s).replace(/<(\/?)vyre-([a-z-]+)/gi, (_, slash, name) => `${slash}vyre-${name}​`);
 
 /** What a teammate's thread is told about itself, before its role instructions. */
@@ -352,10 +352,12 @@ export default {
             // turn's "stopped" right after write() is not, so this stays event-driven, not a poll).
             const finishedEarly = new Set();
             const early = ctx.events.on("thread.finished", e => finishedEarly.add(e.thread));
-            const t = await use("threads.launch", { agent, agent_kind: "teammate", project: req.project, purpose: "teammate",
-              prompt: wrapped, name: agent, ...(first ? { append: preamble(tm) } : { resume: tm.thread }) });
+            let t;
+            try {
+              t = await use("threads.launch", { agent, agent_kind: "teammate", project: req.project, purpose: "teammate",
+                prompt: wrapped, name: agent, ...(first ? { append: preamble(tm) } : { resume: tm.thread }) });
+            } finally { early(); } // always unsubscribed, whether launch succeeded or threw (reviewer LOW, 20d0f121)
             const already = finishedEarly.has(t.id);
-            early();
             setTeammate(agent, { thread: t.id });
             if (already) { await onTurnEnded(); }
             else {
