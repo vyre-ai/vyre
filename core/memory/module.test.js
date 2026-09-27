@@ -43,6 +43,11 @@ test("memory module: curates in the background and answers every tool over the s
   assert.equal((await call("memory.relevant", {}, { root })).error.code, "bad_input");
   const ev = (await request("GET", "/v1/events?type=memory.curated", undefined, { root })).data;
   assert.ok(ev.length >= 1 && ev[0].payload.nodes > 0, "memory.curated was not emitted");
+  // The first pass grew the graph from nothing: how many people and orgs, never their names.
+  const grew = (await request("GET", "/v1/events?type=memory.graph-grew", undefined, { root })).data;
+  assert.ok(grew.length >= 1, "memory.graph-grew was not emitted");
+  assert.ok(grew[0].payload.new.person >= 1 && grew[0].payload.new.org >= 1, JSON.stringify(grew[0].payload));
+  assert.doesNotMatch(JSON.stringify(grew), /Dana|Harlow/, "names in an event");
 });
 
 test("memory module: session.indexed with rewritten re-reads that session", async t => {
