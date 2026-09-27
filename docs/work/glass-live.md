@@ -52,6 +52,60 @@ Make an agent's computer and Glass (watch, take over, Chrome, files) work on the
 - Live box (9efbddc0) read-only checks: computers.limits exists; Glass WS upgrade with a bogus
   ticket is 403, not 404.
 
+## Contract: computers.fill.begin / computers.fill.end (for vault, ADR 0028 decision 3)
+
+Built and tested on work/glass-live (core/computers/fill.js, computerd /shield); the vault's
+vault.agent.fill wiring comes after the native core.
+
+computers.fill.begin {agent, origin}
+- Internal. Only caller `module:vault` (anything else: `denied`; non-modules see no_such_tool).
+- `origin` is for the event and log only. The vault checks the page's origin on its own CDP session.
+- Thaws or starts the agent's computer (without taking a screen).
+- Raises the shield, reason "fill", then returns. By the time it returns:
+  - the agent's hands are refused ("a sign-in is being filled on this computer"), reads included;
+  - every agent CDP socket is closed, and new agent sockets get 423;
+  - every process of the agent's uid (1000) is SIGSTOPped (no screenshot, no X input, no focus
+    grab). Chrome, computerd, Xvnc and fluxbox are uid 1001 and keep running.
+- Returns `{ fill, cdpUrl, token, expires }`. Use it like hands-chrome's Cdp:
+  GET `${cdpUrl}/json/version` with `Authorization: Bearer <token>`, then the returned
+  webSocketDebuggerUrl with `?token=<token>`. The token opens /cdp only, for this fill only.
+  It is never in an event, a log line or an error.
+- Refusals (`error.code`): `busy` (a person holds the keyboard, a person is signing in privately,
+  or another fill is open; the message says which), `no_computer`, `no_driver`, `failed` (for
+  example, computerd did not answer: nothing is left shielded).
+- Hard limit 60 s (`expires`). Past it computers ends the fill with why "expired": the socket is
+  cut, the shield comes down, and the agent continues.
+
+What the vault does in between (validated at computerd on the throwaway stack):
+- `Target.createBrowserContext {disposeOnDetach: false}` (or the context dies with the socket),
+  `Target.createTarget {url, browserContextId}`, `Target.attachToTarget {targetId, flatten: true}`,
+  check the origin, focus fields, `Input.insertText`, submit, wait for navigation (or 20 s),
+  clear any password field left in the DOM.
+- Only flattened sessions. Refused on any CDP client: Browser.close/crash,
+  Target.sendMessageToTarget, exposeDevToolsProtocol, setRemoteLocations, attachToBrowserTarget.
+
+computers.fill.end {agent, fill, target?}
+- Only `module:vault`. Drops the fill token (computerd cuts the vault's socket if still open),
+  lowers the "fill" shield, and SIGCONTs the agent's processes. Returns `{ agent, ended: true }`;
+  a second end, or a wrong fill id, is `{ ended: false }`.
+- `target` (the signed-in tab's targetId) goes into the event, so the agent's hands can pick it.
+
+What the agent sees
+- During the fill: its tools answer "a sign-in is being filled on this computer"; its own
+  processes are stopped; its CDP sockets are closed. It never sees a field value.
+- After: its processes continue, its hands reconnect, and the new tab (in the fill's browser
+  context, already signed in) appears through auto-attach and Target.getTargets. The vault's
+  `vault.agent.fill` result to the agent is `{filled, origin, navigated}` (ADR 0028), plus the
+  targetId if vault chooses.
+
+Events (never a value, a username or a token)
+- `computer.fill-began {agent, fill, origin}`
+- `computer.fill-ended {agent, fill, why: "done"|"expired"|"stopped", target?}`
+- `computer.shielded` / `computer.unshielded` carry `reason: "fill"`.
+
+A take-over (computers.takeover, glass.take) during a fill is refused `busy`; a person's shield
+and a fill's never replace each other.
+
 ## Next
 1. After the live box is redeployed, two read-only checks only (no agents or computers made):
    `ssh <test-box> docker exec vyre-vyre-1 vyre call computers.limits '{}'` must not say
