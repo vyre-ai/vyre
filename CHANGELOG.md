@@ -17,6 +17,34 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The MCP server's instructions: back a promised reminder with `planner_add`, ask `memory_answer`
   before saying you do not know.
 
+#### A box built from vyre.tgz ships the files in it, not stale ones
+
+- npm pack pins every mtime to 1985, and BuildKit's context sync skips a changed file whose size
+  and mtime match what it synced before, so an image built from a new vyre.tgz could keep old
+  files. The installer's unpack and `vyre update`'s refresh now touch the unpacked tree before
+  the build (`scripts/install-box.sh`, `box/vyre`). The test tarball is packed with 1985 mtimes,
+  as npm makes it, and the tests check the unpacked files are fresh (`core/names/system.test.js`).
+  Found by box-deploy.
+
+#### Making or changing an agent needs a person
+
+- `agents.create` and `agents.update` set an agent's credentials, budget and scope, and nothing
+  asked who was calling. Both are on the floor's human-only list now: an agent is refused, and a
+  person proves presence (the passkey in the Deck, Touch ID or a typed code for `vyre agents`).
+  The Deck's New agent sheet, agent page, assistant card and Settings ask for the passkey.
+  `core/presence/index.js`, `core/cli/commands/agents.js`, `deck/views/agents.js`,
+  `deck/views/settings.js`, `deck/js/assistant-setup.js`; test/presence-bypass.test.js.
+
+#### `vyre box add` waits for the switch, and the pairing code for the passkey
+
+- It moved on as soon as the address served: it closed the tunnel, opened a second passkey tab and
+  printed the pairing code before the person pressed "Switch to", whose passkey link then came
+  over a closed tunnel, and the 10-minute code could run out before anyone could approve it.
+  onboard.status now says `arrived` once the owner reaches the address; box add keeps the tunnel
+  until then, opens no second passkey tab after a switch, makes the pairing code only once a
+  passkey exists, waits for the approval, and replaces a code that expires unapproved.
+  `core/cli/commands/box.js`, `core/onboard/index.js`.
+
 #### An assistant made with an API key uses it as one
 
 - With an API key at the Claude step, `onboard.finish` made the assistant with
@@ -167,6 +195,75 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   after Face ID (ADR 0018), the PWA's a passkey; both are the same box-checked presence proof.
   Docs only; no code changes.
 
+#### docs.vyre.run, round 2: screenshots, a terms index, interactive pages (ADR 0019)
+
+- Page syntax that works with JavaScript off and gets better with it: copy buttons on every
+  command (prompts left out), `output` blocks labelled "You should see", `::: tabs` for a choice
+  of path (one choice follows the reader across pages), `[!SNAG]` "If this happens" boxes,
+  `[!WHY]` expandable background, figures with a dark twin, `::: demo capsule` (a Capsule you can
+  type into, sample data only) and `::: demo onboarding` (the six screens as slides), and search
+  that jumps to headings (`/` focuses it). `scripts/lib/docs/assets/demos.{js,css}` load only on
+  pages with a demo.
+- Screenshots: `npm run docs:shots` (on the test box) starts the sample world and captures the
+  Deck, onboarding, the Capsule, Glass and the phone views in light and dark. `docs/shots.json`
+  holds a hash of the files each shot shows; docs-check fails a shot once they change.
+- The terms index: `npm run docs:ref` writes `docs/reference/index.md` and `docs/index.json`
+  (published at /index.json): every command, tool, event, config key, variable, screen and
+  concept, with where it is defined, the page that explains it and every mention. docs-check
+  fails a mention of a command, tool, key or variable the code no longer has.
+- `core/config/theme.js` holds the palette; the design tokens page draws its colour tables from
+  it as live swatches.
+- Every page reviewed against main; install is one numbered path with expected output and snag
+  boxes; the old install reference moved to box care and the box-and-Mac concepts page.
+- `scripts/lib/hygiene.js`: the `sk-` secret pattern no longer matches inside words (an anchor
+  like `#ask-...`).
+
+#### vyre.run/start matches the code again
+
+- /start's Mac section is `npm i -g https://vyre.run/box/vyre.tgz`, `vyre up` (pick 3, I already
+  set up a box), then `vyre capsule`, which builds the Capsule from the npm install. There is no
+  Mac download any more. The Cloudflare token steps are gone (your address is the tailnet name),
+  and pairing says what the code does: approve in the Deck with your passkey, whose screen is a
+  known gap.
+- `scripts/build-site.sh` writes `/download/mac /start#mac 302` into `site/_redirects`: onboarding's
+  "Download for Mac" link was a 404. Deployed to vyre.run with the live box files unchanged.
+
+#### Known gaps are marked on the page (ADR 0019)
+
+- `docs/known-gaps.md` lists each place the code does not yet do what the spec, an ADR or a
+  screen says, with what is true now and the owning team. Pages carry a `> [!GAP]` callout,
+  rendered as "Known gap", that links to it. `CONTRIBUTING-DOCS.md` says how to add and close one.
+- The security page names security@vyre.run as the contact.
+
+#### Every page of docs.vyre.run is written (ADR 0019)
+
+- The 57 pages in `docs/nav.json` exist, each with front matter and an owner: get-started,
+  using, concepts, build, architecture, security, contributing, and ADR 0019 for the site itself.
+  Pages other teams own are seeded from the code on main for them to refine.
+- `docs/SPEC.md`, `INSTALL.md`, `GETTING-STARTED.md`, `JOURNEY.md`, `MODULES.md` and `PERF.md`
+  moved to `architecture/spec.md`, `get-started/install.md` and `without-docker.md`,
+  `get-started/onboarding.md` (GETTING-STARTED and JOURNEY merged), `build/writing-a-module.md`
+  and `architecture/performance.md`. Each old path is a redirect stub, so `docs/SPEC.md section N`
+  in code comments still resolves. The ADRs and `design/TOKENS.md` have front matter.
+- The npm package ships all of `docs/` except `work/`, `proposals/` and `design/boards/`, instead
+  of five named files that are now stubs.
+- An include line inside fenced code is an example: the build and docs-check leave it alone.
+  docs-check's list of built files names `/search-index.json`, which is what the build writes.
+
+#### docs-check and the generated reference pages (ADR 0019)
+
+- `scripts/docs-check` (`npm run docs:check`, and `test/docs-check.test.js` under `npm test`)
+  holds `docs/` to its contract: front matter on every published page, every page in
+  `docs/nav.json` or a redirect stub, relative links, `#anchors` and docs.vyre.run paths that
+  resolve, no links into unpublished folders, no em dash or section sign (in included files
+  too), no real names, secrets, non-example email or IP addresses, and reference pages that match
+  the code. It prints `path:line: problem` and exits 1 on any.
+- `scripts/gen-docs-reference` (`npm run docs:ref`) writes `docs/reference/{cli,tools,events,config,modules}.md`
+  from the CLI's command list, every `module.json`, every `ctx.tool` definition, the `emit` calls
+  and `core/config`. Tools are read by starting each module in a child process with a throwaway
+  home and a context that only records: no child processes, no listeners, no fetch, no keychain.
+- The hygiene rules (forbidden names, the secret pattern) moved to `scripts/lib/hygiene.js`,
+  shared by `test/hygiene.test.js` (unchanged behaviour) and docs-check.
 #### Colours from config, Find's commands, and the owner's phone reads memory by meaning
 
 - `theme.colors` in config.json ({ dark, light }, TOKENS.md names without dashes, plain CSS colours
@@ -237,8 +334,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 - The Deck's computer panel reads what `computers.get` returns (it was drawn from fixture fields
   no tool had: name, host, disk, network, rules). Glass's title state follows the computer as
   watching thaws it.
+- Glass says why a computer did not start. The relay closes the stream with 4001 and a short
+  reason ("kit's computer stopped as soon as it started (exit code 3)"), and Glass shows "kit's
+  computer did not start" with that reason, what to try (Restart computer on kit's page, then
+  Retry), a Retry button and a link to kit's page. It no longer retries a broken computer on its
+  own. Other checkout failures close with 1011 and Glass tries again as before.
 - `test/deck-contract.test.js`: every tool the Deck calls must exist on a box and get its
   required input. Fixtures answer anything, so this is what catches a Deck call no tool accepts.
+#### link.health answers the owner and modules only
+
+- On the box, `link.health` refuses a guest from another tailnet, an agent's own node, an agent
+  at the box, MCP and any tailnet login that is not the box's owner. The Deck, the terminal and
+  modules such as Glass ask as before.
+
 #### Glass egress: fail closed, keys that survive restarts
 
 - The egress sidecar no longer sends a listed site out from the box when the Mac stops offering
