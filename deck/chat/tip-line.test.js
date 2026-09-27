@@ -31,6 +31,10 @@ test("tipPieces: the tip's key is a key chip, any other backticked part is code"
   assert.deepEqual(tipPieces("Press `⌥⏎` to queue, or type `!ls`.", "⌥⏎"),
     [{ kind: "text", text: "Press " }, { kind: "key", text: "⌥⏎" }, { kind: "text", text: " to queue, or type " }, { kind: "code", text: "!ls" }, { kind: "text", text: "." }]);
   assert.equal(docsUrl("using/chat.md#queue"), "https://docs.vyre.run/using/chat#queue");
+  assert.equal(docsUrl("index.md"), "https://docs.vyre.run/");
+  assert.equal(docsUrl("using/index.md"), "https://docs.vyre.run/using/");
+  assert.equal(docsUrl("using/index.md#start"), "https://docs.vyre.run/using/#start");
+  assert.equal(docsUrl("/build/tips.md"), "https://docs.vyre.run/build/tips");
 });
 
 test("tip: asked once on open with the module, drawn with its key, seen; hidden while busy or typing", async () => {

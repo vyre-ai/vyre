@@ -14,10 +14,20 @@ import { attempt } from "../js/api.js";
 import { icon } from "../js/icons.js";
 
 export const IDLE_MS = 60_000;
-/** Where a tip's `docs` page is read ("using/planner.md#reminders" is using/planner#reminders there). */
-export const DOCS_BASE = "https://docs.vyre.run/";
-/** @param {string} docs */
-export const docsUrl = docs => DOCS_BASE + String(docs).replace(/^\/+/, "").replace(/\.md(?=#|$)/, "");
+/** Where a tip's `docs` page is read (docs' pageUrl in scripts/lib/docs/load.js). Until production is
+ * deployed, the same paths are on https://preview.vyre-docs.pages.dev: point this there to test. */
+export const DOCS_BASE = "https://docs.vyre.run";
+/**
+ * "using/chat.md#rewind" is /using/chat#rewind; "index.md" is /; "<dir>/index.md" is /<dir>/.
+ * @param {string} docs
+ */
+export function docsUrl(docs) {
+  const raw = String(docs).replace(/^\/+/, "");
+  const hash = raw.indexOf("#");
+  const file = hash >= 0 ? raw.slice(0, hash) : raw, anchor = hash >= 0 ? raw.slice(hash) : "";
+  const page = file === "index.md" ? "" : file.endsWith("/index.md") ? file.slice(0, -"index.md".length) : file.replace(/\.md$/, "");
+  return `${DOCS_BASE}/${page}${anchor}`;
+}
 const SURFACE = "chat", MODULE = "chat";
 
 /**
@@ -84,7 +94,8 @@ export function mountTip(slot, o) {
       try { await (o.copy || (s => navigator.clipboard.writeText(s)))(t.command); copied = true; draw(); } catch {}
       setTimeout(() => { copied = false; tip = null; draw(); }, 2000);
     } else if (t.docs) {
-      (o.open || (u => window.open(u, "_blank", "noopener")))(docsUrl(t.docs));
+      // A new tab, never away from the session.
+      (o.open || (u => window.open(u, "_blank", "noopener,noreferrer")))(docsUrl(t.docs));
       tip = null; draw();
     }
     attempt("tips.seen", { id: t.id, surface: SURFACE, acted: true });
