@@ -35,10 +35,8 @@ Branch: work/phone-design · Worktree: ../vyre-phone-design · Owner session: ph
 3. Review pwa and mobile builds against phone.md as screenshots arrive.
 
 ## Needs from others
-- lead / presence owner: the ask must say whether it needs a proof (and whether a fresh one
-  covers it) so the phone shows the Face ID glyph only then; the phone never guesses from the
-  tool name. Also: is a git push "outbound" (a proof) or an ordinary ask? phone.md treats edits
-  and commands as ordinary and leaves push to the box.
+- e2e: `presence: {required, covered}` on every ask and held item (lead decided 2026-09-27;
+  a git push is an ordinary ask, no proof). phone.md section 5 reads it.
 - chat: the diff summary (detail.changes on Edit/Write asks; changes + totals on held pushes),
   queued for their next session.
 - deck-design: shared chat items (gate card without a left rule, neutral deletions, author names).

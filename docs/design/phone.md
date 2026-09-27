@@ -306,10 +306,13 @@ Action area (8 between buttons, 34 bottom):
 - Question: "Answer" primary, enabled once a choice is picked or text typed; "Later" secondary. No
   presence check unless the tool asks for one.
 - When Face ID shows (the no-nag rule): only for pairing a device, reading or using a vault
-  secret, and outbound actions (send, post, pay). Ordinary asks (edits, commands) are
+  secret, and outbound actions (messages, posts, emails, payments). Ordinary asks (edits,
+  commands, git pushes) are
   one tap. One proof lasts about 30 minutes on that device: while it is fresh the glyph drops
-  and the buttons read "Approve" and "Send". The box decides which asks need a proof and says
-  so on the ask; the phone never guesses from the tool name.
+  and the buttons read "Approve" and "Send". The box decides: every ask and held item carries
+  `presence: {required, covered}` (owned by e2e, from presence's rules). The glyph and "with
+  Face ID" show only when `required` is true and `covered` is false. The phone never guesses
+  from the tool name.
 - A proof is the same box-verified check per ADR 0004 on every surface. The PWA uses a WebAuthn passkey assertion. The native apps use a device-key signature
   after Face ID or the fingerprint (ADR 0018): a P-256 key in the Secure Enclave or StrongBox,
   enrolled once through the Deck's passkey, signs the same message the Capsule signs, and the box
