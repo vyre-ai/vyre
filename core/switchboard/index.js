@@ -770,7 +770,7 @@ export class Switchboard {
     if (st.timer) { clearTimeout(st.timer); st.timer = null; }
     if (!st.pending && !st.rpending) return;
     const rec = this.record(id);
-    if (st.rpending) { const delta = st.rpending; st.rpending = ""; this.emit("thread.text", { message: st.message, block: st.pendingBlock, kind: "reasoning", delta }, id, rec ? rec.project : null); }
+    if (st.rpending) { const delta = st.rpending; st.rpending = ""; this.emit("thread.thinking", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
     if (st.pending) { const delta = st.pending; st.pending = ""; this.emit("thread.text", { message: st.message, block: st.pendingBlock, delta }, id, rec ? rec.project : null); }
   }
 
@@ -1405,7 +1405,7 @@ export class Switchboard {
     const want = Math.max(1, Math.min(200, Number(limit) || 20));
     const rows = /** @type {any[]} */ (this.db.prepare(`SELECT id, at, type, thread, payload FROM events
       WHERE thread IN (${runs.map(() => "?").join(",")}) AND id < ?
-        AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL))
+        AND (type = 'thread.sent' OR (type = 'thread.text' AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.notice') IS NULL AND json_extract(payload, '$.kind') IS NULL))
       ORDER BY id DESC`).iterate(...runs.map(r => r.id), Number(before) || Number.MAX_SAFE_INTEGER));
     /** @type {Map<string, string[]>} replies seen (newest first) per thread, waiting for their send */
     const replies = new Map();
@@ -1454,7 +1454,7 @@ export class Switchboard {
     if (reason === "asked") summary = payload.summary || payload.tool || null;
     else {
       const last = /** @type {any} */ (this.db.prepare(`SELECT payload FROM events WHERE thread = ? AND type = 'thread.text'
-        AND json_extract(payload, '$.done') = 1 ORDER BY id DESC LIMIT 1`).get(thread));
+        AND json_extract(payload, '$.done') = 1 AND json_extract(payload, '$.kind') IS NULL ORDER BY id DESC LIMIT 1`).get(thread));
       summary = last ? cut(String(JSON.parse(String(last.payload)).text || ""), 280) : null;
     }
     for (const w of rows) {

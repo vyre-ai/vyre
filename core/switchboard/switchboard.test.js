@@ -987,6 +987,7 @@ test("demo: Edit and Bash asks carry their detail, always hands back the suggest
   assert.equal(bash.always, true);
   await tool("threads.answer", { ask: bash.id, decision: "allow", surface: "deck" });
   const reply = await until(() => of(s.got, id, "thread.text").find(e => e.payload.done), "the reply");
+  assert.match(of(s.got, id, "thread.thinking")[0].payload.text, /^alex wants the autumn specials/, "thinking is its own event, before the reply");
   assert.match(reply.payload.text, /^## Autumn specials/);
   assert.match(reply.payload.text, /```sh\nnpm test/);
 

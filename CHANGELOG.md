@@ -14,7 +14,8 @@ Newest first. Every change to code lands here in the same commit. A new dependen
   the next message as Claude Code's `<bash-input>`/`<bash-stdout>` blocks.
 - `threads.remember {thread, text, scope}` (person-only): Claude Code's `#` mode, a line in the
   project's CLAUDE.md, the user's own or the folder's CLAUDE.local.md. `thread.remembered`.
-- Thinking: `thread.text {kind: "reasoning"}` as it grows (thinking deltas) and whole; `threads.thinking
+- Thinking: its own event, `thread.thinking {message, block, delta | text + done}`, as it grows and
+  whole, so a surface that does not show thinking never takes it for the reply; `threads.thinking
   {thread, on}` turns it on (the model decides how much) or off; `thinking.switched`.
 - Background tasks: `thread.task {id, kind: shell|agent, title, status, background, summary}` from
   Claude Code's task_started, task_updated and task_notification; `threads.tasks {thread}` lists them;
