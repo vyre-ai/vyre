@@ -231,10 +231,16 @@ that for the future and improves." Built on work/memory-iq (95b2b891).
   corrected 3 answers this week" by kind of question (people, who, date, file, decision, bug,
   config, personal). eval-iq `--fix` applies a person's correction to every wrong answer on the
   synthetic worlds and asks again: open 20 of 20 now right, sealed 38 of 38, none regressed.
-- **The card.** Under the answer, one quiet line: "Wrong?" opens three choices in place: "That's
-  wrong", "Forget this", and a field prefilled with the answer to edit into the right one. A "not
-  sure" card offers only the field ("Know it? Tell me"). After a fix the card shows the corrected
-  answer at once with "Undo". Nothing is sent without the person pressing Enter.
+- **The card** (app-design, 28 Sep; folded into result-card's Answer variant after the RC). "Wrong?"
+  is quiet label text at the end of the meta line ("confidence 0.8 · from 2 sessions · Wrong?"),
+  underlined on hover, never a chip or a button. A tap grows the row in place, never a sheet or a
+  modal: two small ghost buttons ("That's wrong", "Forget this"), then a one-line text field
+  prefilled with the answer. Enter sends the edit, Esc collapses with nothing sent, nothing fires on
+  blur. A "not sure" card has no "Wrong?": the field is always open under it, empty, with the
+  placeholder "Know it? Tell me". After a fix the answer changes in place, and the meta line reads
+  "you corrected this · Undo", with no colour. Undo stays for as long as the card is on screen. A
+  corrected reply has `known: []`, and its one source ("your correction") is not drawn as a chip. On
+  the phone it is the same inside the Find row; buttons stack only when both do not fit at 44 pt.
 - **Specs for the paused owners.**
   - chat (Deck chat and the PWA through chat-core): the same three choices on an IQ card inside a
     conversation, calling `memory.correct { answer }`; "Undo" calls `memory.uncorrect { fix }`.
