@@ -6,7 +6,7 @@ Branch: work/cohesion · Worktree: ../vyre-cohesion · Started 2026-09-27 from m
 Make Vyre feel like ONE system: audit every module and surface for interconnection opportunities,
 then coordinate the owning teams to wire them through the registry. Cohesion writes contracts,
 glue modules (sight, context, suggest, waiting) and drift tests. It does not build features that
-belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved by the lead).
+belong to another team. Map: docs/design/cohesion.md (18 ranked items, approved by the lead).
 
 ## Done
 - Survey of every module, surface and team work doc; opportunity map; top 10 agreed with the lead.
@@ -29,6 +29,14 @@ belong to another team. Map: docs/design/cohesion.md (17 ranked items, approved 
   e2e signed off 4b9c0c0d (sight 15/15 on testbox); sight.now/targets/steps left unguarded is fine,
   they read state and never proxy pixels. Handed to the integrator. No testbox processes of mine
   running. Items 8, 9, 10 deferred to 0.1.1 per the lead.
+- Glass job from the lead: gave glass cohesion's view on sight/waiting/context for item 1, confirmed
+  sight.frame is the right call for their reconnect-fallback still and resting-tile preview (no
+  separate JPEG path needed), agreed their capture(glass/sight)/render(chat/sessions) split for
+  inline chat images. Lead decided the owner call: item 18 added to docs/design/cohesion.md
+  (baf5ec7c), chat owns render, sessions passes image blocks through, cohesion keeps sight.frame/
+  sight.stepped, glass is a second sight.frame caller not a second capture path. Open for 0.1.1:
+  where an agent-made (non-screen) image lives, inline size before it is a link, rate limiting
+  sight.frame across two callers.
 - SAVED for restart. Integrator has 0f4d1105 (release candidate; supersedes f5cd36f7): glue modules,
   drift test, hands privacy fix (e2e signed off), sight.frame, context view/now {surface}, Mac asks,
   suggest account ranking, Chrome teardown fix. testbox: 156 targeted pass; hands-chrome 8/8 on
