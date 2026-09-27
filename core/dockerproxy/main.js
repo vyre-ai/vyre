@@ -20,7 +20,9 @@ const port = Number(env.VYRE_DOCKER_PROXY_PORT || 2375);
 // while in case this container is up before vyred's first boot has written it.
 const bearerFile = env.DOCKER_PROXY_BEARER_FILE;
 if (!bearerFile) throw new Error("DOCKER_PROXY_BEARER_FILE is not set -- refusing to run with no bearer");
-const bearer = await readBearer(bearerFile);
+// Patient: a fresh install has no bearer until computers are set up; wait quietly, never crash-loop.
+const bearer = await readBearer(bearerFile, { patient: true,
+  onWait: () => process.stderr.write(JSON.stringify({ at: new Date().toISOString(), waiting: "no bearer yet: computers are not set up; checking once a minute" }) + "\n") });
 
 const policy = await loadPolicy();
 // Refusals only, and never a body: a create body carries the computer's passwords.
