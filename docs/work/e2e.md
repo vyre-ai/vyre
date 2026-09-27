@@ -357,6 +357,12 @@ Plan (to the lead before building):
 - launch journey.test at 359e3428: green on testbox (7/0/1 skip/1 todo); not real.
 - Reviewer (second, Opus) owns: windows, teammates 20d0f121, memory-iq d0b916b9. I keep federation
   transport, vault designs, import. glass 14f1824c already signed off by me.
+- peerfix ae9c6cdc (reviewer MEDIUMs): /usr/bin/perl + env {}; parent setBlocking(false) on close/
+  error; SIGKILL timeout. Tests for both (the restore test fails on the Mac without it). Mac detached
+  58/58, testbox 228/228. Sent to reviewer for confirmation, then the integrator.
+- glass 14f1824c: reviewer's HIGH 1 (DOM.setFileInputFiles / drag files read .boot via Chrome as
+  uid 1001) is valid; I missed it. My sign-off withdrawn for rc.2; reviewer owns glass now.
+- Queue: connectors 21beb66b (0.1.1 batch 1) review; later: agent-browser sizing on testbox.
 Next: rerun rc-smoke on each new RC dry run (mail/theme steps switch on once vault-next, connectors
 and appearance land); review vault 9b before it lands with connectors; any review sent to me.
 
