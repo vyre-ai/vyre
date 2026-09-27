@@ -24,11 +24,11 @@ import { relayLink } from "./link.js";
 import { bridge } from "./bridge.js";
 import { pairUrl } from "./pairing.js";
 import { knownBuild, findRelease, newestRelease } from "./releases.js";
+import { agentClaim } from "../modules/index.js";
 
 export const DEFAULT_RELAY = "wss://relay.vyre.run";
 const PAIR_TTL = 10 * 60_000;
 const NAME = /^[^\u0000-\u001f\u007f]{1,64}$/;
-const AGENT_CLAIM = /(?:^|[\s:])agent:/;
 const DAY = 24 * 60 * 60_000;
 /** What an untrusted web device may not call: minting devices, trust, presence keys, secrets out. */
 export const WEB_DENY = /^(relay\.pair\.|relay\.devices\.trust$|relay\.enable$|relay\.web\.pin$|presence\.(enroll|code|remove)$|vault\.(reveal|copy|render|resolve|release|export|fill\.|session\.open$))/;
@@ -117,7 +117,7 @@ export default {
     const owner = (caller, meta, what) => {
       const c = String(caller || "");
       if (c.startsWith("tailnet-guest:")) throw fail("denied", `${what} is the owner's; a guest never sees the box's devices`);
-      if ((meta && meta.agent) || AGENT_CLAIM.test(c)) throw fail("denied", `"${c}" is an agent; ${what} is the owner's`);
+      if ((meta && meta.agent) || agentClaim(c)) throw fail("denied", `"${c}" is an agent; ${what} is the owner's`);
       if (["anonymous", "hook"].includes(c)) throw fail("denied", `${what} is the owner's`);
     };
 

@@ -9,7 +9,7 @@ import { MIGRATIONS, KINDS, STATES, store, shape, shapeFiring, newId, ringKey, r
 import { Scheduler, nextFire, zoneOf } from "./scheduler.js";
 import { calendarCache, shapeCal } from "./calendar.js";
 import { validZone, systemZone, parseDate, parseWall, dateString, wallString, localDate, localParts, toUTC, addDays, checkRepeat, nextOccurrence } from "./time.js";
-import { callerAllowed, callerKind } from "../modules/index.js";
+import { callerAllowed, callerKind, agentClaim } from "../modules/index.js";
 
 export { MIGRATIONS };
 
@@ -26,8 +26,6 @@ const AGENTS = ["mcp", "module", "harness"];
 const AGENT_KINDS = ["alarm", "timer", "reminder", "todo", "note"];
 /** A runaway guard, not a limit anyone should meet: adds an hour from one agent. */
 const AGENT_CAP = 200;
-/** A caller that names an agent: "mcp:agent:kit", "harness:agent:kit". vyred has checked the name. */
-const AGENT_CLAIM = /(?:^|[\s:])agent:([A-Za-z0-9_-]+)/;
 const TIMED = ["alarm", "timer", "reminder", "event"];
 const LINK_CODES = ["box_unreachable", "no_link", "unreachable", "timeout", "not_box", "unpaired"];
 const MAX_TIMER = 30 * 86_400_000;
@@ -221,10 +219,10 @@ export default {
       // A Vyre-owned session's thread (ADR 0030, in-process tools): the person's assistant, as an
       // unnamed terminal session is, so what one thread adds another may change.
       if (/^(mcp|harness):thread:/.test(c)) return { person: false, source: c.slice(0, c.indexOf(":")), name: null };
-      const m = AGENT_CLAIM.exec(c);
+      const claim = agentClaim(c);
       // An unnamed MCP or harness caller is the person's own Claude session: their assistant.
-      if (!m) return { person: false, source: callerKind(caller), name: null };
-      return { person: false, source: `agent:${m[1]}`, name: (await isAssistant(m[1])) ? null : m[1] };
+      if (!claim) return { person: false, source: callerKind(caller), name: null };
+      return { person: false, source: `agent:${claim}`, name: (await isAssistant(claim)) ? null : claim };
     };
 
     const agentKind = (kind, w) => {

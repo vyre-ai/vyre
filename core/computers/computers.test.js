@@ -117,6 +117,12 @@ test("computers: an agent's hands get their own computer; only the assistant may
   assert.deepEqual(mine.data.computers.map(c => c.agent), ["kit"]);
   const all = await s.juno("computers.list");
   assert.deepEqual(all.data.computers.map(c => c.agent), ["kit", "pax"]);
+  // The same self-only filter applies whatever transport vouches the agent's claim, not only
+  // "mcp:agent:<name>": a caller shaped "cli agent:kit" (an agent vouched under the CLI) still
+  // sees only its own computer, and still cannot name pax's (agentClaim, core/modules).
+  const vouched = await s.d.registry.call("computers.list", {}, "cli agent:kit");
+  assert.deepEqual(vouched.data.computers.map(c => c.agent), ["kit"]);
+  assert.match((await s.d.registry.call("computers.checkout", { agent: "pax" }, "cli agent:kit")).error.message, /kit can only use its own computer, not pax's/);
   assert.match((await s.module("computers.may-act", { tool: "chrome.click" })).error.message, /agent is required/);
 });
 
