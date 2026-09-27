@@ -670,17 +670,19 @@ struct MemorySources: View {
     @Binding var expanded: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Button { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } } label: {
-                HStack(spacing: 5) {
-                    Image(systemName: "sparkle.magnifyingglass").imageScale(.small).foregroundColor(Theme.recall)
-                    let n = memory.conversationCount
-                    Text(n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
-                    Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small)
-                }
-                .font(Theme.subtitle).foregroundColor(Theme.ash)
-                .contentShape(Rectangle())
+            // A source chip (capsule.md): 28 tall, radius 14, 1 px ruleStrong, 13/18 text2.
+            HStack(spacing: 6) {
+                let n = memory.conversationCount
+                Text(n == 1 ? "from 1 of your sessions" : "from \(n) of your sessions")
+                Image(systemName: expanded ? "chevron.down" : "chevron.right").imageScale(.small).foregroundColor(Theme.ash)
             }
-            .buttonStyle(.plain)
+            .font(Theme.title).foregroundColor(Theme.stone)
+            .padding(.horizontal, 10).frame(height: 28)
+            .fixedSize()
+            .overlay(Capsule().strokeBorder(Theme.ruleStrong, lineWidth: 1))
+            .contentShape(Capsule())
+            .onTapGesture { withAnimation(.easeOut(duration: 0.14)) { expanded.toggle() } }
+            .accessibilityAddTraits(.isButton)
             if expanded { SourceList(memory: memory) }
         }
     }

@@ -4,6 +4,19 @@ Newest first. Every change to code lands here in the same commit. A new dependen
 
 ## Unreleased
 
+#### rc.2: no gold, no epoch ages, one placeholder
+
+- Design A retired the gold: memory's colour (`Theme.recall`, the icon tint) is neutral text, and
+  "from 2 of your sessions" under an answer is a source chip (28 tall, radius 14, 1 px
+  `ruleStrong`, 13/18 `text2`).
+- A missing, zero or pre-2001 time shows no age ("691 months" came from a test's `at: 1000`); a
+  row under a minute old says "just now" (copy.md). The test fixtures use real times.
+- The placeholder is capsule.md's "Ask Vyre, find, or run" in every state; the other line was in
+  stale pictures, and capsule-mac.md's checklist still says the old words (app-design's file).
+- `Sources/UI/Theme.swift`, `Sources/UI/CapsuleView.swift`, `Sources/Providers/IconCache.swift`,
+  `Sources/Vyred/Route.swift`, `Sources/Vyred/State.swift`; `Tests/DesignATests.swift`,
+  `Tests/RouteTests.swift`. Swift 326/326.
+
 #### Mail rows in the Capsule (connectors 8be461a9)
 
 - A mail account to send from shows a pencil and a message an envelope; the sub is mail.find's

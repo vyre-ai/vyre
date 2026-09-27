@@ -16,7 +16,7 @@ import SwiftUI
 }
 
 @MainActor private func askWaiting(_ m: CapsuleModel) {
-    m.desk.heard(VyredEvent(id: 1, type: "ask.raised", source: "x", thread: "t9", project: nil, at: 1000,
+    m.desk.heard(VyredEvent(id: 1, type: "ask.raised", source: "x", thread: "t9", project: nil, at: Int(vyNowMs()) - 3 * 60_000,
                             payload: ["ask": "a1", "agent": "kit", "tool": "Bash", "summary": "run the Harlow Legal export"]))
     m.desk.mode = .list(0)
 }
@@ -193,7 +193,7 @@ let designASuite = Suite("design A") { t in
         let r = MainActor.assumeIsolated { () -> [String] in
             let m = snapModel([])
             for i in 1...5 {
-                m.desk.heard(VyredEvent(id: i, type: "ask.raised", source: "x", thread: "t\(i)", project: nil, at: 1000 + i,
+                m.desk.heard(VyredEvent(id: i, type: "ask.raised", source: "x", thread: "t\(i)", project: nil, at: Int(vyNowMs()) - (6 - i) * 20 * 60_000,
                                         payload: ["ask": "a\(i)", "agent": "kit", "tool": "Bash", "summary": "run the Harlow Legal export \(i)"]))
             }
             let compact = CapsuleLayout.panelHeight(m), hints = hints(m)
@@ -203,12 +203,33 @@ let designASuite = Suite("design A") { t in
             let list = CapsuleLayout.panelHeight(m)
             m.desk.mode = .none
             let one = snapModel([])
-            one.desk.heard(VyredEvent(id: 1, type: "ask.raised", source: "x", thread: "t1", project: nil, at: 1000,
+            one.desk.heard(VyredEvent(id: 1, type: "ask.raised", source: "x", thread: "t1", project: nil, at: Int(vyNowMs()),
                                       payload: ["ask": "a1", "agent": "kit", "tool": "Bash", "summary": "run the Harlow Legal export"]))
             one.text = "sa"
             return ["\(compact)", hints.joined(separator: ","), "\(list)", "\(AgentLayout.compactHeight(one))"]
         }
         t.eq(r, ["248.0", "↑↓ Move,⏎ Open,esc Hide", "560.0", "0.0"], "typing hides the waiting rows")
+    }
+
+    t.test("rc.2: no gold, no epoch ages, one placeholder") {
+        let r = MainActor.assumeIsolated { () -> [String] in
+            let m = snapModel([]); askWaiting(m)
+            var w = m.desk.waiting[0]
+            let fresh = w.age()
+            w.at = 0
+            return [fresh, w.age(), CapsuleLayout.placeholder(snapModel([]))]
+        }
+        t.eq(r, ["3 min", "", "Ask Vyre, find, or run"])
+        t.ok(Theme.recall == Theme.stone, "Design A retired the gold: memory is neutral text")
+        let now = vyNowMs()
+        t.eq(Route.age(now - 20_000, now: now), "now")
+        let justNow = MainActor.assumeIsolated { () -> String in
+            let m = snapModel([])
+            m.desk.heard(VyredEvent(id: 1, type: "ask.raised", source: "x", thread: "t1", project: nil, at: Int(vyNowMs()),
+                                    payload: ["ask": "a1", "agent": "kit", "tool": "Bash", "summary": "x"]))
+            return m.desk.waiting.first?.age() ?? "none"
+        }
+        t.eq(justNow, "just now")
     }
 
     t.test("a passing status shows for its time, then goes; a newer line is kept") {
