@@ -178,7 +178,8 @@ async function boot(t, { vault, ungranted = [], probe } = {}) {
   }
   const d = await start({ root, presence: present, log: () => {} });
   t.after(() => d.stop());
-  const work = fs.mkdtempSync(path.join(root, "work-"));
+  // realpath: on the Mac the temp dir sits under /var, which vyred and fake claude see as /private/var.
+  const work = fs.realpathSync(fs.mkdtempSync(path.join(root, "work-")));
   const launches = () => { try { return fs.readFileSync(log, "utf8").trim().split("\n").filter(Boolean).map(l => JSON.parse(l)); } catch { return []; } };
   const tool = (name, input, caller = "cli") => call(name, input, { root, caller, timeout: 20_000 });
   for (const [name, value] of Object.entries(vault || {})) {
@@ -241,10 +242,10 @@ test("switchboard: a thread streams to two clients, asks, is answered, and chang
   const open = (await tool("threads.asks", {})).data;
   assert.equal(open.length, 1);
   assert.equal(open[0].request_id, undefined, "Claude Code's request id stays inside vyred");
-  assert.deepEqual(open[0].presence, { required: false, covered: false }, "answering takes no proof; a surface renders from this");
+  assert.deepEqual(open[0].presence, { required: false, covered: false, since: null }, "answering takes no proof; a surface renders from this");
   const got = (await tool("threads.get", { thread: id })).data;
   assert.equal(got.thread.status, "waiting");
-  assert.deepEqual(got.asks[0].presence, { required: false, covered: false });
+  assert.deepEqual(got.asks[0].presence, { required: false, covered: false, since: null });
 
   // A model never approves a permission: the loader refuses both MCP caller forms and hides the
   // tool. (An agent named without its thread's key is refused before that, listing included.)
@@ -365,6 +366,9 @@ test("switchboard: vyred restarting marks its threads stopped", async t => {
   t.after(() => again.stop());
   const r = await call("threads.get", { thread: id }, { root });
   assert.equal(r.data.thread.status, "stopped");
+  // ADR 0029 R7: the stop said why, so a surface shows "the box restarted", not a spinner.
+  const stopped = again.events.since(0, { type: "thread.stopped", limit: 10 }).filter(e => e.thread === id);
+  assert.deepEqual(stopped.map(e => e.payload.reason), ["restart"]);
 });
 
 test("agents: the assistant and an agent on its own credentials, with the fallback and budget", async t => {

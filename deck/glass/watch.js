@@ -24,7 +24,7 @@ import { pinchZoom, softKeyboard } from "./phone.js";
  */
 export const LIFECYCLE = ["computer.created", "computer.checked-out", "computer.thawed", "computer.frozen", "computer.stopped"];
 
-const EVENTS = ["computer.taken-over", "computer.handed-back", "computer.shielded", "computer.unshielded",
+const EVENTS = ["computer.taken-over", "computer.handed-back", "computer.idle-warning", "computer.shielded", "computer.unshielded",
   "glass.opened", "glass.closed", "glass.taken", "glass.released", ...LIFECYCLE];
 
 /** Is the box reaching this device through a relay? `link` is glass.open's { path, latencyMs }. */
@@ -353,9 +353,18 @@ export function mountScreen(o) {
         if (!s.holder || s.holder.surface !== p.surface) s.holder = { surface: p.surface, since: p.since || e.at || Date.now(), private: !!p.private };
         addLog(`${who} took the keyboard${p.private ? " to sign in privately" : ""}.`);
         break;
+      case "computer.idle-warning":
+        if (p.surface !== surface) return;
+        // The countdown runs on this clock: the box's `at` less the event's own time is what is left.
+        s.idleAt = p.at ? Date.now() + Math.max(0, Number(p.at) - Number(e.at || Date.now())) : 0;
+        break;
       case "computer.handed-back": case "glass.released":
         if (s.holder && (!p.surface || s.holder.surface === p.surface)) s.holder = null;
-        addLog(`${p.surface === surface ? "You" : "The keyboard"} ${p.surface === surface ? "handed back" : "went back"} to ${name}.`);
+        if (p.surface === surface) s.idleAt = 0;
+        if (p.why === "idle") {
+          addLog(`Handed back to ${name} after ${Math.round(Number(p.idle_ms) / 60_000)} min idle.`);
+          if (p.surface === surface) tk.idled(p.idle_ms);
+        } else addLog(`${p.surface === surface ? "You" : "The keyboard"} ${p.surface === surface ? "handed back" : "went back"} to ${name}.`);
         break;
       case "computer.shielded": addLog(`${name} cannot see the page while someone signs in.`); break;
       case "computer.unshielded": addLog(`${name} can see the page again${p.origin ? ` (${p.origin})` : ""}.`); break;

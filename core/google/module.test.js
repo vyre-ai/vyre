@@ -274,7 +274,8 @@ test("google: OAuth refreshes, retries once on an expired token, and reads merge
   const again = (await v.model("google.calendar.next", { account: "home" })).data.events;
   assert.equal(again.length, 2);
   assert.equal(refreshes(), 2);
-  const statuses = home.apiCalls().filter(c => c.path.includes("/events")).length;
+  // Only this test's reads: the planner's calendar mirror reads a window (timeMax) on google.added.
+  const statuses = home.apiCalls().filter(c => c.path.includes("/events") && !("timeMax" in c.query)).length;
   assert.equal(statuses, 3, "one call, one 401, one retry");
 
   // Writes need one account.

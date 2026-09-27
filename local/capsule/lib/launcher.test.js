@@ -220,7 +220,7 @@ test("launcher: picking a box file fetches it, then opens the local copy", async
   assert.deepEqual(await gone.pick(row, "bud"), { error: "Could not fetch it from studio: no such file." });
 });
 
-test("launcher: a box file inside a mounted Taildrive share opens there, without fetching", async t => {
+test("launcher: a box file inside a mounted VyreDrive share opens there, without fetching", async t => {
   const opened = [];
   const v = fakeVyred({ "files.drive.local": { data: { local: "/Users/x/Vyre/Box/projects/docs/budget 0.pdf", share: "projects" } } });
   const l = new Launcher({ apps: appsIn(t, []), files: async () => [], vyred: v.fn, boxName: "studio", open: async r => (opened.push(r.target), { ok: true }) });
